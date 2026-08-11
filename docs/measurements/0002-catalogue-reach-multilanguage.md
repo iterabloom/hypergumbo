@@ -126,11 +126,34 @@ lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method") -> None
 lookup_with_module("JSON", "gin",                      cc="method") -> gin.Context.JSON
 ```
 
-**53 of 210 entries are reachable only through such a fabricated import**
-(`unix` 27, `gin` 9, `echo` 8, `grpc` 4, `filepath` 3, `fiber` 2), 20 of them
-method-kind. That is why this arm reports 178 as well as 198: the 20 method
-entries the corrected spelling appears to "recover" produce **zero** chains on
-idiomatic Go with real module paths.
+The probe fabricates an import for **53** entries (`unix` 27, `gin` 9, `echo` 8,
+`grpc` 4, `filepath` 3, `fiber` 2). **For 20 of them the fabrication is
+load-bearing; for the other 33 it is not** — and the reason is worth stating,
+because it is luck rather than design:
+
+| catalogue module | real import path | reachable from the real path? |
+|---|---|---|
+| `unix` (function rows) | `golang.org/x/sys/unix` | **yes** — `_module_matches` suffix arm |
+| `filepath` (function rows) | `path/filepath` | **yes** — same |
+| `grpc.Server` (method row) | `google.golang.org/grpc` | **no** |
+| `gin.Context` (method rows) | `github.com/gin-gonic/gin` | **no** |
+
+A single-component module name survives the vocabulary mismatch because
+`_module_matches` compares trailing components and `unix` is the trailing
+component of `golang.org/x/sys/unix`. A method row's module carries a **type
+qualifier** — `gin.Context` — which is not a trailing component of any real
+import path, so the suffix arm cannot rescue it.
+
+So the third-party *function* surface is reachable on real Go by accident of
+the suffix rule, and the third-party *method* surface, all 20 rows, is not.
+That is why this arm reports 178 as well as 198: the 20 method entries the
+corrected spelling appears to "recover" produce **zero** chains on idiomatic Go
+with real module paths.
+
+*(An earlier revision of this section said all 53 were reachable only through
+the fabricated import. That was wrong — it counted the entries the probe
+fabricates an import for, not the entries whose verdict depends on it. The
+178 figure is unaffected: 33 of the 53 were already inside the 162.)*
 
 **A coincidence that must not be read as a finding.** The plan separately
 records that go.yaml carries *"53 of 210 entries violating the strict-stdlib
