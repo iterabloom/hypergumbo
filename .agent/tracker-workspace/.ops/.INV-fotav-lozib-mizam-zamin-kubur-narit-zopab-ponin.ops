@@ -42,3 +42,32 @@
   clock: 3  # 8f84
   nonce: 8f84  # 8f84
   message: "REMEDY CORRECTED BY THE OWNER, and the original filing was wrong about the fix. I proposed adding requests/httpx/urllib3 rows to the BUILT-IN catalogue. That contradicts ADR-0016's central scoping decision (line 27: the catalogue is 'a curated list of stdlib functions, not an unbounded set of library APIs', with line 300 naming the curation cost). Owner's objection — taking responsibility for third-party packages is a maintenance nightmare — is the ADR's own reasoning, and I had not read it before proposing.\n\nWHAT SURVIVES THE CORRECTION, because it is a separate claim: the DEFECT is real and reproduced with controls firing (requests.post(url, data={'s': secret}) -> 0 net_send chains, while os.environ and open()/file.read controls all fire). And python.yaml's header rationale is FALSE as written: 'Third-party libraries (requests, aiohttp, etc.) are detected transitively — they ultimately call these primitives' holds only if the library source is in the analyzed tree, and it is not. The scope decision is sound; its stated justification is not.\n\nTHE ASYMMETRY THAT IS THE ACTUAL DEFECT, verified in code rather than assumed:\n  taint      built-in general patterns + PROJECT-LOCAL overlay\n             (ADR-0017 lines 69/370/453/468; --taint-sources/-sinks/-sanitizers; extra_catalogs:)\n  boundaries built-in stdlib ONLY, NO overlay of any kind\n             (load_catalog(language) reads only _CATALOG_DIR; _ALLOWED_TOP_LEVEL_KEYS\n              admits extra_catalogs but its only sub-keys are sources/sinks/sanitizers)\nADR-0016 predates ADR-0017 and made its scoping decision before the project-local pattern existed.\n\nNote the knock-on: ADR-0017 line 453 derives built-in taint SINKS from io_primitives, so the boundary catalogue's stdlib scope propagates into the taint arm. A user can declare a project-local taint sink for requests today, but cannot declare a project-local io PRIMITIVE, so 'hypergumbo io-boundaries' stays blind either way.\n\nPROPOSED SHAPE (not built yet, no owner approval sought or given): a project-local io_primitives overlay mirroring the taint contract — repeatable path, project-local entries take precedence, same YAML schema as the built-in files — plus a corrected header, plus an EXAMPLE requests overlay shipped under docs/ rather than in the built-in catalogue, so users get a starting point without hypergumbo owning the API surface. NOT MEASURED: how much of the 1,728-site corpus floor an overlay actually recovers, since that depends on users writing one."  # 8f84
+- op: discuss  # 6cb6
+  at: '2026-08-11T07:21:44Z'  # 6cb6
+  by: agent  # 6cb6
+  actor: jgstern_agent  # 6cb6
+  clock: 4  # 6cb6
+  nonce: 6cb6  # 6cb6
+  message: "Merged as PR #279, dev SHA 0a18354c504c."  # 6cb6
+- op: update  # 0dd2
+  at: '2026-08-11T07:29:34Z'  # 0dd2
+  by: agent  # 0dd2
+  actor: jgstern_agent  # 0dd2
+  clock: 5  # 0dd2
+  nonce: 0dd2  # 0dd2
+  set:  # 0dd2
+    status: satisfied  # 0dd2
+- op: discuss  # 64f6
+  at: '2026-08-11T07:29:35Z'  # 64f6
+  by: agent  # 64f6
+  actor: jgstern_agent  # 64f6
+  clock: 6  # 64f6
+  nonce: 64f6  # 64f6
+  message: "Merged (dev 0a18354c50). Closed by BUILDING THE OVERLAY, not by widening the built-in catalogue — the remedy the owner redirected me to, which is ADR-0016's own reasoning.\n\nBEHAVIORAL EVIDENCE, re-running this item's own filed repro against merged dev, controls firing in the same run both ways:\n  WITHOUT overlay: env_read 1, fs_read 2, net_send 0\n  WITH overlay:    env_read 1, fs_read 2, net_send 2 (requests.get, requests.post)\nOverlay set is disclosed on stderr so an io-boundaries diff stays attributable.\n\nTAINT ARM, same one declaration: python sinks 113 -> 172; requests.post arrives as zone=network, trust_level=untrusted. Additive-only, and non-destruction of the built-in sink set is asserted rather than assumed.\n\nWHAT THE OWNER CAUGHT THAT I MISSED, recorded because both were mine:\n (1) I proposed adding requests/httpx/urllib3 rows to the shipped catalogue before reading ADR-0016 §27. The owner's maintenance-nightmare objection IS the ADR's stated reasoning.\n (2) The first cut fed only the BOUNDARY arm, silently re-creating at the user layer exactly the drift ADR-0017 §453 eliminated for built-ins (io_primitives as single source of truth, no shipped taint_sinks/). A user would have declared requests.post twice in two schemas. Folded in on the owner's call.\n\nFORMATS STAY SEPARATE and that is a decision, not an omission: only SINKS overlap. A taint source carries a label and a sanitizer clears taint — neither is an I/O crossing — and a sink additionally carries zone + trust_level, which  deliberately does not model. Merging would re-conflate the axis kind ADR-0023/0027/0028/0031/0032 exist to separate.\n\nALSO CORRECTED: python.yaml's header asserted third-party libraries are 'detected transitively'. False at hypergumbo's analysis scope (we read the repo, not site-packages) and now says so, pointing at the overlay.\n\nNOT MEASURED, said plainly: how much of the ~1,728-site corpus floor an overlay actually recovers — that depends on users writing one, and no corpus run has been done with the shipped example. The example covers requests/httpx/urllib3/aiohttp client verbs by name and is explicitly NOT exhaustive.\n\nTests: 5768 passed, all six packages 100% in isolation. ADR-0016 carries the amendment."  # 64f6
+- op: discuss  # 0194
+  at: '2026-08-11T07:29:50Z'  # 0194
+  by: agent  # 0194
+  actor: jgstern_agent  # 0194
+  clock: 7  # 0194
+  nonce: '0194'  # 0194
+  message: "Correction to the previous entry: one sentence lost a word to shell backtick substitution. It should read \"...and a sink additionally carries zone + trust_level, which the BOUNDARY field deliberately does not model.\" The boundary vocabulary names what crossing happened, not how trusted the destination is; that is why the two schemas stay separate rather than merging."  # 0194
