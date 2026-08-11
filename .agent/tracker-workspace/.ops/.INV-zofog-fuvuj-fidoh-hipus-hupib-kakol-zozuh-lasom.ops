@@ -29,3 +29,33 @@
   clock: 2  # 011e
   nonce: 011e  # 011e
   message: "Owner directed implementation of the notebook entry (notebookjournal_08102026_2252.md) in-session on 2026-08-10, which is the human authorization AGENTS.md requires for touching governance files. Implementation proceeds on jgstern-agent/fix/forge-token-guards and the PR is raised with --gov; the MERGE stays with a human regardless, per 'Do NOT self-merge PRs touching these files'. Closure will cite hypergumbo's own before/after repro, not exploradora's."  # 011e
+- op: update  # e20e
+  at: '2026-08-11T04:21:31Z'  # e20e
+  by: agent  # e20e
+  actor: jgstern_agent  # e20e
+  clock: 3  # e20e
+  nonce: e20e  # e20e
+  set:  # e20e
+    status: needs_human_review  # e20e
+- op: discuss  # e5a8
+  at: '2026-08-11T04:21:31Z'  # e5a8
+  by: agent  # e5a8
+  actor: jgstern_agent  # e5a8
+  clock: 4  # e5a8
+  nonce: e5a8  # e5a8
+  message: "PR #277 open and CI-green, raised with --gov so it will NOT auto-merge. Awaiting human merge (all five scripts are governance files).\n\nBEHAVIORAL EVIDENCE from hypergumbo's own repro, both directions (legacy FORGEJO_* masked in .env, restored by a trap, values never printed):\n\n  BEFORE  $ ./scripts/ci-debug status  -> Error: FORGEJO_TOKEN not set...   exit 1\n          $ ./scripts/list-my-prs      -> Error: FORGEJO_TOKEN not set...   exit 1\n  AFTER   $ ./scripts/ci-debug status  -> 'Overall: success' + job list     exit 0\n          $ ./scripts/list-my-prs      -> 'No PRs found.'                   exit 0\n\nci-debug SUCCEEDING IS NOT PROOF THE TOKEN RESOLVED. This repo is public, so that call succeeds anonymously -- reading it as evidence of auth is exactly the error that hid the two-hour CI outage the day before. A separate probe pins the credential path itself: with FORGEJO_TOKEN masked empty, FORGE_BACKEND=github, FORGE_TOKEN non-empty and EQUAL to HG_GITHUB_TOKEN. That is the C9 path supplying the credential, not an anonymous read.\n\nCALL ORDER VERIFIED RATHER THAN ASSUMED: detect_api_base calls detect_forge_backend internally, and ci-debug/merge-pr/list-my-prs all run it before their guards, so a bare resolve_forge_token is correct at those three. auto-pr's two guards run BEFORE its detect_api_base, so they call detect_forge_backend explicitly. contribute resolves after detect_forge_backend \"$UPSTREAM_URL\" because its credential belongs to the upstream forge; its FORGEJO_USER guard stays (the fork-push credential helper uses it).\n\nUNPLANNED FINDING: the merge-pr close test replaces the WHOLE library with a hand-written stub, and that stub had drifted -- no resolve_forge_token, so bash exited 127 and five tests failed with assertions about PATCH bodies that named nothing about the cause. Stub now mirrors C9, and a new TestStubMirrorsTheRealLibrary asserts the stub defines every library function merge-pr actually calls; it immediately surfaced two more it lacked (do_merge_guarded, ci_verdict_permits_merge).\n\nTests: 187 passed. Status moves to satisfied only after the human merge, per closure-evidence discipline."  # e5a8
+- op: update  # 366b
+  at: '2026-08-11T04:42:31Z'  # 366b
+  by: agent  # 366b
+  actor: jgstern_agent  # 366b
+  clock: 5  # 366b
+  nonce: 366b  # 366b
+  set:  # 366b
+    status: satisfied  # 366b
+- op: discuss  # 41ea
+  at: '2026-08-11T04:42:31Z'  # 41ea
+  by: agent  # 41ea
+  actor: jgstern_agent  # 41ea
+  clock: 6  # 41ea
+  nonce: 41ea  # 41ea
+  message: "SATISFIED. Human merged PR #277; merged dev is e9e1d8eb6a.\n\nCLOSURE EVIDENCE RE-RUN AGAINST MERGED dev (not just the feature branch), .env masked to HG_GITHUB_TOKEN only, restored by a trap, values never printed:\n  $ ./scripts/ci-debug status  -> 'CI status for commit e9e1d8eb / Overall: success' + job list, exit 0\n  $ ./scripts/list-my-prs      -> 'No PRs found.', exit 0\nAgainst the same masked env BEFORE the fix both exited 1 at the guard.\n\nAND THE CREDENTIAL-PATH PROBE, because this repo is PUBLIC and ci-debug therefore succeeds anonymously -- reading its success as proof of auth is the exact error that hid a two-hour CI outage. With FORGEJO_TOKEN masked empty: FORGE_BACKEND=github, FORGE_TOKEN non-empty and EQUAL to HG_GITHUB_TOKEN. So the guard passes because C9 resolved the PAT, not because of an unauthenticated read.\n\nPOSITIVE STRUCTURAL EVIDENCE that the invariant now holds, not just that the repro passes: zero occurrences of a direct credential read (TOKEN=\"${FORGEJO_TOKEN...}\") remain across auto-pr, ci-debug, merge-pr, contribute and list-my-prs. resolve_forge_token is called at all 8 former guard sites. Remaining FORGEJO_* references are error-message text, usage text, comments, and the FORGEJO_USER reads the fork-push credential helper legitimately needs.\n\nOPTIONAL FOLLOW-UP now unblocked (owner's call): the legacy FORGEJO_* values can be removed from .env permanently, since github is origin and the forgejo arm is dormant. Running the daily workflow with no FORGEJO_* values at all would be the strongest ongoing validation."  # 41ea
