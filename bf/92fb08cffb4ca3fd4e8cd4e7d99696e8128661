@@ -1,0 +1,40 @@
+Original commit body from bbe5bcd5ce8fba6248c33d34bd56d6a8a47834c5:
+
+S9 of the taint/DDG/CFG plan. The only prior datapoint was WI-ruhol's 50% (3 of
+6) on a synthetic reference impl, closed before any of ADR-0017's nine phases
+shipped. This measures it on six real repositories.
+
+Adds `scripts/measure-taint-precision.py` (collect / sample / score),
+`docs/example-claims/generic-taint-claims.yaml` (six generic claims any repo can
+be pointed at), and `docs/measurements/` with the full verdict table.
+`docs/audits/README.md` scopes itself to axis-conformance verdicts and asks for
+a sibling format rather than a shoehorn; this is that sibling.
+
+RESULT. Census of every flow on caddy / mitmproxy / poetry / express /
+apollo-server: 60 flows, 42 adjudicated, 26.2%. Stratified sample of pretix, 44
+of 205: 39.5%. Combined 28 of 85 = 32.9% raw, ~41% population-weighted. The
+<50% band, named before any interval was computed.
+
+The pre-registered population had ceased to exist and that was verified live,
+not assumed: both self-claims were repaired, and a repaired claim reports zero
+violating flows because verify_claims never downgrades a violated verdict. Four
+revisions are recorded with their reasons; the one that makes the method
+stronger is that pretix's primary pass went to a second independent blind agent
+rather than to the author of the code being measured.
+
+THE REMEDY THE DATA INVITES IS WRONG. `analysis_method` reverses between
+populations — ddg_mixed is 11.8% on the census and 57.9% on pretix — and
+filtering to `ddg` keeps 7 of 85 flows while losing 21 of the 28 true positives,
+including caddy's `for _, v := range os.Environ() { fmt.Println(v) }`.
+
+Also recorded: claim-level correctness is roughly twice flow-level (9 of 17
+violated verdicts rest on a true flow); nine named FP mechanisms with counts;
+19 flows anchored to `<external>` that name no readable location; and a 1.9%
+disagreement rate across two independent passes, stated as evidence the rubric
+is applied consistently rather than that it is right.
+
+Filed from this: INV-rozob (unanchored source placeholder), INV-tutar
+(env_read -> host_secret vocabulary), WI-palul (statement-order filter
+candidate, direction deletes findings).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
