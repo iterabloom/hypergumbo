@@ -62,6 +62,7 @@ from .safety_zones import (
     install_artifact_mkdir,
     install_artifact_unlink,
     install_artifact_write_bytes,
+    repo_inspect_scan,
 )
 from dataclasses import dataclass
 from pathlib import Path
@@ -282,7 +283,9 @@ def scan_content(content: str) -> list[SecretFinding]:
         # always returns ``[]`` regardless of the piped content (INV-pirad).
         # Do NOT revert to `detect --pipe`; the real-binary guard in
         # test_gitleaks.py (TestScanContentRealBinary) exists to catch that.
-        result = subprocess.run(  # noqa: S603  # nosec B603
+        # WI-fasuv: repo_inspection zone. This is the widest-reading member --
+        # it sees every byte of content handed to it on stdin.
+        result = repo_inspect_scan(
             [
                 str(gitleaks),
                 "stdin",  # Read the content to scan from stdin

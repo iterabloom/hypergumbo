@@ -11,8 +11,8 @@ Hypergumbo's safety claims are checked by running hypergumbo against its own sou
 
 | verdict | count | meaning |
 |---|---|---|
-| **violated** | 1 | the tool found flows contradicting the claim |
-| **inconclusive** | 17 | the analysis could not see enough to confirm |
+| **violated** | 0 | the tool found flows contradicting the claim |
+| **inconclusive** | 18 | the analysis could not see enough to confirm |
 | **confirmed** | 0 | checked and held |
 
 The ``inconclusive`` verdicts are not near-misses. This repository contains code in languages with no taint catalogue, so the analysis declines to confirm rather than reporting silence as safety. A ``confirmed`` verdict requires every code-bearing language present to be analysable.
@@ -116,9 +116,28 @@ respective peer zones.
 downloads happen only via the install-embeddings extras subcommand
 and downstream library calls — never from the analyze-my-code path.
 
-**runtime-cli-no-subprocess** — ⚠ **CURRENTLY VIOLATED** — Runtime CLI subcommands do not shell out. All subprocess invocations
-(curl, git, pip, rustup, gitleaks) happen only via extras /
-build-time subcommands.
+**runtime-cli-no-subprocess** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands shell out ONLY through the declared
+repo_inspection zone. Every such invocation is local, read-only, and
+executes no code originating in the analysed repository:
+
+  - git, for cache-key fingerprinting and repo identity
+    (rev-parse HEAD, rev-list --max-parents=0 HEAD,
+    config --get remote.origin.url). No fetch, no push, no network.
+  - gitleaks, for the best-effort secret scan. Reads content on
+    stdin, reports findings on stdout. Runs only when the optional
+    binary is installed.
+  - rust-analyzer --version, a capability probe that reads nothing.
+    NOT an indexing request: rust-analyzer executes a project's
+    build.rs and proc macros when it indexes, and a default run
+    never asks it to.
+
+Anything else — curl, pip, rustup, or an unwrapped subprocess call —
+is prohibited. The previous wording of this claim ("Runtime CLI
+subcommands do not shell out ... only via extras / build-time
+subcommands") was FALSE as written: git ran 25 times and gitleaks
+ran a real scan on a default `sketch`, verified with
+`strace -f -e trace=execve`. It was restated by DECLARING the
+capability, not by carving an unenforced exception into the prose.
 
 **runtime-cli-no-install-artifact** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands do not install software (no writes via the
 install_artifact wrappers).

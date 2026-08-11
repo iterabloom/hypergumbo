@@ -44,6 +44,8 @@ from __future__ import annotations
 
 import json
 import shutil
+# The repo_inspection zone below is built on this; see its section header.
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -390,3 +392,83 @@ def install_artifact_unlink(path: Path) -> None:
     _safety_zone_barrier()
     _require_within_zone(path, _install_zone_root(), "install_artifact")
     path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# repo_inspection zone (WI-fasuv)
+# ---------------------------------------------------------------------------
+#
+# WHY THIS ZONE EXISTS. The shipped claim ``runtime-cli-no-subprocess`` said
+# "Runtime CLI subcommands do not shell out. All subprocess invocations (curl,
+# git, pip, rustup, gitleaks) happen only via extras / build-time subcommands."
+# That is false as written: ``strace -f -e trace=execve`` on a default
+# ``sketch`` shows git x25, a real gitleaks secret scan, and a rust-analyzer
+# --version probe. gitleaks is named in the claim as build-time-only and is not.
+#
+# THE OWNER CHOSE TO DECLARE THE CAPABILITY RATHER THAN REWORD THE CLAIM
+# (2026-08-11). Rewording -- "except read-only repo inspection" -- was the
+# cheap option and is the one that launders: it weakens a shipped security
+# claim with nothing enforcing the carve-out's bounds, so the sentence becomes
+# true by meaning less. Routing through declared wrappers keeps the claim
+# strong AND true, and makes the boundary machine-checked.
+#
+# WHAT UNITES THESE THREE, since it is not what they read. It is what they
+# CANNOT do: none writes to the host filesystem, none takes a network action on
+# the user's behalf, and none executes code originating in the analysed
+# repository. That last one is the load-bearing property -- see
+# :func:`repo_inspect_probe`.
+#
+# THREE WRAPPERS, NOT ONE, despite near-identical bodies. This mirrors the
+# existing cache_write / user_out_write / tmp_artifact_write split: the taint
+# machinery keys on the FUNCTION, so separate names let a future claim
+# prohibit one activity while permitting another. One wrapper would collapse
+# "reads your git metadata" and "reads every byte of your source" into a single
+# indistinguishable permission.
+#
+# RE-EVALUATION TRIGGER (a KEEP verdict needs one): if anything is added to
+# this zone that reads repository CONTENT and acts on it -- rather than
+# reporting on it -- split the zone before adding it.
+
+
+def repo_inspect_git(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run a local ``git`` command against the analysed repository.
+
+    SAFETY ZONE: ``repo_inspection``. Used for cache-key fingerprinting
+    (``rev-parse HEAD``, ``rev-list --max-parents=0 HEAD``) and repo identity
+    (``config --get remote.origin.url``). Read-only and local: no fetch, no
+    push, no network. Callers resolve the binary via ``shutil.which`` rather
+    than letting the shell search ``PATH`` (Bandit S607).
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def repo_inspect_scan(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Run a read-only scanner over repository content.
+
+    SAFETY ZONE: ``repo_inspection``. Today this is the ``gitleaks`` secret
+    scan, which reads source content on stdin and reports findings on stdout.
+    It is the widest-reading member of the zone -- it sees every byte handed to
+    it -- and the one whose disclosure matters most to a user deciding whether
+    to run hypergumbo on a private repository.
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
+
+
+def repo_inspect_probe(argv: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[Any]":
+    """Ask an external tool whether it is installed and what version it is.
+
+    SAFETY ZONE: ``repo_inspection``. Reads nothing -- not the repository, not
+    the environment. The narrowest member of the zone.
+
+    THE DISTINCTION THIS PRESERVES IS THE MOST IMPORTANT ONE IN THE ZONE.
+    rust-analyzer executes the analysed project's ``build.rs`` and proc macros
+    when it INDEXES; that is the single most dangerous capability reachable
+    from this tree. A default run probes ``--version`` and never asks it to
+    index, so no code from the analysed repository is executed.
+    ``test_repo_inspection_zone.py::TestTheProbeDoesNotIndex`` pins that, and
+    if it goes red the disclosure in SECURITY.md is wrong.
+    """
+    _safety_zone_barrier()
+    return subprocess.run(argv, **kwargs)  # noqa: S603  # nosec B603
