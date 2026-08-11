@@ -1,0 +1,26 @@
+- op: create  # 98ee
+  at: '2026-08-11T08:33:59Z'  # 98ee
+  by: agent  # 98ee
+  actor: jgstern_agent  # 98ee
+  clock: 1  # 98ee
+  nonce: 98ee  # 98ee
+  data:  # 98ee
+    kind: invariant  # 98ee
+    title: "17 dual-classified io_primitives rows across 6 languages; the catalogue cannot express WHY a primitive has two boundaries, so each consumer breaks the tie its own way"  # 98ee
+    status: violated  # 98ee
+    priority: 2  # 98ee
+    parent:  # 98ee
+    tags:  # 98ee
+    - io_boundary  # 98ee
+    - taint_flow  # 98ee
+    - catalogue  # 98ee
+    isbefore: []  # 98ee
+    duplicate_of: []  # 98ee
+    not_duplicate_of: []  # 98ee
+    pr_ref:  # 98ee
+    description: "WI-rusof fixed the ONE dual-classified shape that a mode literal settles\n(builtins.open, python). Sorting the whole population by what the correct fix would\nbe leaves four other shapes, deliberately NOT swept into that change because their\nfixes differ and two of them are not defects at all.\n\nENUMERATED over all 14 io_primitives/*.yaml: 17 (module,name) pairs appear under\nmore than one boundary.\n\nSHAPE 1 -- mode-discriminable, SAME fix as WI-rusof, missing emitter:\n  c.yaml  stdio.fopen  [fs_read, fs_write]\nThe rule is identical to Python's open() and mode_discriminated_names already flags\nit from the catalogue, so the shared predicate would handle it -- but nothing emits\nmeta[\"io_mode\"] for C, so it currently resolves to the declaration-order default.\nCost is one emitter change plus a fixture; the parity test in\ntest_py_io_mode_emission.py is python-only and a C sibling would be needed.\n\nSHAPE 2 -- GENUINELY BOTH, not a defect. One call really does cross two boundaries:\n  erlang  gen_udp.open                       [net_recv, net_send]\n  objc    NSURLConnection.sendAsynchronous.. [net_recv, net_send]\n  objc    NSURLConnection.sendSynchronous..  [net_recv, net_send]\nOpening a UDP socket enables both directions; an HTTP round-trip sends AND receives.\nNo argument discriminates these and none should -- the correct model may be that a\nsingle primitive can carry a SET of boundaries, which the current one-row-per-\nboundary encoding expresses only as duplicate rows. Worth a decision, not a patch.\n\nSHAPE 3 -- UNDECIDABLE at the call site:\n  c  unistd.read   [fs_read, ipc_recv, net_recv]\n  c  unistd.write  [fs_write, ipc_send, net_send]\nThe boundary depends on what the fd IS, which is established wherever the fd was\nopened, not at the read/write. Settling this needs fd provenance tracking (a\ndataflow question), not a catalogue or argument question. Note the fs_* row is\nnever wrong -- it is the ipc/net rows that are speculative -- so today's behaviour\nover-reports rather than under-reports.\n\nSHAPE 4 -- TAXONOMY OVERLAP, arguably a vocabulary bug:\n  haskell  System.IO.hPrint / hPutChar / hPutStr / hPutStrLn  [fs_write, logging]\nThese are the same write; `logging` is a USE of fs_write, not a sibling of it.\nCompare AUTO_SINK_ZONE_MAP, which maps fs_write -> host_fs and logging -> logging\nas disjoint zones, so one haskell hPutStrLn currently derives TWO sinks in two\nzones. Candidate for the fundamental-concept audit (is `logging` a boundary or a\npurpose?) rather than for a per-row edit.\n  haskell  Control.Concurrent.STM.newTVar / newTVarIO  [db_read, db_write]\nSame question in a different vocabulary: creating a TVar is neither read nor write\nof a database, and db_* for STM is itself suspect.\n\nSHAPE 5 -- ZONE-COLLAPSE QUESTION, already has an owner:\n  scala  scala.sys.process.Process.apply / .run  [fs_write, subprocess]\nThis is WI-bibuk's ruling in another language: WI-bibuk split subprocess out of\nhost_fs for exactly the reason that shelling out is a different trust surface from\nan arbitrary-path write. These two rows re-collapse them. Should follow WI-bibuk's\nresolution rather than be decided independently.\n\nWHY FILED AS ONE ITEM: the shapes share a cause (the catalogue schema has no way to\nsay \"this primitive's boundary depends on X\", so every such case is encoded as\nduplicate rows and each consumer breaks the tie its own way) and the decision about\nwhether to model multi-boundary primitives explicitly is common to shapes 2, 4 and 5.\nSplit on triage if the decisions diverge.\n\nNOT MEASURED: corpus site counts for any of these. WI-rusof's python instance was\n273 edges across 8 repos; none of the languages above has an equivalent figure, and\nerlang/objc/haskell/scala are thin in the corpus, so expected volume is low."  # 98ee
+    fields:  # 98ee
+      statement: "A primitive catalogued under more than one boundary must declare what discriminates them, and every consumer must resolve the tie through one shared predicate rather than by declaration order."  # 98ee
+      root_cause: "io_primitives YAML encodes a multi-boundary primitive as duplicate rows with no discriminator field, so lookup order (io-boundaries) and blanket derivation (taint auto-sinks) each pick a different row."  # 98ee
+      priority: "P3"  # 98ee
+      status: "todo_soft"  # 98ee
