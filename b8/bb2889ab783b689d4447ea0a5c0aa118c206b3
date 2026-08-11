@@ -1,0 +1,65 @@
+Original commit body from c575a35b3e141f1ed9fafdad0b1b338d1ccfe794:
+
+The shipped claim read "Runtime CLI subcommands do not shell out. All
+subprocess invocations (curl, git, pip, rustup, gitleaks) happen only via
+extras / build-time subcommands." That is FALSE as written. Measured with
+strace -f -e trace=execve on a default `sketch` of a two-file repo:
+
+  /usr/bin/git    x25  rev-parse HEAD, rev-list --max-parents=0 HEAD,
+                       config --get remote.origin.url
+  gitleaks        x1   stdin --report-format json ...   <- a REAL secret scan
+  rust-analyzer   x1   --version                        <- probe only
+
+gitleaks is named in the claim as build-time-only and is not.
+
+THE OWNER RULED (2026-08-11) TO DECLARE THE CAPABILITY, NOT REWORD THE CLAIM.
+Rewording -- "except read-only repo inspection" -- was the cheap option and is
+the one that launders: it weakens a published security claim with nothing
+enforcing the carve-out's bounds, so the sentence becomes true by meaning less.
+
+Three wrappers, not one, despite near-identical bodies -- mirroring the
+existing cache_write / user_out_write / tmp_artifact_write split. The taint
+machinery keys on the FUNCTION, so repo_inspect_git / repo_inspect_scan /
+repo_inspect_probe let a future claim prohibit one activity while permitting
+another. One wrapper would collapse "reads your git metadata" and "reads every
+byte of your source" into a single indistinguishable permission.
+
+BEHAVIOUR IS BYTE-IDENTICAL, WHICH IS THE POINT. The strace canary re-run
+after the change: same three binaries, same counts. Nothing added, removed or
+gated -- the capability was made VISIBLE to the analysis, not altered.
+
+MEASURED:
+  runtime-cli-no-subprocess  violated -> inconclusive
+  1110 raw / 33 distinct unsanitized -> 0 unsanitized, with 390 flows still
+  reaching the zone and passing a sanitizer on every route.
+  Self-claim tally over this work: {violated 2, inconclusive 16} -> {inconclusive 18}.
+
+ZERO VIOLATED IS NOT "PROVEN SAFE", and confirmed is still 0. Every verdict is
+inconclusive because this repo contains bash/csharp/solidity with no taint
+catalogue, so a negative cannot be confirmed. SECURITY.md regenerates to say
+exactly that, publishes the enumerated repo-inspection surface, and records
+that the previous wording was false.
+
+build.rs is the load-bearing distinction and is pinned by a test:
+rust-analyzer executes the analysed project's build.rs and proc macros when it
+INDEXES, and the whole difference is --version versus an index request.
+TestTheProbeDoesNotIndex fails if analysis-stats/scip/lsif/diagnostics ever
+appear at that site.
+
+One existing security test moved seam, intent unchanged:
+TestNoCodeExecutionFromTargetRepo patched rf.subprocess.run, and
+repo_fingerprint no longer imports subprocess. It now patches
+repo_inspect_git, which is a TIGHTER seam -- the single declared chokepoint
+for that module's process execution, so a git call added anywhere in it is
+recorded by construction. Positive-controlled: the patched seam observes the
+rev-parse invocation rather than silently recording nothing.
+
+DEFERRED WITH AN EXPLICIT RE-EVALUATION TRIGGER: the probe shares the zone with
+git and gitleaks, the weakest part of the grouping -- what unites the three is
+what they CANNOT do (no host write, no network action, no execution of
+repository code), not what they read. A separate tool_probe zone is deferred
+because no claim today needs to prohibit the probe while permitting git. If
+anything is ever added to this zone that reads repository CONTENT and acts on
+it rather than reporting on it, split the zone first.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
