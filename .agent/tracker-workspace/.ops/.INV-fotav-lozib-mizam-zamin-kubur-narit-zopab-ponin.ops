@@ -1,0 +1,44 @@
+- op: create  # 615d
+  at: '2026-08-11T04:56:26Z'  # 615d
+  by: agent  # 615d
+  actor: jgstern_agent  # 615d
+  clock: 1  # 615d
+  nonce: 615d  # 615d
+  data:  # 615d
+    kind: invariant  # 615d
+    title: "requests/httpx/urllib3 have ZERO rows in the python I/O catalogue, so requests.post(url, secret) yields no net_send boundary; the header's 'detected transitively' rationale is false because the library source is not in the analyzed tree"  # 615d
+    status: violated  # 615d
+    priority: 1  # 615d
+    parent:  # 615d
+    tags:  # 615d
+    - io_boundary  # 615d
+    - taint  # 615d
+    - catalogue  # 615d
+    - rct_blocker  # 615d
+    - python  # 615d
+    isbefore: []  # 615d
+    duplicate_of: []  # 615d
+    not_duplicate_of: []  # 615d
+    pr_ref:  # 615d
+    description: "FOUND while working INV-fibis (bucket A, \"python recall gaps\"). Not a false\nconfirm -- the honest-verdict machinery holds -- but the recall hole underneath\nthe tension LIVE.md names: every honesty gate makes MORE claims inconclusive,\nand only RECALL closes that.\n\nREPRODUCED LIVE, with controls firing in the same run:\n\n  fixture: import requests\n           def exfiltrate(secret, url): return requests.post(url, data={\"s\": secret})\n           def fetch(url): return requests.get(url).text\n           + open()/os.environ controls\n\n  $ hypergumbo io-boundaries <fixture> --json\n      env_read  os.environ      1     <- control fired\n      fs_read   builtins.open   1     <- control fired\n      fs_read   file.read       1     <- control fired\n      net_send                  0     <- THE DEFECT\n\nA file that plainly exfiltrates a secret over HTTP produces ZERO network\nboundaries.\n\nTHE DOCUMENTED RATIONALE IS FALSE, AND IT IS IN SHIPPED DOCS. python.yaml's\nheader states: \"Third-party libraries (requests, aiohttp, etc.) are detected\ntransitively -- they ultimately call these primitives.\" That holds only if the\nlibrary's own source is inside the analyzed tree. It is not: hypergumbo analyzes\nthe repo, not site-packages. So there are no edges into requests' internals and\nnothing is detected transitively. The fixture above is the counter-example.\n\nCATALOGUE STATE, measured: requests 0 rows, httpx 0 rows, urllib3 0 rows,\naiohttp 1 row (and it is net_recv, the server side). urllib.request has 3.\n\nREAL-CODE FLOOR over ~/ALL_REPOS (grep, so an order-of-magnitude figure, not a\nchain count -- sites != chains):\n  requests.<verb>(  1,728 sites   (get 1038, post 500, delete 88, request 49,\n                                   put 28, patch 11, head 11, options 3)\n  httpx.<verb>(        76 sites\n  requests.Session(    87   httpx.Client( 155   httpx.AsyncClient( 107\n                            urllib3.PoolManager( 7\nThe module-level function form needs NO receiver typing -- it is pure catalogue\ndata, which is the plan's \"vary only the DATA\" chokepoint shape.\n\nNOT A POLICY CHANGE, verified rather than assumed. The header says stdlib-only,\nbut the catalogue ALREADY carries 33 non-stdlib rows: django 29, ujson 1,\nflask 1, uvicorn 1, aiohttp 1. The header line is stale, not live policy.\n\nWHY THIS IS THE RCT-RELEVANT ONE. net_send is the boundary the safety story\nrests on. Today a participant repo doing `requests.post(...)` yields no network\nboundary at all; the verdict is saved only by the PR #251 module-adjudicability\ngate, which downgrades to inconclusive because `requests` is in the uncovered\nlist. Cataloguing it closes BOTH sides at once: hypergumbo detects the egress\nAND the module stops appearing as uncovered, so verdicts can move off\ninconclusive on their merits.\n\nDIRECTION TO MEASURE BEFORE SHIPPING: this ADDS boundaries and taint sinks. The\nfalse-positive channel is a repo with its own module or class named `requests` /\n`Session` / `Client`; INV-kipor's binding check is the guard and must be\nconfirmed to hold. Adding method-kind rows under `requests.Session` /\n`httpx.Client` also auto-extends EXTERNAL_CONSTRUCTOR_TYPES via the #270\nderivation -- intended, but it is a second consumer and the parity test covers it."  # 615d
+    fields:  # 615d
+      statement: "A catalogued I/O boundary must be detectable for the libraries real code actually uses to cross it; for python net_send that means the dominant HTTP clients, not only the stdlib primitives they wrap."  # 615d
+      root_cause: "io_primitives/python.yaml was scoped to the stdlib on the stated assumption that third-party libraries are detected transitively via the stdlib primitives they call. hypergumbo analyzes the repo, not site-packages, so no edges into those libraries exist and nothing is detected transitively."  # 615d
+- op: update  # 2b78
+  at: '2026-08-11T05:29:00Z'  # 2b78
+  by: agent  # 2b78
+  actor: jgstern_agent  # 2b78
+  clock: 2  # 2b78
+  nonce: 2b78  # 2b78
+  set:  # 2b78
+    title: "python io_primitives has no PROJECT-LOCAL overlay (taint has one, boundaries do not), so third-party I/O like requests.post is undetectable and the only remedy on offer would violate ADR-0016's stdlib-only scope"  # 2b78
+    fields:  # 2b78
+      statement: "A user must be able to supply knowledge of third-party I/O primitives WITHOUT hypergumbo taking ownership of third-party APIs: the built-in catalogue stays stdlib-scoped per ADR-0016, and a project-local overlay carries the rest — the same contract ADR-0017 already grants the taint arm."  # 2b78
+      root_cause: "ADR-0016 scoped io_primitives to the stdlib deliberately ('finite and stable ... not an unbounded set of library APIs') but shipped no extension point. ADR-0017 later established project-local catalogs for taint (--taint-sources/-sinks/-sanitizers plus extra_catalogs:), and that pattern was never extended to boundaries. load_catalog(language) reads only _CATALOG_DIR; verify-claims' extra_catalogs accepts only sources/sinks/sanitizers. So the boundary arm has no user-supplied channel at all."  # 2b78
+- op: discuss  # 8f84
+  at: '2026-08-11T05:29:00Z'  # 8f84
+  by: agent  # 8f84
+  actor: jgstern_agent  # 8f84
+  clock: 3  # 8f84
+  nonce: 8f84  # 8f84
+  message: "REMEDY CORRECTED BY THE OWNER, and the original filing was wrong about the fix. I proposed adding requests/httpx/urllib3 rows to the BUILT-IN catalogue. That contradicts ADR-0016's central scoping decision (line 27: the catalogue is 'a curated list of stdlib functions, not an unbounded set of library APIs', with line 300 naming the curation cost). Owner's objection — taking responsibility for third-party packages is a maintenance nightmare — is the ADR's own reasoning, and I had not read it before proposing.\n\nWHAT SURVIVES THE CORRECTION, because it is a separate claim: the DEFECT is real and reproduced with controls firing (requests.post(url, data={'s': secret}) -> 0 net_send chains, while os.environ and open()/file.read controls all fire). And python.yaml's header rationale is FALSE as written: 'Third-party libraries (requests, aiohttp, etc.) are detected transitively — they ultimately call these primitives' holds only if the library source is in the analyzed tree, and it is not. The scope decision is sound; its stated justification is not.\n\nTHE ASYMMETRY THAT IS THE ACTUAL DEFECT, verified in code rather than assumed:\n  taint      built-in general patterns + PROJECT-LOCAL overlay\n             (ADR-0017 lines 69/370/453/468; --taint-sources/-sinks/-sanitizers; extra_catalogs:)\n  boundaries built-in stdlib ONLY, NO overlay of any kind\n             (load_catalog(language) reads only _CATALOG_DIR; _ALLOWED_TOP_LEVEL_KEYS\n              admits extra_catalogs but its only sub-keys are sources/sinks/sanitizers)\nADR-0016 predates ADR-0017 and made its scoping decision before the project-local pattern existed.\n\nNote the knock-on: ADR-0017 line 453 derives built-in taint SINKS from io_primitives, so the boundary catalogue's stdlib scope propagates into the taint arm. A user can declare a project-local taint sink for requests today, but cannot declare a project-local io PRIMITIVE, so 'hypergumbo io-boundaries' stays blind either way.\n\nPROPOSED SHAPE (not built yet, no owner approval sought or given): a project-local io_primitives overlay mirroring the taint contract — repeatable path, project-local entries take precedence, same YAML schema as the built-in files — plus a corrected header, plus an EXAMPLE requests overlay shipped under docs/ rather than in the built-in catalogue, so users get a starting point without hypergumbo owning the API surface. NOT MEASURED: how much of the 1,728-site corpus floor an overlay actually recovers, since that depends on users writing one."  # 8f84
