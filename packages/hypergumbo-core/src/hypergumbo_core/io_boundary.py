@@ -486,6 +486,17 @@ class IoBoundaryCatalog:
     _by_qualified: dict[str, IoPrimitive] = field(
         default_factory=dict, repr=False,
     )
+    # Every row for a qualified name, not just the first. ``_by_qualified``
+    # keeps one row per name and that is correct for the single-boundary
+    # majority, but a DUAL-CLASSIFIED primitive (``builtins.open`` is
+    # ``fs_read`` with its default mode and ``fs_write`` when handed ``"w"``)
+    # had its second row dropped here entirely — so ``open(p, "w")``
+    # resolved to ``fs_read`` and a real write was invisible. Mode
+    # discrimination cannot recover a row the index never kept, so the
+    # index has to keep both and let :func:`select_by_mode` choose.
+    _by_qualified_all: dict[str, list[IoPrimitive]] = field(
+        default_factory=dict, repr=False,
+    )
     _by_short: dict[str, list[IoPrimitive]] = field(
         default_factory=dict, repr=False,
     )
@@ -497,11 +508,14 @@ class IoBoundaryCatalog:
     def _rebuild_indices(self) -> None:
         """Rebuild the qualified-name and short-name lookup dicts."""
         self._by_qualified.clear()
+        self._by_qualified_all.clear()
         self._by_short.clear()
         for p in self.primitives:
-            # Qualified name: first one wins (shouldn't have duplicates)
+            # Qualified name: first one wins for the single-row index.
+            # Duplicates are NOT a data error — see ``_by_qualified_all``.
             if p.qualified_name not in self._by_qualified:
                 self._by_qualified[p.qualified_name] = p
+            self._by_qualified_all.setdefault(p.qualified_name, []).append(p)
             # WI-vipur: also register a dot-normalized alias so edges
             # emitted in scoped-path mode (``::`` replaced with ``.`` to
             # avoid colliding with the ``:``-delimited edge ID format)
@@ -510,6 +524,11 @@ class IoBoundaryCatalog:
             dot_form = p.qualified_name.replace("::", ".")
             if dot_form != p.qualified_name:
                 self._by_qualified.setdefault(dot_form, p)
+                # The alias goes in BOTH indices or the lookups disagree.
+                # It was added to only the single-row index once, and every
+                # Rust/C++ `::` primitive silently stopped matching — the
+                # regression `test_rust.py` caught on `std::env.consts`.
+                self._by_qualified_all.setdefault(dot_form, []).append(p)
             # Short name: may have multiple (e.g. open → fs_read + fs_write)
             self._by_short.setdefault(p.name, []).append(p)
 
@@ -531,16 +550,19 @@ class IoBoundaryCatalog:
         Returns all matches (may be empty). Useful for names like ``open``
         that are classified under multiple boundary types.
         """
-        # Qualified match is unique
-        hit = self._by_qualified.get(name)
-        if hit is not None:
-            return [hit]
+        # A qualified name can still carry several rows — ``builtins.open``
+        # is both ``fs_read`` and ``fs_write``. Returning only the first
+        # (which this did) is what hid the write row from every caller.
+        hits = self._by_qualified_all.get(name)
+        if hits:
+            return list(hits)
         return list(self._by_short.get(name, []))
 
     def lookup_with_module(
         self, name: str, module_hint: str | None = None,
         *, call_construct: str | None = None,
         allow_short_name_fallback: bool = True,
+        io_mode: str | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -558,11 +580,17 @@ class IoBoundaryCatalog:
         no-module gate reject untyped *method* calls outright — a bare
         ``something.replace(...)`` cannot be verified against the catalogued
         receiver type (INV-tapat/INV-maluk).
+
+        ``io_mode`` (also threaded from the edge's ``meta``) settles a
+        DUAL-CLASSIFIED primitive. Without it this returned whichever row the
+        catalogue happened to declare first, which made every ``open(p, "w")``
+        an ``fs_read`` — a false negative on real writes.
         """
-        # Qualified-name match always wins (exact)
-        hit = self._by_qualified.get(name)
-        if hit is not None:
-            return hit
+        # Qualified-name match always wins (exact). It can still be several
+        # rows when the primitive is dual-classified, so the mode decides.
+        qualified_hits = self._by_qualified_all.get(name)
+        if qualified_hits:
+            return select_by_mode(qualified_hits, io_mode)
 
         hits = self._by_short.get(name)
         if not hits:
@@ -575,7 +603,7 @@ class IoBoundaryCatalog:
                 if _module_matches(p.module, module_hint)
             ]
             if filtered:
-                return filtered[0]
+                return select_by_mode(filtered, io_mode)
             # No match with module filtering — this is likely NOT an IO
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
@@ -1066,6 +1094,95 @@ def in_progress_languages(languages: Iterable[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Edge matching
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Mode-argument discrimination for dual-classified primitives
+# ---------------------------------------------------------------------------
+#
+# Some primitives are catalogued under two boundaries because the CALL decides
+# which applies. ``python.yaml`` has said so in prose since it was written —
+# "Dual-classified: fs_read when mode is 'r'/'rb' (default), fs_write when
+# 'w'/'a'/'x'" — but ``notes`` is free text nothing consumes, so the rule was
+# documented and unimplemented, and it failed in BOTH directions at once:
+# ``io-boundaries`` called every ``open()`` a read (missing real writes) while
+# the taint sink derivation called every ``open()`` a write (24 of 35 distinct
+# violations of the shipped ``runtime-cli-no-host-fs`` claim were read-mode
+# ``open()`` calls). Fixing one side alone moves the error instead of removing
+# it, so the rule lives here once and both consumers route through it.
+#
+# ONLY the fs_read/fs_write pair qualifies. Other dual classifications in the
+# catalogues are different shapes that a mode literal cannot settle and must
+# not be swept in here: ``gen_udp.open`` is net_recv+net_send because one call
+# genuinely does both; ``unistd.read`` is fs_read+ipc_recv+net_recv because
+# the fd's kind is not knowable at the call site.
+_MODE_DISCRIMINATED_PAIR = frozenset({"fs_read", "fs_write"})
+
+# A mode string means "can write" if any of these appear in it. ``+`` is
+# included deliberately: ``r+`` opens for update, and a security claim about
+# filesystem writes cares that the handle CAN write, not that the caller
+# happened to describe it as a read.
+_WRITE_MODE_CHARS = frozenset("wax+")
+
+
+def resolve_mode_boundary(io_mode: Optional[str]) -> str:
+    """Map an ``open``-style mode string to ``fs_read`` or ``fs_write``.
+
+    ``None`` means the mode was not a statically-readable literal — either
+    absent (``open(p)``, which Python defaults to ``"r"``) or computed
+    (``open(p, m)``). Both resolve to ``fs_read``: absence IS evidence
+    because the language documents the default, and a computed mode is
+    ignorance, which licenses nothing. Guessing ``fs_write`` from ignorance
+    would re-create the false-positive population this exists to remove.
+    """
+    if not io_mode:
+        return "fs_read"
+    return (
+        "fs_write"
+        if _WRITE_MODE_CHARS & set(io_mode)
+        else "fs_read"
+    )
+
+
+def mode_discriminated_names(catalog: IoBoundaryCatalog) -> frozenset[str]:
+    """Short names in ``catalog`` classified under BOTH fs_read and fs_write.
+
+    DERIVED from the catalogue rather than listed in code, so a language that
+    declares a new dual-classified primitive gets discrimination without a
+    code change and hypergumbo cannot drift from its own data. Returns short
+    names because that is what an emitter has at the call site — it knows it
+    is looking at ``open(...)`` before it knows the receiver resolves to
+    ``builtins``.
+    """
+    by_name: dict[str, set[str]] = {}
+    for p in catalog.primitives:
+        by_name.setdefault(p.name, set()).add(p.boundary)
+    return frozenset(
+        name
+        for name, boundaries in by_name.items()
+        if _MODE_DISCRIMINATED_PAIR <= boundaries
+    )
+
+
+def select_by_mode(
+    candidates: Sequence[IoPrimitive],
+    io_mode: Optional[str],
+) -> Optional[IoPrimitive]:
+    """Pick the row matching ``io_mode`` from a dual-classified candidate set.
+
+    The single predicate both the boundary tagger and the taint sink matcher
+    consume. A single candidate is returned unchanged — the overwhelming
+    majority of primitives are not dual-classified and must not pay for this.
+    """
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    wanted = resolve_mode_boundary(io_mode)
+    for cand in candidates:
+        if cand.boundary == wanted:
+            return cand
+    return candidates[0]
 
 
 def match_edge_to_primitive(
@@ -2015,9 +2132,13 @@ def tag_io_boundaries(
 
         # io-boundary:F3 — thread the edge's call construct so the no-module
         # gate can reject untyped method calls (no receiver evidence).
-        cc = (getattr(edge, "meta", None) or {}).get("call_construct")
+        _edge_meta = getattr(edge, "meta", None) or {}
+        cc = _edge_meta.get("call_construct")
         match = catalog.lookup_with_module(
             callee, adjusted_hint, call_construct=cc,
+            # The analyzer recorded the call's mode literal; without it a
+            # dual-classified primitive is decided by declaration order.
+            io_mode=_edge_meta.get("io_mode"),
             # INV-sapit: this call resolved to a callable defined in the analysed
             # repository, so a bare short-name collision with a stdlib primitive is a
             # different function. Exact-qualified and module-filtered matches are

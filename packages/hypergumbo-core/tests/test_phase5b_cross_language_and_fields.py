@@ -64,12 +64,21 @@ class TestCrossLanguageGuard:
 
         A ``go:`` callee handed to a matcher built from the PYTHON catalogue
         must not match, however its short name collides.
+
+        Paired with ``test_the_same_callee_still_matches_its_own_language``
+        below, which asserts the SAME callee string with a ``python:`` prefix
+        DOES match — so the two differ in exactly one variable, the language,
+        and neither can pass for an unrelated reason. The vehicle moved off
+        ``builtins.open`` for that reason (WI-rusof): ``open`` is now
+        mode-gated, so it would be refused here even with the language guard
+        removed, and this test would have kept passing while measuring
+        nothing.
         """
         cat = load_builtin_taint_catalog()
         py_index = _build_callee_index(cat.sinks_for_language("python"))
-        # `open` is a python sink (builtins.open) AND a plausible go callee name.
+        # `os.remove` is a python sink AND a plausible go callee (os.Remove).
         matched = _match_propagation_entry(
-            py_index, "go:os:0-0:open:external_symbol", frozenset(),
+            py_index, "go:os:0-0:remove:external_symbol", frozenset(),
             is_resolved=False, language="python",
         )
         assert matched is None, (
@@ -82,21 +91,33 @@ class TestCrossLanguageGuard:
         Without this, the guard could refuse *everything* and the previous test
         would still pass — which is the vacuous green this project keeps
         re-learning.
+
+        VEHICLE CHANGED from ``builtins.open`` to ``os.remove`` (WI-rusof).
+        ``open`` is dual-classified, so its host_fs sink now carries
+        ``requires_mode="fs_write"`` and correctly declines to match a call
+        with no mode evidence. Keeping it here would have made this test
+        assert the mode gate rather than the language guard, and the two
+        mechanisms must be able to fail independently. ``os.remove`` is an
+        unconditional fs_write sink and collides across languages the same
+        way (Go's ``os.Remove``), so it serves the original purpose exactly.
         """
         cat = load_builtin_taint_catalog()
         py_index = _build_callee_index(cat.sinks_for_language("python"))
         matched = _match_propagation_entry(
-            py_index, "python:builtins:0-0:open:external_symbol", frozenset(),
+            py_index, "python:os:0-0:remove:external_symbol", frozenset(),
             is_resolved=False, language="python",
         )
         assert matched is not None, "a python callee stopped matching python"
 
     def test_the_guard_is_opt_in_so_existing_callers_are_unaffected(self) -> None:
-        """``language=""`` must behave exactly as before the parameter existed."""
+        """``language=""`` must behave exactly as before the parameter existed.
+
+        Same vehicle change and same reason as the test above.
+        """
         cat = load_builtin_taint_catalog()
         py_index = _build_callee_index(cat.sinks_for_language("python"))
         assert _match_propagation_entry(
-            py_index, "python:builtins:0-0:open:external_symbol", frozenset(),
+            py_index, "python:os:0-0:remove:external_symbol", frozenset(),
             is_resolved=False,
         ) is not None
 

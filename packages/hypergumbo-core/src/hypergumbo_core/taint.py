@@ -134,6 +134,18 @@ class TaintSink:
         module: The module or class path.
         name: The function/method/attribute name.
         kind: One of "function", "method", or "attribute".
+        requires_mode: Non-empty only for a sink derived from a
+            DUAL-CLASSIFIED I/O primitive, where the call's mode argument
+            decides whether the boundary is crossed at all. ``builtins.open``
+            is ``fs_read`` by default and ``fs_write`` only when handed
+            ``"w"``/``"a"``/``"x"``, so its host_fs sink carries
+            ``requires_mode="fs_write"`` and does not fire on ``open(p)``.
+
+            Empty is the default and means UNCONDITIONAL, which is what the
+            overwhelming majority of sinks are and must stay: ``os.remove``
+            takes no mode, so gating it on mode evidence would delete every
+            real deletion from the violation set — a false negative in a
+            security gate, the expensive direction.
     """
 
     zone: str
@@ -141,6 +153,7 @@ class TaintSink:
     module: str
     name: str
     kind: str  # "function", "method", or "attribute"
+    requires_mode: str = ""
 
     @property
     def qualified_name(self) -> str:
@@ -406,6 +419,7 @@ def _match_propagation_entry(
     *,
     is_resolved: bool = True,
     language: str = "",
+    io_mode: str | None = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -456,6 +470,22 @@ def _match_propagation_entry(
         return None
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
+    if not hits:
+        return None
+    # Mode gate for DUAL-CLASSIFIED primitives, applied before every other
+    # arm so both the resolved and unresolved paths inherit it rather than
+    # growing a second copy. Only entries that opted in via ``requires_mode``
+    # are affected; an entry without it is unconditional and untouched, which
+    # is what keeps ``os.remove`` firing on a call that carries no mode.
+    # ``getattr`` for BOTH reads, not just the guard: the index is typed
+    # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode``, so
+    # a direct attribute read is a strict-mode union-attr error.
+    from .io_boundary import resolve_mode_boundary
+    _needed = resolve_mode_boundary(io_mode)
+    hits = [
+        h for h in hits
+        if getattr(h, "requires_mode", "") in ("", _needed)
+    ]
     if not hits:
         return None
     if is_resolved:
@@ -981,7 +1011,11 @@ def _derive_auto_imports_from_io_primitives(
     language's catalogue, because ``load_catalog`` refuses a cross-language
     overlay rather than attributing I/O to the wrong tree.
     """
-    from hypergumbo_core.io_boundary import load_catalog, load_overlay_catalog
+    from hypergumbo_core.io_boundary import (
+        load_catalog,
+        load_overlay_catalog,
+        mode_discriminated_names,
+    )
 
     overlays_by_lang: dict[str, list[Path]] = defaultdict(list)
     for overlay_path in overlay_paths or ():
@@ -1005,6 +1039,11 @@ def _derive_auto_imports_from_io_primitives(
         ambiguous_by_lang[lang] = (
             ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names
         )
+        # Names this catalogue declares under BOTH fs_read and fs_write, so
+        # the sink derived from the write row can record that it only applies
+        # when the call's mode says so. Derived from the catalogue rather than
+        # listed here — see :func:`mode_discriminated_names`.
+        mode_gated = mode_discriminated_names(catalog)
         for prim in catalog.primitives:
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
@@ -1026,6 +1065,9 @@ def _derive_auto_imports_from_io_primitives(
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
+                    requires_mode=(
+                        prim.boundary if prim.name in mode_gated else ""
+                    ),
                 ))
 
     return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
@@ -1728,6 +1770,7 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
+            io_mode=edge.get("meta", {}).get("io_mode"),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -1743,6 +1786,7 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
+            io_mode=edge.get("meta", {}).get("io_mode"),
         )
         if matched:
             site = (edge["dst"], matched)
@@ -2605,6 +2649,7 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
+            io_mode=edge.get("meta", {}).get("io_mode"),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -2619,6 +2664,7 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
+            io_mode=edge.get("meta", {}).get("io_mode"),
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds
