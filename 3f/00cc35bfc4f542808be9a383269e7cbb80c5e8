@@ -1,0 +1,72 @@
+Original commit body from bc00dd4c4c4133aab701c6f005425930a4e12ed7:
+
+Measurement 0002 reported Go at 162/210 with "100% of Go's method-kind surface
+unattributed" and concluded Go was "the natural next target for the same fix"
+as Python's receiver-typing work. BOTH HALVES ARE WITHDRAWN, and the conclusion
+was the expensive half: Go receiver typing already exists and works, so a
+session acting on that sentence would have built a mechanism the analyzer has.
+
+THE 45/45 MISS WAS THE PROBE'S RECEIVER SPELLING. The fixture emitted every Go
+method call as a parenthesized composite literal. go.py types a receiver only
+when the operand is a bare identifier, so that one spelling carries no receiver
+evidence. Verified in one file, one analyze_go run — only the spelling varies:
+
+  (&http.Client{}).Get(u)             -> go:external:0-0:Get:unresolved
+  var c http.Client; c.Get(u)         -> go:net/http:0-0:Get:unresolved
+  c := &http.Client{}; c.Get(u)       -> go:net/http:0-0:Get:unresolved
+  func(c *http.Client){ c.Get(u) }    -> go:net/http:0-0:Get:unresolved
+
+The instrument now probes both spellings and KEEPS the parenthesized one, so
+the analyzer hole stays measured rather than hidden by the fix to the probe.
+
+AND THE CORRECTED 198/210 IS ALSO INFLATED, SO THIS ARM NOW REPORTS TWO
+NUMBERS. The probe's import path is the catalogue's own module slot, which for
+a third-party entry is a package IDENTIFIER, not a module PATH — so the fixture
+writes `import ("gin")`, a line no Go program contains, and the entry scores
+reachable against a hint production can never emit:
+
+  lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method") -> None
+  lookup_with_module("JSON", "gin",                      cc="method")
+      -> gin.Context.JSON
+
+53 of 210 entries are reachable ONLY through such a fabricated import, 20 of
+them method-kind. Production-faithful: 178/210 (84.8%).
+
+The instrument DISCLOSES its synthesised import paths rather than classifying
+them. Separating a real single-segment stdlib path (os, net, testing) from a
+fabricated one (gin, echo) needs Go's stdlib package list, which go.yaml does
+not carry — it marks the framework rows with a YAML comment and nothing
+machine-readable — and shipping a guessed classifier would put a wrong verdict
+in the headline.
+
+TWO DIFFERENT 53s, DISCLOSED SO THE COINCIDENCE IS NOT MISREAD. The plan
+separately records go.yaml carrying "53 of 210 entries violating the
+strict-stdlib rule". The sets overlap in 50 and differ by `filepath` (stdlib,
+written unimportably) versus `golang.org/x/sys/execabs` (third-party, but
+path-shaped so faithfully imported). Two routes agreeing on a count is not two
+routes agreeing on a set.
+
+ALSO RECORDED, both verified live and neither fixed here:
+  - Go's semantic import versioning erases the import path outright. The
+    package alias is the last path segment, so github.com/labstack/echo/v4
+    registers `v4` and `echo` is never bound; echo.Context.JSON and
+    fiber.App.Listen both fall to go:external. Blast radius is the Go call
+    graph, not just the io-boundary map. Unmeasured on any corpus, and
+    structurally invisible to this instrument, whose fixture writes
+    `import ("fiber")` — a path with no /vN element.
+  - The 9 residuals are MIS-CREDITS, not misses, and they invert sign between
+    instrument and product: net/http.Client.{Get,Post,Head},
+    log/slog.Logger.{Debug,Info,Warn,Error,Log} and testing.B.TempDir each
+    produce a chain under a same-package FUNCTION row. Confirmed through the
+    CLI: a *testing.B receiver is credited testing.T.TempDir, and
+    `tr := &http.Transport{}; tr.Do(..)` is credited net/http.Client.Do — a
+    false positive, since Transport has no Do.
+  - call_construct CANNOT fix that. Go stamps it "method" on every
+    selector-expression call, package-level free functions included, so
+    http.Get(u) and c.Get(u) produce byte-identical
+    (name, module_hint, call_construct) triples. Any predicate keyed on that
+    field is keyed on a constant.
+
+Docs-and-instrument only; no production code path changes.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
