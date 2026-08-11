@@ -11,8 +11,8 @@ Hypergumbo's safety claims are checked by running hypergumbo against its own sou
 
 | verdict | count | meaning |
 |---|---|---|
-| **violated** | 2 | the tool found flows contradicting the claim |
-| **inconclusive** | 16 | the analysis could not see enough to confirm |
+| **violated** | 1 | the tool found flows contradicting the claim |
+| **inconclusive** | 17 | the analysis could not see enough to confirm |
 | **confirmed** | 0 | checked and held |
 
 The ``inconclusive`` verdicts are not near-misses. This repository contains code in languages with no taint catalogue, so the analysis declines to confirm rather than reporting silence as safety. A ``confirmed`` verdict requires every code-bearing language present to be analysable.
@@ -103,7 +103,7 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``network``
 - ``subprocess``
 
-**runtime-cli-no-host-fs** — ⚠ **CURRENTLY VIOLATED** — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
+**runtime-cli-no-host-fs** — **INCONCLUSIVE** (the analysis could not see enough to confirm) — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
