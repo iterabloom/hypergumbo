@@ -1,0 +1,59 @@
+Original commit body from da92e7bc6077f172b03d9229adf8a66c8f0995c8:
+
+`_external_constructor_type`'s attribute branch required the constructor's
+base to be a bare `ast.Name`. For `http.client.HTTPConnection(h)` the base is
+itself an `ast.Attribute`, so the branch was structurally unreachable no matter
+what the table held, and every method on those types stayed untyped.
+
+The branch now unwinds the whole chain through the existing
+`_unwind_attribute_chain`, which SUBSUMES the single-segment case rather than
+sitting beside it: `socket.socket` unwinds to a one-element chain and takes the
+same path. One rule, not two that drift. Depth is not special-cased anywhere.
+
+THE PARITY TEST THAT SHOULD HAVE CAUGHT THIS PASSED THROUGHOUT. It asserts the
+TABLE holds a key; this was a RESOLUTION defect. Table coverage and reachability
+were never the same claim. The new assertion runs the live catalogue through
+production's own import extraction and the real resolver.
+
+THE ITEM'S HEADLINE FIGURE WAS INFLATED 3.4x AND IS CORRECTED. WI-lifol was
+filed at "41 primitives"; 29 of those are `django.db.models`, which is a MODULE,
+not a constructible type -- `models(...)` constructs nothing and no constructor
+fix can reach them. They already reach production through the `.objects.`
+dispatch (WI-sozoj: 447 `filter` + 121 `get` chains on pretix). The probe scored
+a call form that cannot exist. Honest scope: 12 primitives across 4 types.
+
+REAL-CODE FLOOR, measured before building (a generated probe is a ceiling, and
+this log has recorded that confusion four times). Over the 103 corpus files
+naming these types, counting only the JOINED shape that can mint a boundary:
+dotted 10 production / 21 test; bare 4 production / 13 test. The dotted form is
+the MORE common of the two here. The ten production sites are genuine net_send.
+
+DIRECTION A/B AT THE ANALYZER, 8 repos: 60 call edges retyped, 0 lost, 0 net
+change in edge count -- every "gain" pairs with a "loss" because these are the
+SAME edges moving from `external.<method>` to `<Type>.<method>`. Three neutral
+controls (django, pretix, kserve) moved 0/0; django is the one that matters,
+since that is where a spurious `django.db.models` mint would show up.
+
+END-TO-END through the real CLI, because retyping an edge is not the same claim
+as minting a boundary: envoy 631 -> 632 chains, +1 net_send /
+http.client.HTTPConnection.request, 0 lost. Each arm ran under its own fresh
+XDG_CACHE_HOME so neither could be served the other's map. Verified on ONE repo;
+30 of the 60 retyped edges land on a catalogued method, which is the ceiling for
+boundary gain before the production/test split cuts it further.
+
+RESIDUAL, STATED NOT IMPLIED CLOSED: `module_imports` is file-scoped, so a local
+binding shadowing an imported module name is still mistyped. That already
+mistyped `socket.socket(h)` at depth 1; this widens the exposure rather than
+introducing it. Filed as INV-dulum and pinned by an xfail(strict=True) so a
+scope-aware fix goes RED.
+
+Two instrument controls failed first and each caught a real bug: the floor
+scanner shared one variable map across the file, so two functions both naming a
+connection `conn` collided and the last binding won -- mis-attributing the very
+FORM it exists to measure; and the end-to-end arm discriminator matched BOTH
+arms twice. A discriminator that is not unique to the change is not a control.
+
+Instruments in-repo: scripts/measure-dotted-ctor-floor.py,
+scripts/measure-dotted-ctor-resolution-ab.py.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
