@@ -86,10 +86,12 @@ cmd_close() {
 		return 1
 	fi
 
-	# Validate credentials
-	local token="${FORGEJO_TOKEN:-}"
+	# Validate credentials — backend-aware (C9). detect_api_base at top level
+	# already ran detect_forge_backend, so FORGE_BACKEND is set here.
+	resolve_forge_token
+	local token="${FORGE_TOKEN:-}"
 	if [[ -z "$token" ]]; then
-		echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		return 1
 	fi
 
@@ -231,9 +233,11 @@ fi
 # ------------------------------------------------------------------
 # Validate credentials
 # ------------------------------------------------------------------
-TOKEN="${FORGEJO_TOKEN:-}"
+# Backend-aware (C9); detect_api_base above already set FORGE_BACKEND.
+resolve_forge_token
+TOKEN="${FORGE_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
-	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+	echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 	exit 1
 fi
 
