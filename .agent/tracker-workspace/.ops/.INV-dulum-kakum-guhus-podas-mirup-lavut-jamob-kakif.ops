@@ -1,0 +1,24 @@
+- op: create  # 4984
+  at: '2026-08-11T03:19:50Z'  # 4984
+  by: agent  # 4984
+  actor: jgstern_agent  # 4984
+  clock: 1  # 4984
+  nonce: '4984'  # 4984
+  data:  # 4984
+    kind: invariant  # 4984
+    title: "python: module_imports is file-scoped, so a local binding that shadows an imported module name still types a constructor as the stdlib type (socket.socket, http.client.HTTPConnection)"  # 4984
+    status: violated  # 4984
+    priority: 3  # 4984
+    parent:  # 4984
+    tags:  # 4984
+    - taint  # 4984
+    - io_boundary  # 4984
+    - analysis_quality  # 4984
+    isbefore: []  # 4984
+    duplicate_of: []  # 4984
+    not_duplicate_of: []  # 4984
+    pr_ref:  # 4984
+    description: "PRE-EXISTING AT DEPTH 1, WIDENED BY WI-lifol -- filed as its own item rather than folded in, because a scope-aware fix is a change to the import model and carries its own regression surface.\n\nREPRO (both verified live 2026-08-10):\n\n    import socket\n    def f(socket, h):\n        return socket.socket(h)          # -> typed 'socket.socket'   WRONG\n\n    import http.client\n    def f(http, h):\n        return http.client.HTTPConnection(h)   # -> typed 'http.client.HTTPConnection'   WRONG\n\nThe first form predates WI-lifol; the second is the same defect at depth >= 2,\nnewly reachable now that the attribute branch unwinds the chain. WI-lifol did\nnot introduce the class, it widened the surface.\n\nDIRECTION: this is a FALSE-POSITIVE channel. A mistyped receiver mints an\nio-boundary and a taint sink for the wrong module -- the fabricated-finding\ndirection, which is the expensive one. Unmeasured: how often real code shadows\nan imported module name with a local. Measure before fixing; the shape may be\nrare enough that the scope machinery is not worth its own regression surface.\n\nPINNED EXECUTABLY: packages/hypergumbo-lang-mainstream/tests/\ntest_py_catalogue_receiver_types.py::TestDottedModuleConstructorsResolve::\ntest_a_local_shadow_should_not_be_typed carries xfail(strict=True), so a\nscope-aware fix turns that test RED and forces the mark to be removed rather\nthan passing unnoticed."  # 4984
+    fields:  # 4984
+      statement: "A constructor call may be typed from an import binding only when that binding is actually live at the call site; a local name that shadows an imported module must withhold the type."  # 4984
+      root_cause: "_extract_imports builds module_imports by an ast.walk over the whole file, producing a file-scoped map with no scope information; _external_constructor_type's attribute branch consults it directly, so a parameter or local named after an imported module satisfies the root check"  # 4984
