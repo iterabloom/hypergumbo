@@ -475,7 +475,17 @@ class TestNoCodeExecutionFromTargetRepo:
     def test_fingerprinting_never_runs_git_status(
         self, git_repo: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """No subprocess invoked while fingerprinting may be ``git status``."""
+        """No subprocess invoked while fingerprinting may be ``git status``.
+
+        SEAM MOVED, INTENT UNCHANGED (WI-fasuv). This used to patch
+        ``rf.subprocess.run``; ``repo_fingerprint`` no longer imports
+        ``subprocess`` at all, because every git invocation now routes through
+        ``safety_zones.repo_inspect_git``. Patching the wrapper is if anything
+        a tighter seam than patching the module's ``subprocess``: the wrapper
+        is the single declared chokepoint for this module's process
+        execution, so a future git call added anywhere in it is recorded here
+        by construction rather than by remembering to import the right thing.
+        """
         from hypergumbo_core import repo_fingerprint as rf
 
         seen: list[list[str]] = []
@@ -485,7 +495,7 @@ class TestNoCodeExecutionFromTargetRepo:
             seen.append([str(x) for x in argv])
             return real_run(argv, *a, **kw)
 
-        monkeypatch.setattr(rf.subprocess, "run", recording_run)
+        monkeypatch.setattr(rf, "repo_inspect_git", recording_run)
         compute_repo_fingerprint(git_repo)
 
         offending = [c for c in seen if "status" in c]

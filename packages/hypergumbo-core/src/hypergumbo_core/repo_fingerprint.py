@@ -89,7 +89,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-import subprocess  # nosec B404 - required for git inspection
+from .safety_zones import repo_inspect_git
 from pathlib import Path
 
 # Directory names excluded from the non-git branch's file walk. Mirrors
@@ -139,7 +139,10 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str]:
     ``sketch_embeddings._run_git_command`` uses (Bandit S607).
     """
     git_path = shutil.which("git") or "git"
-    proc = subprocess.run(  # noqa: S603  # nosec B603 - git_path resolved via shutil.which
+    # WI-fasuv: routed through the repo_inspection zone so the barrier stops
+    # the taint walk here and this records as a declared crossing rather than
+    # a raw `subprocess` one.
+    proc = repo_inspect_git(
         [git_path, *args],
         cwd=cwd,
         capture_output=True,

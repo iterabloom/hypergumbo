@@ -35,7 +35,11 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 # Set HF env vars BEFORE importing sentence_transformers downstream — most
 # HuggingFace libraries cache these at their own import time (WI-gatot).
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
-from .safety_zones import cache_mkdir, cache_save_npy  # noqa: E402
+from .safety_zones import (  # noqa: E402
+    cache_mkdir,
+    cache_save_npy,
+    repo_inspect_git,
+)
 
 _suppress_hf_noise()
 
@@ -1306,11 +1310,10 @@ def _run_git_command(
     Returns:
         Tuple of (return_code, stdout, stderr).
     """
-    import subprocess  # nosec B404 - required for git commands
-
     git_path = _find_git_executable()
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603 - git_path from shutil.which
+        # WI-fasuv: repo_inspection zone.
+        result = repo_inspect_git(
             [git_path, *args],
             cwd=cwd,
             capture_output=True,

@@ -16,5 +16,5 @@
   "runtime-cli-no-host-fs": "inconclusive",
   "runtime-cli-no-install-artifact": "inconclusive",
   "runtime-cli-no-network": "inconclusive",
-  "runtime-cli-no-subprocess": "violated"
+  "runtime-cli-no-subprocess": "inconclusive"
 }

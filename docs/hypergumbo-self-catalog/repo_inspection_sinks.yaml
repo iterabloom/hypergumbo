@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Layer-3 project-local catalog — repo_inspection zone sinks (WI-fasuv).
+#
+# Runtime CLI subcommands DO shell out, and this zone is where that is
+# declared rather than denied. Measured by `strace -f -e trace=execve` on a
+# default `sketch` of a two-file repository:
+#
+#   /usr/bin/git    x25  rev-parse HEAD, rev-list --max-parents=0 HEAD,
+#                        config --get remote.origin.url
+#   gitleaks        x1   stdin --report-format json --report-path /dev/stdout
+#                        --exit-code 0 --no-banner      <- a REAL secret scan
+#   rust-analyzer   x1   --version                      <- capability probe only
+#
+# The shipped `runtime-cli-no-subprocess` claim named gitleaks as
+# build-time-only, which was false. The owner's ruling (2026-08-11) was to
+# declare the capability through wrappers rather than reword the claim —
+# rewording is the option that launders, since it weakens a published security
+# claim with nothing enforcing the carve-out's bounds.
+#
+# Three sinks rather than one, despite near-identical wrapper bodies: the taint
+# machinery keys on the function, so separate names let a future claim prohibit
+# one activity while permitting another. Collapsing them would make "reads your
+# git metadata" and "reads every byte of your source" the same permission.
+zone: repo_inspection
+trust_level: untrusted
+
+sinks:
+  python:
+    - module: hypergumbo_core.safety_zones
+      functions:
+        # Local, read-only git. No fetch, no push, no network.
+        - repo_inspect_git
+        # Read-only content scanning (gitleaks). The widest-reading member —
+        # it sees every byte handed to it on stdin.
+        - repo_inspect_scan
+        # "Are you installed, and what version?" Reads nothing. Deliberately
+        # NOT an indexing request: rust-analyzer executes the analysed repo's
+        # build.rs when it indexes, and a default run never asks it to.
+        - repo_inspect_probe
