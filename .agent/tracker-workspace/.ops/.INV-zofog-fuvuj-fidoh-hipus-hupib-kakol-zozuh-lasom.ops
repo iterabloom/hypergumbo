@@ -1,0 +1,31 @@
+- op: create  # 8989
+  at: '2026-08-11T03:09:31Z'  # 8989
+  by: agent  # 8989
+  actor: jgstern_agent  # 8989
+  clock: 1  # 8989
+  nonce: '8989'  # 8989
+  data:  # 8989
+    kind: invariant  # 8989
+    title: "Forge entry-script guards read FORGEJO_TOKEN/FORGEJO_USER directly instead of resolve_forge_token (C9), so a github-only .env hard-fails 8 pre-flight guards while the API layer underneath works"  # 8989
+    status: violated  # 8989
+    priority: 1  # 8989
+    parent:  # 8989
+    tags:  # 8989
+    - ci  # 8989
+    - governance  # 8989
+    - forge  # 8989
+    isbefore: []  # 8989
+    duplicate_of: []  # 8989
+    not_duplicate_of: []  # 8989
+    pr_ref:  # 8989
+    description: "A TIME BOMB, NOT A LIVE OUTAGE. hypergumbo's `.env` still carries populated\n`FORGEJO_USER` / `FORGEJO_TOKEN` values, and those stale values are the only\nthing satisfying the pre-flight guards in five forge entry scripts. The moment\nthey are removed — or a fresh machine is provisioned with only\n`HG_GITHUB_TOKEN` — every one of those scripts hard-fails at its entry guard\nwhile the API layer underneath is fully backend-aware and would have worked.\n\nFOUND IN A SIBLING REPO, NOT HERE, AND THAT IS WHY IT WAS INVISIBLE. `~/exploradora`\nreuses this forge tooling verbatim (modulo env-var renames) with a clean `.env`\nthat sets only the GitHub PAT. It reproduces immediately there. Fixes are\nwritten, reviewed and proven live in exploradora (PRs #1 and #4; four\nsubsequent PRs then ran the full push -> CI -> merge loop through the fixed\nscripts). Reference patches: `git -C ~/exploradora show 15931d4` (sweep 1) and\n`8495c4a` (sweep 2).\n\nTHE INVARIANT (comment tag C9): credential resolution has ONE source of truth,\n`scripts/lib/forgejo-api.sh::resolve_forge_token` — github backend =>\n`HG_GITHUB_TOKEN` wins, else `FORGEJO_TOKEN`; sets `FORGE_TOKEN`. No entry point\nreads `FORGEJO_TOKEN` directly, and no entry point requires `FORGEJO_USER` on a\nbackend that never uses it (github pushes ride SSH; API calls authenticate by\ntoken alone). `api_call()` already calls `resolve_forge_token` per-call, so the\ndeep machinery is correct — only the pre-flight guards are stale. This is the\n\"N places that should share one rule, drifted\" shape again, with the shared rule\nalready built and simply not consumed.\n\nSITE INVENTORY, verified against the live tree by an UNTRUNCATED grep over\n`auto-pr ci-debug merge-pr contribute list-my-prs` (27 matching lines, all\naccounted for):\n\n  1. auto-pr:1117-1128     flush-path guard block (USER+TOKEN)\n  2. auto-pr:1513-1524     main-path guard block, byte-identical to #1\n  3. auto-pr:2294          `local token=\"${FORGEJO_TOKEN:-}\"` in gov_cleanup — dead, never read\n  4. ci-debug:25-29        entry guard (+ header comment ~line 10)\n  5. merge-pr:90-94        close-subcommand guard\n  6. merge-pr:234-238      main merge-path guard — the site exploradora's first sweep MISSED\n  7. list-my-prs:71-75     entry guard\n  8. contribute:66-79      early TOKEN guard fires before the upstream forge is known\n\nLEAVE ALONE: auto-pr:2386-2387 (usage text), contribute:16 (comment), and every\n`FORGEJO_TOKEN` inside forgejo-api.sh's Forgejo Actions log-fetch helpers — that\narm is Forgejo-only, where `FORGEJO_TOKEN` is the CORRECT credential.\n\nCALL-ORDER CHECK, done rather than assumed: `resolve_forge_token` reads\n`FORGE_BACKEND`, so it is only correct after `detect_forge_backend`. Verified\nthat `detect_api_base` calls `detect_forge_backend` internally, and that\nci-debug (:23), merge-pr (:30) and list-my-prs (:25) all run `detect_api_base`\nBEFORE their guards — so a bare `resolve_forge_token` is correct at those three\nsites. auto-pr's two guards run BEFORE its `detect_api_base` (:1211/:1549), so\nthose blocks must call `detect_forge_backend` explicitly. contribute's token\nbelongs to the UPSTREAM forge, so its resolve must move AFTER\n`detect_forge_backend \"$UPSTREAM_URL\"` (:122); its `FORGEJO_USER` guard STAYS,\nbecause the fork-push credential helper genuinely uses it.\n\nCLOSURE EVIDENCE REQUIRED (this is a runtime-behavior statement, so a proxy will\nnot do): mask the legacy values, capture BEFORE (`ci-debug status` and\n`list-my-prs` failing at the guard), apply, capture AFTER (both succeeding via\n`HG_GITHUB_TOKEN`), restore `.env` immediately. exploradora's live evidence may\nSUPPLEMENT but never SUBSTITUTE — hypergumbo's closure evidence must come from\nhypergumbo's own repro.\n\nGOVERNANCE: all five scripts are governance files under AGENTS.md, so this does\nnot self-merge regardless of who authorized the work.\n\nSource: ~/hypergumbo_lab_notebook/notebookjournal_08102026_2252.md"  # 8989
+    fields:  # 8989
+      statement: "Credential resolution has ONE source of truth: scripts/lib/forgejo-api.sh::resolve_forge_token (C9) — github backend => HG_GITHUB_TOKEN wins, else FORGEJO_TOKEN; sets FORGE_TOKEN. No entry point reads FORGEJO_TOKEN directly, and no entry point requires FORGEJO_USER on a backend that never uses it (github pushes ride SSH; API calls authenticate by token alone)."  # 8989
+      root_cause: "Pre-flight guards in five entry scripts predate the backend-aware resolve_forge_token helper and were never migrated to it; .env's stale legacy FORGEJO_* values mask the breakage on this machine"  # 8989
+- op: discuss  # 011e
+  at: '2026-08-11T03:09:43Z'  # 011e
+  by: agent  # 011e
+  actor: jgstern_agent  # 011e
+  clock: 2  # 011e
+  nonce: 011e  # 011e
+  message: "Owner directed implementation of the notebook entry (notebookjournal_08102026_2252.md) in-session on 2026-08-10, which is the human authorization AGENTS.md requires for touching governance files. Implementation proceeds on jgstern-agent/fix/forge-token-guards and the PR is raised with --gov; the MERGE stays with a human regardless, per 'Do NOT self-merge PRs touching these files'. Closure will cite hypergumbo's own before/after repro, not exploradora's."  # 011e
