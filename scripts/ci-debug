@@ -6,8 +6,10 @@
 # Works with any Forgejo/Gitea/Codeberg instance. Detects the API
 # base URL from git remote origin automatically.
 #
-# Required environment variable:
-#   FORGEJO_TOKEN - API token for authentication
+# Required environment variable (whichever the backend needs — see C9 in
+# lib/forgejo-api.sh::resolve_forge_token):
+#   HG_GITHUB_TOKEN - API token on the github backend (origin is github.com)
+#   FORGEJO_TOKEN   - API token on the forgejo backend (dormant, WI-hajif)
 #
 # Configuration via .env file or environment:
 #   FORGEJO_API_BASE - Override auto-detected API URL (optional)
@@ -22,9 +24,13 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 load_env
 detect_api_base
 
-TOKEN="${FORGEJO_TOKEN:-}"
+# Backend-aware credential guard (C9): the API layer resolves FORGE_TOKEN itself
+# per call, so this early check exists only to fail fast with a clear message.
+# detect_api_base (above) already ran detect_forge_backend, so FORGE_BACKEND is set.
+resolve_forge_token
+TOKEN="${FORGE_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
-  echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+  echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
   exit 1
 fi
 

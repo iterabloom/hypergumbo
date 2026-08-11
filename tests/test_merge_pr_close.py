@@ -24,6 +24,8 @@ while isolating the forge HTTP surface.
 """
 
 import json
+import pathlib
+import re
 import os
 import shutil
 import subprocess
@@ -114,6 +116,21 @@ load_env() {{ :; }}
 detect_api_base() {{ :; }}
 apply_failover_overrides() {{ :; }}
 
+# C9 credential resolution. Mirrors lib/forgejo-api.sh because the stub
+# replaces the whole library; `detect_api_base` is a no-op here, so
+# FORGE_BACKEND has to be set explicitly rather than as a side effect of it.
+# Kept honest by test_stub_defines_every_lib_function_merge_pr_calls below —
+# merge-pr calling a lib function this stub lacks is a bash 127, and before
+# that guard existed it surfaced as five unrelated-looking test failures.
+detect_forge_backend() {{ FORGE_BACKEND="${{HYPERGUMBO_FORGE_BACKEND:-forgejo}}"; }}
+resolve_forge_token() {{
+    if [[ "${{FORGE_BACKEND:-forgejo}}" == "github" ]]; then
+        FORGE_TOKEN="${{HG_GITHUB_TOKEN:-${{FORGEJO_TOKEN:-}}}}"
+    else
+        FORGE_TOKEN="${{FORGEJO_TOKEN:-}}"
+    fi
+}}
+
 json_field() {{
     python3 -c "
 import json, sys
@@ -168,9 +185,14 @@ api_post() {{
     [[ "$API_HTTP_CODE" == "200" ]]
 }}
 
-# Unused-by-close stubs (satisfy merge-pr's imports)
+# Unused-by-close stubs (satisfy merge-pr's imports). The close path returns
+# before reaching these, so they are never exercised — they exist so that a
+# future close-path change that DOES reach one fails on an assertion rather
+# than on a bash 127.
 poll_ci() {{ return 0; }}
 do_merge() {{ return 0; }}
+do_merge_guarded() {{ return 0; }}
+ci_verdict_permits_merge() {{ return 0; }}
 '''
     )
 
@@ -360,3 +382,46 @@ class TestMergePrClose:
         calls = stub_env.calls()
         for c in calls:
             assert "/commits/" not in c["url"]
+
+
+class TestStubMirrorsTheRealLibrary:
+    """The stub replaces the WHOLE library, so it can silently fall behind it.
+
+    WHY THIS EXISTS. ``merge-pr``'s close path was migrated to the C9 credential
+    helper (``resolve_forge_token``); the stub did not have that function, so
+    bash exited 127 and FIVE tests failed with messages about PATCH bodies and
+    return codes that said nothing about the real cause. A stub that mirrors a
+    library by hand is the same "N places that should share one rule" shape this
+    project keeps meeting — this asserts the mirror covers what the script
+    actually calls, so the next migration fails HERE with a readable message.
+    """
+
+    @staticmethod
+    def _defined_functions(text: str) -> set[str]:
+        return set(re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(\)", text, re.M))
+
+    def test_stub_defines_every_lib_function_merge_pr_calls(self) -> None:
+        repo = pathlib.Path(__file__).resolve().parents[1]
+        real_lib = (repo / "scripts" / "lib" / "forgejo-api.sh").read_text()
+        merge_pr = (repo / "scripts" / "merge-pr").read_text()
+
+        lib_functions = self._defined_functions(real_lib)
+        assert lib_functions, "parsed no functions out of the real library"
+
+        # The stub source is embedded in this module's fixture; read it from
+        # here rather than re-deriving it, so the assertion tracks the fixture.
+        stub_src = pathlib.Path(__file__).read_text()
+        stub_functions = self._defined_functions(
+            stub_src[stub_src.index("# Stub forgejo-api.sh"):]
+        )
+
+        called = {
+            fn for fn in lib_functions
+            if re.search(rf"(^|[^\w.-]){re.escape(fn)}\b", merge_pr, re.M)
+        }
+        missing = sorted(called - stub_functions)
+        assert missing == [], (
+            f"merge-pr calls {len(missing)} library function(s) the stub does "
+            f"not define, which surfaces as a bash 127 inside unrelated-looking "
+            f"assertions: {missing}"
+        )

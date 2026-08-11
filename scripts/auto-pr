@@ -1114,15 +1114,23 @@ flush_queue() {
 		return 0
 	fi
 
+	# Backend-aware credentials (C9). USER is required only on the forgejo
+	# backend, where pushes ride HTTPS credential helpers; on github the push
+	# is SSH and the API authenticates with FORGE_TOKEN alone. These guards run
+	# BEFORE detect_api_base, so detect_forge_backend is called explicitly here.
+	# TOKEN keeps feeding the downstream credential.helper uses: inert on
+	# github/SSH, and identical to FORGEJO_TOKEN on forgejo/HTTPS.
+	detect_forge_backend
+	resolve_forge_token
 	USER="${FORGEJO_USER:-}"
-	TOKEN="${FORGEJO_TOKEN:-}"
-	if [[ -z "$USER" ]]; then
+	TOKEN="${FORGE_TOKEN:-}"
+	if [[ "${FORGE_BACKEND:-forgejo}" != "github" && -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
-		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
@@ -1510,15 +1518,23 @@ do_pr() {
 	# warning about.
 	_autopr_run_started_epoch=$(date +%s)
 
+	# Backend-aware credentials (C9). USER is required only on the forgejo
+	# backend, where pushes ride HTTPS credential helpers; on github the push
+	# is SSH and the API authenticates with FORGE_TOKEN alone. These guards run
+	# BEFORE detect_api_base, so detect_forge_backend is called explicitly here.
+	# TOKEN keeps feeding the downstream credential.helper uses: inert on
+	# github/SSH, and identical to FORGEJO_TOKEN on forgejo/HTTPS.
+	detect_forge_backend
+	resolve_forge_token
 	USER="${FORGEJO_USER:-}"
-	TOKEN="${FORGEJO_TOKEN:-}"
-	if [[ -z "$USER" ]]; then
+	TOKEN="${FORGE_TOKEN:-}"
+	if [[ "${FORGE_BACKEND:-forgejo}" != "github" && -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
-		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
@@ -2291,7 +2307,8 @@ gov_cleanup() {
 	load_env
 	detect_api_base
 
-	local token="${FORGEJO_TOKEN:-}"
+	# (No credential guard here: api_get self-resolves via resolve_forge_token
+	# per call. A `local token=` assignment used to sit here and was never read.)
 
 	_autopr_state_pr_num="$pr_num"
 
@@ -2383,8 +2400,9 @@ help | --help | -h)
 	echo "  [description] PR description (default: commit body)"
 	echo ""
 	echo "Environment:"
-	echo "  FORGEJO_USER            Codeberg username"
-	echo "  FORGEJO_TOKEN           Codeberg API token"
+	echo "  HG_GITHUB_TOKEN         API token (github backend — the live one)"
+	echo "  FORGEJO_USER            Codeberg username (forgejo backend only)"
+	echo "  FORGEJO_TOKEN           Codeberg API token (forgejo backend only)"
 	echo "  BASE_BRANCH             Target branch (default: dev)"
 	echo "  CI_TIMEOUT_SECONDS      CI polling timeout (default: 2400)"
 	echo "  AUTO_PR_SIMULATE_OUTAGE Set to 1 to simulate remote outage (for testing)"
