@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **301** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 71 core, 4 CLI, 33 tracker)
-- **38960** symbols (functions, classes, methods)
-- **137972** edges by type:
-  - calls: 72266
-  - contains: 35915
-  - imports: 11933
-  - instantiates: 10699
-  - references: 4579
-  - module_attr_ref: 1227
-  - other: 1353
+- **39354** symbols (functions, classes, methods)
+- **139321** edges by type:
+  - calls: 72996
+  - contains: 36292
+  - imports: 12071
+  - instantiates: 10738
+  - references: 4633
+  - module_attr_ref: 1235
+  - other: 1356
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 38960 Symbols + 137972 Edges + UsageContexts           │
+│  Output: 39354 Symbols + 139321 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,19 +273,19 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9520.0 | ir.py |
 | `Span` | class | 6386.7 | ir.py |
-| `write_text` | external_symbol | 6142.0 | <external> |
+| `write_text` | external_symbol | 6176.0 | <external> |
 | `LinkerContext` | class | 3280.5 | registry.py |
-| `Edge.create` | method | 2110.1 | ir.py |
+| `Edge.create` | method | 2120.3 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `get` | external_symbol | 1850.0 | <external> |
-| `Path` | external_symbol | 1667.0 | <external> |
+| `get` | external_symbol | 1861.0 | <external> |
+| `Path` | external_symbol | 1684.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
 | `append` | external_symbol | 1353.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1288.7 | ir.py |
+| `Edge` | class | 1301.0 | ir.py |
+| `load_catalog` | function | 1080.8 | io_boundary.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
-| `find_files` | function | 1000.7 | discovery.py |
 
 ## Pattern System
 
@@ -485,10 +485,21 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
 | `generate_schema_lib.py` | (no description) |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
+| `measure-blind-language-signal.py` | Measure candidate signals for "this language's I/O is structurally invisible". |
 | `measure-call-escape-cause.py` | Why does a §3a escape site whose CFG node is a CALL still escape? |
+| `measure-catalogue-reach.py` | Can each catalogued I/O primitive be REACHED from an idiomatic call site? |
+| `measure-ctor-root-typing-ab.py` | A/B the constructor-ROOT receiver typing at the call-emission site. |
+| `measure-ctor-table-derivation-ab.py` | A/B the catalogue-derived constructor table on real repositories. |
+| `measure-dotted-ctor-floor.py` | Real-code floor for WI-lifol: dotted-module constructors that actually feed |
+| `measure-dotted-ctor-resolution-ab.py` | A/B the dotted-module constructor resolution (WI-lifol) on real repositories. |
+| `measure-escape-closing-ceiling.py` | What is the MAXIMUM finding-level payoff of closing §3a escape sites? |
 | `measure-escape-shapes.py` | Where does the ADR-0017 §3a walk lose a tainted value, and to what? |
+| `measure-factory-receiver-shape.py` | How often does real Python obtain a catalogued I/O receiver from a FACTORY? |
+| `measure-go-composite-literal-ab.py` | Measure one ARM of the Go composite-literal receiver-typing change. |
+| `measure-go-receiver-typing-gap.py` | Size the Go receiver-typing gap: how many catalogued I/O method calls are unreachable |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `measure-sanitizer-module-slot-ab.py` | A/B the sanitizer registration gate's module-slot permit branch. |
+| `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
 | `scrub-transcript-corpus` | Backfill: redact known secrets across the whole retained transcript corpus. |
@@ -853,8 +864,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 4cfc19b010ba
-  commit_count: 6544
+  commit: 1995ae31300d
+  commit_count: 6576
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
