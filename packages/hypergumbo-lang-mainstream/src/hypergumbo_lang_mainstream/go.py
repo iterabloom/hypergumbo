@@ -72,6 +72,7 @@ starting with an uppercase letter are exported (public).
 from __future__ import annotations
 
 import os
+import re
 import time
 import warnings
 from pathlib import Path
@@ -417,10 +418,66 @@ def _process_import_spec(
         elif alias == "." and dot_imports is not None:
             dot_imports.append(import_path)
     else:
-        # No explicit alias - use last component of path
-        # e.g., "github.com/foo/bar" -> "bar"
-        alias = import_path.rsplit("/", 1)[-1]
+        # No explicit alias - derive the package identifier from the path.
+        alias = _go_package_identifier(import_path)
         aliases[alias] = import_path
+
+
+#: A trailing Go-modules major-version element: ``.../echo/v4`` -> ``v4``.
+#: Matched only for N >= 2 BECAUSE THAT IS THE ACTUAL RULE — Go requires the
+#: ``/vN`` suffix from major version 2 onward and v0/v1 modules carry none, so a
+#: literal ``v1`` element is far more likely to be a real directory than a
+#: version marker. Anchored, and digits-only, so ``v2beta1`` and ``v2bar`` are
+#: not touched.
+_GO_MAJOR_VERSION_ELEMENT = re.compile(r"^v(?:[2-9]|[1-9][0-9]+)$")
+
+#: gopkg.in spells the same thing as a DOTTED SUFFIX: ``gopkg.in/yaml.v2``.
+#: gopkg.in genuinely uses ``.v1`` (``gopkg.in/check.v1``), which is why this
+#: pattern accepts any N and the path-element one above does not.
+_GOPKG_IN_VERSION_SUFFIX = re.compile(r"\.v[0-9]+$")
+
+
+def _go_package_identifier(import_path: str) -> str:
+    """The identifier a Go import binds, derived from its path (INV-javid).
+
+    Go source refers to an imported package by an identifier, and with no
+    explicit alias that identifier is CONVENTIONALLY the last path element.
+    The convention has two documented exceptions, and both put a major-version
+    marker exactly where the identifier is expected:
+
+      * **Go modules semantic import versioning** — a module at major version 2
+        or higher carries the version as a trailing PATH ELEMENT, so
+        ``github.com/labstack/echo/v4`` is imported as ``echo``.
+      * **gopkg.in** — the version is a DOTTED SUFFIX on the last element, so
+        ``gopkg.in/yaml.v2`` is imported as ``yaml``.
+
+    Taking the last element literally therefore bound ``v4`` and left ``echo``
+    unbound, which dropped the module hint from every call on that package and
+    sent the dst to the ``external`` placeholder. Since Go modules, ``/vN`` is
+    the standard for any library at v2+, so this was not an edge case.
+
+    THIS IS A HEURISTIC AND SO WAS WHAT IT REPLACES. A package's real name is
+    declared in its own source (``package gin``) and can differ from its path;
+    for an external dependency that source is not present, so the identifier
+    has to be inferred either way. The change is strictly a better inference,
+    not a move from exact to approximate.
+
+    THE OVER-STRIPPING HAZARD IS THE ONE TO WATCH, because it would invent a
+    defect while closing one. ``v2`` is a legal package name, and
+    Kubernetes-style API packages are routinely named ``v1alpha1`` /
+    ``v2beta1``. Both patterns are anchored and digits-only, the path-element
+    rule refuses to strip when there is no earlier element to fall back to, and
+    the dotted rule is scoped to the ``gopkg.in`` host rather than applied
+    everywhere a name happens to end in ``.vN``.
+    """
+    segments = [s for s in import_path.split("/") if s]
+    if not segments:
+        return import_path  # pragma: no cover - a non-empty path is guaranteed
+    if segments[0] == "gopkg.in":
+        return _GOPKG_IN_VERSION_SUFFIX.sub("", segments[-1]) or segments[-1]
+    if len(segments) > 1 and _GO_MAJOR_VERSION_ELEMENT.match(segments[-1]):
+        return segments[-2]
+    return segments[-1]
 
 
 def _import_path_to_dir_hint(import_path: str) -> str | None:
