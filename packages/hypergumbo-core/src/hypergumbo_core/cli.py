@@ -90,6 +90,8 @@ from .pass_metadata import build_pass_metadata
 from .safety_zones import (
     cache_rmtree,
     cache_write,
+    tmp_artifact_rmtree,
+    user_out_mkdir,
     user_out_open_json_dump,
     user_out_write,
 )
@@ -1024,13 +1026,22 @@ def cmd_sketch(args: argparse.Namespace) -> int:
     # the comparison sketches there with no cleanup and shared-across-
     # repos filenames; the path is unambiguously ours so it's safe to
     # remove on first run, releasing the accumulated backlog.
-    import shutil
     import tempfile as _tempfile
     _legacy_compare_dir = (
         Path(_tempfile.gettempdir()) / "hypergumbo_sketch_compare"
     )
     if _legacy_compare_dir.exists():
-        shutil.rmtree(_legacy_compare_dir, ignore_errors=True)
+        # INV-zudak: routed through the wrapper so the write is attributed to
+        # the tmp_artifact zone instead of surfacing as a raw host_fs flow.
+        # The bare call carried ``ignore_errors=True``; the wrapper takes no
+        # such argument, so the fail-open intent is preserved explicitly here
+        # rather than silently dropped. This is an opportunistic one-shot
+        # drain of a previous release's leftovers — a stale directory owned by
+        # another user, or a permission error, must not abort ``sketch``.
+        try:
+            tmp_artifact_rmtree(_legacy_compare_dir)
+        except OSError:  # pragma: no cover - defensive; needs a hostile /tmp
+            pass
 
     # Generate 4x and 16x budget sketches for comparison table
     # Using 4x/16x (instead of 2x) reveals when large files start fitting.
@@ -1447,7 +1458,7 @@ def _handle_files_mode(
 
     if args.output:
         output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        user_out_mkdir(output_path.parent, parents=True, exist_ok=True)
         user_out_write(output_path, output_text)
         print(f"[hypergumbo slice --files] Found {len(output_lines)} dependent files")
         print(f"  Output: {output_path}")
@@ -1939,7 +1950,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         )
 
     # Write output
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    user_out_mkdir(out_path.parent, parents=True, exist_ok=True)
     user_out_open_json_dump(out_path, output)
 
     mode = "reverse" if args.reverse else "forward"
@@ -4487,7 +4498,7 @@ def cmd_compact(args: argparse.Namespace) -> int:
     out_path = Path(args.out).resolve() if args.out else None
 
     if out_path:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        user_out_mkdir(out_path.parent, parents=True, exist_ok=True)
         user_out_open_json_dump(out_path, compact_map)
         print(f"Compact behavior map written to: {out_path}")
     else:
@@ -9448,7 +9459,7 @@ def _emit_handler_slices(
     for e in all_edges:
         out_degree[e.src] = out_degree.get(e.src, 0) + 1
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    user_out_mkdir(out_dir, parents=True, exist_ok=True)
 
     written: list[Path] = []
     index_entries: list[dict] = []
@@ -10224,7 +10235,7 @@ def run_survey(
     # (skipped→limits drain + behavior_map["limits"] commit moved into finalize() sub-step 6.)
 
     # Ensure parent directory exists (even if caller gives nested paths later)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    user_out_mkdir(out_path.parent, parents=True, exist_ok=True)
 
     # WI-kojob: `--no-sketch-fan-out` is an explicit named flag that
     # collapses to the same effect as `budgets=none`. The named form

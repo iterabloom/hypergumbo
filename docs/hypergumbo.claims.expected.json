@@ -13,7 +13,7 @@
   "install-rust-analyzer-no-host-fs": "inconclusive",
   "install-rust-analyzer-no-install-artifact": "inconclusive",
   "runtime-cli-no-dev-zone": "inconclusive",
-  "runtime-cli-no-host-fs": "violated",
+  "runtime-cli-no-host-fs": "inconclusive",
   "runtime-cli-no-install-artifact": "inconclusive",
   "runtime-cli-no-network": "inconclusive",
   "runtime-cli-no-subprocess": "violated"

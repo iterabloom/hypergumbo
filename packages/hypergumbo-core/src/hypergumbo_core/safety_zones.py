@@ -245,6 +245,33 @@ def user_out_open_json_dump_gzip(path: Path, obj: Any) -> None:
         json.dump(obj, f, indent=2, sort_keys=True)
 
 
+def user_out_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    """Create the parent directory of a user-supplied ``--out`` path.
+
+    SAFETY ZONE: ``user_out``. INV-zudak, reopened: this wrapper did not
+    exist, and its absence is why the violation was unavoidable rather than
+    careless. Four of the five offending ``cli.py`` callsites sit on the line
+    DIRECTLY ABOVE a :func:`user_out_write` / :func:`user_out_open_json_dump`
+    call — the write was already wrapped and the ``mkdir`` that creates its
+    directory could not be, because ``user_out`` was the one zone with a write
+    wrapper and no mkdir wrapper. The zone whose path comes from the USER is
+    the one most in need of a checked call, and it was the one missing it.
+
+    DELIBERATELY NOT ZONE-BOUNDED, unlike :func:`tmp_artifact_rmtree` and
+    :func:`cache_rmtree`. There is no zone root to check against: the user
+    names this path with ``--out``, and any directory they can write to is a
+    legitimate destination. What the wrapper buys is not restriction but
+    ATTRIBUTION — the zone-barrier sanitizer stops the taint walk here, so the
+    write is recorded as a ``user_out`` crossing instead of surfacing as an
+    unsanitized ``host_fs`` flow that ``runtime-cli-no-host-fs`` must report.
+    Creating the directory the user asked for is correct behaviour; doing it
+    through a bare ``Path.mkdir`` is what made it indistinguishable from
+    arbitrary directory creation.
+    """
+    _safety_zone_barrier()
+    path.mkdir(parents=parents, exist_ok=exist_ok)
+
+
 def cache_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
     """Create a cache directory (typically under ``~/.cache/hypergumbo/``).
 
