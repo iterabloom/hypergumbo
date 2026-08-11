@@ -1,0 +1,24 @@
+- op: create  # c8a2
+  at: '2026-08-11T16:54:59Z'  # c8a2
+  by: agent  # c8a2
+  actor: jgstern_agent  # c8a2
+  clock: 1  # c8a2
+  nonce: c8a2  # c8a2
+  data:  # c8a2
+    kind: invariant  # c8a2
+    title: "Taint source anchored to the <external> placeholder: 19 of 104 adjudicated flows name no readable location, and the row count is sources x sinks rather than code"  # c8a2
+    status: violated  # c8a2
+    priority: 2  # c8a2
+    parent:  # c8a2
+    tags:  # c8a2
+    - taint  # c8a2
+    - analysis_quality  # c8a2
+    - javascript  # c8a2
+    isbefore: []  # c8a2
+    duplicate_of: []  # c8a2
+    not_duplicate_of: []  # c8a2
+    pr_ref:  # c8a2
+    description: "FOUND BY THE S9 PRECISION MEASUREMENT (docs/measurements/0001-taint-flow-precision.md),\non a complete census of 60 flows across five repos plus a 44-flow stratified sample of\npretix.\n\nTHE DEFECT. 19 of the 104 adjudicated flows carry a source symbol of\n\n    javascript:<external>:0-0:file:external_symbol\n\nNo path, no span, kind external_symbol. A reader has no file to open, so the flow can be\nneither confirmed nor refuted -- by a human, and equally by any consumer the tool is\nbuilt for. Every one of the 19 was labelled UNADJUDICABLE by two independent readers.\n\nTHE MULTIPLIER IS WHAT MAKES THIS MORE THAN A COSMETIC GAP. On mitmproxy the 18\nunanchored rows are the cartesian product of six catalogued browser-global sources\n(navigator.userAgent, window.document, window.screen, document.cookie, window.location,\nnavigator.platform) against three console sinks (warn, error, log). One collapsed bucket\ntherefore emits sources x sinks distinct \"violations\", and the count scales with the\nCATALOGUE rather than with the code. Adding a seventh browser global would add three more\nviolations to a repo whose source did not change.\n\nTHE SPLIT IS EXACT ON THE CENSUS, which is the strongest evidence that this is one defect\nand not a scatter: every unadjudicable flow is an unanchored one (18 of 18) and every\nanchored flow was adjudicable (42 of 42).\n\nRELATED BUT DISTINCT FROM WI-pimun. That item is the io-boundary side and anchors to a\nFILE node -- a real location, at file granularity. This anchors to no location at all,\nand it is on the taint side. The `co-location-file` FP mechanism in the same measurement\n(7 flows) IS WI-pimun's shape; these 19 are not.\n\nDIRECTION. Fixing the anchor either (a) resolves these to real locations, which makes\nthem adjudicable and probably mostly false, or (b) reveals they were never real flows.\nEither way the count should FALL. That is the safe direction for precision -- but confirm\nthe rows are not standing in for real flows that would be found once anchored, because a\nJS repo reaching a console sink from a real browser-global read is an ordinary shape.\n\nNOT DIAGNOSED: which emission path collapses the source anchor to <external>, and whether\nany language other than JavaScript does it. All 19 observed rows are javascript."  # c8a2
+    fields:  # c8a2
+      statement: "A reported taint flow must name a source location a reader can open; a source symbol whose path slot is the <external> placeholder (span 0-0, kind external_symbol) names no place and cannot be confirmed or refuted by any consumer."  # c8a2
+      root_cause: "NOT LOCALISED. The source-side anchor for JS/TS taint flows collapses to javascript:<external>:0-0:file:external_symbol rather than to the enclosing callable or the containing file."  # c8a2

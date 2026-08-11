@@ -1,0 +1,21 @@
+- op: create  # 13f6
+  at: '2026-08-11T16:55:35Z'  # 13f6
+  by: agent  # 13f6
+  actor: jgstern_agent  # 13f6
+  clock: 1  # 13f6
+  nonce: 13f6  # 13f6
+  data:  # 13f6
+    kind: work_item  # 13f6
+    title: "Candidate cheap FP filter: sink call textually precedes the source read in the same function body (size it before building; the direction deletes findings)"  # 13f6
+    status: todo_hard  # 13f6
+    priority: 3  # 13f6
+    parent:  # 13f6
+    tags:  # 13f6
+    - taint  # 13f6
+    - analysis_quality  # 13f6
+    isbefore: []  # 13f6
+    duplicate_of: []  # 13f6
+    not_duplicate_of: []  # 13f6
+    pr_ref:  # 13f6
+    description: "FOUND BY THE S9 PRECISION MEASUREMENT (docs/measurements/0001-taint-flow-precision.md).\n`co-location-function` is the single largest false-positive mechanism: 21 of 57 adjudicated\nfalse positives. A recognisable sub-shape of it is cheap to test for.\n\nTHE SHAPE. The sink call appears STRICTLY BEFORE the source read in the same function\nbody, so on a single invocation the sink cannot have received that read's value. Six\ninstances found by reading, without looking for them:\n\n  caddy      cmdRun                       net.Dial at :292; every os.Getenv at :316+\n  mitmproxy  spawn_external_viewer        tempfile.mkstemp :163, os.chmod :168; the\n                                          os.environ reads are at :172-175\n  poetry     EnvManager.create_venv       self.remove_venv(venv) at :485; the\n                                          sys.executable read at :503\n  mitmproxy  msix_installer               both shutil.copytree calls precede the\n                                          os.environ read at :273\n\nWHY THIS IS FILED AS A CANDIDATE AND NOT AS A FIX. Statement order is NOT sound in\ngeneral and the counterexamples are ordinary:\n  * the function is called twice and state persists between calls;\n  * the source read sits inside a loop whose body also contains the sink;\n  * a closure captures the read and is invoked later;\n  * a generator is resumed after the sink runs.\nAny filter must therefore be scoped -- both sites in the same function body, neither\ninside a loop that encloses the other, no closure or generator boundary between them --\nand even then it is a heuristic.\n\nDIRECTION IS THE DANGEROUS ONE. This REMOVES findings. Since PR #214 a refutation earns\n`sanitized` and drops a flow from the violation set, so an over-broad version deletes real\nfindings. Measure on findings, both signs, on at least two languages, before landing --\nand note that the same measurement found the obvious confidence filter would have deleted\n21 of 28 true positives, so \"it looks safe\" is not evidence here.\n\nSIZE FIRST. 6 of 57 is the count found incidentally while adjudicating something else; the\nreal share is unmeasured. A scan over the existing flow files would size it cheaply before\nany code is written."  # 13f6
+    fields: {}  # 13f6
