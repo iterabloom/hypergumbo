@@ -9,3 +9,8 @@ sinks:
       functions:
         - user_out_write
         - user_out_open_json_dump
+        # INV-zudak (reopened): the mkdir that creates a --out path's parent
+        # is an fs-write primitive like the write itself. Declared here so the
+        # zone-barrier sanitizer records it as a user_out crossing rather than
+        # leaving it as an unsanitized host_fs flow.
+        - user_out_mkdir

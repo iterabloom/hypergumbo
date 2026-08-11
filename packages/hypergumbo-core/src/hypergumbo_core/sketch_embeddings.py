@@ -35,7 +35,7 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 # Set HF env vars BEFORE importing sentence_transformers downstream — most
 # HuggingFace libraries cache these at their own import time (WI-gatot).
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
-from .safety_zones import cache_save_npy  # noqa: E402
+from .safety_zones import cache_mkdir, cache_save_npy  # noqa: E402
 
 _suppress_hf_noise()
 
@@ -1428,7 +1428,7 @@ def _get_cache_dir(repo_root: Path) -> Path:
     cache_dir = cache_base / fingerprint / "embeddings"
 
     # Create the full path including parent directories
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_mkdir(cache_dir, parents=True, exist_ok=True)
     return cache_dir
 
 
@@ -1469,7 +1469,7 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     )
 
     # Create the full path including parent directories
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_mkdir(cache_dir, parents=True, exist_ok=True)
     return cache_dir
 
 
