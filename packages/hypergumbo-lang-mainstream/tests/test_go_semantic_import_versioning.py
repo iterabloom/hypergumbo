@@ -54,6 +54,7 @@ tripped on, and it is measured separately rather than assumed benign.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -147,6 +148,90 @@ def _call_dsts(analysis, callee: str) -> list[str]:
         e.dst for e in analysis.edges
         if e.edge_type == "calls" and e.dst.split(":")[-2].split(".")[-1] == callee
     ]
+
+
+class TestFrameworkImportPathsReachTheModuleSlot:
+    """The analyzer half of the go-web-frameworks overlay contract (INV-safig).
+
+    The overlay under ``docs/io-primitives-overlays/go-web-frameworks.yaml``
+    declares its modules as the LITERAL import path — ``github.com/gin-gonic/gin
+    .Context``, ``github.com/labstack/echo/v4.Context`` — because that is what the
+    analyzer reports. Its own test pins the catalogue side of that contract, but
+    it lives in the core package and CI tests packages in isolation, so it cannot
+    reach the Go analyzer to check the claim it depends on.
+
+    This is the other end of the same contract, asserting the identical literal
+    strings. Changing the derivation without changing the overlay (or the
+    reverse) breaks one of the two, which is the whole reason both exist: the
+    defect being fixed here WAS the two sides drifting apart and neither noticing
+    for a full measurement cycle.
+    """
+
+    SOURCE: str = (
+        "package svc\n"
+        "\n"
+        "import (\n"
+        '\t"github.com/gin-gonic/gin"\n'
+        '\t"github.com/gofiber/fiber/v2"\n'
+        '\t"github.com/labstack/echo/v4"\n'
+        '\t"google.golang.org/grpc"\n'
+        ")\n"
+        "\n"
+        "func ginRespond(c *gin.Context, p any) { c.JSON(200, p) }\n"
+        "\n"
+        "func echoRespond(c echo.Context, p any) { _ = c.JSON(200, p) }\n"
+        "\n"
+        "func fiberServe(app *fiber.App) { _ = app.Listen(\":3000\") }\n"
+        "\n"
+        "func grpcServe(s *grpc.Server, l any) { _ = s.Serve(l) }\n"
+    )
+
+    EXPECTED: ClassVar[dict[str, str]] = {
+        "JSON": "github.com/gin-gonic/gin",
+        "Listen": "github.com/gofiber/fiber/v2",
+        "Serve": "google.golang.org/grpc",
+    }
+
+    def _module_slots(self, tmp_path: Path) -> dict[str, set[str]]:
+        from hypergumbo_lang_mainstream.go import analyze_go
+
+        repo = tmp_path / "svc"
+        repo.mkdir()
+        (repo / "go.mod").write_text("module example.com/svc\n\ngo 1.21\n")
+        (repo / "handlers.go").write_text(self.SOURCE)
+        out: dict[str, set[str]] = {}
+        for e in analyze_go(repo).edges:
+            if e.edge_type != "calls":
+                continue
+            parts = e.dst.split(":")
+            # Path slot is colon-tolerant, so take everything between the
+            # language prefix and the trailing span/name/kind triple.
+            out.setdefault(parts[-2], set()).add(":".join(parts[1:-3]))
+        return out
+
+    def test_framework_calls_carry_the_full_import_path(
+        self, tmp_path: Path, go_available,
+    ) -> None:
+        slots = self._module_slots(tmp_path)
+        assert slots, "no calls edges at all; the fixture is broken"
+        for name, want in self.EXPECTED.items():
+            assert name in slots, f"no calls edge for {name}: {sorted(slots)}"
+            assert want in slots[name], (
+                f"{name} module slot was {slots[name]}, expected {want!r} — the "
+                "go-web-frameworks overlay declares that literal path and will "
+                "go dead if this drifts"
+            )
+
+    def test_no_framework_call_falls_to_the_external_placeholder(
+        self, tmp_path: Path, go_available,
+    ) -> None:
+        """The failure mode this pair guards is silent: a dropped module hint
+        does not error, it just makes every catalogue row unreachable."""
+        slots = self._module_slots(tmp_path)
+        for name in self.EXPECTED:
+            assert "external" not in slots.get(name, set()), (
+                f"{name} lost its import path to the external placeholder"
+            )
 
 
 class TestModuleRootVersusDeeperPath:

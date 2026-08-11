@@ -550,11 +550,19 @@ class TestLoadCatalog:
         assert hit is not None
         assert hit.boundary == "net_send"
 
-        # Data is ambiguous without context (gin.Context.Data vs template.Data)
+        # `Data` is ambiguous without a module hint and must not match bare.
         assert catalog.lookup_with_module("Data", None) is None
-        # But with gin context, it matches
-        hit = catalog.lookup_with_module("Data", "gin")
+        # With one it does. This used to assert a `gin` hint matched
+        # gin.Context.Data, which was ENCODING A DEFECT (INV-safig): the
+        # framework rows declared a package-identifier module while the
+        # analyzer emits the import path, so `gin` is a hint no Go program can
+        # produce and the row was unreachable in production. Those rows now
+        # live in docs/io-primitives-overlays/go-web-frameworks.yaml, keyed on
+        # the real import path. The stdlib row that shares the name carries the
+        # same assertion without depending on a fabricated hint.
+        hit = catalog.lookup_with_module("Data", "net/smtp")
         assert hit is not None
+        assert hit.qualified_name == "net/smtp.Client.Data"
         assert hit.boundary == "net_send"
 
     def test_go_catalog_stdlib_log(self) -> None:
@@ -3951,7 +3959,7 @@ class TestAmbiguousNameFiltering:
     # --- Go ambiguous names ---
 
     def test_go_bare_run_not_matched(self) -> None:
-        """Go: bare 'Run' should NOT match gin.Engine.Run without module context."""
+        """Go: bare 'Run' must not match any Run row without module context."""
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:TestFoo:function",
@@ -3961,7 +3969,7 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Bare 'Run' is ambiguous (testing.T.Run, cobra.Command.Run)"
 
     def test_go_bare_string_not_matched(self) -> None:
-        """Go: bare 'String' should NOT match gin.Context.String without module context."""
+        """Go: bare 'String' must not match without module context."""
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:handler:function",
@@ -3991,14 +3999,24 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Bare 'Write' is ambiguous (io.Writer.Write on many types)"
 
     def test_go_qualified_run_still_matches(self) -> None:
-        """Go: 'Run' with gin.Engine module context should still match."""
+        """Go: 'Run' with an os/exec module context should still match.
+
+        The point of this test is that a module hint RESCUES an ambiguous short
+        name that ``test_go_bare_run_not_matched`` shows is refused bare — and
+        that point is unchanged. Only the example row moved: it used to use
+        ``go:gin.Engine:...`` , which was unreachable in production because the
+        catalogue spelled the module as a package identifier while the analyzer
+        emits the import path (INV-safig). Asserting against a row that could
+        never fire made this a test of the fixture rather than of the gate, so
+        it now uses a stdlib row the analyzer really does emit.
+        """
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:main:function",
-            dst="go:gin.Engine:0-0:Run:unresolved",
+            dst="go:os/exec:0-0:Run:unresolved",
         )
         count = tag_io_boundaries([edge], {"go": catalog})
-        assert count == 1, "Qualified 'Run' on gin.Engine should match"
+        assert count == 1, "Qualified 'Run' on os/exec should match"
 
     # --- Rust ambiguous names ---
 
