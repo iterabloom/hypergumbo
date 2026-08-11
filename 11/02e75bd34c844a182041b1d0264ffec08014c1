@@ -1,0 +1,21 @@
+Original commit body from 3f789ae07acefe2394a90539dbfd5012ef60587b:
+
+Correcting a number I published one commit earlier. The prior text said all 53
+entries the probe fabricates an import for are 'reachable only through such a
+fabricated import'. That counted the entries the probe fabricates an import
+FOR, not the entries whose VERDICT depends on it.
+
+Checked against the real import paths: 33 of the 53 resolve fine without the
+fabrication, because _module_matches compares trailing components and 'unix'
+IS the trailing component of golang.org/x/sys/unix. A method row's module
+carries a type qualifier -- 'gin.Context' -- which is the trailing component of
+no real import path, so the suffix arm cannot rescue it.
+
+Sharper than the claim it replaces: Go's third-party FUNCTION surface is
+reachable on real code by accident of the suffix rule, and its third-party
+METHOD surface, all 20 rows, is not.
+
+The 178/210 production-faithful figure is unaffected -- the 33 were always
+inside the 162.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
