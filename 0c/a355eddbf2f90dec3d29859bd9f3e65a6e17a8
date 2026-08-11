@@ -1,0 +1,83 @@
+Original commit body from 9dceacba5fd5bebaea27365528d3045f87f1f8c7:
+
+Go's semantic import versioning puts the major version as a trailing path element
+from v2 onward. `_process_import_spec` derived a package's identifier as the LAST
+element, so `github.com/labstack/echo/v4` bound `v4` and `echo` was never
+registered. Every call on such a package then missed `import_aliases`,
+`_go_external_import_path` returned None, and the dst fell to the `external`
+placeholder -- losing the module hint on an ordinary `calls` edge, so the blast
+radius is the Go call graph and everything downstream of it, not one catalogue.
+Since Go modules, /vN is the standard for any library at v2 or above.
+
+Derivation moves to `_go_package_identifier`, which also handles gopkg.in's
+dotted spelling (`gopkg.in/yaml.v2` -> `yaml`). Both are "a major-version marker
+sitting where the package identifier is expected", so both live in one helper --
+but they are different rules and are tested separately, because gopkg.in
+legitimately uses `.v1` while a Go-module `/v1` element is far more likely to be a
+real directory.
+
+OVER-STRIPPING WOULD INVENT A DEFECT WHILE CLOSING ONE, so the guard is
+deliberately adversarial: `v2` is a legal package name and `v2beta1` / `v1alpha1`
+are routine Kubernetes API package names. Both patterns are anchored and
+digits-only, the path-element rule refuses to strip with no earlier element to
+fall back to, and the dotted rule is scoped to the gopkg.in host.
+
+PAIRED A/B, 13 REAL GO REPOS, 377,503 CALL EDGES, BOTH DIRECTIONS
+(scripts/measure-go-import-versioning.py, in-repo):
+
+  calls edges                377,503 -> 377,503   IDENTICAL IN EVERY REPO
+  dsts with 'external' slot   83,267 ->  81,974   (-1,293, 1.55%)
+  gained dsts                                       1,446
+    recovered an import path                        1,289
+    resolved to an in-repo symbol                     157
+  REGRESSIONS                                           0
+
+Each arm runs in a SEPARATE INTERPRETER. Patching the derivation in-process and
+analysing twice shares every module-level cache the analyzer holds, which is how
+a run reports the first arm's answer twice.
+
+THE HIJACK BUCKET IS REPORTED SEPARATELY AND NOT FOLDED INTO THE HEADLINE,
+because the prior Go typing attempt moved 692 edges and put 118 of them (17.1%)
+onto the WRONG in-repo symbol. The 157 in-repo landings are type 84, function 62,
+method 9, struct 1, field 1. The 84 `type` landings are Go type CONVERSIONS
+(`caddy.Duration(x)`) -- calls only syntactically. That edge was already a `calls`
+edge before this change, pointing at `external`; this makes its target accurate
+and thereby makes a pre-existing modelling question visible. That question is
+WI-jalal's family (a calls edge whose dst is not callable), not this one's.
+
+2 of 13 repos changed by exactly zero (cosign, gocryptfs). That null is only
+reportable because the positive control fires: a synthetic /v2 fixture moves 1
+site in the same instrument.
+
+LIKELY ROOT CAUSE OF WI-tivij, open since July with "alias imports?" as an
+untested guess. Caddy is `github.com/caddyserver/caddy/v2`;
+`caddy.RegisterModule(...)` previously emitted `go:external:0-0:RegisterModule`
+and now carries its import path, which is the precondition for the
+init -> RegisterModule -> Module.CaddyModule chain that item reports as broken.
+NOT CLAIMED TO CLOSE IT: that item reports 16 of 136 markers unreachable, and if
+every registration went through the root package all 136 would fail.
+
+THE INSTRUMENT HAD TWO DEFECTS OF ITS OWN, both caught by its own controls and
+both fixed before any number above was believed:
+  - it keyed each call site on (src, line, dst NAME slot), a discriminator
+    derived from the thing under test -- resolving a dst in-repo can re-spell its
+    name slot receiver-qualified -- and duly reported a non-destruction failure
+    on caddy that was its own;
+  - it then paired the two arms' dsts POSITIONALLY within a site, silently
+    matching unrelated calls on one line whenever sort order shifted, and
+    manufactured 5 regressions that do not exist (`BlobStatter.Stat ->
+    external:Digest` is two different calls).
+Both are now a multiset difference over a caller-side-only key, which needs no
+pairing at all. The real regression count is 0.
+
+NO CROSS-LANGUAGE PARITY TEST, AND HERE IS WHY RATHER THAN SILENCE. The project
+rule is that unavoidable per-language logic ships a parity test enumerating every
+language. This logic is not merely per-language, it is per-language SEMANTICS:
+/vN is a Go module convention and gopkg.in is a Go hosting convention, so a test
+asserting either behaviour for python or rust would assert something false. What
+DOES generalise is the shape -- "an identifier derived from a path segment can be
+defeated by a version marker occupying that segment" -- and that is a question
+for the other analyzers, not an assertion about them. It is recorded on INV-javid
+as an open question and no other analyzer was read.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
