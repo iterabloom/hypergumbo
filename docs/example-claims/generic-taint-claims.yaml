@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Generic taint-flow claims that apply to almost any application repository.
+#
+# WHY THIS FILE EXISTS. `hypergumbo verify-claims` needs a claims file, and
+# until now the only one in the tree was `docs/hypergumbo.claims.yaml` — which
+# is about hypergumbo's OWN safety zones and is meaningless pointed at anything
+# else. A reader who wanted to ask the ordinary questions ("does user input
+# reach a shell?") had to invent the vocabulary themselves. These six claims
+# are that starting point, and they are also the measurement frame for the
+# taint-precision adjudication (WI-sivuz): a precision number is only
+# interpretable against claims someone would actually write.
+#
+# THE SIX ARE NOT ARBITRARY. Each pairs an auto-derived taint LABEL with an
+# auto-derived sink ZONE, so every claim here is expressible without any
+# project-local catalogue:
+#
+#   label `untrusted_input`  <- io_primitives boundaries net_recv, ipc_recv,
+#                               db_read   (AUTO_SOURCE_LABEL_MAP)
+#   label `host_secret`      <- io_primitives boundary   env_read
+#
+#   zone `subprocess` <- fs boundary subprocess       zone `network`  <- net_send
+#   zone `host_fs`    <- fs boundary fs_write         zone `database` <- db_write
+#   zone `logging`    <- boundary    logging
+#
+# WHAT A VIOLATION HERE DOES AND DOES NOT MEAN. A violated verdict says the
+# analysis found an unsanitized path from a source primitive to a sink
+# primitive. It does NOT say the path is exploitable: hypergumbo models no
+# validation that is not in its sanitizer catalogue, so a repo that validates
+# input with its own hand-written checker will violate these claims correctly
+# and harmlessly. Read them as "here is where untrusted data reaches power",
+# not as "here is a vulnerability".
+#
+# CONFIRMED IS THE VERDICT TO DISTRUST, NOT VIOLATED. A `confirmed` verdict is
+# a claim about ABSENCE, and absence is only as sound as the analysis is
+# complete. `verify-claims` refuses to confirm a claim for a language it could
+# not analyse (WI-kajil / INV-bitig) — it returns `inconclusive` instead — but
+# within an analysed language a recall gap still reads as clean. The
+# `dataflow_coverage` block in `--json` output is what tells you how much the
+# run could see.
+
+claims:
+  # =======================================================================
+  # Untrusted input reaching power.
+  # =======================================================================
+  - id: untrusted-input-no-subprocess
+    text: |
+      Data arriving from the network, from an IPC channel, or read back out
+      of a database is never passed to a subprocess without sanitization.
+      This is the command-injection question.
+    constraint:
+      taint_flow:
+        source_taint: untrusted_input
+        prohibited_sink_zone: subprocess
+
+  - id: untrusted-input-no-host-fs
+    text: |
+      Data arriving from the network, from an IPC channel, or read back out
+      of a database is never used to write to the filesystem without
+      sanitization. This is the path-traversal / arbitrary-write question.
+    constraint:
+      taint_flow:
+        source_taint: untrusted_input
+        prohibited_sink_zone: host_fs
+
+  - id: untrusted-input-no-database
+    text: |
+      Data arriving from the network or from an IPC channel is never written
+      into a database without sanitization. Note that `db_read` is itself an
+      `untrusted_input` source, so a read-then-write round trip within one
+      store also fires here; the verdict's `origins` breakdown separates
+      those from genuinely external input.
+    constraint:
+      taint_flow:
+        source_taint: untrusted_input
+        prohibited_sink_zone: database
+
+  # =======================================================================
+  # Secrets leaving.
+  # =======================================================================
+  - id: host-secret-no-network
+    text: |
+      Values read out of the process environment — the conventional home for
+      credentials, tokens and connection strings — are never sent over the
+      network without sanitization. This is the credential-exfiltration
+      question, and it is the one a reader of an unfamiliar dependency most
+      wants answered.
+    constraint:
+      taint_flow:
+        source_taint: host_secret
+        prohibited_sink_zone: network
+
+  - id: host-secret-no-logging
+    text: |
+      Values read out of the process environment are never written to a log
+      sink without sanitization. Logs are the most common accidental
+      publication channel for a credential, and the least noticed.
+    constraint:
+      taint_flow:
+        source_taint: host_secret
+        prohibited_sink_zone: logging
+
+  - id: host-secret-no-host-fs
+    text: |
+      Values read out of the process environment are never written to the
+      filesystem without sanitization.
+    constraint:
+      taint_flow:
+        source_taint: host_secret
+        prohibited_sink_zone: host_fs

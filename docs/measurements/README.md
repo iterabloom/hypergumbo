@@ -1,0 +1,53 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+# Measurement records
+
+This directory holds **measurement records**: the per-item verdict
+tables produced when hypergumbo's own output is adjudicated against
+ground truth read from source code.
+
+## Why this is a sibling of `docs/audits/`, not part of it
+
+[`docs/audits/README.md`](../audits/README.md) scopes itself
+explicitly: its format is "shaped for **axis-conformance audits**" —
+per-value verdicts from the CANONICAL / FOLD / DEPRECATE-NO-FOLD
+trichotomy — and it says that audits with a different verdict shape
+"should propose a sibling format rather than shoehorn into this one."
+
+A precision measurement has a different verdict shape. Its unit is a
+reported *finding*, not a vocabulary *value*; its verdicts are TRUE
+POSITIVE / FALSE POSITIVE / UNADJUDICABLE; and its output is a rate
+with a population attached rather than a migration plan. So it files
+here.
+
+## What belongs here
+
+A measurement record, not a lab note and not a status page. Concretely:
+
+- The **question**, stated so that a different answer would change a
+  decision.
+- The **population**: what was measured, how it was obtained, and
+  whether it is a census or a sample. A rate without a named
+  denominator is not a measurement.
+- The **rubric**, fixed before the labelling and reproduced verbatim,
+  together with any revision made after labelling started and the
+  reason for it.
+- The **verdict table**, one row per adjudicated item.
+- The **disagreement rate** between independent passes, reported
+  beside the headline number rather than folded into it.
+- What the number does **not** support. Precision is not accuracy;
+  a census of five repositories is not a random sample of software.
+
+Numbers that describe the state of a tracker item still live on the
+tracker item. What lives here is the evidence a reader would need to
+disbelieve the number.
+
+## Format
+
+One markdown file per measurement, named `<NNNN>-<topic>.md`, numbered
+independently of the ADR and audit-findings series.
+
+## Index
+
+| ID | Title | Instrument | Result |
+|----|-------|------------|--------|
+| [0001](0001-taint-flow-precision.md) | Taint-flow precision on real repositories | `scripts/measure-taint-precision.py` | ≈41% population-weighted (28 TP of 85 adjudicated across 6 repos); 19 further flows unadjudicable |
