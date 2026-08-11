@@ -1,0 +1,53 @@
+Original commit body from 9208e516317a7c437d814625772faad91e35a70e:
+
+python.yaml has always stated the rule in prose -- "Dual-classified: fs_read
+when mode is 'r'/'rb' (default), fs_write when 'w'/'a'/'x'" -- but notes: is
+free text nothing consumes, so the rule was documented and unimplemented.
+Every open() matched both boundaries and each consumer broke the tie its own
+way, in OPPOSITE directions:
+
+  io-boundaries  called every open() a READ  -> real writes invisible
+  taint sinks    called every open() a WRITE -> 24 of the 35 distinct
+                 runtime-cli-no-host-fs violations were read-mode calls
+
+Fixing one side alone moves the error, so both now route through one
+predicate (select_by_mode / resolve_mode_boundary) and the analyzer records
+the mode literal once, at _process_call's single invocation, keyed on the
+exact ast.Call node rather than on a line number.
+
+Two root causes, only one of which WI-rusof had named:
+  - the qualified-name index kept ONE row per name, so the fs_write row for
+    builtins.open was absent entirely and no mode signal could have survived
+  - nothing read the mode argument
+
+WI-rusof's filed fix was measured and refuted before being built: it proposed
+reading meta["access_mode"], "which carries 'write' for open(p, 'w')". It
+carries 'read' -- access_mode derives from the reference's AST role
+(ADR-0038), not from the call's arguments -- so that fix would have converted
+the false positive into a false negative of the same size. A regression test
+keeps the two keys' distinction executable.
+
+MEASURED on hypergumbo's own tree, before -> after:
+  runtime-cli-no-host-fs  raw 1189 -> 370 ; distinct 35 -> 11
+                          open 24 -> 0 ; mkdir 10 -> 10 ; rmtree 1 -> 1
+  runtime-cli-no-subprocess (control)     distinct 33 -> 33
+  all 18 verdicts UNCHANGED -- host_fs stays correctly violated on its 11
+  genuine unwrapped writes (INV-zudak, reopened), so precision rose without
+  laundering a capability and check-self-claims needs no snapshot rewrite.
+
+A near-miss worth recording: the first cut left all four call sites passing
+no io_mode, so the gate degraded to blanket suppression and produced the
+IDENTICAL corpus number, since this repo's open() calls are all reads. Caught
+by reading the diff and independently by check-package-coverage (core fell to
+88% because suppressed matches made the propagator bodies unreachable). Now
+pinned by a structural probe over the call sites and by a behavioural pair
+asserting a write-mode open still yields a finding -- the non-vacuity floor,
+since suppression and discrimination are indistinguishable on read-only data.
+
+Scope decided by sorting the population by what the fix would be: 17
+dual-classified rows exist across 6 languages and only builtins.open and
+stdio.fopen are settled by a mode literal. The rest are separate shapes
+(genuinely-both, undecidable-at-call-site, taxonomy overlap, WI-bibuk's zone
+question) and are filed as INV-vaduk rather than swept in here.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
