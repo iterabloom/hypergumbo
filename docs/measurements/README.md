@@ -51,4 +51,4 @@ independently of the ADR and audit-findings series.
 | ID | Title | Instrument | Result |
 |----|-------|------------|--------|
 | [0001](0001-taint-flow-precision.md) | Taint-flow precision on real repositories | `scripts/measure-taint-precision.py` | ≈41% population-weighted (28 TP of 85 adjudicated across 6 repos); 19 further flows unadjudicable |
-| [0002](0002-catalogue-reach-multilanguage.md) | Catalogue reach on Go, JavaScript and Java | `scripts/measure-catalogue-reach.py` | go 77.1% (all 45 method-kind entries unattributed), javascript 97.3%, java 90.8% (static form only), python 97.7% |
+| [0002](0002-catalogue-reach-multilanguage.md) | Catalogue reach on Go, JavaScript and Java | `scripts/measure-catalogue-reach.py` | go **84.8% production-faithful** (Go arm corrected — the original 77.1% "all 45 method-kind unattributed" was a fixture artefact and its receiver-typing conclusion is withdrawn), javascript 97.3%, java 90.8% (static form only), python 97.7% |
