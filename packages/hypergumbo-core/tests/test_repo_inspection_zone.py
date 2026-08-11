@@ -121,6 +121,68 @@ class TestEveryRuntimeSubprocessSiteIsWrapped:
         )
 
 
+class TestTheWrappersActuallyRun:
+    """Each wrapper is INVOKED here, not merely inspected.
+
+    WHY THIS EXISTS, and it is not "for the coverage number". Every other test
+    in this file is structural — ``hasattr``, AST walks, substring checks —
+    and structural tests never execute a wrapper body. Locally that gap was
+    invisible: this machine has rust-analyzer and gitleaks installed, so the
+    real code paths ran during unrelated tests and the line showed covered.
+    CI has neither, so ``shutil.which`` returns ``None``, the probe returns
+    early, and ``repo_inspect_probe``'s body was never reached — a coverage
+    result that depended on which binaries the host happened to have.
+
+    An environment-dependent test is worse than a missing one: it reports
+    green on the developer's box and red in CI, and the tempting reading is
+    "CI is flaky" rather than "the test never ran". These invoke the wrappers
+    directly with the running interpreter, which is present by construction.
+    """
+
+    @staticmethod
+    def _noop_argv() -> list[str]:
+        import sys
+
+        # The interpreter running this test always exists; no PATH lookup, no
+        # optional tooling, no network, and it exits 0 immediately.
+        return [sys.executable, "-c", ""]
+
+    @pytest.mark.parametrize("wrapper_name", [
+        "repo_inspect_git",
+        "repo_inspect_scan",
+        "repo_inspect_probe",
+    ])
+    def test_wrapper_executes_and_returns_completed_process(
+        self, wrapper_name: str,
+    ) -> None:
+        import subprocess
+
+        from hypergumbo_core import safety_zones
+
+        wrapper = getattr(safety_zones, wrapper_name)
+        result = wrapper(self._noop_argv(), capture_output=True, timeout=30)
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+
+    def test_kwargs_reach_the_underlying_call(self) -> None:
+        """The wrapper is a pass-through, not a re-implementation.
+
+        A wrapper that quietly dropped ``capture_output`` or ``timeout``
+        would still return a CompletedProcess and still pass the test above,
+        while changing the behaviour of every caller that relies on them.
+        """
+        import sys
+
+        from hypergumbo_core import safety_zones
+
+        result = safety_zones.repo_inspect_git(
+            [sys.executable, "-c", "print('marker')"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.strip() == "marker"
+
+
 class TestTheProbeDoesNotIndex:
     """rust-analyzer is asked its version and nothing else.
 
