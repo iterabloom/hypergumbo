@@ -23,3 +23,11 @@
     fields:  # 7808
       statement: "A module must not count as covered for claim adjudication merely because the catalogue names one primitive in it."  # 7808
       root_cause: "verify_claims.py:781-784 tests exact-or-prefix module equality against catalogue rows. The boundary tagger uses a DIFFERENT, component-aware predicate (io_boundary.py:1779-1796), so one row can tag a boundary while not covering its module — and normalising a module string silently grants adjudicability."  # 7808
+- op: update  # f9b9
+  at: '2026-08-12T07:52:13Z'  # f9b9
+  by: agent  # f9b9
+  actor: jgstern_agent  # f9b9
+  clock: 2  # f9b9
+  nonce: f9b9  # f9b9
+  set:  # f9b9
+    status: satisfied  # f9b9
