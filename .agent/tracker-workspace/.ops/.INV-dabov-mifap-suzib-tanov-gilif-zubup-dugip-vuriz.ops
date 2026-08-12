@@ -22,3 +22,13 @@
       priority: "P1"  # af91
       status: "violated"  # af91
       tags: "security,verify_claims,io_boundary,false_confirm,bucket_a"  # af91
+- op: update  # dc9d
+  at: '2026-08-12T08:46:52Z'  # dc9d
+  by: agent  # dc9d
+  actor: jgstern_agent  # dc9d
+  clock: 2  # dc9d
+  nonce: dc9d  # dc9d
+  set:  # dc9d
+    priority: 1  # dc9d
+  add:  # dc9d
+    tags: [security, verify_claims, io_boundary, false_confirm, bucket_a]  # dc9d

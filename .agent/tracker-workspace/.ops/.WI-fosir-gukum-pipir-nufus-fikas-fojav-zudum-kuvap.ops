@@ -20,3 +20,13 @@
       priority: "P3"  # 5dd9
       status: "todo_hard"  # 5dd9
       tags: "verify_claims,usability,disclosure"  # 5dd9
+- op: update  # 5385
+  at: '2026-08-12T08:47:03Z'  # 5385
+  by: agent  # 5385
+  actor: jgstern_agent  # 5385
+  clock: 2  # 5385
+  nonce: '5385'  # 5385
+  set:  # 5385
+    priority: 3  # 5385
+  add:  # 5385
+    tags: [verify_claims, usability]  # 5385
