@@ -1,0 +1,22 @@
+- op: create  # 9e64
+  at: '2026-08-12T02:50:16Z'  # 9e64
+  by: agent  # 9e64
+  actor: jgstern_agent  # 9e64
+  clock: 1  # 9e64
+  nonce: '9e64'  # 9e64
+  data:  # 9e64
+    kind: work_item  # 9e64
+    title: "Move check-package-coverage from a local pre-push gate into per-PR CI (converts local+CI serial into max(CI, pkgcov); does NOT remove the wait under trunk-based dev)"  # 9e64
+    status: todo_soft  # 9e64
+    priority: 4  # 9e64
+    parent:  # 9e64
+    tags:  # 9e64
+    - test_infra  # 9e64
+    - ci  # 9e64
+    - someday  # 9e64
+    isbefore: []  # 9e64
+    duplicate_of: []  # 9e64
+    not_duplicate_of: []  # 9e64
+    pr_ref:  # 9e64
+    description: "SPECULATIVE / LOW PRIORITY. Filed at P4 at the human's direction, who corrected me:\nI had been surfacing this repeatedly as an open decision needing their input, and\nit is not — it is an infra nicety in the same tier as WI-fipas (cluster).\n\nTHE PROPOSAL. Move `check-package-coverage` from a local pre-push gate into a\nper-PR CI job. Local cost drops from ~13 min to 0; the self-hosted Woodpecker\nserver is mostly idle and would absorb it alongside the existing jobs.\n\nWHAT IT DOES NOT BUY, and this is the human's own correction: it does NOT remove\nthe wait. Under trunk-based development you block on CI regardless. It converts\n`local + CI` (serial) into `max(CI, pkgcov)` (parallel) — real, but not to zero.\nOnly more hardware attacks the wait itself, which is WI-fipas.\n\nMEASURED, so nobody re-derives it:\n  - pkgcov wall clock 780 s on 6 cores for 4,795 s of serial work = 6.15x\n    = ~102% of theoretical max. THERE IS NO RESTRUCTURING WIN. A hypothesis that\n    the 6-packages-x-`-n auto` shape was oversubscribing and thrashing was\n    REFUTED by that arithmetic.\n  - A `--changed-only` variant saves 5-8 min when one big package is touched and\n    only ~1 min for core+mainstream together, which is the common diff. Core is\n    54% of the work and mainstream 34%.\n\nWHAT IT IS AND IS NOT A GATE FOR — do not conflate these, they came up together:\nper-PR CI gates coverage on CHANGED FILES via the smart-test manifest; the\nwhole-package ISOLATION run is `event: cron` only. So pkgcov is currently the only\npre-merge isolation gate. That is an argument for it landing SOMEWHERE, not for it\nstaying local. Separately, INV-dohoj records that smart-test cannot associate a\nshipped YAML data file with its consuming tests — that is a SELECTION defect and\npkgcov would not have caught it either, so it is not evidence for this item.\n\nFACT SETTLED WHILE INVESTIGATING: `.github/workflows/*` do NOT fire. `ci-debug runs`\nreports only `ci/woodpecker/push/woodpecker` and `ci/woodpecker/cron/full-suite`.\nWoodpecker is the sole live CI, so the GitHub Actions copies are legacy and the\nexposure window is set by the Woodpecker cron alone.\n\nALSO FOUND, worth a one-line fix regardless of this item's fate:\n`.woodpecker/woodpecker.yml:521` describes full-suite as \"(push-to-dev + `event:\ncron`...)\". The actual `when:` block in `.woodpecker/full-suite.yml` has NO push\nevent — cron only. That comment makes the safety net look denser than it is, and\nit is exactly the comment someone would read while deciding this question."  # 9e64
+    fields: {}  # 9e64
