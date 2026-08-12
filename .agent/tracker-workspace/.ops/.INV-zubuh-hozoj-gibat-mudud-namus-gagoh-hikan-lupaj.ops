@@ -1,0 +1,25 @@
+- op: create  # 7808
+  at: '2026-08-12T03:31:35Z'  # 7808
+  by: agent  # 7808
+  actor: jgstern_agent  # 7808
+  clock: 1  # 7808
+  nonce: '7808'  # 7808
+  data:  # 7808
+    kind: invariant  # 7808
+    title: "Coverage-gate adjudicability is a PRESENCE test: one catalogued primitive makes a whole module adjudicable, so a cosmetic module-string respell flips inconclusive to a false confirmed (measured, with controls)"  # 7808
+    status: violated  # 7808
+    priority: 1  # 7808
+    parent:  # 7808
+    tags:  # 7808
+    - verify_claims  # 7808
+    - io_boundary  # 7808
+    - security  # 7808
+    - analysis_quality  # 7808
+    isbefore: []  # 7808
+    duplicate_of: []  # 7808
+    not_duplicate_of: []  # 7808
+    pr_ref:  # 7808
+    description: "FOUND 2026-08-11 while investigating WI-bahid. This is the structural defect\nunderneath that decision, and it outlives whichever option is chosen there.\n\nTHE PREDICATE. `_uncatalogued_external_modules` (verify_claims.py:781-784) decides\nwhether a claim can be adjudicated for a module:\n\n    if any(module == p.module or p.module.startswith(f\"{module}.\")\n           for p in catalog.primitives):\n        continue        # module counts as COVERED\n\nThat is a PRESENCE test. One catalogued primitive in module M makes the whole of M\nadjudicable — so a claim over a repo using M can return `confirmed` instead of\n`inconclusive`, no matter how small the catalogued fraction of M is.\n\nMEASURED CONSEQUENCE, end to end, with controls in both directions. A Go fixture\nwhose host-filesystem writes go only through unix.Chmod / Chown / Fchmod / Fchown /\nFtruncate / Truncate / Rename — every one of which go.yaml itself classifies as\n`fs_write` three lines earlier under stdlib `syscall` — against the claim \"this\nservice never writes to the host filesystem\":\n\n    27 unix rows spelled `unix`                    -> inconclusive (exit 2)\n    same 27 rows respelled `golang.org/x/sys/unix` -> CONFIRMED    (exit 0)\n    same 27 rows under `example.com/irrelevant`    -> inconclusive  <- negative control\n    respelled + the 7 writes catalogued            -> violated, 2 chains <- positive control\n\nNothing about the program changed. Coverage went from honest doubt to a false\nall-clear because a module STRING started matching.\n\nWHY THIS IS NOT AN ARTEFACT OF THE WI-bahid PROPOSAL. The same predicate ALREADY\ngrants default credit to `golang.org/x/sys/execabs` on 3 rows today. That happens\nto be defensible — 3 rows is roughly its whole public API — but the gate cannot\ntell the difference between that and 27 rows covering 4.6% of x/sys/unix's 586\nexported functions (16% of its 168 I/O-family functions; 37 of 45 write-side fs\nfunctions uncatalogued, and 43 of 43 exec/proc uncatalogued INCLUDING `Exec`).\nPresence is doing the work that completeness should do.\n\nTWO DIFFERENT MODULE-MATCHING RULES IN ONE PIPELINE, which is the deeper problem\nand the reason this stayed invisible. The boundary TAGGER uses `_module_matches`\n(io_boundary.py:1779-1796), component-suffix-aware, so `unix` matches\n`golang.org/x/sys/unix`. The coverage GATE uses exact-or-prefix string equality,\nso it does not. The same catalogue row is simultaneously good enough to TAG a\nboundary and not good enough to COVER its module — and a purely cosmetic respell\nsilently flips the second without touching the first. Any future catalogue edit\nthat normalises a module string is therefore a security-relevant change wearing\nthe costume of a typo fix. That is the property worth fixing.\n\nCANDIDATE DIRECTIONS, none built:\n (a) Declare adjudicability explicitly — a per-catalogue `adjudicable_modules:`\n     list — so coverage is asserted rather than inferred from row presence.\n (b) Require a completeness signal per module (e.g. a declared provenance URL or\n     an enumerated-surface marker) before a module counts as covered.\n (c) At minimum, make the two module-matching rules ONE predicate, so the tagger\n     and the gate cannot disagree about what a row covers. This project's own\n     rule — a second home for one fact drifts immediately — applies directly.\n\nRELATED: INV-fibis is the same family (verify-claims returning `confirmed` for a\nboundary reachable through modules the catalogue cannot adjudicate). This item is\nthe mechanism by which a module BECOMES adjudicable, so it is upstream of that\none. Whether fixing this closes any part of INV-fibis was NOT determined."  # 7808
+    fields:  # 7808
+      statement: "A module must not count as covered for claim adjudication merely because the catalogue names one primitive in it."  # 7808
+      root_cause: "verify_claims.py:781-784 tests exact-or-prefix module equality against catalogue rows. The boundary tagger uses a DIFFERENT, component-aware predicate (io_boundary.py:1779-1796), so one row can tag a boundary while not covering its module — and normalising a module string silently grants adjudicability."  # 7808
