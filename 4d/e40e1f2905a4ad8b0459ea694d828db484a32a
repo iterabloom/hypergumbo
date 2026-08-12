@@ -1,0 +1,73 @@
+Original commit body from 81b0a926ce98705b03b355ea097f4c140c9fc2f8:
+
+INV-todas (P0). verify-claims returned `confirmed`, exit 0, for a claim naming a
+taint label that does not exist, on a fixture that really leaks — os.environ
+["API_KEY"] written through open(...).write. The boundary arm, given the same
+class of typo in the same command, exits 2 with a did-you-mean. One constraint
+vocabulary fails closed and the other fails open.
+
+    source_taint: secret_material          -> confirmed  rc 0    FAILED OPEN
+    prohibited_sink_zone: host_filesystem  -> confirmed  rc 0    FAILED OPEN
+    boundary: net_sends                    -> Error      rc 2    control
+    (correct host_secret / host_fs)        -> violated   rc 1    positive control
+
+MECHANISM, and this project already wrote the argument down. _parse_taint_flow
+calls _reject_unknown_keys, so it validates taint_flow KEY NAMES and never their
+VALUES. verify_claim then filters findings on `f.taint_label == tf.source_taint
+and f.sink_zone == tf.prohibited_sink_zone`; an unrecognised value matches
+nothing, the list is empty, and the claim confirms. The boundary arm's guard
+carries the identical reasoning in its own comment — "An unknown value here
+would otherwise make verify_claim's boundary_map.entries.get return None ->
+chain_count 0 -> silent 'confirmed'" — and was applied to one of the two
+vocabularies. It is WI-bopoz's unknown-FIELD-name defect one level deeper and
+strictly worse: WI-bopoz's symptom was inconclusive, this one was confirmed.
+
+CHEAPEST OF THE FALSE CONFIRMS TO TRIP. A mislabelled overlay takes deliberate
+effort; mistyping host_fs, or guessing secret_material for host_secret, is a
+first attempt, with the vocabulary printed nowhere on the error path. It now is.
+
+WHY THE CHECK IS NOT BESIDE THE BOUNDARY ONE, which is the only real design
+decision here. KNOWN_IO_BOUNDARIES is a constant; these vocabularies are not.
+They are assembled from taint_sources/*.yaml, AUTO_SOURCE_LABEL_MAP,
+AUTO_SINK_ZONE_MAP and any user-supplied --taint-sinks / extra_catalogs — this
+suite already contains a fixture declaring a zone (custom_zone) no built-in
+mentions, and it is now an explicit non-vacuity guard. So TaintCatalog gains
+all_source_labels() / all_sink_zones() reading the RESOLVED catalogue, and the
+check runs where the catalogue is resolved. Sanitizer output_taint values are
+deliberately excluded: verified in source that they are stored on the sanitizer
+record and never assigned to a finding, so admitting them would loosen the
+check for values that still cannot match.
+
+DISCLOSED COST: the resolved catalogue is assembled after the behavior map, so a
+typo is reported AFTER analysis rather than before. Better than confirming,
+worse than failing fast. Hoisting the catalogue load ahead of
+_get_or_run_analysis is a separate change and is not folded into a security fix.
+
+FIVE EXISTING TESTS FAILED AND FOUR WERE ASSERTING THE DEFECT. They used
+source_taint: "secret" — not a label — as incidental fixture filler while
+testing language coverage, data-file handling and the unsupported-language
+notice, and asserted rc == 0. With a real label their rc == 0 assertions hold
+unchanged, so their subjects were never at issue; the bogus label was.
+
+The fifth is a genuine, intended behaviour change. A CLI --taint-sources
+override that displaces a claims-file label used to leave the claim naming that
+label `confirmed`, with the recorded rationale "the override displaced it". A
+displaced label can be carried by no finding, so that was the tool answering "I
+cannot evaluate your claim" with "your claim holds". It exits 2 now, which is
+also STRONGER evidence for the precedence that test exists to prove: the error
+names the winner and the loser, so the override is visible in the output instead
+of inferred from a silence. That test's first assertion — the baseline where
+claims_label does seed and the flow is violated — is untouched.
+
+REGRESSION CHECKS. hypergumbo's own self-proof (docs/hypergumbo.claims.yaml,
+which declares its own sources, sinks and zone-barrier sanitizer) runs with ZERO
+vocabulary errors across all 18 claims, so the resolved-catalogue design accepts
+a project's own labels as intended. Separately and not caused by this change,
+that self-proof resolves nothing at all — 18 of 18 inconclusive on uncatalogued
+bash / csharp / solidity — filed as INV-dabuf rather than left as a surprise.
+
+A mixed claims file is scanned through, not up to the first non-taint claim: the
+skip for a boundary claim is a continue, not a break, and a test places a
+boundary claim FIRST so a regression to break cannot pass.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
