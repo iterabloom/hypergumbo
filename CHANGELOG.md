@@ -13,6 +13,19 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Fixed
+- **A constructor that IS an I/O primitive was never tagged, so `verify-claims` confirmed claims it violated (INV-motos P0).** The coverage gate counts `instantiates` as a call site the catalogue could have classified — its own comment justifying it, *"a constructor is a genuine classification opportunity"* — while `tag_io_boundaries` did not carry the type at all. So a constructor-shaped primitive was **examined** by the gate and **structurally untaggable** by the tagger, and "no chains found" became an all-clear. Shipped CLI, no overlay, no flags, claim `{boundary: subprocess, must_not_exist: true}`:
+
+  | fixture | before | after |
+  |---|---|---|
+  | `subprocess.Popen(["/bin/sh","-c","curl …"])` | **confirmed, rc 0** | violated, rc 1 |
+  | *control* — `subprocess.run(["/bin/sh","-c","curl …"])` | violated, rc 1 | violated, rc 1 |
+  | *control* — `telnetlib` exfiltration (INV-buzab) | inconclusive, rc 2 | inconclusive, rc 2 |
+  | *control* — `requests.post` | inconclusive, rc 2 | inconclusive, rc 2 |
+
+  Same claim, adjacent rows in one catalogue block, only the edge type differing — which is why the defect hid: every fixture written against `subprocess.run` looked correct. **106 classified constructor calls were going untagged across six repos** (django 50, hypergumbo itself 27 — including one `urllib.request.Request` and 13 `subprocess.Popen` — pretix 15, poetry 12, httpx 2, fastapi 0), dominated by `tempfile.TemporaryDirectory` and `subprocess.Popen`. That hypergumbo's own tree is in that population matters for the self-proof this work is building toward. **Direction measured, additive only:** poetry `total_io_edges` 504 → 516 (fs_write +10, subprocess +2), httpx 11 → 13 (fs_write +2), every other boundary and both repos' `external_potential` unchanged — matching the pre-fix prediction exactly. **Precision guarded rather than assumed:** `pathlib.Path` carries 19 rows and all are `kind: method`, so building a `Path` still tags nothing while `Path(p).write_text(x)` tags on the method edge as before; a test fails if a function-kind `Path` row ever appears. **One row's semantics become visible that were previously inert:** `urllib.request.Request` is catalogued `net_send` though constructing a `Request` sends nothing — a catalogue judgement to revisit in the row, not in the edge-type set. **Cross-language:** the measured population is Python-only, and not because other analyzers are safe — JavaScript emits 666 `instantiates` edges on pretix of which zero reach an external dst (WI-jubag). The fix is at the shared chokepoint, so it applies to whatever emits them later.
+
+- **The subset property is now a parity test, because one shared predicate was not enough.** `classify_call` already had one home consumed by both the tagger and the gate; what drifted was the edge **population** each ran it over. `test_the_gate_never_counts_an_edge_type_the_tagger_cannot_tag` asserts `_CALL_SITE_EDGE_TYPES ⊆ tag_io_boundaries.call_types` — deliberately one-directional, since the tagger is legitimately broader (`imports`, the FFI family) and that direction can only downgrade `confirmed` to `inconclusive`, whereas the reverse manufactures a false all-clear.
+
 - **`verify-claims` said `confirmed` about calls it had never examined (INV-buzab P0, INV-zubuh P1).** Reproduced on the shipped CLI with no overlay, no flags and no third-party dependency, alongside controls that behaved correctly in the same runs:
 
   | fixture (~10 lines of Python) | claim | before | after |

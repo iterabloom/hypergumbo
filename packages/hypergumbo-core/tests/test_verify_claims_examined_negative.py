@@ -392,6 +392,54 @@ class TestOnePredicateWithNoSecondHome:
                 f"{who} calls the catalogue lookup directly again"
             )
 
+    def test_the_gate_never_counts_an_edge_type_the_tagger_cannot_tag(
+        self,
+    ) -> None:
+        """ONE PREDICATE IS NOT ENOUGH — IT MUST RUN OVER ONE POPULATION.
+
+        The two tests above pin that the gate and the tagger consult a single
+        classification PREDICATE. Neither pins that they run it over the same
+        edge POPULATION, and that gap shipped as INV-motos:
+        ``_CALL_SITE_EDGE_TYPES`` carried ``instantiates`` — its own comment
+        justifying it, "a constructor is a genuine classification
+        opportunity" — while ``tag_io_boundaries`` did not. So a
+        constructor-shaped primitive was EXAMINED by the gate and untaggable
+        by the tagger, "no chains found" became ``confirmed``, and
+        ``subprocess.Popen([...])`` passed a "never shells out" claim at rc 0
+        while ``subprocess.run([...])`` correctly returned ``violated``.
+
+        ONLY ONE DIRECTION IS ASSERTED, and the asymmetry is the point. The
+        tagger may legitimately be BROADER — it carries ``imports`` and the
+        FFI family, which the gate documents excluding because an import
+        performs no I/O — and that direction is safe: an edge the tagger tags
+        but the gate ignores can only downgrade ``confirmed`` to
+        ``inconclusive``. The reverse manufactures a false all-clear, so the
+        reverse is what this test forbids.
+        """
+        import inspect
+
+        default = inspect.signature(
+            io_boundary.tag_io_boundaries,
+        ).parameters["call_types"].default
+        assert default, (
+            "assertion is vacuous — the tagger no longer has a default "
+            "call_types set to compare against"
+        )
+        assert verify_claims._CALL_SITE_EDGE_TYPES, (
+            "assertion is vacuous — the gate counts no edge types at all"
+        )
+        counted_but_untaggable = (
+            set(verify_claims._CALL_SITE_EDGE_TYPES) - set(default)
+        )
+        assert not counted_but_untaggable, (
+            f"the coverage gate counts {sorted(counted_but_untaggable)} as a "
+            f"call site the catalogue could have classified, but "
+            f"tag_io_boundaries will never tag those edges. Every primitive "
+            f"reached that way is EXAMINED with no chain to show for it, "
+            f"which is a silent `confirmed` (INV-motos). Add the type to "
+            f"tag_io_boundaries' call_types, or stop counting it in the gate."
+        )
+
 
 class TestEveryShippedCatalogueIsHeldToTheSameRule:
     """PARITY OVER THE LIVE REGISTRY, not over a list someone remembered to edit.

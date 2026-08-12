@@ -1671,6 +1671,82 @@ class TestTagIoBoundaries:
         assert count == 0
         assert edge.meta is None
 
+    def test_tags_a_constructor_call_to_an_io_primitive(self) -> None:
+        """INV-motos: a CONSTRUCTOR IS A CALL SITE.
+
+        ``instantiates`` was absent from ``call_types`` while the coverage
+        gate's ``_CALL_SITE_EDGE_TYPES`` carried it, so a constructor-shaped
+        catalogued primitive was counted EXAMINED by the gate and was
+        structurally untaggable here — and "no chains found" became
+        ``confirmed``. The dst shape is copied from a real survey of a
+        two-line fixture, not invented: python emits ``instantiates`` with
+        ``evidence_type: ast_new`` for ``subprocess.Popen([...])``.
+
+        Measured on the shipped CLI at filing, claim
+        ``{boundary: subprocess, must_not_exist: true}``::
+
+            subprocess.Popen([...])   ->  confirmed  rc 0   <- the defect
+            subprocess.run([...])     ->  violated   rc 1   <- the control
+
+        Same claim, adjacent catalogue rows, only the edge type differing.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:subprocess:0-0:Popen:external_symbol",
+            edge_type="instantiates",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1, (
+            "a constructor that IS the I/O primitive went untagged; the gate "
+            "counts this edge as examined, so the chain is the only thing "
+            "standing between it and a false all-clear"
+        )
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "subprocess"
+        assert edge.meta["io_primitive"] == "subprocess.Popen"
+
+    def test_the_function_form_of_the_same_primitive_was_always_tagged(
+        self,
+    ) -> None:
+        """THE CONTROL for the test above, and the reason the defect hid.
+
+        ``subprocess.run`` and ``subprocess.Popen`` are adjacent rows in one
+        catalogue block with one boundary. The call-shaped one has always been
+        tagged, so every fixture and every corpus number written against
+        ``run`` looked correct while ``Popen`` was invisible.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:subprocess:0-0:run:external_symbol",
+        )
+        assert tag_io_boundaries([edge], {"python": catalog}) == 1
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "subprocess"
+
+    def test_a_constructor_that_is_not_a_primitive_is_still_not_tagged(
+        self,
+    ) -> None:
+        """NON-VACUITY / precision guard on the widening above.
+
+        Admitting ``instantiates`` must not turn every construction into a
+        boundary. ``pathlib.Path`` is the case to watch: the catalogue carries
+        19 rows under it and every one is ``kind: method``, so building a
+        ``Path`` — which performs no I/O — matches nothing, while
+        ``Path(p).write_text(x)`` is tagged on the method edge as before. If
+        this test ever fails, a ``Path``-shaped row was added at function kind
+        and every path construction in the corpus just became fs I/O.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:pathlib:0-0:Path:external_symbol",
+            edge_type="instantiates",
+        )
+        assert tag_io_boundaries([edge], {"python": catalog}) == 0
+        assert edge.meta is None
+
     def test_skips_unknown_language(self) -> None:
         catalog = load_catalog("python")
         edge = self._make_edge(
