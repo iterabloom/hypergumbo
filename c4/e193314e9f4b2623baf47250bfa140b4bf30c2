@@ -1,0 +1,60 @@
+Original commit body from 120681690b3c2a568e5aa50c07552243b2c0b988:
+
+INV-zosun. A `confirmed` reached against the shipped catalogue and a `confirmed`
+reached against a repo-supplied overlay were byte-identical, in the text output
+and in the --json envelope alike. The only signal was one stderr line naming the
+overlay path: not attached to the verdict, absent from the envelope, and gone
+the instant anyone redirected the output.
+
+That is not cosmetic, because a catalogue row is not a detection-only grant.
+Since INV-buzab a call the catalogue CLASSIFIED is what `examined` MEANS, so a
+row carrying the wrong boundary converts an unexamined call into an examined one
+that produces no chain for the boundary actually claimed. Measured on one fixture
+posting os.environ["API_KEY"] through requests.post, claim "never sends data over
+the network", the middle run being the control that proves the row matched:
+
+    no overlay                        inconclusive  rc 2
+    requests.post -> net_send         violated      rc 1
+    requests.post -> fs_read          CONFIRMED     rc 0
+
+THE TWO LAYERS ARE REPORTED SEPARATELY, which is the decision-relevant half. A
+catalogue passed on the command line comes from whoever RAN the tool. One reached
+through the claims file's `extra_catalogs:` travels WITH the repository — and a
+claims file living inside the analysed tree means the subject is supplying its own
+grading criteria. Reproduced: a directory holding main.py, claims.yaml and an
+overlay filing requests.post under fs_read returns confirmed rc 0, where the same
+repo without the extra_catalogs line returns inconclusive rc 2. Collapsing the
+layers would report THAT a catalogue was used while hiding WHO supplied it.
+
+NO VERDICT CHANGES. Disclosure was chosen over restriction on purpose: refusing
+user catalogues would close the case ADR-0016 §27 created the overlay channel for
+(cataloguing third-party egress so it becomes visible), and the gap was never
+that users can extend the catalogue — it was that doing so left no trace on the
+answer.
+
+BOTH SURFACES, because a disclosure that exists only under --json is half
+shipped — this project's own precedent, recorded on INV-karud (a3) when WI-bifob's
+exclusion bucket reached the dataclass and never the text renderer. The
+pre-existing stderr line is weaker still: a redirect discards it. `catalog_
+provenance` is always present (VERIFY_CLAIMS_SCHEMA_VERSION 1.8 -> 1.9) so
+`user_supplied: false` is an assertable fact rather than an absent key, following
+`dataflow_coverage`'s convention rather than inventing a second one.
+
+THE MOST CONSEQUENTIAL BENEFICIARY IS OUR OWN SELF-PROOF.
+docs/hypergumbo.claims.yaml declares 6 taint-source, 6 taint-sink and 1 sanitizer
+catalogue through extra_catalogs, and now discloses all 13 as repo-supplied. That
+is legitimate — the safety zones ARE the design — but a reader of "hypergumbo says
+this is safe" is entitled to know the criteria came from the subject.
+
+NOT CLOSED BY THIS, and named rather than implied:
+ - ADR-0016 specified a fourth verdict ("confirmed with caveats") that remains
+   unimplemented. Changing verdict VOCABULARY is a different risk class from
+   adding a field, since consumers branch on `verdict`; not done pre-freeze.
+ - --taint-sanitizers is still an UNTESTED neighbour. Three attempts produced no
+   valid A/B: two placed the sanitizer in the same function as the source, a shape
+   the tool itself discloses is honoured only by ddg, and the third had no
+   baseline finding to delete. Recorded as untested, not counted safe.
+ - io-boundaries has the same stderr-only disclosure for the same overlays. Out
+   of scope here, which is about VERDICTS.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
