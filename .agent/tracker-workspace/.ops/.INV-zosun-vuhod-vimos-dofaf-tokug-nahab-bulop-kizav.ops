@@ -1,0 +1,32 @@
+- op: create  # 57c8
+  at: '2026-08-12T15:41:42Z'  # 57c8
+  by: agent  # 57c8
+  actor: jgstern_agent  # 57c8
+  clock: 1  # 57c8
+  nonce: 57c8  # 57c8
+  data:  # 57c8
+    kind: invariant  # 57c8
+    title: "A verdict does not record which catalogue it trusted: a 5-line project-local overlay re-opens INV-buzab's false confirm, and the fix's own text claims overlay rows are the safe direction"  # 57c8
+    status: violated  # 57c8
+    priority: 2  # 57c8
+    parent:  # 57c8
+    tags: []  # 57c8
+    isbefore: []  # 57c8
+    duplicate_of: []  # 57c8
+    not_duplicate_of: []  # 57c8
+    pr_ref:  # 57c8
+    description: "FOUND by the owner asking the structural question after INV-buzab landed: \"you\nclosed one user-writable hole — what about the analogous ones?\" The answer is\nthat the class is open, and one member is demonstrated below.\n\n*** A FIVE-LINE OVERLAY RE-OPENS INV-buzab'S EXACT FALSE CONFIRM. ***\nMeasured on the merged tree (dev dcb73df631), same fixture INV-buzab was filed\nagainst — a program that opens `telnetlib.Telnet(host, 23)` and writes\n`os.environ[\"API_KEY\"]` into it:\n\n    language: python\n    status: overlay\n    fs_read:\n      - module: telnetlib\n        functions: [Telnet]\n\n    baseline, no overlay                      -> inconclusive, rc 2\n    + that overlay, claim \"no net_send\"       -> CONFIRMED, rc 0\n\nThe overlay tells one lie: it labels a network constructor as a filesystem read.\nThat is enough. INV-buzab's fix makes a CLASSIFIED call count as examined — which\nis right, because classification means the analysis identified the call — but\nclassification is only as truthful as the catalogue making it, and a project-local\noverlay is part of that catalogue.\n\n*** AND THE PR THAT FIXED INV-buzab SAYS THE OPPOSITE. *** Its own text argues\nthat refusing `stdlib_module_completeness` from overlays while still accepting\nrows is safe because \"rows add detection, which is the safe direction for a\nuser-authored file.\" That is FALSE under the rule the same PR introduced. Rows\nadd detection AND grant examined-ness; a row with a wrong boundary label converts\nan unexamined call into an examined one that produces no chain for the claimed\nboundary. The CHANGELOG, the PR body and `load_overlay_catalog`'s new error\nmessage all repeat the claim and all need correcting.\n\nNOT A REGRESSION, and that matters for how urgent this is: before INV-buzab the\nsame overlay produced the same `confirmed` by the row-PRESENCE branch. The hole\npredates the fix and the fix did not widen it. What the fix did was make me\nassert it was closed.\n\nTHE REST OF THE CLASS — three more user-writable inputs reach the verdict, and I\nhave NOT reproduced these two:\n\n - `--taint-sanitizers` (and `--taint-sources` / `--taint-sinks`). A sanitizer\n   entry names functions that convert a taint label into a safe one; a flow\n   through one is reported `sanitized` and DROPPED from the violation set\n   (PR #214). So a user-supplied sanitizer naming the exfiltrating function\n   should delete the finding outright — a strictly stronger effect than the\n   overlay case, which only grants coverage. Same shape, same trust model, and\n   NOT tested here. Test it before assuming.\n - `extra_catalogs:` inside the claims file itself, which reaches both the io\n   and taint catalogue channels. This is the one that matters for the trial:\n   IF THE CLAIMS FILE AND ITS CATALOGUES LIVE IN THE REPO UNDER ANALYSIS, THE\n   REPO GRADES ITSELF. Not tested here either.\n\nTHE COMMON ROOT, and why per-door patching will not converge: every catalogue\ninput is trusted equally, and the verdict does not record what it trusted. A\n`confirmed` produced against the shipped catalogue and a `confirmed` produced\nagainst a repo-supplied overlay are byte-identical in both the text and the\n`--json` envelope. The only signal is one stderr line naming the overlay path,\nwhich is not in the envelope, is not attached to the verdict, and is gone the\nmoment anyone pipes the JSON somewhere.\n\nDIRECTIONS, none built, and they are not exclusive:\n (a) DISCLOSE IN THE VERDICT. Stamp each verdict with the catalogue provenance\n     it relied on — which primitives that fired came from an overlay, and\n     whether any user-supplied catalogue was loaded at all. Cheapest, changes no\n     behaviour, and turns an invisible trust decision into a visible one. This\n     is the one to do first regardless of what else follows.\n (b) SEPARATE THE VERDICT. A claim adjudicated with user-supplied catalogue\n     input is a different assurance from one adjudicated against the shipped\n     catalogue; ADR-0016 already specified a fourth verdict (\"Confirmed with\n     caveats\") that was never implemented, and this is a natural consumer.\n (c) REFUSE OVERLAY INPUT FOR must_not_exist CLAIMS. Strictest, and probably\n     wrong — it would break the legitimate case the overlay channel exists for\n     (a user cataloguing `requests` so their own egress becomes visible).\n (d) DO NOTHING BUT WRITE IT DOWN. Defensible for a local dev tool. NOT\n     defensible for the trial, where the artifact is \"hypergumbo says this is\n     safe\" and the repo may supply its own claims file.\n\nWHAT IS NOT IN DOUBT: this is a trust-model question, not a parser bug. The\noverlay channel is doing what ADR-0016 §55 designed it to do (\"the user owns\nthose rows\"). What is missing is that owning the rows silently means owning the\nverdict."  # 57c8
+    fields:  # 57c8
+      statement: "A confirmed verdict must disclose whether it relied on user-supplied catalogue input."  # 57c8
+      root_cause: "Every catalogue input (io overlay, taint sources/sinks/sanitizers, claims-file extra_catalogs) is trusted equally and none is marked in the verdict; INV-buzab made a CLASSIFIED call count as examined, and classification is only as truthful as the catalogue making it."  # 57c8
+- op: update  # 1b19
+  at: '2026-08-12T15:41:51Z'  # 1b19
+  by: agent  # 1b19
+  actor: jgstern_agent  # 1b19
+  clock: 2  # 1b19
+  nonce: 1b19  # 1b19
+  set:  # 1b19
+    status: violated  # 1b19
+    priority: 1  # 1b19
+  add:  # 1b19
+    tags: [security, verify_claims, io_boundary, false_confirm, trust_model, bucket_a]  # 1b19

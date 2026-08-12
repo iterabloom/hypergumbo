@@ -20,3 +20,12 @@
       priority: "P2"  # 6e4e
       status: "todo_hard"  # 6e4e
       tags: "io_boundary,verify_claims,catalogue,recall,bucket_a"  # 6e4e
+- op: update  # b2d1
+  at: '2026-08-12T08:47:02Z'  # b2d1
+  by: agent  # b2d1
+  actor: jgstern_agent  # b2d1
+  clock: 2  # b2d1
+  nonce: b2d1  # b2d1
+  set: {}  # b2d1
+  add:  # b2d1
+    tags: [io_boundary, verify_claims, catalogue, recall]  # b2d1
