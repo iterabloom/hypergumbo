@@ -1,0 +1,33 @@
+Original commit body from cbb0154b306dc41e6376055f7cd4865e1f5d4411:
+
+Two corrections to the overlay section, both about what the channel actually
+guarantees.
+
+"Three constraints" is now four. PR #306 added a refusal of
+stdlib_module_completeness from overlays — since INV-buzab that field is the
+single grant of confirmability, so it grants strictly more than the
+`status: complete` this list already refuses — and the enumeration was never
+updated. The loader enforces four; the ADR described three.
+
+The larger omission: every constraint in that list bounds an overlay's
+STANDING (may it call itself complete, may it relabel a package as stdlib) and
+none of them bounds its INFLUENCE on a verdict. A row is not a detection-only
+grant. A classified call is what `examined` MEANS, so a row also decides
+whether a must_not_exist claim over a DIFFERENT boundary may be confirmed, and
+a row carrying the wrong boundary yields an examined call producing no chain
+for the boundary claimed. Recorded with the three-way measurement and its
+control:
+
+    no overlay                          inconclusive  rc 2
+    requests.post declared net_send     violated      rc 1   <- control
+    requests.post declared fs_read      CONFIRMED     rc 0
+
+Stated as a disclosure, not an argument for refusing rows: refusing them would
+close the case §55 exists for, and it is not a regression — before INV-buzab,
+row PRESENCE alone permitted the whole module on weaker evidence. The residual
+is that a verdict records nothing about which catalogue it trusted; that is
+INV-zosun, and the indicated first move there is disclosure, not restriction.
+
+Edited in place per docs/adr/README.md; no supersession, Status unchanged.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
