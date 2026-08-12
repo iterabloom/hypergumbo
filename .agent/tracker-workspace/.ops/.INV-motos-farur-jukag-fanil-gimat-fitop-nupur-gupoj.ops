@@ -19,3 +19,36 @@
     fields:  # 5f34
       statement: "Every edge type the coverage gate counts as a classification opportunity (verify_claims._CALL_SITE_EDGE_TYPES) must be an edge type io_boundary.tag_io_boundaries can actually tag (its call_types). VIOLATED: 'instantiates' is in the gate and not in the tagger, so a constructor-shaped catalogued primitive is counted EXAMINED while being structurally untaggable, and 'no chains found' becomes confirmed. Shipped CLI, no overlay, no flags: subprocess.Popen([...]) returns confirmed rc 0 for {boundary: subprocess, must_not_exist: true} while the control subprocess.run([...]) returns violated rc 1."  # 5f34
       root_cause: "tag_io_boundaries' call_types default was written for the tagging pass alone and never re-audited when _CALL_SITE_EDGE_TYPES was authored for the INV-buzab coverage gate. The two sets encode the same question (which edges are a call site the catalogue could classify) and drifted; the existing parity test asserts both consumers share one PREDICATE (classify_call) but never that they run it over the same edge POPULATION."  # 5f34
+- op: update  # a291
+  at: '2026-08-12T16:52:44Z'  # a291
+  by: agent  # a291
+  actor: jgstern_agent  # a291
+  clock: 2  # a291
+  nonce: a291  # a291
+  set:  # a291
+    priority: 0  # a291
+  add:  # a291
+    tags: [io_boundary, verify_claims, security]  # a291
+- op: discuss  # 57b9
+  at: '2026-08-12T16:52:45Z'  # 57b9
+  by: agent  # 57b9
+  actor: jgstern_agent  # 57b9
+  clock: 3  # 57b9
+  nonce: 57b9  # 57b9
+  message: "Filed while verifying the CHANGELOG correction I owed from PR #306. The control failed, not the subject: a CORRECTLY-labelled overlay row for telnetlib.Telnet also produced confirmed, which turned out to have nothing to do with overlays. Behavioural repro + control in the description; both re-run on dev dcb73df631."  # 57b9
+- op: update  # cfa4
+  at: '2026-08-12T18:52:09Z'  # cfa4
+  by: agent  # cfa4
+  actor: jgstern_agent  # cfa4
+  clock: 4  # cfa4
+  nonce: cfa4  # cfa4
+  set:  # cfa4
+    status: satisfied  # cfa4
+    pr_ref: '309'  # cfa4
+- op: discuss  # 4fa0
+  at: '2026-08-12T18:52:09Z'  # 4fa0
+  by: agent  # 4fa0
+  actor: jgstern_agent  # 4fa0
+  clock: 5  # 4fa0
+  nonce: 4fa0  # 4fa0
+  message: "SATISFIED by PR #309, merged as cfe6e0e6cc. Behavioural evidence, re-run\nagainst the MERGED tree (dev 69e541f119), not a proxy:\n\n  hypergumbo verify-claims fixtures/popen --claims claims-subprocess.yaml\n      -> rc 1 (was rc 0 / confirmed)          the filed repro, closed\n  hypergumbo verify-claims fixtures/popen_control ...\n      -> rc 1                                  control, unchanged\n  hypergumbo verify-claims fixtures/telnet --claims claims.yaml\n      -> rc 2                                  INV-buzab regression control holds\n  hypergumbo verify-claims fixtures/requests --claims claims.yaml\n      -> rc 2                                  regression control holds\n\n  hypergumbo io-boundaries fixtures/popen\n      -> subprocess: 1 call(s) [HIGH RISK]  subprocess.Popen (1)\n         reachable from: main (main.py:4)\n      previously: an empty boundary map\n\nFIX: `instantiates` added to tag_io_boundaries' call_types, plus a parity test\nasserting _CALL_SITE_EDGE_TYPES is a SUBSET of it — one-directional on purpose,\nsince the tagger is legitimately broader (imports, the FFI family) and that\ndirection can only downgrade confirmed to inconclusive.\n\nDIRECTION, measured on real repos and additive only: poetry total_io_edges\n504 -> 516 (fs_write +10, subprocess +2), httpx 11 -> 13 (fs_write +2); all\nother boundaries and external_potential unchanged. The deltas matched the\npre-fix classify_call prediction exactly, which was the control on the\ninstrument.\n\nDISCLOSED, not closed by this: urllib.request.Request is catalogued net_send\nthough constructing a Request sends nothing. That row was inert while\nconstructors went untagged and is now visible — a catalogue judgement to revisit\nin the row, not in the edge-type set. And the measured population is Python-only\nbecause JavaScript emits 666 instantiates edges on pretix of which zero reach an\nexternal dst (WI-jubag), NOT because other analyzers are safe."  # 4fa0
