@@ -37,3 +37,19 @@
   clock: 3  # c13c
   nonce: c13c  # c13c
   message: "Found while probing INV-zosun's untested neighbours, not while looking for it.\nMy first taint fixture used source_taint: secret_material and returned confirmed\nrc 0 — I read that as \"my fixture produces no flow\", which was half right and\nhalf the defect. Correcting the label to host_secret gave violated rc 1, so the\nfixture was fine and the label was the bug.\n\nDiscriminator: the boundary arm, given the same class of typo in the same\ncommand, exits 2 with a did-you-mean. One arm fails closed, the other fails\nopen, and the code comment justifying the closed one describes the open one.\n\nSeverity argument: this is cheaper to trip than any INV-zosun door. A\nmislabelled overlay takes deliberate effort; mistyping host_fs as\nhost_filesystem, or guessing secret_material for host_secret, is what an author\ndoes on a first attempt, with no vocabulary printed anywhere on the error path."  # c13c
+- op: update  # ac49
+  at: '2026-08-12T20:17:43Z'  # ac49
+  by: agent  # ac49
+  actor: jgstern_agent  # ac49
+  clock: 4  # ac49
+  nonce: ac49  # ac49
+  set:  # ac49
+    status: satisfied  # ac49
+    pr_ref: '311'  # ac49
+- op: discuss  # 967e
+  at: '2026-08-12T20:17:43Z'  # 967e
+  by: agent  # 967e
+  actor: jgstern_agent  # 967e
+  clock: 5  # 967e
+  nonce: 967e  # 967e
+  message: "SATISFIED by PR #311, merged as 4de40e1f29. Behavioural evidence re-run against\nthe MERGED tree, both filed repros plus both controls:\n\n  verify-claims fx-taint --claims claims-taint.yaml       (secret_material)\n      -> rc 2   (was rc 0 / confirmed)\n  verify-claims fx-taint --claims claims-typo-zone.yaml   (host_filesystem)\n      -> rc 2   (was rc 0 / confirmed)\n      Error: unknown prohibited_sink_zone 'host_filesystem' in claim\n      'no-secret-to-fs'; valid values: browser_storage, database, host_env,\n      host_fs, ipc, logging, network, subprocess. Did you mean: host_fs,\n      host_env?\n  verify-claims fx-taint --claims claims-taint2.yaml      (correct labels)\n      -> rc 1 violated                       positive control, unchanged\n  verify-claims fx-taint --claims claims-typo-boundary.yaml\n      -> rc 2                                boundary control, unchanged\n\nFIX: TaintCatalog.all_source_labels() / all_sink_zones() read the RESOLVED\ncatalogue; verify_claims.validate_taint_flow_vocabulary checks both taint_flow\nvalues and raises ClaimsFileError with the vocabulary and a did-you-mean;\ncmd_verify_claims calls it where the catalogue is resolved and returns 2.\n\nNot beside the boundary check on purpose: KNOWN_IO_BOUNDARIES is a constant,\nthese vocabularies are not — a project-local --taint-sinks may declare a zone no\nbuilt-in mentions, and this suite already had such a fixture, now an explicit\nnon-vacuity guard.\n\nFOUR EXISTING TESTS WERE ASSERTING THE DEFECT (source_taint: \"secret\", not a\nlabel, asserting rc 0). With a real label their rc 0 assertions hold unchanged,\nso their subjects were never at issue. A fifth changed on purpose: a CLI\n--taint-sources override that displaces a claims-file label used to leave the\nclaim naming it `confirmed` (\"the override displaced it\"); a displaced label can\nbe carried by no finding, so rc 2 is the honest verdict and is stronger\nprecedence evidence, since the error names winner and loser.\n\nDISCLOSED, NOT CLOSED BY THIS: a typo is now reported AFTER analysis rather than\nbefore, because the resolved catalogue is assembled after the behavior map.\nHoisting the catalogue load ahead of _get_or_run_analysis would make it fail\nfast; deliberately not folded into a security fix.\n\nVERIFIED NOT REGRESSED: hypergumbo's own self-proof (docs/hypergumbo.claims.yaml,\nwhich declares its own sources/sinks/sanitizers) runs with ZERO vocabulary errors\nacross all 18 claims. That same run surfaced INV-dabuf — the self-proof resolves\nnothing at all, for an unrelated pre-existing reason."  # 967e

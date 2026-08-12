@@ -19,3 +19,21 @@
     fields:  # f970
       statement: "Running docs/hypergumbo.claims.yaml against this repo must resolve its claims, or the self-proof the plan requires ('hypergumbo must USE its own io/DDG/CFG analysis to SHOW there can be no exfiltration, as a machine-checkable artifact anyone can re-run') does not exist. VIOLATED: all 18 claims return inconclusive, rc 2, every one because the repo contains bash / csharp / solidity files with no taint catalogue. The claims file itself is fine — its labels, zones, sources, sinks and zone-barrier sanitizer all resolve, verified with zero vocabulary errors while landing INV-todas."  # f970
       root_cause: "The language-coverage gate is REPO-scoped, not CLAIM-scoped: any language present anywhere in the tree with no taint catalogue blocks every claim, regardless of whether files in that language could participate in the flow a given claim forbids. A solidity fixture under a tests directory cannot reach cmd_sketch's filesystem writes, but it still blocks 'runtime-cli-no-host-fs'. Compounding it, the census counts non-production paths that the boundary arm's production-default (WI-bifob) already knows how to exclude."  # f970
+- op: update  # 9a57
+  at: '2026-08-12T19:01:47Z'  # 9a57
+  by: agent  # 9a57
+  actor: jgstern_agent  # 9a57
+  clock: 2  # 9a57
+  nonce: 9a57  # 9a57
+  set:  # 9a57
+    status: violated  # 9a57
+    priority: 1  # 9a57
+  add:  # 9a57
+    tags: [verify_claims, taint, security]  # 9a57
+- op: discuss  # 2893
+  at: '2026-08-12T19:01:48Z'  # 2893
+  by: agent  # 2893
+  actor: jgstern_agent  # 2893
+  clock: 3  # 2893
+  nonce: '2893'  # 2893
+  message: "Found while verifying that the INV-todas vocabulary check did not regress the self-proof. It did not — zero vocabulary errors across all 18 claims — but the run surfaced that the artifact resolves nothing at all, for an unrelated and pre-existing reason. Filed rather than folded into the INV-todas PR: this is a scoping decision about the language-coverage gate, not a security fix, and the plan's bucket-A self-proof item depends on it."  # 2893
