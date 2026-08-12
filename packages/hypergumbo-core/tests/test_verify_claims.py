@@ -1295,6 +1295,45 @@ class TestComputeBoundaryCoverage:
         )
         assert cov.complete is True
 
+    def test_a_call_emitting_language_with_no_catalogue_is_incomplete(
+        self,
+    ) -> None:
+        """INV-dabov: the third blind spot, and the one that failed OPEN.
+
+        A language with no ``io_primitives/*.yaml`` never reaches
+        ``supported_languages`` — ``cmd_verify_claims`` builds its catalogs
+        dict under ``if catalog.primitives:``, so an empty catalogue is
+        dropped and the language is invisible to the ``blind`` check above.
+        It is equally invisible to ``_uncatalogued_external_modules``, whose
+        ``catalog is None`` skip fires for the same reason. So the analysis
+        sees the calls, can classify none of them, and says ``confirmed``.
+
+        Reproduced on the shipped CLI with a 7-line Ruby fixture doing
+        ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: the
+        ``net_send`` claim returned **confirmed, rc 0**, with no disclosure of
+        any kind — and the analyzer is not blind, it emits the call edge.
+
+        The rule is CALL-SCOPED, not repo-scoped, and that distinction is
+        load-bearing: measured across six repos, a repo-scoped rule would name
+        up to 16 languages including ``markdown``, ``gitignore`` and ``yaml``,
+        while the call-scoped one names between one and three real ones.
+        ``test_unsupported_language_without_calls_does_not_block`` is the
+        guard for that half and must keep passing.
+        """
+        ruby_call = {
+            "src": "ruby:main.rb:3-7:exfiltrate:function",
+            "dst": "ruby:http:0-0:new:external_symbol",
+            "type": "calls",
+        }
+        cov = compute_boundary_coverage(
+            [_PY_CALL, ruby_call], {"python"}, _REAL_CATALOGS,
+        )
+        assert cov.complete is False, (
+            "a language whose calls the catalogue cannot classify at all "
+            "supported a clean verdict"
+        )
+        assert "ruby" in cov.reason, "the reason must name what went unexamined"
+
     def test_non_call_edge_types_do_not_count(self) -> None:
         non_call = {
             "src": "python:a.py:1:f:function",

@@ -1181,6 +1181,45 @@ def compute_boundary_coverage(
             ),
         )
 
+    # INV-dabov: a language that CALLED into something and has no I/O
+    # catalogue at all. Derived here rather than taken as an argument, for the
+    # reason the ``catalogs`` docstring already gives: a safety gate a caller
+    # can forget to arm fails open, and this one was unarmable — the language
+    # never reaches ``supported_languages`` in the first place, because
+    # ``cmd_verify_claims`` builds its catalogs dict under
+    # ``if catalog.primitives:`` and drops an empty catalogue. The same
+    # omission makes ``_uncatalogued_external_modules`` skip it on
+    # ``catalog is None``. So the calls were seen, none could be classified,
+    # and the verdict was ``confirmed``: reproduced on a 7-line Ruby fixture
+    # posting ``ENV['API_KEY']`` to a remote host, rc 0, no disclosure.
+    #
+    # CALL-SCOPED, NOT REPO-SCOPED, and the distinction is the whole design.
+    # Measured over six repos: keyed on languages PRESENT this would name up
+    # to 16 apiece — markdown, gitignore, yaml, toml — and downgrade every
+    # verdict for a .gitignore. Keyed on languages that emitted CALL EDGES it
+    # names one to three real ones (bash on 6/6; +vue on pretix; +csharp,
+    # solidity on hypergumbo, both of which are test fixtures). The honest
+    # cost is disclosed rather than hidden: `bash` is universal on that
+    # cohort, so until an io_primitives/bash.yaml exists this downgrades most
+    # real repos to `inconclusive` — which is the correct answer for a tool
+    # that cannot see what a shell script does, and is why the catalogue is
+    # the follow-up rather than a scope exclusion here.
+    uncatalogued = sorted(languages_with_calls - set(catalogs))
+    if uncatalogued:
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                # No trailing conclusion: verify_claim appends "; cannot
+                # confirm the boundary is unused." to whatever this returns,
+                # and the first draft of this string said it too, so the
+                # verdict read "...cannot confirm the boundary is unused;
+                # cannot confirm the boundary is unused." Every other reason
+                # here states only the CAUSE for the same reason.
+                f"language(s) {', '.join(uncatalogued)} made calls but have "
+                f"no I/O catalog, so none of their I/O could be classified"
+            ),
+        )
+
     blind = sorted(supported_languages - languages_with_calls)
     if blind:
         return BoundaryCoverage(
