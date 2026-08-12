@@ -24,3 +24,11 @@
     fields:  # cf82
       statement: "A claim may be confirmed only over modules whose I/O surface was actually enumerated, not merely recognised by name."  # cf82
       root_cause: "verify_claims.py:779 calls is_stdlib_module (membership in a 300-entry list generated from sys.stdlib_module_names) where its own docstring promises 'an examined negative'. The predicate that means that — is_stdlib_module_complete, designed 2026-05-13 — is never called by the gate; 1 of 300 modules carries the flag and 272 have no catalogue row at all."  # cf82
+- op: update  # a845
+  at: '2026-08-12T07:50:53Z'  # a845
+  by: agent  # a845
+  actor: jgstern_agent  # a845
+  clock: 2  # a845
+  nonce: a845  # a845
+  set:  # a845
+    status: satisfied  # a845
