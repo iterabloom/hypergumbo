@@ -42,7 +42,7 @@ from .edge_types import is_grpc_rpc_implementation
 from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
-    from .ir import Edge
+    from .ir import Edge, ExternalRef
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +632,19 @@ class IoBoundaryCatalog:
     def is_stdlib_module(self, module: str) -> bool:
         """Return True when ``module`` is a recognised stdlib module.
 
+        RECOGNITION, NOT EXAMINATION — and the distinction is load-bearing
+        enough that it cost a P0. This answers "does this name ship with the
+        interpreter", which is what the supply-chain ecosystem classifier
+        (``cli.py``'s ``_make_ecosystem_classifier``) and the Python dependency
+        manifest filter (``py_deps.py``) need. It says NOTHING about whether
+        this catalogue enumerated the module's I/O: 283 of Python's 300
+        enumerated stdlib modules carry no primitive row at all. A caller
+        asking "would I have SEEN this module's I/O" must use
+        :meth:`module_io_is_enumerated` instead; ``verify_claims`` used this
+        one for eight months and confirmed "never sends data over the network"
+        for a program that opened ``telnetlib.Telnet`` and wrote a secret into
+        it (INV-buzab).
+
         Match rules:
         - Exact match against :attr:`stdlib_modules` (the authoritative
           per-language interpreter list).
@@ -669,15 +682,74 @@ class IoBoundaryCatalog:
                 return True
         return False
 
-    def is_stdlib_module_complete(self, module: str) -> bool:
-        """Return True when ``module`` is flagged closed-world complete.
+    def module_io_is_enumerated(self, module: str) -> bool:
+        """Return True when this catalogue has ENUMERATED ``module``'s I/O surface.
 
-        Closed-world means we've enumerated every I/O primitive in this
-        module, so an unmatched call to ``module.X`` is provably NOT
-        I/O. The F3 PR-C Filter 2 short-circuit consults this method
-        before suppressing ``external_potential`` chains.
+        THE ONE PREDICATE ANY CONSUMER SHOULD ASK BEFORE TREATING SILENCE AS
+        EVIDENCE. "No chains found in M" is an examined negative only if M's
+        I/O was enumerated; otherwise it means "none I could see". Two adjacent
+        predicates were used for that question and neither answers it:
+
+        - :meth:`is_stdlib_module` answers "do I recognise this name". It
+          permitted ``telnetlib``, ``ssl`` and ``ctypes`` — zero rows apiece —
+          into a ``confirmed`` verdict (INV-buzab).
+        - Row PRESENCE ("the catalogue declares some primitive for M") answers
+          "have I catalogued ANY of M's I/O", which vouches for the rest of the
+          module and for every OTHER boundary kind at once. ``os`` carries 40
+          rows and none of them is ``os.open`` / ``os.write`` / ``os.sendfile``,
+          so a program writing through ``os.open`` confirmed "never writes to
+          the host filesystem" (INV-zubuh).
+
+        MATCHING IS EXACT. Not a prefix, not a suffix, not a component. An
+        earlier draft let a declaration propagate DOWN a separator — declaring
+        ``urllib`` would vouch for ``urllib.request`` — on the reasoning that a
+        closed-world claim about a package covers what is addressed through its
+        name. That reasoning is wrong in at least three shipped languages and
+        the draft's own worked example was one of the counterexamples:
+
+        - ``urllib`` is a NAMESPACE package. ``urllib.request`` (opens URLs),
+          ``urllib.parse`` (pure string work) and ``urllib.error`` are
+          independent modules with unrelated I/O surfaces. Auditing one says
+          nothing about the others, so the example promoted an unaudited
+          network module on the strength of a string.
+        - In Go the separator is not containment at all. ``crypto/tls``,
+          ``os/exec`` and ``math/rand`` are independent packages; a declaration
+          for ``math`` would have vouched for ``math/rand``, and one for ``os``
+          for ``os/exec`` — the subprocess surface.
+        - Rust and C++ namespace with ``::``, which the separator list did not
+          even contain, so the rule was simultaneously too loose for Go and
+          inert for Rust. A rule that is wrong in one direction for one
+          language and absent for another is not one rule.
+
+        So an auditor declares every module they actually audited, submodules
+        included, and the predicate never infers a second module from a first.
+        That is more authoring per unit of confirmability and it is the only
+        version that means what it says.
+
+        NOR IS IT A SUFFIX, which is the other half of the safety argument.
+        :func:`_module_matches` — the boundary TAGGER's rule — matches trailing
+        components, so ``unix`` finds ``golang.org/x/sys/unix``. The two stay
+        separate on purpose: the tagger is permissive because a missed tag
+        loses a finding, while this gate is strict because a wrong permit
+        manufactures a false all-clear. Unifying them toward the tagger would
+        make a cosmetic module-string respell a security-relevant edit.
+
+        An empty ``stdlib_module_completeness`` therefore means "nothing has
+        been enumerated", and every module blocks. That is the correct starting
+        state for a catalogue nobody has audited, and it is what 13 of the 14
+        shipped catalogues are in today.
+
+        BOTH CONSUMERS OF THE CLOSED-WORLD CLAIM COME THROUGH HERE, because
+        they are asking one question and a second home for it would drift. This
+        replaced ``is_stdlib_module_complete``, whose sole caller was the F3
+        Filter 2 ``external_potential`` skip — which asks the identical thing
+        ("is an unmatched call into this module provably not I/O") and
+        therefore wants the identical answer. With exact matching the two are
+        behaviourally identical, so the fold carries no behaviour change at
+        all; it removes the second home rather than trading one rule for
+        another.
         """
-        return module in self.stdlib_module_completeness
+        return bool(module) and module in self.stdlib_module_completeness
 
     def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
         """Merge a parent catalog into this one. Self's entries take precedence.
@@ -854,10 +926,27 @@ class IoBoundaryCatalog:
                 name = entry.get("module")
                 if not isinstance(name, str) or not name:
                     continue
-                # Adding to completeness implies the module is stdlib —
-                # auto-promote so callers don't have to keep both
-                # sections in sync.
-                stdlib_modules_set.add(name)
+                # NO AUTO-PROMOTE INTO ``stdlib_modules``. This used to read
+                # ``stdlib_modules_set.add(name)`` on the reasoning that
+                # "adding to completeness implies the module is stdlib", which
+                # conflates two different facts under one write: "I enumerated
+                # this module's I/O" (an audit result) and "this name ships
+                # with the interpreter" (provenance, feeding the supply-chain
+                # ecosystem classifier and py_deps). ADR-0016 forbids exactly
+                # that conflation for overlays — "a ``requests`` overlay must
+                # not relabel a PyPI package as stdlib; that feeds the
+                # dependency classifier and the F3 filter, and would be a
+                # supply-chain misread rather than an I/O one" — and
+                # :func:`load_overlay_catalog` enforces it by popping
+                # ``stdlib_modules``. The auto-promote defeated that pop:
+                # measured, an overlay carrying ONLY a
+                # ``stdlib_module_completeness`` entry for ``requests`` made
+                # ``is_stdlib_module("requests")`` return True on the merged
+                # catalogue, while the same overlay spelling it
+                # ``stdlib_modules:`` was correctly stripped. Behaviour-neutral
+                # for the shipped catalogues: python.yaml's sole entry
+                # (``math``) is already in the generated ``stdlib_modules``
+                # block, and no other catalogue declares completeness at all.
                 if entry.get("completeness") == "complete":
                     retrieved = entry.get("retrieved")
                     if not isinstance(retrieved, str) or not retrieved:
@@ -990,9 +1079,32 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"'complete' asserts a provenance-backed stdlib enumeration and is "
             f"not available to a project-local overlay.",
         )
+    if data.get("stdlib_module_completeness"):
+        raise IoPrimitiveOverlayError(
+            f"I/O primitive overlay {path} declares "
+            f"stdlib_module_completeness, which is not available to a "
+            f"project-local overlay. A closed-world entry is what lets "
+            f"verify-claims answer 'confirmed' about the calls it could not "
+            f"classify, so it grants strictly MORE than the "
+            f"'status: complete' this loader already refuses. Supply "
+            f"primitive ROWS instead: rows add detection, which is the safe "
+            f"direction for a user-authored file.",
+        )
     # Hand ``_from_dict`` a status it accepts; the overlay marker has already
     # done its job (refusing a completeness claim) and must not reach the
     # stdlib-provenance validator, which exists for the shipped catalogues.
+    #
+    # WHY THE COMPLETENESS REFUSAL IS AN ERROR AND NOT A POP. The two lines
+    # below drop stdlib-provenance fields silently, which is right for them:
+    # they are inert in an overlay and dropping one changes nothing a user
+    # asked for. A completeness entry is the opposite — it is the single grant
+    # of confirmability (INV-buzab), so silently discarding it would leave the
+    # author believing they had vouched for a module. Measured before this
+    # refusal existed: a SIX-LINE overlay with zero primitive rows and one
+    # completeness entry for ``telnetlib`` turned the INV-buzab exfiltration
+    # fixture — which opens a telnet session and writes ``os.environ["API_KEY"]``
+    # into it — from ``inconclusive`` rc 2 back to ``confirmed`` rc 0, disclosed
+    # by nothing but a stderr line naming the overlay path.
     payload = dict(data)
     payload["status"] = "in_progress"
     payload.pop("stdlib_modules", None)
@@ -1554,7 +1666,7 @@ def _compute_external_potential(
         # still see catalog gaps. ``module_hint`` is the structured
         # source (``edge.dst_ref.module_path`` when available, else the
         # colon-split fallback) computed earlier in this function.
-        if module_hint and catalog.is_stdlib_module_complete(module_hint):
+        if module_hint and catalog.module_io_is_enumerated(module_hint):
             continue
 
         sc = dst_node.get("supply_chain") or {}
@@ -2050,6 +2162,62 @@ def _resolve_ffi_catalog(
     return catalogs.get(lang), module_hint
 
 
+def classify_call(
+    catalogs: dict[str, IoBoundaryCatalog],
+    dst: str,
+    meta: Optional[dict[str, Any]] = None,
+    *,
+    dst_ref: Optional[ExternalRef] = None,
+) -> Optional[IoPrimitive]:
+    """The I/O primitive this call reaches, or ``None`` if the catalogue has none.
+
+    THE ONE ANSWER TO "DID THE CATALOGUE CLASSIFY THIS CALL", consumed by
+    :func:`tag_io_boundaries` (which stamps the result onto the edge) and by
+    ``verify_claims._uncatalogued_external_modules`` (which treats a classified
+    call as EXAMINED). Those two were about to disagree, and the disagreement
+    would have been a false safety claim in both directions at once.
+
+    WHY THE COVERAGE GATE NEEDS THIS AND NOT A MODULE-LEVEL TEST. The gate asks
+    whether "no chains found" is an examined negative. Its first form asked that
+    per MODULE — is this module's I/O surface enumerated — and a module-level
+    answer is wrong at both ends. It called ``os`` unexamined while the same run
+    was classifying ``os.mkdir`` through it: measured, a fixture calling
+    ``json.dump(obj, fh)`` printed *"calls into 2 module(s) with no I/O catalog
+    coverage (builtins, json)"* directly above *"2 fs_write chain(s) found"* —
+    chains found through those very modules. **A call the catalogue matched was
+    examined; that is what examination IS.** The enumeration record is what
+    settles the calls it did NOT match, which is a strictly smaller question.
+
+    THE TWO CALLERS DIFFER ONLY IN WHAT THEY CAN SUPPLY, not in the rule. The
+    tagger holds real ``Edge`` objects and passes ``dst_ref`` (the WI-tihup
+    structured target) straight through; the gate holds serialized dicts and
+    passes whatever ``dst_ref`` the map carried, falling back to the same
+    ``_extract_callee_name`` / ``_extract_module_hint`` pair the tagger used
+    before this function existed. ``call_construct``, ``io_mode``, the FFI
+    pseudo-namespace redirect and the INV-sapit short-name withholding are
+    shared verbatim, so a change to any of them moves both consumers together.
+    """
+    lang = dst.split(":")[0]
+    callee: Optional[str]
+    module_hint: Optional[str]
+    if dst_ref is not None:
+        callee = dst_ref.name
+        module_hint = dst_ref.module_path
+    else:
+        callee = _extract_callee_name(dst)
+        module_hint = _extract_module_hint(dst)
+    catalog, adjusted_hint = _resolve_ffi_catalog(lang, module_hint, catalogs)
+    if catalog is None:
+        return None
+    edge_meta = meta or {}
+    return catalog.lookup_with_module(
+        callee, adjusted_hint,
+        call_construct=edge_meta.get("call_construct"),
+        io_mode=edge_meta.get("io_mode"),
+        allow_short_name_fallback=not is_first_party_callable_dst(dst),
+    )
+
+
 def tag_io_boundaries(
     edges: list[Edge],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -2107,43 +2275,19 @@ def tag_io_boundaries(
         ):
             continue
 
-        # Extract language from dst ID (first colon-delimited segment)
-        dst_parts = edge.dst.split(":")
-        lang = dst_parts[0]
-
         # WI-tihup: prefer the structured ExternalRef when present.
         # ``getattr`` keeps MockEdge-style test doubles without the
         # attribute working.
-        edge_dst_ref = getattr(edge, "dst_ref", None)
-        if edge_dst_ref is not None:
-            callee = edge_dst_ref.name
-            module_hint = edge_dst_ref.module_path
-        else:
-            callee = _extract_callee_name(edge.dst)
-            module_hint = _extract_module_hint(edge.dst)
-
-        # Try FFI pseudo-namespace redirect first (e.g., go:C: → c catalog),
-        # then fall back to the primary language catalog.
-        catalog, adjusted_hint = _resolve_ffi_catalog(
-            lang, module_hint, catalogs,
-        )
-        if catalog is None:
-            continue
-
-        # io-boundary:F3 — thread the edge's call construct so the no-module
-        # gate can reject untyped method calls (no receiver evidence).
-        _edge_meta = getattr(edge, "meta", None) or {}
-        cc = _edge_meta.get("call_construct")
-        match = catalog.lookup_with_module(
-            callee, adjusted_hint, call_construct=cc,
-            # The analyzer recorded the call's mode literal; without it a
-            # dual-classified primitive is decided by declaration order.
-            io_mode=_edge_meta.get("io_mode"),
-            # INV-sapit: this call resolved to a callable defined in the analysed
-            # repository, so a bare short-name collision with a stdlib primitive is a
-            # different function. Exact-qualified and module-filtered matches are
-            # unaffected — only the ungated short-name fallback is withheld.
-            allow_short_name_fallback=not is_first_party_callable_dst(edge.dst),
+        #
+        # THE LOOKUP ITSELF LIVES IN :func:`classify_call`, not here. It used to
+        # be inline, and the coverage gate in ``verify_claims`` then had to
+        # decide the same question — "did the catalogue classify this call" —
+        # with no way to reach this code. It answered a module-level
+        # approximation instead and reported calls this loop had just tagged as
+        # never examined. One question, one function.
+        match = classify_call(
+            catalogs, edge.dst, getattr(edge, "meta", None),
+            dst_ref=getattr(edge, "dst_ref", None),
         )
         if match is None:
             continue

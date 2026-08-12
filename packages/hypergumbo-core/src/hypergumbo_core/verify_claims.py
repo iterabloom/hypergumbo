@@ -71,7 +71,12 @@ if TYPE_CHECKING:
 import yaml
 
 from .edge_types import is_grpc_rpc_implementation
-from .io_boundary import KNOWN_IO_BOUNDARIES, BoundaryMap, IoBoundaryCatalog
+from .io_boundary import (
+    KNOWN_IO_BOUNDARIES,
+    BoundaryMap,
+    IoBoundaryCatalog,
+    classify_call,
+)
 from .ir import symbol_path_slot
 from .paths import classify_test_file, is_migration_file
 
@@ -720,20 +725,62 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     return any(".".join(parts[:i]) in analyzed for i in range(len(parts), 0, -1))
 
 
+def _edge_dst_ref(edge: dict[str, Any]) -> Any:
+    """The serialized edge's structured external target, or ``None``.
+
+    WI-tihup put a richer ``dst_ref`` beside the colon-packed dst, and the
+    tagger prefers it. The gate must prefer it too or the two disagree about
+    which module a call names — which is the whole failure this reuse exists to
+    prevent. Imported lazily because ``ir`` is heavy and only this path needs it.
+    """
+    raw = edge.get("dst_ref")
+    if not raw:
+        return None
+    from .ir import ExternalRef
+
+    return ExternalRef.from_dict(raw)
+
+
 def _uncatalogued_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
 ) -> list[str]:
     """Return the external modules this analysis called into and cannot adjudicate.
 
-    THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE. A module supports a
-    clean verdict when the catalog can decide it either way: it declares a
-    primitive for the module (so a matching call would have been tagged), or it
-    knows the module as stdlib (:meth:`IoBoundaryCatalog.is_stdlib_module` —
-    an examined negative). Everything else is a module the catalog has never
-    heard of, where "no ``net_send`` chains" means "none I could see". A denylist
-    of known-risky libraries would fail open on the first library nobody had
+    THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE. A module supports
+    a clean verdict when this catalogue has ENUMERATED its I/O surface —
+    :meth:`IoBoundaryCatalog.module_io_is_enumerated`, a dated per-module audit
+    recorded in ``stdlib_module_completeness``. Everything else is a module
+    where "no ``net_send`` chains" means "none I could see". A denylist of
+    known-risky libraries would fail open on the first library nobody had
     thought of, which is exactly how ``requests`` slipped through.
+
+    TWO WEAKER TESTS USED TO STAND HERE AND BOTH FAILED OPEN, measured live on
+    the shipped CLI with controls (INV-buzab P0, INV-zubuh P1):
+
+    - ``is_stdlib_module(module)`` — name recognition against
+      ``sys.stdlib_module_names``. ``telnetlib``, ``ssl`` and ``ctypes`` carry
+      no catalogue row, and all three confirmed "never sends data over the
+      network" for programs that respectively opened a telnet session, wrapped
+      a socket, and shelled out through ``ctypes.CDLL("libc.so.6").system``.
+    - row presence (``module == p.module or p.module.startswith(module + ".")``)
+      — boundary-blind and surface-blind. ``os`` has 40 rows, so ``os`` counted
+      as covered for EVERY boundary kind, including the ~30 I/O functions never
+      enumerated: ``os.open`` + ``os.write`` confirmed "never writes to the
+      host filesystem", and ``os.sendfile`` confirmed the network claim.
+
+    The controls are what make those defects rather than blindness: in the same
+    runs ``requests.post`` correctly returned ``inconclusive`` and
+    ``os.makedirs`` / ``os.remove`` correctly returned ``violated``.
+
+    THE STRICT DIRECTION IS AFFORDABLE BECAUSE IT CANNOT SUPPRESS A DETECTION.
+    ``verify_claim`` returns ``violated`` outside the ``coverage.complete``
+    branch, so coverage gates only the all-clear. Measured on four real repos
+    (httpx, poetry, full-stack-fastapi-template, hypergumbo itself) every one
+    was ALREADY ``inconclusive`` — 27 to 127 uncatalogued modules apiece — so
+    tightening changed no verdict there. The cost falls on programs with no
+    unadjudicable third-party module at all, which is precisely the population
+    the false confirm endangered.
 
     SCOPE — the residual this deliberately leaves open. Only a dst that NAMES a
     module is counted. The bare ``external`` placeholder
@@ -746,9 +793,22 @@ def _uncatalogued_external_modules(
     repo reaching its I/O ONLY through untyped receivers still confirms — is
     pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``.
 
-    A language with no catalog is skipped rather than blamed here; that case is
-    already decided upstream (``is_supported`` / ``unsupported_taint_languages``)
-    and double-counting it would put the wrong cause in the reason string.
+    SECOND RESIDUAL, AND IT IS THE LARGER ONE. A language with no I/O catalogue
+    is skipped here, and NOTHING downstream catches it for a boundary claim.
+    This paragraph used to say the case was "already decided upstream
+    (``is_supported`` / ``unsupported_taint_languages``)"; both halves are false
+    for this command. ``cmd_verify_claims`` derives its supported set as
+    ``languages & set(catalogs)`` and never consults ``is_supported``, and
+    ``unsupported_taint_languages`` is populated only when the claims file
+    carries a taint constraint. So the ``catalog is None`` skip below drops the
+    language entirely. Reproduced on the shipped CLI with a 12-line Ruby fixture
+    doing ``Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}")``: both the
+    ``net_send`` and ``fs_write`` claims return ``confirmed`` rc 0, with an empty
+    ``unsupported_taint_languages`` and no disclosure of any kind — and the
+    analyzer is not blind, it emits ``calls -> ruby:http:0-0:new:external_symbol``.
+    Tracked separately; naming it here rather than asserting it away is the
+    point, because a gate that mis-states its own scope is the shape of defect
+    this function exists to correct.
     """
     # REUSED, NOT REIMPLEMENTED. Symbol-id module extraction already has six
     # homes and three different correct mechanisms (WI-ribuz), two of them naive
@@ -776,12 +836,24 @@ def _uncatalogued_external_modules(
         module = _module_from_symbol_path(dst)
         if not module:
             continue  # the placeholder — the disclosed residual above
-        if catalog.is_stdlib_module(module):
+        # (1) A CALL THE CATALOGUE CLASSIFIED WAS EXAMINED. That is what
+        # examination IS, and it is asked through the same function the tagger
+        # uses, so the gate cannot call a site unexamined that the tagging pass
+        # just tagged. Answering this per-MODULE instead was measurably wrong:
+        # a fixture calling ``json.dump(obj, fh)`` printed "calls into 2
+        # module(s) with no I/O catalog coverage (builtins, json)" directly
+        # above "2 fs_write chain(s) found" — through those very modules.
+        if classify_call(catalogs, dst, edge.get("meta"),
+                         dst_ref=_edge_dst_ref(edge)):
             continue
-        if any(
-            module == p.module or p.module.startswith(f"{module}.")
-            for p in catalog.primitives
-        ):
+        # (2) AN UNMATCHED CALL IS AN EXAMINED NEGATIVE ONLY OVER AN ENUMERATED
+        # MODULE. This is the smaller, honest remainder of the question, and it
+        # replaced two branches that each answered something adjacent:
+        # ``is_stdlib_module`` (does the interpreter ship this name — INV-buzab)
+        # and row PRESENCE (did I catalogue ANY primitive here — INV-zubuh).
+        # Each permitted a real exfiltration into a ``confirmed`` verdict.
+        # Restoring either as a fallback restores the defect; there is none.
+        if catalog.module_io_is_enumerated(module):
             continue
         # AN UNRESOLVED FIRST-PARTY CALLEE IS NOT A CATALOG GAP. Its source was
         # read, so whatever I/O it performs was examined on its own edges — it
@@ -963,12 +1035,22 @@ def compute_boundary_coverage(
         shown = ", ".join(unknown[:_MAX_REPORTED_UNCATALOGUED_MODULES])
         more = len(unknown) - _MAX_REPORTED_UNCATALOGUED_MODULES
         suffix = f" (+{more} more)" if more > 0 else ""
+        # THE WORDING IS LOAD-BEARING AND THE OLD ONE BECAME FALSE. It said
+        # "module(s) with no I/O catalog coverage", which was accurate while the
+        # gate was blaming whole modules the catalogue had never heard of. The
+        # gate now blames a module for the CALLS it could not classify, and
+        # those modules often have extensive coverage — ``os`` carries 40 rows.
+        # Measured on a fixture calling ``json.dump(obj, fh)``: the old string
+        # printed "no I/O catalog coverage (builtins, json)" directly above
+        # "2 fs_write chain(s) found", i.e. found THROUGH those very modules.
+        # Naming the calls rather than the modules is also what makes the reason
+        # actionable — it says what to catalogue.
         return BoundaryCoverage(
             complete=False,
             reason=(
-                f"the analysis calls into {len(unknown)} module(s) with no I/O "
-                f"catalog coverage ({shown}{suffix}), so whether they perform "
-                f"this I/O was never examined"
+                f"the analysis makes calls into {len(unknown)} module(s) that "
+                f"the I/O catalog could not classify ({shown}{suffix}), so "
+                f"whether those calls perform this I/O was never examined"
             ),
         )
 

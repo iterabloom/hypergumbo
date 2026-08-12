@@ -4262,7 +4262,10 @@ class TestStdlibModulesAndFilter2:
     - :attr:`IoBoundaryCatalog.stdlib_prefixes` (tuple)
     - :attr:`IoBoundaryCatalog.stdlib_module_completeness` (dict)
     - :meth:`IoBoundaryCatalog.is_stdlib_module` (exact + prefix)
-    - :meth:`IoBoundaryCatalog.is_stdlib_module_complete`
+    - :meth:`IoBoundaryCatalog.module_io_is_enumerated` (the closed-world
+      question, prefix-anchored; it replaced the exact-match
+      ``is_stdlib_module_complete`` so the coverage gate and Filter 2 ask
+      one predicate rather than two that can drift)
     - YAML parser for the new shapes (flat list AND list-of-dicts with
       ``completeness:``)
     - ``merge`` propagation for all three fields
@@ -4354,17 +4357,17 @@ class TestStdlibModulesAndFilter2:
         assert cat.is_stdlib_module("concurrent.futures")
         assert not cat.is_stdlib_module("requests.sessions")
 
-    def test_is_stdlib_module_complete_flag(self) -> None:
+    def test_module_io_is_enumerated_flag(self) -> None:
         cat = IoBoundaryCatalog(
             language="python",
             stdlib_modules=frozenset({"math", "os"}),
             stdlib_module_completeness={"math": "2026-05-13"},
         )
-        assert cat.is_stdlib_module_complete("math")
+        assert cat.module_io_is_enumerated("math")
         # Listed in stdlib_modules but not flagged complete.
-        assert not cat.is_stdlib_module_complete("os")
+        assert not cat.module_io_is_enumerated("os")
         # Not listed at all.
-        assert not cat.is_stdlib_module_complete("unknown")
+        assert not cat.module_io_is_enumerated("unknown")
 
     def test_from_yaml_parses_flat_list_of_strings(
         self, tmp_path: Path,
@@ -4623,13 +4626,26 @@ class TestStdlibModulesAndFilter2:
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         # math is flagged complete.
-        assert cat.is_stdlib_module_complete("math")
+        assert cat.module_io_is_enumerated("math")
         # os listed but unflagged.
-        assert not cat.is_stdlib_module_complete("os")
-        # Auto-promotion: derived_auto_promoted appears only in the
-        # completeness section but is auto-added to stdlib_modules.
-        assert cat.is_stdlib_module("derived_auto_promoted")
-        assert cat.is_stdlib_module_complete("derived_auto_promoted")
+        assert not cat.module_io_is_enumerated("os")
+        # NO AUTO-PROMOTION. ``derived_auto_promoted`` appears only in the
+        # completeness section, and that section says "I enumerated this
+        # module's I/O" — not "this name ships with the interpreter". This
+        # assertion used to run the other way, and the promotion it pinned was
+        # a live route around the overlay guard: ADR-0016 forbids an overlay
+        # relabelling a PyPI package as stdlib ("would be a supply-chain
+        # misread rather than an I/O one") and ``load_overlay_catalog`` pops
+        # ``stdlib_modules`` to enforce it, but an overlay carrying only a
+        # ``stdlib_module_completeness`` entry for ``requests`` still made
+        # ``is_stdlib_module("requests")`` answer True on the merged catalogue.
+        # Measured, with the ``stdlib_modules:`` spelling as the control —
+        # that one was correctly stripped.
+        assert not cat.is_stdlib_module("derived_auto_promoted")
+        assert cat.module_io_is_enumerated("derived_auto_promoted")
+        # The two facts stay independent in both directions: ``os`` ships with
+        # the interpreter and is not enumerated.
+        assert cat.is_stdlib_module("os")
 
     def test_from_yaml_top_level_completeness_rejects_missing_retrieved(
         self, tmp_path: Path,
@@ -4679,8 +4695,8 @@ class TestStdlibModulesAndFilter2:
         # Long-tail non-stdlib should be absent.
         assert not cat.is_stdlib_module("requests")
         # Worked-example closed-world flag is on math, NOT on os.
-        assert cat.is_stdlib_module_complete("math")
-        assert not cat.is_stdlib_module_complete("os")
+        assert cat.module_io_is_enumerated("math")
+        assert not cat.module_io_is_enumerated("os")
 
     def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
         """No module_hint (``module_hint == "external"``) → Filter 2 cannot fire.

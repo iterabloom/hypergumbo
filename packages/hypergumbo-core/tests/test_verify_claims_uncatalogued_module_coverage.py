@@ -26,13 +26,23 @@ something the catalogue can match" -- and which
 ``test_language_with_a_token_call_edge_still_falsely_confirms`` pins as an xfail.
 
 THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE (LIVE.md default-deny). An
-external call edge supports a clean verdict only when the catalogue can *adjudicate* its
-module: either the catalogue declares a primitive for that module, or it knows the module
-as stdlib (:meth:`IoBoundaryCatalog.is_stdlib_module`). Anything else -- ``requests``, ``sqlmodel``,
-``boto3`` -- is a module about which the catalogue has no opinion, so "no net_send chains"
-means "none that I could see", which is not confirmable. A blocker list would fail open
-the moment a repo imported a library nobody had thought of, which is precisely how
-``requests`` slipped through.
+external call edge supports a clean verdict only when the catalogue has ENUMERATED that
+module's I/O surface -- :meth:`IoBoundaryCatalog.module_io_is_enumerated`, backed by a
+dated per-module audit. Anything else -- ``requests``, ``sqlmodel``, ``boto3`` -- is a
+module about which the catalogue has no opinion, so "no net_send chains" means "none that
+I could see", which is not confirmable. A blocker list would fail open the moment a repo
+imported a library nobody had thought of, which is precisely how ``requests`` slipped
+through.
+
+THE PERMITTING CASE WAS ITSELF TOO WIDE FOR EIGHT MONTHS, and this file's own tests said
+so was fine. Until INV-buzab / INV-zubuh it also permitted (a) any module the interpreter
+ships, and (b) any module carrying a single catalogued row. Both were measured open on
+the shipped CLI: ``telnetlib.Telnet(...).write(secret)`` confirmed "never sends data over
+the network", and ``os.open`` + ``os.write`` confirmed "never writes to the host
+filesystem", while ``requests.post`` and ``os.makedirs`` controls behaved correctly in the
+same runs. The class below that pins ``confirmed`` REACHABLE was rewritten alongside;
+:class:`TestWeakerEvidenceDoesNotEarnIt` now pins both rejected rules to a refusal so this
+file cannot drift back.
 
 SCOPE, AND THE RESIDUAL IT DELIBERATELY LEAVES OPEN. Only edges whose dst NAMES a module
 are counted. An edge carrying the bare ``external`` placeholder -- an untyped receiver,
@@ -50,7 +60,19 @@ from hypergumbo_core.verify_claims import compute_boundary_coverage
 
 
 def _py_catalog() -> IoBoundaryCatalog:
-    """A stand-in for python.yaml: two catalogued modules, a known stdlib set."""
+    """A stand-in for python.yaml, shaped so the three permitting cases differ.
+
+    Deliberately asymmetric, because the defect this file now guards against
+    was invisible in a fixture where they coincided:
+
+    - ``pathlib`` is ENUMERATED (a dated closed-world audit) **and** carries a
+      row. It is the only module here that may support a clean verdict.
+    - ``socket`` carries a row but is NOT enumerated. It is the INV-zubuh
+      discriminator: presence of one primitive must not vouch for the module.
+    - ``os`` / ``json`` / ``math`` are in the interpreter's stdlib list with no
+      rows and no audit. They are the INV-buzab discriminator: recognising a
+      name is not examining it.
+    """
     return IoBoundaryCatalog(
         language="python",
         primitives=[
@@ -60,6 +82,7 @@ def _py_catalog() -> IoBoundaryCatalog:
                         name="send", kind="method"),
         ],
         stdlib_modules=frozenset({"pathlib", "socket", "os", "json", "math"}),
+        stdlib_module_completeness={"pathlib": "2026-08-12"},
     )
 
 
@@ -110,33 +133,63 @@ class TestUncataloguedModuleBlocksConfirmation:
 class TestConfirmationIsPreservedWhereItIsEarned:
     """The blanket-downgrade failure mode is the other way to make a verdict
     worthless, and ``cli.py`` records it happening once already. These pin that
-    ``confirmed`` stays REACHABLE."""
+    ``confirmed`` stays REACHABLE.
 
-    def test_catalogued_module_alone_keeps_coverage_complete(self) -> None:
+    WHAT "EARNED" MEANS CHANGED, and three tests in this class changed with it.
+    They used to assert that a catalogued row, or mere membership in
+    ``sys.stdlib_module_names``, earned a clean verdict. Both were measured
+    open on the shipped CLI — ``telnetlib`` / ``ssl`` / ``ctypes`` confirmed a
+    network claim on programs that exfiltrate, and ``os.open`` + ``os.write``
+    confirmed a filesystem claim on a program that writes (INV-buzab,
+    INV-zubuh). The guard survives, the doctrine does not: what earns a clean
+    verdict is an ENUMERATED module, and the discriminators for the two
+    rejected rules now live in :class:`TestWeakerEvidenceDoesNotEarnIt` so this
+    class cannot quietly go back to passing for the old reason.
+    """
+
+    def test_an_enumerated_module_keeps_coverage_complete(self) -> None:
+        """``pathlib`` carries a dated closed-world audit, so silence about it
+        is an examined negative."""
         coverage = compute_boundary_coverage(
             [_call("python:pathlib.Path:0-0:read_text:external_symbol")],
             {"python"},
             {"python": _py_catalog()},
         )
-        assert coverage.complete is True
+        assert coverage.complete is True, coverage.reason
 
-    def test_known_stdlib_module_is_adjudicable_even_with_no_primitive(self) -> None:
-        """``math`` has no I/O primitive. The catalogue still KNOWS it, so a call
-        into it is an examined negative rather than an unexamined unknown."""
+    def test_a_classified_call_is_examined_whatever_its_module(self) -> None:
+        """The other way confirmation is earned, and the larger one in practice.
+
+        ``socket.socket.send`` is catalogued, so a call to it was CLASSIFIED —
+        the analysis looked at that site and identified it. No enumeration
+        record is needed or relevant. Blaming the module here is what made an
+        earlier draft print "no I/O catalog coverage (builtins, json)" directly
+        above "2 fs_write chain(s) found" through those same modules.
+        """
         coverage = compute_boundary_coverage(
-            [_call("python:math:0-0:sqrt:external_symbol")],
+            [_call("python:socket.socket:0-0:send:external_symbol")],
             {"python"},
             {"python": _py_catalog()},
         )
-        assert coverage.complete is True
+        assert coverage.complete is True, coverage.reason
 
-    def test_submodule_of_a_known_stdlib_module_is_adjudicable(self) -> None:
+    def test_enumeration_does_not_descend_into_a_submodule(self) -> None:
+        """A declaration for ``pathlib`` does NOT vouch for a module merely
+        spelled underneath it.
+
+        An earlier draft let declarations propagate down a separator. That is
+        wrong in three shipped languages at once — ``urllib`` is a namespace
+        package whose submodules have unrelated I/O surfaces, Go's ``/`` is not
+        containment (``os`` would have vouched for ``os/exec``), and Rust's
+        ``::`` was not in the separator list at all.
+        """
         coverage = compute_boundary_coverage(
-            [_call("python:os.path:0-0:exists:external_symbol")],
+            [_call("python:pathlib.PurePosixPath:0-0:joinpath:external_symbol")],
             {"python"},
             {"python": _py_catalog()},
         )
-        assert coverage.complete is True
+        assert coverage.complete is False
+        assert "pathlib.PurePosixPath" in coverage.reason
 
     def test_first_party_resolved_calls_do_not_block(self) -> None:
         """An in-repo callee is not an external module and carries no catalogue
@@ -147,6 +200,77 @@ class TestConfirmationIsPreservedWhereItIsEarned:
             {"python": _py_catalog()},
         )
         assert coverage.complete is True
+
+
+class TestWeakerEvidenceDoesNotEarnIt:
+    """The two rules this gate used to accept, each pinned to a refusal.
+
+    Without these, :class:`TestConfirmationIsPreservedWhereItIsEarned` would
+    pass just as happily under the old, broken predicate — which is exactly how
+    the defect survived: the version of that class shipped before this one
+    asserted the broken doctrine in its own docstrings and stayed green for
+    eight months. The end-to-end reproductions live in
+    ``test_verify_claims_examined_negative.py``; these are the same two rules at
+    the predicate.
+    """
+
+    def test_a_row_alone_does_not_make_its_module_adjudicable(self) -> None:
+        """INV-zubuh. ``socket.socket.send`` is catalogued, so a call to
+        ``send`` would be tagged — but the row says nothing about the rest of
+        ``socket``, nor about any other boundary kind. On the shipped
+        catalogue this exact rule let ``os.open`` + ``os.write`` confirm
+        "never writes to the host filesystem" on the strength of the 40
+        unrelated ``os`` rows."""
+        coverage = compute_boundary_coverage(
+            [_call("python:socket.socket:0-0:sendfile:external_symbol")],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False
+        assert "socket" in coverage.reason
+
+    def test_a_recognised_stdlib_name_alone_does_not_make_it_adjudicable(
+        self,
+    ) -> None:
+        """INV-buzab. ``json`` is in the interpreter's stdlib list and has no
+        row and no audit. Recognising the name examined nothing."""
+        coverage = compute_boundary_coverage(
+            [_call("python:json:0-0:dump:external_symbol")],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False
+        assert "json" in coverage.reason
+
+    def test_a_stdlib_submodule_is_not_adjudicable_by_its_parent_s_NAME(
+        self,
+    ) -> None:
+        """The old rule reached submodules through ``stdlib_modules`` — ``os``
+        is enumerated by the interpreter, so ``os.path`` was permitted. Only a
+        completeness DECLARATION propagates now, and ``os`` carries none."""
+        coverage = compute_boundary_coverage(
+            [_call("python:os.path:0-0:exists:external_symbol")],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False
+        assert "os.path" in coverage.reason
+
+    def test_enumeration_does_not_leak_across_a_name_boundary(self) -> None:
+        """The prefix rule requires a separator, so an audit of ``pathlib``
+        does not vouch for an unrelated ``pathlib2`` — and, unlike the boundary
+        tagger's ``_module_matches``, nothing here matches a trailing
+        COMPONENT, so a third-party ``vendor.pathlib`` stays unadjudicable.
+        Merging the two rules toward the permissive one would make a cosmetic
+        module-string respell a security-relevant edit."""
+        for module in ("pathlib2", "vendor.pathlib"):
+            coverage = compute_boundary_coverage(
+                [_call(f"python:{module}:0-0:read_text:external_symbol")],
+                {"python"},
+                {"python": _py_catalog()},
+            )
+            assert coverage.complete is False, module
+            assert module in coverage.reason
 
 
 class TestOnlyGenuineLeavesCount:
