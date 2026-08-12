@@ -2227,6 +2227,26 @@ def tag_io_boundaries(
     *,
     call_types: frozenset[str] = frozenset({
         "calls", "imports",
+        # INV-motos: A CONSTRUCTOR IS A CALL SITE, and the coverage gate has
+        # said so since INV-buzab while this set did not. Its
+        # ``_CALL_SITE_EDGE_TYPES`` carries ``instantiates`` — with a comment
+        # justifying it, "a constructor is a genuine classification
+        # opportunity" — so a constructor-shaped catalogued primitive was
+        # counted EXAMINED by the gate and was structurally untaggable here,
+        # and "no chains found" became ``confirmed``. Measured on the shipped
+        # CLI with no overlay and no flags, claim
+        # ``{boundary: subprocess, must_not_exist: true}``:
+        # ``subprocess.Popen([...])`` returned ``confirmed`` rc 0 while the
+        # control ``subprocess.run([...])`` returned ``violated`` rc 1 — same
+        # claim, adjacent rows in one catalogue block, only the edge type
+        # differing. 106 classified constructor calls were going untagged
+        # across six repos (django 50, hypergumbo itself 27 including one
+        # ``urllib.request.Request``, pretix 15, poetry 12, httpx 2, fastapi
+        # 0), dominated by ``tempfile.TemporaryDirectory`` and
+        # ``subprocess.Popen``. The subset property is now a parity test
+        # (``test_the_gate_never_counts_an_edge_type_the_tagger_cannot_tag``)
+        # so the next divergence fails rather than shipping a false all-clear.
+        "instantiates",
         # WI-guhok: attribute-style IO primitives (os.environ, sys.argv, ...)
         # reach the boundary pipeline through module_attr_ref edges emitted by
         # the Python analyzer (and, per WI-gapam, eventually the tree-sitter
