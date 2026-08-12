@@ -5407,6 +5407,24 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # ``has_taint_claims or any_taint_flags``) and succeeded — a load
         # failure returned exit 2 — so the catalog is populated here.
         assert taint_catalog is not None
+
+        # INV-todas: the claim's taint vocabulary is checked HERE and not in
+        # ``load_claims`` beside the ``constraint.boundary`` check, because
+        # unlike KNOWN_IO_BOUNDARIES these vocabularies are not constants — a
+        # project-local --taint-sinks file may legitimately declare a zone no
+        # built-in catalogue mentions, so the sets have to come from the
+        # RESOLVED catalogue. An unrecognised label previously matched no
+        # finding and confirmed the claim at rc 0, on a fixture that leaked.
+        from .verify_claims import validate_taint_flow_vocabulary
+        try:
+            validate_taint_flow_vocabulary(
+                claims,
+                taint_catalog.all_source_labels(),
+                taint_catalog.all_sink_zones(),
+            )
+        except ClaimsFileError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
         # Build per-language source/sink/sanitizer tables. Running
         # propagation per-language avoids cross-language short-name
         # collisions (e.g., elixir HTTPoison.get matching every Python

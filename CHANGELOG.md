@@ -13,6 +13,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 ## [Unreleased]
 
 ### Fixed
+- **A typo in a taint claim returned `confirmed` rc 0; the same typo one field over exits 2 (INV-todas P0).** `_parse_taint_flow` validated the taint_flow **key names** and never their **values**, and `verify_claim` filters findings on `f.taint_label == tf.source_taint and f.sink_zone == tf.prohibited_sink_zone` — so an unrecognised value matched nothing and the claim confirmed. Measured on a fixture that really leaks (`os.environ["API_KEY"]` written through `open(...).write`), with the boundary arm as a control behaving correctly in the same command:
+
+  | claims file | before | after |
+  |---|---|---|
+  | `source_taint: secret_material` (no such label) | **confirmed, rc 0** | error, rc 2 |
+  | `prohibited_sink_zone: host_filesystem` (typo for `host_fs`) | **confirmed, rc 0** | error, rc 2, *"Did you mean: host_fs"* |
+  | *control* — `boundary: net_sends` (typo) | error, rc 2 | error, rc 2 |
+  | *positive control* — correct `host_secret` / `host_fs` | violated, rc 1 | violated, rc 1 |
+
+  The boundary arm has had this guard since INV-gobob / WI-ruzib and **its comment describes this bug verbatim** — *"An unknown value here would otherwise make `verify_claim`'s `boundary_map.entries.get` return None → chain_count 0 → silent 'confirmed'."* The reasoning was written down and applied to one of the two constraint vocabularies. This is WI-bopoz's unknown-field-name defect one level deeper and strictly worse: WI-bopoz's symptom was `inconclusive`, this one was `confirmed`. It is also the cheapest of the false confirms to trip — not a crafted catalogue, just a misremembered word, with the vocabulary printed nowhere on the error path.
+
+  **The check cannot live beside the boundary one, and that asymmetry is forced.** `KNOWN_IO_BOUNDARIES` is a constant; the taint vocabularies are assembled from `taint_sources/*.yaml`, `AUTO_SOURCE_LABEL_MAP`, `AUTO_SINK_ZONE_MAP` **and any user-supplied `--taint-sinks` / `extra_catalogs:`** — this suite already contains a fixture declaring a zone (`custom_zone`) no built-in mentions. So `TaintCatalog.all_source_labels()` / `all_sink_zones()` read the **resolved** catalogue and the check runs after it loads. Sanitizer `output_taint` values are deliberately excluded: they are stored on the sanitizer record and never assigned to a finding, so admitting them would loosen the check for values that still cannot match. **Disclosed cost:** the resolved catalogue is assembled after the behavior map, so a typo is now reported *after* analysis rather than before — better than confirming, worse than failing fast, and filed separately rather than folded into a security fix.
+
+  **Five existing tests failed on this change and four of them were asserting the defect.** They used `source_taint: "secret"` — not a label — as incidental fixture filler while testing language coverage and data-file handling, and asserted `rc == 0`; with a real label their `rc == 0` assertions hold unchanged, so their subjects were never at issue. The fifth is a genuine behaviour change: a CLI `--taint-sources` override that displaces a claims-file label used to leave the claim naming that label `confirmed`, with the rationale *"the override displaced it"* — but a displaced label can be carried by no finding, so that was "I cannot evaluate your claim" answered with "your claim holds". It now exits 2, which is also **stronger** evidence for the precedence the test exists to prove: the error names the winner and the loser instead of leaving the override to be inferred from a silence.
+
 - **A constructor that IS an I/O primitive was never tagged, so `verify-claims` confirmed claims it violated (INV-motos P0).** The coverage gate counts `instantiates` as a call site the catalogue could have classified — its own comment justifying it, *"a constructor is a genuine classification opportunity"* — while `tag_io_boundaries` did not carry the type at all. So a constructor-shaped primitive was **examined** by the gate and **structurally untaggable** by the tagger, and "no chains found" became an all-clear. Shipped CLI, no overlay, no flags, claim `{boundary: subprocess, must_not_exist: true}`:
 
   | fixture | before | after |
