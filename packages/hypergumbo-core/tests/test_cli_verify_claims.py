@@ -555,7 +555,7 @@ def test_verify_claims_notice_for_unsupported_taint_language(
                 "text": "No secrets to disk",
                 "constraint": {
                     "taint_flow": {
-                        "source_taint": "secret",
+                        "source_taint": "host_secret",
                         "prohibited_sink_zone": "host_fs",
                     },
                 },
@@ -625,7 +625,7 @@ def test_a_data_file_in_a_covered_repo_does_not_block_confirmation(
     claims_file = tmp_path / "claims.yaml"
     claims_file.write_text(yaml.dump({"claims": [
         {"id": "TF-YAML", "text": "No secrets to disk",
-         "constraint": {"taint_flow": {"source_taint": "secret",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
                                        "prohibited_sink_zone": "host_fs"}}},
     ]}))
     args = FakeArgs()
@@ -661,7 +661,7 @@ def test_taint_claim_confirms_when_every_language_is_covered(
     claims_file = tmp_path / "claims.yaml"
     claims_file.write_text(yaml.dump({"claims": [
         {"id": "TF-002", "text": "No secrets to disk",
-         "constraint": {"taint_flow": {"source_taint": "secret",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
                                        "prohibited_sink_zone": "host_fs"}}},
     ]}))
     args = FakeArgs()
@@ -1380,6 +1380,181 @@ def test_verify_claims_unknown_field_exits_2(tmp_path: Path, capsys) -> None:
     assert "Error" in capsys.readouterr().err
 
 
+def _taint_vocab_args(
+    tmp_path: Path,
+    source_taint: str,
+    prohibited_sink_zone: str,
+    sink_yaml: "str | None" = None,
+) -> "FakeArgs":
+    """Args for a taint_flow claim, over a behavior map with a real call edge.
+
+    The map is deliberately non-empty: a claim rejected for its VOCABULARY must
+    be rejected on a run that could otherwise have produced findings, or the
+    test cannot tell refusal apart from an empty analysis.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "shellscript:Main.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "shellscript", "path": "Main.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "shellscript:Main.sh:1-10:main:function",
+             "dst": "shellscript:my.pkg:0-0:doStuff:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [{
+        "id": "TF-1", "text": "x",
+        "constraint": {"taint_flow": {
+            "source_taint": source_taint,
+            "prohibited_sink_zone": prohibited_sink_zone,
+        }},
+    }]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    if sink_yaml is not None:
+        sinks_file = tmp_path / "sinks.yaml"
+        sinks_file.write_text(sink_yaml, encoding="utf-8")
+        args.taint_sinks = [str(sinks_file)]
+    return args
+
+
+def test_verify_claims_unknown_source_taint_exits_2(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-todas: an unrecognised ``source_taint`` must not read as an
+    all-clear.
+
+    The boundary arm has had this guard since INV-gobob / WI-ruzib and its
+    comment states the mechanism exactly: an unknown value makes the lookup
+    return nothing, so ``chain_count`` is 0 and the claim confirms. The taint
+    arm has the identical shape — ``verify_claim`` filters findings on
+    ``f.taint_label == tf.source_taint`` — and was never given the check.
+
+    Measured before the fix, on a fixture that really leaks
+    (``os.environ["API_KEY"]`` through ``open(...).write``): ``source_taint:
+    secret_material`` returned **confirmed, rc 0**, while the correct label
+    ``host_secret`` returned violated, rc 1.
+    """
+    rc = cmd_verify_claims(
+        _taint_vocab_args(tmp_path, "secret_material", "host_fs"),
+    )
+    assert rc == 2, (
+        "an unrecognised taint label resolved the claim instead of refusing "
+        "it; 'I could not parse your claim' and 'your claim holds' must not "
+        "share an exit code"
+    )
+    err = capsys.readouterr().err
+    assert "secret_material" in err, "the error must name the offending value"
+    assert "host_secret" in err, (
+        "the error must list the vocabulary — the labels are not discoverable "
+        "anywhere else on the error path"
+    )
+
+
+def test_verify_claims_unknown_sink_zone_exits_2_with_a_suggestion(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-todas, the other half — and the near-miss that motivates it.
+
+    ``host_filesystem`` for ``host_fs`` is the shape an author actually
+    produces on a first attempt. Before the fix it returned confirmed, rc 0.
+    """
+    rc = cmd_verify_claims(
+        _taint_vocab_args(tmp_path, "host_secret", "host_filesystem"),
+    )
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "host_filesystem" in err
+    assert "host_fs" in err, (
+        "a near miss must get the did-you-mean the boundary arm already gives"
+    )
+
+
+def test_a_boundary_claim_earlier_in_the_file_does_not_mask_a_taint_typo(
+    tmp_path: Path, capsys,
+) -> None:
+    """A mixed claims file must be scanned THROUGH, not up to the first
+    non-taint claim.
+
+    Most real claims files carry both kinds. A boundary claim has no
+    ``taint_flow``, so the vocabulary loop skips it — and had that skip been
+    written as a ``break`` rather than a ``continue``, every taint claim after
+    the first boundary claim would go unchecked and INV-todas would be half
+    open, silently, in exactly the files most likely to exist. The boundary
+    claim is placed FIRST here so the test fails if that ever regresses.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "shellscript:Main.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "shellscript", "path": "Main.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "shellscript:Main.sh:1-10:main:function",
+             "dst": "shellscript:my.pkg:0-0:doStuff:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "B-1", "text": "no network",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+        {"id": "TF-1", "text": "x",
+         "constraint": {"taint_flow": {
+             "source_taint": "host_secret",
+             "prohibited_sink_zone": "host_filesystem",
+         }}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2, (
+        "the typo'd taint claim after a boundary claim was not reached"
+    )
+    assert "host_filesystem" in capsys.readouterr().err
+
+
+def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path) -> None:
+    """NON-VACUITY, and the reason this check cannot live in ``load_claims``.
+
+    Unlike ``KNOWN_IO_BOUNDARIES``, the taint vocabularies are NOT constants —
+    ``--taint-sinks`` may legitimately declare a zone no built-in catalogue
+    mentions. Validating against built-ins alone would reject a correct claim,
+    which is a different failure and not an improvement. So the check runs
+    against the RESOLVED catalogue, and this pins that a user-declared zone
+    survives it.
+    """
+    rc = cmd_verify_claims(_taint_vocab_args(
+        tmp_path, "plaintext", "custom_zone",
+        sink_yaml=(
+            "zone: custom_zone\n"
+            "trust_level: untrusted\n"
+            "sinks:\n"
+            "  shellscript:\n"
+            "    - module: my.pkg\n"
+            "      functions: [doStuff]\n"
+        ),
+    ))
+    assert rc != 2, (
+        "a zone the user declared was rejected as unknown vocabulary; the "
+        "check is reading built-ins instead of the resolved catalogue"
+    )
+
+
 def _boundary_claim_args(tmp_path: Path, bmap: dict) -> "FakeArgs":
     input_file = tmp_path / "hg.json"
     input_file.write_text(json.dumps(bmap))
@@ -1528,8 +1703,17 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     assert rc == 1
     assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "violated"
 
-    # With CLI override: entry is relabeled cli_label, so claims_label no longer
-    # seeds -> the claims_label claim is confirmed (the override displaced it).
+    # With CLI override: entry is relabeled cli_label, so claims_label no
+    # longer seeds anything.
+    #
+    # THIS ASSERTION CHANGED, AND THE OLD ONE WAS THE DEFECT (INV-todas). It
+    # read ``rc == 0`` / ``confirmed``, with the rationale "the override
+    # displaced it" — but a displaced label can be carried by no finding, so
+    # that was the tool answering "I cannot evaluate your claim" with "your
+    # claim holds". rc 2 is the honest verdict, and it is also STRONGER
+    # evidence for the precedence this test exists to prove: the error names
+    # the winner and the loser, so the override is visible in the output
+    # rather than inferred from a silence.
     over = FakeArgs()
     over.path = str(tmp_path)
     over.input = str(input_file)
@@ -1537,8 +1721,13 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     over.json_output = True
     over.taint_sources = [str(tmp_path / "cli_src.yaml")]
     rc = cmd_verify_claims(over)
-    assert rc == 0
-    assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "confirmed"
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "claims_label" in err, "the displaced label must be named"
+    assert "cli_label" in err, (
+        "the CLI label must appear in the surviving vocabulary — that IS the "
+        "precedence evidence"
+    )
 
 
 def test_language_with_a_token_call_edge_still_falsely_confirms(
@@ -1658,7 +1847,7 @@ def test_uncatalogued_language_WITH_code_blocks_confirmation(
     claims_file = tmp_path / "claims.yaml"
     claims_file.write_text(yaml.dump({"claims": [
         {"id": "TF-BF", "text": "No secrets to disk",
-         "constraint": {"taint_flow": {"source_taint": "secret",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
                                        "prohibited_sink_zone": "host_fs"}}},
     ]}))
     args = FakeArgs()

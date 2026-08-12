@@ -603,6 +603,58 @@ class TaintCatalog:
         """Return all taint sanitizers for a language."""
         return list(self._sanitizers.get(language, []))
 
+    def all_source_labels(self) -> frozenset[str]:
+        """Every taint label a FINDING could carry, across all languages.
+
+        THE VOCABULARY A ``taint_flow`` CLAIM'S ``source_taint`` IS CHECKED
+        AGAINST (INV-todas). ``verify_claim`` filters findings on
+        ``f.taint_label == tf.source_taint``, so a value outside this set can
+        match nothing, and before the check existed it confirmed the claim
+        instead of refusing it.
+
+        UNIONED WITH :data:`AUTO_SOURCE_LABEL_MAP`'s values rather than read
+        off the catalogue alone: those labels are minted from io_primitives
+        boundaries, so a run whose catalogue happens to contain no ``env_read``
+        primitive would otherwise drop ``host_secret`` from the vocabulary and
+        reject a correct claim. Rejecting a valid claim is a different failure
+        from the one this exists to fix, and not an improvement.
+
+        SANITIZER ``output_taint`` VALUES ARE DELIBERATELY EXCLUDED. They are
+        stored on the sanitizer record and never assigned to a finding —
+        sanitization sets the separate ``sanitized`` flag rather than
+        relabelling the flow — so admitting ``ciphertext`` here would loosen
+        the check for values that still cannot match anything.
+
+        Across all languages, not the repo's: a claim naming a label whose
+        sources are all Go must still be accepted when run on a Python repo.
+        """
+        labels = {
+            src.taint_label
+            for sources in self._sources.values()
+            for src in sources
+        }
+        return frozenset(labels | set(AUTO_SOURCE_LABEL_MAP.values()))
+
+    def all_sink_zones(self) -> frozenset[str]:
+        """Every trust zone a FINDING could report, across all languages.
+
+        The counterpart of :meth:`all_source_labels` for a claim's
+        ``prohibited_sink_zone`` (INV-todas), unioned with
+        :data:`AUTO_SINK_ZONE_MAP`'s zones for the same reason.
+
+        This is why the claim-vocabulary check cannot live in ``load_claims``
+        beside the ``constraint.boundary`` one: ``KNOWN_IO_BOUNDARIES`` is a
+        constant, but a project-local ``--taint-sinks`` file may declare a zone
+        no built-in catalogue mentions, and one already does in this suite's
+        own fixtures. So the check runs against the RESOLVED catalogue.
+        """
+        zones = {
+            sink.zone
+            for sinks in self._sinks.values()
+            for sink in sinks
+        }
+        return frozenset(zones | {z for z, _ in AUTO_SINK_ZONE_MAP.values()})
+
     def ambiguous_names_for_language(self, language: str) -> frozenset[str]:
         """Return the ambiguous short names for a language (WI-razol).
 

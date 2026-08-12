@@ -61,6 +61,7 @@ How It Works
 """
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -496,6 +497,72 @@ def _parse_taint_flow(
         prohibited_sink_zone=taint_flow_data.get("prohibited_sink_zone", ""),
         allowed_sanitizers=taint_flow_data.get("allowed_sanitizers", []),
     )
+
+
+def validate_taint_flow_vocabulary(
+    claims: list["Claim"],
+    source_labels: "AbstractSet[str]",
+    sink_zones: "AbstractSet[str]",
+) -> None:
+    """Reject a ``taint_flow`` claim naming a label or zone nothing can match.
+
+    THE SECOND HALF OF A RULE THAT SHIPPED WITH ONLY ITS FIRST HALF
+    (INV-todas). ``load_claims`` has validated ``constraint.boundary`` against
+    ``KNOWN_IO_BOUNDARIES`` since INV-gobob / WI-ruzib, and the comment there
+    states the mechanism precisely: *"An unknown value here would otherwise
+    make verify_claim's boundary_map.entries.get return None → chain_count 0 →
+    silent 'confirmed'."* The taint arm has the identical shape —
+    :func:`verify_claim` keeps only findings where
+    ``f.taint_label == tf.source_taint and f.sink_zone ==
+    tf.prohibited_sink_zone`` — and got no check, so the reasoning was written
+    down and applied to one of the two constraint vocabularies.
+
+    Measured on the shipped CLI, one fixture that really leaks
+    (``os.environ["API_KEY"]`` written through ``open(...).write``), with the
+    boundary arm as a control behaving correctly in the same command::
+
+        source_taint: secret_material          -> confirmed  rc 0   FAILS OPEN
+        prohibited_sink_zone: host_filesystem  -> confirmed  rc 0   FAILS OPEN
+        boundary: net_sends                    -> Error      rc 2   fails CLOSED
+        (correct: host_secret / host_fs)       -> violated   rc 1   control
+
+    WHY IT TAKES THE VOCABULARIES AS ARGUMENTS INSTEAD OF DERIVING THEM.
+    ``KNOWN_IO_BOUNDARIES`` is a constant; these are not. A project-local
+    ``--taint-sinks`` file may declare a zone no built-in catalogue mentions,
+    so the sets must come from the RESOLVED catalogue — which is why the caller
+    is ``cmd_verify_claims`` after ``load_full_taint_catalog``, not
+    ``load_claims``. Passing them in also keeps the heavy ``taint`` import out
+    of this module's import path.
+
+    DISCLOSED COST: because the resolved catalogue is assembled after the
+    behavior map, a typo is reported after analysis rather than before it.
+    That is strictly better than confirming, and worse than failing fast;
+    hoisting the catalogue load ahead of ``_get_or_run_analysis`` is filed
+    separately rather than folded into a security fix.
+
+    Raises:
+        ClaimsFileError: naming the offending value, the full vocabulary, and
+            a did-you-mean suffix — the vocabulary is not discoverable
+            anywhere else on the error path.
+    """
+    for claim in claims:
+        tf = claim.constraint_taint_flow
+        if tf is None:
+            continue
+        for value, vocabulary, field_name in (
+            (tf.source_taint, source_labels, "source_taint"),
+            (tf.prohibited_sink_zone, sink_zones, "prohibited_sink_zone"),
+        ):
+            # An EMPTY value is a different defect (an absent key) and is left
+            # to the existing shape validation; refusing it here would change
+            # the error a malformed claim already gets.
+            if not value or value in vocabulary:
+                continue
+            raise ClaimsFileError(
+                f"unknown {field_name} '{value}' in claim '{claim.id}'; "
+                f"valid values: {', '.join(sorted(vocabulary))}."
+                + _did_you_mean(value, vocabulary),
+            )
 
 
 def _parse_claim(entry: object, index: int) -> Claim:
