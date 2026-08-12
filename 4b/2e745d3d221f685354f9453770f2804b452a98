@@ -1,0 +1,82 @@
+Original commit body from 73b86a9c92b18f221e4cb1160f020187e9611283:
+
+INV-dabov. verify-claims returned `confirmed`, exit 0, for "this service never
+sends data over the network" on a 7-line Ruby program doing
+Net::HTTP.new(...).post(path, "key=#{ENV['API_KEY']}"). No overlay, no flags, no
+disclosure of any kind — and the analyzer is NOT blind, it emits the call edge.
+
+INVISIBLE AT EVERY LAYER, which is why no existing gate caught it.
+cmd_verify_claims builds its catalogs dict under `if catalog.primitives:`, so a
+language with no io_primitives/*.yaml yields an empty catalogue and is dropped.
+That removes it from `supported_languages` — so compute_boundary_coverage's
+blind-language check cannot see it — and it makes
+_uncatalogued_external_modules skip the language on `catalog is None`. Seen,
+unclassifiable, and reported as clean.
+
+compute_boundary_coverage now derives the set itself: a language that emitted
+call edges and has no catalogue blocks a clean verdict. DERIVED, not passed in,
+for the reason its own docstring already gives about `catalogs` — a safety gate
+a caller can forget to arm fails open, and this one was previously unarmable,
+since the language never reaches any caller's argument in the first place.
+
+CALL-SCOPED, NOT REPO-SCOPED, AND THAT IS THE WHOLE DESIGN. Measured across six
+repos (httpx, poetry, fastapi, django, pretix, hypergumbo), keyed on languages
+PRESENT this would name up to 16 apiece — markdown, gitignore, yaml, toml — and
+downgrade every verdict on account of a .gitignore. Keyed on languages that
+emitted CALL EDGES it names one to three real ones:
+
+    httpx / poetry / fastapi / django   bash
+    pretix                              bash, vue
+    hypergumbo                          bash, csharp, solidity
+
+VERDICTS CHANGED ON 0 OF 3 REPOS MEASURED END-TO-END, and the first draft of
+this message said the opposite. httpx / poetry / fastapi, run with --input
+against captured surveys and A/B'd by stashing the change, were ALREADY
+`inconclusive` before it — for a different reason, modules the catalogue could
+not classify — and are `inconclusive` after. Only the blame moved, from the
+module list to `bash`. That is 0-of-3, not a population claim.
+
+The draft claimed this "downgrades most real repos to inconclusive". That was
+derived from the language census, not from verdicts, and the A/B refuted it.
+The marginal effect falls exactly where it should: on repos that would otherwise
+CONFIRM — those with no unadjudicable third-party module left, the same
+population INV-buzab's gate was priced against.
+
+`bash` is still the thing to fix, for the surviving reason rather than the
+retracted one: it is universal on the cohort, so a repo that HAS cleaned up its
+third-party surface still cannot confirm a boundary claim until an
+io_primitives/bash.yaml exists — and a shell script that curls a secret is
+egress hypergumbo reports nothing about today. Owner chose this sequencing
+explicitly over bundling the catalogue into this PR.
+
+TWO EXISTING TESTS WERE ASSERTING THE DEFECT.
+ - test_a_language_with_no_catalogue_is_left_to_the_existing_gates pinned
+   `complete is True` on the rationale "already decided upstream
+   (unsupported_taint_languages / is_supported)". Both halves are false for
+   this command and were ALREADY corrected once, in
+   _uncatalogued_external_modules's SCOPE paragraph. Correcting the prose left
+   the assertion resting on it untouched — the docstring and the test are two
+   homes for one claim.
+ - test_verify_claims_skips_language_with_only_sinks asserted `rc == 0` with the
+   comment "claim confirmed vacuously". Vacuous is the defect. The branch it
+   exists to cover (per-language loop `continue`) is still exercised.
+
+CONTROLS, all unchanged against the built tree: telnet rc 2, requests rc 2,
+subprocess.Popen rc 1 (violated), os.write control rc 1.
+
+RESIDUAL, PINNED RATHER THAN IMPLIED: the check keys on the edge's `src`
+language, so a call whose src is catalogued but whose dst names an uncatalogued
+language still slips past, and _uncatalogued_external_modules then skips the dst
+on `catalog is None`. Narrower than what this closes — it needs a cross-language
+edge rather than merely a file — and the honest fix is a catalogue for the
+target language, not a wider gate: widening to dst languages would make any FFI
+edge into an uncatalogued target downgrade every verdict, which is exactly the
+coarseness the call-scoped rule was chosen to avoid. A test names it.
+
+Also fixed on the way: the new reason string ended with "cannot confirm the
+boundary is unused" while verify_claim appends that same conclusion, so the
+verdict rendered it twice. Every other reason in this function states only the
+CAUSE. Caught by reading the CLI output — the unit tests assert on a substring
+of `reason`, not on the rendered sentence, and were green.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
