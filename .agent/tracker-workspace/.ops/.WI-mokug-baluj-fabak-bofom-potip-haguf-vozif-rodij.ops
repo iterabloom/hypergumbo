@@ -1,0 +1,22 @@
+- op: create  # f5bc
+  at: '2026-08-12T03:33:09Z'  # f5bc
+  by: agent  # f5bc
+  actor: jgstern_agent  # f5bc
+  clock: 1  # f5bc
+  nonce: f5bc  # f5bc
+  data:  # f5bc
+    kind: work_item  # f5bc
+    title: "erlang.yaml declares a phantom module: 'http_client' function 'request' names no OTP module (the inets client is 'httpc', catalogued 3 lines above) — in a status: complete catalogue"  # f5bc
+    status: todo_hard  # f5bc
+    priority: 3  # f5bc
+    parent:  # f5bc
+    tags:  # f5bc
+    - io_primitives  # f5bc
+    - catalogue  # f5bc
+    - erlang  # f5bc
+    isbefore: []  # f5bc
+    duplicate_of: []  # f5bc
+    not_duplicate_of: []  # f5bc
+    pr_ref:  # f5bc
+    description: "Found incidentally during the WI-bahid investigation. erlang.yaml:93 declares module 'http_client' with function 'request'. No such module exists in OTP; the inets HTTP client is 'httpc', which is already catalogued at erlang.yaml:90. So the row can never match anything.\n\nWHY IT MATTERS BEYOND ONE DEAD ROW: erlang.yaml declares status: complete, which io_boundary.py:893-898 documents as asserting 'a provenance-backed stdlib enumeration'. A phantom row means that provenance was not checked, at least once, in a catalogue making the stronger of the two status claims. Worth asking how it got there and whether sibling rows share the defect, rather than just deleting the line.\n\nUNVERIFIED BY ME: I have not run an OTP module-existence check across erlang.yaml, only noted this one. The cheap version is to compare declared modules against a real OTP install's module list, which would also settle whether this is isolated."  # f5bc
+    fields: {}  # f5bc
