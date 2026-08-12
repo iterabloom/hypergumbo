@@ -1861,3 +1861,147 @@ def test_uncatalogued_language_WITH_code_blocks_confirmation(
     out = capsys.readouterr().out
     assert "INCONCLUSIVE" in out
     assert "brainfuck" in out, "the verdict must name WHICH language was blind"
+
+
+# ---------------------------------------------------------------------------
+# INV-zosun: a verdict must record what catalogue it trusted.
+# ---------------------------------------------------------------------------
+
+_PROVENANCE_OVERLAY = (
+    "language: python\n"
+    "status: overlay\n"
+    "net_send:\n"
+    "  - module: requests\n"
+    "    functions: [post]\n"
+)
+
+
+def _provenance_args(
+    tmp_path: Path,
+    *,
+    cli_overlay: bool = False,
+    claims_overlay: bool = False,
+    json_output: bool = True,
+) -> "FakeArgs":
+    """A boundary claim over a trivial map, with overlays on either layer."""
+    bmap = _make_behavior_map(
+        nodes=[{"id": "python:a.py:1:f:function", "name": "f",
+                "kind": "function", "language": "python", "path": "a.py",
+                "span": {"start_line": 1, "end_line": 5}}],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:os:0-0:os.listdir:external_symbol",
+                "type": "calls", "confidence": 0.9}],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    overlay = tmp_path / "ov.yaml"
+    overlay.write_text(_PROVENANCE_OVERLAY, encoding="utf-8")
+
+    claims: dict = {"claims": [
+        {"id": "SC-1", "text": "no network",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+    ]}
+    if claims_overlay:
+        claims["extra_catalogs"] = {"io_primitives": [str(overlay)]}
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = json_output
+    if cli_overlay:
+        args.io_primitives = [str(overlay)]
+    return args
+
+
+def test_the_envelope_records_a_cli_supplied_catalogue(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-zosun: a `confirmed` reached against a user-supplied catalogue and
+    one reached against the shipped catalogue were byte-identical.
+
+    The only trace was a stderr line naming the overlay path — absent from the
+    ``--json`` envelope entirely, so it vanished the moment anyone piped the
+    output anywhere. That matters because a row is not a detection-only grant:
+    since INV-buzab a classified call is what ``examined`` MEANS, so a row
+    carrying the wrong boundary buys a `confirmed` for the boundary actually
+    claimed. Demonstrated end-to-end: the same fixture went
+    ``inconclusive`` rc 2 -> ``confirmed`` rc 0 on a five-line overlay whose
+    only lie was filing ``requests.post`` under ``fs_read``.
+
+    This does not change any verdict. It makes the trust decision visible.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path, cli_overlay=True))
+    env = json.loads(capsys.readouterr().out)
+    prov = env["catalog_provenance"]
+    assert prov["user_supplied"] is True
+    assert prov["layers"]["io_primitives"]["cli"], (
+        "the overlay the verdict was computed against is not in the envelope"
+    )
+    assert prov["layers"]["io_primitives"]["claims_file"] == []
+
+
+def test_the_envelope_separates_the_claims_file_layer_from_the_cli_layer(
+    tmp_path: Path, capsys,
+) -> None:
+    """THE DISTINCTION THAT MATTERS FOR A SELF-GRADING REPO.
+
+    A catalogue passed on the command line is supplied by whoever RAN the
+    tool. One reached through the claims file's ``extra_catalogs:`` travels
+    WITH the repo — and if the claims file and its catalogues live inside the
+    tree under analysis, the repo is grading itself. Demonstrated: a directory
+    containing ``main.py``, ``claims.yaml`` and an overlay mislabelling
+    ``requests.post`` returns ``confirmed`` rc 0, where the same repo without
+    the ``extra_catalogs:`` line returns ``inconclusive`` rc 2.
+
+    Collapsing the two layers into one list would report that a catalogue was
+    used while hiding the fact that the subject supplied it.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path, claims_overlay=True))
+    prov = json.loads(capsys.readouterr().out)["catalog_provenance"]
+    assert prov["user_supplied"] is True
+    assert prov["layers"]["io_primitives"]["claims_file"], (
+        "a claims-file-supplied catalogue must be attributed to that layer"
+    )
+    assert prov["layers"]["io_primitives"]["cli"] == []
+
+
+def test_the_key_is_present_and_negative_on_a_shipped_catalogue_run(
+    tmp_path: Path, capsys,
+) -> None:
+    """NON-VACUITY, and a stable envelope shape.
+
+    ``user_supplied: false`` is the load-bearing half — a consumer must be
+    able to assert that a verdict rested on the shipped catalogue alone.
+    Emitting the key only when an overlay is present would teach consumers to
+    read absence as "none", which is the same mistake as reading "no chains
+    found" as "no I/O". The envelope follows the existing convention
+    (``dataflow_coverage``, INV-karud a3): always present.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path))
+    prov = json.loads(capsys.readouterr().out)["catalog_provenance"]
+    assert prov["user_supplied"] is False
+    for kind, layers in prov["layers"].items():
+        assert layers == {"cli": [], "claims_file": []}, kind
+    assert set(prov["layers"]) == {
+        "io_primitives", "taint_sources", "taint_sinks", "taint_sanitizers",
+    }
+
+
+def test_the_text_reader_is_told_too(tmp_path: Path, capsys) -> None:
+    """A disclosure that exists only under --json is half shipped.
+
+    That is this file's own precedent, recorded on INV-karud (a3) when
+    WI-bifob's exclusion bucket reached the dataclass and never the text
+    renderer. The stderr line that exists today is worse than json-only: it is
+    discarded by any redirect, and it is not attached to the verdict.
+    """
+    cmd_verify_claims(
+        _provenance_args(tmp_path, cli_overlay=True, json_output=False),
+    )
+    out = capsys.readouterr().out
+    assert "ov.yaml" in out, (
+        "the text verdict does not say which catalogue produced it"
+    )

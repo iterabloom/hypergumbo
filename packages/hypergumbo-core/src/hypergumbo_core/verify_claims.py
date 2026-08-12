@@ -61,7 +61,7 @@ How It Works
 """
 from __future__ import annotations
 
-from collections.abc import Set as AbstractSet
+from collections.abc import Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -140,7 +140,7 @@ from .paths import classify_test_file, is_migration_file
 # the one shape the call-graph pass structurally cannot honour: a sanitizer
 # called in the same function as the source (WI-fasub), which the DDG pass now
 # does honour and which every language without a def/use extractor still misses.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.8"
+VERIFY_CLAIMS_SCHEMA_VERSION = "1.9"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -497,6 +497,116 @@ def _parse_taint_flow(
         prohibited_sink_zone=taint_flow_data.get("prohibited_sink_zone", ""),
         allowed_sanitizers=taint_flow_data.get("allowed_sanitizers", []),
     )
+
+
+#: The catalogue layers a verdict can rest on, in ASCENDING precedence within
+#: each kind. Fixed and always emitted so a consumer never has to read a
+#: missing key as "none" — the same convention ``dataflow_coverage`` follows.
+_PROVENANCE_KINDS: tuple[str, ...] = (
+    "io_primitives",
+    "taint_sources",
+    "taint_sinks",
+    "taint_sanitizers",
+)
+
+
+def catalog_provenance(
+    layers: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
+) -> dict[str, Any]:
+    """Record which catalogues a verdict was computed against (INV-zosun).
+
+    THE PROBLEM THIS EXISTS FOR. A ``confirmed`` reached against the shipped
+    catalogue and a ``confirmed`` reached against a repo-supplied overlay were
+    byte-identical, in the text output and in the ``--json`` envelope alike.
+    The only signal was one stderr line naming the overlay path: not attached
+    to the verdict, absent from the envelope, and gone the instant anyone
+    redirected the output.
+
+    THAT IS NOT COSMETIC, because a catalogue row is not a detection-only
+    grant. Since INV-buzab a call the catalogue CLASSIFIED is what *examined*
+    means, so a row carrying the wrong boundary converts an unexamined call
+    into an examined one that produces no chain for the boundary actually
+    claimed. Measured on one fixture posting ``os.environ["API_KEY"]`` through
+    ``requests.post``, claim "never sends data over the network", the middle
+    run being the control that proves the row matched::
+
+        no overlay                            inconclusive   rc 2
+        requests.post declared net_send       violated       rc 1
+        requests.post declared fs_read        CONFIRMED      rc 0
+
+    THE TWO LAYERS ARE KEPT APART ON PURPOSE. A catalogue passed on the
+    command line comes from whoever RAN the tool. One reached through the
+    claims file's ``extra_catalogs:`` travels WITH the repository — and when
+    the claims file and its catalogues live inside the tree under analysis,
+    the subject is supplying its own grading criteria. Reproduced: a directory
+    holding ``main.py``, ``claims.yaml`` and an overlay filing
+    ``requests.post`` under ``fs_read`` returns ``confirmed`` rc 0, where the
+    same repo without the ``extra_catalogs:`` line returns ``inconclusive``
+    rc 2. Collapsing the layers would report THAT a catalogue was used while
+    hiding WHO supplied it, which is the more decision-relevant half.
+
+    THIS CHANGES NO VERDICT. It is disclosure, deliberately chosen over
+    restriction: refusing user catalogues would close the case ADR-0016 §27
+    created the overlay channel for (cataloguing third-party egress so it
+    becomes visible), and the honest gap was never that users can extend the
+    catalogue — it was that doing so left no trace on the answer.
+
+    Args:
+        layers: kind -> (CLI-supplied paths, claims-file-supplied paths).
+            Every key in :data:`_PROVENANCE_KINDS` is emitted whether or not
+            it appears here.
+
+    Returns:
+        ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
+        "claims_file": [...]}}}`` — paths as strings, exactly as the user
+        wrote them, so a reader can find the file.
+    """
+    out: dict[str, dict[str, list[str]]] = {}
+    any_user = False
+    for kind in _PROVENANCE_KINDS:
+        cli_paths, claims_paths = layers.get(kind, ((), ()))
+        cli_list = [str(p) for p in cli_paths]
+        claims_list = [str(p) for p in claims_paths]
+        any_user = any_user or bool(cli_list) or bool(claims_list)
+        out[kind] = {"cli": cli_list, "claims_file": claims_list}
+    return {"user_supplied": any_user, "layers": out}
+
+
+def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
+    """The same disclosure for a reader who did not ask for JSON.
+
+    A disclosure that exists only under ``--json`` is half shipped — this
+    file's own precedent, recorded on INV-karud (a3) when WI-bifob's exclusion
+    bucket reached the dataclass and never the text renderer. Renders to
+    nothing when the run used only the shipped catalogue, so ordinary output
+    is unchanged.
+    """
+    if not provenance.get("user_supplied"):
+        return []
+    lines = [
+        "",
+        "NOTE: these verdicts were computed against USER-SUPPLIED catalogue "
+        "input.",
+    ]
+    for kind, layer in sorted(provenance.get("layers", {}).items()):
+        for origin, label in (("cli", "CLI flag"),
+                              ("claims_file", "claims-file extra_catalogs")):
+            for path in layer.get(origin, []):
+                lines.append(f"  {kind}: {path}  [{label}]")
+    lines.append(
+        "  A verdict is only as truthful as the catalogue behind it: a row "
+        "with the wrong",
+    )
+    lines.append(
+        "  boundary makes a call count as EXAMINED without producing a chain "
+        "for the",
+    )
+    lines.append(
+        "  boundary claimed. Where a claims-file catalogue ships inside the "
+        "analysed repo,",
+    )
+    lines.append("  the repository is supplying its own criteria (INV-zosun).")
+    return lines
 
 
 def validate_taint_flow_vocabulary(

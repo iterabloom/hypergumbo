@@ -5571,6 +5571,25 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ),
     )
 
+    # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
+    # the text and JSON surfaces cannot disagree about what was trusted. The
+    # CLI and claims-file layers stay separate all the way here: a catalogue
+    # passed on the command line comes from whoever ran the tool, while one
+    # reached through `extra_catalogs:` travels with the repository, and a
+    # claims file living inside the analysed tree means the repo is supplying
+    # its own criteria. `_resolve_io_overlays` concatenates the two, so the
+    # unmerged lists are read here rather than recovered from the merged one.
+    from .verify_claims import catalog_provenance, render_catalog_provenance_text
+    _provenance = catalog_provenance({
+        "io_primitives": (
+            [Path(p) for p in (getattr(args, "io_primitives", None) or [])],
+            _claims_io_overlays,
+        ),
+        "taint_sources": (cli_sources, claims_sources),
+        "taint_sinks": (cli_sinks, claims_sinks),
+        "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
+    })
+
     # Output
     if _read_view_wants_json(args):
         # WI-nulot / INV-gatog: a versioned top-level envelope (was a bare JSON
@@ -5591,6 +5610,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "dataflow_coverage": dataflow_scope_dict(
                     dataflow_rows, findings_by_method, sanitizer_scope,
                 ),
+                # INV-zosun: which catalogues this verdict rested on. Always
+                # present, like dataflow_coverage above, so `user_supplied:
+                # false` is an assertable fact rather than an absent key.
+                "catalog_provenance": _provenance,
             },
             view="verify-claims",
             schema_version=VERIFY_CLAIMS_SCHEMA_VERSION,
@@ -5635,6 +5658,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for line in render_dataflow_scope_text(
             dataflow_rows, findings_by_method, sanitizer_scope,
         ):
+            print(line)
+
+        # INV-zosun on the TEXT surface, for the same reason the block above
+        # exists. The stderr disclosure that predates this is weaker than
+        # json-only: a redirect discards it and it is not attached to the
+        # verdict it qualifies.
+        for line in render_catalog_provenance_text(_provenance):
             print(line)
 
     # INV-javam: warn to stderr when taint claims were evaluated against a
