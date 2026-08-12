@@ -677,6 +677,38 @@ stdlib_modules:
 # chains are provably noise (the call is into the module but not into
 # any of its I/O primitives, so it is structurally non-I/O).
 #
+# *** THIS SECTION IS NOW A SECURITY BOUNDARY, NOT A NOISE FILTER. ***
+# INV-buzab: ``verify-claims`` may return ``confirmed`` for a
+# ``must_not_exist`` claim ONLY over modules listed here. Every module
+# NOT listed blocks the claim to ``inconclusive``. Adding an entry
+# therefore converts "I cannot confirm this" into "I confirm this" for
+# every repo that touches the module — it is the single grant of
+# confirmability, and a wrong entry is a false all-clear on a security
+# claim rather than a little extra output noise.
+#
+# What it replaced, and why nothing weaker is acceptable. The gate used
+# to accept two other kinds of evidence and both were measured open on
+# this very catalogue: membership in ``stdlib_modules`` below (283 of
+# those 300 modules carry no row at all — ``telnetlib``, ``ssl`` and
+# ``ctypes`` each confirmed "never sends data over the network" for a
+# program that exfiltrates), and the mere presence of a row for the
+# module (``os`` has 40 rows and none of them is ``os.open`` /
+# ``os.write`` / ``os.sendfile``, so a program writing through
+# ``os.open`` confirmed "never writes to the host filesystem").
+#
+# The bar for an entry is the closed-world claim as written, and it
+# applies to EXACTLY the module named. Matching is exact — declaring
+# ``urllib`` does NOT vouch for ``urllib.request``, and it must not:
+# ``urllib`` is a namespace package whose submodules have unrelated I/O
+# surfaces (``urllib.request`` opens URLs, ``urllib.parse`` does pure
+# string work). Declare every module you actually audited, submodules
+# included.
+#
+# Note the smaller scope this section carries after INV-buzab: a call the
+# catalogue CLASSIFIES is already examined, so these flags are needed only
+# for the calls it cannot classify. An entry is worth writing where a repo
+# legitimately calls names this catalogue does not enumerate.
+#
 # Hand-curated. NOT touched by ``scripts/refresh-stdlib-modules``. Add
 # a new entry only after a deliberate audit of the module's surface;
 # the ``retrieved:`` date records when that audit was performed.

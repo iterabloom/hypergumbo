@@ -201,6 +201,91 @@ class TestPrecedence:
         assert not cat.is_stdlib_module("requests")
         assert cat.is_stdlib_module("os"), "stdlib membership lost — vacuous"
 
+    def test_the_completeness_section_is_not_a_second_door_into_stdlib(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE ROUTE AROUND THE TEST ABOVE, closed.
+
+        ``load_overlay_catalog`` pops ``stdlib_modules`` — which is what the
+        sibling test exercises — but ``_from_dict`` used to auto-promote every
+        ``stdlib_module_completeness`` entry into the same set on the reasoning
+        that "adding to completeness implies the module is stdlib". So an
+        overlay that never mentioned ``stdlib_modules`` at all still got
+        ``is_stdlib_module("requests") is True``, relabelling a PyPI package as
+        stdlib and feeding that to the supply-chain ecosystem classifier and
+        py_deps. Measured before the fix, with the popped spelling as the
+        control: ``stdlib_modules: [requests]`` gave False, the completeness
+        spelling gave True.
+
+        The completeness declaration itself is legitimate for an overlay — the
+        user may assert they audited their own dependency's I/O — so it is
+        preserved. It just no longer carries a provenance claim with it.
+        """
+        overlay = _write(
+            tmp_path, "o.yaml",
+            "language: python\n"
+            "status: overlay\n"
+            "stdlib_module_completeness:\n"
+            "  - module: requests\n"
+            "    completeness: complete\n"
+            '    retrieved: "2026-08-12"\n'
+            "net_send:\n"
+            "  - module: requests\n"
+            "    functions: [post]\n",
+        )
+        with pytest.raises(
+            IoPrimitiveOverlayError, match="stdlib_module_completeness",
+        ):
+            load_catalog("python", overlay_paths=[overlay])
+
+    def test_an_overlay_may_not_grant_confirmability(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE SIX-LINE FILE THAT RE-OPENED INV-buzab, refused.
+
+        A completeness entry is what lets ``verify-claims`` answer
+        ``confirmed`` about the calls it could not classify, so it grants
+        strictly MORE than the ``status: complete`` this loader already
+        refuses. Measured before the refusal existed: this overlay — zero
+        primitive rows, one entry — turned a fixture that opens
+        ``telnetlib.Telnet`` and writes ``os.environ["API_KEY"]`` into it from
+        ``inconclusive`` rc 2 back to ``confirmed`` rc 0.
+
+        Loud, not silent: a pop would leave the author believing they had
+        vouched for the module.
+        """
+        overlay = _write(
+            tmp_path, "o.yaml",
+            "language: python\n"
+            "status: overlay\n"
+            "stdlib_module_completeness:\n"
+            "  - module: telnetlib\n"
+            "    completeness: complete\n"
+            '    retrieved: "2026-08-12"\n',
+        )
+        with pytest.raises(IoPrimitiveOverlayError) as exc:
+            load_overlay_catalog(overlay)
+        assert "confirmed" in str(exc.value), (
+            "the error must say what the entry would have granted, or the "
+            "author cannot tell why their file was refused"
+        )
+
+    def test_rows_are_still_welcome_from_an_overlay(
+        self, tmp_path: Path,
+    ) -> None:
+        """NON-VACUITY for the refusal above: the overlay channel still works.
+
+        Rows ADD detection, which is the safe direction for a user-authored
+        file; only the all-clear grant is withheld."""
+        cat = load_catalog(
+            "python",
+            overlay_paths=[_write(tmp_path, "o.yaml", REQUESTS_OVERLAY)],
+        )
+        assert any(
+            p.module == "requests" and p.name == "post" for p in cat.primitives
+        )
+        assert not cat.module_io_is_enumerated("requests")
+
 
 class TestTheMotivatingDefect:
     """Behavioural: the overlay actually makes the invisible egress visible."""
