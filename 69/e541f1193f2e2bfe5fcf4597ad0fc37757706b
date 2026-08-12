@@ -1,0 +1,11 @@
+Original commit body from 5d932715f7e40d8ce44b8fdb2f932b5454184915:
+
+Not related to the fix on this branch — CI blocked the merge on
+`generate-architecture --check`, and the staleness window had been exceeded by
+two commits. Whoever hits the gate owns it, same rule as the mypy ratchet.
+
+Regenerated output only; the diff is numeric drift from 32 commits of growth
+(39354 -> 39465 symbols, 139321 -> 139627 edges) plus small centrality-score
+movements. No structural or narrative change.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
