@@ -1,0 +1,37 @@
+- op: create  # 5f4f
+  at: '2026-08-12T21:15:38Z'  # 5f4f
+  by: agent  # 5f4f
+  actor: jgstern_agent  # 5f4f
+  clock: 1  # 5f4f
+  nonce: 5f4f  # 5f4f
+  data:  # 5f4f
+    kind: work_item  # 5f4f
+    title: "UNTESTED: whether a user-supplied --taint-sanitizers entry can delete a real violation (INV-zosun's third door)"  # 5f4f
+    status: todo_hard  # 5f4f
+    priority: 2  # 5f4f
+    parent:  # 5f4f
+    tags: []  # 5f4f
+    isbefore: []  # 5f4f
+    duplicate_of: []  # 5f4f
+    not_duplicate_of: []  # 5f4f
+    pr_ref:  # 5f4f
+    description: "NOT A REPORTED DEFECT — A GAP IN EVIDENCE. INV-zosun named three user-writable\ninputs that reach a verdict and demonstrated two of them. This is the third,\nand after three attempts it is still UNTESTED. Filed so the absence of a result\nis not later read as a negative result.\n\nTHE HYPOTHESIS, stated so it can be refuted: a project-local sanitizer entry\nnames functions that convert a taint label into a safe one, and a flow through\none is reported `sanitized` and DROPPED from the violation set (PR #214). So a\nuser-supplied sanitizer naming a function on the exfiltration path should\nDELETE the finding outright — strictly stronger than the overlay case, which\nonly grants coverage. Same trust model, larger consequence.\n\nTHREE ATTEMPTS, NONE A VALID A/B (all on dev, before/after the INV-todas fix):\n\n 1. fixture: os.environ[\"API_KEY\"] -> scrub(s) -> open().write, sanitizer\n    declares first-party `main.scrub` transforms host_secret -> sanitized.\n    RESULT: still violated rc 1, 2 flows. INVALID: the tool's own disclosure\n    says \"A sanitizer called in the SAME function as the source is honoured\n    only by: ddg\", and source + sanitizer share `main`.\n 2. same shape with `base64.b64encode` as the declared sanitizer (a realistic\n    lie — base64 is not encryption). RESULT: still violated rc 1. INVALID for\n    the same same-function reason.\n 3. split fixture: get_secret() / sanitize() / write_it() in separate\n    functions. RESULT: inconclusive rc 2 — the POSITIVE CONTROL produced no\n    finding at all (the base64 module is uncatalogued, so the INV-buzab gate\n    correctly refused to confirm). INVALID: nothing to delete.\n\nWHAT A VALID TEST NEEDS: a fixture whose baseline is `violated`, with the\nsanitizer call in a DIFFERENT function from the source, over modules the\ncatalogue can classify so the gate does not intervene. INV-funit recorded a\nshape where the barrier arm DID fire — the idiomatic f.decrypt / f.encrypt /\nos.remove pattern went violated@precise -> confirmed with the arm firing — so\nthe working shape is known and should be adapted with a LYING user sanitizer\nsubstituted for the legitimate one.\n\nDIRECTION IF CONFIRMED: this is the expensive direction. A `False` earns\n`sanitized` since #214, and an unearned `False` deletes a finding. If a\nsix-line user file can delete a real violation, disclosure (INV-zosun's fix) is\nnecessary but plainly not sufficient, and option (b) — ADR-0016's unimplemented\nfourth verdict — gets a second, stronger consumer.\n\nDO NOT CLOSE ON NON-REPRODUCTION. Three invalid probes are not evidence the\ndoor is shut."  # 5f4f
+    fields: {}  # 5f4f
+- op: update  # 732a
+  at: '2026-08-12T21:15:47Z'  # 732a
+  by: agent  # 732a
+  actor: jgstern_agent  # 732a
+  clock: 2  # 732a
+  nonce: 732a  # 732a
+  set:  # 732a
+    status: todo_hard  # 732a
+    priority: 1  # 732a
+  add:  # 732a
+    tags: [security, taint, verify_claims]  # 732a
+- op: discuss  # ef16
+  at: '2026-08-12T21:15:47Z'  # ef16
+  by: agent  # ef16
+  actor: jgstern_agent  # ef16
+  clock: 3  # ef16
+  nonce: ef16  # ef16
+  message: "Split out of INV-zosun at closure. INV-zosun's statement (a verdict must disclose user-supplied catalogue input) is satisfied by PR #312; this third door is a separate, unmeasured question and must not inherit that closure."  # ef16
