@@ -2,7 +2,7 @@
 # ADR-0016: I/O Boundary Analysis and Security Claim Verification
 
 Date: 2026-03-18
-Updated: 2026-03-19
+Updated: 2026-08-12
 Status: Accepted
 
 ## Context
@@ -46,13 +46,24 @@ extra_catalogs:
     - overlays/python-http-clients.yaml
 ```
 
-Precedence mirrors the taint arm rather than inventing a second rule: **built-in < claims-file `extra_catalogs:` < CLI `--io-primitives`**, and a later path outranks an earlier one, all keyed on qualified name — the same key `IoBoundaryCatalog.merge` already uses for language inheritance (scala → java). Three constraints keep an overlay from laundering itself into the curated catalog's standing:
+Precedence mirrors the taint arm rather than inventing a second rule: **built-in < claims-file `extra_catalogs:` < CLI `--io-primitives`**, and a later path outranks an earlier one, all keyed on qualified name — the same key `IoBoundaryCatalog.merge` already uses for language inheritance (scala → java). Four constraints keep an overlay from laundering itself into the curated catalog's standing:
 
 - `status: overlay` is required and `status: complete` is **refused** — that status asserts a provenance-backed stdlib enumeration, which an overlay is not making.
 - `stdlib_modules` / `stdlib_prefixes` are dropped, so `is_stdlib_module` keeps answering about the actual interpreter. A `requests` overlay must not relabel a PyPI package as stdlib; that feeds the dependency classifier and the F3 filter, and would be a supply-chain misread rather than an I/O one.
+- `stdlib_module_completeness` is **refused**, loudly. Since INV-buzab that field is the single grant of confirmability — it is what lets `verify-claims` answer `confirmed` about the calls the catalogue could *not* classify — so it grants strictly more than the `status: complete` refused above. A silent drop was rejected in favour of an error because it would leave the author believing they had vouched for a module.
 - A missing or malformed overlay path is an **error** (exit 2, inconclusive), never a silent skip — degrading to "no extra primitives" reads exactly like a clean repo.
 
 Hypergumbo ships a worked example under `docs/io-primitives-overlays/`, deliberately **not** beside the shipped catalogs: the user owns those rows.
+
+**And owning the rows means owning the verdict — the constraints above bound an overlay's STANDING, not its INFLUENCE.** Since INV-buzab, a call the catalogue *classified* is what `examined` means, so a row does not merely add detection: it also decides whether a `must_not_exist` claim over some *other* boundary may be `confirmed`. A row carrying the wrong boundary therefore yields an examined call that produces no chain for the boundary actually claimed. Measured three ways on one fixture posting `os.environ["API_KEY"]` through `requests.post`, claim "never sends data over the network" — the middle run is the control that proves the row matched:
+
+| overlay | verdict | exit |
+|---|---|---|
+| none | `inconclusive` | 2 |
+| `requests.post` declared `net_send` | `violated` | 1 |
+| `requests.post` declared `fs_read` | **`confirmed`** | **0** |
+
+This is *not* an argument for refusing rows — refusing them would close the legitimate case this channel exists for, and it is not a regression, since before INV-buzab row *presence* alone permitted the whole module on strictly weaker evidence. What separates a row from a completeness entry is **scope, not safety**: a row vouches for one named call surface, a completeness entry vouches for every call the catalogue could not classify. The gap this leaves is that a verdict records nothing about which catalogue it trusted — a `confirmed` reached against the shipped catalogue and one reached against a repo-supplied overlay are byte-identical in both the text and the `--json` envelope. Tracked as INV-zosun, where the indicated first move is disclosure (stamping the verdict with its catalogue provenance) rather than restriction.
 
 **One declaration feeds both arms — the overlay is NOT a second place to say the same thing.** ADR-0017 §453 already made `io_primitives` the single source of truth for built-in taint sinks: every write-side primitive auto-derives into a `TaintSink` through `AUTO_SINK_ZONE_MAP` (`net_send → (network, untrusted)`, `fs_write → (host_fs, untrusted)`, …), and no `taint_sinks/` directory ships at all, precisely so there is no "second source of truth that could drift out of sync." An overlay that fed only the boundary arm would have re-created that drift one layer up, with the user — not hypergumbo — paying for it by declaring `requests.post` twice in two schemas. So `--io-primitives` overlays are threaded into the same derivation: `load_full_taint_catalog(io_overlay_paths=…)` → `_derive_auto_imports_from_io_primitives`, with overlays grouped by their declared language so a Go overlay never seeds Python sinks. Measured on the shipped example: Python taint sinks 113 → 172, `requests.post` arriving as `zone=network, trust_level=untrusted`. The direction is additive-only — more sinks can add findings, never delete one — and non-destruction of the built-in sink set is asserted rather than assumed.
 
