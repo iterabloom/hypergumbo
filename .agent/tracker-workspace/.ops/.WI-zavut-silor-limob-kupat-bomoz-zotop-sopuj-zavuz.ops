@@ -1,0 +1,23 @@
+- op: create  # 47c1
+  at: '2026-08-12T02:51:26Z'  # 47c1
+  by: agent  # 47c1
+  actor: jgstern_agent  # 47c1
+  clock: 1  # 47c1
+  nonce: 47c1  # 47c1
+  data:  # 47c1
+    kind: work_item  # 47c1
+    title: "ci/woodpecker/cron/full-suite FAILS at dev 45280d90 and no earlier commit has a full-suite context at all — likely first run of a workflow its own header calls DORMANT/unvalidated; ci-debug cannot fetch the cron job's log"  # 47c1
+    status: todo_hard  # 47c1
+    priority: 1  # 47c1
+    parent:  # 47c1
+    tags:  # 47c1
+    - ci  # 47c1
+    - test_infra  # 47c1
+    - trunk_green  # 47c1
+    isbefore: []  # 47c1
+    duplicate_of: []  # 47c1
+    not_duplicate_of: []  # 47c1
+    pr_ref:  # 47c1
+    description: "OBSERVED 2026-08-11. `ci-debug runs` reports, at dev 45280d90:\n\n    success   ci/woodpecker/push/woodpecker   @ 45280d90\n    FAILURE   ci/woodpecker/cron/full-suite   @ 45280d90\n\n45280d90 is the INV-safig merge. Filing rather than fixing because the cause is\nnot yet identified and the evidence points away from that merge.\n\nWHY I DO NOT BELIEVE THE MERGE CAUSED IT — stated as evidence, not as a defence:\n  - smart-test --full on that tree: 22,419 passed, 6 skipped, 17 xfailed, exit 0.\n  - the top-level governance suite, which full-suite runs separately and which\n    smart-test --full does NOT include: `pytest tests/ -o addopts=\"\"` -> 1,531\n    passed, exit 0.\n  - check-package-coverage: all 6 packages 100% in isolation, exit 0.\n  - mypy strict ratchet: 672, baseline 672, delta +0.\nThat covers every suite full-suite is documented to run.\n\nTHE STRONGER HYPOTHESIS is that this job has never successfully run.\n`.woodpecker/full-suite.yml`'s own header states it \"Lands DORMANT (INERT on\nCodeberg/Forgejo, which reads .github/workflows/**, not .woodpecker/);\nvalidated/iterated at cutover.\" The cutover to GitHub + Woodpecker has since\nhappened, so a first real execution of an unvalidated workflow is the likeliest\nexplanation. Corroborating: no earlier commit carries a full-suite context at all\n(checked 0ca355ed, 9e5487ff, 75af0817, 1102e75b, 3f00cc35, 63059803 — none), so\nthere is no green baseline to regress FROM. That absence is also why \"it was\nalready broken\" cannot be asserted yet either.\n\nBLOCKED ON LOG ACCESS, which is the first thing to fix. `ci-debug logs\n<job> <sha>` returns the PUSH job's output for every job name tried\n(\"full-suite\", \"cron/full-suite\", \"ci/woodpecker/cron/full-suite\", \"test-core\",\n\"test-mainstream\", \"self-validate\") — all five produced the identical\n\"3 selected files ... 396 passed\" transcript, which is the per-PR pipeline, not\nthe cron one. So either ci-debug resolves only the most recent pipeline for a\nSHA, or cron pipelines are addressed differently. Until that is resolved the\nactual failure message has not been seen by anyone, and NOTHING here should be\ntreated as a diagnosis.\n\nNEXT STEPS, in order:\n  1. Make `ci-debug logs` able to address a cron pipeline (or find the existing\n     way). Without it this item cannot progress.\n  2. Read the actual failure. Only then decide revert-vs-fix.\n  3. If it is a first-run infrastructure failure, note that full-suite has been\n     REPORTING nothing rather than PASSING, and price what that means: the\n     whole-package isolation gate the project believes runs twice daily may not\n     have run at all since cutover. That is the finding that would matter most,\n     and it bears directly on WI-kahar (whether the local pkgcov gate can be\n     relocated) — if the cron gate is dead, the local one is currently the ONLY\n     whole-package isolation coverage anywhere."  # 47c1
+    fields:  # 47c1
+      statement: "dev must be green on every gate that reports on it, and every reporting gate must have a readable log."  # 47c1
