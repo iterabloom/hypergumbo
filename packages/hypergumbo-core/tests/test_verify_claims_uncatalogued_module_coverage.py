@@ -382,14 +382,30 @@ class TestDisclosedResiduals:
         )
         assert coverage.complete is True
 
-    def test_a_language_with_no_catalogue_is_left_to_the_existing_gates(self) -> None:
-        """Coverage for an uncatalogued language is already decided upstream
-        (``unsupported_taint_languages`` / ``is_supported``). This check must not
-        double-count it, or the reason string blames the wrong thing.
+    def test_a_language_with_no_catalogue_blocks_a_clean_verdict(self) -> None:
+        """INVERTED (INV-dabov). This test used to assert ``complete is True``
+        on the rationale that "coverage for an uncatalogued language is already
+        decided upstream (``unsupported_taint_languages`` / ``is_supported``)".
 
-        The python edge is load-bearing: without it the *second* blind spot fires
-        (python is declared supported and produced no call edges) and the test
-        would pass for the wrong reason — which is how it failed first time."""
+        BOTH HALVES OF THAT RATIONALE ARE FALSE for this command, and the
+        prose saying so was already corrected once — in
+        ``_uncatalogued_external_modules``'s SCOPE paragraph — without this
+        assertion being revisited. ``cmd_verify_claims`` derives its supported
+        set as ``languages & set(catalogs)`` and never consults
+        ``is_supported``; ``unsupported_taint_languages`` is populated only
+        when the claims file carries a taint constraint, so a boundary-only
+        claims file leaves it empty. Nothing upstream decided anything.
+
+        The consequence was a live false confirm on the shipped CLI: a 7-line
+        Ruby fixture doing ``Net::HTTP.new(...).post(path,
+        "key=#{ENV['API_KEY']}")`` returned **confirmed, rc 0** for a
+        ``net_send`` claim, with no disclosure — and the analyzer is not
+        blind, it emits the call edge.
+
+        The python edge remains load-bearing for the same reason it always
+        was: without it the *second* blind spot fires (python declared
+        supported, no call edges) and this would pass for the wrong reason.
+        """
         coverage = compute_boundary_coverage(
             [
                 _call("python:pathlib.Path:0-0:read_text:external_symbol"),
@@ -399,7 +415,49 @@ class TestDisclosedResiduals:
             {"python"},
             {"python": _py_catalog()},
         )
-        assert coverage.complete is True
+        assert coverage.complete is False
+        assert "ruby" in coverage.reason
+        assert "python" not in coverage.reason, (
+            "python has a catalogue and produced calls; blaming it would send "
+            "a reader to the wrong gap"
+        )
+
+    def test_a_cross_language_dst_into_an_uncatalogued_language_is_the_residual(
+        self,
+    ) -> None:
+        """WHAT INV-dabov's FIX DOES **NOT** REACH, pinned so it is not
+        mistaken for covered.
+
+        The coverage gate's uncatalogued-language check is keyed on the
+        language of the edge's ``src`` — the code doing the calling. A call
+        whose ``src`` is a catalogued language but whose ``dst`` names a
+        language with no catalogue slips past it, and then
+        ``_uncatalogued_external_modules`` skips the dst on
+        ``catalog is None`` because there is no catalogue to adjudicate the
+        module against. So the module is neither classified nor reported.
+
+        This is narrower than the defect INV-dabov closed: it needs a
+        cross-language call edge rather than merely a file in an uncatalogued
+        language, and the whole-language case is now caught. It is recorded
+        here rather than closed because the honest fix is a catalogue for the
+        target language, not a wider gate — widening this one to dst languages
+        would make any FFI edge into an uncatalogued target downgrade every
+        verdict, which is the repo-scoped coarseness the call-scoped rule was
+        chosen to avoid.
+        """
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol"),
+                _call("ruby:some_gem:0-0:get:external_symbol"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, (
+            "if this now fails, the gate learned about dst languages — check "
+            "that was intended and re-measure the downgrade rate before "
+            "keeping it"
+        )
 
     def test_a_long_module_list_is_summarised_rather_than_dumped(self) -> None:
         """A reason is read by a human deciding whether to trust a verdict, so it

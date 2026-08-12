@@ -1316,8 +1316,15 @@ def test_verify_claims_skips_language_with_only_sinks(
     rc = cmd_verify_claims(args)
     # shellscript has no taint sources in the auto-derived catalog →
     # per-language loop hits the `continue` branch (cli.py:4055) →
-    # no propagation runs for shellscript → claim confirmed vacuously.
-    assert rc == 0
+    # no propagation runs for shellscript.
+    #
+    # THE VERDICT USED TO BE ``confirmed`` (rc 0) HERE, and the comment above
+    # said so in as many words: "claim confirmed vacuously". Vacuous is the
+    # problem — shellscript has no I/O catalogue, so the analysis could not
+    # look, and INV-dabov replaced that all-clear with ``inconclusive``. The
+    # branch this test exists to cover is still exercised: the per-language
+    # loop runs before any verdict is produced.
+    assert rc == 2
 
 
 def _load_error_args(tmp_path: Path, claims_text: str) -> "FakeArgs":
@@ -1528,7 +1535,7 @@ def test_a_boundary_claim_earlier_in_the_file_does_not_mask_a_taint_typo(
     assert "host_filesystem" in capsys.readouterr().err
 
 
-def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path) -> None:
+def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path, capsys) -> None:
     """NON-VACUITY, and the reason this check cannot live in ``load_claims``.
 
     Unlike ``KNOWN_IO_BOUNDARIES``, the taint vocabularies are NOT constants —
@@ -1538,7 +1545,7 @@ def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path) -> None:
     against the RESOLVED catalogue, and this pins that a user-declared zone
     survives it.
     """
-    rc = cmd_verify_claims(_taint_vocab_args(
+    cmd_verify_claims(_taint_vocab_args(
         tmp_path, "plaintext", "custom_zone",
         sink_yaml=(
             "zone: custom_zone\n"
@@ -1549,10 +1556,19 @@ def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path) -> None:
             "      functions: [doStuff]\n"
         ),
     ))
-    assert rc != 2, (
+    # ASSERTED ON THE REASON, NOT THE EXIT CODE. This test first checked
+    # ``rc != 2`` and that was too weak to mean anything: rc 2 covers every
+    # inconclusive cause, and INV-dabov later made this same fixture exit 2 for
+    # an unrelated one (``shellscript`` has no I/O catalogue). An exit code
+    # that two different mechanisms can produce cannot discriminate between
+    # them, so the vocabulary check is verified by its own absence from the
+    # error stream instead.
+    err = capsys.readouterr().err
+    assert "unknown prohibited_sink_zone" not in err, (
         "a zone the user declared was rejected as unknown vocabulary; the "
         "check is reading built-ins instead of the resolved catalogue"
     )
+    assert "custom_zone" not in err
 
 
 def _boundary_claim_args(tmp_path: Path, bmap: dict) -> "FakeArgs":
