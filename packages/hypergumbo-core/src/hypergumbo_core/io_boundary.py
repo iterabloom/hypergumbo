@@ -1087,8 +1087,11 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"verify-claims answer 'confirmed' about the calls it could not "
             f"classify, so it grants strictly MORE than the "
             f"'status: complete' this loader already refuses. Supply "
-            f"primitive ROWS instead: rows add detection, which is the safe "
-            f"direction for a user-authored file.",
+            f"primitive ROWS instead — narrower, NOT safer: a row vouches "
+            f"for one named call surface, a completeness entry vouches for "
+            f"every call the catalogue could not classify. A row still "
+            f"decides verdicts, so a wrong boundary on one is a wrong "
+            f"verdict (INV-zosun).",
         )
     # Hand ``_from_dict`` a status it accepts; the overlay marker has already
     # done its job (refusing a completeness claim) and must not reach the
