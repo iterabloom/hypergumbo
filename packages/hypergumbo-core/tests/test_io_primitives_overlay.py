@@ -51,6 +51,7 @@ import pytest
 
 from hypergumbo_core.io_boundary import (
     IoPrimitiveOverlayError,
+    classify_call,
     load_catalog,
     load_overlay_catalog,
 )
@@ -275,8 +276,10 @@ class TestPrecedence:
     ) -> None:
         """NON-VACUITY for the refusal above: the overlay channel still works.
 
-        Rows ADD detection, which is the safe direction for a user-authored
-        file; only the all-clear grant is withheld."""
+        Rows are NARROWER than a completeness entry, not SAFER — see
+        :meth:`test_a_row_also_grants_examined_ness_and_that_is_INV_zosun`.
+        A row vouches for one named call surface; only the blanket all-clear
+        over calls the catalogue could not classify is withheld."""
         cat = load_catalog(
             "python",
             overlay_paths=[_write(tmp_path, "o.yaml", REQUESTS_OVERLAY)],
@@ -285,6 +288,66 @@ class TestPrecedence:
             p.module == "requests" and p.name == "post" for p in cat.primitives
         )
         assert not cat.module_io_is_enumerated("requests")
+
+    def test_a_row_also_grants_examined_ness_and_that_is_INV_zosun(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE DISCLOSED RESIDUAL of accepting rows from a user-authored file.
+
+        This does NOT assert the behaviour is desirable. It pins the mechanism
+        that makes it possible, so the correction stays load-bearing instead of
+        living in a changelog paragraph, and so nobody "fixes" INV-zosun
+        without this test telling them what they changed.
+
+        A row is not a detection-only grant. Since INV-buzab, a call the
+        catalogue CLASSIFIED is what ``examined`` means, and
+        :func:`classify_call` is the one predicate answering that for both the
+        tagging pass and the coverage gate. So an overlay row makes the gate
+        treat its call surface as examined REGARDLESS of the boundary it
+        declares — and a row declaring the wrong boundary yields an examined
+        call that produces no chain for the boundary actually claimed.
+
+        Measured end-to-end on the shipped CLI, one fixture posting
+        ``os.environ["API_KEY"]`` through ``requests.post``, claim "never sends
+        data over the network"; the middle run is the control that proves the
+        row matched and the machinery works:
+
+        ==========================================  ==============  ==
+        overlay                                     verdict         rc
+        ==========================================  ==============  ==
+        none                                        inconclusive     2
+        ``requests.post`` -> ``net_send``            violated         1
+        ``requests.post`` -> ``fs_read``             **confirmed**    0
+        ==========================================  ==============  ==
+
+        NOT A REGRESSION: before INV-buzab, row PRESENCE alone permitted the
+        whole module, on strictly weaker evidence.
+        """
+        mislabelled = _write(
+            tmp_path, "o.yaml",
+            "language: python\n"
+            "status: overlay\n"
+            "fs_read:\n"
+            "  - module: requests\n"
+            "    functions: [post]\n",
+        )
+        cat = load_catalog("python", overlay_paths=[mislabelled])
+        match = classify_call(
+            {"python": cat}, "python:requests:0-0:post:external_symbol",
+        )
+        assert match is not None, (
+            "the row must classify the call — if it does not, this test has "
+            "stopped demonstrating anything and INV-zosun needs re-measuring"
+        )
+        assert match.boundary == "fs_read", (
+            "the gate now treats a net_send call as examined on the strength "
+            "of a filesystem label the user supplied"
+        )
+        assert not cat.module_io_is_enumerated("requests"), (
+            "and it does so WITHOUT the completeness grant this loader "
+            "refuses — which is why refusing completeness alone is not "
+            "sufficient, and why the fix direction is disclosure"
+        )
 
 
 class TestTheMotivatingDefect:
