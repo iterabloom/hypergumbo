@@ -1,0 +1,39 @@
+- op: create  # 7c0a
+  at: '2026-08-12T18:32:27Z'  # 7c0a
+  by: agent  # 7c0a
+  actor: jgstern_agent  # 7c0a
+  clock: 1  # 7c0a
+  nonce: 7c0a  # 7c0a
+  data:  # 7c0a
+    kind: invariant  # 7c0a
+    title: "A claim whose taint vocabulary the tool does not recognise returns 'confirmed' rc 0, while the same typo in constraint.boundary correctly exits 2"  # 7c0a
+    status: violated  # 7c0a
+    priority: 2  # 7c0a
+    parent:  # 7c0a
+    tags: []  # 7c0a
+    isbefore: []  # 7c0a
+    duplicate_of: []  # 7c0a
+    not_duplicate_of: []  # 7c0a
+    pr_ref:  # 7c0a
+    description: "THE INVARIANT: a claim whose vocabulary the tool does not recognise must never\nresolve as `confirmed`. It is not a claim about the program yet — it is a claim\nthe tool failed to parse into anything checkable, and \"I could not understand\nyour claim\" and \"your claim holds\" must not share an exit code.\n\nVIOLATED on the taint arm, on the shipped CLI, with the BOUNDARY arm as a\ncontrol that behaves correctly IN THE SAME COMMAND. One fixture, which really\ndoes leak (`os.environ[\"API_KEY\"]` written through `open(...).write`), one\nclaims file per row:\n\n  constraint.taint_flow.source_taint: secret_material   (no such label)\n      -> Verdict: confirmed                 rc 0    *** FAILS OPEN ***\n  constraint.taint_flow.prohibited_sink_zone: host_filesystem  (typo, host_fs)\n      -> Verdict: confirmed                 rc 0    *** FAILS OPEN ***\n  constraint.boundary: net_sends            (typo, net_send)\n      -> Error: unknown boundary 'net_sends'; valid boundaries: ...\n         Did you mean: net_send, net_recv, ipc_send?\n                                            rc 2    <- CONTROL, fails CLOSED\n\n  POSITIVE CONTROL, same fixture with the CORRECT labels\n  (host_secret -> host_fs):\n      -> Verdict: violated                  rc 1\n         \"2 unsanitized host_secret flow(s) to host_fs zone\"\n\nSo the `confirmed` is not \"there was nothing to find\". The flow is there, the\ntool finds it when addressed correctly, and a single mistyped word converts a\nreal violation into a clean bill of health at exit 0.\n\nMECHANISM, and the project already wrote the argument down. `_parse_taint_flow`\ncalls `_reject_unknown_keys` on the taint_flow mapping, so it validates KEY\nNAMES (`source_taint`, `prohibited_sink_zone`, `allowed_sanitizers`) and never\nvalidates their VALUES. Downstream, `verify_claim` filters:\n\n    constrained = [f for f in findings\n                   if f.taint_label == tf.source_taint\n                   and f.sink_zone == tf.prohibited_sink_zone]\n\nAn unrecognised value matches nothing, `constrained` is empty, `matching` is\nempty, and the claim confirms. The boundary arm has exactly this guard, added\nfor INV-gobob / WI-ruzib, and its comment describes THIS bug verbatim:\n\n    # Boundary-vocabulary check (INV-gobob / WI-ruzib). ... An unknown value\n    # here would otherwise make verify_claim's ``boundary_map.entries.get``\n    # return None -> chain_count 0 -> silent \"confirmed\".\n\nThe reasoning was correct, was written down, and was applied to one of the two\nconstraint vocabularies. This is the WI-bopoz unknown-FIELD-name defect one\nlevel deeper — and strictly worse, because WI-bopoz's symptom was\n`inconclusive` while this one is `confirmed`.\n\nWHY IT IS EASIER TO HIT THAN THE OVERLAY DOORS (INV-zosun). Writing a\nmislabelled overlay takes deliberate effort. Mistyping `host_fs` as\n`host_filesystem`, or guessing `secret_material` for what the catalogue calls\n`host_secret`, is what an author does on their first attempt — the vocabulary\nis not obvious, is not printed anywhere on the error path, and has no\ndid-you-mean because there is no check to attach one to.\n\nFIX DIRECTION. Validate both values at load time and fail closed (rc 2) with\nthe vocabulary listed and a `_did_you_mean` suffix, exactly as the boundary\narm does — the helper already exists and takes any vocabulary.\n\nTHE DESIGN QUESTION THAT MAKES THIS NON-TRIVIAL, and it is the same question as\nINV-zosun. The boundary vocabulary is a fixed constant (`KNOWN_IO_BOUNDARIES`).\nThe taint vocabularies are NOT: labels come from `taint_sources/*.yaml`\n(`taint_label:`), from `AUTO_SOURCE_LABEL_MAP`'s values (io_primitives boundary\n-> label), and from sanitizer `output_taint:` values; zones come from\n`AUTO_SINK_ZONE_MAP`'s values plus anything a user supplies via\n`--taint-sinks` / `extra_catalogs:`. So the check must run against the FULLY\nRESOLVED catalogue including user-supplied entries, which means claim\nvalidation has to happen after catalogue load rather than in `load_claims`\nwhere the boundary check lives. Ordering must be settled before implementing;\nvalidating against built-ins alone would reject legitimate user labels, which\nis a different failure and not an improvement.\n\nNOT MEASURED: whether any real claims file in the wild carries such a typo.\nIrrelevant to severity — the failure is silent by construction, so absence of\nreports is not evidence of absence."  # 7c0a
+    fields:  # 7c0a
+      statement: "A claim whose vocabulary the tool cannot recognise must never resolve as confirmed — 'I could not parse your claim into anything checkable' and 'your claim holds' must not share an exit code. VIOLATED on the taint arm: _parse_taint_flow validates taint_flow KEY NAMES via _reject_unknown_keys and never validates their VALUES, so an unrecognised source_taint or prohibited_sink_zone filters verify_claim's 'constrained' comprehension to empty and the claim confirms. Measured on a fixture that really leaks: source_taint 'secret_material' -> confirmed rc 0; prohibited_sink_zone 'host_filesystem' -> confirmed rc 0; the SAME typo in constraint.boundary ('net_sends') -> Error rc 2 with a did-you-mean; the correct labels (host_secret/host_fs) -> violated rc 1."  # 7c0a
+      root_cause: "The boundary-vocabulary guard added for INV-gobob / WI-ruzib was applied to one of the two constraint vocabularies. Its own comment states the mechanism this item files: 'An unknown value here would otherwise make verify_claim's boundary_map.entries.get return None -> chain_count 0 -> silent confirmed.' The taint arm has the identical shape via the taint_label/sink_zone filter and never got the check. It is the WI-bopoz unknown-field-name defect one level deeper, and worse: WI-bopoz's symptom was inconclusive, this one is confirmed."  # 7c0a
+- op: update  # 0b9c
+  at: '2026-08-12T18:32:44Z'  # 0b9c
+  by: agent  # 0b9c
+  actor: jgstern_agent  # 0b9c
+  clock: 2  # 0b9c
+  nonce: 0b9c  # 0b9c
+  set:  # 0b9c
+    status: violated  # 0b9c
+    priority: 0  # 0b9c
+  add:  # 0b9c
+    tags: [verify_claims, taint, security]  # 0b9c
+- op: discuss  # c13c
+  at: '2026-08-12T18:32:44Z'  # c13c
+  by: agent  # c13c
+  actor: jgstern_agent  # c13c
+  clock: 3  # c13c
+  nonce: c13c  # c13c
+  message: "Found while probing INV-zosun's untested neighbours, not while looking for it.\nMy first taint fixture used source_taint: secret_material and returned confirmed\nrc 0 — I read that as \"my fixture produces no flow\", which was half right and\nhalf the defect. Correcting the label to host_secret gave violated rc 1, so the\nfixture was fine and the label was the bug.\n\nDiscriminator: the boundary arm, given the same class of typo in the same\ncommand, exits 2 with a did-you-mean. One arm fails closed, the other fails\nopen, and the code comment justifying the closed one describes the open one.\n\nSeverity argument: this is cheaper to trip than any INV-zosun door. A\nmislabelled overlay takes deliberate effort; mistyping host_fs as\nhost_filesystem, or guessing secret_material for host_secret, is what an author\ndoes on a first attempt, with no vocabulary printed anywhere on the error path."  # c13c
