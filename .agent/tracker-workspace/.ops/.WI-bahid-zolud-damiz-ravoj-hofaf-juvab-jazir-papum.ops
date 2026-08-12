@@ -1,0 +1,25 @@
+- op: create  # 7a8a
+  at: '2026-08-11T22:20:10Z'  # 7a8a
+  by: agent  # 7a8a
+  actor: jgstern_agent  # 7a8a
+  clock: 1  # 7a8a
+  nonce: 7a8a  # 7a8a
+  data:  # 7a8a
+    kind: work_item  # 7a8a
+    title: "DECISION: 33 third-party rows still ship in go.yaml (unix 27, grpc functions 3, execabs 3) — reachable, unlike the 20 INV-safig moved, so culling deletes 13 measured chains. ADR-0016 §27 compliance vs default detection"  # 7a8a
+    status: needs_human_review  # 7a8a
+    priority: 3  # 7a8a
+    parent:  # 7a8a
+    tags:  # 7a8a
+    - go  # 7a8a
+    - io_primitives  # 7a8a
+    - catalogue  # 7a8a
+    - adr_0016  # 7a8a
+    - needs_decision  # 7a8a
+    isbefore: []  # 7a8a
+    duplicate_of: []  # 7a8a
+    not_duplicate_of: []  # 7a8a
+    pr_ref:  # 7a8a
+    description: "DECISION REQUESTED. Filed 2026-08-11 alongside INV-safig, which moved the 20\nthird-party METHOD rows out of go.yaml. These 33 are the remainder, and they are\nNOT the same case — culling them would delete working detections rather than dead\nrows, so the call is the human's.\n\nTHE REMAINDER, and why it was left:\n\n    golang.org/x/sys/unix        27 function rows\n    google.golang.org/grpc        3 function rows (Dial, DialContext, NewClient)\n    golang.org/x/sys/execabs      3 function rows\n\nAll 33 are third-party by ADR-0016's rule — `golang.org/x/...` is part of the Go\nproject but ships as a separate module, not stdlib — so on the letter of §27\n(\"a curated list of stdlib functions\") and §35 (\"a project-local overlay, not\nmore built-in rows\") they do not belong in the shipped catalogue.\n\nBUT UNLIKE THE 20, THEY WORK. `_module_matches` compares trailing components, so\n`unix` IS the trailing component of `golang.org/x/sys/unix` and the row resolves\nfrom the real import path. The 20 method rows failed only because a TYPE\nqualifier (`gin.Context`) is the trailing component of no import path. The\nthird-party function surface therefore works by accident of the suffix rule while\nthe third-party method surface could not work at all.\n\nPRICED, so the decision is not made on principle alone. Chains produced by these\n33 rows on the two Go repos measured for INV-safig's non-destruction check:\n\n    keda        4   (grpc.NewClient x4)\n    swarmkit    9   (grpc.Dial x7, grpc.DialContext x2)\n    TOTAL      13\n\n*** THE COST IS CONCENTRATED IN 3 ROWS, NOT 33. *** Every one of the 13 comes\nfrom the three grpc FUNCTION rows. The 27 `unix` rows and 3 `execabs` rows\nproduced ZERO on this cohort — though that is a 2-repo sample of higher-level\nservices, and raw `unix.*` syscalls are exactly what would appear in\nlower-level Go (container runtimes, filesystems) that this cohort does not\nrepresent. Do not read that zero as \"the unix rows are dead\"; read it as \"not\nexercised by these two repos\".\n\nTHE OPTIONS, with what each costs:\n  (a) MOVE ALL 33 to docs/io-primitives-overlays/. Fully ADR-compliant. Default\n      detection drops by 13 chains on this cohort unless the user loads the\n      overlay. The overlay already exists and already carries\n      google.golang.org/grpc.Server.Serve, so the grpc rows have an obvious home\n      beside their sibling.\n  (b) MOVE ONLY THE 3 grpc FUNCTION ROWS, beside the grpc method row already in\n      the overlay, and leave unix/execabs. Coherent for grpc, leaves 30 rows\n      still violating §27.\n  (c) KEEP ALL 33 and amend ADR-0016 to carve out `golang.org/x/...` as\n      \"effectively stdlib\". Defensible — it is maintained by the Go team under\n      the same compatibility promise — but it is an ADR amendment, not a\n      catalogue edit, and it needs the KEEP verdict's re-evaluation trigger\n      written down rather than left implicit.\n  (d) DO NOTHING and leave the inconsistency documented. Cheapest; leaves a\n      shipped catalogue that is \"stdlib-scoped\" in its docstring and not in fact.\n\nNOT MEASURED: the unix/execabs chain count on a low-level Go corpus, which is\nwhat would decide whether (a)'s cost is really 13 or substantially more. That\nmeasurement is cheap if the decision turns on it — say so and I will run it\nbefore anything is culled.\n\nI have deliberately NOT picked one. Deleting working detections is the expensive\ndirection under this project's own rule, and the ADR-compliance argument is\nstrong enough that it should be ratified rather than assumed."  # 7a8a
+    fields:  # 7a8a
+      statement: "The shipped io_primitives catalogue is stdlib-scoped (ADR-0016 §27); go.yaml is not, and the remaining violators are reachable rather than dead."  # 7a8a
