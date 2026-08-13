@@ -1,0 +1,22 @@
+- op: create  # 39a4
+  at: '2026-08-13T01:26:43Z'  # 39a4
+  by: agent  # 39a4
+  actor: jgstern_agent  # 39a4
+  clock: 1  # 39a4
+  nonce: 39a4  # 39a4
+  data:  # 39a4
+    kind: work_item  # 39a4
+    title: "Fold 'status: overlay' out of the completeness field: it names ORIGIN not completeness, and is erased before it reaches a catalogue object"  # 39a4
+    status: todo_soft  # 39a4
+    priority: 3  # 39a4
+    parent:  # 39a4
+    tags:  # 39a4
+    - io_boundary  # 39a4
+    - catalog  # 39a4
+    - concept_audit  # 39a4
+    isbefore: []  # 39a4
+    duplicate_of: []  # 39a4
+    not_duplicate_of: []  # 39a4
+    pr_ref:  # 39a4
+    description: "Concept audit 2026-08-12 (write-up: ~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md). Verdict: DEPRECATE (fold).\n\nTests 3 and 4 both fire. 'complete'/'in_progress' name a COMPLETENESS STATE; 'overlay' names the file's ORIGIN — who wrote it and under what authority. Mechanism/origin competing for the same slot as a category.\n\nTHE TELL IS THAT IT DOES NOT SURVIVE. load_overlay_catalog checks status != _OVERLAY_STATUS at io_boundary.py:1137 and then overwrites it at :1174 (payload['status'] = 'in_progress') before _from_dict builds the object. 'overlay' is a DOOR PASSWORD, not a state: it exists only to be compared at an entrance and then erased. That is what a field looks like when used for access control rather than description.\n\nFIVE-SHAPE PRODUCER TRACE RUN (playbook Step 4.5), confirming it is never a stored state:\n  shape 1 literal kwarg status='overlay'      zero hits\n  shape 2 helper-call positional/kwarg        zero hits (one comment at :1158)\n  shape 3 assignment-form to Name             zero hits (all status= sites are unrelated modules)\n  shape 4 f-string interpolation              zero hits\n  shape 5 dict-subscript target               1 hit — :1174, the erasure site itself\nReal producers are YAML documents only: docs/io-primitives-overlays/{go-web-frameworks,python-http-clients}.yaml, two test files, ADR-0016.\n\nPROPOSED FOLD: gate the overlay door on an explicit marker of its own (a required 'overlay: true' key, or the absence of stdlib_provenance) and let 'status' mean exactly one thing. The refusals the door currently performs — no 'complete', no stdlib_module_completeness — must be preserved verbatim; they are load-bearing (a six-line overlay with one completeness entry once flipped the INV-buzab telnet exfiltration fixture from inconclusive rc 2 back to confirmed rc 0).\n\nLOW BLAST RADIUS: 3 code sites, 2 shipped example YAMLs, 2 test files, and the value never reaches an object — so no persisted data migrates. Cosmetic-looking but security-adjacent: the error message it produces is the user's only explanation of why an overlay may not claim completeness."  # 39a4
+    fields: {}  # 39a4
