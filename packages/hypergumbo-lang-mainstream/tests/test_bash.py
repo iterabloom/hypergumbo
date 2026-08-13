@@ -872,6 +872,41 @@ class TestCommandLaunchEmission:
         (tmp_path / "s.sh").write_text(src)
         return analyze_bash(tmp_path)
 
+    def test_the_stamped_boundary_is_one_the_coverage_gate_treats_as_OPAQUE(
+        self, tmp_path: Path,
+    ) -> None:
+        """PARITY ACROSS THE PRODUCER/CONSUMER SEAM (INV-larol).
+
+        This stamp is the ONLY channel by which a launch keeps its opacity
+        without a catalogue row, and the consumer that honours it lives in
+        another package (``verify_claims._opaque_launch_sites``, via
+        ``PRODUCER_OPAQUE_BOUNDARIES``). Nothing but this assertion keeps the
+        two ends spelling it the same way, and the cost of drift is not a
+        crash: it is a shell script that launches ``curl`` quietly supporting
+        "this repo never writes to the host filesystem".
+
+        Asserted against the SET rather than the literal ``"command_launch"``
+        so that renaming the boundary in one place fails here instead of
+        silently unhooking the gate.
+        """
+        from hypergumbo_core.io_boundary import PRODUCER_OPAQUE_BOUNDARIES
+
+        result = self._analyze(
+            tmp_path, "#!/bin/bash\ndeploy() {\n  curl -o /tmp/x https://e.example/p\n}\n",
+        )
+        launches = self._launches(result)
+        assert launches, (
+            "precondition: no launch edge was emitted at all, so the parity "
+            "assertion below would pass vacuously"
+        )
+        for edge in launches:
+            assert (edge.meta or {})["io_boundary"] in PRODUCER_OPAQUE_BOUNDARIES, (
+                f"bash stamps {(edge.meta or {})['io_boundary']!r}, which the "
+                f"coverage gate does not treat as an opaque launch; a catalogue "
+                f"row for this command would then make it an examined negative "
+                f"for every other boundary"
+            )
+
     def test_external_command_emits_command_launch(self, tmp_path: Path) -> None:
         result = self._analyze(
             tmp_path,

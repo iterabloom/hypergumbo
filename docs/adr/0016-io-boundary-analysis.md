@@ -95,6 +95,18 @@ These are distinct from hypergumbo's existing supply-chain tiers (first-party vs
 
 > **Implementation note.** These three tiers were never materialized as a persisted field. Edge opacity is carried structurally by `is_resolved=False` ([ADR-0037](0037-edge-resolution-semantics.md)): an unresolved edge to an external boundary node *is* the "opaque boundary" flag. "Opaque" here is scoped to native/compiled code without source. The same treatment covers **command-mediated invocation**: a bash script shelling out to `curl` / `rm` / `git` is classified `subprocess` (launching an external program), and the invoked program's own I/O is opaque (no in-tree source, no transitive funnel). So command-mediated languages populate the `subprocess` boundary by emitting unresolved external-command edges — *not* via an `io_primitives` data-I/O catalog that would mis-attribute `curl`'s network activity to the shell script itself.
 
+> **The ruling above was enforced by nothing but its own absence, and now it is enforced (INV-larol).** Until 2026-08-12 the only thing standing between this tree and a bash data-I/O catalogue was that nobody had written the file — and three places in the tree recommended writing it, including `verify_claims.py`'s own comment on the INV-dabov gate. Measured on the shipped CLI against a two-line script whose only command is `curl -o /etc/cron.d/pwned <url>`, claim *"never writes to the host filesystem"*:
+>
+> | `io_primitives/bash.yaml` | `total_io_edges` | `command_launch_edges` | fs_write claim | net_send claim |
+> |---|---|---|---|---|
+> | absent | 0 | 1 | `inconclusive` rc 2 | `inconclusive` rc 2 |
+> | `curl → net_send` | 1 | 0 | **`confirmed` rc 0** | `violated` rc 1 |
+> | `curl → net_send` + `subprocess` | 1 | 0 | `inconclusive` rc 2 | `violated` rc 1 |
+>
+> Six *correct* lines — `curl` really does send data to a remote host — bought a green tick over a write into a root cron directory, because since INV-buzab a classified call is what `examined` means, and classifying a launch stripped the opacity INV-gahuz relies on. The third row is the control: the same run with opacity *also* declared withholds the confirmation and still reports the network violation, so detection was never what was at stake. Note also that cataloguing a command **displaces** the producer stamp rather than supplementing it (`command_launch_edges` 1 → 0), collapsing the count-vs-disclose split WI-javoh built.
+>
+> The gate is now structural rather than catalogue-voluntary: `PRODUCER_OPAQUE_BOUNDARIES` carries the analyzer-stamped `command_launch` alongside the catalogue-declared `subprocess`, and `_opaque_launch_sites` consults the producer stamp *before* `classify_call`. This does not reopen the ruling — a bash catalogue is still not the right answer, for the reasons above — it removes the false confirm that would follow if anyone decided otherwise.
+
 ### Security claim verification
 
 For projects with stated security properties — "relays never see plaintext," "decrypted content never hits the host disk" — the I/O boundary map enables **verification against actual code**:
