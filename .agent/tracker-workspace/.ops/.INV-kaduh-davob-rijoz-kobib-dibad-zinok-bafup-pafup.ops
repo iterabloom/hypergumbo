@@ -1,0 +1,24 @@
+- op: create  # 781d
+  at: '2026-08-13T08:54:23Z'  # 781d
+  by: agent  # 781d
+  actor: jgstern_agent  # 781d
+  clock: 1  # 781d
+  nonce: 781d  # 781d
+  data:  # 781d
+    kind: invariant  # 781d
+    title: "c/cpp stdio.fopen is declared mode-disambiguated but no C analyzer stamps io_mode, so every fopen(p,\"w\") tags fs_read and an fs_write claim reads clean"  # 781d
+    status: violated  # 781d
+    priority: 1  # 781d
+    parent:  # 781d
+    tags:  # 781d
+    - io_boundary  # 781d
+    - catalog  # 781d
+    - security  # 781d
+    isbefore: []  # 781d
+    duplicate_of: []  # 781d
+    not_duplicate_of: []  # 781d
+    pr_ref:  # 781d
+    description: "Found while re-censusing INV-zumin's multi-boundary population; filed separately\nbecause the defect is an ANALYZER gap with a CORRECT catalogue, which is the\nopposite shape from INV-zumin's (row order discards a true declaration).\n\nTHE DEFECT. `io_primitives/{c,cpp}.yaml` declare `stdio.fopen` under BOTH\nfs_read and fs_write, exactly as python declares `builtins.open` -- the\ndual-classification that `io_mode` exists to settle. `meta[\"io_mode\"]` is\nstamped at exactly ONE site in the whole tree:\n\n    $ grep -rn '\"io_mode\"' --include=*.py packages/*/src/ | grep -v /tests/\n    packages/hypergumbo-lang-mainstream/.../py.py:5592   edge.meta[\"io_mode\"] = mode\n    ... (all other hits are READERS: io_boundary.py:2313, taint.py x4)\n\nSo no C or C++ analyzer ever supplies it, `select_by_mode` falls through to\n`candidates[0]`, and EVERY `fopen(path, \"w\")` in a C program tags **fs_read**.\n\nMEASURED, with the positive control that separates \"catalogue wrong\" from\n\"input never supplied\":\n\n    lookup_with_module(\"stdio.fopen\", \"stdio\", io_mode=None) -> fs_read\n    lookup_with_module(\"stdio.fopen\", \"stdio\", io_mode=\"r\")  -> fs_read\n    lookup_with_module(\"stdio.fopen\", \"stdio\", io_mode=\"w\")  -> fs_write   <-- works\n    (identical for c and cpp; python's builtins.open behaves the same way)\n\nThe catalogue side is CORRECT. Handed a mode it returns the right boundary. The\ngap is entirely that production never hands it one.\n\nCONSEQUENCE. An `{boundary: fs_write, must_not_exist: true}` claim over a C or\nC++ program that writes files with fopen can never find a chain, so the claim\nreads clean. It is not downgraded to inconclusive either: the call IS\nclassified (as fs_read), and since INV-buzab a classified call is what\n`examined` means -- so this is an EXAMINED negative for the boundary that is\nactually true. That is the false-confirm shape, not a mere recall miss.\n\nTHIS IS WI-rusof'S DEFECT IN A SECOND LANGUAGE. WI-rusof closed exactly this\nfor python's `builtins.open` -- its own changelog entry says the rule was\n\"documented and unimplemented\", stated in `notes:` prose that nothing consumed.\nThe fix stamped io_mode in py.py. The neighbouring languages carrying the same\ndual-classified row were never tested, which is this repo's own\n\"ONE DOOR CLOSED IS NOT THE CLASS CLOSED -- test the neighbours\" rule and its\ntwo-languages rule firing on one row shape.\n\nSCOPE. c and cpp are the measured instances (stdio.fopen, 2 of the 23\nmulti-boundary primitives). NOT SWEPT: whether any other language declares a\nmode-disambiguated pair without stamping io_mode -- the census shows 23\nmulti-boundary primitives across 8 catalogues and only python's is known to be\nmode-driven in production, so the remaining 20 are unclassified on this axis\nrather than known-clear.\n\nFIX SHAPE (not costed). Stamp `meta[\"io_mode\"]` from the second argument of\nfopen in the C/C++ analyzers, mirroring py.py:5592. The mode is a string\nliteral at the call site in the overwhelming majority of real code, which is\nthe same assumption py.py already makes. A parity test over every language\nwhose catalogue declares a mode-disambiguated pair is what stops the third\nlanguage repeating this."  # 781d
+    fields:  # 781d
+      statement: "A primitive whose boundary is decided by io_mode must receive io_mode from the analyzer that emits its call edge. VIOLATED for c and cpp: stdio.fopen is declared fs_read + fs_write and meta['io_mode'] is stamped at exactly one site in the tree (py.py:5592), so select_by_mode always falls through to candidates[0] and every fopen(path,'w') is tagged fs_read."  # 781d
+      root_cause: "The dual-classification rule was implemented in the catalogue and in select_by_mode but wired into only the python analyzer (WI-rusof). c.yaml and cpp.yaml carry the same dual-classified stdio.fopen row with no producer for the disambiguator, and because the call IS classified (as fs_read) it counts as EXAMINED under INV-buzab -- so an fs_write claim gets an examined negative rather than an inconclusive."  # 781d
