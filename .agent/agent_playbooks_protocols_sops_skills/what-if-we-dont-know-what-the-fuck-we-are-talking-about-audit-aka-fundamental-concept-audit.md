@@ -769,6 +769,47 @@ runs can find prior work:
   new axis under ADR-0024. Full write-up:
   `docs/audits/0018-symbol-kind-type-family-abstract-predicate.md`.
 
+- **2026-08-12 — `status:` on io_primitives catalogues.** Trigger: cadence
+  overdue (134 commits vs. threshold 72); suspect nominated by the agent from
+  the day's INV-gahuz work and chosen by the human; run on a clean tree
+  immediately after that merge. Hypothesis: `status` carries three unrelated
+  claims through two values — "the author supplied a provenance URL", "this
+  catalogue covers the language", "a catalogue exists at all". **Outcome:
+  confirmed, with one leg refuted and a sharper finding the hypothesis did not
+  predict.** The field is **enforced** as a provenance assertion
+  (`_validate_catalog_dict` checks only that `complete` carries an allowlisted
+  `stdlib_provenance.source_url`) and **consumed** as a coverage assertion
+  (`io_boundary.py:1747` `dst_classification_unreliable`, surfaced at
+  `cli.py:4937`; plus the `:1267` unreliability list). Test 1 fires completely:
+  measured 14/14, `status == "complete"` ⟺ provenance present, zero divergence —
+  the enforced content restates `stdlib_provenance is not None`. Test 2 fires:
+  `complete` is both the maximal explicit claim and the value you get by saying
+  nothing (`:878` / `:480`), though for catalogue *files* the default is safe by
+  accident since it then requires provenance. **The finding the hypothesis
+  missed:** the inventory turned up a THIRD input value, `status: overlay`,
+  which is checked at `:1137` and erased at `:1174` before the object exists —
+  a door password, not a state (Tests 3+4, verdict FOLD; five-shape producer
+  trace confirms zero stored producers, shape 5 finding only the erasure site).
+  **And the sharpest one, the reverse of what was predicted:** `status` does not
+  gate the one thing that grants confirmability — `module_io_is_enumerated`
+  reads `stdlib_module_completeness` and never consults `status`, so python is
+  `complete` with 1 audited module, rust `complete` with 0, erlang `complete`
+  with 0. Live silent bug: erlang declares `complete` on the strength of an
+  `erlang.org` URL while carrying **zero** `subprocess` rows and filing its
+  shell-out `os:cmd` under `env_read` — so `dst_classification_unreliable` is
+  False for every Erlang chain (WI-jupaf, filed earlier the same day from the
+  INV-gahuz measurement; this audit supplies why it was reachable). **Leg 3
+  refuted:** the missing-file `complete` is not smuggling — `load_catalog`
+  returns `is_supported=False` and `status` merely hits its dataclass default;
+  the "exists" question has its own field and consumers check it. Kept with a
+  written re-evaluation trigger (fires the moment any consumer reads `status`
+  without checking `is_supported`, or constructs `IoBoundaryCatalog` outside
+  `_from_dict`). No new axis declared — remedy is naming/documentation plus one
+  small fold. Two items filed: WI-maduh (document what it enforces vs. what
+  gates verdicts), WI-sihiz (fold `overlay` out of the completeness field).
+  Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks

@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "279da06eaf57ff7e8fd7df3c9140849b4c56ce23",
-  "last_audit_iso_date": "2026-07-31T15:25:33.832724-04:00",
-  "suspect_domain": "type-kind-vocabulary",
-  "audits_run": 10
+  "last_audit_sha": "9a6a32b9a20cb5fe190bcb5a64bfc7ab1dbe8712",
+  "last_audit_iso_date": "2026-08-12T21:26:55.010760-04:00",
+  "suspect_domain": "io-primitives-status",
+  "audits_run": 11
 }
