@@ -1,0 +1,23 @@
+- op: create  # 5749
+  at: '2026-08-13T19:00:06Z'  # 5749
+  by: agent  # 5749
+  actor: jgstern_agent  # 5749
+  clock: 1  # 5749
+  nonce: '5749'  # 5749
+  data:  # 5749
+    kind: invariant  # 5749
+    title: "verify-claims' language census walks ALL nodes while its coverage check walks production-scoped edges, so fixture-only languages block every claim as 'produced no call edges'"  # 5749
+    status: violated  # 5749
+    priority: 1  # 5749
+    parent:  # 5749
+    tags:  # 5749
+    - verify_claims  # 5749
+    - taint  # 5749
+    isbefore: []  # 5749
+    duplicate_of: []  # 5749
+    not_duplicate_of: []  # 5749
+    pr_ref:  # 5749
+    description: "FOUND while testing whether the packaging-scope fix on INV-dabuf would produce\na resolving self-proof: it would not, because THIS blocker sits behind the bash\none. Currently MASKED (the census check fires first and names bash), so it is\ninvisible on today's CLI output and becomes the front blocker the moment bash\nis peeled by any route.\n\nTHE TWO POPULATIONS. _taint_blind_reason runs two checks that must agree about\nwhat \"present\" means, and they do not:\n\n  1. `languages` is built from behavior_map NODES, UNSCOPED (cli.py:5305-5309:\n     `for node in behavior_map.get(\"nodes\", []): languages.add(...)`). Every\n     fixture node counts. taint_supported_languages derives from this.\n  2. compute_boundary_coverage then walks PRODUCTION-SCOPED edges (the\n     WI-bifob/INV-dabuf narrowing, deliberately applied to the edge list).\n\nA language present ONLY as test fixtures is therefore \"supported and present\"\nby check 1's population and \"produced no call edges\" by check 2's — read as\nanalyzer blindness (the F69.A1 signal) when the truth is that its edges were\ndeliberately excluded upstream.\n\nMEASURED on a real self-survey (152,154 edges; production\ncompute_boundary_coverage with production argument shapes):\n\n    bash excluded -> complete=False\n    reason: \"supported language(s) elixir, go, java, rust, swift were analyzed\n             but produced no call edges, so their I/O is invisible\"\n\nAll five are fixture-only in this repo: every tracked .ex/.go/.java/.rs/.swift\nfile (1/4/3/3/3) lives under a test or fixture directory.\n\nINV-motos SHAPE, third sighting in this one function: sharing the scoping\nPREDICATE is not enough — the POPULATIONS must be shared. The 08-13 fix\n(adfaaeebf2) scoped the edge list for both checks precisely because scoping\nonly one produced two answers about the same fixture; the NODE census feeding\ntaint_supported_languages was not included in that fix.\n\nTHE FIX DIRECTION IS A THREAT-MODEL CHOICE — DO NOT FIX SILENTLY (owner\ndiscussion 08-13, and the reason this is filed with the fork stated rather\nthan a remedy):\n  - SHIPPED-TOOL model (what the 18 claims declare): production-scope the\n    node census too — parity with WI-bifob, same argument as adfaaeebf2. The\n    fixture languages stop blocking because nothing installed contains them.\n  - REPO-SAFETY model (\"is this repo safe to run tests in\"): the fixtures DO\n    run under pytest, so excluding their edges is the error and the census is\n    accidentally right. The fix would be to INCLUDE fixture edges instead.\nWhich model the self-proof serves is WI-kozos's scope question; resolve that\nfirst or in the same decision.\n\nGENERALITY: not a self-analysis quirk. ANY repo carrying test fixtures in a\nlanguage it does not otherwise use (a parser-test corpus, an example\ndirectory) inherits this the moment no earlier blocker masks it."  # 5749
+    fields:  # 5749
+      statement: "The two checks inside _taint_blind_reason must derive their language populations from one scoping rule. VIOLATED: 'languages' is censused over behavior_map nodes UNSCOPED (cli.py:5305) while compute_boundary_coverage walks production-scoped edges, so a language present only as test fixtures (elixir, go, java, rust, swift on self-analysis — every tracked file under tests/fixtures) reads as 'supported but produced no call edges' and blocks every claim once the bash blocker is peeled. Masked today; front blocker the moment INV-dabuf moves."  # 5749
+      root_cause: "INV-motos shape: the 08-13 fix (adfaaeebf2) shared the production-scoped EDGE list between the census and the coverage call, but the NODE census that feeds taint_supported_languages was not included, so one scoping decision still has two populations. Fix direction is a threat-model choice (shipped-tool: scope the node census; repo-safety: include fixture edges) tied to WI-kozos's scope question — do not fix silently."  # 5749
