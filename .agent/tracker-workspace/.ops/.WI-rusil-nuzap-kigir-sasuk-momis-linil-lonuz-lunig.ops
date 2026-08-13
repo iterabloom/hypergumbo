@@ -1,0 +1,22 @@
+- op: create  # 3776
+  at: '2026-08-13T03:57:18Z'  # 3776
+  by: agent  # 3776
+  actor: jgstern_agent  # 3776
+  clock: 1  # 3776
+  nonce: '3776'  # 3776
+  data:  # 3776
+    kind: work_item  # 3776
+    title: "Claim-scope the taint language-coverage gate by DECLARED SOURCES, not by reachability (INV-dabuf residual; reachability form fails open)"  # 3776
+    status: todo_hard  # 3776
+    priority: 2  # 3776
+    parent:  # 3776
+    tags:  # 3776
+    - taint  # 3776
+    - verify_claims  # 3776
+    - security  # 3776
+    isbefore: []  # 3776
+    duplicate_of: []  # 3776
+    not_duplicate_of: []  # 3776
+    pr_ref:  # 3776
+    description: "## The question\n\n`_taint_blind_reason` blocks a claim when ANY language in the repo has no taint\ncatalogue and carries production call edges. That is REPO-scoped. Should it be\nCLAIM-scoped — blocking only when the uncatalogued language could carry a flow\nfrom THIS claim's declared sources?\n\nINV-dabuf lists this as option (a) and calls it cheap. It is not, and the reason\nis worth writing down before anyone picks it up.\n\n## Why the obvious form fails open\n\n\"Scope the gate to languages REACHABLE from the claim's sources\" computes\nreachability with the same analysis whose completeness is in question. Worse,\nfor the case that actually matters the answer is fixed in advance:\n\n  - hypergumbo's 18 self-claims declare their sources as PYTHON `cmd_*` handlers.\n  - The only way a Python flow enters a bash script is by LAUNCHING it.\n  - A launch is a SUBPROCESS BOUNDARY. It produces no edge into the bash file's\n    symbols — by construction, not by a recall gap that could later be fixed.\n\nSo \"bash is unreachable from this claim\" would be TRUE for every claim, always,\nand the gate would go vacuous for precisely the language it currently blocks on.\nThat is the shape INV-larol closed on the boundary side the same day: a negative\nthat is an artifact of the analysis not modelling the crossing, consumed as\nevidence of absence.\n\n## The sounder version, which is a different rule\n\nDo not ask \"is the language reachable\". Ask \"is the language ELIGIBLE to be an\nentry point for this claim\" — a statement about the claim's DECLARED sources\nrather than about an absent edge:\n\n    A language with no taint catalogue blocks a claim only if the claim's\n    declared sources could originate in that language.\n\nFor the 18 self-claims every declared source is a Python `cmd_*` function, so\nbash cannot be where one of these flows STARTS. It could still be where one\nCONTINUES — and that continuation is exactly a subprocess crossing, which the\nclaims already adjudicate as a modelled sink zone (`subprocess` is a prohibited\nzone in the runtime-CLI claims and an explicitly-allowed one in the install\nflows). The residual is therefore DISCLOSED by the claim vocabulary rather than\nhidden by the gate.\n\nThat is defensible. It is also a WEAKENING of a safety gate, so it needs its own\nPR, its own controls, and a positive control proving the gate still fires when a\nclaim's source IS in the uncatalogued language.\n\n## Required controls before this may land\n\n1. A claim whose declared source IS in the uncatalogued language must still be\n   blocked. Without this the change is indistinguishable from deleting the gate.\n2. hypergumbo's own self-proof must not flip to `confirmed` on the strength of\n   this alone — if it does, verify by hand that no `cmd_*` handler reaches a\n   host_fs/network primitive, because a self-proof that turns green in the same\n   commit that weakens its gate is the outcome to distrust most.\n3. Measure on a repo where the uncatalogued language IS an entry point (a\n   shell-first repo), not only on hypergumbo.\n\n## Relationship to the other options\n\nINV-dabuf's option (c) (production-scope the census) LANDED separately and\nnarrowed the self-proof's blocker from `(bash, csharp, solidity)` to `(bash)`.\nIt required no ruling because it is parity with WI-bifob's existing flow filter.\nThis item is the remaining half and does NOT inherit that justification.\n\nOption (b) — give bash a taint catalogue — is the recall answer and is\nindependent of this. Note it does not have the io_primitives problem ADR-0016:96\ndescribes (that ruling is about attributing a launched program's DATA I/O to the\nshell script); bash taint SOURCES like `$1` / environment reads are properties\nof the script itself, not of the launched program. Worth pricing separately\nrather than assuming the ADR forbids it."  # 3776
+    fields: {}  # 3776
