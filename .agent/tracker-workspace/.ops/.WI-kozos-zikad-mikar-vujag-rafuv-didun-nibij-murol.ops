@@ -1,0 +1,22 @@
+- op: create  # 1041
+  at: '2026-08-13T18:59:34Z'  # 1041
+  by: agent  # 1041
+  actor: jgstern_agent  # 1041
+  clock: 1  # 1041
+  nonce: '1041'  # 1041
+  data:  # 1041
+    kind: work_item  # 1041
+    title: "The self-proof never states its own scope: it covers the installed CLI and is silent about tests (conftest runs at collection), hooks, CI, and rust-analyzer executing a target's build.rs"  # 1041
+    status: todo_hard  # 1041
+    priority: 1  # 1041
+    parent:  # 1041
+    tags:  # 1041
+    - security  # 1041
+    - verify_claims  # 1041
+    - docs  # 1041
+    isbefore: []  # 1041
+    duplicate_of: []  # 1041
+    not_duplicate_of: []  # 1041
+    pr_ref:  # 1041
+    description: "Raised by the owner (08-13): \"for some arbitrary code occurring anywhere within\nthe hypergumbo repo, be it in a .py file or in a .txt or .md file, do we have a\nway to guarantee that that code does or does not run?\" The answer is NO, and\nthe sharper finding is that the self-proof never SAYS which execution context\nit covers.\n\nWHAT THE ARTIFACT ACTUALLY COVERS. All 18 claims declare python cmd_* handlers\nas sources — the INSTALLED CLI's behaviour when a user runs it. It is silent\nabout every other way code in this repository runs:\n\n  context                          runs                            covered?\n  pip install + run CLI            packages/*/src only             YES (the 18)\n  pytest in the repo               6 conftest.py files, every      no\n                                   test, everything imported\n  git / agent hooks                .githooks/, .agent/hooks/       no\n                                   (32 shell files)\n  CI                               whatever the workflow says      no\n  hypergumbo ANALYSING a repo      rust-analyzer backend EXECUTES  no\n                                   the target's build.rs\n\nTHE PYTEST ROW IS STRONGER THAN IT LOOKS: conftest.py executes AT COLLECTION —\n`pytest --collect-only` runs it with no test selected. The root conftest\nlegitimately subprocesses and re-execs the interpreter (ADR-0010 self-healing\nwrapper), so the capability is live by design, and code placed there runs\nbefore any selection logic could exclude it.\n\nAND THE SELF-PROOF'S OWN DEFAULT POINTS THE OTHER WAY: WI-bifob DISCARDS\ntest-sourced flows (\"a fixture reaching a real primitive is a fixture doing\nits job\"). Correct for the shipped-tool threat model; exactly backwards for\n\"is this repo safe to run tests in\"; and the artifact never states which model\nit serves.\n\nVERIFIED SAFE, so this item does not overclaim the gap (all checked 08-13):\nno eval()/exec() on file content anywhere in packages/*/src (every grep hit is\na catalogue row or comment about other languages); YAML loads use CSafeLoader\nthroughout; .md/.txt are NOT collected as tests (python_files config; no\ndoctest addopts) — though that last is a CONFIGURATION fact revocable by one\nline in pyproject.toml, not a structural one.\n\nTHE FIX: a generated scope statement in SECURITY.md (via\nscripts/generate-security-md, which is NOT a governance file), naming the\ncovered context and the uncovered ones in a table like the above. The claim\n\"the self-proof covers the installed CLI\" is smaller than \"hypergumbo is\nsafe\" — and true, which is the property everything else here is built on.\n\nOWNER INPUT FLAGGED, part of the coming INV-dabuf decision package: whether\nthe scope statement is sufficient, or whether any of the uncovered contexts\nshould get claims of their own (a threat-model decision, not a bug fix)."  # 1041
+    fields: {}  # 1041
