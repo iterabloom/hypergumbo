@@ -1,0 +1,34 @@
+- op: create  # 3e7c
+  at: '2026-08-13T20:32:07Z'  # 3e7c
+  by: agent  # 3e7c
+  actor: jgstern_agent  # 3e7c
+  clock: 1  # 3e7c
+  nonce: 3e7c  # 3e7c
+  data:  # 3e7c
+    kind: work_item  # 3e7c
+    title: "THROWAWAY exec-safety probe (delete me)"  # 3e7c
+    status: todo_hard  # 3e7c
+    priority: 4  # 3e7c
+    parent:  # 3e7c
+    tags: []  # 3e7c
+    isbefore: []  # 3e7c
+    duplicate_of: []  # 3e7c
+    not_duplicate_of: []  # 3e7c
+    pr_ref:  # 3e7c
+    description: "benign line\ntrigger: $(echo EXECUTED > /tmp/claude-1002/-home-jgstern-agent-hypergumbo/d883cfb3-f681-4229-8ffc-2aefb329c9ce/scratchpad/exec-proof-886084.txt)\nbacktick: `echo ALSO_RAN >> /tmp/claude-1002/-home-jgstern-agent-hypergumbo/d883cfb3-f681-4229-8ffc-2aefb329c9ce/scratchpad/exec-proof-886084.txt`"  # 3e7c
+    fields: {}  # 3e7c
+- op: update  # d411
+  at: '2026-08-13T20:33:19Z'  # d411
+  by: agent  # d411
+  actor: jgstern_agent  # d411
+  clock: 2  # d411
+  nonce: d411  # d411
+  set:  # d411
+    status: wont_do  # d411
+- op: discuss  # 404f
+  at: '2026-08-13T20:33:19Z'  # 404f
+  by: agent  # 404f
+  actor: jgstern_agent  # 404f
+  clock: 3  # 404f
+  nonce: 404f  # 404f
+  message: "Throwaway probe confirming --description-file does NOT shell-interpret content (it does not). Safe to delete; delete needs human authority."  # 404f
