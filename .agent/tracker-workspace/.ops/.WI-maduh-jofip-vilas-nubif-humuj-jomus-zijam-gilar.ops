@@ -1,0 +1,22 @@
+- op: create  # 5b22
+  at: '2026-08-13T01:25:43Z'  # 5b22
+  by: agent  # 5b22
+  actor: jgstern_agent  # 5b22
+  clock: 1  # 5b22
+  nonce: 5b22  # 5b22
+  data:  # 5b22
+    kind: work_item  # 5b22
+    title: "io_primitives 'status' is enforced as a provenance assertion but consumed as a coverage assertion; 'complete' is 14/14 derivable from stdlib_provenance and does not gate confirmability"  # 5b22
+    status: todo_hard  # 5b22
+    priority: 2  # 5b22
+    parent:  # 5b22
+    tags:  # 5b22
+    - io_boundary  # 5b22
+    - catalog  # 5b22
+    - concept_audit  # 5b22
+    isbefore: []  # 5b22
+    duplicate_of: []  # 5b22
+    not_duplicate_of: []  # 5b22
+    pr_ref:  # 5b22
+    description: "Concept audit 2026-08-12 (full write-up: ~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md). Outcome CONFIRMED.\n\nWHAT IS ENFORCED: _validate_catalog_dict (io_boundary.py:219-230) checks one thing — that status: complete carries an allowlisted stdlib_provenance.source_url.\n\nWHAT IS CONSUMED: io_boundary.py:1267 (language-level unreliability list) and io_boundary.py:1747 (dst_classification_unreliable, surfaced at cli.py:4937) both read status as a COVERAGE/RELIABILITY claim.\n\nTEST 1 (property derivability) FIRES COMPLETELY: measured over all 14 shipped catalogues, status=='complete' <=> stdlib_provenance present, 14/14, zero divergence. The field's enforced content restates stdlib_provenance is not None.\n\nTEST 2 (apex/peer) FIRES: 'complete' is both the maximal explicit claim AND what you get by saying nothing (data.get('status','complete') at :878, dataclass default at :480). Mitigated for catalogue FILES because the default then requires provenance and fails loudly; reachable only where _from_dict is bypassed.\n\nTHE SHARPER FINDING, which the hypothesis did not predict: status does NOT gate the one thing that grants confirmability. module_io_is_enumerated reads stdlib_module_completeness and never consults status. So:\n  python  status=complete  222 primitives  1 module audited (math)\n  rust    status=complete   63 primitives  0 modules audited\n  erlang  status=complete  275 primitives  0 modules audited\nA field named 'complete' with no bearing on confirmability, beside a field that has it, with no naming signal which is which.\n\nVERDICT: DOCUMENT, not deprecate — both consumers need a signal and in_progress drives a real user-facing disclosure. Remedy: say what it enforces (provenance-backed, NOT coverage) in the field docstring and at both consumer sites, and state at both completeness fields which one gates verdicts."  # 5b22
+    fields: {}  # 5b22
