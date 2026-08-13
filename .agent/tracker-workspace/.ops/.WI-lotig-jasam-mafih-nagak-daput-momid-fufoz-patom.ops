@@ -1,0 +1,37 @@
+- op: create  # 34b4
+  at: '2026-08-12T23:21:22Z'  # 34b4
+  by: agent  # 34b4
+  actor: jgstern_agent  # 34b4
+  clock: 1  # 34b4
+  nonce: 34b4  # 34b4
+  data:  # 34b4
+    kind: work_item  # 34b4
+    title: "Hypothesis's default 200ms deadline makes pure-function property tests fail under parallel load, producing spurious reds in the pre-merge gate"  # 34b4
+    status: todo_hard  # 34b4
+    priority: 2  # 34b4
+    parent:  # 34b4
+    tags: []  # 34b4
+    isbefore: []  # 34b4
+    duplicate_of: []  # 34b4
+    not_duplicate_of: []  # 34b4
+    pr_ref:  # 34b4
+    description: "OBSERVED: `scripts/check-package-coverage` reported\n\n    [tracker] ❌ FAILED\n      FAILED packages/hypergumbo-tracker/tests/test_compile_properties.py\n             ::TestCompileProperties::test_idempotency\n\non a run whose only working-tree change was in hypergumbo-core's verify_claims.\nRe-running the identical command with no edits in between: ALL SIX PACKAGES\nPASSED. The same test standalone (`smart-test <path>`): 6 passed. The full\nsuite in the same session: 22,489 passed, 100% coverage.\n\nSo it is load-dependent, not a real regression — but \"flaky\" is not the finding.\nThe finding is WHY, and it is mechanical rather than mysterious:\n\n  - `test_idempotency` calls `compile_ops(ops, \"INV-test\")` twice and compares\n    the two results field by field. Pure function. No I/O, no shared state, no\n    clock, no filesystem. Its assertions CANNOT fail nondeterministically.\n  - It is a Hypothesis `@given` test with `@settings(max_examples=50)` and no\n    `deadline=` override.\n  - `grep -rn \"register_profile\"` over the whole repo returns NOTHING, so no\n    global Hypothesis profile is installed and the library DEFAULT applies:\n    a 200 ms per-example deadline, plus the default health checks.\n  - `check-package-coverage` runs six packages in parallel, each with its own\n    pytest. Under that load a single example can exceed 200 ms and Hypothesis\n    raises DeadlineExceeded — a timing failure reported as a property failure.\n\nCONSEQUENCE: the pass/fail of a deterministic property test is a function of\nmachine load, inside a PRE-MERGE GATE. Every property test in the repo shares\nthis exposure, not just this one; `test_idempotency` is simply the first to be\nobserved losing the race.\n\nWHY IT MATTERS BEYOND THE LOST CYCLE: a spurious red in a gate teaches the\nreader to re-run rather than to read, which is exactly the habit that lets a\nREAL red through. It also cost a full check-package-coverage cycle to\ndistinguish flake from regression, and that distinction had to be established\nby hand.\n\nFIX DIRECTIONS, none built:\n (a) Register a Hypothesis profile with `deadline=None` for the suite. Correct\n     for pure-function property tests, which is what these are — a deadline is\n     a performance assertion smuggled into a correctness test, and nothing here\n     is asserting performance. Cheapest and most targeted.\n (b) `deadline=None` per-test on the property tests only. Narrower blast radius,\n     more places to forget.\n (c) Serialise check-package-coverage. Slower, and it treats the symptom.\n (d) Leave it and re-run on red. This is the status quo and it is what filed\n     this item.\n\n(a) is the recommendation. If any property test in this repo is ever meant to\nassert a time bound, it should say so explicitly rather than inherit one from a\nlibrary default nobody chose.\n\nNOT MEASURED: how often this fires. Once observed in one session; the rate is\nunknown and would need repeated runs under load to establish."  # 34b4
+    fields: {}  # 34b4
+- op: update  # 598f
+  at: '2026-08-12T23:21:33Z'  # 598f
+  by: agent  # 598f
+  actor: jgstern_agent  # 598f
+  clock: 2  # 598f
+  nonce: 598f  # 598f
+  set:  # 598f
+    status: todo_soft  # 598f
+    priority: 3  # 598f
+  add:  # 598f
+    tags: [testing, automation]  # 598f
+- op: discuss  # a18a
+  at: '2026-08-12T23:21:34Z'  # a18a
+  by: agent  # a18a
+  actor: jgstern_agent  # a18a
+  clock: 3  # a18a
+  nonce: a18a  # a18a
+  message: "Observed while running check-package-coverage for the INV-dabov PR; re-run with no edits passed all six packages, and the test passes standalone. Filed rather than folded into that PR: it is tracker-package test infrastructure, unrelated to the verify-claims change, and a security fix should not carry an unrelated gate tweak."  # a18a
