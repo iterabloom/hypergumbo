@@ -4577,3 +4577,47 @@ class TestPathDeterminism:
             )
             seen.add(json.dumps(json.loads(out.stdout)))
         assert len(seen) == 1, f"path varied across hash seeds: {seen}"
+
+
+class TestSanitizerAttributionOnTheCallGraphArm:
+    """INV-pojib — which sanitizers a reconstructed route actually crossed."""
+
+    def _san(self, name: str, *, user: bool = False):
+        from hypergumbo_core.taint import TaintSanitizer
+
+        return TaintSanitizer(
+            input_taint="plaintext", output_taint="ciphertext",
+            qualified_name=name, user_supplied=user,
+        )
+
+    def test_a_repeated_sanitizer_is_named_once(self) -> None:
+        """A route can cross the same barrier at two nodes — a helper called
+        from two frames on the path. Naming it twice would read as two
+        independent protections where there is one.
+        """
+        from hypergumbo_core.taint import _attribute_sanitizers
+
+        san = self._san("mod.scrub")
+        named, user = _attribute_sanitizers(
+            ["a", "b", "c"], {"b": [san], "c": [san]},
+        )
+        assert named == ("mod.scrub",)
+        assert user == ()
+
+    def test_a_repo_supplied_barrier_on_the_route_is_marked(self) -> None:
+        """The call-graph arm's half of the attribution: a project-local
+        sanitizer crossed BETWEEN functions (not the same-function shape the
+        DDG arm adjudicates) must still come back marked.
+        """
+        from hypergumbo_core.taint import _attribute_sanitizers
+
+        named, user = _attribute_sanitizers(
+            ["a", "b"],
+            {"b": [self._san("proj.launder", user=True),
+                   self._san("cryptography.fernet.Fernet.encrypt")]},
+        )
+        assert named == ("proj.launder", "cryptography.fernet.Fernet.encrypt")
+        assert user == ("proj.launder",), (
+            "only the repo-supplied candidate may be marked, or the marking "
+            "stops carrying information"
+        )

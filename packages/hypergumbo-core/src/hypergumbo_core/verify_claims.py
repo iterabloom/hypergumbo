@@ -1689,6 +1689,68 @@ def _symbol_path_slot(symbol_id: str) -> str:
     return symbol_path_slot(symbol_id)
 
 
+def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
+    """Name the sanitizers holding a clean verdict up, marking repo-supplied ones.
+
+    INV-pojib. The clause this feeds used to be built from the sanitized-flow
+    COUNT alone, so "a sanitizer protects every route" read identically whether
+    the sanitizer was ``cryptography.fernet.Fernet.encrypt`` from the shipped
+    catalogue or a no-op function the ANALYSED REPOSITORY declared about itself.
+    Measured on the shipped CLI: an 11-line fixture doing
+    ``os.remove(launder(os.environ["API_KEY"]))``, where ``launder`` returns its
+    argument unchanged, went ``violated`` rc 1 -> ``confirmed`` rc 0 on the
+    strength of an 8-line sanitizer file, with the same sentence and the same
+    exit code as an earned clean verdict.
+
+    WHY MARKING ONLY THE REPO-SUPPLIED ONES IS THE POINT. A caveat printed on
+    every sanitized verdict would carry no information, and a reader learns to
+    discount a caveat that is always there — which is the failure this is meant
+    to correct rather than a milder form of it. So the built-in case is named
+    and NOT marked, and the discriminator test pins that.
+
+    THIS DOES NOT CHANGE A VERDICT. It changes what a verdict SAYS. Whether the
+    exit code should also carry it is a separate, larger question (a consumer
+    contract), tracked on the item rather than decided here.
+    """
+    named: list[str] = []
+    repo_supplied: set[str] = set()
+    for finding in findings:
+        if not getattr(finding, "sanitized", False):
+            # UNREACHABLE FROM TODAY'S ONLY CALLER, and kept anyway. The clause
+            # this feeds is built only on the ``confirmed`` path, where every
+            # constrained flow is sanitized by construction (an unsanitized one
+            # would have made the verdict ``violated``). It is kept rather than
+            # deleted because the failure it prevents is a WRONG SAFETY
+            # STATEMENT — attributing a protection to a flow that reached the
+            # sink unprotected — and the caller's guarantee is incidental to
+            # this function rather than expressed in its signature.
+            continue  # pragma: no cover
+        for name in getattr(finding, "sanitized_by", ()) or ():
+            if name not in named:
+                named.append(name)
+        repo_supplied.update(getattr(finding, "sanitized_by_user_supplied", ()) or ())
+    if not named:
+        # A sanitized flow whose sanitizer was not recorded. Say nothing rather
+        # than guess: the propagators populate this, and a flow constructed by
+        # a consumer that does not is better served by the unattributed clause
+        # than by a claim about a sanitizer nobody named.
+        return ""
+    shown = ", ".join(
+        f"{name} (project-local)" if name in repo_supplied else name
+        for name in named
+    )
+    # "via X" WHEN ONE CANDIDATE, "one of" WHEN SEVERAL, because the barrier
+    # records which sanitizers COULD have fired, not which did. All four shipped
+    # ``*.encrypt`` entries match a bare ``encrypt`` callee, so a fixture calling
+    # ``Fernet.encrypt`` has four candidates and naming one would be a fact the
+    # analysis never established — the first draft of this did exactly that and
+    # printed ``ChaCha20Poly1305.encrypt`` for a Fernet call, caught by running
+    # the live discriminator rather than the unit tests, which were green.
+    if len(named) == 1:
+        return f" (via {shown})"
+    return f" (barrier matched one of: {shown})"
+
+
 def _source_scope(finding: "TaintFlowFinding") -> str:
     """Classify a flow by whether its SOURCE is production code.
 
@@ -1837,7 +1899,8 @@ def verify_taint_claim(
         if sanitized_flows:
             sanitized_clause = (
                 f" {sanitized_flows} flow(s) reach that zone but pass through "
-                f"a sanitizer on every route."
+                f"a sanitizer on every route"
+                f"{_sanitizer_attribution(constrained)}."
             )
         return ClaimVerdict(
             claim_id=claim.id,
