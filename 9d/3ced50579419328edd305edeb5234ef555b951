@@ -1,0 +1,98 @@
+Original commit body from 02cf74e53d135e7a0d535f96f69fe925eea90d58:
+
+INV-zumin. `lookup_with_module` returns a single IoPrimitive and chains are
+built from the one `io_boundary` string, so a primitive declared under several
+boundaries kept exactly one -- decided by YAML ROW ORDER.
+`scala.sys.process.Process.apply` is declared [fs_write, subprocess], tagged
+fs_write, and the process launch was UNDETECTABLE AS A SUBPROCESS.
+
+That loses four things the fs_write tag does not replace: a
+{boundary: subprocess, must_not_exist: true} claim finds no chain; the
+*** HIGH RISK *** marking never fires; the auto-derived taint sink lands in
+zone host_fs instead of subprocess, so a "subprocess allowed, host_fs
+prohibited" claim INVERTS; and INV-gahuz's opacity gate keys on the boundary.
+The rows' own notes show the author knew both were true -- the fs_write note
+reads "can write to filesystem via shell commands", which is a statement about
+what the LAUNCHED PROGRAM does.
+
+THE POPULATION IS THREE DIFFERENT THINGS AND ONLY ONE IS A DEFECT. Re-measured
+across all fourteen catalogues with production's own loader; the filed counts
+reproduce exactly (23 multi-boundary primitives, 27 unreachable declarations):
+
+  (a) DISAMBIGUATED AT MATCH TIME  builtins.open picks by io_mode
+                                   -> untouched, works as designed
+  (b) UNDECIDABLE AT THE CALL SITE C unistd.write is fs_write OR net_send OR
+                                   ipc_send by fd type -- EXACTLY ONE is true
+                                   -> untouched DELIBERATELY
+  (c) SIMULTANEOUSLY TRUE          scala Process.apply launches AND writes
+                                   -> FIXED
+
+(b) is the one worth being explicit about: multiplying those rows would
+manufacture a net_send chain for every C write to stdout. That is a FALSE
+VIOLATION -- the expensive direction -- and the honest fix there is fd-type
+inference, which is its own item.
+
+WHY A DATA MARKER AND NOT A ONE-LINE FALLBACK CHANGE. (a), (b) and (c) are
+INDISTINGUISHABLE IN THE YAML -- all three read as "several rows, no mode" --
+so nothing can infer which is which. Changing select_by_mode's
+`return candidates[0]` could only swap WHICH declaration is silently lost. The
+catalogue therefore has to SAY it: `simultaneous: true`, consumed at one
+chokepoint.
+
+ADDITIVE, so no existing consumer moves. `io_boundary` keeps its single-string
+value and everything reading it -- the F3 gate, the taint sink derivation,
+declares_opaque_crossing, third-party readers of the JSON -- is untouched. A new
+`io_boundaries` list appears ONLY for a flagged primitive (4 of ~2,000 across
+fourteen catalogues), and compute_boundary_map emits one chain per entry,
+falling back to exactly one chain otherwise.
+
+ONE HOME FOR THE CATALOGUE LOOKUP. The tagger needs to ask the catalogue a
+SECOND question about the same match, and re-deriving which catalogue a dst
+belongs to is NOT `dst.split(":")[0]` -- it runs through _resolve_ffi_catalog,
+so a cgo call into `go:C:...` is answered by the C catalogue. A second copy
+would get FFI edges wrong and drift the first time the redirect changed. So
+classify_call is now a thin wrapper over classify_call_in_catalog, which
+returns the match AND the catalogue it came from; the two cannot disagree about
+what was matched.
+
+TWO LANGUAGES, because a fix verified on one is not verified for another.
+scala (fs_write+subprocess) and objc NSURLConnection (net_send+net_recv) fail on
+different boundary pairs with different consequences. The objc rows ALREADY
+ASSERTED simultaneity in prose -- "request implies both send and receive" --
+with nothing consuming it, the same documented-and-unimplemented shape
+builtins.open had before WI-rusof; inbound response data was never tracked as a
+network read.
+
+A VERDICT CHANGES, stated rather than discovered: an objc
+{boundary: net_recv, must_not_exist: true} claim over code using those methods
+goes confirmed -> violated. That is correct; an HTTP request does receive.
+
+A HALF-DECLARED PAIR IS REJECTED, LOUDLY. The flag is a property of a PRIMITIVE
+whose rows live in different YAML sections by construction (one per boundary),
+so declaring it on one side only would make the marker live or inert depending
+on which section a later editor updated -- the row-order dependence this
+removes, wearing a new hat. simultaneous_boundaries_for raises on it, and a
+parity test asserts no shipped catalogue is in that state.
+
+A PARITY TEST CAUGHT ME ON ITS FIRST RUN, which is the second time this session
+a gate has done so. My objc edit flagged a net_send row that grouped the two
+genuinely-dual request methods WITH `connectionWithRequest:delegate:` and
+`initWithRequest:delegate:`, which the net_recv row does not carry. The test
+that rejects `simultaneous` on a single-boundary primitive fired; the row was
+SPLIT rather than the guard weakened.
+
+That split then made a test's NAME false --
+test_a_flagged_row_with_one_boundary_is_not_simultaneous now reached its empty
+result one branch earlier, so it no longer exercised the guard it was named
+for. Renamed to what it actually asserts, and the guard got its own synthetic
+test built deliberately NOT from load_catalog, since shipped data no longer
+produces that shape and asserting it through a real catalogue would make the
+test pass for the wrong reason the moment a catalogue changed.
+
+Post-fix census: 4 primitives now reach every declaration; 17 remain
+single-tagged and are classes (a), (b), the c/cpp stdio.fopen io_mode gap
+(INV-kaduh, filed separately), haskell STM rows that are miscatalogued outright,
+and 4 haskell System.IO rows left UNCLASSIFIED rather than guessed.
+
+Ref: INV-zumin, INV-kaduh (filed), WI-rusof (same shape, python).
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
