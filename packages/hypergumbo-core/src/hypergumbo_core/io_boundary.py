@@ -2560,22 +2560,44 @@ def tag_io_boundaries(
 
         if edge.meta is None:
             edge.meta = {}
-        edge.meta["io_boundary"] = match.boundary
-        edge.meta["io_primitive"] = match.qualified_name
-        # INV-zumin. ``io_boundary`` stays a single string and keeps the value
-        # it always had, so every existing consumer — the F3 gate, the taint
-        # sink derivation, ``declares_opaque_crossing``, third-party readers of
-        # the JSON — is untouched. ``io_boundaries`` is ADDITIVE and appears
-        # ONLY for a primitive whose rows declare themselves simultaneously
-        # true, which is ~2 of the 23 multi-boundary primitives and 0 of the
-        # rest of the catalogue. A consumer that never learns about the new key
-        # behaves exactly as before; one that reads it stops losing a
-        # declaration to YAML row order.
+        # INV-zumin / INV-virat. ``io_boundaries`` (the list) exists because
+        # several facts about one call can be true at once, and a single slot
+        # resolved by last-writer-wins silently loses all but one. TWO writers
+        # can collide here:
+        #
+        #  * two CATALOGUE rows declared simultaneously true (INV-zumin —
+        #    scala ``Process.apply`` is fs_write AND subprocess);
+        #  * a PRODUCER stamp and a catalogue row (INV-virat — an analyzer
+        #    stamped ``command_launch`` meaning "control leaves this process",
+        #    and a row also describes the call, the way ``curl -> net_send``
+        #    is right about the send and silent about the launch).
+        #
+        # The producer case keeps its stamp as the PRIMARY ``io_boundary``:
+        # the analyzer SAW the launch, the catalogue merely ASSERTS the I/O,
+        # and the opacity gate (INV-larol) keys on the stamp — before this,
+        # the assignment below destroyed it, and the gate survived only
+        # because it happened to read a different copy of the edge
+        # (``_rehydrate_io_boundary_edges``'s shallow copy, made for WI-kumol
+        # reasons). A safety property riding on an accidental copy is the
+        # hole this closes; the read-order gate stays as a belt.
+        #
+        # ``io_boundaries`` stays ADDITIVE either way: absent for the ~99% of
+        # edges with one fact, so a consumer that never learns the key
+        # behaves exactly as before.
         simultaneous = matched_catalog.simultaneous_boundaries_for(
             match.qualified_name,
         )
-        if simultaneous:
-            edge.meta["io_boundaries"] = sorted(simultaneous)
+        existing = edge.meta.get("io_boundary")
+        if existing in PRODUCER_OPAQUE_BOUNDARIES:
+            edge.meta["io_primitive"] = match.qualified_name
+            edge.meta["io_boundaries"] = sorted(
+                {existing, match.boundary} | simultaneous
+            )
+        else:
+            edge.meta["io_boundary"] = match.boundary
+            edge.meta["io_primitive"] = match.qualified_name
+            if simultaneous:
+                edge.meta["io_boundaries"] = sorted(simultaneous)
         tagged += 1
 
     return tagged
