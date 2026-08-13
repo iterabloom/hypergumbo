@@ -1,0 +1,31 @@
+- op: create  # 309e
+  at: '2026-08-13T08:47:27Z'  # 309e
+  by: agent  # 309e
+  actor: jgstern_agent  # 309e
+  clock: 1  # 309e
+  nonce: 309e  # 309e
+  data:  # 309e
+    kind: invariant  # 309e
+    title: "A user-supplied taint source/sink REPLACES the shipped entry on (module,name,kind), so re-declaring a sink out of its zone suppresses a real finding with no caveat and no trace"  # 309e
+    status: violated  # 309e
+    priority: 1  # 309e
+    parent:  # 309e
+    tags:  # 309e
+    - security  # 309e
+    - taint  # 309e
+    - verify_claims  # 309e
+    isbefore: []  # 309e
+    duplicate_of: []  # 309e
+    not_duplicate_of: []  # 309e
+    pr_ref:  # 309e
+    description: "MEASURED, with a positive control, while landing INV-pojib (b)/(c).\n\nA user-supplied taint SINK (or SOURCE) that matches a shipped entry on\n(module, name, kind) does not ADD to the catalogue -- it REPLACES the shipped\nentry. The shipped row is filtered out, the flow is never constructed, and the\nclaim reads clean with no disclosure anywhere in the verdict.\n\n    baseline, flow present\n      -> rc 1  violated\n\n    + user sink re-declaring pathlib.Path / write_text out of the host_fs zone\n      -> rc 0  confirmed        caveats: []\n\nBoth routes reproduce: the --taint-sinks CLI FLAG, and the IN-TREE\n`extra_catalogs:` block of the repository's own claims file, which needs no\nflag from whoever runs the tool.\n\nTHE MECHANISM, read in code rather than inferred. taint.py:1290 merges the two\nlayers asymmetrically:\n\n    catalog._sources = _merge_with_user_override(catalog._sources, user_sources)\n    catalog._sinks   = _merge_with_user_override(catalog._sinks,   user_sinks)\n    for lang, sans in user_sanitizers.items():\n        catalog._sanitizers.setdefault(lang, []).extend(sans)   # ADDITIVE\n\n_merge_with_user_override (taint.py:1153) builds `user_keys` from the user\nentries and drops every auto-derived entry whose (module, name, kind) is in it.\nIts docstring says so plainly -- \"user entries win on (module, name, kind)\nmatch\" -- so this is documented behaviour being reported as a SECURITY\nconsequence that was never priced, not a coding error.\n\nPOSITIVE CONTROL, and the reason the first run of this probe was a false null.\nMy first attempt spelled the user row `module: pathlib, methods: [Path.write_text]`\nand the verdict did NOT move -- which I nearly recorded as \"sinks cannot\nsuppress\". The shipped entry is `module='pathlib.Path', name='write_text'`, so\nthe override key never matched and the null was an artifact of my spelling.\nReading the MERGED CATALOGUE rather than the verdict is what caught it:\n\n    module=pathlib.Path methods=[write_text]   -> DISPLACED host_fs? YES\n    module=pathlib methods=[Path.write_text]   -> DISPLACED host_fs? no\n\n(That split is INV-fokik's slot-shape hazard in another costume: the class name\nsits in a different slot on each side, so the WRONG spelling is inert and the\nRIGHT one is silently load-bearing.)\n\nWHY INV-pojib's FIX DOES NOT COVER THIS, and why it was not bundled. INV-pojib\nattributes at the FINDING: a sanitized flow carries sanitized_by /\nsanitized_by_user_supplied, and the verdict is downgraded to\n`confirmed_with_caveats` (rc 3) when a repo-supplied sanitizer is credited.\nHere there is no finding to attribute -- the sink is gone from the catalogue\nbefore propagation runs, so nothing is sanitized and `caveats` is correctly\nempty. Detecting this requires diffing the MERGED catalogue against the SHIPPED\none, which is catalogue-level machinery, a different subsystem, and a separate\nrevertable PR.\n\nSEVERITY. Strictly stronger than INV-zosun's overlay case, on the same argument\nthat made INV-pojib worth doing: an overlay GRANTS coverage, a sanitizer DELETES\na finding already made, and an override PREVENTS THE FINDING FROM EXISTING --\nthe only one of the three that leaves no trace on any per-flow record. INV-zosun's\nrun-level NOTE does fire (the catalogue is named as user-supplied), so this is\ndisclosed at the run level and invisible at the verdict level.\n\nNOT SWEPT: whether the same override can suppress on the BOUNDARY arm via\nio_primitives overlays (INV-zosun's original case). Untested, and untested is\nnot safe -- that distinction is what WI-dagib was filed to protect."  # 309e
+    fields:  # 309e
+      statement: "A repository-supplied catalogue entry must not be able to remove a finding without the verdict recording that it did. VIOLATED: user sources/sinks merge via _merge_with_user_override, where a matching (module,name,kind) FILTERS OUT the shipped entry, so a user sink re-declaring pathlib.Path/write_text out of host_fs takes a real violated rc 1 to confirmed rc 0 with caveats:[] -- by both the --taint-sinks flag and the in-tree extra_catalogs route."  # 309e
+      root_cause: "taint.py:1290 merges the layers asymmetrically: sanitizers .extend() (additive) while sources and sinks go through _merge_with_user_override (taint.py:1153), which drops every auto-derived entry whose (module,name,kind) a user entry also declares. INV-pojib's attribution is finding-level and structurally cannot see this: the shipped sink leaves the catalogue before propagation, so no flow is constructed and there is nothing to attribute."  # 309e
+- op: discuss  # 80d9
+  at: '2026-08-13T08:47:55Z'  # 80d9
+  by: agent  # 80d9
+  actor: jgstern_agent  # 80d9
+  clock: 2  # 80d9
+  nonce: 80d9  # 80d9
+  message: "NOT a duplicate of WI-vokiz (SimHash flagged it at 8 bits). WI-vokiz is tree_sitter Node.text being bytes|None at unguarded decode sites; this is the taint-catalogue merge replacing a shipped sink. No overlap beyond both being P-level defects in packages/*/src. Recording here because 'tracker update --not-duplicate-of' is what the warning text tells you to run and that flag does not exist on 'update' in this version."  # 80d9
