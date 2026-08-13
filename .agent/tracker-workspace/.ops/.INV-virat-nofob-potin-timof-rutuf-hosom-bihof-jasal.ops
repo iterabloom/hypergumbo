@@ -21,3 +21,18 @@
     fields:  # affb
       statement: "An analyzer-produced observation stamped on an edge (meta.io_boundary='command_launch') must not be erasable by a catalogue assertion. VIOLATED at mechanism level: tag_io_boundaries assigns edge.meta['io_boundary'] unconditionally, so any catalogue row that matches a producer-stamped edge destroys the only opacity evidence the edge will ever carry. The shipped gate does not fail END-TO-END today only because it reads raw_edges while the tagger mutates a shallow copy made for unrelated reasons (WI-kumol) — read order plus an accidental copy, not structure."  # affb
       root_cause: "One meta slot for a multi-fact edge; last writer wins. Third instance of the class after INV-zumin (two catalogue rows) and INV-pojib's sanitizer registry (one slot per caller,label). The io_boundaries list mechanism landed for INV-zumin is the correct home; the producer channel was not folded in when it shipped."  # affb
+- op: update  # 56e1
+  at: '2026-08-13T19:57:05Z'  # 56e1
+  by: agent  # 56e1
+  actor: jgstern_agent  # 56e1
+  clock: 2  # 56e1
+  nonce: '56e1'  # 56e1
+  set:  # 56e1
+    status: satisfied  # 56e1
+- op: discuss  # a8a1
+  at: '2026-08-13T19:57:05Z'  # a8a1
+  by: agent  # a8a1
+  actor: jgstern_agent  # a8a1
+  clock: 3  # a8a1
+  nonce: a8a1  # a8a1
+  message: "SATISFIED at dev 4acd70f598, same day as filing. Re-run on the MERGED tree,\nboth levels:\n\nMECHANISM (the filed demo, verbatim):\n    before: {'io_boundary': 'command_launch'}\n    after:  {'io_boundary': 'command_launch',\n             'io_primitive': 'os.listdir',\n             'io_boundaries': ['command_launch', 'fs_read']}\n    command_launch survived? True          (was False at filing)\n\nEND-TO-END, temporary curl->net_send bash row (removed by absolute path,\ntree verified clean after):\n    fs_write claim: inconclusive rc 2      (opacity HELD with the row present)\n    map: command_launch {curl.curl: 1} AND net_send {curl.curl: 1}\n         command_launch_edges=1, total_io_edges=1\nBoth facts now reach the map under their own accounting rules; pre-fix the\ntagged objects carried only the net_send half.\n\nWHAT LANDED. Append-not-overwrite in tag_io_boundaries: a producer stamp in\nPRODUCER_OPAQUE_BOUNDARIES stays the PRIMARY io_boundary (the analyzer SAW the\nlaunch; the catalogue merely ASSERTS the I/O — the trust asymmetry is\ndocumented at the write site), and the catalogue view lands additively in\nio_boundaries + io_primitive. INV-larol's read-order gate KEPT as a belt —\nthe two mechanisms fail differently. Non-destruction re-run live: INV-zumin's\nfive-arm probe byte-identical, WI-jupaf's erlang claim still violated rc 1,\nunstamped edges tag exactly as before with no new key.\n\nTHE CLASS, for the record: this closes instance 3 of one-slot\nlast-writer-wins (INV-zumin rows, INV-pojib's sanitizer registry, producer\nstamp). All three now route through list-shaped mechanisms. NOT SWEPT: whether\na FOURTH one-slot multi-writer field exists elsewhere in edge meta or finding\nconstruction — no systematic sweep of meta keys was done, and this class was\nfound three times by collision, not by enumeration.\n\nSuite 22,558 / 100% / 6 pkgs isolated / ratchet 672 delta 0."  # a8a1
