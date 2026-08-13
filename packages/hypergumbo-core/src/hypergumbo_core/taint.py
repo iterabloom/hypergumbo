@@ -36,7 +36,7 @@ through the ``--taint-sinks`` CLI flag.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -174,6 +174,12 @@ class TaintSanitizer:
     input_taint: str
     output_taint: str
     qualified_name: str
+    #: INV-pojib: True when this entry came from a PROJECT-LOCAL catalogue
+    #: (``--taint-sanitizers`` or a claims-file ``extra_catalogs:`` block)
+    #: rather than the shipped one. Stamped once where the user layer is
+    #: assembled, so every consumer reads the same answer instead of trying to
+    #: re-derive provenance from a path it no longer has.
+    user_supplied: bool = False
 
     @property
     def short_name(self) -> str:
@@ -267,6 +273,18 @@ class TaintFlowFinding:
     # enumerating the vocabulary from here got it wrong.
     analysis_method: str
     path: list[str] = field(default_factory=list)
+    # INV-pojib: WHICH sanitizer made this flow safe, and whether the analysed
+    # repository is the one that said so. ``sanitized`` was a bare bool, so a
+    # verdict could report "a sanitizer protects this route" without being able
+    # to say whose sanitizer — and a repo-supplied entry naming a no-op function
+    # took a measured `violated` rc 1 to `confirmed` rc 0 with byte-identical
+    # verdict text. Both tuples name QUALIFIED sanitizer names;
+    # ``sanitized_by_user_supplied`` is the subset that came from a
+    # project-local catalogue, kept as its own tuple rather than a bool so a
+    # verdict can mark the repo-supplied ones individually when a route crosses
+    # several. Empty whenever ``sanitized`` is False.
+    sanitized_by: tuple[str, ...] = ()
+    sanitized_by_user_supplied: tuple[str, ...] = ()
     source_module: str = ""
     sink_module: str = ""
     # WI-vazal: the io_primitives boundary the SOURCE was derived from
@@ -312,6 +330,13 @@ class TaintFlowFinding:
             "confidence": self.confidence,
             "analysis_method": self.analysis_method,
             "path": self.path,
+            # INV-pojib. Emitted because a JSON consumer asking "is this clean
+            # verdict resting on something the analysed repo said about itself"
+            # should not have to parse it out of the prose in ``details`` --
+            # and because this module's own property test requires every
+            # declared field to serialize, which is what caught them missing.
+            "sanitized_by": list(self.sanitized_by),
+            "sanitized_by_user_supplied": list(self.sanitized_by_user_supplied),
         }
 
 
@@ -1252,10 +1277,16 @@ def load_full_taint_catalog(
     user_sinks = _merge_with_user_override(
         claims_layer._sinks, cli_layer._sinks,
     )
+    # INV-pojib: STAMPED HERE, which is the only place that still knows these
+    # entries came from a user path. Below this line the layers merge into one
+    # catalogue and a consumer asking "did the repo supply this?" would have to
+    # re-derive it from paths it no longer holds.
     user_sanitizers: dict[str, list[TaintSanitizer]] = {}
     for layer in (claims_layer._sanitizers, cli_layer._sanitizers):
         for lang, sans in layer.items():
-            user_sanitizers.setdefault(lang, []).extend(sans)
+            user_sanitizers.setdefault(lang, []).extend(
+                replace(san, user_supplied=True) for san in sans
+            )
 
     catalog._sources = _merge_with_user_override(catalog._sources, user_sources)
     catalog._sinks = _merge_with_user_override(catalog._sinks, user_sinks)
@@ -1664,7 +1695,7 @@ def _catalogue_key_for_edge(edge: dict[str, Any]) -> str | None:
 def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
-    sanitizer_callers: "dict[str, dict[str, TaintSanitizer]]",
+    sanitizer_callers: "dict[str, dict[str, list[TaintSanitizer]]]",
     ambiguous_names: frozenset[str] = frozenset(),
     sanitizer_lines: "dict[tuple[str, str], list[int]] | None" = None,
 ) -> None:
@@ -1756,7 +1787,18 @@ def _register_sanitizer_callers(
                 if ambiguous_names and callee_name in ambiguous_names:
                     continue
         for matched in matched_list:
-            sanitizer_callers[edge["src"]][matched.input_taint] = matched
+            # A LIST, NOT A SLOT (INV-pojib). This used to assign, so the LAST
+            # short-name match won: all four shipped ``*.encrypt`` sanitizers
+            # match a bare ``encrypt`` callee, and a fixture calling
+            # ``Fernet.encrypt`` was attributed to
+            # ``ChaCha20Poly1305.encrypt``. The barrier never noticed because it
+            # only asks WHETHER some sanitizer carries this label; attribution
+            # asks WHICH, and the honest answer is "one of these".
+            bucket = sanitizer_callers[edge["src"]].setdefault(
+                matched.input_taint, [],
+            )
+            if matched not in bucket:
+                bucket.append(matched)
             if sanitizer_lines is not None:
                 sanitizer_lines.setdefault(
                     (edge.get("src", ""), matched.input_taint), [],
@@ -1848,7 +1890,9 @@ def propagate_taint_structural(
     # Step 3: Find sanitizer call sites — multi-label-aware so one
     # caller of a barrier function picks up every input_taint label it
     # sanitizes.
-    sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
+    sanitizer_callers: dict[str, dict[str, list[TaintSanitizer]]] = (
+        defaultdict(dict)
+    )
     _register_sanitizer_callers(
         edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
     )
@@ -1878,6 +1922,7 @@ def propagate_taint_structural(
         # side is retained rather than pruned into silence.
         (
             reachable, parent, sanitized_reachable, sanitized_parent,
+            barrier_sanitizers,
         ) = _reachability_past_sanitizers(
             seed_id, taint_label, forward_adj, sanitizer_callers,
         )
@@ -1896,6 +1941,9 @@ def propagate_taint_structural(
                 )
             else:
                 continue
+            sanitized_by, sanitized_by_user = _attribute_sanitizers(
+                path, barrier_sanitizers,
+            ) if is_sanitized else ((), ())
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
                 source_symbol=seed_id,
@@ -1907,6 +1955,8 @@ def propagate_taint_structural(
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
                 sanitized=is_sanitized,
+                sanitized_by=sanitized_by,
+                sanitized_by_user_supplied=sanitized_by_user,
                 confidence="approximate",
                 analysis_method="structural",
                 path=path,
@@ -1919,8 +1969,11 @@ def _reachability_past_sanitizers(
     seed_id: str,
     taint_label: str,
     forward_adj: dict[str, set[str]],
-    sanitizer_callers: dict[str, dict[str, "TaintSanitizer"]],
-) -> tuple[set[str], dict[str, str | None], set[str], dict[str, str | None]]:
+    sanitizer_callers: dict[str, dict[str, list["TaintSanitizer"]]],
+) -> tuple[
+    set[str], dict[str, str | None], set[str], dict[str, str | None],
+    dict[str, list["TaintSanitizer"]],
+]:
     """Forward reachability, split by whether a sanitizer intervened.
 
     Returns ``(reachable, parent, sanitized_reachable, sanitized_parent)``.
@@ -1975,6 +2028,11 @@ def _reachability_past_sanitizers(
     """
     reachable: set[str] = set()
     barrier_nodes: list[str] = []
+    # INV-pojib: WHICH sanitizer stopped the taint here. The object is already
+    # in hand at the barrier test below and used to be discarded, so a verdict
+    # could report "a sanitizer protects every route" without being able to name
+    # it -- or to say the analysed repository is what supplied it.
+    barrier_sanitizers: dict[str, list["TaintSanitizer"]] = {}
     parent: dict[str, str | None] = {seed_id: None}
     queue: deque[str] = deque([seed_id])
 
@@ -1985,6 +2043,7 @@ def _reachability_past_sanitizers(
         node_sanitizers = sanitizer_callers.get(node, {})
         if taint_label in node_sanitizers and node != seed_id:
             barrier_nodes.append(node)
+            barrier_sanitizers[node] = node_sanitizers[taint_label]
             continue
         reachable.add(node)
         for neighbor in sorted(forward_adj.get(node, set())):
@@ -2025,7 +2084,39 @@ def _reachability_past_sanitizers(
                 sanitized_parent[neighbor] = node
                 queue.append(neighbor)
 
-    return reachable, parent, sanitized_reachable, sanitized_parent
+    return (
+        reachable, parent, sanitized_reachable, sanitized_parent,
+        barrier_sanitizers,
+    )
+
+
+def _attribute_sanitizers(
+    path: list[str],
+    barrier_sanitizers: dict[str, list["TaintSanitizer"]],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Which sanitizers a sanitized route actually crossed (INV-pojib).
+
+    Reads the barrier map against THE ROUTE THAT WAS RECONSTRUCTED, not against
+    every barrier the walk saw: a seed can reach several sinks by different
+    routes, and naming a sanitizer the reported route never crossed would be a
+    new way of saying something the analysis did not establish — the class of
+    defect this attribution exists to close.
+
+    Order follows the path, so the reported names read source-to-sink. The
+    user-supplied names are returned as a SUBSET rather than a flag, so a
+    verdict crossing both a shipped and a repo-supplied sanitizer can mark
+    exactly the repo-supplied one.
+    """
+    named: list[str] = []
+    user: list[str] = []
+    for node in path:
+        for sanitizer in barrier_sanitizers.get(node, ()):
+            if sanitizer.qualified_name in named:
+                continue
+            named.append(sanitizer.qualified_name)
+            if sanitizer.user_supplied:
+                user.append(sanitizer.qualified_name)
+    return tuple(named), tuple(user)
 
 
 def _reconstruct_path(
@@ -2741,7 +2832,9 @@ def propagate_taint_ddg(
     # negative, the expensive direction for a security tool, and it was live
     # on the path verify-claims runs Python through. INV-finoh's own filing
     # named this site; the fix landed only at the structural one.
-    sanitizer_callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
+    sanitizer_callers: dict[str, dict[str, list[TaintSanitizer]]] = (
+        defaultdict(dict)
+    )
     # (caller, input_taint) → the lines the barrier is called on, for WI-fasub's
     # same-function check. Collected by the shared registrar so it cannot
     # disagree with the barrier set above about what counts as a sanitizer.
@@ -2775,6 +2868,7 @@ def propagate_taint_ddg(
         # meaning one thing in Python and another in Go.
         (
             reachable, parent, sanitized_reachable, sanitized_parent,
+            barrier_sanitizers,
         ) = _reachability_past_sanitizers(
             seed_id, taint_label, forward_adj, sanitizer_callers,
         )
@@ -2784,6 +2878,10 @@ def propagate_taint_ddg(
             sink_callers,
         ):
             is_sanitized = False
+            # INV-pojib: the sanitizer the DDG arm credited, if that is the arm
+            # that fired. Reset per sink site, because two sinks in one function
+            # can be adjudicated differently.
+            ddg_barrier: list["TaintSanitizer"] = []
             if sink_node not in reachable:
                 if sink_node not in sanitized_reachable:
                     continue
@@ -2900,7 +2998,7 @@ def propagate_taint_ddg(
                     # surviving violations: the safe direction, and the reason
                     # this could land before removal authority exists.
                     if adjudicated and barrier_sites:
-                        is_sanitized = is_sanitized or _ddg_taint_reaches(
+                        ddg_sanitized = _ddg_taint_reaches(
                             source_fn, source_call_lines, sink_call_lines,
                             ddg_uses, callee_names, summaries,
                             defs_at=defs_at, inherits=inherits,
@@ -2909,6 +3007,26 @@ def propagate_taint_ddg(
                                 source_fn in (forfeit_refutation or set())
                             ),
                         ) is False
+                        # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
+                        # and it is the arm the measured repro went through --
+                        # `os.remove(launder(os.environ["API_KEY"]))` puts the
+                        # sanitizer in the seed function, which the call-graph
+                        # barrier exempts by design. Attributing only on that
+                        # other arm left exactly the case this was filed for
+                        # still printing the unattributed clause; caught by
+                        # re-running the live repro after the unit tests were
+                        # already green.
+                        #
+                        # ``sanitizer_callers`` is read rather than a second
+                        # line->sanitizer map being built: the registrar keys it
+                        # by the SAME (caller, input_taint) pair as
+                        # ``sanitizer_lines``, so the identity is already here
+                        # and a parallel map could only drift from it (L53).
+                        if ddg_sanitized:
+                            ddg_barrier = sanitizer_callers.get(
+                                source_fn, {},
+                            ).get(taint_label, [])
+                        is_sanitized = is_sanitized or ddg_sanitized
 
             # The label now records what actually decided inclusion, which is
             # what INV-sadah asserts. Before §3a existed every finding here was
@@ -2943,6 +3061,21 @@ def propagate_taint_ddg(
                 {**parent, **sanitized_parent} if is_sanitized else parent,
                 seed_id, sink_node,
             )
+            sanitized_by, sanitized_by_user = _attribute_sanitizers(
+                path, barrier_sanitizers,
+            ) if is_sanitized else ((), ())
+            # The call-graph barrier is EXEMPT inside the seed function, so a
+            # same-function sanitizer is credited only by the DDG arm above and
+            # leaves ``_attribute_sanitizers`` with nothing to report. That is
+            # the shape the measured repro takes, and attributing only on the
+            # other arm left exactly the filed case printing the unattributed
+            # clause -- caught by re-running the live repro after the unit
+            # tests were already green.
+            if is_sanitized and not sanitized_by and ddg_barrier:
+                sanitized_by = tuple(b.qualified_name for b in ddg_barrier)
+                sanitized_by_user = tuple(
+                    b.qualified_name for b in ddg_barrier if b.user_supplied
+                )
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
                 source_symbol=seed_id,
@@ -2954,6 +3087,8 @@ def propagate_taint_ddg(
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
                 sanitized=is_sanitized,
+                sanitized_by=sanitized_by,
+                sanitized_by_user_supplied=sanitized_by_user,
                 confidence=confidence,
                 analysis_method=method,
                 path=path,

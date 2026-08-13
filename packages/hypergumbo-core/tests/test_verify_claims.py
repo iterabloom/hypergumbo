@@ -696,6 +696,116 @@ class TestSanitizedFlowsAreDisclosed:
         assert verdict.sanitized_flows == 1
         assert "pass through a sanitizer on every route" in verdict.details
 
+    def test_a_repo_supplied_sanitizer_is_named_and_marked(self) -> None:
+        """INV-pojib — the verdict must say WHOSE sanitizer made it clean.
+
+        MEASURED at dev adfaaeebf2 on the shipped CLI. An 11-line fixture whose
+        only statements are ``secret = os.environ["API_KEY"]``,
+        ``safe = launder(secret)`` and ``os.remove(safe)`` — where ``launder``
+        returns its argument unchanged — went from ``violated`` rc 1 to
+        ``confirmed`` rc 0 when handed an 8-line sanitizer file asserting that
+        ``h.launder`` transforms host_secret to ciphertext. The same lie shipped
+        INSIDE the tree via the claims file's ``extra_catalogs:`` block gives the
+        same rc 0 with no flag passed by whoever runs the tool.
+
+        INV-zosun's disclosure names the INPUT ("computed against USER-SUPPLIED
+        catalogue input"). It never links that input to the EFFECT: the clause
+        was built from the sanitized-flow COUNT alone, so a lying repo-supplied
+        entry and a legitimate built-in ``Fernet.encrypt`` produced BYTE-IDENTICAL
+        verdict text, and rc was 0 either way.
+
+        This is not a lab case. hypergumbo's own self-proof declares its
+        zone-barrier sanitizer through ``extra_catalogs:``, and that sanitizer is
+        load-bearing by design — so the tool's own safety artifact is exactly the
+        shape that must not read as an unaided clean verdict.
+        """
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        f.sanitized_by = ("h.launder",)
+        f.sanitized_by_user_supplied = ("h.launder",)
+        verdict = verify_taint_claim(self._claim(), [f])
+        assert verdict.verdict == "confirmed"
+        assert "h.launder" in verdict.details, (
+            f"the sanitizer holding the verdict up must be NAMED, or the reader "
+            f"cannot check it against the source; got: {verdict.details!r}"
+        )
+        assert "project-local" in verdict.details, (
+            f"and it must be marked as supplied by the analysed repository, "
+            f"which is the whole distinction INV-pojib is about; got: "
+            f"{verdict.details!r}"
+        )
+
+    def test_a_built_in_sanitizer_is_named_but_not_marked_project_local(
+        self,
+    ) -> None:
+        """THE DISCRIMINATOR. If every sanitized verdict said "project-local",
+        the marking would carry no information and a reader would learn to
+        discount it — which is the failure mode this fix exists to correct, not
+        a milder version of it.
+        """
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        f.sanitized_by = ("cryptography.fernet.Fernet.encrypt",)
+        verdict = verify_taint_claim(self._claim(), [f])
+        assert "Fernet.encrypt" in verdict.details
+        assert "project-local" not in verdict.details, (
+            f"a shipped-catalogue sanitizer is not repo-supplied; got: "
+            f"{verdict.details!r}"
+        )
+
+    def test_several_candidate_sanitizers_are_not_reported_as_one(self) -> None:
+        """THE BARRIER RECORDS WHAT COULD HAVE FIRED, NOT WHAT DID.
+
+        All four shipped ``*.encrypt`` sanitizers match a bare ``encrypt``
+        callee, so a fixture calling ``Fernet.encrypt`` has four candidates. The
+        first version of this attribution named ONE of them — and named the
+        wrong one, printing ``ChaCha20Poly1305.encrypt`` for a Fernet call,
+        because the registry kept a single slot per (caller, label) and the last
+        short-name match overwrote the rest.
+
+        That was caught by running the live discriminator AFTER the unit tests
+        were already green, which is why this test exists: naming a sanitizer
+        the analysis cannot single out is a new way of stating something it
+        never established, and it is worse than the unattributed clause it
+        replaced — a reader who checks the named function against the source
+        will not find it.
+        """
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        f.sanitized_by = (
+            "cryptography.fernet.Fernet.encrypt",
+            "cryptography.hazmat.primitives.ciphers.aead.AESGCM.encrypt",
+        )
+        verdict = verify_taint_claim(self._claim(), [f])
+        assert "one of" in verdict.details, (
+            f"with several candidates the wording must not imply a single "
+            f"sanitizer; got: {verdict.details!r}"
+        )
+        assert "via cryptography" not in verdict.details, (
+            f"'via X' asserts X fired, which is exactly what is not known "
+            f"here; got: {verdict.details!r}"
+        )
+        for name in f.sanitized_by:
+            assert name in verdict.details, f"{name} missing from the candidates"
+
+    def test_an_unsanitized_flow_contributes_no_attribution(self) -> None:
+        """A claim can be violated AND carry sanitized flows. Only the SANITIZED
+        ones may name a sanitizer — attributing a protection to a flow that
+        reached the sink unprotected would invert the finding.
+        """
+        clean = _flow(source_symbol="s", sink_symbol="d")
+        clean.sanitized = True
+        clean.sanitized_by = ("proj.launder",)
+        clean.sanitized_by_user_supplied = ("proj.launder",)
+        leaky = _flow(source_symbol="s2", sink_symbol="d2")
+        leaky.sanitized_by = ("never.called",)
+        verdict = verify_taint_claim(self._claim(), [clean, leaky])
+        assert verdict.verdict == "violated"
+        assert "never.called" not in verdict.details, (
+            f"an unsanitized flow's candidate list must not be reported as "
+            f"protecting anything; got: {verdict.details!r}"
+        )
+
     def test_zero_when_nothing_was_sanitized(self) -> None:
         """No sanitizer anywhere reports 0 and adds no prose."""
         verdict = verify_taint_claim(
