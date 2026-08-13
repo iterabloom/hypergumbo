@@ -476,6 +476,35 @@ class IoPrimitive:
         name: The function or method name (e.g. "listdir", "read_text").
         kind: Either "function" or "method".
         notes: Optional human-readable notes about classification caveats.
+        simultaneous: The primitive genuinely crosses THIS boundary AT THE SAME
+            TIME as its other declarations (INV-zumin). Default False, which is
+            the safe reading for every other multi-boundary shape.
+
+            A primitive can be declared under several boundaries for three
+            different reasons, and only one of them is a defect:
+
+            * DISAMBIGUATED AT MATCH TIME — ``builtins.open`` is fs_read or
+              fs_write depending on ``io_mode``. Never both at once.
+            * UNDECIDABLE AT THE CALL SITE — C's ``unistd.write`` is fs_write,
+              net_send or ipc_send depending on the fd's type. EXACTLY ONE is
+              true; which one is not knowable here.
+            * SIMULTANEOUSLY TRUE — ``scala.sys.process.Process.apply`` both
+              launches a program and (through it) writes files. Nothing to
+              disambiguate, and row order silently discarded one.
+
+            THE FIRST TWO ARE INDISTINGUISHABLE FROM THE THIRD IN THE YAML —
+            all three look like "several rows, no mode" — which is why this is
+            a declared marker rather than something inferred. Inferring it
+            would multiply the undecidable rows and manufacture a ``net_send``
+            chain for every C write to stdout: a false violation, which is the
+            expensive direction.
+
+            It is a property of the PRIMITIVE, but the rows carrying it live in
+            different YAML sections by construction (one per boundary), so
+            :meth:`IoBoundaryCatalog.simultaneous_boundaries_for` refuses a
+            primitive whose rows disagree rather than picking one — a marker
+            that is live or inert depending on which section a later editor
+            updated would be the row-order hazard again, wearing a new hat.
     """
 
     boundary: str
@@ -483,6 +512,7 @@ class IoPrimitive:
     name: str
     kind: str  # "function" or "method"
     notes: str = ""
+    simultaneous: bool = False
 
     @property
     def qualified_name(self) -> str:
@@ -625,6 +655,79 @@ class IoBoundaryCatalog:
         if hits:
             return list(hits)
         return list(self._by_short.get(name, []))
+
+    def all_boundaries_for(self, qualified_name: str) -> set[str]:
+        """Every boundary this catalogue declares for one primitive.
+
+        The plain question ``lookup_with_module`` cannot answer, because it
+        returns a single :class:`IoPrimitive` and a multi-boundary primitive
+        therefore loses all but one declaration to YAML row order (INV-zumin).
+        Measured across the fourteen shipped catalogues: 23 multi-boundary
+        primitives, 27 declarations unreachable — including
+        ``scala.sys.process.Process.apply``, declared ``[fs_write,
+        subprocess]`` and tagged ``fs_write``, so the launch was undetectable
+        as a subprocess.
+
+        Returns the empty set for a name the catalogue does not carry —
+        "asked, nothing declared", which is distinct from ``lookup``'s ``None``
+        ("no match") and from a caller that never asked.
+        """
+        return {
+            p.boundary for p in self.primitives
+            if p.qualified_name == qualified_name
+        }
+
+    def simultaneous_boundaries_for(self, qualified_name: str) -> set[str]:
+        """The boundaries a primitive crosses AT THE SAME TIME, or empty.
+
+        The narrow question, and the only one that licenses tagging an edge
+        with more than one boundary. Empty for a single-boundary primitive, and
+        empty for the two multi-boundary shapes that are NOT simultaneous —
+        mode-disambiguated (``builtins.open``) and call-site-undecidable
+        (``unistd.write``) — because for those exactly one boundary is true per
+        call and reporting both would assert something the analysis never
+        established.
+
+        Raises:
+            ValueError: if the primitive's rows disagree about ``simultaneous``.
+                The flag is a property of the PRIMITIVE while its rows live in
+                different YAML sections by construction — one per boundary — so
+                a half-declared pair is not a typo to be resolved silently. It
+                would make the marker live or inert depending on which section a
+                later editor happened to update, which is the row-order defect
+                this whole mechanism exists to remove. Failing loudly is the
+                only reading that cannot quietly become the bug again.
+        """
+        rows = [p for p in self.primitives if p.qualified_name == qualified_name]
+        if not rows:
+            return set()
+        flags = {p.simultaneous for p in rows}
+        if len(flags) > 1:
+            declared = sorted(p.boundary for p in rows if p.simultaneous)
+            missing = sorted(p.boundary for p in rows if not p.simultaneous)
+            raise ValueError(
+                f"{qualified_name}: `simultaneous` is declared on "
+                f"{declared} but not on {missing}. It is a property of the "
+                f"primitive, so every row for it must agree — a half-declared "
+                f"pair silently reintroduces the row-order dependence "
+                f"(INV-zumin) it exists to remove."
+            )
+        if not flags.pop():
+            return set()
+        boundaries = {p.boundary for p in rows}
+        # A SINGLE-BOUNDARY PRIMITIVE IS NEVER "SIMULTANEOUS" — there is nothing
+        # for it to be simultaneous WITH. This is not defensive padding: the
+        # flag is spelled per ROW, and a row legitimately groups methods that
+        # differ in this respect. objc's ``net_send`` row lists the two
+        # ``NSURLConnection`` request methods (genuinely both send AND receive)
+        # alongside ``connectionWithRequest:delegate:``, which the ``net_recv``
+        # row does not carry. Demanding surgical row splits to express that
+        # would put the burden on every catalogue author and invite exactly the
+        # half-declared pairs the check above rejects. Returning empty here
+        # means such a method simply gets its one chain, as before.
+        if len(boundaries) < 2:
+            return set()
+        return boundaries
 
     def lookup_with_module(
         self, name: str, module_hint: str | None = None,
@@ -936,6 +1039,10 @@ class IoBoundaryCatalog:
                     continue
                 module = entry.get("module", "")
                 notes = entry.get("notes", "")
+                # INV-zumin. Row-level rather than catalogue-level so it sits
+                # beside the rows it qualifies; the cross-section agreement
+                # check lives in ``simultaneous_boundaries_for``.
+                simultaneous = bool(entry.get("simultaneous", False))
 
                 for func_name in entry.get("functions", []):
                     primitives.append(IoPrimitive(
@@ -944,6 +1051,7 @@ class IoBoundaryCatalog:
                         name=func_name,
                         kind="function",
                         notes=notes,
+                        simultaneous=simultaneous,
                     ))
                 for method_name in entry.get("methods", []):
                     primitives.append(IoPrimitive(
@@ -952,6 +1060,7 @@ class IoBoundaryCatalog:
                         name=method_name,
                         kind="method",
                         notes=notes,
+                        simultaneous=simultaneous,
                     ))
                 for attr_name in entry.get("attributes", []):
                     primitives.append(IoPrimitive(
@@ -960,6 +1069,7 @@ class IoBoundaryCatalog:
                         name=attr_name,
                         kind="attribute",
                         notes=notes,
+                        simultaneous=simultaneous,
                     ))
 
         ambiguous = frozenset(data.get("ambiguous_names", []))
@@ -1869,17 +1979,25 @@ def compute_boundary_map(
                 dst_tier_name = sc.get("tier_name")
                 dst_meta = dst_node.get("meta") or {}
                 dst_external = bool(dst_meta.get("external_boundary"))
-        chain = IoChain(
-            boundary=boundary,
-            primitive=primitive,
-            io_edge_src=edge.src,
-            io_edge_dst=edge.dst,
-            entry_points=chain_eps,
-            dst_tier=dst_tier,
-            dst_tier_name=dst_tier_name,
-            dst_external_boundary=dst_external,
-        )
-        by_boundary.setdefault(boundary, []).append(chain)
+        # INV-zumin: ONE CHAIN PER SIMULTANEOUSLY-TRUE BOUNDARY. Chains are what
+        # a ``must_not_exist`` claim counts, and they were built from the single
+        # ``io_boundary`` string — so reaching both declarations in the
+        # catalogue was necessary and not sufficient, and the scala launch
+        # stayed undetectable as a subprocess however the rows were written.
+        # ``io_boundaries`` is absent for every primitive that is not
+        # simultaneously true, so this falls back to exactly one chain and the
+        # ~99% of the corpus that is single-boundary pays nothing.
+        for chain_boundary in (meta.get("io_boundaries") or [boundary]):
+            by_boundary.setdefault(chain_boundary, []).append(IoChain(
+                boundary=chain_boundary,
+                primitive=primitive,
+                io_edge_src=edge.src,
+                io_edge_dst=edge.dst,
+                entry_points=chain_eps,
+                dst_tier=dst_tier,
+                dst_tier_name=dst_tier_name,
+                dst_external_boundary=dst_external,
+            ))
 
     # Plan C, PR C: external_potential second pass.  Synthesize chains
     # for unmatched edges whose dst is a synthetic external-boundary
@@ -2301,6 +2419,30 @@ def classify_call(
     pseudo-namespace redirect and the INV-sapit short-name withholding are
     shared verbatim, so a change to any of them moves both consumers together.
     """
+    return classify_call_in_catalog(catalogs, dst, meta, dst_ref=dst_ref)[0]
+
+
+def classify_call_in_catalog(
+    catalogs: dict[str, IoBoundaryCatalog],
+    dst: str,
+    meta: Optional[dict[str, Any]] = None,
+    *,
+    dst_ref: Optional[ExternalRef] = None,
+) -> tuple[Optional[IoPrimitive], Optional[IoBoundaryCatalog]]:
+    """:func:`classify_call`, plus the CATALOGUE the match came from.
+
+    Exists because a caller that needs to ask the catalogue a SECOND question
+    about the same match — INV-zumin's "is this primitive simultaneously true
+    of several boundaries" — would otherwise have to re-derive which catalogue
+    the dst belongs to. That derivation is not ``dst.split(":")[0]``: it runs
+    through :func:`_resolve_ffi_catalog`, so a cgo call into ``go:C:...`` is
+    answered by the **C** catalogue. A second copy would get FFI edges wrong
+    and would drift from this one the first time the redirect changed — the
+    "second home for one fact" failure this module has paid for repeatedly.
+
+    :func:`classify_call` is now a thin wrapper, so the two cannot disagree
+    about what was matched.
+    """
     lang = dst.split(":")[0]
     callee: Optional[str]
     module_hint: Optional[str]
@@ -2312,14 +2454,14 @@ def classify_call(
         module_hint = _extract_module_hint(dst)
     catalog, adjusted_hint = _resolve_ffi_catalog(lang, module_hint, catalogs)
     if catalog is None:
-        return None
+        return None, None
     edge_meta = meta or {}
     return catalog.lookup_with_module(
         callee, adjusted_hint,
         call_construct=edge_meta.get("call_construct"),
         io_mode=edge_meta.get("io_mode"),
         allow_short_name_fallback=not is_first_party_callable_dst(dst),
-    )
+    ), catalog
 
 
 def tag_io_boundaries(
@@ -2409,17 +2551,31 @@ def tag_io_boundaries(
         # with no way to reach this code. It answered a module-level
         # approximation instead and reported calls this loop had just tagged as
         # never examined. One question, one function.
-        match = classify_call(
+        match, matched_catalog = classify_call_in_catalog(
             catalogs, edge.dst, getattr(edge, "meta", None),
             dst_ref=getattr(edge, "dst_ref", None),
         )
-        if match is None:
+        if match is None or matched_catalog is None:
             continue
 
         if edge.meta is None:
             edge.meta = {}
         edge.meta["io_boundary"] = match.boundary
         edge.meta["io_primitive"] = match.qualified_name
+        # INV-zumin. ``io_boundary`` stays a single string and keeps the value
+        # it always had, so every existing consumer — the F3 gate, the taint
+        # sink derivation, ``declares_opaque_crossing``, third-party readers of
+        # the JSON — is untouched. ``io_boundaries`` is ADDITIVE and appears
+        # ONLY for a primitive whose rows declare themselves simultaneously
+        # true, which is ~2 of the 23 multi-boundary primitives and 0 of the
+        # rest of the catalogue. A consumer that never learns about the new key
+        # behaves exactly as before; one that reads it stops losing a
+        # declaration to YAML row order.
+        simultaneous = matched_catalog.simultaneous_boundaries_for(
+            match.qualified_name,
+        )
+        if simultaneous:
+            edge.meta["io_boundaries"] = sorted(simultaneous)
         tagged += 1
 
     return tagged
