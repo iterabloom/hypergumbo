@@ -1,0 +1,49 @@
+Original commit body from 653caf3c03960390dedf81e527f384c991ac5347:
+
+INV-vavup. ADR-0016's implementation note says command-mediated languages
+populate `subprocess` by emitting unresolved external-command edges "not via an
+io_primitives data-I/O catalog that would MIS-ATTRIBUTE CURL'S NETWORK ACTIVITY
+TO THE SHELL SCRIPT ITSELF."
+
+I read that twice as forbidding ANY bash io_primitives catalogue. It does not.
+It forbids exactly the case that would be a mis-attribution and is SILENT on
+the case that would be accurate, because a shell has TWO I/O surfaces:
+
+  curl -o /etc/cron.d/pwned     the write is performed by CURL, an opaque
+                                external program -> subprocess + opacity;
+                                attributing fs_write to the script WOULD be
+                                the mis-attribution this note forbids
+  echo "$SECRET" > /etc/...     the write is performed by THE SHELL ITSELF
+                                (echo is a builtin, and even for an external
+                                command the redirection is established by the
+                                shell before exec) -> the shell's own
+                                primitive, same standing as os.remove in
+                                python; cataloguing it is CORRECT
+
+MEASURED CONSEQUENCE OF THE GAP: bash.py dispatches on function_definition /
+declaration_command / command only, so on an 8-statement script exercising the
+common idioms, the four launches emitted correctly and the THREE REDIRECTION
+WRITES TO HOST PATHS PRODUCED ZERO EDGES. `echo $SECRET > /etc/cron.d/pwned` --
+the same cron-dropper INV-larol was filed about, written with a builtin and a
+redirect instead of `curl -o` -- is invisible.
+
+AND "REDIRECTION IS SYNTAX, NOT A NAMED CALL" IS NOT A BARRIER EITHER, which is
+the second thing I asserted and had to retract: this schema ALREADY classifies
+non-call constructs through `attributes:` (os.environ, sys.stdout, sys.stdin),
+which reach the boundary pipeline via synthesized module_attr_ref edges
+(WI-guhok). The precedent is exact and shipped.
+
+The amendment records the two-surface distinction, the measured emission gap,
+the attributes precedent, and the SEQUENCING constraint: marking bash
+taint-supported on the strength of its launch edges BEFORE redirection writes
+are visible would let a redirection-dropper pass the coverage gate and confirm
+"never writes to the host filesystem" -- a false confirm through a hole
+DISTINCT from the one INV-larol closed. Redirection first, taint-support
+second.
+
+Docs-only; ADRs are edited in place per docs/adr/README.md and git history is
+the immutable record. No behaviour change. smart-test: no test-relevant files
+changed; mypy ratchet clean.
+
+Ref: INV-vavup, INV-larol, WI-guhok, INV-zumin (mode-vs-rows), INV-dabuf.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
