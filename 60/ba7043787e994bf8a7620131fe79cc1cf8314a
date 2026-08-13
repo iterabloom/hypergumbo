@@ -1,0 +1,102 @@
+Original commit body from 53c0feade66f5c0956ee67ff2baddb53351b605d:
+
+ADR-0016 section 4's ORIGINAL specified consumer of the fourth verdict, built
+at last on the machinery INV-pojib landed this morning. Owner-authorized
+2026-08-13 after the blocker-stack census showed this is the ONLY route to a
+self-proof that can ever say anything.
+
+WHAT `inconclusive` WAS CONFLATING. Two very different epistemic states reached
+the same verdict:
+
+  * "a whole language here has no catalogue -- I am blind"
+  * "I examined every call and understood them all; three of them hand control
+    to git / pip / rustup, and no static analysis can see inside a launched
+    process"
+
+The auditor distinction is exact: a DISCLAIMER ("could not form a view") versus
+a QUALIFIED OPINION ("correct, except these named items"). hypergumbo issued
+disclaimers where a qualified opinion was warranted -- and because it launches
+programs BY DESIGN, plain `confirmed` was permanently unreachable for its own
+self-proof, making that artifact one that could never say anything at all.
+
+MEASURED on the shipped CLI, four fixtures that discriminate:
+
+  launch is the sole blocker      inconclusive rc 2 -> CAVEATS rc 3, site named
+  real I/O, no launch             confirmed rc 0    (unchanged)
+  launch + a real leak            violated rc 1     (unchanged)
+  launch + uncatalogued module    inconclusive rc 2 (unchanged)
+
+The last is the one that matters: opacity QUALIFIES only when it is the SOLE
+remaining blocker. Beside a genuinely uncatalogued module the silence is
+ambiguous -- the reader cannot tell which gap produced it -- so the
+qualification is withheld. `qualifying_only` is DERIVED inside
+compute_boundary_coverage, beside the evidence, because a gate whose caller can
+forget to arm it fails open (the INV-dabov lesson).
+
+A FIFTH FIXTURE WAS A BAD CONTROL AND IS RECORDED AS SUCH: my first "no launch"
+control was `return 1 + 1`, which produced NO CALL EDGES AT ALL and came back
+inconclusive for an unrelated and correct reason (the empty-analysis blocker).
+Rebuilt with real catalogued I/O (os.listdir/os.remove) it confirms at rc 0.
+A control that fails for the wrong reason is not a control.
+
+BOTH CLAIM KINDS, ONE DISCLOSURE. Boundary claims read the BoundaryCoverage
+object directly; taint claims reach the gate through a flattened blind_reason
+STRING, so the sites travel alongside it (`_taint_blind_reason` now returns
+`(reason, opaque_sites)`). Both render through ONE builder, and a parity test
+asserts byte-identical kind/entries/detail from the two paths -- two spellings
+of one disclosure would drift the first time either was edited (L53).
+
+THE TAINT PATH APPENDS, NEVER ASSIGNS. A verdict can already carry INV-pojib's
+user_supplied_sanitizer kind, and the self-proof is exactly that case: it
+declares a zone-barrier sanitizer AND shells out to git. Overwriting would be
+the one-slot last-writer-wins class (INV-virat, closed hours ago) reappearing
+inside the caveat list itself; a test pins that both kinds survive together.
+
+THE DIRECTION IS TOWARDS CONFIRMING, which is why this needed authorization and
+why it ships now rather than a week ago: its soundness rests entirely on the
+launch list being COMPLETE, and that surface is what constructors-counted
+(INV-motos), opacity-gated (INV-gahuz), producer-stamps-unerasable (INV-larol,
+INV-virat) and row-order-masking-closed (INV-zumin) hardened.
+
+WORDING IS DELIBERATE: "cannot see inside a launched program", never anything
+implying full coverage. "I saw every call" is not "I saw every I/O" --
+INV-vavup measured bash redirection writes emitting no edge at all.
+
+THE SELF-PROOF DOES NOT MOVE YET, stated so this is not mistaken for closing
+INV-dabuf: its front blocker is still bash (layer 1 of the four-layer stack),
+re-confirmed 18/18 inconclusive on the cached survey after this change. This is
+machinery landed ahead of its arming event, the same ordering WI-joluk's gate
+was built under.
+
+A DUPLICATE-RECORD DEFECT IN THE FIRST VERSION, found by the owner asking
+whether the append avoids duplicate data. It did not. Measured before the fix:
+
+    claims file holding BOTH a boundary claim and a taint claim
+      B-1 caveat kinds = ['opaque_boundary', 'opaque_boundary']
+
+`has_taint_claims` populates blind_reason for EVERY verdict, so verify_claim
+attached the caveat to the boundary verdict and _require_coverage_to_confirm
+appended a second copy. Not cosmetic: `caveats` is the machine surface a
+consumer branches on and COUNTS, so a doubled entry says a claim rests on
+twice as many unverifiable doors as it does.
+
+THE LESSON IS THE MIRROR OF INV-virat, HOURS APART: switching assign -> append
+is what stops a second writer erasing the first, and doing it unguarded lets
+the SAME kind accumulate. One fix opened its own inverse. `_merge_caveat` is
+now the single place a caveat joins a verdict; it folds by KIND, keeps the
+UNION of entries (under-reporting unverifiable doors is the failure that
+matters; over-reporting is merely noisy), and re-renders opacity's prose so a
+widened list cannot leave the sentence saying "1 call site" over two. Two of
+its branches are unreachable from today's callers -- both paths currently
+produce identical site lists -- and are covered by direct unit tests rather
+than pragmas.
+
+A CONTROL THAT FAILED FOR THE WRONG REASON, recorded rather than replaced: my
+first "no launch" control was `return 1 + 1`, which produced NO CALL EDGES AT
+ALL and came back inconclusive via the empty-analysis blocker. Rebuilt with
+real catalogued I/O (os.listdir / os.remove) it confirms at rc 0.
+
+Ref: ADR-0016 section 4 (amended: both caveat kinds now implemented), INV-pojib,
+INV-dabuf (census), INV-vavup, INV-virat.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
