@@ -32,3 +32,19 @@
     priority: 1  # dc9d
   add:  # dc9d
     tags: [security, verify_claims, io_boundary, false_confirm, bucket_a]  # dc9d
+- op: update  # cd06
+  at: '2026-08-12T23:32:53Z'  # cd06
+  by: agent  # cd06
+  actor: jgstern_agent  # cd06
+  clock: 3  # cd06
+  nonce: cd06  # cd06
+  set:  # cd06
+    status: satisfied  # cd06
+    pr_ref: '313'  # cd06
+- op: discuss  # fcc7
+  at: '2026-08-12T23:32:53Z'  # fcc7
+  by: agent  # fcc7
+  actor: jgstern_agent  # fcc7
+  clock: 4  # fcc7
+  nonce: fcc7  # fcc7
+  message: "SATISFIED by PR #313, merged as 4b2e745d3d. Behavioural evidence re-run against\nthe MERGED tree, with all four regression controls:\n\n  verify-claims fx-ruby --claims claims.yaml   (the filed 7-line Ruby fixture,\n      Net::HTTP.new(...).post(path, \"key=#{ENV['API_KEY']}\"))\n    -> rc 2, Verdict: inconclusive             was rc 0, confirmed\n       \"No net_send chains found, but language(s) ruby made calls but have no\n        I/O catalog, so none of their I/O could be classified; cannot confirm\n        the boundary is unused.\"\n\n  telnet          rc 2   requests        rc 2      (INV-buzab controls)\n  popen           rc 1   oswrite_control rc 1      (violated, still detected)\n\nFIX: compute_boundary_coverage derives `languages_with_calls - set(catalogs)`\nitself and returns incomplete. Derived rather than passed in, for the reason its\nown docstring gives about `catalogs`: a gate a caller can forget to arm fails\nopen — and this one was previously UNARMABLE, since cmd_verify_claims drops an\nempty catalogue at `if catalog.primitives:` so the language never reaches\nsupported_languages at all.\n\nCALL-SCOPED, NOT REPO-SCOPED. Measured over six repos: repo-scoped would name up\nto 16 languages apiece (markdown, gitignore, yaml, toml); call-scoped names one\nto three real ones — bash on 6/6, +vue on pretix, +csharp/solidity on hypergumbo\n(all three of those files are test fixtures).\n\nVERDICT DELTA: 0 OF 3 measured end-to-end. httpx / poetry / fastapi were ALREADY\ninconclusive before the change (uncatalogued modules) and are inconclusive after;\nonly the blame moved. A/B'd by stashing the change. An earlier draft of the PR\ntext claimed this \"downgrades most real repos\" — that was derived from the\nlanguage census rather than from verdicts, and the A/B refuted it before merge.\nThe marginal effect lands on repos that would otherwise CONFIRM, which is the\npopulation the false confirm endangered.\n\nTWO EXISTING TESTS WERE ASSERTING THE DEFECT: one pinned complete is True on the\n\"already decided upstream\" rationale that PR #306 had ALREADY corrected in prose\n(the docstring and the assertion were two homes for one claim); the other\nasserted rc 0 with the comment \"claim confirmed vacuously\".\n\nDISCLOSED RESIDUAL, pinned by a test rather than implied: the check keys on the\nedge's SRC language, so a call whose src is catalogued but whose dst names an\nuncatalogued language still slips past. Needs a cross-language edge rather than\nmerely a file. The honest fix is a catalogue for the target language, not a\nwider gate — widening to dst would make any FFI edge into an uncatalogued target\ndowngrade everything, the coarseness the call-scoped rule exists to avoid.\n\nFOLLOW-UP AGREED WITH THE OWNER, NOT DONE HERE: io_primitives/bash.yaml. bash is\nthe single dominant blocker (6/6), so a repo that HAS cleaned up its third-party\nsurface still cannot confirm until it exists — and shell egress is currently\ninvisible to the tool."  # fcc7
