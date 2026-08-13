@@ -186,6 +186,96 @@ CONFIRMING_VERDICTS: frozenset[str] = frozenset({
 #: shipped one — catalogue-level machinery rather than the finding-level
 #: attribution here — which is why it is filed rather than bundled.
 CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
+
+#: Caveat kind: the claim held everywhere the analysis could see, and control
+#: leaves the process at one or more NAMED call sites whose launched program is
+#: not in the edge set. ADR-0016 §4's ORIGINAL specified consumer of the fourth
+#: verdict — "consistent, but opaque boundaries exist that could not be
+#: verified" — implemented 2026-08-13 on the machinery INV-pojib built.
+#:
+#: WHY THIS IS NOT ``inconclusive``. That verdict conflated two states: "a whole
+#: language here has no catalogue, I am blind" and "I examined every call and
+#: understood them all; three hand control to git/pip/rustup and no static tool
+#: can see inside a launched process". The auditor distinction is exact — a
+#: DISCLAIMER versus a QUALIFIED OPINION — and because hypergumbo launches
+#: programs BY DESIGN, ``confirmed`` was permanently unreachable for its own
+#: self-proof, making that artifact one that could never say anything.
+#:
+#: THE DIRECTION IS TOWARDS CONFIRMING, so its soundness rests entirely on the
+#: launch list being COMPLETE. That is why it ships only after the surface was
+#: hardened: constructors counted (INV-motos), opacity gated (INV-gahuz),
+#: producer stamps unerasable (INV-larol, INV-virat), row-order masking closed
+#: (INV-zumin). Raised ONLY when launches are the sole remaining blocker
+#: (:attr:`BoundaryCoverage.qualifying_only`).
+#:
+#: THE WORDING SAYS "could not see INSIDE these launched programs" rather than
+#: anything implying full coverage, because "I saw every call" is not "I saw
+#: every I/O" — INV-vavup measured bash redirection writes emitting no edge at
+#: all.
+CAVEAT_OPAQUE_BOUNDARY = "opaque_boundary"
+
+
+def _merge_caveat(
+    existing: list[dict[str, Any]], new: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Add a caveat, or fold it into the entry that already carries its kind.
+
+    APPEND FIXED ONE BUG AND INVITED ITS MIRROR. Switching from assign to
+    append is what stopped a second writer erasing the first (INV-virat's
+    class); doing it unguarded lets the SAME kind accumulate. Measured before
+    this existed: a claims file holding both a boundary claim and a taint claim
+    produced ``['opaque_boundary', 'opaque_boundary']`` on the boundary
+    verdict, because ``verify_claim`` attaches the caveat and
+    :func:`_require_coverage_to_confirm` then appends the taint arm's copy to
+    the same verdict.
+
+    Not cosmetic: ``caveats`` is the machine surface a consumer branches on and
+    COUNTS, so a doubled entry says a claim rests on twice as many unverifiable
+    doors as it does.
+
+    THE UNION IS KEPT, NOT THE FIRST. If two paths ever disagree about which
+    sites they saw, under-reporting unverifiable doors is the failure that
+    matters; over-reporting is merely noisy. Entries stay sorted so the merged
+    list is stable across runs and diffable.
+    """
+    for i, cav in enumerate(existing):
+        if cav.get("kind") != new.get("kind"):
+            continue
+        merged_entries = sorted(
+            set(cav.get("entries") or []) | set(new.get("entries") or [])
+        )
+        if merged_entries == list(cav.get("entries") or []):
+            return existing
+        rebuilt = dict(cav)
+        rebuilt["entries"] = merged_entries
+        if new.get("kind") == CAVEAT_OPAQUE_BOUNDARY:
+            # Re-render so the prose agrees with the widened entry list rather
+            # than quoting a stale count — a disclosure whose sentence and
+            # whose data disagree is worse than either alone.
+            rebuilt = _opaque_boundary_caveat(merged_entries)
+        return [*existing[:i], rebuilt, *existing[i + 1:]]
+    return [*existing, new]
+
+
+def _opaque_boundary_caveat(sites: list[str]) -> dict[str, Any]:
+    """The one place the opaque-launch caveat is built, for both claim kinds.
+
+    Boundary claims and taint claims reach this from different code paths, and
+    two spellings of one disclosure would drift the first time either was
+    edited — the failure this module has paid for repeatedly (L53). A parity
+    test asserts both paths produce the same ``kind`` and the same site list.
+    """
+    shown = ", ".join(sites)
+    return {
+        "kind": CAVEAT_OPAQUE_BOUNDARY,
+        "entries": list(sites),
+        "detail": (
+            f"The claim holds everywhere the analysis could see. Control "
+            f"leaves this process at {len(sites)} call site(s) — {shown} — "
+            f"and hypergumbo cannot see inside a launched program, so what "
+            f"those programs do is not covered by this verdict."
+        ),
+    }
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -399,6 +489,22 @@ class BoundaryCoverage:
 
     complete: bool
     reason: str = ""
+    #: Qualified primitive names where control leaves the process
+    #: (``subprocess.run``, ``os.execv``). Populated only when opacity is what
+    #: made coverage incomplete; empty otherwise.
+    opaque_sites: list[str] = field(default_factory=list)
+    #: True when those launch sites are the SOLE remaining blocker — every
+    #: other coverage check passed. This is the difference between a
+    #: DISCLAIMER and a QUALIFIED OPINION (ADR-0016 §4): "I could not form a
+    #: view" versus "I examined everything I could see, except these named
+    #: doors". Derived inside :func:`compute_boundary_coverage` rather than
+    #: passed in, because a gate whose caller can forget to arm it fails open
+    #: (the INV-dabov lesson).
+    #:
+    #: An opaque launch BESIDE a genuinely uncatalogued module is still
+    #: blindness: the reader cannot tell which gap the silence came from, so
+    #: the qualification is withheld.
+    qualifying_only: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -1467,6 +1573,7 @@ def compute_boundary_coverage(
     # program visible. Reporting the fixable blocker first would send a reader
     # on an errand that cannot succeed, then move the goalpost on them.
     opaque = _opaque_launch_sites(raw_edges, catalogs)
+    unknown = _uncatalogued_external_modules(raw_edges, catalogs)
     if opaque:
         shown = ", ".join(opaque[:_MAX_REPORTED_UNCATALOGUED_MODULES])
         more = len(opaque) - _MAX_REPORTED_UNCATALOGUED_MODULES
@@ -1484,9 +1591,15 @@ def compute_boundary_coverage(
                 f"what the launched program does, so whether this I/O happens "
                 f"there was never examined"
             ),
+            opaque_sites=opaque,
+            # ``not unknown`` is the whole qualification test: every check
+            # above already passed to reach here, so an empty uncatalogued
+            # list means these launches are the SOLE remaining blocker and a
+            # verdict may be QUALIFIED rather than withheld (ADR-0016 §4).
+            # Computed here, beside the evidence, so no caller can forget it.
+            qualifying_only=not unknown,
         )
 
-    unknown = _uncatalogued_external_modules(raw_edges, catalogs)
     if unknown:
         shown = ", ".join(unknown[:_MAX_REPORTED_UNCATALOGUED_MODULES])
         more = len(unknown) - _MAX_REPORTED_UNCATALOGUED_MODULES
@@ -1575,6 +1688,22 @@ def verify_claim(
     # Check must_not_exist constraint
     if claim.constraint_must_not_exist:
         if chain_count == 0:
+            # ADR-0016 §4: opacity QUALIFIES a clean verdict, it does not
+            # withhold one — but only when the launches are the sole blocker.
+            # Anything else incomplete is genuine blindness and still yields
+            # ``inconclusive``, because a reader cannot tell which gap the
+            # silence came from.
+            if not coverage.complete and coverage.qualifying_only:
+                return ClaimVerdict(
+                    claim_id=claim.id,
+                    claim_text=claim.text,
+                    verdict="confirmed_with_caveats",
+                    details=(
+                        f"No {claim.constraint_boundary} chains found in code "
+                        f"the analysis could see."
+                    ),
+                    caveats=[_opaque_boundary_caveat(coverage.opaque_sites)],
+                )
             if not coverage.complete:
                 return ClaimVerdict(
                     claim_id=claim.id,
@@ -2171,6 +2300,7 @@ def verify_taint_claim(
 def _require_coverage_to_confirm(
     verdict: ClaimVerdict,
     blind_reason: str | None,
+    opaque_sites: list[str] | None = None,
 ) -> ClaimVerdict:
     """Downgrade a ``confirmed`` verdict the analysis did not earn.
 
@@ -2203,6 +2333,33 @@ def _require_coverage_to_confirm(
     # fourth verdict value would have punched a hole through this gate.
     if verdict.verdict not in CONFIRMING_VERDICTS or not blind_reason:
         return verdict
+    # ADR-0016 §4, owner-authorized 2026-08-13. When the incompleteness is
+    # NAMED OPAQUE LAUNCH SITES and nothing else, the honest verdict is a
+    # QUALIFIED one rather than a withheld one — the caller passes
+    # ``opaque_sites`` only when ``BoundaryCoverage.qualifying_only`` held, so
+    # the sole-blocker test is not re-derived here.
+    #
+    # THE CAVEAT IS APPENDED, NEVER ASSIGNED. A taint verdict can already
+    # carry INV-pojib's user_supplied_sanitizer kind, and the self-proof is
+    # exactly that case — it declares a zone-barrier sanitizer AND shells out
+    # to git. Overwriting would be the one-slot last-writer-wins class
+    # (INV-virat) reappearing inside the caveat list itself.
+    if opaque_sites:
+        return ClaimVerdict(
+            claim_id=verdict.claim_id,
+            claim_text=verdict.claim_text,
+            verdict="confirmed_with_caveats",
+            evidence=verdict.evidence,
+            evidence_count=verdict.evidence_count,
+            details=verdict.details,
+            excluded_flows=verdict.excluded_flows,
+            flow_origins=verdict.flow_origins,
+            analysis_methods=verdict.analysis_methods,
+            sanitized_flows=verdict.sanitized_flows,
+            caveats=_merge_caveat(
+                verdict.caveats, _opaque_boundary_caveat(opaque_sites),
+            ),
+        )
     return ClaimVerdict(
         claim_id=verdict.claim_id,
         claim_text=verdict.claim_text,
@@ -2223,6 +2380,7 @@ def verify_claims(
     coverage: Optional[BoundaryCoverage] = None,
     include_non_production: bool = False,
     blind_reason: str | None = None,
+    blind_opaque_sites: list[str] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -2259,6 +2417,8 @@ def verify_claims(
         # branch so a constraint kind added later cannot ship unable to
         # distinguish "looked and found nothing" from "did not look".
         verdicts.append(
-            _require_coverage_to_confirm(verdict, blind_reason),
+            _require_coverage_to_confirm(
+                verdict, blind_reason, blind_opaque_sites,
+            ),
         )
     return verdicts
