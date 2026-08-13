@@ -5088,6 +5088,7 @@ def _taint_blind_reason(
     raw_edges: list[dict[str, Any]],
     taint_supported_languages: set[str],
     catalogs: dict[str, Any],
+    include_non_production: bool = False,
 ) -> str | None:
     """Why a taint claim cannot be confirmed, or ``None`` if it can.
 
@@ -5130,7 +5131,11 @@ def _taint_blind_reason(
     ``test_language_with_a_token_call_edge_still_falsely_confirms`` so the
     gap is visible in the suite instead of living in a comment.
     """
-    from .verify_claims import compute_boundary_coverage
+    from .verify_claims import (
+        SOURCE_SCOPE_PRODUCTION,
+        compute_boundary_coverage,
+        symbol_source_scope,
+    )
 
     if not has_taint_claims:
         return None
@@ -5148,9 +5153,42 @@ def _taint_blind_reason(
     # the other direction. Caught by
     # test_taint_recall_corpus.test_python_source_without_any_sink_confirms,
     # whose fixture is a legitimately clean repo.
+    # AND ONLY PRODUCTION CODE COUNTS, for the same reason the flow filter
+    # already says so (INV-dabuf). ``verify_claims`` excludes test/fixture/
+    # migration-SOURCED flows by default (WI-bifob) because a fixture reaching
+    # a real primitive is a fixture doing its job, not the shipped application
+    # doing it. This census asked no such question, so ONE fixture file in a
+    # language with no taint catalogue blocked EVERY claim in the repo — while
+    # a flow out of that same file was being discarded as non-production. One
+    # tool, two answers about whether a fixture counts.
+    #
+    # MEASURED on hypergumbo's own self-proof at dev d7b069b106: 18 of 18
+    # claims inconclusive, every one blocked by (bash, csharp, solidity),
+    # where csharp is 3 files and solidity 1 — ALL of them under
+    # tests/fixtures. bash is 44 files and mostly real, so this narrowing does
+    # NOT hand the self-proof a pass; it isolates the residual to the one
+    # language that genuinely earns it.
+    #
+    # The classifier is IMPORTED, not re-derived: ``symbol_source_scope`` is
+    # the same predicate ``_source_scope`` runs over a flow's source symbol.
+    #
+    # SCOPED ONCE, CONSUMED BY BOTH CHECKS. The narrowing is applied to the
+    # EDGE LIST rather than to the language set, so the census below and the
+    # ``compute_boundary_coverage`` call further down walk the same population.
+    # Narrowing only the first check is how this function would come to give
+    # two different answers about the same fixture: measured mid-fix, the
+    # census correctly stopped naming a fixture-only language and the verdict
+    # went on blocking anyway, because the second check still saw the fixture's
+    # edges. That is INV-motos exactly — sharing a predicate is not enough when
+    # the callers run it over different populations.
+    scoped_edges = [
+        edge for edge in raw_edges
+        if include_non_production
+        or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
+    ]
     languages_with_calls = {
         edge.get("src", "").split(":", 1)[0]
-        for edge in raw_edges
+        for edge in scoped_edges
         if edge.get("type") == "calls" and ":" in edge.get("src", "")
     }
     blind = sorted(set(unsupported_taint_languages) & languages_with_calls)
@@ -5162,7 +5200,7 @@ def _taint_blind_reason(
             f"claim forbids"
         )
     coverage = compute_boundary_coverage(
-        raw_edges, taint_supported_languages, catalogs,
+        scoped_edges, taint_supported_languages, catalogs,
     )
     if not coverage.complete:
         return coverage.reason
@@ -5568,6 +5606,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         blind_reason=_taint_blind_reason(
             has_taint_claims, unsupported_taint_languages,
             raw_edges, set(per_lang_sinks), catalogs,
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
         ),
     )
 

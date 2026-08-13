@@ -1879,6 +1879,102 @@ def test_uncatalogued_language_WITH_code_blocks_confirmation(
     assert "brainfuck" in out, "the verdict must name WHICH language was blind"
 
 
+def _fixture_only_uncatalogued_args(tmp_path: Path, *, code_path: str):
+    """A repo whose ONLY uncatalogued-language code sits at ``code_path``.
+
+    Mirrors ``test_uncatalogued_language_WITH_code_blocks_confirmation``
+    exactly except for that path, so the pair is a controlled comparison:
+    same languages, same edge shapes, same claim. The only variable is
+    whether the brainfuck file is production code or a test fixture.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
+             "language": "python", "path": "a.py",
+             "span": {"start_line": 1, "end_line": 5}},
+            {"id": f"brainfuck:{code_path}:1:main:function", "name": "main",
+             "kind": "function", "language": "brainfuck", "path": code_path,
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[
+            {"src": "python:a.py:1:f:function",
+             "dst": "python:b.py:1:g:function",
+             "type": "calls", "confidence": 0.9},
+            {"src": f"brainfuck:{code_path}:1:main:function",
+             "dst": f"brainfuck:{code_path}:9:helper:function",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-BF", "text": "No secrets to disk",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    return args
+
+
+def test_a_fixture_only_uncatalogued_language_does_not_block_confirmation(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-dabuf — the language census must ask the SAME production question
+    the flow filter already asks.
+
+    ``verify_claims`` excludes test/fixture/migration-SOURCED flows by default
+    (``include_non_production=False``, WI-bifob): a taint flow originating in a
+    fixture is not the shipped application doing it. The language census that
+    decides whether ANY claim may be confirmed asked no such question — it
+    counted every ``calls`` edge in the tree — so one fixture file in a
+    language with no taint catalogue blocked every claim in the repo. One tool,
+    two answers about whether a fixture counts.
+
+    MEASURED on hypergumbo's own self-proof at dev ``d7b069b106``: 18 of 18
+    claims inconclusive, rc 2, every one blocked by
+    ``(bash, csharp, solidity)`` — where csharp is 3 files and solidity 1,
+    ALL of them under ``tests/fixtures/``.
+    """
+    args = _fixture_only_uncatalogued_args(
+        tmp_path, code_path="tests/fixtures/schema-corpus/m.bf",
+    )
+    rc = cmd_verify_claims(args)
+    out = capsys.readouterr().out
+    assert "brainfuck" not in out, (
+        f"a brainfuck FIXTURE cannot be the shipped application reaching the "
+        f"filesystem, so it must not block the verdict; got: {out!r}"
+    )
+    assert rc == 0, f"expected the claim to resolve; got rc={rc}, out={out!r}"
+
+
+def test_include_non_production_sources_puts_the_fixture_back_in_the_census(
+    tmp_path: Path, capsys,
+) -> None:
+    """SYMMETRY WITH THE FLOW FILTER, which is the whole justification.
+
+    The fix is defensible only because it makes the census ask the question
+    the flow filter already asks. If the flag that widens the flow filter did
+    not also widen the census, the two would disagree again in the opposite
+    direction — a user who asked to count fixture flows would still be told
+    the fixture's language was irrelevant.
+    """
+    args = _fixture_only_uncatalogued_args(
+        tmp_path, code_path="tests/fixtures/schema-corpus/m.bf",
+    )
+    args.include_non_production_sources = True
+    rc = cmd_verify_claims(args)
+    out = capsys.readouterr().out
+    assert rc == 2 and "brainfuck" in out, (
+        f"with fixtures counted, the uncatalogued fixture language must block "
+        f"again; got rc={rc}, out={out!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # INV-zosun: a verdict must record what catalogue it trusted.
 # ---------------------------------------------------------------------------
