@@ -321,9 +321,31 @@ The verifier checks each claim against the boundary map and produces a verdict:
 > An opaque boundary is something the tool *could not see*. A repo-supplied
 > entry is something the tool *was told*. Both are "consistent, but not
 > verified by us", which is why one verdict value carries both — the `kind`
-> field on each caveat is what keeps them distinguishable. The opaque-boundary
-> kind this section originally described is **not** implemented; only
-> `user_supplied_sanitizer` is.
+> field on each caveat is what keeps them distinguishable.
+>
+> **Both kinds are now implemented** (`user_supplied_sanitizer`, then
+> `opaque_boundary` — owner-authorized 2026-08-13). The opaque-boundary kind is
+> the consumer this section originally specified, and it exists to end a
+> conflation inside `inconclusive`: *"a whole language here has no catalogue, I
+> am blind"* and *"I examined every call and understood them all; three hand
+> control to `git`/`pip`/`rustup`, and no static analysis can see inside a
+> launched process"* were reaching the same verdict. The auditor distinction is
+> exact — a **disclaimer** versus a **qualified opinion** — and because
+> hypergumbo launches programs *by design*, plain `confirmed` was permanently
+> unreachable for its own self-proof, making that artifact one that could never
+> say anything at all.
+>
+> Two constraints keep it honest. It is raised **only when named launch sites
+> are the sole remaining blocker** (`BoundaryCoverage.qualifying_only`): an
+> opaque launch beside a genuinely uncatalogued module is still blindness,
+> because the reader cannot tell which gap produced the silence. And because
+> the direction is *towards* confirming, its soundness rests entirely on the
+> launch list being complete — which is why it ships only after that surface
+> was hardened (INV-motos, INV-gahuz, INV-larol, INV-virat, INV-zumin).
+>
+> The wording says *"cannot see inside a launched program"* rather than
+> anything implying full coverage: "I saw every call" is not "I saw every I/O",
+> and INV-vavup measured bash redirection writes emitting no edge at all.
 >
 > Also not covered, and measured rather than assumed: a user-supplied taint
 > **source or sink** suppresses findings by a different mechanism — sanitizers

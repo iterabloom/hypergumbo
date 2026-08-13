@@ -2023,3 +2023,397 @@ class TestARepoSuppliedSanitizerReachesTheExitCode:
         caveated = verify_taint_claim(self._claim(), [self._repo_supplied()])
         gated = _require_coverage_to_confirm(caveated, "no catalogue for bash")
         assert gated.verdict == "inconclusive"
+
+
+class TestAnOpaqueLaunchQualifiesRatherThanBlinds:
+    """ADR-0016 §4's ORIGINAL specified consumer of the fourth verdict, built
+    at last: "consistent, but opaque boundaries exist that could not be
+    verified". Owner-authorized 2026-08-13.
+
+    WHAT ``inconclusive`` WAS LUMPING TOGETHER. Two very different epistemic
+    states arrived at the same verdict:
+
+      * "a whole language here has no catalogue — I am blind"
+      * "I examined every call and understood them all; three of them hand
+        control to another program (git, pip, rustup) and no static tool can
+        see inside a launched process"
+
+    The auditor distinction is exact: a DISCLAIMER ("could not form a view")
+    versus a QUALIFIED OPINION ("correct, except these named items"). The tool
+    issued disclaimers where a qualified opinion was warranted — and because
+    hypergumbo launches git BY DESIGN, ``confirmed`` was permanently
+    unreachable for its own self-proof, making the artifact one that can never
+    say anything at all.
+
+    THE DIRECTION IS TOWARDS CONFIRMING, which is why this needed authorization
+    and why the launch list must be COMPLETE for it to be sound. That surface
+    is what the INV-motos (constructors counted), INV-gahuz (opacity gated),
+    INV-larol + INV-virat (producer stamps unstrippable) and INV-zumin
+    (row-order masking) work hardened; this rests on all of it.
+
+    AND IT QUALIFIES ONLY WHEN NOTHING ELSE BLOCKS. An opaque launch beside a
+    genuinely uncatalogued module is still blindness — the reader cannot tell
+    which gap the silence came from — so the caveat is raised only when the
+    launch sites are the SOLE remaining blocker.
+    """
+
+    def _bmap(self):
+        return _make_boundary_map(net_send=0)
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="SC-OPAQUE",
+            text="never sends data over the network",
+            constraint_boundary="net_send",
+            constraint_must_not_exist=True,
+        )
+
+    def test_launch_sites_alone_qualify_the_verdict(self) -> None:
+        cov = BoundaryCoverage(
+            complete=False,
+            reason="the analysis launches an external program at 2 call "
+                   "site(s) (subprocess.run, os.execv) and cannot see what "
+                   "the launched program does, so whether this I/O happens "
+                   "there was never examined",
+            opaque_sites=["os.execv", "subprocess.run"],
+            qualifying_only=True,
+        )
+        v = verify_claim(self._claim(), self._bmap(), coverage=cov)
+        assert v.verdict == "confirmed_with_caveats"
+        assert v.caveats and v.caveats[0]["kind"] == "opaque_boundary"
+        assert v.caveats[0]["entries"] == ["os.execv", "subprocess.run"]
+
+    def test_the_named_sites_reach_the_reader(self) -> None:
+        """A qualified opinion that does not name what it excepted is just a
+        clean opinion with extra words. The sites are what a human reviews
+        once and a gate then trusts.
+        """
+        cov = BoundaryCoverage(
+            complete=False, reason="…launches an external program…",
+            opaque_sites=["subprocess.run"], qualifying_only=True,
+        )
+        v = verify_claim(self._claim(), self._bmap(), coverage=cov)
+        assert "subprocess.run" in v.caveats[0]["detail"]
+
+    def test_blindness_still_blinds(self) -> None:
+        """THE DISCRIMINATOR. Coverage that is incomplete for any reason OTHER
+        than opacity must stay ``inconclusive``. If this ever goes green the
+        feature has become a caveat on everything, which is the failure mode
+        remedy (a2) was rejected for on INV-pojib.
+        """
+        cov = BoundaryCoverage(
+            complete=False,
+            reason="language(s) bash made calls but have no I/O catalog",
+        )
+        v = verify_claim(self._claim(), self._bmap(), coverage=cov)
+        assert v.verdict == "inconclusive"
+        assert v.caveats == []
+
+    def test_a_launch_beside_a_real_gap_still_blinds(self) -> None:
+        """Opacity is only a QUALIFICATION when it is the sole blocker. Beside
+        an uncatalogued module the silence is ambiguous — the reader cannot
+        tell which gap produced it — so this must not qualify.
+        """
+        cov = BoundaryCoverage(
+            complete=False, reason="…launches an external program…",
+            opaque_sites=["subprocess.run"], qualifying_only=False,
+        )
+        v = verify_claim(self._claim(), self._bmap(), coverage=cov)
+        assert v.verdict == "inconclusive"
+        assert v.caveats == []
+
+    def test_complete_coverage_still_earns_a_plain_confirmed(self) -> None:
+        """NON-DESTRUCTION: a repo that launches nothing is unaffected."""
+        v = verify_claim(
+            self._claim(), self._bmap(),
+            coverage=BoundaryCoverage(complete=True),
+        )
+        assert v.verdict == "confirmed"
+        assert v.caveats == []
+
+    def test_a_violation_is_never_softened_into_a_caveat(self) -> None:
+        """Direction check. Caveats qualify a CLEAN verdict and must never
+        touch a finding — the same guard INV-pojib's sanitizer kind carries.
+        """
+        cov = BoundaryCoverage(
+            complete=False, reason="…launches…",
+            opaque_sites=["subprocess.run"], qualifying_only=True,
+        )
+        v = verify_claim(self._claim(), _make_boundary_map(net_send=3),
+                         coverage=cov)
+        assert v.verdict == "violated"
+        assert v.caveats == []
+
+
+class TestOpacityIsDetectedAsSoleBlocker:
+    """``qualifying_only`` is computed, not passed in — the gate derives its
+    own inputs (L6: a gate whose caller can forget to arm it fails open).
+    """
+
+    def test_launches_with_everything_else_clean_qualify(self) -> None:
+        edges = [
+            {"src": "python:a.py:1-3:f:function",
+             "dst": "python:subprocess:0-0:run:external_symbol",
+             "type": "calls"},
+        ]
+        cov = compute_boundary_coverage(
+            edges, {"python"}, {"python": load_catalog("python")},
+        )
+        assert cov.complete is False
+        assert cov.opaque_sites == ["subprocess.run"]
+        assert cov.qualifying_only is True
+
+    def test_an_uncatalogued_module_alongside_removes_the_qualification(
+        self,
+    ) -> None:
+        edges = [
+            {"src": "python:a.py:1-3:f:function",
+             "dst": "python:subprocess:0-0:run:external_symbol",
+             "type": "calls"},
+            {"src": "python:a.py:1-3:f:function",
+             "dst": "python:requests:0-0:post:external_symbol",
+             "type": "calls"},
+        ]
+        cov = compute_boundary_coverage(
+            edges, {"python"}, {"python": load_catalog("python")},
+        )
+        assert cov.opaque_sites == ["subprocess.run"]
+        assert cov.qualifying_only is False, (
+            "an uncatalogued module beside the launch is real blindness; the "
+            "reader cannot tell which gap the silence came from"
+        )
+
+
+class TestTheTaintArmQualifiesOnOpacityToo:
+    """PARITY over the two claim kinds. The self-proof's 18 claims are ALL
+    taint claims, so a fix that reached only boundary claims would leave the
+    artifact this was authorized for exactly where it was.
+
+    The taint arm reaches the gate through a different path — ``cmd_verify_
+    claims`` flattens coverage into a ``blind_reason`` STRING and hands it to
+    :func:`_require_coverage_to_confirm` — so the qualification has to travel
+    alongside it or be lost. Both kinds must produce the same ``kind`` and the
+    same site list, or one disclosure drifts from the other (L53).
+    """
+
+    def _confirmed(self) -> ClaimVerdict:
+        return ClaimVerdict(
+            claim_id="TF-1", claim_text="no secrets to host_fs",
+            verdict="confirmed", details="No unsanitized flows.",
+        )
+
+    def test_opacity_qualifies_instead_of_blinding(self) -> None:
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        out = _require_coverage_to_confirm(
+            self._confirmed(),
+            "the analysis launches an external program at 1 call site(s)",
+            opaque_sites=["subprocess.run"],
+        )
+        assert out.verdict == "confirmed_with_caveats"
+        assert out.caveats[0]["kind"] == "opaque_boundary"
+        assert out.caveats[0]["entries"] == ["subprocess.run"]
+
+    def test_real_blindness_still_downgrades_to_inconclusive(self) -> None:
+        """THE DISCRIMINATOR on this arm. A missing catalogue is not a named
+        door — it is not knowing whether there is a door.
+        """
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        out = _require_coverage_to_confirm(
+            self._confirmed(),
+            "this repo contains code in language(s) with no taint catalogue "
+            "(bash)",
+        )
+        assert out.verdict == "inconclusive"
+        assert out.caveats == []
+
+    def test_both_claim_kinds_render_one_disclosure(self) -> None:
+        """PARITY, asserted rather than assumed: the boundary path and the
+        taint path must not grow two spellings of the same caveat.
+        """
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        sites = ["os.execv", "subprocess.run"]
+        boundary = verify_claim(
+            Claim(id="B", text="no net", constraint_boundary="net_send",
+                  constraint_must_not_exist=True),
+            _make_boundary_map(net_send=0),
+            coverage=BoundaryCoverage(
+                complete=False, reason="…launches…",
+                opaque_sites=sites, qualifying_only=True,
+            ),
+        )
+        taint = _require_coverage_to_confirm(
+            self._confirmed(), "…launches…", opaque_sites=sites,
+        )
+        assert boundary.caveats[0]["kind"] == taint.caveats[0]["kind"]
+        assert boundary.caveats[0]["entries"] == taint.caveats[0]["entries"]
+        assert boundary.caveats[0]["detail"] == taint.caveats[0]["detail"]
+
+    def test_a_sanitizer_caveat_is_not_lost_when_opacity_also_applies(
+        self,
+    ) -> None:
+        """BOTH KINDS CAN BE TRUE AT ONCE, and the self-proof is exactly that
+        case: it declares a zone-barrier sanitizer (INV-pojib's kind) AND it
+        shells out to git (this kind). Neither may silently displace the
+        other — that would be the one-slot last-writer-wins class (INV-virat)
+        reappearing inside the caveat list itself.
+        """
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        already = ClaimVerdict(
+            claim_id="TF-2", claim_text="no secrets to host_fs",
+            verdict="confirmed_with_caveats", details="…via h.launder…",
+            caveats=[{"kind": "user_supplied_sanitizer",
+                      "entries": ["h.launder"], "detail": "…"}],
+        )
+        out = _require_coverage_to_confirm(
+            already, "…launches…", opaque_sites=["subprocess.run"],
+        )
+        kinds = {c["kind"] for c in out.caveats}
+        assert kinds == {"user_supplied_sanitizer", "opaque_boundary"}
+
+
+class TestACaveatKindIsNotRecordedTwice:
+    """The append that closed one instance of the one-slot class opened a
+    duplicate-record instance of its own.
+
+    ``verify_claims`` runs TWO stages over the same verdict: ``verify_claim``
+    (where a boundary claim may already attach ``opaque_boundary``) and then
+    ``_require_coverage_to_confirm`` (which appends the taint arm's copy). A
+    claims file holding BOTH a boundary claim and a taint claim sets
+    ``has_taint_claims``, so ``blind_reason`` is populated and applied to EVERY
+    verdict — including the boundary one that already carries the caveat.
+
+    Measured before the fix: ``['opaque_boundary', 'opaque_boundary']`` on the
+    boundary verdict. Not cosmetic — ``caveats`` is the machine surface a
+    consumer branches on and counts, and a doubled entry says a claim rests on
+    twice as many unverifiable doors as it does. The lesson is the mirror of
+    INV-virat's: switching from ASSIGN to APPEND fixes last-writer-wins and
+    introduces duplicate-accumulation unless the append is idempotent per kind.
+    """
+
+    def _both_kinds_of_claim(self):
+        return [
+            Claim(id="B-1", text="no net", constraint_boundary="net_send",
+                  constraint_must_not_exist=True),
+            Claim(id="T-1", text="no secrets to fs",
+                  constraint_taint_flow=TaintFlowConstraint(
+                      source_taint="host_secret",
+                      prohibited_sink_zone="host_fs")),
+        ]
+
+    def _run(self):
+        return verify_claims(
+            self._both_kinds_of_claim(),
+            _make_boundary_map(net_send=0),
+            taint_findings=[],
+            coverage=BoundaryCoverage(
+                complete=False, reason="…launches…",
+                opaque_sites=["subprocess.run"], qualifying_only=True,
+            ),
+            blind_reason="…launches…",
+            blind_opaque_sites=["subprocess.run"],
+        )
+
+    def test_no_verdict_carries_the_same_kind_twice(self) -> None:
+        for v in self._run():
+            kinds = [c["kind"] for c in v.caveats]
+            assert len(kinds) == len(set(kinds)), (
+                f"{v.claim_id} records a caveat kind more than once: {kinds}"
+            )
+
+    def test_the_surviving_entry_keeps_the_full_site_list(self) -> None:
+        """De-duplication must not silently drop sites. If the two copies ever
+        disagree, keeping the UNION is the honest direction — under-reporting
+        unverifiable doors is the failure that matters.
+        """
+        for v in self._run():
+            opaque = [c for c in v.caveats if c["kind"] == "opaque_boundary"]
+            assert len(opaque) == 1
+            assert opaque[0]["entries"] == ["subprocess.run"]
+
+    def test_distinct_kinds_still_accumulate(self) -> None:
+        """NON-DESTRUCTION for the property this was built to have: two
+        DIFFERENT kinds on one verdict must both survive. Deduplicating by
+        kind must not collapse the sanitizer caveat into the opacity one.
+        """
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        already = ClaimVerdict(
+            claim_id="T-2", claim_text="x", verdict="confirmed_with_caveats",
+            details="…", caveats=[{"kind": "user_supplied_sanitizer",
+                                   "entries": ["h.launder"], "detail": "…"}],
+        )
+        out = _require_coverage_to_confirm(
+            already, "…launches…", opaque_sites=["subprocess.run"],
+        )
+        assert {c["kind"] for c in out.caveats} == {
+            "user_supplied_sanitizer", "opaque_boundary",
+        }
+
+
+class TestCaveatMergeSemantics:
+    """Direct tests of the merge helper. Two of its branches are unreachable
+    from today's callers — both paths currently produce the SAME site list, so
+    the disagreement case never arises in production — and they are covered
+    here rather than pragma'd, because the failure they prevent is
+    UNDER-REPORTING unverifiable doors.
+    """
+
+    def _cav(self, kind, entries):
+        return {"kind": kind, "entries": list(entries), "detail": "…"}
+
+    def test_disagreeing_site_lists_keep_the_union(self) -> None:
+        """If two paths ever see different launch sites, the merged caveat must
+        name ALL of them. Dropping one would silently narrow what the verdict
+        admits it could not verify — the expensive direction.
+        """
+        from hypergumbo_core.verify_claims import (
+            _merge_caveat, _opaque_boundary_caveat,
+        )
+        out = _merge_caveat(
+            [_opaque_boundary_caveat(["subprocess.run"])],
+            _opaque_boundary_caveat(["os.execv"]),
+        )
+        assert len(out) == 1
+        assert out[0]["entries"] == ["os.execv", "subprocess.run"]
+
+    def test_the_prose_is_re_rendered_to_match_the_widened_list(self) -> None:
+        """A disclosure whose sentence and whose data disagree is worse than
+        either alone: the detail quotes a COUNT and the site names, so a merge
+        that widened ``entries`` without re-rendering would keep saying "1 call
+        site" over two.
+        """
+        from hypergumbo_core.verify_claims import (
+            _merge_caveat, _opaque_boundary_caveat,
+        )
+        out = _merge_caveat(
+            [_opaque_boundary_caveat(["subprocess.run"])],
+            _opaque_boundary_caveat(["os.execv"]),
+        )
+        assert "2 call site(s)" in out[0]["detail"]
+        assert "os.execv" in out[0]["detail"]
+        assert "subprocess.run" in out[0]["detail"]
+
+    def test_a_non_opaque_kind_merges_entries_without_re_rendering(
+        self,
+    ) -> None:
+        """The re-render is opacity-specific because only that detail string
+        embeds its own entry list. Another kind widens its entries and keeps
+        its own prose, rather than being handed opacity's wording.
+        """
+        from hypergumbo_core.verify_claims import _merge_caveat
+        out = _merge_caveat(
+            [self._cav("user_supplied_sanitizer", ["h.launder"])],
+            self._cav("user_supplied_sanitizer", ["h.scrub"]),
+        )
+        assert len(out) == 1
+        assert out[0]["entries"] == ["h.launder", "h.scrub"]
+        assert out[0]["detail"] == "…"
+
+    def test_an_identical_repeat_is_a_no_op(self) -> None:
+        """The common case: both paths saw the same sites, so the list is
+        returned unchanged rather than rebuilt."""
+        from hypergumbo_core.verify_claims import (
+            _merge_caveat, _opaque_boundary_caveat,
+        )
+        first = [_opaque_boundary_caveat(["subprocess.run"])]
+        out = _merge_caveat(first, _opaque_boundary_caveat(["subprocess.run"]))
+        assert out is first

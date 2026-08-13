@@ -5089,8 +5089,16 @@ def _taint_blind_reason(
     taint_supported_languages: set[str],
     catalogs: dict[str, Any],
     include_non_production: bool = False,
-) -> str | None:
-    """Why a taint claim cannot be confirmed, or ``None`` if it can.
+) -> tuple[str | None, list[str]]:
+    """Why a taint claim cannot be confirmed, and any opaque launch sites.
+
+    Returns ``(reason, opaque_sites)``. ``reason`` is ``None`` when the
+    analysis could look. ``opaque_sites`` is non-empty ONLY when named launch
+    sites are the SOLE blocker (ADR-0016 §4) — the verdict layer then QUALIFIES
+    the claim rather than withholding it. The pair travels together because a
+    bare string cannot distinguish "could not look" from "looked everywhere
+    except these named doors", which is the whole point of the fourth verdict.
+
 
     TWO WAYS the taint analysis fails to look, and only the first was ever
     reported. Both were measured on live fixtures:
@@ -5138,7 +5146,7 @@ def _taint_blind_reason(
     )
 
     if not has_taint_claims:
-        return None
+        return None, []
 
     # ONLY CODE-BEARING LANGUAGES COUNT. A language that produced no call
     # edges has no call structure for a taint flow to travel through, so its
@@ -5198,13 +5206,20 @@ def _taint_blind_reason(
             f"this repo contains code in language(s) with no taint catalogue "
             f"({langs}), so the analysis could not look for the flows this "
             f"claim forbids"
-        )
+        ), []
     coverage = compute_boundary_coverage(
         scoped_edges, taint_supported_languages, catalogs,
     )
     if not coverage.complete:
-        return coverage.reason
-    return None
+        # ADR-0016 §4: opaque launches QUALIFY rather than blind, but only when
+        # they are the sole blocker — ``qualifying_only`` carries that test,
+        # derived inside the coverage computation so this caller cannot arm it
+        # wrongly. The sites ride alongside the reason; the verdict layer
+        # decides what to do with them.
+        return coverage.reason, (
+            coverage.opaque_sites if coverage.qualifying_only else []
+        )
+    return None, []
 
 
 def cmd_verify_claims(args: argparse.Namespace) -> int:
@@ -5595,6 +5610,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
 
     # Verify claims
+    _blind_reason, _blind_opaque = _taint_blind_reason(
+        has_taint_claims, unsupported_taint_languages,
+        raw_edges, set(per_lang_sinks), catalogs,
+        include_non_production=getattr(
+            args, "include_non_production_sources", False
+        ),
+    )
     verdicts = _verify(
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
         include_non_production=getattr(
@@ -5603,13 +5625,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # INV-javam's signal now REACHES THE VERDICT instead of only stderr.
         # It was already computed and already printed as a note asking the
         # reader to mentally downgrade 'confirmed' — which no CI gate does.
-        blind_reason=_taint_blind_reason(
-            has_taint_claims, unsupported_taint_languages,
-            raw_edges, set(per_lang_sinks), catalogs,
-            include_non_production=getattr(
-                args, "include_non_production_sources", False
-            ),
-        ),
+        blind_reason=_blind_reason,
+        blind_opaque_sites=_blind_opaque,
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
