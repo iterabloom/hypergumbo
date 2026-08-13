@@ -5741,3 +5741,117 @@ class TestSimultaneityGeneralisesPastOneLanguage:
             cat = load_catalog(lang)
             for q in {p.qualified_name for p in cat.primitives}:
                 cat.simultaneous_boundaries_for(q)  # raises if half-declared
+
+
+class TestAProducerStampSurvivesCatalogueTagging:
+    """INV-virat — the one-slot last-writer-wins class, third instance.
+
+    ``command_launch`` is the bash analyzer's opacity stamp: "control left this
+    process for a program I cannot see" (bash.py:534). It is the ONLY evidence
+    of opacity those edges will ever carry, because ADR-0016 rules out a bash
+    catalogue. ``tag_io_boundaries`` assigned ``meta['io_boundary']``
+    unconditionally, so any catalogue row that matched a producer-stamped edge
+    DESTROYED the stamp:
+
+        before: {'io_boundary': 'command_launch'}
+        after:  {'io_boundary': 'fs_read', 'io_primitive': 'os.listdir'}
+
+    The shipped opacity gate did not fail end-to-end only because it reads
+    ``raw_edges`` — the serialized dicts — while the tagger mutates objects
+    whose meta ``_rehydrate_io_boundary_edges`` happens to SHALLOW-COPY for an
+    unrelated reason (WI-kumol). Read order plus an accidental copy is not a
+    safety property; a future refactor that shares the meta dict to save an
+    allocation would silently restore the false confirm, and every test would
+    stay green because none constructs edges through rehydration.
+
+    THE FIX IS THE INV-zumin MECHANISM WITH A SECOND WRITER. A launch that a
+    catalogue row also describes is two facts true at once — ``curl -o ...``
+    IS a net_send AND an opaque launch — which is exactly the shape
+    ``io_boundaries`` was built for; the second writer here is an ANALYZER
+    rather than another row. The stamp stays primary (the analyzer SAW the
+    launch; the catalogue merely ASSERTS the send — different trust), and the
+    catalogue view lands additively.
+    """
+
+    @staticmethod
+    def _edge(meta=None):
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(
+            src="python:a.py:1-3:f:function",
+            dst="python:os:0-0:listdir:external_symbol",
+            meta=meta,
+        )
+
+    def test_the_stamp_is_not_erased_by_a_matching_row(self) -> None:
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta["io_boundary"] == "command_launch", (
+            f"the producer's opacity observation must outrank the catalogue's "
+            f"assertion; got {e.meta!r}"
+        )
+
+    def test_the_catalogue_view_is_recorded_additively(self) -> None:
+        """The row is not WRONG — os.listdir really is fs_read — so its fact
+        must not be discarded either. Both land in ``io_boundaries``.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert set(e.meta.get("io_boundaries") or []) == {
+            "command_launch", "fs_read",
+        }
+        assert e.meta.get("io_primitive") == "os.listdir"
+
+    def test_an_unstamped_edge_tags_exactly_as_before(self) -> None:
+        """NON-DESTRUCTION for the entire rest of the corpus: no producer
+        stamp means the previous overwrite semantics, no new key."""
+        e = self._edge(meta=None)
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta["io_boundary"] == "fs_read"
+        assert "io_boundaries" not in e.meta
+
+    def test_a_stamped_edge_no_row_matches_is_untouched(self) -> None:
+        """A launch nothing describes keeps its stamp and gains nothing —
+        today's bash reality (no catalogue, overlays inert per WI-guhuv)."""
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        e.dst = "python:nowhere:0-0:nothing:external_symbol"
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta == {"io_boundary": "command_launch"}
+
+    def test_chain_accounting_discloses_the_launch_and_counts_the_io(
+        self,
+    ) -> None:
+        """Both facts reach the map, each under its own accounting rule: the
+        launch chain is DISCLOSED (command_launch_edges) and excluded from the
+        ``total_io_edges`` headline, exactly as bash launches are today; the
+        catalogue-boundary chain is counted. One edge, two chains, no
+        double-count in the total.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        bmap = compute_boundary_map([e], {"python": load_catalog("python")})
+        assert len(bmap.entries["command_launch"].chains) == 1
+        assert len(bmap.entries["fs_read"].chains) == 1
+        assert bmap.command_launch_edges == 1
+        assert bmap.total_io_edges == 1, (
+            "the launch chain is disclosed-only and must not inflate the "
+            "verified-I/O headline"
+        )
+
+    def test_the_gate_reads_the_stamp_off_the_tagged_object(self) -> None:
+        """THE STRUCTURAL PROPERTY, asserted without the accidental copy in
+        between: after tagging, the very same meta dict still satisfies the
+        opacity gate's producer check. Before the fix this exact assertion
+        failed — the stamp was gone from the only place the gate looks.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        from hypergumbo_core.io_boundary import PRODUCER_OPAQUE_BOUNDARIES
+        assert e.meta.get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES
