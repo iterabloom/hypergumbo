@@ -1,0 +1,76 @@
+Original commit body from e873f951e671531854af722bf153d5497e0f859a:
+
+A `confirmed` taint verdict already disclosed that a sanitizer was what made
+it clean -- "N flow(s) reach that zone but pass through a sanitizer on every
+route" -- but that clause was built from the flow COUNT alone. So a sanitizer
+the ANALYSED REPOSITORY declared about itself and a shipped Fernet.encrypt
+produced byte-identical verdict text.
+
+MEASURED on the shipped CLI (WI-dagib, whose three earlier probes were all
+invalid for want of a baseline; this one established the baseline first):
+
+  fixture, 11 lines, `os` only:
+      secret = os.environ["API_KEY"]
+      safe   = launder(secret)          # launder() returns its argument
+      os.remove(safe)
+  claim: taint_flow host_secret -> host_fs
+
+  baseline                          -> rc 1 VIOLATED
+  + 8-line sanitizer file declaring
+    h.launder plaintext->ciphertext  -> rc 0 CONFIRMED
+
+The same lie shipped INSIDE the tree as a dotfile and referenced from the
+repo's own claims-file `extra_catalogs:` block gives the same rc 0 with no flag
+passed by whoever runs the tool. This is not a departure from the documented
+trust model -- user catalogues are trusted by design (ADR-0016 §27) and
+INV-zosun's disclosure does fire, naming the file. What was missing is the link
+from the INPUT to the EFFECT.
+
+FIX. The verdict now names the sanitizers holding it up and marks the
+repo-supplied ones -- "(via h.launder (project-local))" -- and
+TaintFlowFinding carries sanitized_by / sanitized_by_user_supplied into the
+JSON envelope. Provenance is stamped once, where the user layer is assembled
+and still knows the entries came from a user path.
+
+TWO ARMS, because attributing on one left the filed case unattributed. The
+call-graph barrier EXEMPTS the seed function by design, so a sanitizer called
+in the same function as the source is credited only by the DDG §3a arm -- which
+is exactly the shape the repro takes. Caught by re-running the live repro after
+the unit tests were already green.
+
+A WRONG-ATTRIBUTION DEFECT IN THE FIRST VERSION, found by the live
+discriminator and now pinned by a test. `sanitizer_callers` kept a single slot
+per (caller, taint_label), and all four shipped *.encrypt sanitizers match a
+bare `encrypt` callee -- so the last registered overwrote the rest and a
+fixture calling Fernet.encrypt was attributed to ChaCha20Poly1305.encrypt. The
+barrier never noticed because it only asks WHETHER some sanitizer carries the
+label; attribution asks WHICH. The registry now keeps every candidate and the
+wording follows the evidence: "via X" only when there is exactly one, "barrier
+matched one of: ..." when several. Naming a sanitizer the analysis cannot
+single out is a new way of stating something it never established, and worse
+than the unattributed clause it replaced.
+
+MARKED ONLY WHERE IT MEANS SOMETHING. A caveat printed on every sanitized
+verdict would carry no information and a reader would learn to discount it, so
+the built-in case is named and NOT marked; a discriminator test pins that, live
+and in unit form.
+
+NO VERDICT CHANGES. This changes what a verdict SAYS. The exit code still does
+not carry it -- rc 0 is identical whether or not a repo-supplied entry is
+load-bearing, and a CI gate keys on rc. That is remedy (b)/(c) on INV-pojib
+(distinct exit code, or ADR-0016's unimplemented fourth verdict); both change a
+consumer contract and are deliberately not bundled here.
+
+Three of this repo's own gates fired on this change and each caught something
+the previous could not: the mypy strict ratchet (a bare `list` annotation --
+fixed by annotating it, NOT by raising .ci/mypy-strict-baseline.json, which is
+back at 672 delta 0); a pre-existing property test asserting every declared
+field survives to_dict, which is what caught the two new fields missing from
+the JSON envelope; and 100% coverage, on three new branches, closed with tests
+rather than pragmas except one guard that is unreachable from today's only
+caller and documented as such.
+
+Ref: WI-dagib (measurement, done), INV-pojib (a1 landed; b/c open).
+Suite 22,519 passed / 100% coverage / mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
