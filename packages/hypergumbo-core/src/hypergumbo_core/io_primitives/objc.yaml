@@ -130,13 +130,25 @@ net_send:
       - "uploadTaskWithRequest:fromFile:"
       - "uploadTaskWithStreamedRequest:"
     notes: "Dual-classified with net_recv; request implies both send and receive"
+  # SPLIT from the row below (INV-zumin). These two methods perform the request
+  # and hand back the response, so net_send and net_recv are BOTH true of one
+  # call; the `net_recv:` section declares the same two, and `simultaneous`
+  # must be spelled on every row for a primitive or the loader rejects the pair.
   - module: NSURLConnection
+    simultaneous: true
     methods:
       - "sendSynchronousRequest:returningResponse:error:"
       - "sendAsynchronousRequest:queue:completionHandler:"
+    notes: "Deprecated but still widely used in older codebases"
+  # NOT simultaneous: these are declared under net_send ALONE, so there is no
+  # second boundary for them to be simultaneous with. Kept in their own row
+  # because a parity test rejects the flag on a single-boundary primitive —
+  # it fired on this very row's first version, which grouped all four methods.
+  - module: NSURLConnection
+    methods:
       - "connectionWithRequest:delegate:"
       - "initWithRequest:delegate:"
-    notes: "Deprecated but still widely used in older codebases"
+    notes: "Deprecated connection constructors — send side only"
   - module: NSMutableURLRequest
     methods:
       - "requestWithURL:"
@@ -155,10 +167,18 @@ net_recv:
       - "downloadTaskWithRequest:"
       - "downloadTaskWithResumeData:completionHandler:"
   - module: NSURLConnection
+    simultaneous: true
     methods:
       - "sendSynchronousRequest:returningResponse:error:"
       - "sendAsynchronousRequest:queue:completionHandler:"
-    notes: "Dual-classified with net_send"
+    notes: >-
+      Dual-classified with net_send. INV-zumin: `simultaneous` implements what
+      the sibling row's note already ASSERTED in prose -- "request implies both
+      send and receive" -- which nothing consumed, so net_recv was unreachable
+      and inbound response data was never tracked as a network read.
+      `connectionWithRequest:delegate:` appears only on the net_send row and so
+      stays single-boundary; the loader returns no simultaneity for a primitive
+      with one declared boundary.
 
 db_read:
   - module: NSManagedObjectContext

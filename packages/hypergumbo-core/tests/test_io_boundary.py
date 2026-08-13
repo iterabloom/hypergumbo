@@ -5426,3 +5426,318 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
                 f"row order decides which declaration survives (INV-zumin). "
                 f"Got {sorted(boundaries)}"
             )
+
+
+class TestSimultaneouslyTrueBoundariesAreAllReachable:
+    """INV-zumin. A primitive catalogued under several boundaries is tagged with
+    exactly ONE, decided by YAML row order, so every other declaration is
+    unreachable.
+
+    THE POPULATION IS NOT ONE THING, and the fix is scoped to the one part of it
+    that is a defect. Measured across all fourteen shipped catalogues with
+    production's own ``load_catalog`` / ``lookup_with_module`` — 23
+    multi-boundary primitives, 27 unreachable declarations:
+
+      (a) DISAMBIGUATED AT MATCH TIME — ``builtins.open`` picks by ``io_mode``.
+          Working as designed; untouched here.
+      (b) UNDECIDABLE AT THE CALL SITE — C ``unistd.write`` is fs_write OR
+          net_send OR ipc_send depending on the fd's type, which is not at the
+          call site. EXACTLY ONE is true per call. Untouched deliberately:
+          multiplying these would manufacture a ``net_send`` chain for every C
+          write to stdout, which is a false violation rather than a recovered
+          one. The honest fix there is fd-type inference (its own item).
+      (c) SIMULTANEOUSLY TRUE — both rows describe the same call at the same
+          moment, so there is nothing to disambiguate and row order silently
+          discards one. THIS is the defect.
+
+    The (b)/(c) split is NOT derivable from the YAML — both look like "several
+    rows, no mode" — so the catalogue has to say which. That is why this ships
+    as a data marker consumed at one chokepoint rather than as a change to
+    ``select_by_mode``'s fallback, which could only swap WHICH declaration is
+    silently lost.
+
+    WHY (c) IS SECURITY-RELEVANT. ``scala.sys.process.Process.apply`` is
+    declared ``[fs_write, subprocess]`` and tags ``fs_write``. Losing
+    ``subprocess`` loses four things at once, none of which the fs_write tag
+    replaces: a ``{boundary: subprocess, must_not_exist: true}`` claim finds no
+    chain; the ``*** HIGH RISK ***`` marking never fires; the auto-derived taint
+    sink gets zone ``host_fs`` instead of ``subprocess``, so a "subprocess
+    allowed, host_fs prohibited" claim INVERTS; and the opacity gate keys on the
+    boundary. The rows' own notes show the author knew both were true — the
+    fs_write row says "can write to filesystem via shell commands", which is a
+    statement about what the LAUNCHED PROGRAM does.
+    """
+
+    def test_scala_process_apply_reaches_both_declarations(self) -> None:
+        cat = load_catalog("scala")
+        got = cat.all_boundaries_for("scala.sys.process.Process.apply")
+        assert got == {"fs_write", "subprocess"}, (
+            f"both declarations are true of the same call; row order must not "
+            f"discard one. Got {sorted(got)}"
+        )
+
+    def test_single_boundary_primitives_are_unchanged(self) -> None:
+        """NON-DESTRUCTION, and the reason this is safe to ship: the
+        overwhelming majority of primitives are not multi-boundary and must not
+        pay for this.
+        """
+        cat = load_catalog("python")
+        assert cat.all_boundaries_for("os.listdir") == {"fs_read"}
+        assert cat.all_boundaries_for("subprocess.run") == {"subprocess"}
+
+    def test_an_uncatalogued_name_returns_empty_not_none(self) -> None:
+        """``None`` and "no boundaries" are different facts everywhere else in
+        this module (L54 default-deny); an empty set here means "asked, nothing
+        declared".
+        """
+        assert load_catalog("python").all_boundaries_for("nope.nothing") == set()
+
+    def test_mode_disambiguated_pairs_are_not_treated_as_simultaneous(
+        self,
+    ) -> None:
+        """CLASS (a) STAYS OUT. ``builtins.open`` is fs_read OR fs_write by
+        mode — never both at once — so it must not be reported as
+        simultaneously true, or every ``open(p)`` would produce a spurious
+        fs_write chain and an "never writes to disk" claim would go from a
+        possibly-correct confirm to a certainly-wrong violation.
+        """
+        assert load_catalog("python").simultaneous_boundaries_for(
+            "builtins.open",
+        ) == set()
+
+    def test_call_site_undecidable_pairs_are_not_treated_as_simultaneous(
+        self,
+    ) -> None:
+        """CLASS (b) STAYS OUT, for the same reason in the other direction.
+        ``unistd.write`` on a socket fd is net_send and NOT fs_write; on a file
+        fd it is fs_write and NOT net_send. Reporting both would assert two
+        things when exactly one is true.
+        """
+        assert load_catalog("c").simultaneous_boundaries_for(
+            "unistd.write",
+        ) == set()
+
+    def test_declaring_simultaneous_on_one_row_alone_is_rejected(self) -> None:
+        """A HALF-DECLARED PAIR IS THE DRIFT THIS INVITES. ``simultaneous`` is a
+        property of a PRIMITIVE, spelled on rows that live in different YAML
+        sections by construction, so the loader must refuse a primitive whose
+        rows disagree rather than silently pick one — a marker that is live or
+        inert depending on which section a later editor updates is exactly the
+        row-order hazard this item exists to remove.
+        """
+        cat = IoBoundaryCatalog(language="x", primitives=[
+            IoPrimitive(boundary="fs_write", module="m", name="f",
+                        kind="method", simultaneous=True),
+            IoPrimitive(boundary="subprocess", module="m", name="f",
+                        kind="method", simultaneous=False),
+        ])
+        with pytest.raises(ValueError, match="simultaneous"):
+            cat.simultaneous_boundaries_for("m.f")
+
+
+class TestASimultaneousPrimitiveProducesAChainPerBoundary:
+    """INV-zumin, the half that changes a VERDICT rather than an accessor.
+
+    Reaching both declarations in the catalogue is necessary and not
+    sufficient: chains are what a ``must_not_exist`` claim counts, and they are
+    built from ``edge.meta['io_boundary']`` — one string. So a
+    simultaneously-true primitive still produced exactly one chain, and the
+    scala launch stayed undetectable as a subprocess no matter what the
+    catalogue said.
+    """
+
+    @staticmethod
+    def _edge(src: str, dst: str, meta=None):
+        """Same MockEdge shape the rest of this module's tagger tests use —
+        ``tag_io_boundaries`` reads src/dst/edge_type/meta via getattr."""
+        from dataclasses import dataclass, field
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, meta=meta)
+
+    def _scala_edge(self):
+        return self._edge(
+            src="scala:App.scala:1-9:run:function",
+            dst="scala:scala.sys.process.Process:0-0:apply:external_symbol",
+            meta={"call_construct": "method"},
+        )
+
+    def test_both_boundaries_are_stamped_on_the_edge(self) -> None:
+        edges = [self._scala_edge()]
+        tag_io_boundaries(edges, {"scala": load_catalog("scala")})
+        meta = edges[0].meta or {}
+        assert set(meta.get("io_boundaries") or []) == {"fs_write", "subprocess"}
+
+    def test_the_primary_io_boundary_key_is_unchanged_for_consumers(
+        self,
+    ) -> None:
+        """BACK-COMPAT, deliberate. ``io_boundary`` stays a single string and
+        keeps its existing value: everything that reads it — the F3 gate, the
+        taint sink derivation, ``declares_opaque_crossing``, third-party
+        consumers of the JSON — keeps working unchanged. The new key is
+        ADDITIVE, so this cannot regress a consumer that never learns about it.
+        """
+        edges = [self._scala_edge()]
+        tag_io_boundaries(edges, {"scala": load_catalog("scala")})
+        assert (edges[0].meta or {}).get("io_boundary") == "fs_write"
+
+    def test_a_single_boundary_primitive_gets_no_list(self) -> None:
+        """NON-DESTRUCTION for the ~99% of primitives that are not
+        multi-boundary: no new key, no extra chain, no cost.
+        """
+        edges = [self._edge(
+            src="python:a.py:1-3:f:function",
+            dst="python:os:0-0:listdir:external_symbol",
+        )]
+        tag_io_boundaries(edges, {"python": load_catalog("python")})
+        meta = edges[0].meta or {}
+        assert meta.get("io_boundary") == "fs_read"
+        assert "io_boundaries" not in meta
+
+    def test_the_subprocess_chain_now_exists(self) -> None:
+        """THE POINT. A ``{boundary: subprocess, must_not_exist: true}`` claim
+        counts chains; before this it found none for a scala process launch,
+        because the fs_write row won on row order.
+        """
+        bmap = compute_boundary_map(
+            [self._scala_edge()], {"scala": load_catalog("scala")},
+        )
+        assert len(bmap.entries["subprocess"].chains) == 1
+        assert len(bmap.entries["fs_write"].chains) == 1
+
+    def test_the_launch_is_marked_high_risk(self) -> None:
+        """Losing ``subprocess`` also lost the ``*** HIGH RISK ***`` marking,
+        which exists on the invariant that launching an external program is
+        arbitrary code execution. Recovering the chain must recover the marking
+        with it, or the fix is half done in the direction that matters least.
+        """
+        bmap = compute_boundary_map(
+            [self._scala_edge()], {"scala": load_catalog("scala")},
+        )
+        assert bmap.entries["subprocess"].to_dict()["has_high_risk"] is True
+
+
+class TestSimultaneityGeneralisesPastOneLanguage:
+    """TWO LANGUAGES, because a fix verified on one is not verified for another
+    — this repo's standing rule, earned twice.
+
+    scala's ``Process.apply`` and objc's ``NSURLConnection`` request methods are
+    the same defect in different clothes: both declare two boundaries that are
+    true of one call at one moment, and both lost one to YAML row order. They
+    fail on DIFFERENT boundary pairs (fs_write+subprocess vs net_send+net_recv)
+    and in different directions of consequence, which is what makes the second
+    one a generalisation test rather than a second sample.
+
+    objc is also the case that shaped the mechanism: its ``net_send`` row groups
+    the two genuinely-dual request methods WITH
+    ``connectionWithRequest:delegate:``, which the ``net_recv`` row does not
+    carry. The flag is per-row, so a row-granular reading would have made that
+    third method "simultaneous" with a single boundary.
+    """
+
+    def test_objc_request_reaches_both_directions(self) -> None:
+        """The objc rows ALREADY SAID SO in prose — "request implies both send
+        and receive" — and nothing consumed it. Same shape as ``builtins.open``
+        before WI-rusof: a rule documented in ``notes:`` and unimplemented.
+        """
+        cat = load_catalog("objc")
+        got = cat.simultaneous_boundaries_for(
+            "NSURLConnection.sendSynchronousRequest:returningResponse:error:",
+        )
+        assert got == {"net_send", "net_recv"}
+
+    def test_the_send_only_constructors_stay_single_boundary(self) -> None:
+        """``connectionWithRequest:delegate:`` is declared under ``net_send``
+        alone, so it keeps its single chain.
+
+        NAMED FOR WHY IT PASSES NOW, not for why it passed when written. The
+        first version of this test was called
+        ``test_a_flagged_row_with_one_boundary_is_not_simultaneous`` and
+        asserted the runtime guard below — true at the time, because the
+        flagged ``net_send`` row grouped these constructors with the two
+        genuinely-dual request methods. The parity test rejected that grouping
+        and the row was split, so this method now reaches the same empty result
+        one branch earlier (its rows simply do not carry the flag). Leaving the
+        old name would have described a code path this test no longer touches —
+        the shape where a docstring is corrected and the assertion silently
+        means something else.
+        """
+        cat = load_catalog("objc")
+        assert cat.simultaneous_boundaries_for(
+            "NSURLConnection.connectionWithRequest:delegate:",
+        ) == set()
+
+    def test_an_uncatalogued_name_has_no_simultaneous_boundaries(self) -> None:
+        """Asked about a primitive the catalogue does not carry: empty, not a
+        raise and not ``None``. The sibling assertion for
+        ``all_boundaries_for`` does not exercise this method's own early exit.
+        """
+        assert load_catalog("python").simultaneous_boundaries_for(
+            "nope.nothing",
+        ) == set()
+
+    def test_a_flagged_single_boundary_primitive_yields_nothing(self) -> None:
+        """THE RUNTIME GUARD, which no SHIPPED catalogue reaches today and which
+        is kept because the flag is spelled per ROW and rows legitimately group
+        methods that differ in this respect — the exact objc shape that existed
+        until the parity test forced the split.
+
+        Built from a synthetic catalogue rather than a real one precisely
+        BECAUSE the shipped data no longer produces it: asserting it through
+        ``load_catalog`` would make the test pass for the wrong reason the
+        moment a catalogue changed underneath it.
+        """
+        cat = IoBoundaryCatalog(language="x", primitives=[
+            IoPrimitive(boundary="net_send", module="m", name="only",
+                        kind="method", simultaneous=True),
+        ])
+        assert cat.simultaneous_boundaries_for("m.only") == set()
+
+    def test_every_simultaneous_primitive_declares_at_least_two_boundaries(
+        self,
+    ) -> None:
+        """PARITY over every shipped catalogue, so the NEXT primitive marked
+        simultaneous is checked rather than trusted.
+
+        A flag that yields one boundary is inert — it neither helps nor harms —
+        but it is also a sign the author meant something the data does not say,
+        and inert-looking declarations are how a catalogue drifts into asserting
+        nothing. This enumerates rather than spot-checks, which is the same
+        reason the HIGH_RISK drift guard enumerates.
+        """
+        offenders: list[tuple[str, str]] = []
+        for lang in CATALOG_LANGUAGES:
+            cat = load_catalog(lang)
+            flagged = {
+                p.qualified_name for p in cat.primitives if p.simultaneous
+            }
+            for q in sorted(flagged):
+                if len(cat.all_boundaries_for(q)) < 2:
+                    offenders.append((lang, q))
+        assert not offenders, (
+            f"`simultaneous: true` declared on a primitive with fewer than two "
+            f"boundaries — the flag says 'these boundaries are all true at "
+            f"once' and there is only one: {offenders}"
+        )
+
+    def test_no_catalogue_has_a_half_declared_simultaneous_pair(self) -> None:
+        """PARITY, the other direction. ``simultaneous`` is a property of a
+        PRIMITIVE spelled on rows that live in different YAML sections by
+        construction, so a live-shipped half-declared pair would make the marker
+        live or inert depending on which section was edited last — the row-order
+        dependence this whole mechanism removes, reintroduced.
+
+        ``simultaneous_boundaries_for`` raises on that; this asserts no SHIPPED
+        catalogue is in the state today.
+        """
+        for lang in CATALOG_LANGUAGES:
+            cat = load_catalog(lang)
+            for q in {p.qualified_name for p in cat.primitives}:
+                cat.simultaneous_boundaries_for(q)  # raises if half-declared
