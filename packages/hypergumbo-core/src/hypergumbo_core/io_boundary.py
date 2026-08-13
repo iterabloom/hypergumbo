@@ -349,6 +349,13 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     # Elixir
     "System.cmd", "System.shell",
     "Port.command", "Port.open",
+    # Erlang — the BEAM shell-out and the port primitive it is built on
+    # (WI-jupaf). Both were absent here because erlang.yaml declared no
+    # subprocess surface at all: `os:cmd/1` was filed under env_read +
+    # env_write beside getenv/putenv, and `erlang:open_port/2` was catalogued
+    # nowhere. Elixir's own `System.cmd` was listed above the whole time, which
+    # is what made the gap look covered for the BEAM family.
+    "os.cmd", "erlang.open_port",
     # Haskell (System.Process — `process` package)
     "System.Process.callCommand", "System.Process.callProcess",
     "System.Process.createProcess", "System.Process.rawSystem",

