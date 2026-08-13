@@ -12,6 +12,7 @@ import yaml
 
 from hypergumbo_core.verify_claims import (
     _MAX_EVIDENCE_ROWS,
+    CONFIRMING_VERDICTS,
     BoundaryCoverage,
     Claim,
     ClaimsFileError,
@@ -724,7 +725,13 @@ class TestSanitizedFlowsAreDisclosed:
         f.sanitized_by = ("h.launder",)
         f.sanitized_by_user_supplied = ("h.launder",)
         verdict = verify_taint_claim(self._claim(), [f])
-        assert verdict.verdict == "confirmed"
+        # CONFIRMING, not the literal "confirmed". This assertion used to read
+        # `== "confirmed"`, which was right for remedy (a1) — it deliberately
+        # changed only the prose — and became wrong the moment (b)/(c) made the
+        # VALUE carry the same fact. What this test is about is that the flow
+        # is not counted against the claim; which confirming value it lands on
+        # is `TestARepoSuppliedSanitizerReachesTheExitCode`'s business.
+        assert verdict.verdict in CONFIRMING_VERDICTS
         assert "h.launder" in verdict.details, (
             f"the sanitizer holding the verdict up must be NAMED, or the reader "
             f"cannot check it against the source; got: {verdict.details!r}"
@@ -1876,3 +1883,143 @@ class TestExtraCatalogsIoPrimitives:
         sources, _k, _n, io_prims = load_extra_catalog_paths(path)
         assert sources == [tmp_path / "taint" / "src.yaml"]
         assert io_prims == []
+
+
+class TestARepoSuppliedSanitizerReachesTheExitCode:
+    """INV-pojib (b)/(c) — the verdict VALUE, not only the prose, must record
+    that a repo-supplied entry is what made the claim read clean.
+
+    Remedy (a1) landed at dev 1ec23deb31 and closed the "verdict text cannot
+    distinguish the two" half: the details string now says
+    ``(via h.launder (project-local))``. It deliberately did NOT touch the
+    verdict value or the exit code, and that residual is what this class pins.
+
+    WHY PROSE WAS NOT ENOUGH, measured on the shipped CLI at dev 1ec23deb31
+    with the fixture from the item's own repro (``os.remove(launder(
+    os.environ["API_KEY"]))``, ``launder`` returning its argument):
+
+        baseline, no sanitizer file            -> rc 1  violated
+        + 8-line lie via extra_catalogs:       -> rc 0  confirmed
+
+    rc 0 in the second case is byte-identical to the exit code of a verdict the
+    analysis earned unaided. A CI gate reads the exit code; nothing reads the
+    sentence. So the attribution was legible to a human re-reading stdout and
+    invisible to the machine the artifact exists to convince.
+
+    ADR-0016 §4 already specifies the fourth verdict this uses ("Confirmed with
+    caveats: consistent, but opaque boundaries exist that could not be
+    verified"). Implementing it here is finishing declared work, and the
+    user-supplied-sanitizer case is its second and stronger consumer: an
+    unverifiable ASSERTION by the analysed party, rather than an unverifiable
+    boundary.
+    """
+
+    def _claim(self) -> Claim:
+        return Claim(
+            id="TF-CAVEAT",
+            text="No plaintext to host_fs",
+            constraint_taint_flow=TaintFlowConstraint(
+                source_taint="plaintext",
+                prohibited_sink_zone="host_fs",
+            ),
+        )
+
+    def _repo_supplied(self) -> TaintFlowFinding:
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        f.sanitized_by = ("h.launder",)
+        f.sanitized_by_user_supplied = ("h.launder",)
+        return f
+
+    def _built_in(self) -> TaintFlowFinding:
+        f = _flow(source_symbol="s", sink_symbol="d")
+        f.sanitized = True
+        f.sanitized_by = ("cryptography.fernet.Fernet.encrypt",)
+        return f
+
+    def test_verdict_value_records_the_repo_supplied_dependency(self) -> None:
+        """The half (a1) left open: the VALUE, which is what a consumer reads."""
+        verdict = verify_taint_claim(self._claim(), [self._repo_supplied()])
+        assert verdict.verdict == "confirmed_with_caveats", (
+            f"a claim held up by an entry the analysed repository supplied is "
+            f"not a verdict the analysis earned; got {verdict.verdict!r}"
+        )
+
+    def test_a_built_in_sanitizer_still_earns_a_plain_confirmed(self) -> None:
+        """THE DISCRIMINATOR, and the reason this is worth shipping at all.
+
+        A caveat raised on every sanitized verdict would carry no information
+        and a reader would learn to discount it — the same argument that made
+        remedy (a2) (a run-level "a project-local catalogue was in effect"
+        caveat) the wrong shape. If this test ever goes green by accident, the
+        feature has degraded into noise.
+        """
+        verdict = verify_taint_claim(self._claim(), [self._built_in()])
+        assert verdict.verdict == "confirmed"
+        assert verdict.caveats == []
+
+    def test_caveat_is_structured_not_only_prose(self) -> None:
+        """A consumer must be able to branch on it without parsing English."""
+        verdict = verify_taint_claim(self._claim(), [self._repo_supplied()])
+        assert len(verdict.caveats) == 1
+        caveat = verdict.caveats[0]
+        assert caveat["kind"] == "user_supplied_sanitizer"
+        assert "h.launder" in caveat["entries"]
+
+    def test_caveat_rides_the_json_envelope(self) -> None:
+        """``to_dict`` is the machine surface; a field that stops at the
+        dataclass is half shipped. A pre-existing property test caught exactly
+        this omission on the (a1) fields.
+        """
+        d = verify_taint_claim(self._claim(), [self._repo_supplied()]).to_dict()
+        assert d["verdict"] == "confirmed_with_caveats"
+        assert d["caveats"][0]["kind"] == "user_supplied_sanitizer"
+
+    def test_prose_and_verdict_value_cannot_disagree(self) -> None:
+        """PARITY over the two surfaces built from one fact.
+
+        The attribution string and the caveat are two consumers of "which
+        sanitizers were credited, and which came from a user path". Two homes
+        for one fact drift immediately, so they read it from one predicate and
+        this test is what keeps them honest: ``(project-local)`` in the prose
+        and ``confirmed_with_caveats`` in the value must appear together or not
+        at all, in BOTH directions.
+        """
+        for findings in (
+            [self._repo_supplied()],
+            [self._built_in()],
+            [self._repo_supplied(), self._built_in()],
+        ):
+            verdict = verify_taint_claim(self._claim(), findings)
+            marked = "project-local" in verdict.details
+            caveated = verdict.verdict == "confirmed_with_caveats"
+            assert marked == caveated, (
+                f"prose says project-local={marked} but the verdict value says "
+                f"caveated={caveated}; got {verdict.verdict!r} / "
+                f"{verdict.details!r}"
+            )
+
+    def test_a_violated_claim_is_not_downgraded_to_a_caveat(self) -> None:
+        """Direction check. Caveats qualify a CLEAN verdict; they must never
+        soften a finding. A repo that supplies a sanitizer AND still leaks is
+        violated, full stop.
+        """
+        leaky = _flow(source_symbol="s2", sink_symbol="d2")
+        verdict = verify_taint_claim(
+            self._claim(), [self._repo_supplied(), leaky],
+        )
+        assert verdict.verdict == "violated"
+        assert verdict.caveats == []
+
+    def test_blindness_still_dominates_a_caveated_verdict(self) -> None:
+        """A caveated verdict is still a CONFIRMING one, so the coverage gate
+        must reach it. If ``_require_coverage_to_confirm`` kept testing
+        ``!= "confirmed"``, adding this fourth value would have punched a hole
+        straight through the honesty gate INV-javam/INV-bitig exist to hold —
+        a blind analysis would report ``confirmed_with_caveats`` instead of
+        ``inconclusive``.
+        """
+        from hypergumbo_core.verify_claims import _require_coverage_to_confirm
+        caveated = verify_taint_claim(self._claim(), [self._repo_supplied()])
+        gated = _require_coverage_to_confirm(caveated, "no catalogue for bash")
+        assert gated.verdict == "inconclusive"

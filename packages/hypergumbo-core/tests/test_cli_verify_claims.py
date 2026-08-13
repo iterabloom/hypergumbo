@@ -2117,3 +2117,153 @@ def test_the_text_reader_is_told_too(tmp_path: Path, capsys) -> None:
     assert "ov.yaml" in out, (
         "the text verdict does not say which catalogue produced it"
     )
+
+
+# ---------------------------------------------------------------------------
+# INV-pojib (b)/(c): the exit code carries the repo-supplied dependency
+# ---------------------------------------------------------------------------
+
+
+def _caveat_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    """A flow that exists, and a project-local sanitizer that removes it.
+
+    Shaped so the STRUCTURAL pass adjudicates it: the sanitizer is called by an
+    intermediate function rather than by the seed, because the barrier exempts
+    the seed function by design and a same-function sanitizer is honoured only
+    on the DDG arm.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+            {"id": "python:app.py:11-20:mid:function", "name": "mid",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 11, "end_line": 20}},
+        ],
+        edges=[
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:app.py:11-20:mid:function",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:11-20:mid:function",
+             "dst": "python:external:0-0:myapp.util.launder:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:11-20:mid:function",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    user_src = tmp_path / "project_sources.yaml"
+    user_src.write_text(
+        'description: "Project secrets"\n'
+        "taint_label: project_secret\n"
+        "sources:\n"
+        "  python:\n"
+        "    - module: myapp.config\n"
+        "      functions: [get_secret]\n"
+        "      return_tainted: true\n"
+    )
+
+    san = tmp_path / "project_sanitizers.yaml"
+    san.write_text(
+        'description: "Project-local laundering"\n'
+        "transforms:\n"
+        "  - input_taint: project_secret\n"
+        "    output_taint: safe\n"
+        "    functions:\n"
+        "      python:\n"
+        "        - myapp.util.launder\n"
+    )
+
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({
+        "claims": [{
+            "id": "TF-POJIB",
+            "text": "Project secrets must not reach host_fs",
+            "constraint": {"taint_flow": {
+                "source_taint": "project_secret",
+                "prohibited_sink_zone": "host_fs",
+            }},
+        }],
+    }))
+    return input_file, user_src, san, claims_file
+
+
+def _caveat_args(tmp_path: Path, *, with_sanitizer: bool, as_json: bool):
+    input_file, user_src, san, claims_file = _caveat_fixture(tmp_path)
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = as_json
+    args.taint_sources = [str(user_src)]
+    if with_sanitizer:
+        args.taint_sanitizers = [str(san)]
+    return args
+
+
+def test_verify_claims_exit_3_when_a_repo_supplied_sanitizer_holds_it_up(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-pojib (b). THE POINT OF THE WHOLE ITEM: a CI gate reads ``$?``.
+
+    Remedy (a1) already named the sanitizer in the verdict prose. Measured on
+    the shipped CLI at dev 1ec23deb31, that left the machine surface unchanged —
+    an 8-line sanitizer file turned a real ``violated`` rc 1 into ``confirmed``
+    rc 0, byte-identical to a verdict the analysis earned unaided. Nothing a
+    gate reads had moved.
+    """
+    rc = cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=True, as_json=True,
+    ))
+    assert rc == 3, (
+        "a verdict resting on an entry the analysed repository supplied about "
+        "itself must not exit 0 alongside verdicts the analysis earned"
+    )
+    data = json.loads(capsys.readouterr().out)
+    verdict = data["verdicts"][0]
+    assert verdict["verdict"] == "confirmed_with_caveats"
+    assert verdict["caveats"][0]["kind"] == "user_supplied_sanitizer"
+    assert "myapp.util.launder" in verdict["caveats"][0]["entries"]
+
+
+def test_verify_claims_exit_1_without_the_sanitizer(
+    tmp_path: Path, capsys,
+) -> None:
+    """CONTROL, and the one that makes the test above mean anything.
+
+    The same fixture with no sanitizer file is a real violation. Without this,
+    exit 3 could equally be a fixture that never had a flow.
+    """
+    rc = cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=False, as_json=True,
+    ))
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["verdicts"][0]["verdict"] == "violated"
+
+
+def test_caveated_verdict_is_visible_on_the_text_surface(
+    tmp_path: Path, capsys,
+) -> None:
+    """A disclosure that exists only under ``--json`` is half shipped — the
+    same argument that put WI-bifob's exclusion bucket and INV-zosun's
+    provenance block on the text renderer.
+    """
+    cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=True, as_json=False,
+    ))
+    out = capsys.readouterr().out
+    assert "CONFIRMED WITH CAVEATS" in out
+    assert "CAVEAT (user_supplied_sanitizer)" in out
+    assert "myapp.util.launder" in out
+    assert "all 1 CONFIRMED" not in out, (
+        "the summary line must not report a caveated verdict as an unqualified "
+        "pass — that line is what a human skims"
+    )
