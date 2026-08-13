@@ -1,0 +1,47 @@
+Original commit body from 4890dc00757dc230a04193955ba804f7616f7eea:
+
+Cadence audit (134 commits vs. threshold 72), suspect nominated by me and
+chosen by the human, run on a clean tree right after the INV-gahuz merge per
+the playbook's couple-to-slack rule.
+
+Hypothesis: `status` carries three unrelated claims through two values.
+Outcome: CONFIRMED, one leg REFUTED, and the sharpest finding was one the
+hypothesis did not predict.
+
+ENFORCED vs CONSUMED. _validate_catalog_dict checks exactly one thing — that
+`complete` carries an allowlisted stdlib_provenance.source_url. But two
+consumers read it as a COVERAGE claim: io_boundary.py:1747
+(dst_classification_unreliable, surfaced at cli.py:4937) and :1267. Test 1
+fires completely — 14/14 shipped catalogues, status=='complete' <=> provenance
+present, zero divergence, so the enforced content restates
+`stdlib_provenance is not None`. Test 2 fires: `complete` is both the maximal
+explicit claim and what you get by saying nothing.
+
+THE VALUE THE HYPOTHESIS MISSED. Inventory turned up a THIRD input value,
+`status: overlay`, checked at :1137 and erased at :1174 before the object is
+built — a door password, not a state (Tests 3+4 both fire; verdict FOLD). The
+five-shape producer trace found zero stored producers, with shape 5 finding
+only the erasure site itself.
+
+THE SHARPEST FINDING, THE REVERSE OF WHAT I PREDICTED. `status` does not gate
+the one thing that grants confirmability: module_io_is_enumerated reads
+stdlib_module_completeness and never consults status. python is `complete`
+with 1 audited module, rust `complete` with 0, erlang `complete` with 0.
+
+LIVE SILENT BUG. erlang declares `complete` on an erlang.org URL while
+carrying ZERO subprocess rows and filing its shell-out os:cmd under env_read,
+so dst_classification_unreliable is False for every Erlang chain (WI-jupaf).
+
+LEG 3 REFUTED, recorded rather than inflated. The missing-file `complete` is
+not smuggling: load_catalog returns is_supported=False and status merely hits
+its dataclass default. The "exists" question has its own field and consumers
+check it. Kept with a written re-evaluation trigger.
+
+No new axis declared. Two items filed: WI-maduh (document enforced-vs-gating),
+WI-sihiz (fold `overlay` out of the completeness field).
+
+Touches .agent/** (cadence state + playbook Examples), which recording an
+audit necessarily does; proceeding under the standing owner ruling that these
+are editable and auto-pr runs without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
