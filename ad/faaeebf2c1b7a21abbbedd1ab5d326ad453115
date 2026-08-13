@@ -1,0 +1,63 @@
+Original commit body from ee37d6be67014032f23d753bf4fe2747c5c2ec04:
+
+verify_claims already discards test/fixture/migration-SOURCED taint flows by
+default (include_non_production=False, WI-bifob): a fixture reaching a real
+primitive is a fixture doing its job, not the shipped application doing it.
+The language census that decides whether ANY claim may be confirmed asked no
+such question -- it counted every `calls` edge in the tree. So one fixture file
+in a language with no taint catalogue blocked every claim in the repo, while a
+flow out of that same file was being discarded as non-production. One tool, two
+answers about whether a fixture counts.
+
+MEASURED on hypergumbo's own self-proof (live run, not the cached --input the
+original repro used):
+
+  hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml
+    before: 18/18 inconclusive, rc 2, blocked by (bash, csharp, solidity)
+    after:  18/18 inconclusive, rc 2, blocked by (bash)
+
+THIS NARROWS THE RESIDUAL; IT DOES NOT CLOSE INV-dabuf, and the item stays
+violated. The file census is why, and it also corrects the item's own premise:
+INV-dabuf and the lab notebook both recorded that all three blocker languages
+were test fixtures, so a production filter would close it. Checked file by file:
+
+  csharp    3 files, ALL under tests/fixtures  -> dropped, correctly
+  solidity  1 file,  under tests/fixtures      -> dropped, correctly
+  bash      44 files, MOSTLY REAL              -> still blocks, correctly
+            (scripts/lib/github-api.sh, .githooks/*, .agent/hooks/*) --
+            scripts that curl the GitHub API, git push, and rm
+
+What the change buys is an honest reason: the previous one invited a reader to
+believe three catalogues were missing when two of the three were fixture-only
+noise.
+
+NO RULING REQUIRED, because this is parity with a decision already taken rather
+than a new judgment. The classifier is IMPORTED, not re-derived --
+_source_scope's body became verify_claims.symbol_source_scope, consumed by both
+the flow filter and the census -- and --include-non-production-sources widens
+BOTH, so the two cannot disagree in either direction.
+
+SCOPED ONCE, BOTH CHECKS, and this was caught mid-fix rather than reasoned:
+narrowing only the language census left the verdict blocking anyway, because
+_taint_blind_reason's SECOND check (compute_boundary_coverage) still saw the
+fixture's edges. That is INV-motos exactly -- sharing a predicate is not enough
+when the callers run it over different populations -- so the narrowing is
+applied to the EDGE LIST and both checks now walk one population.
+compute_boundary_coverage itself is untouched (only what this call site hands
+it), so BOUNDARY claim verdicts are unaffected.
+
+EXPLICITLY NOT TAKEN, and filed as WI-rusil instead: INV-dabuf also lists
+"scope the gate to languages REACHABLE from the claim's declared sources" as
+cheap. As stated it fails open -- reachability would be computed by the same
+analysis whose completeness is in question, and a python -> bash crossing is a
+SUBPROCESS BOUNDARY with no edge into the bash file's symbols, so "bash is
+unreachable from this claim" would be true by construction for every claim,
+always. The gate would go vacuous for exactly the language it now blocks on.
+A sounder variant (scope by the claim's DECLARED SOURCES, which are all python
+cmd_* handlers here) is recorded there with the three controls it must pass,
+because weakening a safety gate belongs in its own revertable PR.
+
+Ref: INV-dabuf (narrowed, still violated), WI-rusil (new).
+Suite 22,513 passed / 100% coverage / mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
