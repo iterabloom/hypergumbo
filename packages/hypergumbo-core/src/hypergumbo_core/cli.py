@@ -5663,11 +5663,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     else:
         violated = 0
         inconclusive = 0
+        caveated = 0
         for v in verdicts:
             # ADR-0033 Phase 3 PR4: "inconclusive" verdict now exists
             # for claims that couldn't be machine-checked.
             if v.verdict == "confirmed":
                 icon = "✓"
+            elif v.verdict == "confirmed_with_caveats":
+                # INV-pojib: distinct from BOTH neighbours on purpose. Sharing
+                # ✓ with `confirmed` would restate the defect — a clean-looking
+                # verdict a repo-supplied entry is holding up — and sharing ?
+                # with `inconclusive` would say the analysis could not look,
+                # which is false: it looked, and then trusted an input.
+                icon = "!"
             elif v.verdict == "violated":
                 icon = "✗"
             else:  # inconclusive
@@ -5676,17 +5684,23 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             print(f"    Verdict: {v.verdict}")
             if v.details:
                 print(f"    {v.details}")
+            for caveat in v.caveats:
+                print(f"    CAVEAT ({caveat['kind']}): {caveat['detail']}")
             if v.verdict == "violated":
                 violated += 1
             elif v.verdict == "inconclusive":
                 inconclusive += 1
+            elif v.verdict == "confirmed_with_caveats":
+                caveated += 1
         print()
         summary_parts = []
         if violated:
             summary_parts.append(f"{violated} VIOLATED")
         if inconclusive:
             summary_parts.append(f"{inconclusive} INCONCLUSIVE")
-        if not violated and not inconclusive:
+        if caveated:
+            summary_parts.append(f"{caveated} CONFIRMED WITH CAVEATS")
+        if not violated and not inconclusive and not caveated:
             summary_parts.append(f"all {len(verdicts)} CONFIRMED")
         print(f"{', '.join(summary_parts)} (of {len(verdicts)} claim(s))")
 
@@ -5727,12 +5741,34 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     #   2 = at least one inconclusive (and zero violated) — distinguishes
     #       "machine-checkable claims all passed" from "couldn't actually
     #       check the claim." INV-bitig P0 silent-confirm.
+    #   3 = at least one confirmed_with_caveats (and none of the above) —
+    #       INV-pojib (b). The claim held, but part of the reasoning rests on
+    #       an entry the ANALYSED REPOSITORY supplied about itself.
+    #
+    # WHY A NEW CODE RATHER THAN PROSE. Remedy (a1) already names the
+    # repo-supplied sanitizer in the verdict text, and that is where it stopped
+    # being useful: a CI gate reads $?, not stdout. Measured before this
+    # landed — an 8-line sanitizer file the repo ships turned a real `violated`
+    # rc 1 into `confirmed` rc 0, indistinguishable from a verdict the analysis
+    # earned unaided.
+    #
+    # DIRECTION, stated because this CHANGES A CONSUMER CONTRACT. A gate
+    # written `verify-claims ... || exit 1` now fails on a caveated verdict
+    # where it used to pass. That is fail-closed and deliberate. A repository
+    # that legitimately declares its own sanitizers — hypergumbo's own
+    # self-proof does, via its zone-barrier entry — moves from rc 0 to rc 3 and
+    # must either accept rc 3 or drop the entry. Ordered AFTER inconclusive
+    # because "could not look" is a worse state than "looked, and trusted a
+    # declared input".
     has_violations = any(v.verdict == "violated" for v in verdicts)
     has_inconclusive = any(v.verdict == "inconclusive" for v in verdicts)
+    has_caveats = any(v.verdict == "confirmed_with_caveats" for v in verdicts)
     if has_violations:
         return 1
     if has_inconclusive:
         return 2
+    if has_caveats:
+        return 3
     return 0
 
 
@@ -8989,7 +9025,20 @@ shape, an unknown field name, or a boundary value outside the vocabulary
 above produces a clear error and exit code 2 (not a silent pass).
 
 Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one
-inconclusive, or the claims file failed validation.
+inconclusive, or the claims file failed validation; 3 = at least one
+`confirmed_with_caveats` (and none of the above).
+
+Exit 3 means every claim held, but at least one held because of an entry the
+ANALYSED REPOSITORY supplied about itself -- a sanitizer declared through
+`extra_catalogs:` or `--taint-sanitizers` that the tool credited with removing
+a flow it would otherwise have reported. hypergumbo cannot check such an
+assertion; it takes the repository's word that the named function neutralises
+the taint. The verdict names the entries, and the JSON envelope carries them
+under each verdict's `caveats` (INV-pojib).
+
+A gate written `verify-claims ... || exit 1` therefore FAILS on exit 3 where it
+used to pass. That is deliberate and fail-closed. Treat 3 as "passed, on the
+repository's own word" and decide per repository whether that is acceptable.
 """
     p_vc = sub.add_parser(
         "verify-claims",

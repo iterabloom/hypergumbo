@@ -54,6 +54,13 @@ _BADGE = {
     "inconclusive": "**INCONCLUSIVE** (the analysis could not see enough "
                     "to confirm) \u2014 ",
     "confirmed": "\u2713 confirmed \u2014 ",
+    # INV-pojib. An unknown verdict badges as "" here, which renders a caveated
+    # claim indistinguishable from a confirmed one in the very document whose
+    # job is to not overstate what was verified. Registered when the fourth
+    # verdict value was added rather than left to be discovered.
+    "confirmed_with_caveats": "\u2713 confirmed WITH CAVEATS (rests on an "
+                              "entry this repository supplied about itself) "
+                              "\u2014 ",
 }
 
 
@@ -88,6 +95,17 @@ def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
         f"| **inconclusive** | {counts.get('inconclusive', 0)} | the analysis "
         f"could not see enough to confirm |",
         f"| **confirmed** | {counts.get('confirmed', 0)} | checked and held |",
+    ]
+    # Rendered only when non-zero, so a verdict this repository does not
+    # currently produce does not add a permanent zero row. The three above are
+    # the standing vocabulary; this one is conditional (INV-pojib).
+    if counts.get("confirmed_with_caveats", 0):
+        lines.append(
+            f"| **confirmed_with_caveats** | "
+            f"{counts['confirmed_with_caveats']} | held, but on the strength "
+            f"of an entry this repository supplied about itself |"
+        )
+    lines += [
         "",
         "The ``inconclusive`` verdicts are not near-misses. This repository "
         "contains code in languages with no taint catalogue, so the analysis "

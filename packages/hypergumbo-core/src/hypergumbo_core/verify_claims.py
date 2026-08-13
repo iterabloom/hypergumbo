@@ -141,7 +141,51 @@ from .paths import classify_test_file, is_migration_file
 # the one shape the call-graph pass structurally cannot honour: a sanitizer
 # called in the same function as the source (WI-fasub), which the DDG pass now
 # does honour and which every language without a def/use extractor still misses.
-VERIFY_CLAIMS_SCHEMA_VERSION = "1.9"
+# 2.0 adds the ``confirmed_with_caveats`` verdict value and the per-verdict
+# ``caveats`` list (INV-pojib b/c). NOT additive, and called out as the one
+# breaking bump in this list: a consumer testing ``verdict == "confirmed"``
+# stops seeing a claim it used to see, and the CLI grows exit code 3. That is
+# the point rather than a side effect — remedy (a1) put the repo-supplied
+# sanitizer in the verdict PROSE, and a CI gate reads neither prose nor JSON
+# details, so the fact stayed invisible to the only consumer that matters.
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.0"
+
+#: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
+#: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
+#: summary counter alike.
+#:
+#: This exists because adding a fourth verdict value is exactly the change that
+#: punches holes in ``!= "confirmed"`` tests scattered across consumers. The
+#: honesty gate (:func:`_require_coverage_to_confirm`) is the one that matters:
+#: had it kept testing ``!= "confirmed"``, a blind analysis would have returned
+#: ``confirmed_with_caveats`` instead of ``inconclusive`` and this change would
+#: have quietly widened the false-confirm class INV-bitig / INV-javam closed.
+#: ``test_blindness_still_dominates_a_caveated_verdict`` pins that direction.
+CONFIRMING_VERDICTS: frozenset[str] = frozenset({
+    "confirmed",
+    "confirmed_with_caveats",
+})
+
+#: Caveat kind: a sanitizer the ANALYSED REPOSITORY supplied is credited with
+#: removing a flow that would otherwise have been reported. The tool cannot
+#: check that assertion — it takes the repository's word that the named
+#: function neutralises the taint — so the verdict rests on an input rather
+#: than on the analysis.
+#:
+#: SCOPE, STATED SO THIS DOES NOT READ AS THE CLASS CLOSED. This covers the
+#: SANITIZER channel only. There is a SECOND, measured channel it does not
+#: cover: user sources and sinks merge through ``_merge_with_user_override``,
+#: where an entry matching a shipped one on ``(module, name, kind)`` REPLACES
+#: it, while sanitizers merely ``.extend()``. Measured — a user sink
+#: re-declaring ``pathlib.Path`` / ``write_text`` out of the ``host_fs`` zone
+#: takes a real ``violated`` rc 1 to ``confirmed`` rc 0, by both the
+#: ``--taint-sinks`` flag and the in-tree ``extra_catalogs:`` route, and NO
+#: caveat is raised. It cannot be: the shipped sink is filtered out of the
+#: catalogue, so the flow is never constructed and there is no finding to
+#: attribute. Detecting it means diffing the merged catalogue against the
+#: shipped one — catalogue-level machinery rather than the finding-level
+#: attribution here — which is why it is filed rather than bundled.
+CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
 # violated claim can have thousands of flows (3,969 on the self-corpus); the
 # deduplicated ``evidence`` list is bounded to this many DISTINCT flows so the
@@ -204,14 +248,32 @@ class ClaimVerdict:
     Attributes:
         claim_id: The claim's ID.
         claim_text: The claim's human-readable text.
-        verdict: One of "confirmed", "violated", "inconclusive" (ADR-0033
-            Phase 3 PR4 / WI-rolol sub-task A). ``confirmed`` means the
-            claim was actively checked and held; ``violated`` means
-            specific evidence contradicted it; ``inconclusive`` means
-            the verification couldn't proceed (no matching constraint,
-            broken input data, missing catalog) — distinguished from
-            ``confirmed`` to close the silent-confirm fall-through
-            class (INV-bitig P0, INV-gobob, INV-mofih, INV-nufob).
+        verdict: One of "confirmed", "confirmed_with_caveats", "violated",
+            "inconclusive" (ADR-0033 Phase 3 PR4 / WI-rolol sub-task A;
+            fourth value per ADR-0016 §4 and INV-pojib). ``confirmed``
+            means the claim was actively checked and held on the
+            analysis's own evidence; ``violated`` means specific evidence
+            contradicted it; ``inconclusive`` means the verification
+            couldn't proceed (no matching constraint, broken input data,
+            missing catalog) — distinguished from ``confirmed`` to close
+            the silent-confirm fall-through class (INV-bitig P0,
+            INV-gobob, INV-mofih, INV-nufob).
+
+            ``confirmed_with_caveats`` means the claim held, but part of
+            the reasoning rests on something the tool could not verify —
+            today, an entry the ANALYSED REPOSITORY supplied about
+            itself. It is a CONFIRMING verdict (see
+            :data:`CONFIRMING_VERDICTS`), so the coverage gate still
+            reaches it and blindness still downgrades it all the way to
+            ``inconclusive``. See ``caveats`` for what qualified it.
+        caveats: Structured reasons the verdict is ``confirmed_with_caveats``,
+            empty otherwise. Each entry is ``{"kind": ..., "entries": [...],
+            "detail": ...}``. ``kind`` is the machine-branchable axis —
+            currently only :data:`CAVEAT_USER_SUPPLIED_SANITIZER`, and the
+            structure is a LIST of typed entries rather than a bool because
+            ADR-0016 §4's original consumer (opaque boundaries that could not
+            be verified) is the second kind and should not need a second
+            field. Shipped with exactly one kind populated.
         evidence_count: Number of I/O chains that violate the claim (0 if confirmed).
         details: Human-readable explanation.
         evidence: Bounded, deduplicated list of per-flow drill-down records for
@@ -274,7 +336,9 @@ class ClaimVerdict:
 
     claim_id: str
     claim_text: str
-    verdict: str  # axis: bounded-enum — "confirmed" / "violated" / "inconclusive"
+    # axis: bounded-enum — "confirmed" / "confirmed_with_caveats" / "violated"
+    # / "inconclusive"
+    verdict: str
     evidence_count: int = 0
     details: str = ""
     evidence: list[dict[str, Any]] = field(default_factory=list)
@@ -282,6 +346,7 @@ class ClaimVerdict:
     flow_origins: dict[str, int] = field(default_factory=dict)
     analysis_methods: dict[str, int] = field(default_factory=dict)
     sanitized_flows: int = 0
+    caveats: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -296,6 +361,7 @@ class ClaimVerdict:
             "flow_origins": self.flow_origins,
             "analysis_methods": self.analysis_methods,
             "sanitized_flows": self.sanitized_flows,
+            "caveats": self.caveats,
         }
 
 
@@ -1689,6 +1755,53 @@ def _symbol_path_slot(symbol_id: str) -> str:
     return symbol_path_slot(symbol_id)
 
 
+def _credited_sanitizers(
+    findings: list["TaintFlowFinding"],
+) -> tuple[list[str], set[str]]:
+    """Which sanitizers the barrier credited, and which of them a user supplied.
+
+    ONE HOME FOR ONE FACT. Two surfaces are built from this — the attribution
+    string a human reads (:func:`_sanitizer_attribution`) and the caveat a
+    machine branches on (:data:`CAVEAT_USER_SUPPLIED_SANITIZER`) — and deriving
+    it twice is how they come to disagree about whether the same run rested on
+    a repo-supplied entry. ``test_prose_and_verdict_value_cannot_disagree``
+    asserts the two move together in both directions.
+
+    Returns ``(named, repo_supplied)``: every credited sanitizer in first-seen
+    order, and the subset that came from a user catalogue path. Order is
+    preserved rather than sorted because the rendered clause reads as a list of
+    candidates and a stable order makes verdict text diffable across runs.
+
+    WHAT ``repo_supplied`` NON-EMPTY DOES AND DOES NOT ESTABLISH. It says a
+    user-supplied entry was among the sanitizers credited on some flow the
+    verdict rests on. It does NOT prove that entry was strictly necessary: a
+    flow can credit a shipped sanitizer AND a user-supplied one, in which case
+    removing the user entry might leave the flow sanitized anyway. Reporting a
+    caveat there is the conservative direction on a security surface, and it is
+    named here rather than hidden behind the word "load-bearing" — the exact
+    counterfactual would require re-running propagation without the user layer,
+    which is a much larger change than this and is not what shipped.
+    """
+    named: list[str] = []
+    repo_supplied: set[str] = set()
+    for finding in findings:
+        if not getattr(finding, "sanitized", False):
+            # UNREACHABLE FROM TODAY'S ONLY CALLER, and kept anyway. The clause
+            # this feeds is built only on the ``confirmed`` path, where every
+            # constrained flow is sanitized by construction (an unsanitized one
+            # would have made the verdict ``violated``). It is kept rather than
+            # deleted because the failure it prevents is a WRONG SAFETY
+            # STATEMENT — attributing a protection to a flow that reached the
+            # sink unprotected — and the caller's guarantee is incidental to
+            # this function rather than expressed in its signature.
+            continue  # pragma: no cover
+        for name in getattr(finding, "sanitized_by", ()) or ():
+            if name not in named:
+                named.append(name)
+        repo_supplied.update(getattr(finding, "sanitized_by_user_supplied", ()) or ())
+    return named, repo_supplied
+
+
 def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
     """Name the sanitizers holding a clean verdict up, marking repo-supplied ones.
 
@@ -1712,23 +1825,7 @@ def _sanitizer_attribution(findings: list["TaintFlowFinding"]) -> str:
     exit code should also carry it is a separate, larger question (a consumer
     contract), tracked on the item rather than decided here.
     """
-    named: list[str] = []
-    repo_supplied: set[str] = set()
-    for finding in findings:
-        if not getattr(finding, "sanitized", False):
-            # UNREACHABLE FROM TODAY'S ONLY CALLER, and kept anyway. The clause
-            # this feeds is built only on the ``confirmed`` path, where every
-            # constrained flow is sanitized by construction (an unsanitized one
-            # would have made the verdict ``violated``). It is kept rather than
-            # deleted because the failure it prevents is a WRONG SAFETY
-            # STATEMENT — attributing a protection to a flow that reached the
-            # sink unprotected — and the caller's guarantee is incidental to
-            # this function rather than expressed in its signature.
-            continue  # pragma: no cover
-        for name in getattr(finding, "sanitized_by", ()) or ():
-            if name not in named:
-                named.append(name)
-        repo_supplied.update(getattr(finding, "sanitized_by_user_supplied", ()) or ())
+    named, repo_supplied = _credited_sanitizers(findings)
     if not named:
         # A sanitized flow whose sanitizer was not recorded. Say nothing rather
         # than guess: the propagators populate this, and a flow constructed by
@@ -1902,10 +1999,43 @@ def verify_taint_claim(
                 f"a sanitizer on every route"
                 f"{_sanitizer_attribution(constrained)}."
             )
+        # INV-pojib (b)/(c). Remedy (a1) put the repo-supplied sanitizer into
+        # the sentence above; this puts it into the VERDICT VALUE, which is
+        # what the exit code and every programmatic consumer read. Measured on
+        # the shipped CLI before this landed: the fixture whose whole content
+        # is `os.remove(launder(os.environ["API_KEY"]))` went `violated` rc 1 ->
+        # `confirmed` rc 0 on the strength of an 8-line file the repository
+        # supplied about itself, and rc 0 there was byte-identical to rc 0 on a
+        # verdict the analysis earned unaided.
+        #
+        # RAISED ONLY WHERE IT DISCRIMINATES. A caveat on every sanitized
+        # verdict would carry no information and a reader would learn to
+        # discount it — that is remedy (a2), rejected on this item for exactly
+        # that reason, and shipping it as a verdict VALUE would be the same
+        # mistake with a wider blast radius. The shipped-catalogue case stays
+        # plain `confirmed`, pinned by
+        # `test_a_built_in_sanitizer_still_earns_a_plain_confirmed`.
+        _, repo_supplied = _credited_sanitizers(constrained)
+        caveats: list[dict[str, Any]] = []
+        if repo_supplied:
+            shown = ", ".join(sorted(repo_supplied))
+            caveats.append({
+                "kind": CAVEAT_USER_SUPPLIED_SANITIZER,
+                "entries": sorted(repo_supplied),
+                "detail": (
+                    f"A sanitizer supplied by the analysed repository is "
+                    f"credited with removing {sanitized_flows} flow(s) that "
+                    f"would otherwise have been reported: {shown}. The tool "
+                    f"cannot check that the named function neutralises the "
+                    f"taint; it takes the repository's word for it."
+                ),
+            })
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
-            verdict="confirmed",
+            verdict=(
+                "confirmed_with_caveats" if caveats else "confirmed"
+            ),
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
@@ -1913,6 +2043,7 @@ def verify_taint_claim(
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
+            caveats=caveats,
         )
 
     # Build detailed violation message with per-flow drill-down evidence
@@ -2064,7 +2195,13 @@ def _require_coverage_to_confirm(
     catches any constraint kind that has none, including kinds added later.
     ``test_every_constraint_kind_is_coverage_gated`` enumerates them.
     """
-    if verdict.verdict != "confirmed" or not blind_reason:
+    # CONFIRMING_VERDICTS, not ``== "confirmed"``. Blindness DOMINATES a
+    # caveat: "the analysis could not look" is a strictly worse state than
+    # "the analysis looked and leaned on an unverifiable input", so a caveated
+    # verdict must fall all the way to ``inconclusive`` rather than surviving
+    # as a qualified pass. Testing the literal here is how adding INV-pojib's
+    # fourth verdict value would have punched a hole through this gate.
+    if verdict.verdict not in CONFIRMING_VERDICTS or not blind_reason:
         return verdict
     return ClaimVerdict(
         claim_id=verdict.claim_id,

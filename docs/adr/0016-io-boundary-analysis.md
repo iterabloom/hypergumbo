@@ -2,7 +2,7 @@
 # ADR-0016: I/O Boundary Analysis and Security Claim Verification
 
 Date: 2026-03-18
-Updated: 2026-08-12
+Updated: 2026-08-13
 Status: Accepted
 
 ## Context
@@ -284,9 +284,40 @@ claims:
 The verifier checks each claim against the boundary map and produces a verdict:
 
 - **Confirmed**: all I/O chains consistent with claim, full transparency
-- **Confirmed with caveats**: consistent, but opaque boundaries exist that could not be verified
+- **Confirmed with caveats**: consistent, but part of the reasoning could not be verified
 - **Violated**: specific I/O chain contradicts the claim (with evidence)
 - **Inconclusive**: insufficient analysis coverage to determine
+
+> **Implementation note (INV-pojib, 2026-08-13).** The fourth verdict is now
+> implemented, as `confirmed_with_caveats` at **exit code 3**, with a structured
+> `caveats` list on each verdict (`VERIFY_CLAIMS_SCHEMA_VERSION` 2.0). It
+> shipped for a consumer this section did not anticipate and which is stronger
+> than the one it names.
+>
+> The wording above scoped caveats to *opaque boundaries* — I/O the analysis
+> could see the existence of but not the content of. The consumer that forced
+> the implementation is different in kind: an **entry the analysed repository
+> supplied about itself**. A sanitizer declared through `--taint-sanitizers` or
+> the claims file's `extra_catalogs:` block is trusted by design (§27), and
+> trusting it is not the problem — the problem was that a verdict resting on it
+> was indistinguishable, in prose *and* in exit code, from one the analysis
+> earned unaided. Measured: an 8-line sanitizer file naming a no-op `launder`
+> function took `os.remove(launder(os.environ["API_KEY"]))` from `violated`
+> rc 1 to `confirmed` rc 0.
+>
+> An opaque boundary is something the tool *could not see*. A repo-supplied
+> entry is something the tool *was told*. Both are "consistent, but not
+> verified by us", which is why one verdict value carries both — the `kind`
+> field on each caveat is what keeps them distinguishable. The opaque-boundary
+> kind this section originally described is **not** implemented; only
+> `user_supplied_sanitizer` is.
+>
+> Also not covered, and measured rather than assumed: a user-supplied taint
+> **source or sink** suppresses findings by a different mechanism — sanitizers
+> `.extend()` the catalogue, but sources and sinks merge with *replacement* on
+> `(module, name, kind)`, so a shipped sink can be displaced out of its zone and
+> the flow never constructed. No caveat is raised, because there is no finding
+> to attribute. Filed as INV-faput.
 
 ### 5. Integration with existing infrastructure
 
