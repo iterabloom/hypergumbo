@@ -1,0 +1,64 @@
+Original commit body from 07c24075d64716c43de5bc98dcd8fc38717b67e6:
+
+INV-virat -- the one-slot last-writer-wins class, THIRD instance in two days,
+filed and fixed as the CLASS. Prior instances: INV-zumin (two catalogue rows
+true at once; row order discarded one) and INV-pojib's sanitizer registry (one
+slot per (caller,label); last registered overwrote the rest).
+
+THE DEFECT. tag_io_boundaries assigned meta['io_boundary'] unconditionally:
+
+    before: {'io_boundary': 'command_launch'}          # bash.py:534 stamp
+    after:  {'io_boundary': 'fs_read', 'io_primitive': 'os.listdir'}
+
+command_launch is the analyzer's opacity observation -- "control left this
+process for a program I cannot see" -- and the ONLY such evidence those edges
+will ever carry (ADR-0016 rules out a bash catalogue). Any matching row
+destroyed it.
+
+WHY NO FALSE CONFIRM SHIPPED, STATED HONESTLY: the opacity gate
+(_opaque_launch_sites, INV-larol) reads raw_edges -- the serialized dicts --
+while the tagger mutates objects whose meta _rehydrate_io_boundary_edges
+happens to SHALLOW-COPY for an unrelated reason (WI-kumol: preserving
+is_resolved/dst_ref). The safety property rested on read order plus an
+accidental copy. A reasonable refactor -- sharing the meta dict to save an
+allocation per edge -- would have silently restored the INV-larol false
+confirm with every test green, since no test constructs edges through
+rehydration. Reachability today is two accidents deep (no bash catalogue
+possible + overlays inert for uncatalogued languages, WI-guhuv -- an OPEN item
+whose fix removes that guard), so this is prevention landed before the arming
+event, the same ordering WI-joluk's gate was built under.
+
+THE FIX IS THE INV-zumin MECHANISM WITH A SECOND WRITER. curl -o
+/etc/cron.d/pwned IS two facts at once -- a net_send and an opaque launch --
+which is exactly what `io_boundaries` was built for; the second writer here is
+an ANALYZER rather than another row. The producer stamp stays PRIMARY
+(io_boundary): the analyzer SAW the launch, the catalogue merely ASSERTS the
+I/O -- different trust properties, now documented at the write site. The
+catalogue view lands additively (io_boundaries + io_primitive).
+
+CHAIN ACCOUNTING keeps both facts under their own rules, pinned by test: the
+launch chain stays disclosed-only (command_launch_edges, excluded from
+total_io_edges) exactly as bash launches are today; the catalogue-boundary
+chain is counted. One edge, two chains, no double-count.
+
+MEASURED END-TO-END with a temporary curl->net_send bash row (removed by
+absolute path after the probe; the earlier relative-path cleanup miss is why
+that is called out):
+
+    fs_write claim:  inconclusive rc 2        (opacity HELD with the row present)
+    boundary map:    command_launch {curl.curl: 1}  AND  net_send {curl.curl: 1}
+                     command_launch_edges=1, total_io_edges=1
+
+Pre-fix, the tagger destroyed the stamp on the tagged objects, so the map
+carried only the net_send half.
+
+NON-DESTRUCTION, re-run live: INV-zumin's five-arm probe byte-identical
+(scala/objc dual chains; open/unistd.write/os.listdir single-tagged), and
+WI-jupaf's erlang subprocess claim still violated rc 1. An unstamped edge tags
+exactly as before, no new key. INV-larol's read-order gate is KEPT as a belt
+-- cheap, independent, and the two mechanisms fail differently.
+
+Ref: INV-virat (filed today with the census correction on INV-dabuf), INV-zumin,
+INV-larol, WI-kumol, WI-guhuv.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
