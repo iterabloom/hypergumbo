@@ -150,6 +150,38 @@ _DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
 # the same session.
 OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"subprocess"})
 
+# The SAME question — "did control leave this process?" — asked of the other
+# channel (INV-larol). A boundary here is SYNTHESISED BY A PRODUCER rather than
+# declared by a catalogue, so ``declares_opaque_crossing`` can never see it: the
+# bash analyzer stamps ``meta.io_boundary = "command_launch"`` directly on an
+# external-command edge (bash.py, WI-javoh) because there is no bash catalogue
+# to match against and, per ADR-0016's implementation note, there is not going
+# to be one — cataloguing ``curl`` as ``net_send`` would attribute curl's
+# network activity to the shell script, and no clean invariant separates
+# ``curl`` from ``git``.
+#
+# DISJOINT FROM ``OPAQUE_BOUNDARIES`` BY CONSTRUCTION, and the split is the
+# point rather than an accident of naming. A catalog-declarable boundary is
+# inert unless it is in ``CATALOG_BOUNDARY_TYPES``; a producer-stamped one is
+# inert if it IS, because ``_parse_catalog`` iterates exactly that tuple and
+# the catalogue channel would then be the one carrying it. Each set is
+# reachable through exactly one channel, and a test asserts each direction —
+# collapsing them into a single set makes one half unreachable whichever way it
+# is spelled.
+#
+# WHY THIS WAS NOT LIVE WHEN IT WAS WRITTEN, and what arms it. bash ships no
+# catalogue, so ``_external_call_sites`` drops its edges on ``catalog is None``
+# and the INV-dabov language gate answers first. The hole is held shut by the
+# ABSENCE OF ONE FILE that three places in this tree recommend adding. Measured
+# on the shipped CLI over a two-line script whose only command is
+# ``curl -o /etc/cron.d/pwned <url>``, claim "never writes to the host
+# filesystem": with no bash.yaml, ``inconclusive`` rc 2; with a six-line
+# ``curl -> net_send`` bash.yaml, ``confirmed`` rc 0 — a green tick over a write
+# into a root cron directory. Declaring ``subprocess`` alongside restores the
+# refusal, which is the control proving the row matched and the boundary
+# choice — not the analyzer's sight — decided the verdict.
+PRODUCER_OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"command_launch"})
+
 
 # ---------------------------------------------------------------------------
 # Provenance allowlist (Plan C, PR B)
