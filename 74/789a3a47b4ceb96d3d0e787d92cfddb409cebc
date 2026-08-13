@@ -1,0 +1,84 @@
+Original commit body from c237fa9c15e771f9cbd4b9ab2c95b6e62797a32b:
+
+INV-pojib (b)/(c). Remedy (a1) put the repo-supplied sanitizer into the verdict
+PROSE and stopped exactly where it stopped being useful: A CI GATE READS $?,
+NOT STDOUT. rc 0 was byte-identical whether a claim was earned by the analysis
+or handed over by an 8-line file the repository ships about itself.
+
+ADR-0016 section 4's fourth verdict -- specified in the original design,
+unimplemented since -- is now live: `confirmed_with_caveats`, EXIT CODE 3, with
+a structured `caveats` list (kind / entries / detail) in the JSON envelope so a
+consumer branches on a field instead of parsing English.
+VERIFY_CLAIMS_SCHEMA_VERSION 1.9 -> 2.0, the one NON-ADDITIVE bump in this
+release: a consumer testing verdict == "confirmed" stops seeing a claim it
+used to see.
+
+MEASURED end-to-end on the shipped CLI, three arms in one session, fixture =
+`os.remove(launder(os.environ["API_KEY"]))` with `launder` returning its
+argument:
+
+    flow present, no sanitizer anywhere          violated rc 1 -> violated rc 1
+    + 8-line repo-supplied sanitizer, IN-TREE
+      via the claims file's extra_catalogs:      confirmed rc 0 -> CAVEATS rc 3
+    no flow at all                               confirmed rc 0 -> confirmed rc 0
+
+CONSUMER CONTRACT CHANGE, stated rather than buried. A gate written
+`verify-claims ... || exit 1` now FAILS where it passed. That is deliberate and
+fail-closed. It applies to hypergumbo's own self-proof, which declares a
+zone-barrier sanitizer through extra_catalogs: by design -- no exemption was
+carved, because "except our own" is the dishonesty this closes.
+
+RAISED ONLY WHERE IT DISCRIMINATES. A shipped-catalogue sanitizer still earns a
+plain `confirmed` at rc 0. A caveat on every sanitized verdict would carry no
+information and a reader would learn to discount it -- that is remedy (a2),
+rejected on this item for exactly that reason, and shipping it as a verdict
+VALUE would be the same mistake with a wider blast radius.
+
+ONE PREDICATE, NOT A FOURTH LITERAL. Adding a verdict value is the change that
+punches holes in `!= "confirmed"` tests scattered across consumers, so
+CONFIRMING_VERDICTS is the single membership test and the coverage gate
+consumes it. Had `_require_coverage_to_confirm` kept its literal, a BLIND
+analysis would have returned `confirmed_with_caveats` instead of `inconclusive`
+-- widening the false-confirm class INV-bitig and INV-javam closed. Blindness
+dominates a caveat; a test pins that direction. Likewise `_credited_sanitizers`
+is the one home for "which sanitizers were credited, and whose": the prose and
+the caveat are two consumers of one fact, and a parity test asserts
+"(project-local)" in the text and `confirmed_with_caveats` in the value appear
+together IN BOTH DIRECTIONS.
+
+Every reader of `verdict` was enumerated before the value was added, not after:
+the coverage gate, the CLI icon/summary/exit-code block, and
+scripts/generate-security-md -- whose _BADGE dict returns "" for an unknown
+verdict, which would have rendered a caveated claim indistinguishable from a
+confirmed one in the very document that exists to not overstate what was
+verified.
+
+THE ITEM'S OWN "NOT SWEPT" QUESTION, ANSWERED AND NOT FIXED HERE. Whether
+user-supplied SOURCES or SINKS can suppress a finding the way sanitizers can:
+THEY CAN, by a different mechanism. Sanitizers .extend() the catalogue; sources
+and sinks merge through _merge_with_user_override, where an entry matching a
+shipped one on (module, name, kind) REPLACES it. A user sink re-declaring
+pathlib.Path / write_text out of the host_fs zone takes a real `violated` rc 1
+to `confirmed` rc 0 -- by the --taint-sinks flag AND the in-tree
+extra_catalogs: route -- and NO caveat is raised, because the shipped sink
+leaves the catalogue before propagation and there is no finding to attribute.
+Filed as INV-faput; detecting it means diffing the merged catalogue against the
+shipped one, a different subsystem and its own revertable PR. The scope limit
+is written into the CAVEAT_USER_SUPPLIED_SANITIZER docstring so this cannot
+read as the class closed.
+
+THE FIRST RUN OF THAT PROBE WAS A FALSE NULL and is recorded because it nearly
+shipped as "sinks cannot suppress": I spelled the user row
+`module: pathlib, methods: [Path.write_text]` while the shipped entry is
+`module='pathlib.Path', name='write_text'`, so the override key never matched.
+Caught by reading the MERGED CATALOGUE instead of the verdict -- the positive
+control the null needed. (Same slot-shape hazard as INV-fokik: the wrong
+spelling is inert, the right one silently load-bearing.)
+
+Also corrected in passing, because leaving it would contradict this change:
+docs/hypergumbo-spec.md still said "Inconclusive verdicts exit 0", false since
+ADR-0033 Phase 3 PR4 gave inconclusive rc 2 -- a reader acting on it would have
+built a gate that passes every claim the analysis could not check.
+
+Ref: INV-pojib (b/c), INV-faput (filed), ADR-0016 section 4.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
