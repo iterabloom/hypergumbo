@@ -1,0 +1,67 @@
+Original commit body from 62ddcd17208812d217694629331b731d7c1ae7f9:
+
+WI-zavut, the blocking half. The item's own filing names this first: "BLOCKED
+ON LOG ACCESS, which is the first thing to fix ... Until that is resolved the
+actual failure message has not been seen by anyone, and NOTHING here should be
+treated as a diagnosis."
+
+WHAT WAS WRONG. Several gates report on one commit -- push/woodpecker beside
+cron/full-suite -- and each is a SEPARATE Woodpecker pipeline with its own
+target_url. _github_fetch_job_log took the FIRST status carrying a target_url
+and broke out of the loop. The job name was applied only later, to choose a
+STEP inside a pipeline that had already been chosen wrongly. So every job name
+returned the push transcript, which is exactly what the item recorded: five
+different job names, one identical "396 passed" output.
+
+The job name was being asked the wrong question. It selected within a
+pipeline; nothing selected the pipeline.
+
+TWO RULES, in order:
+  1. an explicit job name selects its OWN gate, matched on the full context
+     or its trailing segment -- operators type "full-suite", not
+     "ci/woodpecker/cron/full-suite";
+  2. with no name, or a name matching nothing, prefer the gate that FAILED.
+     Reaching for a log means something broke, so defaulting to the first
+     status handed back the GREEN pipeline while a different gate was red --
+     the same wrong answer, reached without even a typo to blame. This
+     mirrors the step-level rule already in the file five lines below.
+
+MEASURED, on dev 45280d90 (push success + cron/full-suite failure):
+  before  ci-debug logs cron/full-suite -> the PUSH transcript, "396 passed"
+  after   ci-debug logs cron/full-suite -> the cron transcript, 174 lines,
+          ending "3 failed, 1498 passed, 2 skipped"
+Five unit tests pin it, including a control asserting the single-gate case is
+byte-identical to before -- the change must be strictly more capable, never
+less, which is the same contract WI-solob's original credential path shipped
+under.
+
+WHAT THE LOG SAYS, now that it can be read. Three failures, none of them a
+product regression, which is consistent with the item's evidence that the tree
+is green locally:
+  tests/test_rct_public_api_pinned.py  x2  ModuleNotFoundError: No module
+                                            named 'rich'
+  tests/test_smart_test_mypy_gate.py   x1  rc=2 (mypy infra failure) where the
+                                            fixture expects rc=1 (regression)
+The cron step's own pip line, read off the same log, installs pytest,
+pytest-xdist, pyyaml and hypothesis and nothing else -- no hypergumbo package,
+no rich, no mypy.
+
+I AM NOT SHIPPING THE WORKFLOW FIX IN THIS PR, and the reason is a discrepancy
+I could not explain rather than caution for its own sake. Reconstructing that
+container locally (a clean venv with exactly those four installs) fails 8 of
+the 9 tests in that file with "No module named 'hypergumbo_core'", where CI
+failed only 2 and with a different missing module. The file is byte-identical
+at that SHA -- git show confirms the same 9 tests -- so CI had hypergumbo_core
+importable and rich absent, which my reconstruction does not reproduce and the
+workflow file does not explain. Changing the install list on top of a model
+that is demonstrably wrong would be guessing with a green tick on it. Filed
+separately, with the log attached, so the next step is diagnosis using the
+tool this PR delivers.
+
+SCOPE: scripts/lib/github-api.sh is NOT in CODEOWNERS -- only the dormant
+scripts/lib/forgejo-api.sh is. That asymmetry is itself worth the owner's
+attention (the governance gate protects the dormant backend and leaves the
+live one open) and is raised on the item rather than acted on here.
+
+Ref: WI-zavut, WI-solob.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
