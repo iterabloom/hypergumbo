@@ -165,3 +165,78 @@ class TestLogsDegradation:
         assert "Could not retrieve log" in r.stdout
         assert "Cloudflare Access" in r.stderr
         assert "https://ci.example.test/build/9" in r.stderr
+
+
+# WI-zavut: two gates report on the same commit, so "which pipeline?" is a
+# real question and the job name is the only answer to it. Before this, the
+# target_url resolver took the FIRST status carrying one and broke out of the
+# loop; the job name was applied later, to pick a STEP inside the pipeline
+# that had already been chosen wrongly. Measured on dev 45280d90, which
+# carries push/woodpecker (success) beside cron/full-suite (failure):
+# `ci-debug logs cron/full-suite 45280d90` returned the PUSH transcript
+# ("396 passed"), and so did every other job name tried. The cron gate's log
+# had therefore never been read by anyone, while the gate reported FAILURE.
+_STATUS_TWO_GATES = json.dumps({
+    "state": "failure",
+    "statuses": [
+        {"state": "success", "context": "ci/woodpecker/push/woodpecker",
+         "target_url": "https://ci.example.test/repos/1/pipeline/100"},
+        {"state": "failure", "context": "ci/woodpecker/cron/full-suite",
+         "target_url": "https://ci.example.test/repos/1/pipeline/200"},
+    ],
+})
+
+
+class TestLogPipelineSelection:
+    """Which PIPELINE the log comes from, not which step within it."""
+
+    def _run(self, tmp_path, args):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        r, _ = run_script(
+            "ci-debug", repo, args,
+            fixtures=[{"match": "/commits/", "code": 200,
+                       "body": _STATUS_TWO_GATES}],
+            env=_GH, bindir=bindir,
+        )
+        return r
+
+    def test_named_job_selects_its_own_pipeline(self, tmp_path):
+        r = self._run(tmp_path, ("logs", "cron/full-suite"))
+        assert "pipeline/200" in r.stderr, (
+            "asking for the cron gate must resolve the CRON pipeline; "
+            f"got: {r.stderr}"
+        )
+        assert "pipeline/100" not in r.stderr
+
+    def test_named_job_matches_on_the_short_name_too(self, tmp_path):
+        """Operators type 'full-suite', not the full context string."""
+        r = self._run(tmp_path, ("logs", "full-suite"))
+        assert "pipeline/200" in r.stderr, r.stderr
+
+    def test_no_job_name_lands_on_the_gate_that_FAILED(self, tmp_path):
+        """The whole point of reaching for a log is that something broke.
+
+        Defaulting to the first status meant `ci-debug logs` with no
+        argument returned the GREEN pipeline's transcript while a different
+        gate was red — the same wrong answer, reached without even a typo to
+        blame. This mirrors the step-level rule already in the file.
+        """
+        r = self._run(tmp_path, ("logs",))
+        assert "pipeline/200" in r.stderr, r.stderr
+
+    def test_unmatched_job_name_still_degrades_rather_than_dying(self, tmp_path):
+        """An unknown name must not resolve to nothing at all — fall back to
+        the failed gate, which is the best available answer."""
+        r = self._run(tmp_path, ("logs", "no-such-job"))
+        assert "pipeline/200" in r.stderr, r.stderr
+
+    def test_single_gate_behaviour_is_unchanged(self, tmp_path):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        r, _ = run_script(
+            "ci-debug", repo, ("logs",),
+            fixtures=[{"match": "/commits/", "code": 200, "body": _STATUS_OK}],
+            env=_GH, bindir=bindir,
+        )
+        assert "https://ci.example.test/build/9" in r.stderr
