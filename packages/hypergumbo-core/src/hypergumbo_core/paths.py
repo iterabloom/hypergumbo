@@ -549,3 +549,35 @@ def is_test_node(path: str, meta: Optional[Dict[str, Any]]) -> bool:
             return True
 
     return False
+
+
+# A node ``path`` that names no filesystem file. Synthetic nodes minted for
+# reference TARGETS use ``<external>``; the angle bracket is the established
+# convention, so the prefix (not an exact-match set) is what identifies them.
+_NON_FILE_PATH_PREFIX = "<"
+
+
+def names_no_source_file(path: str | None) -> bool:
+    """True when *path* names no file in the repository.
+
+    Two shapes qualify: a synthetic sentinel such as ``<external>``, and an
+    absent path. Both mean "this node is not a source file", and neither is
+    evidence about what the repository CONTAINS — an ``<external>`` node
+    exists precisely because some other file referenced it.
+
+    INV-sarum's second measurement is why this is shared rather than
+    re-derived. The taint language census first scoped itself by asking
+    whether a node's path classified as a test; ``<external>`` does not, so
+    on the real self-survey go, java, rust, swift and elixir stayed in the
+    census on the strength of 9, 9, 8, 4 and 1 ``<external>`` nodes with zero
+    production source files between them — the exact five languages the fix
+    was meant to drop. Reading a reference target as evidence of presence
+    inverts its meaning.
+
+    ``sketch._map_source_paths`` has needed the same predicate since
+    INV-jumim and carried a private copy of it; this is that copy's one home
+    (L53: a second home for one fact drifts immediately).
+    """
+    if not path:
+        return True
+    return path.startswith(_NON_FILE_PATH_PREFIX)
