@@ -178,3 +178,65 @@ def test_missing_security_md_errors(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(sys, "argv", ["generate-security-md"])
     rc = mod.main()
     assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# WI-kozos: the audit must state WHICH execution context it covers.
+#
+# All 18 claims declare python cmd_* handlers as sources — the INSTALLED
+# CLI's behaviour. The artifact was silent about every other way code in this
+# repository runs, so a reader could take "hypergumbo's safety claims are
+# checked by running hypergumbo against its own source" as a claim about the
+# repository rather than about the shipped CLI. The smaller statement is the
+# true one, and it is the one everything else here is built on.
+# ---------------------------------------------------------------------------
+
+
+def test_scope_section_is_generated() -> None:
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "### What this audit covers" in block
+
+
+def test_scope_names_the_covered_context_explicitly() -> None:
+    """'The installed CLI' is the whole point — it must be unmissable."""
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "installed CLI" in block
+
+
+def test_scope_names_every_uncovered_context() -> None:
+    """A scope statement that omits an uncovered context is worse than none:
+    it reads as completeness. Each row here is a way code in this repo runs
+    that the 18 claims say nothing about."""
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    for uncovered in ("conftest", "hooks", "CI", "build.rs"):
+        assert uncovered in block, f"scope table omits {uncovered!r}"
+
+
+def test_scope_states_that_conftest_runs_at_collection() -> None:
+    """The pytest row is stronger than it looks and the wording must carry
+    that: conftest executes at COLLECTION, so `pytest --collect-only` runs it
+    with no test selected — before any selection logic could exclude it."""
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "collection" in block.lower()
+
+
+def test_scope_discloses_that_test_sourced_flows_are_discarded() -> None:
+    """WI-bifob discards test-sourced flows — right for the shipped-tool
+    threat model, exactly backwards for 'is this repo safe to run tests in'.
+    The artifact never said which model it served; now it must."""
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "threat model" in block.lower()
+
+
+def test_scope_marks_the_md_txt_finding_as_configuration_not_structure() -> None:
+    """Verified safe, but revocable by one line in pyproject.toml. Recording
+    it as a structural guarantee would be the overclaim this section exists
+    to prevent."""
+    mod = _load_script_module()
+    block = mod._render_full_generated_block({"claims": []})
+    assert "configuration" in block.lower()
