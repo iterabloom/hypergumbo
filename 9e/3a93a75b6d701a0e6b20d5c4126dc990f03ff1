@@ -1,0 +1,97 @@
+Original commit body from f94d9e7aa977d150b171c1f1ead1d57fbced6543:
+
+INV-hazov. Seven times between April and August a meta slot several writers
+could reach held a single value, and the last writer silently erased the
+earlier ones: INV-forim, the BUG-04/05 family, INV-zumin, INV-pojib,
+INV-virat, the verify_claims caveat list, and a seventh found live while
+filing this class item. Every one was fixed correctly, locally, and in a way
+that did nothing to make the next one harder. That is a missing mechanism,
+not a run of bad luck.
+
+WHY THE EXISTING REGISTRY COULD NOT HAVE CAUGHT ANY OF THEM. axis_meta_keys
+governs WHICH keys may exist and WHAT VOCABULARY their values draw from. It
+is blind to ARITY by construction, and the offending write in INV-virat was
+a correctly-spelled assignment of a registered key -- so a finished
+conformance linter (the follow-on the registry's own docstring says it owes,
+WI-vusot, still P4) would have waved it straight through. The gap was never
+enforcement of the vocabulary rule; it was that no rule existed about how
+many writers reach a slot.
+
+MetaKeySpec gains write_discipline -- single_writer / merge_union /
+producer_primary / refines / unaudited -- with a mandatory discipline_note
+on every value that asserts something. write_meta_key() is the ONE place a
+shared key is written, so the fold lives once instead of being re-derived
+and re-forgotten per call site. io_boundary.py's INV-virat branch is gone:
+"the producer's stamp survives" is now just what the key's declaration
+MEANS, so there is no second place left to forget it.
+
+UNAUDITED IS THE DEFAULT ON PURPOSE. Declaring single_writer wrongly buys a
+FALSE assurance, which is worse than no assurance -- the INV-faput lesson,
+where a mislabelled catalogue row bought a `confirmed`. The count is
+reported as visible debt (82 of 87 keys) rather than hidden behind a
+permissive default, and rule 2 fails CLOSED: a key a second writer can
+demonstrably reach may not sit at the default.
+
+THE DISCRIMINATOR WAS VALIDATED BEFORE IT WAS TRUSTED, and this is the part
+that mattered. 80 registered keys are written by more than one MODULE. Only
+FOUR are written both at construction and by post-hoc mutation -- and two of
+those four are the io keys that produced INV-virat and INV-zumin. A
+measurement that independently rediscovers both known defects is a control.
+The module count would have reported 80 mostly-benign hits and taught
+nobody anything: each of 26 linkers writing framework_dispatch on edges it
+constructs itself has 26 writers and zero collisions. Module count is not
+collision count, and the first draft of this census reported the wrong one.
+
+THE SEVENTH INSTANCE, found by the census and fixed here.
+framework_patterns.enrich_symbols assigned pattern matches over the top of
+Symbol.meta["concepts"], so a symbol the ANALYZER had stamped (python's
+main_guard, bash's shell_script, go's middleware) lost that fact the moment
+any framework pattern matched it. Measured with the control firing on both
+runs:
+
+  before  [{'concept': 'producer_fact'}] -> [{'concept': 'route'}]
+  after   both present
+
+The same file already contained a hand-rolled union in its OTHER concepts
+writer -- one fact, two homes, one of them wrong. Both now route through the
+single fold.
+
+INV-FORIM IS CLOSED BY CONSTRUCTION RATHER THAN BY LUCK. Nine sites still
+assign a fresh dict wholesale to .meta immediately after constructing the
+object. All nine are harmless TODAY only because none of them passes a kwarg
+that lands in meta, so there is nothing to destroy -- safety by coincidence
+of which kwargs those call sites happen to use. Adding one access_mode= to
+any of them reinstates the bug with no test failing. Rule 3 flags that
+pairing specifically, which converts the coincidence into a guarantee at
+zero migration cost.
+
+THREE INSTRUMENT DEFECTS, all found by checking rather than by a failing
+test, recorded because each would have produced a confident wrong number:
+
+  * a module-wide name scan flagged an unrelated `for sym in ...` loop in
+    go.py, because `sym` was bound to a meta-bearing construction in a
+    DIFFERENT function. Rule 3 is now evaluated per scope.
+  * `if sym.meta is None: sym.meta = {}` is an INITIALISATION, not a
+    replacement. An empty literal destroys nothing.
+  * routing a write through the chokepoint made the key VANISH from the
+    census (4 -> 1), because only the bypass shape was counted. A fixed key
+    could then have been silently down-declared to unaudited. Chokepoint
+    calls now count as writers.
+
+Also corrected in the analysis that produced this: a `name=` grep reported
+io_boundary and io_primitive as unregistered when the registry spells its
+specs POSITIONALLY. Two of the four io keys were already registered; only
+io_boundaries and io_mode were not.
+
+MYPY RATCHET: this change breached it by +2 (arg-type 105->106,
+attr-defined 3->4), both mine -- an unnarrowed ast.AST and an `Any | None`
+into a set[str]. Fixed at source rather than baselined; back to 672, delta 0.
+
+SCOPE STATED RATHER THAN IMPLIED: this lands the mechanism and declares the
+five keys there is evidence for. It does NOT audit the other 82, and the
+checker prints that number on every clean run so the debt stays visible.
+
+Ref: INV-hazov, INV-virat, INV-zumin, INV-pojib, INV-forim, INV-faput,
+WI-vusot, ADR-0024.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
