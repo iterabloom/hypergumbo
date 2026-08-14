@@ -32,6 +32,7 @@ from hypergumbo_core.io_boundary import (
     IoPrimitive,
     load_catalog,
     mode_discriminated_names,
+    mode_discriminated_primitives,
     resolve_mode_boundary,
     select_by_mode,
 )
@@ -95,6 +96,213 @@ class TestModeDiscriminatedNames:
             ],
         )
         assert mode_discriminated_names(cat) == frozenset()
+
+
+class TestTheKeyIsThePRIMITIVE_NotTheShortName:
+    """INV-kaduh's control finding: short-name keying gates the wrong rows.
+
+    ``mode_discriminated_names`` answers "which SHORT NAMES need a mode", which
+    is the right question for an EMITTER — it sees ``open(`` before it knows the
+    receiver. It is the wrong question for the SINK DERIVATION, which holds the
+    whole ``IoPrimitive`` and was keying ``requires_mode`` on ``prim.name``.
+
+    Rust pays for that. ``std::fs::File.open`` is fs_read and
+    ``std::fs::OpenOptions.open`` is fs_write — two DIFFERENT primitives that
+    share a short name, exactly the shape ``lookup_with_module`` exists to keep
+    apart. Under short-name keying the OpenOptions sink inherited
+    ``requires_mode="fs_write"``, no Rust analyzer stamps ``io_mode``, and
+    ``resolve_mode_boundary(None)`` is ``fs_read`` — so Rust's only mode-gated
+    host_fs write sink matched NOTHING, in every repo, unconditionally.
+
+    That is the fail-open direction: a deleted sink is a clean verdict.
+    """
+
+    def test_same_name_in_different_modules_is_not_a_mode_question(
+        self,
+    ) -> None:
+        cat = IoBoundaryCatalog(
+            language="rust",
+            status="in_progress",
+            primitives=[
+                IoPrimitive("fs_read", "std::fs::File", "open", "method"),
+                IoPrimitive(
+                    "fs_write", "std::fs::OpenOptions", "open", "method",
+                ),
+            ],
+        )
+        assert mode_discriminated_primitives(cat) == frozenset()
+
+    def test_the_same_primitive_under_both_boundaries_still_qualifies(
+        self,
+    ) -> None:
+        assert mode_discriminated_primitives(_dual_catalog()) == frozenset(
+            {("builtins", "open", "function")},
+        )
+
+    def test_live_rust_openoptions_sink_is_not_mode_gated(self) -> None:
+        """The behavioural half, on the SHIPPED catalogue.
+
+        A fixture-only version of this test would go green while production
+        kept deriving the gated sink from ``rust.yaml``.
+        """
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+
+        sinks = load_builtin_taint_catalog().sinks_for_language("rust")
+        opens = [
+            s for s in sinks
+            if s.qualified_name == "std::fs::OpenOptions.open"
+        ]
+        assert opens, "rust must still derive an OpenOptions.open sink"
+        assert all(s.requires_mode == "" for s in opens), (
+            "OpenOptions.open is unconditionally write-capable; gating it on a "
+            "mode no rust analyzer stamps deletes the sink outright"
+        )
+
+
+class TestSimultaneousIsNotAModeQuestion:
+    """A primitive that crosses BOTH boundaries in one call has no mode to read.
+
+    ``filelib:ensure_dir/1`` stats the path and creates the missing parents —
+    fs_read and fs_write are both true, at once, and there is no mode argument
+    anywhere in its signature. ``IoPrimitive.simultaneous`` is the declared
+    marker for exactly this, so the derivation must consult it instead of
+    inferring a mode question from the boundary pair alone.
+
+    Left un-consulted it was the same deletion as rust's: erlang and elixir
+    (which inherits erlang) both derived a ``requires_mode="fs_write"``
+    ensure_dir sink that no analyzer could ever satisfy.
+    """
+
+    def test_simultaneous_pair_is_excluded(self) -> None:
+        cat = IoBoundaryCatalog(
+            language="erlang",
+            status="in_progress",
+            primitives=[
+                IoPrimitive(
+                    "fs_read", "filelib", "ensure_dir", "function",
+                    simultaneous=True,
+                ),
+                IoPrimitive(
+                    "fs_write", "filelib", "ensure_dir", "function",
+                    simultaneous=True,
+                ),
+            ],
+        )
+        assert mode_discriminated_primitives(cat) == frozenset()
+
+    @pytest.mark.parametrize("language", ["erlang", "elixir"])
+    def test_live_ensure_dir_sink_is_not_mode_gated(
+        self, language: str,
+    ) -> None:
+        from hypergumbo_core.taint import load_builtin_taint_catalog
+
+        sinks = load_builtin_taint_catalog().sinks_for_language(language)
+        rows = [
+            s for s in sinks if s.qualified_name == "filelib.ensure_dir"
+        ]
+        assert rows, f"{language} must still derive an ensure_dir sink"
+        assert all(s.requires_mode == "" for s in rows)
+
+
+class TestEveryModeGatedLanguageHasAProducer:
+    """INV-kaduh proper: a gate whose input nobody produces is a deletion.
+
+    ``requires_mode`` and ``select_by_mode`` both consume ``meta["io_mode"]``.
+    Python's analyzer stamps it; C's did not, so ``fopen(p, "w")`` tagged
+    ``fs_read`` and the ``stdio.fopen`` write sink never matched — an EXAMINED
+    negative for the boundary that is actually true, which reads clean rather
+    than inconclusive.
+
+    This is the parity test the item asked for, and it is written over the LIVE
+    catalogues so the NEXT language to declare a mode-discriminated primitive
+    fails HERE instead of silently classifying every write as a read.
+    """
+
+    def test_every_mode_discriminated_language_declares_where_the_mode_sits(
+        self,
+    ) -> None:
+        import pathlib
+
+        import hypergumbo_core.io_boundary as io_boundary_mod
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        primitives_dir = (
+            pathlib.Path(io_boundary_mod.__file__).parent / "io_primitives"
+        )
+        unproduceable: list[str] = []
+        for yaml_path in sorted(primitives_dir.glob("*.yaml")):
+            language = yaml_path.stem
+            catalog = load_catalog(language)
+            for module, name, _kind in mode_discriminated_primitives(catalog):
+                if mode_argument_for(language, name) is None:
+                    unproduceable.append(f"{language}:{module}.{name}")
+        assert not unproduceable, (
+            "these primitives are boundary-decided by io_mode but no analyzer "
+            "knows where their mode argument sits, so every call is "
+            f"classified as fs_read: {unproduceable}"
+        )
+
+
+class TestModeArgumentResolution:
+    """Which languages can answer "where does the mode sit", and which cannot.
+
+    ``None`` is the load-bearing answer here, not a fallthrough: it is exactly
+    the condition :class:`TestEveryModeGatedLanguageHasAProducer` refuses when
+    the catalogue ALSO declares the primitive mode-discriminated. A language
+    that silently returned some other language's table would satisfy that
+    parity test while stamping the wrong argument.
+    """
+
+    def test_a_language_with_its_own_table_answers(self) -> None:
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        spec = mode_argument_for("python", "open")
+        assert spec is not None
+        assert (spec.position, spec.keyword) == (1, "mode")
+
+    def test_c_declares_no_keyword_because_c_has_none(self) -> None:
+        """Not a placeholder — a keyword lookup in C would never match."""
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        spec = mode_argument_for("c", "fopen")
+        assert spec is not None
+        assert (spec.position, spec.keyword) == (1, None)
+
+    def test_a_child_language_inherits_through_the_catalogue_parent(
+        self,
+    ) -> None:
+        """cpp gets C's answer by the SAME link it gets C's rows by.
+
+        A copied ``cpp`` entry would be a second home for one fact and would
+        drift on the first edit — the failure this module has paid for.
+        """
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        assert mode_argument_for("cpp", "fopen") == mode_argument_for(
+            "c", "fopen",
+        )
+
+    def test_a_language_with_no_table_and_no_parent_is_none(self) -> None:
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        assert mode_argument_for("go", "open") is None
+
+    def test_a_language_whose_parent_also_has_no_table_is_none(self) -> None:
+        """kotlin's catalogue parent is java, and java stamps no mode.
+
+        Inheritance must not manufacture an answer out of an absent parent
+        table — that would be the "clean extreme" this repo distrusts.
+        """
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        assert mode_argument_for("kotlin", "open") is None
+
+    def test_a_known_language_asked_about_an_unlisted_name_is_none(
+        self,
+    ) -> None:
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        assert mode_argument_for("c", "fwrite") is None
 
 
 class TestResolveModeBoundary:

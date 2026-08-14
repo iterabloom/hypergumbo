@@ -59,6 +59,7 @@ from hypergumbo_core.analyze.base import (
     make_unresolved_edge,
     node_text,
     populate_docstrings_from_tree,
+    stamp_io_mode_from_call,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
@@ -493,6 +494,10 @@ def _extract_edges(
             current_function = _get_enclosing_function(
                 node, source, file_path, global_symbols, local_symbols,
             )
+            # INV-kaduh. Recorded before the branch and applied after it, so
+            # every edge this ONE call produces carries the mode — rather than
+            # at each Edge.create inside, which is the shape that drifts.
+            _edges_before_call = len(edges)
             if current_function:
                 # Get the function being called
                 func_node = node.child_by_field_name("function")
@@ -549,6 +554,10 @@ def _extract_edges(
                                 origin_run_id=run.execution_id,
                                 evidence_type="function_pointer_arg",
                             ))
+
+            stamp_io_mode_from_call(
+                edges, _edges_before_call, node, source, "c",
+            )
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":

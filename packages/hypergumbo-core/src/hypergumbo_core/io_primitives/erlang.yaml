@@ -64,7 +64,23 @@ fs_read:
   - module: file
     functions: [read_file, read, read_line, pread, open, consult, path_consult, eval, script, list_dir, list_dir_all, read_file_info, read_link_info, read_link]
   - module: filelib
-    functions: [find_file, find_source, is_dir, is_file, is_regular, file_size, last_modified, fold_files, wildcard, ensure_dir]
+    functions: [find_file, find_source, is_dir, is_file, is_regular, file_size, last_modified, fold_files, wildcard]
+  # INV-kaduh: split out of the row above and declared `simultaneous` on BOTH
+  # sections. `filelib:ensure_dir/1` stats the path and creates whatever
+  # parents are missing — one call, both boundaries, and no mode argument
+  # anywhere in its signature for anything to disambiguate.
+  #
+  # Undeclared it looked exactly like `builtins.open`'s genuine dual
+  # classification, so the sink derivation gated the fs_write row on an
+  # `io_mode` no erlang (or elixir, which inherits this catalogue) analyzer
+  # stamps — and `resolve_mode_boundary(None)` is `fs_read`, so the write sink
+  # matched nothing at all. `simultaneous` is the declared marker for this
+  # third shape; the rows must agree or `simultaneous_boundaries_for` refuses
+  # the primitive rather than picking one.
+  - module: filelib
+    functions: [ensure_dir]
+    simultaneous: true
+    notes: "Reads to check, writes to create the missing parents; no mode argument exists"
   - module: prim_file
     functions: [read_file, read, list_dir, read_file_info]
     notes: "Low-level file operations; usually called via file module"
@@ -75,8 +91,13 @@ fs_read:
 fs_write:
   - module: file
     functions: [write_file, write, pwrite, truncate, delete, rename, make_dir, del_dir, make_link, make_symlink, change_mode, change_owner, change_group, change_time]
+  # See the fs_read section: `ensure_dir` carries `simultaneous` on both rows
+  # or the primitive is refused. `ensure_path` is write-only and stays plain.
   - module: filelib
-    functions: [ensure_dir, ensure_path]
+    functions: [ensure_dir]
+    simultaneous: true
+  - module: filelib
+    functions: [ensure_path]
 
 net_send:
   - module: gen_tcp
