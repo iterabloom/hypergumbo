@@ -428,7 +428,32 @@ class BashAnalyzer(TreeSitterAnalyzer):
         seen_launches: set[tuple[str, str]] = set()
 
         for node in iter_tree(tree.root_node):
-            if node.type == "command":
+            if node.type == "file_redirect":
+                # INV-vavup: the SHELL'S OWN write, which is a different
+                # surface from a launched program's I/O. ADR-0016 forbids
+                # attributing curl's network activity to the script that ran
+                # it; it says nothing about `echo x > file`, where the shell
+                # itself opens and writes the target (echo is a builtin, and
+                # even for an external command the redirection is established
+                # before exec). Attributing fs_write here is the same standing
+                # os.remove has in python.
+                #
+                # ANALYZER EMITS, CATALOGUE CLASSIFIES — the shipped
+                # module_attr_ref precedent (os.environ is an attribute
+                # access, not a call, and reaches the boundary pipeline as a
+                # synthesized edge). The row lives in io_primitives/bash.yaml.
+                # Compute the enclosing symbol HERE rather than reading the
+                # `current_function` the command branch happens to have left
+                # behind: that binding depends on tree-walk order, so a
+                # redirect reached before any command would read a stale
+                # value or none at all.
+                edge = self._redirect_edge(
+                    node, source,
+                    _get_enclosing_function(node) or module_symbol, run,
+                )
+                if edge is not None:
+                    edges.append(edge)
+            elif node.type == "command":
                 cmd_name_node = find_child_by_type(node, "command_name")
                 if cmd_name_node:
                     word_node = find_child_by_type(cmd_name_node, "word")
@@ -538,6 +563,77 @@ class BashAnalyzer(TreeSitterAnalyzer):
                                             ))
 
         return edges
+
+    # POSIX redirection operators, by the boundary they cross and the mode
+    # they open the target in. `>` and `>>` are ONE primitive at two modes,
+    # not two primitives — the truncate/append distinction rides on io_mode
+    # (the builtins.open pattern) so it cannot become an INV-zumin row-order
+    # collision. `>|` is `>` with noclobber defeated: same write, same mode.
+    # The MODE only. Which BOUNDARY an operator crosses is the catalogue's
+    # call (io_primitives/bash.yaml), not the analyzer's — ADR-0016's
+    # amendment puts the operator in data so a divergent shell (tcsh, fish)
+    # can be given different rows without touching this file. `>|` is `>`
+    # with noclobber defeated: same write, same mode.
+    _REDIRECT_OPS: ClassVar[dict[str, str]] = {
+        ">": "w", ">|": "w", ">>": "a", "<": "r",
+    }
+
+    def _redirect_edge(
+        self,
+        node: "tree_sitter.Node",
+        source: bytes,
+        enclosing: Optional[Symbol],
+        run: AnalysisRun,
+    ) -> Optional[Edge]:
+        """One synthesized edge for a `file_redirect`, or None.
+
+        Returns None only for operators this catalog does not model (here-doc
+        bodies, fd duplication such as `2>&1`, and the process-substitution
+        forms) — NOT for an unresolvable target. A redirect whose target is a
+        variable (`> "$OUT"`) still emits, marked unresolved: the write
+        happened, and staying silent about it is the fail-open direction this
+        area keeps paying for. An honest "wrote somewhere I cannot name" is
+        strictly better than nothing.
+        """
+        op_node = next(
+            (c for c in node.children if c.type in self._REDIRECT_OPS), None,
+        )
+        if op_node is None or enclosing is None:
+            return None
+        operator = op_node.type
+        mode = self._REDIRECT_OPS[operator]
+
+        target_node = next(
+            (c for c in node.children
+             if c.type in ("word", "string", "raw_string",
+                           "concatenation", "simple_expansion", "expansion")),
+            None,
+        )
+        target = node_text(target_node, source) if target_node is not None else ""
+        target = target.strip('"\'')
+        # A target naming a variable cannot be resolved to a path here; the
+        # DDG is where that would be answered, not the analyzer.
+        resolved = bool(target) and "$" not in target
+
+        return Edge.create(
+            src=enclosing.id,
+            dst=f"bash:redirect:0-0:{operator}:unresolved",
+            dst_ref=ExternalRef(
+                lang="bash", module_path="redirect", name=operator,
+            ),
+            edge_type="calls",
+            line=node.start_point[0] + 1,
+            evidence_type="ast_call",
+            is_resolved=False,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            meta={
+                "io_primitive": f"redirect.{operator}",
+                "io_mode": mode,
+                "redirect_target": target or "<unresolved>",
+                "redirect_target_resolved": resolved,
+            },
+        )
 
 
 _analyzer = BashAnalyzer()

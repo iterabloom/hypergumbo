@@ -5566,9 +5566,41 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for lang in sorted(taint_languages):
             src_count = len(taint_catalog.sources_for_language(lang))
             snk_count = len(taint_catalog.sinks_for_language(lang))
-            if src_count == 0 and snk_count == 0:
-                # Neither sources nor sinks for this language — taint-flow
-                # cannot meaningfully analyze it. Surface the gap.
+            if src_count == 0 or snk_count == 0:
+                # A FLOW NEEDS BOTH ENDS. This predicate was ``and`` — a
+                # language counted as analysable on ONE half of a catalogue —
+                # and that read as "supported" while propagation was
+                # structurally impossible, so it guaranteed ZERO findings
+                # rather than wrong ones. Zero findings is what ``confirmed``
+                # is made of.
+                #
+                # It became reachable when io_primitives stopped being only a
+                # BOUNDARY catalogue: the shipped taint_sinks/ tree was
+                # retired (51e1d232f3) and sinks are now auto-derived from
+                # io_primitives via AUTO_SINK_ZONE_MAP. So adding
+                # io_primitives/bash.yaml for redirection — a boundary fact —
+                # silently minted 3 bash SINKS, bash left this list with 0
+                # sources, and the blind gate below was disarmed.
+                #
+                # MEASURED on the shipped CLI, a script whose only statement
+                # is ``echo "$API_KEY" > /etc/cron.d/pwned`` against the claim
+                # "host_secret must not reach host_fs":
+                #     with ``and``   confirmed, rc 0   <- false confirm
+                #     with ``or``    inconclusive, rc 2
+                # Worse than the flip alone: under ``and`` the stderr note and
+                # the unsupported_taint_languages field BOTH went silent, so a
+                # DISCLOSED false confirm became an undisclosed one.
+                #
+                # The code already believed this three lines of context away —
+                # the propagation loop below is guarded by
+                # ``if per_lang_sources and per_lang_sinks``. This predicate
+                # now agrees with it.
+                #
+                # Collateral, measured across the 15 catalogued languages:
+                # only one-sided languages change classification (kotlin
+                # 45/93, scala 61/76, cpp 17/53 all carry both halves). The
+                # boundary-visibility win is kept in full — a boundary claim
+                # over that same script still returns ``violated``.
                 unsupported_taint_languages.append(lang)
                 continue
             per_lang_sources[lang] = taint_catalog.sources_for_language(lang)
@@ -5605,7 +5637,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 lang_sources = per_lang_sources.get(lang, [])
                 lang_sinks = per_lang_sinks[lang]
                 lang_sans = per_lang_sanitizers.get(lang, [])
-                if not lang_sources or not lang_sinks:
+                # INV-potuf: UNREACHABLE since the census predicate above
+                # started requiring both halves — a language only reaches
+                # this loop with sources AND sinks, so this can no longer
+                # fire. Kept as defence in depth rather than deleted (it is
+                # the last guard before propagation), but NOT counted as
+                # covered: claiming a test exercises it would be false.
+                #
+                # This guard is also the evidence that the census predicate
+                # was wrong: the same rule, stated correctly here and
+                # incorrectly 70 lines up, for four months. If the census
+                # predicate is ever loosened again, this fires and the two
+                # disagree once more — so it is a tripwire, not dead weight.
+                if not lang_sources or not lang_sinks:  # pragma: no cover
                     continue
                 # WI-dilih: rewrite python:external:0-0:NAME:unresolved
                 # dsts to module-resolved form before either propagation
