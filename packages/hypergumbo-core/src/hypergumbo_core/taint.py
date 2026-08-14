@@ -1089,6 +1089,7 @@ def _derive_auto_imports_from_io_primitives(
     overlay rather than attributing I/O to the wrong tree.
     """
     from hypergumbo_core.io_boundary import (
+        _CATALOG_ALIASES,
         load_catalog,
         load_overlay_catalog,
         mode_discriminated_primitives,
@@ -1107,12 +1108,33 @@ def _derive_auto_imports_from_io_primitives(
     if not io_catalog_dir.is_dir():
         return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang
 
-    for yaml_path in sorted(io_catalog_dir.glob("*.yaml")):
+    # THE LANGUAGES ASKED FOR, NOT THE FILES ON DISK (INV-potuf). An alias has
+    # no catalogue file of its own — ``_CATALOG_ALIASES`` maps
+    # ``typescript -> javascript`` and ``groovy -> java`` — so a loop over
+    # ``*.yaml`` never visits either, and both derived ZERO sinks while their
+    # sources keyed under their own name. One language, two halves, two
+    # different spellings: a flow could start in typescript and never arrive.
+    #
+    # ``load_catalog`` already resolves the alias (and the ``_CATALOG_PARENTS``
+    # chain); nothing here needed to learn about aliasing beyond ASKING.
+    for language in sorted(
+        {p.stem for p in io_catalog_dir.glob("*.yaml")} | set(_CATALOG_ALIASES)
+    ):
         catalog = load_catalog(
-            yaml_path.stem,
-            overlay_paths=overlays_by_lang.get(yaml_path.stem) or None,
+            language,
+            overlay_paths=overlays_by_lang.get(language) or None,
         )
-        lang = catalog.language
+        # BUCKET UNDER THE LANGUAGE REQUESTED, NOT ``catalog.language``. For an
+        # alias those differ — ``load_catalog("typescript").language`` is
+        # ``"javascript"``, because the field comes from the YAML that was
+        # actually read — so bucketing by the catalogue's own name is what fed
+        # typescript's rows to javascript and left typescript empty.
+        #
+        # The boundary arm already does exactly this, and has since the alias
+        # was introduced: ``cli.py`` keys ``catalogs`` under both names with a
+        # comment naming these same two aliases. This is that symmetry
+        # restored on the taint arm, not a new policy.
+        lang = language
         ambiguous_by_lang[lang] = (
             ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names
         )
