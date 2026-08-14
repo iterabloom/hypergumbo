@@ -1,0 +1,99 @@
+Original commit body from af818e4b757ad6a7a267e44f32ebcf809f0ace16:
+
+INV-vavup, the owner-decided route to INV-dabuf, plus the predicate defect it
+exposed (INV-potuf). Both land together because shipping the first without the
+second is a false confirm -- measured, below.
+
+PART 1 -- REDIRECTION (INV-vavup)
+
+bash.py dispatched on function_definition / declaration_command / command
+only, so redirection emitted NOTHING. Measured on an 8-statement script of the
+common idioms: 5 edges, every one a command_launch, and zero for the three
+writes to host paths. The launch surface was emitted; the write surface was
+invisible. `echo "$SECRET" > /etc/cron.d/pwned` is the same cron-dropper
+INV-larol was filed about, written with a builtin and a redirect instead of
+`curl -o`, and it went straight through.
+
+ADR-0016 NEVER FORBADE THIS, and I misread it twice before measuring. It rules
+out attributing a LAUNCHED program's I/O to the script that ran it -- correct
+for `curl -o file`, where curl performs the write. `echo x > file` is the OTHER
+surface: the shell itself opens and writes the target (echo is a builtin, and
+even for an external command the redirection is established before exec), so
+fs_write is exactly right -- the standing os.remove has in python.
+
+Usual split: the ANALYZER emits an edge for the construct, the CATALOGUE
+classifies the operator, on the shipped module_attr_ref precedent (os.environ
+is an attribute access, not a call, and reaches the pipeline the same way).
+Putting the operator in DATA is what lets a divergent shell (tcsh, fish) get
+different rows without touching the analyzer -- the conserved-set framing.
+`>` and `>>` are ONE primitive at two modes, truncate/append carried on
+io_mode rather than separate boundary rows that could collide under INV-zumin.
+A variable target (`> "$OUT"`) emits UNRESOLVED rather than skipping: a silent
+skip is the fail-open direction this area keeps paying for. Pipes are
+deliberately OUT -- `a | b` is process topology, not a filesystem write.
+
+PART 2 -- BOTH ENDS OF A FLOW (INV-potuf)
+
+The census marked a language taint-unsupported only when it had NEITHER
+sources NOR sinks. One-sided coverage makes propagation structurally
+impossible, so it guarantees ZERO findings -- and zero findings is what
+`confirmed` is made of. The predicate now requires both, agreeing with the
+propagation loop three lines away already guarded on
+`if per_lang_sources and per_lang_sinks`.
+
+It became reachable when io_primitives stopped being purely a BOUNDARY
+catalogue: the shipped taint_sinks/ tree was retired (51e1d232f3) and sinks
+are auto-derived from io_primitives via AUTO_SINK_ZONE_MAP. So Part 1's
+boundary catalogue silently minted 3 bash SINKS. Measured on the shipped CLI,
+a script whose only statement is `echo "$API_KEY" > /etc/cron.d/pwned`:
+
+  taint_flow claim   before: confirmed   rc 0     <- FALSE CONFIRM
+                     after:  inconclusive rc 2
+  boundary claim     after:  violated    rc 1     <- Part 1's win, intact
+
+Worse than the flip: under the old predicate the stderr note AND the
+unsupported_taint_languages field both went silent, so a DISCLOSED false
+confirm became an undisclosed one.
+
+USER-VISIBLE CHANGE BEYOND BASH, STATED RATHER THAN DISCOVERED LATER:
+TYPESCRIPT taint claims that read `confirmed` today read `inconclusive` after
+this. Typescript has 6 hand-written sources and 0 sinks -- sinks bucket by
+`catalog.language` and _CATALOG_ALIASES maps typescript->javascript, so its
+rows would land under javascript while its sources key under `typescript`.
+The two halves disagree about the language's name. That channel is LIVE ON DEV
+TODAY and predates this work: with bash.yaml removed, bash is 0/0 and
+unsupported under either predicate while typescript STILL flips. Filed as
+INV-potuf; its coverage gap is NOT fixed here (resolve to javascript's sinks /
+give it own rows / retire the alias is a real three-way decision).
+
+HOW THIS WAS ADJUDICATED. A three-judge panel plus two blind measurement
+passes, and they overturned me twice. I had concluded "must not ship"; the
+correct statement is "must not ship WITHOUT the predicate fix in the same PR",
+because the defect is SINK-ONLY support -- strictly worse than mis-support,
+since it looks analysable while guaranteeing zero findings. I had also
+suspected my own A/B was confounded between bash.py and bash.yaml; it was not,
+and the refutation came by a route I had not seen (the failing test builds a
+synthetic behavior map via --input, so the analyzer never runs). Two judges
+then disagreed about collateral; two blind passes over the full 89-language
+taxonomy settled it -- typescript and bash are the ONLY two affected, all 14
+other catalogued languages carry both halves, and both flips are toward FEWER
+confirmed verdicts.
+
+FOUR OF MY OWN ERRORS, each caught by measurement rather than reasoning, each
+green on the unit tests: the YAML used `name:` where the schema wants
+`functions:` (catalogue loaded 0 primitives, tagged nothing); the analyzer
+first decided write-vs-read itself, which defeats the point of operator-in-data;
+the template declared `status: in_progress` (overlays MUST be `overlay` -- it
+errors) and grouped commands under an invented `module: launch` that matches
+NOTHING and fails silently; and the redirect branch read a `current_function`
+the command branch happened to leave behind, so attribution depended on
+tree-walk order. mypy caught the last one.
+
+The shipped template is now its own positive control: loaded through
+load_catalog it matches, and the union result documents the thing users most
+need to know -- a row ADDS a claim without removing the launch opacity
+(io_boundary stays command_launch, io_boundaries gains the declared one), so a
+verdict resting on a launch stays qualified at rc 3, never clean.
+
+Ref: INV-vavup, INV-potuf, INV-dabuf, INV-larol, INV-zumin, ADR-0016.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
