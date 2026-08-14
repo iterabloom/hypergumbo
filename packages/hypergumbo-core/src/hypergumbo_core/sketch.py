@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge, is_external_boundary
+from .paths import names_no_source_file
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -5897,10 +5898,6 @@ def _format_symbols(
     return "\n".join(lines)
 
 
-# Node "path" values that name no filesystem file (e.g. "<external>").
-_NON_FILE_PATH_PREFIX = "<"
-
-
 def _map_source_paths(repo_root: Path, cached_results: Optional[dict[str, Any]]) -> list[Path]:
     """Distinct absolute source paths named by a behavior map's nodes.
 
@@ -5916,7 +5913,12 @@ def _map_source_paths(repo_root: Path, cached_results: Optional[dict[str, Any]])
     out: list[Path] = []
     for node in cached_results.get("nodes", []):
         path = node.get("path")
-        if not path or path.startswith(_NON_FILE_PATH_PREFIX):
+        # INV-sarum: one home for "this node names no source file". The
+        # private prefix constant that used to live here is now
+        # ``paths.names_no_source_file``, shared with the taint language
+        # census, which needed the identical question and got it wrong by
+        # asking a different one.
+        if names_no_source_file(path):
             continue
         abs_path = repo_root / path
         if abs_path in seen:

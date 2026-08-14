@@ -5082,6 +5082,71 @@ def _build_ddg_for_verify_claims(
     )
 
 
+def _census_languages(
+    nodes: list[dict[str, Any]], include_non_production: bool = False,
+) -> set[str]:
+    """Which languages this repo contains, as the TAINT arm counts them.
+
+    INV-sarum. ``_taint_blind_reason`` runs two checks that must agree about
+    what "present" means: this census (over NODES) decides which languages are
+    SUPPORTED, and ``compute_boundary_coverage`` then asks whether each of them
+    produced call edges — over a PRODUCTION-SCOPED edge list. The 08-13 fix
+    (``adfaaeebf2``) scoped the edges for both checks and left this census
+    unscoped, so a language present only as test fixtures was counted present
+    while its edges were deliberately excluded. The pair then read as analyzer
+    blindness: "supported language(s) ... were analyzed but produced no call
+    edges". Measured on a 152,154-edge self-survey that was elixir, go, java,
+    rust and swift — every tracked file of each under a test or fixture
+    directory.
+
+    INV-motos' shape for the third time in this one function: sharing the
+    predicate is not enough when the callers run it over different populations.
+
+    WHY PRODUCTION-SCOPED and not the other direction: ``SECURITY.md``'s scope
+    statement (WI-kozos) declares that the audit covers the INSTALLED CLI, so a
+    fixture is not part of what the claims describe. Parity with WI-bifob's
+    flow filter, and ``--include-non-production-sources`` widens BOTH so the
+    two cannot disagree in either direction.
+
+    SCOPED BY PRESENCE IN PRODUCTION SOURCE, NEVER BY HAVING PRODUCED EDGES.
+    The narrower-looking version — keep only languages that emitted scoped call
+    edges — is wrong in a way that is easy to miss and expensive: it also drops
+    a language that IS production code and emits nothing, which is exactly the
+    Kotlin case (roughly 95% of its catalogued sinks unreachable) that this
+    check exists to flag. That would turn the F69.A1 blindness signal into a
+    silent pass. Pinned by
+    ``test_a_PRODUCTION_language_that_emits_nothing_STILL_blocks``.
+
+    The classifier is IMPORTED, not re-derived — ``symbol_source_scope`` is the
+    same predicate the flow filter and the edge scoping already run (L53: a
+    second home for one fact drifts immediately).
+
+    PRESENCE MEANS A SOURCE FILE, NOT A REFERENCE TARGET. Measured on the real
+    self-survey after the first version of this fix: go, java, rust, swift and
+    elixir stayed in the census on the strength of 9, 9, 8, 4 and 1
+    ``<external>`` nodes, with zero production source files between them — the
+    exact five languages INV-sarum was filed about, surviving the narrowing
+    meant to drop them. A synthetic node exists BECAUSE a fixture referenced
+    it, so counting it as evidence of presence inverts its meaning.
+    ``names_no_source_file`` is the shared predicate for that (it was already
+    needed, privately, by ``sketch._map_source_paths``).
+    """
+    from .paths import names_no_source_file
+    from .verify_claims import SOURCE_SCOPE_PRODUCTION, symbol_source_scope
+
+    languages: set[str] = set()
+    for node in nodes:
+        lang = node.get("language")
+        if not lang or names_no_source_file(node.get("path")):
+            continue
+        if include_non_production:
+            languages.add(lang)
+            continue
+        if symbol_source_scope(node.get("id", "")) == SOURCE_SCOPE_PRODUCTION:
+            languages.add(lang)
+    return languages
+
+
 def _taint_blind_reason(
     has_taint_claims: bool,
     unsupported_taint_languages: list[str],
@@ -5486,7 +5551,19 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         per_lang_sources: dict[str, list["TaintSource"]] = {}
         per_lang_sinks = {}
         per_lang_sanitizers: dict[str, list["TaintSanitizer"]] = {}
-        for lang in sorted(languages):
+        # INV-sarum: the TAINT arm counts languages the way the claims are
+        # scoped — production only — so this census and the production-scoped
+        # edge list inside ``_taint_blind_reason`` describe one population.
+        # ``languages`` (unscoped) stays the census for the BOUNDARY arm and
+        # the catalog loop, which answer a different question: what to load in
+        # order to classify every edge in the map, fixtures included.
+        taint_languages = _census_languages(
+            behavior_map.get("nodes", []),
+            include_non_production=getattr(
+                args, "include_non_production_sources", False
+            ),
+        )
+        for lang in sorted(taint_languages):
             src_count = len(taint_catalog.sources_for_language(lang))
             snk_count = len(taint_catalog.sinks_for_language(lang))
             if src_count == 0 and snk_count == 0:
