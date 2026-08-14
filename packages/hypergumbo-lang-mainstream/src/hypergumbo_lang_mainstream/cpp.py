@@ -60,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id as _base_make_symbol_id,
     make_unresolved_edge,
     node_text as _node_text,
+    stamp_io_mode_from_call,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -1235,6 +1236,11 @@ def _extract_edges_from_tree(
 
         # Function call
         elif node.type == "call_expression":
+            # INV-kaduh — see the identical anchor in c.py. C++ inherits the C
+            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``) and so inherited
+            # the missing producer; ``mode_argument_for`` walks the same parent
+            # link rather than growing a second ``cpp`` table to drift.
+            _edges_before_call = len(edges)
             if current_function is not None:
                 callee_name = get_callee_name(node)
                 if callee_name:
@@ -1413,6 +1419,10 @@ def _extract_edges_from_tree(
                                     origin_run_id=run.execution_id,
                                     evidence_type="function_pointer_arg",
                                 ))
+
+            stamp_io_mode_from_call(
+                edges, _edges_before_call, node, source, "cpp",
+            )
 
         # new expression
         elif node.type == "new_expression":

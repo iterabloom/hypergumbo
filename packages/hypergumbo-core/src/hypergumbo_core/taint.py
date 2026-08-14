@@ -1091,7 +1091,7 @@ def _derive_auto_imports_from_io_primitives(
     from hypergumbo_core.io_boundary import (
         load_catalog,
         load_overlay_catalog,
-        mode_discriminated_names,
+        mode_discriminated_primitives,
     )
 
     overlays_by_lang: dict[str, list[Path]] = defaultdict(list)
@@ -1116,11 +1116,18 @@ def _derive_auto_imports_from_io_primitives(
         ambiguous_by_lang[lang] = (
             ambiguous_by_lang.get(lang, frozenset()) | catalog.ambiguous_names
         )
-        # Names this catalogue declares under BOTH fs_read and fs_write, so
-        # the sink derived from the write row can record that it only applies
-        # when the call's mode says so. Derived from the catalogue rather than
-        # listed here — see :func:`mode_discriminated_names`.
-        mode_gated = mode_discriminated_names(catalog)
+        # Primitives this catalogue declares under BOTH fs_read and fs_write,
+        # so the sink derived from the write row can record that it only
+        # applies when the call's mode says so. Derived from the catalogue
+        # rather than listed here — see :func:`mode_discriminated_primitives`.
+        #
+        # KEYED ON (module, name, kind), NOT on the short name. This loop holds
+        # the whole primitive, so it can ask the precise question; keying on
+        # ``prim.name`` gated rust's ``std::fs::OpenOptions.open`` because
+        # ``std::fs::File.open`` shares its short name, and since rust stamps
+        # no ``io_mode`` that deleted rust's only host_fs write sink outright
+        # (INV-kaduh's control finding).
+        mode_gated = mode_discriminated_primitives(catalog)
         for prim in catalog.primitives:
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
@@ -1143,7 +1150,9 @@ def _derive_auto_imports_from_io_primitives(
                     name=prim.name,
                     kind=prim.kind,
                     requires_mode=(
-                        prim.boundary if prim.name in mode_gated else ""
+                        prim.boundary
+                        if (prim.module, prim.name, prim.kind) in mode_gated
+                        else ""
                     ),
                 ))
 

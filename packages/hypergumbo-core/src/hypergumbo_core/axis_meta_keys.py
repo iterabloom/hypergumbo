@@ -489,13 +489,19 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "one catalogue row to a directional boundary.",
                 write_discipline=DISCIPLINE_SINGLE_WRITER,
                 discipline_note=(
-                    "One writer tree-wide today (py.py). NOTE that this is "
-                    "itself the subject of INV-kaduh: c/cpp's stdio.fopen is "
-                    "mode-disambiguated in the catalogue but no analyzer "
-                    "stamps the key, so every C fopen(p,'w') tags fs_read. "
-                    "Single-writer is the correct ARITY declaration and is "
-                    "silent about that coverage gap — the two are different "
-                    "questions and this field answers only the first."
+                    "Two writers tree-wide, one per analyzer family and "
+                    "neither reachable from the other's edges: py.py's "
+                    "_stamp_io_mode (ast) and analyze.base's "
+                    "stamp_io_mode_from_call (tree-sitter, consumed by c.py "
+                    "and cpp.py). Both stamp once, over the edges a single "
+                    "call produced, so the single-writer ARITY holds per edge. "
+                    "INV-kaduh was the COVERAGE gap behind this key — c/cpp "
+                    "declared stdio.fopen mode-disambiguated with no producer, "
+                    "so every fopen(p,'w') tagged fs_read — and arity was "
+                    "always silent about it. The two are different questions "
+                    "and this field answers only the first; which languages "
+                    "can produce a mode is asserted by the parity test over "
+                    "io_boundary.mode_discriminated_primitives."
                 )),
     # ------------------------------------------------------------------
     # Edge.meta — dataflow access modes (per the WI-vehur dataflow

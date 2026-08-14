@@ -43,6 +43,7 @@ from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
     compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
+from ..axis_meta_keys import write_meta_key
 from ..symbol_resolution import NameResolver
 
 # ---------------------------------------------------------------------------
@@ -264,6 +265,60 @@ def node_own_text(node: "tree_sitter.Node") -> str:
     face nodes from re-parsed sub-trees where ``.text`` is unavailable.
     """
     return (node.text or b"").decode("utf-8", errors="replace")
+
+
+def stamp_io_mode_from_call(
+    edges: list[Edge],
+    first_new: int,
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    language: str,
+) -> None:
+    """Record a tree-sitter call's mode literal on the edges it just produced.
+
+    THE PRODUCER SIDE OF ``io_mode``, for tree-sitter analyzers. The catalogue
+    already decides which primitives a mode settles
+    (:func:`~hypergumbo_core.io_boundary.mode_discriminated_primitives`) and
+    where each language puts the argument
+    (:func:`~hypergumbo_core.io_boundary.mode_argument_for`); this is the one
+    place that reads it off a parse tree, so C and C++ cannot answer
+    differently. INV-kaduh is what a per-analyzer copy of this costs: python
+    had one, C had none, and ``fopen(path, "w")`` tagged ``fs_read`` in every
+    C and C++ repo — an EXAMINED negative for the boundary that is true.
+
+    Applied ONCE over ``edges[first_new:]``, keyed on the exact call node
+    rather than on a line number — two calls can share a line, and ADR-0038's
+    retired line-granular classifier is why that is stated rather than assumed.
+
+    A non-literal mode (``fopen(p, m)``) stamps NOTHING. Absence is recorded as
+    absence: :func:`~hypergumbo_core.io_boundary.resolve_mode_boundary` applies
+    the language default, and inventing ``"w"`` from ignorance would rebuild
+    the false-positive population the mechanism exists to remove.
+    """
+    from ..io_boundary import mode_argument_for
+
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None:
+        return  # pragma: no cover - every grammar here names the field
+    short_name = _re.split(r"::|->|\.", node_text(func_node, source))[-1]
+    spec = mode_argument_for(language, short_name)
+    if spec is None:
+        return
+    arg_list = call_node.child_by_field_name("arguments")
+    if arg_list is None:
+        return  # pragma: no cover - a call without an argument list
+    args = [c for c in arg_list.children if c.is_named]
+    if len(args) <= spec.position:
+        return
+    content = find_child_by_type(args[spec.position], "string_content")
+    if content is None:
+        # Not a string literal at all — a variable, a macro, a concatenation.
+        return
+    mode = node_text(content, source)
+    for edge in edges[first_new:]:
+        if edge.meta is None:
+            edge.meta = {}
+        write_meta_key(edge.meta, "io_mode", mode)
 
 
 def find_child_by_type(

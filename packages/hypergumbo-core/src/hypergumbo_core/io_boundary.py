@@ -796,9 +796,21 @@ class IoBoundaryCatalog:
         # No module context — kind-aware gate (io-boundary:F3): an untyped
         # method call has no receiver evidence here, so a method-kind primitive
         # must not match; a free-function call may match a function-kind hit.
+        #
+        # THE MODE IS NARROWED BEFORE THE GATE, NOT AFTER, and this arm used to
+        # skip it entirely — the two arms above call ``select_by_mode`` and this
+        # one handed ``hits`` to the gate untouched. C's ``fopen`` lands HERE
+        # (its dst carries no module slot, so ``module_hint`` is ``external``),
+        # so stamping ``io_mode`` in the analyzer moved nothing: the gate still
+        # returned the first-declared row and ``fopen(p, "w")`` still tagged
+        # ``fs_read``. A predicate is inert until every call site passes it.
+        #
+        # Narrowing rather than selecting, because the gate needs the whole
+        # candidate LIST to apply its kind and ambiguity rules — collapsing to
+        # one row first would decide what the gate exists to decide.
         return gate_named_entry(
-            hits, name, module_hint, self.ambiguous_names,
-            call_construct=call_construct,
+            _narrow_by_mode(hits, io_mode), name, module_hint,
+            self.ambiguous_names, call_construct=call_construct,
         )
 
     def is_stdlib_module(self, module: str) -> bool:
@@ -1471,24 +1483,142 @@ def resolve_mode_boundary(io_mode: Optional[str]) -> str:
     )
 
 
-def mode_discriminated_names(catalog: IoBoundaryCatalog) -> frozenset[str]:
-    """Short names in ``catalog`` classified under BOTH fs_read and fs_write.
+def _mode_discriminated_keys(
+    primitives: Iterable[IoPrimitive],
+) -> frozenset[tuple[str, str, str]]:
+    """THE rule, over whatever population the caller holds.
 
-    DERIVED from the catalogue rather than listed in code, so a language that
-    declares a new dual-classified primitive gets discrimination without a
-    code change and hypergumbo cannot drift from its own data. Returns short
-    names because that is what an emitter has at the call site — it knows it
-    is looking at ``open(...)`` before it knows the receiver resolves to
-    ``builtins``.
+    Two callers ask this of different populations on purpose:
+    :func:`mode_discriminated_primitives` asks it of a whole catalogue (to
+    decide which derived sinks are mode-gated), and :func:`_narrow_by_mode`
+    asks it of one short-name bucket (to decide which rows a call's mode
+    eliminates). Sharing the ITERATION would be wrong; sharing the RULE is the
+    point — a second copy of "same primitive, both fs boundaries, not
+    simultaneous" is what drifts.
     """
-    by_name: dict[str, set[str]] = {}
-    for p in catalog.primitives:
-        by_name.setdefault(p.name, set()).add(p.boundary)
+    by_primitive: dict[tuple[str, str, str], set[str]] = {}
+    simultaneous: set[tuple[str, str, str]] = set()
+    for p in primitives:
+        key = (p.module, p.name, p.kind)
+        by_primitive.setdefault(key, set()).add(p.boundary)
+        if p.simultaneous:
+            simultaneous.add(key)
     return frozenset(
-        name
-        for name, boundaries in by_name.items()
-        if _MODE_DISCRIMINATED_PAIR <= boundaries
+        key
+        for key, boundaries in by_primitive.items()
+        if _MODE_DISCRIMINATED_PAIR <= boundaries and key not in simultaneous
     )
+
+
+def _narrow_by_mode(
+    hits: Sequence[IoPrimitive], io_mode: Optional[str],
+) -> list[IoPrimitive]:
+    """Drop the losing row of every mode-discriminated primitive in ``hits``.
+
+    Everything else passes through untouched, which is the whole point: a
+    short-name bucket routinely holds unrelated primitives (``unistd.read`` is
+    fs_read, ipc_recv AND net_recv because the fd's kind is not knowable here),
+    and a mode literal settles none of them. Only a primitive declared under
+    BOTH fs boundaries under its OWN ``(module, name, kind)`` is narrowed.
+    """
+    gated = _mode_discriminated_keys(hits)
+    if not gated:
+        return list(hits)
+    wanted = resolve_mode_boundary(io_mode)
+    return [
+        h for h in hits
+        if (h.module, h.name, h.kind) not in gated or h.boundary == wanted
+    ]
+
+
+def mode_discriminated_primitives(
+    catalog: IoBoundaryCatalog,
+) -> frozenset[tuple[str, str, str]]:
+    """``(module, name, kind)`` triples whose boundary a mode literal decides.
+
+    THE KEY IS THE PRIMITIVE, NOT THE SHORT NAME, and that distinction is
+    load-bearing rather than pedantic. Rust declares ``std::fs::File.open`` as
+    fs_read and ``std::fs::OpenOptions.open`` as fs_write — two different
+    primitives that happen to share a short name, which is the collision
+    :meth:`IoBoundaryCatalog.lookup_with_module` exists to keep apart. Keyed on
+    ``name`` alone they look exactly like ``builtins.open``'s genuine dual
+    classification, and the sink derivation then gates ``OpenOptions.open`` on
+    a mode no Rust analyzer stamps — deleting the sink outright (INV-kaduh).
+
+    ``simultaneous`` rows are excluded for the same reason in the other
+    direction. ``filelib:ensure_dir/1`` stats the path AND creates the missing
+    parents: both boundaries are true at once and its signature has no mode
+    argument at all, so there is nothing for a mode literal to settle.
+    :attr:`IoPrimitive.simultaneous` is the declared marker for that shape, and
+    consulting it here is what keeps the three multi-boundary reasons its
+    docstring enumerates from collapsing into one.
+    """
+    return _mode_discriminated_keys(catalog.primitives)
+
+
+def mode_discriminated_names(catalog: IoBoundaryCatalog) -> frozenset[str]:
+    """Short names of ``catalog``'s mode-discriminated primitives.
+
+    The EMITTER's view of :func:`mode_discriminated_primitives`: an analyzer
+    knows it is looking at ``open(...)`` before it knows the receiver resolves
+    to ``builtins``, so it can only ask by short name. Derived from the triple
+    form rather than recomputed, so the two views cannot answer differently.
+    """
+    return frozenset(name for _module, name, _kind in
+                     mode_discriminated_primitives(catalog))
+
+
+@dataclass(frozen=True)
+class ModeArgument:
+    """Where a mode-discriminated primitive's mode literal sits at a call site.
+
+    Attributes:
+        position: Zero-based index among positional arguments.
+        keyword: Keyword name, for languages that have them. ``None`` where the
+            language does not (C), which is a real distinction and not a
+            placeholder — a keyword lookup in C would silently never match.
+    """
+
+    position: int
+    keyword: Optional[str] = None
+
+
+# Where each language puts the mode argument of each mode-discriminated
+# primitive. DATA, in core, next to the catalogue that decides which primitives
+# need it — deliberately NOT a private table inside one analyzer, which is the
+# arrangement INV-kaduh was filed against: py.py knew ``open``'s mode was
+# positional argument 1, c.py knew nothing, and no test could see the gap
+# because neither file mentioned the other.
+#
+# ``test_io_mode_discrimination.py`` asserts this covers every primitive the
+# LIVE catalogues declare mode-discriminated, so the next language to declare
+# one fails there rather than classifying its every write as a read.
+#
+# Languages inheriting a catalogue inherit this table through
+# :func:`mode_argument_for`, exactly as they inherit the rows — a copied ``cpp``
+# entry would be a second home for one fact and would drift on the first edit.
+_MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
+    "python": {"open": ModeArgument(position=1, keyword="mode")},
+    "c": {"fopen": ModeArgument(position=1)},
+}
+
+
+def mode_argument_for(language: str, short_name: str) -> Optional[ModeArgument]:
+    """Where ``language`` puts ``short_name``'s mode argument, if it knows.
+
+    ``None`` means no analyzer can supply a mode for this primitive, which is
+    the condition the parity test refuses when the catalogue also declares the
+    primitive mode-discriminated.
+    """
+    table = _MODE_ARGUMENT_POSITIONS.get(language)
+    if table is None:
+        parent = _CATALOG_PARENTS.get(language)
+        if parent is None:
+            return None
+        table = _MODE_ARGUMENT_POSITIONS.get(parent)
+        if table is None:
+            return None
+    return table.get(short_name)
 
 
 def select_by_mode(
