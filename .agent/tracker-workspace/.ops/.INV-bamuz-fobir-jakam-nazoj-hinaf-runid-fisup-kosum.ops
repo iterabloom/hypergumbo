@@ -1,0 +1,22 @@
+- op: create  # 5359
+  at: '2026-08-14T00:31:36Z'  # 5359
+  by: agent  # 5359
+  actor: jgstern_agent  # 5359
+  clock: 1  # 5359
+  nonce: '5359'  # 5359
+  data:  # 5359
+    kind: invariant  # 5359
+    title: "generate-concepts scrapes docstring EXAMPLES as real declarations; a registry module was published as a web framework in CONCEPTS.md"  # 5359
+    status: violated  # 5359
+    priority: 3  # 5359
+    parent:  # 5359
+    tags:  # 5359
+    - analysis_quality  # 5359
+    isbefore: []  # 5359
+    duplicate_of: []  # 5359
+    not_duplicate_of: []  # 5359
+    pr_ref:  # 5359
+    description: "generate-concepts scrapes source for the concepts dict shape and cannot tell\na DOCUMENTATION EXAMPLE from a real declaration.\n\nFOUND live while landing INV-hazov. Registering the `concepts` meta key\nrequired a docstring, the docstring carried an illustrative literal of the\nform {concept: route, framework: flask}, and the regenerated docs/CONCEPTS.md\nlisted axis_meta_keys.py as a web framework declaring the `route` concept -\nalphabetically between aspnet and bottle, beside django and rails.\n\nMEASURED. Adding the literal produced exactly one line of diff in\ndocs/CONCEPTS.md, inserting axis_meta_keys.py into the `route` row's framework\ncolumn. Removing the literal restored the file byte-for-byte (git diff --quiet\nclean). So the scraper's trigger is the literal itself, not the file or the\nregistration.\n\nWHY IT MATTERS beyond one cosmetic row. docs/CONCEPTS.md is a GENERATED\nartifact that CI checks for freshness, and its framework column is the\npublished answer to \"which frameworks declare this concept\". A core registry\nmodule appearing there is wrong on its face, and the failure is silent: the\ngenerator exits 0 and the freshness check passes on the polluted output. The\nonly signal is a human reading the diff.\n\nWORKED AROUND, NOT FIXED. The docstring now omits the literal and says why,\nso the next person does not helpfully add one back. That is a comment\ndefending against a tool, which is the shape of fix this project treats as a\nsmell - the scraper should distinguish a declaration site from prose (it\nalready parses Python; a docstring/comment context check is available to it),\nrather than every future author of a concepts-shaped docstring having to know.\n\nNOT URGENT: one known instance, cosmetic in its effect, and the guard rail\n(a human reading a generated diff) did catch it. Filed so the next occurrence\nis recognised rather than re-diagnosed."  # 5359
+    fields:  # 5359
+      statement: "generate-concepts must not treat a documentation example of the concepts dict shape as a concept declaration."  # 5359
+      root_cause: "The scraper matches the concepts dict literal anywhere in a .py file, including inside a docstring or comment, so prose describing the shape is indistinguishable from a producer declaring it. Measured: adding an illustrative literal to axis_meta_keys.py inserted that module into docs/CONCEPTS.md as a framework declaring the route concept; removing it restored the file exactly."  # 5359
