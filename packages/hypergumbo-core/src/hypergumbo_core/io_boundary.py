@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
 
 import yaml
 
+from .axis_meta_keys import write_meta_key
 from .edge_types import is_grpc_rpc_implementation
 from .ir import symbol_name_slot, symbol_path_slot
 
@@ -2587,17 +2588,33 @@ def tag_io_boundaries(
         simultaneous = matched_catalog.simultaneous_boundaries_for(
             match.qualified_name,
         )
+        # INV-hazov: the three writes now route through the chokepoint, so
+        # the "producer wins / catalogue refines / boundaries union" rules
+        # live on the KEYS (axis_meta_keys.META_KEYS) rather than in this
+        # branch. The branch that used to encode them is gone: keeping a
+        # producer stamp is just what ``io_boundary``'s producer_primary
+        # declaration MEANS, so there is no longer a second place to forget
+        # it.
         existing = edge.meta.get("io_boundary")
-        if existing in PRODUCER_OPAQUE_BOUNDARIES:
-            edge.meta["io_primitive"] = match.qualified_name
-            edge.meta["io_boundaries"] = sorted(
-                {existing, match.boundary} | simultaneous
-            )
-        else:
-            edge.meta["io_boundary"] = match.boundary
-            edge.meta["io_primitive"] = match.qualified_name
-            if simultaneous:
-                edge.meta["io_boundaries"] = sorted(simultaneous)
+        producer_stamp = (
+            existing
+            if isinstance(existing, str) and existing in PRODUCER_OPAQUE_BOUNDARIES
+            else None
+        )
+
+        write_meta_key(edge.meta, "io_boundary", match.boundary)
+        write_meta_key(edge.meta, "io_primitive", match.qualified_name)
+
+        # ``io_boundaries`` stays ADDITIVE: written only when more than one
+        # fact is true, so it is absent for the ~99% of edges with a single
+        # fact and a consumer that never learns the key behaves exactly as
+        # before. (This is why the call is conditional rather than
+        # unconditional-with-an-empty-list.)
+        extra = set(simultaneous)
+        if producer_stamp is not None:
+            extra |= {producer_stamp, match.boundary}
+        if extra:
+            write_meta_key(edge.meta, "io_boundaries", sorted(extra))
         tagged += 1
 
     return tagged

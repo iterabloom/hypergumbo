@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from .ir import Symbol
 
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
+from .axis_meta_keys import write_meta_key
 from .ir import UsageContext
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
@@ -1508,8 +1509,14 @@ def enrich_symbols(
             # concept=route onto an already-marked marker (dual-carry orphans
             # the framework). Lift the framework onto route_framework and drop
             # the redundant concept before stamping.
-            symbol.meta["concepts"] = _dedup_route_marker_concepts(
-                symbol.meta, matches,
+            # INV-hazov instance 7: this was a bare assignment, so a symbol
+            # the ANALYZER had already stamped (python's ``main_guard``,
+            # bash's ``shell_script``, go's ``middleware``) lost that fact
+            # the moment any framework pattern matched it. Both facts are
+            # independently true; the union is the sound fold.
+            write_meta_key(
+                symbol.meta, "concepts",
+                _dedup_route_marker_concepts(symbol.meta, matches),
             )
 
     # Phase 1.5: APIRouter prefix composition
@@ -1628,16 +1635,14 @@ def enrich_symbols(
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                existing = resolved_symbol.meta.get("concepts", [])
-                existing_keys = {
-                    tuple(sorted(c.items())) for c in existing
-                    if isinstance(c, dict)
-                }
-                for m in matches:
-                    if tuple(sorted(m.items())) not in existing_keys:
-                        existing.append(m)
-                        existing_keys.add(tuple(sorted(m.items())))
-                resolved_symbol.meta["concepts"] = existing
+                # INV-hazov: this block used to hand-roll the union (read
+                # existing, dedup by sorted items, append). The identical
+                # fold was ALSO owed by the def-based phase above, which
+                # assigned over the top instead and destroyed producer-set
+                # concepts — one fact, two homes, one of them wrong. Both
+                # now route through the single fold on the key's
+                # merge_union declaration.
+                write_meta_key(resolved_symbol.meta, "concepts", matches)
 
     return symbols
 

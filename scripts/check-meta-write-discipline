@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit / CI lint: a multi-writer meta slot must declare its write
+discipline, and must not be assigned around the chokepoint (INV-hazov).
+
+Thin CLI over :mod:`hypergumbo_core.meta_write_discipline`; the logic lives
+in the package so the tests that exercise it contribute to coverage (a
+subprocess test does not). Same shape as
+``check-multi-value-field-axis-declaration``.
+
+Exit codes:
+    0 — clean
+    1 — at least one discipline violation
+    2 — infrastructure failure (package not importable)
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.meta_write_discipline import (
+        collision_capable_keys,
+        find_discipline_drift,
+        unaudited_key_count,
+    )
+except ImportError as exc:  # pragma: no cover - infra failure path
+    print(f"check-meta-write-discipline: cannot import package: {exc}")
+    sys.exit(2)
+
+
+def main() -> int:
+    offenders = find_discipline_drift(REPO_ROOT)
+    capable = collision_capable_keys(REPO_ROOT)
+
+    if offenders:
+        print("INV-hazov: meta write-discipline violations\n")
+        for line in offenders:
+            print(f"  {line}")
+        print(
+            "\nA meta key several writers can reach must say what happens "
+            "when the second one arrives. Declare write_discipline in "
+            "axis_meta_keys.META_KEYS and route the write through "
+            "write_meta_key()."
+        )
+        return 1
+
+    print(
+        f"check-meta-write-discipline: clean — "
+        f"{len(capable)} collision-capable key(s), all declared; "
+        f"{unaudited_key_count(REPO_ROOT)} registered key(s) still "
+        f"unaudited (visible debt, not a failure)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
