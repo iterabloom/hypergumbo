@@ -1,0 +1,24 @@
+- op: create  # e760
+  at: '2026-08-14T05:08:49Z'  # e760
+  by: agent  # e760
+  actor: jgstern_agent  # e760
+  clock: 1  # e760
+  nonce: e760  # e760
+  data:  # e760
+    kind: invariant  # e760
+    title: "typescript is 6 sources / 0 sinks: every typescript taint verdict is vacuous, and it is NOT reported unsupported (live false-confirm channel)"  # e760
+    status: violated  # e760
+    priority: 1  # e760
+    parent:  # e760
+    tags:  # e760
+    - verify_claims  # e760
+    - taint  # e760
+    - analysis_quality  # e760
+    isbefore: []  # e760
+    duplicate_of: []  # e760
+    not_duplicate_of: []  # e760
+    pr_ref:  # e760
+    description: "typescript has 6 taint SOURCES and 0 taint SINKS, so no flow can ever\ncomplete in it, so every typescript taint verdict is vacuous — and because\nthe census predicate asks for NEITHER-side-empty, typescript is not reported\nas unsupported and the blind gate never fires.\n\nMEASURED, two independent passes that did not see each other's work:\n  census pass       typescript 6 sources / 0 sinks; the ONLY other one-sided\n                    language is bash. All 14 remaining catalogued languages\n                    carry both halves.\n  behavioural pass  one-node behavior map + a taint_flow claim, run through\n                    the shipped CLI: typescript returns confirmed rc 0 with\n                    zero findings. Under a both-ends-required predicate it\n                    returns inconclusive rc 2.\n\nBoth passes ran the full language list (89 taxonomy languages / 15\nio_primitives stems), not a hand-picked sample.\n\nROOT CAUSE, and it is an aliasing leak rather than a missing file. Sinks are\nauto-derived from io_primitives and bucketed by `catalog.language`, NOT by\nfilename stem (taint.py _derive_auto_imports_from_io_primitives). io_boundary\ndeclares _CATALOG_ALIASES = {\"typescript\": \"javascript\", \"groovy\": \"java\"},\nand load_catalog(\"typescript\").language is therefore \"javascript\" — so a\ntypescript catalogue's rows would land under javascript. In practice no\ntypescript.yaml exists, so typescript is never visited at all and gets 0\nsinks. The source-side lookup is a plain dict .get with no alias fallback, so\nnothing recovers it at read time. groovy collapses the same way and ends at\n0/0 (absent entirely, so it is already reported unsupported and is NOT\naffected).\n\ntypescript's 6 sources are hand-written and DO key under `typescript`\n(taint_sources/crypto.yaml, taint_sources/key_material.yaml). So the two\nhalves of one language disagree about what that language is called. That is\nthe defect: an alias applied on one side of a pair and not the other.\n\nPRE-EXISTING AND INDEPENDENT of the bash redirection work. Control: with\nio_primitives/bash.yaml removed, bash is 0/0 and unsupported under both\npredicates, while typescript STILL flips. Nothing about this arrived with\nthat change; it was surfaced by it.\n\nWHAT LANDS WITH INV-vavup AND WHAT DOES NOT. The census predicate is being\ncorrected to require BOTH ends (a flow needs a source and a sink), which\nmakes typescript honestly `inconclusive` instead of vacuously `confirmed`.\nThat is the safe direction and it ships there, disclosed in the changelog\nbecause it is a user-visible verdict change in a mainstream language.\n\nIt does NOT fix typescript's actual coverage. The remaining question — should\ntypescript RESOLVE to javascript's 83 sinks (apply the alias on the sink side\ntoo), or should it get its own rows, or should the alias be retired as the\nconceptual leak it looks like — is a real decision with three candidate\nanswers and is not made here. Until then typescript taint claims are\nhonestly-inconclusive rather than falsely-clean, which is the correct resting\nstate but not a good one.\n\nRE-EVAL TRIGGER: if a typescript.yaml io_primitives file is ever added, the\nalias means its rows land under javascript and typescript STAYS at 0 sinks —\nso adding the file would look like a fix and change nothing. Check the\nderived counts, not the file listing."  # e760
+    fields:  # e760
+      statement: "A language with taint sources but no sinks must not be reported as taint-analysable, and an alias applied to one half of a catalogue pair must be applied to the other."  # e760
+      root_cause: "Sinks are auto-derived from io_primitives and bucketed by catalog.language, and _CATALOG_ALIASES maps typescript->javascript, so typescript sinks would land under javascript; no typescript.yaml exists so typescript gets 0. Its 6 sources are hand-written and key under typescript. The two halves disagree about the language name, and the census predicate then treats one-sided coverage as supported."  # e760
