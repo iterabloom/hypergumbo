@@ -1,0 +1,63 @@
+Original commit body from 5d28f6b8e1088c42a20a93fb3c7a78941df84750:
+
+c.yaml declares stdio.fopen under BOTH fs_read and fs_write -- the dual
+classification io_mode exists to settle, exactly as python declares
+builtins.open. The catalogue was already correct; handed io_mode="w" it
+returns fs_write. Nothing ever handed it one. meta["io_mode"] was stamped at
+exactly ONE site in the tree (py.py), so select_by_mode fell through to the
+first-declared row and every C fopen(path,"w") classified as a READ.
+
+That is a false confirm, not a recall miss: the call IS classified, and since
+INV-buzab a classified call is what `examined` means, so an fs_write claim got
+an EXAMINED NEGATIVE for the boundary that is actually true. Measured on the
+shipped CLI, a program whose only call is fopen(path,"w"):
+
+    boundary claim   confirmed rc 0  ->  violated rc 1
+    taint claim      confirmed rc 0  ->  violated rc 1
+    (getenv("API_KEY") -> fopen(secret,"w"), host_secret must not reach host_fs)
+
+The taint arm failed the other way on the same absent evidence: requires_mode
+gates the derived host_fs sink on io_mode and resolve_mode_boundary(None) is
+fs_read, so with no producer the gate was blanket suppression rather than
+discrimination -- indistinguishable on any corpus whose fopen calls are reads.
+
+THE CONTROL FOUND MORE THAN THE ITEM FILED, IN TWO DIRECTIONS.
+
+mode_discriminated_names keyed on the SHORT NAME. rust declares
+std::fs::File.open (fs_read) and std::fs::OpenOptions.open (fs_write) -- two
+different primitives sharing a name, the collision lookup_with_module exists to
+prevent -- so OpenOptions.open inherited a mode requirement no rust analyzer can
+satisfy, and rust's only mode-gated host_fs write sink matched NOTHING in every
+repo. The predicate is now keyed on (module, name, kind).
+
+It also consults `simultaneous`. filelib:ensure_dir/1 stats the path AND creates
+the missing parents: both boundaries true at once, and no mode argument anywhere
+in its signature. erlang and elixir (which inherits erlang) were losing their
+ensure_dir write sink the same way. Four suppressed sinks restored.
+
+AND THE STAMP ALONE WOULD HAVE MOVED NOTHING. lookup_with_module has three arms;
+two called select_by_mode and the third -- the no-module-context arm, which is
+exactly where C's fopen lands -- handed its candidates to the F3 gate untouched.
+Narrowed BEFORE the gate, not after, so the gate still decides what it exists to
+decide; verified it cannot loosen the gate (narrowing keeps one row per
+mode-discriminated group, so non_method never goes from non-empty to empty, and
+the ambiguous_names refusal keys on the name).
+
+The producer is ONE shared tree-sitter helper reading a language-keyed table in
+core, beside the catalogue that decides which primitives need it -- not a private
+table inside one analyzer, which is the arrangement that produced this. cpp
+inherits the table through _CATALOG_PARENTS, the same link it inherits rows by.
+A parity test over the LIVE catalogues asserts every mode-discriminated
+primitive has a language that knows where its mode argument sits.
+
+C++ IS NOT FIXED AND SAYS SO. Its stamp is correct and presently inert: cpp.py
+sets the module slot to the comma-joined list of the file's #includes and keeps
+the header FILENAME while c.yaml declares the STEM, so exact module matching
+refuses every C-stdlib call. Measured on whisper.cpp: 82,547 call edges, 6
+matched, 80 recoverable -- and the 80 are getenv, socket/connect/send/recv,
+fork/execvp/waitpid. Filed as INV-funuf. A tripwire test goes RED when it lands
+so the disclosure cannot go stale.
+
+Suite 22,641 passed / 0 failed / 100% coverage / mypy ratchet clean (delta 0).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
