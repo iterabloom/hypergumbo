@@ -98,18 +98,47 @@ _github_fetch_job_log() {
 	local head_sha="${1:-}"
 	local job_name="${2:-}"
 	local target_url=""
+	# WI-zavut: pick the PIPELINE before picking the step inside it. Several
+	# gates report on one commit (push/woodpecker beside cron/full-suite), and
+	# each is a SEPARATE Woodpecker pipeline with its own target_url. This
+	# resolver used to take the first status carrying one and break, applying
+	# JOB_NAME only later to choose a step within a pipeline already chosen
+	# wrongly — so every job name returned the push transcript, and the cron
+	# gate's log had never been read by anyone while that gate reported
+	# FAILURE. Two rules, in order:
+	#
+	#   1. an explicit job name selects its OWN gate (matched on the full
+	#      context or its trailing segment, because operators type
+	#      "full-suite", not "ci/woodpecker/cron/full-suite");
+	#   2. with no name — or a name that matches nothing — prefer the gate
+	#      that FAILED. Reaching for a log means something broke, so
+	#      defaulting to the first status handed back the GREEN pipeline
+	#      while a different gate was red. This mirrors the step-level rule
+	#      already applied below.
 	if api_get "$API_BASE/commits/$head_sha/status"; then
-		target_url=$(echo "$API_RESPONSE" | python3 -c "
-import sys, json
+		target_url=$(echo "$API_RESPONSE" | WP_JOB="$job_name" python3 -c "
+import sys, json, os
+want = (os.environ.get('WP_JOB') or '').strip().lower()
 try:
-    data = json.load(sys.stdin)
-    for s in data.get('statuses', []):
-        u = s.get('target_url')
-        if u:
-            print(u)
-            break
+    statuses = [s for s in json.load(sys.stdin).get('statuses', [])
+                if s.get('target_url')]
 except Exception:
-    pass
+    sys.exit(0)
+
+def emit(s):
+    print(s['target_url'])
+    sys.exit(0)
+
+if want:
+    for s in statuses:
+        ctx = str(s.get('context', '')).lower()
+        if want == ctx or want in ctx or ctx.rsplit('/', 1)[-1] == want:
+            emit(s)
+for s in statuses:
+    if str(s.get('state', '')).lower() in ('failure', 'error'):
+        emit(s)
+if statuses:
+    emit(statuses[0])
 " 2>/dev/null || echo "")
 	fi
 
