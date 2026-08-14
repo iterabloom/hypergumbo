@@ -1,0 +1,56 @@
+Original commit body from 0b5a50fca784a08639f4e4a600186b75ba016800:
+
+_derive_auto_imports_from_io_primitives iterated the fifteen FILE STEMS in
+io_primitives/ and bucketed each derived entry under catalog.language.
+_CATALOG_ALIASES maps typescript->javascript and groovy->java, and NEITHER key
+has a stem of its own, so neither language was ever visited and both derived
+ZERO sinks. load_catalog("typescript") already returned javascript's rows --
+the alias resolution worked; the loop simply never asked for it. It now
+iterates the languages REQUESTED (stems | aliases) and buckets under the
+requested name.
+
+    typescript   0 -> 83 sinks
+    groovy     0/0 -> 45 sources / 69 sinks
+
+NOT COSMETIC. Measured on a real .ts file, the JS/TS analyzer emits ids
+prefixed `typescript:`, so production asks sinks_for_language("typescript") and
+got []. fs.writeFileSync matched nothing. TypeScript's six taint SOURCES are
+hand-written and DO key under typescript, so the two halves of one language
+disagreed about its name: a flow could start and never arrive.
+
+THE PRECEDENT WAS ALREADY IN THE TREE, ON THE SIBLING ARM. cli.py keys the
+BOUNDARY catalogue under both names, with a comment naming these same two
+aliases. This restores a symmetry the codebase already believed in on one side
+and forgot on the other -- which is the invariant's own wording.
+
+DIRECTION IS MIXED AND BOTH HALVES ARE MEASURED. Same claim, same sink, same
+enclosing function; only the source KIND differs:
+
+    call-kind       os.hostname()        -> inconclusive rc 2 -> violated  rc 1
+    attribute-kind  process.env.API_KEY  -> inconclusive rc 2 -> confirmed rc 0
+
+The second row is wrong. The javascript control returns that same clean verdict
+on dev today, which is what identifies it as PRE-EXISTING and language-general
+rather than caused here: every tree-sitter analyzer passes a FILE pseudo-symbol
+to emit_module_attribute_refs, so the source anchors to :file:file while the
+sink anchors to the function and the two never share a caller. 21 of
+javascript's 50 derived sources are attribute-kind, including the whole
+process.env family. Filed as INV-fafol -- deliberately NOT folded into WI-pimun,
+which is P2, describes an ATTRIBUTION gap, and has a python calls-edge
+reproducer from which no reader would learn that js/ts taint is blind to
+process.env. A tripwire test goes RED when INV-fafol lands.
+
+So typescript's verdicts now equal javascript's, INCLUDING javascript's recall
+gaps. That is what an alias means, and it is strictly more than the zero-sink
+vacuum it replaces -- but it is not a claim that typescript taint is sound.
+
+Tests assert DERIVED COUNTS, never a file listing, per the item's own re-eval
+trigger ("adding a typescript.yaml sends its rows to javascript and changes
+NOTHING"). Controls included: the six non-aliased languages keep their own
+rows, python does not acquire javascript's surface, and java is not polluted in
+return by its groovy alias.
+
+Suite 22,674 passed / 0 failed / 100% coverage whole-tree AND per-package in
+isolation / top-level tests 1,542 passed / mypy ratchet clean, delta 0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
