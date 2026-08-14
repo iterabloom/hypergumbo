@@ -103,6 +103,70 @@ VALID_AXES: Final[frozenset[str]] = frozenset({
 })
 
 
+# ----------------------------------------------------------------------
+# INV-hazov: write discipline — how many writers may reach this key, and
+# what happens when a second one does.
+#
+# The axis above answers "which keys may exist" and "what vocabulary do
+# their values draw from". It is blind to ARITY by construction, which is
+# why it could not catch any of the seven last-writer-wins instances: the
+# offending write in INV-virat was a correctly-spelled assignment of a
+# registered key. This second declaration is the arity answer.
+# ----------------------------------------------------------------------
+
+#: Exactly one writer can reach this key on any given record. A second
+#: writer with a DIFFERENT value is a violation of the declaration, so the
+#: chokepoint raises rather than silently picking a winner. Writers that
+#: partition (per-language analyzers each stamping their own symbols) are
+#: single-writer per record even though many modules assign the key — say
+#: so in ``discipline_note``.
+DISCIPLINE_SINGLE_WRITER: Final[str] = "single_writer"
+
+#: Several writers contribute independently true facts. The chokepoint
+#: folds by key and keeps the UNION. Under-reporting is the failure that
+#: matters here; over-reporting is merely noisy.
+DISCIPLINE_MERGE_UNION: Final[str] = "merge_union"
+
+#: A producer stamps a fact a later consumer-time pass must not displace
+#: (INV-virat: a catalogue row erasing bash's ``command_launch`` opacity
+#: stamp). First writer wins; the chokepoint refuses the overwrite.
+DISCIPLINE_PRODUCER_PRIMARY: Final[str] = "producer_primary"
+
+#: No claim has been made. This is the DEFAULT on purpose: declaring
+#: ``single_writer`` wrongly buys a false assurance, which is worse than
+#: no assurance (the INV-faput lesson — a mislabelled row buys a
+#: ``confirmed``). ``unaudited`` keys are counted as visible debt by
+#: ``check-meta-write-discipline`` rather than hidden behind a permissive
+#: default, and a key that a second writer can DEMONSTRABLY reach is
+#: refused this state by the static check.
+DISCIPLINE_UNAUDITED: Final[str] = "unaudited"
+
+#: A later writer DELIBERATELY replaces an earlier one because its value is
+#: strictly better, and the earlier writer's safety-relevant fact survives
+#: on a sibling key. Behaviourally identical to an unguarded assignment —
+#: the difference is epistemic, and that is the whole point: somebody looked
+#: and concluded the overwrite is correct. Mirrors the
+#: ``# axis: free-text — <justification>`` precedent, and carries the same
+#: mandatory-justification friction so it cannot become a drive-by escape
+#: hatch from a real audit.
+DISCIPLINE_REFINES: Final[str] = "refines"
+
+WRITE_DISCIPLINES: Final[frozenset[str]] = frozenset({
+    DISCIPLINE_SINGLE_WRITER,
+    DISCIPLINE_MERGE_UNION,
+    DISCIPLINE_PRODUCER_PRIMARY,
+    DISCIPLINE_REFINES,
+    DISCIPLINE_UNAUDITED,
+})
+
+#: The declarations that assert something and therefore owe a justification.
+DISCIPLINES_REQUIRING_A_NOTE: Final[frozenset[str]] = frozenset({
+    DISCIPLINE_MERGE_UNION,
+    DISCIPLINE_PRODUCER_PRIMARY,
+    DISCIPLINE_REFINES,
+})
+
+
 @dataclass(frozen=True)
 class MetaKeySpec:
     """A single ``Symbol.meta`` / ``Edge.meta`` key and its axis."""
@@ -119,6 +183,13 @@ class MetaKeySpec:
     # UNCLASSIFIED — deferred to the polyglot-census follow-up.
     applicable_edge_types: frozenset[str] | None = None
     na_edge_types: frozenset[str] | None = None
+    # INV-hazov: the arity answer. Defaults to ``unaudited`` so an omitted
+    # declaration never reads as "only one writer" — see the constants above.
+    write_discipline: str = DISCIPLINE_UNAUDITED
+    # Mandatory for ``merge_union`` / ``producer_primary``: name the writers
+    # and say which one is authoritative. A discipline nobody can audit is a
+    # pinky-swear with a field name.
+    discipline_note: str = ""
 
 
 # ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix.
@@ -349,7 +420,20 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Fully-qualified IO primitive matched at the "
                 "boundary (e.g. 'os.open', 'socket.socket'). Set on "
                 "io_boundary edges by "
-                "``io_boundary.compute_boundary_map``."),
+                "``io_boundary.compute_boundary_map``.",
+                write_discipline=DISCIPLINE_REFINES,
+                discipline_note=(
+                    "TWO writers. bash.py stamps a bare command name at "
+                    "analysis time; io_boundary.tag_io_boundaries later "
+                    "replaces it with the catalogue's qualified name, which "
+                    "is strictly more precise. The overwrite is INTENDED and "
+                    "loses nothing safety-relevant: the producer's OPACITY "
+                    "fact does not live here, it lives on io_boundary "
+                    "(producer_primary) and io_boundaries (merge_union), "
+                    "both of which retain command_launch. Re-evaluate if any "
+                    "consumer ever branches on io_primitive to decide "
+                    "whether a crossing is opaque."
+                )),
     MetaKeySpec("io_boundary", AXIS_EDGE_META,
                 "Boundary classification on edges that cross an IO "
                 "primitive (e.g. 'net_send', 'fs_read', "
@@ -365,7 +449,54 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "analyzer stamps it directly), which is why the persisted "
                 "field reads as ``command_launch``-only. Consumers that need "
                 "the full classification must run ``compute_boundary_map`` "
-                "rather than read the persisted meta key."),
+                "rather than read the persisted meta key.",
+                write_discipline=DISCIPLINE_PRODUCER_PRIMARY,
+                discipline_note=(
+                    "INV-virat verbatim. bash.py stamps command_launch "
+                    "because a launched program's I/O is UNKNOWABLE to "
+                    "static analysis; io_boundary.tag_io_boundaries then "
+                    "matched a catalogue row and overwrote it, downgrading "
+                    "an opaque crossing to an examined one and buying a "
+                    "false confirm. The producer wins: opacity is a fact "
+                    "about what the analyzer CANNOT see, so no amount of "
+                    "catalogue knowledge refutes it. The INV-larol gate "
+                    "survived this defect only because it reads raw_edges "
+                    "while the tagger mutated an accidental shallow copy — "
+                    "a safety property resting on an accidental copy is not "
+                    "a safety property, which is what this declaration "
+                    "replaces."
+                )),
+    MetaKeySpec("io_boundaries", AXIS_EDGE_META,
+                "The FULL set of boundaries a single call crosses, for "
+                "primitives that cross more than one simultaneously "
+                "(``simultaneous: true`` in the io_primitives YAML — e.g. "
+                "scala's ``Process.run``, which spawns AND pipes). The "
+                "scalar ``io_boundary`` names one of them; this names all "
+                "of them. Written by ``io_boundary.tag_io_boundaries``.",
+                write_discipline=DISCIPLINE_MERGE_UNION,
+                discipline_note=(
+                    "INV-zumin. A one-slot scalar let ROW ORDER in the YAML "
+                    "decide which of several simultaneously-true boundaries "
+                    "survived, and INV-virat then showed the same slot "
+                    "erasing a producer stamp. Every writer contributes an "
+                    "independently TRUE crossing, so the union is the only "
+                    "sound fold. Under-reporting crossings is the failure "
+                    "that matters; over-reporting is merely noisy."
+                )),
+    MetaKeySpec("io_mode", AXIS_EDGE_META,
+                "Read/write disambiguation for a mode-parameterised IO "
+                "primitive — the ``'w'`` in ``fopen(path, 'w')`` — resolving "
+                "one catalogue row to a directional boundary.",
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "One writer tree-wide today (py.py). NOTE that this is "
+                    "itself the subject of INV-kaduh: c/cpp's stdio.fopen is "
+                    "mode-disambiguated in the catalogue but no analyzer "
+                    "stamps the key, so every C fopen(p,'w') tags fs_read. "
+                    "Single-writer is the correct ARITY declaration and is "
+                    "silent about that coverage gap — the two are different "
+                    "questions and this field answers only the first."
+                )),
     # ------------------------------------------------------------------
     # Edge.meta — dataflow access modes (per the WI-vehur dataflow
     # axis).
@@ -444,6 +575,45 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "(e.g. 'event_publisher', 'route', 'graphql_resolver'). "
                 "Fold residue per audit-findings 0013 / WI-habut "
                 "Wave 5."),
+    MetaKeySpec("concepts", AXIS_SYMBOL_META,
+                "Framework/language concepts attached to a symbol, as a list "
+                "of ``{concept, framework, ...}`` dicts. (A literal example "
+                "is deliberately NOT spelled out here: generate-concepts "
+                "scrapes source for that dict shape, and an example in prose "
+                "is indistinguishable from a declaration — it listed this "
+                "module as a web framework beside django and rails.) Written "
+                "BOTH by analyzers at construction (bash's ``shell_script``, "
+                "python's ``main_guard``, html's ``html_entry``) and by "
+                "``framework_patterns.enrich_symbols`` at consumer time.",
+                write_discipline=DISCIPLINE_MERGE_UNION,
+                discipline_note=(
+                    "INV-hazov instance 7, found live while filing the class "
+                    "item and confirmed with a positive control: "
+                    "enrich_symbols assigned the pattern matches over the "
+                    "top of whatever the analyzer had stamped, so a symbol "
+                    "carrying a producer concept AND matching a framework "
+                    "pattern lost the producer's. Both are independently "
+                    "true — a function can be a main_guard AND a route — so "
+                    "the union is the sound fold. Dicts are deduplicated by "
+                    "their sorted items, so an identical re-stamp does not "
+                    "double the list (the INV-virat inverse: append fixes "
+                    "erasure and invites duplication)."
+                )),
+    MetaKeySpec("fields", AXIS_SYMBOL_META,
+                "Declared fields of a class-like symbol, as a mapping of "
+                "field name to type information. Written by the java and "
+                "python analyzers on their own class symbols.",
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "THREE modules assign this key (java.py, py.py, "
+                    "racket.py) but they PARTITION by language and can never "
+                    "meet on one Symbol, so the arity per record is one. "
+                    "Recorded explicitly because the collision-capable "
+                    "detector flags it on shape — it is written both at "
+                    "construction and by post-hoc mutation — and a reader "
+                    "who does not know about the partition would otherwise "
+                    "read the silence as nobody having checked."
+                )),
     # ------------------------------------------------------------------
     # Symbol.meta — ADR-0027 route-marker payload (WI-tosul target-D).
     # These sit on a ``framework_role == 'route'`` marker; the canonical
@@ -867,3 +1037,95 @@ def is_access_mode_not_applicable(edge_type: str) -> bool:
     by this pass, pending the polyglot-census follow-up (WI-pusuv).
     """
     return edge_type in _ACCESS_MODE_NA_EDGE_TYPES
+
+
+def _union_preserving_order(existing: object, incoming: object) -> list[object]:
+    """Fold two contributions into one list, order-stable, no duplicates.
+
+    Accepts a scalar on either side so a caller need not know whether the
+    key is list-shaped yet — the first writer of a ``merge_union`` key
+    usually has a single value in hand.
+
+    Dicts are unhashable, so membership is tested on a canonical form
+    (sorted items) rather than on the object itself; ``concepts`` is a list
+    of dicts and would otherwise re-append an identical concept on every
+    pass.
+    """
+    def as_list(value: object) -> list[object]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return list(value)
+        return [value]
+
+    def canonical(value: object) -> object:
+        if isinstance(value, dict):
+            return tuple(sorted((str(k), str(v)) for k, v in value.items()))
+        if isinstance(value, (list, tuple)):
+            return tuple(str(v) for v in value)
+        return value
+
+    out: list[object] = []
+    seen: set[object] = set()
+    for value in [*as_list(existing), *as_list(incoming)]:
+        marker = canonical(value)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        out.append(value)
+    return out
+
+
+def write_meta_key(meta: dict[str, object], key: str, value: object) -> None:
+    """Write *key* into *meta*, enforcing the key's declared discipline.
+
+    INV-hazov. This is the single place a meta key with more than one
+    writer may be written; ``check-meta-write-discipline`` fails the build
+    on a direct subscript assignment that bypasses it. The point is that
+    the fold lives ONE place rather than being re-derived (and re-forgotten)
+    at each call site — the previous seven instances of this class were
+    each fixed correctly and locally, which is precisely why the eighth was
+    still possible.
+
+    Raises:
+        ValueError: if *key* is not registered, or if a ``single_writer``
+            key already holds a different value. Both are declaration
+            violations rather than data conditions, so they are loud: a
+            wrong declaration that failed quietly would be exactly the
+            false assurance ``unaudited`` exists to avoid.
+    """
+    spec = find_meta_key(key)
+    if spec is None:
+        raise ValueError(
+            f"meta key {key!r} is not registered in axis_meta_keys.META_KEYS; "
+            "declare it (with a write_discipline) before writing it"
+        )
+
+    if spec.write_discipline == DISCIPLINE_MERGE_UNION:
+        meta[key] = _union_preserving_order(meta.get(key), value)
+        return
+
+    if spec.write_discipline == DISCIPLINE_PRODUCER_PRIMARY:
+        # First writer wins. The producer's fact is about what the analyzer
+        # CANNOT see, so a later, better-informed pass does not refute it.
+        if meta.get(key) is None:
+            meta[key] = value
+        return
+
+    if spec.write_discipline == DISCIPLINE_SINGLE_WRITER:
+        existing = meta.get(key)
+        if existing is not None and existing != value:
+            raise ValueError(
+                f"meta key {key!r} is declared single_writer but a second "
+                f"writer supplied {value!r} over {existing!r}. Either the "
+                "declaration is wrong (two writers really can reach this "
+                "key — pick merge_union / producer_primary / refines) or "
+                "the new writer is."
+            )
+        meta[key] = value
+        return
+
+    # refines / unaudited: plain assignment. For ``refines`` that is the
+    # audited answer; for ``unaudited`` it is the honest one — no claim has
+    # been made, so no enforcement is applied.
+    meta[key] = value

@@ -709,6 +709,9 @@
             "component_framework": {
               "description": "Framework on single-file-component symbols (e.g. 'vue', 'svelte', 'astro'). Fold residue for the ``component_file`` \u2192 ``file`` migration per audit-findings 0011."
             },
+            "concepts": {
+              "description": "Framework/language concepts attached to a symbol, as a list of ``{concept, framework, ...}`` dicts. (A literal example is deliberately NOT spelled out here: generate-concepts scrapes source for that dict shape, and an example in prose is indistinguishable from a declaration \u2014 it listed this module as a web framework beside django and rails.) Written BOTH by analyzers at construction (bash's ``shell_script``, python's ``main_guard``, html's ``html_entry``) and by ``framework_patterns.enrich_symbols`` at consumer time."
+            },
             "config_format": {
               "description": "Configuration format on config-shape Symbols (e.g. 'tsconfig'). Fold residue per audit-findings 0005."
             },
@@ -747,6 +750,9 @@
             },
             "external_boundary": {
               "description": "True on synthetic boundary Symbols emitted by ``ir._canonical_external_id`` for unresolved-but-referenced names. Read by ``is_external_boundary`` helper."
+            },
+            "fields": {
+              "description": "Declared fields of a class-like symbol, as a mapping of field name to type information. Written by the java and python analyzers on their own class symbols."
             },
             "framework_role": {
               "description": "Framework-specific role of a symbol whose canonical ``Symbol.kind`` is a generic language construct (e.g. 'event_publisher', 'route', 'graphql_resolver'). Fold residue per audit-findings 0013 / WI-habut Wave 5."
@@ -1242,8 +1248,14 @@
             "handler_name": {
               "description": "Handler function name a route/command edge dispatches to (route_handler and go_cobra linkers) \u2014 the callable servicing the route or CLI subcommand."
             },
+            "io_boundaries": {
+              "description": "The FULL set of boundaries a single call crosses, for primitives that cross more than one simultaneously (``simultaneous: true`` in the io_primitives YAML \u2014 e.g. scala's ``Process.run``, which spawns AND pipes). The scalar ``io_boundary`` names one of them; this names all of them. Written by ``io_boundary.tag_io_boundaries``."
+            },
             "io_boundary": {
               "description": "Boundary classification on edges that cross an IO primitive (e.g. 'net_send', 'fs_read', 'process_spawn'). Two-source field per the WI-fakuv / WI-puvun io-boundary REFRAME: the full value-space is CONSUMER-TIME-derived by ``io_boundary.compute_boundary_map`` from the ``io_primitives`` YAML catalogs and is NOT persisted (it is stamped in memory only by the ``io-boundaries`` / ``verify-claims`` / ``slice --io-boundary`` paths). What survives into a persisted behavior map is only the analyzer producer-hints \u2014 currently just bash's ``command_launch`` (``bash.py``; bash has no ``io_primitives`` catalog so the analyzer stamps it directly), which is why the persisted field reads as ``command_launch``-only. Consumers that need the full classification must run ``compute_boundary_map`` rather than read the persisted meta key."
+            },
+            "io_mode": {
+              "description": "Read/write disambiguation for a mode-parameterised IO primitive \u2014 the ``'w'`` in ``fopen(path, 'w')`` \u2014 resolving one catalogue row to a directional boundary."
             },
             "io_primitive": {
               "description": "Fully-qualified IO primitive matched at the boundary (e.g. 'os.open', 'socket.socket'). Set on io_boundary edges by ``io_boundary.compute_boundary_map``."
