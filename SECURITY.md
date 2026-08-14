@@ -7,6 +7,26 @@
 
 Hypergumbo's safety claims are checked by running hypergumbo against its own source: ``hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml``, gated in CI by ``scripts/check-self-claims``.
 
+### What this audit covers
+
+**Scope: the installed CLI.** Every claim below takes a python ``cmd_*`` handler as its taint source, so the audit describes what ``hypergumbo`` does when a user installs the package and runs it. That is narrower than "this repository is safe", and the narrower statement is the one that is true.
+
+Code in this repository runs in several other ways, and the claims say nothing about any of them:
+
+| Execution context | What runs | Covered |
+|---|---|---|
+| `pip install` then run the CLI | `packages/*/src` only | **yes** |
+| `pytest` inside the repo | every `conftest.py`, every test, and everything they import | no |
+| git / agent hooks | `.githooks/`, `.agent/hooks/` | no |
+| CI | whatever the workflow declares | no |
+| hypergumbo **analysing** a repo | the rust-analyzer backend executes the target's `build.rs` | no |
+
+The `pytest` row is stronger than it looks: a `conftest.py` executes at **collection**, so `pytest --collect-only` runs it with no test selected — before any selection logic could exclude it. The root `conftest.py` legitimately subprocesses and re-execs the interpreter (ADR-0010's self-healing wrapper), so that capability is live by design.
+
+**Which threat model this serves.** The audit discards flows whose source is a test fixture, on the reasoning that a fixture reaching a real primitive is a fixture doing its job. That is correct for "is the shipped tool safe to run" and exactly backwards for "is this repository safe to run tests in". This file answers the first question only.
+
+**Checked, and not claimed as more than it is.** No `eval()` or `exec()` on file content anywhere in `packages/*/src`; YAML loading uses `CSafeLoader` throughout; `.md` and `.txt` files are not collected as tests. That last one is a **configuration** fact — one line in `pyproject.toml` revokes it — not a structural guarantee, and is recorded here as configuration rather than as a property of the tree.
+
 **Read the claims below as CLAIMS UNDER TEST, not as assurances.** They state what each entry-point category is *intended* to do. What the analysis actually reports is:
 
 | verdict | count | meaning |
