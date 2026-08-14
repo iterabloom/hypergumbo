@@ -14,15 +14,15 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **301** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 71 core, 4 CLI, 33 tracker)
-- **39465** symbols (functions, classes, methods)
-- **139627** edges by type:
-  - calls: 73127
-  - contains: 36390
-  - imports: 12120
-  - instantiates: 10746
-  - references: 4643
-  - module_attr_ref: 1244
+- **302** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 72 core, 4 CLI, 33 tracker)
+- **39720** symbols (functions, classes, methods)
+- **140426** edges by type:
+  - calls: 73530
+  - contains: 36632
+  - imports: 12177
+  - instantiates: 10779
+  - references: 4684
+  - module_attr_ref: 1267
   - other: 1357
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 39465 Symbols + 139627 Edges + UsageContexts           │
+│  Output: 39720 Symbols + 140426 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,18 +273,18 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9520.0 | ir.py |
 | `Span` | class | 6386.7 | ir.py |
-| `write_text` | external_symbol | 6179.0 | <external> |
+| `write_text` | external_symbol | 6186.0 | <external> |
 | `LinkerContext` | class | 3280.5 | registry.py |
-| `Edge.create` | method | 2120.3 | ir.py |
+| `Edge.create` | method | 2123.7 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `get` | external_symbol | 1863.0 | <external> |
-| `Path` | external_symbol | 1695.0 | <external> |
+| `get` | external_symbol | 1877.0 | <external> |
+| `Path` | external_symbol | 1699.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1354.0 | <external> |
+| `append` | external_symbol | 1361.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
 | `Edge` | class | 1301.0 | ir.py |
-| `load_catalog` | function | 1135.4 | io_boundary.py |
+| `load_catalog` | function | 1248.2 | io_boundary.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -353,13 +353,13 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 155 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 156 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | ADR | Loader | Purpose |
 |---|---:|---|---|---|
 | `frameworks/` | 107 | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
 | `dataflow_patterns/` | 20 | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
-| `io_primitives/` | 14 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
+| `io_primitives/` | 15 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
 | `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
 | `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
 | `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
@@ -467,6 +467,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
 | `check-multi-value-field-axis-declaration` | Pre-commit / CI lint: every str-typed field on a core dataclass |
 | `check-mypy-ratchet` | Whole-tree mypy strict ratchet (WI-rokup, Decision D13, INV-zogud). |
 | `check-pass-id-agreement` | Pre-commit / CI lint: catalog pass IDs agree with runtime pass IDs. |
@@ -577,6 +578,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
+- **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
@@ -866,8 +868,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d79f0ed2fff4
-  commit_count: 6608
+  commit: 94ea5f22983c
+  commit_count: 6640
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
