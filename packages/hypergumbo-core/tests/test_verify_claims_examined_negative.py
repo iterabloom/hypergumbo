@@ -623,11 +623,25 @@ class TestAnOpaqueCrossingIsNotAnExaminedNegative:
         """PARITY OVER THE REGISTRY, because a fix verified on Python is not
         verified for Go.
 
-        13 of the 14 shipped catalogues declare ``subprocess`` rows (erlang is
-        the exception, with none). Each one is a language whose repos can hand
-        control to an unseen program, and each must block a clean verdict on
-        its own edges — not on Python's. The next catalogue to add a subprocess
-        row is covered by this the day it lands.
+        13 of the 15 shipped catalogues declare ``subprocess`` rows. Each one
+        is a language whose repos can hand control to an unseen program, and
+        each must block a clean verdict on its own edges — not on Python's.
+        The next catalogue to add a subprocess row is covered by this the day
+        it lands.
+
+        TWO CATALOGUES SKIP, for different reasons, and neither is a gap:
+
+        * **erlang** declares no subprocess rows at all.
+        * **bash** (INV-vavup) declares only redirection — the shell's OWN
+          reads and writes. Its opacity is real but arrives from the other
+          direction: the analyzer PRODUCER-STAMPS ``command_launch`` on every
+          external-command edge (INV-larol), and that lives in
+          ``PRODUCER_OPAQUE_BOUNDARIES``, not in the catalogue-declared
+          ``OPAQUE_BOUNDARIES`` this test enumerates. Adding a ``subprocess``
+          row to ``bash.yaml`` to make this parameter run would be
+          precisely the mis-attribution ADR-0016 forbids — it would credit
+          the shell with the launched program's I/O. bash's launch gating is
+          covered by the producer-stamp tests instead.
         """
         catalog = load_catalog(language)
         opaque_rows = [p for p in catalog.primitives
