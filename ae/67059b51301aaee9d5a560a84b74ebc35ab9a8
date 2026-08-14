@@ -1,0 +1,62 @@
+Original commit body from d8a1b26223d648a5f636af6ee528b9ad3e853f0c:
+
+WI-kozos. Raised by the owner: "for some arbitrary code occurring anywhere
+within the hypergumbo repo, be it in a .py file or in a .txt or .md file, do
+we have a way to guarantee that that code does or does not run?" The answer is
+no, and the sharper finding was that the artifact never SAID which execution
+context it was talking about.
+
+WHAT IT ACTUALLY COVERS. Every claim takes a python cmd_* handler as its taint
+source, so all 18 describe one thing: what the installed CLI does when a user
+runs it. The file opened with "hypergumbo's safety claims are checked by
+running hypergumbo against its own source", which a reader can fairly take as
+a claim about the REPOSITORY. It is not one. The narrower statement is both
+true and load-bearing for everything else in the file, so it is now stated
+first.
+
+A table names the four uncovered contexts rather than leaving them to be
+inferred from an absence: pytest inside the repo, git/agent hooks, CI, and
+hypergumbo ANALYSING a repo (the rust-analyzer backend executes the target's
+build.rs).
+
+THREE THINGS SAID OUT LOUD BECAUSE IMPLYING THEM WOULD BE THE OVERCLAIM:
+
+  * conftest.py executes at COLLECTION -- `pytest --collect-only` runs it with
+    no test selected, before any selection logic could exclude it. The root
+    conftest legitimately subprocesses and re-execs the interpreter (ADR-0010's
+    self-healing wrapper), so the capability is live BY DESIGN, not
+    hypothetical.
+
+  * WHICH THREAT MODEL THIS SERVES. The audit discards flows sourced in test
+    fixtures, on the reasoning that a fixture reaching a real primitive is a
+    fixture doing its job. Correct for "is the shipped tool safe to run";
+    exactly backwards for "is this repository safe to run tests in". The
+    artifact never stated which question it answered, so a reader could take a
+    verdict as evidence for the other one.
+
+  * THE .md/.txt FINDING IS CONFIGURATION, NOT STRUCTURE. Those files are not
+    collected as tests -- verified, along with no eval()/exec() on file content
+    anywhere in packages/*/src and CSafeLoader throughout. But one line in
+    pyproject.toml revokes the collection rule, so it is recorded as a
+    configuration fact. Filing it as a structural guarantee is precisely the
+    move this section exists to prevent, and it is the honest answer to the
+    question that prompted the item.
+
+PLACEMENT IS DELIBERATE: the section renders BEFORE the measured-verdict
+table. A reader needs to know what was examined before being told whether it
+passed -- particularly here, where the answer is 18 of 18 inconclusive.
+
+Generated, not hand-written: it lives in scripts/generate-security-md, so it
+cannot drift from the file the CI freshness check regenerates. Six tests pin
+the content that matters (the covered context named, every uncovered context
+present, collection-time execution, the threat-model sentence, and
+configuration-not-structure) rather than pinning prose byte-for-byte, so
+rewording stays cheap and dropping a disclosure does not.
+
+STILL OPEN, and flagged on the item as the owner's call rather than resolved
+here: whether a scope statement is sufficient, or whether any of the uncovered
+contexts should get claims of its own. That is a threat-model decision, not a
+bug fix, and it is part of the INV-dabuf package.
+
+Ref: WI-kozos, WI-bifob, ADR-0010, INV-dabuf.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
