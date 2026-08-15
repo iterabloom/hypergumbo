@@ -1,0 +1,25 @@
+- op: create  # dd32
+  at: '2026-08-15T06:32:51Z'  # dd32
+  by: agent  # dd32
+  actor: jgstern_agent  # dd32
+  clock: 1  # dd32
+  nonce: dd32  # dd32
+  data:  # dd32
+    kind: invariant  # dd32
+    title: "cpp emits call_construct on ZERO call edges, so the F3 method gate is unconditional for C++ (2 of 59 measured FPs)"  # dd32
+    status: violated  # dd32
+    priority: 1  # dd32
+    parent:  # dd32
+    tags:  # dd32
+    - io_boundary  # dd32
+    - cpp  # dd32
+    - analyzer  # dd32
+    - security  # dd32
+    isbefore: []  # dd32
+    duplicate_of: []  # dd32
+    not_duplicate_of: []  # dd32
+    pr_ref:  # dd32
+    description: "FOUND while measuring INV-funuf's false-positive rate, which is the only\nreason it has a number attached rather than being a suspicion.\n\nThe cpp analyzer emits no call_construct on any call edge. Read off a real\nbehavior map of whisper.cpp, every cpp call edge's meta is exactly:\n\n  {\"evidence_lang\": \"cpp\", \"evidence_type\": \"ast_call_direct\"}\n\nfor BOTH a free-function call and a method call on a C++ object. So the\nio-boundary F3 gate's method rule - \"an untyped method call cannot be\nverified against the catalogued receiver type, so it never matches\", which\nis what closes INV-tapat and INV-maluk - is unconditional for C++.\n\nMEASURED CONSEQUENCE, on the merged INV-funuf tree: 2 of 59 newly-matched\ncpp boundaries are false, and both have the same shape. In\nggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp:\n\n  compile_count_cond.wait(guard, ...)   -> matched sys/wait.wait [subprocess]\n  c.wait()                              -> matched sys/wait.wait [subprocess]\n\nThose are std::condition_variable::wait and std::future::wait. The file\ngenuinely includes <sys/wait.h> and genuinely calls waitpid elsewhere (a\nTRUE positive), so the module evidence is correct and the ONLY thing that\nseparates the real POSIX wait() from the two C++ methods is the call\nconstruct.\n\nWHY NOT FIXED IN INV-funuf: nothing to gate on. Wiring the guard while the\nproducer emits nothing would be a predicate with no call site passing it -\ninert by construction, and this repo has paid for that shape before\n(io_mode stamped at one site; the F3 arm skipping select_by_mode). The fix\nbelongs at the producer.\n\nSAME CLASS, ALREADY FILED FOR OTHER LANGUAGES - this is the third instance,\nwhich is the threshold at which this project files the class rather than\nthe instance:\n  INV-gijis  JS/TS populates call_construct on ZERO call edges (4,872\n             measured across 3 repos), second-largest sink surface.\n  INV-suril  java.nio.file.Files static methods catalogued kind=method but\n             emitted with no call_construct, so the whole Files sink\n             surface can never match.\nWhether these three want one shared producer-side rule plus a parity test\nover every analyzer, or three fixes, is the question to answer FIRST -\npicking it off per-language is what produced three items.\n\nREPRO: analyze any C++ repo with a method call whose name collides with a\nPOSIX function in an included header; observe io_boundary tagged from the\nfunction-kind catalogue row. The whisper.cpp sites above are the filed\ninstance."  # dd32
+    fields:  # dd32
+      statement: "A call edge must carry the construct it was called with, so a catalogued receiver type can be verified. VIOLATED for cpp: no cpp call edge carries call_construct, so gate_named_entry's method rule cannot fire and a C++ method call matches a function-kind POSIX entry."  # dd32
+      root_cause: "cpp.py emits meta {evidence_lang, evidence_type} only and never sets call_construct, for either a free-function call or a method call. The F3 gate consumes call_construct to refuse unverified method receivers; with the field absent the refusal is unreachable for the whole language."  # dd32
