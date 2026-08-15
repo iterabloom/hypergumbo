@@ -1,0 +1,43 @@
+Original commit body from 03012ff6dc7c39d4e675b7d1fba25f188b296f81:
+
+The cron full-suite gate has been RED since 2026-08-11 with three
+failures. Topping up the test-agent-infra install list was refused twice
+as guesswork, and rightly: the container had hypergumbo_core importable
+while rich -- a declared dependency of that very package -- was absent,
+which the workflow file cannot produce. The leading explanation was a
+shared site-packages volume carrying a stale editable install, and under
+that explanation adding names to the pip line turns the gate green while
+it silently tests an OLD tree. Worse than the red, because it is quiet.
+
+That explanation is now dead, by reproduction rather than argument. In a
+clean venv carrying exactly the four packages that step installs:
+
+  pytest tests/                               ->  2 failed
+  pytest tests/test_rct_public_api_pinned.py  ->  8 failed
+
+Same tree, same interpreter. Fourteen scripts/check-* and generate-*
+helpers do sys.path.insert(0, .../hypergumbo-core/src) at module level,
+and sibling tests exec them through SourceFileLoader. The insert lands
+in the shared interpreter, so whether the pinning tests could import
+anything came down to which other tests shared their xdist worker.
+Nothing was stale. The earlier "8 of 9 fail locally, 2 in CI"
+discrepancy was an artifact of running that file ALONE.
+
+  * the module declares the one source root it needs, so it behaves the
+    same run alone as in the suite;
+  * a guard re-runs it in a child interpreter with the in-repo package
+    roots scrubbed. That subprocess is not ceremony -- on a dev box the
+    editable install makes those imports succeed no matter what, so an
+    in-process assertion would pass with or without the fix;
+  * rich and mypy join the install list for what actually needs them:
+    cli.py imports rich at module scope, and the mypy-gate test's
+    positive control asserts the ratchet's exit 1 (regression), which it
+    cannot reach at exit 2 (its documented infra failure with mypy
+    absent). Verified in the same venv: with mypy present the ratchet
+    returns 1 and reports REGRESSION.
+
+Controls: the guard passes with the declaration and fails without it.
+CI-equivalent rerun of the whole step: 1518 passed, 0 failed.
+
+Refs: INV-vazuh, WI-zavut
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
