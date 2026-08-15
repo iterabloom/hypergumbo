@@ -1,0 +1,40 @@
+Original commit body from c1aa72a471f80815c1aa46e41b97618b2ebfbbf9:
+
+Every run now folds its per-test coverage into a persistent block -> tests
+index; a shadow reporter says what a coverage-driven selector WOULD have
+chosen and acts on none of it. Nothing about test selection changes yet.
+
+Keyed on AST-block digests, not line numbers: an insertion above a function
+must not look like a change to it. Children are removed from a parent's
+digest entirely rather than left as name markers -- the marker design made
+every structural edit perturb the enclosing block, and a module-level def's
+parent is import-time code credited to EVERY test in the file, so adding one
+function selected the whole suite. Renames and moves are caught by the
+vanished-key rule instead. A block owns its BODY, not its `def` header,
+because the header executes at import in the enclosing scope.
+
+FOURTH selector, not a replacement. Coverage beats the import-graph slice on
+packages/*/src, loses to top_level_test_map on scripts/ (subprocess tests
+leave no in-process trace), and cannot see YAML or fixtures. Unioned, never
+subtracted, and local only -- CI keeps running everything.
+
+Three defects found end-to-end, all green at unit level:
+  - change detection was measured against the INDEX, which is rewritten every
+    run, so the baseline advanced and run 2 compared the tree against itself:
+    0 selected vs smart-test's 87. It belongs to git.
+  - the targeted path scopes --cov to changed files, so "ran and produced
+    nothing" marked 1,507 of 1,662 tests unmeasured -- and unmeasured tests
+    are excluded from selection, making most of the suite unselectable.
+  - a cold index reports every test as a miss while looking trustworthy;
+    those observations are now excluded rather than poisoning the evidence.
+
+Also fixes two one-fact-two-homes drifts in smart-test itself: COV_PATHS is
+rebuilt on the targeted path (dropping --cov-context), and --full exits
+before the index update. Both now route through one definition.
+
+Demonstrated: one function changed in edge_types.py selects 12 tests across
+2 files out of 22,801, including a runtime dependency in test_cli_explain.py.
+
+Full suite green: 22,801 passed, 100% coverage. ruff/bandit/mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
