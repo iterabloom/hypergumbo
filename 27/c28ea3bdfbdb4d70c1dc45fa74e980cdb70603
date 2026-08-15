@@ -1,0 +1,33 @@
+Original commit body from 0e92d7a097edd46c4afd4beb0b4aea720cccc059:
+
+Asking `ci-debug logs` for a gate that did not run on a commit matched no
+status, fell past the prefer-the-failed-gate rule (nothing had failed),
+landed on statuses[0], and printed a DIFFERENT pipeline's transcript at
+rc 0 with nothing marking the substitution.
+
+Live on dev ea0d6a83ab, which carries only push/woodpecker:
+
+  ci-debug logs cron/full-suite ea0d6a83ab   ->  "1556 passed"  rc 0
+
+That is a cron gate reporting success on a commit it never ran on. Only
+the test count (1556, not 22825) and a 16-second duration distinguished
+it from an answer. The real cron gate last ran on 1de346d6d4 and is RED.
+
+The fallback itself is right and stays -- WI-zavut's five pipeline
+tests are untouched. What was missing is that the caller is never told.
+Both selectors (pipeline and step) now report HOW they chose, and both
+route the report through one _wp_warn_substituted rather than growing a
+second copy of the rule.
+
+The warning is narrow on purpose. ONE name is tried as a gate and then
+as a step, so a fallback at either level alone is ordinary: a gate name
+never matches a step, and a step name never matches a gate. Only when
+NEITHER matches has the caller been handed something they did not ask
+for. Warning on the common path would train the reader to skip it, so
+the two quiet cases are pinned by their own tests.
+
+Controls: both new tests fail with the fix reverted and pass with it;
+the three quiet-path tests pass in both arms.
+
+Refs: INV-vazuh, WI-zavut
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
