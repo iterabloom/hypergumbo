@@ -1,0 +1,56 @@
+Original commit body from d6f869d0afe3d366e72e7ebd4eb9f72822b68d19:
+
+Closes the two residual gaps INV-hazov's own audit found. The mechanism
+landed earlier; these are the parts it could not see.
+
+(a) THE ALIAS SHAPE. Rule 1 matched only `<expr>.meta["k"] = ...`, so a
+bare name defeated it outright:
+
+    meta = symbol.meta          # an ALIAS -- the same dict object
+    meta["concepts"] = kept     # invisible to rule 1
+
+Exactly one live site used it, in framework_patterns -- the same module
+that produced this invariant's seventh instance. A COPY IS NOT AN ALIAS:
+`m = dict(x.meta)` builds a fresh dict and destroys nothing until it is
+assigned back, which is already rule 3's business. Measured over the
+tree: 1 alias, 13 copies, and the 13 are the control showing the
+predicate is not simply matching every local dict.
+
+(b) THE REMOVAL CASE, which is why that site had to bypass at all. It
+REMOVES concepts a later-computed fact invalidates, and `concepts` is
+declared merge_union -- so write_meta_key would have unioned the
+stripped entries straight back in. The vocabulary had add/refine/replace
+and no remove, so the one legitimate remover in the tree could not route
+through the chokepoint, and the linter could not tell that bypass from a
+careless assignment.
+
+The answer is a second VERB, not a new discipline. A write_discipline
+says how several WRITERS COMBINE, and `concepts` genuinely is
+merge_union for its writers -- two enrichment passes must keep both. A
+curator is not a competing writer: it runs after them and narrows their
+agreed result. filter_meta_key() is that entry point, restricted to
+merge_union keys because a single_writer / producer_primary key holds
+one authoritative value and dropping it is the erasure this class is
+about. The two rejected alternatives (a `removal` discipline value,
+false about the writers; an audited-exception list, which leaves the
+bypass invisible) are recorded in the docstring rather than left to be
+re-litigated.
+
+A LATENT BUG IN RULE 3 FELL OUT OF WRITING THE ALIAS TEST. `_scopes`
+returns the module plus every function, but ast.walk FROM THE MODULE
+descends into every function body -- so "per scope" was not per scope,
+and a name bound in one function could match a subscript in another.
+That is the identical module-wide false positive `_scopes` was
+introduced to kill, surviving only because no module happened to pair
+the two shapes. One bounded walker now serves both rules.
+
+Controls: the checker is CLEAN on the live tree and FIRES on the site
+with the fix reverted; the cross-scope and dict-copy cases are pinned by
+their own tests; collision-capable keys stay 5, all declared.
+
+Ratchet: this change breached +1 (attr-defined, `ast.AST` has no
+lineno). Mine, fixed at source by narrowing to ast.Assign rather than
+raising the baseline. 672, delta 0.
+
+Refs: INV-hazov
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
