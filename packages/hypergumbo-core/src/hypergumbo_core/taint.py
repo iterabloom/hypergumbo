@@ -578,6 +578,22 @@ class TaintCatalog:
     # agrees with io-boundaries instead of blindly matching the first entry.
     _ambiguous_names: dict[str, frozenset[str]] = field(default_factory=dict)
 
+    # INV-faput: SHIPPED entries a user entry took the place of, per language.
+    # Populated only where a user layer overrides the built-in one — a
+    # user-over-user override removes no shipped coverage and is not recorded.
+    #
+    # These exist because the fact is otherwise UNRECOVERABLE downstream: the
+    # displaced sink leaves the catalogue before propagation, so no flow is
+    # constructed, nothing is sanitized, and `caveats` is correctly empty. The
+    # finding-level attribution INV-pojib built cannot see this by construction
+    # — there is no finding to attribute. Detecting it means comparing the
+    # merged catalogue against the shipped one, which is only possible at the
+    # moment of the merge.
+    _displaced_sources: dict[str, list[TaintSource]] = field(
+        default_factory=dict,
+    )
+    _displaced_sinks: dict[str, list[TaintSink]] = field(default_factory=dict)
+
     # Lookup indices built from entries
     _source_by_name: dict[str, dict[str, list[TaintSource]]] = field(
         default_factory=dict, repr=False,
@@ -1184,15 +1200,34 @@ def _derive_auto_imports_from_io_primitives(
 def _merge_with_user_override(
     auto_by_lang: Mapping[str, Sequence[TEntry]],
     user_by_lang: Mapping[str, Sequence[TEntry]],
-) -> dict[str, list[TEntry]]:
+) -> tuple[dict[str, list[TEntry]], dict[str, list[TEntry]]]:
     """Merge auto-derived entries with user entries; user entries win on
     (module, name, kind) match.
 
-    The result preserves every user entry and adds auto entries whose
-    (module, name, kind) triple is not already declared by the user.
-    Works for both TaintSource and TaintSink (both expose those fields).
+    Returns ``(merged, displaced)``. ``merged`` preserves every user entry and
+    adds auto entries whose (module, name, kind) triple is not already declared
+    by the user. ``displaced`` holds the entries that were DROPPED — the ones a
+    user entry took the place of.
+
+    INV-faput: the displacement set was always computed here and thrown away,
+    and that is the whole defect. A user sink re-declaring a shipped one does
+    not ADD to the catalogue, it REPLACES it — so the shipped row leaves before
+    propagation runs, no flow is ever constructed, and the claim reads
+    ``confirmed`` with ``caveats: []``. Measured: a repo whose only statement is
+    ``os.remove(os.environ["API_KEY"])`` against "host secrets must not reach
+    the host filesystem" goes ``violated`` rc 1 -> ``confirmed`` rc 0 when a
+    user file re-declares ``os.remove`` into a ``dev_zone``.
+
+    That is strictly worse than the two disclosure gaps already closed. An
+    overlay GRANTS coverage; a user sanitizer DELETES a finding already made
+    and is attributed on the flow (INV-pojib); an override PREVENTS THE FINDING
+    FROM EXISTING, which is the only one of the three that can leave no trace
+    on any per-flow record. Nothing downstream can reconstruct it, because the
+    evidence is gone by the time anything downstream runs. Returning it is
+    therefore not bookkeeping — it is the only moment the fact exists.
     """
     merged: dict[str, list[TEntry]] = {}
+    displaced: dict[str, list[TEntry]] = {}
     all_langs = set(auto_by_lang) | set(user_by_lang)
     for lang in all_langs:
         user_list = user_by_lang.get(lang, [])
@@ -1202,8 +1237,14 @@ def _merge_with_user_override(
             e for e in auto_list
             if (e.module, e.name, e.kind) not in user_keys
         ]
+        dropped = [
+            e for e in auto_list
+            if (e.module, e.name, e.kind) in user_keys
+        ]
+        if dropped:
+            displaced.setdefault(lang, []).extend(dropped)
         merged[lang] = filtered_auto + list(user_list)
-    return merged
+    return merged, displaced
 
 
 # ---------------------------------------------------------------------------
@@ -1302,10 +1343,13 @@ def load_full_taint_catalog(
     cli_layer = load_taint_catalog(
         cli_source_paths, cli_sink_paths, cli_sanitizer_paths,
     )
-    user_sources = _merge_with_user_override(
+    # User-over-user (claims file vs CLI). A displacement here is one user
+    # layer overriding another, which INV-hukug already documents as intended
+    # precedence and which removes no SHIPPED coverage — so it is not carried.
+    user_sources, _ = _merge_with_user_override(
         claims_layer._sources, cli_layer._sources,
     )
-    user_sinks = _merge_with_user_override(
+    user_sinks, _ = _merge_with_user_override(
         claims_layer._sinks, cli_layer._sinks,
     )
     # INV-pojib: STAMPED HERE, which is the only place that still knows these
@@ -1319,8 +1363,17 @@ def load_full_taint_catalog(
                 replace(san, user_supplied=True) for san in sans
             )
 
-    catalog._sources = _merge_with_user_override(catalog._sources, user_sources)
-    catalog._sinks = _merge_with_user_override(catalog._sinks, user_sinks)
+    # THIS is the displacement that matters: user entries taking the place of
+    # SHIPPED ones, which is the only layer boundary where a user file can
+    # remove coverage the tool would otherwise have had.
+    catalog._sources, displaced_sources = _merge_with_user_override(
+        catalog._sources, user_sources,
+    )
+    catalog._sinks, displaced_sinks = _merge_with_user_override(
+        catalog._sinks, user_sinks,
+    )
+    catalog._displaced_sources = displaced_sources
+    catalog._displaced_sinks = displaced_sinks
     for lang, sans in user_sanitizers.items():
         catalog._sanitizers.setdefault(lang, []).extend(sans)
     catalog._rebuild_indices()
@@ -1363,12 +1416,14 @@ def load_builtin_taint_catalog(
             _IO_PRIMITIVES_DIR, io_overlay_paths,
         )
     )
-    user_catalog._sources = _merge_with_user_override(
+    user_catalog._sources, displaced_sources = _merge_with_user_override(
         auto_sources, user_catalog._sources,
     )
-    user_catalog._sinks = _merge_with_user_override(
+    user_catalog._sinks, displaced_sinks = _merge_with_user_override(
         auto_sinks, user_catalog._sinks,
     )
+    user_catalog._displaced_sources = displaced_sources
+    user_catalog._displaced_sinks = displaced_sinks
     # WI-razol: carry the io_primitives ambiguous_names onto the catalog so
     # match_source / match_sink disambiguate exactly as io-boundaries does.
     user_catalog._ambiguous_names = ambiguous_by_lang
