@@ -86,6 +86,37 @@ _github_do_merge() {
 }
 
 # ------------------------------------------------------------------
+# _wp_warn_substituted KIND REQUESTED HOW ACTUAL
+#
+# INV-vazuh. The log resolver picks a pipeline and then a step inside it, and
+# BOTH selections degrade to a fallback when an explicit name matches nothing.
+# That degradation is deliberate and useful; what made it dangerous is that it
+# was invisible, so a substituted transcript was indistinguishable from the
+# one that was asked for. One rule, one place: whenever a name was supplied
+# and the selector did NOT match it, say so on stderr, naming both sides so
+# the reader can tell which gate the numbers below actually came from.
+#
+# Deliberately silent when no name was requested — nothing was substituted
+# then, and a warning on every ordinary call is noise that trains the reader
+# to skip it.
+_wp_warn_substituted() {
+	local requested="${1:-}" how="${2:-}" actual="${3:-}"
+	[[ -z "$requested" ]] && return 0
+	[[ "$how" != fallback-* ]] && return 0
+	{
+		echo "⚠️  Nothing named '$requested' on this commit — no gate and no"
+		echo "    step by that name."
+		if [[ -n "$actual" ]]; then
+			echo "    Showing '$actual' INSTEAD. The output below is NOT"
+			echo "    '$requested' — a gate that never ran cannot pass."
+		fi
+		if [[ "$how" == "fallback-first" ]]; then
+			echo "    (Nothing had failed either, so this is simply the first"
+			echo "     gate reported. Run 'ci-debug status' to list them.)"
+		fi
+	} >&2
+}
+
 # _github_fetch_job_log HEAD_SHA [JOB_NAME]
 #   Capability gap: Woodpecker CI logs live behind Cloudflare Access and
 #   are not retrievable via the GitHub API (GitHub Actions is disabled;
@@ -115,8 +146,20 @@ _github_fetch_job_log() {
 	#      defaulting to the first status handed back the GREEN pipeline
 	#      while a different gate was red. This mirrors the step-level rule
 	#      already applied below.
+	#
+	# INV-vazuh: rule 2 is right and stays, but it must not be SILENT. On dev
+	# ea0d6a83ab the only status is push/woodpecker (success) — the cron gate
+	# never ran on that commit. `logs cron/full-suite ea0d6a83ab` matched no
+	# status, fell past the failed-gate rule (nothing had failed) to
+	# statuses[0], and printed the PUSH pipeline's GREEN transcript at rc=0.
+	# Nothing in the output said "that is not the gate you asked for", so a
+	# gate that never ran reads as a gate that passed. Substituting is still
+	# the most useful answer; doing it without saying so is what manufactures
+	# a false green. Both selectors below now report HOW they chose, and both
+	# route the warning through _wp_warn_substituted.
 	if api_get "$API_BASE/commits/$head_sha/status"; then
-		target_url=$(echo "$API_RESPONSE" | WP_JOB="$job_name" python3 -c "
+		local _sel how ctx
+		_sel=$(echo "$API_RESPONSE" | WP_JOB="$job_name" python3 -c "
 import sys, json, os
 want = (os.environ.get('WP_JOB') or '').strip().lower()
 try:
@@ -125,21 +168,22 @@ try:
 except Exception:
     sys.exit(0)
 
-def emit(s):
-    print(s['target_url'])
+def emit(s, how):
+    print('\t'.join((s['target_url'], how, str(s.get('context', '')))))
     sys.exit(0)
 
 if want:
     for s in statuses:
         ctx = str(s.get('context', '')).lower()
         if want == ctx or want in ctx or ctx.rsplit('/', 1)[-1] == want:
-            emit(s)
+            emit(s, 'matched')
 for s in statuses:
     if str(s.get('state', '')).lower() in ('failure', 'error'):
-        emit(s)
+        emit(s, 'fallback-failed')
 if statuses:
-    emit(statuses[0])
+    emit(statuses[0], 'fallback-first')
 " 2>/dev/null || echo "")
+		IFS=$'\t' read -r target_url how ctx <<<"$_sel"
 	fi
 
 	# WI-solob. Fetching a Woodpecker log takes TWO calls, not one, and the
@@ -174,7 +218,8 @@ if statuses:
 			"$wp_host/api/repos/$wp_repo/pipelines/$wp_pipeline" 2>/dev/null || true)
 		# Prefer a step whose name matches JOB_NAME; otherwise the FAILED step,
 		# so `ci-debug logs` with no job lands on the thing that actually broke.
-		step_id=$(WP_JOB="$job_name" python3 -c "
+		local _step_sel step_how step_name
+		_step_sel=$(WP_JOB="$job_name" python3 -c "
 import sys, json, os
 want = (os.environ.get('WP_JOB') or '').strip().lower()
 try:
@@ -182,16 +227,33 @@ try:
              for s in (wf.get('children') or [])]
 except Exception:
     sys.exit(0)
+
+def emit(s, how):
+    print('\t'.join((str(s.get('id')), how, str(s.get('name', '')))))
+    sys.exit(0)
+
 if want:
     for s in steps:
         if str(s.get('name','')).lower() == want:
-            print(s.get('id')); sys.exit(0)
+            emit(s, 'matched')
 for s in steps:
     if s.get('state') == 'failure' or s.get('exit_code'):
-        print(s.get('id')); sys.exit(0)
+        emit(s, 'fallback-failed')
 if steps:
-    print(steps[-1].get('id'))
+    emit(steps[-1], 'fallback-first')
 " <<<"$pipeline_json" 2>/dev/null || echo "")
+		IFS=$'\t' read -r step_id step_how step_name <<<"$_step_sel"
+		# ONE name is tried as a gate and then as a step, so a fallback at
+		# either level alone is not a substitution:
+		#   gate matched  -> the name was a gate name; no step will carry it,
+		#                    and falling back to the failed STEP is the point.
+		#   step matched  -> the name was a step name; the gate fallback that
+		#                    got us into this pipeline did its job.
+		# Only when NEITHER matched has the caller been handed something they
+		# did not ask for, and that is the one case worth interrupting for.
+		if [[ "${how:-}" != "matched" && "${step_how:-}" != "matched" ]]; then
+			_wp_warn_substituted "$job_name" "${how:-}" "${ctx:-}"
+		fi
 
 		if [[ -n "$step_id" ]]; then
 			local body http
@@ -238,6 +300,12 @@ sys.stdout.write('\n'.join(out) + '\n')
 			echo "Could not resolve a step id from pipeline $wp_pipeline." >&2
 		fi
 	fi
+
+	# Reached without credentials (or without pipeline coordinates), so no step
+	# was ever consulted and the target_url printed below is whatever the gate
+	# selection produced. If that was a fallback, the URL points at a DIFFERENT
+	# gate than the one named — say so before printing it.
+	_wp_warn_substituted "$job_name" "${how:-}" "${ctx:-}"
 
 	{
 		echo "CI logs are hosted in Woodpecker behind Cloudflare Access and need"
