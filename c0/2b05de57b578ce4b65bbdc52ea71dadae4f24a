@@ -1,0 +1,54 @@
+Original commit body from b934bda54af8f6858374ad0cf9984d050cb9f793:
+
+cpp.py sets an unresolved call's module slot to the comma-joined list of
+every #include in the file, and its own comment states the contract:
+"this call could be from any of the included headers; downstream
+consumers may split the module_hint on commas if they need per-header
+resolution."
+
+No consumer ever split it. lookup_with_module handed the whole joined
+string to _module_matches, which is EXACT by design (a prefix rule was
+wrong in three languages at once), so a multi-include file matched
+nothing at all -- and a single-include file missed too, because the slot
+keeps stdio.h while c.yaml declares stdio.
+
+Measured on whisper.cpp with production's own extractors:
+
+  cpp call edges     35059
+  matched BEFORE         6      (5 fs_write, 1 env_read)
+  matched AFTER         65      (22 fs_read, 22 fs_write, 7 net_recv,
+                                 6 env_read, 5 subprocess, 3 net_send)
+
+net_send, net_recv and subprocess were at ZERO, so C++'s entire network
+and process-spawning surface was invisible to io-boundaries and to every
+taint source derived from it. getenv is a taint SOURCE, not merely a
+boundary.
+
+ADDITIVE AND BOUNDED, asserted rather than argued. The full slot is
+offered before any part, so a hint with no comma and no header suffix
+expands to exactly itself; a property test pins that over eight real
+hint shapes from five languages. Swept: cpp.py:1374 is the ONLY producer
+in the tree that comma-joins a module slot, and NO shipped catalogue
+declares a module ending in a header suffix -- so the stem candidate can
+add a match but can never remove or redirect one. The disjunction stays
+bounded by what the file includes: a unit that never includes
+<sys/socket.h> still cannot match sys/socket.
+
+FALSE POSITIVES MEASURED, NOT WAVED AWAY: 2 of 59 (3.4%). Both are
+`wait` in one file that genuinely includes <sys/wait.h> and genuinely
+calls waitpid, where those two calls are std::condition_variable::wait
+and std::future::wait -- C++ methods wearing a POSIX function's name.
+The discriminator is call_construct, which the cpp analyzer emits on no
+edge; gate_named_entry already handles it the moment it arrives. Routing
+the whole disjunction through that gate instead was measured and
+REJECTED: ambiguous_names holds bind/connect/listen/recv/send/stat/wait,
+so it would discard ~12 true positives to remove these 2. Direction also
+favours shipping -- a false boundary reads `violated` (loud), the
+missing 59 read `confirmed` (silent).
+
+The disclosure test that asserted "cpp reaches no catalogue" was written
+to go RED when this landed, and did. Replaced with the boundary
+assertions it named, plus a pin that the PRODUCER is unchanged.
+
+Refs: INV-funuf
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
