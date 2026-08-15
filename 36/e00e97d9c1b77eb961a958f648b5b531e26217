@@ -1,0 +1,64 @@
+Original commit body from 6651293c61dd6d7422ced35f1156a053e7b709bb:
+
+OWNER RULING, 2026-08-15, on whether an overlay may declare a module
+enumerated: "i mean what else would it do? you have a better idea? if not,
+then of course it may."
+
+WHAT WAS BROKEN. An overlay could declare what a third-party module DOES
+(primitive rows) but never that the list was COMPLETE -- load_overlay_catalog
+refused stdlib_module_completeness outright. So a dependency could never leave
+the uncatalogued-module set no matter how carefully it was described, and
+verify-claims could never answer `confirmed` for any repo that HAS
+dependencies. Measured on hypergumbo's own self-survey: 52 genuine third-party
+modules, permanently unadjudicable by construction.
+
+THE RENAME IS THE OTHER HALF, and it is the owner's point rather than
+housekeeping: "overlays are where third-party stuff goes. am i wrong? then why
+would we put anything about stdlib in its associated names? that would be
+misleading."
+
+  module_completeness           canonical, accepted everywhere
+  stdlib_module_completeness    deprecated; still READ from shipped
+                                catalogues so no curated file breaks;
+                                REFUSED in an overlay, with a message
+                                naming the honest key rather than a flat
+                                rejection
+
+The concept was never stdlib-specific -- only its AUTHORS were, which is a fact
+about who may write the key, not about what it means. Once an overlay may
+declare numpy or tree_sitter enumerated, a field named stdlib_* holds two
+populations under a name describing one: the conceptual leak the
+fundamental-concept audit exists to catch.
+
+WHAT BOUNDS THE GRANT, since it is the single grant of confirmability
+(INV-buzab) and therefore the most powerful line a user can write here:
+  - `retrieved:` stays MANDATORY, so an entry is a dated audit record rather
+    than a switch;
+  - it still does not promote the module into stdlib_modules, so vouching for
+    a dependency's I/O never restates itself as provenance (ADR-0041 section 3).
+
+THE COST IS KEPT ON THE RECORD RATHER THAN SOFTENED. A six-line overlay with
+zero rows and one telnetlib entry turns the INV-buzab exfiltration fixture --
+which opens telnetlib.Telnet and writes os.environ["API_KEY"] into it -- from
+inconclusive rc 2 to confirmed rc 0. The test that used to pin the REFUSAL now
+pins the GRANT, deliberately still spelled with telnetlib: if anyone narrows
+this later, the test they must change is the one carrying the exfiltration
+fixture in its docstring.
+
+A TEST THAT WOULD HAVE PASSED EITHER WAY, caught and fixed: the first version
+of the refusal-spelling test used match="module_completeness", which is a
+SUBSTRING of "stdlib_module_completeness" and therefore matched the old message
+too. It now asserts the message actively steers the author.
+
+KNOWN RESIDUAL, filed as INV-tabaf rather than fixed here: the stderr
+disclosure names the overlay PATH but not which modules it vouched for, so the
+most powerful line in a user's overlay is the least visible one. It needs the
+disclosure to move after the per-language catalogue loop, which is a
+restructure and does not belong in a rename-plus-permission commit.
+
+ADR-0016 amended in place (the refusal paragraph rewritten, not banner-flagged).
+
+Suite: 22,883 passed / 7 skipped / 17 xfailed (= 22,907 ingested), 100%
+coverage, core green in isolation, mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
