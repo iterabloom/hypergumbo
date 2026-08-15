@@ -19,3 +19,12 @@
     pr_ref:  # 6b2a
     description: "PHASE 3 of coverage-directed selection: let the coverage selector NARROW the\nset, not just add to it. Opt-in flag, never the default, never in CI.\n\nBLOCKED ON EVIDENCE, not on implementation. The code change is small; the\njustification is not. Until Phase 1 has accrued observations showing the\nselector never drops a test that both ran and FAILED, narrowing is a guess.\n\nHARD PRECONDITION, and the one a careless implementation breaks: assert\n`unmeasured` tests are still selected before narrowing. 3,597 tests (15.9%)\nproduce no coverage rows at all -- the whole hypergumbo-tracker package is\noutside COV_PATHS, plus subprocess and scripts/ tests. Coverage can never\nspeak about them, so a narrowing pass that consults only the index would drop\nevery one of them silently.\n\nAlso re-check at that point: the shadow compares FILE-to-FILE because\nsmart-test selects files. Narrowing at NODE granularity (12 tests rather than\n2 files) is where the remaining gain is, and it is a different, larger claim\nthan the one Phase 1 measures. Do not conflate them."  # 6b2a
     fields: {}  # 6b2a
+- op: update  # fe05
+  at: '2026-08-15T02:02:45Z'  # fe05
+  by: agent  # fe05
+  actor: jgstern_agent  # fe05
+  clock: 2  # fe05
+  nonce: fe05  # fe05
+  set: {}  # fe05
+  add:  # fe05
+    isbefore: [WI-hihuv-tazuf-sijir-manup-tarim-bofib-motun-kariz]  # fe05
