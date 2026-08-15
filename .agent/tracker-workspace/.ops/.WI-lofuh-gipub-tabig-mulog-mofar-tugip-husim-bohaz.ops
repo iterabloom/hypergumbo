@@ -1,0 +1,21 @@
+- op: create  # f619
+  at: '2026-08-15T01:53:03Z'  # f619
+  by: agent  # f619
+  actor: jgstern_agent  # f619
+  clock: 1  # f619
+  nonce: f619  # f619
+  data:  # f619
+    kind: work_item  # f619
+    title: "Package coverage-directed selection as a git hook (GOVERNANCE: .githooks/** needs human approval; separate PR, do not bundle)"  # f619
+    status: todo_soft  # f619
+    priority: 4  # f619
+    parent:  # f619
+    tags:  # f619
+    - coverage_selection  # f619
+    - ci_infrastructure  # f619
+    isbefore: []  # f619
+    duplicate_of: []  # f619
+    not_duplicate_of: []  # f619
+    pr_ref:  # f619
+    description: "Package coverage-directed selection as a git hook -- the framing the idea\nstarted from -- so selection happens at commit time rather than only when\nsmart-test is invoked.\n\nGOVERNANCE: .githooks/** requires human approval. This must be a SEPARATE PR\nfrom any smart-test work and must not be bundled. Per AGENTS.md: set the item\nto needs_human_review, post the proposed change for approval, and only then\nrun auto-pr.\n\nDEFERRED DELIBERATELY. The machinery (block hashing, incremental index, git\nbaseline) is now in scripts/smart-test and hypergumbo_core, which are not\ngovernance files. A hook adds no capability -- it changes only WHEN selection\nruns -- so it earns nothing until the selector itself is trusted (Phase 2+)."  # f619
+    fields: {}  # f619
