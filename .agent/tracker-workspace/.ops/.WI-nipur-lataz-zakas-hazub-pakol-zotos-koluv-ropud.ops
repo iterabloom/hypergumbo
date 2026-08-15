@@ -1,0 +1,30 @@
+- op: create  # 202f
+  at: '2026-08-15T01:52:35Z'  # 202f
+  by: agent  # 202f
+  actor: jgstern_agent  # 202f
+  clock: 1  # 202f
+  nonce: 202f  # 202f
+  data:  # 202f
+    kind: work_item  # 202f
+    title: "Shadow observations are overwritten每 run, so the Phase 1 exit criterion is undecidable: accumulate them and report misses that also FAILED"  # 202f
+    status: todo_hard  # 202f
+    priority: 2  # 202f
+    parent:  # 202f
+    tags:  # 202f
+    - coverage_selection  # 202f
+    - developer_experience  # 202f
+    isbefore:  # 202f
+    - WI-kuliv-nofiv-hazas-papiz-kulij-vosok-lorus-vokas  # 202f
+    duplicate_of: []  # 202f
+    not_duplicate_of: []  # 202f
+    pr_ref:  # 202f
+    description: "PHASE 1 residual: the shadow reports per-run but NOTHING ACCUMULATES, so its\nexit criterion is currently undecidable.\n\nTHE GAP. scripts/coverage-select writes .ci/selection-shadow.json, which is\noverwritten on every run and gitignored. Each observation destroys the last.\nThe phase was designed to accrue evidence for free from ordinary work, and as\nshipped it accrues nothing.\n\nWHAT TO BUILD.\n  1. Append each observation to a durable out-of-repo log (alongside the index\n     in ~/hypergumbo_lab_notebook/, for the same reason: per-run churn must not\n     touch the working tree).\n  2. A reporter that computes the exit criterion: over >=30 commits, did any\n     test appear in MISSED_BY_COVERAGE that both RAN and FAILED? That is the\n     only safety claim worth having. \"The counts look similar\" is not one.\n  3. Track the INFORMATIVE RATE. Observations from a cold index, or where every\n     changed file is new code, are excluded by design -- they report every test\n     as a miss. If most observations are disqualified, evidence accrues far\n     slower than \"30 commits\" implies, and that must be visible from the\n     counter rather than discovered later.\n\nALSO OUTSTANDING: a genuine head-to-head. The 12-tests-across-2-files demo was\nrun by invoking coverage-select directly with an EMPTY actual-tests list, so\nits EXTRA_FROM_COVERAGE=2 is an artifact of an empty comparison, not a win\nover the slice. The first tracked-file change through smart-test gives the\nreal number. Today produced exactly one admissible observation."  # 202f
+    fields: {}  # 202f
+- op: update  # 9a4d
+  at: '2026-08-15T01:52:44Z'  # 9a4d
+  by: agent  # 9a4d
+  actor: jgstern_agent  # 9a4d
+  clock: 2  # 9a4d
+  nonce: 9a4d  # 9a4d
+  set:  # 9a4d
+    title: "Shadow observations are overwritten every run, so the Phase 1 exit criterion is undecidable: accumulate them and report misses that also FAILED"  # 9a4d

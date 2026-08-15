@@ -1,0 +1,23 @@
+- op: create  # 3309
+  at: '2026-08-15T01:52:59Z'  # 3309
+  by: agent  # 3309
+  actor: jgstern_agent  # 3309
+  clock: 1  # 3309
+  nonce: '3309'  # 3309
+  data:  # 3309
+    kind: invariant  # 3309
+    title: "A behaviour-changing source edit must perturb some block digest: shadowing redefinitions and pragma edits perturb none"  # 3309
+    status: violated  # 3309
+    priority: 3  # 3309
+    parent:  # 3309
+    tags:  # 3309
+    - coverage_selection  # 3309
+    - analysis_quality  # 3309
+    isbefore: []  # 3309
+    duplicate_of: []  # 3309
+    not_duplicate_of: []  # 3309
+    pr_ref:  # 3309
+    description: "Two known channels, both documented in-code at the point of the compromise and\nneither fixed, where a behaviour-changing edit perturbs NO block digest and the\ncoverage selector therefore selects nothing.\n\n(1) SHADOWING REDEFINITION. Two defs sharing a name at one scope are keyed\n`f` and `f#2` by source order. Adding the second creates a NEW key with no\ntest history while leaving `f` untouched, so nothing is selected although the\nsecond definition now wins at runtime. Linters flag this shape, which is why\nit was accepted rather than solved.\n\n(2) PRAGMA EDITS. Digests are `ast.dump(node, include_attributes=False)`, so\ncomments are discarded -- deliberately, since a comment edit is not a\nbehaviour change. But `# pragma: no cover` IS load-bearing: editing it changes\nwhat coverage measures without changing the AST.\n\nWHY THIS IS FILED AND NOT FIXED: both fall through to the import-graph slice,\nwhich is exactly the argument for coverage being a FOURTH selector unioned\nwith the others rather than a replacement. The invariant is only genuinely\nviolated if narrowing (Phase 3) ever lands, at which point the union no longer\ncovers for them. Re-evaluate then, not before."  # 3309
+    fields:  # 3309
+      statement: "Any source edit that changes runtime behaviour must perturb at least one AST-block digest, so the coverage-directed selector can map it back to the tests that executed that code."  # 3309
+      root_cause: "Block digests are ast.dump(node, include_attributes=False), which is position- and comment-independent by design. Two edits escape that: a second def shadowing an earlier one at the same scope gets a fresh key (f#2) with no test history while the original key is untouched; and a '# pragma: no cover' edit changes what coverage measures without changing the AST at all."  # 3309

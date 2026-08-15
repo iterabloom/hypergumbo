@@ -1,0 +1,22 @@
+- op: create  # 4559
+  at: '2026-08-15T01:52:31Z'  # 4559
+  by: agent  # 4559
+  actor: jgstern_agent  # 4559
+  clock: 1  # 4559
+  nonce: '4559'  # 4559
+  data:  # 4559
+    kind: work_item  # 4559
+    title: "Phase 2 coverage-directed selection: union into AFFECTED_TESTS (additive only); justified by dependencies the static slice misses, not by speed"  # 4559
+    status: todo_soft  # 4559
+    priority: 3  # 4559
+    parent:  # 4559
+    tags:  # 4559
+    - coverage_selection  # 4559
+    - developer_experience  # 4559
+    isbefore:  # 4559
+    - WI-bolot-zitaf-hovor-vosub-honag-bimil-bivad-natip  # 4559
+    duplicate_of: []  # 4559
+    not_duplicate_of: []  # 4559
+    pr_ref:  # 4559
+    description: "PHASE 2 of coverage-directed selection: union the coverage-selected tests into\nAFFECTED_TESTS at the existing union site in scripts/smart-test.\n\nStrictly safer than today by construction -- it can only ADD tests. That is\nwhy it precedes any narrowing.\n\nThe justification is NOT speed. It is whether EXTRA_FROM_COVERAGE ever catches\na real dependency the static import-graph slice missed. Coverage sees dynamic\ndispatch that the slice over-approximates or misses entirely; the warm demo\nalready showed the shape, selecting test_cli_explain.py for a change to\nedge_types.find_edge_type because explain looks edge types up at runtime. If\nthat generalises, this is a CORRECTNESS improvement that happens to be fast,\nand it stands on its own even if Phase 3 never lands.\n\nRemains local-only. CI never invokes scripts/smart-test."  # 4559
+    fields: {}  # 4559
