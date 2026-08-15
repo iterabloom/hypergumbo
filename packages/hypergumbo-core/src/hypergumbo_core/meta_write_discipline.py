@@ -105,6 +105,60 @@ def _mutation_key(node: ast.AST) -> str | None:
     return None
 
 
+def _meta_aliases(scope: ast.AST) -> set[str]:
+    """Names bound, WITHIN this scope, to a ``.meta`` dict ITSELF.
+
+    INV-hazov (a). ``_mutation_key`` matches only ``<expr>.meta["k"] = ...``,
+    so a local name defeats it entirely::
+
+        meta = symbol.meta        # an ALIAS — same dict object
+        meta["concepts"] = kept   # invisible to rule 1
+
+    That was one live site (``framework_patterns.strip_test_file_only_concepts``)
+    bypassing the chokepoint on a ``merge_union`` key, in the same module that
+    produced this invariant's own seventh instance.
+
+    A COPY IS NOT AN ALIAS, and conflating them is what makes this rule usable
+    rather than noise. ``m = dict(x.meta)`` builds a fresh dict; mutating it
+    destroys nothing until it is assigned back, and assigning it back is
+    already rule 3's business. Measured over the tree: 1 alias, 13 copies. The
+    13 are the control showing this predicate is not simply matching every
+    local dict.
+
+    PER SCOPE, for the reason rule 3 already learned the hard way: a
+    module-wide name scan let an alias bound in one function match subscripts
+    in every other, and reported 5 where the truth is 1 — the identical
+    false-positive shape that a module-wide first draft produced on ``go.py``.
+    """
+    names: set[str] = set()
+    for node in _walk_scope(scope):
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if not (isinstance(value, ast.Attribute) and value.attr == "meta"):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return names
+
+
+def _alias_mutation_key(node: ast.AST, aliases: set[str]) -> str | None:
+    """``<alias>["k"] = ...`` -> ``k``, for a name bound to a ``.meta`` dict."""
+    if not isinstance(node, ast.Assign):
+        return None
+    for target in node.targets:
+        if (
+            isinstance(target, ast.Subscript)
+            and isinstance(target.slice, ast.Constant)
+            and isinstance(target.slice.value, str)
+            and isinstance(target.value, ast.Name)
+            and target.value.id in aliases
+        ):
+            return target.slice.value
+    return None
+
+
 def _chokepoint_key(node: ast.AST) -> str | None:
     """``write_meta_key(<meta>, "k", ...)`` -> ``k``.
 
@@ -164,6 +218,19 @@ def _scan(root: Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
                 mutated.setdefault(key, set()).add(rel)
             for ckey in _construction_keys(node):
                 constructed.setdefault(ckey, set()).add(rel)
+        # INV-hazov (a): an alias-mediated mutation is still a POST-HOC
+        # mutation, so the census must count it or a key reachable only that
+        # way would read as construction-only and drop out of the
+        # collision-capable set — the same under-count that let a fixed key
+        # be silently down-declared before chokepoint calls were counted.
+        for scope in _scopes(tree):
+            aliases = _meta_aliases(scope)
+            if not aliases:
+                continue
+            for node in _walk_scope(scope):
+                key = _alias_mutation_key(node, aliases)
+                if key is not None:
+                    mutated.setdefault(key, set()).add(rel)
     return mutated, constructed
 
 
@@ -192,11 +259,37 @@ def _scopes(tree: ast.AST) -> list[ast.AST]:
     ]
 
 
+def _walk_scope(scope: ast.AST) -> list[ast.AST]:
+    """Every node in *scope*, NOT descending into a nested function.
+
+    ``_scopes`` returns the module plus every function, and the intent is that
+    each is examined on its own. But ``ast.walk`` from the MODULE reaches into
+    every function body, so a name bound in one function and a subscript in
+    another are both "in the module scope" — which re-creates the exact
+    module-wide false positive ``_scopes`` was introduced to kill.
+
+    Found by a test written for the alias rule (INV-hazov (a)) and true of rule
+    3 as well: the leak was latent there, surviving only because no module in
+    the tree happened to pair a meta-bearing construction in one function with
+    a wholesale ``.meta`` replacement in another. One walker for both rules, so
+    the boundary is defined once rather than depended upon twice.
+    """
+    out: list[ast.AST] = []
+    stack: list[ast.AST] = list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        out.append(node)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return out
+
+
 def _meta_bearing_constructions(scope: ast.AST) -> set[str]:
     """Names bound, WITHIN this scope, to a constructor call passing a
     kwarg that lands in ``meta``."""
     names: set[str] = set()
-    for node in ast.walk(scope):
+    for node in _walk_scope(scope):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
             continue
         if not any(kw.arg in META_BEARING_KWARGS for kw in node.value.keywords):
@@ -219,12 +312,25 @@ def find_discipline_drift(root: Path) -> list[str]:
         rel = str(path.relative_to(root))
         exempt = path.name in _CHOKEPOINT_MODULES
 
-        # Rule 1 — direct assignment bypassing the chokepoint.
+        # Rule 1 — direct assignment bypassing the chokepoint, whether written
+        # against the attribute or against a local ALIAS of it (INV-hazov (a):
+        # a bare name defeated this rule entirely, and one live site used it).
         if not exempt:
+            alias_hits: dict[int, str] = {}
+            for scope in _scopes(tree):
+                aliases = _meta_aliases(scope)
+                if not aliases:
+                    continue
+                for node in _walk_scope(scope):
+                    if not isinstance(node, ast.Assign):
+                        continue
+                    key = _alias_mutation_key(node, aliases)
+                    if key is not None:
+                        alias_hits[node.lineno] = key
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Assign):
                     continue
-                key = _mutation_key(node)
+                key = _mutation_key(node) or alias_hits.get(node.lineno)
                 if key is None:
                     continue
                 spec = find_meta_key(key)
@@ -234,9 +340,11 @@ def find_discipline_drift(root: Path) -> list[str]:
                 ):
                     offenders.append(
                         f"{rel}:{node.lineno}: meta key '{key}' is declared "
-                        f"{spec.write_discipline} — assign it through "
-                        f"axis_meta_keys.write_meta_key() so the fold stays "
-                        f"in one place (INV-hazov rule 1)"
+                        f"{spec.write_discipline} — route it through "
+                        f"axis_meta_keys.write_meta_key() (to add) or "
+                        f"filter_meta_key() (to REMOVE entries, which "
+                        f"write_meta_key would union straight back in) so "
+                        f"the fold stays in one place (INV-hazov rule 1)"
                     )
 
         # Rule 3 — wholesale replacement of a POPULATED meta dict, per scope.
@@ -245,7 +353,7 @@ def find_discipline_drift(root: Path) -> list[str]:
             bearing = _meta_bearing_constructions(scope)
             if not bearing:
                 continue
-            for node in ast.walk(scope):
+            for node in _walk_scope(scope):
                 if not isinstance(node, ast.Assign):
                     continue
                 # An empty literal is an INITIALISATION, not a replacement:
