@@ -33,6 +33,7 @@ from hypergumbo_core.axis_meta_keys import (
     META_KEYS,
     WRITE_DISCIPLINES,
     all_meta_key_names,
+    filter_meta_key,
     find_meta_key,
     write_meta_key,
 )
@@ -320,3 +321,148 @@ def test_unaudited_count_is_reported_as_visible_debt():
     )
     assert count == len(META_KEYS) - declared
     assert count > 0, "if this ever hits zero, say so in the changelog"
+
+
+# -- INV-hazov (a): the ALIAS shape ------------------------------------------
+#
+# `_mutation_key` matched only `<expr>.meta["k"] = ...`. A local name defeated
+# it entirely, and one live site used exactly that:
+#
+#     meta = symbol.meta          # an ALIAS — the same dict object
+#     meta["concepts"] = kept     # invisible to rule 1
+#
+# in `framework_patterns.strip_test_file_only_concepts` — the same module that
+# produced this invariant's own seventh instance. Measured over the tree when
+# the residual was audited: 1 alias, 13 `dict(x.meta)` COPIES. The copies are
+# the control showing the predicate is not merely matching every local dict.
+
+
+def test_checker_flags_an_alias_mediated_assignment(tmp_path):
+    """The filed gap: a bare name hid a direct write to a merge_union key."""
+    offenders = _drift(tmp_path, """
+        def f(symbol):
+            meta = symbol.meta
+            meta["concepts"] = []
+    """)
+    assert any("'concepts'" in o for o in offenders), offenders
+
+
+def test_a_dict_copy_is_not_an_alias(tmp_path):
+    """THE CONTROL, and the reason this rule is usable rather than noise.
+
+    ``m = dict(x.meta)`` builds a FRESH dict; mutating it destroys nothing
+    until it is assigned back, and assigning it back is already rule 3's
+    business. Thirteen sites in the tree do this and none is a violation.
+    """
+    offenders = _drift(tmp_path, """
+        def f(symbol):
+            meta = dict(symbol.meta)
+            meta["concepts"] = []
+    """)
+    assert offenders == []
+
+
+def test_an_alias_does_not_leak_across_scopes(tmp_path):
+    """PER SCOPE, for the reason rule 3 already learned on ``go.py``.
+
+    An alias bound in one function must not make an unrelated subscript in
+    another function look like a meta write — the module-wide version of this
+    scan reported 5 where the truth was 1.
+    """
+    offenders = _drift(tmp_path, """
+        def binder(symbol):
+            meta = symbol.meta
+            return meta
+
+        def unrelated():
+            meta = {}
+            meta["concepts"] = []
+    """)
+    assert offenders == []
+
+
+# -- INV-hazov (b): the REMOVAL case -----------------------------------------
+#
+# The vocabulary had add / refine / replace and NO REMOVE, so the one
+# legitimate remover in the tree could not be routed through the chokepoint:
+# `concepts` is merge_union, and write_meta_key would have UNIONED the
+# stripped entries straight back in.
+#
+# The answer is a second VERB, not a new discipline. A write_discipline says
+# how several WRITERS COMBINE, and `concepts` genuinely is merge_union for its
+# writers. A curator is not a competing writer — it runs after them and narrows
+# their agreed result.
+
+
+def test_filter_narrows_a_merge_union_key_and_reports_the_count():
+    meta: dict[str, object] = {"concepts": [{"concept": "a"}, {"concept": "b"}]}
+    removed = filter_meta_key(
+        meta, "concepts", lambda c: c.get("concept") != "a",
+    )
+    assert removed == 1
+    assert meta["concepts"] == [{"concept": "b"}]
+
+
+def test_filter_leaves_the_slot_untouched_when_nothing_is_removed():
+    original = [{"concept": "a"}]
+    meta: dict[str, object] = {"concepts": original}
+    assert filter_meta_key(meta, "concepts", lambda c: True) == 0
+    assert meta["concepts"] is original, (
+        "a no-op filter must not rebind the slot — rebinding is a write, and "
+        "a write is what every instance of this class turned out to be"
+    )
+
+
+def test_filter_on_an_absent_or_non_list_slot_is_a_no_op():
+    assert filter_meta_key({}, "concepts", lambda c: False) == 0
+    assert filter_meta_key({"concepts": "not-a-list"}, "concepts",
+                           lambda c: False) == 0
+
+
+def test_filter_refuses_an_unregistered_key():
+    with pytest.raises(ValueError, match="not registered"):
+        filter_meta_key({"nope": []}, "nope", lambda c: True)
+
+
+def test_filter_refuses_a_single_valued_key():
+    """Narrowing is meaningful only where several writers contribute.
+
+    A single_writer / producer_primary key holds ONE authoritative value, and
+    silently dropping it is precisely the erasure this class is about — so the
+    refusal is loud rather than a quiet no-op.
+    """
+    single = next(
+        s for s in META_KEYS
+        if s.write_discipline in (DISCIPLINE_SINGLE_WRITER,
+                                  DISCIPLINE_PRODUCER_PRIMARY)
+    )
+    with pytest.raises(ValueError, match="may be narrowed"):
+        filter_meta_key({single.name: ["x"]}, single.name, lambda c: False)
+
+
+def test_the_live_remover_routes_through_the_chokepoint():
+    """END TO END on the real function, not a fixture.
+
+    ``strip_test_file_only_concepts`` is the site that motivated (b). Its
+    behaviour must be unchanged — it still strips, and still returns the
+    count — while no longer assigning through an alias.
+    """
+    offenders = find_discipline_drift(REPO_ROOT)
+    assert not [o for o in offenders if "framework_patterns.py" in o], (
+        "the live remover must satisfy rule 1 now that it can be seen:\n"
+        + "\n".join(offenders)
+    )
+    # And it still does its job — behaviour unchanged, which is the half a
+    # linter cannot check.
+    from hypergumbo_core.framework_patterns import strip_test_file_only_concepts
+    from hypergumbo_core.ir import Symbol
+
+    sym = Symbol(
+        id="python:t/test_x.py:1-2:MyService:class",
+        name="MyService", kind="class", path="t/test_x.py",
+        language="python", span=(1, 2),
+    )
+    sym.is_test_file = True
+    sym.meta = {"concepts": [{"concept": "keep_me"}]}
+    assert strip_test_file_only_concepts([sym]) == 0
+    assert sym.meta["concepts"] == [{"concept": "keep_me"}]

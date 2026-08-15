@@ -88,6 +88,7 @@ registered here in the same PR — the property test in
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -1135,3 +1136,72 @@ def write_meta_key(meta: dict[str, object], key: str, value: object) -> None:
     # audited answer; for ``unaudited`` it is the honest one — no claim has
     # been made, so no enforcement is applied.
     meta[key] = value
+
+
+def filter_meta_key(
+    meta: dict[str, object],
+    key: str,
+    keep: Callable[[object], bool],
+) -> int:
+    """Narrow a registered meta key in place, keeping only entries ``keep`` admits.
+
+    Returns the number of entries removed.
+
+    INV-hazov (b). The write-discipline vocabulary had add / refine / replace
+    and NO REMOVE, and the gap was not academic: ``strip_test_file_only_concepts``
+    removes concepts a later-computed fact invalidates, and it could not be
+    routed through :func:`write_meta_key` because ``concepts`` is declared
+    ``merge_union`` — the chokepoint would have UNIONED the stripped entries
+    straight back in. So the one legitimate remover in the tree had to bypass
+    the chokepoint, and the linter could not tell that bypass from a careless
+    direct assignment.
+
+    WHY THIS IS AN OPERATION AND NOT A NEW DISCIPLINE, which is the actual
+    question the residual left open. A ``write_discipline`` describes how
+    several WRITERS COMBINE, and ``concepts`` genuinely is ``merge_union`` for
+    its writers — two enrichment passes each contributing concepts must keep
+    both. Declaring the key "removal-shaped" would be false about those writers
+    and would forfeit the union guarantee INV-virat and INV-zumin were fixed to
+    get. A curator is not a competing writer: it runs after the writers and
+    narrows their agreed result. That is a second verb on the same key, not a
+    different discipline for it.
+
+    The two rejected alternatives, recorded so this is not re-litigated:
+    adding a ``removal`` discipline value (false about the writers, as above);
+    and declaring the site an audited exception in the module (leaves the
+    bypass invisible to the linter, which is exactly the "silent bypass" the
+    residual objected to — an exception list cannot distinguish "removes
+    deliberately" from "assigned directly and nobody noticed").
+
+    Removal is restricted to ``merge_union`` keys because that is the only
+    discipline where narrowing is meaningful: a ``single_writer`` or
+    ``producer_primary`` key holds one authoritative value, and silently
+    dropping it would be the erasure this whole class is about.
+
+    Raises:
+        ValueError: if *key* is unregistered, or is not declared
+            ``merge_union``. Both are declaration violations, so both are
+            loud — a quiet failure here would buy exactly the false assurance
+            ``unaudited`` exists to refuse.
+    """
+    spec = find_meta_key(key)
+    if spec is None:
+        raise ValueError(
+            f"meta key {key!r} is not registered in axis_meta_keys.META_KEYS; "
+            "declare it (with a write_discipline) before filtering it"
+        )
+    if spec.write_discipline != DISCIPLINE_MERGE_UNION:
+        raise ValueError(
+            f"meta key {key!r} is declared {spec.write_discipline}; only a "
+            f"{DISCIPLINE_MERGE_UNION} key may be narrowed. A single-valued "
+            "key holds one authoritative value and dropping it is the "
+            "erasure INV-hazov is about."
+        )
+    current = meta.get(key)
+    if not isinstance(current, list):
+        return 0
+    kept = [entry for entry in current if keep(entry)]
+    removed = len(current) - len(kept)
+    if removed:
+        meta[key] = kept
+    return removed

@@ -70,7 +70,7 @@ if TYPE_CHECKING:
     from .ir import Symbol
 
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
-from .axis_meta_keys import write_meta_key
+from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
@@ -1379,18 +1379,17 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
         meta = symbol.meta
         if not meta:
             continue
-        concepts = meta.get("concepts")
-        if not concepts:
-            continue
-        kept = [
-            c
-            for c in concepts
-            if not (isinstance(c, dict) and c.get("concept") in excluded)
-        ]
-        removed = len(concepts) - len(kept)
-        if removed:
-            stripped += removed
-            meta["concepts"] = kept
+        # INV-hazov (a)/(b). This was `meta["concepts"] = kept` on a LOCAL
+        # ALIAS of symbol.meta, and both halves of that were invisible:
+        # the linter's bypass rule matched only `<expr>.meta["k"] = ...`, so
+        # an alias hid a direct assignment to a merge_union key; and the
+        # chokepoint had no way to express a REMOVAL, since write_meta_key
+        # would have unioned the stripped concepts straight back in.
+        stripped += filter_meta_key(
+            meta,
+            "concepts",
+            lambda c: not (isinstance(c, dict) and c.get("concept") in excluded),
+        )
     return stripped
 
 
