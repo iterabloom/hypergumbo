@@ -1,0 +1,51 @@
+Original commit body from e577c3535da60d3807bf2eb552d1fc035a420485:
+
+User sources/sinks merge through _merge_with_user_override, where a
+matching (module, name, kind) does not ADD to the catalogue -- it FILTERS
+OUT the shipped row. Measured on the shipped CLI, a repo whose only
+statement is os.remove(os.environ["API_KEY"]), against "host secrets
+must not reach the host filesystem":
+
+  baseline                                     rc 1  violated
+  + --taint-sinks re-declaring os.remove
+    into a dev_zone / trusted row              rc 0  confirmed  caveats []
+  + after this change                          rc 3  confirmed_with_caveats
+
+Both routes reproduce: the --taint-sinks flag and the in-tree
+extra_catalogs: block, which needs no flag from whoever runs the tool.
+
+STRICTLY STRONGER THAN THE TWO GAPS ALREADY CLOSED, on the argument that
+made INV-pojib worth doing. An overlay GRANTS coverage. A user sanitizer
+DELETES a finding already made and is attributed on the flow. An
+override PREVENTS THE FINDING FROM EXISTING -- the only one of the three
+that leaves no trace on any per-flow record. INV-pojib's finding-level
+attribution structurally cannot see it: the sink is gone before
+propagation runs, so no flow is built, nothing is sanitized, and
+`caveats` is CORRECTLY empty. The run-level catalog_provenance already
+said "a user catalogue was used"; it never said "and it removed the sink
+that would have caught this claim", and the verdict -- the surface a CI
+gate branches on -- was byte-identical to an honest confirm.
+
+_merge_with_user_override always computed the displacement set and threw
+it away. It now returns it, because the merge is the ONLY moment that
+fact exists: downstream, a displaced row is indistinguishable from one
+the tool never shipped.
+
+RAISED ONLY WHERE IT DISCRIMINATES. The caveat fires when a displaced
+SHIPPED sink's zone equals the claim's prohibited_sink_zone (or a
+displaced source's label equals its source_taint), so a repo that
+customises unrelated entries still gets a plain `confirmed`, and a user
+row moving a sink INTO the prohibited zone adds findings and needs no
+caveat. A caveat firing on every customised catalogue would teach the
+reader to discount it -- the rule that keeps the sanitizer caveat narrow.
+
+Controls, all pinned: an additive user row displaces nothing; a differing
+`kind` is a different entry; a displacement in another zone stays plain
+`confirmed`; and a `violated` claim is never softened.
+
+One existing test called the helper directly and is updated to the new
+contract -- it already asserted the shipped row is "replaced", and now
+asserts what was replaced.
+
+Refs: INV-faput
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
