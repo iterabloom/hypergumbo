@@ -98,6 +98,79 @@ class TestOverlayLoading:
                     functions: [post]
                 """))
 
+    def test_an_overlay_may_declare_its_own_dependency_enumerated(
+        self, tmp_path: Path,
+    ) -> None:
+        """OWNER RULING 2026-08-15: "i mean what else would it do? you have a
+        better idea? if not, then of course it may."
+
+        Overlays are where third-party goes. Before this, an overlay could
+        declare what a dependency DOES (rows) but never that the list was
+        COMPLETE, so a third-party module could never leave the uncatalogued
+        set no matter how carefully it was described — and `verify-claims`
+        could never confirm anything for a repo with dependencies. The user is
+        the authority on their own dependencies; this is the mechanism that
+        lets them say so.
+        """
+        overlay = _write(tmp_path, "o.yaml", """\
+            language: python
+            status: overlay
+            module_completeness:
+              - module: proquint
+                completeness: complete
+                retrieved: "2026-08-15"
+            """)
+        cat = load_catalog("python", overlay_paths=[overlay])
+        assert cat.module_io_is_enumerated("proquint")
+
+    def test_the_stdlib_SPELLING_is_refused_in_an_overlay(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE NAME IS THE POINT, and it is the owner's: "overlays are where
+        third-party stuff goes. am i wrong? then why would we put anything
+        about stdlib in its associated names? that would be misleading."
+
+        The concept was never stdlib-specific — only its authors were. So the
+        key is ``module_completeness`` for everyone, and the old spelling stays
+        readable in the SHIPPED catalogues alone. An overlay declaring
+        ``stdlib_module_completeness`` is asserting something about a stdlib it
+        is not describing, so it is refused with a message that names the key
+        the author actually wants rather than a flat rejection.
+        """
+        overlay = _write(tmp_path, "o.yaml", """\
+            language: python
+            status: overlay
+            stdlib_module_completeness:
+              - module: requests
+                completeness: complete
+                retrieved: "2026-08-15"
+            """)
+        with pytest.raises(IoPrimitiveOverlayError) as exc:
+            load_catalog("python", overlay_paths=[overlay])
+        # DISCRIMINATING ON PURPOSE. ``match="module_completeness"`` passes
+        # against the OLD refusal too, because "stdlib_module_completeness"
+        # contains it as a substring — the test would have been green before
+        # the change and proved nothing. Assert the message actively steers the
+        # author to the key they want.
+        assert "Use `module_completeness` instead" in str(exc.value), str(exc.value)
+
+    def test_an_overlay_completeness_entry_still_needs_provenance(
+        self, tmp_path: Path,
+    ) -> None:
+        """The ``retrieved:`` date is what makes this an AUDIT RECORD rather
+        than a switch. Granting confirmability without it would turn the
+        mechanism into "declare everything complete and get a green verdict",
+        which is the whole failure the enumeration requirement prevents."""
+        overlay = _write(tmp_path, "o.yaml", """\
+            language: python
+            status: overlay
+            module_completeness:
+              - module: proquint
+                completeness: complete
+            """)
+        with pytest.raises(IoPrimitiveOverlayError, match="retrieved"):
+            load_catalog("python", overlay_paths=[overlay])
+
     def test_a_missing_overlay_file_is_an_error_not_a_silent_skip(
         self, tmp_path: Path,
     ) -> None:
@@ -221,12 +294,21 @@ class TestPrecedence:
         The completeness declaration itself is legitimate for an overlay — the
         user may assert they audited their own dependency's I/O — so it is
         preserved. It just no longer carries a provenance claim with it.
+
+        NOW LOAD-BEARING RATHER THAN HYPOTHETICAL. When this test was written
+        the overlay path REFUSED completeness outright, so the auto-promote it
+        guards against was unreachable through an overlay and the assertion
+        below rode on the refusal. The owner has since granted overlays the
+        declaration, which makes this the ONLY thing standing between "I
+        audited my dependency's I/O" and "…and it ships with the interpreter" —
+        two facts one write used to conflate, feeding the supply-chain
+        ecosystem classifier and py_deps.
         """
         overlay = _write(
             tmp_path, "o.yaml",
             "language: python\n"
             "status: overlay\n"
-            "stdlib_module_completeness:\n"
+            "module_completeness:\n"
             "  - module: requests\n"
             "    completeness: complete\n"
             '    retrieved: "2026-08-12"\n'
@@ -234,42 +316,51 @@ class TestPrecedence:
             "  - module: requests\n"
             "    functions: [post]\n",
         )
-        with pytest.raises(
-            IoPrimitiveOverlayError, match="stdlib_module_completeness",
-        ):
-            load_catalog("python", overlay_paths=[overlay])
+        cat = load_catalog("python", overlay_paths=[overlay])
+        assert cat.module_io_is_enumerated("requests"), "the grant was lost"
+        assert not cat.is_stdlib_module("requests"), (
+            "an audit record became a provenance claim: declaring a module "
+            "enumerated must not relabel a PyPI package as stdlib"
+        )
+        assert cat.is_stdlib_module("os"), "stdlib membership lost — vacuous"
 
-    def test_an_overlay_may_not_grant_confirmability(
+    def test_an_overlay_grant_is_real_and_this_is_what_it_costs(
         self, tmp_path: Path,
     ) -> None:
-        """THE SIX-LINE FILE THAT RE-OPENED INV-buzab, refused.
+        """THE SIX-LINE FILE THAT RE-OPENED INV-buzab — now PERMITTED, by
+        owner ruling 2026-08-15, and kept here as the price tag.
 
-        A completeness entry is what lets ``verify-claims`` answer
-        ``confirmed`` about the calls it could not classify, so it grants
-        strictly MORE than the ``status: complete`` this loader already
-        refuses. Measured before the refusal existed: this overlay — zero
-        primitive rows, one entry — turned a fixture that opens
-        ``telnetlib.Telnet`` and writes ``os.environ["API_KEY"]`` into it from
-        ``inconclusive`` rc 2 back to ``confirmed`` rc 0.
+        This test previously asserted a refusal. The contract changed, not the
+        measurement: a completeness entry is what lets ``verify-claims`` answer
+        ``confirmed`` about the calls it could not classify, and measured while
+        it was still refused, this exact overlay — zero primitive rows, one
+        entry — turned a fixture that opens ``telnetlib.Telnet`` and writes
+        ``os.environ["API_KEY"]`` into it from ``inconclusive`` rc 2 back to
+        ``confirmed`` rc 0.
 
-        Loud, not silent: a pop would leave the author believing they had
-        vouched for the module.
+        The grant is deliberate. Overlays are where third-party goes and the
+        user is the authority on their own dependencies; without it a
+        dependency can never leave the uncatalogued set however carefully it is
+        described, so a repo with dependencies could never confirm anything.
+        What keeps it from being a blanket switch is asserted by its siblings:
+        ``retrieved:`` is mandatory (an audit record with a date), and the
+        entry never promotes the module into ``stdlib_modules``.
+
+        Written with ``telnetlib`` on purpose rather than a harmless module: if
+        anyone narrows this grant later, the test that changes should be the
+        one carrying the exfiltration fixture in its docstring.
         """
         overlay = _write(
             tmp_path, "o.yaml",
             "language: python\n"
             "status: overlay\n"
-            "stdlib_module_completeness:\n"
+            "module_completeness:\n"
             "  - module: telnetlib\n"
             "    completeness: complete\n"
             '    retrieved: "2026-08-12"\n',
         )
-        with pytest.raises(IoPrimitiveOverlayError) as exc:
-            load_overlay_catalog(overlay)
-        assert "confirmed" in str(exc.value), (
-            "the error must say what the entry would have granted, or the "
-            "author cannot tell why their file was refused"
-        )
+        cat = load_overlay_catalog(overlay)
+        assert cat.module_io_is_enumerated("telnetlib")
 
     def test_rows_are_still_welcome_from_an_overlay(
         self, tmp_path: Path,

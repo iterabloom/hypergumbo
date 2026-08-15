@@ -311,7 +311,7 @@ class TestTheMatchingRuleItself:
     def test_only_an_exact_declaration_counts(
         self, declared: dict, queried: str, expected: bool, why: str,
     ) -> None:
-        catalog = self._cat(stdlib_module_completeness=declared)
+        catalog = self._cat(module_completeness=declared)
         assert catalog.module_io_is_enumerated(queried) is expected, why
 
 
@@ -320,7 +320,7 @@ class TestOnePredicateWithNoSecondHome:
 
     The plan governing this work makes it binding: a bucket-A fix "lands as ONE
     predicate in ONE place, consumed by every caller, plus a parity test that
-    enumerates the callers". Two predicates over ``stdlib_module_completeness``
+    enumerates the callers". Two predicates over ``module_completeness``
     existed briefly — an exact-match ``is_stdlib_module_complete`` read by the
     F3 Filter 2 ``external_potential`` skip, and the prefix-anchored one read by
     the coverage gate. They ask the identical question, so the difference was
@@ -333,7 +333,7 @@ class TestOnePredicateWithNoSecondHome:
         """Enumerated from the live class, not from a list someone maintains.
 
         Any method of ``IoBoundaryCatalog`` whose own source touches
-        ``self.stdlib_module_completeness`` is answering the closed-world
+        ``self.module_completeness`` is answering the closed-world
         question. There must be one, and ``merge`` — which COPIES the field
         rather than interpreting it — is the only permitted exception.
         """
@@ -349,7 +349,7 @@ class TestOnePredicateWithNoSecondHome:
                 src = inspect.getsource(member)
             except (OSError, TypeError):  # pragma: no cover - stdlib slots
                 continue
-            if "self.stdlib_module_completeness" in src:
+            if "self.module_completeness" in src:
                 readers.add(name)
         assert readers, "assertion is vacuous — nothing reads the field at all"
         assert readers == {"module_io_is_enumerated", "merge"}, (
@@ -492,7 +492,7 @@ class TestEveryShippedCatalogueIsHeldToTheSameRule:
         nothing at all on the other 13, which is itself the honest starting
         state for a catalogue nobody has audited."""
         catalog = load_catalog(language)
-        for module in catalog.stdlib_module_completeness:
+        for module in catalog.module_completeness:
             assert _permits(catalog, module), (
                 f"{language}: {module} carries a dated closed-world audit and "
                 f"still does not support a clean verdict"

@@ -575,11 +575,23 @@ class IoBoundaryCatalog:
     # here are treated as closed-world — i.e., we've audited the
     # module and any unmatched call into it is provably NOT an I/O
     # primitive (so the F3 Filter 2 ``external_potential`` skip is
-    # safe for them). The long tail of stdlib modules stays
-    # unflagged; Filter 2 does not fire for them. Each entry's value
-    # carries the ``retrieved:`` date for provenance, paralleling the
+    # safe for them). The long tail of modules stays unflagged;
+    # Filter 2 does not fire for them. Each entry's value carries the
+    # ``retrieved:`` date for provenance, paralleling the
     # catalog-level ``stdlib_provenance.retrieved`` field.
-    stdlib_module_completeness: dict[str, str] = field(
+    #
+    # NOT ``stdlib_``-PREFIXED ANY MORE, and the rename is the fix rather
+    # than cosmetics. Owner, 2026-08-15: "overlays are where third-party
+    # stuff goes ... then why would we put anything about stdlib in its
+    # associated names? that would be misleading." Once an overlay may
+    # declare ``numpy`` or ``tree_sitter`` enumerated, a field named
+    # ``stdlib_*`` holds two populations under a name that describes one —
+    # the conceptual leak the fundamental-concept audit exists to catch.
+    # The concept was never stdlib-specific; only its AUTHORS were, and
+    # that is a fact about who may write the key, not about what it means.
+    # The old YAML spelling is still read from SHIPPED catalogues so no
+    # curated file had to be rewritten to land the rename.
+    module_completeness: dict[str, str] = field(
         default_factory=dict,
     )
     _by_qualified: dict[str, IoPrimitive] = field(
@@ -919,7 +931,7 @@ class IoBoundaryCatalog:
         manufactures a false all-clear. Unifying them toward the tagger would
         make a cosmetic module-string respell a security-relevant edit.
 
-        An empty ``stdlib_module_completeness`` therefore means "nothing has
+        An empty ``module_completeness`` therefore means "nothing has
         been enumerated", and every module blocks. That is the correct starting
         state for a catalogue nobody has audited, and it is what 13 of the 14
         shipped catalogues are in today.
@@ -934,7 +946,7 @@ class IoBoundaryCatalog:
         all; it removes the second home rather than trading one rule for
         another.
         """
-        return bool(module) and module in self.stdlib_module_completeness
+        return bool(module) and module in self.module_completeness
 
     def declares_opaque_crossing(self, module: str, name: str) -> bool:
         """Does ANY row for this primitive carry an opaque boundary (INV-gahuz)?
@@ -983,8 +995,8 @@ class IoBoundaryCatalog:
         being loaded, not the parent.
 
         F3 PR-C: ``stdlib_modules``, ``stdlib_prefixes`` and
-        ``stdlib_module_completeness`` are also unioned across child
-        and parent. Child entries win for ``stdlib_module_completeness``
+        ``module_completeness`` are also unioned across child
+        and parent. Child entries win for ``module_completeness``
         on key collision (the child language is what was loaded).
         """
         existing_qnames = {p.qualified_name for p in self.primitives}
@@ -1000,8 +1012,8 @@ class IoBoundaryCatalog:
             p for p in parent.stdlib_prefixes
             if p not in self.stdlib_prefixes
         ]
-        merged_completeness: dict[str, str] = dict(parent.stdlib_module_completeness)
-        merged_completeness.update(self.stdlib_module_completeness)
+        merged_completeness: dict[str, str] = dict(parent.module_completeness)
+        merged_completeness.update(self.module_completeness)
         return IoBoundaryCatalog(
             language=self.language,
             primitives=merged_primitives,
@@ -1011,7 +1023,7 @@ class IoBoundaryCatalog:
             stdlib_other=merged_stdlib_other,
             stdlib_modules=merged_stdlib_modules,
             stdlib_prefixes=tuple(merged_prefix_list),
-            stdlib_module_completeness=merged_completeness,
+            module_completeness=merged_completeness,
         )
 
     @classmethod
@@ -1143,7 +1155,18 @@ class IoBoundaryCatalog:
         # from the live interpreter) decoupled from the hand-curated
         # closed-world flags — the script never has to merge dict-form
         # entries it didn't author.
-        completeness_section = data.get("stdlib_module_completeness", [])
+        # TWO SPELLINGS, ONE MEANING, AND THE OLD ONE IS NOT DEAD WEIGHT.
+        # ``module_completeness`` is canonical. ``stdlib_module_completeness``
+        # is still read HERE — the shipped-catalogue loader — so the rename
+        # did not require rewriting curated YAML in the same commit that
+        # changed the loader, which is how a rename turns into a silent
+        # catalogue regression. :func:`load_overlay_catalog` deliberately does
+        # NOT accept the old spelling: in an overlay it would be a claim about
+        # a stdlib the overlay is not describing.
+        completeness_section = data.get(
+            "module_completeness",
+            data.get("stdlib_module_completeness", []),
+        )
         if isinstance(completeness_section, list):
             for entry in completeness_section:
                 if not isinstance(entry, dict):
@@ -1177,7 +1200,7 @@ class IoBoundaryCatalog:
                     if not isinstance(retrieved, str) or not retrieved:
                         raise ValueError(
                             f"Catalog for {language!r} "
-                            f"stdlib_module_completeness entry {name!r} "
+                            f"module_completeness entry {name!r} "
                             f"declares completeness: complete but is "
                             f"missing a ``retrieved:`` ISO date. "
                             f"Closed-world reasoning requires provenance.",
@@ -1193,7 +1216,7 @@ class IoBoundaryCatalog:
             stdlib_other=frozenset(stdlib_other_set),
             stdlib_modules=frozenset(stdlib_modules_set),
             stdlib_prefixes=tuple(stdlib_prefixes_list),
-            stdlib_module_completeness=completeness_map,
+            module_completeness=completeness_map,
         )
         return catalog
 
@@ -1304,35 +1327,45 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"'complete' asserts a provenance-backed stdlib enumeration and is "
             f"not available to a project-local overlay.",
         )
+    # THE SPELLING IS REFUSED; THE DECLARATION IS NOT (owner, 2026-08-15).
+    # An overlay describes THIRD-PARTY modules, so a key named ``stdlib_*`` in
+    # one is a claim about a stdlib the overlay is not describing — misleading
+    # in the file the user actually reads. The message steers rather than just
+    # rejects, because the author's intent is legitimate and only their key is
+    # wrong.
     if data.get("stdlib_module_completeness"):
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay {path} declares "
-            f"stdlib_module_completeness, which is not available to a "
-            f"project-local overlay. A closed-world entry is what lets "
-            f"verify-claims answer 'confirmed' about the calls it could not "
-            f"classify, so it grants strictly MORE than the "
-            f"'status: complete' this loader already refuses. Supply "
-            f"primitive ROWS instead — narrower, NOT safer: a row vouches "
-            f"for one named call surface, a completeness entry vouches for "
-            f"every call the catalogue could not classify. A row still "
-            f"decides verdicts, so a wrong boundary on one is a wrong "
-            f"verdict (INV-zosun).",
+            f"stdlib_module_completeness; an overlay describes third-party "
+            f"modules, so that name asserts something about a stdlib it is "
+            f"not describing. Use `module_completeness` instead — same "
+            f"meaning, honest name, and available here.",
         )
     # Hand ``_from_dict`` a status it accepts; the overlay marker has already
-    # done its job (refusing a completeness claim) and must not reach the
-    # stdlib-provenance validator, which exists for the shipped catalogues.
+    # done its job and must not reach the stdlib-provenance validator, which
+    # exists for the shipped catalogues.
     #
-    # WHY THE COMPLETENESS REFUSAL IS AN ERROR AND NOT A POP. The two lines
-    # below drop stdlib-provenance fields silently, which is right for them:
-    # they are inert in an overlay and dropping one changes nothing a user
-    # asked for. A completeness entry is the opposite — it is the single grant
-    # of confirmability (INV-buzab), so silently discarding it would leave the
-    # author believing they had vouched for a module. Measured before this
-    # refusal existed: a SIX-LINE overlay with zero primitive rows and one
+    # WHAT A COMPLETENESS ENTRY COSTS, KEPT ON THE RECORD NOW THAT IT IS
+    # PERMITTED. It is the single grant of confirmability (INV-buzab), so it is
+    # the most powerful thing a user can write here. Measured while it was
+    # still refused: a SIX-LINE overlay with zero primitive rows and one
     # completeness entry for ``telnetlib`` turned the INV-buzab exfiltration
     # fixture — which opens a telnet session and writes ``os.environ["API_KEY"]``
     # into it — from ``inconclusive`` rc 2 back to ``confirmed`` rc 0, disclosed
     # by nothing but a stderr line naming the overlay path.
+    #
+    # The owner granted it anyway and the reasoning holds: overlays are where
+    # third-party goes, the user is the authority on their own dependencies,
+    # and without this a dependency could never leave the uncatalogued set no
+    # matter how carefully it was described — so `verify-claims` could never
+    # confirm anything for a repo that has dependencies. Two things keep the
+    # grant honest rather than blanket: ``retrieved:`` is still MANDATORY, so
+    # an entry is an audit record with a date rather than a switch; and it
+    # still does not promote the module into ``stdlib_modules`` (see
+    # ``_from_dict``), so vouching for a dependency's I/O never restates it as
+    # provenance. The remaining exposure — that the stderr disclosure names the
+    # overlay PATH but not which modules it vouched for — is real and filed,
+    # not fixed here.
     payload = dict(data)
     payload["status"] = "in_progress"
     payload.pop("stdlib_modules", None)

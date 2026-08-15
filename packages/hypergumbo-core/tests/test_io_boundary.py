@@ -4336,7 +4336,7 @@ class TestStdlibModulesAndFilter2:
     These tests pin the behavior of:
     - :attr:`IoBoundaryCatalog.stdlib_modules` (frozenset)
     - :attr:`IoBoundaryCatalog.stdlib_prefixes` (tuple)
-    - :attr:`IoBoundaryCatalog.stdlib_module_completeness` (dict)
+    - :attr:`IoBoundaryCatalog.module_completeness` (dict)
     - :meth:`IoBoundaryCatalog.is_stdlib_module` (exact + prefix)
     - :meth:`IoBoundaryCatalog.module_io_is_enumerated` (the closed-world
       question, prefix-anchored; it replaced the exact-match
@@ -4437,7 +4437,7 @@ class TestStdlibModulesAndFilter2:
         cat = IoBoundaryCatalog(
             language="python",
             stdlib_modules=frozenset({"math", "os"}),
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
         assert cat.module_io_is_enumerated("math")
         # Listed in stdlib_modules but not flagged complete.
@@ -4459,7 +4459,7 @@ class TestStdlibModulesAndFilter2:
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         assert cat.stdlib_modules == frozenset({"os", "sys", "re"})
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_from_yaml_parses_list_of_dicts_with_completeness(
         self, tmp_path: Path,
@@ -4479,7 +4479,7 @@ class TestStdlibModulesAndFilter2:
         assert cat.stdlib_modules == frozenset(
             {"math", "os", "foo_should_be_ignored"},
         )
-        assert cat.stdlib_module_completeness == {"math": "2026-05-13"}
+        assert cat.module_completeness == {"math": "2026-05-13"}
 
     def test_from_yaml_rejects_completeness_without_retrieved(
         self, tmp_path: Path,
@@ -4510,7 +4510,7 @@ class TestStdlibModulesAndFilter2:
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         # Neither malformed entry contributes.
         assert cat.stdlib_modules == frozenset()
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_from_yaml_parses_stdlib_prefixes(
         self, tmp_path: Path,
@@ -4547,13 +4547,13 @@ class TestStdlibModulesAndFilter2:
             language="kotlin",
             stdlib_modules=frozenset({"kotlin.collections"}),
             stdlib_prefixes=("kotlin",),
-            stdlib_module_completeness={"kotlin.collections": "2026-05-13"},
+            module_completeness={"kotlin.collections": "2026-05-13"},
         )
         parent = IoBoundaryCatalog(
             language="java",
             stdlib_modules=frozenset({"java.util"}),
             stdlib_prefixes=("java.io",),
-            stdlib_module_completeness={
+            module_completeness={
                 "kotlin.collections": "2024-01-01",  # parent loses on collision
                 "java.util": "2026-05-13",
             },
@@ -4565,7 +4565,7 @@ class TestStdlibModulesAndFilter2:
         # Child-first dedup preserved.
         assert merged.stdlib_prefixes == ("kotlin", "java.io")
         # Child wins on completeness-map collision.
-        assert merged.stdlib_module_completeness == {
+        assert merged.module_completeness == {
             "kotlin.collections": "2026-05-13",
             "java.util": "2026-05-13",
         }
@@ -4636,7 +4636,7 @@ class TestStdlibModulesAndFilter2:
             stdlib_other=catalog.stdlib_other,
             stdlib_modules=frozenset({"math"}),
             stdlib_prefixes=catalog.stdlib_prefixes,
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
         dst = "python:math:0-0:sqrt:unresolved"
         edge = self._make_edge_with_dst_ref(
@@ -4673,6 +4673,40 @@ class TestStdlibModulesAndFilter2:
         )
         ext = bmap.entries.get("external_potential")
         assert ext is not None and len(ext.chains) == 1
+
+    def test_both_spellings_of_the_completeness_key_are_read_identically(
+        self, tmp_path: Path,
+    ) -> None:
+        """``module_completeness`` is canonical; ``stdlib_module_completeness``
+        is the deprecated alias, still read from SHIPPED catalogues.
+
+        Renaming a key that gates confirmability is exactly where a
+        "behaviour-neutral" refactor stops being neutral: drop the old spelling
+        and every curated catalogue silently loses its audit records, which
+        reads as a stricter gate rather than as a bug. Both spellings are
+        asserted against ONE expectation so they cannot drift apart, and the
+        alias is scoped to shipped catalogues — ``load_overlay_catalog``
+        refuses it, since a ``stdlib_*`` key in a third-party overlay describes
+        something the overlay is not describing.
+        """
+        results = []
+        for key in ("module_completeness", "stdlib_module_completeness"):
+            path = tmp_path / f"{key}.yaml"
+            path.write_text(
+                "language: python\n"
+                "status: in_progress\n"
+                f"{key}:\n"
+                "  - module: math\n"
+                "    completeness: complete\n"
+                '    retrieved: "2026-05-13"\n',
+                encoding="utf-8",
+            )
+            results.append(IoBoundaryCatalog.from_yaml(path).module_completeness)
+        assert results[0] == {"math": "2026-05-13"}
+        assert results[0] == results[1], (
+            "the deprecated spelling parsed differently from the canonical "
+            "one; a curated catalogue would silently lose its audit record"
+        )
 
     def test_from_yaml_parses_top_level_completeness_section(
         self, tmp_path: Path,
@@ -4713,7 +4747,7 @@ class TestStdlibModulesAndFilter2:
         # relabelling a PyPI package as stdlib ("would be a supply-chain
         # misread rather than an I/O one") and ``load_overlay_catalog`` pops
         # ``stdlib_modules`` to enforce it, but an overlay carrying only a
-        # ``stdlib_module_completeness`` entry for ``requests`` still made
+        # ``module_completeness`` entry for ``requests`` still made
         # ``is_stdlib_module("requests")`` answer True on the merged catalogue.
         # Measured, with the ``stdlib_modules:`` spelling as the control —
         # that one was correctly stripped.
@@ -4750,7 +4784,7 @@ class TestStdlibModulesAndFilter2:
             '    retrieved: "2026-05-13"\n',
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_python_catalog_lists_stdlib_modules_and_math_complete(
         self,
@@ -4794,7 +4828,7 @@ class TestStdlibModulesAndFilter2:
             stdlib_other=catalog.stdlib_other,
             stdlib_modules=frozenset({"math"}),
             stdlib_prefixes=catalog.stdlib_prefixes,
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
         dst = "python:external:0-0:Mystery:unresolved"
         edge = self._make_edge_with_dst_ref(
