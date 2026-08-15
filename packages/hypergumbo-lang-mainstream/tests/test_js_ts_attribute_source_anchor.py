@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""INV-fafol tripwire: js/ts attribute sources anchor to the FILE, not the
-callable, so they can never start a taint flow.
+"""INV-fafol LANDED: js/ts attribute sources anchor to the enclosing callable.
 
-DISCLOSURE, NOT AN ASSERTION OF CORRECTNESS. This pins behaviour that is
-WRONG, on purpose, because INV-potuf's fix (typescript now derives javascript's
-83 sinks instead of zero) makes it REACHABLE for a second language and the gap
-must not be discovered again from scratch.
+This file was a TRIPWIRE pinning the defect — it asserted the source anchored
+to the FILE and said, in as many words, "when INV-fafol lands this test goes
+red; replace it with the positive assertion". It went red on exactly the
+change it was waiting for, and this is that replacement.
 
 WHAT WAS MEASURED. Same claim, same sink, same enclosing function; only the
 SOURCE KIND differs:
@@ -31,8 +30,17 @@ including the whole ``process.env`` / ``process.argv`` family — the canonical
 way a Node program reads a secret. go / java / cpp / rust are unmeasured on
 this axis rather than known-clear.
 
-WHEN INV-fafol LANDS THIS TEST GOES RED. That is the intent. Replace it then
-with the positive assertion that the source anchors to ``dump``.
+THE FIX. ``emit_module_attribute_refs`` now takes ``enclosing_symbols`` and
+resolves the innermost callable whose line span contains the read, falling
+back to the caller's pseudo-symbol when a read really is module-level. Span
+containment is used rather than a walk to a function NODE so the rule needs no
+per-language knowledge of callable node kinds and lives in one place; a parity
+test (``test_attr_ref_anchor_parity.py``) asserts all five call sites pass it,
+so the next analyzer fails a test instead of silently repeating this.
+
+MEASURED END TO END on a JS file holding both shapes in sibling functions:
+1 flow before, 2 after — ``process.env.API_KEY -> fs.writeFileSync`` is now
+found alongside the ``os.hostname()`` control that always was.
 """
 from __future__ import annotations
 
@@ -70,14 +78,29 @@ def test_the_sink_call_anchors_to_the_enclosing_function(edges) -> None:
     assert _one(edges, "writeFileSync", "calls").src.endswith(":dump:function")
 
 
-def test_the_attribute_source_anchors_to_the_FILE_and_should_not(
-    edges,
-) -> None:
-    """INV-fafol. Pinned as the CURRENT state, which is a defect."""
+def test_the_attribute_source_anchors_to_the_ENCLOSING_CALLABLE(edges) -> None:
+    """INV-fafol, the positive assertion the tripwire asked for.
+
+    21 of javascript's 50 derived taint sources are ``kind=attribute``,
+    including the whole ``process.env`` / ``process.argv`` family — the
+    canonical way a Node program reads a secret. None of them could start a
+    flow while this anchored to the file.
+    """
     src = _one(edges, "process.env", "module_attr_ref").src
-    assert src.endswith(":file:file"), (
-        "the attribute source now anchors somewhere else — if it anchors to "
-        "the enclosing callable, INV-fafol is fixed: delete this test and "
-        "assert the flow is found end to end instead"
+    assert src.endswith(":dump:function"), (
+        f"the attribute source must anchor to the callable that reads it; "
+        f"got {src!r}"
     )
-    assert not src.endswith(":dump:function")
+    assert not src.endswith(":file:file")
+
+
+def test_source_and_sink_now_share_a_caller(edges) -> None:
+    """The property that actually matters, stated directly.
+
+    Propagation pairs a source and a sink that share a caller. Asserting each
+    end's anchor separately would still pass if a later change moved BOTH to
+    some third symbol, so assert the relationship rather than the two facts.
+    """
+    src_anchor = _one(edges, "process.env", "module_attr_ref").src
+    sink_anchor = _one(edges, "writeFileSync", "calls").src
+    assert src_anchor == sink_anchor

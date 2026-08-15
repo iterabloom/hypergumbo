@@ -2592,6 +2592,9 @@ def _extract_edges_from_file(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
+        # INV-fafol: anchor each read to the callable that performs it, not to
+        # the file. A source and a sink must share a caller to propagate.
+        enclosing_symbols=list(local_symbols.values()),
     )
 
     return edges

@@ -34,6 +34,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -2524,6 +2525,94 @@ def iter_tree_with_context(
 # ---------------------------------------------------------------------------
 
 
+#: Symbol kinds that can own a dataflow. A ``module_attr_ref`` anchored to
+#: anything else cannot share a caller with a sink, which is the whole point.
+_ATTR_OWNER_KINDS: frozenset[str] = frozenset({"function", "method", "constructor"})
+
+
+def symbols_by_path_index(
+    symbols: "Sequence[Symbol]",
+) -> dict[str, list["Symbol"]]:
+    """Index symbols by their ``path``, for per-file ``enclosing_symbols``.
+
+    INV-fafol. Paired with :func:`symbols_for_path` because the KEY FORMAT IS
+    NOT STABLE across the pipeline and assuming it is cost a silent no-op: at
+    the point js_ts builds this index the symbols carry ABSOLUTE paths, while
+    the per-file name computed at the emit site is repo-RELATIVE. The lookup
+    returned an empty list, the anchoring silently did nothing, and the
+    measured verdict was unchanged — indistinguishable from the fix not
+    working. Both halves live here so neither side can drift into assuming a
+    format the other does not produce.
+    """
+    out: dict[str, list["Symbol"]] = {}
+    for sym in symbols:
+        out.setdefault(sym.path, []).append(sym)
+    return out
+
+
+def symbols_for_path(
+    index: dict[str, list["Symbol"]], *candidates: str,
+) -> list["Symbol"]:
+    """The symbols for a file, trying each spelling of its path in turn.
+
+    Returns the first non-empty match. An empty result is a real answer (a
+    file with no callables), which is why callers must not treat it as an
+    error — but see :func:`symbols_by_path_index` for why it is also the
+    shape a key mismatch takes.
+    """
+    for key in candidates:
+        hit = index.get(key)
+        if hit:
+            return hit
+    return []
+
+
+def _innermost_callable_at(
+    line: int, symbols: "Sequence[Symbol] | None",
+) -> "Symbol | None":
+    """The narrowest callable whose span contains *line*, or None.
+
+    INV-fafol. A taint source must be anchored to the callable that performs
+    the read, or it cannot participate in propagation: propagation pairs a
+    source and a sink that share a caller, and every tree-sitter analyzer was
+    passing the FILE pseudo-symbol as ``caller_symbol``. So a
+    ``module_attr_ref`` edge's src was the file while the sink's src was the
+    function, and the two never met. Measured on one JS file holding both
+    shapes: ``os.hostname() -> fs.writeFileSync`` is found (a CALL, already
+    anchored to its function) while ``process.env.API_KEY ->
+    fs.writeFileSync`` in the sibling function is not — same file, same sink,
+    the only difference being which end anchors where.
+
+    RESOLVED BY LINE SPAN, deliberately, rather than by walking tree-sitter
+    ancestors to a function node. Span containment needs no per-language
+    knowledge of which node kinds are callables, so this stays one rule in one
+    place instead of five copies that drift — and the next analyzer inherits
+    it rather than reimplementing it. The narrowest containing span wins, so a
+    read inside a nested closure is attributed to the closure rather than to
+    its enclosing function.
+
+    Returns None when no callable contains the line, which is correct and
+    load-bearing: a genuinely module-level read (top-of-file ``process.env``)
+    belongs to the file, and the caller keeps its existing pseudo-symbol for
+    exactly that case. The fix must not invent a callable that is not there.
+    """
+    if not symbols:
+        return None
+    best: "Symbol | None" = None
+    best_lo = best_hi = 0
+    for sym in symbols:
+        if sym.kind not in _ATTR_OWNER_KINDS:
+            continue
+        span = getattr(sym, "span", None)
+        lo = getattr(span, "start_line", None)
+        hi = getattr(span, "end_line", None)
+        if lo is None or hi is None or not (lo <= line <= hi):
+            continue
+        if best is None or (lo >= best_lo and hi <= best_hi):
+            best, best_lo, best_hi = sym, lo, hi
+    return best
+
+
 def emit_module_attribute_refs(
     root: "tree_sitter.Node",
     source: bytes,
@@ -2540,6 +2629,7 @@ def emit_module_attribute_refs(
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
+    enclosing_symbols: "Sequence[Symbol] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -2674,11 +2764,13 @@ def emit_module_attribute_refs(
                 continue
             real_module = imports[base_text]
         qname = f"{real_module}.{attr_name}"
+        line_no = node.start_point[0] + 1
+        owner = _innermost_callable_at(line_no, enclosing_symbols)
         edges_out.append(Edge.create(
-            src=caller_symbol.id,
+            src=(owner.id if owner is not None else caller_symbol.id),
             dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
             edge_type="module_attr_ref",
-            line=node.start_point[0] + 1,
+            line=line_no,
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="module_attribute_reference",
