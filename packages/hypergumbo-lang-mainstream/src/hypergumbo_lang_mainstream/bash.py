@@ -427,8 +427,62 @@ class BashAnalyzer(TreeSitterAnalyzer):
         # not a distinct boundary each time).
         seen_launches: set[tuple[str, str]] = set()
 
+        # INV-jurif: names ASSIGNED anywhere in this file. A name that is
+        # expanded but never assigned here came from the environment — the
+        # conservative discriminator available without cross-file analysis.
+        # Deliberately whole-file rather than per-scope: bash assignment is
+        # dynamically scoped and a name assigned in one function is visible in
+        # another it calls, so a per-scope rule would call an assigned name an
+        # env read and over-report. Erring toward FEWER sources is the right
+        # direction for a taint SOURCE — a missed source under-reports, an
+        # invented one manufactures findings that do not exist.
+        assigned_names: set[str] = set()
+        for _n in iter_tree(tree.root_node):
+            if _n.type in ("variable_assignment", "for_statement"):
+                _name = find_child_by_type(_n, "variable_name")
+                if _name is not None:
+                    assigned_names.add(node_text(_name, source))
+
         for node in iter_tree(tree.root_node):
-            if node.type == "file_redirect":
+            if node.type in ("simple_expansion", "expansion"):
+                # INV-jurif: `$API_KEY` reads the environment, and bash emitted
+                # NOTHING for it — so bash carried 0 taint sources, failed the
+                # both-halves predicate, and made every claim on any repo
+                # containing a shell script `inconclusive` (INV-dabuf's 18/18).
+                # The SINK half shipped with INV-vavup; this is the source half
+                # it named as "taint-support SECOND".
+                #
+                # Emitted as module_attr_ref on the shipped os.environ
+                # precedent: an environment read is an attribute access, not a
+                # call. One catalogue row matches every variable, exactly as
+                # `os.environ` matches any subscript of it — enumerating
+                # variable names would be a curated list that is wrong the
+                # moment a repo invents a name.
+                name_node = find_child_by_type(node, "variable_name")
+                if name_node is None:
+                    continue
+                var_name = node_text(name_node, source)
+                if not var_name or var_name in assigned_names:
+                    continue
+                # Positional/special params ($1, $?, $$) are shell state, not
+                # environment, and $PWD-style shell-maintained names are not
+                # secrets the caller supplied.
+                if not var_name[0].isalpha() and var_name[0] != "_":
+                    continue
+                owner = _get_enclosing_function(node) or module_symbol
+                if owner is None:  # pragma: no cover - defensive
+                    continue
+                edges.append(Edge.create(
+                    src=owner.id,
+                    dst="bash:env:0-0:env.environ:attribute",
+                    edge_type="module_attr_ref",
+                    line=node.start_point[0] + 1,
+                    origin=PASS_ID,
+                    origin_run_id=run.execution_id,
+                    evidence_type="module_attribute_reference",
+                    meta={"env_var": var_name},
+                ))
+            elif node.type == "file_redirect":
                 # INV-vavup: the SHELL'S OWN write, which is a different
                 # surface from a launched program's I/O. ADR-0016 forbids
                 # attributing curl's network activity to the script that ran
