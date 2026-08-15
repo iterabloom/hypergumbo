@@ -770,9 +770,10 @@ class IoBoundaryCatalog:
 
         # If we have module context, filter matches
         if module_hint and module_hint != "external":
+            candidates = _module_hint_candidates(module_hint)
             filtered = [
                 p for p in hits
-                if _module_matches(p.module, module_hint)
+                if any(_module_matches(p.module, c) for c in candidates)
             ]
             if filtered:
                 return select_by_mode(filtered, io_mode)
@@ -2239,6 +2240,76 @@ def compute_leaf_rollups(
 # ---------------------------------------------------------------------------
 # Boundary-tagging pass (ADR-0016 Phase 1b)
 # ---------------------------------------------------------------------------
+
+
+# C and C++ spell a header three ways for one module: the catalogue declares
+# the STEM (``stdio``), the source writes the FILENAME (``stdio.h``), and C++
+# adds a third (``<cstdio>``). Only the first two are handled here; the
+# ``cstdio`` convention is deliberately NOT carried, because stripping a
+# leading ``c`` from an arbitrary module slot would maul ``crypto``, ``cmath``
+# and every other module that legitimately starts with one.
+_HEADER_SUFFIXES = (".hpp", ".hxx", ".hh", ".h")
+
+
+def _module_hint_candidates(module_hint: str) -> list[str]:
+    """Expand a module slot into the spellings it may legitimately stand for.
+
+    INV-funuf. ``cpp.py`` sets an unresolved call's module slot to the
+    COMMA-JOINED list of every ``#include <...>`` in the file, and documents the
+    contract in its own comment: "the semantics is 'this call could be from any
+    of the included headers'; downstream consumers may split the module_hint on
+    commas if they need per-header resolution." No consumer ever split it. The
+    whole joined string went to :func:`_module_matches`, which is EXACT by
+    design, so a multi-include file matched nothing — and a single-include file
+    missed too, because the slot keeps ``stdio.h`` while ``c.yaml`` declares
+    ``stdio``.
+
+    Measured on whisper.cpp: **6** of 35,059 cpp call edges matched, and the 59
+    recovered are the security surface — ``getenv`` (a taint SOURCE),
+    ``fork`` / ``execvp`` / ``waitpid``, and the whole
+    ``socket`` / ``bind`` / ``connect`` / ``listen`` / ``send`` / ``recv`` set.
+
+    THE EXPANSION IS ADDITIVE AND BOUNDED. The full slot is offered first, so a
+    language emitting ONE module per slot is unaffected — for such a hint the
+    parts collapse back to the whole and the result is byte-identical. And a
+    disjunction is bounded by what the file actually includes: a translation
+    unit that never includes ``<sys/socket.h>`` still cannot match a
+    ``sys/socket`` entry, whatever it names its functions.
+
+    THE RESIDUAL FALSE POSITIVE IS MEASURED, NOT ARGUED AWAY: 2 of the 59
+    (3.4%). Both are ``wait`` in one file that genuinely includes
+    ``<sys/wait.h>`` (and genuinely calls ``waitpid``), where these two
+    particular calls are ``std::condition_variable::wait`` and
+    ``std::future::wait`` — C++ METHODS wearing a POSIX function's name. The
+    discriminator that would settle them is ``call_construct``, which the cpp
+    analyzer does not emit on any edge; :func:`gate_named_entry` already knows
+    what to do with it the moment it arrives. Routing the whole disjunction
+    through that gate instead was measured and rejected: ``ambiguous_names``
+    holds ``bind``/``connect``/``listen``/``recv``/``send``/``stat``/``wait``,
+    so it would discard ~12 true positives to remove these 2. The direction
+    also favours shipping: a false boundary makes a claim read ``violated``
+    (loud), while the missing 59 make it read ``confirmed`` (silent) — and the
+    silent direction is the one this project keeps paying for.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+
+    add(module_hint)
+    for raw in module_hint.split(","):
+        part = raw.strip()
+        if not part:
+            continue
+        add(part)
+        for suffix in _HEADER_SUFFIXES:
+            if part.endswith(suffix):
+                add(part[: -len(suffix)])
+                break
+    return out
 
 
 def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:

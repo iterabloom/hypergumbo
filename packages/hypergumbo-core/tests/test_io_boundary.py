@@ -5855,3 +5855,114 @@ class TestAProducerStampSurvivesCatalogueTagging:
         tag_io_boundaries([e], {"python": load_catalog("python")})
         from hypergumbo_core.io_boundary import PRODUCER_OPAQUE_BOUNDARIES
         assert e.meta.get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES
+
+
+class TestCppMultiIncludeModuleSlot:
+    """INV-funuf: a C/C++ module slot is a DISJUNCTION, not one module name.
+
+    ``cpp.py`` pre-collects every ``#include <...>`` in a file and sets an
+    unresolved call's module slot to the comma-joined list of all of them:
+
+        cpp:stdio.h,vector,string:0-0:fopen:unresolved
+
+    Its own comment states the intended contract — "the semantics is 'this call
+    could be from any of the included headers'; downstream consumers may split
+    the module_hint on commas". No consumer ever did. ``lookup_with_module``
+    handed the whole joined string to ``_module_matches``, which is EXACT by
+    design (a prefix rule was wrong in three languages at once), so a
+    multi-include file matched nothing at all. A SINGLE-include file missed too,
+    because the slot keeps the header FILENAME while ``c.yaml`` declares the
+    header STEM.
+
+    Measured on whisper.cpp (real repo, production extractors, call edges
+    only): 6 of 35,059 matched. The 59 recovered here are the security surface
+    — getenv, fork/execvp/waitpid, socket/bind/connect/listen/send/recv — so
+    C++'s entire network, subprocess and env-read surface was invisible to
+    io-boundaries and to every taint source derived from it.
+    """
+
+    def test_a_single_header_filename_reaches_its_catalogue_stem(self) -> None:
+        catalog = load_catalog("c")
+        assert catalog.lookup_with_module("fopen", "stdio") is not None, (
+            "precondition: the catalogue declares the STEM"
+        )
+        hit = catalog.lookup_with_module("fopen", "stdio.h")
+        assert hit is not None, "'stdio.h' must reach the 'stdio' entry"
+        assert hit.module == "stdio"
+
+    def test_a_comma_joined_slot_is_tried_part_by_part(self) -> None:
+        catalog = load_catalog("c")
+        hit = catalog.lookup_with_module("fopen", "stdio.h,vector,string")
+        assert hit is not None, (
+            "a multi-include file must still reach the catalogue; the joined "
+            "slot means 'any of these headers', not one module named "
+            "'stdio.h,vector,string'"
+        )
+        assert hit.module == "stdio"
+
+    def test_the_security_surface_is_reachable(self) -> None:
+        """getenv is a taint SOURCE, not merely a boundary — it was the single
+        highest-count miss in the measured population."""
+        catalog = load_catalog("c")
+        hint = "algorithm,stdlib.h,vector,cstdio,unistd.h,sys/socket.h"
+        for name, module in (("getenv", "stdlib"),
+                             ("socket", "sys/socket"),
+                             ("fork", "unistd")):
+            hit = catalog.lookup_with_module(name, hint)
+            assert hit is not None, f"{name} unreachable from {hint!r}"
+            assert hit.module == module
+
+    def test_a_header_not_included_does_not_match(self) -> None:
+        """The disjunction is bounded by what the file actually includes.
+
+        This is the whole false-positive guard: a file that never includes
+        <sys/socket.h> must not match sys/socket entries no matter how
+        suggestive the call name is. Without it, splitting would hand every
+        short name a match from any catalogue module.
+        """
+        catalog = load_catalog("c")
+        hint = "vector,string,map,algorithm"
+        assert catalog.lookup_with_module("socket", hint) is None
+        assert catalog.lookup_with_module("fopen", hint) is None
+
+    def test_a_single_module_hint_is_unchanged(self) -> None:
+        """Languages that emit ONE module per slot must be byte-identical.
+
+        The expansion is additive: it adds candidate spellings, it never
+        widens what a single non-header hint may match.
+        """
+        py = load_catalog("python")
+        assert py.lookup_with_module("read", "external") is None
+        assert py.lookup_with_module("listdir", "os") is not None
+        # A wrong single hint stays wrong — no part-splitting rescues it.
+        assert py.lookup_with_module("listdir", "shutil") is None
+
+    def test_expansion_is_a_no_op_for_every_other_hint_shape(self) -> None:
+        """NON-DESTRUCTION, asserted rather than argued (L6).
+
+        A hint with no comma and no header suffix must expand to exactly
+        itself, so every language that emits one module per slot is provably
+        unaffected. Swept: ``cpp.py:1374`` is the ONLY producer in the tree
+        that comma-joins a module slot, and NO shipped catalogue declares a
+        module ending in a header suffix — so the stem candidate can add a
+        match but can never remove or redirect one.
+        """
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        for hint in ("os", "net/http", "std::fs", "java.io", "pathlib.Path",
+                     "sys", "os.exec.Cmd", "crypto/rand"):
+            assert _module_hint_candidates(hint) == [hint], (
+                f"{hint!r} must expand to itself alone"
+            )
+
+    def test_the_whole_slot_is_offered_before_any_part(self) -> None:
+        """Order is load-bearing: an exact whole-slot match must still win, so
+        the expansion can only ever be consulted after today's answer fails."""
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        assert _module_hint_candidates("stdio.h,vector")[0] == "stdio.h,vector"
+        assert _module_hint_candidates("stdio.h") == ["stdio.h", "stdio"]
+
+    def test_blank_and_duplicate_parts_do_not_multiply_candidates(self) -> None:
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        assert _module_hint_candidates("stdio.h,,stdio.h, ") == [
+            "stdio.h,,stdio.h, ", "stdio.h", "stdio",
+        ]
