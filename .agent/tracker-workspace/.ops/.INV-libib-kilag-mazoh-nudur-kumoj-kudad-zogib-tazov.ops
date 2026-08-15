@@ -1,0 +1,24 @@
+- op: create  # 0857
+  at: '2026-08-15T09:28:21Z'  # 0857
+  by: agent  # 0857
+  actor: jgstern_agent  # 0857
+  clock: 1  # 0857
+  nonce: '0857'  # 0857
+  data:  # 0857
+    kind: invariant  # 0857
+    title: "ci-debug cannot address a matrix LEG: all four cron/nightly/N names return one identical log"  # 0857
+    status: violated  # 0857
+    priority: 2  # 0857
+    parent:  # 0857
+    tags:  # 0857
+    - ci  # 0857
+    - test_infra  # 0857
+    - trunk_green  # 0857
+    isbefore: []  # 0857
+    duplicate_of: []  # 0857
+    not_duplicate_of: []  # 0857
+    pr_ref:  # 0857
+    description: "FOUND while reading the nightly gate after PR #348 made absent-gate\nsubstitution visible. This is the same class one level down: #348 closed\n\"the named GATE is not on this commit\"; this is \"the named gate IS present,\nbut the log resolver cannot tell its matrix LEG from its siblings\".\n\nEVIDENCE. dev bfa589973b carries four failing statuses:\n\n  ci/woodpecker/cron/nightly/1  failure\n  ci/woodpecker/cron/nightly/2  failure\n  ci/woodpecker/cron/nightly/3  failure\n  ci/woodpecker/cron/nightly/4  failure\n\nFetching each by name returns BYTE-IDENTICAL output - same failing test, same\n\"1 failed, 22803 passed, 28 skipped, 17 xfailed\", same duration 1243.40s, and\nall four report Python 3.10. Four distinct matrix legs cannot share a\nwall-clock time to the centisecond, and a version matrix whose every leg is\n3.10 is not a matrix. So the resolver is handing back ONE leg four times.\n\nMECHANISM, read in code rather than inferred. A Woodpecker MATRIX is one\nPIPELINE containing several WORKFLOWS. The four statuses therefore very\nlikely share a single target_url, so the gate-level selection in\n_github_fetch_job_log correctly picks the pipeline and has nothing left to\ndisambiguate with. The step resolver then does:\n\n    steps = [s for wf in (pipeline.get('workflows') or [])\n             for s in (wf.get('children') or [])]\n\nwhich FLATTENS every workflow's steps into one list, discarding the workflow\neach belongs to, and then returns the first failing step in that flattened\nlist. Every leg name resolves to the same step.\n\nWHY IT MATTERS BEYOND TIDINESS. The nightly is the multi-Python gate; its\nwhole purpose is to distinguish \"fails on 3.10\" from \"fails everywhere\". A\nresolver that cannot address a leg makes that gate unreadable in exactly the\ndimension it exists for - and it does so SILENTLY, returning a plausible log\nat rc 0. I reported \"all four legs fail identically\" from these logs before\nnoticing the duplicate duration; that conclusion was not supported by the\ndata and is precisely the error this defect manufactures.\n\nFIX SHAPE (not costed): carry the workflow into the step selection and let an\nexplicit job name select the workflow first, then the step within it -\nmirroring the two-level rule #348 established for gate-then-step. The\nwarn-on-substitution helper (_wp_warn_substituted) already exists and is the\nnatural place to report \"leg 3 not found; showing leg 1\".\n\nNOT SWEPT: whether the four statuses genuinely share one target_url. That is\ncheckable from the commit-status payload, which no approved script currently\nprints; ci-debug status shows context and state only."  # 0857
+    fields:  # 0857
+      statement: "A named CI job must resolve to that job's own log. VIOLATED for matrix legs: cron/nightly/1..4 are four distinct failing statuses, and fetching each by name returns byte-identical output (same duration 1243.40s, same Python 3.10), so the multi-Python gate cannot be read in the dimension it exists for."  # 0857
+      root_cause: "A Woodpecker matrix is ONE pipeline containing several workflows. _github_fetch_job_log's step resolver flattens [s for wf in workflows for s in wf.children] into a single list, discarding which workflow each step belongs to, then returns the first failing step. The job name selects the pipeline but nothing selects the leg."  # 0857
