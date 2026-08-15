@@ -74,6 +74,35 @@ PYTEST_ARGS=()
 HAS_EXPLICIT_TESTS=false
 
 # Smart-test mode tracking (used by summarize_pytest_output)
+# Coverage-directed selection runs in SHADOW by default: it reports what it
+# would have chosen and changes nothing. Opt out with --no-select-shadow.
+SELECT_SHADOW=true
+
+# LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
+#
+#   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
+#      is "it can only add tests, and something else runs everything anyway".
+#      That story collapses the moment it has any influence on the gate.
+#   2. THE INDEX IS LOCAL STATE. It lives out-of-repo in ~/hypergumbo_lab_notebook
+#      alongside test_timings.json, so in CI it would be COLD on every run:
+#      nothing selected, every test that ran counted as a miss. Those phantom
+#      misses go into the Phase 1 evidence, whose exit criterion COUNTS misses.
+#      CI would silently manufacture the failure signal we are trying to measure.
+#   3. IT COSTS REAL TIME. The post-run update re-hashes every measured file to
+#      fold contexts in — pointless work on a machine that discards the result.
+#
+# As of 2026-08-14 this guard is defense in depth rather than load-bearing: no
+# Woodpecker step invokes scripts/smart-test (CI drives pytest directly from the
+# committed .ci/affected-tests.txt manifest with SMART_TEST_ACTIVE=1), and CI
+# builds its own COV_PATHS without --cov-context. Both are accidents of the
+# current CI design, and a future rewiring would activate this silently. Hence
+# an explicit guard rather than a comment saying it cannot happen.
+#
+# HG_SELECT_SHADOW=1 forces it on, for deliberately exercising the wiring.
+if [[ -n "${CI:-}" ]] && [[ "${HG_SELECT_SHADOW:-}" != "1" ]]; then
+    SELECT_SHADOW=false
+fi
+
 SMART_TEST_MODE="full"
 TARGETED_TEST_COUNT=0
 TARGETED_SOURCE_COUNT=0
@@ -81,6 +110,7 @@ TARGETED_SOURCE_COUNT=0
 for arg in "$@"; do
     case $arg in
         --full) FULL_RUN=true ;;
+        --no-select-shadow) SELECT_SHADOW=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -449,12 +479,68 @@ summarize_pytest_output() {
 # Run pytest and show summary (or raw output if --raw)
 JUNIT_XML="$MANIFEST_DIR/pytest-results.xml"
 
+# Fold this run's per-test coverage contexts into the selection index.
+# ONE definition, called from every path that runs pytest — the --full branch
+# exits immediately after its own run_pytest, so an inline copy at the targeted
+# call site silently skipped full runs entirely: no last_full_run_sha marker and
+# no unmeasured population, which are exactly what full runs exist to record.
+# (Third time today that one fact with two homes drifted; hence a function.)
+#
+# $1 == "full" marks complete coverage scope. That flag is load-bearing, not
+# cosmetic: "ran and produced nothing" is only a meaningful claim when coverage
+# was watching everything, and the targeted path scopes --cov to changed files.
+fold_selection_index() {
+    [[ "$SELECT_SHADOW" == "true" ]] || return 0
+    [[ -f "$REPO_ROOT/.coverage" ]] || return 0
+    local full_flag=()
+    [[ "$1" == "full" ]] && full_flag=(--full)
+    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+        --junit "$JUNIT_XML" update \
+        --coverage-db "$REPO_ROOT/.coverage" \
+        --sha "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
+        "${full_flag[@]}" || true
+}
+
 run_pytest() {
     local test_targets="$1"
     shift
     local extra_args=("$@")
 
     mkdir -p "$MANIFEST_DIR"
+
+    # Pin rootdir so --cov-context node ids are ALWAYS repo-relative.
+    # pytest derives node ids from rootdir, and rootdir depends on the args:
+    # a run confined to one package resolves to that package (several carry
+    # [tool.pytest.ini_options]) and yields `tests/test_x.py::test_y`, while a
+    # run spanning packages yields `packages/<pkg>/tests/test_x.py::test_y`.
+    # Two spellings of one test fragment the selection index into rows that
+    # never join — the same failure class as the `|setup` context suffix.
+    # Verified: pinning rootdir does NOT change ini discovery (pytest still
+    # reports `configfile: packages/hypergumbo-core/pyproject.toml`), so
+    # per-package filterwarnings and asyncio settings still apply.
+    # ALWAYS ON, and applied HERE rather than in COV_PATHS because COV_PATHS
+    # is REBUILT FROM SCRATCH on the targeted path -- `COV_PATHS=($AFFECTED_COV)`
+    # near "Running N affected test files with scoped coverage" -- which silently
+    # discarded this flag. Measured before the move: a full run recorded 20,519
+    # contexts while an ordinary no-args run recorded ONE, empty. That is the
+    # common local path, so the incremental index would have starved on exactly
+    # the runs it depends on while unit tests stayed green.
+    #
+    # run_pytest is the single chokepoint every invocation passes through, so no
+    # future array rebuild can drop it again.
+    #
+    # "test" is the context SOURCE, not a scope: it is the only value pytest-cov
+    # accepts ("Dynamic contexts to use. 'test' for now.") and means "label each
+    # context with the test that produced it". Contexts carry `|setup`/`|run`/
+    # `|teardown` suffixes; a raw join against test ids matches NOTHING, so
+    # callers go through selection_index / coverage_census, which strip them.
+    #
+    # COST, measured 2026-08-14: full suite 966s WITH contexts vs 983s without,
+    # i.e. no measurable tax (the ~18% figure did not reproduce).
+    # ${REPO_ROOT:-$PWD}: test_smart_test_coverage_gate.py EXTRACTS this
+    # function and drives it in isolation under `set -u`, so a bare
+    # $REPO_ROOT is an unbound variable there and took the harness down.
+    extra_args=("--rootdir=${REPO_ROOT:-$PWD}" "--cov-context=test" "${extra_args[@]}")
 
     if [[ "$RAW_OUTPUT" == "true" ]]; then
         # Stream output directly (old behavior)
@@ -1033,7 +1119,9 @@ if [[ "$FULL_RUN" == "true" ]]; then
     log "Running full test suite locally (--full flag)"
     echo "Running full test suite (manifest written with $TEST_COUNT targeted tests for CI)"
     run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
-    exit $?
+    _full_rc=$?
+    fold_selection_index full
+    exit $_full_rc
 fi
 
 # Build scoped coverage for affected source files only
@@ -1120,9 +1208,32 @@ except Exception:
     fi
 fi
 
+# ── Coverage-directed selection, SHADOW PHASE ────────────────────────────────
+# Reports what a coverage-driven selector WOULD have chosen and never acts on
+# it. Runs BEFORE the suite so it reads the index as it stood before this run —
+# selecting with knowledge gained from the very run being evaluated would make
+# every observation look perfect.
+#
+# It must never fail the run it is shadowing: `|| true` here, and the helper
+# itself catches broadly and exits 0. A selector that reddens the suite it is
+# measuring gets switched off, and then there is no evidence at all.
+if [[ "$SELECT_SHADOW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _sel_changed=$(mktemp); _sel_actual=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_sel_changed" || true
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_sel_actual" || true
+    "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
+        --junit "$JUNIT_XML" shadow \
+        --changed-files "$_sel_changed" --actual-tests "$_sel_actual" \
+        --base "${BASELINE:-HEAD}" \
+        --json "$MANIFEST_DIR/selection-shadow.json" || true
+    rm -f "$_sel_changed" "$_sel_actual"
+fi
+
 # Run tests and collect coverage (don't enforce threshold yet)
 run_pytest "$AFFECTED_TESTS" "${SCOPED_PYTEST_ARGS[@]}"
 TEST_EXIT=$?
+
+fold_selection_index
 
 # If tests passed, check coverage for just the changed source files
 if [[ $TEST_EXIT -eq 0 ]] && [[ -n "$CHANGED_SOURCE_FILES" ]]; then
