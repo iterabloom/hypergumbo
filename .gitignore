@@ -101,6 +101,8 @@ package-lock.json
 .ci/pytest-output.log
 .ci/pytest-results.xml
 .ci/smart-test-fallback.log
+# Rewritten by the coverage-directed selector on every run (shadow phase).
+.ci/selection-shadow.json
 
 # Tracker
 **/config.yaml

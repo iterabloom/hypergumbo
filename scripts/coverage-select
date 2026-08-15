@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""CLI for coverage-directed test selection (shadow phase).
+
+DELIBERATELY THIN. Every decision lives in hypergumbo_core.{block_hash,
+selection_index,selection_shadow}, which are unit-tested at 100%; code in
+scripts/ is exercised only through subprocess and so contributes nothing to
+coverage. Anything here that is more than argument shuffling is in the wrong
+file.
+
+NOTHING HERE MAY FAIL A TEST RUN. This rides along on every smart-test
+invocation to accumulate evidence; a selector that breaks the suite it is
+shadowing would be retired within a day and rightly so. Every entry point
+catches broadly and exits 0 — see `main`.
+
+    update  fold one run's coverage contexts into the index
+    shadow  report what coverage WOULD have selected, without acting on it
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent
+                      / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.selection_index import (  # noqa: E402
+    open_index, select_tests, update_from_run,
+)
+from hypergumbo_core.selection_shadow import (  # noqa: E402
+    compare, ran_tests_from_junit,
+)
+
+#: Out-of-repo by default, like test_timings.json: this is rewritten on every
+#: run and must never dirty the working tree.
+DEFAULT_INDEX = Path(
+    os.environ.get("HG_SELECTION_INDEX",
+                   Path.home() / "hypergumbo_lab_notebook" / "selection_index.sqlite")
+)
+
+
+def _lines(path: str | None) -> list[str]:
+    if not path or not Path(path).exists():
+        return []
+    return [ln.strip() for ln in Path(path).read_text().splitlines() if ln.strip()]
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    ran = None
+    if args.junit and Path(args.junit).exists():
+        ran = ran_tests_from_junit(Path(args.junit), root)
+    conn = open_index(Path(args.index))
+    update_from_run(
+        conn, Path(args.coverage_db),
+        ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
+    )
+    conn.close()
+    if args.verbose:
+        print(f"[coverage-select] indexed {len(ran or ())} ran tests", file=sys.stderr)
+    return 0
+
+
+def _base_source(root: Path, base: str, rel: str) -> str | None:
+    """Contents of ``rel`` at commit ``base``, or None if it did not exist.
+
+    Change detection is GIT's job. The index stores block -> tests and nothing
+    about what the tree used to look like: it is rewritten after every run, so
+    using its digests as the baseline made every run compare the working tree
+    against itself and select nothing (measured: 0 vs smart-test's 87).
+    """
+    done = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"],
+                          capture_output=True, text=True)
+    return done.stdout if done.returncode == 0 else None
+
+
+def cmd_shadow(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    if not changed:
+        return 0
+    base_sources = {
+        str(root / c): _base_source(root, args.base, c) for c in changed
+    }
+    conn = open_index(Path(args.index))
+    selection = select_tests(conn, base_sources)
+    known = None
+    if args.junit and Path(args.junit).exists():
+        known = ran_tests_from_junit(Path(args.junit), root)
+    # Index paths are absolute; smart-test speaks repo-relative. Rebase before
+    # comparing or every file differs and the report is pure noise.
+    rebased = {
+        t.replace(f"{root}/", "", 1) if t.startswith(f"{root}/") else t
+        for t in selection.tests
+    }
+    report = compare(
+        type(selection)(
+            tests=frozenset(rebased),
+            changed_blocks=selection.changed_blocks,
+            new_blocks=selection.new_blocks,
+            unknown_paths=selection.unknown_paths,
+            unmeasured=selection.unmeasured,
+            missing_paths=selection.missing_paths,
+        ),
+        actual_files=_lines(args.actual_tests),
+        known_tests=known,
+        changed_files=[str(root / c) for c in changed],
+    )
+    conn.close()
+    if args.json:
+        Path(args.json).write_text(json.dumps({
+            "changed_files": sorted(changed),
+            "coverage_tests": sorted(report.coverage_tests),
+            "coverage_files": sorted(report.coverage_files),
+            "actual_files": sorted(report.actual_files),
+            "missed_by_coverage": sorted(report.missed_by_coverage),
+            "extra_from_coverage": sorted(report.extra_from_coverage),
+            "new_blocks": report.new_blocks,
+            "unknown_paths": sorted(report.unknown_paths),
+            "missing_paths": sorted(report.missing_paths),
+            "unmeasured": report.unmeasured,
+            "join_rate": report.join_rate,
+            "trustworthy": report.trustworthy,
+        }, indent=2))
+    print("[coverage-select] SHADOW — reporting only, nothing acted on",
+          file=sys.stderr)
+    print(report.summary(), file=sys.stderr)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--index", default=str(DEFAULT_INDEX))
+    parser.add_argument("--junit", default=None)
+    parser.add_argument("--verbose", action="store_true")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    up = sub.add_parser("update")
+    up.add_argument("--coverage-db", required=True)
+    up.add_argument("--sha", default=None)
+    up.add_argument("--full", action="store_true")
+    up.set_defaults(func=cmd_update)
+
+    sh = sub.add_parser("shadow")
+    sh.add_argument("--changed-files", default=None)
+    sh.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    sh.add_argument("--actual-tests", default=None)
+    sh.add_argument("--json", default=None)
+    sh.set_defaults(func=cmd_shadow)
+
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except Exception as exc:  # noqa: BLE001 - see module docstring
+        # NEVER fail the run this is shadowing. A broken selector must degrade
+        # to silence, not to a red suite.
+        print(f"[coverage-select] non-fatal: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
