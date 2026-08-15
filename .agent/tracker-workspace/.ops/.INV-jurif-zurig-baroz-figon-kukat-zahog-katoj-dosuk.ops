@@ -23,3 +23,27 @@
     fields:  # 715d
       statement: "A read of an environment variable must emit an edge a taint source can attach to. VIOLATED for bash: a script doing secret=$API_KEY then echo $secret > /etc/cron.d/pwned emits exactly ONE edge (the redirection sink) and nothing for the read, so bash carries 0 taint sources, fails the both-halves predicate, and makes every self-proof claim inconclusive."  # 715d
       root_cause: "INV-vavup catalogued bash redirection (the SINK half) and the analyzer emits those edges. No emission exists for a variable expansion that reads the environment, so the SOURCE half has nothing to match against and a sources catalogue would be inert on arrival."  # 715d
+- op: update  # c792
+  at: '2026-08-15T09:42:03Z'  # c792
+  by: agent  # c792
+  actor: jgstern_agent  # c792
+  clock: 2  # c792
+  nonce: c792  # c792
+  set: {}  # c792
+  add:  # c792
+    isbefore: [INV-dabuf-saroz-fosir-bonag-dijil-savoz-hanig-guzag]  # c792
+- op: update  # 192c
+  at: '2026-08-15T19:39:17Z'  # 192c
+  by: agent  # 192c
+  actor: jgstern_agent  # 192c
+  clock: 3  # 192c
+  nonce: 192c  # 192c
+  set:  # 192c
+    status: satisfied  # 192c
+- op: discuss  # f9d2
+  at: '2026-08-15T19:39:17Z'  # f9d2
+  by: agent  # f9d2
+  actor: jgstern_agent  # f9d2
+  clock: 4  # f9d2
+  nonce: f9d2  # f9d2
+  message: "SATISFIED. PR #357. Acceptance test as filed: the two-line probe (secret=$API_KEY; echo $secret > /etc/cron.d/pwned) against {source_taint: host_secret, prohibited_sink_zone: host_fs} went INCONCLUSIVE -> VIOLATED, and bash left unsupported_taint_languages. Verified both anchorings: a function-scoped read anchors to dump:function with meta.env_var=API_KEY, a top-level one to the file, and the sink anchors to the same place in each case. The catalogue half derives (env_read -> host_secret via AUTO_SOURCE_LABEL_MAP) rather than being hand-written, so the two halves cannot disagree about the label. Required INV-fafol first, exactly as this item's own filing said to check: without it the emitted edge would have anchored to the FILE and started no flow - measured on JS before doing bash."  # f9d2
