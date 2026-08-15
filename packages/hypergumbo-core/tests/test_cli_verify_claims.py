@@ -192,13 +192,21 @@ def test_verify_claims_json_exposes_unsupported_taint_languages(
 ) -> None:
     """WI-nulot: the INV-javam taint-coverage signal (previously stderr-only) is
     machine-visible in --json. A taint-flow claim evaluated against a repo whose
-    language has no taint catalog (e.g. bash) exposes that language in
+    language has no taint catalog exposes that language in
     ``unsupported_taint_languages`` — so a CI gate parsing the JSON can tell a
-    'confirmed' verdict apart from a genuinely-verified one."""
+    'confirmed' verdict apart from a genuinely-verified one.
+
+    The example was BASH until INV-jurif gave it an environment-read source to
+    go with INV-vavup's redirection sinks; bash now satisfies the both-halves
+    predicate and is correctly absent from this list. Switched to a language
+    that genuinely has no catalogue, so the test still exercises the signal
+    rather than quietly asserting nothing — a fixture that stops discriminating
+    is worse than a deleted test, because it still looks like coverage.
+    """
     bmap = _make_behavior_map(
         nodes=[
-            {"id": "bash:deploy.sh:1-10:main:function", "name": "main",
-             "kind": "function", "language": "bash", "path": "deploy.sh",
+            {"id": "markdown:README.md:1-10:intro:section", "name": "intro",
+             "kind": "section", "language": "markdown", "path": "README.md",
              "span": {"start_line": 1, "end_line": 10}},
         ],
         edges=[],
@@ -225,7 +233,11 @@ def test_verify_claims_json_exposes_unsupported_taint_languages(
     cmd_verify_claims(args)
 
     data = json.loads(capsys.readouterr().out)
-    assert "bash" in data["unsupported_taint_languages"]
+    assert "markdown" in data["unsupported_taint_languages"]
+    assert "bash" not in data["unsupported_taint_languages"], (
+        "bash carries both taint halves as of INV-jurif and must no longer be "
+        "reported as an unverified language"
+    )
 
 
 def test_verify_claims_missing_file(tmp_path: Path) -> None:

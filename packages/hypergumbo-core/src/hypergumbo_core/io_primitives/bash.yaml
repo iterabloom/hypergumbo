@@ -37,6 +37,26 @@ language: bash
 # here-doc bodies are also unmodelled. Marking this `complete` would assert a
 # coverage this file does not have.
 status: in_progress
+
+# INV-jurif: the environment READ surface. `$API_KEY` is to bash what
+# `os.environ` is to python — an attribute access, not a call — and it is
+# matched against the module_attr_ref edge bash.py synthesizes for a variable
+# expansion whose name is never assigned in the file.
+#
+# ONE ROW, NOT A NAME LIST, on the os.environ precedent. Python does not
+# enumerate environment variable names and neither can this: a curated list is
+# wrong the moment a repo invents a name, and wrong in the SILENT direction (a
+# secret read that matches nothing). The variable that was read is carried on
+# the edge's meta for the reader, not used for matching.
+#
+# WHY IT MATTERS BEYOND BASH: with zero sources, bash failed the both-halves
+# taint predicate, so ANY repository containing a shell script made every
+# taint claim `inconclusive` — including hypergumbo's own 18-claim self-proof.
+env_read:
+  - module: env
+    attributes: [environ]
+    notes: "A parameter expansion of a name not assigned in the file"
+
 fs_write:
   # `>` and `>>` are ONE primitive at two modes, not two primitives. The
   # truncate/append distinction rides on io_mode (the builtins.open pattern)
