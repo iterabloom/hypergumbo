@@ -88,9 +88,11 @@ def _tagged_edges(tmp_path: Path, language: str, source: str) -> list:
 def _fopen_edge(tmp_path: Path, language: str, source: str):
     """The single ``fopen`` call edge, found by CALLEE rather than by tag.
 
-    Deliberately not keyed on ``io_primitive``: cpp does not reach the
-    catalogue at all (INV-funuf, below), and a helper that filtered on the tag
-    would silently find nothing there and report it as "no fopen".
+    Deliberately not keyed on ``io_primitive``. cpp reaches the catalogue as of
+    INV-funuf, but keying the helper on the tag would make it find edges only
+    when tagging already works — so a future tagging regression would surface
+    here as "no fopen call was emitted", blaming the analyzer for a consumer
+    fault. Finding the edge by CALLEE keeps the two failures distinguishable.
     """
     edges = [e for e in _tagged_edges(tmp_path, language, source)
              if e.edge_type == "calls" and ":fopen:" in e.dst]
@@ -194,29 +196,47 @@ class TestTheBoundaryFollowsTheMode:
         assert (edge.meta or {}).get("io_boundary") == "fs_read"
 
 
-def test_cpp_stamps_a_mode_that_currently_reaches_no_catalogue(
-    tmp_path: Path,
-) -> None:
-    """DISCLOSURE, not an assertion of correctness — INV-funuf.
+class TestCppReachesTheCatalogueToo:
+    """INV-funuf LANDED, and this class is what the tripwire asked for.
 
-    The cpp stamp above is real and correct and presently INERT, and saying so
-    in an executable place beats saying it in a commit message. cpp.py sets the
-    dst's module slot to the comma-joined list of the file's ``#include``s and
-    keeps the header FILENAME (``stdio.h``), while ``c.yaml`` declares the
-    header STEM (``stdio``), so ``lookup_with_module``'s exact module match
-    refuses every C-stdlib call. Measured on whisper.cpp: 6 of 86 reachable
-    primitives match today, and the 80 missed include ``getenv``,
-    ``socket``/``connect``/``send``, and ``fork``/``execvp``.
+    What stood here was a DISCLOSURE test asserting cpp reached no catalogue at
+    all — ``io_boundary is None`` — written to go RED the moment the gap closed
+    so the fix could not leave a stale "cpp is blind" claim behind. It went red
+    on exactly the change it was waiting for, and is replaced by the assertions
+    it named.
 
-    WHEN INV-funuf LANDS THIS TEST GOES RED. That is the intent: it is a
-    tripwire holding the disclosure to the truth, so the fix cannot quietly
-    leave a stale "cpp is blind" claim in the tree. Replace it then with the
-    boundary assertions in ``TestTheBoundaryFollowsTheMode``.
+    cpp still spells the module slot as the comma-joined ``#include`` list with
+    the header FILENAME kept (``stdio.h``), which is why this is a genuinely
+    different arm from C's: C reaches the catalogue with NO module slot, cpp
+    reaches it through a slot that must be split and stemmed. Measured on
+    whisper.cpp: 6 -> 65 call edges matched, with net_send / net_recv /
+    subprocess going from zero to visible.
     """
-    edge = _fopen_edge(tmp_path, "cpp", WRITER)
-    assert (edge.meta or {}).get("io_mode") == "w"
-    assert (edge.meta or {}).get("io_boundary") is None
-    assert "stdio.h" in edge.dst
+
+    def test_write_mode_tags_fs_write(self, tmp_path: Path) -> None:
+        edge = _fopen_edge(tmp_path, "cpp", WRITER)
+        assert (edge.meta or {}).get("io_mode") == "w"
+        assert (edge.meta or {}).get("io_boundary") == "fs_write", (
+            "cpp's comma-joined, filename-spelled module slot must now reach "
+            "the catalogue stem"
+        )
+
+    def test_read_mode_still_tags_fs_read(self, tmp_path: Path) -> None:
+        edge = _fopen_edge(tmp_path, "cpp", READER)
+        assert (edge.meta or {}).get("io_boundary") == "fs_read"
+
+    def test_the_slot_still_carries_the_header_filename(
+        self, tmp_path: Path,
+    ) -> None:
+        """The PRODUCER is unchanged — this fix is entirely consumer-side.
+
+        Worth pinning: if a later change "fixes" cpp.py to emit the stem
+        instead, the consumer expansion becomes dead code with no test
+        objecting, and the next analyzer to join a slot would find the
+        mechanism gone.
+        """
+        edge = _fopen_edge(tmp_path, "cpp", WRITER)
+        assert "stdio.h" in edge.dst
 
 
 @pytest.mark.parametrize("language", ["c", "cpp"])
