@@ -82,6 +82,8 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     defer_bare_method_call,
     emit_module_attribute_refs,
+    symbols_by_path_index,
+    symbols_for_path,
     make_symbol_id,
     make_unresolved_edge,
     populate_docstrings_from_tree,
@@ -5905,6 +5907,11 @@ def _analyze_javascript_impl(
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
     # All symbols indexed by name (supports multiple with same name for disambiguation)
+    # INV-fafol: path -> that file's symbols, built once. Symbols carry a
+    # repo-relative ``path`` and ``pf_name`` is computed the same way, so the
+    # keys agree; a mismatch would yield an empty list and silently make the
+    # anchoring inert, which is the failure mode this fix exists to remove.
+    _symbols_by_path = symbols_by_path_index(all_symbols)
     symbols_by_name: dict[str, list[Symbol]] = {}
     # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
@@ -5990,6 +5997,15 @@ def _analyze_javascript_impl(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
+            # INV-fafol: anchor each read to the callable that performs it,
+            # not to the file. Propagation pairs a source and a sink that
+            # share a caller, so a file-anchored source can never reach any
+            # sink -- measured: process.env.API_KEY -> fs.writeFileSync was
+            # missed while os.hostname() -> fs.writeFileSync in the sibling
+            # function was found.
+            enclosing_symbols=symbols_for_path(
+                _symbols_by_path, str(pf.path), pf_name,
+            ),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:

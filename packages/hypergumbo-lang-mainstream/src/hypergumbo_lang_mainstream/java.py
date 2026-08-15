@@ -109,6 +109,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     emit_module_attribute_refs,
+    symbols_by_path_index,
+    symbols_for_path,
     populate_docstrings_from_tree,
     iter_tree,
     make_file_id,
@@ -2390,6 +2392,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Pass 1: Parse all files and extract symbols
     parsed_files: list[_ParsedFile] = []
     all_symbols: list[Symbol] = []
+
     files_analyzed = 0
     files_skipped = 0
 
@@ -2452,6 +2455,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     syms_by_path: dict[str, list[str]] = {}
     for sym in all_symbols:
         syms_by_path.setdefault(sym.path, []).append(sym.id)
+    _symbols_by_path = symbols_by_path_index(all_symbols)
     for pf in parsed_files:
         file_imports = pf.imports or {}
         if file_imports:
@@ -2615,6 +2619,12 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run_id=run.execution_id,
             call_node_kinds=("__never_match_java__",),
             call_function_field_names=("__unused__",),
+            # INV-fafol: anchor each read to the callable that performs it.
+            enclosing_symbols=symbols_for_path(
+                _symbols_by_path, str(pf.path),
+                str(pf.path.relative_to(repo_root))
+                if pf.path.is_absolute() else str(pf.path),
+            ),
         )
         # ADR-0015 Tier 1: annotate edges with dataflow access modes
         _java_df = _get_dataflow_config("java")

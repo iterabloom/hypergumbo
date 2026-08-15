@@ -3197,6 +3197,8 @@ def _extract_edges_from_file(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
+            # INV-fafol: anchor each read to the callable that performs it.
+            enclosing_symbols=list(local_symbols.values()),
         )
 
     return edges
