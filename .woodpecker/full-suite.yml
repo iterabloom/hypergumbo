@@ -123,7 +123,32 @@ steps:
       # The top-level tests/ are subprocess/file/git tests (NO hypergumbo package
       # install), but need pyyaml + hypothesis (a few property/parse tests do).
       # prepare-git unshallowed the history a git-SHA-walking test asserts on.
-      - pip install --upgrade pip && pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100'
+      #
+      # INV-vazuh: `rich` and `mypy` join them for the same reason — a test in
+      # this suite needs them — and the reason it took a filed invariant to add
+      # two names is worth keeping. This gate was RED from 2026-08-11 with three
+      # failures, and topping up this line was refused twice as guesswork,
+      # because a container that had `hypergumbo_core` importable while `rich`
+      # (a declared dependency of that very package) was absent looked like a
+      # stale site-packages volume shadowing the checkout. If that were true,
+      # adding names here would turn the gate green while it silently tested an
+      # OLD tree — worse than the red.
+      #
+      # It was not true. Reproduced outside CI in a clean venv carrying exactly
+      # the four packages above: `pytest tests/` fails 2, `pytest
+      # tests/test_rct_public_api_pinned.py` fails 8. Nothing was stale; the
+      # pinning tests were importing hypergumbo_core off a sys.path entry that a
+      # SIBLING test had inserted by exec'ing a scripts/check-* helper through
+      # SourceFileLoader. That module now declares its own path, so these two
+      # installs cover what is genuinely missing rather than papering over it:
+      #   rich  — cli.py does `from rich.console import Console` at import.
+      #   mypy  — test_smart_test_mypy_gate shells out to check-mypy-ratchet,
+      #           whose documented exit 2 (infra failure, mypy absent) is NOT
+      #           the exit 1 the gate's positive control asserts. Verified in
+      #           the same venv: with mypy present the ratchet returns 1 and
+      #           reports REGRESSION, which is what that test is there to see.
+      - pip install --upgrade pip
+      - pip install pytest pytest-xdist pyyaml 'hypothesis~=6.100' rich 'mypy~=2.1.0'
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
           read quota period < /sys/fs/cgroup/cpu.max
