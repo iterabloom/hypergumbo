@@ -23,3 +23,18 @@
     fields:  # 93a4
       statement: "A taint source must be anchored to the callable that performs the read, or it cannot participate in propagation. VIOLATED for every tree-sitter analyzer (js_ts, go, java, cpp, rust): emit_module_attribute_refs is called with the FILE pseudo-symbol as caller_symbol, so a module_attr_ref edge's src is the file while the sink's src is the function, and the two never share a caller. Measured: process.env.API_KEY -> fs.writeFileSync returns confirmed rc 0, while os.hostname() -> fs.writeFileSync in the same function returns violated rc 1."  # 93a4
       root_cause: "emit_module_attribute_refs documents that its root argument may be a function body for per-function emission, but all five tree-sitter call sites pass the file root and a file pseudo-symbol (js_ts.py:5979, go.py:3186, java.py:2604, cpp.py:1689, rust.py:2580). Python is unaffected because its own WI-guhok helper anchors to the enclosing callable."  # 93a4
+- op: update  # bea2
+  at: '2026-08-15T19:39:31Z'  # bea2
+  by: agent  # bea2
+  actor: jgstern_agent  # bea2
+  clock: 2  # bea2
+  nonce: bea2  # bea2
+  set:  # bea2
+    status: satisfied  # bea2
+- op: discuss  # 7f0e
+  at: '2026-08-15T19:39:31Z'  # 7f0e
+  by: agent  # 7f0e
+  actor: jgstern_agent  # 7f0e
+  clock: 3  # 7f0e
+  nonce: 7f0e  # 7f0e
+  message: "SATISFIED. PR #356, measured end to end rather than at the analyzer. One JS file holding both shapes in sibling functions: os.hostname() -> fs.writeFileSync was already found (a CALL, anchored to its function) while process.env.API_KEY -> fs.writeFileSync was missed (an ATTRIBUTE, anchored to the file). After: 2 flows instead of 1, and the edge reads src=javascript:app.js:4-7:leakEnv:function. All five tree-sitter call sites now pass enclosing_symbols; a parity test enumerates them so the next analyzer fails a test rather than silently repeating this. Resolved by LINE SPAN rather than by walking to a function node, so the rule needs no per-language knowledge of callable node kinds and lives once. A genuinely module-level read still anchors to the file, which is correct and asserted. The tripwire test that pinned the defect went red exactly as its docstring predicted and was replaced with the positive assertion it named, plus one asserting source and sink SHARE an anchor. Three of my own errors on the way, each caught by measuring: a scripted edit anchored on a pattern put the kwarg inside the wrong call in rust and cpp; the js_ts path index keyed on ABSOLUTE paths while the lookup used a RELATIVE name, so the fix silently did nothing and the verdict was unchanged; and Symbol.span is a Span object, not a tuple, so len() raised inside the analyzer and the pipeline swallowed it into a 0-edge analysis."  # 7f0e
