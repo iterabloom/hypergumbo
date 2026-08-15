@@ -31,8 +31,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent
 from hypergumbo_core.selection_index import (  # noqa: E402
     open_index, select_tests, update_from_run,
 )
+from hypergumbo_core.selection_log import (  # noqa: E402
+    append_observation, evaluate, load_observations,
+)
 from hypergumbo_core.selection_shadow import (  # noqa: E402
-    compare, ran_tests_from_junit,
+    compare, failed_tests_from_junit, ran_tests_from_junit,
 )
 
 #: Out-of-repo by default, like test_timings.json: this is rewritten on every
@@ -40,6 +43,15 @@ from hypergumbo_core.selection_shadow import (  # noqa: E402
 DEFAULT_INDEX = Path(
     os.environ.get("HG_SELECTION_INDEX",
                    Path.home() / "hypergumbo_lab_notebook" / "selection_index.sqlite")
+)
+
+#: APPEND-ONLY, and out-of-repo for the same reason as the index. The shadow
+#: originally wrote one JSON file per run that the next run overwrote, so no
+#: evidence could accumulate; the observations are a forward-only time series
+#: and a lost run is lost permanently.
+DEFAULT_LOG = Path(
+    os.environ.get("HG_SELECTION_LOG",
+                   Path.home() / "hypergumbo_lab_notebook" / "selection_observations.jsonl")
 )
 
 
@@ -88,9 +100,10 @@ def cmd_shadow(args: argparse.Namespace) -> int:
     }
     conn = open_index(Path(args.index))
     selection = select_tests(conn, base_sources)
-    known = None
+    known = failed = None
     if args.junit and Path(args.junit).exists():
         known = ran_tests_from_junit(Path(args.junit), root)
+        failed = failed_tests_from_junit(Path(args.junit), root)
     # Index paths are absolute; smart-test speaks repo-relative. Rebase before
     # comparing or every file differs and the report is pure noise.
     rebased = {
@@ -108,6 +121,7 @@ def cmd_shadow(args: argparse.Namespace) -> int:
         ),
         actual_files=_lines(args.actual_tests),
         known_tests=known,
+        failed=failed,
         changed_files=[str(root / c) for c in changed],
     )
     conn.close()
@@ -126,9 +140,18 @@ def cmd_shadow(args: argparse.Namespace) -> int:
             "join_rate": report.join_rate,
             "trustworthy": report.trustworthy,
         }, indent=2))
+    append_observation(Path(args.log), report, sha=args.sha or "unknown")
     print("[coverage-select] SHADOW — reporting only, nothing acted on",
           file=sys.stderr)
     print(report.summary(), file=sys.stderr)
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Print the accrued evidence and the phase's verdict."""
+    ev = evaluate(load_observations(Path(args.log)))
+    print(f"[coverage-select] evidence from {args.log}")
+    print(ev.summary())
     return 0
 
 
@@ -138,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--index", default=str(DEFAULT_INDEX))
     parser.add_argument("--junit", default=None)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--log", default=str(DEFAULT_LOG))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     up = sub.add_parser("update")
@@ -152,7 +176,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="git ref the working tree is diffed against")
     sh.add_argument("--actual-tests", default=None)
     sh.add_argument("--json", default=None)
+    sh.add_argument("--sha", default=None,
+                    help="commit the observation is attributed to")
     sh.set_defaults(func=cmd_shadow)
+
+    rp = sub.add_parser("report")
+    rp.set_defaults(func=cmd_report)
 
     args = parser.parse_args(argv)
     try:
