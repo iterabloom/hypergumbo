@@ -1,0 +1,25 @@
+- op: create  # 715d
+  at: '2026-08-15T09:40:57Z'  # 715d
+  by: agent  # 715d
+  actor: jgstern_agent  # 715d
+  clock: 1  # 715d
+  nonce: 715d  # 715d
+  data:  # 715d
+    kind: invariant  # 715d
+    title: "bash emits NO edge for an env-var read, so no bash taint flow can begin (blocks INV-dabuf's 18/18)"  # 715d
+    status: violated  # 715d
+    priority: 1  # 715d
+    parent:  # 715d
+    tags:  # 715d
+    - taint  # 715d
+    - bash  # 715d
+    - security  # 715d
+    - analyzer  # 715d
+    isbefore: []  # 715d
+    duplicate_of: []  # 715d
+    not_duplicate_of: []  # 715d
+    pr_ref:  # 715d
+    description: "BLOCKS INV-dabuf, and was found by probing rather than by reading the\ncatalogue - which matters, because the obvious next step (write a bash taint\nsources YAML) would have shipped an inert file.\n\nTHE PROBE. A two-line script that is exactly the flow hypergumbo's own\nself-proof cares about:\n\n    secret=\"$API_KEY\"\n    echo \"$secret\" > /etc/cron.d/pwned\n\n  bash edges emitted: 1\n    calls  dst=bash:redirect:0-0:>:external_symbol\n\nThe SINK is emitted (INV-vavup shipped redirection). The env read emits\nNOTHING. There is no edge for `$API_KEY`, so no taint source can attach to it\nand no flow can begin in a bash script.\n\nCONSEQUENCE, measured: bash carries 0 sources and 3 sinks, so under\nINV-potuf's both-halves predicate bash is not taint-analysable, so the\nrepo-wide blindness gate fires, so all 18 self-proof claims are INCONCLUSIVE.\nThat is the whole of INV-dabuf's current cause.\n\nWHY A CATALOGUE ALONE IS NOT THE FIX. Taint sources match against emitted\nedges. With no edge for the read, a `sources: {bash: [...]}` file is a\npredicate no call site passes - the failure shape this repo has paid for at\nleast twice (io_mode stamped at one site only; the F3 arm handed candidates\nwithout narrowing by mode). Write the emission first, then the rows.\n\nFIX SHAPE (not costed). Emit an edge for a variable expansion that reads the\nenvironment. The conservative discriminator available inside one file: a name\nthat is EXPANDED but never ASSIGNED in that file is an environment read;\n`secret` is assigned locally and is not, `API_KEY` is not assigned and is.\nExported names are a second, explicit signal.\n\nSEQUENCE WITH INV-fafol BEFORE WRITING CODE. The natural emission shape for a\nbare `$VAR` read is `module_attr_ref` (the same shape python uses for\n`os.environ`), and INV-fafol records that ALL FIVE tree-sitter analyzers\nanchor `module_attr_ref` to the FILE, which is why 21 attribute-kind js/ts\nsources cannot start a flow today. If bash emits the same shape into the same\ndefect, the edge will exist and the flow still will not start - the emission\nwould be measured as a win at the analyzer and produce zero findings. That is\nINV-linub's exact recorded lesson and this item should not repeat it.\n\nCHECK ON DELIVERY, not a proxy: the two-line script above, against a claim\n{source_taint: host_secret, prohibited_sink_zone: host_fs}, must go from\n`inconclusive` to `violated`. A bash source count going 0 -> N is NOT the\ntest; INV-linub's whole point is that an analyzer-level improvement can move\nno findings at all."  # 715d
+    fields:  # 715d
+      statement: "A read of an environment variable must emit an edge a taint source can attach to. VIOLATED for bash: a script doing secret=$API_KEY then echo $secret > /etc/cron.d/pwned emits exactly ONE edge (the redirection sink) and nothing for the read, so bash carries 0 taint sources, fails the both-halves predicate, and makes every self-proof claim inconclusive."  # 715d
+      root_cause: "INV-vavup catalogued bash redirection (the SINK half) and the analyzer emits those edges. No emission exists for a variable expansion that reads the environment, so the SOURCE half has nothing to match against and a sources catalogue would be inert on arrival."  # 715d
