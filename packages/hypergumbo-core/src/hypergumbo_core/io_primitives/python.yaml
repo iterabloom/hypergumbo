@@ -713,12 +713,19 @@ stdlib_modules:
 # a new entry only after a deliberate audit of the module's surface;
 # the ``retrieved:`` date records when that audit was performed.
 #
+# SPELLED ``module_completeness`` since 2026-08-15. The old
+# ``stdlib_module_completeness:`` is still READ from shipped catalogues so
+# no curated file breaks, but it is not accepted in a project-local
+# overlay: an overlay describes THIRD-PARTY modules, so a ``stdlib_*`` key
+# there asserts something about a stdlib it is not describing. The concept
+# was never stdlib-specific — only its authors were.
+#
 # Initial worked example: ``math``. The math module has no I/O
 # primitives (no fs / net / subprocess / env / ipc), and no method on
 # math is plausibly an I/O entry point. Flagging it complete drops
 # external_potential noise for math.sqrt / math.floor / etc. on real
 # repos.
-stdlib_module_completeness:
+module_completeness:
   - module: math
     completeness: complete
     retrieved: "2026-05-13"

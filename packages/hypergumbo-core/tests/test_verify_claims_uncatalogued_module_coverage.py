@@ -82,7 +82,7 @@ def _py_catalog() -> IoBoundaryCatalog:
                         name="send", kind="method"),
         ],
         stdlib_modules=frozenset({"pathlib", "socket", "os", "json", "math"}),
-        stdlib_module_completeness={"pathlib": "2026-08-12"},
+        module_completeness={"pathlib": "2026-08-12"},
     )
 
 

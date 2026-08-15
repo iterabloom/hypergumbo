@@ -1306,7 +1306,7 @@ def _uncatalogued_external_modules(
     THE PERMITTING CASE IS ENUMERATED, NOT THE BLOCKING ONE. A module supports
     a clean verdict when this catalogue has ENUMERATED its I/O surface —
     :meth:`IoBoundaryCatalog.module_io_is_enumerated`, a dated per-module audit
-    recorded in ``stdlib_module_completeness``. Everything else is a module
+    recorded in ``module_completeness``. Everything else is a module
     where "no ``net_send`` chains" means "none I could see". A denylist of
     known-risky libraries would fail open on the first library nobody had
     thought of, which is exactly how ``requests`` slipped through.

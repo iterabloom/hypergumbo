@@ -78,7 +78,7 @@ def _py_catalog() -> IoBoundaryCatalog:
                         name="read_text", kind="method"),
         ],
         stdlib_modules=frozenset({"pathlib", "subprocess"}),
-        stdlib_module_completeness={"pathlib": "2026-08-12"},
+        module_completeness={"pathlib": "2026-08-12"},
     )
 
 
