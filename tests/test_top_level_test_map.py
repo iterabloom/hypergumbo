@@ -359,6 +359,15 @@ def test_map_stem_with_no_alphanumerics_matches_nothing(tmp_path: Path) -> None:
 #: Root tests no name-based rule can reach, with the reason each is exempt.
 #: Shrink-only — removing an entry is the goal, adding one needs justification.
 KNOWN_UNREACHABLE = {
+    # INV-vazuh. Its subject is another TEST file, not a top-level source:
+    # it re-runs tests/test_rct_public_api_pinned.py in a child interpreter
+    # with the in-repo package source roots scrubbed, pinning that the module
+    # declares the sys.path it needs instead of inheriting one from whichever
+    # sibling happened to share its xdist worker. No source-file name can map
+    # it, because no source change is what breaks it — deleting one line of
+    # the test under guard is. It runs in the same suite as its subject, so
+    # the two never drift apart.
+    "test_rct_pinned_standalone.py",
     # scripts/lib/* is deliberately unmapped (the module's own docstring
     # records the decision: sub-script basenames are generic and would
     # over-match). These test scripts/lib/pool_utils.py and forgejo-api.sh.

@@ -29,11 +29,40 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import inspect
+import sys
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+# INV-vazuh. This module imports `hypergumbo_core`, and the suite it lives in
+# (top-level `tests/`, run by the cron full-suite's test-agent-infra step) does
+# NOT install the package — that step's contract is deliberately "subprocess /
+# file / git tests, no hypergumbo install".
+#
+# It nevertheless PASSED for months, and the reason is worth stating because it
+# is not a reason at all: fourteen `scripts/check-*` and `generate-*` scripts do
+# `sys.path.insert(0, <repo>/packages/hypergumbo-core/src)` at module level, and
+# several sibling tests execute those scripts through `SourceFileLoader`. That
+# insert lands in the shared interpreter, so whether THIS file can import
+# anything depended on whether one of those siblings happened to run first in
+# the same xdist worker.
+#
+# Measured, in a clean venv carrying only the four packages that step installs:
+#
+#   pytest tests/                            -> 2 failed   (imports resolve)
+#   pytest tests/test_rct_public_api_pinned.py -> 8 failed  (they do not)
+#
+# Same tree, same interpreter; the only variable is which other tests shared the
+# worker. A test that passes on borrowed state is not passing. Declaring the
+# path here makes this module's requirement its own — it now behaves the same
+# run alone as in the full suite, and the free-ride is gone rather than merely
+# working today.
+_SRC = REPO_ROOT / "packages" / "hypergumbo-core" / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 
 # ---------------------------------------------------------------------------
