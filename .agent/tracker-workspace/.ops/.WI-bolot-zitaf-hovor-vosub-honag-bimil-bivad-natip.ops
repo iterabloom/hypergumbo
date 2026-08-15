@@ -1,0 +1,21 @@
+- op: create  # 6b2a
+  at: '2026-08-15T01:51:48Z'  # 6b2a
+  by: agent  # 6b2a
+  actor: jgstern_agent  # 6b2a
+  clock: 1  # 6b2a
+  nonce: 6b2a  # 6b2a
+  data:  # 6b2a
+    kind: work_item  # 6b2a
+    title: "Phase 3 coverage-directed selection: allow NARROWING, opt-in, never default (precondition: unmeasured tests still selected)"  # 6b2a
+    status: todo_soft  # 6b2a
+    priority: 4  # 6b2a
+    parent:  # 6b2a
+    tags:  # 6b2a
+    - coverage_selection  # 6b2a
+    - developer_experience  # 6b2a
+    isbefore: []  # 6b2a
+    duplicate_of: []  # 6b2a
+    not_duplicate_of: []  # 6b2a
+    pr_ref:  # 6b2a
+    description: "PHASE 3 of coverage-directed selection: let the coverage selector NARROW the\nset, not just add to it. Opt-in flag, never the default, never in CI.\n\nBLOCKED ON EVIDENCE, not on implementation. The code change is small; the\njustification is not. Until Phase 1 has accrued observations showing the\nselector never drops a test that both ran and FAILED, narrowing is a guess.\n\nHARD PRECONDITION, and the one a careless implementation breaks: assert\n`unmeasured` tests are still selected before narrowing. 3,597 tests (15.9%)\nproduce no coverage rows at all -- the whole hypergumbo-tracker package is\noutside COV_PATHS, plus subprocess and scripts/ tests. Coverage can never\nspeak about them, so a narrowing pass that consults only the index would drop\nevery one of them silently.\n\nAlso re-check at that point: the shadow compares FILE-to-FILE because\nsmart-test selects files. Narrowing at NODE granularity (12 tests rather than\n2 files) is where the remaining gain is, and it is a different, larger claim\nthan the one Phase 1 measures. Do not conflate them."  # 6b2a
+    fields: {}  # 6b2a
