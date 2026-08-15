@@ -1,0 +1,21 @@
+- op: create  # 3b23
+  at: '2026-08-15T01:53:45Z'  # 3b23
+  by: agent  # 3b23
+  actor: jgstern_agent  # 3b23
+  clock: 1  # 3b23
+  nonce: 3b23  # 3b23
+  data:  # 3b23
+    kind: work_item  # 3b23
+    title: "DECISION: bring hypergumbo-tracker and subprocess tests into COV_PATHS? Worth 6.0 of the 12.4-min unselectable floor, but it changes what the 100% gate means"  # 3b23
+    status: needs_human_review  # 3b23
+    priority: 3  # 3b23
+    parent:  # 3b23
+    tags:  # 3b23
+    - coverage_selection  # 3b23
+    - ci_infrastructure  # 3b23
+    isbefore: []  # 3b23
+    duplicate_of: []  # 3b23
+    not_duplicate_of: []  # 3b23
+    pr_ref:  # 3b23
+    description: "DECISION REQUESTED, not a defect. Should hypergumbo-tracker and subprocess\ntests be brought into the measured coverage scope?\n\nWHAT IT WOULD BUY, measured 2026-08-14. 3,614 tests (15.9% of the suite)\nproduce no coverage rows at all: hypergumbo-tracker 2,818 (outside COV_PATHS),\nimport-time-subject 435, subprocess 255, scripts/ 106. They cost 12.4 min of\nserial time that NO trajectory can avoid, because a test coverage cannot see\ncan never be selected against -- 57% of the 21.7-min full-coverage trajectory\nis this mandatory floor. hypergumbo-tracker alone is 6.0 min of it.\n\nBringing them in would put that 6 minutes onto the board where selection can\nreach it, and would shrink the unmeasured population that Phase 3 has to\nspecial-case.\n\nWHY IT IS A DECISION AND NOT A TASK: it changes what the repo's 100%-coverage\ngate MEANS. The tracker package is currently tested in isolation with its own\nregime; subprocess coverage needs COVERAGE_PROCESS_START wiring. Both alter\nthe gate's denominator, which is an owner call, not a side effect of tuning a\nselector."  # 3b23
+    fields: {}  # 3b23

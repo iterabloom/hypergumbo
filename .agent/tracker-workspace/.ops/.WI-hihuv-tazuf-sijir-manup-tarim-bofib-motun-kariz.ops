@@ -1,0 +1,28 @@
+- op: create  # 4a73
+  at: '2026-08-15T01:53:49Z'  # 4a73
+  by: agent  # 4a73
+  actor: jgstern_agent  # 4a73
+  clock: 1  # 4a73
+  nonce: 4a73  # 4a73
+  data:  # 4a73
+    kind: work_item  # 4a73
+    title: "Rotating ~95% LOCAL coverage target with logged seeds: the last 1% costs 8.8 min and 140 heavy integration tests (owner: wait to implement)"  # 4a73
+    status: todo_soft  # 4a73
+    priority: 3  # 4a73
+    parent:  # 4a73
+    tags:  # 4a73
+    - coverage_selection  # 4a73
+    - developer_experience  # 4a73
+    isbefore: []  # 4a73
+    duplicate_of: []  # 4a73
+    not_duplicate_of: []  # 4a73
+    pr_ref:  # 4a73
+    description: "Relax the LOCAL coverage target from 100% to ~95%, and ROTATE which lines go\nuncovered using a logged random seed, so that over successive runs every line\nis still exercised while any single run is much cheaper.\n\nWAIT TO IMPLEMENT (owner, 2026-08-14). Filed to preserve the design.\n\nWHY IT IS WORTH REAL MONEY, on the corrected census. The last 1% of coverage\ncosts 8.8 minutes and 140 tests -- 3.8s per test against a suite mean of\n0.24s -- because the final statements are reachable only through the heavy\nfixture-bearing integration tests. Full trajectory to 100% is 21.7 min serial;\nto 95% it is 12.5 min. NOTE this SUPERSEDES the earlier \"95% and 100% are 11\nseconds apart\" reading, which came from the pre-fix index and was wrong.\n\nWHY IT IS DANGEROUS, and the reason it is not obviously a good trade. Those\n140 tests are precisely the ones you least want to skip: this repo's two\nnear-misses of the week both passed every unit test and were caught only\nend-to-end. And the index records EXECUTION, not ASSERTION -- a line run by\nten tests that assert nothing about it reads as covered ten times and\nprotected zero. A cost-ranked skip list preferentially drops the tests that\ncatch this project's characteristic bugs.\n\nWHAT MAKES IT TRACTABLE. greedy_trajectory already takes `epsilon` and a\n`seed`, sampling among near-ties where the ordering is arbitrary anyway, and\ndeterminism is already load-bearing and tested (Python hash randomisation\nwould otherwise make one seed produce different trajectories per process). So\nrotation is a logged seed plus a persisted record of which residual was\nskipped, not new search machinery.\n\nNON-NEGOTIABLE: CI's gate stays at 100%. This is a local-loop accelerator, and\nthe rotation is only sound because the full gate still runs somewhere."  # 4a73
+    fields: {}  # 4a73
+- op: discuss  # 8b49
+  at: '2026-08-15T02:02:35Z'  # 8b49
+  by: agent  # 8b49
+  actor: jgstern_agent  # 8b49
+  clock: 2  # 8b49
+  nonce: 8b49  # 8b49
+  message: "Re-examined 2026-08-14. The 'wait' verdict holds, but the reason on the item was the weaker one. Filed as a risk judgment (the last-1% tests are the heavy integration ones you least want to skip). The stronger reason is STRUCTURAL: relaxing the target buys nothing by itself, because you still run the same tests. The saving only appears once the trajectory DRIVES selection, i.e. narrowing (WI-bolot). Building this first means building a consumer for a capability that does not exist. Linked WI-bolot isbefore this. The risk argument still stands and is retained on the item."  # 8b49

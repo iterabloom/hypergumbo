@@ -28,3 +28,18 @@
   nonce: 9a4d  # 9a4d
   set:  # 9a4d
     title: "Shadow observations are overwritten every run, so the Phase 1 exit criterion is undecidable: accumulate them and report misses that also FAILED"  # 9a4d
+- op: update  # a473
+  at: '2026-08-15T03:03:42Z'  # a473
+  by: agent  # a473
+  actor: jgstern_agent  # a473
+  clock: 3  # a473
+  nonce: a473  # a473
+  set:  # a473
+    status: done  # a473
+- op: discuss  # 1ab6
+  at: '2026-08-15T03:03:42Z'  # 1ab6
+  by: agent  # 1ab6
+  actor: jgstern_agent  # 1ab6
+  clock: 4  # 1ab6
+  nonce: 1ab6  # 1ab6
+  message: "Done in PR #347 (origin/dev ea0d6a83ab), verified on the merged tree.\n\nBEHAVIOURAL EVIDENCE, not a proxy. Before: the shadow wrote one JSON file per run that the next run overwrote, so the log was permanently 1 observation. After, on the merged tree: two consecutive smart-test runs leave two rows, and 'coverage-select report' prints observations/informative/commits/DANGEROUS MISSES/verdict, currently 1 admissible commit of 30 -> INSUFFICIENT (correct).\n\nTHE ITEM UNDERSTATED THE WORK, and this is the part worth carrying forward. The exit criterion is 'a miss that ALSO FAILED', and the shadow recorded NO failure data at all -- a durable log alone would have accrued 30 commits of undecidable evidence. failed_tests_from_junit now counts <error> beside <failure> (a collection error is a test that did not pass -- the INV-vilag shape).\n\nTHREE KINDS OF OBSERVATION ARE EXCLUDED rather than counted as passes, each seen live during implementation: cold index, all-new-code commit, and collapsed join. The join case was a genuine ordering defect: the shadow ran BEFORE the suite, so it read the PREVIOUS run's junit -- 0% join and a failure set belonging to a different commit. Observations attributing one commit's failures to another change would have looked entirely healthy. It now runs after the suite and before fold_selection_index, the only window where this run's results and the pre-run index both exist.\n\nAlso fixed a green-run-reported-red abort: fold_selection_index read a bare $1 under set -u, aborting after 1,585 tests had passed.\n\nMeasured this session: raw MISSED_BY_COVERAGE was 84 on a green run with 0 dangerous misses -- which is exactly why miss counts are not the criterion.\n\nNEXT: WI-kuliv (Phase 2) stays blocked until the counter reaches 30 admissible commits. Watch informative_rate: if most observations are disqualified, '30 commits' is a much longer wait than it sounds."  # 1ab6
