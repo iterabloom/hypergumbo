@@ -214,6 +214,43 @@ CAVEAT_USER_SUPPLIED_SANITIZER = "user_supplied_sanitizer"
 #: all.
 CAVEAT_OPAQUE_BOUNDARY = "opaque_boundary"
 
+#: Caveat kind: a catalogue entry the tool ships was REPLACED by one the
+#: analysed repository supplied, and the replaced entry is exactly the kind of
+#: entry that could have produced evidence for THIS claim.
+#:
+#: INV-faput. User sources/sinks merge via ``_merge_with_user_override``, where
+#: a matching (module, name, kind) does not ADD to the catalogue — it FILTERS
+#: OUT the shipped row. Measured on the shipped CLI: a repo whose only
+#: statement is ``os.remove(os.environ["API_KEY"])``, against "host secrets
+#: must not reach the host filesystem", goes ``violated`` rc 1 -> ``confirmed``
+#: rc 0 when a user file re-declares ``os.remove`` into a ``dev_zone``, with
+#: ``caveats: []``. Both routes reproduce: the ``--taint-sinks`` flag and the
+#: in-tree ``extra_catalogs:`` block, which needs no flag from whoever runs the
+#: tool.
+#:
+#: STRICTLY STRONGER THAN THE TWO GAPS ALREADY CLOSED, on the same argument
+#: that made INV-pojib worth doing. An overlay GRANTS coverage. A user
+#: sanitizer DELETES a finding already made, and is attributed on the flow. An
+#: override PREVENTS THE FINDING FROM EXISTING — the only one of the three that
+#: can leave no trace on any per-flow record, because the sink is gone from the
+#: catalogue before propagation runs. INV-pojib's finding-level attribution
+#: structurally cannot see it: there is no finding to attribute, nothing is
+#: sanitized, and ``caveats`` is *correctly* empty.
+#:
+#: RAISED ONLY WHERE IT DISCRIMINATES, the same rule the sanitizer caveat
+#: follows. A displaced sink whose shipped zone is not this claim's prohibited
+#: zone could not have produced evidence for this claim, and reporting it would
+#: be noise on every run of a repo that customises its catalogue at all. And a
+#: user row moving a sink INTO the prohibited zone ADDS findings — it needs no
+#: caveat, which is why the test is zone equality and not "a user row exists".
+#:
+#: THE RUN-LEVEL DISCLOSURE WAS ALREADY THERE AND IS NOT ENOUGH:
+#: ``catalog_provenance`` names the file and sets ``user_supplied: true``, so
+#: the run says "a user catalogue was used". It does not say "and it removed
+#: the sink that would have caught this claim", and the VERDICT — the machine
+#: surface a consumer branches on — was byte-identical to an honest confirm.
+CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
+
 
 def _merge_caveat(
     existing: list[dict[str, Any]], new: dict[str, Any],
@@ -2017,10 +2054,39 @@ def symbol_source_scope(symbol_id: str) -> str:
     return SOURCE_SCOPE_PRODUCTION
 
 
+def _displaced_shipped_entries(
+    tf: "TaintFlowConstraint",
+    displaced_sinks: Mapping[str, Sequence[Any]] | None,
+    displaced_sources: Mapping[str, Sequence[Any]] | None,
+) -> list[str]:
+    """Shipped entries a user row replaced that could have decided THIS claim.
+
+    The zone/label equality test is what keeps this a qualified opinion rather
+    than noise: a displaced sink whose shipped zone is some OTHER zone could
+    not have produced evidence for this claim, and a user row that moves a sink
+    INTO the prohibited zone adds findings rather than removing them.
+    """
+    hits: list[str] = []
+    for lang, entries in (displaced_sinks or {}).items():
+        for e in entries:
+            if getattr(e, "zone", None) == tf.prohibited_sink_zone:
+                hits.append(f"{lang}:{e.module}.{e.name} [sink/{e.zone}]")
+    for lang, entries in (displaced_sources or {}).items():
+        for e in entries:
+            if getattr(e, "taint_label", None) == tf.source_taint:
+                hits.append(
+                    f"{lang}:{e.module}.{e.name} [source/{e.taint_label}]"
+                )
+    return sorted(set(hits))
+
+
 def verify_taint_claim(
     claim: Claim,
     findings: list,
     include_non_production: bool = False,
+    *,
+    displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
+    displaced_sources: Mapping[str, Sequence[Any]] | None = None,
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -2146,6 +2212,30 @@ def verify_taint_claim(
         # `test_a_built_in_sanitizer_still_earns_a_plain_confirmed`.
         _, repo_supplied = _credited_sanitizers(constrained)
         caveats: list[dict[str, Any]] = []
+        # INV-faput. Sits beside the sanitizer caveat because it is the same
+        # question one layer earlier: did the repository's own catalogue, not
+        # the analysis, produce this clean verdict? The sanitizer case can be
+        # attributed on the flow; this one cannot, because the displaced sink
+        # left the catalogue before any flow was built.
+        displaced = _displaced_shipped_entries(
+            tf, displaced_sinks, displaced_sources,
+        )
+        if displaced:
+            shown = ", ".join(displaced)
+            caveats = _merge_caveat(caveats, {
+                "kind": CAVEAT_DISPLACED_SHIPPED_ENTRY,
+                "entries": displaced,
+                "detail": (
+                    f"This verdict is clean, but the analysed repository "
+                    f"replaced {len(displaced)} catalogue entr(y/ies) that "
+                    f"hypergumbo ships and that bear directly on this claim: "
+                    f"{shown}. A replacement does not add to the catalogue — "
+                    f"it removes the shipped entry, so any flow it would have "
+                    f"caught was never constructed and cannot appear as a "
+                    f"sanitized or excluded flow. The tool cannot check that "
+                    f"the repository's replacement is equivalent."
+                ),
+            })
         if repo_supplied:
             shown = ", ".join(sorted(repo_supplied))
             caveats.append({
@@ -2381,6 +2471,8 @@ def verify_claims(
     include_non_production: bool = False,
     blind_reason: str | None = None,
     blind_opaque_sites: list[str] | None = None,
+    displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
+    displaced_sources: Mapping[str, Sequence[Any]] | None = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -2409,6 +2501,8 @@ def verify_claims(
             verdict = verify_taint_claim(
                 claim, taint_findings or [],
                 include_non_production=include_non_production,
+                displaced_sinks=displaced_sinks,
+                displaced_sources=displaced_sources,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)

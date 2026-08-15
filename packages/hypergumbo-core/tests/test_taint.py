@@ -3046,7 +3046,7 @@ class TestAutoImportFromIoPrimitives:
                 kind="method",
             )],
         }
-        merged = _merge_with_user_override(
+        merged, displaced = _merge_with_user_override(
             auto_sinks_by_lang, user_sinks_by_lang,
         )
         by_qname = {s.qualified_name: s for s in merged["python"]}
@@ -3060,6 +3060,15 @@ class TestAutoImportFromIoPrimitives:
             and s.kind == "method"
         ]
         assert len(matching) == 1
+        # INV-faput: "replaced" is the operative word, and what was replaced is
+        # now reported rather than discarded. This test named the behaviour
+        # correctly all along — the shipped row leaves — but nothing downstream
+        # could see that it had, which is how a user row could silently delete
+        # a claim's only evidence.
+        assert [(s.qualified_name, s.trust_level)
+                for s in displaced["python"]] == [
+            ("pathlib.Path.write_text", "untrusted"),
+        ]
 
     def test_auto_import_db_write_maps_to_database_zone(self) -> None:
         """WI-gofaz: db_write primitives auto-derive as database sinks."""

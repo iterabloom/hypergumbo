@@ -5748,6 +5748,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # reader to mentally downgrade 'confirmed' — which no CI gate does.
         blind_reason=_blind_reason,
         blind_opaque_sites=_blind_opaque,
+        # INV-faput: the SHIPPED catalogue rows a repo-supplied row replaced.
+        # Read off the catalogue here because this is the last point that
+        # still knows — the displaced rows are gone from every structure the
+        # propagation and verdict code sees, which is exactly why the
+        # suppression left no trace to find downstream.
+        displaced_sinks=getattr(taint_catalog, "_displaced_sinks", None),
+        displaced_sources=getattr(taint_catalog, "_displaced_sources", None),
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so
