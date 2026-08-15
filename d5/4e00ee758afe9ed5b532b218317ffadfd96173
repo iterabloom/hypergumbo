@@ -1,0 +1,57 @@
+Original commit body from f00cfc4be4dcecdd6b6354188f6f54f66808697c:
+
+Propagation pairs a source and a sink that SHARE A CALLER. All five
+tree-sitter analyzers passed the FILE pseudo-symbol as caller_symbol to
+emit_module_attribute_refs, so an attribute source's src was the file
+while the sink's was the function, and the two could never meet. Python
+was unaffected -- its own WI-guhok helper already anchors to the
+enclosing callable, which is why the identical shape IS caught there.
+
+Measured on one JS file holding both shapes in sibling functions:
+
+  os.hostname()       -> fs.writeFileSync   FOUND   (a CALL)
+  process.env.API_KEY -> fs.writeFileSync   MISSED  (an ATTRIBUTE)
+
+Same file, same sink, same claim; the only difference is which end
+anchors where. After: 2 flows instead of 1, and the emitted edge reads
+src=javascript:app.js:4-7:leakEnv:function.
+
+SCALE: 21 of javascript's 50 derived taint sources are kind=attribute,
+including the whole process.env / process.argv family -- the canonical
+way a Node program reads a secret. None could begin a flow.
+
+Resolved by LINE SPAN rather than walking tree-sitter ancestors to a
+function node: span containment needs no per-language knowledge of which
+node kinds are callables, so the rule lives once instead of in five
+copies that drift. A genuinely module-level read still anchors to the
+file, which is correct and asserted. A PARITY TEST enumerates every
+caller of the helper and fails if one omits the anchor, so the next
+analyzer fails a test rather than silently repeating this.
+
+The tripwire that pinned the defect went red exactly as its docstring
+predicted and is replaced by the positive assertion it named, plus one
+asserting source and sink SHARE an anchor -- asserting each end
+separately would still pass if a later change moved both to some third
+symbol.
+
+THREE OF MY OWN ERRORS ON THE WAY, each caught by measuring rather than
+by reading, and each recorded because the fix looked complete before it
+worked:
+  * a scripted edit anchored on a pattern instead of the whole call put
+    the new kwarg inside getattr(...) in rust and inside
+    _extract_edges_from_tree in cpp. Reverted and done with exact edits.
+  * the js_ts path index keyed on ABSOLUTE paths while the emit site
+    looked up a repo-RELATIVE name, so the lookup returned empty and the
+    anchoring silently did nothing -- the verdict was unchanged and
+    indistinguishable from the fix not working. Both halves now live in
+    one module (symbols_by_path_index / symbols_for_path) so neither can
+    assume a format the other does not produce.
+  * Symbol.span is a Span object, not a tuple; len(span) raised inside
+    the analyzer and the pipeline swallowed it into an EMPTY analysis
+    (0 edges) rather than a failure.
+
+Ratchet: +3 name-defined (Sequence unimported), mine, fixed at source.
+672, delta 0.
+
+Refs: INV-fafol, INV-jurif, INV-dabuf
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
