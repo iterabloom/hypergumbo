@@ -231,6 +231,94 @@ class TestLogPipelineSelection:
         r = self._run(tmp_path, ("logs", "no-such-job"))
         assert "pipeline/200" in r.stderr, r.stderr
 
+    def test_unmatched_job_name_SAYS_it_substituted(self, tmp_path):
+        """Degrading is fine; degrading SILENTLY is not.
+
+        The fallback above is the right behaviour and stays. What was missing
+        is that the caller is never told the transcript is not the gate they
+        named, so a substituted log reads exactly like an answer.
+        """
+        r = self._run(tmp_path, ("logs", "no-such-job"))
+        combined = r.stdout + r.stderr
+        assert "no-such-job" in combined, (
+            "the unmatched name must be echoed back so the substitution is "
+            f"visible:\n{combined}"
+        )
+        assert "ci/woodpecker/cron/full-suite" in combined, (
+            "the gate actually fetched must be named:\n" + combined
+        )
+
+
+# The commit that exposed this: dev ea0d6a83ab carries push/woodpecker
+# (success) and NOTHING else — the cron gate never ran on it. Asking for
+# cron/full-suite matched no status, fell past the failed-gate rule (there is
+# no failed gate) to `statuses[0]`, and returned the PUSH pipeline's GREEN
+# transcript at rc=0. Read without checking the test count, that is a cron
+# gate reporting success on a commit it never ran on.
+_STATUS_ONLY_GREEN_PUSH = json.dumps({
+    "state": "success",
+    "statuses": [
+        {"state": "success", "context": "ci/woodpecker/push/woodpecker",
+         "target_url": "https://ci.example.test/repos/1/pipeline/100"},
+    ],
+})
+
+
+class TestAbsentGateIsNotSilentlySubstituted:
+    """Asking for a gate that did not run must never look like an answer."""
+
+    def _run(self, tmp_path, args):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        r, _ = run_script(
+            "ci-debug", repo, args,
+            fixtures=[{"match": "/commits/", "code": 200,
+                       "body": _STATUS_ONLY_GREEN_PUSH}],
+            env=_GH, bindir=bindir,
+        )
+        return r
+
+    def test_absent_gate_does_not_pass_off_a_green_pipeline_as_the_named_one(
+        self, tmp_path
+    ):
+        r = self._run(tmp_path, ("logs", "cron/full-suite"))
+        combined = r.stdout + r.stderr
+        assert "cron/full-suite" in combined and (
+            "push/woodpecker" in combined
+        ), (
+            "when the named gate is absent the caller must be told both what "
+            f"was asked for and what was returned instead:\n{combined}"
+        )
+
+    def test_a_step_name_is_not_reported_as_an_unmatched_gate(self, tmp_path):
+        """One name is tried as a gate and then as a step.
+
+        Operators pass step names ('test-agent-infra') as often as gate names,
+        and for those the gate-level lookup ALWAYS falls back. Warning there
+        would fire on a correct, everyday call — and a warning that cries wolf
+        on the common path is worth less than no warning, because the reader
+        learns to skip it. Verified against the live tree: asking for the gate
+        'cron/full-suite' on a commit that HAS it must stay silent even though
+        no step carries that name.
+        """
+        r = self._run(tmp_path, ("logs", "push/woodpecker"))
+        assert "Nothing named" not in (r.stdout + r.stderr), (
+            "the gate WAS matched; nothing was substituted:\n"
+            f"{r.stdout}{r.stderr}"
+        )
+
+    def test_no_job_name_on_an_all_green_commit_is_not_a_substitution(
+        self, tmp_path
+    ):
+        """The control: with no name asked for, nothing is substituted, so
+        the warning must NOT fire. A warning on every ordinary call would be
+        noise that trains the operator to ignore it."""
+        r = self._run(tmp_path, ("logs",))
+        assert "Nothing named" not in (r.stdout + r.stderr), (
+            "unnamed fetch on a single-gate commit substituted nothing; "
+            f"it must not warn:\n{r.stdout}{r.stderr}"
+        )
+
     def test_single_gate_behaviour_is_unchanged(self, tmp_path):
         repo = fake_repo(tmp_path, "https://github.com/o/r.git")
         bindir = bindir_with_fakes(tmp_path)
