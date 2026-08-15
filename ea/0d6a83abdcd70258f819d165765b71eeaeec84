@@ -1,0 +1,29 @@
+Original commit body from e4ff2ac92441760c8e3d496353c9fefb0b070152:
+
+The shadow wrote one JSON file that every run overwrote, so no evidence could
+accumulate and the phase's exit criterion could never be evaluated. The
+observations are a forward-only time series -- what a commit changed, what the
+index knew then, what failed -- so every run without a log was a permanently
+lost data point. Now append-only JSONL plus `coverage-select report`.
+
+The criterion is "a miss that ALSO FAILED", and the failing half was never
+recorded, so a log alone would have accrued 30 commits of undecidable
+evidence. failed_tests_from_junit counts <error> beside <failure>: a
+collection error is a test that did not pass, which is the INV-vilag shape.
+
+Raw miss counts are explicitly NOT the criterion. A green run can miss 84
+files and lose nothing; counting those rejects the selector on day one.
+
+Three kinds of observation are excluded rather than counted as passes, each
+seen live: a cold index, a commit that is all new code, and a collapsed join.
+The last was a real ordering defect -- the shadow ran BEFORE the suite and so
+read the PREVIOUS run's junit, giving a 0% join and a failure set from another
+commit. It now runs after the suite and before the index update, the only
+window where this run's results and the pre-run index both exist.
+
+Also fixes a green-run-reported-red abort: fold_selection_index read a bare $1
+under `set -u` on the targeted path, aborting after 1,585 tests had passed.
+
+Full suite green: 22,825 passed, 100% coverage. ruff/bandit/mypy clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
