@@ -1,0 +1,54 @@
+Original commit body from b82bbd2e9ae3d5165f7dde23beba97b7a5786c10:
+
+INV-vavup catalogued bash REDIRECTION and named the rest in its own
+title -- "redirection FIRST, taint-support SECOND". This is the second
+half.
+
+Before it, the exact script the self-proof cares about emitted ONE edge,
+the sink, and nothing for the read:
+
+  secret="$API_KEY"
+  echo "$secret" > /etc/cron.d/pwned
+  -> bash edges: 1   calls dst=bash:redirect:0-0:>:external_symbol
+
+So bash carried 0 sources against 3 sinks, failed INV-potuf's
+both-halves predicate, and made every taint claim on ANY repository
+containing a shell script `inconclusive`. Measured after: that script
+goes inconclusive -> VIOLATED, and bash leaves
+unsupported_taint_languages.
+
+A CATALOGUE ALONE COULD NOT HAVE DONE IT, which is why the analyzer
+comes first. Taint sources match against emitted edges; with no edge for
+the read, a sources: {bash: [...]} file is a predicate no call site
+passes -- inert on arrival, and measurable as a win at the catalogue
+while producing zero findings. That is INV-linub's recorded lesson and
+this item was filed specifically to avoid repeating it.
+
+ONE ROW, NOT A NAME LIST, on the os.environ precedent. Python does not
+enumerate environment variable names and neither can this: a curated
+list is wrong the moment a repo invents a name, and wrong in the SILENT
+direction. The variable actually read rides on the edge's meta for the
+reader rather than being used for matching. The label is derived
+(env_read -> host_secret via AUTO_SOURCE_LABEL_MAP), not hand-written,
+so the two halves of the language cannot disagree about it (INV-potuf).
+
+THE DISCRIMINATOR is a name EXPANDED but never ASSIGNED in the file,
+applied WHOLE-FILE rather than per-scope: bash assignment is dynamically
+scoped, so a name assigned in one function is visible in another it
+calls, and a per-scope rule would call an assigned name an env read.
+Erring toward FEWER sources is right for a taint source -- a missed one
+under-reports, an invented one manufactures findings that do not exist.
+Positional and special parameters ($1, $?) are excluded as arguments and
+shell state, not environment.
+
+Anchored to the enclosing function via the existing helper, so source
+and sink share a caller (verified both ways: a function-scoped read
+anchors to `dump:function`, a top-level one to the file, and in each
+case the sink anchors to the same place).
+
+One test asserted bash was unsupported and went red as intended; it now
+uses markdown -- a language that genuinely has no catalogue -- so it
+keeps discriminating instead of quietly asserting nothing.
+
+Refs: INV-jurif, INV-vavup, INV-dabuf
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
