@@ -90,6 +90,33 @@ def ran_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
     return out
 
 
+def failed_tests_from_junit(junit_path: Path, repo_root: Path) -> set[str]:
+    """Node ids of every test that did NOT pass.
+
+    ``<error>`` counts alongside ``<failure>``: a collection or fixture error is
+    a test that did not pass, and treating only assertion failures as failures
+    is exactly the INV-vilag shape — a green verdict computed over modules that
+    never imported. ``<skipped>`` is not a failure.
+
+    This is the load-bearing half of the phase's evidence. The shadow shipped
+    without it, which left the exit criterion — "a miss that ALSO FAILED" —
+    undecidable no matter how many observations were collected.
+    """
+    root = ET.parse(junit_path).getroot()  # noqa: S314  # nosec B314
+    out: set[str] = set()
+    for case in root.iter("testcase"):
+        if not any(child.tag in ("failure", "error") for child in case):
+            continue
+        classname = case.get("classname") or ""
+        path = _resolve_classname(classname, repo_root)
+        if path is None:
+            continue
+        module_parts = len(Path(path).with_suffix("").parts)
+        classes = classname.split(".")[module_parts:]
+        out.add("::".join([path, *classes, case.get("name") or ""]))
+    return out
+
+
 @dataclass(frozen=True)
 class ShadowReport:
     """A single observation. Accumulated across commits, these are the evidence."""
@@ -105,6 +132,25 @@ class ShadowReport:
     missing_paths: frozenset[str]
     unmeasured: int
     join_rate: float
+    #: Node ids that ran and did not pass. ``None`` means the junit
+    #: report was unavailable — NOT that nothing failed.
+    failed: Optional[frozenset[str]] = None
+
+    @property
+    def dangerous_misses(self) -> Optional[frozenset[str]]:
+        """Tests that FAILED and whose file coverage would not have selected.
+
+        The one disqualifying result for the phase; every other figure here is
+        diagnostics. Raw miss counts are not the criterion — a run can miss 87
+        files and lose nothing, because none of them failed.
+
+        Returns None when no failure data was supplied, so "we did not look"
+        cannot be read as "nothing failed".
+        """
+        if self.failed is None:
+            return None
+        return frozenset(t for t in self.failed
+                         if t.split("::")[0] not in self.coverage_files)
 
     @property
     def informative(self) -> bool:
@@ -160,6 +206,7 @@ def compare(
     *,
     known_tests: Optional[Iterable[str]] = None,
     changed_files: Optional[Iterable[str]] = None,
+    failed: Optional[Iterable[str]] = None,
 ) -> ShadowReport:
     """Build one shadow observation.
 
@@ -187,4 +234,5 @@ def compare(
         missing_paths=selection.missing_paths,
         unmeasured=len(selection.unmeasured),
         join_rate=rate,
+        failed=None if failed is None else frozenset(failed),
     )

@@ -20,6 +20,7 @@ from hypergumbo_core.selection_index import Selection
 from hypergumbo_core.selection_shadow import (
     ShadowReport,
     compare,
+    failed_tests_from_junit,
     ran_tests_from_junit,
 )
 
@@ -223,3 +224,100 @@ class TestAColdIndexIsNotEvidence:
         rep = compare(_sel({"a.py::t"}), actual_files={"a.py"},
                       known_tests={"other.py::t"}, changed_files=["a.py"])
         assert "JOIN FAILED" in rep.summary()
+
+
+_JUNIT_MIXED = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" tests="4">
+<testcase classname="pkg.tests.test_x" name="test_ok" time="0.1"/>
+<testcase classname="pkg.tests.test_x" name="test_broke" time="0.1">
+  <failure message="assert 1 == 2">E assert 1 == 2</failure>
+</testcase>
+<testcase classname="pkg.tests.test_y" name="test_blew_up" time="0.1">
+  <error message="fixture error">E RuntimeError</error>
+</testcase>
+<testcase classname="pkg.tests.test_y" name="test_skipped" time="0.0">
+  <skipped message="no reason"/>
+</testcase>
+</testsuite></testsuites>
+"""
+
+
+class TestFailedTests:
+    """The exit criterion is "a miss that ALSO FAILED", so the failure set is
+    the load-bearing half of the evidence — and the shadow did not record it
+    at all when Phase 1 shipped.
+    """
+
+    def _tree(self, tmp_path: Path) -> Path:
+        for name in ("test_x.py", "test_y.py"):
+            d = tmp_path / "pkg" / "tests"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / name).write_text("")
+        (tmp_path / "junit.xml").write_text(_JUNIT_MIXED)
+        return tmp_path
+
+    def test_assertion_failures_are_captured(self, tmp_path) -> None:
+        root = self._tree(tmp_path)
+        got = failed_tests_from_junit(root / "junit.xml", root)
+        assert "pkg/tests/test_x.py::test_broke" in got
+
+    def test_errors_count_as_failures(self, tmp_path) -> None:
+        """A collection or fixture error is a test that did not pass. Counting
+        only <failure> would let the INV-vilag shape — green verdict on modules
+        that never imported — back in through the evidence."""
+        root = self._tree(tmp_path)
+        assert "pkg/tests/test_y.py::test_blew_up" in failed_tests_from_junit(
+            root / "junit.xml", root)
+
+    def test_skips_and_passes_are_not_failures(self, tmp_path) -> None:
+        root = self._tree(tmp_path)
+        got = failed_tests_from_junit(root / "junit.xml", root)
+        assert not any(n.endswith(("test_ok", "test_skipped")) for n in got)
+        assert len(got) == 2
+
+
+class TestDangerousMisses:
+    """The ONLY disqualifying result: coverage would not have selected a test
+    that ran and failed. Everything else in the report is diagnostics."""
+
+    def test_a_failed_test_in_an_unselected_file_is_dangerous(self) -> None:
+        rep = compare(_sel({"a.py::t1"}), actual_files={"a.py", "b.py"},
+                      failed={"b.py::t9"})
+        assert rep.dangerous_misses == {"b.py::t9"}
+
+    def test_a_failed_test_in_a_SELECTED_file_is_not_dangerous(self) -> None:
+        """Coverage would have run it, so it caught nothing that coverage
+        would have lost. Without this the metric counts ordinary red suites."""
+        rep = compare(_sel({"a.py::t1"}), actual_files={"a.py"},
+                      failed={"a.py::t1"})
+        assert rep.dangerous_misses == frozenset()
+
+    def test_a_green_run_has_no_dangerous_misses_however_many_are_missed(
+        self,
+    ) -> None:
+        """87 missed files mean nothing if none of them failed — which is the
+        normal case and why raw miss COUNTS are not the criterion."""
+        rep = compare(_sel(set()), actual_files={f"f{i}.py" for i in range(87)},
+                      failed=set())
+        assert len(rep.missed_by_coverage) == 87
+        assert rep.dangerous_misses == frozenset()
+
+    def test_no_failure_data_is_not_zero_failures(self) -> None:
+        """``None`` means the junit was unavailable. Reporting an empty set
+        would let a run with no failure data count as clean evidence."""
+        rep = compare(_sel({"a.py::t1"}), actual_files={"a.py", "b.py"})
+        assert rep.dangerous_misses is None
+
+    def test_a_failure_in_an_unresolvable_file_is_dropped_not_invented(
+        self, tmp_path,
+    ) -> None:
+        """Same guard as the ran-tests path, and it matters more here: a
+        fabricated path would produce a phantom node id that joins with
+        nothing, so a REAL failure would be silently reclassified as a
+        dangerous miss against a file that does not exist."""
+        (tmp_path / "junit.xml").write_text(
+            '<testsuites><testsuite name="pytest">'
+            '<testcase classname="nowhere.test_ghost" name="test_x">'
+            '<failure message="boom">E boom</failure></testcase>'
+            '</testsuite></testsuites>')
+        assert failed_tests_from_junit(tmp_path / "junit.xml", tmp_path) == set()
