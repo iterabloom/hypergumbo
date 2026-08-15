@@ -1,0 +1,49 @@
+Original commit body from 74f54b8d84321de0a7952a0ac586741067ef40df:
+
+INV-vokog. ADR-0016 section 4's fourth verdict is granted only when opaque
+launches are the SOLE remaining blocker -- spelled qualifying_only = not
+unknown. But a launch put its own module INTO unknown, so the condition was
+unsatisfiable whenever a launch existed and vacuous when none did. The verdict
+built on 2026-08-13 for exactly this consumer could never fire on the substrate
+it was built for, and no amount of catalogue work would have changed it.
+
+Measured on a live self-survey (154,505 edges, 39,297 production-scoped):
+80 of 81 opaque launch sites were also counted as uncatalogued modules.
+
+The one-edge positive control is what makes this a defect rather than a
+coverage complaint -- a single bash `id` launch, alone on the substrate:
+
+    unknown = ['id']    opaque = ['id.id']    qualifying_only = False
+
+One edge, both sets, self-cancelling. Two controls discriminate: a python
+subprocess.run call alone gives unknown=[] / qualifying_only=True, and a
+catalogued builtins.open alone gives complete=True. (Both controls initially
+passed for the WRONG reason -- passing every language let the analyzer-blind
+check fire first -- and are now scoped to their substrate.)
+
+ONE FACT, TWO HOMES. Two channels know a call is a launch: the catalogue
+(declares_opaque_crossing) and the PRODUCER STAMP the bash analyzer sets, which
+is the only evidence those edges will ever carry since ADR-0016 rules out a
+bash io_primitives catalogue. _opaque_launch_sites reads the stamp FIRST by
+design (INV-larol); _uncatalogued_external_modules never asked it. Both now
+route through _is_producer_stamped_launch. The python path was immune only
+INCIDENTALLY -- subprocess.run carries a row classify_call matches -- so that
+accident is pinned by a test rather than left as luck.
+
+Nothing is hidden by the skip: every site it stops counting as blindness is
+still NAMED in the caveat, checkable against the source. What changes is which
+channel reports it.
+
+Measured: 212 uncatalogued modules -> 137; launch disclosure unchanged at 81.
+Reconciled -- of the 80 overlapping, 5 survive (os, subprocess, stat, base64,
+coverage) because those names are both a shell command and a module with
+independent uncatalogued python calls, which is correct.
+
+THE SELF-PROOF VERDICT DOES NOT MOVE. Still 18/18 inconclusive: the remaining
+137 modules still block. Stated so this is not mistaken for a fix for
+INV-dabuf.
+
+Suite: 22,879 passed / 7 skipped / 17 xfailed (= 22,903 ingested), 100%
+coverage, core passes in isolation, mypy ratchet clean at 672.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
