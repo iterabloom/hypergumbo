@@ -1192,6 +1192,34 @@ def _launch_site_name(edge: dict[str, Any], dst: str) -> str:
     return ".".join(part for part in (parts[1], parts[3]) if part)
 
 
+def _is_producer_stamped_launch(edge: dict[str, Any]) -> bool:
+    """Did the ANALYZER itself declare this edge a launch? (INV-vokog)
+
+    ONE HOME FOR ONE FACT. Two functions need this answer and they used to hold
+    one copy between them: :func:`_opaque_launch_sites` read the stamp inline
+    and :func:`_uncatalogued_external_modules` never asked at all, so the same
+    edge was reported as a NAMED opaque door by one and as an UNEXAMINED module
+    by the other. Those are contradictory findings about one call, and the
+    contradiction was load-bearing — ``qualifying_only = not unknown`` meant a
+    launch withheld the very verdict it triggered, making ADR-0016 §4's fourth
+    verdict unreachable in any repo containing a shell script.
+
+    THE STAMP IS THE ONLY EVIDENCE THESE EDGES WILL EVER CARRY. ADR-0016 rules
+    out a bash io_primitives catalogue, so ``classify_call`` returns ``None``
+    for ``curl`` / ``git`` / ``rm`` forever; asking the catalogue about them is
+    asking the wrong oracle. A catalogue row can also classify a launch without
+    describing it (``curl -> net_send`` is right about the send and silent about
+    ``-o``), which is why the producer is asked FIRST in both consumers rather
+    than as a fallback.
+
+    Kept a predicate rather than folded into :func:`_external_call_sites`
+    because the two consumers do OPPOSITE things with the answer — one collects
+    the edge, the other skips it — so a filter at the source would have to be
+    duplicated with inverted senses, which is the drift this exists to stop.
+    """
+    return (edge.get("meta") or {}).get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES
+
+
 def _opaque_launch_sites(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -1246,7 +1274,7 @@ def _opaque_launch_sites(
         # means a launch keeps its opacity no matter what a catalogue later
         # says about it, which is the difference between opacity being
         # structural and opacity being a favour the catalogue chooses to do.
-        if (edge.get("meta") or {}).get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES:
+        if _is_producer_stamped_launch(edge):
             sites.add(_launch_site_name(edge, dst))
             continue
         primitive = classify_call(
@@ -1354,6 +1382,25 @@ def _uncatalogued_external_modules(
         module = _module_from_symbol_path(dst)
         if not module:
             continue  # the placeholder — the disclosed residual above
+        # (0) A LAUNCH IS AN EXAMINED CALL, NOT A BLIND ONE (INV-vokog). We
+        # know exactly what this call is and where control went; that it cannot
+        # be followed further is reported through the caveat channel built for
+        # it (CAVEAT_OPAQUE_BOUNDARY), by NAME, checkable against the source.
+        # Counting it here as well says the opposite about the same edge — and
+        # because ``qualifying_only`` is ``not unknown``, a launch withheld the
+        # qualified verdict it had just earned. Measured on the self-survey: 80
+        # of 81 launch sites were in both sets, so rc 3 was unreachable in any
+        # repo containing a shell script, which is the dead end ADR-0016 §4 was
+        # written to prevent.
+        #
+        # ASKED FIRST, mirroring :func:`_opaque_launch_sites`, so the two
+        # consumers walk the channels in the same order. The python path never
+        # hit this because ``subprocess.run`` carries a row that step (1)
+        # matches — an immunity nobody designed and a catalogue edit could
+        # remove, so it is pinned by
+        # ``test_the_python_path_was_immune_only_by_luck``.
+        if _is_producer_stamped_launch(edge):
+            continue
         # (1) A CALL THE CATALOGUE CLASSIFIED WAS EXAMINED. That is what
         # examination IS, and it is asked through the same function the tagger
         # uses, so the gate cannot call a site unexamined that the tagging pass
