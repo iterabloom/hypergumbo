@@ -1,0 +1,48 @@
+Original commit body from 020cdcf8c61a9ae1c62cfc3191f0b499e06bd798:
+
+INV-tisug. Found by rule-12 control-checking: the INV-titih PR should
+have triggered the ~12-minute self-claims-gate (its diff matches the
+path filter) yet ci/woodpecker/pr/woodpecker went green in ~10 seconds.
+Widening the check: EVERY saved auto-pr log, across multiple sessions,
+shows the pr context green at ~11s. A pipeline carrying whole-tree
+strict mypy and full pytest cannot finish in 11 seconds.
+
+MECHANISM. The pipeline-level `when` fires on PRs (target-branch
+matching, confirmed in-file against a real payload), but the per-PR
+CHANGED-FILE LIST evaluates empty — and all twelve steps carried a
+`path:` condition, so on the gating event every step skipped. Zero
+steps -> pipeline success -> auto-pr merges. Push payloads DO carry
+file lists, so the same steps ran for real only AFTER merge, on dev.
+Today's post-merge ARCHITECTURE.md redness was this exact shape: the
+verify-generated step would have failed the PR; it never ran there.
+This is the mypy step's own recorded incident ("a gate that lives
+where the merge path does not look gates nothing") one level up — the
+steps lived in the right pipeline and skipped on the right event.
+
+FIX. Every gating step's `when` becomes a two-arm OR:
+
+    - event: pull_request      # unconditional — no dependence on the
+                               # PR changed-file computation at all
+    - event: push
+      path: <unchanged filter> # pushes keep path-scoping
+
+dco (previously event+path AND-ed — thus never matching on PRs) drops
+its path arm: tracker-sync commits carry sign-offs, so checking every
+PR is safe. self-claims-gate keeps the declarative filter on the push
+arm and scopes its PR arm IN-STEP: git diff against the target-branch
+merge-base (dco's own pattern), grep the claim surface, early-exit 0
+when untouched — so the ~12-minute self-analysis still only runs on
+claim-surface PRs.
+
+VALIDATION IS THIS PR: its pr-context poll must jump from ~11 seconds
+to real minutes with lint/mypy/pytest actually executing (this diff
+touches only .woodpecker/**, so the self-claims-gate's in-step guard
+should early-exit — exercising the guard's skip path live). A
+malformed `when` fails the pipeline loudly and auto-pr blocks:
+fail-closed in both directions.
+
+COST, stated: every PR now pays real CI wall-clock before merge. That
+is not new spend — it is the spend the project believed it was already
+making.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
