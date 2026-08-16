@@ -1,0 +1,53 @@
+Original commit body from 071992dde70de186bd1c5b94610de988fd9eda5b:
+
+Path-out move 2 (plan of record on INV-dabuf). Under artifact scope the
+self-proof's blocker list was 89 modules; the stdlib share is now ZERO
+(89 -> 43, all remaining third-party + the INV-liloh first-party leak).
+Opaque launches unchanged at [subprocess.Popen, subprocess.run].
+
+RECALL, not bookkeeping: os.open + os.write — the exact pair INV-zubuh
+measured writing a file while the tool confirmed "never writes to the host
+filesystem" — now classify, with the fd read/write families, pathlib.Path's
+open/resolve/stat surface, archive openers (gzip/tarfile/zipfile,
+dual-classified with mode seats declared in BOTH registries), asyncio's
+subprocess pair, fcntl, import machinery, module-level logging emitters, and
+the catalogue's first env_write section. INV-ponad's slot family is resolved
+BY ROWS: the parent's attribute row speaks about REFERENCE edges, the new
+os.environ.* / sys.stdout.* / sys.stdin.* method rows about CALL edges — two
+edge shapes, two facts, not one fact in two homes.
+
+FOUR REFUSALS ARE PART OF THE DESIGN, each measured, none hypothetical:
+  - getpid/cpu_count/times are NOT env_read rows: env_read auto-derives
+    host_secret taint sources, and a pid is not a secret.
+  - os.urandom is NOT rowed: an auto-derived source DISPLACES the richer
+    hand-written shipped source, tripping the INV-faput caveat on every
+    python repo (three rc-0 control fixtures went rc 3 in this run).
+  - file.flush is NOT an fs_write row: flush commits writes already counted,
+    and the row made cli.py's own stdout flush read as an unwrapped write
+    (wrapper-discipline gate).
+  - fd PLUMBING (dup, dup2, pipe, openpty) is NOT fs_write: it moves no
+    data, and a dup2 row turned cli.py's stdout-shutdown redirect into a
+    false unsanitized host_fs finding (same gate).
+
+THE BARE-NAME BITE, caught in-run by the receiver-typing tripwires: the new
+zipfile.Path row reached a LOCALLY-DEFINED class named Path through the
+ungated bare-name match (INV-fazim's shape) and minted a false fs_read.
+Twenty-four names joined ambiguous_names (six flagged mechanically by the
+completeness gate, the rest by frequency of the same hazard: main, info,
+error, log, wait, kill, parse, version...). Suppression is bare-name only —
+module-scoped rows still match, the file-module precedent.
+
+FOUR TRIPWIRES GRADUATED exactly as their docstrings predicted — one carried
+a precondition naming this event ("if os ever gains a completeness record
+this test stops discriminating"). The INV-zubuh principle re-pins on socket,
+the current partially-catalogued module. New launch rows registered
+high-risk (subprocess.getoutput, os.posix_spawn, asyncio.create_subprocess_*).
+
+Verdict: still 18/18 inconclusive rc 2 — 43 modules remain, all for the
+overlay PR (numpy, yaml, textual/rich/starlette, tree_sitter_*, tokenizers,
+onnxruntime, sentence_transformers, ruamel, coverage) plus INV-liloh.
+
+Suite: 22,995 passed / 7 skipped / 17 xfailed, 100% coverage, mypy ratchet
+clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
