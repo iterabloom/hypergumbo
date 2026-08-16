@@ -29,6 +29,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       tracker_data: ${{ steps.filter.outputs.tracker_data }}
+      claims_surface: ${{ steps.filter.outputs.claims_surface }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,6 +86,23 @@ jobs:
             echo "Tracker data changes detected"
           else
             echo "tracker_data=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Self-claim gate surface (INV-zuhig): the claims file + snapshot,
+          # the self-catalog, overlays, the shipped io/taint catalogues,
+          # package dependency declarations, and the gate scripts themselves.
+          # A change here can move a self-claim verdict, so the drift gate
+          # runs per-PR instead of waiting for the twice-daily full-suite
+          # run. Analyzer/linker .py changes can also move verdicts but run
+          # only in full-suite — gating every core .py PR on a ~10-minute
+          # self-analysis was judged too heavy (the notes' design: per-PR on
+          # dep/catalogue/claims changes, nightly-cadence for the rest).
+          CLAIMS_SURFACE='^docs/hypergumbo\.claims\.yaml$|^docs/hypergumbo\.claims\.expected\.json$|^docs/hypergumbo-self-catalog/|^docs/io-primitives-overlays/|/io_primitives/|/taint_sources/|/taint_sinks/|/taint_sanitizers/|pyproject\.toml$|^scripts/check-self-claims'
+          if echo "$CHANGED" | grep -qE "$CLAIMS_SURFACE"; then
+            echo "claims_surface=true" >> "$GITHUB_OUTPUT"
+            echo "Self-claim surface changes detected"
+          else
+            echo "claims_surface=false" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$has_code" = "true" ]; then
@@ -1271,10 +1289,56 @@ jobs:
       - name: Validate tracker data
         run: scripts/tracker validate
 
+  # Self-claim drift gate, per-PR arm (INV-zuhig). The same gate full-suite
+  # runs twice daily, here scoped to PRs that touch the claim surface (the
+  # `changes` job computes `claims_surface`). The snapshot pins verdict +
+  # caveat kinds + credited-flows bucket per claim, so a catalogue or
+  # dependency change that silently moves a self-claim verdict — or kills
+  # its credited evidence while the verdict stays green — fails the PR that
+  # did it instead of the next cron run.
+  self-claims-gate:
+    needs: [changes]
+    if: needs.changes.outputs.claims_surface == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          # Mirrors full-suite's self-tree-validation install exactly: the
+          # gate's verdicts depend on which grammars are present, so the
+          # per-PR arm must analyze with the same language set as the cron
+          # arm or the two disagree on identical trees.
+          pip install --upgrade pip
+          pip install jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Self-claim drift gate (per-PR arm)
+        run: |
+          PYTHON=python ./scripts/check-self-claims
+
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate, mypy]
+    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate, mypy, self-claims-gate]
     if: always()
     runs-on: self-hosted
     timeout-minutes: 5
@@ -1294,6 +1358,7 @@ jobs:
           echo "  dco: ${{ needs.dco.result }}"
           echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
           echo "  mypy: ${{ needs.mypy.result }}"
+          echo "  self-claims-gate: ${{ needs.self-claims-gate.result }}"
 
           # pytest passes if primary OR retry succeeded
           pytest_ok=false
@@ -1312,7 +1377,8 @@ jobs:
              [[ "$pytest_ok" != "true" ]] || \
              [[ "${{ needs.dco.result }}" == "failure" ]] || \
              [[ "${{ needs.tracker-validate.result }}" == "failure" ]] || \
-             [[ "${{ needs.mypy.result }}" == "failure" ]]; then
+             [[ "${{ needs.mypy.result }}" == "failure" ]] || \
+             [[ "${{ needs.self-claims-gate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1
           fi

@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Compare a verify-claims JSON run against the checked-in self-claim snapshot.
+
+The comparison half of ``scripts/check-self-claims`` (the bash wrapper runs
+the analysis; this script decides drift). Extracted from an embedded heredoc
+so the logic is importable and pinned by ``tests/test_check_self_claims_drift.py``.
+
+SNAPSHOT FORMAT (v2). One object per claim id::
+
+    {
+      "runtime-cli-no-host-fs": {
+        "verdict": "confirmed_with_caveats",
+        "caveats": ["opaque_boundary", "user_supplied_sanitizer"],
+        "credited_flows": "nonzero"
+      },
+      ...
+    }
+
+WHY THE VERDICT ALONE STOPPED BEING ENOUGH (INV-zuhig). The self-proof once
+"improved" to rc 3 while its sanitizer-credited flow count collapsed
+2,658 -> 0: the credited evidence had been minted by tests all along, and the
+verdict machinery — correct at every step — was confirming claims over
+sources that could no longer mint a single flow. A verdict-only snapshot
+waves that through. So the snapshot also pins, per claim:
+
+- ``caveats``: the sorted set of caveat KINDS. A new caveat kind appearing
+  (or one vanishing) changes what the verdict MEANS and must be looked at,
+  even when the verdict string is unchanged.
+- ``credited_flows``: ``"zero"`` or ``"nonzero"`` — deliberately a bucket,
+  not a count. The exact number moves with every analyzer improvement and a
+  gate on it would be noise; the zero/nonzero boundary is the vacuousness
+  signal (a claim whose credited evidence dies goes nonzero -> zero and a
+  human must decide whether the flows were rerouted or the minting broke).
+
+DRIFT SEMANTICS. Any difference in any pinned field, in either direction,
+fails — same philosophy as the verdict-only gate this extends: an
+improvement must be acknowledged (re-record + update SECURITY.md prose)
+rather than silently absorbed. NOT a shrink-only ratchet, because these are
+categorical fields, not counts.
+
+Exit codes: 0 no drift; 1 drift; 2 infrastructure (missing/malformed
+snapshot or run output). ``--update`` rewrites the snapshot from the run.
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+
+def summarize(verdicts: list[dict]) -> dict[str, dict]:
+    """Reduce a verify-claims ``verdicts`` list to the v2 snapshot form."""
+    out: dict[str, dict] = {}
+    for v in verdicts:
+        caveats = sorted({c.get("kind", "<unkinded>") for c in v.get("caveats", [])})
+        credited = "nonzero" if v.get("sanitized_flows", 0) else "zero"
+        out[v["claim_id"]] = {
+            "verdict": v["verdict"],
+            "caveats": caveats,
+            "credited_flows": credited,
+        }
+    return out
+
+
+def diff(expected: dict[str, dict], actual: dict[str, dict]) -> list[tuple[str, str, str, str]]:
+    """Return (claim_id, field, was, now) rows for every drifted field."""
+    rows: list[tuple[str, str, str, str]] = []
+    for cid in sorted(set(expected) | set(actual)):
+        exp, act = expected.get(cid), actual.get(cid)
+        if exp is None or act is None:
+            rows.append((cid, "claim", "present" if exp else "<absent>",
+                         "present" if act else "<absent>"))
+            continue
+        for field in ("verdict", "caveats", "credited_flows"):
+            if exp.get(field) != act.get(field):
+                rows.append((cid, field, json.dumps(exp.get(field)),
+                             json.dumps(act.get(field))))
+    return rows
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 3:  # pragma: no cover - CLI contract, exercised by bash wrapper
+        print("usage: check-self-claims-drift ACTUAL.json SNAPSHOT.json [--update]",
+              file=sys.stderr)
+        return 2
+    actual_path, snapshot_path = argv[1], argv[2]
+    mode = argv[3] if len(argv) > 3 else ""
+
+    try:
+        run = json.load(open(actual_path))
+        actual = summarize(run["verdicts"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"check-self-claims-drift: cannot read run output: {e}", file=sys.stderr)
+        print("  Treated as INFRASTRUCTURE failure (exit 2), not a claim regression.",
+              file=sys.stderr)
+        return 2
+
+    snapshot_file = pathlib.Path(snapshot_path)
+    if mode == "--update":
+        snapshot_file.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
+        print(f"check-self-claims-drift: snapshot rewritten ({len(actual)} claims).")
+        print("  REVIEW THE DIFF. A verdict moving toward 'violated', a caveat kind")
+        print("  appearing, or credited_flows going nonzero -> zero is a regression")
+        print("  you are about to ratify.")
+        return 0
+
+    if not snapshot_file.is_file():
+        print(f"check-self-claims-drift: no snapshot at {snapshot_path}; "
+              f"run with --update to record one.", file=sys.stderr)
+        return 2
+
+    expected = json.loads(snapshot_file.read_text())
+    if expected and not all(isinstance(v, dict) for v in expected.values()):
+        print("check-self-claims-drift: snapshot is the v1 verdict-only format; "
+              "re-record with --update (and review the diff).", file=sys.stderr)
+        return 2
+
+    rows = diff(expected, actual)
+    if not rows:
+        counts: dict[str, int] = {}
+        for entry in actual.values():
+            counts[entry["verdict"]] = counts.get(entry["verdict"], 0) + 1
+        summary = ", ".join(f"{n} {v}" for v, n in sorted(counts.items()))
+        print(f"check-self-claims-drift: OK — {len(actual)} claims unchanged ({summary}).")
+        return 0
+
+    print("check-self-claims-drift: SELF-CLAIM DRIFT", file=sys.stderr)
+    print("", file=sys.stderr)
+    for cid, field, was, now in rows:
+        regressed = (field == "verdict" and "violated" in now) or (
+            field == "credited_flows" and now == '"zero"'
+        )
+        arrow = "REGRESSED" if regressed else "changed"
+        print(f"  {arrow}: {cid} [{field}]: {was} -> {now}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("  SECURITY.md describes these verdicts in prose. If this drift is",
+          file=sys.stderr)
+    print("  intended, update BOTH: re-record with", file=sys.stderr)
+    print("    scripts/check-self-claims --update", file=sys.stderr)
+    print("  and correct the corresponding text in SECURITY.md. Updating the",
+          file=sys.stderr)
+    print("  snapshot alone recreates the drift this gate exists to catch.",
+          file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover - import guard
+    raise SystemExit(main(sys.argv))

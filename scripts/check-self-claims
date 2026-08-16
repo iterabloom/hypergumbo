@@ -24,6 +24,14 @@
 # violated is a regression while confirmed -> inconclusive may be an honest
 # coverage change. Both need a human to look, so both fail here.
 #
+# WHAT THE SNAPSHOT PINS (v2 — INV-zuhig). Not just the verdict: also each
+# claim's caveat KINDS and whether its sanitizer-credited flow count is zero
+# or nonzero. The self-proof once "improved" to all-confirmed while its
+# credited flows collapsed 2,658 -> 0 (the evidence had been test-minted all
+# along); a verdict-only snapshot waves exactly that through. Comparison
+# logic lives in scripts/check-self-claims-drift, pinned by
+# tests/test_check_self_claims_drift.py.
+#
 # Usage:
 #   scripts/check-self-claims            # verify against the snapshot
 #   scripts/check-self-claims --update   # re-record it (review the diff!)
@@ -62,54 +70,4 @@ if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ACTUAL" 2>/dev
     exit 2
 fi
 
-python3 - "$ACTUAL" "$SNAPSHOT" "${1:-}" <<'PY'
-import json, sys, pathlib
-
-actual_path, snapshot_path, mode = sys.argv[1], sys.argv[2], sys.argv[3]
-actual = {
-    v["claim_id"]: v["verdict"]
-    for v in json.load(open(actual_path))["verdicts"]
-}
-
-if mode == "--update":
-    pathlib.Path(snapshot_path).write_text(
-        json.dumps(actual, indent=2, sort_keys=True) + "\n",
-    )
-    print(f"check-self-claims: snapshot rewritten ({len(actual)} claims).")
-    print("  REVIEW THE DIFF. A verdict moving toward 'violated' is a "
-          "regression you are about to ratify.")
-    raise SystemExit(0)
-
-if not pathlib.Path(snapshot_path).is_file():
-    print(f"check-self-claims: no snapshot at {snapshot_path}; "
-          f"run with --update to record one.", file=sys.stderr)
-    raise SystemExit(2)
-
-expected = json.loads(pathlib.Path(snapshot_path).read_text())
-drift = [
-    (cid, expected.get(cid, "<absent>"), actual.get(cid, "<absent>"))
-    for cid in sorted(set(expected) | set(actual))
-    if expected.get(cid) != actual.get(cid)
-]
-
-if not drift:
-    counts: dict[str, int] = {}
-    for verdict in actual.values():
-        counts[verdict] = counts.get(verdict, 0) + 1
-    summary = ", ".join(f"{n} {v}" for v, n in sorted(counts.items()))
-    print(f"check-self-claims: OK — {len(actual)} claims unchanged ({summary}).")
-    raise SystemExit(0)
-
-print("check-self-claims: SELF-CLAIM DRIFT", file=sys.stderr)
-print("", file=sys.stderr)
-for cid, was, now in drift:
-    arrow = "REGRESSED" if now == "violated" else "changed"
-    print(f"  {arrow}: {cid}: {was} -> {now}", file=sys.stderr)
-print("", file=sys.stderr)
-print("  SECURITY.md describes these verdicts in prose. If this drift is", file=sys.stderr)
-print("  intended, update BOTH: re-record with", file=sys.stderr)
-print("    scripts/check-self-claims --update", file=sys.stderr)
-print("  and correct the corresponding text in SECURITY.md. Updating the", file=sys.stderr)
-print("  snapshot alone recreates the drift this gate exists to catch.", file=sys.stderr)
-raise SystemExit(1)
-PY
+python3 scripts/check-self-claims-drift "$ACTUAL" "$SNAPSHOT" "${1:-}"
