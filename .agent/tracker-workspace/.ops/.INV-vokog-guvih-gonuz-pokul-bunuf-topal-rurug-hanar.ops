@@ -22,3 +22,19 @@
     fields:  # bf76
       statement: "A call disclosed as an opaque launch must not ALSO be counted as an uncatalogued module: the two are different findings ('I named this door' vs 'I could not look'), and counting one edge as both makes ADR-0016 section 4's confirmed_with_caveats verdict unreachable for every repo that contains a launch. VIOLATED: 80 of 81 opaque launch sites on hypergumbo's own self-survey are also in the uncatalogued-module set; a one-edge positive control (bash 'id') returns unknown=['id'] and opaque=['id.id'] simultaneously, qualifying_only=False."  # bf76
       root_cause: "Two channels know a call is a launch - the catalogue (declares_opaque_crossing) and the producer stamp (meta.io_boundary in PRODUCER_OPAQUE_BOUNDARIES, set by the bash analyzer because ADR-0016 rules out a bash io_primitives catalogue). _opaque_launch_sites consults the producer stamp FIRST by design (INV-larol); _uncatalogued_external_modules consults classify_call ONLY and never asks the producer channel, so it re-counts a disclosed launch as blindness. The python path is immune only incidentally, because subprocess.run carries a catalogue row that classify_call matches."  # bf76
+- op: update  # 946b
+  at: '2026-08-15T21:20:54Z'  # 946b
+  by: agent  # 946b
+  actor: jgstern_agent  # 946b
+  clock: 2  # 946b
+  nonce: 946b  # 946b
+  set:  # 946b
+    status: satisfied  # 946b
+    pr_ref: '359'  # 946b
+- op: discuss  # 1d96
+  at: '2026-08-15T21:20:54Z'  # 1d96
+  by: agent  # 1d96
+  actor: jgstern_agent  # 1d96
+  clock: 3  # 1d96
+  nonce: 1d96  # 1d96
+  message: "SATISFIED at dev 275b4f325e (PR #359). BEHAVIORAL EVIDENCE, re-run on the\nMERGED tree rather than the branch, and it is this item's OWN filed repro:\n\n  one bash command launch (bash:id:0-0:id:external_symbol), alone on the\n  substrate, language set scoped to that substrate:\n\n    FILED (violated)   unknown = ['id']   opaque = ['id.id']  qualifying_only=False\n    MERGED (satisfied) unknown = []       opaque = ['id.id']  qualifying_only=True\n\nThe disclosure is UNCHANGED and the qualification is now granted. That pairing\nis the whole claim: the launch stopped counting as blindness without ceasing to\nbe reported.\n\nCORPUS-LEVEL, same instrument, production's own functions over a live\nself-survey (154,505 edges, 39,297 production-scoped):\n\n    uncatalogued modules   212 -> 137\n    opaque launch sites     81 ->  81   (non-destruction)\n\nRECONCILED TO A TOTAL, because 75 dropped where 80 overlapped: os, subprocess,\nstat, base64 and coverage survive because each name is BOTH a shell command and\na module carrying independent uncatalogued python calls. 80 - 5 = 75. Correct\nbehaviour, not a residual defect.\n\nWHAT THIS DOES NOT DO, stated so the item is not read as closing more than it\ndoes: THE SELF-PROOF VERDICT DOES NOT MOVE. hypergumbo's own 18 claims remain\ninconclusive - the remaining 137 uncatalogued modules still block, and\nqualifying_only is still False on the full substrate. INV-dabuf stays violated.\nWhat changed is that the fourth verdict is now REACHABLE in principle instead\nof unreachable by construction.\n\nSuite 22,879 passed / 7 skipped / 17 xfailed (= 22,903 ingested) / 100% /\ncore green in isolation / mypy ratchet clean at 672.\n\nPROCESS NOTE WORTH KEEPING. Both discriminating controls initially passed FOR\nTHE WRONG REASON: I passed the full language set to compute_boundary_coverage,\nso the analyzer-blind check (\"supported language produced no call edges\") fired\nfirst and drove qualifying_only False on arms that had nothing to do with the\nclaim. Only arm B looking implausible (immune where I expected the defect)\nforced the re-check. Same shape as the `return 1 + 1` control on INV-dabuf's\nthread - a control on a one-edge substrate must have its language set scoped to\nthat substrate."  # 1d96
