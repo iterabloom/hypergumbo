@@ -1,0 +1,50 @@
+Original commit body from aeb72c729cdaee66f0429f86d1e7bd767a4fbe22:
+
+WI-ninoz, step 3 of the permanent-exit plan on INV-dabuf (scope -> climb ->
+CI ratchet -> label). Picks up the (b) resolution WI-vanun parked "until the
+instrument is calibrated" — which INV-zuhig's fix (PR #367) completed.
+
+WHY THE VERDICT ALONE STOPPED BEING ENOUGH. The self-proof once "improved"
+to rc 3 while its sanitizer-credited flows collapsed 2,658 -> 0: the
+credited evidence had been minted by tests all along, and the verdict
+machinery — correct at every step — was confirming claims over sources that
+could no longer mint a single flow. A verdict-only snapshot waves exactly
+that through.
+
+SNAPSHOT v2 (docs/hypergumbo.claims.expected.json): per claim, the verdict
+PLUS the sorted caveat kinds PLUS a credited-flows bucket (zero/nonzero).
+The bucket is deliberate: exact counts move with every analyzer
+improvement, but nonzero -> zero is the vacuousness signal and now fails
+the gate. Comparison logic extracted from check-self-claims' heredoc to
+scripts/check-self-claims-drift, pinned by
+tests/test_check_self_claims_drift.py (the INV-zuhig shape is a named
+case: verdict unchanged + credited collapse => exit 1, REGRESSED).
+
+PER-PR ARM (ci.yml self-claims-gate): path-filtered on the claim surface —
+claims yaml + snapshot, self-catalog, overlays, shipped io/taint
+catalogues, pyproject deps, and the gate scripts themselves. The install
+mirrors full-suite's self-tree-validation job exactly: the gate's verdicts
+depend on which grammars are present, so both arms must analyze the same
+language set or they disagree on identical trees. Analyzer .py changes
+stay on the twice-daily full-suite cadence — a ~10-minute self-analysis on
+every core PR was judged too heavy; that is a scoping decision, recorded
+as such. This PR touches the surface itself, so the job's first live run
+is on this PR.
+
+SNAPSHOT RE-RECORDED from the merged post-#367 tree: 18/18
+confirmed_with_caveats, 4 claims crediting nonzero sanitized flows
+(host-fs 78, subprocess 12, gitleaks 5, build-grammars 3). The committed
+snapshot still said 18x inconclusive — pre-climb — so without this the
+next cron full-suite would have failed the drift gate on an improvement.
+
+SECURITY.md: generate-security-md reads both snapshot formats and its
+hardcoded prose is now verdict-aware. Two paragraphs had gone stale-FALSE:
+"both are inconclusive" (they are confirmed_with_caveats; now rendered
+data-driven from the snapshot so it cannot drift again) and "pathlib.Path
+method calls are invisible to the I/O catalogue" (its methods are
+catalogued since the stdlib climb and constructor-result chains emit
+edges; replaced with the still-true receiver-typing limitation). The
+verdict-explanation paragraphs render conditionally on the verdicts
+actually present.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
