@@ -1,0 +1,30 @@
+Original commit body from 6436242a9c3ca9f12c80f38b4dd993a4388a62fe:
+
+The main Unreleased section had become a chronological append-log: 34
+separate `###` headers where a released section carries 3-5, 239 top-level
+bullets plus 529 sub-bullets, and per-entry detail at commit-message depth
+(mechanism, measurement methodology, rejected alternatives). Calibrated
+against the release it sits above, it was ~17x more verbose per commit —
+v7.0.0 covered 462 commits in 130 lines; this cycle covered 249 in 1,185.
+
+Phase 0 (relocation): the three git-textconv entries were tracker-package
+work (ADR-0013, hypergumbo_tracker.cli, tracker tests) filed in the main
+changelog. Moved to packages/hypergumbo-tracker/CHANGELOG.md, whose
+Unreleased section was empty, and condensed to that document's granularity.
+
+Phase 1 (completeness): checked all 249 non-tracker commits since v7.0.0
+against the section. One gap found and filled — SCHEMA_VERSION 0.20.0 ->
+0.20.1 (Symbol.span becoming Optional[Span]) was undocumented; the change
+itself was described but its schema transition was not.
+
+Phase 2 (organization): rewritten to the released sections' shape — Summary,
+then Added / Changed / Removed / Fixed / Documentation with #### clusters,
+one bullet per feature or fix cluster rather than per PR. Every ADR
+reference, code identifier and version transition is preserved (SCHEMA_VERSION
+0.19.0 -> 0.20.1, VERIFY_CLAIMS_SCHEMA_VERSION 1.1 -> 2.0 breaking,
+DEAD_CODE_MAYBE_SCHEMA_VERSION 0.1.0 -> 0.2.0), along with the load-bearing
+measurements. Tracker item IDs are stripped per the audit guard rails: 0
+remain, where the section previously carried them throughout.
+
+Result: 125 lines against [7.0.0]'s 130.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
