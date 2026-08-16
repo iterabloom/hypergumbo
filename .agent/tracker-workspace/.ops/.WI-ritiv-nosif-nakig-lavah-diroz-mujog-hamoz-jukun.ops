@@ -1,0 +1,21 @@
+- op: create  # c073
+  at: '2026-08-16T07:16:21Z'  # c073
+  by: agent  # c073
+  actor: jgstern_agent  # c073
+  clock: 1  # c073
+  nonce: c073  # c073
+  data:  # c073
+    kind: work_item  # c073
+    title: "Framework linker: dict-based CLI dispatch (HANDLERS[args.cmd](args)) — the argparse analogue INV-zuhig named"  # c073
+    status: todo_hard  # c073
+    priority: 3  # c073
+    parent:  # c073
+    tags:  # c073
+    - linker_framework  # c073
+    - taint  # c073
+    isbefore: []  # c073
+    duplicate_of: []  # c073
+    not_duplicate_of: []  # c073
+    pr_ref:  # c073
+    description: "Analogue of INV-zuhig's argparse shape, named per the structural-fix protocol\nwhen the argparse_dispatch linker shipped (PR #367): dict-based CLI dispatch —\n`HANDLERS = {\"sketch\": cmd_sketch, ...}` at module level, dispatched as\n`HANDLERS[args.command](args)` — registers handlers through a dict literal the\nanalyzer records as references (or nothing), so a start_at:callee source on\nsuch a handler cannot mint, exactly the vacuous-confirm shape INV-zuhig\nclosed for set_defaults. Also covers click/typer-style frameworks only\npartially: their decorator registration is handled by decorator_dispatch, but\na plain dict registry has no linker. Scope: a Framework linker (or an\nextension of decorator_dispatch's registry logic) that emits dispatches_to\nfrom the dict-literal's enclosing scope to each identifier-valued entry whose\nvalue resolves to a callable symbol. Same taint semantics as PR #367 (the\nTAINT_CALL_EDGE_TYPES half is already in place — only the edge emission is\nmissing). Not urgent for the self-proof (hypergumbo uses set_defaults), so\npriority reflects corpus recall value, not the permanent-exit path."  # c073
+    fields: {}  # c073
