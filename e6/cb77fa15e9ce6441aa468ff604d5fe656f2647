@@ -1,0 +1,52 @@
+Original commit body from f36269f911b7aa6005272c290a96dcdecce88d23:
+
+INV-titih. `_validate_catalog_dict` accepted `status: complete` on four
+conditions — the literal string, a present stdlib_provenance.source_url,
+an https scheme, an allowlisted hostname — and counted no rows.
+python.yaml carried `complete` from 2026-05-14 while holding no row for
+os.open or os.write, the exact pair INV-zubuh measured producing a
+"never writes to the host filesystem" confirm. The WORD asserted
+coverage; the CHECK asserted a citation. Surfaced by the owner asking,
+reasonably: "isn't os part of stdlib? i thought we completed the stdlib
+catalog."
+
+RESOLUTION: rename, not a coverage gate. The coverage claim already has
+exactly one checked home — module_completeness, the dated per-module
+audit mechanism (per-slot, exact-match) — so teaching `status` to count
+rows would put one fact in two homes. The item's three senses of
+"complete" become one word each:
+
+  provenance_declared   the citation check (this rename)
+  module_completeness   the dated per-module coverage audit
+  "complete" (plain English)   REFUSED at load, with an error naming
+                               INV-titih and pointing at both homes
+
+The refusal is the class fix the item demands ("do NOT simply add the
+six os rows and leave the label"): the overclaiming spelling cannot
+silently return, and the validator never acquires a row-counting duty
+its value does not name.
+
+Mechanics:
+- Vocabulary {provenance_declared, in_progress}; the four citation
+  checks unchanged under the new name (pinned by
+  test_io_boundary_status_provenance_declared.py).
+- 3 shipped catalogues carried the live label (python, rust, erlang);
+  renamed. The 11 in_progress catalogues' "promotion to ``status:
+  complete``" comments rewritten — promotion requires the citation
+  only, coverage is claimed per-module.
+- _from_dict's absent-status default follows the rename (a status-less
+  catalogue required provenance before and still does — equivalent
+  behavior).
+- Overlay refusal message, dataclass docstring, in_progress_languages
+  docstring, MIGRATION-IO-BOUNDARIES.md updated.
+- Behavior-neutral for consumers: production branches only on
+  `status == "in_progress"` (two sites), never on the renamed value.
+
+Split out, not folded in: load_catalog returns the dataclass default
+for a MISSING catalogue file, so uncatalogued languages read as
+provenance_declared. Changing that flips dst_classification_unreliable
+for catalogue-less languages — behavioral, needs its own measurement;
+pinned as-is by test_missing_catalog_default_pinned_as_is and filed as
+a work item.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
