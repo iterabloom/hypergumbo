@@ -31,3 +31,18 @@
   set: {}  # eaf3
   add:  # eaf3
     isbefore: [INV-dabuf-saroz-fosir-bonag-dijil-savoz-hanig-guzag]  # eaf3
+- op: update  # f450
+  at: '2026-08-16T07:16:04Z'  # f450
+  by: agent  # f450
+  actor: jgstern_agent  # f450
+  clock: 3  # f450
+  nonce: f450  # f450
+  set:  # f450
+    status: satisfied  # f450
+- op: discuss  # 30bd
+  at: '2026-08-16T07:16:05Z'  # 30bd
+  by: agent  # 30bd
+  actor: jgstern_agent  # 30bd
+  clock: 4  # 30bd
+  nonce: 30bd  # 30bd
+  message: "SATISFIED — behavioral evidence on the merged tree (dev 504b994721, PR #367).\n\nFIX SHIPPED, two halves. (1) New Framework linker `argparse_dispatch`: emits\n`dispatches_to` from the enclosing function of each `*.set_defaults(kw=<identifier>)`\nregistration to the resolved handler (go_cobra conventions: two-anchor pre-filter,\nparen-balanced spans, callable-kind filter, 0.5-confidence short-name fallback).\nRecovers all 26 cmd_* registrations on cli.py with zero non-func noise.\n(2) `dispatches_to` added to TAINT_CALL_EDGE_TYPES — the CLASS fix: all eight\nFramework dispatch linkers emitted edges taint could not see, so no\nframework-dispatched handler could ever mint as a start_at:callee source.\n\nREPRO RE-RUN ON THE MERGED TREE (the item's own filed instrument,\n`hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml`):\n  rc 3, 18/18 confirmed_with_caveats (unchanged) — but sanitizer-credited\n  flows went 0 -> 98 (runtime-cli-no-host-fs 78, runtime-cli-no-subprocess 12,\n  install-gitleaks-no-host-fs 5, build-grammars-no-host-fs 3), each verdict now\n  carrying the user_supplied_sanitizer disclosure caveat. Total examined flows\n  295 -> 1,007. The structural 28 -> 12 shift is path-relabelling into\n  ddg_mixed on the enlarged graph (+728 = 712 new + 16 relabeled; pure-ddg\n  count byte-stable at 16); the one non-additive surface (sanitizer\n  registration over dispatch edges) cannot fire here because every dispatch\n  dst is a cmd_* handler, never a sanitizer.\n\nATTRIBUTION BY CONSTRUCTION: runtime_cli_entry mints only at cmd_*; tests are\noutside artifact scope; the only in-artifact call-shaped edges into cmd_* are\nthe linker's. Same tree without the change: 0 credited flows on all 18.\n\nBOTH LANGUAGES MEASURED (plan discipline): python = the self-proof above.\nGo = cobra fixture in the package-level `var rootCmd = &cobra.Command{...}`\nidiom (which, unlike the instance form, gets NO analyzer calls-edge): claim\nover the registered handler correctly VIOLATED (source minted through the\ndispatch edge, the only call-shaped edge into it); identical unregistered\norphan handler could not mint (negative control, verdict inconclusive via the\nopaque-launch gate, NOT violated).\n\nBoundary pinned by test (test_taint_dispatches_to_edges.py): a raw\n`references` edge still does NOT mint — the analyzer's registration edge\nstays inert; only the linker's call-shaped edge is evidence the handler runs."  # 30bd
