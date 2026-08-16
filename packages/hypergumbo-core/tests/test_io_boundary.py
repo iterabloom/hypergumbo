@@ -3796,8 +3796,8 @@ class TestExternalPotentialBucket:
         """
         from hypergumbo_core.io_boundary import compute_boundary_map
 
-        # dst node's name is the qualified form `logging.DEBUG`; module hint
-        # is `logging` (extracted from the 2nd colon-separated field).
+        # dst node's name is the qualified form `requests.codes`; module hint
+        # is `requests` (extracted from the 2nd colon-separated field).
         #
         # FIXTURE MODULE CHANGED FROM ``re`` TO ``logging``, and the reason is
         # worth recording because it is the mechanism working, not a
@@ -3805,16 +3805,17 @@ class TestExternalPotentialBucket:
         # which module it used. It silently depended on the module being
         # UNENUMERATED, because F3 Filter 2 skips external_potential entirely
         # for a module whose I/O surface has been audited closed-world. The
-        # 2026-08-15 audit declared ``re`` enumerated, so ``re.MULTILINE``
-        # correctly stopped being reported as a potential boundary and this
-        # test lost its subject. ``logging`` writes files and streams, so it
-        # will not be enumerable.
-        dst = "python:logging:0-0:logging.DEBUG:unresolved"
+        # 2026-08-15 audit declared ``re`` enumerated and the stdlib climb
+        # did the same to ``logging`` HOURS later — a stdlib fixture here
+        # loses its subject every time the catalogue improves. A THIRD-PARTY
+        # name is the stable choice: the shipped catalogue is stdlib-scoped
+        # by ADR-0016 §27, so ``requests`` can never be enumerated by it.
+        dst = "python:requests:0-0:requests.codes:unresolved"
         edge = self._mock_edge(
             src="python:/app/main.py:5-10:f:function",
             dst=dst,
         )
-        nodes_by_id = {dst: self._boundary_node(dst, "logging.DEBUG")}
+        nodes_by_id = {dst: self._boundary_node(dst, "requests.codes")}
         bmap = compute_boundary_map(
             [edge],
             {"python": load_catalog("python")},
@@ -3822,8 +3823,8 @@ class TestExternalPotentialBucket:
         )
         ext = bmap.entries.get("external_potential")
         assert ext is not None and len(ext.chains) == 1
-        assert ext.chains[0].primitive == "logging.DEBUG", (
-            f"Expected 'logging.DEBUG', got {ext.chains[0].primitive!r}"
+        assert ext.chains[0].primitive == "requests.codes", (
+            f"Expected 'requests.codes', got {ext.chains[0].primitive!r}"
         )
 
 
@@ -4815,9 +4816,15 @@ class TestStdlibModulesAndFilter2:
             )
         # Long-tail non-stdlib should be absent.
         assert not cat.is_stdlib_module("requests")
-        # Worked-example closed-world flag is on math, NOT on os.
+        # Closed-world flags: math since May, os since the 2026-08-15
+        # stdlib climb (full I/O surface rowed + dated audit). The
+        # counterexample keeping the assertion honest is now a module
+        # that is genuinely NOT enumerated: socket carries rows and no
+        # audit, and third-party requests carries neither.
         assert cat.module_io_is_enumerated("math")
-        assert not cat.module_io_is_enumerated("os")
+        assert cat.module_io_is_enumerated("os")
+        assert not cat.module_io_is_enumerated("socket")
+        assert not cat.module_io_is_enumerated("requests")
 
     def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
         """No module_hint (``module_hint == "external"``) → Filter 2 cannot fire.

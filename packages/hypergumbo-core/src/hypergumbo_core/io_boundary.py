@@ -320,6 +320,12 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "os.fork", "os.forkpty",
     "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
     "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
+    # 2026-08-15 stdlib climb: the launch conveniences and spawn family the
+    # rows above never covered, plus asyncio's subprocess pair (the same
+    # one-boundary-vouches-for-all shape INV-zubuh measured on os).
+    "subprocess.getoutput", "subprocess.getstatusoutput",
+    "os.posix_spawn", "os.posix_spawnp", "os.startfile",
+    "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
     # Go
     "os/exec.Command", "os/exec.CommandContext",
     "os/exec.Cmd.CombinedOutput", "os/exec.Cmd.Output",
@@ -1671,7 +1677,18 @@ class ModeArgument:
 # :func:`mode_argument_for`, exactly as they inherit the rows — a copied ``cpp``
 # entry would be a second home for one fact and would drift on the first edit.
 _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
-    "python": {"open": ModeArgument(position=1, keyword="mode")},
+    "python": {
+        "open": ModeArgument(position=1, keyword="mode"),
+        # 2026-08-15 stdlib climb: the archive/descriptor constructors are
+        # dual-classified like open and put mode in the same seat —
+        # GzipFile(filename, mode), TarFile(name, mode), ZipFile(file, mode),
+        # FileIO(file, mode). gzip.open / tarfile.open share the "open" entry
+        # above.
+        "GzipFile": ModeArgument(position=1, keyword="mode"),
+        "TarFile": ModeArgument(position=1, keyword="mode"),
+        "ZipFile": ModeArgument(position=1, keyword="mode"),
+        "FileIO": ModeArgument(position=1, keyword="mode"),
+    },
     "c": {"fopen": ModeArgument(position=1)},
 }
 

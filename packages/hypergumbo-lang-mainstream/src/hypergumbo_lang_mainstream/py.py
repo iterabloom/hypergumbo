@@ -5537,6 +5537,14 @@ def _class_directly_extends_django_model(
 # name the live catalogue flags, so the two cannot drift apart silently.
 _MODE_ARG_POSITION: dict[str, tuple[int, str]] = {
     "open": (1, "mode"),
+    # 2026-08-15 stdlib climb: the archive/descriptor constructors are
+    # dual-classified like open and put mode in the same seat —
+    # GzipFile(filename, mode), TarFile(name, mode), ZipFile(file, mode),
+    # FileIO(file, mode). gzip.open / tarfile.open share the "open" entry.
+    "GzipFile": (1, "mode"),
+    "TarFile": (1, "mode"),
+    "ZipFile": (1, "mode"),
+    "FileIO": (1, "mode"),
 }
 
 
