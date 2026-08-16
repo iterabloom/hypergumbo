@@ -1,0 +1,23 @@
+- op: create  # ba1a
+  at: '2026-08-16T01:15:14Z'  # ba1a
+  by: agent  # ba1a
+  actor: jgstern_agent  # ba1a
+  clock: 1  # ba1a
+  nonce: ba1a  # ba1a
+  data:  # ba1a
+    kind: invariant  # ba1a
+    title: "a method call on a catalogued ATTRIBUTE (os.environ.get, sys.stdout.write) cannot match its own row, because the attribute lands in the module slot"  # ba1a
+    status: violated  # ba1a
+    priority: 1  # ba1a
+    parent:  # ba1a
+    tags:  # ba1a
+    - verify_claims  # ba1a
+    - io_boundary  # ba1a
+    isbefore: []  # ba1a
+    duplicate_of: []  # ba1a
+    not_duplicate_of: []  # ba1a
+    pr_ref:  # ba1a
+    description: "Found during the 2026-08-15 module_completeness audit (docs/surveys/python-stdlib-module-io-enumeration.md names it as 'filed separately' - this is that filing). Worth ~52 calls across 7 attribute-module names on the self-survey, and it is a CORRECTNESS question rather than catalogue work: sys.stdout.write is a logging-boundary write the tool already knows about and currently reports as blindness. Phase-1 item on the INV-dabuf path-out plan."  # ba1a
+    fields:  # ba1a
+      statement: "A call on an attribute the catalogue already declares must classify against that declaration. VIOLATED: os.environ, sys.stdout, sys.stderr and sys.stdin are catalogued as attributes of their parent (module: os, attributes: [environ]), but os.environ.get(...) emits with module slot 'os.environ' and name 'get', so classify_call finds no row, the call counts as unexamined, and the ATTRIBUTE MODULES land in the uncatalogued set (~52 calls on the self-survey) despite being the most-catalogued names in the file."  # ba1a
+      root_cause: "One surface, two spellings, matched in only one. The catalogue speaks of attributes as (parent_module, attribute_name); the analyzer speaks of calls on those attributes as (attribute_path_as_module, method_name). classify_call joins on (module, name) exactly, so the two vocabularies never meet. Duplicating rows keyed on the attribute path would be a second home for one fact; the join itself needs to learn that a module slot which IS a declared attribute of its parent resolves to the parent's row."  # ba1a

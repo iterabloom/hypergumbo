@@ -1,0 +1,23 @@
+- op: create  # 65c4
+  at: '2026-08-16T01:12:11Z'  # 65c4
+  by: agent  # 65c4
+  actor: jgstern_agent  # 65c4
+  clock: 1  # 65c4
+  nonce: 65c4  # 65c4
+  data:  # 65c4
+    kind: invariant  # 65c4
+    title: "status: complete on a shipped catalogue is validated as a PROVENANCE URL check and reads as a COVERAGE claim; python.yaml has said complete since May while missing os.open and os.write"  # 65c4
+    status: violated  # 65c4
+    priority: 1  # 65c4
+    parent:  # 65c4
+    tags:  # 65c4
+    - verify_claims  # 65c4
+    - security  # 65c4
+    isbefore: []  # 65c4
+    duplicate_of: []  # 65c4
+    not_duplicate_of: []  # 65c4
+    pr_ref:  # 65c4
+    description: "Surfaced by the owner asking, reasonably, 'isn't os part of stdlib? i thought we completed the stdlib catalog'. It IS, and the file DOES say complete, and both facts are compatible only because the label does not mean coverage. The gap was already known in one place - the S-plan's out-of-scope section records 'status: complete is enforced only as a provenance-URL check, never a coverage check' - but it was filed as a scoping note rather than as a defect, and the misleading label stayed in the shipped file where users read it. THREE SENSES OF 'COMPLETE' NOW COEXIST and the confusion is structural rather than anyone's misreading: (1) status: complete = a cited docs URL; (2) module_completeness = a dated per-module I/O audit, 28 modules as of 2026-08-15; (3) the plain-English reading, which is false. MEASURED CONSEQUENCE, not hypothetical: os has 24 distinct unmatched call targets in hypergumbo's own self-analysis and six of them - open, write, close, fsync, fdopen, fchmod - are genuine fs primitives with no row. This is missing RECALL in the best-supported language, not bookkeeping. CANDIDATE RESOLUTIONS, none chosen: rename the status to say what it checks (provenance_declared); or make it a real coverage gate against an enumerated I/O surface, which needs a source of truth for 'which stdlib functions perform I/O'; or demote python.yaml to in_progress until the missing rows land. Do NOT simply add the six os rows and leave the label - that fixes one instance of the class and leaves the assertion unchecked."  # 65c4
+    fields:  # 65c4
+      statement: "A catalogue must not assert a coverage claim it never checks. VIOLATED: _validate_catalog_dict accepts status: complete on four conditions - the literal string, a present stdlib_provenance.source_url, an https scheme, and an allowlisted hostname - and counts no rows and compares nothing against the language stdlib. python.yaml has carried status: complete since 2026-05-14 while holding no row for os.open, os.write, os.close, os.fsync, os.fdopen or pathlib.Path.open, which are real filesystem primitives; os.open + os.write are the exact pair INV-zubuh measured producing a 'never writes to the host filesystem' confirm."  # 65c4
+      root_cause: "One word carries two facts and only the weaker one is enforced. The IoBoundaryCatalog.status docstring says complete means 'the catalog enumerates the entire stdlib of the language AND has declared stdlib_provenance'; the validator implements only the second conjunct. Compounding it, the first conjunct is not even the right claim: the catalogue lists I/O PRIMITIVES by design, so os.getpid will never have a row, and 'enumerates the entire stdlib' is unsatisfiable as literally written. The satisfiable claim - 'every I/O-performing stdlib function is listed' - is the one nobody checks."  # 65c4
