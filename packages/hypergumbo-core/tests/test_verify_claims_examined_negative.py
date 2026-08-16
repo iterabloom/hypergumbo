@@ -126,25 +126,29 @@ CTYPES_EDGES = [
      "dst": "python:external:0-0:system:external_symbol", "type": "calls"},
 ]
 
-#: ``os.sendfile(sock_fd, file_fd, 0, 4096)`` — a network send through a module
-#: the catalogue DOES carry rows for, none of which is ``sendfile``.
-OS_SENDFILE_EDGES = [
+#: THE ORIGINAL FIXTURES HERE GRADUATED. ``os.sendfile`` and ``os.open`` +
+#: ``os.write`` were the measured INV-zubuh pair; the 2026-08-15 stdlib climb
+#: rowed os's full I/O surface and gave it the dated completeness audit these
+#: tests were demanding, so both now classify — which is the fix, not a
+#: regression (their own docstrings predicted it). The PRINCIPLE — some rows
+#: must not vouch for the rest of a module — is unchanged and now pinned on
+#: ``socket``, the current partially-catalogued module: ``socket.socket``'s
+#: methods carry net rows while these module-level calls carry none.
+#: ``socket.getaddrinfo(host, port)`` — a DNS lookup, real network I/O.
+SOCKET_GETADDRINFO_EDGES = [
     {"src": "python:main.py:1-1:file:file",
-     "dst": "python:os:0-0:os:external_symbol", "type": "imports"},
+     "dst": "python:socket:0-0:socket:external_symbol", "type": "imports"},
     {"src": "python:main.py:4-5:leak:function",
-     "dst": "python:os:0-0:sendfile:external_symbol", "type": "calls"},
+     "dst": "python:socket:0-0:getaddrinfo:external_symbol", "type": "calls"},
 ]
 
-#: ``os.open(p, O_WRONLY|O_CREAT)`` then ``os.write(fd, data)`` — same shape on
-#: the filesystem side. ``os.open`` and ``os.write`` are uncatalogued while
-#: ``os.makedirs`` / ``os.remove`` are not.
-OS_WRITE_EDGES = [
+#: ``socket.create_connection((host, port))`` — opens a TCP connection at the
+#: module slot, where no row lives.
+SOCKET_CONNECT_EDGES = [
     {"src": "python:main.py:1-1:file:file",
-     "dst": "python:os:0-0:os:external_symbol", "type": "imports"},
+     "dst": "python:socket:0-0:socket:external_symbol", "type": "imports"},
     {"src": "python:main.py:4-7:persist:function",
-     "dst": "python:os:0-0:open:external_symbol", "type": "calls"},
-    {"src": "python:main.py:4-7:persist:function",
-     "dst": "python:os:0-0:write:external_symbol", "type": "calls"},
+     "dst": "python:socket:0-0:create_connection:external_symbol", "type": "calls"},
     {"src": "python:main.py:4-7:persist:function",
      "dst": "python:os:0-0:close:external_symbol", "type": "calls"},
     {"src": "python:main.py:4-7:persist:function",
@@ -195,7 +199,8 @@ class TestRowPresenceIsNotEnumeration:
 
     @pytest.mark.parametrize(
         ("what", "edges"),
-        [("os.sendfile", OS_SENDFILE_EDGES), ("os.open/os.write", OS_WRITE_EDGES)],
+        [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
+         ("socket.create_connection", SOCKET_CONNECT_EDGES)],
     )
     def test_partially_catalogued_module_cannot_support_a_clean_verdict(
         self, what: str, edges: list[dict],
@@ -203,10 +208,13 @@ class TestRowPresenceIsNotEnumeration:
         coverage = _coverage(edges)
         assert coverage.complete is False, (
             f"{what} is real I/O through a module the catalogue only partially "
-            f"enumerates. Presence of SOME os rows must not vouch for the rest "
-            f"(INV-zubuh)."
+            f"enumerates. Presence of SOME socket rows must not vouch for the "
+            f"rest (INV-zubuh). If socket has graduated the way os did, repoint "
+            f"this at the current partially-catalogued module — the principle "
+            f"also lives on a fixture catalogue in "
+            f"test_verify_claims_uncatalogued_module_coverage."
         )
-        assert "os" in coverage.reason
+        assert "socket" in coverage.reason
 
 
 class TestTheControlsThatMakeTheAboveMeanSomething:
@@ -593,12 +601,26 @@ class TestAnOpaqueCrossingIsNotAnExaminedNegative:
         ``classify_call`` would turn BOTH False and this test is what catches
         it — the distinction has to be the BOUNDARY, not the fact of matching.
         """
-        assert load_catalog("python").module_io_is_enumerated("os") is False, (
-            "precondition: if os ever gains a completeness record this test "
-            "starts passing through the enumeration branch instead and stops "
-            "discriminating"
+        # The original precondition was on ``os``, which graduated in the
+        # 2026-08-15 stdlib climb exactly as its message predicted. The
+        # discriminating module is now socket.socket: methods rowed, no
+        # completeness record.
+        assert load_catalog("python").module_io_is_enumerated(
+            "socket.socket") is False, (
+            "precondition: if socket.socket ever gains a completeness record "
+            "this test starts passing through the enumeration branch instead "
+            "and stops discriminating — repoint it at a rowed, unaudited "
+            "module"
         )
-        coverage = _coverage(OS_MAKEDIRS_EDGES)
+        coverage = _coverage([
+            {"src": "python:main.py:1-1:file:file",
+             "dst": "python:socket:0-0:socket:external_symbol",
+             "type": "imports"},
+            {"src": "python:main.py:4-5:beacon:function",
+             "dst": "python:socket.socket:0-0:send:external_symbol",
+             "type": "calls",
+             "meta": {"call_construct": "method"}},
+        ])
         assert coverage.complete is True, coverage.reason
 
     def test_the_opaque_set_is_declarable_by_a_catalogue(self) -> None:
