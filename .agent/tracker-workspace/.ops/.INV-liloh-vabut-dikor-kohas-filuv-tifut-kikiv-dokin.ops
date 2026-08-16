@@ -1,0 +1,22 @@
+- op: create  # 905f
+  at: '2026-08-16T00:32:51Z'  # 905f
+  by: agent  # 905f
+  actor: jgstern_agent  # 905f
+  clock: 1  # 905f
+  nonce: 905f  # 905f
+  data:  # 905f
+    kind: invariant  # 905f
+    title: "three first-party modules reach the uncatalogued-module gate despite _is_analyzed_module existing to exclude them"  # 905f
+    status: violated  # 905f
+    priority: 2  # 905f
+    parent:  # 905f
+    tags:  # 905f
+    - verify_claims  # 905f
+    isbefore: []  # 905f
+    duplicate_of: []  # 905f
+    not_duplicate_of: []  # 905f
+    pr_ref:  # 905f
+    description: "Found while measuring the 2026-08-15 module_completeness audit (PR #361), not while looking for it. Small - 6 calls of 1898 - and filed anyway because the population it belongs to is the one _is_analyzed_module was written to empty, and a gate that leaks its own repo's modules is reporting blindness about code it read. Poetry was the original measurement behind that branch: 120 of 171 call-site modules were poetry's own, so the branch carries real weight and a leak in it is worth understanding rather than absorbing. Do NOT fix by adding a prefix rule - a prefix rule over module names was measured wrong in three languages at once (see _module_matches); establish the actual matching shape first."  # 905f
+    fields:  # 905f
+      statement: "A module whose source this analysis read is not a catalogue gap: _is_analyzed_module exists to exclude it, because whatever I/O it performs was examined on its own edges. VIOLATED: hypergumbo_core, hypergumbo_core.scip._generated and hypergumbo_lang_mainstream.py.EXTERNAL_CONSTRUCTOR_TYPES appear in the uncatalogued-module set on hypergumbo's own self-survey, all three first-party."  # 905f
+      root_cause: "Unmeasured. _is_analyzed_module compares a call-site module against the set of modules the analysis produced symbols for; the three names that leak are all DOTTED forms that name a first-party module plus a submodule or an attribute (…scip._generated, …py.EXTERNAL_CONSTRUCTOR_TYPES), so the likely cause is the same exact-vs-component matching question that INV-fokik and the os.environ slot mismatch both turn on - but that is a hypothesis, not a measurement."  # 905f
