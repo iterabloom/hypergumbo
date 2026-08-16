@@ -1,0 +1,51 @@
+Original commit body from 786840208229ebe75c8608e55bb534787e26727f:
+
+Path-out move 2, final third (plan of record on INV-dabuf). Three pieces:
+
+OVERLAY. Rows for the real third-party I/O — starlette.staticfiles/
+FileResponse serve host files, the tracker websocket's send/receive pair,
+coverage's config-reading constructor — plus dated module_completeness audits
+for the remaining 43 modules (numpy, yaml, ruamel.*, textual.*, rich.*,
+starlette.*, tree_sitter_* x14, tokenizers, onnxruntime,
+sentence_transformers, coverage).
+
+INV-liloh. _is_analyzed_module now implements the component-bounded INFIX
+relation its extractor's docstring always promised: `analyzed` derives from
+src PATHS (packages.….hypergumbo_core.scip.loader) while an unresolved callee
+carries the IMPORT name (hypergumbo_core.scip), and exact membership can never
+bridge a packaging prefix — every src-layout repo's own modules read as
+catalogue gaps in the gate built to exclude them. Component-bounded on both
+sides: hypergumbo_core ends with "core" and shares no component, pinned by
+test_the_suffix_relation_is_component_bounded.
+
+INV-ponad slot family RE-KINDED functions:. The method-starvation gate caught
+`methods:` asserting a call shape the analyzer never emits — call_construct is
+None on every os.environ/sys.stdout call in the self-survey. The tokenizers
+lesson, paid a second time, now written into both rows.
+
+MEASURED END STATE, and the reason it is NOT being claimed as done:
+
+  unknown modules              43 -> 0
+  qualifying_only              True
+  verify-claims                rc 3, 18/18 confirmed_with_caveats, each
+                               naming subprocess.run / subprocess.Popen
+
+  sanitizer-credited flows  2,658 -> 0     <- THE CONTROL THAT KEEPS IT HONEST
+
+The A/B (scope key stripped) plus an edge bisect traced the collapse to the
+self-proof's evidentiary base having been TEST-DRIVEN all along: tests were
+the only concrete CALLERS of the cmd_* handlers, and the real production
+invocation is argparse set_defaults(func=...) dispatch, recorded as a
+`references` edge that start_at:callee source minting does not consume. Under
+artifact scope the sources mint ZERO flows, so every confirm is VACUOUS on the
+taint side — no flow existed to examine, which is not the same as flows
+examined and credited. Filed as INV-zuhig (P1) with the preferred fix named:
+teach the argparse-dispatch linker to emit the call-shaped edge, a recall fix
+for every argparse repo rather than a self-proof special case.
+
+rc 3 with an honest evidence base is one linker fix away; presenting tonight's
+rc 3 as the terminal state would be the false comfort this whole area exists
+to prevent (decision point 4 fired on the 2,658 and this commit records the
+stop).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
