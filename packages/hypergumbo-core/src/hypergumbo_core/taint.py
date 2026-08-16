@@ -1613,6 +1613,20 @@ TAINT_CALL_EDGE_TYPES = frozenset({
     # (audit-findings 0016) — NOT a plain set member (that would wholesale-
     # include every structural 'implements' edge); matched by the
     # is_grpc_rpc_implementation predicate via _is_taint_call_edge below.
+    #
+    # INV-zuhig: framework-dispatch edges are call-shaped for taint. The
+    # Framework linkers (go_cobra, argparse_dispatch, decorator/django/
+    # jackson/kafka/caddy/airflow/rust-trait dispatch) emit
+    # ``dispatches_to`` for "runtime dispatch will invoke dst with data
+    # src controls". Excluding the family made every framework-dispatched
+    # handler unmintable as a start_at:callee source — the self-proof's
+    # cmd_* handlers were reachable only through argparse dispatch, so
+    # sources minted ZERO flows and all 18 confirms were vacuous on the
+    # taint side. Membership grows adjacency and minting monotonically;
+    # the one non-additive surface (sanitizer registration over dispatch
+    # edges) shares the same predicate deliberately, so a dispatched-to
+    # barrier function still registers — one rule, one home.
+    "dispatches_to",
 })
 
 

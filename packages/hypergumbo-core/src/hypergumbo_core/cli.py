@@ -96,6 +96,7 @@ from .safety_zones import (
     user_out_write,
 )
 # Import linker modules to trigger @register_linker decoration (side effect imports)
+import hypergumbo_core.linkers.argparse_dispatch as _argparse_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.caddy_module_dispatch as _caddy_module_dispatch_linker  # noqa: F401
 import hypergumbo_core.linkers.cgo as _cgo_linker  # noqa: F401
 import hypergumbo_core.linkers.containment as _containment_linker  # noqa: F401
