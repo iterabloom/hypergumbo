@@ -1,0 +1,13 @@
+Original commit body from 98ff859769e9a1a754f0d48b07384855145cd8c7:
+
+The pr context is verified in production (auto-pr polls it exclusively).
+Also records the INV-tisug follow-up observation: the fix PR itself still
+polled green in ~10s, consistent with Woodpecker evaluating the pipeline
+config from the TARGET branch for PRs — so the event-split fix takes
+effect for PRs created after it merged. THIS PR is the live probe: it is
+the first PR opened against a dev that carries the fixed config, and its
+pr-context poll duration is the measurement. Minutes = fix works;
+~10 seconds = the mechanism is still wrong and INV-tisug reopens for a
+deeper diagnosis.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
