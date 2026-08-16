@@ -1,0 +1,19 @@
+Original commit body from 8a56a605f3c39db87e502e7278799955ac0e5dd0:
+
+INV-kazij's test fails ONLY in the full-suite CI container — never
+locally on any tree, in any interleaving (single test / whole core
+suite / cross-package under xdist), with or without the meta-package.
+The owner-fired parity cron (dev 8e913045e0, meta installed, wheel
+built, 9 previously-skipped tests un-skipped) failed identically, which
+eliminates the install-set hypothesis — the last cheap one.
+
+So the assertion becomes the instrument: on failure it now reports
+(a) the toml-config pass's run rows (did the analyzer run, how many
+files/nodes), (b) every node on the pyproject path with kind + meta
+(was the script symbol emitted, with which concepts), and (c) the
+derived entrypoint kinds. The three candidate break points — analyzer
+skipped, concept not emitted, conversion dropped — produce three
+different messages, so the next red cron is a mechanism reading
+instead of a fourth repetition of 'assert []'.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
