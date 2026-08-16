@@ -1,0 +1,71 @@
+Original commit body from c96d9e42f15cc0e23257e1d89c13565a08efba71:
+
+INV-zuhig, the last blocker before INV-dabuf's rc 3 can be claimed on
+evidence. Two halves, one per layer:
+
+LINKER. argparse registers subcommand handlers via
+`parser.set_defaults(func=handler)` and dispatches them at runtime with
+`args.func(args)`. The analyzer records the registration as a
+`references` edge — structurally honest, but it leaves every
+argparse-dispatched handler with no call-shaped edge from production
+structure, so a `start_at: callee` taint source on such a handler can
+never mint a flow. The new Framework linker `argparse_dispatch` emits
+`dispatches_to` edges from the registration site's enclosing function to
+the resolved handler, following go_cobra's conventions: two-anchor
+pre-filter (`.set_defaults(` + an `argparse` mention), paren-balanced
+multi-line argument spans, ANY kwarg name (unlike cobra's fixed field
+set, argparse's set_defaults key is user convention — func/handler/cls
+all appear in the wild), identifier values only (literals, lambdas and
+call expressions skipped), callable-kind resolution filter
+(function/method/class), 0.5-confidence disambiguation fallback on
+short-name collisions. On hypergumbo's own cli.py the pattern recovers
+all 26 cmd_* registrations with zero non-func noise.
+
+TAINT. `dispatches_to` joins TAINT_CALL_EDGE_TYPES. This is the CLASS
+fix: every Framework dispatch linker (cobra, decorator, django, jackson,
+kafka, caddy, airflow, rust-trait — and now argparse) emits
+`dispatches_to` for "runtime dispatch will invoke dst with data src
+controls", and taint was blind to the entire family — sources behind a
+dispatch boundary never minted, and BFS never crossed one. Membership is
+monotone-additive for adjacency and minting; the one non-additive
+surface (sanitizer registration over dispatch edges) deliberately shares
+the same predicate — one rule, one home — and cannot fire on this repo
+(dispatch dsts here are cmd_* handlers, never sanitizers).
+
+Why Go's analyzer hid this for cobra: it records `RunE: runServe` in an
+instance-form composite literal as a `calls` edge, so instance-form
+cobra handlers minted all along. The dominant package-level
+`var rootCmd = &cobra.Command{...}` idiom emits NO analyzer call edge —
+there the linker's dispatch edge is now the only minting route, same as
+Python.
+
+MEASURED, both languages:
+
+  self-proof (python/argparse):
+    rc                          3 (unchanged)
+    verdicts                    18/18 confirmed_with_caveats (unchanged)
+    sanitizer-credited flows    0 -> 98   <- the evidence INV-dabuf needs
+    total examined flows        295 -> 1,007
+    (structural 28 -> 12 is a path-relabel into ddg_mixed on the larger
+    graph, not a deletion: +728 ddg_mixed = 712 new + 16 relabeled, ddg
+    count byte-stable at 16, and no violation existed before or after)
+
+  cobra fixture (go, package-level var idiom):
+    registered handler          claim VIOLATED — source minted through
+                                the dispatches_to edge, the only
+                                call-shaped edge into it
+    identical orphan handler    inconclusive (opaque launch), NOT
+                                violated — no registration, no minting
+                                (negative control)
+
+Attribution on the self-proof is by construction: runtime_cli_entry can
+only mint at cmd_* handlers, tests are outside the artifact scope, and
+the only in-artifact call-shaped edges into cmd_* are the linker's —
+the same tree without this change measured 0 credited flows on all 18
+verdicts.
+
+Boundary pinned by test: a raw `references` edge still does NOT mint.
+The registration reference is not evidence the handler runs; only the
+linker's call-shaped edge is.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
