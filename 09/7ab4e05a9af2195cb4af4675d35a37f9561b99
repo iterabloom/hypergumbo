@@ -1,0 +1,36 @@
+Original commit body from 48217a89130b18a40edb9c654ce18fbf09609136:
+
+WI-ninoz follow-up, found by probing the merged PR rather than trusting it:
+the ratchet PR's per-PR arm was wired into .github/workflows/ci.yml, but the
+pipeline that gates merges is Woodpecker — auto-pr polls exactly one
+context, ci/woodpecker/pr/woodpecker (woodpecker.yml documents this at the
+mypy step, with the 672->682 drift as the receipt for what happens to gates
+that live anywhere else). Worse: the live Woodpecker full-suite cron is a
+port of the GHA full-suite that DROPPED the check-self-claims step at
+cutover, so the gate SECURITY.md names ("gated in CI by
+scripts/check-self-claims") has been running NOWHERE live — WI-vanun's gate
+existed only in a workflow file no event executes.
+
+Both arms now exist in the Woodpecker pipelines:
+
+- woodpecker.yml `self-claims-gate` (per-PR, in the gating context):
+  path-filtered on the claim surface — claims yaml + snapshot,
+  self-catalog, overlays, io_primitives + taint catalogues, pyproject
+  deps, and the gate scripts. Same install + grammar build as
+  full-suite's arm so both analyze the same language set and cannot
+  disagree on identical trees.
+- full-suite.yml `self-claims-gate` (cron arm): unconditional, so
+  analyzer .py changes — which the per-PR filter deliberately skips as
+  too heavy — get their verdict drift caught within a cycle.
+
+The GHA ci.yml twin stays as the dormant port, matching the repo's
+existing convention for .github/workflows; the woodpecker.yml step
+comment names it as non-enforcing.
+
+Also: regenerate docs/ARCHITECTURE.md. The dev push pipeline went RED on
+ceaba981 because the doc crossed its 30-commit staleness window (the
+tracker-sync commits plus PRs #367/#371 rolled it over). The regen also
+picks up the argparse_dispatch linker, which self-categorizes as a
+Framework linker via its ADR-3bbb docstring header.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
