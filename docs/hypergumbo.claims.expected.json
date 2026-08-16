@@ -1,20 +1,132 @@
 {
-  "add-extras-no-dev-zone": "inconclusive",
-  "add-extras-no-host-fs": "inconclusive",
-  "build-grammars-no-dev-zone": "inconclusive",
-  "build-grammars-no-host-fs": "inconclusive",
-  "build-grammars-no-install-artifact": "inconclusive",
-  "install-embeddings-no-dev-zone": "inconclusive",
-  "install-embeddings-no-host-fs": "inconclusive",
-  "install-embeddings-no-install-artifact": "inconclusive",
-  "install-gitleaks-no-dev-zone": "inconclusive",
-  "install-gitleaks-no-host-fs": "inconclusive",
-  "install-rust-analyzer-no-dev-zone": "inconclusive",
-  "install-rust-analyzer-no-host-fs": "inconclusive",
-  "install-rust-analyzer-no-install-artifact": "inconclusive",
-  "runtime-cli-no-dev-zone": "inconclusive",
-  "runtime-cli-no-host-fs": "inconclusive",
-  "runtime-cli-no-install-artifact": "inconclusive",
-  "runtime-cli-no-network": "inconclusive",
-  "runtime-cli-no-subprocess": "inconclusive"
+  "add-extras-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "add-extras-no-host-fs": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "build-grammars-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "build-grammars-no-host-fs": {
+    "caveats": [
+      "opaque_boundary",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "build-grammars-no-install-artifact": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-embeddings-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-embeddings-no-host-fs": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-embeddings-no-install-artifact": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-gitleaks-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-gitleaks-no-host-fs": {
+    "caveats": [
+      "opaque_boundary",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-rust-analyzer-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-rust-analyzer-no-host-fs": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "install-rust-analyzer-no-install-artifact": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "runtime-cli-no-dev-zone": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "runtime-cli-no-host-fs": {
+    "caveats": [
+      "opaque_boundary",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "runtime-cli-no-install-artifact": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "runtime-cli-no-network": {
+    "caveats": [
+      "opaque_boundary"
+    ],
+    "credited_flows": "zero",
+    "verdict": "confirmed_with_caveats"
+  },
+  "runtime-cli-no-subprocess": {
+    "caveats": [
+      "opaque_boundary",
+      "user_supplied_sanitizer"
+    ],
+    "credited_flows": "nonzero",
+    "verdict": "confirmed_with_caveats"
+  }
 }

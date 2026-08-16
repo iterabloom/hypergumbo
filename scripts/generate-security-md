@@ -70,10 +70,21 @@ def _verdict_badge(verdict: str | None) -> str:
 
 
 def _load_expected_verdicts() -> dict[str, str]:
-    """Read the committed verdict snapshot; empty when absent."""
+    """Read the committed verdict snapshot; empty when absent.
+
+    Accepts both snapshot formats: v1 mapped ``claim_id -> verdict`` string;
+    v2 (INV-zuhig, written by ``scripts/check-self-claims-drift``) maps
+    ``claim_id -> {"verdict": ..., "caveats": [...], "credited_flows": ...}``
+    so the gate can pin more than the verdict. This document badges the
+    verdict only, so both flatten to the same thing here.
+    """
     if not EXPECTED_VERDICTS_PATH.is_file():
         return {}
-    return json.loads(EXPECTED_VERDICTS_PATH.read_text())
+    raw = json.loads(EXPECTED_VERDICTS_PATH.read_text())
+    return {
+        cid: (entry["verdict"] if isinstance(entry, dict) else entry)
+        for cid, entry in raw.items()
+    }
 
 
 def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
@@ -105,13 +116,32 @@ def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
             f"{counts['confirmed_with_caveats']} | held, but on the strength "
             f"of an entry this repository supplied about itself |"
         )
+    lines.append("")
+    # Verdict-explanation prose is keyed to the verdicts actually present:
+    # a paragraph explaining ``inconclusive`` beside a zero count reads as
+    # stale boilerplate, and stale prose in THIS file is the defect the
+    # whole generator exists to prevent.
+    if counts.get("inconclusive", 0):
+        lines += [
+            "The ``inconclusive`` verdicts are not near-misses. This "
+            "repository contains code in languages with no taint catalogue, "
+            "so the analysis declines to confirm rather than reporting "
+            "silence as safety.",
+            "",
+        ]
+    if counts.get("confirmed_with_caveats", 0):
+        lines += [
+            "A ``confirmed_with_caveats`` verdict is the qualified form of "
+            "confirmed: the claim held everywhere the analysis could see, "
+            "and every caveat names something it could NOT see — control "
+            "leaving the process at a subprocess launch, or a sanitizer "
+            "this repository declared about itself and the tool takes on "
+            "trust.",
+            "",
+        ]
     lines += [
-        "",
-        "The ``inconclusive`` verdicts are not near-misses. This repository "
-        "contains code in languages with no taint catalogue, so the analysis "
-        "declines to confirm rather than reporting silence as safety. A "
-        "``confirmed`` verdict requires every code-bearing language present "
-        "to be analysable.",
+        "A ``confirmed`` verdict requires every code-bearing language "
+        "present to be analysable.",
         "",
         "**A ``violated`` verdict from this tool is trustworthy; a "
         "``confirmed`` one means \u201cfound nothing, having looked at what "
@@ -343,23 +373,32 @@ def _render_claims_section(
         "safety regressions."
     )
     lines.append("")
+    # Data-driven on purpose: an earlier hardcoded version of this
+    # paragraph said "both are ``inconclusive``" and kept saying it after
+    # the verdicts moved \u2014 the exact drift THIS file's history warns about.
+    dz = verdicts.get("runtime-cli-no-dev-zone", "unmeasured")
+    ia = verdicts.get("runtime-cli-no-install-artifact", "unmeasured")
     lines.append(
         "**This paragraph used to end \u201cthe load-bearing claims "
         "(dev-zone unreachability from runtime CLI, install zones not "
-        "reached from runtime CLI) verify cleanly\u201d. They do not** "
-        "\u2014 both are ``inconclusive``, not confirmed, because this "
-        "repository contains code the taint analysis has no catalogue for."
+        "reached from runtime CLI) verify cleanly\u201d. That phrasing is "
+        "retired** \u2014 the measured verdicts for those two claims are "
+        f"``{dz}`` and ``{ia}``, and the honest reading is the verdict "
+        "table above, with its caveats, not an adjective."
     )
     lines.append("")
     lines.append(
         "Two further limitations bound EVERY ``confirmed`` verdict this "
-        "tool emits, here or in a user's repository. ``pathlib.Path`` "
-        "method calls are invisible to the I/O catalogue \u2014 a "
-        "receiver-typing gap, so the most common way Python writes a file "
-        "registers as no I/O boundary at all. And a language that emits "
-        "even ONE call edge passes the coverage check while the rest of "
-        "its call structure may be unanalysable: Kotlin emits one and "
-        "misses roughly 95% of its catalogued sinks."
+        "tool emits, here or in a user's repository. Receiver typing is "
+        "incomplete: a method call on a receiver the analysis cannot type "
+        "(a parameter, a call result it has no chain rule for, a closure "
+        "capture) may miss the catalogue even when the method itself is "
+        "catalogued. (``pathlib.Path``, the former worked example here, is "
+        "no longer one: its methods are catalogued and constructor-result "
+        "chains like ``Path(p).write_text(x)`` emit edges.) And a language "
+        "that emits even ONE call edge passes the coverage check while the "
+        "rest of its call structure may be unanalysable: Kotlin emits one "
+        "and misses roughly 95% of its catalogued sinks."
     )
     lines.append("")
     lines.append(
