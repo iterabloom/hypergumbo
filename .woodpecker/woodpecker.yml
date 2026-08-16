@@ -6,11 +6,11 @@
 # folder is needed so nightly can carry its own py-version matrix). The workflow
 # NAME is this file's stem (`woodpecker`), so this gate keeps posting the GitHub
 # status context `ci/woodpecker/pr/woodpecker` that branch protection marks
-# required (context VERIFIED in production — it is the one auto-pr polls).
-# NOTE (INV-tisug follow-up): a PR pipeline appears to evaluate THIS FILE from
-# the TARGET branch, not the PR head — the INV-tisug fix PR itself still
-# polled green in ~10s under the old all-skip config. Config changes to this
-# file therefore take effect for PRs created AFTER they merge to dev.
+# required (context VERIFIED in production — it is the one auto-pr polls, and
+# auto-pr's poll telemetry prints only on STATE TRANSITIONS, dots in between:
+# a log reading "[10s] waiting … ✅ CI Passed" spans however many dot-ticks sit
+# between those lines, NOT ten seconds. INV-tisug was filed and retracted over
+# exactly that misreading — count the dots before believing a fast green).
 # ACTIVE on GitHub + self-hosted Woodpecker; INERT on Codeberg/Forgejo (which
 # reads `.github/workflows/**`, not `.woodpecker/`) — so it lands dormant while
 # Codeberg is origin, like the rest of the dual-mode migration tooling.
@@ -100,18 +100,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []            # no deps → starts immediately, parallel with peers
     when:
-      # INV-tisug: the PR arm is UNCONDITIONAL. The per-PR changed-file
-      # list evaluates EMPTY on this forge, so a `path:` condition on the
-      # gating event silently skips its step — and a pipeline of
-      # all-skipped steps reports SUCCESS in ~11 seconds, which is how
-      # every PR merged ungated since cutover (measured across every saved
-      # auto-pr log; the ~12-minute self-claims-gate "passing" in 10s on
-      # the INV-titih PR was the tell). Paths still scope PUSH runs, whose
-      # payload carries the file list. Every gating step below uses this
-      # same two-arm shape; a path condition alone is the defect.
-      - event: pull_request
-      - event: push
-        path: &code_paths
+      - path: &code_paths
           include:
             - "**/*.py"
             - "**/*.json"
@@ -154,9 +143,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *code_paths
+      - path: *code_paths
     commands:
       - pip install --upgrade pip
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
@@ -170,9 +157,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *code_paths
+      - path: *code_paths
     commands:
       - pip install --upgrade pip wheel setuptools
       - pip install pip-audit "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" "msgpack>=1.2.1" "click>=8.3.3"
@@ -197,9 +182,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: [prepare-git]
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *code_paths
+      - path: *code_paths
     commands:
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
@@ -220,9 +203,7 @@ steps:
     image: python:3.11-bookworm    # needs bash+git; python image has both
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: &non_tracker_paths
+      - path: &non_tracker_paths
           include:
             - "**"
           exclude:
@@ -245,9 +226,7 @@ steps:
     image: python:3.11-bookworm    # buildpack-deps base → bash + git baked in
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path:
+      - path:
           include:
             - "scripts/**"
             - "tests/**"
@@ -276,9 +255,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *non_tracker_paths       # tracker-sync pushes need no history (only tracker-validate runs)
+      - path: *non_tracker_paths       # tracker-sync PRs need no history (only tracker-validate runs)
     commands:
       # WI-fodad gate. `partial: false` in the clone block is the fix; this
       # asserts it actually TOOK. Worth a gate rather than trust because the
@@ -307,11 +284,8 @@ steps:
     image: python:3.11-bookworm
     depends_on: [prepare-git]
     when:
-      # INV-tisug: the path arm is DROPPED, not event-split — AND-ed with
-      # the empty PR file list it made this PR-only step run never. dco now
-      # checks every PR including tracker-sync ones, which is safe: do_sync
-      # signs its commits (sync.py), so those PRs simply pass.
       - event: pull_request
+        path: *non_tracker_paths       # tracker-sync commits carry Signed-off-by from do_sync (sync.py)
     commands:
       - BASE=$(git merge-base "origin/$CI_COMMIT_TARGET_BRANCH" HEAD)
       - |
@@ -335,9 +309,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path:
+      - path:
           include:
             - ".agent/tracker/**"
             - ".agent/tracker-workspace/**"
@@ -355,9 +327,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: []
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *code_paths
+      - path: *code_paths
     commands:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
@@ -384,14 +354,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: [build-grammars]
     when:
-      # INV-tisug: `path:` cannot scope PR runs (empty changed-file list),
-      # so the PR arm runs unconditionally and the CLAIM-SURFACE scoping
-      # moves IN-STEP (the first command below: diff vs the target-branch
-      # merge-base, early-exit 0 when the surface is untouched). The push
-      # arm keeps the declarative path filter, whose payload works.
-      - event: pull_request
-      - event: push
-        path:
+      - path:
           include:
             - "docs/hypergumbo.claims.yaml"
             - "docs/hypergumbo.claims.expected.json"
@@ -405,18 +368,6 @@ steps:
             - "scripts/check-self-claims"
             - "scripts/check-self-claims-drift"
     commands:
-      # In-step claim-surface guard for the PR arm (see the `when` comment).
-      # Mirrors dco's merge-base pattern; keep this regex in sync with the
-      # push arm's include list above.
-      - |
-        if [ "$CI_PIPELINE_EVENT" = "pull_request" ]; then
-          base=$(git merge-base "origin/$CI_COMMIT_TARGET_BRANCH" HEAD)
-          surface='^docs/hypergumbo\.claims\.yaml$|^docs/hypergumbo\.claims\.expected\.json$|^docs/hypergumbo-self-catalog/|^docs/io-primitives-overlays/|/io_primitives/|/taint_sources/|/taint_sinks/|/taint_sanitizers/|(^|/)pyproject\.toml$|^scripts/check-self-claims'
-          if ! git diff --name-only "$base" HEAD | grep -qE "$surface"; then
-            echo "self-claims-gate: claim surface untouched by this PR — skipping the self-analysis."
-            exit 0
-          fi
-        fi
       - pip install --upgrade pip && pip install jsonschema
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
@@ -431,9 +382,7 @@ steps:
     image: python:3.11-bookworm
     depends_on: [build-grammars, prepare-git]
     when:
-      - event: pull_request   # INV-tisug: see the lint step
-      - event: push
-        path: *code_paths
+      - path: *code_paths
     environment:
       SMART_TEST_ACTIVE: "1"
     commands:
