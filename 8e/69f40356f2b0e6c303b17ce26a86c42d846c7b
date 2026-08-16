@@ -1,0 +1,52 @@
+Original commit body from db2e115cf410e28c3e4b4e44339b4a8d70aba1a2:
+
+The self-diagnosing assertion (shipped one PR earlier) turned the third
+owner-fired cron into the mechanism reading: toml analyzer RAN (1 file,
+3 nodes), the mycli file node reached the map WITH entry_point and
+entry_role but WITHOUT a `concepts` key, and the entrypoints list was
+entirely empty — concept enrichment attached NOTHING in that process.
+Local ground truth on the identical fixture: concepts present,
+cli_command + main_function entrypoints derived.
+
+MECHANISM. _PATTERN_CACHE was keyed on framework_id alone while
+get_frameworks_dir() — half the function's input — is patchable. Six
+tests in test_framework_patterns.py patch the dir; under the patch the
+convention ids (main-functions, config-conventions, ...) cache as None.
+The file's own autouse fixture — whose docstring NAMES this exact leak —
+cleared the cache before each test in THAT file only, so the last
+dir-patching test in an xdist worker left the poison for every other
+file's tests on the worker. enrich_symbols then loaded None for every
+convention pattern: zero concepts, zero concept-derived entrypoints,
+`assert []`.
+
+Expression depends on WORKER COMPOSITION — which tests precede the
+victim — which is why the failure tracked pipeline shape and spent three
+cron experiments looking like an interpreter problem (killed: nightly's
+3.11 leg passes), then a container problem, then an install-set problem
+(killed: the parity cron ran with the meta-package demonstrably
+installed and failed identically), while every local reproduction —
+single test, whole core suite, cross-package interleave — passed under
+a different composition.
+
+FIX. The cache key becomes (str(get_frameworks_dir()), framework_id): a
+patched dir caches under its own key and cannot shadow the real
+patterns — poisoning is impossible by construction for the dir-patching
+shape. Regression tests pin both halves (patched-dir Nones must not
+shadow the real patterns; caching still works within the patched scope).
+The file-local fixture stays as hygiene, its docstring corrected to say
+what it actually protected.
+
+CLASS CHECK, executed per the structural protocol: one sibling found and
+fixed here — cfg.py's _MAPPING_CACHE keyed an explicit search_dir
+correctly but spelled the None-default as the literal 'default' while
+resolving through patchable get_cfg_nodes_dir(); re-keyed on the
+resolved dir (no test patches that getter today; now none ever can).
+Reviewed and left alone: discovery._looks_like_virtualenv (full input in
+the key), ir._known_languages_for_evidence (registry-stable, documented),
+analyzer_identity._CACHED_HASH (registry-derived).
+
+Behavioral validation: the next full-suite cron. INV-kazij moves to
+pending_validation; a green cron closes it and unblocks WI-zavut
+(dev green on every reporting gate).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
