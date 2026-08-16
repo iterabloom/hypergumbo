@@ -314,6 +314,50 @@ class TestOnlyGenuineLeavesCount:
         assert coverage.complete is False
         assert "requests" in coverage.reason
 
+    def test_a_src_layout_import_name_is_first_party_too(self) -> None:
+        """INV-liloh. ``analyzed`` derives from SRC PATHS
+        (``packages.hypergumbo-core.src.hypergumbo_core.cli``) while an
+        unresolved callee slot carries the IMPORT name
+        (``hypergumbo_core.scip._generated``) — and exact prefix membership
+        can never match across a packaging prefix, so every src-layout repo's
+        own modules read as catalogue gaps. Measured on hypergumbo's own
+        self-survey: three first-party names in the uncatalogued set of a
+        gate whose ``_is_analyzed_module`` exists to empty that population.
+        The extractor's own docstring promises the suffix relation
+        ("suffix-matches hypergumbo_core.cli"); the membership test never
+        implemented it."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:packages/hypergumbo-core/src/hypergumbo_core/scip/loader.py:3-9:load:function"),
+                # The IMPORT-named callee, with a trailing submodule.
+                _call("python:hypergumbo_core.scip._generated:0-0:parse:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, coverage.reason
+
+    def test_the_suffix_relation_is_component_bounded(self) -> None:
+        """``core.scip`` must NOT be vouched for by
+        ``packages.hypergumbo-core.src.hypergumbo_core.scip`` matching on a
+        bare string suffix — ``hypergumbo_core`` ends with ``core`` and shares
+        no component. A prefix/suffix rule over names was measured wrong in
+        three languages at once; this pins the component boundary."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:packages/hypergumbo-core/src/hypergumbo_core/scip/loader.py:3-9:load:function"),
+                _call("python:core.scip:0-0:parse:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False, (
+            "core.scip shares a string suffix and no path component with the "
+            "analyzed tree; vouching for it is the ungated-suffix defect"
+        )
+
     def test_an_unresolved_FIRST_PARTY_call_is_not_a_catalogue_gap(self) -> None:
         """The callee's source was analyzed, so whatever I/O it performs was
         examined on its own edges — it is not a leaf the analysis cannot see

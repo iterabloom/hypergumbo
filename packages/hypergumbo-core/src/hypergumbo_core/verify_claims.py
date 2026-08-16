@@ -1281,9 +1281,34 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
 
     Tests every dotted prefix because the module slot may carry a trailing class
     name — ``app.config.Loader`` for a callee defined in ``app/config.py``.
+
+    EACH PREFIX IS MATCHED AS A COMPONENT-BOUNDED SUFFIX of an analyzed path,
+    not by set membership (INV-liloh). ``analyzed`` derives from SRC file paths
+    — ``packages.hypergumbo-core.src.hypergumbo_core.cli`` — while an
+    unresolved callee slot carries the IMPORT name — ``hypergumbo_core.scip``
+    — and exact membership can never bridge the packaging prefix, so every
+    src-layout repo's own modules read as catalogue gaps in a gate whose
+    whole purpose is to exclude them. The suffix relation was always the
+    stated contract (:func:`_module_from_symbol_path`'s docstring:
+    "suffix-matches hypergumbo_core.cli"); the membership test never
+    implemented it.
+
+    The relation is a component-bounded INFIX, not a suffix: an analyzed
+    entry keeps its file stem (``….hypergumbo_core.scip.loader``), so the
+    callee package ``hypergumbo_core.scip`` appears INSIDE it, dot-bounded on
+    both sides. Bounding at components is load-bearing — ``hypergumbo_core``
+    ends with ``core`` while sharing no component, and a bare string
+    containment is the rule that was measured wrong in three languages at
+    once.
     """
     parts = module.split(".")
-    return any(".".join(parts[:i]) in analyzed for i in range(len(parts), 0, -1))
+    for i in range(len(parts), 0, -1):
+        prefix = ".".join(parts[:i])
+        needle = "." + prefix + "."
+        for a in analyzed:
+            if a == prefix or needle in "." + a + ".":
+                return True
+    return False
 
 
 def _edge_dst_ref(edge: dict[str, Any]) -> Any:
