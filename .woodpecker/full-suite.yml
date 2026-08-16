@@ -79,7 +79,19 @@ steps:
     commands:
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist jsonschema
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      # INV-kazij discriminating experiment: `-e packages/hypergumbo` (the
+      # meta-package — LIGHT: torch sits behind its [embeddings] extra; plain
+      # install adds only the console script + a distribution record) was the
+      # ONE install-set token nightly's test-matrix had and this step lacked.
+      # Nightly passes test_pyproject_console_script_* on 3.10–3.13; this
+      # step fails it on the same tree, and every locally reachable
+      # configuration (no-meta 3.12: single test, whole core suite,
+      # cross-package interleaved) passes. If the cron greens after this,
+      # the delta was the install set; if it stays red, the axis is the
+      # container/interpreter interaction and INV-libib's per-leg logs are
+      # the next prerequisite. Independent of the experiment, the two
+      # whole-suite pipelines should not silently differ in install set.
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]" -e packages/hypergumbo
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         if [ -f /sys/fs/cgroup/cpu.max ]; then
