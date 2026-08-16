@@ -1,0 +1,22 @@
+- op: create  # 2d2e
+  at: '2026-08-16T07:15:13Z'  # 2d2e
+  by: agent  # 2d2e
+  actor: jgstern_agent  # 2d2e
+  clock: 1  # 2d2e
+  nonce: 2d2e  # 2d2e
+  data:  # 2d2e
+    kind: work_item  # 2d2e
+    title: "verify-claims CI gate ratchet: snapshot v2 (verdict + caveat kinds + credited bucket) + per-PR arm on the claim surface"  # 2d2e
+    status: in_progress  # 2d2e
+    priority: 1  # 2d2e
+    parent:  # 2d2e
+    tags:  # 2d2e
+    - verify_claims  # 2d2e
+    - security  # 2d2e
+    - ci  # 2d2e
+    isbefore: []  # 2d2e
+    duplicate_of: []  # 2d2e
+    not_duplicate_of: []  # 2d2e
+    pr_ref:  # 2d2e
+    description: "Step 3 of the permanent-exit plan on INV-dabuf (scope -> climb -> CI ratchet\n-> label), picking up the (b) resolution WI-vanun deliberately parked \"until\nthe instrument is calibrated\" — which INV-zuhig's fix (PR #367) completed:\nthe self-proof now returns rc 3 with 98 sanitizer-credited flows minted from\nproduction structure.\n\nWHAT SHIPPED. (1) Snapshot v2: docs/hypergumbo.claims.expected.json records\nper claim the verdict + sorted caveat KINDS + credited-flows bucket\n(zero/nonzero). The bucket is deliberate: exact counts move with every\nanalyzer improvement, but nonzero -> zero is the vacuousness signal — the\nverdict-stays-green-while-evidence-dies shape (2,658 -> 0) that INV-zuhig\ndocumented can no longer pass the gate. (2) Comparison logic extracted from\nthe check-self-claims heredoc to scripts/check-self-claims-drift, pinned by\ntests/test_check_self_claims_drift.py (13 tests incl. the INV-zuhig shape as\na named case). (3) Per-PR arm: ci.yml `self-claims-gate` job, path-filtered\non the claim surface (claims yaml + snapshot, self-catalog, overlays,\nio_primitives + taint catalogues, pyproject deps, the gate scripts); the\ninstall mirrors full-suite's exactly so both arms analyze the same language\nset. Analyzer .py changes stay on the twice-daily full-suite cadence — a\n~10-minute self-analysis on every core PR was judged too heavy, recorded\nhere as a scoping decision, not a capability limit. (4) The stale snapshot\n(18x inconclusive, pre-climb) was re-recorded from the merged post-#367\ntree; without that, the next cron full-suite would have failed the drift\ngate on an improvement. (5) generate-security-md reads v2 and its hardcoded\nprose is verdict-aware now — the \"both are inconclusive\" and \"pathlib.Path\nis invisible to the I/O catalogue\" paragraphs had gone stale-false."  # 2d2e
+    fields: {}  # 2d2e

@@ -21,3 +21,19 @@
     fields:  # ba1a
       statement: "A call on an attribute the catalogue already declares must classify against that declaration. VIOLATED: os.environ, sys.stdout, sys.stderr and sys.stdin are catalogued as attributes of their parent (module: os, attributes: [environ]), but os.environ.get(...) emits with module slot 'os.environ' and name 'get', so classify_call finds no row, the call counts as unexamined, and the ATTRIBUTE MODULES land in the uncatalogued set (~52 calls on the self-survey) despite being the most-catalogued names in the file."  # ba1a
       root_cause: "One surface, two spellings, matched in only one. The catalogue speaks of attributes as (parent_module, attribute_name); the analyzer speaks of calls on those attributes as (attribute_path_as_module, method_name). classify_call joins on (module, name) exactly, so the two vocabularies never meet. Duplicating rows keyed on the attribute path would be a second home for one fact; the join itself needs to learn that a module slot which IS a declared attribute of its parent resolves to the parent's row."  # ba1a
+- op: update  # 81af
+  at: '2026-08-16T04:59:41Z'  # 81af
+  by: agent  # 81af
+  actor: jgstern_agent  # 81af
+  clock: 2  # 81af
+  nonce: 81af  # 81af
+  set:  # 81af
+    status: satisfied  # 81af
+    pr_ref: '366'  # 81af
+- op: discuss  # 6544
+  at: '2026-08-16T04:59:42Z'  # 6544
+  by: agent  # 6544
+  actor: jgstern_agent  # 6544
+  clock: 3  # 6544
+  nonce: '6544'  # 6544
+  message: "SATISFIED at dev 4e8c47e47d (PRs #365+#366). Resolved BY ROWS, revising this item's own filed root-cause: the attribute row speaks about REFERENCE edges, the new os.environ.*/sys.stdout.*/sys.stderr.*/sys.stdin.* rows about CALL edges - two edge shapes, two facts, so rows are not a second home and no join change is needed. One correction the gate itself forced: the rows are kind functions:, not methods:, because the analyzer emits these attribute-chain calls with call_construct=None and a methods: kind trips the method-starvation check (measured: 18/18 inconclusive on exactly that, the tokenizers lesson repeated). Behavioral evidence on the merged tree: os.environ.get -> env_read, sys.stdout.write -> logging, sys.stdin.read -> ipc_recv (test_io_primitives_python_climb::TestTheSlotFamily), and the four attribute modules are gone from unknown."  # 6544

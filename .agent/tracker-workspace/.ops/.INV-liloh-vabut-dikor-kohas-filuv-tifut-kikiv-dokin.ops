@@ -20,3 +20,19 @@
     fields:  # 905f
       statement: "A module whose source this analysis read is not a catalogue gap: _is_analyzed_module exists to exclude it, because whatever I/O it performs was examined on its own edges. VIOLATED: hypergumbo_core, hypergumbo_core.scip._generated and hypergumbo_lang_mainstream.py.EXTERNAL_CONSTRUCTOR_TYPES appear in the uncatalogued-module set on hypergumbo's own self-survey, all three first-party."  # 905f
       root_cause: "Unmeasured. _is_analyzed_module compares a call-site module against the set of modules the analysis produced symbols for; the three names that leak are all DOTTED forms that name a first-party module plus a submodule or an attribute (…scip._generated, …py.EXTERNAL_CONSTRUCTOR_TYPES), so the likely cause is the same exact-vs-component matching question that INV-fokik and the os.environ slot mismatch both turn on - but that is a hypothesis, not a measurement."  # 905f
+- op: update  # 1bc0
+  at: '2026-08-16T04:59:41Z'  # 1bc0
+  by: agent  # 1bc0
+  actor: jgstern_agent  # 1bc0
+  clock: 2  # 1bc0
+  nonce: 1bc0  # 1bc0
+  set:  # 1bc0
+    status: satisfied  # 1bc0
+    pr_ref: '366'  # 1bc0
+- op: discuss  # 02b3
+  at: '2026-08-16T04:59:41Z'  # 02b3
+  by: agent  # 02b3
+  actor: jgstern_agent  # 02b3
+  clock: 3  # 02b3
+  nonce: 02b3  # 02b3
+  message: "SATISFIED at dev 4e8c47e47d (PR #366). The filed repro: hypergumbo_core.scip._generated (and both siblings) no longer appear in the uncatalogued set - unknown is EMPTY on the artifact-scoped self-survey. Fix is the component-bounded INFIX relation in _is_analyzed_module (analyzed src PATHS vs callee IMPORT names across a packaging prefix), NOT a prefix rule - the component-boundary control (core.scip must NOT match hypergumbo-core) is pinned by test_the_suffix_relation_is_component_bounded. Vendored-code reading is coherent: vendored source WAS analyzed, so infix-matching it as first-party is correct."  # 02b3
