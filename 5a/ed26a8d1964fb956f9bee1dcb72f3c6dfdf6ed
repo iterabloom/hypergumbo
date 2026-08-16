@@ -1,0 +1,36 @@
+Original commit body from 07c449e890a3943901e032ba478ba36525a7b86f:
+
+The premise behind the last two woodpecker.yml commits was FALSE, and
+the falsifier is the direct observation the item asked for: the owner's
+Woodpecker transcript of the INV-titih PR pipeline (#1136) shows every
+step executing — lint, whole-tree strict mypy, audit, dco (its original
+`event`+`path` AND form working, CI_COMMIT_TARGET_BRANCH resolved),
+verify-generated, build-grammars, the v2 self-claims-gate's first live
+run PASSING ("18 claims unchanged"), and pytest (9,240 tests, changed
+files at 100%). Path conditions evaluate correctly on PR events.
+
+Where the false premise came from: auto-pr's poll telemetry prints a
+"[Ns]" line only on STATE TRANSITIONS and a dot per 10-second tick in
+between. I read "[10s] waiting … ✅ CI Passed" as an 11-second pass, on
+every log I checked. Counting the dots those logs actually contain:
+zuhig ~4 min, titih ~11 min (matching #1136's contents), others
+~1.5 min. Both "failed predictions" that escalated the theory (the fix
+PR and the probe PR still "fast") were the same artifact, re-read twice.
+
+This commit reverts the two changes shipped under the false premise:
+- the twelve-step event-split (restored to the original path-scoped
+  `when` forms, which were correct);
+- the "config is evaluated from the target branch" header note
+  (unverified, and now unnecessary as an explanation).
+
+It keeps, corrected: the retirement of the genuinely stale "VERIFY the
+exact context at cutover" header note, replaced by a note that teaches
+the next reader how to read the poll telemetry (count the dots), and a
+CHANGELOG retraction entry replacing the false one. INV-tisug is
+resolved 'satisfied' — the invariant it states holds and always held —
+with the full retraction recorded on the item.
+
+Net positive by-product of the episode: the self-claims-gate's per-PR
+arm is now LIVE-VERIFIED (noted on WI-ninoz).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
