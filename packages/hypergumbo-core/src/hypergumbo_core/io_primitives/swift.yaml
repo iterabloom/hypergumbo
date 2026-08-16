@@ -10,9 +10,11 @@
 # distinctive enough to avoid false positives without module disambiguation.
 # Overly generic names (write, read, run, data) go in ambiguous_names.
 language: swift
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Foundation/Combine/Network stdlib and adding
-# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 fs_read:

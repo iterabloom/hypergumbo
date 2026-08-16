@@ -25,7 +25,7 @@ language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib
 # is enumerated end-to-end from the official documentation index plus
-# ``sys.stdlib_module_names``. Promotion to ``status: complete``
+# ``sys.stdlib_module_names``. Promotion to ``status: provenance_declared``
 # requires ``stdlib_provenance`` to point at an allowlisted
 # documentation host (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in
 # io_boundary.py).
@@ -36,7 +36,7 @@ language: python
 # X.Y`` regenerates it deterministically; the closed-world
 # ``completeness:`` flags inside ``stdlib_modules`` are hand-curated
 # and not touched by the script.
-status: complete
+status: provenance_declared
 stdlib_provenance:
   source_url: https://docs.python.org/3.12/library/index.html
   version: "3.12"
@@ -310,7 +310,8 @@ fs_write:
 # free). Do NOT add ``django.db.models`` to ``stdlib_modules`` /
 # ``stdlib_module_completeness`` — it is third-party (would mis-suppress
 # external_potential and corrupt py_deps ecosystem classification), and the
-# ``status: complete`` stdlib claim above stays about stdlib only.
+# stdlib-scoped ``status: provenance_declared`` citation above stays
+# about stdlib only.
 db_read:
   - module: sqlite3
     functions: [connect]

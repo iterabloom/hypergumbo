@@ -456,7 +456,7 @@ def test_cmd_io_boundaries_renders_external_potential_section(
 ) -> None:
     """Plan C, PR C: edges into a tier-3 boundary node not in the catalog
     surface as ``external_potential`` chains, both in JSON output and in
-    the text-mode boundary section.  The Python catalog (status=complete)
+    the text-mode boundary section.  The Python catalog (status=provenance_declared)
     means the annotation is the standard ``[tier-3 external_dep]``;
     chains for in_progress catalogs additionally render the
     ``[unreliable]`` marker so the user sees that absence-of-catalog-hit
@@ -495,7 +495,7 @@ def test_cmd_io_boundaries_renders_external_potential_section(
     )
     # JSON mode: external_potential bucket present, chain carries the
     # tier fields and dst_classification_unreliable=False (Python is
-    # status=complete).
+    # status=provenance_declared).
     args = _make_args(tmp_path, bmap, json_output=True)
     rc = cmd_io_boundaries(args)
     assert rc == 0

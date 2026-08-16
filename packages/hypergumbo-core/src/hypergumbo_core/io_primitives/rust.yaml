@@ -13,7 +13,7 @@ language: rust
 # raw-fd extensions, std::ffi (FFI types are meta-IO, not IO), and
 # std::sync/std::thread (concurrency primitives) are intentionally absent —
 # they are out of scope for the strict-stdlib IO catalog.
-status: complete
+status: provenance_declared
 stdlib_provenance:
   source_url: https://doc.rust-lang.org/std/
   version: "1.78"

@@ -47,7 +47,7 @@ def _dual_catalog() -> IoBoundaryCatalog:
     """
     return IoBoundaryCatalog(
         language="python",
-        status="complete",
+        status="provenance_declared",
         primitives=[
             IoPrimitive("fs_read", "builtins", "open", "function"),
             IoPrimitive("fs_write", "builtins", "open", "function"),

@@ -15,7 +15,7 @@ language: erlang
 # (environment), code (loading .beam files), io/io_lib/logger/error_logger
 # (output). digraph_utils / digraph / crypto / random / rand are
 # intentionally absent — not IO. dist_util is internal-only.
-status: complete
+status: provenance_declared
 stdlib_provenance:
   source_url: https://erlang.org/doc/apps/stdlib/index.html
   version: "26"

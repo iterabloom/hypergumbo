@@ -1033,8 +1033,9 @@ net_send:
 class TestCatalogStatus:
     """Plan C, PR B: catalog ``status`` + ``stdlib_provenance`` validation.
 
-    Catalogs declare ``status: complete | in_progress`` plus an optional
-    ``stdlib_provenance`` block.  ``status: complete`` (explicit OR
+    Catalogs declare ``status: provenance_declared | in_progress`` plus an
+    optional ``stdlib_provenance`` block.  ``status: provenance_declared``
+    (explicit OR
     defaulted when both ``status`` and ``stdlib_provenance`` are absent)
     REQUIRES a ``stdlib_provenance`` block whose ``source_url`` is an
     HTTPS URL whose hostname suffix-matches
@@ -1042,8 +1043,8 @@ class TestCatalogStatus:
     ``status: in_progress`` may omit provenance.
     """
 
-    def test_default_status_is_complete_when_absent(self) -> None:
-        # status defaulted; complete provenance provided ⇒ status="complete".
+    def test_default_status_is_provenance_declared_when_absent(self) -> None:
+        # status defaulted; valid provenance provided ⇒ the default applies.
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
         data = {
@@ -1055,7 +1056,7 @@ class TestCatalogStatus:
             },
         }
         catalog = IoBoundaryCatalog._from_dict(data)
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
 
     def test_in_progress_status_does_not_require_provenance(self) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
@@ -1065,21 +1066,21 @@ class TestCatalogStatus:
         assert catalog.status == "in_progress"
         assert catalog.stdlib_provenance is None
 
-    def test_complete_status_requires_provenance_source_url(self) -> None:
+    def test_provenance_declared_status_requires_provenance_source_url(self) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
-        data = {"language": "fakelang", "status": "complete"}
+        data = {"language": "fakelang", "status": "provenance_declared"}
         with pytest.raises(ValueError, match="stdlib_provenance"):
             IoBoundaryCatalog._from_dict(data)
 
-    def test_complete_status_requires_provenance_when_block_present_but_no_url(
+    def test_provenance_declared_requires_provenance_when_block_has_no_url(
         self,
     ) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {"version": "3.13"},  # no source_url
         }
         with pytest.raises(ValueError, match="source_url"):
@@ -1090,7 +1091,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "http://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -1105,7 +1106,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://evil.example.com/python/",
                 "version": "3.13",
@@ -1120,7 +1121,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -1141,7 +1142,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://python.org/",
                 "version": "3.13",
@@ -1169,29 +1170,29 @@ class TestCatalogStatus:
         with pytest.raises(ValueError, match="stdlib_provenance"):
             IoBoundaryCatalog._from_dict(data)
 
-    def test_python_catalog_is_complete_with_provenance(self) -> None:
-        # The shipped Python catalog must declare status=complete with a
+    def test_python_catalog_is_provenance_declared(self) -> None:
+        # The shipped Python catalog must declare provenance_declared with a
         # valid stdlib_provenance block. This is the worked example.
         catalog = load_catalog("python")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith("https://")
 
-    def test_rust_catalog_is_complete_with_provenance(self) -> None:
+    def test_rust_catalog_is_provenance_declared(self) -> None:
         # WI-tukif batch 1: Rust catalog audited against doc.rust-lang.org/std/
         # 2026-05-24 (Rust 1.78 stable).
         catalog = load_catalog("rust")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith(
             "https://doc.rust-lang.org",
         )
 
-    def test_erlang_catalog_is_complete_with_provenance(self) -> None:
+    def test_erlang_catalog_is_provenance_declared(self) -> None:
         # WI-tukif batch 1: Erlang catalog audited against erlang.org/doc/
         # 2026-05-24 (OTP 26).
         catalog = load_catalog("erlang")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith(
             "https://erlang.org",
@@ -3342,7 +3343,7 @@ class TestExternalPotentialBucket:
     ``fs_read`` / etc., without the catalog having to enumerate every
     popular wrapper.
 
-    The bucket is gated on ``status: complete`` for the source
+    The bucket is gated on ``status: provenance_declared`` for the source
     language's catalog: in_progress catalogs flag chains as
     ``dst_classification_unreliable=True`` so users see them but know
     the absence-of-catalog-hit isn't authoritative.
@@ -3608,7 +3609,7 @@ class TestExternalPotentialBucket:
         # external_potential — it's stdlib non-IO, not a catalog gap.
         catalog = IoBoundaryCatalog._from_dict({
             "language": "python",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -5303,15 +5304,16 @@ class TestInProgressLanguages:
 
     def test_selects_only_in_progress_catalogs(self) -> None:
         from hypergumbo_core.io_boundary import in_progress_languages
-        # python / rust / erlang ship status: complete; go / java ship in_progress.
+        # python / rust / erlang ship status: provenance_declared; go / java
+        # ship in_progress.
         result = in_progress_languages(
             ["python", "go", "rust", "java", "erlang"]
         )
         assert result == ["go", "java"]
 
     def test_excludes_unsupported_language(self) -> None:
-        """A language with no catalog (is_supported=False, status defaults to
-        'complete') is NOT flagged in_progress — it carries the separate
+        """A language with no catalog (is_supported=False, status takes the
+        dataclass default) is NOT flagged in_progress — it carries the separate
         unsupported signal (INV-javam)."""
         from hypergumbo_core.io_boundary import in_progress_languages
         assert in_progress_languages(["klingon"]) == []

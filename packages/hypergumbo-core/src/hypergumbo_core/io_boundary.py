@@ -240,27 +240,45 @@ def _validate_catalog_dict(
 ) -> None:
     """Validate a catalog dict against the Plan C, PR B governance rules.
 
-    For ``status: complete``, ``stdlib_provenance`` MUST be present and
-    its ``source_url`` MUST be an HTTPS URL whose hostname suffix-matches
-    an entry in :data:`ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES`.  For
+    For ``status: provenance_declared``, ``stdlib_provenance`` MUST be
+    present and its ``source_url`` MUST be an HTTPS URL whose hostname
+    suffix-matches an entry in
+    :data:`ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES`.  For
     ``status: in_progress``, no provenance is required.
+
+    The value names exactly what is checked (INV-titih). Its predecessor,
+    ``status: complete``, was validated as the same four conditions — the
+    literal string, a present URL, https, an allowlisted host — while the
+    WORD asserted coverage: python.yaml said ``complete`` from May 2026
+    while holding no row for ``os.open`` / ``os.write``. Coverage has a
+    real home now (``module_completeness``, dated per-module audits), so
+    the old spelling is REFUSED rather than silently accepted, and this
+    validator never acquires a row-counting duty the value does not name.
 
     Raises ``ValueError`` on any violation.  Called from
     :meth:`IoBoundaryCatalog._from_dict` so violations surface at load
     time, not at edge-matching time.
     """
-    if status not in ("complete", "in_progress"):
+    if status == "complete":
+        raise ValueError(
+            f"Catalog for {language!r} declares status='complete', which "
+            f"asserted a coverage claim nothing ever checked (INV-titih). "
+            f"Use 'provenance_declared' — validated as exactly a citation "
+            f"check (https URL on an allowlisted documentation host). "
+            f"Per-module coverage is claimed via module_completeness.",
+        )
+    if status not in ("provenance_declared", "in_progress"):
         raise ValueError(
             f"Catalog for {language!r} has invalid status {status!r}; "
-            f"expected 'complete' or 'in_progress'.",
+            f"expected 'provenance_declared' or 'in_progress'.",
         )
-    if status != "complete":
+    if status != "provenance_declared":
         return
     if not provenance or not provenance.get("source_url"):
         raise ValueError(
-            f"Catalog for {language!r} has status='complete' but no "
-            f"stdlib_provenance.source_url. Either declare a provenance "
-            f"URL or set status to 'in_progress'.",
+            f"Catalog for {language!r} has status='provenance_declared' "
+            f"but no stdlib_provenance.source_url. Either declare a "
+            f"provenance URL or set status to 'in_progress'.",
         )
     url = provenance["source_url"]
     parsed = urllib.parse.urlparse(url)
@@ -546,18 +564,30 @@ class IoBoundaryCatalog:
     # the class of bug the invariant guards against: output identical
     # to a clean codebase, plus false security confidence in taint-flow.
     is_supported: bool = True
-    # Plan C, PR B: catalog completeness status. ``"complete"`` means
-    # the catalog enumerates the entire stdlib of the language and has
-    # declared ``stdlib_provenance`` (validated at load time).
-    # ``"in_progress"`` means the catalog is partial; downstream code
-    # (PR C) flags ``external_potential`` reports as unreliable for
-    # in-progress languages so absence-of-catalog-hit isn't conflated
-    # with "definitely third-party".
-    status: str = "complete"
+    # Plan C, PR B / INV-titih: catalog status, named for what is CHECKED.
+    # ``"provenance_declared"`` means the catalog cites its stdlib source
+    # (``stdlib_provenance.source_url``: https, allowlisted documentation
+    # host — validated at load time) — a citation check, NOT a coverage
+    # claim. Coverage is claimed per-module via ``module_completeness``
+    # (dated audits, per-slot and exact). The predecessor value
+    # ``"complete"`` read as coverage while checking only the citation
+    # (python.yaml said it for months while missing os.open/os.write) and
+    # is refused at load. ``"in_progress"`` means the catalog is partial;
+    # downstream code (PR C) flags ``external_potential`` reports as
+    # unreliable for in-progress languages so absence-of-catalog-hit
+    # isn't conflated with "definitely third-party".
+    #
+    # KNOWN DEFECT, deliberate: this default means an uncatalogued
+    # language reads as provenance_declared (was: complete) via
+    # ``load_catalog``'s missing-file path. Pinned by
+    # test_missing_catalog_default_pinned_as_is; changing it flips
+    # ``dst_classification_unreliable`` for catalogue-less languages and
+    # needs its own measured change (tracked separately).
+    status: str = "provenance_declared"
     # Plan C, PR B: provenance of the stdlib symbol list. ``None`` for
     # ``status: in_progress``; required (and validated) for
-    # ``status: complete``. Shape: ``{source_url, version, retrieved,
-    # notes?}``.
+    # ``status: provenance_declared``. Shape: ``{source_url, version,
+    # retrieved, notes?}``.
     stdlib_provenance: Optional[dict[str, Any]] = None
     # Plan C, PR B: stdlib qualified names that are NOT I/O primitives
     # (e.g., ``math.sqrt``). Used by the PR C ``external_potential``
@@ -1045,11 +1075,11 @@ class IoBoundaryCatalog:
 
         Plan C, PR B: validates ``status`` + ``stdlib_provenance`` and
         parses the new ``stdlib_other`` section. Hard-errors at load
-        time on missing/invalid provenance for ``status: complete``
-        catalogs (see :func:`_validate_catalog_dict`).
+        time on missing/invalid provenance for ``status:
+        provenance_declared`` catalogs (see :func:`_validate_catalog_dict`).
         """
         language = data.get("language", "unknown")
-        status = data.get("status", "complete")
+        status = data.get("status", "provenance_declared")
         provenance = data.get("stdlib_provenance")
         if provenance is not None and not isinstance(provenance, dict):
             raise ValueError(
@@ -1353,8 +1383,8 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay {path} must declare "
             f"status: {_OVERLAY_STATUS!r}, got {status!r}. "
-            f"'complete' asserts a provenance-backed stdlib enumeration and is "
-            f"not available to a project-local overlay.",
+            f"'provenance_declared' is a claim about a language's stdlib "
+            f"citation and is not available to a project-local overlay.",
         )
     # THE SPELLING IS REFUSED; THE DECLARATION IS NOT (owner, 2026-08-15).
     # An overlay describes THIRD-PARTY modules, so a key named ``stdlib_*`` in
@@ -1497,7 +1527,7 @@ def in_progress_languages(languages: Iterable[str]) -> list[str]:
     catalog's zero-match outcome is otherwise indistinguishable from a genuine
     "no I/O in this code". Unsupported languages (no catalog file, even via
     alias) are excluded — :func:`load_catalog` returns a fallback object whose
-    ``status`` defaults to ``"complete"`` (they carry the separate
+    ``status`` defaults to ``"provenance_declared"`` (they carry the separate
     ``is_supported=False`` signal, INV-javam), so the ``status == "in_progress"``
     test cleanly drops them. Aliases and parents resolve through
     :func:`load_catalog` (e.g. ``typescript`` reports the ``javascript``
