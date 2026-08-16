@@ -1,0 +1,24 @@
+Original commit body from 5ef2c189d1f1beaa91bd4c50db26a38c12fda74a:
+
+The full-suite test step lacked exactly one install token nightly's
+test-matrix has: `-e packages/hypergumbo` (light — torch is behind the
+[embeddings] extra; plain install adds the console script and a
+distribution record). Nightly passes
+test_pyproject_console_script_survives_and_is_detected_wi_papag on all
+of 3.10-3.13; full-suite fails it on the SAME tree (owner-fired manual
+cron at 5aed26a8d1: 1 failed, 23,003 passed); and every locally
+reachable configuration passes (no-meta venv on 3.12: single test,
+whole core suite, cross-package interleaved suite — all green). The
+install set is the last observable delta between the green and red
+pipelines.
+
+This is an experiment with a no-lose shape: if the next cron greens,
+INV-kazij's axis is the install set (and the mechanism hunt narrows to
+what a meta distribution's presence changes — analyzer_identity walks
+importlib.metadata.distributions()); if it stays red, the axis is the
+container/interpreter interaction and INV-libib's per-leg log fix
+becomes the prerequisite. Either way the two whole-suite pipelines stop
+differing silently in what they install — that drift is worth removing
+on its own.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
