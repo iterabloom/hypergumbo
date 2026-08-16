@@ -328,6 +328,47 @@ steps:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
 
+  # ── self-claim drift gate, per-PR arm (WI-ninoz / INV-zuhig) ───────────────
+  # Runs `hypergumbo verify-claims` on this tree and fails on any drift from
+  # docs/hypergumbo.claims.expected.json — which pins, per claim, the verdict
+  # PLUS the caveat kinds PLUS whether sanitizer-credited flows are zero or
+  # nonzero (a verdict staying green while its credited evidence collapses is
+  # the INV-zuhig vacuousness shape this gate exists to catch).
+  #
+  # Path-scoped to the claim surface: catalogue/claims/dependency changes can
+  # move a verdict, so they pay the ~10-minute self-analysis per-PR; analyzer
+  # .py changes stay on the cron full-suite cadence (a deliberate scoping
+  # decision — gating every core PR on a self-analysis was judged too heavy).
+  #
+  # THIS pipeline is the one that gates merges (auto-pr polls only
+  # ci/woodpecker/pr/woodpecker — see the mypy step's history for what
+  # happens to gates that live anywhere else). The .github/workflows/ci.yml
+  # twin of this job is the dormant GHA port, not the enforcement point.
+  # Same install + grammar build as full-suite's gate arm so both arms
+  # analyze the same language set and cannot disagree on identical trees.
+  - name: self-claims-gate
+    image: python:3.11-bookworm
+    depends_on: [build-grammars]
+    when:
+      - path:
+          include:
+            - "docs/hypergumbo.claims.yaml"
+            - "docs/hypergumbo.claims.expected.json"
+            - "docs/hypergumbo-self-catalog/**"
+            - "docs/io-primitives-overlays/**"
+            - "**/io_primitives/**"
+            - "**/taint_sources/**"
+            - "**/taint_sinks/**"
+            - "**/taint_sanitizers/**"
+            - "**/pyproject.toml"
+            - "scripts/check-self-claims"
+            - "scripts/check-self-claims-drift"
+    commands:
+      - pip install --upgrade pip && pip install jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - PYTHON=python scripts/check-self-claims
+
   # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
   # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)
   # → conftest.py's smart-test re-exec doesn't fire → direct pytest is safe

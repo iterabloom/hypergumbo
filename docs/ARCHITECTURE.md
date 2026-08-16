@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **302** Python modules (134 analyzers, 59 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 30, Infrastructure 8; 72 core, 4 CLI, 33 tracker)
-- **39720** symbols (functions, classes, methods)
-- **140426** edges by type:
-  - calls: 73530
-  - contains: 36632
-  - imports: 12177
-  - instantiates: 10779
-  - references: 4684
-  - module_attr_ref: 1267
-  - other: 1357
+- **308** Python modules (134 analyzers, 60 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 31, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
+- **40432** symbols (functions, classes, methods)
+- **142612** edges by type:
+  - calls: 74541
+  - contains: 37284
+  - imports: 12394
+  - instantiates: 10878
+  - references: 4831
+  - module_attr_ref: 1287
+  - other: 1397
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 59 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 60 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 46 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 39720 Symbols + 140426 Edges + UsageContexts           │
+│  Output: 40432 Symbols + 142612 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -103,7 +103,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  59 linkers: P11 / B10 / F30 / I8 (HTTP, JNI, gRPC, React, ...) │
+│  60 linkers: P11 / B10 / F31 / I8 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,20 +271,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9520.0 | ir.py |
-| `Span` | class | 6386.7 | ir.py |
-| `write_text` | external_symbol | 6186.0 | <external> |
-| `LinkerContext` | class | 3280.5 | registry.py |
-| `Edge.create` | method | 2123.7 | ir.py |
+| `Symbol` | class | 9547.5 | ir.py |
+| `Span` | class | 6398.5 | ir.py |
+| `write_text` | external_symbol | 6207.0 | <external> |
+| `LinkerContext` | class | 3328.4 | registry.py |
+| `Edge.create` | method | 2130.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
+| `get` | external_symbol | 1905.0 | <external> |
 | `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `get` | external_symbol | 1877.0 | <external> |
-| `Path` | external_symbol | 1699.0 | <external> |
+| `Path` | external_symbol | 1725.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1361.0 | <external> |
+| `append` | external_symbol | 1375.0 | <external> |
 | `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
-| `Edge` | class | 1301.0 | ir.py |
-| `load_catalog` | function | 1248.2 | io_boundary.py |
+| `Edge` | class | 1309.1 | ir.py |
+| `load_catalog` | function | 1299.1 | io_boundary.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -474,9 +474,11 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-producer-axis-coherence` | Pre-commit lint: literal-string keyword arguments to ``Edge.create``, |
 | `check-schema-coverage` | Corpus-driven schema-coverage gate (WI-luzuh). |
 | `check-self-claims` | Run hypergumbo against its OWN security claims and fail if the result drifts |
+| `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
+| `coverage-select` | CLI for coverage-directed test selection (shadow phase). |
 | `coverage_only_deps.py` | Coverage-only test-dependency augmentation for ``scripts/smart-test`` (WI-zaziz). |
 | `dead-code-prospector-run.py` | Lightweight one-shot dead-code-maybe prospecting run. |
 | `deleak-ledger` | Delete-only de-leaker for the dogfood issue ledger (agent_notes). |
@@ -554,11 +556,13 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
+- **`hypergumbo_core.block_hash`**: AST-block hashing: the change unit for coverage-directed test selec...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
 - **`hypergumbo_core.catalog`**: Catalog of available analysis passes (registry-derived).
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
+- **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
 - **`hypergumbo_core.dataflow`**: YAML-driven dataflow classification for edges (ADR-0015).
 - **`hypergumbo_core.dataflow_scope`**: Published data-flow coverage scope for taint output — INV-karud cla...
 - **`hypergumbo_core.datamodels`**: Data model detection for code analysis.
@@ -605,6 +609,9 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.selection.filters`**: Path classification and symbol kind filtering for selection.
 - **`hypergumbo_core.selection.language_proportional`**: Language-proportional symbol selection utilities.
 - **`hypergumbo_core.selection.token_budget`**: Token estimation and budget management for LLM-aware output.
+- **`hypergumbo_core.selection_index`**: Incremental ``block -> tests`` index for coverage-directed test sel...
+- **`hypergumbo_core.selection_log`**: Durable evidence log for the coverage-selection shadow phase.
+- **`hypergumbo_core.selection_shadow`**: Shadow-mode comparison: what coverage WOULD have selected, versus w...
 - **`hypergumbo_core.sketch_embeddings`**: Embedding-based utilities for sketch generation.
 - **`hypergumbo_core.slice`**: Graph slicing for LLM context extraction.
 - **`hypergumbo_core.spec_validator`**: Spec-vs-data validator stage (ADR-0033, INV-sugat).
@@ -763,6 +770,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 - **`hypergumbo_core.linkers.airflow_framework_dispatch`**: Framework linker: Airflow class-based plugin framework dispatch (WI...
 - **`hypergumbo_core.linkers.annotation_convention`**: Protocol linker: annotation convention for developer-provided pub/s...
+- **`hypergumbo_core.linkers.argparse_dispatch`**: Framework linker: Python argparse subcommand dispatch.
 - **`hypergumbo_core.linkers.build_target`**: Infrastructure linker: build target for connecting manifest entries...
 - **`hypergumbo_core.linkers.caddy_module_dispatch`**: Framework linker: Caddy module-registry dispatch (RegisterModule → ...
 - **`hypergumbo_core.linkers.cgo`**: Bridge linker: Cgo for connecting Go C function calls to C/C++ impl...
@@ -868,8 +876,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 94ea5f22983c
-  commit_count: 6640
+  commit: ceaba981e3a3
+  commit_count: 6672
   hypergumbo: 7.0.0
   python: 3.12.3
 -->

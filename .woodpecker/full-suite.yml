@@ -114,6 +114,24 @@ steps:
       - python -m hypergumbo_core run . --out /tmp/self-tree.json
       - python scripts/check-self-tree-validation /tmp/self-tree.json .ci/self-tree-validation-baselines.json
 
+  # ── WI-vanun / WI-ninoz self-claim drift gate (cron arm) ───────────────────
+  # Ported from .github/workflows/full-suite.yml, where it had been running on
+  # NOTHING since cutover: the live cron is this Woodpecker file, the original
+  # port dropped the step, and the gate SECURITY.md names ("gated in CI by
+  # scripts/check-self-claims") silently stopped existing. Found while wiring
+  # the per-PR arm (woodpecker.yml `self-claims-gate`), which carries the
+  # path filter and the full rationale; this arm runs unconditionally on the
+  # cron so analyzer changes — which the per-PR filter deliberately skips —
+  # get their verdict drift caught within a cycle.
+  - name: self-claims-gate
+    image: python:3.11-bookworm
+    depends_on: [build-grammars]
+    commands:
+      - pip install --upgrade pip && pip install jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - PYTHON=python scripts/check-self-claims
+
   # ── top-level forge/governance + agent-infra suite (no package coverage) ───
   - name: test-agent-infra
     image: python:3.11-bookworm
