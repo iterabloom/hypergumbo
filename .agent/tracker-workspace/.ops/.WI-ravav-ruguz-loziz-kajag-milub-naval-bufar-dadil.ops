@@ -1,0 +1,22 @@
+- op: create  # f30a
+  at: '2026-08-16T07:17:03Z'  # f30a
+  by: agent  # f30a
+  actor: jgstern_agent  # f30a
+  clock: 1  # f30a
+  nonce: f30a  # f30a
+  data:  # f30a
+    kind: work_item  # f30a
+    title: "Go analyzer records composite-literal field value (RunE: handler) as a calls edge — no call occurs at that site"  # f30a
+    status: todo_hard  # f30a
+    priority: 3  # f30a
+    parent:  # f30a
+    tags:  # f30a
+    - go  # f30a
+    - analyzer  # f30a
+    - taint  # f30a
+    isbefore: []  # f30a
+    duplicate_of: []  # f30a
+    not_duplicate_of: []  # f30a
+    pr_ref:  # f30a
+    description: "Found while building INV-zuhig's Go-side control (PR #367): the Go analyzer\nrecords `RunE: runServe` inside an INSTANCE-form composite literal\n(`cmd := &cobra.Command{RunE: runServe}`) as a `calls` edge from the enclosing\nfunction — but no call happens at that line; it is a function-value\nassignment. The package-level form (`var rootCmd = &cobra.Command{...}`)\nemits no such edge, which is how the asymmetry surfaced. Consequences, both\ndirections: (a) recall blessing — this over-claim is why cobra handlers in\nthe instance form minted taint sources all along, masking the\ndispatch-edges-invisible-to-taint gap that INV-zuhig closed; (b) precision\ncost — a `calls` edge asserts an invocation that does not occur at that\nsite, which pollutes anything that trusts edge semantics (slice explanations\nname a call that is really a registration). With go_cobra + the taint change\nnow covering BOTH literal forms via dispatches_to, the analyzer edge could be\ndemoted to `references` without losing minting — but ONLY after verifying on\nthe go corpus that nothing else leans on it (dead-code BFS, slice quality).\nFile first, demote after measurement; do not assume the fix direction."  # f30a
+    fields: {}  # f30a
