@@ -1,0 +1,77 @@
+Original commit body from 794e49780d0fc154f458c5d619dfe6e7ef018c23:
+
+Owner ruling 2026-08-15: stdlib gets POSITIVE no-I/O declarations rather than
+"no rows means no I/O", and hypergumbo ships an overlay for its third-party
+deps that doubles as the user example.
+
+module_completeness had held exactly ONE entry (math) since May, so
+verify-claims refused every other module: a clean verdict was blocked by
+itertools as surely as by requests. Measured end to end on a live self-survey,
+this audit plus the overlay take unadjudicable modules 137 -> 102 and
+unadjudicable CALLS 3474 -> 1898. Reconciled: stdlib 74 -> 47 is exactly the 27
+declared here; non-stdlib 63 -> 55 is 5 completeness entries plus 3 cleared by
+rows.
+
+FIVE OF THE FIRST DRAFT'S 32 VERDICTS WERE WRONG, and reading the modules is
+not what caught them - introspecting each module's OWN-DEFINED public callables
+did:
+
+  typing      typing.reveal_type() writes to stderr
+  base64      base64.main (python -m base64) opens files and writes stdout
+  shlex       shlex(instream=None) defaults to reading sys.stdin
+  contextlib  chdir mutates filesystem state
+  pathlib     its headline export IS the filesystem class
+
+Refusing all five cost the single largest entry (pathlib, 243 calls) and is the
+right direction for a gate whose wrong answer is a false all-clear. The probe is
+published in the survey doc and marked ADVISORY, not a CI gate: it greps source
+text, so it has false positives and cannot see C-implemented modules.
+
+TWO THINGS IN THE BOUNDARY VOCABULARY DECIDED MOST REFUSALS and are easy to
+miss: `logging` covers sys.stdout/sys.stderr, so a module that PRINTS does I/O
+(argparse, warnings); `env_read` covers os.environ, so a module reading config
+from the environment does too (os.path.expanduser).
+
+ALSO FIXED, because the wiring could not land without it (INV-lufib): a
+claims-file overlay is fanned out over EVERY language in the repo while
+load_catalog refused any language mismatch, so a python overlay aborted any
+repo that also contained javascript. Reproduced on hypergumbo's own tree - its
+own overlay could not be wired into its own claims file, and the two examples
+already shipped (python + go) could never be declared together. The fix
+DISCRIMINATES: an overlay for another SHIPPED language is skipped (being asked
+is a question, not an error), while `language: pyton` still raises, because
+silently ignoring a typo leaves the author believing their rows applied. The
+language->catalogue resolution is extracted to _catalog_path_for so both
+callers share one rule instead of two copies of the alias table.
+
+A ROW THAT MADE VERDICTS WORSE, kept in the overlay as its teaching point:
+declaring tokenizers.Tokenizer.from_file under `methods:` when the call is
+written on the CLASS asserts method-shaped I/O the analysis never observes,
+tripping the method-starvation gate and turning all 18 claims inconclusive on a
+reason unrelated to them. Corrected to `functions:` after checking the emitted
+edge's construct.
+
+FILED IN docs/surveys/, NOT docs/audits/. The first attempt was
+docs/audits/0019-... and the format validator correctly rejected it:
+docs/audits/ records per-value verdicts under an axis-declaration ADR in the
+CANONICAL/FOLD/DEPRECATE trichotomy with a machine-checked YAML block naming
+one of the three declared axes. These values are stdlib MODULES and the
+verdicts are ENUMERATED/REFUSED - the carve-out docs/audits/README.md points to
+docs/surveys/ for.
+
+ONE TEST FIXTURE CHANGED FOR A REAL REASON, not to make red go green:
+test_external_potential_does_not_double_prepend_module_in_dst_name used
+re.MULTILINE. Declaring `re` enumerated means an unmatched re.* call is provably
+not I/O, so F3 Filter 2 correctly stops reporting it and the test lost its
+subject. It is about dst-name PREPENDING and silently depended on its module
+being unaudited; moved to `logging`, which writes streams and will not be
+enumerable.
+
+STATED PLAINLY: THE SELF-PROOF STILL RETURNS 18/18 INCONCLUSIVE, rc 2.
+qualifying_only requires ZERO unadjudicable modules and 102 remain - os, sys,
+pathlib.Path and 52 third-party among them. INV-dabuf stays violated.
+
+Suite: 22,884 passed / 7 skipped / 17 xfailed (= 22,908 ingested), 100%
+coverage, core green in isolation, mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
