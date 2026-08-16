@@ -5364,6 +5364,49 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     behavior_map = load_substrate(input_path)
     raw_edges = behavior_map.get("edges", [])
 
+    # INV-dabuf G1: the claims file may declare its own denominator. Applied
+    # HERE, before anything walks edges, so census, coverage, detection and
+    # taint all see ONE population — narrowing only some consumers is how one
+    # tool comes to give two answers about the same edge (INV-motos, measured
+    # on this same command once already). Disclosed on stderr like overlays:
+    # a verdict must not be quietly narrower than its claims file says, and
+    # the claims file is where the reader can check it.
+    from .verify_claims import (
+        ClaimsFileError as _ScopeError,
+        edge_in_artifact,
+        load_analysis_scope,
+        node_in_artifact,
+        shipped_artifact_roots,
+    )
+    # The node population the LANGUAGE CENSUSES walk. Defaults to every node;
+    # narrowed alongside the edges so census and coverage describe one
+    # population (INV-sarum — with edges scoped and nodes not, bash/js/ts read
+    # as "analyzed but produced no call edges" and the analyzer-blind check
+    # blocked every claim on languages the artifact does not contain).
+    census_nodes = behavior_map.get("nodes", [])
+    try:
+        _scope = load_analysis_scope(claims_path)
+        if _scope == "shipped_artifact":
+            _roots = shipped_artifact_roots(Path(args.path))
+            _total = len(raw_edges)
+            raw_edges = [e for e in raw_edges if edge_in_artifact(e, _roots)]
+            census_nodes = [
+                n for n in census_nodes
+                if node_in_artifact(n, _roots, Path(args.path))
+            ]
+            print(
+                f"Analysis scope: shipped_artifact (declared in "
+                f"{claims_path}) — kept {len(raw_edges)} of {_total} "
+                f"edge(s) under {len(_roots)} packaging-declared root(s): "
+                f"{', '.join(_roots)}.",
+                file=sys.stderr,
+            )
+    except _ScopeError as exc:
+        # Same posture as a broken overlay: a broken scope declaration is
+        # never confirmed (0) and never violated (1).
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
     # WI-kumol: carry is_resolved + dst_ref so the ADR-0028 receiver gate /
     # WI-tihup lookup fire on the verify-claims boundary classification too.
     edges = _rehydrate_io_boundary_edges(raw_edges)
@@ -5383,8 +5426,15 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     io_overlays = _resolve_io_overlays(args, _claims_io_overlays)
     _disclose_io_overlays(io_overlays)
 
+    # Walks ``census_nodes``, not the raw map: under a declared artifact
+    # scope this census must describe the same population the coverage check
+    # walks (INV-sarum). Its old rationale for staying unscoped — "load
+    # catalogs to classify every edge in the map, fixtures included" —
+    # assumed the walked edges WERE the whole map; under artifact scope they
+    # are not, and a language present only outside the artifact would read as
+    # "analyzed but produced no call edges", blocking every claim.
     languages: set[str] = set()
-    for node in behavior_map.get("nodes", []):
+    for node in census_nodes:
         lang = node.get("language")
         if lang:
             languages.add(lang)
@@ -5557,8 +5607,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # ``languages`` (unscoped) stays the census for the BOUNDARY arm and
         # the catalog loop, which answer a different question: what to load in
         # order to classify every edge in the map, fixtures included.
+        # ``census_nodes``: artifact scope composes with the production
+        # scoping this census already applies internally (artifact ∩
+        # production), so both arms keep walking one population.
         taint_languages = _census_languages(
-            behavior_map.get("nodes", []),
+            census_nodes,
             include_non_production=getattr(
                 args, "include_non_production_sources", False
             ),

@@ -577,7 +577,14 @@ class ClaimsFileError(Exception):
 # defaults-populated Claim whose ``inconclusive`` verdict was
 # indistinguishable from a claim that legitimately lacks a checker.
 # Rejecting unknown keys at load time makes the typo loud.
-_ALLOWED_TOP_LEVEL_KEYS: frozenset[str] = frozenset({"claims", "extra_catalogs"})
+_ALLOWED_TOP_LEVEL_KEYS: frozenset[str] = frozenset({
+    "claims", "extra_catalogs", "analysis_scope",
+})
+
+#: Valid values for the top-level ``analysis_scope:`` key. ``production`` is
+#: the absent-key default and is exactly today's behaviour; ``shipped_artifact``
+#: narrows the proof to the packaging-declared source trees (INV-dabuf G1).
+_ANALYSIS_SCOPES: frozenset[str] = frozenset({"production", "shipped_artifact"})
 _ALLOWED_CLAIM_KEYS: frozenset[str] = frozenset({"id", "text", "constraint"})
 _ALLOWED_CONSTRAINT_KEYS: frozenset[str] = frozenset(
     {"boundary", "must_not_exist", "max_chains", "taint_flow"},
@@ -677,6 +684,173 @@ def load_extra_catalog_paths(
         _resolve_rel(extras.get("sinks")),
         _resolve_rel(extras.get("sanitizers")),
         _resolve_rel(extras.get("io_primitives")),
+    )
+
+
+def load_analysis_scope(path: Path) -> str:
+    """Read the top-level ``analysis_scope:`` declaration from a claims file.
+
+    THE SCOPE LIVES IN THE CLAIMS FILE because the claims file is what a
+    reader audits: a proof must not be quietly narrower than the document
+    that states it. The runtime discloses the scope on stderr as well, the
+    same double-entry bookkeeping overlays get.
+
+    ``production`` (the absent-key default) is byte-for-byte today's
+    behaviour. ``shipped_artifact`` narrows the walked edge population to the
+    packaging-declared source trees (:func:`shipped_artifact_roots`) — the fix
+    for the moving denominator that kept hypergumbo's own self-proof
+    unreachable: every claim governs the shipped CLI, yet a call from
+    ``scripts/`` or a repo hook blocked claims it cannot participate in, so
+    any new import anywhere in the tree re-broke the proof (INV-dabuf).
+
+    An unknown value is LOUD, not defaulted: silently reading a typo as
+    ``production`` would hand the author back exactly the denominator they
+    opted out of, and the mistake would present as verdicts that ignore the
+    declaration — a fix that lands and changes nothing.
+    """
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    scope = data.get("analysis_scope", "production")
+    if scope not in _ANALYSIS_SCOPES:
+        valid = ", ".join(sorted(_ANALYSIS_SCOPES))
+        raise ClaimsFileError(
+            f"unknown analysis_scope {scope!r} in {path}; valid scopes: "
+            f"{valid}.",
+        )
+    return str(scope)
+
+
+#: Directory names never walked for packaging metadata. Vendored and
+#: environment trees carry pyproject.toml files that are somebody else's
+#: packaging, not this repo's shipped surface.
+_NON_PACKAGE_DIRS: frozenset[str] = frozenset({
+    "node_modules", "vendor", "__pycache__",
+})
+
+
+def shipped_artifact_roots(repo_root: Path) -> list[str]:
+    """Repo-relative source roots of what this repository SHIPS.
+
+    THE BOUNDARY IS A FACT ABOUT PACKAGING, checkable independently of the
+    analysis whose completeness is in question — which is what separates this
+    from the reachability scoping rejected on INV-dabuf's thread (that one was
+    computed by the very analysis under test and failed open by construction).
+    A hand-rolled path list (``scripts/``, ``.githooks/``) was rejected there
+    too; reading ``pyproject.toml`` means a repo that ships shell as console
+    entry points keeps it in scope, because its own metadata says so.
+
+    Resolution, python packaging only today (other ecosystems when a claims
+    file in one needs it):
+
+    - every non-hidden ``pyproject.toml`` carrying a ``[project]`` table
+      names a package directory;
+    - a package directory that is an ANCESTOR of another is a workspace
+      wrapper, not a package, and is dropped — hypergumbo's own root
+      pyproject sits above six real packages, and keeping it would widen the
+      scope back to the whole repo, making the feature a measured no-op on
+      the proof it exists for;
+    - the shipped tree is ``<dir>/src`` when it exists (src layout), else
+      ``<dir>`` itself (flat layout).
+
+    NO METADATA IS AN ERROR, not an empty list: an empty root set would
+    exclude every edge and report the resulting empty analysis as blindness,
+    when the actual problem is that the declared scope has nothing to bind to.
+    """
+    candidates: list[Path] = []
+    for pp in sorted(repo_root.rglob("pyproject.toml")):
+        rel = pp.relative_to(repo_root)
+        parts = rel.parts[:-1]
+        if any(p.startswith(".") or p in _NON_PACKAGE_DIRS for p in parts):
+            continue
+        # REUSED, NOT REIMPLEMENTED: profile._load_toml already carries the
+        # tomllib/tomli 3.10 fallback and the parse-failure-is-None contract.
+        # A malformed manifest names no package.
+        from .profile import _load_toml
+        try:
+            manifest = _load_toml(pp.read_text(encoding="utf-8"))
+        except OSError:  # pragma: no cover — unreadable file names no package
+            continue
+        if not manifest or "project" not in manifest:
+            continue
+        candidates.append(pp.parent)
+    kept = [
+        d for d in candidates
+        if not any(d != other and d in other.parents for other in candidates)
+    ]
+    if not kept:
+        raise ClaimsFileError(
+            f"analysis_scope: shipped_artifact declared but no pyproject.toml "
+            f"with a [project] table was found under {repo_root} — the scope "
+            f"has nothing to bind to. Remove the declaration or add packaging "
+            f"metadata.",
+        )
+    roots = []
+    for d in kept:
+        src = d / "src"
+        root = src if src.is_dir() else d
+        roots.append(root.relative_to(repo_root).as_posix())
+    return sorted(roots)
+
+
+def edge_in_artifact(edge: dict[str, Any], roots: list[str]) -> bool:
+    """Does this edge ORIGINATE in the shipped artifact?
+
+    Judged on the src symbol's path slot: the proof asks what the shipped
+    code does, and an edge is an action of its caller. Matching is at a path
+    COMPONENT boundary, never a string prefix — ``packages/a/src-extras``
+    shares a prefix with ``packages/a/src`` and no path component, and a
+    prefix rule over names was measured wrong in three languages at once.
+
+    A src whose second slot is not a repo path (an external placeholder in
+    caller position, a malformed id) is OUT: it is not shipped code, and the
+    strict direction cannot suppress a detection — coverage gates only the
+    all-clear.
+    """
+    src = str(edge.get("src", ""))
+    parts = src.split(":")
+    if len(parts) < 5:
+        return False
+    path = parts[1]
+    # A root of "." means a flat single-package repo whose package dir IS the
+    # repo root; every repo-relative path is inside it.
+    return any(
+        root == "." or path == root or path.startswith(root + "/")
+        for root in roots
+    )
+
+
+def node_in_artifact(
+    node: dict[str, Any], roots: list[str], repo_root: Path,
+) -> bool:
+    """Does this node's FILE live in the shipped artifact?
+
+    The language census walks NODES while the coverage check walks EDGES, and
+    the two must describe one population (INV-sarum) — re-learned live the
+    hour artifact scope first ran: with edges scoped and nodes not, bash /
+    javascript / typescript read as "analyzed but produced no call edges" and
+    the analyzer-blind check blocked every claim on languages the artifact
+    does not contain.
+
+    Judged on ``node["path"]``, RELATIVIZED first: js_ts nodes have carried
+    absolute paths where every other analyzer computes a relative one (the
+    standing landmine), and matching the raw string against a relative root
+    would silently drop a genuinely-shipped js file from the census — which
+    disarms the analyzer-blind check for a language the artifact DOES contain,
+    the confirming direction. A pathless node (an external symbol) is not a
+    file of the artifact.
+    """
+    raw = node.get("path")
+    if not raw:
+        return False
+    path = Path(str(raw))
+    if path.is_absolute():
+        try:
+            path = path.relative_to(repo_root)
+        except ValueError:
+            return False
+    posix = path.as_posix()
+    return any(
+        root == "." or posix == root or posix.startswith(root + "/")
+        for root in roots
     )
 
 

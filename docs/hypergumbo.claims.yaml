@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Hypergumbo's security claims, verified by `hypergumbo verify-claims`.
 #
+# SCOPE: THE SHIPPED ARTIFACT. Every claim below governs the installed CLI —
+# its declared sources are python cmd_* handlers — so the proof's denominator
+# is the packaging-declared source trees (packages/*/src), not the repo at
+# large. Repo tooling (scripts/, .githooks/, .agent/hooks/) is not received
+# by `pip install hypergumbo` and cannot be reached from any claimed source;
+# under the old repo-wide denominator it still blocked every claim, and any
+# new import anywhere in the tree re-broke the proof. The runtime discloses
+# this scope on stderr on every run.
+analysis_scope: shipped_artifact
+#
 # Each claim is a taint-flow constraint over the per-entry-point safety
 # zones declared in docs/hypergumbo-self-catalog/. The matcher is flat:
 # verify-claims reports a violation if some unsanitized data with the
