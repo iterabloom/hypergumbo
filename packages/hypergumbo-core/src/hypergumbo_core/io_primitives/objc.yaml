@@ -8,9 +8,11 @@
 # Note: C-level I/O (fopen, read, write, socket, etc.) is covered by c.yaml.
 # This catalog covers ObjC-specific Foundation/Cocoa wrappers.
 language: objc
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Foundation/CoreFoundation stdlib and adding
-# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # Selector names that are too generic to match without class context.

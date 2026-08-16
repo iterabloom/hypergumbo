@@ -85,14 +85,16 @@ class TestOverlayLoading:
         assert ("requests", "post", "function") in names
         assert ("requests.Session", "send", "method") in names
 
-    def test_an_overlay_may_not_claim_completeness(self, tmp_path: Path) -> None:
-        """``status: complete`` asserts a provenance-backed enumeration of a
-        stdlib. An overlay that claimed it would launder third-party guesses
-        into the same standing as the curated catalogue."""
+    def test_an_overlay_may_not_claim_a_shipped_status(self, tmp_path: Path) -> None:
+        """``status: provenance_declared`` is a claim about a language's
+        stdlib citation. An overlay that claimed it would launder third-party
+        guesses into the same standing as the curated catalogue. (The old
+        spelling ``complete`` is refused everywhere per INV-titih; the overlay
+        path refuses ANY non-``overlay`` status.)"""
         with pytest.raises(IoPrimitiveOverlayError, match="status"):
             load_overlay_catalog(_write(tmp_path, "bad.yaml", """\
                 language: python
-                status: complete
+                status: provenance_declared
                 net_send:
                   - module: requests
                     functions: [post]
