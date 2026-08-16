@@ -6,7 +6,11 @@
 # folder is needed so nightly can carry its own py-version matrix). The workflow
 # NAME is this file's stem (`woodpecker`), so this gate keeps posting the GitHub
 # status context `ci/woodpecker/pr/woodpecker` that branch protection marks
-# required (VERIFY the exact context on the first real Woodpecker run at cutover).
+# required (context VERIFIED in production — it is the one auto-pr polls).
+# NOTE (INV-tisug follow-up): a PR pipeline appears to evaluate THIS FILE from
+# the TARGET branch, not the PR head — the INV-tisug fix PR itself still
+# polled green in ~10s under the old all-skip config. Config changes to this
+# file therefore take effect for PRs created AFTER they merge to dev.
 # ACTIVE on GitHub + self-hosted Woodpecker; INERT on Codeberg/Forgejo (which
 # reads `.github/workflows/**`, not `.woodpecker/`) — so it lands dormant while
 # Codeberg is origin, like the rest of the dual-mode migration tooling.
