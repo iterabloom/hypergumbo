@@ -892,8 +892,19 @@ class FrameworkPatternDef:
         )
 
 
-# Cache for loaded framework patterns
-_PATTERN_CACHE: dict[str, FrameworkPatternDef | None] = {}
+# Cache for loaded framework patterns, keyed on (frameworks_dir, framework_id).
+#
+# INV-kazij: the key MUST include the resolved directory, because
+# ``get_frameworks_dir`` is patchable and a cache keyed on the id alone
+# memoizes half the function's input. The measured failure mode: a test
+# patched the dir to a tmp path, the convention ids (main-functions,
+# config-conventions, ...) cached as None, and every symbol analyzed
+# afterwards IN THE SAME PROCESS carried zero concepts — so the
+# pyproject-console-script entrypoint test failed on exactly the xdist
+# workers whose earlier schedule included a dir-patching test. That
+# worker-composition dependence spent three cron runs looking like an
+# interpreter, container, and install-set problem in turn.
+_PATTERN_CACHE: dict[tuple[str, str], FrameworkPatternDef | None] = {}
 
 # Framework alias mapping: maps detected framework names to pattern file names
 # Used when multiple frameworks share a single pattern file
@@ -959,22 +970,24 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     Returns:
         FrameworkPatternDef if found, None otherwise.
     """
-    if framework_id in _PATTERN_CACHE:
-        return _PATTERN_CACHE[framework_id]
+    frameworks_dir = get_frameworks_dir()
+    cache_key = (str(frameworks_dir), framework_id)
+    if cache_key in _PATTERN_CACHE:
+        return _PATTERN_CACHE[cache_key]
 
     # Resolve alias if present (e.g., "chi" -> "go-web")
     resolved_id = _FRAMEWORK_ALIASES.get(framework_id, framework_id)
 
-    yaml_path = get_frameworks_dir() / f"{resolved_id}.yaml"
+    yaml_path = frameworks_dir / f"{resolved_id}.yaml"
     if not yaml_path.exists():
-        _PATTERN_CACHE[framework_id] = None
+        _PATTERN_CACHE[cache_key] = None
         return None
 
     with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     pattern_def = FrameworkPatternDef.from_dict(data)
-    _PATTERN_CACHE[framework_id] = pattern_def
+    _PATTERN_CACHE[cache_key] = pattern_def
     return pattern_def
 
 
