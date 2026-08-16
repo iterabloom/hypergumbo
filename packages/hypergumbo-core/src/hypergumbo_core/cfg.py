@@ -475,11 +475,17 @@ def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Option
     the resolved name would be a micro-optimisation that makes a future
     per-language post-processing step silently wrong.
     """
-    cache_key = f"{search_dir or 'default'}:{language}"
+    # INV-kazij class: resolve the directory BEFORE keying. The previous key
+    # spelled the default as the literal 'default' while the resolved dir
+    # came from patchable ``get_cfg_nodes_dir()`` — the same
+    # partial-input-memoization hole that poisoned the framework-pattern
+    # cache (a patched dir's Nones cached under the unpatched caller's key).
+    # No test patches this getter today; keyed on the resolved dir so none
+    # ever can.
+    search = search_dir or get_cfg_nodes_dir()
+    cache_key = f"{search}:{language}"
     if cache_key in _MAPPING_CACHE:
         return _MAPPING_CACHE[cache_key]
-
-    search = search_dir or get_cfg_nodes_dir()
     yaml_path = search / f"{_CFG_MAPPING_ALIASES.get(language, language)}.yaml"
     if not yaml_path.exists():
         _MAPPING_CACHE[cache_key] = None  # type: ignore[assignment]

@@ -102,12 +102,60 @@ class TestStripTestFileOnlyConcepts:
 def _clean_pattern_cache():
     """Clear framework pattern cache between tests.
 
-    Tests that patch get_frameworks_dir poison _PATTERN_CACHE with None
-    entries for convention patterns (main-functions, config-conventions, etc.).
-    With xdist load distribution, stale entries leak to other tests in the
-    same worker process. Clearing before each test prevents this.
+    Belt-and-braces since INV-kazij: the cache is keyed on the RESOLVED
+    frameworks dir, so a test that patches get_frameworks_dir caches its
+    Nones under the patched dir's key and can no longer shadow the real
+    patterns for later tests. This fixture predates that fix — it cleared
+    the cache for THIS file's tests while the poisoned entries leaked to
+    every OTHER file sharing the xdist worker (the mechanism behind the
+    cron-only pyproject-console-script failure: zero concepts, therefore
+    zero concept-derived entrypoints, on whichever worker had run a
+    dir-patching test first). Kept because a clean cache per test is
+    still the right hygiene here.
     """
     clear_pattern_cache()
+
+
+class TestPatternCacheIsDirKeyed:
+    """INV-kazij: a patched frameworks dir must not poison other callers."""
+
+    def test_none_cached_under_patched_dir_does_not_shadow_real_patterns(
+        self, tmp_path: Path,
+    ) -> None:
+        clear_pattern_cache()
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            # Empty dir: every convention pattern resolves to None here...
+            assert load_framework_patterns("main-functions") is None
+            assert load_framework_patterns("config-conventions") is None
+        # ...and once the patch lifts, the REAL patterns must load — the
+        # Nones cached under the patched dir must not shadow them. Before
+        # the dir-keyed cache this returned None and every symbol analyzed
+        # afterwards in the same process carried zero concepts.
+        assert load_framework_patterns("main-functions") is not None
+        assert load_framework_patterns("config-conventions") is not None
+
+    def test_patched_dir_still_caches_within_its_own_scope(
+        self, tmp_path: Path,
+    ) -> None:
+        # The cache still works under a patched dir (same key, same entry) —
+        # the fix adds the dir to the key, it does not disable caching.
+        clear_pattern_cache()
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(
+            "id: test_framework\nlanguage: python\npatterns:\n"
+            "  - concept: route\n    decorator: '^app\\.get$'\n"
+        )
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            first = load_framework_patterns("test_fw")
+            second = load_framework_patterns("test_fw")
+        assert first is not None
+        assert second is first
 
 
 class TestPattern:
