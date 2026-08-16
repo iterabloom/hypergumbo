@@ -42,6 +42,17 @@ status: overlay
 # declared here.
 # -------------------------------------------------------------------
 fs_read:
+  - module: starlette.staticfiles
+    functions: [StaticFiles]
+    notes: Serves files off the host filesystem.
+  - module: starlette.responses
+    functions: [FileResponse]
+    notes: Streams a host file to the client.
+  - module: coverage
+    functions: [Coverage]
+    notes: >-
+      The CONSTRUCTOR reads configuration (.coveragerc / pyproject) from
+      disk; load()/save() ride the untyped-receiver residual.
   - module: numpy
     functions: [load, loadtxt, genfromtxt, fromfile]
     notes: numpy reads array data straight from a path.
@@ -76,6 +87,9 @@ fs_write:
       of that parameter, not on the rendering.
 
 net_send:
+  - module: starlette.websockets.WebSocket
+    methods: [send_text, send_json, send_bytes]
+    notes: Tracker preview websocket; data leaves the process here.
   - module: sentence_transformers
     functions: [SentenceTransformer]
     notes: >-
@@ -87,6 +101,10 @@ logging:
   - module: rich.console
     methods: [print, log, print_exception, rule]
     notes: Terminal output; rich.console is where the writing happens.
+
+net_recv:
+  - module: starlette.websockets.WebSocket
+    methods: [receive_text, receive_json, receive_bytes, accept]
 
 # -------------------------------------------------------------------
 # module_completeness — "and there is nothing else here".
@@ -134,3 +152,226 @@ module_completeness:
       COMPUTES paths from the platform and the environment; it does not
       create or read them. The env read belongs to platformdirs' own
       internals and is not a call this repo makes.
+
+  # ---------------------------------------------------------------
+  # 2026-08-16 - the overlay climb. The remaining third-party blockers on
+  # the artifact-scoped self-proof, each audited at ITS SLOT: most hold
+  # constructors and pure compute; every I/O-performing name carries a row
+  # above. Exact matching means an entry vouches only for calls addressed
+  # through that exact module path.
+  # ---------------------------------------------------------------
+  - module: yaml
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      load/safe_load take streams or strings the caller opened; dump mirrors json. PyYAML opens nothing itself.
+  - module: ruamel.yaml
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      As yaml: object/stream API, opens nothing itself.
+  - module: ruamel.yaml.comments
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Comment-preserving data structures; pure.
+  - module: ruamel.yaml.scalarstring
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Scalar wrappers; pure.
+  - module: numpy
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Array compute at this slot; the fs surface (load/save/fromfile/tofile) carries rows above.
+  - module: numpy.linalg
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Pure linear algebra.
+  - module: coverage
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Constructor rowed (reads config); the rest at this slot is orchestration of in-process tracing.
+  - module: coverage.parser
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      PythonParser parses source strings already in memory.
+  - module: rich.console
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      The printing methods carry rows; the Console constructor and styling are pure.
+  - module: rich.segment
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Render-list building; pure.
+  - module: rich.style
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Style arithmetic; pure.
+  - module: rich.table
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Table construction; rendering happens through rich.console's rowed methods.
+  - module: rich.text
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Text markup; pure.
+  - module: textual.containers
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      TUI widget construction; terminal I/O happens in the app driver, not at these slots.
+  - module: textual.strip
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Render strips; pure.
+  - module: textual.widgets
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Widget construction and queries; as textual.containers.
+  - module: textual.widgets.DataTable
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      As textual.widgets.
+  - module: textual.widgets.option_list
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      As textual.widgets.
+  - module: textual.widgets.tree.TreeNode
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      In-memory tree nodes.
+  - module: starlette.applications
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      App/router construction; serving is uvicorn's catalogued surface.
+  - module: starlette.requests.Request
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Accessors over an already-received request.
+  - module: starlette.responses
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Response construction is pure; FileResponse carries a row above.
+  - module: starlette.routing
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Route table construction; pure.
+  - module: starlette.staticfiles
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      StaticFiles carries a row above; nothing else at this slot.
+  - module: starlette.websockets.WebSocket
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      send/receive/accept carry rows above; the rest is state accessors.
+  - module: sentence_transformers
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      SentenceTransformer carries a net_send row above (hub download on cache miss).
+  - module: sentence_transformers.SentenceTransformer
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      encode() is pure compute over a loaded model.
+  - module: tokenizers
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Tokenizer construction; from_file/from_pretrained carry rows above.
+  - module: onnxruntime
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      InferenceSession carries a row above (reads the model path); inference is pure.
+  - module: tree_sitter_language_pack
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      get_language/get_parser return handles to grammars compiled into the installed wheel; no path of the analysed repo is read.
+  - module: tree_sitter_c
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_circom
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_go
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_java
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_javascript
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_json
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_lua
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_ocaml
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_php
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_r
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_robot
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_rust
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.
+  - module: tree_sitter_typescript
+    completeness: complete
+    retrieved: "2026-08-16"
+    notes: >-
+      Grammar binding; language() returns a handle to code compiled into the wheel.

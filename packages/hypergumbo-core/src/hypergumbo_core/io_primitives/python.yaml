@@ -474,10 +474,10 @@ logging:
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
   - module: sys.stdout
-    methods: [write, writelines, flush]
-    notes: "INV-ponad slot family."
+    functions: [write, writelines, flush]
+    notes: "INV-ponad slot family. functions:, not methods: - see the os.environ note."
   - module: sys.stderr
-    methods: [write, writelines, flush]
+    functions: [write, writelines, flush]
   - module: sys
     functions: [displayhook, excepthook, unraisablehook, breakpointhook]
     notes: "The interpreter hooks that write the standard streams - what keeps sys's completeness entry honest."
@@ -517,8 +517,8 @@ ipc_recv:
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
   - module: sys.stdin
-    methods: [read, readline, readlines]
-    notes: "INV-ponad slot family; consistent with the sys attribute row in this section."
+    functions: [read, readline, readlines]
+    notes: "INV-ponad slot family; consistent with the sys attribute row in this section. functions:, not methods: - see the os.environ note."
   - module: os
     functions: [wait, waitpid, wait3, wait4, waitid]
     notes: "Reaping a child collects its exit status - data received from another process."
@@ -572,8 +572,8 @@ env_read:
     functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, getrandom, sysconf, confstr]
     notes: "Host- and user-identifying reads plus OS randomness. Deliberately NOT getpid / cpu_count / times: env_read rows auto-derive host_secret TAINT SOURCES (AUTO_SOURCE_LABEL_MAP), and a pid is not a secret - rowing it would manufacture false sources. Inert process state is vouched for by the module_completeness entry instead. And deliberately NOT urandom: hypergumbo ships a HAND-WRITTEN taint source for os.urandom, and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3)."
   - module: os.environ
-    methods: [get, keys, items, values, copy]
-    notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write."
+    functions: [get, keys, items, values, copy]
+    notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."
   - module: pathlib.Path
     methods: [cwd, home, expanduser, absolute]
   - module: os.path
@@ -610,7 +610,7 @@ env_write:
     functions: [umask, chdir, fchdir, putenv, unsetenv, setuid, setgid, seteuid, setegid, setpgid, setsid, setpriority, nice]
     notes: "Process-state and environment mutation."
   - module: os.environ
-    methods: [setdefault, pop, popitem, update, clear]
+    functions: [setdefault, pop, popitem, update, clear]
     notes: "Mutation through the mapping; the read half sits under env_read (INV-ponad slot family)."
   - module: contextlib
     functions: [chdir]
