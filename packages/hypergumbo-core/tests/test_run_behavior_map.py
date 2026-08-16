@@ -1071,7 +1071,34 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
         if ep.get("kind") == "cli_command"
         and (ep.get("meta") or {}).get("evidence_type") == "manifest_declared"
     ]
-    assert cli_eps, "pyproject console-script not detected as a CLI_COMMAND entrypoint"
+    # INV-kazij: this assertion fails ONLY in the full-suite CI container —
+    # never locally, on any tree, in any interleaving, with or without the
+    # meta-package installed (all measured; see the item). Every cheap
+    # hypothesis is dead, so the assertion now DISCLOSES which link of the
+    # chain broke: (a) did the toml-config pass run at all, (b) did it emit
+    # the script symbol and with which concepts, (c) what entrypoints were
+    # derived. The next CI failure is a mechanism reading, not a repeat.
+    if not cli_eps:  # pragma: no cover — diagnostic path, exercised only on failure
+        toml_runs = [
+            (r.get("pass"), r.get("files_analyzed"), r.get("nodes_emitted"))
+            for r in data.get("analysis_runs", [])
+            if "toml" in str(r.get("pass", ""))
+        ]
+        pyproject_nodes = [
+            (n.get("kind"), n.get("name"), (n.get("meta") or {}))
+            for n in data["nodes"]
+            if "pyproject" in str(n.get("path", ""))
+        ]
+        ep_summary = [
+            (ep.get("kind"), (ep.get("meta") or {}).get("evidence_type"))
+            for ep in data["entrypoints"]
+        ]
+        raise AssertionError(
+            "pyproject console-script not detected as a CLI_COMMAND "
+            f"entrypoint.\n  toml passes (pass, files, nodes): {toml_runs}\n"
+            f"  pyproject-path nodes (kind, name, meta): {pyproject_nodes}\n"
+            f"  entrypoints (kind, evidence): {ep_summary}"
+        )
     # npm run-scripts (no entry_point) remain noise-filtered.
     assert not script_nodes(False), \
         "npm package.json run-scripts should be noise-filtered"
