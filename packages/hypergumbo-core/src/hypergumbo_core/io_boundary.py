@@ -1263,6 +1263,29 @@ _CATALOG_PARENTS: dict[str, str] = {
 }
 
 
+def _catalog_path_for(language: str) -> Optional[Path]:
+    """The shipped catalogue file for ``language``, or ``None`` if there is none.
+
+    EXTRACTED SO TWO CALLERS SHARE ONE RULE (INV-lufib). :func:`load_catalog`
+    resolves a language to a file directly-then-by-alias, and the overlay loop
+    now needs the same question answered — "is this a language hypergumbo has a
+    catalogue for?" — to tell an overlay meant for ANOTHER language (skip) from
+    one naming a language that does not exist (``language: pyton``, refuse).
+    Re-deriving that inline would have put the alias table's behaviour in two
+    places, and ``typescript`` resolving through ``_CATALOG_ALIASES`` rather
+    than a file of its own is exactly the case a second copy gets wrong.
+    """
+    path = _CATALOG_DIR / f"{language}.yaml"
+    if path.exists():
+        return path
+    alias = _CATALOG_ALIASES.get(language)
+    if alias:
+        alias_path = _CATALOG_DIR / f"{alias}.yaml"
+        if alias_path.exists():
+            return alias_path
+    return None
+
+
 def is_language_supported(language: str) -> bool:
     """True if ``language`` has an I/O primitive catalog (directly, via
     alias, or with a parent). Callers use this to distinguish "found
@@ -1406,12 +1429,8 @@ def load_catalog(
     feeds the dependency classifier and the F3 boundary filter, and relabelling
     a PyPI package as stdlib is a supply-chain misread, not an I/O one.
     """
-    path = _CATALOG_DIR / f"{language}.yaml"
-    if not path.exists():
-        alias = _CATALOG_ALIASES.get(language)
-        if alias:
-            path = _CATALOG_DIR / f"{alias}.yaml"
-    if not path.exists():
+    path = _catalog_path_for(language)
+    if path is None:
         # INV-javam: no catalog file (and no alias resolving to one) —
         # callers use is_supported to emit explicit "language
         # unsupported" output instead of silently returning zero I/O.
@@ -1429,12 +1448,32 @@ def load_catalog(
     for overlay_path in overlay_paths or ():
         overlay = load_overlay_catalog(Path(overlay_path))
         if overlay.language and overlay.language != catalog.language:
-            raise IoPrimitiveOverlayError(
-                f"I/O primitive overlay {overlay_path} declares language "
-                f"{overlay.language!r} but was loaded for "
-                f"{catalog.language!r}. Applying it would attribute I/O to the "
-                f"wrong tree.",
-            )
+            # NOT MINE vs NOT REAL — and the distinction is the whole fix
+            # (INV-lufib). A claims file declares ONE overlay list and
+            # ``cmd_verify_claims`` fans it out over EVERY language in the
+            # repo, so an unconditional refusal here meant a python overlay
+            # aborted any repo that also contained javascript. Measured on
+            # hypergumbo's own tree: its own overlay could not be wired into
+            # its own claims file, and the two examples already shipped under
+            # docs/io-primitives-overlays/ (python + go) could never be
+            # declared together.
+            #
+            # An overlay for ANOTHER SHIPPED language is simply not applicable
+            # to this one — being asked is a question, not an error, and the
+            # answer is "not mine". An overlay for a language no catalogue
+            # knows is a TYPO (``language: pyton``), and skipping that would
+            # leave the author believing their rows applied, which is the
+            # fail-quiet direction this whole loader is built against. So the
+            # refusal is kept exactly where it still discriminates.
+            if not _catalog_path_for(overlay.language):
+                raise IoPrimitiveOverlayError(
+                    f"I/O primitive overlay {overlay_path} declares language "
+                    f"{overlay.language!r}, which has no I/O primitive "
+                    f"catalogue. Applying it would attribute I/O to the wrong "
+                    f"tree, and no run would ever apply it — check the "
+                    f"spelling.",
+                )
+            continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
         catalog = overlay.merge(catalog)

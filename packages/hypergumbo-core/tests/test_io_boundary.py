@@ -3796,14 +3796,25 @@ class TestExternalPotentialBucket:
         """
         from hypergumbo_core.io_boundary import compute_boundary_map
 
-        # dst node's name is the qualified form `re.MULTILINE`; module hint
-        # is `re` (extracted from the 2nd colon-separated field).
-        dst = "python:re:0-0:re.MULTILINE:unresolved"
+        # dst node's name is the qualified form `logging.DEBUG`; module hint
+        # is `logging` (extracted from the 2nd colon-separated field).
+        #
+        # FIXTURE MODULE CHANGED FROM ``re`` TO ``logging``, and the reason is
+        # worth recording because it is the mechanism working, not a
+        # workaround. This test is about dst-name PREPENDING; it never cared
+        # which module it used. It silently depended on the module being
+        # UNENUMERATED, because F3 Filter 2 skips external_potential entirely
+        # for a module whose I/O surface has been audited closed-world. The
+        # 2026-08-15 audit declared ``re`` enumerated, so ``re.MULTILINE``
+        # correctly stopped being reported as a potential boundary and this
+        # test lost its subject. ``logging`` writes files and streams, so it
+        # will not be enumerable.
+        dst = "python:logging:0-0:logging.DEBUG:unresolved"
         edge = self._mock_edge(
             src="python:/app/main.py:5-10:f:function",
             dst=dst,
         )
-        nodes_by_id = {dst: self._boundary_node(dst, "re.MULTILINE")}
+        nodes_by_id = {dst: self._boundary_node(dst, "logging.DEBUG")}
         bmap = compute_boundary_map(
             [edge],
             {"python": load_catalog("python")},
@@ -3811,8 +3822,8 @@ class TestExternalPotentialBucket:
         )
         ext = bmap.entries.get("external_potential")
         assert ext is not None and len(ext.chains) == 1
-        assert ext.chains[0].primitive == "re.MULTILINE", (
-            f"Expected 're.MULTILINE', got {ext.chains[0].primitive!r}"
+        assert ext.chains[0].primitive == "logging.DEBUG", (
+            f"Expected 'logging.DEBUG', got {ext.chains[0].primitive!r}"
         )
 
 

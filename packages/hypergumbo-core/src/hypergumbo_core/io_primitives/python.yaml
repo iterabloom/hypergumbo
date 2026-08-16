@@ -729,3 +729,117 @@ module_completeness:
   - module: math
     completeness: complete
     retrieved: "2026-05-13"
+
+  # ---------------------------------------------------------------------
+  # 2026-08-15 audit. Scope, method, and the REFUSALS with their reasons:
+  # docs/surveys/python-stdlib-module-io-enumeration.md
+  #
+  # Two things in the boundary vocabulary decided most of the refusals and
+  # are easy to miss: `logging` covers sys.stdout/sys.stderr, so a module
+  # that PRINTS does I/O (argparse, warnings); and `env_read` covers
+  # os.environ, so a module that reads config from the environment does
+  # too (os.path.expanduser).
+  #
+  # FIVE VERDICTS IN THE FIRST DRAFT WERE WRONG and were caught by
+  # introspecting each module's own-defined public callables rather than
+  # by recall — pathlib (its headline export IS the filesystem class),
+  # typing (reveal_type writes to stderr), base64 (base64.main opens files
+  # and writes stdout), shlex (shlex(instream=None) reads sys.stdin), and
+  # contextlib (chdir). The probe is in the audit doc; re-run it before
+  # adding to this list.
+  # ---------------------------------------------------------------------
+  - module: ast
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: Parses source STRINGS; ast.parse never opens a path.
+  - module: re
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: re.Match
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: re.Pattern
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: json
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      load/dump take file OBJECTS the caller opened; the open is the
+      boundary and is attributed to the caller. Encoding itself is pure.
+  - module: time
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: collections
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: collections.Counter
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: datetime
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: datetime.datetime
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: hashlib
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: file_digest reads a caller-opened object; it opens nothing.
+  - module: typing.Any
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      typing.Any only. The `typing` MODULE is refused - typing.reveal_type
+      writes to stderr, which is a logging boundary.
+  - module: stat
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: Constants and S_IS* predicates; os.stat does the I/O, not this.
+  - module: fnmatch
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: dataclasses
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: functools
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: heapq
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: bisect
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: itertools
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: urllib.parse
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      Pure string work. Declared on its own line precisely because exact
+      matching means this says NOTHING about urllib.request, which opens
+      URLs - the worked counterexample in module_io_is_enumerated.
+  - module: difflib
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: copy
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: contextvars
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: statistics
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: textwrap
+    completeness: complete
+    retrieved: "2026-08-15"
+  - module: csv
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: reader/writer wrap objects the caller opened; csv opens nothing.
+  - module: gc
+    completeness: complete
+    retrieved: "2026-08-15"

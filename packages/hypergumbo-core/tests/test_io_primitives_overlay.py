@@ -179,9 +179,24 @@ class TestOverlayLoading:
         with pytest.raises(IoPrimitiveOverlayError, match="not found"):
             load_overlay_catalog(tmp_path / "nope.yaml")
 
-    def test_a_language_mismatch_is_refused(self, tmp_path: Path) -> None:
-        """An overlay is loaded for a specific language; silently applying a
-        go overlay to python would attribute I/O to the wrong tree."""
+    def test_an_overlay_for_ANOTHER_shipped_language_is_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        """INV-lufib. A claims file declares ONE list of overlays and
+        ``cmd_verify_claims`` fans it out over EVERY language in the repo, so
+        an unconditional refusal here means a python overlay aborts any repo
+        that also contains javascript.
+
+        Measured on hypergumbo's own tree: wiring its own python overlay into
+        its own claims file failed with "declares language 'python' but was
+        loaded for 'javascript'". The two overlays already shipped under
+        docs/io-primitives-overlays/ (python + go) could never be declared
+        together either, which is the obvious thing a polyglot repo does.
+
+        An overlay names its language; applying it only to that language is
+        the whole of the contract. Being asked about another one is not an
+        error, it is a question with the answer "not mine".
+        """
         overlay = _write(tmp_path, "go.yaml", """\
             language: go
             status: overlay
@@ -189,7 +204,30 @@ class TestOverlayLoading:
               - module: net/http
                 functions: [Get]
             """)
-        with pytest.raises(IoPrimitiveOverlayError, match="language"):
+        cat = load_catalog("python", overlay_paths=[overlay])
+        assert cat.language == "python"
+        names = {(p.module, p.name) for p in cat.primitives}
+        assert ("net/http", "Get") not in names, "the go rows leaked into python"
+        assert ("builtins", "open") in names, "python's own rows were lost"
+
+    def test_an_overlay_for_an_UNKNOWN_language_is_still_refused(
+        self, tmp_path: Path,
+    ) -> None:
+        """THE DISCRIMINATOR, and why the fix above is a skip rather than a
+        softening. ``language: pyton`` is a typo, and silently ignoring it
+        leaves the author believing their rows applied — the fail-quiet
+        direction this gate exists to avoid. A language that names no shipped
+        catalogue at all cannot be "somebody else's overlay", because there is
+        no run in which it would ever apply.
+        """
+        overlay = _write(tmp_path, "typo.yaml", """\
+            language: pyton
+            status: overlay
+            net_send:
+              - module: requests
+                functions: [post]
+            """)
+        with pytest.raises(IoPrimitiveOverlayError, match="pyton"):
             load_catalog("python", overlay_paths=[overlay])
 
 
