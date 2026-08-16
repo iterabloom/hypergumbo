@@ -1,0 +1,21 @@
+- op: create  # 5e3d
+  at: '2026-08-16T08:13:29Z'  # 5e3d
+  by: agent  # 5e3d
+  actor: jgstern_agent  # 5e3d
+  clock: 1  # 5e3d
+  nonce: 5e3d  # 5e3d
+  data:  # 5e3d
+    kind: work_item  # 5e3d
+    title: "load_catalog returns the dataclass default status for a MISSING catalogue file — uncatalogued languages read as provenance_declared"  # 5e3d
+    status: todo_hard  # 5e3d
+    priority: 2  # 5e3d
+    parent:  # 5e3d
+    tags:  # 5e3d
+    - verify_claims  # 5e3d
+    - io_boundary  # 5e3d
+    isbefore: []  # 5e3d
+    duplicate_of: []  # 5e3d
+    not_duplicate_of: []  # 5e3d
+    pr_ref:  # 5e3d
+    description: "Split out of INV-titih (which renamed status: complete ->\nprovenance_declared): `load_catalog` for a language with NO catalogue file\nreturns a fallback IoBoundaryCatalog carrying the dataclass DEFAULT status —\nnow \"provenance_declared\" — so an uncatalogued language reads as\ncitation-backed. The honest value for a missing file is arguably\n\"in_progress\" (nothing enumerated), but changing it is BEHAVIORAL, not\ncosmetic: production branches on `status == \"in_progress\"` at two sites\n(in_progress_languages disclosure, and dst_classification_unreliable at\nexternal-potential classification), so the flip would newly mark every\ncatalogue-less language's external_potential chains unreliable. That may\nwell be the RIGHT outcome (it is more honest), but it changes output on\nevery repo containing such languages and therefore needs: (1) a measurement\nof which languages hit the missing-file path on the corpus (note aliases and\nparents resolve first — the path is rarer than it looks), (2) a check of\nwho consumes dst_classification_unreliable downstream (bakeoff diagnostics,\ndocs), and (3) its own PR with the delta reported. Current behavior is\ndeliberately pinned by\ntest_io_boundary_status_provenance_declared.py::test_missing_catalog_default_pinned_as_is —\nthe pin documents, it does not endorse; whoever picks this up flips that\ntest as their RED."  # 5e3d
+    fields: {}  # 5e3d

@@ -1,0 +1,24 @@
+- op: create  # d8f8
+  at: '2026-08-16T08:38:27Z'  # d8f8
+  by: agent  # d8f8
+  actor: jgstern_agent  # d8f8
+  clock: 1  # d8f8
+  nonce: d8f8  # d8f8
+  data:  # d8f8
+    kind: invariant  # d8f8
+    title: "the per-PR CI pipeline skips every path-conditioned step (empty PR changed-file list) — the merge gate has been decorative since cutover"  # d8f8
+    status: violated  # d8f8
+    priority: 1  # d8f8
+    parent:  # d8f8
+    tags:  # d8f8
+    - ci  # d8f8
+    - trunk_green  # d8f8
+    - security  # d8f8
+    isbefore: []  # d8f8
+    duplicate_of: []  # d8f8
+    not_duplicate_of: []  # d8f8
+    pr_ref:  # d8f8
+    description: "FOUND by rule-12 control-checking on an unrelated PR: the INV-titih PR was\nexpected to trigger the new ~12-minute self-claims-gate step (its diff\nmatches the path filter) yet ci/woodpecker/pr/woodpecker went green after\n~10 seconds of polling. Checking every saved auto-pr log across multiple\nsessions: EVERY pr-context green arrived at ~11s. A pipeline containing\nwhole-tree strict mypy + full pytest cannot complete in 11 seconds.\n\nMECHANISM (best supported): the pipeline-level `when` fires on PRs (target-\nbranch matching confirmed in-file against a real payload), but the per-PR\nCHANGED-FILE LIST evaluates as empty/unavailable, so every step-level\n`path:` condition — and ALL TWELVE steps in woodpecker.yml carry one —\nskips fail-closed. An empty pipeline completes in seconds and posts\nsuccess; auto-pr sees green and merges. Push events carry file lists, so\nthe same steps run for real POST-merge — which is why dev turns red AFTER\nmerges (the ceaba981 ARCHITECTURE.md redness today was this shape: the\nverify-generated step would have failed the PR, but it never ran there).\n\nCONSEQUENCES, stated plainly: the per-PR merge gate has been decorative\nfor the entire Woodpecker era. Everything believed gated at merge time —\nlint, the strict mypy ratchet (whose own step comment records fixing a\nprevious does-not-gate hole at the STEP level; this is the same class one\nlevel up, at the EVENT level), pytest, dco (its AND-ed event+path form\nalso never matched), verify-generated, tracker-validate — actually gated\nnothing on PRs. dev's real protections have been local smart-test\ndiscipline plus post-merge push redness.\n\nFIX SHIPPED WITH THIS FILING (same-day PR): step conditions become\nevent-split ORs — `- event: pull_request` (unconditional on PRs; no\ndependence on PR changed-file computation at all) OR `- event: push` +\n`path:` (push keeps path-scoping). dco drops its path arm (tracker-sync\ncommits carry sign-offs; checking them is safe). self-claims-gate keeps a\npath-scoped push arm and gains a PR arm with an IN-STEP guard (git diff\nagainst merge-base, grep the claim surface, early-exit 0 when untouched)\nso the ~12-minute self-analysis still only runs on claim-surface PRs.\nVALIDATION IS THE FIX PR ITSELF: its pr-context poll must jump from ~11s\nto real minutes with real steps — a self-demonstrating change; and if the\n`when` rewrite is malformed, Woodpecker fails the pipeline loudly and\nauto-pr blocks (fail-closed both ways).\n\nCOST ACCEPTED: every PR now pays real CI wall-clock (~13-15 min, matching\nthe push pipeline) before merge. That is not a regression; it is the\nlatency the project believed it was already paying."  # d8f8
+    fields:  # d8f8
+      statement: "A pipeline that gates merges must actually execute its checks on the gated event. VIOLATED: every step in .woodpecker/woodpecker.yml is path-conditioned, the per-PR changed-file list evaluates empty, so all steps skip and the pr context reports success in ~11 seconds — measured on every saved auto-pr log across multiple sessions."  # d8f8
+      root_cause: "Step-level when.path conditions depend on the forge supplying a changed-file list for the event; Woodpecker's GitHub PR payload yields none here, and a no-match path condition skips the step (fail-closed per-step composes into fail-OPEN for the pipeline: zero steps -> success). The same steps run correctly on push events, which carry file lists — so the real checks run only AFTER merge, on dev."  # d8f8
