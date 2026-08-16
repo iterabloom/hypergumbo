@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# hypergumbo's OWN third-party I/O overlay — and the worked example of the
+# `module_completeness` mechanism.
+#
+# The two sibling examples in this directory show how to declare what a
+# dependency DOES (primitive rows). This one shows the other half, added
+# 2026-08-15: how to declare that the list is COMPLETE, so a call into that
+# dependency which the catalogue could not classify counts as an EXAMINED
+# NEGATIVE rather than as a place the analysis could not look.
+#
+# Unlike its siblings this file is LOADED — docs/hypergumbo.claims.yaml
+# declares it under `extra_catalogs: io_primitives:` — because these are the
+# dependencies hypergumbo itself ships. Read it as a filled-in template.
+#
+# ===================================================================
+# THE ONE THING TO UNDERSTAND BEFORE COPYING THIS
+# ===================================================================
+# A `module_completeness` entry is the single grant of confirmability. A row
+# says "this one call is I/O of this kind". A completeness entry says "and
+# there is nothing else here I have not told you about" — so it decides
+# whether a `must_not_exist` claim over some OTHER boundary may be confirmed.
+# Measured: a six-line overlay whose only content was one completeness entry
+# for `telnetlib` turned a program that opens a telnet session and writes
+# os.environ["API_KEY"] into it from `inconclusive` into `confirmed`.
+#
+# So the rule for this section is narrow and worth obeying: declare a module
+# complete only after you have looked at ITS public surface and found every
+# I/O-performing name either absent or written down as a row above. The
+# `retrieved:` date is mandatory and records when you looked.
+#
+# Matching is EXACT. Declaring `tree_sitter` says nothing about
+# `tree_sitter.Node`; declaring `numpy` says nothing about `numpy.linalg`.
+# List every module you actually audited.
+
+language: python
+status: overlay
+
+# -------------------------------------------------------------------
+# ROWS — what these dependencies DO. Written first, deliberately: the
+# completeness entries below are only honest once the I/O they cover is
+# declared here.
+# -------------------------------------------------------------------
+fs_read:
+  - module: numpy
+    functions: [load, loadtxt, genfromtxt, fromfile]
+    notes: numpy reads array data straight from a path.
+  - module: onnxruntime
+    functions: [InferenceSession]
+    notes: Takes a model PATH and reads it.
+  - module: tokenizers.Tokenizer
+    functions: [from_file, from_pretrained]
+    notes: >-
+      `functions:`, NOT `methods:`, and the difference is not cosmetic —
+      it cost a verdict while this file was being written. `Tokenizer` is
+      reached as a class here (`Tokenizer.from_file(path)`), so the edge
+      carries no method construct. Declaring it under `methods:` asserts
+      method-shaped I/O the analysis never observes, which trips the
+      METHOD-STARVATION check and turned all 18 of hypergumbo's own claims
+      inconclusive on a reason that had nothing to do with them:
+      "calls into 1 module whose catalogued I/O is method-shaped
+      (tokenizers.Tokenizer) but produced no method call edge".
+      If a row makes verdicts WORSE, check the kind against how the call is
+      actually written before assuming the gate is wrong.
+  - module: watchfiles
+    functions: [watch, awatch]
+    notes: Walks and stats a directory tree continuously.
+
+fs_write:
+  - module: numpy
+    functions: [save, savez, savez_compressed, savetxt, tofile]
+  - module: cairosvg
+    functions: [svg2png, svg2pdf, svg2ps, svg2svg]
+    notes: >-
+      write_to= names an output PATH. Classified fs_write on the strength
+      of that parameter, not on the rendering.
+
+net_send:
+  - module: sentence_transformers
+    functions: [SentenceTransformer]
+    notes: >-
+      Downloads model weights from the Hugging Face hub on a cache miss.
+      This is the row that makes hypergumbo's own install-embeddings
+      network claim checkable rather than asserted.
+
+logging:
+  - module: rich.console
+    methods: [print, log, print_exception, rule]
+    notes: Terminal output; rich.console is where the writing happens.
+
+# -------------------------------------------------------------------
+# module_completeness — "and there is nothing else here".
+#
+# Deliberately SHORT. Every module in this list is one whose entire public
+# surface is computation over values already in memory. Anything that opens a
+# path, reaches the network, or writes a stream is NOT here, even where its
+# I/O is fully declared above: numpy, cairosvg, onnxruntime, watchfiles,
+# sentence_transformers, tokenizers and rich.console are all absent on
+# purpose, because "I wrote down the I/O I know about" is a weaker claim than
+# "there is no other I/O", and only the second one belongs in this section.
+# -------------------------------------------------------------------
+module_completeness:
+  - module: proquint
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: Pure int <-> pronounceable-identifier transcoding.
+
+  - module: bcrypt
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      Pure KDF over bytes. hashpw/checkpw/gensalt compute; none reads a
+      keyfile or a randomness path from Python.
+
+  - module: tomli
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      load() takes a binary file OBJECT and loads() a string; tomli opens
+      nothing itself, exactly as stdlib json does.
+
+  - module: tree_sitter
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      Parser/Language/Tree over source already in memory. The grammar
+      .so is loaded by the tree_sitter_* binding packages, which are NOT
+      declared here for that reason.
+
+  - module: platformdirs
+    completeness: complete
+    retrieved: "2026-08-15"
+    notes: >-
+      COMPUTES paths from the platform and the environment; it does not
+      create or read them. The env read belongs to platformdirs' own
+      internals and is not a call this repo makes.

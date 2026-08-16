@@ -50,6 +50,12 @@ extra_catalogs:
     - hypergumbo-self-catalog/repo_inspection_sinks.yaml
   sanitizers:
     - hypergumbo-self-catalog/zone_barrier_sanitizers.yaml
+  # The third-party half of the boundary catalogue. ADR-0016 §27 keeps the
+  # shipped catalogue stdlib-scoped, so hypergumbo's own dependencies are
+  # declared here by the same mechanism any user would use — and this file
+  # doubles as the worked example of `module_completeness`.
+  io_primitives:
+    - io-primitives-overlays/hypergumbo-self.yaml
 
 claims:
   # =========================================================================
