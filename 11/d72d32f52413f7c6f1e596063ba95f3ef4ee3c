@@ -1,0 +1,68 @@
+Original commit body from c6281efddd46760c1692ccd5753d1a03667dfc7e:
+
+The permanent fix for the moving target that kept the self-proof unreachable
+(INV-dabuf G1, plan of record on the item). Every one of hypergumbo's 18
+claims governs the INSTALLED CLI - their sources are python cmd_* handlers -
+yet the coverage gate demanded an opinion on every external call IN THE REPO.
+scripts/auto-pr and repo hooks blocked claims they cannot participate in, and
+any new import anywhere re-broke the proof. A target ordinary development
+un-hits is unreachable because the denominator MOVES, not because coverage is
+thin.
+
+THE BOUNDARY IS PACKAGING METADATA, NOT A PATH LIST. Every pyproject.toml
+carrying a [project] table names a package; a package dir that is an ANCESTOR
+of another is a workspace wrapper and is dropped (hypergumbo's root pyproject
+sits above six real packages - keeping it would widen the scope back to the
+whole repo and make the feature a measured no-op on the proof it exists for);
+src layout preferred, flat layout falls back to the dir; a flat package AT the
+repo root scopes to "." (artifact degrades to production, the correct reading
+of a repo that ships everything it contains). This is what separates it from
+the reachability scoping rejected on INV-dabuf's thread: that one was computed
+by the analysis whose completeness was in question and failed open by
+construction. Packaging is checkable independently, and a repo that ships
+shell as console entry points keeps it in scope because its own metadata says
+so. TOML parsing reuses profile._load_toml (tomllib/tomli fallback) rather
+than growing a second loader.
+
+OPT-IN, DISCLOSED, ONE POPULATION. Absent key = today's behaviour
+byte-for-byte (pinned by the production-scope control test). The declaration
+lives in the claims file a reader audits, and the run prints the kept/total
+edge counts and roots on stderr - a verdict must never be quietly narrower
+than its claims document. Nodes and edges are filtered TOGETHER: the first run
+with edges scoped and nodes not had bash/javascript/typescript read as
+"analyzed but produced no call edges", and the analyzer-blind check blocked
+every claim on languages the artifact does not contain - INV-sarum's rule,
+re-learned live and pinned by
+test_a_language_present_only_outside_the_artifact_does_not_blind. An unknown
+scope value and a scope with no packaging to bind to are both LOUD rc 2, never
+defaulted: a typo silently read as production hands the author back exactly
+the denominator they opted out of.
+
+docs/hypergumbo.claims.yaml declares the scope, with the rationale in the
+file where its reader is.
+
+MEASURED ON THE SELF-PROOF (cached self-survey, production functions):
+
+  edges walked            154,505 -> 36,230   (7 roots, wrapper dropped)
+  opaque launch sites          81 -> 2        (subprocess.run, subprocess.Popen
+                                               - the shipped CLI's real
+                                               launches: git for sketch,
+                                               pip/rustup for installs)
+  uncatalogued modules        102 -> 89       and the composition flipped:
+                                               every remaining module is a
+                                               genuine dependency of the
+                                               shipped tool (stdlib it uses,
+                                               third-party it ships, the
+                                               INV-ponad slot family, one
+                                               INV-liloh leak)
+
+VERDICT UNMOVED, stated before anyone mistakes this for the finish: still
+18/18 inconclusive rc 2 - the 89 remain, and qualifying_only needs zero. What
+changed is that the queue is BOUNDED and STOPS REFILLING: the climb over 89 is
+now a terminating job instead of a treadmill.
+
+Suite: 22,907 passed / 7 skipped / 17 xfailed, 100% (one edge_in_artifact
+guard line was missed on the first full run and is now pinned by
+test_a_malformed_src_id_is_out_not_guessed), mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
