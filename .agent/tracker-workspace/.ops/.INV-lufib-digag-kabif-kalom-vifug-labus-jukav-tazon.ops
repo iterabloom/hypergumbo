@@ -1,0 +1,39 @@
+- op: create  # 72bd
+  at: '2026-08-15T22:36:22Z'  # 72bd
+  by: agent  # 72bd
+  actor: jgstern_agent  # 72bd
+  clock: 1  # 72bd
+  nonce: 72bd  # 72bd
+  data:  # 72bd
+    kind: invariant  # 72bd
+    title: "a claims-file io_primitives overlay is applied to EVERY language in the repo, so a python overlay hard-fails any repo that also contains javascript"  # 72bd
+    status: violated  # 72bd
+    priority: 1  # 72bd
+    parent:  # 72bd
+    tags:  # 72bd
+    - verify_claims  # 72bd
+    - security  # 72bd
+    isbefore: []  # 72bd
+    duplicate_of: []  # 72bd
+    not_duplicate_of: []  # 72bd
+    pr_ref:  # 72bd
+    description: "Repro, live on hypergumbo's own tree: adding io_primitives: [io-primitives-overlays/hypergumbo-self.yaml] (language: python) to docs/hypergumbo.claims.yaml makes the census abort with 'declares language python but was loaded for javascript'. hypergumbo's repo contains javascript, so its OWN overlay cannot be wired into its OWN claims file. Blocks the owner's 2026-08-15 ruling that hypergumbo should ship a third-party overlay as a user example. Also means the two overlays already shipped under docs/io-primitives-overlays/ (python-http-clients, go-web-frameworks) can never be declared together, which is the obvious thing a polyglot repo would do. THE FIX MUST DISCRIMINATE, not just soften: an overlay declaring a language that names a SHIPPED catalogue but not this one is simply not applicable and should be skipped; an overlay declaring a language no catalogue knows (language: pyton) is a typo and must still raise, because silently ignoring it leaves the author believing their rows applied - the fail-quiet direction."  # 72bd
+    fields:  # 72bd
+      statement: "Declaring a project-local io_primitives overlay must not fail a run because the repo contains a language the overlay does not describe. VIOLATED: extra_catalogs.io_primitives paths are passed to load_catalog for EVERY language present, and load_catalog raises IoPrimitiveOverlayError on any language mismatch, so declaring one python overlay aborts verify-claims on any repo that also contains javascript."  # 72bd
+      root_cause: "The language-mismatch check in load_catalog's overlay loop is unconditional. It was written for the CLI --io-primitives flag, where a mismatch really is a user error worth refusing, and never distinguished that case from the claims-file case where the same path list is fanned out across every language in the tree. One overlay list, two call shapes, one answer."  # 72bd
+- op: update  # dd89
+  at: '2026-08-16T00:31:18Z'  # dd89
+  by: agent  # dd89
+  actor: jgstern_agent  # dd89
+  clock: 2  # dd89
+  nonce: dd89  # dd89
+  set:  # dd89
+    status: satisfied  # dd89
+    pr_ref: '361'  # dd89
+- op: discuss  # c987
+  at: '2026-08-16T00:31:19Z'  # c987
+  by: agent  # c987
+  actor: jgstern_agent  # c987
+  clock: 3  # c987
+  nonce: c987  # c987
+  message: "SATISFIED at dev 399aa5a3f3 (PR #361). BEHAVIORAL EVIDENCE, the item's own filed\nrepro re-run on the MERGED tree:\n\n  FILED (violated): adding\n      io_primitives: [io-primitives-overlays/hypergumbo-self.yaml]   (language: python)\n  to docs/hypergumbo.claims.yaml aborted with\n      IoPrimitiveOverlayError: ... declares language 'python' but was loaded\n      for 'javascript'. Applying it would attribute I/O to the wrong tree.\n\n  MERGED (satisfied): the same claims file loads, the overlay is applied to\n  python only, and `verify-claims . --claims docs/hypergumbo.claims.yaml`\n  completes and prints \"Loaded 1 project-local I/O primitive overlay(s)\".\n  Measured effect of the overlay actually applying: uncatalogued modules\n  137 -> 102.\n\nTHE FIX DISCRIMINATES RATHER THAN SOFTENS, which was the requirement written\ninto this item's own description:\n  - an overlay for ANOTHER SHIPPED language is SKIPPED - being asked about a\n    language you do not describe is a question, not an error;\n  - an overlay for a language no catalogue knows (`language: pyton`) still\n    RAISES, because silently ignoring a typo leaves the author believing their\n    rows applied, which is the fail-quiet direction.\nBoth arms are pinned:\n  test_an_overlay_for_ANOTHER_shipped_language_is_skipped\n  test_an_overlay_for_an_UNKNOWN_language_is_still_refused\nand the skip arm additionally asserts the go rows did NOT leak into python and\nthat python's own rows survived, so it cannot pass by the merge becoming a\nno-op.\n\nONE RULE, ONE HOME: the language->catalogue resolution (direct file, then\n_CATALOG_ALIASES) was inline in load_catalog and is now _catalog_path_for,\nconsumed by both callers. A second inline copy would have got `typescript`\nwrong, since it resolves through the alias table rather than a file of its own.\n\nCOLLATERAL WORTH NAMING: this also unblocks declaring the two overlays already\nshipped under docs/io-primitives-overlays/ (python-http-clients + go-web-\nframeworks) TOGETHER, which is the obvious thing a polyglot repo does and was\nimpossible before.\n\nSuite 22,884 passed / 7 skipped / 17 xfailed (= 22,908 ingested) / 100% / core\ngreen in isolation / mypy ratchet clean."  # c987

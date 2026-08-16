@@ -1,0 +1,23 @@
+- op: create  # 9399
+  at: '2026-08-15T21:27:30Z'  # 9399
+  by: agent  # 9399
+  actor: jgstern_agent  # 9399
+  clock: 1  # 9399
+  nonce: '9399'  # 9399
+  data:  # 9399
+    kind: invariant  # 9399
+    title: "an overlay's completeness grant is the most powerful line a user can write and the least visible: the disclosure names the path, not the vouched modules"  # 9399
+    status: violated  # 9399
+    priority: 2  # 9399
+    parent:  # 9399
+    tags:  # 9399
+    - verify_claims  # 9399
+    - security  # 9399
+    isbefore: []  # 9399
+    duplicate_of: []  # 9399
+    not_duplicate_of: []  # 9399
+    pr_ref:  # 9399
+    description: "Filed while landing the owner's 2026-08-15 ruling that an overlay MAY declare module_completeness (ADR-0016 amended). The grant is deliberate and the reasoning holds - overlays are where third-party goes and the user is the authority on their own dependencies - but the measured hazard is on record: a SIX-LINE overlay with zero primitive rows and one completeness entry for telnetlib turned the INV-buzab exfiltration fixture (opens telnetlib.Telnet, writes os.environ['API_KEY'] into it) from inconclusive rc 2 to confirmed rc 0, disclosed by nothing but a stderr line naming the overlay path. Two bounds already hold and are asserted by tests: retrieved: is mandatory (an entry is a dated audit record, not a switch), and the entry does not promote the module into stdlib_modules. What is missing is the third: SAY WHAT WAS VOUCHED FOR. Deliberately NOT bundled into the ruling's PR - it is a restructure of where the disclosure runs, and the ruling PR is a rename plus a permission that should stay independently revertable."  # 9399
+    fields:  # 9399
+      statement: "When a project-local overlay declares module_completeness, the run must disclose WHICH modules the user vouched for, not merely that an overlay was loaded. VIOLATED: _disclose_io_overlays prints 'Loaded N project-local I/O primitive overlay(s): <paths>' and nothing about completeness, so a six-line overlay that turns a real exfiltration from inconclusive rc 2 into confirmed rc 0 is disclosed identically to one that adds a harmless row."  # 9399
+      root_cause: "The disclosure runs in cmd_verify_claims BEFORE the per-language load_catalog loop that actually parses overlays, so at the point of printing nothing has been parsed and only the paths are in hand. Naming the vouched modules needs the disclosure to move after the loop (or to read the merged catalogue's module_completeness against the shipped catalogue's own), which is a restructure rather than a message edit."  # 9399
