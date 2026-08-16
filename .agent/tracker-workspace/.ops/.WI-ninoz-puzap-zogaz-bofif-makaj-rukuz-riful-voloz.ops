@@ -20,3 +20,18 @@
     pr_ref:  # 2d2e
     description: "Step 3 of the permanent-exit plan on INV-dabuf (scope -> climb -> CI ratchet\n-> label), picking up the (b) resolution WI-vanun deliberately parked \"until\nthe instrument is calibrated\" — which INV-zuhig's fix (PR #367) completed:\nthe self-proof now returns rc 3 with 98 sanitizer-credited flows minted from\nproduction structure.\n\nWHAT SHIPPED. (1) Snapshot v2: docs/hypergumbo.claims.expected.json records\nper claim the verdict + sorted caveat KINDS + credited-flows bucket\n(zero/nonzero). The bucket is deliberate: exact counts move with every\nanalyzer improvement, but nonzero -> zero is the vacuousness signal — the\nverdict-stays-green-while-evidence-dies shape (2,658 -> 0) that INV-zuhig\ndocumented can no longer pass the gate. (2) Comparison logic extracted from\nthe check-self-claims heredoc to scripts/check-self-claims-drift, pinned by\ntests/test_check_self_claims_drift.py (13 tests incl. the INV-zuhig shape as\na named case). (3) Per-PR arm: ci.yml `self-claims-gate` job, path-filtered\non the claim surface (claims yaml + snapshot, self-catalog, overlays,\nio_primitives + taint catalogues, pyproject deps, the gate scripts); the\ninstall mirrors full-suite's exactly so both arms analyze the same language\nset. Analyzer .py changes stay on the twice-daily full-suite cadence — a\n~10-minute self-analysis on every core PR was judged too heavy, recorded\nhere as a scoping decision, not a capability limit. (4) The stale snapshot\n(18x inconclusive, pre-climb) was re-recorded from the merged post-#367\ntree; without that, the next cron full-suite would have failed the drift\ngate on an improvement. (5) generate-security-md reads v2 and its hardcoded\nprose is verdict-aware now — the \"both are inconclusive\" and \"pathlib.Path\nis invisible to the I/O catalogue\" paragraphs had gone stale-false."  # 2d2e
     fields: {}  # 2d2e
+- op: update  # ffd3
+  at: '2026-08-16T07:34:17Z'  # ffd3
+  by: agent  # ffd3
+  actor: jgstern_agent  # ffd3
+  clock: 2  # ffd3
+  nonce: ffd3  # ffd3
+  set:  # ffd3
+    status: done  # ffd3
+- op: discuss  # 8641
+  at: '2026-08-16T07:34:18Z'  # 8641
+  by: agent  # 8641
+  actor: jgstern_agent  # 8641
+  clock: 3  # 8641
+  nonce: '8641'  # 8641
+  message: "DONE across two PRs. PR #371: snapshot v2 (verdict + caveat kinds + credited-flows zero/nonzero bucket per claim; the INV-zuhig vacuousness shape — green verdict, dead evidence — now fails the gate), comparison logic extracted to scripts/check-self-claims-drift with 13 logic tests, snapshot re-recorded from the merged post-#367 tree (18/18 confirmed_with_caveats, 4 claims crediting nonzero; the committed snapshot had said 18x inconclusive since pre-climb, so the next cron would have failed on the improvement), generate-security-md v2-aware with two stale-FALSE prose paragraphs corrected. Follow-up PR (dev 097ab4e05a): probing the merged PR revealed the per-PR arm was wired into GHA ci.yml while the CI that gates merges is Woodpecker (auto-pr polls only ci/woodpecker/pr/woodpecker), AND the live Woodpecker full-suite cron had dropped check-self-claims at cutover — the gate SECURITY.md names had been running NOWHERE. Both arms now live in the Woodpecker pipelines: per-PR path-filtered on the claim surface in the gating context, unconditional on the cron for analyzer-change drift. Validation caveat, stated rather than hidden: the follow-up PR's own diff does not match the gate's path filter, so the per-PR step has not yet had a live run — first exercises are tonight's 01:00 UTC cron (unconditional arm) and the next claim-surface PR (INV-titih is likely). If the step has an install-level defect the cron surfaces it within a cycle."  # 8641
