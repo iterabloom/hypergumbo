@@ -52,3 +52,33 @@
   clock: 5  # c390
   nonce: c390  # c390
   message: "INSTALL-SET HYPOTHESIS ELIMINATED BY EXECUTION. Second owner-fired cron, on the parity tree (dev 8e913045e0): the meta-package was demonstrably installed (hypergumbo-7.0.0 wheel built and in the Successfully-installed list; 9 previously-skipped tests un-skipped, 23,012 passed vs 23,003) and the test failed IDENTICALLY. That was the last cheap hypothesis. Remaining axes, all CI-container-only: the interpreter x container interaction (nightly's 3.11 leg passes while full-suite's 3.11 container fails — so interpreter ALONE is already excluded; something about THIS pipeline's container/load remains), and pipeline-shape concurrency (full-suite runs test-all-packages CONCURRENTLY with self-tree-validation and self-claims-gate on one agent — 3x CPU oversubscription; if any analyzer timeout inside run_behavior_map is load-sensitive, the tiny toml analysis missing its budget would produce exactly this shape; nightly's matrix legs may not co-schedule the same way). INSTRUMENT SHIPPED instead of a fourth hypothesis (dev 7640dcd9d8): the failing assertion now discloses (a) the toml-config pass's run rows, (b) every pyproject-path node with kind+meta/concepts, (c) the derived entrypoint kinds — the three candidate break points (analyzer skipped / concept not emitted / conversion dropped) produce three different messages. The NEXT red cron is a mechanism reading. No further theory until that reading exists."  # c390
+- op: update  # d712
+  at: '2026-08-16T19:58:52Z'  # d712
+  by: agent  # d712
+  actor: jgstern_agent  # d712
+  clock: 6  # d712
+  nonce: d712  # d712
+  set:  # d712
+    status: pending_validation  # d712
+- op: discuss  # 91a2
+  at: '2026-08-16T19:58:52Z'  # 91a2
+  by: agent  # 91a2
+  actor: jgstern_agent  # 91a2
+  clock: 7  # 91a2
+  nonce: 91a2  # 91a2
+  message: "ROOT CAUSE ESTABLISHED — by the instrument, on the third owner-fired cron.\n\nTHE READING (cron at 5a9e39f94f, tree contains the self-diagnosing assert):\n  toml passes (pass, files, nodes): [('toml', 1, 3)]        <- analyzer RAN\n  pyproject-path nodes: mycli file node PRESENT with entry_point +\n    entry_role BUT NO `concepts` KEY; project node present\n  entrypoints: []                                            <- fully empty\nLocal ground truth on the same fixture: the mycli node carries\nconcepts=[pyproject_script @ config-conventions] and entrypoints contain\nBOTH (cli_command, manifest_declared) AND (main_function,\nlanguage_convention). CI had NEITHER -> concept enrichment attached\nNOTHING in that process.\n\nTHE MECHANISM. framework_patterns._PATTERN_CACHE was keyed on framework_id\nALONE while get_frameworks_dir() — half the function's input — is\npatchable. Six tests in test_framework_patterns.py patch the dir; under\nthe patch, convention ids (main-functions, config-conventions, ...) cache\nas None; the file's OWN autouse fixture (added earlier, docstring naming\nthis exact leak!) cleared the cache before each test IN THAT FILE — so the\nLAST dir-patching test in a worker left the poison for every OTHER file's\ntests on that worker. enrich_symbols then got None for every convention\npattern -> zero concepts -> zero concept-derived entrypoints -> assert [].\n\nWHY IT LOOKED LIKE EVERYTHING ELSE FIRST: expression depends on xdist\nWORKER COMPOSITION — which tests precede the victim on its worker. That\ntracked pipeline shape, not tree, interpreter, container, or install set,\nwhich is why each of those hypotheses died by experiment in turn (tree:\nfails post-climb; interpreter: nightly 3.11 leg green; install set: parity\ncron with meta installed failed identically; local: single test, whole\ncore suite, cross-package interleave all green — different worker\ncomposition).\n\nFIX (PR in flight): cache key becomes (str(get_frameworks_dir()),\nframework_id) — a patched dir caches under its own key and CANNOT shadow\nthe real patterns; poisoning is impossible by construction for the\ndir-patching shape. Regression test pins it (patched-dir Nones must not\nshadow; caching still works within the patched scope). The file-local\nfixture stays as hygiene, docstring corrected to say what it actually\nprotected.\n\nSTATUS -> pending_validation: the behavioral validation is the next\nfull-suite cron green (which also unblocks WI-zavut). Two structural\nnotes: (1) the invariant's statement should be read as \"entrypoint\ndetection must not depend on process history\" — the version-conditional\nframing died with the 3.10 hypothesis; (2) CLASS CHECK, executed:\npartial-input memoization on a patchable resolver. Surveyed core's\nmodule-global caches and lru_cache sites. ONE sibling found and FIXED in\nthe same PR: cfg.py's _MAPPING_CACHE keyed an explicit search_dir\ncorrectly but spelled the None-default as the literal 'default' while\nresolving through patchable get_cfg_nodes_dir() — same hole, no test\npatches that getter today, re-keyed on the resolved dir so none ever can.\nReviewed and left alone: discovery._looks_like_virtualenv (lru_cache on\nthe directory path — the full input), ir._known_languages_for_evidence\n(maxsize=1 over the analyzer registry, documented as stable\npost-discovery), analyzer_identity._CACHED_HASH (registry-derived)."  # 91a2
+- op: update  # 367c
+  at: '2026-08-16T20:20:16Z'  # 367c
+  by: agent  # 367c
+  actor: jgstern_agent  # 367c
+  clock: 8  # 367c
+  nonce: 367c  # 367c
+  set:  # 367c
+    status: satisfied  # 367c
+- op: discuss  # 8fc1
+  at: '2026-08-16T20:20:16Z'  # 8fc1
+  by: agent  # 8fc1
+  actor: jgstern_agent  # 8fc1
+  clock: 9  # 8fc1
+  nonce: 8fc1  # 8fc1
+  message: "VALIDATED — the item's own repro, re-run on the merged tree by the owner's fourth manual cron fire: ci/woodpecker/cron/full-suite SUCCESS at dev 8e69f40356 (the cache-key fix commit), where the three preceding crons on near-identical trees each failed this one test. The A/B is as clean as CI allows: same pipeline, same container, same install set as the red parity run — the only delta is the dir-keyed cache. Root cause, mechanism, elimination history, and the executed class check (cfg.py sibling fixed in the same PR) are in the previous entry. The invariant's honest restatement stands in the record: entrypoint detection must not depend on process history; it no longer does — the poisoning shape is impossible by construction and pinned by regression test."  # 8fc1

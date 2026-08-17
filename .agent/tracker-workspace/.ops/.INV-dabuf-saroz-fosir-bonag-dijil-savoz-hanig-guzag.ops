@@ -176,3 +176,21 @@
   clock: 22  # 30cf
   nonce: 30cf  # 30cf
   message: "Path-out step 2b COMPLETE: INV-zuhig satisfied (PR #367) — the argparse-dispatch linker + dispatches_to in TAINT_CALL_EDGE_TYPES restored the evidence base. Merged-tree repro: rc 3, 18/18 confirmed_with_caveats, sanitizer-credited flows 0 -> 98, total examined flows 295 -> 1,007, attribution by construction (runtime_cli_entry mints only at cmd_*, tests outside artifact scope, only in-artifact call-shaped edges into cmd_* are the linker's). Step 3 (CI ratchet) in flight as WI-ninoz: snapshot v2 pins verdict + caveat kinds + credited-flows bucket so the vacuousness shape (green verdict, dead evidence) fails the gate; per-PR arm on the claim surface. After that PR merges, this item's 'label' step is next: rc 3 stands on examined flows and can be claimed."  # 30cf
+- op: update  # 9708
+  at: '2026-08-16T21:49:05Z'  # 9708
+  by: agent  # 9708
+  actor: jgstern_agent  # 9708
+  clock: 23  # 9708
+  nonce: '9708'  # 9708
+  set:  # 9708
+    status: satisfied  # 9708
+    pr_ref: '#364,#365,#366,#367'  # 9708
+  remove:  # 9708
+    tags: [needs_human_review]  # 9708
+- op: discuss  # 8645
+  at: '2026-08-16T21:49:06Z'  # 8645
+  by: agent  # 8645
+  actor: jgstern_agent  # 8645
+  clock: 24  # 8645
+  nonce: '8645'  # 8645
+  message: "CLOSED SATISFIED on owner authorization (\"close INV-dabuf on the standing\nevidence\", 2026-08-16) with fresh behavioral evidence, not the cached claim.\n\nREPRO RE-RUN LIVE on the merged tree (dev 8e69f40356 — the all-gates-green\ntip), the item's own filed command, cold self-analysis (no --input):\n\n  python -m hypergumbo_core verify-claims . --claims docs/hypergumbo.claims.yaml\n  -> rc 3, \"18 CONFIRMED WITH CAVEATS (of 18 claim(s))\", zero other verdicts\n  -> examined: 1,007 taint findings (16 ddg, 979 ddg_mixed, 12 structural)\n  -> credited: 98 sanitizer-credited flows = 78 (runtime-cli-no-host-fs)\n     + 12 (runtime-cli-no-subprocess) + 5 (install-gitleaks-no-host-fs)\n     + 3 (build-grammars-no-host-fs) — exactly the v2 snapshot's nonzero bucket\n  -> scope: shipped_artifact, 36,390 of 155,192 edges kept under the 7\n     packaging-declared roots; disclosure intact on stderr\n\nTHE STATEMENT IS NOW FALSE FOR THE RIGHT REASON. The item's statement was\n\"the machine-checkable safety artifact establishes nothing\" — first because\n18/18 were inconclusive, then (after the climb reached rc 3 mechanically) because\nthe 18 confirms were VACUOUS: the taint evidence was test-driven, credited flows\n2,658 -> 0 under artifact scope. Both failure modes are gone. The artifact now\nsays: \"no exfiltration flow found across 18 claims, standing on production\ninvocation paths (98 sanitizer-credited flows minted from the argparse dispatch\nstructure, PR #367), GIVEN the declared zone barrier and MODULO two named opaque\nlaunch sites (subprocess.run, subprocess.Popen — git/pip/rustup by design).\"\nThat is a machine-checkable artifact anyone can re-run, which is what the plan's\nbucket-A item demanded. rc 0 was never on the table for a tool that shells out;\nrc 3 with named caveats IS the honest terminal state (per the 2026-08-13\nblocker-stack analysis on this thread).\n\nTHE LOCK THAT MAKES THE CLOSURE DURABLE (permanent-exit G2): the self-claims\ngate v2 (WI-ninoz) pins per-claim verdict + sorted caveat KINDS + credited-flows\nzero/nonzero bucket in docs/hypergumbo.claims.expected.json, enforced in BOTH\nlive Woodpecker arms (per-PR path-filtered step + full-suite cron step), both\nlive-verified — the cron arm green at this very commit, the first green\nfull-suite cron since cutover. The exact vacuousness shape that blocked this\nclosure once (green verdicts, dead evidence) now fails CI. G1 (unstable\ndenominator) closed by artifact scope (PR #364); G3 (labels outrunning checks)\nclosed by INV-titih (provenance_declared).\n\nDISCLOSED RESIDUALS, restated so closure is not misread as their denial:\nuntyped receivers remain a disclosed residual (INV-linub, open P1, by design);\nthe caveats are permanent by construction. Both are named in the artifact\nitself, which is the difference between a residual and a blind spot."  # 8645
