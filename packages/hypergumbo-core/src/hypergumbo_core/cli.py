@@ -542,6 +542,7 @@ def _get_or_run_analysis(
     repo_root: Path,
     explicit_input: Optional[str] = None,
     show_progress: bool = True,
+    minimal: bool = False,
 ) -> tuple[Optional[Path], bool, list[Path]]:
     """Get cached behavior map or run analysis if needed.
 
@@ -552,6 +553,11 @@ def _get_or_run_analysis(
         repo_root: Repository root path.
         explicit_input: Explicit --input path (takes precedence).
         show_progress: Whether to show progress during analysis.
+        minimal: When True and an analysis actually has to run, decline the
+            side outputs the calling command does not read (budget-tier
+            previews, per-handler slices, sketch pre-computation). Opt-in per
+            WI-bikod; see _add_minimal_argument for the rationale and limits.
+            Irrelevant on a cache hit, where no analysis runs at all.
 
     Returns:
         Tuple of (input_path, was_cached, generated_artifacts):
@@ -588,10 +594,22 @@ def _get_or_run_analysis(
         file=sys.stderr,
     )
 
+    # WI-bikod: the implicit path is the ONE place ten commands share, so the
+    # opt-out is applied here rather than at ten call sites. Passing the flags
+    # only when `minimal` keeps the default kwargs absent, which is what
+    # test_without_minimal_the_defaults_are_untouched pins.
+    side_output_opts: dict[str, Any] = {}
+    if minimal:
+        side_output_opts = {
+            "no_sketch_fan_out": True,
+            "enable_handler_slices": False,
+            "include_sketch_precomputed": False,
+        }
     generated_files = run_survey(
         repo_root=repo_root,
         out_path=None,  # Use default cache location
         progress=show_progress,
+        **side_output_opts,
     )
 
     # INV-somup: use the map path run_survey ACTUALLY wrote (out_path is
@@ -1635,6 +1653,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -2021,6 +2040,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -2192,6 +2212,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -2564,6 +2585,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -4220,6 +4242,7 @@ def cmd_symbols(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -4559,6 +4582,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=getattr(args, "input", None),
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(
@@ -5354,6 +5378,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=getattr(args, "input", None),
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(
@@ -6173,6 +6198,7 @@ def cmd_test_coverage(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -6932,6 +6958,7 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
     repo_root = Path(args.path).resolve()
     input_path, _was_cached, _generated = _get_or_run_analysis(
         repo_root, explicit_input=args.input, show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -6985,6 +7012,7 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         repo_root,
         explicit_input=args.input,
         show_progress=True,
+        minimal=getattr(args, "minimal", False),
     )
     if input_path is None:
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
@@ -7610,6 +7638,42 @@ def _unit_interval_arg(label: str):
             )
         return value
     return _parse
+
+
+def _add_minimal_argument(parser: argparse.ArgumentParser) -> None:
+    """Opt-in ``--minimal`` for subcommands that can auto-run an analysis (WI-bikod).
+
+    Ten subcommands run a full analysis on a cache miss, via
+    ``_get_or_run_analysis``. That path used to inherit every one of ``survey``'s
+    side-emission defaults, so a caller who typed ``slice --files`` also paid for
+    three budget-tier preview files, up to 25 per-route handler slices, and the
+    sketch pre-computation block — while ``slice --files`` reads only ``nodes``
+    and ``edges``. Measured on this monorepo, declining all three took a cold
+    analysis 517.7s → 455.0s.
+
+    ``--minimal`` is the one word that declines the set. It is deliberately
+    OPT-IN: the standing ruling (WI-pijal) is that those artifacts earn their
+    place, so the default path is unchanged and the skip happens only when asked
+    for. It is not offered on ``survey`` itself, which already has
+    ``--budgets`` / ``--no-sketch-fan-out`` / ``--no-handler-slices`` and whose
+    user typed the verb that produces them.
+
+    Two honest limits, both stated in the help text: on a warm tree the flag
+    changes nothing (there is no analysis to shape), and a survey cached from a
+    ``--minimal`` run carries no ``sketch_precomputed`` block, so a later
+    ``sketch`` recomputes it live instead of reading it (every consumer site
+    guards on its presence, so this degrades in time, never in correctness).
+    """
+    parser.add_argument(
+        "--minimal",
+        action="store_true",
+        default=False,
+        help="When this command has to run an analysis itself (no cached "
+             "survey), skip the side outputs it does not read: budget-tier "
+             "previews, per-handler slices, and sketch pre-computation. No "
+             "effect when a cached survey is reused. A survey cached from a "
+             "--minimal run makes a later `sketch` recompute its inputs.",
+    )
 
 
 def _add_path_argument(parser: argparse.ArgumentParser) -> None:
@@ -8269,6 +8333,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Output file for --files mode (list of dependent file paths). "
              "If not specified, writes to stdout.",
     )
+    _add_minimal_argument(p_slice)
     p_slice.set_defaults(func=cmd_slice)
 
     # hypergumbo search
@@ -8314,6 +8379,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Maximum number of results to show; must be a positive integer "
              "(default: 20). The header always reports the total match count.",
     )
+    _add_minimal_argument(p_search)
     p_search.set_defaults(func=cmd_search)
 
     # hypergumbo routes
@@ -8367,6 +8433,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         help="Output format (default: text). JSON goes to stdout; the run "
              "summary goes to stderr so stdout stays machine-parseable.",
     )
+    _add_minimal_argument(p_routes)
     p_routes.set_defaults(func=cmd_routes)
 
     # hypergumbo explain
@@ -8464,6 +8531,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
         default=None,
         help="Maximum number of symbol sections to show (default: all)",
     )
+    _add_minimal_argument(p_explain)
     p_explain.set_defaults(func=cmd_explain)
 
     # hypergumbo catalog
@@ -8800,6 +8868,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         default=None,
         help="Limit output to top N hot/cold spots",
     )
+    _add_minimal_argument(p_test_cov)
     p_test_cov.set_defaults(func=cmd_test_coverage)
 
     # hypergumbo dead-code-maybe
@@ -8849,6 +8918,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
              "dispatch / missing-edge false positives (default: 3). Set <= 0 to "
              "disable the demoter.",
     )
+    _add_minimal_argument(p_dead_code)
     p_dead_code.set_defaults(func=cmd_dead_code_maybe)
 
     # hypergumbo repeat-finder
@@ -8882,6 +8952,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input.
         help="Max clusters to show in text output per section (default: 20; "
              "--format json always emits the full list).",
     )
+    _add_minimal_argument(p_repeat)
     p_repeat.set_defaults(func=cmd_repeat_finder)
 
     # hypergumbo symbols
@@ -8985,6 +9056,7 @@ Auto-discovers cached results from 'hypergumbo survey', or specify --input."""
             "with an ellipsis."
         ),
     )
+    _add_minimal_argument(p_symbols)
     p_symbols.set_defaults(func=cmd_symbols)
 
     # hypergumbo compact
@@ -9171,6 +9243,7 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "docs/io-primitives-overlays/ for a worked example. (INV-fotav)"
         ),
     )
+    _add_minimal_argument(p_io)
     p_io.set_defaults(func=cmd_io_boundaries)
 
     # hypergumbo verify-claims
@@ -9329,6 +9402,7 @@ repository's own word" and decide per repository whether that is acceptable.
             "never silently dropped."
         ),
     )
+    _add_minimal_argument(p_vc)
     p_vc.set_defaults(func=cmd_verify_claims)
 
     # Assign subcommands to groups for help formatting
