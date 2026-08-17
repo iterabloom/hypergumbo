@@ -25,14 +25,16 @@ selection, so narrowing CI was the smaller half of the prize and not worth
 coupling the merge gate to a selector still accruing evidence (10 of 30
 commits).
 
-THE TWO SETS ARE BYTE-IDENTICAL TODAY, which is exactly why the seam is cut now:
-there is nothing yet to misuse it, so the split can be verified as a no-op.
+THE TWO SETS WERE BYTE-IDENTICAL WHEN THE SEAM WAS CUT, which is exactly why it
+was cut then: there was nothing yet to misuse it, so the split could be verified
+as a no-op. Phase 2 (WI-kuliv) is the first consumer, and ``_audit_union`` below
+pins that it lands on the correct side.
 
 WHY THE GUARD CARRIES POSITIVE CONTROLS. A lint over a shell script that matches
-nothing passes just as green as one that matches everything. ``_audit`` is
+nothing passes just as green as one that matches everything. Both audits are
 therefore run over synthetic scripts that DO violate the rule — including the
 exact shape a well-meaning "simplify these two variables back into one" edit
-would produce.
+would produce, and the exact shape of a Phase 2 union placed one block too early.
 """
 from __future__ import annotations
 
@@ -62,12 +64,20 @@ def _audit(text: str) -> list[str]:
             f"set at one named seam"
         )
 
-    # The manifest heredoc-style block: find the group that redirects to
-    # MANIFEST_FILE and check what it publishes.
-    for block in re.findall(r"\{(.*?)\}\s*>\s*\"\$MANIFEST_FILE\"", text,
-                            re.DOTALL):
-        if "=== SELECTED_TESTS ===" not in block:
-            continue
+    # The manifest block: everything from the SELECTED_TESTS marker to the
+    # redirect that closes the group.
+    #
+    # ANCHOR ON THE MARKER, NOT ON A BRACE. The first version of this matched
+    # `\{(.*?)\}\s*>\s*"\$MANIFEST_FILE"`, which reads "the nearest brace group
+    # ending in the redirect" — and `{` occurs in ordinary shell all over this
+    # script (`${BASELINE:-HEAD}`, `${ARGS[@]}`). The moment a block containing
+    # one landed above the manifest, the match started there and swallowed its
+    # `echo "$AFFECTED_TESTS"`, reporting a violation in code that had nothing
+    # to do with the manifest. Phase 2's union block is exactly that shape.
+    for marker in re.finditer(r'echo "# === SELECTED_TESTS ==="', text):
+        tail = text[marker.end():]
+        close = re.search(r'\}\s*>\s*"\$MANIFEST_FILE"', tail)
+        block = tail[:close.start()] if close else tail
         if re.search(rf'echo\s+"\${_RUN}"', block):
             problems.append(
                 f"the manifest block publishes ${_RUN} (the LOCAL run set). "
@@ -160,3 +170,91 @@ def test_guard_accepts_the_correct_shape() -> None:
 run_pytest "${_RUN}" "${{ARGS[@]}}"
 '''
     assert _audit(src) == []
+
+
+# ── Phase 2: the coverage-directed union must land BELOW the seam ────────────
+#
+# The seam only helps if its consumers respect it. Phase 2 (WI-kuliv) unions
+# coverage-selected tests into the local run set; placed above the capture it
+# would add roughly 44 test files per informative run to the COMMITTED manifest,
+# and therefore to the merge-gating CI. Nothing about that failure is visible:
+# the union still works, the local run is still correct, and the per-PR gate
+# just gets quietly slower. Only position distinguishes the two, so position is
+# what gets pinned.
+
+_SELECT_CALL = re.compile(r"coverage-select\"?\s*\\?\s*\n?[^\n]*\bselect\b")
+
+
+def _audit_union(text: str) -> list[str]:
+    """Report a coverage-directed union that could reach the manifest."""
+    problems: list[str] = []
+
+    calls = [m.start() for m in _SELECT_CALL.finditer(text)]
+    if len(calls) != 1:
+        problems.append(
+            f"expected exactly one `coverage-select … select` invocation, "
+            f"found {len(calls)}; the union has one site, below the seam"
+        )
+        return problems
+
+    capture = text.find(f'{_MAN}="${_RUN}"')
+    if capture == -1:
+        problems.append("the seam capture is missing entirely")
+    elif calls[0] < capture:
+        problems.append(
+            "the coverage-directed union runs BEFORE the manifest set is "
+            "snapshotted, so its additions reach the committed manifest and "
+            "therefore the merge-gating CI. It must run below the seam."
+        )
+    return problems
+
+
+def test_live_script_unions_below_the_seam() -> None:
+    """The shipped smart-test keeps Phase 2 local."""
+    assert _audit_union(_SMART_TEST.read_text(encoding="utf-8")) == []
+
+
+def test_the_union_is_actually_wired() -> None:
+    """A position guard passes vacuously if the union was never added.
+
+    Without this, deleting the whole Phase 2 block leaves ``_audit_union``
+    reporting one problem — which the test above would catch — but a future
+    refactor that renames the subcommand would silently satisfy neither.
+    """
+    text = _SMART_TEST.read_text(encoding="utf-8")
+    assert "SELECT_UNION" in text, "the Phase 2 switch is gone"
+    assert re.search(r'--no-select-union\)\s*SELECT_UNION=false', text), (
+        "the union must remain individually disablable"
+    )
+    assert re.search(r'SELECT_UNION=false', text[:text.find("for arg in")]), (
+        "the CI guard must also switch the union off"
+    )
+
+
+def test_union_guard_fires_when_placed_above_the_seam() -> None:
+    """POSITIVE CONTROL: the exact shape of a union one block too early."""
+    src = f'''
+ADDS=$("$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select \\
+    --changed-files "$f")
+{_RUN}=$(printf '%s\\n%s\\n' "${_RUN}" "$ADDS" | sort -u)
+{_MAN}="${_RUN}"
+'''
+    found = _audit_union(src)
+    assert len(found) == 1 and "BEFORE the manifest set" in found[0]
+
+
+def test_union_guard_fires_when_the_union_is_missing() -> None:
+    """POSITIVE CONTROL: no select call at all."""
+    found = _audit_union(f'{_MAN}="${_RUN}"\n')
+    assert len(found) == 1 and "exactly one" in found[0]
+
+
+def test_union_guard_accepts_the_correct_shape() -> None:
+    """NEGATIVE CONTROL: below the seam reports nothing."""
+    src = f'''
+{_MAN}="${_RUN}"
+ADDS=$("$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" select \\
+    --changed-files "$f")
+{_RUN}=$(printf '%s\\n%s\\n' "${_RUN}" "$ADDS" | sort -u)
+'''
+    assert _audit_union(src) == []

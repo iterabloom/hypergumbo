@@ -15,6 +15,7 @@ catches broadly and exits 0 — see `main`.
 
     update  fold one run's coverage contexts into the index
     shadow  report what coverage WOULD have selected, without acting on it
+    select  print the selection, for a caller that intends to ACT on it
 """
 from __future__ import annotations
 
@@ -35,7 +36,8 @@ from hypergumbo_core.selection_log import (  # noqa: E402
     append_observation, evaluate, load_observations,
 )
 from hypergumbo_core.selection_shadow import (  # noqa: E402
-    compare, failed_tests_from_junit, ran_tests_from_junit,
+    compare, failed_tests_from_junit, ran_tests_from_junit, rebase_to_repo,
+    selectable_test_files,
 )
 
 #: Out-of-repo by default, like test_timings.json: this is rewritten on every
@@ -106,10 +108,7 @@ def cmd_shadow(args: argparse.Namespace) -> int:
         failed = failed_tests_from_junit(Path(args.junit), root)
     # Index paths are absolute; smart-test speaks repo-relative. Rebase before
     # comparing or every file differs and the report is pure noise.
-    rebased = {
-        t.replace(f"{root}/", "", 1) if t.startswith(f"{root}/") else t
-        for t in selection.tests
-    }
+    rebased = rebase_to_repo(selection.tests, root)
     report = compare(
         type(selection)(
             tests=frozenset(rebased),
@@ -147,6 +146,40 @@ def cmd_shadow(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_select(args: argparse.Namespace) -> int:
+    """Print repo-relative test FILES coverage selects, one per line.
+
+    HOW THIS DIFFERS FROM ``shadow``, given both compute the same selection:
+    shadow needs THIS run's junit, so it can only run after pytest and can only
+    report. A caller that intends to widen the run set needs the same answer
+    BEFORE pytest, with no junit in existence yet. Hence a second entry point
+    over one shared selection, rather than a flag on the first.
+
+    The output is filtered to files that exist (``selectable_test_files``): the
+    index is persistent and remembers renamed or deleted tests, and pytest
+    treats a missing path as a collection error. Stdout is the interface —
+    diagnostics go to stderr — and an empty selection prints nothing, which
+    unions to a no-op.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    if not changed:
+        return 0
+    base_sources = {
+        str(root / c): _base_source(root, args.base, c) for c in changed
+    }
+    conn = open_index(Path(args.index))
+    selection = select_tests(conn, base_sources)
+    conn.close()
+    files = selectable_test_files(selection.tests, root)
+    for f in sorted(files):
+        print(f)
+    if args.verbose:
+        print(f"[coverage-select] select: {len(files)} file(s) from "
+              f"{len(selection.tests)} node id(s)", file=sys.stderr)
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     """Print the accrued evidence and the phase's verdict."""
     ev = evaluate(load_observations(Path(args.log)))
@@ -179,6 +212,12 @@ def main(argv: list[str] | None = None) -> int:
     sh.add_argument("--sha", default=None,
                     help="commit the observation is attributed to")
     sh.set_defaults(func=cmd_shadow)
+
+    se = sub.add_parser("select")
+    se.add_argument("--changed-files", default=None)
+    se.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    se.set_defaults(func=cmd_select)
 
     rp = sub.add_parser("report")
     rp.set_defaults(func=cmd_report)
