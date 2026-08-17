@@ -28,3 +28,10 @@
   set: {}  # fe05
   add:  # fe05
     isbefore: [WI-hihuv-tazuf-sijir-manup-tarim-bofib-motun-kariz]  # fe05
+- op: discuss  # 7821
+  at: '2026-08-17T03:13:52Z'  # 7821
+  by: agent  # 7821
+  actor: jgstern_agent  # 7821
+  clock: 3  # 7821
+  nonce: '7821'  # 7821
+  message: "PRECONDITION PARTLY SATISFIED IN ADVANCE, PR #387 (dev cd7534745e). This item's narrowing no longer reaches CI. smart-test now snapshots MANIFEST_TESTS before the local-only region, so a Phase 3 narrowing applied to AFFECTED_TESTS shrinks THIS MACHINE's run and leaves the committed manifest -- which .woodpecker/woodpecker.yml uses to drive the merge gate -- at the static slice. Owner's option A, chosen after measuring per-PR CI at ~3m40s against a local ~8m13s on the same 232-file selection: extending the narrowing to CI was the smaller half of the prize and not worth coupling merge-gate recall to the selector. CONSEQUENCE FOR THIS ITEM'S EVIDENCE BAR: the 30-admissible-commit exit criterion was sized for a change that could drop a test from the merge gate. It no longer can. A miss now costs the minutes until the per-PR gate runs the full affected set, not a full-suite cron cycle, so the bar can be re-set to whatever the owner wants for a local-only convenience. UNCHANGED AND STILL HARD: assert unmeasured tests are still selected before narrowing. 3,605 tests produce no coverage rows at all -- the whole tracker package plus subprocess and scripts/ tests -- and an index-only narrowing drops every one of them silently. That precondition is about correctness on this machine and is not touched by the decoupling."  # 7821
