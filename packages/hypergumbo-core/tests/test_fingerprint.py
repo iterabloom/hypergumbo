@@ -556,6 +556,47 @@ class TestFallbackAndEdgePaths:
 
         assert _slice_source(b"x = 1\n", _span(0, 0)) == b""
 
+    # The three cases below cover tree-sitter walk branches that this
+    # package's own suite reached only through OTHER packages' end-to-end
+    # tests. CI runs each package in isolation, so those branches counted as
+    # uncovered the moment fingerprint.py became a changed file — the
+    # cross-package gap `check-package-coverage` exists to catch. Real toml
+    # parses, no stubs: each input is chosen because it lands the walk on a
+    # specific structural shape.
+
+    def test_tree_sitter_span_inside_a_multiline_token_returns_none(self) -> None:
+        """A span strictly inside one token that outlives it yields None.
+
+        The located node (a triple-quoted string spanning lines 1-3) extends
+        past the span, so the container branch runs — and a token has no child
+        fully inside line 2, leaving nothing to hash. Honest None rather than
+        a fingerprint over content the span does not delimit.
+        """
+        source = b'key = """\nmiddle\n"""\n'
+        assert compute_symbol_fingerprint("toml", _span(2, 2), source) is None
+
+    def test_tree_sitter_comment_only_span_returns_none(self) -> None:
+        """A span landing exactly on a comment node yields None.
+
+        The walk skips comment subtrees (comments must not affect a structural
+        fingerprint), so skipping the only node walks off the end of the
+        cursor's subtree and the walk finishes having visited nothing. A
+        fingerprint over zero tokens would be a constant that aliases every
+        comment in the repo onto one value.
+        """
+        source = b"# just a comment\n"
+        assert compute_symbol_fingerprint("toml", _span(1, 1), source) is None
+
+    def test_tree_sitter_trailing_comment_span_returns_none(self) -> None:
+        """Same walk-off-the-end path, reached at a file's last line.
+
+        Distinct from the comment-only file: here the comment has a preceding
+        sibling, so the cursor has somewhere to have come from and the
+        subtree-exit is the only way out.
+        """
+        source = b"a = 1\n# tail comment\n"
+        assert compute_symbol_fingerprint("toml", _span(2, 2), source) is None
+
 
 def test_scheme_constant_is_stable() -> None:
     """The scheme tag string is part of the on-disk contract; pin it.
