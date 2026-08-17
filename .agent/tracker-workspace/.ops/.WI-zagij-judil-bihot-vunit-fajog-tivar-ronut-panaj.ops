@@ -49,3 +49,20 @@
   clock: 5  # 69c5
   nonce: 69c5  # 69c5
   message: "CEILING MEASURED (2026-08-17), and it CONFIRMS the premise rather than refuting\nit — I expected fixed per-language costs to undercut this item and they do not.\n\nscripts/measure-analyzer-scaling.py calls run_all_analyzers directly (skipping\nthe ~93s of linkers + graph work that this question is not about), sweeping\nmax_files to vary per-file work while holding the language mix fixed.\n\n    max_files=1   analyzer phase wall  2.6s   (252 files still analyzed)\n    uncapped      analyzer phase wall 65.7s   (1385 files)\n    marginal python cost                56.3 ms/file (63.1s / 1120 files)\n\nFIXED COST IS <= 2.6s OF 65.7s, UNDER 4% — and even that 2.6s includes real\nper-file work for 251 non-python files, so the true grammar-load / registry /\ndispatch floor is lower still. The analyzer phase is ~96% per-file work.\n\nCONSEQUENCE FOR THIS ITEM. A per-file cache can win back essentially the whole\nphase: 65.7s -> ~3s when nothing changed. Against the current 160.9s cold\n`--minimal` analysis, that lands the run near 97s, a 1.7x cut. Real, but NOT the\nstep-change to the 4.5s warm number — because the remaining ~93s (linkers ~29s,\ngraph post-processing ~43.5s, ~20.3s still unattributed) is whole-graph work\nthat per-file memoization cannot touch. Anyone hoping this item makes the local\ncycle feel instant should read that sentence twice.\n\nTWO MEASUREMENT CAVEATS, both load-bearing:\n - The linear fit over the sweep returns a NEGATIVE intercept (-12.3s), i.e. the\n   model is wrong, because max_files does not bind uniformly (WI-fomid: bash,\n   markdown, json, toml and ~17 others ignore it, putting a floor of 252 files\n   under every point). The <=2.6s bound survives because it is a MEASURED\n   configuration, not an extrapolation. Do not quote the fit.\n - Per-pass duration_ms cannot be used to price this work at all (WI-nuvam): it\n   is per-pass WALL under a thread pool, so it inflates with contention. Same 43\n   bash files billed 2.3s or 49.9s depending only on what python was doing\n   alongside. Price with the phase-split instrument, never with card sums."  # 69c5
+- op: update  # 1b95
+  at: '2026-08-17T21:04:08Z'  # 1b95
+  by: agent  # 1b95
+  actor: jgstern_agent  # 1b95
+  clock: 6  # 1b95
+  nonce: 1b95  # 1b95
+  set:  # 1b95
+    status: wont_do  # 1b95
+  add:  # 1b95
+    tags: [someday]  # 1b95
+- op: discuss  # a620
+  at: '2026-08-17T21:04:09Z'  # a620
+  by: agent  # a620
+  actor: jgstern_agent  # a620
+  clock: 7  # a620
+  nonce: a620  # a620
+  message: "OWNER RULING (2026-08-17), verbatim: \"I guess we've mined all the processing\nefficiency that's reasonable to mine at this point in the hypergumbo project.\"\n\nPARKED — wont_do + someday. Not \"won't ever\"; \"not at this point in the project\".\nThis item is intact and its ceiling is measured, so re-opening is a status change,\nnot a re-derivation.\n\nWHAT WAS ACTUALLY MINED, so nobody re-measures it:\n  cold run_survey on this monorepo   517.7s -> 139.1s   (3.7x)\n    #394  fingerprint locator was quadratic in file size   -297.7s (62.6% of wall)\n    #395  --minimal declines side outputs a caller never reads   -59.1s\n    #397  one shared CLI scan instead of four                    -23.3s\n\nWHY PARKED. Package scoping attacks the same per-file analyzer work as WI-madut\nwith a coarser key, so it inherits the same soundness question (is per-package\nextraction a pure function of that package?) for a smaller share of the win. It\nwas re-priced UP earlier today when passes became the largest remaining block;\nthat is still true and still not sufficient.\n\nRE-OPEN TRIGGER: a repo where package boundaries are load-bearing AND a measured\ncold run in the tens of minutes. Prefer WI-madut's finer key if either is built —\nsame audit, more of the prize."  # a620
