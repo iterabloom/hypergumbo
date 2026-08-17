@@ -26,3 +26,18 @@
   clock: 2  # 8b49
   nonce: 8b49  # 8b49
   message: "Re-examined 2026-08-14. The 'wait' verdict holds, but the reason on the item was the weaker one. Filed as a risk judgment (the last-1% tests are the heavy integration ones you least want to skip). The stronger reason is STRUCTURAL: relaxing the target buys nothing by itself, because you still run the same tests. The saving only appears once the trajectory DRIVES selection, i.e. narrowing (WI-bolot). Building this first means building a consumer for a capability that does not exist. Linked WI-bolot isbefore this. The risk argument still stands and is retained on the item."  # 8b49
+- op: discuss  # d5b9
+  at: '2026-08-17T08:31:29Z'  # d5b9
+  by: agent  # d5b9
+  actor: jgstern_agent  # d5b9
+  clock: 3  # d5b9
+  nonce: d5b9  # d5b9
+  message: "RE-PRICE THIS BEFORE STARTING IT. This item relaxes the LOCAL coverage target to 95% and samples different test sequences, which optimizes the pytest phase. Measured 2026-08-17: the pytest phase is 13-19s of a 9-MINUTE local cycle. Seven consecutive smart-test runs took 9m39s, 9m32s, 8m49s, 9m05s, 9m08s, 9m17s, 8m30s; the hypergumbo slice step inside them is 489s cold and 4.5s warm, and it is cold on every run because the results cache is keyed on a whole-tree state_hash that any edit invalidates (18 state_hash dirs under this repo's fingerprint, mtimes matching those runs one-to-one). So the entire chain WI-kuliv -> WI-bolot -> this item is working on 3% of the loop. Phase 3's measured best case was 6 seconds off ~550. Filed WI-runiz for the 489s. The 95% relaxation may still be worth having on its own merits -- the FULL suite is 89.8 min and 95% was measured at 12.5 min, which is a real saving for a --full run -- but it is not the local-cycle fix, and the '95% = 12.5 min vs 100% = 21.7 min' framing in LIVE.md is about full runs, not targeted ones."  # d5b9
+- op: update  # 7b84
+  at: '2026-08-17T08:31:29Z'  # 7b84
+  by: agent  # 7b84
+  actor: jgstern_agent  # 7b84
+  clock: 4  # 7b84
+  nonce: 7b84  # 7b84
+  set:  # 7b84
+    priority: 3  # 7b84
