@@ -87,3 +87,18 @@
   clock: 10  # 31ea
   nonce: 31ea  # 31ea
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nAUDITED DURING THE P0/P1 SWEEP; STATUS AND FRAMING BOTH STILL CORRECT, NOTHING APPLIED. Clause S2 is unchanged: inclusion is still decided by call-graph BFS and section 3a still only confirms. Re-derived at dev 11a240f83d, the fact underneath it -- across the L1/L2 probes on INV-lupav the walk still returns False only on the unearned partially-recorded shape, and the section 3a arm still tests is True.\n\nThe distinction this item's last entry drew is worth keeping visible for whoever plans the next pass: this is BLOCKED ON A DECISION (the standing owner ruling DO NOT START on WI-kabif), not blocked on unwritten work. It should not be picked up as if it were the latter."  # 31ea
+- op: update  # b226
+  at: '2026-08-17T22:55:43Z'  # b226
+  by: agent  # b226
+  actor: jgstern_agent  # b226
+  clock: 11  # b226
+  nonce: b226  # b226
+  set:  # b226
+    priority: 2  # b226
+- op: discuss  # affc
+  at: '2026-08-17T22:55:43Z'  # affc
+  by: agent  # affc
+  actor: jgstern_agent  # affc
+  clock: 12  # affc
+  nonce: affc  # affc
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GATE. This item terminates at WI-kabif's removal authority, which is parked TWICE OVER: (1) a standing owner ruling of DO NOT START, and (2) a pre-registered numeric threshold -- measurement 0001 records that the removal-authority question becomes \"arguable on its merits\" near 80% precision, and states that no reading of the data supports a number near 80% (measured ~41%). So this is parked on a NUMBER, not on effort, and no amount of session time moves it.\n\nP1 -> P2. Applying this item's own last entry, which drew the distinction explicitly: clause S2 is \"parked on an owner decision, not on an unwritten fix\", and \"blocked on a decision is a different status from blocked on work for whoever plans the next pass.\" The priority field was still asserting the latter."  # affc

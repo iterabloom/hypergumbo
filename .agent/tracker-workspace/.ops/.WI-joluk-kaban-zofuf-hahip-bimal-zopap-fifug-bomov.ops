@@ -100,3 +100,18 @@
   clock: 12  # 105f
   nonce: 105f  # 105f
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nAUDITED DURING THE P0/P1 SWEEP; DESCRIPTION IS ACCURATE, NOTHING TO CORRECT. Verified at dev 11a240f83d rather than read off the item: the gate is built and it FIRES -- INV-lupav's L2 repro returns False with the gate off and None with forfeit_refutation=True, positive control passing. So 'BUILT, TESTED and WIRED TO THE BARRIER ARM' is true, and this item still reads as unstarted only because of its todo_hard status, which its own opening line already warns about.\n\nThe sequencing instruction is unchanged and is now structurally enforced by test_taint_refutation_gate_contract.py rather than living in prose: do not wire the section 3a arm alone. That instruction depends on WI-kabif, which carries a standing owner ruling of DO NOT START -- so this item is decision-blocked, not work-blocked."  # 105f
+- op: update  # 4b54
+  at: '2026-08-17T22:55:44Z'  # 4b54
+  by: agent  # 4b54
+  actor: jgstern_agent  # 4b54
+  clock: 13  # 4b54
+  nonce: 4b54  # 4b54
+  set:  # 4b54
+    priority: 2  # 4b54
+- op: discuss  # 7bbb
+  at: '2026-08-17T22:55:44Z'  # 7bbb
+  by: agent  # 7bbb
+  actor: jgstern_agent  # 7bbb
+  clock: 14  # 7bbb
+  nonce: 7bbb  # 7bbb
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GATE. This item terminates at WI-kabif's removal authority, which is parked TWICE OVER: (1) a standing owner ruling of DO NOT START, and (2) a pre-registered numeric threshold -- measurement 0001 records that the removal-authority question becomes \"arguable on its merits\" near 80% precision, and states that no reading of the data supports a number near 80% (measured ~41%). So this is parked on a NUMBER, not on effort, and no amount of session time moves it.\n\nP1 -> P2. The gate is BUILT, TESTED and wired to the barrier arm -- re-verified at tip 2026-08-17 (INV-lupav's L2 repro returns False with the gate off and None with forfeit_refutation=True). The only remaining work is the section 3a arm, which cannot land alone. So the item is nearly done and then hard-stopped, which is not a P1 shape."  # 7bbb
