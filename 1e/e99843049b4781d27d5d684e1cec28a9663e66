@@ -1,0 +1,75 @@
+Original commit body from 51703e9a229f974fab1fba9dc6f8eb2b2a9fed6e:
+
+WI-bolot. `pytest --narrow` removes from the LOCAL run set only what the
+coverage index can prove irrelevant. Below the seam, so the committed
+manifest still publishes the full static selection.
+
+THREE RULES, each because of a distinct way of being wrong.
+
+1. DROP ONLY WITH POSITIVE EVIDENCE. A file qualifies only if it has
+   coverage rows AND none of its tests are `unmeasured`. This is the
+   precondition WI-bolot names as the one a careless implementation
+   breaks, and it is conservative at file granularity on purpose.
+
+2. KEEP THE WHOLE FILE-TOUCH SET, NOT THE CHANGED BLOCKS. WI-bolot does
+   not mention the constraint that actually decides the design: the
+   local gate is `coverage report --include=<changed files>
+   --fail-under=100`, which is whole-FILE. Narrowing to the tests
+   attached to changed blocks leaves the rest of each changed file
+   uncovered and exits 1 -- a red run every commit, worse than a slow
+   one. Measured at one base: block-selected 3 files against a
+   file-touch set of 13, so the naive version drops 10 files that were
+   carrying the coverage.
+
+3. REFUSE OUTRIGHT on an unknown COVERABLE SOURCE file or a changed file
+   that no longer exists. New blocks and unknown TEST files are reported
+   and NOT refused -- the first version of the measuring script made new
+   blocks a refusal and consequently reported "narrowing refused" on
+   every commit examined, because ordinary development adds blocks. The
+   test that covers a developer's new code is a changed test file, and
+   changed test files enter the run set through a selector narrowing
+   never touches. Files outside the coverage scope (scripts/, docs) are
+   likewise not refusals: nothing in-process can cover them, so the
+   index's silence is structural, and their subprocess tests are kept by
+   rule 1 anyway.
+
+OFF BY DEFAULT, and unconditionally off in CI -- not even
+HG_SELECT_SHADOW re-enables it. Between full runs the index can be short
+a test covering part of a changed file, and the gate would report that as
+a coverage regression. The CI guard sits BELOW argument parsing, because
+unlike the shadow/union guards this one has a flag that turns it ON and
+would otherwise be overridden by the flag it exists to override.
+
+MEASURED, both directions, on one tree:
+  un-narrowed  91 files  1,680 tests  19.3s  gate 100%
+  narrowed     61 files    945 tests  13.1s  gate 100%
+and the manifest still reports 91.
+
+scripts/measure-narrowing-headroom.py prices the ceiling rather than
+leaving it to intuition: only 55.3% of the suite's wall-clock is
+index-speakable at all, the rest being unmeasured or unseen and kept
+unconditionally. On a small change the run set is already ~20s of tests,
+so the saving is seconds; the win is on large selections. That number
+belongs in the repo because the shadow's headline (90 files selected, 3
+picked by coverage) reads like a 30x cut and is not one.
+
+THREE INCIDENTAL FIXES.
+- rebase_to_repo / selectable_test_files / files_of move from
+  selection_shadow to selection_index. They convert the INDEX's output
+  into the run set's vocabulary and now have three consumers; leaving
+  them in the shadow module would have made narrowing import the shadow.
+- The index query was first named `tests_touching`, which pytest
+  COLLECTS AS A TEST in any module that imports it -- surfacing as
+  `fixture 'conn' not found` at collection, an error naming nothing
+  about its cause. Renamed `touching_test_files`.
+- That query first used `IN (?,?,…)` with a placeholder list built from
+  len(paths), which ruff (S608) and bandit (B608) both read as
+  string-built SQL. Rather than annotate it twice, the filter moved into
+  Python: the table is tens of thousands of rows, scanned once per
+  invocation.
+
+The whole-file gate also caught two functions shipped without unit tests
+(95% on selection_index.py) on the reasoning that coverage-select
+exercises them. It does, by subprocess, which contributes no coverage.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
