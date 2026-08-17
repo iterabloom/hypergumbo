@@ -1344,6 +1344,25 @@ def _extract_edges_from_tree(
                         # unresolved edge stamped with ``enclosing_class`` (INV-nogof
                         # withhold-not-pick-first + INV-nilud linker-owns-resolution).
                         _enclosing_type = _get_enclosing_class(node, source)
+                        # INV-nizom: the ONE fact that separates a real POSIX
+                        # ``wait()`` from ``std::future::wait()`` once the
+                        # receiver type is unknown. ``is_member_call`` is
+                        # already computed above (it has to be, to suppress the
+                        # STL fallback) and was being discarded, so
+                        # ``gate_named_entry``'s ``call_construct == "method"``
+                        # refusal — the whole of io-boundary:F3's precision half
+                        # — was unreachable for C++: 1 of 34,983 call edges on
+                        # whisper.cpp carried the value, from a two-level
+                        # ``this->field->method()`` chain.
+                        #
+                        # ``None``, not ``"function"``, for the negative case.
+                        # The gate falls through on any value that is not
+                        # literally ``"method"``, so the two are equivalent to
+                        # it; but a bare call whose receiver we never saw is not
+                        # KNOWN to be a free function, and saying so would put a
+                        # claim in the meta that no consumer can audit. Absent
+                        # means unknown, which is what this branch actually has.
+                        _unresolved_construct = "method" if is_member_call else None
                         _sym = lookup_result.symbol
                         _defer = _sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
@@ -1384,6 +1403,7 @@ def _extract_edges_from_tree(
                                     module_hint=module_hint,
                                     dst_ref=ext_ref,
                                     enclosing_class=_enclosing_type,
+                                    call_construct=_unresolved_construct,
                                 ))
                             else:
                                 edges.append(make_unresolved_edge(
@@ -1391,6 +1411,7 @@ def _extract_edges_from_tree(
                                     node.start_point[0] + 1, PASS_ID,
                                     run.execution_id,
                                     enclosing_class=_enclosing_type,
+                                    call_construct=_unresolved_construct,
                                 ))
 
                     # Callback argument detection: bare identifiers in the
