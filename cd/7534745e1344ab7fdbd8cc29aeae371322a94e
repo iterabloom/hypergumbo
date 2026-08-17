@@ -1,0 +1,35 @@
+Original commit body from 14eea1317c78a4e859ce2f0d2492ebf22f79b7e6:
+
+Owner decision, option A on WI-kuliv / WI-bolot. 'Local-only' was true of the
+SCRIPT and false of its OUTPUT: .woodpecker/woodpecker.yml states that 'the
+committed .ci/affected-tests.txt manifest drives it', and smart-test wrote that
+manifest from $AFFECTED_TESTS -- the same variable it hands to pytest. WI-kuliv
+says 'Remains local-only. CI never invokes scripts/smart-test', which is
+literally true and misleading in effect: CI does not invoke the script, it
+consumes its output.
+
+Under one variable, Phase 2 (which UNIONS coverage-selected tests in) would have
+silently widened what the merge gate runs, and Phase 3 (which NARROWS) would
+have silently narrowed it -- neither phase mentions CI, and neither would have
+failed a test. The seam is cut now, before either exists, which is what makes it
+verifiable as a no-op.
+
+WHY A AND NOT C, measured rather than assumed: per-PR CI ran ~3m40s against a
+local ~8m13s on the same 232-file selection, so extending the narrowing to CI
+was the smaller half of the prize -- not worth coupling merge-gate recall to a
+selector still at 10 of 30 admissible commits.
+
+NON-DESTRUCTION IS BEHAVIOURAL, not argued. HEAD's smart-test and this one were
+run --manifest against the same working tree; the manifests are byte-identical
+(97 lines, only the generated-at timestamp differs).
+
+The guard (test_smart_test_manifest_split.py) pins the split and carries its own
+positive controls, including the exact shape a 'simplify these back into one
+variable' edit produces. Writing it caught a real property of the script on its
+first run: there are several blocks redirecting to $MANIFEST_FILE (full-suite
+fallback, diagnostic path, SELECTED_TESTS early exit), so the ordering check had
+to anchor on the block that publishes the manifest set rather than on the first
+redirect it found.
+
+Suite: 38 passed, ratchet clean.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
