@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hypergumbo_core.selection_shadow import (
+from hypergumbo_core.selection_index import (
     rebase_to_repo,
     selectable_test_files,
 )
