@@ -49,3 +49,18 @@
   clock: 5  # 901e
   nonce: 901e  # 901e
   message: "CLAUSE-1 VERDICT from the owner-fired manual cron (dev 5aed26a8d1): RED — one failure, INV-kazij's test, 23,003 passing around it. Clause 1 is NOT satisfied; this item now formally waits on INV-kazij (isbefore recorded on that item). The full characterization, the axis-elimination table (every locally reachable configuration passes; only the full-suite container fails), and the shipped discriminating experiment (full-suite now installs the meta-package, install-set parity with nightly — dev 8e913045e0) live on INV-kazij. Next readout: the next full-suite cron on a tree containing 8e913045e0. Positive from the same run: the cron-arm self-claims-gate executed and passed inside the failing pipeline, so the two concerns are independent."  # 901e
+- op: update  # 323b
+  at: '2026-08-16T20:20:16Z'  # 323b
+  by: agent  # 323b
+  actor: jgstern_agent  # 323b
+  clock: 6  # 323b
+  nonce: 323b  # 323b
+  set:  # 323b
+    status: done  # 323b
+- op: discuss  # a0d4
+  at: '2026-08-16T20:20:17Z'  # a0d4
+  by: agent  # a0d4
+  actor: jgstern_agent  # a0d4
+  clock: 7  # a0d4
+  nonce: a0d4  # a0d4
+  message: "BOTH CLAUSES SATISFIED, behavioral evidence on the tip. Clause 2 (every reporting gate readable): the cron log tool shipped 08-14, hardened 08-15, and it is what carried this whole diagnosis. Clause 1 (dev green on every reporting gate): at dev 8e69f40356 — push ✅ AND cron/full-suite ✅ (the FIRST green full-suite cron ever; this item's filing recorded that no green baseline existed). The path from filing to close, for the record: log access → three install failures (INV-vazuh) → one environment-conditional test (INV-kazij) → three owner-fired elimination crons → self-diagnosing assertion → cache-poisoning root cause → dir-keyed fix → validation green. The item's step-3 concern ('full-suite has been REPORTING nothing rather than PASSING') was real and is priced: every fix the cron validated today had been invisible to it since cutover."  # a0d4
