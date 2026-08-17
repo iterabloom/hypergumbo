@@ -1,0 +1,33 @@
+Original commit body from 682edaff95703f81622080534112d24cd86373fa:
+
+INV-lupav L2 -- the section-3a walk returns False (accounted-for) for a
+PARTIALLY recorded definition, not just a barren one -- reproduces live at
+dev tip on the item's faithful defs_at-seeded repro, with all controls
+passing (recorded use -> True, barren -> None, gate ON -> None).
+
+The remedy exists and is deliberately unwired on that arm: section 3a spells
+its call '_ddg_taint_reaches(...) is True', so False and None collapse into
+one 'adjudicated', whose only consequence is the finding's confidence and
+analysis_method label. Wiring forfeit_refutation there today is observably
+nothing and cannot carry a behavioural test. The hazard is the ORDERING --
+the moment section 3a consumes a False the way the barrier arm already does
+(PR #214, where a False earns 'sanitized' and DROPS the flow from a claim's
+violation set), every unearned False deletes a real finding.
+
+That instruction lived only in a tracker thread and a source comment, and a
+decision that lives only in prose dies at the next compaction. It is now a
+structural guard: either arm consuming the walk's False without passing
+forfeit_refutation fails the build. The guard carries its own positive
+controls, because a lint that cannot be shown to fire is indistinguishable
+from one that matches nothing -- the failure mode of the retired
+test_barren_seed_line_is_skipped, which passed for an unrelated reason while
+guarding the exact line that was wrong.
+
+Measurement recorded on INV-lupav and INV-busis (no code change): across 85
+default-catalogue production walks on two repos and two languages the walk
+returned False ZERO times, and the barrier arm -- which both items record as
+having 'run 0 times on every measured repo' -- runs 21 times on alertmanager
+once a sanitizer exists for the flow's label. Barrier-arm reachability is a
+property of the sanitizer catalogue, not of the code.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
