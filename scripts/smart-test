@@ -803,9 +803,29 @@ SLICE_OUTPUT=$(mktemp)
 SLICE_STDERR=$(mktemp)
 trap "rm -f $CHANGED_FILE_LIST $SLICE_OUTPUT $SLICE_STDERR" EXIT
 
+# === SLICE_MINIMAL ===
+# WI-bikod: ask the slice to skip the side outputs we never read (budget-tier
+# previews, per-handler slices, sketch pre-computation). This slice answers
+# "which test files depend on these sources" from nodes+edges alone; on this
+# monorepo the extras cost ~63s of a cold analysis.
+#
+# CAPABILITY-PROBED, NOT ASSUMED. $STABLE_HG is the pipx-installed build, which
+# lags the working tree by design — so it may not know the flag. An unrecognized
+# argument exits non-zero, and the slice-failure branch below routes to
+# run_full_suite, which means blind adoption would silently convert every local
+# run into a ~90-minute full suite until someone reinstalled the stable. The
+# probe costs ~0.2s against a multi-minute run, which is the right trade for
+# removing a silent-degradation mode. Empty-array expansion is written
+# `${a[@]+"${a[@]}"}` because `set -u` is on.
+SLICE_MINIMAL=()
+if $STABLE_HG slice --help 2>/dev/null | grep -q -- '--minimal'; then
+    SLICE_MINIMAL=(--minimal)
+fi
+
 # WI-morud follow-up: capture slice timing + exit code so write_fallback_diagnostic
-# can record them on either fallback path.
-SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST --output $SLICE_OUTPUT"
+# can record them on either fallback path. The diagnostic string carries the
+# probed flag too, so a fallback report shows the command actually run.
+SLICE_CMD="$STABLE_HG slice --files $CHANGED_FILE_LIST ${SLICE_MINIMAL[@]+${SLICE_MINIMAL[@]}} --output $SLICE_OUTPUT"
 SLICE_START_S=$SECONDS
 # WI-tolil: `set -euo pipefail` would abort the WHOLE script HERE on a non-zero
 # slice exit — before SLICE_EXIT is captured and before the slice-failure
@@ -815,7 +835,10 @@ SLICE_START_S=$SECONDS
 # reachable. The `|| SLICE_EXIT=$?` idiom is not subject to `set -e`.
 SLICE_EXIT=0
 if [[ -s "$CHANGED_FILE_LIST" ]]; then
-    $STABLE_HG slice --files "$CHANGED_FILE_LIST" --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
+    # ONE line on purpose, and within 4 lines of the `-s` check above: the
+    # WI-tolil / WI-zufij guards scan smart-test line-by-line and by proximity.
+    # Keep the line intact and this comment short rather than loosening them.
+    $STABLE_HG slice --files "$CHANGED_FILE_LIST" ${SLICE_MINIMAL[@]+"${SLICE_MINIMAL[@]}"} --output "$SLICE_OUTPUT" 2>"$SLICE_STDERR" || SLICE_EXIT=$?
 else
     # WI-zufij: no sliceable source file changed (a test-only / docs-only PR, or
     # one whose only changes are non-source paths the filter above dropped).
