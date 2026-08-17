@@ -45,3 +45,18 @@
   clock: 4  # 7119
   nonce: '7119'  # 7119
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nCARRIER RE-CHECKED, WORKING, NOT DISCHARGED. Verified mechanically at dev 11a240f83d rather than assumed: this item is todo_hard (a blocking status) with isbefore=[INV-zogud], INV-zogud is violated/P3, and INV-zogud does NOT appear in tracker ready (223 items). The post-condition the item filed as its positive control still holds.\n\nA NEAR-MISS WORTH RECORDING, since this item exists because a deferral expired silently once. A grep for 'INV-zogud' in the ready output returns a hit, and I nearly read that as the carrier having failed. The hit is inside THIS item's own title, which names its target. The carrier's own row in ready is what makes its target look present.\n\nAlso unchanged: the mypy strict baseline is 672 (.ci/mypy-strict-baseline.json, mypy 2.1.0), matching the figure the campaign is held at. Nothing about the hold has moved, and per this item's own rule, inactivity is not discharge. What is still missing is the ratified exit condition -- 'straightened out' remains undefined, and that is the first thing to ask the owner."  # 7119
+- op: update  # 6139
+  at: '2026-08-17T22:56:27Z'  # 6139
+  by: agent  # 6139
+  actor: jgstern_agent  # 6139
+  clock: 5  # 6139
+  nonce: '6139'  # 6139
+  set:  # 6139
+    priority: 4  # 6139
+- op: discuss  # bc77
+  at: '2026-08-17T22:56:27Z'  # bc77
+  by: agent  # bc77
+  actor: jgstern_agent  # bc77
+  clock: 6  # bc77
+  nonce: bc77  # bc77
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nP1 -> P4. This item's title begins \"CARRIER (do not work directly)\" and it was sitting at RANK 7 of 227 in tracker ready. A carrier blocks its target through its STATUS (todo_hard is a blocking status), not through its priority, so its rank buys nothing and costs a top-10 slot advertising an item nobody may work.\n\nTHE CARRIER IS UNAFFECTED AND STILL WORKING -- verified 2026-08-17: todo_hard, isbefore=[INV-zogud], and INV-zogud absent from ready. Per this item's own rule, inactivity is not discharge and this re-rank is not discharge either. The unratified exit condition (\"straightened out\" is still undefined) remains the open question."  # bc77
