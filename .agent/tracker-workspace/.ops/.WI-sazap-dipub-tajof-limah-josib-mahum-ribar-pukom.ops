@@ -39,3 +39,10 @@
   set: {}  # 9ca3
   add:  # 9ca3
     isbefore: [WI-vufad-dopup-gikiz-lakag-rozit-kimoj-nijob-kupaj, WI-madut-bokup-rupas-litap-tamim-sakit-jozoh-javoj]  # 9ca3
+- op: discuss  # 746a
+  at: '2026-08-17T21:05:56Z'  # 746a
+  by: agent  # 746a
+  actor: jgstern_agent  # 746a
+  clock: 4  # 746a
+  nonce: 746a  # 746a
+  message: "ITS ROLE AS A BLOCKER IS RETIRED (2026-08-17 perf close). WI-madut named\n`--reproducible` as a precondition, because it is only sound to cache a\ndeterministic function's output. WI-madut is now parked wont_do+someday, so\nnothing is waiting on this item for that reason.\n\nIt is NOT parked itself: byte-reproducible output has value independent of\ncaching — diffing two surveys of the same tree, and the differential equivalence\nguard that any future incremental work would need. Judge it on that merit alone\nnow, at whatever priority that earns, rather than as a dependency of a parked\nitem."  # 746a
