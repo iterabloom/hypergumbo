@@ -1,0 +1,43 @@
+Original commit body from 75f0f612c12209a94d38dc60a54b92b94e7529d9:
+
+INV-nizom. A C++ METHOD call wearing a POSIX function's name became a
+subprocess boundary: std::future::wait() and std::condition_variable::wait()
+matched sys/wait.wait (kind=function) in a translation unit that genuinely
+includes <sys/wait.h>. Filed repro, positive control passing:
+
+  BEFORE  total_io_edges=2   sys/wait.wait from positive_control   TRUE
+                             sys/wait.wait from the_defect         FALSE
+  AFTER   total_io_edges=1   sys/wait.wait from positive_control   TRUE
+
+TWO HALVES, AND THE ITEM NAMED ONLY ONE. cpp.py computes is_member_call (it
+must, to suppress the STL fallback) and discarded it, so gate_named_entry's
+'call_construct == "method"' refusal was unreachable for the language: 1 of
+34,983 cpp call edges on whisper.cpp carried the value. But stamping it is
+INERT on its own -- measured, zero boundaries moved -- because the filed FP
+never reaches that gate. cpp.py sets the module slot to the file's whole
+#include set, which tests as a usable hint, so lookup_with_module returns from
+its module-filter branch, which never reads the construct.
+
+THE OBVIOUS CONSUMER RULE IS WRONG AND WAS MEASURED BEFORE BEING REVERTED.
+Refusing function-kind whenever the construct is 'method' removed 51 matches on
+whisper.cpp: the 2 targets and 49 TRUE positives (os.Open, os.Stat,
+fmt.Fprintln, net/http.NewRequest, logging.exception). call_construct ==
+'method' does not mean 'instance method' -- Go spells a package-qualified
+function call as a selector expression, identical in shape to an instance call,
+and stamps both. A definite module slot is exactly what disambiguates those,
+which is why the F3 gate defers to it.
+
+So the refusal is keyed on the slot's ARITY, which _module_hint_candidates
+already computes: os / fmt / java.io.File expand to one candidate and are
+untouched; a cpp #include set expands to six. A disjunction is an uncertainty
+set -- cpp.py's own comment says 'this call could be from any of the included
+headers' -- so it is no better than no hint, and the construct rule applies.
+
+NON-DESTRUCTION, one counterfactual run per repo, every lookup answered twice:
+  whisper.cpp   2,379 method-construct-with-hint   REMOVED 2 (the FPs)  ADDED 0
+  alertmanager  5,086 method-construct-with-hint   REMOVED 0            ADDED 0
+
+Suite: 9270 passed, 2 skipped, 2 xfailed. Item stays violated -- corrections to
+its root_cause, headline and fix-location are recorded on the thread.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
