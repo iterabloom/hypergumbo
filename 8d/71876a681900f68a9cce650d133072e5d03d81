@@ -1,0 +1,57 @@
+Original commit body from d918d2d219143c0b282258d07c8c0122f4cf9fd5:
+
+_scan_argparse_commands and _scan_fire_commands each walked and ast.parse'd
+EVERY python file, and each is called from two places: the linker proper, and
+_count_cli_command_symbols -- a requirement-check diagnostic that only wants a
+COUNT. Four full parse-and-walk passes over 1,122 files per survey, two of them
+purely to produce a number.
+
+Measured with per-call-site attribution (scripts/measure-parse-redundancy.py):
+
+                              before                  after
+  subprocess_cli sites   2 sites, 4488 calls,   1 site, 1123 calls,
+                         16.0s (12.2s re-parse)  3.7s (0.0s re-parse)
+  python redundancy      2.90x                   1.51x
+  whole-run re-parse     20.7s                   4.7s
+  cold run_survey        162.4s                  139.1s
+
+The 23.3s wall saving EXCEEDS the 16.0s of re-parse removed, because dropping
+three of four walks also removes their file reads and AST traversals -- the
+parse timer only ever saw part of the cost. _text_filters.py:234 fell 3380 ->
+1139 calls (5.2s -> 1.6s) for the same reason.
+
+WHAT MAKES SHARING POSSIBLE: the file-walking half of both scans is a pure
+function of the files on disk; only the RESOLUTION half (handler name -> Symbol,
+class -> its methods) consults the symbol table, and the two callers hold
+different symbol lists. _CliScanFacts carries the symbol-free facts.
+
+THE MEMO IS SINGLE-SLOT AND CONTENT-KEYED, deliberately. Single slot because the
+access pattern is "same root, four times in a row", and a growing dict would
+leak across a long test run. Keyed on path+size+mtime of every file rather than
+on root alone, because a root-only key is a STALE-HIT generator the moment
+anything edits a file between two scans -- the same failure mode WI-madut names
+for persistent per-file memoization. A survey never mutates its own tree
+mid-run; test suites do constantly. The residual hole (same-size edit inside one
+mtime tick) is covered by _reset_cli_scan_cache for tests needing certainty.
+test_rescans_after_a_file_changes is the load-bearing test here: every
+equivalence test in the file would pass against a cache that never invalidates.
+
+ONE REGRESSION CAUGHT WHILE WRITING THE MERGE, not after. The fire probe
+originally ran over EVERY ast.Call node; the argparse probe runs over an
+if/elif in which a Call that is an Assign's VALUE takes the first branch.
+Folding the fire probe into that elif -- the obvious way to merge two loops --
+silently stops matching `cli = fire.Fire(Service)`, and no existing test used
+that shape. The fire probe now sits outside the if/elif and
+test_fire_target_assigned_to_a_variable_is_still_found pins it.
+
+Scope note: this is the STRAIGHTFORWARD part of the analyzer-phase target. The
+4.7s that remains is all cross-phase (fingerprint.py re-parsing what py.py
+already parsed), where sharing means holding every file's AST for the whole run
+-- the 847 MB retention WI-jogop exists to REDUCE. The remaining ~40s is genuine
+extraction work reachable only by WI-madut's persistent cache.
+
+check-package-coverage core: 100% in isolation. Full suite 6,252 passed, all
+files at 100%, mypy ratchet clean. 83 passed across all three subprocess-linker
+suites.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
