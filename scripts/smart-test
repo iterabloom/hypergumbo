@@ -1078,6 +1078,30 @@ if [[ -f "$COV_DEPS_HELPER" && -f "$COV_DEPS_MAP" ]] && command -v python3 &>/de
     fi
 fi
 
+# ─── THE MANIFEST SET AND THE LOCAL RUN SET PART COMPANY HERE ──────────────
+#
+# Owner decision, 2026-08-16 (option A on WI-kuliv / WI-bolot). Until now these
+# were one variable, and that coupling is not local: `.woodpecker/woodpecker.yml`
+# says "the committed .ci/affected-tests.txt manifest drives it", so whatever
+# this script selects is what the MERGE-GATING CI runs. Coverage-directed
+# selection is specified as local-only — WI-kuliv says "Remains local-only. CI
+# never invokes scripts/smart-test", which is literally true and misleading in
+# effect: CI does not invoke this script, it CONSUMES ITS OUTPUT. Phase 2 unions
+# coverage-selected tests in and Phase 3 narrows; with one variable, Phase 2
+# would silently make CI slower and Phase 3 would silently narrow the merge gate.
+#
+# So: everything ABOVE this line is the static import-graph slice plus its
+# declarative augmentations, and that is what the manifest publishes. Everything
+# BELOW may widen or narrow `AFFECTED_TESTS` for THIS machine only. The two are
+# byte-identical today — no phase has landed — which is the point: the seam is
+# cut before there is anything to misuse it.
+#
+# Pinned by packages/hypergumbo-core/tests/test_smart_test_manifest_split.py,
+# because a future edit that "simplifies" these back into one variable would
+# reintroduce the coupling silently and pass every existing test.
+MANIFEST_TESTS="$AFFECTED_TESTS"
+MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
+
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
 log "Found $TEST_COUNT affected test files"
@@ -1098,14 +1122,14 @@ mkdir -p "$MANIFEST_DIR"
     echo "# Baseline: $BASELINE"
     echo "# Changed files: $(echo "$CHANGED_FILES" | wc -l)"
     echo "# Changed source files: $SOURCE_COUNT"
-    echo "# Selected tests: $TEST_COUNT"
+    echo "# Selected tests: $MANIFEST_TEST_COUNT"
     echo "#"
     echo "# === CHANGED_SOURCE_FILES ==="
     if [[ -n "$CHANGED_SOURCE_FILES" ]]; then
         echo "$CHANGED_SOURCE_FILES"
     fi
     echo "# === SELECTED_TESTS ==="
-    echo "$AFFECTED_TESTS"
+    echo "$MANIFEST_TESTS"
 } > "$MANIFEST_FILE"
 
 log "Manifest written to $MANIFEST_FILE"
