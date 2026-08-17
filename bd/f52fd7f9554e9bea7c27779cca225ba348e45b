@@ -1,0 +1,69 @@
+Original commit body from 68eb8023c592f8cf32b6a034f26e638c377a7314:
+
+Ten subcommands run a full analysis on a cache miss through one shared
+chokepoint, _get_or_run_analysis, which passed no side-emission flags at all.
+So a caller who typed `slice --files` also paid for three budget-tier previews,
+up to 25 per-route handler slices, and the sketch pre-computation block --
+while _handle_files_mode reads Symbol.path/id and Edge.src/dst and nothing else.
+
+--minimal declines the set. Measured on this monorepo, cold run_survey:
+
+    default     220.0s
+    --minimal   160.9s     (-59.1s, -26.9%)
+
+OPT-IN, DEFAULTS UNTOUCHED, per the owner ruling on WI-bikod and the standing
+steer on the adjacent surface (WI-pijal: "don't jettison any of those files").
+The change is not that the artifacts stop being worth writing; it is that a
+command which never asked for a survey can now say so. Not offered on `survey`
+itself, which already has --budgets / --no-sketch-fan-out / --no-handler-slices;
+that boundary is pinned by a test rather than left to convention.
+
+Behavioral evidence, both signs, on two tiny repos so each run was a real cache
+miss:
+
+    default    3 tier previews, slices dir present, sketch_precomputed present
+    --minimal  0 tier previews, slices dir absent,  sketch_precomputed absent
+
+Both arms returned the SAME answer (2 dependent files) -- non-destruction
+asserted, not merely absence. And `sketch` run against a --minimal cache exits 0
+with a complete sketch, so the documented degradation (recompute, not
+incorrectness) is verified rather than inferred from reading the four guards.
+
+THE PARITY TEST DERIVES ITS POPULATION rather than hardcoding ten names: it
+walks the real parser, follows each subparser's `func` default to the handler,
+and asks whether that handler calls the auto-analysis chokepoint. A future
+consumer cannot silently miss the flag. A companion control asserts the
+derivation selects a non-empty set, since a broken derivation would make the
+parity assertion vacuous.
+
+smart-test passes --minimal to its reverse slice, but CAPABILITY-PROBED. The
+slice runs through the pipx $STABLE_HG, which lags the working tree by design
+and did NOT know the flag on the development machine. An unrecognized argument
+exits non-zero, and the slice-failure branch routes to run_full_suite -- so
+blind adoption would have converted every local run into a ~90-minute full suite
+while still reporting success. A --help probe costing ~0.2s gates it. The
+shipped block is executed against advertising and non-advertising stubs with a
+positive control asserting the two answers differ, plus a static guard that the
+probe's answer reaches the slice invocation and not merely the diagnostic
+string. The invocation stays on one line because three existing guards scan
+smart-test line-by-line and by proximity -- they fired on my continuations, and
+the fix was to satisfy them, not loosen them.
+
+Also lands scripts/measure-analyzer-scaling.py, which prices the follow-on work:
+the analyzer phase is 65.7s uncapped but 2.6s at max_files=1, so fixed cost is
+under 4% and the phase is ~96% per-file. It surfaced two hazards, filed as
+WI-fomid (max_files is documented as a per-language cap but only python and
+javascript honour it -- 252 of 1385 files still analyzed at a cap of 1, which
+made a linear fit return an impossible negative intercept) and WI-nuvam
+(duration_ms is per-pass WALL under a ThreadPoolExecutor, so it inflates with
+contention: the same 43 bash files billed 2.3s or 49.9s depending only on what
+python was doing alongside, which reads as a pathologically slow analyzer and is
+not one).
+
+CLI flag-matrix baseline regenerated: exactly 10 commands gained exactly
+--minimal, nothing else moved.
+
+check-package-coverage core: 100% in isolation. Full suite 5,634 passed, all
+files at 100%, mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
