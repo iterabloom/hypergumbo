@@ -169,3 +169,18 @@
   clock: 21  # 6de7
   nonce: 6de7  # 6de7
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nTHE TWO FIELD EDITS THIS THREAD FILED AS 'SUGGESTED, NOT APPLIED' ARE NOW APPLIED. Both were left to 'whoever next works this item' by the 08-17 entries; leaving them a third time would be the exact stale-field-behind-a-fresh-thread pattern this item's own statement field was already corrected for once.\n\n  (a) root_cause bucket 1 now names INV-foluz, not INV-mumov. Independently re-derived here, production analyze_python on a fixture: print(x), len(x) and undefined_fn(x) emit NO call edge, while helper(x) (defined in file), os.remove(x) and obj.decode() do. INV-mumov's shape is not in this bucket -- see (c).\n  (b) The structural argument's SECOND leg is now scoped to the default sanitizer catalogue, with the A/B that refuted it inline, rather than reporting per-repo zeros that read as a property of the code. The FIRST leg (the 3a arm tests is True, so False and None collapse) is untouched and still decides the item.\n\n  (c) SEPARATELY CONFIRMED, and it is why (a) matters: obj.related.create(x) DOES emit a call edge at tip, with call_construct=method and module slot 'external'. So the missing-edge bucket cannot be attributed to attribute chains, and fixing INV-mumov as filed would not move it.\n\nSTATUS UNCHANGED: violated. Neither edit satisfies the statement; they stop the fields contradicting the thread."  # 6de7
+- op: update  # e5c3
+  at: '2026-08-17T22:55:43Z'  # e5c3
+  by: agent  # e5c3
+  actor: jgstern_agent  # e5c3
+  clock: 22  # e5c3
+  nonce: e5c3  # e5c3
+  set:  # e5c3
+    priority: 2  # e5c3
+- op: discuss  # 6c08
+  at: '2026-08-17T22:55:43Z'  # 6c08
+  by: agent  # 6c08
+  actor: jgstern_agent  # 6c08
+  clock: 23  # 6c08
+  nonce: 6c08  # 6c08
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GATE. This item terminates at WI-kabif's removal authority, which is parked TWICE OVER: (1) a standing owner ruling of DO NOT START, and (2) a pre-registered numeric threshold -- measurement 0001 records that the removal-authority question becomes \"arguable on its merits\" near 80% precision, and states that no reading of the data supports a number near 80% (measured ~41%). So this is parked on a NUMBER, not on effort, and no amount of session time moves it.\n\nP1 -> P2. This item is the DIAGNOSIS of the parked chain rather than a fix in it -- its content is the measured account of why section 3a cannot refute. That account is valuable and stays open; it is not work competing for the top of the queue while the thing it explains is parked on a number."  # 6c08
