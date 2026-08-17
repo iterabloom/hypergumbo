@@ -1,0 +1,47 @@
+Original commit body from 96d8c261aee870f7ba9ea9c97b3098c50adfb5a6:
+
+WI-kuliv. `coverage-select select` answers the same question `shadow`
+does, but BEFORE pytest rather than after, and smart-test unions the
+answer into the local run set.
+
+BELOW THE SEAM, which is the point of cutting the seam last week. The
+committed manifest drives the merge-gating CI (woodpecker.yml:380), so
+landing the union above the capture would have added roughly 44 test
+files per informative run to what CI runs -- a slower gate AND a slower
+local run, invisible in any test. Verified rather than argued: the
+manifest this script writes is byte-identical to the one the pre-Phase-2
+script writes over the same tree, timestamp excluded.
+
+ADDITIVE, NEVER SUBTRACTIVE. That is the property the phase rests on and
+why it precedes narrowing (Phase 3, WI-bolot): a union cannot drop a
+test, so the worst case is wasted time. The justification is not speed --
+this makes local runs slower -- it is that coverage sees runtime
+dependencies the static import graph cannot. Measured on this tree: a
+change to edge_types.find_edge_type selects test_cli_explain.py, which
+imports nothing the slice could follow, because `explain` looks edge
+types up at runtime.
+
+SELECTIONS ARE FILTERED AGAINST THE FILESYSTEM. The index is persistent
+and out-of-repo, nothing prunes it on a rename, and pytest treats a
+missing path as a collection ERROR rather than a skip. An unfiltered
+union would fail runs it was only meant to widen, which is the opposite
+of "can only add tests".
+
+THE SHADOW NOW GRADES AGAINST THE PRE-UNION SET, found by reading a live
+run rather than by reasoning. With the union wired, the shadow reported
+EXTRA_FROM_COVERAGE: 0 -- unfalsifiable, because the union had already
+folded coverage's picks into the set the shadow compares against. That
+metric is what WI-kuliv is justified BY (7 of the first 10 observations
+added a test), so the phase would have destroyed its own measurement and
+the flatline would have read as "coverage stopped finding anything".
+MANIFEST_TESTS is the pre-union set, and it is what the first 10
+observations were compared against, so the series stays continuous.
+
+Guards EXECUTE the shipped shell block against a stub selector rather
+than pattern-matching it: a union that quietly adds nothing satisfies
+every position check ever written, and on the day this landed a live run
+legitimately added zero because the slice already had all 3 picks. The
+off-switch case runs the same stub and asserts the opposite outcome, so
+the ADD path is shown to fire rather than assumed to.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
