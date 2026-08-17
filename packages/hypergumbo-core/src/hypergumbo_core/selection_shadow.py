@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from hypergumbo_core.selection_index import Selection
+from hypergumbo_core.selection_index import Selection, files_of
 
 
 def _resolve_classname(classname: str, repo_root: Path) -> Optional[str]:
@@ -204,46 +204,6 @@ class ShadowReport:
         )
 
 
-def _files_of(node_ids: Iterable[str]) -> frozenset[str]:
-    return frozenset(n.split("::")[0] for n in node_ids)
-
-
-def rebase_to_repo(node_ids: Iterable[str], repo_root: Path) -> frozenset[str]:
-    """Rewrite absolute node ids as repo-relative ones.
-
-    The index stores absolute paths; every other selector in smart-test speaks
-    repo-relative. Comparing or unioning across the two spellings makes the same
-    file look like two different files, so both consumers rebase first.
-
-    The separator is included in the prefix on purpose: without it a repo at
-    ``/x/repo`` would also strip ``/x/repo-backup``.
-    """
-    prefix = f"{repo_root}/"
-    return frozenset(
-        n[len(prefix):] if n.startswith(prefix) else n for n in node_ids
-    )
-
-
-def selectable_test_files(
-    node_ids: Iterable[str], repo_root: Path,
-) -> frozenset[str]:
-    """Repo-relative test FILES a run may safely be widened with.
-
-    Two narrowings, both load-bearing for Phase 2:
-
-    * node ids reduce to files, because the run set is a list of files;
-    * files that do not exist are DROPPED. The index is persistent and
-      out-of-repo, nothing prunes it when a test is renamed or deleted, and
-      pytest treats a missing path as a collection error rather than a skip.
-      Widening a run with a stale entry would redden it, which is the opposite
-      of "can only add tests".
-    """
-    return frozenset(
-        rel for rel in _files_of(rebase_to_repo(node_ids, repo_root))
-        if (repo_root / rel).is_file()
-    )
-
-
 def compare(
     selection: Selection,
     actual_files: Iterable[str],
@@ -259,7 +219,7 @@ def compare(
     rather than 0.0 — a missing control must not masquerade as a failed one.
     """
     actual = frozenset(actual_files)
-    cov_files = _files_of(selection.tests)
+    cov_files = files_of(selection.tests)
     if known_tests is None:
         rate = 1.0
     else:

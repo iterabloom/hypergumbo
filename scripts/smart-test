@@ -85,6 +85,12 @@ SELECT_SHADOW=true
 # disable in isolation when a run looks wrong. Opt out with --no-select-union.
 SELECT_UNION=true
 
+# PHASE 3 (WI-bolot): NARROWING, and the default is the opposite of the other
+# two for a reason. Phase 2 can only add tests, so its worst case is wasted
+# time; narrowing REMOVES them, and between full runs the index can be short a
+# test that covers part of a changed file. Opt in per run with --narrow.
+SELECT_NARROW=false
+
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
 #   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
@@ -126,6 +132,7 @@ for arg in "$@"; do
         --full) FULL_RUN=true ;;
         --no-select-shadow) SELECT_SHADOW=false ;;
         --no-select-union) SELECT_UNION=false ;;
+        --narrow) SELECT_NARROW=true ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -141,6 +148,17 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# NARROWING IS OFF IN CI UNCONDITIONALLY, and this guard sits AFTER argument
+# parsing on purpose — the shadow/union guards run before it and can be placed
+# earlier because no flag turns those ON. `--narrow` does, so a guard above the
+# parse loop would be overridden by the flag it exists to override. Not even
+# HG_SELECT_SHADOW re-enables this: reason 1 above (CI IS THE GATE) is absolute
+# for an operation that REMOVES tests, and that escape hatch exists to exercise
+# wiring, not to let a selector shrink the merge gate.
+if [[ -n "${CI:-}" ]]; then
+    SELECT_NARROW=false
+fi
 
 # Auto-add -n auto for parallel execution unless:
 # 1. Already specified (-n is in PYTEST_ARGS)
@@ -1157,6 +1175,41 @@ if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
             log "Coverage-directed union adding $(echo "$COVERAGE_UNION_NEW" | wc -l) file(s): $(echo "$COVERAGE_UNION_NEW" | tr '\n' ' ')"
             AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$COVERAGE_UNION_NEW" | sed '/^$/d' | sort -u)
         fi
+    fi
+fi
+
+# ── Coverage-directed selection, PHASE 3: NARROW (WI-bolot) ──────────────────
+# OPT-IN, never the default, never in CI — the item's own constraint, and the
+# right one: this is the first operation in the family that can REMOVE a test.
+# Below the seam like the union, so the committed manifest is untouched.
+#
+# WHY IT IS NOT DEFAULT-ON EVEN THOUGH THE RULES ARE SOUND. The index knows
+# "tests I have OBSERVED executing block B", which is a subset of "tests that
+# execute B" until every test has run since B appeared. Between full runs the
+# keep set can therefore be short a test that covers part of a changed file, and
+# the whole-file coverage gate below would report that as a coverage regression
+# when it is really a stale index. Opt-in means whoever accepts that accepts it
+# knowingly.
+#
+# MEASURED CEILING, so nobody expects more of this than it can give
+# (scripts/measure-narrowing-headroom.py): across the timed suite only 55.3% of
+# wall-clock is index-speakable at all — the other 44.7% is unmeasured or unseen
+# and is kept unconditionally. On a small change the run set is already ~20s of
+# tests, so the saving is seconds; the win is on large selections.
+if [[ "$SELECT_NARROW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _nar_changed=$(mktemp); _nar_run=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_nar_changed" || true
+    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_nar_run" || true
+    NARROWED=$("$REPO_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" ${VERBOSE:+--verbose} narrow \
+        --changed-files "$_nar_changed" --run-set "$_nar_run" \
+        --base "${BASELINE:-HEAD}" || echo "")
+    rm -f "$_nar_changed" "$_nar_run"
+    # A failed or refusing narrow prints the run set back unchanged; an EMPTY
+    # answer means the helper died, and then the run set must stand rather than
+    # collapse to nothing (pytest exits 5 — green — on an empty collection).
+    if [[ -n "$NARROWED" ]]; then
+        AFFECTED_TESTS=$(echo "$NARROWED" | sed '/^$/d' | sort -u)
     fi
 fi
 

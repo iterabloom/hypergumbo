@@ -48,7 +48,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Optional
+from typing import Iterable, Mapping, Optional, Sequence
 
 from hypergumbo_core.block_hash import blocks_for_source, line_owner
 
@@ -327,3 +327,204 @@ def select_tests(
         unmeasured=frozenset(unmeasured),
         missing_paths=frozenset(missing),
     )
+
+
+# ── Node ids to run-set files ───────────────────────────────────────────────
+#
+# These live HERE rather than in selection_shadow because they convert the
+# INDEX's output into the run set's vocabulary, and there are now three
+# consumers: the shadow comparison, the Phase 2 union, and Phase 3 narrowing.
+# A narrowing module importing them from `selection_shadow` would have read as
+# narrowing depending on the shadow, which it does not.
+
+
+def files_of(node_ids: Iterable[str]) -> frozenset[str]:
+    """Reduce node ids to the files that contain them."""
+    return frozenset(n.split("::")[0] for n in node_ids)
+
+
+def rebase_to_repo(node_ids: Iterable[str], repo_root: Path) -> frozenset[str]:
+    """Rewrite absolute node ids as repo-relative ones.
+
+    The index stores absolute paths; every other selector in smart-test speaks
+    repo-relative. Comparing or unioning across the two spellings makes the same
+    file look like two different files, so every consumer rebases first.
+
+    The separator is included in the prefix on purpose: without it a repo at
+    ``/x/repo`` would also strip ``/x/repo-backup``.
+    """
+    prefix = f"{repo_root}/"
+    return frozenset(
+        n[len(prefix):] if n.startswith(prefix) else n for n in node_ids
+    )
+
+
+def selectable_test_files(
+    node_ids: Iterable[str], repo_root: Path,
+) -> frozenset[str]:
+    """Repo-relative test FILES a run may safely be widened with.
+
+    Two narrowings, both load-bearing for Phase 2:
+
+    * node ids reduce to files, because the run set is a list of files;
+    * files that do not exist are DROPPED. The index is persistent and
+      out-of-repo, nothing prunes it when a test is renamed or deleted, and
+      pytest treats a missing path as a collection error rather than a skip.
+      Widening a run with a stale entry would redden it, which is the opposite
+      of "can only add tests".
+    """
+    return frozenset(
+        rel for rel in files_of(rebase_to_repo(node_ids, repo_root))
+        if (repo_root / rel).is_file()
+    )
+
+
+def touching_test_files(
+    conn: sqlite3.Connection, paths: Sequence[str], repo_root: Path,
+) -> frozenset[str]:
+    """Test FILES observed executing ANY block of ``paths`` (absolute).
+
+    NAMED THIS WAY DELIBERATELY. The obvious name, ``tests_touching``, starts
+    with ``test`` and so is COLLECTED AS A TEST by pytest in any test module that
+    imports it — which produced ``fixture 'conn' not found`` at collection time,
+    an error that names nothing about its real cause.
+
+    THE KEEP SET FOR NARROWING, and deliberately wider than the changed-block
+    selection. The local coverage gate is whole-file
+    (``coverage report --include=<changed files> --fail-under=100``), so keeping
+    only the changed blocks' tests leaves the rest of each changed file
+    uncovered and fails the gate. These are exactly the tests that produced the
+    file's coverage rows.
+
+    THE FILTER IS IN PYTHON RATHER THAN IN AN ``IN (?,?,…)`` CLAUSE. The
+    placeholder list has to be built from ``len(paths)``, which is string-built
+    SQL as far as ruff (S608) and bandit (B608) can tell, and the honest answer
+    to a static-analysis finding is to remove the construct rather than to
+    annotate it twice. The table is a few tens of thousands of rows and this runs
+    once per invocation, so scanning it costs nothing worth defending.
+    """
+    if not paths:
+        return frozenset()
+    want = set(paths)
+    rows = conn.execute("SELECT DISTINCT test_id, path FROM test_block")
+    return files_of(rebase_to_repo(
+        {test_id for test_id, path in rows if path in want}, repo_root))
+
+
+def speakable_test_files(
+    conn: sqlite3.Connection, repo_root: Path,
+) -> frozenset[str]:
+    """Test FILES the index has positive coverage knowledge about.
+
+    THE ONLY FILES NARROWING MAY DROP. A file qualifies when it has coverage
+    rows AND none of its tests are recorded ``unmeasured``. Both halves matter:
+    a file absent from the index was never observed at all, and a file with an
+    unmeasured test ran without leaving a trace, so in neither case does the
+    index's silence mean "this test is irrelevant".
+
+    The unmeasured check is at FILE granularity because the run set is, which
+    is conservative in a way worth naming: 133 of the 190 files with unmeasured
+    tests are only PARTLY unmeasured — ``test_profile.py`` is held by 1 test of
+    283 — so this rule keeps considerably more than node-granularity would.
+    """
+    measured = files_of(rebase_to_repo(
+        {r[0] for r in conn.execute("SELECT DISTINCT test_id FROM test_block")},
+        repo_root))
+    unmeasured = files_of(rebase_to_repo(
+        {r[0] for r in conn.execute("SELECT test_id FROM unmeasured_test")},
+        repo_root))
+    return measured - unmeasured
+
+
+# ── Narrowing (Phase 3 / WI-bolot) ──────────────────────────────────────────
+#
+# Everything above only ever ADDS tests, so being wrong cost time. Narrowing can
+# REMOVE one, so the rules are stated as data rather than left implicit in a
+# shell pipeline. See tests/test_selection_narrow.py for the three rules and why
+# each has its own failure mode.
+
+#: Coverage measures ``packages/*/src``. A changed file outside that is not
+#: coverable in-process at all, so the index's silence about it is a structural
+#: fact rather than a gap in knowledge — which is why it does not forbid
+#: narrowing the way an unknown *coverable* source file does.
+_COVERABLE = ("src",)
+
+
+def _is_test_path(rel: str) -> bool:
+    """A changed TEST file is its own cover, so it never forbids narrowing."""
+    return "/tests/" in rel or Path(rel).name.startswith(
+        ("test_", "BRANCHES_test_"))
+
+
+def _is_coverable(rel: str) -> bool:
+    parts = Path(rel).parts
+    return parts[:1] == ("packages",) and any(p in _COVERABLE for p in parts)
+
+
+@dataclass(frozen=True)
+class Narrowing:
+    """The outcome of one narrowing attempt.
+
+    ``refusal`` is the discriminator: when it is set, ``kept`` is the ORIGINAL
+    run set and ``dropped`` is empty. A caller must not have to infer "nothing
+    happened" from two set sizes being equal, because that is also what a
+    successful narrowing that found nothing to drop looks like, and the two
+    warrant different reporting.
+    """
+
+    kept: frozenset[str]
+    dropped: frozenset[str]
+    refusal: Optional[str]
+
+
+def narrowing_blockers(
+    selection: Selection, repo_root: Path,
+) -> tuple[str, ...]:
+    """Reasons this change set must not be narrowed at all.
+
+    Deliberately NOT triggered by ``new_blocks`` or by unknown test / non-
+    coverable paths — see the module-level tests for why each of those looks
+    like a blocker and is not.
+    """
+    def rel(p: str) -> str:
+        prefix = f"{repo_root}/"
+        return p[len(prefix):] if p.startswith(prefix) else p
+
+    out: list[str] = []
+    for p in sorted(selection.unknown_paths):
+        r = rel(p)
+        if not _is_test_path(r) and _is_coverable(r):
+            out.append(f"unknown coverable source: {r}")
+    for p in sorted(selection.missing_paths):
+        out.append(f"missing changed file: {rel(p)}")
+    return tuple(out)
+
+
+def narrow_run_set(
+    run_set: Iterable[str],
+    *,
+    keep: Iterable[str],
+    droppable: Iterable[str],
+    forbidden: Iterable[str],
+) -> Narrowing:
+    """Shrink ``run_set`` to ``keep`` plus everything not safely droppable.
+
+    ``keep`` is the FILE-TOUCH set — every test observed executing any block of
+    a changed file, not merely the changed blocks — because the local coverage
+    gate is whole-file. ``droppable`` is the set the index can speak about.
+    Anything in ``run_set`` and outside ``droppable`` survives regardless.
+    """
+    original = frozenset(run_set)
+    reasons = tuple(forbidden)
+    if reasons:
+        return Narrowing(kept=original, dropped=frozenset(),
+                         refusal="; ".join(reasons))
+
+    keep_set, drop_ok = frozenset(keep), frozenset(droppable)
+    kept = frozenset(f for f in original if f in keep_set or f not in drop_ok)
+    if not kept:
+        # pytest exits 5 — GREEN — when it collects nothing, so a narrowing to
+        # zero would read as a pass while running no tests at all.
+        return Narrowing(kept=original, dropped=frozenset(),
+                         refusal="narrowing would leave an empty run set")
+    return Narrowing(kept=kept, dropped=original - kept, refusal=None)
