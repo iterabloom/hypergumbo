@@ -78,6 +78,13 @@ HAS_EXPLICIT_TESTS=false
 # would have chosen and changes nothing. Opt out with --no-select-shadow.
 SELECT_SHADOW=true
 
+# PHASE 2 (WI-kuliv): the same selection is also UNIONED into the local run set.
+# Kept as a separate switch from the shadow because they answer different
+# questions and fail differently. Shadow is evidence and must keep accruing even
+# when the union is off; the union acts, so it is the one worth being able to
+# disable in isolation when a run looks wrong. Opt out with --no-select-union.
+SELECT_UNION=true
+
 # LOCAL ONLY — NEVER IN CI. Three independent reasons, any one sufficient:
 #
 #   1. CI IS THE GATE. This selector is an accelerator whose whole safety story
@@ -98,9 +105,16 @@ SELECT_SHADOW=true
 # current CI design, and a future rewiring would activate this silently. Hence
 # an explicit guard rather than a comment saying it cannot happen.
 #
+# The union (Phase 2) is off in CI for reason 1 and reason 2 above, and reason 1
+# applies to it MORE strongly than to the shadow: the shadow only reports, while
+# the union changes what runs. A cold index in CI would simply add nothing, so
+# the failure would be silent rather than loud — which is precisely why it is
+# guarded rather than left to work out harmlessly.
+#
 # HG_SELECT_SHADOW=1 forces it on, for deliberately exercising the wiring.
 if [[ -n "${CI:-}" ]] && [[ "${HG_SELECT_SHADOW:-}" != "1" ]]; then
     SELECT_SHADOW=false
+    SELECT_UNION=false
 fi
 
 SMART_TEST_MODE="full"
@@ -111,6 +125,7 @@ for arg in "$@"; do
     case $arg in
         --full) FULL_RUN=true ;;
         --no-select-shadow) SELECT_SHADOW=false ;;
+        --no-select-union) SELECT_UNION=false ;;
         --verbose) VERBOSE=true ;;
         --manifest) MANIFEST_ONLY=true ;;
         --background) BACKGROUND=true ;;
@@ -1102,6 +1117,49 @@ fi
 MANIFEST_TESTS="$AFFECTED_TESTS"
 MANIFEST_TEST_COUNT=$(echo "$MANIFEST_TESTS" | wc -l)
 
+# ── Coverage-directed selection, PHASE 2: UNION (WI-kuliv) ───────────────────
+# BELOW THE SEAM ON PURPOSE. This widens the LOCAL run only; the manifest above
+# is already snapshotted, so the merge-gating CI keeps today's static selection.
+# Landing this above the seam would have added ~44 test files per informative
+# run to what CI runs — slower gate AND slower local run, invisible in any test.
+#
+# ADDITIVE, NEVER SUBTRACTIVE. This is the property the whole phase rests on and
+# the reason it precedes any narrowing: a union cannot drop a test, so the worst
+# case is wasted time. Narrowing is Phase 3 (WI-bolot) and gets its own evidence.
+#
+# WHY IT IS WORTH THE TIME IT COSTS. The justification is not speed — Phase 2
+# makes local runs SLOWER. It is that coverage sees runtime dependencies the
+# static import graph cannot: the shadow log's 10 observations added tests on 7
+# of them, e.g. selecting test_cli_explain.py for a change to
+# edge_types.find_edge_type because `explain` looks edge types up at runtime and
+# imports nothing. That is a correctness improvement that happens to be fast
+# later, and it stands even if Phase 3 never lands.
+#
+# IT MUST NEVER FAIL THE RUN IT IS WIDENING. `|| true` here, the helper catches
+# broadly and exits 0, and its output is filtered to files that exist — the index
+# is persistent and remembers tests that have since been renamed away, which
+# pytest would treat as a collection error rather than a skip.
+if [[ "$SELECT_UNION" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
+    _union_changed=$(mktemp)
+    echo "$CHANGED_FILES" | grep -E '\.py$' > "$_union_changed" || true
+    COVERAGE_UNION_ADDS=$("$REPO_ROOT/scripts/coverage-select" \
+        --repo-root "$REPO_ROOT" select \
+        --changed-files "$_union_changed" \
+        --base "${BASELINE:-HEAD}" 2>/dev/null || echo "")
+    rm -f "$_union_changed"
+    # Report only what the static selectors did NOT already have, so the log
+    # line is the phase's actual contribution rather than its overlap.
+    if [[ -n "$COVERAGE_UNION_ADDS" ]]; then
+        COVERAGE_UNION_NEW=$(comm -13 \
+            <(echo "$AFFECTED_TESTS" | sed '/^$/d' | sort -u) \
+            <(echo "$COVERAGE_UNION_ADDS" | sed '/^$/d' | sort -u))
+        if [[ -n "$COVERAGE_UNION_NEW" ]]; then
+            log "Coverage-directed union adding $(echo "$COVERAGE_UNION_NEW" | wc -l) file(s): $(echo "$COVERAGE_UNION_NEW" | tr '\n' ' ')"
+            AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$COVERAGE_UNION_NEW" | sed '/^$/d' | sort -u)
+        fi
+    fi
+fi
+
 # Count affected tests
 TEST_COUNT=$(echo "$AFFECTED_TESTS" | wc -l)
 log "Found $TEST_COUNT affected test files"
@@ -1254,10 +1312,22 @@ TEST_EXIT=$?
 # It must never fail the run it is shadowing: `|| true` here, and the helper
 # itself catches broadly and exits 0. A selector that reddens the suite it is
 # measuring gets switched off, and then there is no evidence at all.
+#
+# IT COMPARES AGAINST `MANIFEST_TESTS`, NOT `AFFECTED_TESTS`, and that is not a
+# detail. Once Phase 2 unions coverage's picks INTO the local run set, comparing
+# against the local run set asks "did coverage select anything the run set —
+# which now contains coverage's selection — was missing?", whose answer is 0 by
+# construction. EXTRA_FROM_COVERAGE is precisely WI-kuliv's own justification
+# metric (7 of the first 10 observations added a test), so the phase would have
+# silently destroyed the ability to keep measuring itself, and the resulting
+# flatline would have read as "coverage stopped finding anything".
+# `MANIFEST_TESTS` is the pre-union set — the static slice plus its declarative
+# augmentations — which is exactly what the first 10 observations were compared
+# against, so the time series stays continuous across the phase boundary.
 if [[ "$SELECT_SHADOW" == "true" ]] && [[ -n "$CHANGED_FILES" ]]; then
     _sel_changed=$(mktemp); _sel_actual=$(mktemp)
     echo "$CHANGED_FILES" | grep -E '\.py$' > "$_sel_changed" || true
-    echo "$AFFECTED_TESTS" | sed '/^$/d' > "$_sel_actual" || true
+    echo "$MANIFEST_TESTS" | sed '/^$/d' > "$_sel_actual" || true
     "$REPO_ROOT/scripts/coverage-select" --repo-root "$REPO_ROOT" \
         --junit "$JUNIT_XML" shadow \
         --changed-files "$_sel_changed" --actual-tests "$_sel_actual" \
