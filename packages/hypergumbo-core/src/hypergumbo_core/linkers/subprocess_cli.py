@@ -489,6 +489,132 @@ def _argparse_set_defaults_handler(call: "ast.Call") -> tuple[str, str] | None:
     return None
 
 
+@dataclass(frozen=True)
+class _CliScanFacts:
+    """The FILE-DERIVED half of both CLI scans, from one walk of the tree.
+
+    Split out because it is a pure function of the files on disk: only the
+    RESOLUTION half of each scan (handler name → Symbol, class → its methods)
+    depends on the symbol table, and the two scans are handed different symbol
+    lists by different callers. Keeping the file facts symbol-free is what lets
+    one walk serve all four call sites.
+
+    ``argparse_pairs`` is (rel_path, subcommand, handler_name) — the resolved
+    add_parser/set_defaults pairing, before any symbol lookup.
+    ``fire_targets`` is (rel_path, class_name) from ``fire.Fire(<Name>)``.
+    """
+
+    argparse_pairs: tuple[tuple[str, str, str], ...]
+    fire_targets: frozenset[tuple[str, str]]
+
+
+# Single-slot memo of the walk above. SINGLE slot, not a growing dict: the
+# access pattern is "the same root, four times in a row" (the linker and the
+# requirement-check diagnostic), so one entry captures all of it while making an
+# unbounded-growth leak impossible in a long-lived process such as a test run.
+_CLI_SCAN_MEMO: tuple[str, _CliScanFacts] | None = None
+
+
+def _reset_cli_scan_cache() -> None:
+    """Drop the memo. For tests that mutate a tree between scans."""
+    global _CLI_SCAN_MEMO
+    _CLI_SCAN_MEMO = None
+
+
+def _cli_scan_key(root: Path, files: list[Path]) -> str:
+    """Identity of the tree being scanned: path + (size, mtime) of every file.
+
+    WHY NOT JUST ``root``. A memo keyed on the directory alone is a STALE-HIT
+    generator the moment anything edits a file between two scans — the caller
+    silently receives facts for a tree that no longer exists, with nothing in
+    the output saying so. That is the same failure mode WI-madut names for
+    persistent per-file memoization, and it is worth pre-empting here even
+    though a single survey never mutates its own tree mid-run: test suites do,
+    constantly.
+
+    Size+mtime rather than content digests: this runs before the parse, so
+    hashing every file's bytes would reintroduce most of the I/O the memo
+    exists to avoid. The residual hole is a same-size edit within one mtime
+    tick, which ``_reset_cli_scan_cache`` covers for tests that need certainty.
+    """
+    parts = [str(root)]
+    for path in files:
+        try:
+            stat = path.stat()
+        except OSError:  # pragma: no cover - file vanished between walk and stat
+            parts.append(f"{path}:gone")
+            continue
+        parts.append(f"{path}:{stat.st_size}:{stat.st_mtime_ns}")
+    return "\x1f".join(parts)
+
+
+def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
+    """Walk every python file ONCE and extract both scans' file-derived facts.
+
+    Replaces two independent walks that each parsed the whole tree, each of
+    which ran twice per survey (the linker and ``_count_cli_command_symbols``):
+    four full parse-and-walk passes over every python file, measured at ~16s on
+    this monorepo with ~12s of it re-parsing content already parsed.
+    """
+    global _CLI_SCAN_MEMO
+
+    files = list(_find_python_files(root))
+    key = _cli_scan_key(root, files)
+    memo = _CLI_SCAN_MEMO
+    if memo is not None and memo[0] == key:
+        return memo[1]
+
+    argparse_pairs: list[tuple[str, str, str]] = []
+    fire_targets: set[tuple[str, str]] = set()
+    for file_path in files:
+        try:
+            content = read_masked_source(
+                file_path, encoding="utf-8", errors="ignore"
+            )
+            tree = ast.parse(content)
+        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
+            continue
+        rel_path = str(file_path.relative_to(root))
+        # parser-variable → subcommand name (from ``v = X.add_parser("name")``)
+        var_to_subcmd: dict[str, str] = {}
+        # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
+        var_to_handler: dict[str, str] = {}
+        for node in ast.walk(tree):
+            # The fire probe sees EVERY Call node, exactly as its own loop did.
+            # It must NOT hang off the argparse if/elif below: a Call that is an
+            # Assign's value (``cli = fire.Fire(Service)``) takes the first
+            # branch there and would never be offered to the fire probe —
+            # silently dropping a target shape the separate loop had matched.
+            if isinstance(node, ast.Call):
+                target = _fire_target_name(node)
+                if target is not None:
+                    fire_targets.add((rel_path, target))
+            # The argparse branches keep their original if/elif relationship, so
+            # `_argparse_set_defaults_handler` sees exactly the node set it saw
+            # before (bare Calls only, never an Assign's value).
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                sub = _argparse_add_parser_name(node.value)
+                if sub is not None:
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            var_to_subcmd[tgt.id] = sub
+            elif isinstance(node, ast.Call):
+                pair = _argparse_set_defaults_handler(node)
+                if pair is not None:
+                    var_to_handler[pair[0]] = pair[1]
+        for var, subcmd in var_to_subcmd.items():
+            handler_name = var_to_handler.get(var)
+            if handler_name:
+                argparse_pairs.append((rel_path, subcmd, handler_name))
+
+    facts = _CliScanFacts(
+        argparse_pairs=tuple(argparse_pairs),
+        fire_targets=frozenset(fire_targets),
+    )
+    _CLI_SCAN_MEMO = (key, facts)
+    return facts
+
+
 def _scan_argparse_commands(
     root: Path, all_symbols: list[Symbol]
 ) -> dict[str, list[Symbol]]:
@@ -524,47 +650,20 @@ def _scan_argparse_commands(
         symbols_by_path_name.setdefault((sym.path, sym.name), []).append(sym)
 
     commands: dict[str, list[Symbol]] = {}
-    for file_path in _find_python_files(root):
-        try:
-            content = read_masked_source(
-                file_path, encoding="utf-8", errors="ignore"
-            )
-            tree = ast.parse(content)
-        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
-            continue
-        # parser-variable → subcommand name (from ``v = X.add_parser("name")``)
-        var_to_subcmd: dict[str, str] = {}
-        # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
-        var_to_handler: dict[str, str] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-                sub = _argparse_add_parser_name(node.value)
-                if sub is not None:
-                    for tgt in node.targets:
-                        if isinstance(tgt, ast.Name):
-                            var_to_subcmd[tgt.id] = sub
-            elif isinstance(node, ast.Call):
-                pair = _argparse_set_defaults_handler(node)
-                if pair is not None:
-                    var_to_handler[pair[0]] = pair[1]
-        rel_path = str(file_path.relative_to(root))
-        for var, subcmd in var_to_subcmd.items():
-            handler_name = var_to_handler.get(var)
-            if not handler_name:
-                continue
-            # WI-gadus B3: prefer the handler DEFINED in the same file as the
-            # add_parser/set_defaults pair. ``set_defaults(func=X)`` names a
-            # binding in that module's scope, so a same-file definition is the
-            # binding by construction, and any same-named symbol elsewhere is a
-            # coincidence. Unlike _scan_fire_commands, this FALLS BACK to a
-            # name-only match rather than requiring same-file: the handler is
-            # legitimately imported from a sibling module often enough
-            # (``from .commands import cmd_serve``) that requiring same-file
-            # would trade one wrong-edge class for a recall hole.
-            scoped = symbols_by_path_name.get((rel_path, handler_name))
-            candidates = scoped if scoped else symbols_by_name.get(handler_name)
-            if candidates:
-                commands.setdefault(subcmd, []).extend(candidates)
+    for rel_path, subcmd, handler_name in _scan_python_cli_facts(root).argparse_pairs:
+        # WI-gadus B3: prefer the handler DEFINED in the same file as the
+        # add_parser/set_defaults pair. ``set_defaults(func=X)`` names a
+        # binding in that module's scope, so a same-file definition is the
+        # binding by construction, and any same-named symbol elsewhere is a
+        # coincidence. Unlike _scan_fire_commands, this FALLS BACK to a
+        # name-only match rather than requiring same-file: the handler is
+        # legitimately imported from a sibling module often enough
+        # (``from .commands import cmd_serve``) that requiring same-file
+        # would trade one wrong-edge class for a recall hole.
+        scoped = symbols_by_path_name.get((rel_path, handler_name))
+        candidates = scoped if scoped else symbols_by_name.get(handler_name)
+        if candidates:
+            commands.setdefault(subcmd, []).extend(candidates)
     return commands
 
 
@@ -619,22 +718,9 @@ def _scan_fire_commands(
     instance / dict / module target, or a class IMPORTED from another module —
     the deferred fire forms) contributes nothing (fails safe to no join).
     """
-    # (fire-file repo-relative path, target class name) pairs.
-    fire_targets: set[tuple[str, str]] = set()
-    for file_path in _find_python_files(root):
-        try:
-            content = read_masked_source(
-                file_path, encoding="utf-8", errors="ignore"
-            )
-            tree = ast.parse(content)
-        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
-            continue
-        rel_path = str(file_path.relative_to(root))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                target = _fire_target_name(node)
-                if target is not None:
-                    fire_targets.add((rel_path, target))
+    # (fire-file repo-relative path, target class name) pairs, from the shared
+    # walk — see _scan_python_cli_facts for why this is no longer a private one.
+    fire_targets = _scan_python_cli_facts(root).fire_targets
     if not fire_targets:
         return {}
     # Keep only targets whose class is DEFINED in the fire.Fire() call's own
