@@ -48,3 +48,18 @@
   clock: 5  # 9a7f
   nonce: 9a7f  # 9a7f
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nRE-VERIFIED AT TIP, STILL OPEN, BOTH LANGUAGES. Independent fixtures at dev 11a240f83d, one run per language:\n\n    kotlin   val fh = File(p); fh.readText()\n               -> kotlin:java.io.File:0-0:File:unresolved   (constructor)\n               -> NO EDGE for readText\n    javascript  obj.write(x)\n               -> NO EDGE   (while helper(x), fs.readFileSync(x) and console.log(x) in the SAME file DO emit)\n\nThe javascript half is the more useful datum: three sibling call shapes in the same function emit and the instance-method one does not, so this is not the analyzer failing on the file.\n\nI did NOT recompute the catalogue-share figures (kotlin 95.7%, javascript 34.9%). The 2026-08-10 entry's near-miss note is the reason -- those figures are on the write-side/sink-category denominator, and a recomputation on all io_primitives reads as a false staleness. Name the population before comparing."  # 9a7f
+- op: update  # 5213
+  at: '2026-08-17T22:56:29Z'  # 5213
+  by: agent  # 5213
+  actor: jgstern_agent  # 5213
+  clock: 6  # 5213
+  nonce: '5213'  # 5213
+  set:  # 5213
+    priority: 2  # 5213
+- op: discuss  # 49f3
+  at: '2026-08-17T22:56:29Z'  # 49f3
+  by: agent  # 49f3
+  actor: jgstern_agent  # 49f3
+  clock: 7  # 49f3
+  nonce: 49f3  # 49f3
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2. Same family -- emitting the missing kotlin/javascript instance-method call edges is a recall fix. Re-verified at tip 2026-08-17: kotlin emits nothing for fh.readText() and javascript nothing for obj.write(x), while sibling call shapes in the same file do emit."  # 49f3

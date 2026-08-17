@@ -125,3 +125,18 @@
   clock: 15  # ebb4
   nonce: ebb4  # ebb4
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nTHE SUGGESTED RESHAPE IS APPLIED, and the refutation is independently reproduced rather than inherited from this thread. Production analyze_python on a fixture at dev 11a240f83d:\n\n    obj.related.create(x)   EDGE EMITTED, call_construct=method, module slot 'external'\n    obj.decode()            EDGE EMITTED, call_construct=method\n    os.remove(x)            EDGE EMITTED, module slot 'os'\n    print(x) / len(x) / undefined_fn(x)   NO EDGE  (that is INV-foluz, a different item)\n\nSo the title's 'emits ZERO call edges for attribute-chain receivers' is false at tip. Retitled to name the L3 gap that IS live: the edge arrives with no receiver evidence, io_boundary.gate_named_entry correctly refuses a method-kind entry for want of a module hint, and the sink stays unreachable. Same user-visible consequence, different mechanism, different fix.\n\nWHY THE RETITLE IS NOT COSMETIC -- IT CHANGES WHAT A QUEUE MEASURES. This item carries awaits_bakeoff_validation. A bakeoff draining that queue against the OLD title would look for 'attribute-chain call edges appear', find them, and read the item as moved -- while the finding-level metric has not moved at all. The item's own 08-17 entry flagged exactly this and left the retitle to whoever next worked it."  # ebb4
+- op: update  # 50e8
+  at: '2026-08-17T22:56:28Z'  # 50e8
+  by: agent  # 50e8
+  actor: jgstern_agent  # 50e8
+  clock: 16  # 50e8
+  nonce: '50e8'  # 50e8
+  set:  # 50e8
+    priority: 2  # 50e8
+- op: discuss  # 7c70
+  at: '2026-08-17T22:56:28Z'  # 7c70
+  by: agent  # 7c70
+  actor: jgstern_agent  # 7c70
+  clock: 17  # 7c70
+  nonce: 7c70  # 7c70
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2. Same family: this is now (after today's retitle) an L3 recall gap -- attribute-chain receivers carry no module hint, so catalogued method-kind sinks stay unmatchable. Making them matchable adds flows at ~41% precision.\n\nNOTE FOR THE awaits_bakeoff_validation QUEUE: this item still carries that tag, and the re-rank does not strip it. What changed today is what the tag is measuring (see the retitle entry)."  # 7c70
