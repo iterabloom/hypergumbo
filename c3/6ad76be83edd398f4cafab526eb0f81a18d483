@@ -1,0 +1,57 @@
+Original commit body from e748b3578e9575d66ee5f351d9aa358ec0865313:
+
+stamp_symbol_fingerprints caches one parsed tree per (path, language), so each
+file is PARSED once. But the per-symbol step located the smallest AST node
+covering a symbol's span with a fresh ast.walk over the whole module, so the
+pass cost symbols(file) x nodes(file) — quadratic in file size, a large file
+expensive twice over: once for having many AST nodes, again for having many
+symbols that each rescan them. The tree cache had removed repeated PARSING but
+not repeated LOCATION.
+
+Measured 324.3s of a 517.7s cold run_survey on this monorepo — 62.6% of wall —
+in a post-pass that carries no AnalysisRun card. That is why the time was
+invisible in analysis_runs[] and had only ever been reached by subtracting pass
+durations from the wall clock, which localises nothing.
+
+The locator now bisects a per-tree index bucketed by effective start line and
+scans start lines descending, breaking once the best extent reachable at the
+current start line is worse than the incumbent: every covering node has
+n_end >= end_line, so a node starting at n_start cannot have extent below
+end_line - n_start, and that bound only grows as n_start shrinks.
+
+  stamp_symbol_fingerprints   324.3s -> 22.8s   (14.2x)
+  cold run_survey wall        517.7s -> 220.0s  (2.35x)
+
+SEMANTICS PRESERVED EXACTLY, which is the binding constraint because a
+fingerprint is serialized output. The candidate set is unchanged and the winner
+is the lexicographic minimum of (extent, walk_ordinal), reproducing the old
+strict < against ast.walk's breadth-first order — so on an equal-extent tie the
+OUTER node still wins. Descending to the deepest covering node, the tempting
+rewrite, inverts that tie and would silently rehash a different subtree; the
+test pins the tie and ships a positive control proving the reference
+implementation can distinguish the two rules.
+
+Verified at repo scale, not only in unit tests: comparing every fingerprint in
+the before and after surveys, 1 of 42,543 changed, and it is the file-level
+fingerprint of fingerprint.py itself. Node-set deltas are confined to the files
+this commit touches.
+
+Scope expansion checked and negative: _tree_sitter_context_fingerprint locates
+via descendant_for_byte_range (native O(depth) descent) and never scanned the
+whole tree. The hand-written python walk was the one that went quadratic.
+
+Three instruments land with the fix, since the earlier apportionment-by-
+subtraction is what let this hide:
+ - measure-survey-phase-split.py: times run_survey's phase functions with
+   inclusive/exclusive accounting so shares sum to wall clock and the remainder
+   prints as UNATTRIBUTED; a --lean arm prices the side outputs (refuting the
+   standing hypothesis: side outputs are 62.7s, serialization 3.0s).
+ - measure-fingerprint-stamp-cost.py: measures the locator across the real file
+   size range (ns/node flat at ~495, the signature of a full-tree scan) and
+   PREDICTS the pass total from production's symbols-per-file distribution, so a
+   hot spot must explain the number it is blamed for.
+ - compare-survey-fingerprints.py: survey-to-survey fingerprint differ.
+
+5,718 passed, 100% coverage, mypy strict ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
