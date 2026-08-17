@@ -1,0 +1,34 @@
+Original commit body from f42d6880d8fdf43d55f0971aa70a4a90600f634a:
+
+Three probes that re-priced the P1 queue existed only in a session
+scratchpad on TMPFS, against the standing norm that measurement
+instruments live in the repo. Each one is here because a claim it
+tested turned out to be false.
+
+measure-io-boundary-construct-ab.py answers every catalogue lookup
+twice in one process — once as production asks, once with
+call_construct withheld — so the filter can be A/B'd without a second
+checkout. It is the tool that caught the construct-only form of the
+rule removing 51 io-boundary matches on whisper.cpp, 49 of them true
+positives, because call_construct=="method" means "spelled as a
+selector expression" and Go spells os.Open(p) that way.
+
+measure-taint-arm-census.py separates the section-3a confirm-only arm
+from the WI-fasub barrier arm, which have different risk profiles: a
+False on the second earns `sanitized` and deletes a finding. It prints
+a caveat on a zero barrier count, because that arm is unreachable by
+construction until the repo declares a sanitizer for the flow's label
+— a zero there measures the catalogue, not the code. Merges the two
+scratchpad variants behind a repo argument.
+
+measure-call-construct-census.py counts the VALUE the F3 gate reads
+rather than field presence. cpp carries the field on 41.1% of its call
+edges and the one value the gate consults on 1 of 34,983.
+
+Smoked on the merged tree. The construct A/B reproduces its recorded
+numbers in both signs: 2 removals on whisper.cpp (sys/wait.wait,
+kind=function) and 0 on nats-server over 27,755 method-construct
+lookups with a module hint — the instrument fires, and the shipped
+arity-keyed rule is non-destructive on Go.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
