@@ -40,3 +40,20 @@
   clock: 4  # e8b4
   nonce: e8b4  # e8b4
   message: "CEILING MEASURED (2026-08-17), and it CONFIRMS the premise rather than refuting\nit — I expected fixed per-language costs to undercut this item and they do not.\n\nscripts/measure-analyzer-scaling.py calls run_all_analyzers directly (skipping\nthe ~93s of linkers + graph work that this question is not about), sweeping\nmax_files to vary per-file work while holding the language mix fixed.\n\n    max_files=1   analyzer phase wall  2.6s   (252 files still analyzed)\n    uncapped      analyzer phase wall 65.7s   (1385 files)\n    marginal python cost                56.3 ms/file (63.1s / 1120 files)\n\nFIXED COST IS <= 2.6s OF 65.7s, UNDER 4% — and even that 2.6s includes real\nper-file work for 251 non-python files, so the true grammar-load / registry /\ndispatch floor is lower still. The analyzer phase is ~96% per-file work.\n\nCONSEQUENCE FOR THIS ITEM. A per-file cache can win back essentially the whole\nphase: 65.7s -> ~3s when nothing changed. Against the current 160.9s cold\n`--minimal` analysis, that lands the run near 97s, a 1.7x cut. Real, but NOT the\nstep-change to the 4.5s warm number — because the remaining ~93s (linkers ~29s,\ngraph post-processing ~43.5s, ~20.3s still unattributed) is whole-graph work\nthat per-file memoization cannot touch. Anyone hoping this item makes the local\ncycle feel instant should read that sentence twice.\n\nTWO MEASUREMENT CAVEATS, both load-bearing:\n - The linear fit over the sweep returns a NEGATIVE intercept (-12.3s), i.e. the\n   model is wrong, because max_files does not bind uniformly (WI-fomid: bash,\n   markdown, json, toml and ~17 others ignore it, putting a floor of 252 files\n   under every point). The <=2.6s bound survives because it is a MEASURED\n   configuration, not an extrapolation. Do not quote the fit.\n - Per-pass duration_ms cannot be used to price this work at all (WI-nuvam): it\n   is per-pass WALL under a thread pool, so it inflates with contention. Same 43\n   bash files billed 2.3s or 49.9s depending only on what python was doing\n   alongside. Price with the phase-split instrument, never with card sums."  # e8b4
+- op: update  # b8e6
+  at: '2026-08-17T21:04:08Z'  # b8e6
+  by: agent  # b8e6
+  actor: jgstern_agent  # b8e6
+  clock: 5  # b8e6
+  nonce: b8e6  # b8e6
+  set:  # b8e6
+    status: wont_do  # b8e6
+  add:  # b8e6
+    tags: [someday]  # b8e6
+- op: discuss  # ed9e
+  at: '2026-08-17T21:04:08Z'  # ed9e
+  by: agent  # ed9e
+  actor: jgstern_agent  # ed9e
+  clock: 6  # ed9e
+  nonce: ed9e  # ed9e
+  message: "OWNER RULING (2026-08-17), verbatim: \"I guess we've mined all the processing\nefficiency that's reasonable to mine at this point in the hypergumbo project.\"\n\nPARKED — wont_do + someday. Not \"won't ever\"; \"not at this point in the project\".\nThis item is intact and its ceiling is measured, so re-opening is a status change,\nnot a re-derivation.\n\nWHAT WAS ACTUALLY MINED, so nobody re-measures it:\n  cold run_survey on this monorepo   517.7s -> 139.1s   (3.7x)\n    #394  fingerprint locator was quadratic in file size   -297.7s (62.6% of wall)\n    #395  --minimal declines side outputs a caller never reads   -59.1s\n    #397  one shared CLI scan instead of four                    -23.3s\n\nWHY THIS ONE IS PARKED RATHER THAN BUILT. Its own ceiling is favourable — the\nanalyzer phase is ~96% per-file (65.7s uncapped vs 2.6s at max_files=1), so a\nper-file cache could reach ~3s and take the run to ~97s. What disqualifies it is\nCOST OF CORRECTNESS, not size of prize: it is blocked-by WI-sazap (unbuilt), needs\na per-analyzer purity audit, and its own filed acceptance bar is a differential\nequivalence test over the bakeoff corpus built FIRST, because until that is green\nblob-SHA memoization is a silent-corruption generator. The owner's condition was\n\"as long as that work seems straightforward\". It is not.\n\nRE-OPEN TRIGGER (unchanged): WI-rukaz reproducing a >60min run, i.e. the \"tens of\nminutes on a monorepo\" band this item's gate always named. This repo is 139.1s.\nIf it re-opens, build the differential test before any caching code."  # ed9e
