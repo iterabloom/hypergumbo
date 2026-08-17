@@ -86,6 +86,7 @@ convention the v1 docstring promised). A future normalization change
 from __future__ import annotations
 
 import ast
+import bisect
 import hashlib
 import textwrap
 from pathlib import Path
@@ -221,6 +222,102 @@ def _py_effective_lines(node: ast.AST) -> tuple[int, int] | None:
     return start, end
 
 
+class _PyCoverIndex:
+    """Per-tree index answering "smallest node covering [start, end]".
+
+    WHY THIS EXISTS (WI-balaf). The locator used to answer each query with a
+    fresh ``ast.walk`` over the whole module, so ``stamp_symbol_fingerprints``
+    cost ``symbols(file) x nodes(file)`` — quadratic in file size, because a big
+    file is expensive twice: once for having many AST nodes and again for having
+    many symbols that each rescan them. The tree cache one level up had removed
+    repeated PARSING but not repeated LOCATION. Measured on this monorepo, that
+    post-pass was 324s of a 517s cold ``run_survey`` (62.6% of wall) and, being
+    a post-pass, carried no AnalysisRun card — which is why the time was
+    invisible in ``analysis_runs[]`` and had only ever been derived by
+    subtraction.
+
+    Nodes are bucketed by effective start line, with the ``ast.walk`` ordinal
+    retained. A query bisects to the start lines at or before its own start and
+    scans them DESCENDING, stopping as soon as the best achievable extent at the
+    current start line is worse than the incumbent: every covering node has
+    ``n_end >= end_line``, so a node starting at ``n_start`` cannot have extent
+    below ``end_line - n_start``, and that bound only grows as ``n_start``
+    shrinks.
+
+    SEMANTICS ARE PRESERVED EXACTLY, which matters because a fingerprint is
+    serialized output. The candidate set is identical (``n_start <= start_line``
+    and ``n_end >= end_line``) and the winner is the lexicographic minimum of
+    ``(extent, walk_ordinal)``. Carrying the ordinal is what reproduces the old
+    strict ``extent < best_extent`` against breadth-first walk order: on an
+    equal-extent tie the OUTER node won, and it still does. Dropping the
+    tie-break — e.g. descending to the deepest covering node, which is the
+    tempting rewrite — would hash a different subtree and silently change
+    fingerprints. ``test_fingerprint_locate_index.py`` pins that rule.
+    """
+
+    __slots__ = ("_by_start", "_starts")
+
+    def __init__(self, tree: ast.Module) -> None:
+        by_start: dict[int, list[tuple[int, int, ast.AST]]] = {}
+        for ordinal, node in enumerate(ast.walk(tree)):
+            if isinstance(node, ast.Module):
+                continue
+            lines = _py_effective_lines(node)
+            if lines is None:
+                continue
+            n_start, n_end = lines
+            by_start.setdefault(n_start, []).append((n_end, ordinal, node))
+        self._by_start = by_start
+        self._starts = sorted(by_start)
+
+    def smallest_covering(
+        self, start_line: int, end_line: int,
+    ) -> ast.AST | None:
+        """Return the winning covering node, or None when nothing covers."""
+        best: ast.AST | None = None
+        best_extent = 0
+        best_ordinal = 0
+        upper = bisect.bisect_right(self._starts, start_line)
+        for i in range(upper - 1, -1, -1):
+            n_start = self._starts[i]
+            if best is not None and (end_line - n_start) > best_extent:
+                # No node at this start line — nor at any smaller one — can
+                # reach the incumbent's extent. Ties are still reachable at
+                # equality, so the comparison is strict.
+                break
+            for n_end, ordinal, node in self._by_start[n_start]:
+                if n_end < end_line:
+                    continue
+                extent = n_end - n_start
+                if (
+                    best is None
+                    or extent < best_extent
+                    or (extent == best_extent and ordinal < best_ordinal)
+                ):
+                    best, best_extent, best_ordinal = node, extent, ordinal
+        return best
+
+
+def _python_context_fingerprint_cached(
+    tree: ast.Module,
+    start_line: int,
+    end_line: int,
+    tree_cache: dict[Any, Any],
+    cache_key: Any,
+) -> str | None:
+    """Index-reusing form of :func:`_python_context_fingerprint`.
+
+    The index lives beside the parsed tree in the orchestrator's per-run
+    ``tree_cache``, so a file with N symbols builds it once instead of N times.
+    """
+    index_key = ("pyidx", cache_key)
+    index = tree_cache.get(index_key)
+    if index is None:
+        index = _PyCoverIndex(tree)
+        tree_cache[index_key] = index
+    return _fingerprint_from_index(index, tree, start_line, end_line)
+
+
 def _python_context_fingerprint(
     tree: ast.Module, start_line: int, end_line: int,
 ) -> str | None:
@@ -231,20 +328,28 @@ def _python_context_fingerprint(
     container — e.g. two sibling defs, or statements inside a class
     body), its fully-contained children are hashed in source order
     instead. A span covering no parseable content returns None.
+
+    Builds a throwaway index per call. The orchestrator post-pass uses
+    :func:`_python_context_fingerprint_cached` so the index is shared across
+    every symbol in a file; this form remains for one-shot callers and tests.
     """
-    best: ast.AST = tree
-    best_extent = float("inf")
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Module):
-            continue
-        lines = _py_effective_lines(node)
-        if lines is None:
-            continue
-        n_start, n_end = lines
-        if n_start <= start_line and n_end >= end_line:
-            extent = n_end - n_start
-            if extent < best_extent:
-                best, best_extent = node, extent
+    return _fingerprint_from_index(
+        _PyCoverIndex(tree), tree, start_line, end_line,
+    )
+
+
+def _fingerprint_from_index(
+    index: _PyCoverIndex,
+    tree: ast.Module,
+    start_line: int,
+    end_line: int,
+) -> str | None:
+    """Hash the located subtree (or, failing that, the covered children)."""
+    located = index.smallest_covering(start_line, end_line)
+    # A miss means nothing but the Module covers the span, which is the
+    # container case below — the pre-index code expressed this by leaving its
+    # ``best`` initialized to the tree.
+    best: ast.AST = tree if located is None else located
     if not isinstance(best, ast.Module):
         lines = _py_effective_lines(best)
         assert lines is not None  # covering candidates all had lines
@@ -502,7 +607,9 @@ def _compute_fingerprint(
             if not snippet:
                 return None
             return _python_snippet_fingerprint(snippet)
-        return _python_context_fingerprint(tree, span.start_line, span.end_line)
+        return _python_context_fingerprint_cached(
+            tree, span.start_line, span.end_line, tree_cache, cache_key,
+        )
     grammar = _LANG_PACK_OVERRIDES.get(language, language)
     if not isinstance(grammar, str):
         return None
