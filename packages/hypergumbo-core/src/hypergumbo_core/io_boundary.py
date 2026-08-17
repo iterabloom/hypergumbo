@@ -823,6 +823,29 @@ class IoBoundaryCatalog:
                 p for p in hits
                 if any(_module_matches(p.module, c) for c in candidates)
             ]
+            # INV-nizom: a DISJUNCTIVE slot is file context, not receiver
+            # evidence, so the F3 construct rule applies to it exactly as it
+            # applies to no hint at all. ``cpp.py`` joins every ``#include`` in
+            # the file into one slot and says so itself — "this call could be
+            # from any of the included headers" — which is an uncertainty set;
+            # ``fut.wait()`` in a unit that includes ``<sys/wait.h>`` was
+            # matching ``sys/wait.wait`` (kind=function) on it.
+            #
+            # ARITY IS THE DISCRIMINATOR, and _module_hint_candidates already
+            # computes it: a language emitting ONE module per slot expands to a
+            # single candidate (``os``, ``fmt``, ``java.io.File``) and never
+            # reaches this branch. That distinction is load-bearing rather than
+            # cosmetic — ``call_construct == "method"`` does NOT mean "instance
+            # method". Go spells ``os.Open(p)`` as a selector expression,
+            # indistinguishable in shape from ``f.Close()``, and stamps both
+            # ``method``; a rule keyed on the construct ALONE was measured on
+            # whisper.cpp and removed 51 matches — the 2 target false positives
+            # and 49 true ones (``os.Open``, ``os.Stat``, ``fmt.Fprintln``,
+            # ``net/http.NewRequest``, ``logging.exception``). A definite module
+            # slot is precisely what disambiguates those, which is why the gate
+            # defers to it and why this refusal must not.
+            if call_construct == "method" and len(candidates) > 1:
+                filtered = [p for p in filtered if p.kind != "function"]
             if filtered:
                 return select_by_mode(filtered, io_mode)
             # No match with module filtering — this is likely NOT an IO
