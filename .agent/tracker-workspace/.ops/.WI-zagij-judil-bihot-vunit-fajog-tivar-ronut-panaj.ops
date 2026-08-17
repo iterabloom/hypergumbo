@@ -35,3 +35,10 @@
   set:  # 78bd
     status: todo_hard  # 78bd
     priority: 2  # 78bd
+- op: discuss  # 96d2
+  at: '2026-08-17T11:04:24Z'  # 96d2
+  by: agent  # 96d2
+  actor: jgstern_agent  # 96d2
+  clock: 4  # 96d2
+  nonce: 96d2  # 96d2
+  message: "RE-PRICED UPWARD IN RELATIVE TERMS, and the analysis-vs-link split this item asked\nfor first is now measured.\n\nThe WI-balaf fix removed a quadratic that was 62.6% of a cold run, taking cold\nrun_survey on this monorepo 517.7s -> 220.0s. The passes were never the majority of\nthe old wall clock, but they ARE now the largest remaining block:\n\n    passes/run_all_analyzers    64.8s   29.4% of the new wall\n    passes/run_all_linkers      29.3s   13.3%\n    passes total                94.1s   42.8%\n\nSo this item's premise (\"re-analyze only the affected package\") is now aimed at the\nbiggest single remaining target rather than at 22% of a run dominated by something\nelse. Per-pass detail for scoping: python 62.5s and bash 51.8s of card time dominate,\neverything else under 5s — and note those two card numbers sum to more than the\n64.8s wall span they ran inside, i.e. analyzer passes overlap, so package scoping buys\nless than the card sum suggests. Measure the wall span, not the card sum (see the\ncorrection on WI-kazas).\n\nNOT started; still todo_hard at P2. The measurement it wanted first now exists:\nscripts/measure-survey-phase-split.py."  # 96d2

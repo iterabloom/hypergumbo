@@ -1,0 +1,21 @@
+- op: create  # 0af8
+  at: '2026-08-17T09:09:03Z'  # 0af8
+  by: agent  # 0af8
+  actor: jgstern_agent  # 0af8
+  clock: 1  # 0af8
+  nonce: 0af8  # 0af8
+  data:  # 0af8
+    kind: work_item  # 0af8
+    title: "GOVERNANCE+SECURITY: mirror remote URL embeds a Codeberg token in cleartext (leaks via any git remote -v); auto-pr/merge-pr print stale 'Codeberg' labels for GitHub pushes"  # 0af8
+    status: needs_human_review  # 0af8
+    priority: 1  # 0af8
+    parent:  # 0af8
+    tags:  # 0af8
+    - ci_infrastructure  # 0af8
+    - security  # 0af8
+    isbefore: []  # 0af8
+    duplicate_of: []  # 0af8
+    not_duplicate_of: []  # 0af8
+    pr_ref:  # 0af8
+    description: "TWO THINGS, both surfaced 2026-08-17 while merging #389/#390. Filed together\nbecause both live in the forge scripts, and BOTH TOUCH GOVERNANCE FILES\n(scripts/auto-pr, scripts/merge-pr), so per AGENTS.md this awaits explicit human\napproval before any PR is opened. Nothing has been changed.\n\n1. THE SECURITY ONE, and the reason this is not P4. The `mirror` remote's URL\n   carries a Codeberg token in cleartext:\n\n     mirror  https://jgstern-agent:<TOKEN>@codeberg.org/iterabloom/hypergumbo.git\n\n   It therefore sits in .git/config and is printed IN FULL by any `git remote\n   -v` — which means agent diagnostics, pasted terminal output, and any CI step\n   that dumps remotes all leak it. It leaked into this session's transcript\n   exactly that way, from a routine `git remote -v` run to check where auto-pr\n   pushes.\n\n   PROPOSED (human decides): rotate the token, then move the credential out of\n   the URL — a credential helper, ~/.netrc with 0600, or drop the `mirror`\n   remote entirely if the Codeberg backend is dormant (AGENTS.md describes the\n   Forgejo backend as \"now-dormant\", and FORGEJO_TOKEN already lives in .env,\n   which is the pattern the URL should follow). Rotation is the human's to do;\n   I have not touched it and have not recorded the value anywhere.\n\n2. THE COSMETIC ONE. `scripts/auto-pr:1680` prints \"Pushing to Codeberg...\"\n   unconditionally, and `merge-pr` prints a codeberg.org PR URL on success. Both\n   are stale labels from the Forgejo era — the push and the merge are GitHub.\n   Verified in one run: the banner says Codeberg, the next line says \"GitHub:\n   plain branch push + API PR-create\", the push output is\n   `To github.com:iterabloom/hypergumbo.git`, and it created PR #389 on GitHub.\n\n   Cost: it is actively misleading. AGENTS.md says origin (GitHub) is the only\n   authoritative remote and WI-hajif retired the failover, so an agent reading\n   that banner has to go verify which remote was actually used before trusting\n   any of it. I did.\n\n   PROPOSED: label from the resolved backend rather than a literal, and print\n   the URL the API actually returned. One line each, no behaviour change.\n\nWHY NOT SILENTLY FIXED: governance files. AGENTS.md's approval workflow says do\nNOT create a PR preemptively — set needs_human_review, explain, and wait."  # 0af8
+    fields: {}  # 0af8
