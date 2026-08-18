@@ -225,14 +225,36 @@ echo "  Syncing local audit env to the CI (.woodpecker) baseline pins..."
 # resolve just leaves the CVE for pip-audit to surface below.
 pip install --upgrade pip wheel setuptools >/dev/null 2>&1 || true
 pip install "requests~=2.33.0" "pygments~=2.20.0" "urllib3>=2.7.0" "idna>=3.15" \
-    "msgpack>=1.2.1" "click>=8.3.3" "pyasn1>=0.6.4" "pillow>=12.3.0" >/dev/null 2>&1 || true
+    "msgpack>=1.2.1" "click>=8.3.3" "pyasn1>=0.6.4" "pillow>=12.3.0" \
+    "cryptography>=50.0.0" "pyopenssl>=26.4.0" "nltk>=3.10.0" >/dev/null 2>&1 || true
 
 echo "  Running pip-audit..."
 # --ignore-vuln list kept IN SYNC with .woodpecker/woodpecker.yml (the
-# authoritative CI audit), plus two LOCAL-ONLY carve-outs this dev box pulls
-# that CI's closure does not: CVE-2025-69872 (diskcache, via CairoSVG/safety)
-# and PYSEC-2026-597 (nltk, no fix available). The published packages depend on
-# neither. Fixable deps are pinned above, not ignored here.
+# authoritative CI audit), plus ONE LOCAL-ONLY carve-out this dev box pulls that
+# CI's closure does not: CVE-2025-69872 (diskcache, via CairoSVG/safety), which
+# still has no fix. The published packages do not depend on it.
+#
+# WI-totak, answered with evidence on 2026-08-18 rather than by re-reading the
+# list: PYSEC-2026-597 (nltk) was carried here as "no fix available" and that had
+# stopped being true — nltk 3.10 fixes it, along with PYSEC-2026-3582/3583/3584.
+# Dropping the ignore and re-running leaves the audit clean for nltk, so the
+# carve-out is gone and nltk is PINNED above instead. A dead ignore in a security
+# gate is worse than the CVE it names: it is a false statement about what was
+# checked, and it hides the next advisory for that package.
+#
+# The diskcache carve-out STAYS, and was re-tested the same way: dropping it
+# surfaces PYSEC-2026-2447 (the same advisory under its PYSEC id, still no fix
+# version). Fixable deps are pinned above, not ignored here.
+#
+# WI-zisoj: `|| AUDIT_EXIT=$?`, NOT a bare `AUDIT_EXIT=$?` on the next line.
+# This script runs under `set -euo pipefail` (line 18), and a simple assignment
+# whose command substitution exits non-zero terminates the script AT THE
+# ASSIGNMENT — so the capture never ran, the if/else below was unreachable, and
+# a non-clean audit killed the gate mid-sentence instead of reporting. Every
+# check after this one was skipped with it. The comment above ("a real failure
+# we want to surface, not paper over") described the intent; the mechanism did
+# the opposite.
+AUDIT_EXIT=0
 AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln CVE-2025-71176 --ignore-vuln CVE-2026-3219 \
     --ignore-vuln PYSEC-2025-211 --ignore-vuln PYSEC-2025-212 \
@@ -247,8 +269,7 @@ AUDIT_OUTPUT=$(pip-audit --skip-editable \
     --ignore-vuln PYSEC-2026-139 --ignore-vuln PYSEC-2024-277 \
     --ignore-vuln CVE-2025-3000 --ignore-vuln CVE-2026-4372 \
     --ignore-vuln PYSEC-2026-2289 --ignore-vuln PYSEC-2026-2290 \
-    --ignore-vuln CVE-2025-69872 --ignore-vuln PYSEC-2026-597 2>&1)
-AUDIT_EXIT=$?
+    --ignore-vuln CVE-2025-69872 2>&1) || AUDIT_EXIT=$?
 if [ $AUDIT_EXIT -eq 0 ]; then
     pass "No known vulnerabilities in dependencies"
 else
