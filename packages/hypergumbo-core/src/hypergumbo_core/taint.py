@@ -17,10 +17,16 @@ How It Works
    reachable set. Reports violations as ``TaintFlowFinding`` objects.
 
 The structural approach cannot distinguish between two variables in the same
-function — it operates at the symbol level. Findings are explicitly labeled
+function — it operates at the symbol level. Its findings are labeled
 ``confidence="approximate"`` and ``analysis_method="structural"`` per ADR-0017.
-DDG-backed analysis (Phase 2+) will improve precision for languages with
-def/use extractors.
+
+DDG-backed analysis has LANDED and is not the only producer any more: for
+languages with def/use extractors, :func:`propagate_taint_ddg` (see
+``ddg_build.py`` / ``taint_refine.py``) walks reaching-definitions and stamps
+``analysis_method="ddg"`` when it confirms a dependence, or ``"ddg_mixed"``
+when the walk ran without confirming one. So do NOT assume every finding
+carries ``analysis_method="structural"`` — see the field's own docs below for
+what each value licenses.
 
 Catalog Format
 --------------

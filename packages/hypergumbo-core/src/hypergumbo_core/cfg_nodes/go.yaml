@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0017 §1d: CFG node mapping for Go (tree-sitter-go grammar)
 #
-# Includes the deferred_execution semantic hook for Go's defer statement.
+# Includes the `deferred` semantic hook for Go's defer statement.
 # Go switch cases (expression_case, default_case) are direct children of
 # the switch statement — arms_child is null so the builder iterates over
 # the switch node's own children.

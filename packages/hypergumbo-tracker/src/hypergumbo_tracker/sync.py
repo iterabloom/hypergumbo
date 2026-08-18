@@ -14,8 +14,13 @@ Design:
 - All git calls go through ``_git()`` for testability (single mock point).
   ``_git()`` accepts an optional ``env`` dict for plumbing calls that need
   custom environment variables (e.g. ``GIT_INDEX_FILE``).
-- All Forgejo API calls go through ``_api_call()`` using only stdlib
-  ``urllib.request`` (no ``requests`` dependency).
+- All forge API calls go through ``_api_call()`` using only stdlib
+  ``urllib.request`` (no ``requests`` dependency). Two backends are
+  supported and selected from the ``origin`` host: ``github`` (the live
+  one — ``api.github.com``, no ``/api/v1`` segment) and ``forgejo``
+  (Gitea/Codeberg, ``/api/v1/repos``). The ``forgejo_*`` field names on
+  the config object are kept for backwards compatibility and carry the
+  resolved backend's credentials either way.
 - The sync gate file (``.git/TRACKER_SYNC_PENDING``) provides mutual
   exclusion with ``auto-pr`` (which uses ``.git/PR_PENDING``).  The gate
   is held via ``fcntl.flock`` on an open file descriptor, which the OS
