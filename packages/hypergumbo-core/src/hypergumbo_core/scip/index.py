@@ -43,12 +43,33 @@ Offset and indexing conventions pinned here:
 Edge cases intentionally handled by skip rather than raise:
 
 * ``SymbolInformation`` with no ``Definition``-role occurrence in the
-  document (typically an imported / external symbol) — skipped. This was
-  once documented as pending Slice C; Slice C (``edges.py``, WI-mafut)
-  has since shipped WITHOUT wiring these to external-tier nodes, and
-  nothing under ``scip/`` handles them today. Stated as the live gap it
-  is rather than as planned work: the item that would have done it is
-  closed.
+  document (typically an imported / external symbol) — skipped, and this
+  is the RIGHT layer to skip at. This shim emits Symbols, and a symbol
+  with no Definition here is a *reference*, not a definition; hypergumbo
+  materialises external references from the EDGE side, where
+  :func:`~hypergumbo_core.ir.create_boundary_nodes` mints
+  ``external_symbol`` boundary nodes for dangling edge endpoints. An
+  earlier version of this note said "Slice C will wire those to
+  external-tier nodes", which was wrong twice over: Slice C shipped
+  without doing it, and the symbol side was never where it belonged.
+
+  Where it actually lives, for anyone following the thread: the Rust
+  backend's ``translate.py`` passes a ``resolve_symbol`` map and returns
+  ``None`` for a SCIP symbol with no in-workspace definition, which
+  *drops the edge* rather than letting it dangle into a boundary node.
+  That is deliberate and load-bearing — before commit ``9266762d4b``,
+  endpoints were raw SCIP descriptor strings, so EVERY scip edge dangled
+  and finalize's endpoint-integrity step silently discarded the entire
+  scip call graph while the scip Symbols survived (0 → 739 edges on
+  zoxide once endpoints resolved). Letting externals dangle again is not
+  free: it needs a canonical ``{lang}:{path}:{span}:{name}:{kind}`` id
+  minted from the SCIP symbol, not the raw descriptor.
+
+  Consequence, stated plainly: unlike the ~69 ``:unresolved`` dst sites
+  in the tree-sitter analyzers, a Rust call into a dependency or the
+  stdlib produces no edge at all under this backend. Tracked as
+  WI-gojum sub-component 1 ("external calls recorded accurately"),
+  parked by the owner 2026-07-19 pending ADR-0012 Steps 2-3.
 * Malformed SCIP symbol strings (``parse_scip_symbol`` raises) — skipped
   with no warning. A buggy upstream emitter must not abort the whole
   translation pass; downstream analyses will simply see missing symbols
