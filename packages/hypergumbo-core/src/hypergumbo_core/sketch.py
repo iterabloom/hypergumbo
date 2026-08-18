@@ -1402,7 +1402,11 @@ def _discover_config_files_embedding(
         Set of discovered config file paths.
     """
     try:
-        from .sketch_embeddings import _load_embedding_model
+        from .sketch_embeddings import (
+            EmbeddingsUnavailable,
+            _load_embedding_model,
+            _warn_embeddings_unavailable,
+        )
         import numpy as np
     except ImportError:  # pragma: no cover
         return set()  # No discovery without sentence-transformers
@@ -1516,8 +1520,14 @@ def _discover_config_files_embedding(
             reverse=True
         )[:max_candidates]
 
-    # Load embedding model and compute similarities
-    model = _load_embedding_model()  # pragma: no cover
+    # Load embedding model and compute similarities. INV-rupid: an unavailable
+    # model answers exactly as the ImportError arm at the top of this function
+    # does — no discovery without the enhancement.
+    try:
+        model = _load_embedding_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)
+        return set()
 
     # Embed known config file names
     known_embeddings = model.encode(known_names, convert_to_numpy=True)  # pragma: no cover
@@ -1812,7 +1822,11 @@ def _extract_config_embedding(
         List of extracted metadata lines, ordered by file then relevance.
     """
     try:
-        from .sketch_embeddings import _load_embedding_model
+        from .sketch_embeddings import (
+            EmbeddingsUnavailable,
+            _load_embedding_model,
+            _warn_embeddings_unavailable,
+        )
         import numpy as np
     except ImportError:  # pragma: no cover
         # Fall back to heuristic if sentence-transformers not available
@@ -1832,9 +1846,16 @@ def _extract_config_embedding(
         if _verbose:  # pragma: no cover
             print(f"[embed] {msg}", file=_sys.stderr)
 
-    # Load embedding model once
+    # Load embedding model once. INV-rupid: an unavailable model takes the SAME
+    # branch the ImportError arm above takes — the heuristic extractor, not an
+    # empty list. Degrading to [] here would silently drop config metadata that
+    # pattern matching can still recover without any model at all.
     _t_load = _time.time()
-    model = _load_embedding_model()
+    try:
+        model = _load_embedding_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)
+        return _extract_config_heuristic(repo_root)[:max_lines]
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # Compute normalized embeddings for both probes
