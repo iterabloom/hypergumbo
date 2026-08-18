@@ -12,7 +12,32 @@ The main entry points are:
 - batch_embed_files(): Batch embed files with caching
 - compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
-These functions fall back gracefully when sentence-transformers isn't installed.
+Degradation contract — TWO failure modes, not one
+-------------------------------------------------
+"sentence-transformers is unavailable" means two independent things, and
+conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
+(INV-rupid):
+
+1. **The library is not importable.** ``_has_sentence_transformers()``
+   answers this, and only this — it catches ``ImportError`` and nothing
+   else. Every public function here checks it first.
+2. **The library imports but the model WEIGHTS are not on disk** and
+   cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
+   a machine that has never fetched them). ``_has_sentence_transformers()``
+   returns True in this case. The load itself raises, so
+   ``_load_st_model_offline_first`` converts that into
+   :class:`EmbeddingsUnavailable`.
+
+Callers must handle BOTH. The four public entry points already do: each
+catches :class:`EmbeddingsUnavailable` and degrades to the same result its
+import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+warns once per process rather than per file. Consumers outside this module
+(see ``sketch.py``) degrade to their heuristic path.
+
+The probe is deliberately NOT strengthened to demand weights: a first
+install legitimately has the library and no weights, and downloading them
+then is the sanctioned path. The guard answers "can I import"; the loader
+answers "can I load".
 """
 
 from __future__ import annotations
