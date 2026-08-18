@@ -1,0 +1,71 @@
+Original commit body from 7f268ddcb24083ba81a9a482e3fa4b7dca3262e9:
+
+`scripts/release-check` runs under `set -euo pipefail`, and wrote:
+
+    AUDIT_OUTPUT=$(pip-audit ... )
+    AUDIT_EXIT=$?
+    if [ $AUDIT_EXIT -eq 0 ]; then pass; else echo "$AUDIT_OUTPUT"; fail; fi
+
+Under `set -e` a simple assignment whose command substitution exits non-zero
+terminates the script AT THE ASSIGNMENT. `AUDIT_EXIT=$?` never ran, the if/else
+below it was unreachable, and the `echo "$AUDIT_OUTPUT"` that prints the
+findings could not execute. So could nothing after it: secrets scan, code
+quality, test suite, build verification, tag state -- all skipped.
+
+The script's own comment described the opposite intent: "pip-audit's exit code
+is the gate: 0 = no vulnerabilities, 1 = found. Anything else (network, parse,
+unsupported package) is a real failure we want to surface, not paper over."
+
+BEHAVIORAL EVIDENCE, before and after, on the real script:
+
+  before  31 lines, ending mid-section at "  Running pip-audit...", exit 1.
+          No findings, no verdict. Sections reached: 1, 2, 2b, 3(partial).
+  after   114 lines, the six findings printed in full, and sections 4 (Code
+          Quality) and 5 (Test Suite) REACHED for the first time.
+
+THE FIX IS `|| AUDIT_EXIT=$?` WITH `AUDIT_EXIT=0` INITIALIZED. The initializer
+is not decoration: on a CLEAN audit the `||` branch never runs, so without it
+`set -u` fails -- and only on the passing path, which is not the case anyone is
+thinking about when they edit this block. The test harness caught exactly that
+during development, which is why the block extraction is anchored on the
+initializer rather than on the pip-audit call.
+
+STRUCTURAL SWEEP, because a bug in one script is a question about the rest:
+every other exit-code capture in scripts/ and .githooks/ already uses the safe
+`cmd || var=$?` idiom, or sits in an `if` condition where set -e does not apply
+(auto-pr:1765). release-check:251 was the only instance. Not a class.
+
+THE TESTS EXECUTE THE SHIPPED BLOCK rather than grepping it, because a guard
+that cannot be SHOWN to fire is indistinguishable from one matching nothing.
+The block is extracted from the real script, run under real `set -euo pipefail`
+against a stub pip-audit at exits 1/2/127, and asserted to print the findings
+AND let a later marker run. The load-bearing test is the DIFFERENTIAL: it
+reconstructs the pre-fix form and proves it behaves differently. Without an
+input that separates the two rules, "the fixed block reports findings" would be
+satisfiable for reasons having nothing to do with the fix.
+
+TWO CONSEQUENCES OF A GATE THAT NOW REPORTS, both handled here rather than left
+for the release to trip over:
+
+1. Six findings became visible: cryptography 48.0.1 (PYSEC-2026-3552/3553/3554)
+   and nltk 3.9.4 (PYSEC-2026-3582/3583/3584). All have fix versions, so they
+   are PINNED, not ignored -- which is the script's own stated policy ("fixable
+   deps are pinned above, not ignored here"). pyopenssl>=26.4.0 joins them
+   because cryptography 50 cannot resolve against pyOpenSSL 26.0.0, and 26.4.0
+   is what CI already installs. NEITHER PACKAGE IS A SHIPPED DEPENDENCY --
+   verified via importlib.metadata, not assumed: cryptography arrives through
+   Authlib/py-webauthn and nltk through nothing. No released artifact was ever
+   affected.
+2. A DEAD IGNORE was removed and the surviving one re-verified, answering half
+   of WI-totak with evidence instead of a re-read. PYSEC-2026-597 was carried as
+   "nltk, no fix available"; nltk 3.10 fixes it, and dropping the ignore leaves
+   the audit clean. A dead ignore in a security gate is worse than the advisory
+   it names: it is a false statement about what was checked, and it suppresses
+   the NEXT advisory for that package. The diskcache carve-out was tested the
+   same way and stays -- dropping it surfaces PYSEC-2026-2447, the same advisory
+   under its PYSEC id, still with no fix version.
+
+Section 3 now reports "✓ No known vulnerabilities in dependencies" on a full
+run. 6 passed in the new suite.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
