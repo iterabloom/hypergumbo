@@ -1,0 +1,32 @@
+Original commit body from 89cdb06f2fefd963f7b1a1edc47101eafb25bfc2:
+
+Docstring-staleness audit, C bundle (silent omission of substantial new
+functionality). Unlike the A+B+D bundle these needed new prose rather than
+a deletion, so they ship separately.
+
+sketch_embeddings.py: the one-line claim "These functions fall back
+gracefully when sentence-transformers isn't installed" named one failure
+mode where there are two, and the omitted one is INV-rupid. Replaced with
+an explicit degradation contract: (1) the library is not importable, which
+_has_sentence_transformers() answers and ONLY answers, and (2) the library
+imports but the model weights are not on disk and cannot be fetched, where
+that guard returns True and the load raises EmbeddingsUnavailable. Records
+that all four public entry points handle both, that the warning fires once
+per process, and why the probe is deliberately NOT strengthened to demand
+weights — a first install legitimately has the library and no weights.
+
+safety_zones.py: "How to use" named 8 wrappers; 22 exist. Now grouped by
+zone with the zone-enforced ones marked, plus the repo_inspect_* family,
+which the module title ("write wrappers") does not cover at all — these
+are subprocess READS, narrowing from repo_inspect_git through
+repo_inspect_scan to repo_inspect_probe, which reads nothing whatsoever.
+
+discovery.py: content-conditioned virtualenv exclusion was undocumented.
+venv/.venv/env are deliberately absent from DEFAULT_EXCLUDES because a
+directory is a virtualenv by what it CONTAINS, not what it is called.
+Carries the disclosed limit forward: the Windows marker arm has zero
+real-world positives across the 467-repo corpus and is fixture-asserted.
+
+Docstring text only — no behavior change, no test changes. 15087 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
