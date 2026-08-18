@@ -1,0 +1,56 @@
+Original commit body from c0385f2e733860532cef9942dc3ea39f91ee01c9:
+
+WI-dojud. check_rust_analyzer_disclosure picked its message from `available`
+(is the binary on PATH) alone, after a single guard on "does this repo contain
+Rust". It never consulted the opt-in gate, so every Rust repo with
+rust-analyzer installed got the "installed but NOT enabled" arm -- including
+runs where --backend rust-analyzer was active and the SCIP path demonstrably
+ran. Positive control from the same invocation that printed it: the emitted
+survey carried 2 edges of type `references` with origin ["scip"], which only
+the SCIP path produces; the tree-sitter run of the same crate has zero.
+
+Repro closed behaviourally on the probe crate:
+  before  enabled run: 1x "NOT enabled"    default run: 1x "NOT enabled"
+  after   enabled run: 0x, says ACTIVE     default run: 1x "NOT enabled"
+
+THE WARNING IS KEPT, deliberately, and this is the whole reason the fix is a
+new argument rather than a suppression. Its payload is a security disclosure:
+`rust-analyzer scip <workspace>` executes that workspace's build.rs and
+expands its proc macros AS THE INVOKING USER, and the function's own docstring
+records that an attempt to sandbox it was tried, measured, and reverted. A
+nudge that fires when it is already moot teaches people to skim past the one
+sentence that has to land. So the caveat now appears in every arm that speaks
+-- and in the enabled arm it is stated in the PRESENT tense, because there it
+describes what is happening rather than what would happen if you opted in.
+
+`enabled` is resolved at the call site from HYPERGUMBO_RUST_ANALYZER, mirroring
+how `available` is resolved there, which keeps the check itself pure and
+testable in all four states. That env var is the single signal for both opt-in
+routes because cli.py normalises --backend rust-analyzer into it during argv
+pre-parse.
+
+One duplication, disclosed: the authority for the truthy value set is
+gate._TRUTHY_VALUES, which lives in the OPTIONAL rust-analyzer package, and
+core must decide what to print whether or not that package is installed. Core
+therefore carries a copy -- and because a copy can drift, a test pins the two
+together so adding a value on one side fails here rather than silently in a
+user's terminal.
+
+Also in this commit, spec §Taint-flow-analysis: the two attribute-primitive
+gaps it calls "pending" are closed. WI-vipur (scoped-path traversal mode) and
+WI-gotuv (C identifier-reference matching) both landed; verified end-to-end
+rather than from tracker status -- std::env::consts::OS classifies env_read,
+bare stdin/stdout classify ipc_recv/logging. The adjacent claim that "the
+rust-analyzer optional backend is unaffected by the tree-sitter gap and
+continues to resolve Rust semantics fully" is replaced: attribute-reference
+coverage is the TREE-SITTER analyzer's, the SCIP backend emits no
+module_attr_ref edges at all, and the two coexist rather than substitute
+(ADR-0012; WI-gojum), so backend choice does not affect this coverage in
+either direction. The clause was scope creep past its own commit message --
+which claimed only that the gap was a tree-sitter grammar artifact -- and was
+written three months before the resolve-map fix that stopped finalize from
+silently discarding the entire SCIP call graph.
+
+4074 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
