@@ -15,9 +15,36 @@ Three sub-checks are available:
    docstring extent (``node.lineno..node.end_lineno`` — explicitly
    NOT line 1, which is occupied by the SPDX header on every file
    and would conflate the SPDX mass-edit with docstring edits),
-   then ``git blame`` both regions and take the youngest
-   ``committer-time`` in each. Flag files where the body has been
-   touched recently but the docstring hasn't.
+   then ``git blame`` both regions. Flag files where the body has
+   moved on and the docstring hasn't.
+
+   "Hasn't" is measured two ways, and the second exists because the
+   first decays. ``delta_days = ds_age - body_age`` is only
+   meaningful while the docstring's date can still move; where a
+   mass commit PINNED it, delta grows with wall clock alone and the
+   ``>= 90`` threshold degenerates into "was this touched
+   recently". That is not hypothetical — the ``ds=2026-02-19``
+   cohort could not fire at ANY body age on 2026-05-15 and fired
+   for anything touched within 89 days by 2026-08-18, taking the
+   flagged count from 28 to 87 with nothing having drifted. So the
+   day arm is applied ONLY to rows whose floor commit is particular
+   to them, and the primary metric is
+   ``body_commits_since_ds`` — how many commits have landed on the
+   body since anyone touched the docstring — which counts commits
+   rather than days and so does not move with the calendar.
+
+   Each row discloses what dates it: the floor commit, the share of
+   the docstring that commit owns, and how many OTHER docstrings it
+   floors. Those are facts, not verdicts. The scan deliberately
+   does NOT try to decide whether a floor commit "counted as a
+   review" and skip past it if not: measured on this corpus, the
+   ADR-3bbb convention stamp owns a median 1 line (2%) of the
+   docstrings it floors and a genuine staleness-audit fix owns 2
+   lines (4%), so no threshold on size or file-count separates a
+   stamp nobody read from the most careful reading those files ever
+   had. Guessing would be actively harmful: it would classify every
+   prior audit's own fix commits as sweeps, making each audit blind
+   the next one to exactly the files it had just verified.
 
 2. **Tracker-ID cross-ref** (``--tracker-refs``). Extract ``WI-`` /
    ``INV-`` / ``BUG-`` IDs from docstrings and inline comments,
@@ -53,8 +80,8 @@ Run with no args to do a co-change scan over the default scope::
     scripts/check-docstring-drift
 
 Pass ``--all`` to run all three sub-checks, ``--json`` for
-machine-readable output, ``--window``/``--min-delta`` to tune
-co-change thresholds.
+machine-readable output, ``--window`` / ``--min-delta`` /
+``--min-body-commits`` to tune co-change thresholds.
 """
 from __future__ import annotations
 
@@ -74,6 +101,33 @@ import sys
 # calibration story).
 DEFAULT_BODY_AGE_DAYS = 120
 DEFAULT_MIN_DELTA_DAYS = 90
+
+# A commit that is the youngest edit to at least this many DIFFERENT module
+# docstrings is treated as a mass sweep rather than as a review. Three such
+# commits exist in this repo's history and between them they floored 55 of 87
+# flagged files on 2026-08-18: the ADR-0010 monorepo reorg (blame follows the
+# move), the Phase-4 TreeSitterAnalyzer migration (~70 analyzers stamped with
+# identical "two-pass orchestration" boilerplate), and the ADR-3bbb subcategory
+# sweep (one line prepended to 45 linker docstrings). 8 is well above the
+# largest genuine multi-file docstring edit observed and well below all three.
+SWEEP_MIN_FILES = 8
+
+# A floor commit owning at most this share of a docstring did not rewrite it.
+# Reported, never acted on. Measured 2026-08-18: the ADR-3bbb convention stamp
+# owns a median 2% of the docstrings it floors; the 2026-06-19 staleness-audit
+# fix -- a genuine line-by-line review -- owns 4%. Neither share nor co-floor
+# count separates a stamp from a review, so this is one of three facts a human
+# weighs, not a classifier. Auto-skipping on it would make each audit blind the
+# next one to the very files it had just verified.
+STAMP_MAX_SHARE = 0.10
+
+# Commits that landed on the body since the docstring was last touched.
+# Clock-independent, unlike --min-delta days: `delta = ds_age - body_age` grows
+# on its own whenever ds is pinned, so the day threshold decays into "was this
+# touched recently" (the ds=2026-02-19 cohort could not fire at ANY body age on
+# 2026-05-15 and fired for anything within 89 days by 2026-08-18 -- 28 flags
+# became 87 with nothing drifting). A file qualifies on EITHER metric.
+DEFAULT_MIN_BODY_COMMITS = 15
 
 DEFAULT_SCOPE = ("packages/hypergumbo-core/src",
                  "packages/hypergumbo-lang-mainstream/src",
@@ -132,10 +186,15 @@ def file_line_count(path: str) -> int:
         return sum(1 for _ in f)
 
 
-def youngest_commit_ts(path: str, start: int, end: int) -> int | None:
-    """Return the youngest committer-time in lines ``start..end`` of ``path``."""
+def blame_lines(path: str, start: int, end: int) -> list[tuple[int, str]]:
+    """Return ``(committer_time, sha)`` for each blamed line in ``start..end``.
+
+    The sha is what makes sweep detection possible: a timestamp alone cannot
+    distinguish "someone reviewed this docstring" from "a 45-file compliance
+    sweep prepended one line to it".
+    """
     if start > end:
-        return None
+        return []
     try:
         out = subprocess.check_output(
             ["git", "blame", "-L", f"{start},{end}", "--porcelain", path],
@@ -143,12 +202,24 @@ def youngest_commit_ts(path: str, start: int, end: int) -> int | None:
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError:
-        return None
-    times: list[int] = []
+        return []
+    result: list[tuple[int, str]] = []
+    sha: str | None = None
     for line in out.splitlines():
-        if line.startswith("committer-time "):
-            times.append(int(line.split()[1]))
-    return max(times) if times else None
+        # A porcelain header line is "<sha> <orig-lineno> <final-lineno> [n]".
+        if len(line) >= 40 and line[:40].isalnum() and " " in line:
+            candidate = line.split()[0]
+            if len(candidate) == 40:
+                sha = candidate
+        elif line.startswith("committer-time ") and sha is not None:
+            result.append((int(line.split()[1]), sha))
+    return result
+
+
+def youngest_commit_ts(path: str, start: int, end: int) -> int | None:
+    """Return the youngest committer-time in lines ``start..end`` of ``path``."""
+    blamed = blame_lines(path, start, end)
+    return max((t for t, _ in blamed), default=None)
 
 
 def iter_python_files(scope_dirs: tuple[str, ...]) -> list[str]:
@@ -166,17 +237,138 @@ def iter_python_files(scope_dirs: tuple[str, ...]) -> list[str]:
     return sorted(result)
 
 
+def floor_facts(
+    blamed: list[tuple[int, str]], cofloor_counts: dict[str, int]
+) -> dict:
+    """Report FACTS about what dates a docstring. No inference about intent.
+
+    An earlier version of this function tried to decide whether the floor
+    commit "counted as a review" and to look past it when it did not. That
+    cannot be done from blame, and the measurement says so plainly: the
+    ADR-3bbb convention sweep owns a median of 1 docstring line (2%), and the
+    2026-06-19 staleness-audit fix — a genuine line-by-line review — owns a
+    median of 2 lines (4%). One is a stamp nobody read; the other is the most
+    careful reading those files have ever had. They are the same size, and
+    they touch a similar number of files, so neither ownership share nor
+    corpus-wide co-floor count separates them.
+
+    Guessing would be worse than not guessing: classifying an audit's own fix
+    commits as sweeps makes every audit blind the next one to exactly the
+    files it just verified. So this function reports three observable
+    quantities and leaves the judgement to the semantic-review step, which is
+    where the playbook already puts judgement:
+
+    - ``ds_floor_sha`` — which commit last touched the docstring at all.
+    - ``ds_floor_share`` — what fraction of the docstring's lines it owns. A
+      1-of-43 share means whatever it did, it did not rewrite this docstring.
+    - ``ds_floor_cofloors`` — how many OTHER module docstrings the same commit
+      floors. High values mean the date is systematic across the corpus rather
+      than particular to this file; that is worth seeing, not worth acting on
+      automatically.
+    """
+    if not blamed:
+        return {"ds_ts": None, "ds_floor_sha": None,
+                "ds_floor_share": 0.0, "ds_floor_cofloors": 0}
+    ts, sha = max(blamed, key=lambda tc: tc[0])
+    owned = sum(1 for _, c in blamed if c == sha)
+    return {
+        "ds_ts": ts,
+        "ds_floor_sha": sha,
+        "ds_floor_share": owned / len(blamed),
+        "ds_floor_cofloors": cofloor_counts.get(sha, 1) - 1,
+    }
+
+
+def count_body_commits_since(path: str, since_ts: int) -> int:
+    """Commits touching *path* since *since_ts* — the non-decaying metric.
+
+    ``delta_days = ds_age - body_age`` decays into meaninglessness whenever
+    ``ds`` is pinned: the docstring date stops moving, wall clock keeps going,
+    so delta grows on its own and the ``>= 90`` threshold degenerates into
+    "was this file touched recently". Concretely, the ``ds=2026-02-19`` cohort
+    could not fire at ANY body age on 2026-05-15 (ds_age was 85) and fires for
+    anything touched within 89 days by 2026-08-18 — 28 flags became 87 with no
+    docstring drifting in between.
+
+    Counting COMMITS instead of DAYS removes the clock from the numerator. "17
+    commits have landed on this file since anyone touched its docstring" means
+    the same thing next year as it does today.
+    """
+    try:
+        out = subprocess.check_output(
+            ["git", "log", "--format=%H", f"--since=@{since_ts}", "--", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return 0
+    return len([ln for ln in out.splitlines() if ln.strip()])
+
+
+def partition_rows(
+    rows: list[dict], *, window_days: int, min_delta_days: int,
+    min_body_commits: int, now_ts: int
+) -> dict:
+    """Split rows into ``flagged`` and ``pinned``.
+
+    ``pinned`` collects rows whose docstring date is shared with many other
+    files AND whose floor commit owns almost none of the docstring — the shape
+    a convention stamp leaves. Those are reported in their own bucket rather
+    than dropped, because an unreviewed file is not a clean file, and rather
+    than silently re-dated, because the measurement above shows that call
+    cannot be made mechanically.
+    """
+    flagged: list[dict] = []
+    pinned: list[dict] = []
+    for r in rows:
+        body_age = (now_ts - r["body_ts"]) // 86400
+        ds_age = (now_ts - r["ds_ts"]) // 86400
+        r = dict(r, body_age_days=body_age, ds_age_days=ds_age,
+                 delta_days=ds_age - body_age)
+        if body_age > window_days:
+            continue
+        # The day arm is only trustworthy where the docstring date is NOT
+        # pinned. Pinning is the whole decay mechanism: a ds that stops moving
+        # while the clock runs makes delta grow on its own, so on a pinned row
+        # `delta >= 90` eventually means nothing but "touched recently". Where
+        # the floor is particular to this file, delta means what it says.
+        pinned_floor = r.get("ds_floor_cofloors", 0) >= SWEEP_MIN_FILES
+        by_days = r["delta_days"] >= min_delta_days and not pinned_floor
+        by_commits = r.get("body_commits_since_ds", 0) >= min_body_commits
+        if not (by_days or by_commits):
+            continue
+        # Which arm fired is itself a disclosure: the day arm decays with wall
+        # clock whenever ds is pinned, so a "days"-only row is weaker evidence
+        # than a "commits" row and the reviewer should be able to see that
+        # without recomputing it.
+        r["flag_reason"] = ("both" if by_days and by_commits
+                            else "commits" if by_commits else "days")
+        is_pinned = (r.get("ds_floor_cofloors", 0) >= SWEEP_MIN_FILES
+                     and r.get("ds_floor_share", 1.0) <= STAMP_MAX_SHARE)
+        (pinned if is_pinned else flagged).append(r)
+    for bucket in (flagged, pinned):
+        bucket.sort(key=lambda x: x.get("body_commits_since_ds", 0), reverse=True)
+    return {"flagged": flagged, "pinned": pinned}
+
+
 def co_change_scan(
     scope_dirs: tuple[str, ...],
     *,
     window_days: int,
     min_delta_days: int,
+    min_body_commits: int = DEFAULT_MIN_BODY_COMMITS,
     now_ts: int | None = None,
 ) -> dict:
-    """Return a dict with flagged + all-row co-change results."""
+    """Return flagged / pinned co-change results with floor disclosure.
+
+    Two passes: pass 1 blames every docstring and records its floor commit;
+    pass 2 counts how many docstrings each commit floors, so a row can report
+    whether its date is particular to it or shared across the corpus. That
+    count is a disclosure, not a filter -- see floor_facts().
+    """
     if now_ts is None:
         now_ts = int(dt.datetime.now().timestamp())
-    rows: list[dict] = []
+    raw: list[dict] = []
     skipped_no_docstring = 0
     skipped_no_body = 0
     for p in iter_python_files(scope_dirs):
@@ -190,33 +382,49 @@ def co_change_scan(
         if body_start > total:
             skipped_no_body += 1
             continue
-        ds_ts = youngest_commit_ts(p, ds_start, ds_end)
+        ds_blame = blame_lines(p, ds_start, ds_end)
         body_ts = youngest_commit_ts(p, body_start, total)
-        if ds_ts is None or body_ts is None:
+        if not ds_blame or body_ts is None:
             continue
-        ds_age = (now_ts - ds_ts) // 86400
-        body_age = (now_ts - body_ts) // 86400
-        delta = ds_age - body_age
+        raw.append({"path": p, "ds_end": ds_end, "ds_blame": ds_blame,
+                    "body_ts": body_ts})
+
+    cofloor: dict[str, int] = {}
+    for r in raw:
+        sha = max(r["ds_blame"], key=lambda tc: tc[0])[1]
+        cofloor[sha] = cofloor.get(sha, 0) + 1
+
+    rows: list[dict] = []
+    for r in raw:
+        facts = floor_facts(r["ds_blame"], cofloor)
         rows.append({
-            "path": p,
-            "ds_end": ds_end,
-            "ds_ts": ds_ts,
-            "body_ts": body_ts,
-            "ds_age_days": ds_age,
-            "body_age_days": body_age,
-            "delta_days": delta,
+            "path": r["path"],
+            "ds_end": r["ds_end"],
+            "body_ts": r["body_ts"],
+            "body_commits_since_ds": count_body_commits_since(
+                r["path"], facts["ds_ts"]),
+            **facts,
         })
-    rows.sort(key=lambda r: r["delta_days"], reverse=True)
-    flagged = [r for r in rows
-               if r["body_age_days"] <= window_days
-               and r["delta_days"] >= min_delta_days]
+
+    part = partition_rows(rows, window_days=window_days,
+                          min_delta_days=min_delta_days,
+                          min_body_commits=min_body_commits, now_ts=now_ts)
+    for r in rows:
+        r["body_age_days"] = (now_ts - r["body_ts"]) // 86400
+        r["ds_age_days"] = (now_ts - r["ds_ts"]) // 86400
+        r["delta_days"] = r["ds_age_days"] - r["body_age_days"]
+    rows.sort(key=lambda r: r["body_commits_since_ds"], reverse=True)
     return {
         "scanned": len(rows),
         "skipped_no_docstring": skipped_no_docstring,
         "skipped_no_body": skipped_no_body,
         "window_days": window_days,
         "min_delta_days": min_delta_days,
-        "flagged": flagged,
+        "min_body_commits": min_body_commits,
+        "mass_floor_commits": {k: v for k, v in cofloor.items()
+                               if v >= SWEEP_MIN_FILES},
+        "flagged": part["flagged"],
+        "pinned": part["pinned"],
         "rows": rows,
     }
 
@@ -341,44 +549,102 @@ def phase_marker_grep(scope_dirs: tuple[str, ...]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def format_co_change_text(report: dict, top_n: int) -> str:
+def _fmt_row(r: dict) -> str:
+    """One co-change row. Surfaces the floor commit so it is seen, not inferred."""
+    ds_date = dt.datetime.fromtimestamp(r["ds_ts"]).strftime("%Y-%m-%d")
+    body_date = dt.datetime.fromtimestamp(r["body_ts"]).strftime("%Y-%m-%d")
+    floor = (r.get("ds_floor_sha") or "")[:10]
+    return (
+        f"{r['body_commits_since_ds']:>4} commits  "
+        f"{r['delta_days']:>4}d  body={r['body_age_days']:>3}d  "
+        f"ds={ds_date}  body={body_date}  "
+        f"ds@{floor}[{r.get('ds_floor_share', 0):.0%}/"
+        f"+{r.get('ds_floor_cofloors', 0)}]  "
+        f"[{r.get('flag_reason', '-'):>7}]  {r['path']}"
+    )
+
+
+def format_co_change_text(report: dict, top_n: int = 0) -> str:
     """Human-readable co-change report."""
-    lines = []
+    lines: list[str] = []
     lines.append(
         f"# Co-change scan ({report['scanned']} files; "
         f"skipped {report['skipped_no_docstring']} w/o docstring, "
         f"{report['skipped_no_body']} all-docstring)"
     )
     lines.append(
-        f"# Threshold: body_age <= {report['window_days']} AND "
-        f"delta >= {report['min_delta_days']}"
+        f"# Flag when body_age <= {report['window_days']} AND "
+        f"(delta >= {report['min_delta_days']}d OR "
+        f">= {report['min_body_commits']} body commits since the docstring)"
     )
-    lines.append("")
     lines.append(
-        f"## Flagged: {len(report['flagged'])} files"
+        "# [commits] = flagged by the clock-independent arm. [days] = by the "
+        "day-delta arm ONLY,"
     )
+    lines.append(
+        "# which inflates on its own whenever the docstring date is pinned -- "
+        "weaker evidence."
+    )
+    lines.append(
+        "# Columns: <body commits since ds> <delta> body=<age> "
+        "ds@<floor commit>[<share of docstring it owns>/+<other docstrings "
+        "it floors>]"
+    )
+    mass = report.get("mass_floor_commits") or {}
+    if mass:
+        lines.append(
+            f"# {len(mass)} commits floor >= {SWEEP_MIN_FILES} docstrings each. "
+            "A shared floor may be a"
+        )
+        lines.append(
+            "# mechanical stamp OR a deliberate audit fix -- blame cannot tell "
+            "them apart"
+        )
+        lines.append(
+            "# (measured: a convention stamp owns 2% of a docstring, a real "
+            "audit fix 4%), so"
+        )
+        lines.append("# these are disclosed, never auto-skipped:")
+        for sha, n in sorted(mass.items(), key=lambda kv: -kv[1]):
+            subj = commit_subject(sha)
+            lines.append(f"#   {sha[:10]}  floors {n:>3}  {subj[:72]}")
+    lines.append("")
+    lines.append(f"## Flagged: {len(report['flagged'])} files")
     lines.append("")
     for r in report["flagged"]:
-        ds_date = dt.datetime.fromtimestamp(r["ds_ts"]).strftime("%Y-%m-%d")
-        body_date = dt.datetime.fromtimestamp(r["body_ts"]).strftime("%Y-%m-%d")
+        lines.append(_fmt_row(r))
+    if report.get("pinned"):
+        lines.append("")
         lines.append(
-            f"{r['delta_days']:>4}d  body={r['body_age_days']:>3}d  "
-            f"ds={r['ds_age_days']:>4}d  ds={ds_date}  body={body_date}  "
-            f"{r['path']}"
+            f"## Pinned-date: {len(report['pinned'])} files  (floor commit owns "
+            f"<= {STAMP_MAX_SHARE:.0%} of the docstring and floors "
+            f">= {SWEEP_MIN_FILES} others)"
         )
+        lines.append(
+            "## The date is systematic, not particular. NOT 'clean' -- "
+            "unreviewed, not verified."
+        )
+        lines.append("")
+        for r in report["pinned"]:
+            lines.append(_fmt_row(r))
     if top_n > 0 and report["rows"]:
         lines.append("")
-        lines.append(f"## Top {min(top_n, len(report['rows']))} by delta (all rows)")
+        lines.append(f"## Top {min(top_n, len(report['rows']))} by body commits")
         lines.append("")
         for r in report["rows"][:top_n]:
-            ds_date = dt.datetime.fromtimestamp(r["ds_ts"]).strftime("%Y-%m-%d")
-            body_date = dt.datetime.fromtimestamp(r["body_ts"]).strftime("%Y-%m-%d")
-            lines.append(
-                f"{r['delta_days']:>4}d  body={r['body_age_days']:>3}d  "
-                f"ds={r['ds_age_days']:>4}d  ds={ds_date}  body={body_date}  "
-                f"{r['path']}"
-            )
+            lines.append(_fmt_row(r))
     return "\n".join(lines)
+
+
+def commit_subject(sha: str) -> str:
+    """Return the one-line subject of *sha*, or "" if unavailable."""
+    try:
+        return subprocess.check_output(
+            ["git", "show", "-s", "--format=%s", sha],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except subprocess.CalledProcessError:
+        return ""
 
 
 def format_tracker_text(flagged: list[dict]) -> str:
@@ -459,6 +725,12 @@ def main() -> int:
         f"(default: {DEFAULT_MIN_DELTA_DAYS}).",
     )
     parser.add_argument(
+        "--min-body-commits", type=int, default=DEFAULT_MIN_BODY_COMMITS,
+        help=f"Flag when at least this many commits have touched the body "
+        f"since the docstring was last touched. Clock-independent, unlike "
+        f"--min-delta (default: {DEFAULT_MIN_BODY_COMMITS}).",
+    )
+    parser.add_argument(
         "--top", type=int, default=30,
         help="Show top-N rows by delta in addition to the flagged set "
         "(default: 30; 0 disables).",
@@ -492,8 +764,10 @@ def main() -> int:
             scope,
             window_days=args.window,
             min_delta_days=args.min_delta,
+            min_body_commits=args.min_body_commits,
         )
-        if report["co_change"]["flagged"]:
+        cc = report["co_change"]
+        if cc["flagged"] or cc["pinned"]:
             exit_code = 1
 
     if args.tracker_refs:
