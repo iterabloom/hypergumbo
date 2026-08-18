@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Hypergumbo SCIP-backed Rust analyzer.
 
-Slice A surface: :func:`translate_scip_to_hg` converts a serialized SCIP
-``Index`` blob into ``(symbols, edges)`` using the in-core shim modules
-plus the ``rust.py`` stable-id parity helper. Later slices add a live
-``rust-analyzer`` invocation, analyzer-registry wiring, and the opt-in
-flag machinery.
+The package is complete as scoped (WI-duzul, done). Its parts:
+
+- :func:`translate_scip_to_hg` (``translate.py``) converts a serialized
+  SCIP ``Index`` blob into ``(symbols, edges)`` using the in-core shim
+  modules plus the ``rust.py`` stable-id parity helper.
+- ``invoke.py`` shells out to ``rust-analyzer scip`` to produce that blob.
+- ``gate.py`` holds the opt-in machinery: the backend runs only when
+  requested (``--backend rust-analyzer`` or the env flag) AND the binary
+  resolves on ``PATH``.
+- ``analyzer.py`` registers the backend with the analyzer registry at
+  priority 45, above ``rust.py``.
+- ``graceful_degrade.py`` returns ``None`` so the caller can fall through
+  to ``rust.py`` when the backend cannot run.
+
+SAFETY: ``rust-analyzer`` executes ``build.rs``. Never point this backend
+at an untrusted repository.
 """
 
 from hypergumbo_lang_rust_analyzer.gate import (

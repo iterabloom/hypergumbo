@@ -13,7 +13,7 @@ collect related nodes. Traversal respects configurable limits:
 
 - **max_hops**: Depth limit (default None = unlimited). When unset, max_files
   and hub_threshold bound the slice.
-- **max_files**: File count limit (default 20). Keeps context focused.
+- **max_files**: File count limit (default 100). Keeps context focused.
 - **min_confidence**: Edge confidence threshold. Filters speculative edges.
 - **exclude_tests**: Skips test files to focus on production code.
 - **reverse**: Direction of traversal. False = forward (what does X call?),

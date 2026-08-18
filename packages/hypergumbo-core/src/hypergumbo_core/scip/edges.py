@@ -15,9 +15,12 @@ Scope pinned in Slice C:
   this shim. Converting a ref occurrence to a call-graph edge requires
   resolving the *enclosing* symbol that contains the occurrence span,
   which SCIP does not encode directly on the ``Occurrence`` (the
-  ``enclosing_range`` field is rarely populated in practice). A later
-  slice / linker will own that span-based resolution against the Symbol
-  list produced by Slice B. Keeping Slice C narrow means the shim is a
+  ``enclosing_range`` field is rarely populated in practice). That
+  span-based resolution against the Symbol list produced by Slice B is
+  owned by ``calls.py`` (Slice D, WI-kopav, done); it walks each
+  Document's ``Occurrence`` list and attributes each non-Definition
+  occurrence to its enclosing Definition by span containment. Keeping
+  Slice C narrow means the shim is a
   pure, deterministic projection of explicit SCIP relationships, which
   is easy to test and review.
 
