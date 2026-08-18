@@ -19,16 +19,32 @@ The DESTRUCTIVE ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
 :class:`SafetyZoneViolation` if it escapes its zone root (symlinks
 included). That check is a real runtime guard, not a label.
 
-How to use:
-- Cache writes (``~/.cache/hypergumbo/<fingerprint>/...``) use
-  :func:`cache_write` / :func:`cache_write_bytes` / :func:`cache_save_npy`.
-- User-supplied ``--out`` writes use :func:`user_out_write` /
-  :func:`user_out_open_json_dump` (for the ``with open(...) as f:
-  json.dump(...)`` pattern).
-- Ephemeral ``/tmp/`` artifacts (sketch comparisons, grammar build dirs)
-  use :func:`tmp_artifact_write`.
-- Install-target writes (downloaded binaries, archive contents) use
-  :func:`install_artifact_write_bytes` / :func:`install_artifact_copy`.
+How to use — the full wrapper inventory, by zone:
+
+- **user_cache** (``~/.cache/hypergumbo/<fingerprint>/...``):
+  :func:`cache_write`, :func:`cache_write_bytes`, :func:`cache_save_npy`,
+  :func:`cache_mkdir`; and the zone-enforced :func:`cache_write_zip`
+  (soft-delete archives), :func:`cache_unlink`, :func:`cache_rmtree`.
+- **user_out** (a user-supplied ``--out`` path): :func:`user_out_write`,
+  :func:`user_out_open_json_dump` (the ``with open(...) as f:
+  json.dump(...)`` pattern), :func:`user_out_open_json_dump_gzip`,
+  :func:`user_out_mkdir`.
+- **tmp_artifact** (ephemeral ``/tmp/`` — sketch comparisons, grammar
+  build dirs): :func:`tmp_artifact_write`, :func:`tmp_artifact_mkdir`,
+  and the zone-enforced :func:`tmp_artifact_rmtree`.
+- **install_artifact** (downloaded binaries, archive contents):
+  :func:`install_artifact_write_bytes`, :func:`install_artifact_copy`,
+  :func:`install_artifact_mkdir`, :func:`install_artifact_chmod`, and the
+  zone-enforced :func:`install_artifact_unlink`.
+
+- **repo_inspection** — not writes at all. This family wraps SUBPROCESS
+  launches against the analysed repository so the taint pass can bin them
+  the same way, narrowing as it goes: :func:`repo_inspect_git` (git plumbing
+  for cache-key fingerprinting and repo identity), :func:`repo_inspect_scan`
+  (a read-only content scanner — today the ``gitleaks`` secret scan), and
+  :func:`repo_inspect_probe`, the narrowest member, which reads nothing at
+  all — not the repository, not the environment — and only asks an external
+  tool whether it is installed and at what version.
 
 What this pattern does NOT do:
 - It does NOT prevent misuse for the NON-destructive wrappers — a
