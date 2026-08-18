@@ -43,8 +43,12 @@ Offset and indexing conventions pinned here:
 Edge cases intentionally handled by skip rather than raise:
 
 * ``SymbolInformation`` with no ``Definition``-role occurrence in the
-  document (typically an imported / external symbol) — skipped. Slice C
-  will wire those to external-tier nodes.
+  document (typically an imported / external symbol) — skipped. This was
+  once documented as pending Slice C; Slice C (``edges.py``, WI-mafut)
+  has since shipped WITHOUT wiring these to external-tier nodes, and
+  nothing under ``scip/`` handles them today. Stated as the live gap it
+  is rather than as planned work: the item that would have done it is
+  closed.
 * Malformed SCIP symbol strings (``parse_scip_symbol`` raises) — skipped
   with no warning. A buggy upstream emitter must not abort the whole
   translation pass; downstream analyses will simply see missing symbols

@@ -72,7 +72,7 @@ and a producer-identity ``config_fingerprint`` (via
 ``_stamp_config_fingerprint()``, INV-lidul / WI-mipul) on the returned
 ``AnalysisRun`` — so linker bodies don't need to thread either manually.
 Without the config_fingerprint stamp every linker run would carry the
-constant default sentinel, collapsing ~40 passes onto one cache key.
+constant default sentinel, collapsing all ~61 registered linker passes onto one cache key.
 
 Usage
 -----
