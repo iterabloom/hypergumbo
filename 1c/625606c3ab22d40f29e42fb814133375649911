@@ -1,0 +1,52 @@
+Original commit body from 8624110617b2d8306bd2f1c164f1a8cab311391f:
+
+The co-change scan flagged 28 files on 2026-05-15 and 87 on 2026-08-18 with
+no docstring having drifted in between. The growth was an artifact, and
+diagnosing it wrong the first time is why this commit is shaped as it is.
+
+ROOT CAUSE. `delta_days = ds_age - body_age` is only meaningful while the
+docstring's date can still move. Three mass commits PINNED it for most of
+the corpus -- the ADR-0010 monorepo reorg (blame follows the move), the
+Phase-3/4 TreeSitterAnalyzer migrations (~106 analyzers stamped with
+identical orchestration boilerplate), and the ADR-3bbb subcategory sweep
+(one line prepended to 45 linker docstrings). 55 of the 87 flagged files had
+their ds date pinned by one of nine such commits. With ds frozen and the
+clock running, delta grows by itself: the ds=2026-02-19 cohort could not
+fire at ANY body age on 2026-05-15 (ds_age was 85, under the 90 minimum) and
+fired for anything touched within 89 days by 2026-08-18.
+
+WHAT I TRIED FIRST AND WHY IT IS NOT HERE. The obvious fix is to detect
+those sweeps and look past them to the last real edit. It cannot be done
+from blame, and the measurement is unambiguous:
+
+    3f29f139b1  ADR-3bbb convention stamp   median 1 line   2% of docstring
+    c9406ccd54  staleness-audit fix         median 2 lines  4% of docstring
+
+The first is a prefix nobody read; the second is a line-by-line review. Same
+size, similar file counts -- neither ownership share nor co-floor count
+separates them. Worse, five of the nine detected "sweeps" ARE prior
+staleness-audit fix commits, so that rule would have made each audit blind
+the next one to exactly the files it had just verified.
+
+WHAT IS HERE INSTEAD.
+
+1. Disclosure, not inference. Every row reports its floor commit, the share
+   of the docstring that commit owns, and how many other docstrings it
+   floors -- `ds@3f29f139b1[2%/+21]`. Facts; the semantic step judges. The
+   header lists every commit flooring >= 8 docstrings, with its subject.
+
+2. A metric that does not decay. `body_commits_since_ds` counts commits that
+   landed on the body since anyone touched the docstring. "56 commits have
+   landed on py.py since its docstring moved" means the same thing next year.
+
+3. The day arm applies only where the floor is particular to the file.
+   Pinning is the decay mechanism, so on a pinned row `delta >= 90` is a
+   clock reading, not evidence.
+
+Effect: 87 -> 47, and the ranking inverts usefully. py.py (56 commits),
+cli.py (34), sketch.py (27), analyze/base.py (25) now lead; none appeared in
+the old day-ranked pool, which was topped by racket.py and rst.py.
+
+Each row now says which arm fired, so day-only rows can be discounted.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
