@@ -1,0 +1,22 @@
+- op: create  # 0525
+  at: '2026-08-18T01:40:52Z'  # 0525
+  by: agent  # 0525
+  actor: jgstern_agent  # 0525
+  clock: 1  # 0525
+  nonce: '0525'  # 0525
+  data:  # 0525
+    kind: work_item  # 0525
+    title: "release-check dies at the pip-audit assignment under set -e, so the findings and every later check are unreachable — the gate reports nothing whenever the audit is non-clean"  # 0525
+    status: todo_hard  # 0525
+    priority: 1  # 0525
+    parent:  # 0525
+    tags:  # 0525
+    - ci_infrastructure  # 0525
+    - release  # 0525
+    - developer_experience  # 0525
+    isbefore: []  # 0525
+    duplicate_of: []  # 0525
+    not_duplicate_of: []  # 0525
+    pr_ref:  # 0525
+    description: "FOUND 2026-08-17 while running the release gate ahead of a planned release.\n\nSYMPTOM: `./scripts/release-check` exits 1 with its report TRUNCATED mid-section.\nThe captured log is 31 lines and ends at the literal line \"  Running pip-audit...\".\nNo vulnerability list, no verdict, and none of the checks that come AFTER the\naudit (secrets scan, coverage, docs/spec sync, tag state) run at all.\n\nMECHANISM: scripts/release-check:18 sets `set -euo pipefail`. Line 236 is\n\n    AUDIT_OUTPUT=$(pip-audit --skip-editable --ignore-vuln ... )\n    AUDIT_EXIT=$?\n    if [ $AUDIT_EXIT -eq 0 ]; then pass ...; else echo \"$AUDIT_OUTPUT\"; fail ...; fi\n\nUnder `set -e` a simple assignment whose command substitution exits non-zero\nterminates the script AT THE ASSIGNMENT. So `AUDIT_EXIT=$?` never executes and the\nentire if/else -- including the `echo \"$AUDIT_OUTPUT\"` that would print the\nfindings -- is unreachable whenever pip-audit is non-clean.\n\nTHE INTENT IS EXPLICITLY THE OPPOSITE. The comment the script carries at :218-220\nreads: \"pip-audit's exit code is the gate: 0 = no vulnerabilities, 1 = found.\nAnything else (network, parse, unsupported package) is a real failure we want to\nsurface, not paper over.\" The mechanism papers over it.\n\nWHAT IT IS CURRENTLY HIDING (pip-audit run standalone with the identical ignore\nlist, exit 1): \"Found 6 known vulnerabilities, ignored 7 in 2 packages\" --\ncryptography 48.0.1 (PYSEC-2026-3552/3553/3554, fixes 50.0.0/49.0.0/49.0.0) and\nnltk 3.9.4 (PYSEC-2026-3582/3583/3584, fix 3.10.0).\n\nTHOSE SIX ARE NOT SHIPPED, verified rather than assumed: neither name appears in\nany packages/*/pyproject.toml, and importlib.metadata says cryptography is pulled\nby Authlib and py-webauthn while nltk is required by nothing in the closure. So\nthis item is NOT \"we are shipping CVEs\" -- it is that the gate which would tell us\ncannot report, and the operator sees the same truncated output whether the finding\nis dev-box noise or a real shipped-dependency CVE.\n\nFIX SHAPE: make the assignment non-fatal, e.g.\n    AUDIT_OUTPUT=$(pip-audit ... ) || AUDIT_EXIT=$?\nor `set +e` around the call, restoring afterwards. Add a test that runs the shipped\nblock against a stub `pip-audit` that exits 1 and asserts the findings reach stdout\nAND that a later check still runs -- a positive control, since a fix that merely\nstops the abort without restoring the report would pass a naive check.\n\nRELATED, NOT DUPLICATE: WI-totak covers whether the two no-fix ignores in this\nsame list should be dropped. That is about the ignore CONTENTS; this is about the\nreporting MECHANISM."  # 0525
+    fields: {}  # 0525
