@@ -132,6 +132,21 @@ def _raise_unavailable(*args: object, **kwargs: object):
     raise EmbeddingsUnavailable("weights unavailable")
 
 
+# WHY SOME TESTS BELOW CALL importorskip("numpy") AND OTHERS DO NOT.
+# CI tests hypergumbo-core in ISOLATION, without the optional embedding extras,
+# so numpy is genuinely absent there. In that environment the two sketch
+# consumers take their `except ImportError` arm and return BEFORE any model
+# load — a different, already-correct degradation path. A test asserting that
+# the WEIGHTS-absent branch was reached is therefore not merely inconvenient
+# without numpy, it is unanswerable, and leaving it unguarded made it pass
+# VACUOUSLY on the dev box while failing honestly in CI (which is how this was
+# caught — the reach-assertions fired). importorskip marks those three as
+# skipped-because-unanswerable rather than silently green. Everything else here
+# — the loader contract, its controls, and the end-to-end sketch assertion —
+# runs unconditionally, because a stub needs no numpy and "the sketch still
+# renders" is a claim that must hold in BOTH environments.
+
+
 def test_readme_extraction_returns_none(tmp_path, monkeypatch):
     monkeypatch.setattr(se, "_load_embedding_model", _raise_unavailable)
     readme = tmp_path / "README.md"
@@ -173,7 +188,7 @@ def test_additional_files_probes_fall_back_to_zeros(monkeypatch):
     constant is absent, so the test has to remove it — patching the model
     alone would never enter the branch under test.
     """
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     from hypergumbo_core import _embedding_data
 
@@ -204,6 +219,7 @@ _NEAR_MISS_CONFIG_NAMES = [
 
 
 def test_config_discovery_returns_empty_set(tmp_path, monkeypatch):
+    pytest.importorskip("numpy")
     calls: list[str] = []
 
     def _counting_raise(*args: object, **kwargs: object):
@@ -288,6 +304,7 @@ def test_control_the_sketch_degradation_path_is_actually_reached(
     fix. Counting loader calls settles it directly: if the count is zero the
     preceding test is vacuous regardless of how green it looks.
     """
+    pytest.importorskip("numpy")
     calls: list[str] = []
 
     def _counting_raise(*args: object, **kwargs: object):
