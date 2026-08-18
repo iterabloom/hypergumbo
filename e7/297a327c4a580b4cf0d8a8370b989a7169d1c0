@@ -1,0 +1,38 @@
+Original commit body from e02813161defabff792cad49cbb4cd568302b30f:
+
+Second staleness pass, run after the scan itself was corrected. The tracker
+cross-check is what made these decisive: WI-duzul, WI-mafut and WI-kopav are
+all `done` while the docstrings below still describe their work as pending.
+
+hypergumbo-lang-rust-analyzer/__init__.py said "later slices add a live
+rust-analyzer invocation, analyzer-registry wiring, and the opt-in flag
+machinery". All three shipped -- invoke.py, analyzer.py (registered at
+priority 45, above rust.py) and gate.py. Replaced with the actual part
+inventory, and the build.rs execution hazard is now stated here rather than
+only in the lab notebook.
+
+scip/edges.py deferred span-based occurrence resolution to "a later slice /
+linker". calls.py (Slice D, WI-kopav) owns it and does exactly that walk.
+
+rust_analyzer/invoke.py listed three items as "tracked under WI-duzul Slice
+C+"; each now has a named sibling module. The list is kept -- it is still
+useful as an owner map -- but reframed from pending to shipped.
+
+scip/index.py is the one worth reading twice. It said "Slice C will wire
+those to external-tier nodes." Slice C shipped WITHOUT doing so, and nothing
+under scip/ handles external symbols today: an imported/external symbol is
+dropped, not tiered. The docstring made a live gap read as scheduled work,
+and the item that would have closed it is closed. Now stated as the gap.
+
+Two numbers, both measured rather than re-read:
+- slice.py documented max_files "default 20"; the code default is 100.
+- linkers/registry.py said "~40 passes"; get_all_linkers() returns 61.
+
+Checked and deliberately NOT changed: pass_metadata.py's "~117 analyzers +
+58 linkers" is accurate (118/61 measured via the module's own discovery). A
+first count said 143 analyzers and would have been a false finding -- it
+double-counted @register_analyzer aliases.
+
+Docstring text only -- no behavior change, no test changes. 9100 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
