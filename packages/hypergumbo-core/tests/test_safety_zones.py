@@ -22,6 +22,8 @@ import pytest
 
 from hypergumbo_core.safety_zones import (
     SafetyZoneViolation,
+    cache_unlink,
+    cache_write_zip,
     _safety_zone_barrier,
     cache_mkdir,
     cache_rmtree,
@@ -292,3 +294,74 @@ def test_install_artifact_mkdir_inv_zudak(tmp_path: Path) -> None:
     p = tmp_path / "install" / "bin"
     install_artifact_mkdir(p, parents=True, exist_ok=True)
     assert p.is_dir()
+
+
+def test_cache_unlink(tmp_path: Path, monkeypatch) -> None:
+    """Deletes a single FILE inside the zone.
+
+    The soft-delete folders hold one zip per evicted entry, so bounding them
+    means unlinking files rather than trees — ``cache_rmtree``'s shape does
+    not fit, and a bare ``Path.unlink`` in runtime-path code would be an
+    unwrapped fs delete of exactly the kind the host_fs claim drove to zero.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "hypergumbo" / "soft-deleted-surveys"
+    d.mkdir(parents=True)
+    f = d / "repo__state.zip"
+    f.write_bytes(b"archive")
+    cache_unlink(f)
+    assert not f.exists()
+
+
+def test_cache_unlink_refuses_a_path_outside_its_zone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The guard is enforced, not merely documented."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "hgcache"))
+    outside = tmp_path / "precious.txt"
+    outside.write_text("do not delete me")
+    with pytest.raises(SafetyZoneViolation):
+        cache_unlink(outside)
+    assert outside.exists(), "the refusal must be a refusal, not a warning"
+
+
+def test_cache_write_zip(tmp_path: Path, monkeypatch) -> None:
+    """Archives members with arcnames relative to the given root.
+
+    Reading the archive back and comparing BYTES rather than asserting the
+    file exists: the whole point of soft delete is that the data survives, and
+    a zip with the right name and the wrong contents would satisfy any weaker
+    check while making recovery impossible.
+    """
+    import zipfile
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    root = tmp_path / "entry"
+    (root / "inner").mkdir(parents=True)
+    a = root / "survey.json"
+    a.write_bytes(b'{"nodes": [1, 2, 3]}')
+    b = root / "inner" / "sketch.md"
+    b.write_text("# sketch")
+
+    dest_dir = tmp_path / "hypergumbo" / "soft-deleted-surveys"
+    dest_dir.mkdir(parents=True)
+    out = dest_dir / "repo__state.zip"
+    cache_write_zip(out, root, [a, b])
+
+    with zipfile.ZipFile(out) as zf:
+        assert sorted(zf.namelist()) == ["inner/sketch.md", "survey.json"]
+        assert zf.read("survey.json") == b'{"nodes": [1, 2, 3]}'
+
+
+def test_cache_write_zip_refuses_a_destination_outside_its_zone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "hgcache"))
+    root = tmp_path / "entry"
+    root.mkdir()
+    member = root / "survey.json"
+    member.write_text("{}")
+    outside = tmp_path / "escaped.zip"
+    with pytest.raises(SafetyZoneViolation):
+        cache_write_zip(outside, root, [member])
+    assert not outside.exists()
