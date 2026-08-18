@@ -1,0 +1,37 @@
+Original commit body from 5d7d27c0977d50f7f0210b20954827f13b330ed7:
+
+Corrects my own note from the previous commit, which was better than what it
+replaced but manufactured an unowned gap out of an owned, parked decision.
+
+The original text said "Slice C will wire those to external-tier nodes". That
+was wrong twice over, and my first correction only caught the first half:
+
+1. Slice C shipped without doing it. (Caught.)
+2. The symbol side was never where external references belong. (Missed.)
+   Hypergumbo materialises them from the EDGE side — create_boundary_nodes
+   mints external_symbol nodes for dangling edge endpoints. A SymbolInformation
+   with no Definition in this index is a REFERENCE, not a definition, so a
+   Symbol shim skipping it is correct rather than a gap. "Tiered" was wrong
+   outright too: supply_chain.py classifies at DISCOVERY time, on files,
+   before analysis (ADR-0041). No analyzer tiers anything.
+
+Where the behaviour actually lives: translate.py passes a resolve_symbol map
+that returns None for a SCIP symbol with no in-workspace definition, dropping
+the edge instead of letting it dangle. That is deliberate and load-bearing.
+Before 9266762d4b endpoints were raw SCIP descriptor strings, so EVERY scip
+edge dangled and finalize's endpoint-integrity step silently discarded the
+whole scip call graph while the Symbols survived (0 -> 739 edges on zoxide
+once resolved). Reversing it is not free: it needs a canonical
+{lang}:{path}:{span}:{name}:{kind} id minted from the SCIP symbol, and
+WI-huzuv forbids fabricating a path from the "external" sentinel.
+
+The residual is real and now stated with its owner rather than as a
+discovery: a Rust call into a dependency or the stdlib produces no edge under
+this backend, where the tree-sitter analyzers would emit one of their ~69
+":unresolved" dsts. That is WI-gojum sub-component 1 ("external calls
+recorded accurately"), parked by the owner 2026-07-19 pending ADR-0012
+Steps 2-3, whose description already records the 9266762d4b history.
+
+Docstring text only. 633 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
