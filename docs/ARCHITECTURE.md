@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **308** Python modules (134 analyzers, 60 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 31, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
-- **40761** symbols (functions, classes, methods)
-- **143856** edges by type:
-  - calls: 75195
-  - contains: 37572
-  - imports: 12485
-  - instantiates: 10910
-  - references: 4966
-  - module_attr_ref: 1326
+- **40771** symbols (functions, classes, methods)
+- **143886** edges by type:
+  - calls: 75205
+  - contains: 37582
+  - imports: 12488
+  - instantiates: 10914
+  - references: 4968
+  - module_attr_ref: 1327
   - other: 1402
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 40761 Symbols + 143856 Edges + UsageContexts           │
+│  Output: 40771 Symbols + 143886 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -277,7 +277,7 @@ These symbols have the highest bidirectional centrality
 | `LinkerContext` | class | 3328.4 | registry.py |
 | `Edge.create` | method | 2130.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `get` | external_symbol | 1913.0 | <external> |
+| `get` | external_symbol | 1914.0 | <external> |
 | `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
 | `Path` | external_symbol | 1745.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
@@ -885,8 +885,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e7297a327c4a
-  commit_count: 6715
+  commit: 0dd89df8cacf
+  commit_count: 6716
   hypergumbo: 7.0.0
   python: 3.12.3
 -->

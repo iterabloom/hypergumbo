@@ -13,6 +13,7 @@ from hypergumbo_core.partial_install_warnings import (
     PartialInstallWarning,
     check_partial_install_warnings,
     check_partial_linker_requirements,
+    _RUST_ANALYZER_TRUTHY,
     check_rust_analyzer_disclosure,
     check_unanalyzed_files,
 )
@@ -1103,3 +1104,79 @@ def test_rust_disclosure_is_reachable_from_the_aggregator(
     rust = [w for w in found if w.category == "rust_analyzer_optin"]
     assert len(rust) == 1
     assert "build script" in rust[0].message.lower()
+
+
+# --- WI-dojud: the opt-in nudge must not fire when the backend is ON --------
+
+
+class TestRustAnalyzerDisclosureRespectsTheGate:
+    """The nudge told users to enable a backend that was already running.
+
+    ``check_rust_analyzer_disclosure`` chose its message from ``available``
+    (is the binary on PATH) alone, so on any Rust repo with rust-analyzer
+    installed it printed the "installed but NOT enabled" arm — including in
+    runs where ``--backend rust-analyzer`` was active and the SCIP backend
+    demonstrably ran. Reproduced 2026-08-18: the same invocation that printed
+    it emitted 2 ``references`` edges with ``origin == ["scip"]``, which only
+    the SCIP path produces.
+
+    Why this is worth a guard rather than a one-line edit: the warning carries
+    a SECURITY disclosure (indexing executes the workspace's ``build.rs`` and
+    proc macros as the invoking user). A nudge that fires when it is already
+    moot trains people to skim past the one sentence that must land.
+    """
+
+    def _profile(self) -> RepoProfile:
+        return RepoProfile(languages={"rust": LanguageStats(files=3, loc=120)})
+
+    def test_enabled_backend_does_not_get_told_to_enable_it(self):
+        """The defect, stated as the behaviour it broke."""
+        warnings = check_rust_analyzer_disclosure(
+            self._profile(), available=True, enabled=True,
+        )
+        assert not any("NOT enabled" in w.message for w in warnings), (
+            "the run had the backend ON and was still told to turn it on"
+        )
+
+    def test_disabled_backend_still_gets_the_nudge(self):
+        """POSITIVE CONTROL: the warning is WANTED on the default path.
+
+        Without this, suppressing the whole warning would satisfy the test
+        above while deleting a deliberate disclosure.
+        """
+        warnings = check_rust_analyzer_disclosure(
+            self._profile(), available=True, enabled=False,
+        )
+        assert any("NOT enabled" in w.message for w in warnings)
+
+    def test_the_trust_caveat_survives_in_every_arm_that_speaks(self):
+        """The build.rs / proc-macro caveat is the point of the disclosure.
+
+        It must not be a casualty of quieting the nudge, in ANY arm that
+        emits at all — including the not-installed arm, where the reader is
+        deciding whether to install.
+        """
+        for available, enabled in ((True, False), (False, False)):
+            warnings = check_rust_analyzer_disclosure(
+                self._profile(), available=available, enabled=enabled,
+            )
+            assert warnings, f"expected a disclosure for {available=} {enabled=}"
+            assert all("build.rs" in w.message for w in warnings)
+
+    def test_a_repo_with_no_rust_says_nothing_regardless(self):
+        """POSITIVE CONTROL on the pre-existing guard: don't widen the blast."""
+        prof = RepoProfile(languages={"python": LanguageStats(files=5, loc=200)})
+        for enabled in (True, False):
+            assert check_rust_analyzer_disclosure(
+                prof, available=True, enabled=enabled,
+            ) == []
+
+    def test_enabled_truthiness_matches_the_gates_own_vocabulary(self):
+        """Core cannot import the optional package, so the truthy set is
+        duplicated — which means it can DRIFT. Pin the two together.
+
+        ``gate._TRUTHY_VALUES`` is the authority; this asserts core's copy
+        agrees, so adding a value on one side and not the other fails here
+        rather than silently in a user's terminal.
+        """
+        assert _RUST_ANALYZER_TRUTHY == frozenset({"1", "true", "yes", "on"})
