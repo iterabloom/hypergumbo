@@ -1,0 +1,64 @@
+Original commit body from 99928527ae57b30befd2ff95715626faf583da1e:
+
+`hypergumbo .` -- the documented quick-start of a LOCAL-FIRST tool -- exited 1
+with an uncaught OSError naming huggingface.co and wrote a ZERO-BYTE sketch
+whenever sentence-transformers was installed but the model weights were not on
+disk. The message told the reader "This is a bug".
+
+Reproduced with HF_HUB_OFFLINE=1, so no request was even attempted -- this is
+deterministic, not a flaky network. `hypergumbo survey` on the same tree under
+the same environment exited 0 and wrote its full 204 MB map, so the casualty was
+the entry point while the deep pipeline was fine. That is backwards: the
+audience for a local-first tool includes exactly the air-gapped, egress-blocked
+and no-egress-CI cases this hits.
+
+TWO CAUSES, both structural, and the second is why the first was never caught:
+
+1. `_has_sentence_transformers()` catches only ImportError. It answers "is the
+   library importable" when the requirement is "are the weights on disk", so
+   library-present + weights-absent PASSED the probe and sailed past the four
+   degradation branches that already existed.
+2. `_load_st_model_offline_first` caught the CACHED load's failure only to fall
+   back to a network-allowing constructor that was itself unwrapped. Offline,
+   that OSError propagated through six unguarded load sites to the CLI's
+   internal-error handler. One of the six carried `# pragma: no cover`, which
+   is precisely why no test ever saw it.
+
+THE FIX GOES IN THE ONE FUNCTION BOTH MODEL LOADERS ROUTE THROUGH. The fallback
+now raises a typed `EmbeddingsUnavailable` carrying the original as __cause__,
+and each of the six consumers answers with the value its OWN unavailable-guard
+already returns -- None, set(), a zero probe matrix, per-path None. There is no
+second opinion about what "unavailable" means.
+
+Two of the six deserved more than an empty value:
+  * config extraction returns the HEURISTIC extractor, matching its own
+    ImportError arm. Degrading to [] would have discarded metadata that pattern
+    matching recovers with no model at all.
+  * batch embedding keeps the cache hits phase 1 already resolved and nulls
+    only what phase 2 would have encoded. Degrading must not destroy work.
+
+BEHAVIORAL EVIDENCE, the filed repro re-run at scale rather than a proxy:
+
+  before   exit 1, 0 bytes,      internal error: OSError ... huggingface.co
+  after    exit 0, 30,985 bytes, one warning naming cause and remedy
+
+THE CONTROLS ARE THE LOAD-BEARING PART. A stub whose every construction raises
+would satisfy "raises EmbeddingsUnavailable" against an implementation that
+raises unconditionally, so the cached-load and first-install-download arms are
+pinned separately -- the download is the one sanctioned runtime fetch, and a fix
+that made the probe refuse whenever weights were missing would have broken it
+silently. And the first draft of the config-discovery test WAS vacuous: a plain
+"weird.conf" fixture returns set() from an earlier exit and never reaches the
+loader, so it passed against an unfixed tree. It now uses near-miss config names
+that clear the 0.15 n-gram pre-filter AND asserts the loader was called, as does
+the end-to-end sketch test. Stale `# pragma: no cover` marks were removed from
+the lines those tests now genuinely cover.
+
+The warning fires once per process and names both the cause and the remedy: a
+silent degradation is its own defect, since a missing section with no
+explanation is indistinguishable from the tool having found nothing to say.
+
+2,172 passed / 0 failed on the affected set; check-package-coverage core 100% in
+isolation; mypy strict ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
