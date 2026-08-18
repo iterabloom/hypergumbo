@@ -29,12 +29,18 @@ How It Works
 3. **Semantic hooks** handle non-standard control flow that cannot be reduced
    to the standard categories via YAML mapping alone:
 
-   - ``early_return_on_error``: Dual control flow (Rust ``?`` operator) —
-     Ok path continues, Err path exits function.
+   The names below are the literal top-level YAML keys ``_parse_cfg_mapping``
+   reads. They matter: unknown keys are silently ignored (every lookup is a
+   ``data.get(<key>, [])``), so a mapping that misspells one parses clean and
+   yields a CFG missing that construct with no error and no warning.
+
+   - ``early_return``: Dual control flow (Rust ``?`` operator) — Ok path
+     continues, Err path exits function. The per-entry ``semantics`` value
+     (e.g. ``return_on_err``) selects the variant.
    - ``context_manager``: Entry call before body, exit call after body including
      exceptional paths (Python ``with``).
-   - ``deferred_execution``: Statement body executes at function exit, after
-     all subsequent statements (Go ``defer``).
+   - ``deferred``: Statement body executes at function exit, after all
+     subsequent statements (Go ``defer``).
 
 4. **Unmapped node types** are treated as sequential statements (safe
    overapproximation). A warning is logged at DEBUG level listing unmapped types.

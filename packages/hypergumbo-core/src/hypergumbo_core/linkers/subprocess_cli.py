@@ -15,10 +15,17 @@ Python subprocess invocations:
 
 Project CLI Detection
 ---------------------
-The linker identifies this project's CLI by:
-1. Reading [project.scripts] from pyproject.toml
-2. Using [project.name] as fallback
-3. Matching both hyphenated and underscored variants
+The linker identifies this project's CLI by unioning, across EVERY
+``pyproject.toml`` and ``setup.py`` the discovery walk finds (not just the
+repo root — that was WI-gadus, which made the linker structurally blind on
+any monorepo whose root manifest declares no scripts):
+1. [project.scripts] entries from each pyproject.toml
+2. [project.name] as fallback
+3. console_scripts / entry_points from each setup.py
+4. Matching both hyphenated and underscored variants
+
+The union over-selects rather than under-selects: a workspace that vendors a
+package named after a common binary will claim that binary's call sites.
 
 Matching Strategy
 -----------------

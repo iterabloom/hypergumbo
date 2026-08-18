@@ -10,9 +10,14 @@ one writes to ``~/.cache/hypergumbo/`` and the other to a user-supplied
 each safety zone a distinct sink callee, which the project-local catalog
 at ``docs/hypergumbo-self-catalog/`` declares in its corresponding zone.
 
-The wrappers are otherwise transparent — they delegate to
+Most wrappers are otherwise transparent — they delegate to
 ``Path.write_text`` / ``Path.write_bytes`` / ``shutil.copy2`` /
-``np.save`` etc. No behavior change relative to a direct call.
+``np.save`` etc. with no behavior change relative to a direct call.
+The DESTRUCTIVE ones are not: :func:`cache_rmtree`, :func:`cache_unlink`,
+:func:`cache_write_zip`, :func:`tmp_artifact_rmtree` and
+:func:`install_artifact_unlink` first resolve the path and raise
+:class:`SafetyZoneViolation` if it escapes its zone root (symlinks
+included). That check is a real runtime guard, not a label.
 
 How to use:
 - Cache writes (``~/.cache/hypergumbo/<fingerprint>/...``) use
@@ -26,9 +31,13 @@ How to use:
   :func:`install_artifact_write_bytes` / :func:`install_artifact_copy`.
 
 What this pattern does NOT do:
-- It does NOT prevent misuse — a developer who writes the wrong wrapper
-  for a given write still gets the wrong zone. The pattern is a
+- It does NOT prevent misuse for the NON-destructive wrappers — a
+  developer who calls ``tmp_artifact_write`` on a cache path still gets
+  the wrong zone label, silently. For those the pattern is a
   declarative-honesty discipline; the linter or audit catches drift.
+  The destructive wrappers listed above are the exception: they enforce
+  containment at runtime, because mislabelling a delete is not
+  recoverable the way mislabelling a write is.
 - It does NOT extend hypergumbo-the-tool's analyzer with new
   capabilities. The analyzer still works on call-graph BFS by callee
   name. The wrappers just give the BFS distinct callees to bin into
