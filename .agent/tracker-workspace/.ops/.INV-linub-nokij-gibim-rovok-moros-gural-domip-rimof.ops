@@ -230,3 +230,18 @@
   clock: 29  # 7570
   nonce: '7570'  # 7570
   message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nSPOT-CHECKED DURING THE P0/P1 SWEEP; NOTHING TO CORRECT. Recording it so a reader knows this thread was audited and not skipped. Two of this item's cells were re-derived independently at dev 11a240f83d: kotlin and javascript still emit NO EDGE on the instance-method form (WI-nasuf's cell, unchanged), and python's attribute chain emits with module slot 'external' -- the L3 shape this item predicted and which the item's own table already records.\n\nThe L2-is-over / L3-is-binding reading holds. INV-mumov has now been retitled to name its L3 gap, which is the reshape this item's 08-17 entry said its headline needed."  # 7570
+- op: update  # d93c
+  at: '2026-08-17T22:57:10Z'  # d93c
+  by: agent  # d93c
+  actor: jgstern_agent  # d93c
+  clock: 30  # d93c
+  nonce: d93c  # d93c
+  set:  # d93c
+    priority: 2  # d93c
+- op: discuss  # 99df
+  at: '2026-08-17T22:57:10Z'  # 99df
+  by: agent  # 99df
+  actor: jgstern_agent  # 99df
+  clock: 31  # 99df
+  nonce: 99df  # 99df
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2, AND THIS IS THE LEAST CONFIDENT OF THE ELEVEN DEMOTIONS -- recorded as such rather than presented as settled. The case FOR: it is the class item over the recall family (L3 receiver evidence), so it moves with its members. The case AGAINST: it ORGANISES five other items via isbefore (WI-makij, INV-mumov, WI-nasuf, WI-zilag, INV-fibis), and a class item ranked below its own members reads oddly.\n\nReversing this one is cheap and does not disturb the rest of the re-rank; if a later session finds the L3 work is what unblocks the precision mechanisms rather than following them, put it back to P1 and say so here."  # 99df

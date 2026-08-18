@@ -1,0 +1,26 @@
+- op: create  # 2fe5
+  at: '2026-08-18T01:39:43Z'  # 2fe5
+  by: agent  # 2fe5
+  actor: jgstern_agent  # 2fe5
+  clock: 1  # 2fe5
+  nonce: 2fe5  # 2fe5
+  data:  # 2fe5
+    kind: invariant  # 2fe5
+    title: "hypergumbo . (the default sketch command) exits 1 with an uncaught HuggingFace OSError and writes ZERO output when the embedding model is not cached locally; survey under identical conditions exits 0"  # 2fe5
+    status: violated  # 2fe5
+    priority: 0  # 2fe5
+    parent:  # 2fe5
+    tags:  # 2fe5
+    - sketch  # 2fe5
+    - embeddings  # 2fe5
+    - local_first  # 2fe5
+    - release_blocker  # 2fe5
+    - developer_experience  # 2fe5
+    isbefore: []  # 2fe5
+    duplicate_of: []  # 2fe5
+    not_duplicate_of: []  # 2fe5
+    pr_ref:  # 2fe5
+    description: "REPRODUCED 2026-08-17 at dev 17ba2e95e1, DETERMINISTICALLY AND WITH NO NETWORK\nATTEMPTED (HF_HUB_OFFLINE=1 means huggingface_hub never dials out, so this is not\na flaky-network artifact):\n\n  $ HF_HOME=<empty dir> HF_HUB_OFFLINE=1 hypergumbo <repo> -t 8000\n  hypergumbo: internal error: OSError: We couldn't connect to\n    'https://huggingface.co' to load the files, and couldn't find them in the\n    cached files.\n  This is a bug; re-run with --debug for a full traceback.\n  exit=1, sketch bytes written = 0\n\nPOSITIVE CONTROL, same tree, same command, model cached: exit 0, 31,320 bytes of\nsketch. So the analysis pipeline is fine; only the model load fails.\n\nBLAST RADIUS IS THE DEFAULT COMMAND, AND ONLY IT. Under the IDENTICAL offline\nenvironment:\n  hypergumbo survey <repo> --out ...   -> exit 0, 204,080,380 bytes written\n  hypergumbo <repo> -t 8000  (sketch)  -> exit 1, 0 bytes written\n`hypergumbo .` is the documented quick-start (cli --help: \"Quick start:\nhypergumbo .   Generate Markdown sketch\"). The entry-point experience breaks while\nthe deep machinery is robust, which is backwards from where robustness is wanted.\n\nMECHANISM, read in code (packages/hypergumbo-core/src/hypergumbo_core/):\n\n  1. sketch_embeddings.py:518 _has_sentence_transformers() catches ONLY\n     ImportError. It answers \"is the library importable\", but the requirement is\n     \"are the model WEIGHTS on disk\". Library installed + weights absent passes\n     the probe.\n  2. sketch_embeddings.py:141 _load_st_model_offline_first() tries\n     st_cls(model_name, local_files_only=True), catches (OSError, ValueError) --\n     the not-cached case -- and falls back to st_cls(model_name), the\n     network-allowing constructor. THAT FALLBACK IS NOT WRAPPED. Offline it\n     raises OSError, which propagates.\n  3. All three call sites call _load_embedding_model() bare, with no try/except:\n       sketch.py:1520          (carries `# pragma: no cover` -- untested by\n                                construction, which is why this never surfaced)\n       sketch.py:1837\n       sketch_embeddings.py:961\n\nWHY THIS IS THE WORST-SHAPED FAILURE FOR THIS TOOL SPECIFICALLY: hypergumbo's\nproduct claim is LOCAL-FIRST. The failure text names huggingface.co, the tool\ncalls itself a bug, and the user gets an empty file. Reachable by air-gapped\nmachines, egress-blocked corporate networks, CI containers with no egress, Docker\nimages built with the package but no model, and anyone whose `install-embeddings`\ndownload did not complete -- i.e. a large share of the audience the local-first\nclaim is aimed at.\n\nREQUIRED BEHAVIOUR: the semantic-context section is an ENHANCEMENT. When the\nmodel cannot be loaded, the sketch must still be emitted (minus that section),\nwith a warning naming the cause and the remedy. Degradation, not termination.\n\nNOT MEASURED: whether any of the other eight auto-analysis subcommands reach the\nembedding path (only sketch and survey were run offline); behaviour when the\nweights are present but CORRUPT rather than absent."  # 2fe5
+    fields:  # 2fe5
+      statement: "The default sketch command must emit a sketch whenever the analysis pipeline succeeds; an optional enhancement whose dependency is unavailable must degrade the output, never terminate the run."  # 2fe5
+      root_cause: "_has_sentence_transformers() probes IMPORTABILITY (catches only ImportError) while the real requirement is model-weight AVAILABILITY, and _load_st_model_offline_first()'s network-allowing fallback constructor is unwrapped, so an offline OSError propagates through three unguarded _load_embedding_model() call sites to the CLI top level."  # 2fe5

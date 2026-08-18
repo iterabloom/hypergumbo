@@ -22,3 +22,18 @@
     fields:  # c8a2
       statement: "A reported taint flow must name a source location a reader can open; a source symbol whose path slot is the <external> placeholder (span 0-0, kind external_symbol) names no place and cannot be confirmed or refuted by any consumer."  # c8a2
       root_cause: "NOT LOCALISED. The source-side anchor for JS/TS taint flows collapses to javascript:<external>:0-0:file:external_symbol rather than to the enclosing callable or the containing file."  # c8a2
+- op: update  # 45cc
+  at: '2026-08-17T22:57:11Z'  # 45cc
+  by: agent  # 45cc
+  actor: jgstern_agent  # 45cc
+  clock: 2  # 45cc
+  nonce: 45cc  # 45cc
+  set:  # 45cc
+    priority: 1  # 45cc
+- op: discuss  # f176
+  at: '2026-08-17T22:57:11Z'  # f176
+  by: agent  # f176
+  actor: jgstern_agent  # f176
+  clock: 3  # f176
+  nonce: f176  # f176
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP2 -> P1. PROMOTED. The measurement's consequence 2 names this item's defect as the cheapest large win available:\n\n  \"Anchoring is the cheapest large win. 19 flows cannot be read at all, and the defect is one collapsed placeholder rather than a deep analysis limit.\"\n\n19 of 104 adjudicated flows carry a source symbol of javascript:<external>:0-0:file:external_symbol -- no path, no span. Every one was labelled UNADJUDICABLE by two independent readers, which means they are unreadable by the agents and humans the tool is built for, not merely imprecise. Cheap, large, and it was at RANK 76."  # f176
