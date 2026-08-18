@@ -42,6 +42,8 @@ from __future__ import annotations
 
 import warnings as python_warnings
 from dataclasses import dataclass
+import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from .taxonomy import LANGUAGE_ALIASES
@@ -273,9 +275,35 @@ def check_unanalyzed_files(
     return warnings
 
 
+#: Values of ``HYPERGUMBO_RUST_ANALYZER`` that mean "opted in", case-insensitive.
+#: DUPLICATED, deliberately: the authority is
+#: ``hypergumbo_lang_rust_analyzer.gate._TRUTHY_VALUES``, but that package is an
+#: OPTIONAL dependency and core must decide what to print whether or not it is
+#: installed. Because a duplicate can drift, the two are pinned together by
+#: ``test_enabled_truthiness_matches_the_gates_own_vocabulary``.
+#: Mirror of ``gate.ENV_VAR_NAME`` for the same optional-dependency reason.
+ENV_VAR_NAME_RUST_ANALYZER = "HYPERGUMBO_RUST_ANALYZER"
+_RUST_ANALYZER_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def rust_analyzer_backend_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    """True when this run has the SCIP backend switched on.
+
+    ``--backend rust-analyzer`` is normalised into ``HYPERGUMBO_RUST_ANALYZER=1``
+    during argv pre-parse (``cli.py``), so by the time warnings are assembled the
+    env var is the single signal for both opt-in routes.
+    """
+    if environ is None:
+        environ = os.environ
+    return environ.get(ENV_VAR_NAME_RUST_ANALYZER, "").strip().lower() in (
+        _RUST_ANALYZER_TRUTHY
+    )
+
+
 def check_rust_analyzer_disclosure(
     profile: "RepoProfile",
     available: bool,
+    enabled: bool = False,
 ) -> list[PartialInstallWarning]:
     """Tell the user the Rust backend exists — and what enabling it costs.
 
@@ -313,7 +341,19 @@ def check_rust_analyzer_disclosure(
         "macros as you — the same trust you extend by opening it in an "
         "editor. Enable it only for repositories you trust."
     )
-    if available:
+    if enabled:
+        # WI-dojud: the backend is already running for THIS invocation, so the
+        # "here is how to turn it on" arm would be false. The trust caveat is
+        # still owed — it describes what is happening right now, not what would
+        # happen if the reader opted in — so this arm states it in the present
+        # tense rather than staying silent.
+        message = (
+            "rust-analyzer backend ACTIVE for this run: Rust types and call "
+            "targets are resolved via SCIP rather than tree-sitter.\n"
+            "  Disable per run: --backend tree-sitter\n"
+            f"{caveat.replace('Indexing runs', 'Indexing IS RUNNING')}"
+        )
+    elif available:
         message = (
             "rust-analyzer is installed but NOT enabled. It resolves Rust "
             "types and call targets far more precisely than the built-in "
@@ -498,7 +538,9 @@ def check_partial_install_warnings(
     # testable in both states without shelling out.
     all_warnings.extend(
         check_rust_analyzer_disclosure(
-            profile, available=is_rust_analyzer_available(),
+            profile,
+            available=is_rust_analyzer_available(),
+            enabled=rust_analyzer_backend_enabled(),
         ),
     )
 
