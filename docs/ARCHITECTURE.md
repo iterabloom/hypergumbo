@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **308** Python modules (134 analyzers, 60 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 31, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
-- **40432** symbols (functions, classes, methods)
-- **142612** edges by type:
-  - calls: 74541
-  - contains: 37284
-  - imports: 12394
-  - instantiates: 10878
-  - references: 4831
-  - module_attr_ref: 1287
-  - other: 1397
+- **40699** symbols (functions, classes, methods)
+- **143492** edges by type:
+  - calls: 74953
+  - contains: 37517
+  - imports: 12468
+  - instantiates: 10903
+  - references: 4927
+  - module_attr_ref: 1323
+  - other: 1401
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 40432 Symbols + 142612 Edges + UsageContexts           │
+│  Output: 40699 Symbols + 143492 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,20 +271,20 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9547.5 | ir.py |
-| `Span` | class | 6398.5 | ir.py |
-| `write_text` | external_symbol | 6207.0 | <external> |
+| `Symbol` | class | 9565.8 | ir.py |
+| `Span` | class | 6410.3 | ir.py |
+| `write_text` | external_symbol | 6220.0 | <external> |
 | `LinkerContext` | class | 3328.4 | registry.py |
 | `Edge.create` | method | 2130.5 | ir.py |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `get` | external_symbol | 1905.0 | <external> |
-| `load_framework_patterns` | function | 1882.5 | framework_patterns.py |
-| `Path` | external_symbol | 1725.0 | <external> |
+| `get` | external_symbol | 1912.0 | <external> |
+| `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
+| `Path` | external_symbol | 1743.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1375.0 | <external> |
-| `clear_pattern_cache` | function | 1336.8 | framework_patterns.py |
+| `append` | external_symbol | 1386.0 | <external> |
+| `clear_pattern_cache` | function | 1341.0 | framework_patterns.py |
+| `load_catalog` | function | 1335.5 | io_boundary.py |
 | `Edge` | class | 1309.1 | ir.py |
-| `load_catalog` | function | 1299.1 | io_boundary.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
 
 ## Pattern System
@@ -477,6 +477,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-self-claims-drift` | Compare a verify-claims JSON run against the checked-in self-claim snapshot. |
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
+| `compare-survey-fingerprints.py` | Diff ``Symbol.fingerprint`` across two surveys of the same tree. |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `coverage-select` | CLI for coverage-directed test selection (shadow phase). |
 | `coverage_only_deps.py` | Coverage-only test-dependency augmentation for ``scripts/smart-test`` (WI-zaziz). |
@@ -488,7 +489,9 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `generate-security-md` | Regenerate the audited-IO-surface section of SECURITY.md. |
 | `generate_schema_lib.py` | (no description) |
 | `highsev_root_review.py` | High-severity net-new root-review collator (Layer 1 of the root-review helper). |
+| `measure-analyzer-scaling.py` | Split the analyzer phase into FIXED cost and PER-FILE cost. |
 | `measure-blind-language-signal.py` | Measure candidate signals for "this language's I/O is structurally invisible". |
+| `measure-call-construct-census.py` | Per-language census of ``meta.call_construct`` on the call edges of a behavior map. |
 | `measure-call-escape-cause.py` | Why does a §3a escape site whose CFG node is a CALL still escape? |
 | `measure-catalogue-reach.py` | Can each catalogued I/O primitive be REACHED from an idiomatic call site? |
 | `measure-ctor-root-typing-ab.py` | A/B the constructor-ROOT receiver typing at the call-emission site. |
@@ -498,12 +501,18 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-escape-closing-ceiling.py` | What is the MAXIMUM finding-level payoff of closing §3a escape sites? |
 | `measure-escape-shapes.py` | Where does the ADR-0017 §3a walk lose a tainted value, and to what? |
 | `measure-factory-receiver-shape.py` | How often does real Python obtain a catalogued I/O receiver from a FACTORY? |
+| `measure-fingerprint-stamp-cost.py` | Price the ``stamp_symbol_fingerprints`` post-pass and prove its cost model. |
 | `measure-go-composite-literal-ab.py` | Measure one ARM of the Go composite-literal receiver-typing change. |
 | `measure-go-import-versioning.py` | Paired A/B for INV-javid: what does binding a ``/vN`` package's real name move? |
 | `measure-go-receiver-typing-gap.py` | Size the Go receiver-typing gap: how many catalogued I/O method calls are unreachable |
+| `measure-io-boundary-construct-ab.py` | A/B the io-boundary module-hint branch's method-construct filter. |
+| `measure-narrowing-headroom.py` | How much of the run set could Phase 3 drop, and what forbids dropping it. |
+| `measure-parse-redundancy.py` | Count how many times a single run parses the SAME file. |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
 | `measure-sanitizer-module-slot-ab.py` | A/B the sanitizer registration gate's module-slot permit branch. |
+| `measure-survey-phase-split.py` | Attribute a cold ``run_survey`` wall-clock to individual pipeline phases. |
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
+| `measure-taint-arm-census.py` | Census of PRODUCTION ``_ddg_taint_reaches`` calls, by arm, gate and verdict. |
 | `measure-taint-precision.py` | Of the taint flows hypergumbo reports as violations, how many are real? |
 | `per_package_fallback.py` | Per-package fallback for ``scripts/smart-test``'s test selection. |
 | `refresh-stdlib-modules` | Refresh the ``stdlib_modules`` section of an IO-primitive YAML catalog. |
@@ -876,8 +885,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: ceaba981e3a3
-  commit_count: 6672
+  commit: e4fd04df341f
+  commit_count: 6706
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
