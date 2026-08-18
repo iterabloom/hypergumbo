@@ -1,0 +1,80 @@
+Original commit body from 7af03efda2d45019f4467ae31f8b373f0fd83678:
+
+The cache grew to 5.3 GB in 27 entries for ONE repo in a single day, and to
+5.9 GB / 40 entries a few hours later in the same session. The state hash is
+whole-tree, so an actively-edited repo misses on nearly every run and mints
+another ~200 MB entry, and nothing ever removed one. The 1.0 GB notice had been
+firing, unheeded, throughout.
+
+THIS REVERSES A POLICY THE OWNER SET, and the reversal is recorded rather than
+slid in. INV-padum's statement reads "the chosen policy (user-set 2026-05-17) is
+retention-with-honk-threshold: no automatic eviction", and the spec said
+"hypergumbo never throws away cache entries unprompted". Owner decision
+2026-08-17 supersedes both; INV-padum carries the supersession note and keeps
+its satisfied status, because the visibility work it delivered still stands.
+The reason is measured, not aesthetic: a retention policy whose only enforcement
+is asking the user to run a command is not one.
+
+SOFT DELETE, NOT `rm`, because the cache lives under the user's $HOME and an
+automatic irreversible delete there is a different kind of act from bounding a
+cache. Priced before building, not after:
+
+    210.9 MB entry -> 12.7 MB in 1.0s     deflate-6, 6% of original, 16x
+    end-to-end on real data               201.1 MB reclaimed in 1.1s
+    archive cost                          6.0% of what was reclaimed
+    recovered survey.json                 210,139,144 bytes, BYTE-IDENTICAL
+
+Paying 6% to make every eviction undoable is not a close call, and 1s sits
+inside a run that already took minutes.
+
+TWO FOLDERS, because the two artifact classes are nothing alike. Measured across
+the six largest real entries: survey.json is 1,259.9 MB of 1,264 MB (99.6%),
+while sketch markdown, the 4k/16k/64k tier previews and per-route handler slices
+together are 0.4%. soft-deleted-surveys/ and soft-deleted-sketches/ therefore
+carry independent caps (2.0 GB / 0.5 GB), so cheap human-readable sketches are
+retained far longer than the maps that are the actual disk problem. Classifying
+by EXACT name matters and is pinned: survey.16k.json is a tier preview, so a
+"survey." prefix match would misfile it.
+
+THE ARCHIVES ARE BOUNDED TOO. Soft delete buys a window in which an eviction can
+be undone, not immortality; an archive nobody removes is still growth, just 16x
+slower. Each folder hard-deletes oldest-first past its own cap, so the honest
+default ceiling is 5.0 + 2.0 + 0.5 = 7.5 GB, not 5.
+
+WHAT IT REFUSES TO TOUCH IS THE SUBSTANCE OF THE FEATURE:
+  * only whole entries matching the <repo>/results/<state_hash>/ layout this
+    code itself writes. Everything under the root being tool-generated and
+    regenerable is the ENABLING INVARIANT for automatic reclamation, so anything
+    not matching is not ours -- a stray file, another tool's folder, a directory
+    with no results/ child.
+  * never a repo's newest entry. Eviction may leave the cache over the cap; it
+    may not leave a repo with nothing.
+  * never an entry used within the last hour. LRU already makes an in-flight
+    entry the last candidate; the grace period is the second line, because
+    reclaiming under a running survey breaks THAT run, far from here.
+  * never through a symlink leaving the zone -- the one shape that turns "evict
+    a cache entry" into "destroy whatever it points at".
+Ordering carries crash safety: the archive is renamed into place BEFORE the
+original is touched, and the original is renamed to a scratch name before
+removal, so no interruption leaves a half-deleted directory at its state-hash
+name serving a truncated survey as a cache hit.
+
+TWO KNOBS THAT MEAN DIFFERENT THINGS STAY SEPARATE. HYPERGUMBO_CACHE_HONK_GB is
+the NOTICE; HYPERGUMBO_CACHE_MAX_GB is the CAP. Silencing the notice must not
+authorise deletion and disabling deletion must not silence the notice -- folding
+them into one variable would let a cosmetic preference start removing files.
+cache-status only ever PREVIEWS: a report must not mutate what it reports on,
+least of all for someone who ran it to decide whether to prune.
+
+THE fs-WRITE DISCIPLINE GATE CAUGHT A RESIDUAL AND WAS RIGHT TO. An in-memory
+ZipFile still trips test_runtime_fs_write_wrapper_discipline, because the check
+matches primitives by NAME and cannot tell a path-backed ZipFile from a BytesIO
+one. The answer was a wrapper, not an exemption: cache_write_zip and
+cache_unlink join safety_zones with the same enforced zone check cache_rmtree
+has, so archive writes and archive pruning cannot become the unsanitized
+host_fs flows the previous cycle drove to zero.
+
+4,316 passed / 0 failed; check-package-coverage core 100% in isolation; mypy
+strict ratchet clean at 672.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
