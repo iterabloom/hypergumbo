@@ -1,0 +1,39 @@
+Original commit body from dfecca0df2032ca1f714b676e4fa8e2ae305f892:
+
+Docstring-staleness audit, A+B+D bundle. Each of these described behavior
+the code no longer has; the first is a silent-failure trap rather than a
+cosmetic slip.
+
+cfg.py named its semantic hooks `early_return_on_error` and
+`deferred_execution`. The literal YAML keys `_parse_cfg_mapping` reads are
+`early_return` and `deferred`, and every lookup is a `data.get(<key>, [])`
+— so a new language mapping written from that docstring would parse clean,
+raise nothing, and yield a CFG missing that control flow entirely. The
+paragraph now says the names are the literal keys and says why that
+matters. cfg_nodes/go.yaml repeated the same wrong name in its header.
+
+safety_zones.py said the pattern "does NOT prevent misuse" and that the
+wrappers are transparent with "No behavior change relative to a direct
+call". Both are false for cache_rmtree, cache_unlink, cache_write_zip,
+tmp_artifact_rmtree and install_artifact_unlink, which resolve the path
+and raise SafetyZoneViolation on escape. The claim is now scoped to the
+non-destructive wrappers, where it is still true.
+
+subprocess_cli.py still described reading [project.scripts] from a single
+root pyproject.toml — the pre-WI-gadus behavior, i.e. the bug, documented
+as if current. It now describes the union across every pyproject.toml and
+setup.py, including the deliberate over-selection tradeoff.
+
+taint.py described DDG-backed analysis in the future tense ("will improve
+precision") while propagate_taint_ddg, ddg_build.py and taint_refine.py
+are live, and claimed findings are labeled analysis_method="structural"
+when `ddg` and `ddg_mixed` are also emitted. Self-contradicting: the
+header already said "Phases 1-2".
+
+hypergumbo-tracker/sync.py named only the Forgejo backend for what is now
+a dual-backend dispatcher; github is the live one.
+
+Found by scripts/check-docstring-drift plus semantic review. Docstring
+text only — no behavior change, no test changes. 8265 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
