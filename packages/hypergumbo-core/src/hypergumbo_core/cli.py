@@ -88,8 +88,11 @@ from .finalize import FinalizeContext, _relativize_ir_paths, finalize
 from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
 from .safety_zones import (
+    cache_mkdir,
     cache_rmtree,
+    cache_unlink,
     cache_write,
+    cache_write_zip,
     tmp_artifact_rmtree,
     user_out_mkdir,
     user_out_open_json_dump,
@@ -1263,7 +1266,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     # INV-padum: surface cache footprint after every run. The cache just
     # grew (a new state-hash entry was written), so this is when the user
     # is most likely to be in a position to act on the honk.
-    _maybe_honk_cache(_get_cache_base())
+    #
+    # WI-sidin: and reclaim BEFORE reporting. This is the moment the cache
+    # grew, so it is the moment to bound it; running the honk first would
+    # describe a size that no longer exists by the time the user reads it.
+    # Eviction never touches the entry this run just wrote — it is both the
+    # newest for its repo and inside the grace period, which are two
+    # independent reasons to skip it.
+    _cache_base = _get_cache_base()
+    _maybe_evict_cache(_cache_base)
+    _maybe_honk_cache(_cache_base)
 
     return 0
 
@@ -3595,6 +3607,348 @@ def _get_honk_threshold_bytes() -> float | None:
     return value * (1024 ** 3)
 
 
+_DEFAULT_CACHE_MAX_GB = 5.0
+_DEFAULT_SOFT_DELETE_SURVEYS_GB = 2.0
+_DEFAULT_SOFT_DELETE_SKETCHES_GB = 0.5
+_EVICTION_GRACE_SECONDS = 3600.0
+_EVICTION_SCRATCH_PREFIX = ".evicting-"
+_SOFT_DELETE_SURVEYS_DIR = "soft-deleted-surveys"
+_SOFT_DELETE_SKETCHES_DIR = "soft-deleted-sketches"
+_ARCHIVE_PARTIAL_SUFFIX = ".partial"
+
+# The one heavy artifact in a cache entry. MEASURED across the six largest
+# entries on a real cache: survey.json is 1,259.9 MB of 1,264 MB — 99.6%.
+# Everything else in the entry (sketch markdown, the 4k/16k/64k tier previews,
+# per-route handler slices) totals 0.4%, about 3.5 MB against 210 MB. That
+# asymmetry is why soft-deleted surveys and soft-deleted sketches are separate
+# folders with separate caps: keeping every sketch ever evicted costs almost
+# nothing, while keeping every survey is the whole disk problem again.
+_SURVEY_ARTIFACT_NAMES = frozenset({"survey.json", "survey.json.gz"})
+
+
+def _env_gb_to_bytes(var: str, default_gb: float) -> float | None:
+    """Read a GiB-valued env knob. ``None`` means the user disabled it.
+
+    Shared by the eviction cap and both soft-delete caps so the disable
+    spellings (``0`` / ``off`` / ``none`` / ``false`` / empty) and the
+    malformed-value behaviour cannot drift apart between them.
+
+    Malformed values fall back to the DEFAULT with a warning rather than to
+    "disabled". This runs on the hot path and a typo must not crash a run; of
+    the two failure modes, the default's is visible and re-runnable, while
+    silently disabling would resume unbounded growth with nobody informed.
+    """
+    raw = os.environ.get(var)
+    if raw is None:
+        return default_gb * (1024 ** 3)
+    raw_stripped = raw.strip().lower()
+    if raw_stripped in ("", "0", "off", "none", "false"):
+        return None
+    try:
+        value = float(raw_stripped)
+    except ValueError:
+        import warnings
+        warnings.warn(
+            f"Invalid {var}={raw!r}; falling back to {default_gb} GB.",
+            stacklevel=2,
+        )
+        return default_gb * (1024 ** 3)
+    if value <= 0:
+        return None
+    return value * (1024 ** 3)
+
+
+def _get_cache_max_bytes() -> float | None:
+    """WI-sidin live-cache cap. ``HYPERGUMBO_CACHE_MAX_GB``, default 5.0 GiB.
+
+    DELIBERATELY A SEPARATE KNOB FROM ``HYPERGUMBO_CACHE_HONK_GB``, which is the
+    *notice* threshold. The two say different things and reading either as the
+    other is wrong in both directions: a user who silenced the notice asked for
+    quiet, not for their disk to keep filling; a user who disabled eviction
+    still deserves to be told the cache is large. One shared variable would
+    also let a cosmetic preference authorise deletion.
+    """
+    return _env_gb_to_bytes("HYPERGUMBO_CACHE_MAX_GB", _DEFAULT_CACHE_MAX_GB)
+
+
+def _get_soft_delete_caps() -> dict[str, float | None]:
+    """Caps for the two soft-delete folders, keyed by folder name."""
+    return {
+        _SOFT_DELETE_SURVEYS_DIR: _env_gb_to_bytes(
+            "HYPERGUMBO_SOFT_DELETE_SURVEYS_GB", _DEFAULT_SOFT_DELETE_SURVEYS_GB
+        ),
+        _SOFT_DELETE_SKETCHES_DIR: _env_gb_to_bytes(
+            "HYPERGUMBO_SOFT_DELETE_SKETCHES_GB",
+            _DEFAULT_SOFT_DELETE_SKETCHES_GB,
+        ),
+    }
+
+
+def _collect_evictable_entries(
+    cache_dir: Path,
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    """Enumerate whole cache entries, and separately any crash residue.
+
+    Returns ``(entries, residue)`` where each entry row describes one
+    ``<repo>/results/<state_hash>/`` directory with ``path``, ``size``,
+    ``last_used`` and ``repo``.
+
+    THE LAYOUT CHECK IS THE SAFETY MECHANISM, not a tidiness measure. Automatic
+    reclamation is admissible here only because everything the tool writes
+    under this root is derived and regenerable — so anything that does NOT
+    match the tool's own layout is, by definition, not something this code put
+    there and not something it may touch. A directory with no ``results/``
+    child, a loose file, another program's folder: all skipped. The two
+    soft-delete folders are skipped by the same rule, since neither has a
+    ``results/`` child.
+
+    Symlinks are skipped rather than followed. A symlinked state-hash directory
+    is the one shape that turns "reclaim a cache entry" into "destroy whatever
+    it points at", and it is not ours to reclaim in any case.
+    """
+    entries: list[dict[str, Any]] = []
+    residue: list[Path] = []
+    try:
+        repo_dirs = sorted(cache_dir.iterdir())
+    except OSError:  # pragma: no cover - unreadable cache root
+        return entries, residue  # pragma: no cover
+    for repo_dir in repo_dirs:
+        if repo_dir.is_symlink() or not repo_dir.is_dir():
+            continue
+        results_dir = repo_dir / "results"
+        if results_dir.is_symlink() or not results_dir.is_dir():
+            continue
+        for state_dir in sorted(results_dir.iterdir()):
+            if state_dir.is_symlink() or not state_dir.is_dir():
+                continue
+            if state_dir.name.startswith(_EVICTION_SCRATCH_PREFIX):
+                # Residue from an eviction interrupted after the rename but
+                # before the delete. It can never be read as a cache hit (the
+                # name matches no state hash), but it must not leak either.
+                residue.append(state_dir)
+                continue
+            try:
+                last_used = state_dir.stat().st_mtime
+            except OSError:  # pragma: no cover - raced deletion
+                continue  # pragma: no cover
+            entries.append({
+                "path": state_dir,
+                "repo": repo_dir.name,
+                "size": _get_dir_size(state_dir),
+                "last_used": last_used,
+            })
+    return entries, residue
+
+
+def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
+    """Soft-delete one cache entry: zip it into the two folders, then remove it.
+
+    WHY SOFT DELETE RATHER THAN ``rm``. The cache lives under the user's
+    ``$HOME``, and an automatic irreversible delete there is a different kind
+    of act from bounding a cache. Compression makes reversibility nearly free:
+    measured on a real 210.9 MB entry, deflate level 6 produced 12.7 MB in
+    1.0s — **6% of the original, 16x**. Paying 6% to make every eviction
+    undoable is an obviously good trade, and 1s sits inside a run that already
+    took minutes.
+
+    WHY TWO FOLDERS. ``survey.json`` is 99.6% of an entry; everything else —
+    sketch markdown, tier previews, handler slices — is 0.4%. Splitting them
+    lets sketches, which are cheap and human-readable, be retained far longer
+    than the surveys that are the actual disk problem.
+
+    ORDERING IS THE CRASH-SAFETY ARGUMENT. Archives are written to a
+    ``.partial`` name and renamed into place BEFORE the original is touched, so
+    every interruption point is safe: during zipping, partial archives and an
+    intact entry (the partial is overwritten next run); after zipping, complete
+    archives and an intact entry (re-evicted next run, archives overwritten);
+    after the entry is renamed to the ``.evicting-`` scratch name, residue that
+    can never be read as a cache hit and is reclaimed next run. At no point can
+    a half-deleted directory sit at its state-hash name and serve a truncated
+    survey as a cache hit.
+    """
+    stem = f"{repo}__{entry_path.name}"
+    files = [f for f in sorted(entry_path.rglob("*")) if f.is_file()]
+    groups: dict[str, list[Path]] = {
+        _SOFT_DELETE_SURVEYS_DIR: [
+            f for f in files if f.name in _SURVEY_ARTIFACT_NAMES
+        ],
+        _SOFT_DELETE_SKETCHES_DIR: [
+            f for f in files if f.name not in _SURVEY_ARTIFACT_NAMES
+        ],
+    }
+    staged: list[tuple[Path, Path]] = []
+    for folder, members in groups.items():
+        if not members:
+            continue
+        dest_dir = cache_dir / folder
+        cache_mkdir(dest_dir, parents=True, exist_ok=True)
+        final = dest_dir / f"{stem}.zip"
+        partial = dest_dir / f"{stem}.zip{_ARCHIVE_PARTIAL_SUFFIX}"
+        # Through the zone wrapper, never a bare ZipFile here: the discipline
+        # gate matches fs-write primitives by NAME, and it is right to — a
+        # syntactic check cannot tell a path-backed ZipFile from an in-memory
+        # one, and the wrapper is what makes the zone-barrier sanitizer apply.
+        cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
+        staged.append((partial, final))
+    for partial, final in staged:
+        partial.rename(final)
+
+    scratch = entry_path.parent / (_EVICTION_SCRATCH_PREFIX + entry_path.name)
+    if scratch.exists():  # pragma: no cover - prior residue at the same name
+        cache_rmtree(scratch, zone_root=cache_dir)  # pragma: no cover
+    entry_path.rename(scratch)
+    cache_rmtree(scratch, zone_root=cache_dir)
+
+
+def _prune_soft_deleted(cache_dir: Path, *, dry_run: bool = False) -> int:
+    """Bound each soft-delete folder, oldest archive first. Returns bytes freed.
+
+    THIS IS THE HARD DELETE, and it is the reason soft-delete is a real policy
+    rather than a way of deferring the disk problem by 16x. An archive that is
+    never removed is still growth. What soft-delete buys is a window in which an
+    eviction can be undone, not immortality — so each folder has its own cap and
+    the oldest archives leave first.
+
+    Stale ``.partial`` files (a run interrupted mid-zip) are removed here too;
+    they are incomplete by construction and no consumer can use them.
+    """
+    caps = _get_soft_delete_caps()
+    freed = 0
+    for folder, cap in caps.items():
+        dest_dir = cache_dir / folder
+        if dest_dir.is_symlink() or not dest_dir.is_dir():
+            continue
+        archives: list[tuple[float, int, Path]] = []
+        for item in sorted(dest_dir.iterdir()):
+            if item.is_symlink() or not item.is_file():
+                continue
+            if item.name.endswith(_ARCHIVE_PARTIAL_SUFFIX):
+                freed += item.stat().st_size
+                if not dry_run:
+                    cache_unlink(item, zone_root=cache_dir)
+                continue
+            if not item.name.endswith(".zip"):
+                continue
+            stat = item.stat()
+            archives.append((stat.st_mtime, stat.st_size, item))
+        if cap is None:
+            continue
+        total = sum(size for _, size, _ in archives)
+        archives.sort(key=lambda row: row[0])
+        for _mtime, size, path in archives:
+            if total <= cap:
+                break
+            if not dry_run:
+                cache_unlink(path, zone_root=cache_dir)
+            total -= size
+            freed += size
+    return freed
+
+
+def _maybe_evict_cache(
+    cache_dir: Path,
+    *,
+    dry_run: bool = False,
+    quiet: bool = False,
+) -> int:
+    """WI-sidin: bound the cache by soft-deleting least-recently-used entries.
+
+    Returns the number of bytes reclaimed from the LIVE cache (or that would
+    be, under ``dry_run``). Evicted entries are not destroyed — they are zipped
+    into ``soft-deleted-surveys/`` and ``soft-deleted-sketches/``, which are
+    themselves bounded by :func:`_prune_soft_deleted`.
+
+    Measured motivation: 5.3 GB in 27 entries for one repo in a single day,
+    5.9 GB / 40 entries a few hours later. The state hash is whole-tree, so an
+    actively-edited repo misses on nearly every run and mints another ~200 MB
+    entry; nothing ever removed one, and the 1.0 GB notice had been firing
+    unheeded throughout.
+
+    THREE THINGS IT REFUSES TO DO, each because the cache lives in the user's
+    home directory:
+
+    1. **Never the newest entry of a repo.** Eviction may leave the cache OVER
+       the cap; it may not leave a repo with nothing. Dropping the warm entry
+       to satisfy a byte budget makes the next run slower for no gain, and
+       reads as corruption rather than policy.
+    2. **Never a recently-used entry.** LRU order already makes an in-flight
+       entry the last candidate, since a running survey holds a fresh mtime.
+       The grace period is the second line: reclaiming a directory another
+       process is mid-write into breaks THAT run, far from here.
+    3. **Never anything that is not ours** — see the layout filter in
+       :func:`_collect_evictable_entries`.
+
+    And one thing it must always do: SAY WHAT IT MOVED, naming the knob and the
+    fact that the data is recoverable. A cache that reclaims silently gets
+    blamed for the next unrelated cold run.
+    """
+    import time
+
+    cap = _get_cache_max_bytes()
+    if cap is None:
+        return 0
+    if not cache_dir.exists():
+        return 0
+
+    entries, residue = _collect_evictable_entries(cache_dir)
+    total = sum(int(e["size"]) for e in entries)
+    total += sum(_get_dir_size(p) for p in residue)
+
+    newest_per_repo: dict[str, float] = {}
+    for entry in entries:
+        repo = str(entry["repo"])
+        stamp = float(entry["last_used"])
+        if stamp > newest_per_repo.get(repo, float("-inf")):
+            newest_per_repo[repo] = stamp
+    now = time.time()
+    candidates = [
+        e for e in entries
+        if float(e["last_used"]) != newest_per_repo[str(e["repo"])]
+        and (now - float(e["last_used"])) > _EVICTION_GRACE_SECONDS
+    ]
+    candidates.sort(key=lambda e: float(e["last_used"]))
+
+    reclaimed = 0
+    evicted = 0
+    # Residue is already-orphaned data that only still occupies disk, so no
+    # policy question arises and nothing is worth archiving.
+    for path in residue:
+        size = _get_dir_size(path)
+        if not dry_run:
+            cache_rmtree(path, zone_root=cache_dir)
+        reclaimed += size
+        evicted += 1
+
+    for entry in candidates:
+        if total - reclaimed <= cap:
+            break
+        if not dry_run:
+            _archive_entry(Path(entry["path"]), str(entry["repo"]), cache_dir)
+        reclaimed += int(entry["size"])
+        evicted += 1
+
+    hard_freed = _prune_soft_deleted(cache_dir, dry_run=dry_run)
+
+    if reclaimed and not quiet:
+        verb = "Would soft-delete" if dry_run else "Soft-deleted"
+        cap_gb = cap / (1024 ** 3)
+        lines = [
+            f"🧹 {verb} {_format_size(reclaimed)} from the hypergumbo cache "
+            f"({evicted} stale {'entry' if evicted == 1 else 'entries'}, "
+            f"cap {cap_gb:.1f} GB).",
+            f"    Recoverable (zipped) under {cache_dir}/"
+            f"{_SOFT_DELETE_SURVEYS_DIR}/ and /{_SOFT_DELETE_SKETCHES_DIR}/",
+            "    Tune or disable: HYPERGUMBO_CACHE_MAX_GB=<N>   (0 disables)",
+        ]
+        if hard_freed:
+            lines.insert(1, (
+                f"    Also removed {_format_size(hard_freed)} of soft-deleted "
+                f"archives past their own caps."
+            ))
+        print("\n".join(lines), file=sys.stderr)
+    return reclaimed
+
+
 def _list_repo_breakdown(cache_dir: Path) -> list[dict[str, Any]]:
     """Per-repo cache breakdown, sorted by size descending.
 
@@ -3781,6 +4135,11 @@ def cmd_cache_status(args: argparse.Namespace) -> int:
                     f"(last used: {age_label})"
                 )
 
+    # WI-sidin: PREVIEW ONLY. cache-status is a report, and a report must not
+    # mutate what it reports on — a user running it to decide whether to prune
+    # would otherwise find the decision already taken. dry_run shows the set the
+    # next real run would reclaim.
+    _maybe_evict_cache(cache_dir, dry_run=True)
     _maybe_honk_cache(cache_dir, total_size=total_size)
 
     return 0

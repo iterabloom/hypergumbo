@@ -191,6 +191,61 @@ def cache_rmtree(path: Path, zone_root: Path | None = None) -> None:
     shutil.rmtree(path)
 
 
+def cache_write_zip(
+    path: Path,
+    root: Path,
+    members: "list[Path]",
+    zone_root: Path | None = None,
+) -> None:
+    """Write a deflate zip of *members* (arcnames relative to *root*) into the cache.
+
+    SAFETY ZONE: ``user_cache``. Soft-deleted cache entries are archived rather
+    than destroyed, and building that archive is a cache WRITE like any other —
+    it belongs behind a wrapper for the same reason ``cache_save_npy`` does.
+    Constructing a ``ZipFile`` inside runtime-path code would be an unwrapped
+    fs-write primitive: the zone-barrier sanitizer would not apply, the write
+    would land as an unsanitized ``host_fs`` flow, and the discipline gate
+    (``test_runtime_fs_write_wrapper_discipline``) fires on it — correctly, and
+    by NAME, since a syntactic check cannot tell a path-backed ZipFile from an
+    in-memory one.
+
+    ENFORCED, not merely declared: a destination outside the cache root raises
+    :class:`SafetyZoneViolation`.
+
+    The archive is assembled in memory and written in one call, so peak
+    additional memory is the COMPRESSED size — measured at 6% of the source on
+    a real 210.9 MB cache entry — rather than the size of the inputs, which are
+    streamed through the compressor.
+    """
+    import io
+    import zipfile
+
+    _safety_zone_barrier()
+    _require_within_zone(path, zone_root or _cache_zone_root(), "user_cache")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for member in members:
+            zf.write(member, member.relative_to(root))
+    path.write_bytes(buf.getvalue())
+
+
+def cache_unlink(path: Path, zone_root: Path | None = None) -> None:
+    """Delete a single file under ``~/.cache/hypergumbo/``.
+
+    SAFETY ZONE: ``user_cache``. The soft-delete folders hold one zip per
+    evicted entry, so bounding them means unlinking FILES rather than trees —
+    ``cache_rmtree``'s shape does not fit, and a bare ``Path.unlink`` would be
+    an unwrapped filesystem delete reachable from the runtime CLI, which is
+    exactly the population the ``runtime-cli-no-host-fs`` claim drove to zero.
+
+    ENFORCED, not merely declared: a path outside the cache root raises
+    :class:`SafetyZoneViolation`, via the same guard ``cache_rmtree`` uses.
+    """
+    _safety_zone_barrier()
+    _require_within_zone(path, zone_root or _cache_zone_root(), "user_cache")
+    path.unlink()
+
+
 def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
     """Save a numpy array to a cache path via ``np.save``.
 
