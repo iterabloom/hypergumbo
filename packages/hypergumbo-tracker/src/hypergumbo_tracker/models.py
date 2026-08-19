@@ -8,8 +8,8 @@ and field schema types.
 Design rationale:
 - All ops are frozen dataclasses for immutability — the append-only log
   must never mutate existing ops.
-- CompiledItem is mutable because compile() builds it incrementally by
-  folding ops in Lamport clock order.
+- CompiledItem is mutable because ``compile_ops()`` (in ``store.py``)
+  builds it incrementally by folding ops in Lamport clock order.
 - Config loading follows the config.yaml → config.yaml.template → defaults
   chain, matching the .env.example → .env pattern.
 - Actor resolution uses os.getuid() which is non-forgeable — the agent
@@ -339,7 +339,7 @@ def dict_to_op(d: dict[str, Any]) -> Op:
 
 
 # ---------------------------------------------------------------------------
-# CompiledItem — mutable, built by compile()
+# CompiledItem — mutable, built by store.compile_ops()
 # ---------------------------------------------------------------------------
 
 
@@ -368,10 +368,11 @@ class DiscussionEntry:
 
 @dataclass
 class CompiledItem:
-    """The current state of a tracker item, derived by compile() from ops.
+    """The current state of a tracker item, derived by ``compile_ops`` from ops.
 
-    Mutable because compile() builds it incrementally by folding ops in
-    Lamport clock order. Fields correspond to the ADR-0013 compiled item spec.
+    Mutable because ``store.compile_ops()`` builds it incrementally by folding
+    ops in Lamport clock order. Fields correspond to the ADR-0013 compiled
+    item spec.
     """
 
     id: str

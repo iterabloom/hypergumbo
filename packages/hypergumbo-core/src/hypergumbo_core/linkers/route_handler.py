@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: route-handler for connecting routes to their handler functions.
 
-This linker creates routes_to edges from route symbols to their handler symbols
-using metadata stored during route detection.
+This linker creates ``dispatches_to`` edges from route symbols to their handler
+symbols using metadata stored during route detection. The bespoke ``routes_to``
+type was folded onto ``dispatches_to`` by ADR-0023 §6 Phase 3.
 
 How It Works
 ------------
-1. Find all route symbols (kind="route")
+1. Find all route symbols (``kind="function"`` with
+   ``meta.framework_role="route"`` — the ADR-0027 fold; there is no
+   ``route`` symbol kind)
 2. Extract handler reference from metadata:
    - Rails: controller_action = "users#index" → UsersController#index
    - Phoenix: controller = "UserController", action = "index" → UserController.index
@@ -15,9 +18,10 @@ How It Works
    - Django: view_name = "list_users" or "accounts.views.list_users"
    - Go/Gin: handler_name = "listUsers" or "handlers.GetAPI"
 3. Resolve handler reference to actual method/function symbols
-4. Create routes_to edges linking routes to handlers
+4. Create ``dispatches_to`` edges linking routes to handlers
 5. For React Router v6.4+ routes: resolve loader_ref/action_ref to function
-   symbols and create additional routes_to edges with role=loader/action metadata
+   symbols and create additional ``dispatches_to`` edges with
+   role=loader/action metadata
 
 Why This Design
 ---------------
@@ -26,10 +30,10 @@ Why This Design
 - Supports multiple frameworks via pluggable resolution strategies
 - Post-hoc linking works with complete symbol table
 
-Note: Route symbols (kind="route") are created by language analyzers, not by the
-framework pattern enrichment layer. Enrichment adds ``concept: route`` to handler
+Note: Route symbols are created by language analyzers, not by the framework
+pattern enrichment layer. Enrichment adds ``concept: route`` to handler
 symbols (tagging the view function); this linker connects route *entities* to
-handlers via ``routes_to`` edges. Both are derived from the same UsageContext
+handlers via ``dispatches_to`` edges. Both are derived from the same UsageContext
 extraction pass — see each analyzer's "Route Detection Architecture" docs.
 
 Supported Frameworks

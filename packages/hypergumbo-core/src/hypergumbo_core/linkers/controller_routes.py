@@ -124,7 +124,7 @@ def _span_size(span: "Span") -> int:
     depends_on=[["python", "javascript", "ruby", "java", "go", "elixir", "php"]],
 )
 def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
-    """Create contains_routes edges from controllers to their route methods."""
+    """Create ``contains`` edges from controllers to their route methods."""
     run = AnalysisRun.create(
         pass_id=PASS_ID,
         version=PASS_VERSION,

@@ -14,21 +14,23 @@ budget. Section budget allocation follows ADR-0005 (Entry Points
 what remains after the structural sections; etc.).
 
 Sections in emission order:
-1.  Header — repo name, language breakdown, LOC estimate (always)
-2.  Overview — README-derived elevator pitch when available
+1.  Header — repo name, plus the README-derived elevator pitch when
+    one is available (always)
+2.  Overview — language breakdown and LOC estimate
 3.  Structure — top-level directory tree
 4.  Frameworks — detected build systems / web frameworks /
     test frameworks
 5.  Tests — test framework + estimated coverage breakdown
-6.  Configuration — environment variables, dotenv keys, config-file
-    callouts
+6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``).
+    Environment variables and dotenv keys are NOT extracted
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
     cron / scheduler entries
 8.  Data Models — dataclasses, ORM entities, schema definitions,
     with the four-strategy detection from ``datamodels.py``
 9.  Source Files — centrality-ranked file list with stats
 10. Key Symbols — top symbols by dampened centrality
-11. Additional Files — extra files included by ``--with-source``
+11. Additional Files — always emitted when the budget allows;
+    ``--with-source`` shrinks its budget to 5% rather than gating it
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
@@ -36,8 +38,9 @@ Sections in emission order:
 Behavioral flags
 ----------------
 - ``with_source`` — include sections 12-13 (full file content).
-- ``require_sections`` — fail loudly if a required section can't
-  emit (rather than silently skipping).
+- ``require_sections`` — force-include the named sections even when
+  the token budget is exhausted, and skip final truncation. It does not
+  raise; it overrides the budget gate (WI-nakam).
 - ``stats_out`` — emit per-section size statistics for sketch
   tuning experiments.
 - ``language_proportional`` — switch from global ranking to
@@ -47,15 +50,16 @@ Behavioral flags
   fan-out sketch files alongside the main sketch.
 
 Token budgeting uses a simple heuristic (~4 chars per token) which is
-accurate enough for approximate sizing. For precise counting,
-tiktoken can be used as an optional dependency.
+accurate enough for approximate sizing. There is no exact-tokenizer
+path — the heuristic is the only counter.
 
 Centrality dampening
 --------------------
 Symbol ranking flows through ``compute_dampened_centrality``, which
-applies the pinned ``_CANONICAL_DAMPENERS`` stage stack (tier and
-file-kind weighting, common-method-name multipliers, sibling-impl
-group weights, etc.). The stack order is invariant — its pinning
+applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
+tier, noise, utility, common_method, trivial_sink, generated, file_kind.
+(The sibling-impl group weighting was removed by WI-karad.) The stack
+order is invariant — its pinning
 tests live alongside this module and catch internal-reorder
 regressions a tuple-identity check would miss.
 

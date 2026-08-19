@@ -1231,7 +1231,7 @@ def _extract_block_callback_edges(
     ``before_save { ... }`` contain inline code rather than symbol
     references. We walk the block body looking for bare method calls
     (identifiers that resolve to methods in the enclosing class) and
-    create ``invokes_callback`` edges for each.
+    create ``dispatches_to`` edges for each.
 
     Args:
         block_node: The ``do_block`` or ``block`` AST node.
@@ -1291,7 +1291,7 @@ def _extract_rails_callbacks(
     resolver: NameResolver,
     run_id: str,
 ) -> list[Edge]:
-    """Extract invokes_callback edges from Rails callback declarations.
+    """Extract Rails callback ``dispatches_to`` edges from callback declarations.
 
     Rails controllers and models declare callbacks at class level in two forms:
 
@@ -3121,7 +3121,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
             all_edges.extend(edges)
 
         # Pass 2b: Extract Rails callback edges (before_action, after_action, etc.)
-        # These create invokes_callback edges from controller class -> callback method.
+        # These create dispatches_to edges from controller class -> callback method.
         for rb_file, analysis in file_analyses.items():
             try:
                 source = rb_file.read_bytes()

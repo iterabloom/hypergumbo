@@ -11,12 +11,14 @@ programming language research and computer science education.
 Implementation approach:
 - Uses tree-sitter-language-pack for Racket grammar
 - Two-pass analysis: First pass collects all symbols, second pass extracts edges
-- Handles Racket-specific constructs like define, struct, module+
+- Handles Racket-specific constructs like define and struct.
+  ``module+`` / ``module*`` are NOT extracted — they sit in the call-edge
+  skip set and produce no symbol.
 
 Key constructs extracted:
 - (define (name args) body) - function definitions
 - (define name value) - variable definitions
-- (struct name (fields)) - struct definitions
+- (struct name (fields)) - struct definitions, emitted as ``kind="class"``
 - (name args) - function calls
 """
 

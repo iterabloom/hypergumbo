@@ -9,8 +9,10 @@ How It Works
 ------------
 1. Load the cached behavior map (nodes + edges).
 2. Identify symbols in changed source files.
-3. Reverse-BFS from changed symbols → ``affected_set`` (all transitively
-   dependent symbol IDs).
+3. Reverse-BFS from changed symbols → ``affected_set``, capped at
+   ``max_hops = 10``. Dependents further than 10 hops upstream never enter
+   the set and stay eligible for deselection — the cap is a deliberate
+   bound, not full transitive closure.
 4. For each slow test (>threshold mean duration) in the affected test
    files, check if the test's node ID is in ``affected_set``.
 5. If not → emit ``--deselect=<pytest_node_id>``.
@@ -20,10 +22,12 @@ aggregate cost is negligible.
 
 Why This Design
 ---------------
-- The behavior map already captures ~13K test nodes with outgoing call
-  edges to production code.  The reverse BFS is the same algorithm used
-  by ``slice --files``, operating on the in-memory graph (~57K edges)
-  in microseconds.
+- The behavior map already captures the test nodes with outgoing call
+  edges to production code (~24K test nodes over a ~150K-edge graph on
+  this repo, measured 2026-08 — a snapshot, not a fixed property).  The
+  reverse BFS is the same algorithm used by ``slice --files`` (which
+  carries the same 10-hop cap), operating on the in-memory graph in
+  microseconds.
 - Test timings come from ``test_timings.json``, already maintained by
   smart-test.  No separate "slow list" file to maintain.
 - Graceful degradation: missing behavior map or timings → no masking,

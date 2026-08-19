@@ -12,14 +12,20 @@ directory alongside this module.
 
 How It Works
 ------------
-1. ``load_catalog(language)`` reads the YAML for the given language and
-   returns an ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive``
+1. ``load_catalog(language, overlay_paths=None)`` reads the YAML for the
+   given language, merges any parent catalog and any project-local overlay,
+   and returns an ``IoBoundaryCatalog`` with a flat list of ``IoPrimitive``
    entries plus O(1) lookup by qualified name.
-2. ``match_edge_to_primitive(catalog, callee_name)`` checks whether a
-   call-edge target matches any I/O primitive, returning the match or None.
-3. Downstream code (the boundary-tagging pass, Phase 1b) uses these
-   matches to stamp ``io_boundary`` and ``io_primitive`` metadata onto
-   edges in the graph.
+2. ``classify_call_in_catalog(...)`` is the production matcher: it resolves a
+   call edge against the catalog via ``lookup_with_module``, applying
+   module-hint filtering, FFI redirection, ``io_mode`` discrimination, and a
+   short-name fallback gated on the destination not being a first-party
+   callable. (``match_edge_to_primitive`` is a bare name-only lookup with no
+   production caller — it exists for tests and ad-hoc probing. Do not reach
+   for it expecting the tagger's behaviour.)
+3. The boundary-tagging pass (ADR-0016 Phase 1b) lives **in this module** —
+   ``tag_io_boundaries`` — and uses those matches to stamp ``io_boundary``,
+   ``io_primitive`` and ``io_boundaries`` metadata onto edges in the graph.
 
 Why YAML Catalogs
 -----------------

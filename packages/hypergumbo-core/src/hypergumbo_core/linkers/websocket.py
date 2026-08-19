@@ -1,40 +1,51 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Protocol linker: WebSocket for detecting WebSocket communication patterns.
 
-This linker detects WebSocket patterns in JavaScript/TypeScript and Python code
-and creates message_send and message_receive edges for WebSocket-based communication.
+This linker detects WebSocket patterns in JavaScript/TypeScript and Python code.
+It emits three canonical edge types: ``event_publishes`` (emitter → listener),
+``references`` (client → server endpoint) and ``calls`` (the cross-language
+client → server bridge). The bespoke ``message_send`` / ``message_receive``
+types this module once emitted were folded away by ADR-0023 §6; the arrows
+below name the ROLE a matched site plays, not an edge type.
 
 Detected Patterns
 -----------------
 Socket.io (JavaScript):
-- socket.emit('event', data) -> message_send
-- socket.emit(eventVar, data) -> message_send (variable event)
-- socket.on('event', handler) -> message_receive
-- socket.on(eventVar, handler) -> message_receive (variable event)
-- io.on('connection', handler) -> websocket_endpoint
+- socket.emit('event', data) -> send-site
+- socket.emit(eventVar, data) -> send-site (variable event)
+- socket.on('event', handler) -> receive-site
+- socket.on(eventVar, handler) -> receive-site (variable event)
+- io.on('connection', handler) -> endpoint
 
 Native WebSocket API (JavaScript):
-- new WebSocket(url) -> websocket_endpoint
-- ws.send(data) -> message_send
-- ws.onmessage / addEventListener('message') -> message_receive
+- new WebSocket(url) -> endpoint
+- ws.send(data) -> send-site
 
 ws (Node.js package):
-- wss.on('connection', handler) -> websocket_endpoint
-- ws.on('message', handler) -> message_receive
+- wss.on('connection', handler) -> endpoint
+- ws.on('message', handler) -> receive-site
 
 Django Channels (Python):
-- @app.websocket_route('/path') -> websocket_endpoint
-- channel_layer.send('channel', message) -> message_send
-- channel_layer.send(channel_var, message) -> message_send (variable channel)
-- channel_layer.group_send('group', message) -> message_send
-- async for message in websocket.receive() -> message_receive
-- await self.send(message) -> message_send
+- channel_layer.send('channel', message) -> send-site
+- channel_layer.send(channel_var, message) -> send-site (variable channel)
+- channel_layer.group_send('group', message) -> send-site
+- async for message in websocket.receive() -> receive-site
 
-FastAPI WebSocket (Python):
-- @app.websocket('/path') -> websocket_endpoint
-- websocket.receive_json() / receive_text() -> message_receive
-- websocket.send_json() / send_text() -> message_send
-- websocket.accept() -> websocket_endpoint
+FastAPI / Starlette WebSocket (Python):
+- @app.websocket('/path') -> endpoint
+- WebSocketRoute('/path', endpoint) -> endpoint
+- websocket.receive_json() / receive_text() -> receive-site
+- websocket.send_json() / send_text() -> send-site
+- websocket.accept() -> endpoint
+
+NOT detected, despite having a compiled pattern or an obvious spelling:
+- ``ws.onmessage`` / ``addEventListener('message')`` — no pattern matches
+  either token.
+- ``await self.send(message)`` in a Django Channels consumer —
+  ``DJANGO_CONSUMER_SEND`` is compiled but never applied.
+- Django Channels routing — ``DJANGO_CHANNELS_ROUTE`` is compiled but never
+  applied. The one decorator pattern that does run is
+  ``@<app>.websocket(...)``, and it is tagged ``fastapi``.
 
 Event Detection Strategy
 ------------------------
@@ -52,7 +63,9 @@ How It Works
 2. Scan each file for WebSocket patterns using regex
 3. Extract event names (literals) or variable names from patterns
 4. Create edges linking files with matching events/variables
-5. Create websocket_endpoint symbols for connection handlers
+5. Create connection-handler symbols with ``kind="function"`` and
+   ``meta['framework_role']='websocket_endpoint'`` (the ADR-0027 fold —
+   there is no ``websocket_endpoint`` symbol kind)
 
 Why This Design
 ---------------
@@ -651,8 +664,8 @@ def link_websocket(
 
     Scans all JavaScript/TypeScript and Python files for WebSocket patterns and creates:
     - Symbols for WebSocket endpoints (connection handlers)
-    - message_send edges for emit/send calls
-    - message_receive edges for on/onmessage handlers
+    - send-site records for emit/send calls
+    - receive-site records for ``on``/``handler`` registrations
 
     INV-ronuf
     ---------

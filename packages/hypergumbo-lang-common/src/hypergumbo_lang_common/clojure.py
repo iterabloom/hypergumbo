@@ -22,9 +22,10 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all symbols into global registry
 2. Pass 2: Detect calls and resolve against global symbol registry
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Clojure-specific
-extraction logic.
+The base class handles grammar checking, parser creation and result
+assembly. This module provides the Clojure-specific extraction logic and
+overrides ``_find_source_files`` so ``.edn`` data files are not parsed as
+source.
 
 Why This Design
 ---------------

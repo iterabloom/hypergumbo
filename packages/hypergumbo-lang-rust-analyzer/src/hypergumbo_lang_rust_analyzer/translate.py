@@ -21,9 +21,9 @@ shim cannot do on its own:
    using
    :func:`hypergumbo_lang_mainstream.rust_scip.compute_rust_stable_id_from_source`.
    Non-Rust Symbols (SCIP can carry multiple languages in one index),
-   non-function Rust Symbols (structs, modules, constants — rust.py
-   has no signature-level parity for these), and Symbols whose source
-   cannot be read pass through unchanged.
+   Rust Symbols that are neither ``function`` nor ``method`` (structs,
+   modules, constants — rust.py has no signature-level parity for these),
+   and Symbols whose source cannot be read pass through unchanged.
 
 2. **One-shot translate.** :func:`translate_scip_to_hg` bundles the
    three core shim calls (``scip_index_to_symbols``,
@@ -46,10 +46,11 @@ The ``source_reader`` callable is a caller-owned I/O boundary:
 production callers pass a function that reads ``path`` bytes from the
 indexed workspace; tests pass a dict-backed fake so the whole
 translate path can be exercised without filesystem access. Reader
-failures (``OSError``, ``FileNotFoundError``, arbitrary exceptions)
-degrade to "skip this symbol's reassignment" rather than aborting the
-whole translate — the SCIP-derived ``stable_id`` remains as a
-best-effort fallback.
+failures degrade to "skip this symbol's reassignment" rather than
+aborting the whole translate — the SCIP-derived ``stable_id`` remains as
+a best-effort fallback. The caught set is exactly ``(OSError, ValueError)``
+(``FileNotFoundError`` is an ``OSError``); anything else propagates and
+does abort the translate.
 """
 
 from __future__ import annotations

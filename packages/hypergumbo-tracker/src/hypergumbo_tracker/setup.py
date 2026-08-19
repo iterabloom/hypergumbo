@@ -2,9 +2,12 @@
 """Idempotent setup wizard for the hypergumbo tracker.
 
 Runs a sequence of checks that inspect the tracker's operational state,
-auto-fix what can be fixed (directory creation, gitattributes, config copy),
-and report advisory diagnostics for things that require human action
-(agent instructions, hook integration).
+auto-fix what can be fixed, and report advisory diagnostics for the rest.
+Auto-fix covers directory creation, gitattributes (both the tracker-local
+and repo-root files), config copy, config ownership and permissions, group
+permissions, ``core.sharedRepository``, the textconv driver,
+``safe.directory``, the wrapper shim, the managed AGENTS.md block, and
+``core.hooksPath``.
 
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
 is idempotent: running it twice with no changes between runs produces all
@@ -16,11 +19,14 @@ The check sequence covers three areas:
    textconv driver, data integrity.
 2. **Agentic infrastructure** (checks 16-21): wrapper scripts, agent
    instructions, hook integration, autonomous mode consistency, reflection
-   state validity. Read-only / advisory only.
+   state validity. NOT read-only — the wrapper-shim, AGENTS.md-block and
+   ``core.hooksPath`` checks all write to the repo and return
+   ``status="fixed"``.
 3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
    git identity — advisory check for ``htrac sync`` workflow.
 
-Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
+Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
+returns a list of CheckResult; the keyword drives policy-template scaffolding.
 The CLI handler in cli.py formats and prints them.
 """
 

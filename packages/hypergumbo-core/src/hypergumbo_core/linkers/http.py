@@ -44,13 +44,16 @@ Java:
 - restTemplate.getForObject("/api/users", ...) - Spring RestTemplate
 - restTemplate.postForEntity("/api/users", ...) - Spring RestTemplate
 - restTemplate.exchange("/api/users", HttpMethod.GET, ...) - Spring RestTemplate
-- restTemplate.delete("/api/users/1") - Spring RestTemplate
+  (``put`` and ``delete`` are deliberately NOT matched as bare RestTemplate
+  methods — they collide with ``HashMap.put`` / ``List.delete``; use
+  ``exchange()`` for RestTemplate PUT/DELETE)
 - @GET("/api/users") - Retrofit annotation
 - @POST("/api/items") - Retrofit annotation
 
 Variable URL Detection
 ----------------------
-URLs stored in variables are detected with lower confidence (0.65 vs 0.9):
+URLs stored in variables are detected with lower confidence (0.65 vs 0.9;
+cross-language matches sit at 0.8):
 - const API_URL = '/api/users'; fetch(API_URL) -> detected with url_type="variable"
 - Direct literal URLs have url_type="literal" and higher confidence
 
@@ -67,7 +70,9 @@ Parameterized routes are supported:
 
 How It Works
 ------------
-1. Collect route symbols from language analyzers (kind="route")
+1. Collect route symbols from language analyzers, identified by
+   ``meta['framework_role']=='route'`` or ``concept: route`` — not by
+   ``kind``, which is ``function`` after the ADR-0027 fold
 2. Scan source files for HTTP client calls
 3. Extract URL and method from each call (literal or variable)
 4. Match to route symbols by method + path pattern
@@ -1057,7 +1062,9 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a Java file for HTTP client calls.
 
     Detects two families of Java HTTP clients:
-    - Spring RestTemplate: restTemplate.getForObject/postForEntity/exchange/delete/put
+    - Spring RestTemplate: restTemplate.getForObject/getForEntity/postForObject/
+      postForEntity/patchForObject, plus exchange() (put/delete excluded — see
+      JAVA_REST_TEMPLATE_PATTERN)
     - Retrofit: @GET/@POST/@PUT/@DELETE/@PATCH annotations
     """
     calls: list[HttpClientCall] = []

@@ -11,12 +11,16 @@ extract:
 - Inheritance: ``extends`` / ``implements`` (edges)
 - Decorator application: ``decorated_by`` (edges)
 - TypeScript type references — type alias / interface signatures —
-  emitted as ``type_ref`` edges (refactoring blast radius)
+  emitted as ``references`` edges carrying
+  ``evidence_type="ast_type_ref"`` (refactoring blast radius). The
+  bespoke ``type_ref`` edge type was folded onto ``references``.
 
-Cross-file call edges populate ``Edge.dst_ref`` with the canonical
-``(lang, module_path, name)`` triple resolved through the per-file
-import scope's ``named_import_originals`` map, so renamed imports
-(``import { foo as bar }``) attribute to ``foo``, not ``bar``.
+UNRESOLVED cross-file call edges populate ``Edge.dst_ref`` with the
+canonical ``(lang, module_path, name)`` triple resolved through the
+per-file import scope's ``named_import_originals`` map, so renamed
+imports (``import { foo as bar }``) attribute to ``foo``, not ``bar``.
+A cross-file call that RESOLVES to a symbol in the graph carries no
+``dst_ref`` — ``dst`` already names the target.
 
 Rich Metadata (ADR-3aaa)
 ------------------------
@@ -30,7 +34,8 @@ Class and method symbols include rich metadata in their `meta` field:
 
 **Method metadata:**
 - `decorators`: List of decorator dicts with name, args, kwargs
-- `route_path`: NestJS route path if detected (legacy, also in decorators)
+  (a NestJS route path is read off the decorators for ``stable_id``
+  construction, but is NOT copied into method ``meta``)
 
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.

@@ -432,7 +432,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     """Link IPC patterns across files in a repository.
 
     Scans JavaScript/TypeScript files for IPC patterns and creates
-    message_send and message_receive edges for matching channels.
+    ``event_publishes`` edges for matching channels (the pre-fold
+    ``message_send`` / ``message_receive`` pair).
 
     Args:
         repo_root: Root directory of the repository

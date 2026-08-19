@@ -26,10 +26,14 @@ The authoritative set is the ``subcommands`` set in ``main()``.
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
 
-The `run` command orchestrates all language analyzers and cross-language
-linkers, collecting their results into a unified behavior map. Analyzers
-run independently across 100+ languages. Linkers run after all analyzers
-complete to create cross-language edges.
+The `survey` command orchestrates all language analyzers and all linkers,
+collecting their results into a unified behavior map. Analyzers run
+independently across 100+ languages. Linkers run after all analyzers
+complete, to recover edges the per-file analyzers could not see. Per
+ADR-3bbb they span four subcategories — Protocol, Bridge, Framework and
+Infrastructure — and only Bridge is language-pair; plenty of registered
+linkers (``argparse_dispatch``, ``django_orm_dispatch``, ...) recover
+edges *within* one language.
 
 Why This Design
 ---------------
@@ -10549,9 +10553,9 @@ def run_survey(
 
     # Materialize route symbols from enriched concept metadata (WI-lodik).
     # Annotation-based frameworks (JAX-RS, Spring MVC, ASP.NET) tag handler
-    # methods with concept=route but don't create kind="route" IR nodes.
+    # methods with concept=route but don't create route-marker IR nodes.
     # This step creates those nodes so the route_handler linker can produce
-    # routes_to edges.
+    # dispatches_to edges.
     from .framework_patterns import (
         expand_class_based_view_routes,
         materialize_route_symbols,

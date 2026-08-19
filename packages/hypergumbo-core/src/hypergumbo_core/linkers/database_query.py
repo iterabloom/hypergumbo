@@ -38,7 +38,8 @@ How It Works
 1. Scan source files for SQL query patterns
 2. Extract table names from each query
 3. Match to table symbols from SQL analyzer
-4. Create query_references edges linking code to schema
+4. Create ``references`` edges from the query call site to the table symbol
+   (``query_references`` was folded onto ``references`` by ADR-0023)
 
 Why This Design
 ---------------

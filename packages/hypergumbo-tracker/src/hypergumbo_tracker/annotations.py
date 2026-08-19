@@ -2,7 +2,11 @@
 """Annotation data model for TUI screenshot annotations (ADR-0020).
 
 Provides dataclasses for three annotation types (Rect, Arrow, Label) with
-tagged JSON serialization for round-tripping through discussion ops.  Also
+tagged JSON serialization. The serialization helpers (``to_dict`` /
+``annotation_from_dict``) have no production caller today — the TUI consumes
+live ``Annotation`` objects and writes the annotated SVG directly. They exist
+for the persistence path ADR-0020 describes (a JSON sidecar or an SVG
+``<metadata>`` element), which is not yet wired.  Also
 provides XML sanitization for label text before SVG injection, and a helper
 for generating screenshot paths from item IDs.
 

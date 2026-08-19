@@ -14,8 +14,12 @@ Also works for JavaScript (same core node types). Handles core patterns:
 - Expression statements (bare function calls)
 
 Complex patterns (optional chaining, spread, computed properties, JSX) are
-handled conservatively: all identifiers in unknown constructs are treated as
-uses. This covers the majority of taint-relevant data flow in TypeScript code.
+handled by recursing into the node and collecting identifiers, with two
+deliberate exclusions: names in ``_TS_SKIP_NAMES`` (globals and builtins such
+as ``console``, ``JSON``, ``Promise``, ``parseInt``) never become uses, and
+the callee of a plain call is not a use — in ``foo(a)``, ``a`` is a use and
+``foo`` is not. This covers the majority of taint-relevant data flow in
+TypeScript code.
 """
 from __future__ import annotations
 

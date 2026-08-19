@@ -20,7 +20,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, structs, protocols, enums with signatures
-2. Pass 2: Extract call edges and import edges using NameResolver
+2. Pass 2: Extract call, import and ``references`` edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction
@@ -37,7 +37,10 @@ Why This Design
 Population of ``is_exported`` follows Swift's default-internal rule: a
 declaration is exported only when its modifier list contains ``public`` or
 ``open``; ``internal`` (the implicit default), ``fileprivate``, and
-``private`` items are not exported.
+``private`` items are not exported. Three emitters are exempt and set
+``is_exported=True`` unconditionally, because the construct carries no
+modifier list of its own: enum cases, protocol requirements, and the
+route-marker symbols added in ``post_process``.
 """
 from __future__ import annotations
 

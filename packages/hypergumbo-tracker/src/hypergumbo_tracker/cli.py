@@ -5,7 +5,8 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~29 subcommands (add, update, list, show, ready,
+- main(): Primary CLI with 40 top-level subcommands. Partial list
+  (add, update, list, show, ready,
   log, discuss, deps, lock, unlock, freeze, unfreeze, repair-drift, promote,
   demote, stealth, unstealth, validate, count-todos, hash-todos, guidance,
   check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
