@@ -1,0 +1,50 @@
+Original commit body from bc9405c89cc41fbf7bb3ccf3939782ad8ec7ef1f:
+
+Third docstring-staleness audit. The co-change scan flagged 45 files (the
+15 the previous audit fixed are absent — their docstrings were touched,
+which reset the blame floor); 41 carried real drift.
+
+The dominant family is edge-type and symbol-kind names retired by the
+ADR-0023 §6 and ADR-0027 folds but still documented as live. Each was
+verified by grepping the name repo-wide and finding it ONLY in the
+docstring claiming it:
+
+  registers_routes, contains_routes  -> references / contains (+meta)
+  query_references, links_to, type_ref -> references
+  message_publish/_subscribe/_send/_receive -> event_publishes
+  routes_to, invokes_callback        -> dispatches_to
+  kind="route"                       -> kind="function" + framework_role
+
+The message-queue linker emits no subscribe-direction edge at all, so
+those arrows named an edge type that never existed.
+
+Fixing the flagged files exposed the rest of the family in files the
+co-change scan STRUCTURALLY CANNOT flag — their docstrings never aged
+relative to their bodies. Found by grepping the retired names instead:
+route_handler, ipc, phoenix_ipc, controller_routes, framework_patterns,
+ruby, cli, axis_meta_keys. The last was not confined to a comment: its
+`topic` spec feeds generate-schema, so the retired pair was published to
+JSON consumers in docs/schema.json. Regenerated.
+
+Individually notable:
+- sketch.py carried six false claims, incl. Header/Overview contents
+  described inverted, require_sections documented as "fail loudly" when
+  it force-INCLUDES and raises nothing, and an optional tiktoken
+  dependency that occurs nowhere in the repo outside that sentence.
+- py.py stated the OPPOSITE of the shipped stable_id contract: "survives
+  renames and moves" against a v6 tuple folding name, qualified_name and
+  the file-anchored containing_stable_id (ADR-0035 §2 / INV-zudob).
+- io_boundary.match_edge_to_primitive and tracker/annotations.to_dict are
+  both documented as the way in, and both have no production caller.
+- verify_claims.py never gained its fourth verdict
+  (confirmed_with_caveats, exit 3).
+- tracker/setup.py called three repo-mutating checks "Read-only /
+  advisory only"; one writes AGENTS.md.
+
+Method note: blame-based co-change cannot find this defect class. A
+name-exact cross-reference of docstring text against the live edge-type
+and symbol-kind registries would find all of it in one pass.
+
+Docs-only. 18135 passed, 100% coverage, mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
