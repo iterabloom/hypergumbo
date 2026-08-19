@@ -2384,9 +2384,9 @@ class Store:
                 warnings.warn(
                     f"{new_id} is similar to existing {existing_id} "
                     f"(SimHash distance: {distance} bits). "
-                    f"Creating anyway. Use 'update {new_id} --duplicate-of {existing_id}' "
-                    f"to mark as duplicate, or 'update {new_id} --not-duplicate-of "
-                    f"{existing_id}' to suppress.",
+                    f"Creating anyway. Use 'update {new_id} --add-duplicate-of "
+                    f"{existing_id}' to mark as duplicate, or 'update {new_id} "
+                    f"--add-not-duplicate-of {existing_id}' to suppress.",
                     stacklevel=3,
                 )
 
