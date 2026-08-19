@@ -1,0 +1,43 @@
+Original commit body from 5e098fe3e945de29c96a26d21c322f56f16af9d4:
+
+The staleness audit's C-class half. Where the A+B+D pass (#414) deleted
+false claims, this one supplies missing ones — silent omissions, which
+need new prose rather than a deletion.
+
+Largest:
+- analyze/base.py listed the dataclasses and helpers but not
+  TreeSitterAnalyzer — its own title subject, 29% of the file, ~105
+  subclasses — so the module read as a utility bag rather than the base
+  class every analyzer inherits two-pass orchestration from. Also adds
+  the stable-identity layer and the memory-pressure guard.
+- hypergumbo_tracker/__init__.py described 6 of 33 modules and read as
+  storage-plus-CLI, omitting the TUI, the WebAuthn/duress web server,
+  auto-sync, the op journal, the stop hook and embedding dedup.
+- verify_claims.py gained extra_catalogs / analysis_scope, the taint
+  vocabulary gate, and the three caveat kinds.
+- io_boundary.py retitled to what it owns: overlays, mode
+  discrimination, opacity, the tagging pass, the versioned map.
+
+Ten analyzers stop under-reporting emitted symbol kinds and edge
+families. Several gain the rule that makes their output trustworthy
+rather than merely present: Haskell's short-name confidence penalty,
+Erlang's multi-clause coalescing, Lua's INV-fahub deliberate
+withholding, Racket's synthetic unresolved target.
+
+RESIDUE FROM #414 — its sweep was NOT complete, and I said it was.
+The verifying grep there ran through `head`, so the count of 9 files
+was an artifact of my own truncated command. 21 further stale mentions
+of routes_to / invokes_callback / kind="route" survived across 13
+files. Re-verified against the live registries this time:
+  - `route` is absent from symbol_kinds.py
+  - ZERO producers construct kind="route" (all 12 callers go through
+    make_route_symbol, which returns kind="function")
+  - every consumer already tests meta.framework_role
+So the code was correct throughout; only the comments lied. No dead
+branch, no live bug. One comment claimed the route kind "matches
+rails.yaml symbol_kind pattern" — rails.yaml matches ^class$, and no
+YAML matches on a route kind, so it was wrong twice over.
+
+Docs-only. 20126 passed, 100% coverage on changed files, ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
