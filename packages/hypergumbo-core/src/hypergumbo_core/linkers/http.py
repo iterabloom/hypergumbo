@@ -3,7 +3,14 @@
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
 requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
-Retrofit) and links them to server route handlers detected by language analyzers.
+Retrofit, and Elm's ``Http`` module) and links them to server route handlers
+detected by language analyzers.
+
+Two URL shapes get special handling beyond the literal case. JS/TS template
+literals are folded to a comparable path before matching, so
+``fetch(`/api/users/${id}`)`` lines up with a server route carrying a path
+parameter. And a URL that resolves only to a variable falls back to prefix
+matching against known routes rather than being dropped.
 
 Detected Client Patterns
 ------------------------
@@ -1371,7 +1378,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
     Args:
         root: Repository root path.
-        route_symbols: Route symbols from language analyzers (kind="route").
+        route_symbols: Route-marker symbols from language analyzers.
 
     Returns:
         HttpLinkResult with edges linking clients to servers.

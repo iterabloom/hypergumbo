@@ -6,8 +6,15 @@ This analyzer uses tree-sitter to parse Haskell files and extract:
 - Data type definitions (including records)
 - Type class definitions
 - Instance declarations
-- Import statements
-- Function call relationships (including external edges for I/O boundary matching)
+- Import statements, and the module's export list — parsed into a tri-state
+  that drives ``is_exported`` (an explicit list, an open module, or absent),
+  with an instance following the visibility of its class
+- Function call relationships (including external edges for I/O boundary
+  matching). Confidence is fixed at 0.85 resolved / 0.50 external, then
+  damped hard for very short callee names (1-char x 0.15, 2-char x 0.50) —
+  single-letter Haskell binders would otherwise dominate the call graph
+  with false resolutions
+- ``implements`` edges from a typeclass instance to its class
 
 If tree-sitter with Haskell support is not installed, the analyzer
 gracefully degrades and returns an empty result.

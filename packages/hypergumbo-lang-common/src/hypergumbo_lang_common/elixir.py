@@ -429,7 +429,8 @@ def _extract_phoenix_routes(
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
-        Symbols have kind="route" which enables route-handler linking.
+        Symbols are route markers (kind="function" +
+        meta.framework_role="route"), which enables route-handler linking.
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []

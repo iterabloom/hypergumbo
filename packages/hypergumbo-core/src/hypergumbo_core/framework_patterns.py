@@ -1869,7 +1869,7 @@ def materialize_route_symbols(
     new_route_symbols: list[SymbolCls] = []
     seen_routes: set[str] = set()  # Dedupe by (method, path)
 
-    # WI-tizad: also dedupe against analyzer-emitted kind="route" symbols.
+    # WI-tizad: also dedupe against analyzer-emitted route-marker symbols.
     # Django's urls.py analyzer creates routes at the URL registration site
     # (e.g. `path("/users/", UsersView.as_view())`) AND the view class's
     # get/post methods get concept=route via framework enrichment. Without

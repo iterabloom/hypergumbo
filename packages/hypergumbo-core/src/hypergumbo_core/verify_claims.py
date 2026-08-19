@@ -6,7 +6,20 @@ boundary map (ADR-0016) or taint-flow results (ADR-0017), and returns verdicts.
 
 Claim Format
 ------------
-Claims are YAML files with a ``claims`` list. Each claim specifies:
+A claims file has three permitted top-level keys (``_ALLOWED_TOP_LEVEL_KEYS``):
+
+- ``claims``: the claim list, described below.
+- ``extra_catalogs``: project-local taint/IO catalogue paths (``sources``,
+  ``sinks``, ``sanitizers``, ``io_primitives``) that travel with the
+  repository. Relative paths resolve against the claims-file directory.
+  Loaded by ``load_extra_catalog_paths``.
+- ``analysis_scope``: opt-in denominator narrowing. ``shipped_artifact``
+  restricts nodes and edges to the packaged source roots derived from
+  ``pyproject.toml`` files, so repo tooling does not have to be adjudicated
+  to prove a claim about the shipped artifact. Loaded by
+  ``load_analysis_scope`` / ``shipped_artifact_roots``.
+
+Each claim in ``claims`` specifies:
 
 - ``id``: Unique identifier (e.g., SC-001)
 - ``text``: Human-readable description of the security property
@@ -56,6 +69,30 @@ Load-time validation
 shape, an unknown field name, or a ``constraint.boundary`` outside the
 io-boundaries vocabulary each raise :class:`ClaimsFileError` (→ CLI exit 2)
 rather than tracebacking or silently producing a degraded verdict stream.
+``validate_taint_flow_vocabulary`` extends the same discipline to the taint
+half (INV-todas): an unresolvable ``source_taint`` or ``prohibited_sink_zone``
+raises rather than producing a claim that can never match anything and would
+therefore report clean.
+
+Caveats
+-------
+A ``confirmed_with_caveats`` verdict carries a structured ``caveats`` list,
+built through one shared constructor so the text and JSON renderers disclose
+identically. Three kinds exist:
+
+- ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
+  sanitizer declared by the analysed repository rather than the shipped
+  catalogue. A shipped-catalogue sanitizer earns plain ``confirmed``.
+- ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose callee cannot be
+  resolved. This qualifies the verdict only when opacity is the *sole*
+  remaining blocker; beside an uncatalogued module the verdict stays
+  ``inconclusive``, because the reader could not tell which gap produced
+  the silence.
+- ``CAVEAT_DISPLACED_SHIPPED_ENTRY`` — a repo-supplied catalogue row
+  replaced a shipped row, so the analysis ran against a catalogue the
+  repository itself controls.
+
+A verdict may carry more than one kind at once.
 
 How It Works
 ------------

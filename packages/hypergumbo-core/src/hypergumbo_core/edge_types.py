@@ -9,6 +9,14 @@ endpoint nodes themselves rather than smuggled into the type label.
 This module is the single source of truth: ``scripts/generate-schema``
 imports ``EDGE_TYPES`` to emit both the JSON Schema enum and per-value
 axis annotations (under the ``x-axis-of-values`` extension keyword).
+
+It also exports the meta-discriminator vocabulary consumers need once
+``edge_type`` alone stopped answering their question: ``IMPORT_EDGE_TYPES``
+and ``INHERITANCE_EDGE_TYPES`` (curated subsets), ``PROTOCOL_KINDS`` and
+``BRIDGE_KINDS`` (the ADR-3bbb linker subcategories a mechanism belongs to),
+``is_grpc_rpc_implementation`` (a predicate that reads ``meta`` because the
+fold moved the distinction there), and ``find_axis_drift`` — the linter that
+fails the build when a registry value stops matching its declared axis.
 Consumers that need a subset of edge types use the curated constants
 this module exports (``IMPORT_EDGE_TYPES``, ``INHERITANCE_EDGE_TYPES``)
 rather than their own literals; the property test in

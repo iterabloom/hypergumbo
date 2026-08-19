@@ -66,6 +66,14 @@ How It Works
 5. Create connection-handler symbols with ``kind="function"`` and
    ``meta['framework_role']='websocket_endpoint'`` (the ADR-0027 fold —
    there is no ``websocket_endpoint`` symbol kind)
+6. Bridge client to server across languages: where a client-side connection
+   URL matches a server-side endpoint path, emit a ``calls`` edge so a slice
+   started on the browser side reaches the handler that serves it
+
+URL extraction is not literal-only: a connection URL built from a template
+string or returned by a helper function is resolved to a comparable path
+before matching, which is what makes the cross-language bridge fire on real
+codebases rather than only on hardcoded strings.
 
 Why This Design
 ---------------

@@ -586,7 +586,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.framework_patterns`**: Framework pattern matching for symbol enrichment (ADR-3aaa).
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
-- **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalog loading and edge matching (ADR-0016).
+- **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
@@ -885,8 +885,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d555891ab2a9
-  commit_count: 6717
+  commit: 2b62945de410
+  commit_count: 6719
   hypergumbo: 7.0.0
   python: 3.12.3
 -->

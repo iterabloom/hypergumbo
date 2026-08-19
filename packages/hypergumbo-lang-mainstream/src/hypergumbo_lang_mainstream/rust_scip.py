@@ -18,6 +18,12 @@ span matches, and feed the same inputs rust.py uses into
 stable_id rust.py would assign the same function, provided the caller passes
 ``rel_path``; without it the file anchor is empty and parity is lost.
 
+The file anchor is ``make_file_stable_id("rust", normalize_path(rel_path))``.
+It exists because v7 folded the containing file into stable identity, so two
+identically-signed functions in different files no longer collide — which
+also means a caller that omits ``rel_path`` is not merely losing precision,
+it is computing a different id than rust.py will.
+
 Why This Design
 ---------------
 The rust-analyzer SCIP backend (WI-duzul, shipped) sees every symbol rust.py sees,

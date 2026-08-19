@@ -2186,7 +2186,7 @@ def _count_related_endpoint_kinds(
 def _route_json_record(route: Mapping[str, Any]) -> dict[str, Any]:
     """Build a structured route record for ``routes --format json`` (INV-jutuj).
 
-    Mirrors the field-extraction the text renderer does (kind="route" symbols
+    Mirrors the field-extraction the text renderer does (route-marker symbols
     carry authoritative ``meta.route_path``/``http_method``; concept-enriched
     symbols carry them under ``meta.concepts[].path``/``method``), so the JSON
     and text views agree on what each route is.
@@ -2241,7 +2241,8 @@ def cmd_routes(args: argparse.Namespace) -> int:
     from .paths import is_test_file
 
     # Find route handlers - symbols with route concepts in meta.concepts
-    # OR symbols with kind="route" (Go analyzer creates route symbols directly).
+    # OR symbols carrying meta.framework_role == "route" (analyzers emit
+    # route markers directly; the kind is "function" per the ADR-0027 fold).
     # WI-godos: tests excluded by default; --include-tests opts in.
     # The legacy --exclude-tests flag is preserved as a no-op alias for
     # backward compatibility with existing scripts.
@@ -2258,7 +2259,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
                 is_route = True
                 break
 
-        # Check 2: symbol kind (analyzers create kind="route" symbols directly)
+        # Check 2: the route marker analyzers stamp directly on the symbol
         if not is_route and (node.get("meta") or {}).get("framework_role") == "route":
             is_route = True
 
@@ -2284,7 +2285,7 @@ def cmd_routes(args: argparse.Namespace) -> int:
         meta = node.get("meta") or {}
         route_path = None
         method = None
-        # For kind="route" symbols, always use meta.route_path/http_method.
+        # For route-marker symbols, always use meta.route_path/http_method.
         # These are the authoritative values from the analyzer.  Concept
         # enrichment (Phase 3) can attach multiple concepts with different
         # methods when a handler is reused across GET/POST — using the
@@ -2382,9 +2383,9 @@ def cmd_routes(args: argparse.Namespace) -> int:
             line = span.get("start_line", 0)
             meta = route.get("meta", {}) or {}
 
-            # Extract route info from direct meta fields (kind="route" symbols
-            # from analyzers) or concept metadata (YAML pattern enrichment).
-            # kind="route" symbols use meta.route_path/http_method as the
+            # Extract route info from direct meta fields (route-marker
+            # symbols from analyzers) or concept metadata (YAML enrichment).
+            # Route markers use meta.route_path/http_method as the
             # authoritative source — concept methods can be wrong when a
             # handler is shared across multiple HTTP methods.
             route_path = None

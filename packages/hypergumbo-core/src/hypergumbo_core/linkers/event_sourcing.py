@@ -32,6 +32,16 @@ Java (Spring ApplicationEvent):
 - @EventListener on methods
 - @TransactionalEventListener
 
+Java (Guava EventBus, and framework-agnostic shapes):
+- eventBus.post(event)
+- @Subscribe on methods
+- generic emitters: fire / dispatch / notify / raise
+- generic listeners: register / addListener / subscribe / on
+
+Go:
+- channel send / receive (ch <- v, <-ch)
+- event-bus publish / subscribe calls
+
 Variable Event Detection
 ------------------------
 Event names stored in variables are detected with lower confidence (0.65 vs 0.85):

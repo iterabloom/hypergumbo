@@ -6,8 +6,12 @@ This analyzer uses tree-sitter to parse Rust files and extract:
 - Struct declarations (struct)
 - Enum declarations (enum)
 - Impl blocks and their methods
-- Trait declarations
+- Trait declarations, including bodyless trait methods (``method`` symbols)
+- Named struct fields and enum variants (``field`` symbols)
+- Module-level ``const`` / ``static`` (``variable`` symbols)
 - Function call relationships
+- ``implements`` edges for ``impl Trait for Struct``
+- ``module_attr_ref`` edges for bare path-attribute reads
 - Import relationships (use statements)
 - Axum route handlers (.route("/path", get(handler)))
 - Actix-web route handlers (#[get("/path")], #[post("/path")])
@@ -20,9 +24,21 @@ How It Works
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, structs, enums, traits with signatures and annotations;
    extract struct field types for the base-class field type registry
-2. Pass 2: Extract call edges (including self.field.method() via Strategy 1.5),
-   use edges, and Axum usage contexts
+2. Pass 2: Extract call edges through a ladder of resolution strategies
+   (1b receiver-typed, 1.5 self.field.method(), 1.8/1.9 impl- and
+   trait-scoped, 2 short-name fallback), plus ``implements`` edges,
+   ``async_spawn`` call edges for spawned closures, calls appearing only
+   inside macro bodies, ``module_attr_ref`` edges, use edges, and Axum
+   usage contexts
 3. Post-process: Extract decorated_by edges from attribute metadata
+
+Parity with the SCIP backend
+----------------------------
+Symbol ids and ``stable_id`` values emitted here must be byte-identical to
+those the ``rust-analyzer`` SCIP backend assigns the same item (WI-zakub), or
+the two backends would double-count every shared Rust symbol in a cached
+analysis. ``hypergumbo_lang_mainstream.rust_scip`` re-uses this module's own
+signature helpers to guarantee that rather than reimplementing them.
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Rust-specific extraction

@@ -5,12 +5,22 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with 40 top-level subcommands. Partial list
-  (add, update, list, show, ready,
-  log, discuss, deps, lock, unlock, freeze, unfreeze, repair-drift, promote,
-  demote, stealth, unstealth, validate, count-todos, hash-todos, guidance,
-  check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
-  fork-setup, migrate, batch, tui).
+- main(): Primary CLI with 40 top-level subcommands, grouped by what they
+  touch:
+
+  - **Items:** add, update, delete, show, list, ready, log, discuss, deps,
+    batch, rename
+  - **Field and item locking:** lock, unlock, freeze, unfreeze
+  - **Tier movement:** promote, demote, stealth, unstealth
+  - **Messages:** check-messages, delete-msg, undelete-msg, edit-msg-text
+  - **Tags:** tags (with describe / deprecate / rename subcommands)
+  - **Edit mode:** edit-mode (on / off / status) — the WI-zonur family that
+    suspends auto-sync while a human edits
+  - **Integrity and recovery:** validate, repair-drift, cache-rebuild,
+    reconcile-reset, recover
+  - **Sync and setup:** sync, init, setup, fork-setup, migrate
+  - **Surfaces:** tui, serve, textconv
+  - **Agent governance:** count-todos, hash-todos, guidance
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 

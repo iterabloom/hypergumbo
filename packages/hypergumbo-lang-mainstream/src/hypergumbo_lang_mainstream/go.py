@@ -7,10 +7,17 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Struct declarations (type X struct)
 - Interface declarations (type X interface)
 - Package-level var aliases (var Name = expr) as variable symbols
+- Struct fields and interface methods as their own symbols
+- Closure-wrapper functions (middleware), tagged ``concepts: [middleware]``
 - Function call relationships
 - Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
-- Web framework routes (Gin, Echo, Fiber, Gorilla mux)
+- ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
+  package-attribute reads, and ``references`` edges for build-tag alternatives
+- UsageContext records, including Cobra ``AddCommand`` registration
+- The module's dependency manifest, parsed from ``go.mod``
+- Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
+  go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
 
 If tree-sitter with Go support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -182,8 +189,9 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
 # Route detection produces two outputs from the same extraction pass:
 # 1. UsageContext records — matched by YAML patterns (ADR-3aaa v1.1.x) to enrich
 #    handler symbols with concept: route metadata.
-# 2. Route symbols (kind="route") — consumed by the route_handler linker to
-#    create routes_to edges. See py.py docstring for full architecture notes.
+# 2. Route-marker symbols (kind="function" + meta.framework_role="route")
+#    — consumed by the route_handler linker to create dispatches_to edges.
+#    See py.py docstring for full architecture notes.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",

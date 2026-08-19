@@ -1,8 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """TypeScript/JavaScript def/use extractor for intraprocedural dataflow (ADR-0017 §1c).
 
-Extracts variable definitions and uses from TypeScript tree-sitter AST nodes.
-Also works for JavaScript (same core node types). Handles core patterns:
+Extracts variable definitions and uses from TypeScript tree-sitter AST nodes,
+and registers the languages that consume them.
+
+JavaScript is a first-class registration here, not an incidental beneficiary:
+the extractor is registered under both ``typescript`` and ``javascript``, and
+this module registers a ``LanguageDdgSpec`` for each (``*.ts`` and ``*.js``).
+Each spec declares the function-node types the DDG walk will enter — currently
+``function_declaration`` alone, which is the scope limit that decides how much
+of a file the data-dependence graph can see.
+
+Handles core patterns:
 
 - ``const``/``let``/``var`` declarations with simple, array, and object destructuring
 - Assignment expressions (``x = expr``)

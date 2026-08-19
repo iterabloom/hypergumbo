@@ -29,7 +29,25 @@ shim cannot do on its own:
    three core shim calls (``scip_index_to_symbols``,
    ``scip_index_to_edges``, ``scip_index_to_call_edges``) with the
    parity reassignment so Slice-B's analyzer wrapper can consume a
-   single entry point.
+   single entry point. It also stamps ``run_id`` onto what it emits,
+   falling back to a locally-constructed ``AnalysisRun`` when the caller
+   supplies none (WI-higap).
+
+3. **Symbol resolution, and the deliberate dropping of external edges.**
+   The translate builds an ``id_by_scip_symbol`` map from each Symbol's
+   ``meta['scip_symbol']`` to its hypergumbo id, and passes a ``_resolve``
+   closure to both edge builders as ``resolve_symbol=``. ``_resolve``
+   returns ``None`` for a symbol outside the indexed workspace, and the
+   shims skip the edge rather than emitting it.
+
+   This is load-bearing, not an oversight. Before commit ``9266762d4b``
+   the edge builders used raw SCIP descriptor strings as endpoints, so
+   every scip edge dangled and ``finalize`` silently discarded the entire
+   scip call graph — 0 edges on zoxide, against 739 once resolution
+   landed. The residual consequence is that a Rust call into a dependency
+   or the stdlib yields no edge under this backend, where the tree-sitter
+   analyzer would emit an ``:unresolved`` one. That gap is tracked as
+   WI-gojum sub-component 1 and was parked by its owner on 2026-07-19.
 
 Why This Design
 ---------------

@@ -9,7 +9,12 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Enum declarations (enum)
 - Method declarations (inside classes/structs)
 - Computed properties and subscripts
-- Function call relationships
+- Enum cases and protocol requirements as ``field`` / member symbols
+- Stored properties (``field``) and top-level bindings (``variable``)
+- Route-marker symbols, appended in ``post_process`` once the whole file
+  set is known
+- Function call relationships, and ``references`` edges where a symbol is
+  named without being called
 - Import statements
 - Usage contexts for Vapor/Hummingbird route registrations
 
@@ -1525,7 +1530,7 @@ def _extract_vapor_usage_contexts(
     and un-tracked builder aliases fail safe (a miss, never a wrong route).
 
     Creates both UsageContext records (for framework pattern matching) and
-    route Symbol objects (kind="route") so routes appear in ``hypergumbo routes``.
+    route-marker Symbol objects so routes appear in ``hypergumbo routes``.
 
     Returns:
         Tuple of (UsageContext list, Symbol list).
