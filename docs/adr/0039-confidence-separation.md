@@ -3,7 +3,7 @@
 
 - Status: **Accepted**
 - Date: 2026-06-10
-- Supersedes: —
+- Supersedes: ADR-0005 (partial — its entrypoint-selection tables key on the composite confidence; post-implementation they read as `rank_score`-keyed)
 - Superseded by: —
 - Related: ADR-0005 (Sketch Budget Allocation — its selection tables key on the composite confidence; read them as rank_score-keyed post-implementation), ADR-0024 (Axis Declaration Template — `confidence_source` and `rank_score` are new fields whose axis declarations follow its discipline), ADR-0028 (Edge.evidence_type Names the Inference Pathway — the evidence-type registry this ADR extends with per-type confidence data), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement home for the range checks this ADR makes checkable), ADR-0037 (Edge Resolution Semantics — the `is_resolved` field that the deleted `quality.*` derivation reads). Sibling ADRs in the 2026-06-10 series: 0035 (stable-id v6), 0036 (node.id grammar v2), 0038 (access_mode contract), 0040 (evidence-field descope), 0041 (supply-chain tier purity), 0042 (survey rename).
 

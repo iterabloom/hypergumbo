@@ -3,7 +3,7 @@
 
 Date: 2026-03-15
 Updated: 2026-04-11
-Status: Accepted
+Status: Accepted — partially superseded by ADR-0038 (§4/§5 emission guidance only; the four-cell vocabulary and channel model stand — see amendment table)
 Superseded by: ADR-0038 (partial — emission guidance only; see amendment table)
 
 > **Amendment (2026-06-11):** [ADR-0038](0038-access-mode-contract.md)

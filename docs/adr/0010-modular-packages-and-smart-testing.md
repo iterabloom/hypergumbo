@@ -1,9 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0010: Modular Packages and Smart Testing
 
-## Status
-
-Implemented
+Status: Implemented
 
 ## Context
 

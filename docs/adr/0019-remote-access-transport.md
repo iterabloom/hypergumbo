@@ -1,9 +1,9 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0019: Remote Access Transport
 
 Date: 2026-03-30
 Revised: 2026-04-03 (native app replaces Orbot+Safari for Part A)
-Status: Proposed
+Status: Accepted — Part A server side IMPLEMENTED and shipped in hypergumbo-tracker v0.2.0 (2026-04-04): `htrac serve` (Starlette + uvicorn on 127.0.0.1), the WebAuthn/FIDO2 + bcrypt + duress auth stack, the BlockSuite web frontend (`packages/htrac-frontend/`), WebSocket live sync, and the Tor onion-service deployment recipe (`docs/DEPLOYMENT.md`). The Part A native iOS/macOS client is NOT in this repo. Part B (WireGuard, STUN/TURN, shared Rust core, embedded `arti`, Tauri desktop, federation) is not started
 
 ## Phasing
 

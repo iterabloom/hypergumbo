@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0034: ID-Construction Discipline
 
-- Status: **Accepted**
+- Status: **Accepted — partially superseded by ADR-0037** (the out-of-scope `:unresolved` dst blessing) **and ADR-0036** (reviewer-checklist item 5's round-trip claim); the core factory-discipline decision is in force
 - Date: 2026-06-01
 - Supersedes: —
 - Superseded by: Partially superseded by ADR-0037 (Out-of-scope `:unresolved` blessing), ADR-0036 (reviewer-checklist item 5 correction); core factory-discipline decision in force

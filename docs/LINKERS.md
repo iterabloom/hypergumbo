@@ -76,7 +76,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 57 linkers — Protocol 11, Bridge 10, Framework 29, Infrastructure 7.
+**Count:** 60 linkers — Protocol 11, Bridge 10, Framework 31, Infrastructure 8.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 

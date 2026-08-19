@@ -4,11 +4,11 @@
 - Date: 2026-05-05
 - Status: All rows RESOLVED
 - Closes: WI-nurot-lituj-ganoh-nujup-gigot-dohib-mosas-vikub (Cluster 28A audit-findings: canonical inference-pathway evidence types, ADR-0028 Phase 3)
-- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). First audit-findings doc on the `Edge.evidence_type` axis declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-not-resolution-status.md).
+- Methodology: per [ADR-0024 §"Family-audit verdict methodology"](../adr/0024-axis-declaration-template.md). Filed under the audit-findings format defined in [`docs/audits/README.md`](README.md). First audit-findings doc on the `Edge.evidence_type` axis declared by [ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md).
 
 ## Context
 
-[ADR-0028](../adr/0028-evidence-type-inference-pathway-not-resolution-status.md) declares `Edge.evidence_type` as the inference-pathway axis — the label that names *how* an edge was inferred (AST traversal, SCIP indexer evidence, naming-convention heuristic, tree-sitter pattern, framework-specific dispatch detection, etc.). Cluster 28A is the canonical seed: ~110 values whose names identify the inference pathway directly (`ast_*`, `scip_*`, `naming_convention`, `tree_sitter`, `import_*`, `module_*`, etc.) without smuggling resolution status, framework dispatch context, or call construct into the label.
+[ADR-0028](../adr/0028-evidence-type-inference-pathway-only.md) declares `Edge.evidence_type` as the inference-pathway axis — the label that names *how* an edge was inferred (AST traversal, SCIP indexer evidence, naming-convention heuristic, tree-sitter pattern, framework-specific dispatch detection, etc.). Cluster 28A is the canonical seed: ~110 values whose names identify the inference pathway directly (`ast_*`, `scip_*`, `naming_convention`, `tree_sitter`, `import_*`, `module_*`, etc.) without smuggling resolution status, framework dispatch context, or call construct into the label.
 
 ADR-0028 §"Detailed analysis: per-cluster fold targets" assigns Cluster 28A the canonical verdict at axis declaration time. This audit-findings document records the per-value verdicts so the Cluster 28A baseline is enumerated under the audit-findings format — the same posture the sibling audit-findings 0003 takes for ADR-0027's Cluster 27A.
 
@@ -910,7 +910,7 @@ verdicts:
 
 ## Related
 
-- [ADR-0028: Edge.evidence_type Names the Inference Pathway, Not Resolution Status](../adr/0028-evidence-type-inference-pathway-not-resolution-status.md) — the originating axis declaration. Cluster 28A is the canonical seed.
+- [ADR-0028: Edge.evidence_type Names the Inference Pathway, Not Resolution Status](../adr/0028-evidence-type-inference-pathway-only.md) — the originating axis declaration. Cluster 28A is the canonical seed.
 - [ADR-0027: Symbol.kind Names the Source-Language Syntactic Construct](../adr/0027-symbol-kind-language-construct-only.md) — sibling-axis ADR; Cluster 27A audit-findings 0003 carries the analogous canonical seed for `Symbol.kind`.
 - [ADR-0024: Axis Declaration Template](../adr/0024-axis-declaration-template.md) — §"Family-audit verdict methodology" defines the CANONICAL / FOLD / DEPRECATE-NO-FOLD trichotomy applied here.
 - [`docs/audits/README.md`](README.md) — format spec.

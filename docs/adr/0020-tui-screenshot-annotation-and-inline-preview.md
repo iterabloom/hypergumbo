@@ -1,8 +1,8 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0020: TUI Screenshot Annotation and Inline Preview
 
 Date: 2026-03-30
-Status: Proposed
+Status: Implemented — shipped in hypergumbo-tracker v0.2.0 (2026-04-04). Annotation mode (`S` to capture; `R`/`A`/`L` for rectangles, arrows, numbered labels; arrow-key nudge for SSH mouse drift) and inline preview live at `screenshot_save.py`, `annotations.py`, `svg_injection.py`, `svg_detection.py`, `preview.py`, `preview_pipeline.py`, `hotspot_markup.py`
 
 ## Context
 

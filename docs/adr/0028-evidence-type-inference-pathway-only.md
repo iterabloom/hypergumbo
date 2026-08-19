@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0028: Edge.evidence_type Names the Inference Pathway
 
-- Status: Accepted (Phases 1–4 complete through `SCHEMA_VERSION` 0.7.0; endpoint_shape closure shipped per Wave 8 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` per audit-findings 0008/0012/0014, including the `Edge.is_resolved: bool` sibling field at `ir.py:399`)
+- Status: Accepted — §"Sibling-field design call-out" superseded by ADR-0037 (`is_resolved` is centrally derived at edge finalization, not producer-stamped); the evidence-type axis law is in force (Phases 1–4 complete through `SCHEMA_VERSION` 0.7.0; endpoint_shape closure shipped per Wave 8 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` per audit-findings 0008/0012/0014, including the `Edge.is_resolved: bool` sibling field at `ir.py:399`)
 - Date: 2026-05-02
 - Supersedes: —
-- Superseded by: —
+- Superseded by: ADR-0037 (partial — the §"Sibling-field design call-out" producer-stamped `is_resolved` contract only; see the 2026-06-11 amendment below)
 - Related: ADR-0024 (the axis-declaration template instantiated here), ADR-0023 (the worked example whose four-phase migration shape this ADR mirrors and whose Open Question #2 explicitly anticipated this ADR), ADR-0015 (Dataflow Access Modes — the precedent for sibling fields and `meta` keys carrying per-edge structured metadata), tracker item `WI-turin-pajuk-vahuk-vaput-damoj-livif-vadob-gitob` (the deep audit whose verdict produced this ADR; the cluster taxonomy in §3 below is that audit's output), ADR-0027 (the sibling axis declaration for `Symbol.kind` surfaced by the same Adjacent Concept Sweep), [`docs/MIGRATION-6.0-CONCEPT-AXES.md`](../MIGRATION-6.0-CONCEPT-AXES.md) (per-value rename tables for JSON consumers post-closure)
 
 > **Amendment (2026-06-11):** The §"Sibling-field design call-out" below decided producer-stamped semantics for `Edge.is_resolved` (default `True`, producer marks `False` whenever the dst couldn't be resolved; open question 4's stub-edge rule). ADR-0037 (2026-06-10 design interview, ADRs 0035–0042, PR #4181) supersedes that contract: `is_resolved` is now centrally derived at edge finalization — `True` iff `dst` refers to a real in-repo symbol node — and producer stamps are advisory; the finalizer's verdict is what serializes. A fully identified external dst (e.g., `requests.get`) is therefore `is_resolved=False` with `dst_ref` populated. The evidence-type axis law this ADR decides is untouched.
