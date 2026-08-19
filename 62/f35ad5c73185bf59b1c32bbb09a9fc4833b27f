@@ -1,0 +1,47 @@
+Original commit body from aa092a823bed738939f95da74304a7ee7e1a412e:
+
+On add, a SimHash match tells you to run
+  update <ID> --duplicate-of <ID>        (to mark as duplicate)
+  update <ID> --not-duplicate-of <ID>    (to suppress)
+Neither flag is real. `update` accepts --add-duplicate-of and
+--add-not-duplicate-of, so following the warning exits with
+`unrecognized arguments`. Both suggestions were wrong, not just one.
+
+This warning is the only place most agents learn how to resolve a
+near-duplicate, so a wrong flag name there is self-defeating: it converts the
+one actionable instruction into a dead end. It had already been hit twice and
+worked around rather than fixed -- two tracker discussions record the dead end
+verbatim ("update --not-duplicate-of does not exist despite the warning naming
+it, so this note is the record"). Two agents each wrote a note explaining why
+they could not run the command, and moved on. That is a root cause surviving two
+encounters because each one was cheaper to route around than to fix.
+
+WHY THE EXISTING TEST DID NOT CATCH IT. test_similarity_warning_on_add asserts
+`pytest.warns(UserWarning, match="similar")`. Matching one word of prose cannot
+observe whether the flags the message names exist. The new guard extracts every
+--flag token from the emitted warning and asserts each is a real option of the
+LIVE `update` subparser, read off argparse rather than a hardcoded list -- so a
+future rename of either flag fails here instead of in a user's terminal. Written
+first and confirmed RED, naming both offenders:
+  AssertionError: warning suggests flags `update` does not accept:
+  ['--duplicate-of', '--not-duplicate-of']
+
+SAME DEFECT IN THE ADR. ADR-0013 carried the identical two non-existent flags in
+its illustrative warning block and in its command table, so an agent reading the
+ADR got the same broken command. Both corrected. The illustration also promised
+output the warning has never emitted (a `title overlap:` percentage and a
+`tracker show` suggestion); it now matches the text actually produced. And the
+paragraph above it claimed the store warns at 13 bits while validation uses 8 --
+both are 8, pinned equal by test_simhash_threshold_is_unified_with_validation,
+so the stale claim is corrected rather than left standing next to the edit.
+
+Checked and NOT changed: validation.py's near-duplicate warning suggests no
+flags at all, so it has nothing to get wrong. The only remaining references to
+the bad flag names are in two historical .ops records, which correctly describe
+what was true when they were written.
+
+Verified: the suggested commands now parse against the live parser (both
+--add-duplicate-of and --add-not-duplicate-of accepted); 2424 passed, 4 skipped,
+mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
