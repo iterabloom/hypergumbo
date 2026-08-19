@@ -411,6 +411,27 @@ def extract_module_docstring(file_path: Path) -> str | None:
         return None
 
 
+def _registers_a_linker(py_file: Path) -> bool:
+    """True when a ``linkers/`` module carries a ``@register_linker``.
+
+    The module inventory skips underscore-prefixed files because private
+    helpers (``_concept_utils``, ``_text_filters``, ``_view_template_core``)
+    are not linkers and counting them would inflate the catalogue. But the
+    underscore is a naming convention, not a registration fact, and one
+    module is both: ``linkers/_third_party_bases.py`` registers
+    ``django-third-party-dispatch-linker``.
+
+    Deciding on the decorator instead of the filename closes the class.
+    Before this, an underscore-named linker was skipped outright, so the
+    ADR-3bbb Uncategorized counter could flag it neither way — the
+    enforcement promise had a hole exactly the shape of this file, and the
+    generated count read 60 against a registry of 61.
+    """
+    if py_file.parent.name != "linkers":
+        return False
+    return "@register_linker" in py_file.read_text(encoding="utf-8")
+
+
 def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
     """Categorize modules into logical groups with docstrings."""
     categories: dict[str, list[tuple[str, str | None]]] = {
@@ -436,8 +457,15 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
             continue
 
         for py_file in sorted(src_root.rglob("*.py")):
-            # Skip private modules except __init__.py and __main__.py
-            if py_file.name.startswith("_") and py_file.name not in {"__init__.py", "__main__.py"}:
+            # Skip private modules except __init__.py, __main__.py, and any
+            # module that actually registers a linker (see
+            # _registers_a_linker for why the underscore alone cannot decide
+            # this).
+            if (
+                py_file.name.startswith("_")
+                and py_file.name not in {"__init__.py", "__main__.py"}
+                and not _registers_a_linker(py_file)
+            ):
                 continue
 
             rel_path = py_file.relative_to(src_root)

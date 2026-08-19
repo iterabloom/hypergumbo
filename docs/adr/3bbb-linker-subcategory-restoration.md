@@ -2,7 +2,9 @@
 # ADR-3bbb: Linker Subcategory Restoration (extends ADR-3aaa §2.4)
 
 Date: 2026-04-16
-Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-3aaa/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules present at rollout declared their subcategory; the catalogue has since grown to 60, and the invariant is carried forward mechanically — the `generate-architecture` Uncategorized counter is 0 and will surface any future regression.
+Supersedes: ADR-3aaa (partial — §2.4's subcategory vocabulary only; the rest of ADR-3aaa is supplemented, not replaced — see "Supplements" below)
+Superseded by: —
+Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-3aaa/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules present at rollout declared their subcategory; the catalogue has since grown to 61, and the invariant is carried forward mechanically — the `generate-architecture` Uncategorized counter is 0 and will surface any future regression. That counter had a blind spot until 2026-08-19: the module scan skipped every underscore-prefixed filename, so `linkers/_third_party_bases.py` — which registers `django-third-party-dispatch-linker` — could be flagged neither categorized nor Uncategorized, and the generated count read 60 against a registry of 61. The scan now decides on the presence of `@register_linker` rather than on the filename, so an underscore-named linker is counted and subcategory-checked like any other.
 
 ## Supplements
 
