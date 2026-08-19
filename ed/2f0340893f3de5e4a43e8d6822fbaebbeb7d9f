@@ -1,0 +1,77 @@
+Original commit body from 70e69e41e8dab092878e441fb7ac5cf41fe91eec:
+
+The decisions were sound: no two ADRs rule opposite ways on the same
+question, and no spec passage contradicts an ADR's actual ruling. What had
+drifted was the status-and-count layer, and the split is diagnostic — the
+two artefacts that self-generate (ARCHITECTURE.md) or self-enforce (the
+Uncategorized counter) were correct; every hand-maintained number was not.
+
+SPEC — the one that can bite a user today. §14 taught `status: complete`
+for io_primitives catalogues. `_validate_catalog_dict` REFUSES that value
+at load (INV-titih: the word asserted coverage nothing checked; python.yaml
+read `complete` from May 2026 while holding no row for os.open/os.write).
+A reader following the spec wrote a catalogue that could not load. The live
+vocabulary is documented instead — `provenance_declared` (a citation claim;
+coverage lives in module_completeness) or `in_progress` — with the correct
+census: 15 catalogues, 3 provenance_declared, 12 in_progress. The old census
+claimed 3 `complete` (there are none) and listed 11 of 12 in_progress (bash
+missing). docs/MIGRATION-IO-BOUNDARIES.md had it right; the spec had been
+contradicting a sibling doc.
+
+SPEC — undisclosed code execution. rust-analyzer executes build.rs. The
+package __init__.py carries the SAFETY note and the CLI warns at runtime;
+nothing in docs/ did, while §4, the env-var table and §20 all presented
+`--backend rust-analyzer` as a pure quality upgrade. Disclosed at all three
+opt-in sites: this is the one pass that executes analysed code.
+
+SPEC — numbers re-anchored to their constants. schema_version 0.14.4 ->
+0.20.1 (stale since 2026-06-30, six minor versions, two sites).
+VERIFY_CLAIMS_SCHEMA_VERSION 1.8 -> 2.0. dead-code-maybe moved out of the
+shared READ_VIEW_SCHEMA_VERSION list: it promoted to its own
+DEAD_CODE_MAYBE_SCHEMA_VERSION (0.2.0) — the promotion Appendix C predicted
+in writing and then missed. evidence_type axis split 114/11 -> 115/10 (the
+total, 125, stayed correct, which is why it hid). Linkers 57 -> 60 in the
+spec and LINKERS.md, matching the generator's P11/B10/F31/I8.
+
+SPEC — a claim naming two languages the code does not reach. §14 credited
+WI-vipur's scoped-path traversal to "Rust, C++, Groovy, Kotlin".
+emit_module_attribute_refs is wired into six analyzers (c, cpp, go, java,
+js_ts, rust) and the helper's own docstring names only Rust and C++. Groovy
+and Kotlin never call it, so their module-attribute reads — and the env_read
+taint sources those would carry — are ABSENT, NOT EMPTY. Stated as a
+disclosed gap rather than deleted.
+
+ADRs — brought back under docs/adr/README.md's own lifecycle law, which says
+a grep of the status line must not lie and that supersession is symmetric
+and by-number. It was lying in eleven places.
+
+  * ADR-0019 and ADR-0020 read `Status: Proposed` for work shipped in
+    tracker v0.2.0 on 2026-04-04. 0019 now also records what did NOT ship
+    (native iOS/macOS client absent; Part B not started) rather than
+    rounding "Part A" up to done.
+  * ADR-0028's `Superseded by:` read `—` though ADR-0037 names it; ADR-0039
+    carried no `Supersedes:` though ADR-0005 names it as its superseder.
+    Both endpoints now name each other.
+  * 0014/0015/0028/0034 recorded partial supersession only on a
+    `Superseded by:` line while the greppable `Status:` said bare
+    "Accepted". The status lines now carry it.
+  * Six ADRs used a `## Status` heading or no status line (0010, 0011,
+    0012, 3ccc, and the 0025/0026 stubs, which gain the
+    `Status: Reclassified -> <path>` form the README defines). All 46 now
+    parse from one greppable line.
+  * README index re-synced where it trailed its own ADRs: 0023's §6 fold
+    completed 2026-07-21 (indexed "in progress"); 0037's ruling 4 landed
+    2026-07-02 (indexed "deferred").
+  * ADR-3bbb asserted "all 45 linker modules" in the present tense against
+    a catalogue now at 60 — reworded so the invariant carries forward while
+    the rollout-era count stays historical.
+
+AUDITS — two broken relative links: 0004 pointed at a pre-rename ADR-0028
+filename; 0009 misspelled the fundamental-concept-audit playbook path.
+
+Verification: every corrected number is re-asserted against the live
+constant/registry/catalogue, not against prose. Link scan over spec + all
+47 ADRs + all 18 audits is clean. All 46 ADRs parse a top-of-file Status.
+Doc-asserting tests: 761 passed. mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
