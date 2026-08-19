@@ -20,6 +20,10 @@ How It Works
    kind) — carrying ``meta.route_path``, ``meta.http_method``, and
    ``meta.controller_action`` so the route handler linker can wire them
    to Scala controller methods.
+4. Mints a second marker for each module-include line, carrying
+   ``meta.framework_role='route_include'`` with ``meta.route_prefix`` and
+   ``meta.module_ref``, so a prefix-mounted sub-router is a node in its own
+   right rather than vanishing from the route table.
 
 Why Line-by-Line
 ----------------
@@ -104,7 +108,7 @@ def parse_play_routes(
 
     Returns:
         Tuple of (route_symbols, edges). Edges are empty for now;
-        the route_handler linker creates routes_to edges later.
+        the route_handler linker creates dispatches_to edges later.
     """
     symbols: list[Symbol] = []
     edges: list[Edge] = []

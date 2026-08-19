@@ -53,6 +53,17 @@ When the Go analyzer creates unresolved edges to gRPC registration functions
    ``is_resolved=False`` — the linker supplies a destination, not a proof
    that the callee was resolved by name binding.
 
+Also emitted, beyond the numbered flow above:
+
+- ``dispatches_to`` from a servicer or server registration to the proto
+  service it implements, bridging the two components.
+- ``calls`` edges under the WI-ropoz fallback, for a client stub whose
+  servicer is absent from the repository — the alternative was emitting
+  nothing and reporting a clean graph.
+- ``implements`` edges from a Go method to the proto route it satisfies.
+- ttrpc ``Register*Service`` registrations alongside gRPC's
+  ``Register*Server``.
+
 Why This Design
 ---------------
 - Regex-based detection is fast and language-agnostic
@@ -97,7 +108,7 @@ class GrpcPattern:
     file_path: str  # Source file path
     language: str  # Source language
     # Proto package (only set on type='service' patterns from .proto files).
-    # Used by the routes_to lookup to disambiguate cross-package short-name
+    # Used by the route->service lookup to disambiguate cross-package short-name
     # collisions per WI-patiz (INV-zuhub item 1).
     package: str = ""
 
@@ -209,7 +220,7 @@ def _scan_proto_file(
     ``GrpcPattern`` entries for each ``service`` block.  The *rpc_defs* list
     contains one ``ProtoRpcDef`` per ``rpc`` method, including the enclosing
     service name and the proto package.  These are used downstream to
-    materialise ``kind="route"`` symbols whose path mirrors the real
+    materialise route-marker symbols whose path mirrors the real
     HTTP/2 wire path ``/<package>.<ServiceName>/<MethodName>``.
     """
     patterns: list[GrpcPattern] = []
@@ -727,7 +738,7 @@ def link_grpc(
         )
         sym_meta: dict[str, object] = {"framework_role": framework_role}
         # WI-patiz: grpc_service symbols carry proto_package so the
-        # routes_to lookup can disambiguate cross-package short-name
+        # route->service lookup can disambiguate cross-package short-name
         # collisions at precision when each RPC's package picks out a
         # unique service candidate. Non-proto patterns (Go/Python/Java
         # impl-side) carry no package — their disambiguation must rely
@@ -864,7 +875,7 @@ def link_grpc(
 
     # Create route symbols for proto RPC definitions.
     # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
-    # Build a lookup for service symbols to create routes_to edges.
+    # Build a lookup for service symbols to create dispatches_to edges.
     # WI-patiz (INV-zuhub item 1): multi-value index. Two .proto files
     # in different packages can each declare ``service Foo`` — pre-fix
     # single-value dict overwrote silently and pointed every cross-
@@ -959,7 +970,7 @@ def link_grpc(
         route_id = route_sym.id
         symbols.append(route_sym)
 
-        # Create routes_to edge from route to the service symbol.
+        # Create dispatches_to edge from route to the service symbol.
         # WI-patiz: when multiple .proto files declare the same service
         # short name across packages, prefer the candidate whose
         # ``meta["proto_package"]`` matches this RPC's package. A

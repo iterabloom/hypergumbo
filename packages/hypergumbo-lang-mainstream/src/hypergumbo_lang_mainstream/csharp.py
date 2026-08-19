@@ -9,9 +9,15 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Method declarations (inside classes/structs)
 - Constructor declarations
 - Property declarations
+- Field declarations, one ``field`` symbol per declarator (WI-jusus)
+- Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
 - Function call relationships (including chained field type resolution)
+- ``decorated_by`` edges from C# attributes
+- ``references`` edges for method-group references (a method named as a
+  value rather than invoked), tagged ``meta.call_construct="method_group"``
 - Using directives (imports)
 - Object instantiation
+- ADR-0015 dataflow annotation on the emitted edges
 
 If tree-sitter with C# support is not installed, the analyzer
 gracefully degrades and returns an empty result.

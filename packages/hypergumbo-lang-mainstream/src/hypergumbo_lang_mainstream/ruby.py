@@ -907,7 +907,7 @@ def _extract_rails_routes(
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
-        Symbols have kind="route" which matches rails.yaml symbol_kind pattern.
+        Symbols are route markers carrying meta.framework_role="route".
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
@@ -1110,7 +1110,7 @@ def _extract_rails_routes(
         )
         contexts.append(ctx)
 
-        # Create route Symbol(s) (kind="route" matches rails.yaml pattern)
+        # Create route-marker Symbol(s) (meta.framework_role="route")
         # This enables route detection and entrypoint detection for Rails apps
         normalized_path = route_path if route_path.startswith("/") else f"/{route_path}"
 

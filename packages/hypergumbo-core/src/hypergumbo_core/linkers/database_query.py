@@ -37,7 +37,12 @@ How It Works
 ------------
 1. Scan source files for SQL query patterns
 2. Extract table names from each query
-3. Match to table symbols from SQL analyzer
+3. Match to table symbols from the SQL analyzer. Matching is by lowercased
+   table name, which can be ambiguous across schemas: a single candidate
+   resolves at confidence 0.85, while several candidates resolve to the
+   lowest-id candidate at confidence 0.5 with
+   ``meta['disambiguation_fallback']=True`` so the guess is visible as a
+   guess (INV-zuhub)
 4. Create ``references`` edges from the query call site to the table symbol
    (``query_references`` was folded onto ``references`` by ADR-0023)
 

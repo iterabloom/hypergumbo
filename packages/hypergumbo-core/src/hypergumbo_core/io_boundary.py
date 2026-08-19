@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""I/O boundary analysis — catalog loading and edge matching (ADR-0016).
+"""I/O boundary analysis — catalogue, matching, tagging and map (ADR-0016).
 
 Provides a per-language catalog of I/O primitive functions/methods, each
 classified by boundary type. The closed set of catalog-declarable boundary
@@ -9,6 +9,23 @@ process_send, logging, browser_storage_read/browser_storage_write); the
 synthesized ``external_potential`` and disclosed ``command_launch`` complete
 ``KNOWN_IO_BOUNDARIES``. Catalogs are YAML files in the ``io_primitives/``
 directory alongside this module.
+
+Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
+
+- **Overlays.** ``load_overlay_catalog`` merges project-local rows so a
+  repository can declare the I/O of its own third-party dependencies. Overlay
+  rows carry ``status: overlay``; the shipped catalogue stays stdlib-scoped.
+- **Mode discrimination.** A primitive can be rowed at more than one mode, so
+  a write stops classifying as a read, and a single primitive can name more
+  than one boundary at once.
+- **Opacity.** ``OPAQUE_BOUNDARIES`` / ``PRODUCER_OPAQUE_BOUNDARIES`` name the
+  boundaries whose downstream effect the analysis cannot see (a launched
+  program's own I/O), which is what ``command_launch`` discloses rather than
+  resolves. ``HIGH_RISK_PRIMITIVES`` flags the rows worth surfacing first.
+- **The boundary map.** ``compute_boundary_map`` assembles the wire artifact
+  versioned by ``IO_BOUNDARIES_SCHEMA_VERSION``, with ``compute_leaf_rollups``
+  aggregating chains per leaf and ``_compute_external_potential`` synthesizing
+  the opt-in external-potential bucket.
 
 How It Works
 ------------
@@ -24,8 +41,12 @@ How It Works
    production caller — it exists for tests and ad-hoc probing. Do not reach
    for it expecting the tagger's behaviour.)
 3. The boundary-tagging pass (ADR-0016 Phase 1b) lives **in this module** —
-   ``tag_io_boundaries`` — and uses those matches to stamp ``io_boundary``,
-   ``io_primitive`` and ``io_boundaries`` metadata onto edges in the graph.
+   ``tag_io_boundaries`` — and uses those matches to stamp ``io_boundary``
+   and ``io_primitive`` onto edges in the graph, plus ``io_boundaries``
+   (plural) when one primitive crosses several boundaries at once.
+4. ``compute_boundary_map`` walks the tagged graph back to each reachable
+   caller, producing the chains the ``io-boundaries`` command prints and
+   ``verify-claims`` adjudicates.
 
 Why YAML Catalogs
 -----------------

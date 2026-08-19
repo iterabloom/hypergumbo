@@ -18,13 +18,18 @@ Kafka:
 - consumer.subscribe(['topic']) -> subscriber
 - @KafkaListener(topics="topic") -> subscriber (Java/Spring)
 
+Kafka (Java/Spring):
+- kafkaTemplate.send('topic', msg) -> publisher
+
 RabbitMQ:
 - channel.basic_publish(exchange, routing_key, body) -> publisher
 - channel.basic_consume(queue, callback) -> subscriber
+- channel.sendToQueue(queue, msg) / channel.consume(queue, cb) -> JS amqplib
 
 AWS SQS:
 - sqs.send_message(QueueUrl=..., MessageBody=...) -> publisher
 - sqs.receive_message(QueueUrl=...) -> subscriber
+- .sendMessage(...) / .receiveMessage(...) -> JS AWS SDK
 
 Redis Pub/Sub:
 - redis.publish(channel, message) -> publisher

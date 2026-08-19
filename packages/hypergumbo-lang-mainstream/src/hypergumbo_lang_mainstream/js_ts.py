@@ -3,7 +3,13 @@
 
 This analyzer uses tree-sitter to parse JS/TS/Svelte/Vue files and
 extract:
-- Function and class declarations (symbols)
+- Function and class declarations (symbols), plus anonymous callbacks and
+  IIFEs so a handler passed inline is still a node
+- TypeScript-only declarations as their own kinds: ``interface``, ``type``,
+  ``enum``, and the members of interfaces and enums
+- ``field`` symbols for class properties and ``variable`` for module-level
+  bindings
+- One ``file`` symbol per module, anchoring top-level calls
 - Import/require statements (edges)
 - Function call relationships (edges)
 - Method call relationships (edges)

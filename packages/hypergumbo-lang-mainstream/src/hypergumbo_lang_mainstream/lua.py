@@ -7,6 +7,9 @@ This analyzer uses tree-sitter to parse Lua files and extract:
 - Function call relationships (direct, dot-index, method)
 - require statements (imports) with alias tracking
 - Cross-file require-alias call resolution
+- One ``file`` symbol per module, plus per-symbol identity (``stable_id``,
+  ``shape_id``) and metrics (cyclomatic complexity, line span)
+- ADR-0015 dataflow annotation on the emitted edges
 
 If tree-sitter with Lua support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -18,7 +21,13 @@ How It Works
 3. Two-pass analysis:
    - Pass 1: Parse all files, extract symbols, build module path mapping
    - Pass 2: Detect calls and resolve via require-alias, type-based, or
-     name-based strategies (in priority order)
+     name-based strategies (in priority order). A name-based hit can be
+     *withheld*: under INV-fahub a bare call that would resolve to a
+     cross-table method by short name alone is deferred instead, emitting
+     an unresolved edge that carries ``enclosing_class`` so a later pass
+     can resolve it with more context. Unresolved edges also carry a
+     WI-nigah Tier-2 ``ExternalRef`` and ``module_hint`` when the receiver
+     is a known require-alias.
 4. Module path mapping: each file's relative path is converted to Lua
    module paths (e.g., `foo/bar.lua` -> `foo.bar`, `foo/init.lua` -> `foo`).
    This enables require-alias resolution.

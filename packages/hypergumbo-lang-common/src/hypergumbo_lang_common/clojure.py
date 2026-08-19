@@ -8,7 +8,10 @@ This analyzer uses tree-sitter to parse Clojure files and extract:
 - Macro definitions (defmacro)
 - Protocol definitions (defprotocol)
 - Record/type definitions (defrecord, deftype)
-- Multimethod definitions (defmulti)
+- Multimethod definitions (defmulti) and their implementations (defmethod,
+  emitted as ``method`` — a first-class callable kind here)
+- Per-symbol ``meta`` (visibility, and ``constructed_from`` for def forms
+  whose value is a constructor call), cyclomatic complexity and line span
 - Function call relationships
 - Require/import statements
 - UsageContext records for framework pattern matching (Ring/Compojure routes)

@@ -13,6 +13,10 @@ Analysis proceeds in two passes for cross-file resolution:
 - Extract every function and class as a symbol, at any nesting depth
   (INV-mofav — nested and closure-local defs are emitted too)
 - Extract methods nested inside classes
+- Emit the non-callable symbol kinds too: ``variable`` (module-level and
+  class-level assignments), ``field`` (dataclass / annotated attributes),
+  ``file`` (one per module, the anchor top-level calls attribute to), and
+  route markers (``kind="function"`` + ``meta.framework_role="route"``)
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
 - Extract rich metadata (decorators, base classes, parameters) per ADR-3aaa
@@ -31,13 +35,23 @@ Detected Patterns
 - Function calls: helper(), module.func()
 - Method calls: self.method(), obj.method(), self.field.method()
 - Class instantiation: ClassName()
+- Inheritance: ``extends`` edges from a class to its bases
+- Decorators: ``decorated_by`` edges from the decorated symbol to the decorator
+- Framework dispatch: ``dispatches_to`` edges (argparse ``set_defaults(func=)``)
+- Bare references: ``references`` edges where a symbol is named but not called
 - Module attribute reads: os.environ, sys.argv, sys.path — bare
   (non-called) ``imported_module.attribute`` accesses. Emits
   ``module_attr_ref`` edges so IO-primitive catalog ``attributes:``
   entries become reachable by ``io-boundaries`` (WI-guhok).
 - Imports: from X import Y, import X
 - Django URL patterns: path(), re_path(), url() calls in urls.py
-- Flask URL rules: app.add_url_rule() calls
+- Flask / FastAPI / flask-restful URL rules: the call-based registration
+  family in ``FLASK_URL_FUNCTIONS`` — ``add_url_rule``, ``add_api_route``,
+  ``add_resource``
+- Starlette routes: ``Route(...)`` / ``WebSocketRoute(...)`` constructor calls,
+  which are constructor-shaped rather than method-shaped and so take their own
+  extraction path (``_extract_starlette_usage_contexts``)
+- Django ORM I/O: queryset and manager calls routed to db_read / db_write
 
 Route Detection Architecture
 -----------------------------
@@ -48,9 +62,11 @@ outputs that serve different downstream consumers:
    flask.yaml) to enrich *handler* symbols with ``concept: route`` metadata.
    This lets the enrichment layer tag view functions as route handlers.
 
-2. **Route symbols** (``kind="route"``) — consumed by the ``route_handler``
-   linker to create ``routes_to`` edges from route entities to handler symbols.
-   These are first-class nodes in the IR representing the route itself.
+2. **Route-marker symbols** — ``kind="function"`` with
+   ``meta.framework_role="route"`` (the ADR-0027 Phase-3 fold; there is no
+   ``route`` symbol kind), consumed by the ``route_handler`` linker to create
+   ``dispatches_to`` edges from route entities to handler symbols. These are
+   first-class nodes in the IR representing the route itself.
 
 Both are derived from the same extraction pass (_extract_django_usage_contexts,
 _extract_flask_usage_contexts). Route symbols are created from the UsageContext
@@ -2920,7 +2936,7 @@ def _extract_file_analysis(
                     # the LOGICAL make_route_stable_id(verb, class_scoped_name),
                     # which omits the file, so two same-named top-level CBVs' same
                     # verb method collided cross-file (Wave-2 gate, INV-tazaj). The
-                    # route/endpoint signal lives on the SEPARATE kind="route" nodes
+                    # route/endpoint signal lives on the SEPARATE route-marker nodes
                     # (below), never on the method's own identity.
                     # INV-bazij (Phase 6 PR3): the method's qualified name threads
                     # through name/qualified_name so two same-signature test methods
@@ -3161,8 +3177,9 @@ def _extract_file_analysis(
     # Extract usage contexts for call-based frameworks (v1.1.x).
     # UsageContext records feed into YAML-driven enrichment (concept tagging on
     # handler symbols). Route symbols are derived from the same contexts for the
-    # route_handler linker, which needs kind="route" symbols to create routes_to
-    # edges. See "Route Detection Architecture" in this module's docstring.
+    # route_handler linker, which needs route-marker symbols to create
+    # dispatches_to edges. See "Route Detection Architecture" in this
+    # module's docstring.
     usage_contexts: list[UsageContext] = []
     # Collect module-level string constants for route path resolution.
     # Enables constant propagation: path(BASE + "/users/", view) → "/api/v1/users/".
@@ -3228,7 +3245,7 @@ def _extract_file_analysis(
 
     # Create route symbols from Starlette Route/WebSocketRoute usage contexts.
     # Starlette routes are constructor calls, not method calls on app/router,
-    # so emitting kind="route" here mirrors the Django path rather than the
+    # so emitting a route marker here mirrors the Django path rather than the
     # YAML-only path used for Flask add_url_rule / FastAPI add_api_route.
     for ctx in starlette_contexts:
         route_path = ctx.metadata.get("route_path", "")

@@ -7,11 +7,30 @@ the four ``hypergumbo-lang-*`` packages.
 
 Shared Components
 -----------------
+- **TreeSitterAnalyzer**: the analyzer base class itself, and the bulk of
+  this module. It encapsulates the two-pass architecture every tree-sitter
+  analyzer follows — Pass 1 extracts symbols per file, Pass 2 resolves calls
+  and imports against the global symbol registry — plus grammar loading,
+  file discovery, graceful degradation when a grammar is unavailable, and
+  result assembly. Subclasses override the language-specific extraction
+  hooks and inherit the orchestration. ~105 analyzer modules subclass it.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
 - **Tree-sitter helpers**: node_text, find_child_by_type, find_child_by_field
-- **ID generation**: make_symbol_id, make_file_id
+- **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
+  build node ids; a separate layer builds the content-addressed
+  ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
+  construction chokepoint (ADR-0034), with typed and route-shaped variants
+  (``make_typed_stable_id``, ``make_route_stable_id``) and post-pass
+  populators that fill or widen identity once the whole symbol set is known
+  (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,
+  ``widen_route_stable_ids``, ``dedup_logical_synthetic_identities``).
+  Signature normalizers feed the typed variant so two spellings of one
+  signature hash alike.
 - **Availability checking**: is_grammar_available
+- **Memory-pressure guard**: ``_check_memory_pressure`` raises
+  ``MemoryPressureError`` rather than letting a large repo take the process
+  down mid-analysis.
 
 Why This Design
 ---------------

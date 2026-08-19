@@ -9,8 +9,15 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 - Behaviour implementations (-behaviour) with callback edges
 - Type declarations (-type). ``-spec`` is NOT extracted — no dispatch
   branch matches a spec node.
-- Function call relationships
+- Function call relationships, including synthetic edges to external
+  callees so a remote call still reaches I/O-boundary matching
 - Import statements (-import)
+
+Erlang's multi-clause functions are coalesced: consecutive ``fun_decl``
+clauses for the same name/arity become ONE symbol, with cyclomatic
+complexity summed across the clauses and the line span covering all of
+them. Emitting a symbol per clause would triple-count a idiomatic
+pattern-matched function.
 
 If tree-sitter with Erlang support is not installed, the analyzer
 gracefully degrades and returns an empty result.

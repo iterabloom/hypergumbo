@@ -4,6 +4,11 @@
 This module provides static analysis for Racket source code, extracting symbols
 (functions, variables, structs) and edges (calls).
 
+Symbols carry docstrings (extracted from the tree), cyclomatic complexity and
+line span. Calls that resolve to a known symbol get confidence 1.0; calls that
+do not are still emitted, pointed at a synthetic ``racket:unresolved:<name>``
+target at confidence 0.6, so an unresolved call is visible rather than absent.
+
 Racket is a general-purpose programming language in the Lisp/Scheme family,
 known for its language-oriented programming features. It's widely used in
 programming language research and computer science education.

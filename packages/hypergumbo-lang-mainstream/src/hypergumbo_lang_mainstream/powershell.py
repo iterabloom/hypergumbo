@@ -6,8 +6,15 @@ This analyzer uses tree-sitter to parse PowerShell files and extract:
 - Filter definitions
 - Workflow definitions (PowerShell 5.1)
 - Parameter declarations with types
-- Command/function calls
+- Command/function calls. A module-qualified cmdlet that does not resolve
+  in-repo still emits an unresolved edge carrying a structured
+  ``ExternalRef`` and ``module_hint`` (WI-nigah Tier 2), so the callee is
+  named rather than dropped
 - Module imports (Import-Module, using module)
+- One ``file`` symbol per script, which is the enclosing scope Pass 2
+  attributes top-level calls to
+- Per-symbol identity (``stable_id``, anchored on the file's own stable id)
+  and metrics (cyclomatic complexity, line span)
 
 If tree-sitter with PowerShell support is not installed, the analyzer
 gracefully degrades and returns an empty result.

@@ -1261,10 +1261,11 @@ def _detect_from_concepts(symbols: List[Symbol]) -> List[Entrypoint]:
                 added_kinds.add(EntrypointKind.CONTROLLER)
 
     # --- Pass 2: Direct route symbol detection ---
-    # Go (and potentially other analyzers) create symbols with kind="route"
-    # that carry route metadata (route_path, http_method) directly in sym.meta
-    # rather than going through YAML concept enrichment.  These symbols are
-    # found by the routes CLI command (which checks both concepts and kind)
+    # Go (and other analyzers) create route-marker symbols — kind="function"
+    # with meta.framework_role="route" per the ADR-0027 fold — that carry route
+    # metadata (route_path, http_method) directly in sym.meta rather than going
+    # through YAML concept enrichment.  These symbols are found by the routes
+    # CLI command (which checks both concepts and the framework_role marker)
     # but were missed by entrypoint detection until now.
     # Track existing route/websocket entrypoint symbol_ids to avoid duplicates.
     route_ep_ids = {

@@ -6,7 +6,7 @@
 # Starlette(routes=[...]) constructor or to Mount(...). The Python analyzer
 # emits UsageContext records for these calls (with import-scoped strict
 # matching against starlette.routing) so this YAML can attach concept=route
-# to handler symbols, complementing the kind="route" symbols emitted directly.
+# to handler symbols, complementing the route-marker symbols emitted directly.
 
 id: starlette
 language: python
