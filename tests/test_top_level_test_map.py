@@ -440,6 +440,20 @@ KNOWN_UNREACHABLE = {
     # caught after merge rather than before it. Fixing that needs the
     # declarative "covers:" marker this list keeps asking for, not a rename.
     "test_ci_failover_retired.py",
+    # Asserts ADR supersession is symmetric, per docs/adr/README.md's own
+    # lifecycle law. Its subject is docs/adr/*.md — markdown, a FOURTH category
+    # this mapper does not claim, alongside CI YAML and test helpers. No source
+    # rename can reach it, because no source change is what breaks it: editing
+    # an ADR is. Consequence stated rather than hidden by the exemption, and it
+    # is the sharp one here — smart-test writes a zero-test manifest when only
+    # docs changed, so a docs-ONLY ADR edit (the exact PR shape this guards)
+    # runs no tests at all per-PR, and the asymmetry lands in full-suite hours
+    # later instead of before merge. Closing it properly means teaching the
+    # mapper to claim docs/adr/**, and the mapper lives in .agent/hooks/_shared/
+    # — a governance file needing human approval. Filed rather than worked
+    # around: this list keeps asking for the declarative "covers:" marker, and
+    # a docs path is the case that most needs it.
+    "test_adr_supersession_symmetry.py",
     # Covers tests/_forge_github_harness.py -- a TEST HELPER, which is a third
     # category this mapper does not claim: it maps scripts/ and
     # .agent/hooks/_shared/, not tests/. Extending it to tests/_<name>.py

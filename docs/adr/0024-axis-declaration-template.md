@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0024: Axis Declaration Template for Multi-Value Fields
 
-- Status: Accepted
+- Status: Accepted — open question 1 partially superseded by ADR-0038 (which rebuilds `access_mode` under this template via a MetaKeySpec applicability matrix, retiring OQ1's leave-as-is posture); the declaration template itself is in force
 - Date: 2026-04-30 (updated 2026-05-02)
 - Supersedes: —
-- Superseded by: —
+- Superseded by: ADR-0038 (partial — open question 1 only; see the 2026-06-11 amendment below)
 - Related: ADR-0023 (the originating example), ADR-0015 (dataflow access modes — retroactively axis-shaped), [audit-findings 0001](../audits/0001-dispatch-publish-family.md) and [0002](../audits/0002-ipc-family.md) (worked-example outputs of this template's Phase 3 step)
 
 > **2026-05-02 update.** This ADR gained two sub-sections (§"Family-audit verdict methodology" and §"Fold-residue discipline"), the seven-step workflow's Phase 3 / Phase 5 outputs were redirected from "follow-on ADR" to "audit-findings document at `docs/audits/<NN>-<topic>.md`," and the enforcement and worked-example pointers were extended. The audit-findings filing path itself is documented in [`docs/audits/README.md`](../audits/README.md); the bucket-rubric (ADR vs audit-findings vs survey) lives in [`docs/adr/README.md`](README.md). Per WI-rodub-bupun-sukol-pobud-zojip-gajug-ruzop-mikol.

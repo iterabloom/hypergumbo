@@ -6,7 +6,7 @@
 
 > **Amended in place** — see the §Enforcement "Amendment — id-format:F3 partial landing (2026-06-13)" section below for the actual landed-vs-advisory enforcement state.
 
-- Supersedes: — (tightens the grammar whose factory discipline ADR-0034 established; ADR-0034 remains in force. Corrects ADR-0034's reviewer-checklist claim that a kind-slot round-trip check already existed — the shipped `id_format` gate is shape-only; Ruling 2's round-trip validator here is the actual instrument)
+- Supersedes: ADR-0034 (partial — reviewer-checklist item 5's claim that a kind-slot round-trip check already existed; the shipped `id_format` gate is shape-only, and Ruling 2's round-trip validator here is the actual instrument). This ADR tightens the grammar whose factory discipline ADR-0034 established; ADR-0034's core factory discipline remains in force.
 - Superseded by: —
 - Related: ADR-0034 (ID-Construction Discipline — the factories this grammar binds), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement substrate), ADR-0035 (stable-id v6 identity contract — the hash-identity sibling; node.id is the *location* identity, stable_id the *semantic* identity), ADR-0037 (edge resolution semantics — owns the `:unresolved` dst-suffix convention on `Edge.dst` that coordinates with Ruling 2's migration), ADR-0027 (Symbol.kind registry — the vocabulary Ruling 2 binds the kind slot to), ADR-0031 (Symbol.language reshape — `discovery_language` for synthetic stand-ins, relevant to the lang slot of synthetic IDs), ADR-0024 (axis-declaration template — governs the `meta.reference_syntax` key registration). Tracker items: see §"Tracker items".
 

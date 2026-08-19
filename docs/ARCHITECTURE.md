@@ -14,15 +14,15 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **308** Python modules (134 analyzers, 60 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 31, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
-- **40771** symbols (functions, classes, methods)
-- **143886** edges by type:
-  - calls: 75205
-  - contains: 37582
-  - imports: 12488
-  - instantiates: 10914
-  - references: 4968
-  - module_attr_ref: 1327
+- **309** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
+- **40772** symbols (functions, classes, methods)
+- **143898** edges by type:
+  - calls: 75210
+  - contains: 37583
+  - imports: 12491
+  - instantiates: 10915
+  - references: 4969
+  - module_attr_ref: 1328
   - other: 1402
 
 ## Package Architecture
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 60 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 61 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 46 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 40771 Symbols + 143886 Edges + UsageContexts           │
+│  Output: 40772 Symbols + 143898 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -103,7 +103,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  60 linkers: P11 / B10 / F31 / I8 (HTTP, JNI, gRPC, React, ...) │
+│  61 linkers: P11 / B10 / F32 / I8 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -777,6 +777,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Linkers
 
+- **`hypergumbo_core.linkers._third_party_bases`**: Framework linker: third-party Django-ecosystem base allow-list (WI-...
 - **`hypergumbo_core.linkers.airflow_framework_dispatch`**: Framework linker: Airflow class-based plugin framework dispatch (WI...
 - **`hypergumbo_core.linkers.annotation_convention`**: Protocol linker: annotation convention for developer-provided pub/s...
 - **`hypergumbo_core.linkers.argparse_dispatch`**: Framework linker: Python argparse subcommand dispatch.
@@ -885,8 +886,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 2b62945de410
-  commit_count: 6719
+  commit: ed2f0340893f
+  commit_count: 6724
   hypergumbo: 7.0.0
   python: 3.12.3
 -->
