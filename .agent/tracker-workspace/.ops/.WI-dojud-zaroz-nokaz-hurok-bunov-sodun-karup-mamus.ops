@@ -1,0 +1,36 @@
+- op: create  # fb5e
+  at: '2026-08-18T22:30:03Z'  # fb5e
+  by: agent  # fb5e
+  actor: jgstern_agent  # fb5e
+  clock: 1  # fb5e
+  nonce: fb5e  # fb5e
+  data:  # fb5e
+    kind: work_item  # fb5e
+    title: "rust-analyzer opt-in nudge fires even when the backend is enabled and running"  # fb5e
+    status: todo_hard  # fb5e
+    priority: 3  # fb5e
+    parent:  # fb5e
+    tags:  # fb5e
+    - rust_analyzer  # fb5e
+    - developer_experience  # fb5e
+    isbefore: []  # fb5e
+    duplicate_of: []  # fb5e
+    not_duplicate_of: []  # fb5e
+    pr_ref:  # fb5e
+    description: "`check_rust_analyzer_disclosure` decides between two messages on `available`\n(is the binary on PATH) alone, after a single guard on \"does this repo contain\nRust\". It never consults the opt-in gate, so on any Rust repo where the binary\nis installed it prints the \"NOT enabled\" arm regardless of whether the backend\nis enabled and running.\n\nREPRO (2026-08-18, this box, rust-analyzer at ~/.cargo/bin/rust-analyzer):\n\n    cd <a rust crate>\n    hypergumbo survey . --backend rust-analyzer --out /tmp/ra.json\n\nObserved on stderr:\n\n    UserWarning: rust-analyzer is installed but NOT enabled. It resolves Rust\n    types and call targets far more precisely than the built-in tree-sitter\n    analyzer.\n      Enable per run:  --backend rust-analyzer\n      Or by env:       HYPERGUMBO_RUST_ANALYZER=1\n\nThe backend WAS enabled and DID run in that same invocation. Positive control\nfrom the emitted artifact: /tmp/ra.json carries 2 edges of type `references`\nwith `origin == [\"scip\"]`, which only the SCIP path produces; the tree-sitter\nrun of the same crate has zero. So the message is not merely redundant, it\ncontradicts observable behaviour in the run that printed it.\n\nThe counterfactual matters for the fix: the warning is CORRECT and wanted on\nthe default (tree-sitter) run of a Rust repo with the binary present. Only the\nenabled case is wrong. A fix that suppresses the whole warning would delete a\ndeliberate disclosure -- the function's docstring is explicit that the\nbuild.rs / proc-macro execution caveat must reach the user BEFORE they opt in.\n\nEXPECTATION: when the backend is enabled for this run, either say nothing or\nsay something true (e.g. confirm it is active, with the same trust caveat).\nThe \"here is how to enable it\" arm must fire only when it is not enabled.\n\nSCOPE: cosmetic-but-corrosive. It trains users to ignore a warning whose whole\npurpose is to carry a security-relevant disclosure about executing untrusted\nbuild scripts.\n\nFound while empirically checking a stale spec claim in §\"Taint flow analysis\"\nabout the rust-analyzer backend and the (now-closed) tree-sitter Rust\nmodule_attr_ref gap."  # fb5e
+    fields: {}  # fb5e
+- op: update  # 1d88
+  at: '2026-08-18T23:22:43Z'  # 1d88
+  by: agent  # 1d88
+  actor: jgstern_agent  # 1d88
+  clock: 2  # 1d88
+  nonce: 1d88  # 1d88
+  set:  # 1d88
+    status: done  # 1d88
+- op: discuss  # cf91
+  at: '2026-08-18T23:22:43Z'  # cf91
+  by: agent  # cf91
+  actor: jgstern_agent  # cf91
+  clock: 3  # cf91
+  nonce: cf91  # cf91
+  message: "Closed by PR #413 (merged, dev@d555891ab2). Repro re-run on the MERGED tree, both arms:\n\n  $ hypergumbo survey . --backend rust-analyzer --out /tmp/ra3.json\n    \"installed but NOT enabled\" occurrences: 0   (was 1)\n    \"rust-analyzer backend ACTIVE for this run\": 1\n    scip-origin edges in the artifact: 2         (backend genuinely ran, as before)\n\n  $ hypergumbo survey . --out /tmp/ts3.json      # default path, control\n    \"installed but NOT enabled\" occurrences: 1   (unchanged -- the nudge is WANTED here)\n\nRoot cause: check_rust_analyzer_disclosure branched on `available` (binary on\nPATH) alone and never consulted the opt-in gate. It now takes an `enabled`\nargument, resolved at the call site from HYPERGUMBO_RUST_ANALYZER exactly the\nway `available` is resolved -- cli.py normalises --backend rust-analyzer into\nthat env var during argv pre-parse, so one signal covers both opt-in routes.\n\nFix shape chosen deliberately: the warning is KEPT rather than suppressed. Its\npayload is a security disclosure (indexing executes the workspace's build.rs\nand proc macros as the invoking user; the docstring records that sandboxing\nwas tried, measured, and reverted). Suppressing on the enabled path would have\ndiscarded it. The caveat now appears in every arm that speaks, and in the\nenabled arm it is phrased in the present tense because there it describes what\nis happening rather than what would happen on opt-in.\n\nDisclosed duplication: the truthy value set for the env var is authoritative in\ngate._TRUTHY_VALUES, inside the OPTIONAL rust-analyzer package, which core\ncannot import -- core must decide what to print whether or not that package is\ninstalled. Core carries a copy, pinned to the original by\ntest_enabled_truthiness_matches_the_gates_own_vocabulary so a drift fails in\nCI rather than silently in a user's terminal.\n\nCoverage: 4 new tests (enabled-suppresses, disabled-still-fires as the positive\ncontrol, caveat-survives-every-arm, no-Rust-says-nothing) plus the parity test.\n4074 passed."  # cf91
