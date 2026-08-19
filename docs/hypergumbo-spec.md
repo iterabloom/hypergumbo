@@ -273,19 +273,32 @@ class Symbol:
     display_label: Optional[str]   # human-readable label
     qualified_name: Optional[str]  # scope-qualified name
     visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
-    fingerprint: str           # 🟪 code: Optional[str] = None
+    fingerprint: Optional[str] # structural CONTENT hash: shape PLUS identifiers and
+                               # literals, whitespace/comment-invariant, tagged with
+                               # symbol_fingerprint_scheme (`hgfp2:`). None for
+                               # grammarless languages, parse errors, synthetic spans.
+                               # The raw source-byte Format-1 scheme was demolished by
+                               # ADR-0032; contrast shape_id, a strict coarsening that
+                               # strips identifiers and literals.
     kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
     name: str
     path: str
-    language: str
-    span: Span
+    language: Optional[str]    # None for ADR-0031 Class B synthetic stand-ins
+                               # (linker-minted protocol/host symbols); their host
+                               # language is in discovery_language
+    span: Optional[Span]       # nullable since SCHEMA_VERSION 0.20.1 (WI-hafap)
     origin: list[str]          # which passes contributed to this (INV-jidat; was str pre-0.10.0)
     origin_run_id: str         # references AnalysisRun.execution_id
     supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
     supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
     # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
     # into a nested supply_chain object with a derived tier_name field.
-    quality: QualityScore      # 🟪 QualityScore not defined; code: Optional[Dict[str, Any]] = None
+    quality: Optional[Dict[str, Any]]
+                               # INV-nuzal: declared-but-empty — no producer populates
+                               # it (0/N on self-analysis), and Symbol.to_dict omits
+                               # the key when None rather than emitting a null. The
+                               # sibling Edge.quality was removed outright in schema
+                               # 0.20.0 (ADR-0039 ruling 4); see §9.
 
 @dataclass
 class AnalysisRun:
@@ -821,6 +834,8 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 **signature** (string, optional — functions/methods): a human-readable *display* rendering of the parameter list and return type, e.g. `(a: int, b: str='hello') -> None`. Default values are shown verbatim (bounded per value so a pathological default cannot blow up the line — over-long or unparseable defaults render as `…`); for a rare over-length signature the parameter list is truncated with a `…)` marker while the **return type is preserved** (WI-hopiz). This display string is distinct from the structural signature that feeds `stable_id` (param count / arity flags — see [§6](#6-internal-representation)), so its width never affects identity.
 
+**cyclomatic_complexity** (integer ≥ 1 or null, key always present): McCabe cyclomatic complexity — decision points + 1 — computed by the shared `analyze/cyclomatic.py` pass for callable and class nodes. `null` when the producing analyzer does not compute it for that node, so a consumer must distinguish "not measured" from a low score rather than defaulting the key's absence. Consumed by `repeat-finder`, whose `--min-complexity` filter drops structurally-identical clusters below the threshold (a straight-line stub is not a refactoring lead) and which relies on the value being invariant across a `(language, shape_id)` cluster.
+
 **supply_chain** (object, required): Compiled from the IR's flat `supply_chain_tier` and `supply_chain_reason` fields into a nested object with an added `tier_name` field (e.g., `first_party`, `internal_dep`), computed from the numeric `tier` at serialization time. `Symbol.to_dict()` also **relocates** five top-level boolean flags into this object: `is_test_file`, `is_example_file`, `is_config_file`, and `is_generated_file` (file-role classifications, each independent of `tier`), plus `is_exported` (whether the symbol is part of the package's public API). See [§14 Supply chain classification](#14-supply-chain-classification) for tier definitions.
 
 ```json
@@ -884,11 +899,13 @@ Field semantics (`id`, `stable_id`, `shape_id`, `fingerprint`, `origin`, `qualit
 
 ### edges[] — relationships
 
-Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence` (evidence-derived detection reliability), `confidence_source`, `rank_score` (ranking prominence), provenance fields (`origin`, `origin_run_id`, `derived_from`), and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
+Each edge carries `id`, `edge_key`, `type`, `src`, `dst`, `confidence` (evidence-derived detection reliability), `confidence_source`, `rank_score` (ranking prominence), provenance fields (`origin`, `origin_run_id`, `derived_from`), `dst_ref` (structured external-target identity, present only on unresolved edges), and a `meta` object with structured evidence. See `docs/schema.json` for the full field list.
 
 **origin (INV-jidat):** `origin: list[str]` records which pass IDs contributed to this Edge (or Symbol), ordered chronologically. Single-element lists are the common case; multi-element lists support multi-pass attribution. Schema-breaking change from scalar string (SCHEMA_VERSION 0.10.0). `from_dict()` auto-normalizes legacy scalar JSON to single-element list for backward compatibility.
 
 **derived_from (INV-rukor):** `derived_from: list[str] | null` records which Symbol (or Edge) IDs the producer consumed to construct this Edge. Populated by linkers (always non-null); null for analyzer-originated edges whose derivation is the AST itself. Enables answering "why does this edge exist?" without re-reading linker source code.
+
+**dst_ref (ADR-0037 ruling 1, WI-tihup):** `dst_ref: {lang, module_path, name} | null` is the **canonical source of truth for external-target identity**. The legacy `dst` string is rendered from the same structured value and stays populated beside it for consumers that have not migrated; parse `dst_ref` rather than the string. It is populated on `is_resolved=False` edges once the finalize edge-resolution sub-step has run, and is `null` only for a dangling reference whose id could not be parsed. Because `is_resolved` names *in-repo-ness* rather than target-identification, a fully identified external target (`requests.get`) is `is_resolved=False` **with** `dst_ref` populated — the combination `is_resolved=True` plus a populated `dst_ref` is never produced. **Serialization:** the key is omitted entirely when null, so its absence means an in-repo dst, not an unknown one.
 
 **Evidence provenance:** Each edge's `meta` carries the primary inference record via `meta.evidence_type` (the inference pathway, ADR-0028) and `meta.evidence_lang` (the source language, central-stamped at `Edge.create` per ADR-0040). (The `meta.evidence[]` multi-pass accumulator and `meta.evidence_spans` were descoped per ADR-0040 — never populated by any producer.)
 
@@ -1963,7 +1980,11 @@ This appendix defines the **technical contract** for output consumers: which fie
 **2. Core fields (cannot remove or change type):**
 - Top-level: `schema_version`, `view`, `generated_at`
 - `analysis_runs[]`: Array of objects, each with `execution_id`, `pass`, `version`
-- `nodes[]`: Array of objects, each with `id`, `kind`, `name`, `path`, `language`
+- `nodes[]`: Array of objects, each with `id`, `kind`, `name`, `path`, `language`.
+  The **keys** are guaranteed present; the *value* of `language` is `null` for
+  ADR-0031 Class B synthetic stand-ins (linker-minted protocol/host symbols,
+  which name their host language in `discovery_language` instead), so consumers
+  MUST accept a null there. `span` is likewise nullable (SCHEMA_VERSION 0.20.1).
 - `edges[]`: Array of objects, each with `id`, `src`, `dst`, `type`
 - `features[]`: Array of objects, each with `id`, `name`, `entry_nodes[]`
 
