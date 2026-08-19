@@ -1,0 +1,24 @@
+Original commit body from eb33ff1ea40bb666a634a252db222304b67cf5de:
+
+Both bakeoff priority playbooks pointed at "the 45-linker catalogue".
+The catalogue was 45 at ADR-3bbb rollout, 60 for most of the interval
+since, and is 61 today -- so the number had been wrong twice over, in
+two files, in text loaded into the agent's context on every BROAD and
+DEEP session.
+
+Bumping 45 to 61 would only reset the clock. Both sentences already
+link to docs/LINKERS.md, which carries the authoritative count beside
+the table it describes, and that count is now gated: LINKERS.md's rows
+are reconciled against the live linker registry, and
+tests/test_generate_architecture_linker_inventory.py fails if a
+registered linker goes uninventoried. So the number has exactly one
+home that is checked, and these two call sites now defer to it instead
+of keeping private copies that drift in silence.
+
+This is the ONE FACT, TWO HOMES failure in its cheapest form: the
+second home wins for whoever reads it, and nothing tells them it is
+stale. Removing the copy is the fix; updating it is the workaround.
+
+Governance files (.agent/**) -- pushed with --gov for human merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
