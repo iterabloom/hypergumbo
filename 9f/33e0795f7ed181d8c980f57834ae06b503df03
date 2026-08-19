@@ -1,0 +1,66 @@
+Original commit body from dc5f55cc8b0698fc9c3dc426f69e50796db14bbd:
+
+Owner-approved (2026-08-19): "yes, update the playbook. I approve and I
+approve using auto-pr without --gov". Recorded on WI-sipuk.
+
+The playbook documented one calibration run and two measurement
+artifacts. The 2026-08-18 run supplies better numbers at the SAME
+thresholds and found two further artifacts, one blind spot, and three
+operational hazards — all of which cost time in that run.
+
+CALIBRATION. Both runs now tabulated: 2026-05-15 (28 flagged / 21 real
+/ 75%) and 2026-08-18 (45 / 41 / 91%). Thresholds unchanged. Also
+records that a fixed file drops OUT of the next pool on its own,
+because correcting a module docstring resets `ds` — so the second
+run's 45-file pool correctly excluded the 15 files fixed hours earlier.
+
+THE BLIND SPOT, as its own section. All three sub-checks key on
+CHANGE — blame dates, tracker status, marker words. None reads the
+vocabulary registries, so none can find a docstring naming a retired
+edge type or symbol kind: that docstring may never have aged relative
+to its body. This was the dominant defect family in the 2026-08-18
+run, one instance had escaped into the published docs/schema.json, and
+correcting the flagged files surfaced 21 more sites in nine files the
+scan cannot flag. Documented with the manual grep to run until
+WI-sipuk lands the automated check, and with the instruction to verify
+each hit against the construction site and registry first — in that
+run the code was correct everywhere and only prose was stale, but that
+has to be confirmed, not assumed.
+
+TWO MORE MEASUREMENT ARTIFACTS (now four):
+- Calendar decay in the day-delta arm, with the 28 -> 87 measurement
+  and the DO-NOT-REBUILD note on the refuted sweep-skipper.
+- Function-docstring edits re-flag the file: the scan's "body" region
+  includes every non-module docstring, so fixing one moves body_age
+  while ds stays put. This put linkers/ipc.py in the post-audit six
+  despite an accurate module docstring. A newly-flagged file is not
+  evidence of drift.
+
+TRACKER-REF FALSE POSITIVES, both benign, so reviewers budget for them
+rather than counting them as findings: extensibility notes beside a
+closed ID, and mechanism words colliding with status words ("is
+deferred instead" naming defer_bare_method_call). Explicitly says not
+to reword correct prose to dodge the heuristic.
+
+OPERATIONAL HAZARDS:
+- Never split a module docstring's FIRST line — generate-architecture
+  publishes it verbatim as the ARCHITECTURE.md summary, so wrapping it
+  truncates the published doc mid-clause. That happened in the
+  2026-08-18 run. Ships with a guard; the guard was executed against a
+  positive control (fires on a split first line, silent on a one-liner)
+  rather than pasted untested.
+- Ruff RUF002 rejects ambiguous Unicode (a multiplication sign) in new
+  docstring prose.
+- Do not truncate the verifying grep. `grep | head` is exactly how that
+  run reported a sweep as complete with 21 sites remaining.
+
+Plus real fan-out costs (concurrency is capped and excess launches are
+REJECTED, not queued; 45 agents over four waves took ~35 min) and the
+two prompt details that changed answer quality: read IN FULL, and quote
+contradicting code with line numbers.
+
+Standing caveat added to the calibration section: the flagged count
+measures the SCAN, not the tree. A low count is evidence about
+co-change drift only.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
