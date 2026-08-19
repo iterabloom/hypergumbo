@@ -1,0 +1,57 @@
+Original commit body from f2c25a5e09612254af160ffa67570bc53ad51c9b:
+
+An audit of the ADRs and docs/hypergumbo-spec.md found the decisions sound
+— no two ADRs rule opposite ways — but six defects in the status-and-count
+layer, one of them structural.
+
+generate-architecture skipped every underscore-prefixed filename. Correct
+for private helpers (_concept_utils, _text_filters, _view_template_core);
+wrong for linkers/_third_party_bases.py, which is underscore-named AND
+registers django-third-party-dispatch-linker. The generated count read 60
+against a registry of 61, and the spec, LINKERS.md, ARCHITECTURE.md and
+ADR-3bbb's Status line all inherited it. Worse, ADR-3bbb's enforcement
+promise — "the Uncategorized counter is 0 and will surface any future
+regression" — had a hole exactly the shape of this file: a module the scan
+skips can be flagged neither categorized nor Uncategorized. The scan now
+decides on the presence of @register_linker rather than on the filename.
+
+The rest:
+
+- LINKERS.md was not the full catalogue the spec sends readers to it for.
+  Four registered linkers had no row (argparse_dispatch,
+  caddy_module_dispatch, receiver_type_dispatch, _third_party_bases); three
+  appeared nowhere in the file. Now 61 rows against a registry of 61.
+- Spec §12 claimed emit_module_attribute_refs is "wired into six analyzers
+  — c, cpp, go, java, js_ts, rust". c.py makes zero calls and zero imports
+  of it; its only mention is a comment explaining the helper cannot match
+  bare-identifier stdio globals, which is why C carries its own
+  _C_STDIO_GLOBALS table. Five, plus C by a separate mechanism. The edges
+  are real either way — only the account of how was false.
+- taxonomy.py covers 89 languages, not 86.
+- §3 said the I/O catalogue supports 16 languages (14 + 2 aliases) while
+  §12 said 15 catalogues. Disk says 15 + 2 = 17; §12 was right.
+- Four supersession records were one-sided, against the README's rule that
+  both endpoints name each other by number. ADR-0034 declared itself
+  partially superseded by ADR-0036 while ADR-0036's Supersedes read "—"
+  and buried the relationship in a parenthetical — a contradiction between
+  two files, not a formatting nit. Plus ADR-0024/0038 and both ADR-3aaa
+  extensions.
+
+Two gates close the classes rather than the instances: every module that
+registers a linker must be inventoried as one, and supersession must be
+symmetric. The symmetry parser strips parenthetical citations before
+reading ADR numbers, because a Supersedes line routinely names an
+unrelated ADR to say why something is dead (ADR-0035 cites ADR-0032 that
+way) — reading the raw line reports that citation as a claim, which is the
+false positive that motivated the strip.
+
+Disclosed, not worked around: the symmetry test is registered in
+KNOWN_UNREACHABLE because its subject is markdown. smart-test writes a
+zero-test manifest when only docs changed, so a docs-only ADR edit — the
+exact PR shape this guards — runs no tests per-PR and the asymmetry lands
+in full-suite instead. Closing that means teaching the mapper to claim
+docs/adr/**, and the mapper is a governance file.
+
+No package code changed, so no version bump.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
