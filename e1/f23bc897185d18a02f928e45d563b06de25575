@@ -1,0 +1,29 @@
+Original commit body from 5a07938838d3d5976cb3d1edb00d8563cf42dad8:
+
+Both tests in tests/test_check_edge_type_drift.py called cli.main()
+bare. main takes argv: list[str] | None = None and falls through to
+sys.argv[1:] when it is None, so under pytest argparse received
+*pytest's* arguments and exited 2:
+
+  pytest tests/ -q
+  __main__.py: error: unrecognized arguments: tests/ -q
+
+The result was a test whose verdict depended on how the suite was
+invoked rather than on the code under test. Reproduced identically on a
+detached worktree at origin/dev, so it predated the change that
+surfaced it.
+
+Both call sites now pass [] explicitly, verified across three
+invocation shapes (file + -q, file alone, whole tests/ tree with -k).
+The None default is deliberately left alone: it is correct for the real
+CLI, where --strict must reach argparse. The docstring records why the
+argument is explicit so it is not "simplified" back out.
+
+Swept the class rather than assuming it was alone: three sibling tests
+call a bare main() -- deleak-ledger, generate-security-md,
+refresh-stdlib-modules -- and none share the defect. The first sets
+sys.argv itself; the other two parse no arguments at all. Of the five
+drift linters, check-edge-type-drift is the only one with an argparse
+shell, which is why it is the only one exposed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
