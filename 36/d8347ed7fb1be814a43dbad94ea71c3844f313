@@ -1,0 +1,48 @@
+Original commit body from b54def26abf987d36f0acd8536f30d9b0707a016:
+
+Three defects in the layer a JSON consumer reads before writing any code.
+All silent: the spec stayed internally plausible and the schema stayed
+valid, so nothing surfaced until a consumer trusted the prose.
+
+1. Sec 6 declared four fields non-nullable that both ir.Symbol and
+   docs/schema.json make optional. `language` has been Optional[str]
+   since ADR-0031 gave Class B synthetic stand-ins no host language;
+   `span` since SCHEMA_VERSION 0.20.1 (WI-hafap). Neither carried a
+   drift marker. `fingerprint` and `quality` carried a purple-square
+   comment ADMITTING the code says Optional, beneath a declaration that
+   still said otherwise — a trailing note is not a type. The spec also
+   contradicted itself: sec 9's per-language attribution already
+   described falling back to discovery_language "when node.language is
+   None", a case sec 6 said could not arise.
+
+2. Appendix C listed `language` among node fields that "cannot remove
+   or change type" — an immutability promise ADR-0031 had already
+   broken. The bullet now separates key presence from value presence.
+
+3. `dst_ref` appeared ZERO times in the spec, despite being serialized
+   by Edge.to_dict, published in docs/schema.json, and being ADR-0037
+   ruling 1's canonical source of truth for external-target identity —
+   the legacy `dst` string is rendered from it. Documented with the two
+   facts a consumer cannot infer: a fully identified external target is
+   is_resolved=False WITH dst_ref populated (resolution names
+   in-repo-ness, not target-identification), and the key is omitted
+   when null, so its absence means an in-repo dst rather than an
+   unknown one. Symbol.cyclomatic_complexity had the same gap.
+
+Undocumented schema properties: 2 of 39 -> 0.
+
+The guard is packages/hypergumbo-core/tests/test_spec_ir_contract.py:
+every published schema property must be named in the spec, sec 6's
+declared nullability must match ir.Symbol, and a field Appendix C calls
+immutable must disclose that it can be null. It found `fingerprint` and
+`quality` on its own — two instances beyond the three identified by
+reading — which is the argument for the test over the proofread. It
+lives in the core package rather than tests/ because it imports
+hypergumbo_core.ir (the AGENTS.md placement rule) and because the root
+suite runs in a container that installs no hypergumbo package.
+
+scripts/check-schema-coverage does not overlap: it ratchets registry
+VALUE coverage across a fixture corpus and says nothing about whether a
+schema PROPERTY is documented.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
