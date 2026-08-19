@@ -1,0 +1,50 @@
+Original commit body from 441246f213a47441a4b11bcf9d678049e7fa4c4e:
+
+auto-pr printed "🧹 Cleaning up local branch..." and then deleted
+neither the local branch nor anything else. Not intermittent — a 100%
+failure on the default path, invisible because both commands were
+written `2>/dev/null || true`.
+
+Root cause: auto-pr merges via REBASE (scripts/lib/github-api.sh tries
+methods=(rebase merge), rebase first). A rebase replays the PR's commits
+onto the base under new SHAs, so the local branch tip is never an
+ancestor of the updated base — and that ancestry test is exactly what
+`git branch -d` applies. Reproduced:
+
+    $ git branch -d jgstern-agent/docs/spec-ir-nullability-and-dst-ref
+    error: the branch '...' is not fully merged.        exit=1
+
+This is the same trap already recorded in the repo's own notes — `git
+branch --merged` lies where auto-pr rebases — and `-d` uses that test.
+
+The `git push --delete` beside it was dead code.
+_github_delete_pr_head_branch already removes the PR head branch via the
+API at merge time, so the push could only fail with "remote ref does not
+exist" (also reproduced). Meanwhile nothing pruned the stale
+remote-tracking ref it left: `git pull` does not prune and fetch.prune
+is unset, so one accumulated per merge. Seven branches piled up in a
+single day; an earlier session found 97 local branches and 436
+remote-tracking refs from this.
+
+Fix: check with `git cherry` (patch-ids, so a rebased-and-merged commit
+registers as upstream) and then `git branch -D`; keep the branch with a
+warning if it carries any commit not upstream, rather than forcing;
+replace the dead push with `git fetch --prune`; stop swallowing errors.
+
+The script already knew: the vPR-flush path uses `git branch -D`, and
+the manual-recovery hint it prints tells the user to run `git branch -D`.
+Only the post-merge path used `-d`.
+
+Guard: tests/test_autopr_branch_cleanup.py drives the real cleanup_local
+against a real bare origin. Getting the harness honest took three
+corrections, each of which had made it pass against the broken code:
+`push -u` gave the branch an upstream (`-d` also accepts
+merged-into-upstream, and auto-pr never sets one — it pushes a bare
+refspec); the precondition assertion compared a stale tracking ref; and
+cherry-picking onto an unchanged parent reproduces a byte-identical
+commit, so it modelled a fast-forward rather than a rebase. The harness
+now asserts its own preconditions so it cannot quietly stop testing the
+defect, and a third case pins the property `-d` existed to protect: a
+branch holding a commit that never landed upstream is kept, not deleted.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
