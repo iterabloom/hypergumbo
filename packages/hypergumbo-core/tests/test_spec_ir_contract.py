@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""The spec's IR/output contract must match the code and the published schema.
+"""The spec must not lie about the code, the schema, or itself.
 
 ``docs/hypergumbo-spec.md`` is the document consumers read before writing
 against a survey. Three drifts are guarded here, each of which had actually
@@ -157,4 +157,63 @@ def test_appendix_c_immutable_node_fields_disclose_nullability() -> None:
         f"Appendix C lists {silent} among node fields that 'cannot remove or "
         f"change type', but they are Optional in ir.Symbol and the bullet "
         f"never says the value may be null."
+    )
+
+
+def test_spec_symbol_block_lists_every_dataclass_field() -> None:
+    """§6 presents itself as ``class Symbol`` — so it must be the whole class.
+
+    The block had 17 of 30 fields. The omissions were not uniform: ADR-0032's
+    typed siblings (``display_label`` / ``qualified_name``) were listed while
+    ADR-0031's (``discovery_language`` / ``protocol_origin``) were not, and
+    ``meta`` was missing from the very block whose ``kind`` comment tells the
+    reader that framework-role and dispatch facts "live in meta".
+    """
+    from hypergumbo_core.ir import Symbol
+
+    declared = set(_spec_symbol_block())
+    actual = set(typing.get_type_hints(Symbol))
+    missing = sorted(actual - declared)
+    assert not missing, (
+        "docs/hypergumbo-spec.md §6 shows a `class Symbol` block that omits "
+        f"these real fields: {missing}. A partial block presented as the "
+        "dataclass reads as a complete one."
+    )
+
+
+def test_spec_status_markers_are_all_defined_in_the_legend() -> None:
+    """Every status glyph the spec uses must be a row in its own legend."""
+    text = _spec_text()
+    legend_defined = set(re.findall(r"^\| (\S) \| \w", text, re.M))
+    assert legend_defined, "the Implementation Status Legend table no longer parses"
+    # Glyphs in the Miscellaneous-Symbols-and-Pictographs / Dingbats ranges that
+    # the document actually uses as status markers.
+    used = {
+        ch
+        for ch in text
+        if ch in "\U0001F7E5\U0001F7E6\U0001F7E7\U0001F7E8\U0001F7E9\U0001F7EA"
+        "\u2B1B\u2B1C\u2705\u274C\u2714\u2716"
+    }
+    undefined = sorted(used - legend_defined)
+    assert not undefined, (
+        f"these status glyphs appear in the spec but are in no legend row: "
+        f"{undefined}. A reader greps the legend to learn what a marker means."
+    )
+
+
+def test_spec_names_every_cli_subcommand() -> None:
+    """A shipped subcommand a reader cannot find in the spec is undiscoverable."""
+    import argparse
+
+    from hypergumbo_core import cli
+
+    parser = cli.build_parser()
+    sub = next(
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    text = _spec_text()
+    unnamed = sorted(c for c in sub.choices if f"`hypergumbo {c}" not in text)
+    assert not unnamed, (
+        f"these subcommands ship but are never shown as `hypergumbo <cmd>` in "
+        f"docs/hypergumbo-spec.md: {unnamed}"
     )

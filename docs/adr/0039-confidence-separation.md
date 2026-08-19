@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0039: Confidence Separation — confidence Is Pure Detection Reliability; Ranking Moves to rank_score; quality.* Deleted
 
-- Status: **Accepted**
+- Status: **Accepted — rulings 1-4 and ruling 5 Stage A shipped; ruling 5 Stage B NOT landed.** Shipped: `naming_convention` seeded at 0.85 (ruling 1); `Edge.confidence_source` with `VALID_CONFIDENCE_SOURCES` (ruling 2); ranking relocated to `rank_score`, which `entrypoints.py:1605` sorts on while the `:1661-1685` penalties mutate it and leave `confidence` at base (ruling 3); `Edge.quality` deleted at `SCHEMA_VERSION` 0.20.0 (ruling 4); and the fictional `EVIDENCE_CONFIDENCE_MATRIX` block plus the unimplemented 0.30-default MUST removed from the spec (ruling 5 Stage A). Outstanding: **ruling 5 Stage B** — the per-evidence-type confidence table is still hand-maintained prose in spec §12 rather than generated from `EvidenceTypeSpec.base_confidence`; no generator exists in `scripts/`
 - Date: 2026-06-10
 - Supersedes: ADR-0005 (partial — its entrypoint-selection tables key on the composite confidence; post-implementation they read as `rank_score`-keyed)
 - Superseded by: —

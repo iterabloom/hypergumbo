@@ -126,6 +126,75 @@ Taint-flow analysis operates at two precision levels depending on language suppo
 🟩 **`hypergumbo repeat-finder [path] [--format text|json] [--min-complexity N] [--include-tests] [--limit N]`** (ADR-0014, ADR-0035 §1)
 Finds structural clones — refactoring leads. Groups symbols by `(language, shape_id)`: a cluster of ≥2 nodes is a set of structurally-identical implementations (same control-flow/nesting skeleton, differing only in identifiers and literals), within-language per ADR-0014. This is the consumer that activates `shape_id`'s one non-redundant capability over `fingerprint` — duplicate-code / extract-helper detection (see the `shape_id` Purpose in [§6 Identity field semantics](#identity-field-semantics)). Trivial clusters (shared cyclomatic complexity below `--min-complexity`, default 2 — a straight-line stub is not a refactoring lead) are dropped; only production clones (≥2 non-test members) are the headline, with test-only clone clusters (parametrized tests are structurally identical by design) counted as a labeled disclosure bucket shown via `--include-tests`. Clusters rank by duplication burden (member count × representative LOC). `--min-complexity 1` includes straight-line clones. Output format is `--format text|json` (default `text`), the canonical read-view spelling; the JSON envelope is `{schema_version, view: "repeat_finder", summary, clusters}` sharing `READ_VIEW_SCHEMA_VERSION`.
 
+🟩 **`hypergumbo sketch [path] [--input FILE] [-t tokens] [-x] [-e PATTERN]`**
+The explicit spelling of the default mode above. `--input` renders a sketch from
+an existing survey JSON instead of re-analyzing.
+
+🟩 **`hypergumbo run …`** — a back-compat **alias for `survey`**; identical parser,
+identical flags. Prefer `survey` (ADR-0042 renamed the view; the alias is retained
+so existing scripts keep working).
+
+#### Read views over a survey
+
+These load a cached survey, or auto-run analysis when none exists, and share the
+`--format text|json` spelling (default `text`) together with `--path` / `--input`
+for pointing at a repo or a pre-existing survey JSON.
+
+🟩 **`hypergumbo search <pattern> [path] [--kind K] [--language L] [--limit N] [--minimal]`**
+Finds symbols by name pattern.
+
+🟩 **`hypergumbo routes [path] [--language L] [--include-tests] [-x] [--minimal]`**
+Lists detected API routes and endpoints.
+
+🟩 **`hypergumbo symbols [path] [-x] [--max-per-file N] [--kind K] [--language L] [--limit N]`**
+Lists symbols with their connectivity (in-degree, out-degree).
+
+🟩 **`hypergumbo dead-code-maybe [path] [--seeds production|entrypoints|tests]`**
+Finds production callables unreachable from entrypoints (`dead = production −
+reachable`, the same `production_callables` denominator `test-coverage` uses).
+Each candidate carries a `reachability` field (`test_only` / `unreachable` / null)
+with both denominators published. Its JSON envelope has its own
+`DEAD_CODE_MAYBE_SCHEMA_VERSION` (0.2.0), not the shared `READ_VIEW_SCHEMA_VERSION`.
+
+🟩 **`hypergumbo compact --input FILE [--out FILE] [--max-symbols N] [--min-symbols N] [--coverage C]`**
+Rewrites a behavior map into a compact form with coverage-based truncation.
+Unlike the other read views this one requires `--input`: it transforms an
+existing map rather than producing one.
+
+🟩 **`hypergumbo config <language> [--format json|yaml|text]`**
+Shows the per-language configuration actually in force — dataflow (def/use)
+support, I/O catalogue, and function summaries — so a zero reads as "not wired"
+rather than "not present". This is the by-**category** half of
+[ADR-0022](adr/0022-language-profile-registry.md)'s per-language configuration
+surface, which shipped as the YAML catalog index (`yaml_catalogs.py`,
+`scripts/yaml-catalog-index`); the by-**language** `LanguageProfile` registry that
+ADR proposed is deferred and unimplemented, so per-language settings still live
+across several YAML surfaces rather than behind one profile object.
+
+#### Cache
+
+🟩 **`hypergumbo cache-status [--per-repo] [--quiet]`** — cache size and statistics.
+🟩 **`hypergumbo cache-clear [--older-than DAYS] [--repo FINGERPRINT] [--keep-latest N] [--dry-run]`** —
+prune the results cache. See the `HYPERGUMBO_CACHE_*` environment variables below
+for the automatic warning and eviction thresholds.
+
+#### Environment management
+
+These install or remove optional components; none of them analyze anything. All
+accept `--quiet`, and the installers accept `--check` to report status without
+changing the environment.
+
+🟩 **`hypergumbo add-extras [--check] [--skip COMPONENTS]`** / **`hypergumbo remove-extras [--skip COMPONENTS]`** —
+all optional extras at once (grammars, gitleaks, embeddings, rust-analyzer).
+🟩 **`hypergumbo build-grammars [--check]`** — build the from-source tree-sitter
+grammars (Lean, Wolfram, Circom); see [§4](#4-supported-stacks).
+🟩 **`hypergumbo install-embeddings [--check]`** / **`hypergumbo uninstall-embeddings [--all]`** — the
+`sentence-transformers` stack used by embedding-based config extraction.
+🟩 **`hypergumbo install-gitleaks [--check]`** / **`hypergumbo uninstall-gitleaks`** — the secret scanner.
+🟩 **`hypergumbo install-rust-analyzer [--check]`** / **`hypergumbo uninstall-rust-analyzer`** — installs
+rust-analyzer via rustup for the SCIP backend. **That backend executes `build.rs`**
+— see the safety note under [Install](#install) before enabling it.
+
 ### Analysis options
 
 These options apply to all analysis commands (`run`, `slice`, and default sketch mode).
@@ -266,40 +335,74 @@ Parsers emit to `AnalysisIR`:
 ```python
 @dataclass
 class Symbol:
-    id: str                    # location-based identifier
+    # Field order below mirrors ir.py. Every field of the dataclass is listed;
+    # a pinning test (test_spec_ir_contract.py) fails if this block drifts.
+    id: str                    # location-based identifier (grammar: ADR-0036;
+                               # constructed only via the ADR-0034 factories)
+    name: str
+    kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
+    language: Optional[str]    # None for ADR-0031 Class B synthetic stand-ins
+                               # (linker-minted protocol/host symbols); their host
+                               # language is in discovery_language
+    path: str
+    span: Optional[Span]       # nullable since SCHEMA_VERSION 0.20.1 (WI-hafap)
+    origin: str | List[str]    # which passes contributed (INV-jidat; was str
+                               # pre-0.10.0, and the scalar is still accepted on
+                               # input). Values are pass IDs, not a separate
+                               # synthesis axis — ADR-0044.
+    origin_run_id: str         # references AnalysisRun.execution_id
     stable_id: Optional[str]   # semantic identity hash (signature-based)
-    shape_id: Optional[str]    # structural implementation fingerprint
-    # canonical_name removed per ADR-0032; superseded by the typed sibling fields below
-    display_label: Optional[str]   # human-readable label
-    qualified_name: Optional[str]  # scope-qualified name
-    visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
+    shape_id: Optional[str]    # structural SKELETON hash — identifiers and
+                               # literals stripped; a strict coarsening of
+                               # fingerprint. The clone-detection key.
     fingerprint: Optional[str] # structural CONTENT hash: shape PLUS identifiers and
                                # literals, whitespace/comment-invariant, tagged with
                                # symbol_fingerprint_scheme (`hgfp2:`). None for
                                # grammarless languages, parse errors, synthetic spans.
                                # The raw source-byte Format-1 scheme was demolished by
-                               # ADR-0032; contrast shape_id, a strict coarsening that
-                               # strips identifiers and literals.
-    kind: str                  # language construct only (function/class/module/method/...): per ADR-0027 the kind axis names the source-language syntactic construct; framework-role / dispatch / entrypoint facts live in meta (see Multi-value field axes below)
-    name: str
-    path: str
-    language: Optional[str]    # None for ADR-0031 Class B synthetic stand-ins
-                               # (linker-minted protocol/host symbols); their host
-                               # language is in discovery_language
-    span: Optional[Span]       # nullable since SCHEMA_VERSION 0.20.1 (WI-hafap)
-    origin: list[str]          # which passes contributed to this (INV-jidat; was str pre-0.10.0)
-    origin_run_id: str         # references AnalysisRun.execution_id
-    supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
-    supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
-    # Note: In JSON output (§9 Behavior map JSON), these flat fields are compiled
-    # into a nested supply_chain object with a derived tier_name field.
+                               # ADR-0032.
     quality: Optional[Dict[str, Any]]
                                # INV-nuzal: declared-but-empty — no producer populates
                                # it (0/N on self-analysis), and Symbol.to_dict omits
                                # the key when None rather than emitting a null. The
                                # sibling Edge.quality was removed outright in schema
                                # 0.20.0 (ADR-0039 ruling 4); see §9.
-
+    meta: Optional[Dict[str, Any]]
+                               # the open per-symbol attribute bag the kind axis
+                               # delegates to (framework_role, route_path, concepts,
+                               # …). Registered vocabulary: the `symbol_meta` axis in
+                               # axis_meta_keys.py; see §9 Node.meta fields.
+    supply_chain_tier: int     # 1=first_party, 2=internal_dep, 3=external_dep, 4=derived
+    supply_chain_reason: str   # classification rationale (e.g., "matches ^src/")
+    # Note: In JSON output (§9 Behavior map JSON), the two flat fields above and
+    # the five booleans below are compiled into one nested supply_chain object
+    # with a derived tier_name field.
+    is_test_file: bool         # file-role flags — each independent of tier
+    is_example_file: bool
+    is_config_file: bool
+    is_generated_file: bool
+    is_exported: bool          # part of the package's public API
+    cyclomatic_complexity: Optional[int]
+                               # McCabe (decision points + 1); None when the
+                               # producing analyzer does not compute it
+    line_span: Optional[int]   # PHYSICAL end_line - start_line + 1, blank and
+                               # comment lines included. NOT summable across
+                               # nested symbols — see §9 LOC definition.
+    signature: Optional[str]   # display rendering of params/return; distinct
+                               # from the structural signature feeding stable_id
+    docstring: Optional[str]   # first-line doc summary, truncated to 80 chars
+    modifiers: List[str]       # semantic modifiers ("native", "public", "static")
+    discovery_language: Optional[str]
+                               # ADR-0031 typed sibling: host source language of a
+                               # Class B synthetic stand-in, whose `language` is None
+    protocol_origin: Optional[str]
+                               # ADR-0031 typed sibling: protocol/framework family
+                               # (kafka, websocket, grpc, …) of a synthetic stand-in
+    display_label: Optional[str]   # human-readable label (ADR-0032)
+    qualified_name: Optional[str]  # scope-qualified name (ADR-0032)
+    visibility: Optional[str]      # INV-jusot: one canonical level (public/private/protected/internal/package), computed in finalize; signal in meta['visibility_signal']
+    # canonical_name was REMOVED per ADR-0032, superseded by the typed sibling
+    # fields display_label / qualified_name above.
 @dataclass
 class AnalysisRun:
     execution_id: str          # unique per run (uuid or hash of run_signature + started_at + repo_fingerprint)
@@ -448,6 +551,8 @@ Public outputs are **compiled views** from this IR — the IR defines the canoni
 ## 7) Linkers
 
 Hypergumbo provides **best-effort edge recovery** for patterns that language analyzers cannot see statically. These are AST-based heuristics with string literal matching and metadata comparison, not type-resolved or dataflow analysis. Linkers fall into four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md): Protocol (framework-agnostic pattern matching), Bridge (language-pair-specific FFI conventions), Framework (framework-specific dispatch), and Infrastructure (graph-structural utilities). This section specifies three linkers in detail — JNI (Bridge), IPC (Protocol), HTTP client-server (Protocol); for the full catalog of 61 linkers grouped by subcategory, see [LINKERS.md](LINKERS.md).
+
+**Inheritance-aware call resolution is a linker, not an analyzer job** ([ADR-0029](adr/0029-cross-language-inherited-call-linker.md)). Language analyzers MUST NOT walk ancestor chains themselves; they emit an unresolved edge carrying optional `Edge.meta` hints (`enclosing_class`, `receiver_type_hint`, `inherited_field_receiver`) and the Infrastructure linker `linkers/inherited_calls.py` walks the chain with per-language MRO rules. Centralizing it is what keeps the resolution semantics identical across languages instead of re-derived once per analyzer.
 
 ### JNI Boundary Detection (Java ↔ C)
 
@@ -950,7 +1055,7 @@ The axis is open: the registry at `packages/hypergumbo-core/src/hypergumbo_core/
 * `calls` — function/method invocation
 * `imports` — module/symbol import
 * `defines_target` — definition relationship
-* ✅ `renders` — template rendering (Rails / Django / Phoenix / Spring MVC / Laravel Blade controllers → view templates)
+* 🟩 `renders` — template rendering (Rails / Django / Phoenix / Spring MVC / Laravel Blade controllers → view templates)
 * `implements` — class implements interface (Java, TypeScript, Go via `var _ Interface = &Struct{}`)
 * `extends` — class extends base class. External/stdlib bases (`Enum`, `Exception`, `argparse.ArgumentParser`, Kotlin/Ruby library superclasses, …) are represented as unresolved-external edges (`is_resolved=False`, an `external_symbol` boundary dst), not dropped — recovered uniformly for every OO language by the framework-agnostic inheritance-linker chokepoint (WI-jubag Approach C) when the per-analyzer resolver leaves a base unresolved
 * JNI Java native method → C implementation: canonical `calls` + `meta["bridge_kind"] = "native"` (see [§7 JNI bridge detection](#java-jni-cross-language-detection)); pre-WI-mifor-vabul this was a distinct edge_type `native_bridge`, retained as a deprecated registry entry until Phase 4b'
