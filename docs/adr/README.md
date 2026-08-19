@@ -45,7 +45,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0036](0036-node-id-grammar-v2.md) | node.id Grammar v2 | Accepted — Decision/Enforcement only partially landed | 2026-06-10 |
 | [0037](0037-edge-resolution-semantics.md) | Edge Resolution Semantics | Accepted — Implemented (all rulings 1–5; ruling 4 landed 2026-07-02) | 2026-06-10 |
 | [0038](0038-access-mode-contract.md) | The access_mode Contract | Accepted | 2026-06-10 |
-| [0039](0039-confidence-separation.md) | Confidence Separation | Accepted — rulings 1–4 + 5A shipped; 5B not landed | 2026-06-10 |
+| [0039](0039-confidence-separation.md) | Confidence Separation | Accepted — Implemented (all five rulings) | 2026-06-10 |
 | [0040](0040-evidence-field-descope.md) | Evidence-Field Descope | Accepted | 2026-06-10 |
 | [0041](0041-supply-tier-purity.md) | Supply-Chain Tier Purity | Accepted | 2026-06-10 |
 | [0042](0042-survey-rename.md) | Survey Rename | Accepted | 2026-06-10 |
