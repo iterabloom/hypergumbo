@@ -1,0 +1,40 @@
+Original commit body from 431d47d9da4546186c8551a1b6aecd979b09e000:
+
+The previous commit asserted that ADR-0039's ruling 5 Stage B had not
+landed and that "no generator exists in scripts/". Both are false, and
+the claim reached four surfaces: ADR-0039's Status line, ADR-0005's
+Status line and amendment, the README index row, and the changelog.
+
+Stage B shipped. The per-evidence-type confidence table IS generated
+from the registry: the projection lives in docs/concept-axes.md, is
+emitted from evidence_types.EVIDENCE_TYPES by
+scripts/generate-concept-axes, is held fresh by that script's --check
+gate in .githooks/pre-commit, and is pinned by
+tests/test_generate_concept_axes.py::test_every_seeded_pathway_appears_with_its_value.
+Spec sec 12 states this explicitly and links to it — "The per-pathway
+values are generated, not transcribed here."
+
+How the error was made, since the method is the reusable part: I
+searched `ls scripts/ | grep -i confidence`, found nothing, and treated
+that as absence. The generator is named for what it emits
+(generate-concept-axes), not for the value it carries. A second check
+that could have caught it — grepping the spec for AUTO-GENERATED — was
+run against a hardcoded line range that my own edits had already
+shifted, so it scanned the wrong section and returned nothing too. Two
+negatives, both from looking in the wrong place, taken together as
+evidence.
+
+ADR-0039 is now Accepted — Implemented (all five rulings).
+
+ADR-0005's caveat survives but its reason was wrong. Its detector-tier
+constants (0.95 / 0.99 / 0.70-0.85) really are unguarded hand-written
+prose — `confidence=0.95` is a literal at a dozen entrypoints.py call
+sites, 0.99 appears only in a comment, and the sec 8 tier table has no
+generator. But they were never in Stage B's scope: Stage B regenerates
+the EvidenceTypeSpec table, and entrypoint tiers are a different
+population in no registry. The 2026-06-11 amendment predicted Stage B
+would cover them; that prediction was wrong about scope. Giving those
+constants a registry and a projection is new work, not the completion
+of Stage B.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
