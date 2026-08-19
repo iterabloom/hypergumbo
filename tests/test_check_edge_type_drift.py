@@ -9,6 +9,14 @@ The drift-detection logic lives in
 ``hypergumbo_core.edge_types.find_axis_drift`` and is exercised
 exhaustively by ``packages/hypergumbo-core/tests/test_edge_types.py``;
 this file covers only the thin CLI shell.
+
+``main`` takes ``argv: list[str] | None = None`` and falls through to
+``sys.argv[1:]`` when it is None. Under pytest that is *pytest's* argv,
+so a bare ``cli.main()`` made these tests fail or pass depending on how
+the suite was invoked — ``pytest tests/ -q`` handed argparse
+``unrecognized arguments: tests/ -q`` and it exited 2. Every call below
+passes ``[]`` explicitly. Do not drop it: the default is right for the
+real CLI (``--strict`` must reach argparse) and wrong for a test.
 """
 
 from __future__ import annotations
@@ -38,7 +46,7 @@ cli = _load(SCRIPT_PATH, "check_edge_type_drift")
 
 def test_main_returns_zero_when_no_drift(capsys):
     with patch.object(cli, "find_axis_drift", return_value=[]):
-        rc = cli.main()
+        rc = cli.main([])
     assert rc == 0
     out = capsys.readouterr()
     assert out.out == ""
@@ -51,7 +59,7 @@ def test_main_returns_one_and_prints_offenders_when_drift_detected(capsys):
         "contains ['phantom-value'] not in canonical registry",
     ]
     with patch.object(cli, "find_axis_drift", return_value=offenders):
-        rc = cli.main()
+        rc = cli.main([])
     assert rc == 1
     captured = capsys.readouterr()
     assert "axis-coherence check failed" in captured.out
