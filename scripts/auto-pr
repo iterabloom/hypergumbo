@@ -2190,9 +2190,31 @@ cleanup_local() {
 
 	while [[ $attempt -le $max_attempts ]]; do
 		if git pull "$remote" "$base"; then
-			git branch -d "$branch" 2>/dev/null || true
-			# Delete remote branch (keeps Lamport clock branch set small)
-			git push "$remote" --delete "$branch" 2>/dev/null || true
+			# auto-pr merges via REBASE (github-api.sh tries rebase before
+			# merge), so the PR's commits land on the base under new SHAs and
+			# the branch tip is never an ancestor of the updated base. That is
+			# exactly the test `git branch -d` applies, so it refused every
+			# time — silently, because the old code was `2>/dev/null || true`.
+			# `git cherry` compares patch-ids rather than ancestry, so a
+			# rebased-and-merged commit registers as upstream; it is the safety
+			# check that survives a rebase, and the one this repo already
+			# prescribes in place of `git branch --merged`.
+			local unmerged
+			unmerged=$(git cherry "$remote/$base" "$branch" 2>/dev/null | grep -c '^+' || true)
+			if [[ "${unmerged:-1}" -eq 0 ]]; then
+				git branch -D "$branch" >/dev/null 2>&1 ||
+					echo "⚠️  Could not delete local branch $branch"
+			else
+				echo "⚠️  Keeping local branch $branch — $unmerged commit(s) not in $base"
+			fi
+			# The PR head branch is already deleted server-side by
+			# _github_delete_pr_head_branch at merge time, so the old
+			# `git push --delete` here could only ever fail with "remote ref
+			# does not exist". What actually accumulates is the stale
+			# remote-tracking ref: `git pull` does not prune and fetch.prune is
+			# unset, so one is left behind per merge, forever.
+			git fetch --prune "$remote" --quiet ||
+				echo "⚠️  Could not prune stale remote-tracking refs"
 			return 0
 		fi
 
