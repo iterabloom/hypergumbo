@@ -1,0 +1,52 @@
+Original commit body from ea7d1b830d20f4af53a47e062a581dcd29731232:
+
+release-check reported 4 ruff and 4 gitleaks findings. None was a real
+credential, but one of them was reaching the gate only because a suppression
+written in March had silently expired in July.
+
+RUFF. Three `# noqa: S603` directives suppressed a rule that
+[tool.ruff.lint.per-file-ignores] already disables for every test file, so
+RUF100 flagged the directives themselves; they are deleted. Lifting the blanket
+ignore instead would require annotating 167 subprocess sites across the test
+tree -- a project, not a cleanup. The fourth, S103, flags
+`os.chmod(archive_root, 0o2775)` in test_legacy_setgid_archive_root_is_fully_
+stripped, where the permissive mask is the test's INPUT: it reproduces the
+hazard so it can assert rotation strips it. Suppressed with the reason stated,
+so a later reader does not mistake it for a dodged permissions bug.
+
+GITLEAKS. A generic-api-key match reported `prohibited_sink_zone=` as the
+secret (the rule keys on "secret" adjacent to '='); an INI fixture carried
+`sk_live_12345`; and the secret scrubber's own tests carry two gho_ tokens they
+need as bait. The INI value is DELETED rather than annotated -- _is_sensitive_key
+matches on the key NAME, _mask_value is length-driven, and no assertion reads
+the value, so the credential-shaped bait bought nothing.
+
+THE STRUCTURAL HALF. That INI fixture was already suppressed, by a
+.gitleaksignore entry pinned to line 352 on 2026-03-12 (c44ec3e448). On
+2026-07-30, d0e45ce33b netted one line out of the file above it, moving the
+finding to 351. Dead for seven weeks, silently: these entries are keyed
+FILE:RULE:LINE, so any edit above a suppressed line voids it. All ten entries
+are retired for mechanisms that cannot drift -- `gitleaks:allow` ON the line for
+deliberate credential-shaped strings in source, a path allowlist for the
+gitignored .hypothesis/ cache (three fingerprints were pinned to content-hash
+filenames that rotate), and a regex allowlist for two fixed benign strings
+scoped to the STRINGS rather than their files, because tracker .ops files are
+committed and a path allowlist there would blind the scanner to a real
+credential pasted into a discussion thread.
+
+A CORRECTION, because the method error is the reusable part. My first pass
+reported all ten fingerprints dead. That was wrong: six were live and
+load-bearing, and emptying the file re-fired them (4 findings -> 7). The audit
+ran gitleaks with `-i <empty-dir>` believing it disabled the repo's
+.gitleaksignore. It does not -- gitleaks still reads the one at the scan root.
+The tell was that the "ignores disabled" run returned EXACTLY the same 4
+findings as the uncontrolled run; identical output from a control and its
+subject means the control did not take. Now recorded in .gitleaksignore's
+header so the next person does not repeat it.
+
+Verified: ruff clean over the gate's own scope; gitleaks 0 findings; 1617 tests
+pass with the mypy ratchet clean, and 98 pass across the six edited test files.
+Positive control on the suppression: an un-annotated token added to an annotated
+file still fires at its own line, so the allow is line-scoped, not file-scoped.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
