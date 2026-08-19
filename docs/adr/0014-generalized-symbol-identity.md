@@ -3,7 +3,7 @@
 
 Date: 2026-02-20
 Updated: 2026-03-27
-Status: Accepted. Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired (12 via node_for_symbol, 7 via direct compute_shape_id call, Python via ast override) + 19 extended1 + 1 common (HLSL) = ~41 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). Phase 2 untyped stable_id: 9 mainstream + 19 extended1 + 7 common = 35 using untyped tier; 11 mainstream + 1 common (Dart) upgraded to Phase 3 typed tier; combined ~47 of ~70. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
+Status: Accepted — partially superseded by ADR-0035 (the "survives renames and file moves" stable_id contract; see amendment table). Phase 0: 11/11 complete (Go mount point fixed). Phase 1 shape_id: all 20 mainstream analyzers wired (12 via node_for_symbol, 7 via direct compute_shape_id call, Python via ast override) + 19 extended1 + 1 common (HLSL) = ~41 of ~70 code-language analyzers; remaining gaps are niche languages (13 extended1 without, 10 common without, Dart not yet wired). Phase 2 untyped stable_id: 9 mainstream + 19 extended1 + 7 common = 35 using untyped tier; 11 mainstream + 1 common (Dart) upgraded to Phase 3 typed tier; combined ~47 of ~70. Phase 3 typed stable_id: 12 analyzers (methods/constructors only).
 Superseded by: ADR-0035 (partial — see amendment table)
 
 > **Amendment (2026-06-11):** This document is **partially superseded** by

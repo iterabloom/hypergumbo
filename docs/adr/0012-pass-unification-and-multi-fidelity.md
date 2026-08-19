@@ -1,8 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0012: Pass Unification and Multi-Fidelity Architecture
 
-## Status
-
 Status: Step 1 implemented (analyzer registration unified); Steps 2-3 remain design targets.
 
 > Amended in place — see docs/adr/README.md "ADR lifecycle" (status-line convention + Context/References reconciliation note).
