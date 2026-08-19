@@ -348,7 +348,7 @@ certificate = /etc/ssl/cert.pem
 
 [api]
 base_url = https://api.example.com
-api_key = sk_live_12345
+api_key = example-not-a-real-key
 timeout = 30
 """)
         result = analyze_ini(tmp_path)

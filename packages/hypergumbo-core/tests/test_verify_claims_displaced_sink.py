@@ -56,7 +56,9 @@ def _claim() -> Claim:
         id="SC-faput",
         text="host secrets must not reach the host filesystem",
         constraint_taint_flow=TaintFlowConstraint(
-            source_taint="host_secret", prohibited_sink_zone="host_fs",
+            # No credential here: the generic-api-key rule keys on "secret"
+            # next to '=' and reports "prohibited_sink_zone=" as the secret.
+            source_taint="host_secret", prohibited_sink_zone="host_fs",  # gitleaks:allow
         ),
     )
 

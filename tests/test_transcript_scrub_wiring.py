@@ -39,7 +39,8 @@ import pytest
 _REPO = Path(__file__).resolve().parents[1]
 _SHARED = _REPO / ".agent" / "hooks" / "_shared"
 
-_TOKEN = "gho_WiringTest1234567890abcdefghijklmnop"
+# gitleaks:allow - synthetic bait; this file tests the scrubber wiring end to end.
+_TOKEN = "gho_WiringTest1234567890abcdefghijklmnop"  # gitleaks:allow
 _SID = "wiring-test-session"
 
 _SHARED_SCRIPTS = (
@@ -72,7 +73,7 @@ def _sandbox(tmp_path: Path, *, with_secret: bool = True) -> Path:
 
 
 def _rotate(repo: Path, sid: str = _SID) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603
+    return subprocess.run(
         ["bash", str(repo / ".agent" / "hooks" / "_shared" / "rotate-on-session-end.sh"),
          str(repo), sid],
         capture_output=True, text=True, cwd=str(repo),
