@@ -49,7 +49,9 @@ def _load():
 
 scrub = _load()
 
-_TOKEN = "gho_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+# gitleaks:allow - synthetic bait; this file tests the secret scrubber, so the
+# fixture has to be shaped like the thing the scrubber removes.
+_TOKEN = "gho_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"  # gitleaks:allow
 _OTHER = "sk-or-v1-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
 
 
@@ -145,7 +147,7 @@ def test_regression_secret_ordering_is_deterministic(tmp_path: Path) -> None:
     a, b = "AAAA" + "c" * 18, "BBBB" + "c" * 18
     repo = _repo(tmp_path, secrets=f"{a}\n{b}\n")
     first = scrub.collect_secrets(repo)
-    out = subprocess.run(  # noqa: S603
+    out = subprocess.run(
         [sys.executable, "-c",
          "import importlib.util,sys;"
          f"spec=importlib.util.spec_from_file_location('s',{str(_MODULE_PATH)!r});"

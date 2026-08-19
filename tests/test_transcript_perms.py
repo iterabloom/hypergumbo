@@ -133,7 +133,9 @@ class TestRotationHardensSlotsAndArchive:
         Rotation must strip it explicitly."""
         archive_root = seeded_root / ".agent" / ".archived-transcripts"
         archive_root.mkdir()
-        os.chmod(archive_root, 0o2775)
+        # S103 is correct about the mode and beside the point: 2775 is the
+        # hazard this test reproduces so it can assert rotation strips it.
+        os.chmod(archive_root, 0o2775)  # noqa: S103
         subprocess.run(
             [
                 "bash",

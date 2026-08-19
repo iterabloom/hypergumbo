@@ -49,7 +49,7 @@ _CHILD = (
 
 
 def test_pinned_api_tests_import_without_a_sibling_having_run() -> None:
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(
         [sys.executable, "-c", _CHILD],  # nosec B603 - fixed argv, no shell
         cwd=REPO_ROOT,
         capture_output=True,

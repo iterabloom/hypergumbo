@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Pinned Sourcegraph scip.proto revision. Bump deliberately; every bump is
 # a public ABI change for the SCIP shim.
-SCIP_COMMIT="9330cbd49aeb85aee026842770a61ad28e5c4093"  # 2026-04-14
+SCIP_COMMIT="9330cbd49aeb85aee026842770a61ad28e5c4093"  # 2026-04-14  gitleaks:allow
 SCIP_PROTO_URL="https://raw.githubusercontent.com/sourcegraph/scip/${SCIP_COMMIT}/scip.proto"
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"

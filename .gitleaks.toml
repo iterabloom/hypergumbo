@@ -52,3 +52,27 @@ description = "Local .env (gitignored, rotating maintainer tokens; never publish
 paths = [
     '''^\.env$''',
 ]
+
+# Hypothesis's generated constants cache. Gitignored, never source, and its
+# filenames are content hashes that rotate -- three .gitleaksignore fingerprints
+# pinned to specific hashes are exactly the fragility this avoids. Same class as
+# the __pycache__ entry above.
+[[allowlists]]
+description = "Hypothesis generated constants cache (not source)"
+paths = [
+    '''^\.hypothesis/''',
+]
+
+# Two fixed benign strings the generic-api-key rule reports as secrets. Scoped
+# to the exact strings rather than to their files: tracker .ops files ARE
+# committed, so path-allowlisting them would blind the scanner to a real
+# credential pasted into a discussion thread.
+#   apiv2.NewAPI   -- a Go identifier quoted in an INV's op-log
+#   L2-normalized. -- prose in the embeddings module docstring
+[[allowlists]]
+description = "Benign strings misreported as generic API keys"
+regexTarget = "secret"
+regexes = [
+    '''^apiv2\.NewAPI$''',
+    '''^L2-normalized\.$''',
+]
