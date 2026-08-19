@@ -454,6 +454,15 @@ KNOWN_UNREACHABLE = {
     # around: this list keeps asking for the declarative "covers:" marker, and
     # a docs path is the case that most needs it.
     "test_adr_supersession_symmetry.py",
+    # Same fourth category as its sibling above: its subject is
+    # docs/adr/README.md's index table checked against docs/adr/*.md status
+    # lines — markdown on both sides, which no source-file name maps. It
+    # catches the index understating an ADR (a bare "Accepted" against a file
+    # recording a partial landing), the same lifecycle law the symmetry test
+    # enforces from the other side. Runs post-merge in full-suite's
+    # `pytest tests/`; it imports nothing from hypergumbo, so the root
+    # container's missing package install does not reach it.
+    "test_adr_readme_index_sync.py",
     # Covers tests/_forge_github_harness.py -- a TEST HELPER, which is a third
     # category this mapper does not claim: it maps scripts/ and
     # .agent/hooks/_shared/, not tests/. Extending it to tests/_<name>.py

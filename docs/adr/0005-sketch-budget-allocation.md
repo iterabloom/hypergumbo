@@ -3,9 +3,13 @@
 
 Date: 2025-01-15
 Updated: 2026-03-19
-Status: Partially superseded by ADR-0039 (entrypoint-selection rows; takes effect once ADR-0039 implementation lands)
+Status: Partially superseded by ADR-0039 (entrypoint-selection rows) — **IN EFFECT**: ADR-0039 rulings 1-3 shipped, so the selection tables below read as `rank_score`-keyed. Ruling 5 Stage B did NOT land, so the tier constants quoted below remain hand-maintained prose
 
-> **Amendment (2026-06-11):** The decision tables below key file sampling ("Highest-confidence entrypoint") and the detector-tier prose (0.95 / 0.99 / 0.70–0.85) on entrypoint `confidence` as a composite ranking signal. Under ADR-0039 (2026-06-10 design interview, ADRs 0035–0042, PR #4181), ranking adjustments relocate to the new `rank_score` field and published `confidence` becomes pure detection reliability; once ADR-0039's implementation lands, this ADR's entrypoint-selection rules should be read as `rank_score`-keyed. The cited tier constants also become registry-generated under ADR-0039 ruling 5 Stage B rather than the prose values quoted here.
+> **Amendment (2026-06-11, condition discharged 2026-08-19):** The decision tables below key file sampling ("Highest-confidence entrypoint") and the detector-tier prose (0.95 / 0.99 / 0.70–0.85) on entrypoint `confidence` as a composite ranking signal. Under ADR-0039 (2026-06-10 design interview, ADRs 0035–0042, PR #4181), ranking adjustments relocate to the new `rank_score` field and published `confidence` becomes pure detection reliability.
+>
+> **That relocation has landed, so this is no longer conditional: read every entrypoint-selection rule below as `rank_score`-keyed.** Evidence — `entrypoints.py:1605` sorts entrypoints by `rank_score` descending, not by `confidence`; the test-file, utility/example, vendor-tier and library-export penalties at `entrypoints.py:1661-1685` multiply `rank_score` and leave `confidence` at its construction base; `Edge.confidence_source` ships with `VALID_CONFIDENCE_SOURCES = {evidence_derived, emitter_constant, composite}`; and `Edge.quality` was deleted outright at `SCHEMA_VERSION` 0.20.0 (ruling 4).
+>
+> **One half has NOT landed and the constants below are still affected by it.** Ruling 5 Stage B — regenerating the per-evidence-type confidence table *from the registry*, the way the concept-axes docs are generated — has no generator in `scripts/`, and neither `docs/hypergumbo-spec.md` §12 nor this ADR carries a generation marker. So the tier constants quoted here remain parallel prose that can drift from `EvidenceTypeSpec.base_confidence`, which is what Stage B exists to stop. Treat them as illustrative, not authoritative; the registry is authoritative.
 
 ## Context
 
