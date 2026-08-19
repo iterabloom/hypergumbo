@@ -1,0 +1,68 @@
+Original commit body from e2071c05f933b60ad33a6b74299094c285006ff2:
+
+Five defects. Two are the ADR corpus misreporting whether a decision took
+effect — in opposite directions, found by the same check.
+
+1. ADR-0005's status was conditional on a condition that had already
+   fired: "takes effect once ADR-0039 implementation lands". It landed.
+   Evidence in code, not in documents: entrypoints.py:1605 sorts by
+   rank_score; the :1661-1685 penalties mutate rank_score and leave
+   confidence at its construction base; Edge.confidence_source ships
+   with VALID_CONFIDENCE_SOURCES; Edge.quality was deleted at
+   SCHEMA_VERSION 0.20.0. Status now says IN EFFECT, amendment reads
+   past tense.
+
+   The same check found the reverse next door: ADR-0039 read a bare
+   "Accepted" while ruling 5 Stage B has NOT landed — the
+   per-evidence-type confidence table is still hand-maintained prose in
+   spec sec 12 rather than generated from EvidenceTypeSpec, and no
+   generator exists in scripts/. Both ADRs now name what shipped and
+   what did not, so the tier constants ADR-0005 quotes are marked
+   illustrative rather than authoritative.
+
+2. The README index was softer than the ADRs it indexes. ADR-0036 read
+   "Accepted" against a file saying the decision "shipped only
+   partially" (Rulings 1 and 3 never landed); ADR-0024 read "Accepted"
+   against a file recording OQ1's partial supersession. The README's own
+   law — a grep of the status line must not lie — is written about the
+   files, which complied; the index is the copy a reader meets first,
+   and it did not. Four rows re-synced.
+
+3. Four ADRs the spec never cited while discussing their subject:
+   ADR-0029 (inheritance-aware call resolution belongs to the
+   inherited_calls Infrastructure linker; analyzers must not walk
+   ancestor chains), ADR-0034 (IDs go through the factories), ADR-0044
+   (Symbol.origin values are pass IDs, not a separate synthesis axis),
+   ADR-0022 (the config subcommand is its by-category half; the
+   by-language LanguageProfile registry is deferred). Uncited: 10 -> 6,
+   and the six left are out of spec scope by construction.
+
+4. Sec 6's `class Symbol` block was 17 of 30 fields while presenting
+   itself as the dataclass. The omissions were not uniform: ADR-0032's
+   typed siblings were listed and ADR-0031's were not, and `meta` was
+   missing from the very block whose `kind` comment says framework-role
+   and dispatch facts live in meta. All 30 now listed in declaration
+   order.
+
+5. Sec 3 named 11 of 27 subcommands, and one glyph was outside the
+   legend. search / routes / symbols / dead-code-maybe / compact /
+   config / both cache commands / the explicit sketch spelling / the
+   run-is-an-alias-for-survey fact / the nine environment-management
+   commands now have entries with their real flags, read off the parser
+   rather than written from memory. `renders` carried a check-mark glyph
+   in no legend row; it is now the green square the legend defines.
+
+Guards: sec 6 must list every dataclass field, every glyph must be a
+legend row, and every registered subcommand must appear as
+`hypergumbo <cmd>` (test_spec_ir_contract.py); plus a new
+tests/test_adr_readme_index_sync.py asserting the index never drops a
+qualifier its ADR carries — one-directional, so a shorter index cell
+stays legal and only a softer one fails. Registered in
+KNOWN_UNREACHABLE: its subject is markdown on both sides, which no
+source-file name maps.
+
+ADR-0005's fix has NO mechanical guard. Knowing the condition had fired
+required reading entrypoints.py, not the documents, and a test that only
+appeared to cover it would be worse than none.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
