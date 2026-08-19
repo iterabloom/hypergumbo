@@ -1,17 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014 §3).
 
+ADR-0014 §3 governs this helper as amended by ADR-0035 §1: ``name`` and
+``qualified_name`` became mandatory stable_id inputs at v5, and the
+file anchor at v7. The amendment is what makes the input list below
+six items rather than the original three.
+
 How It Works
 ------------
 Given a source blob and the 1-based line range of a function definition, parse
-the source with tree-sitter-rust, locate the unique ``function_item`` whose
-line span matches, and feed the same (kind, normalized_signature, visibility)
-triple rust.py uses into ``make_typed_stable_id``. The output is byte-for-byte
-identical to the stable_id rust.py would assign the same function.
+the source with tree-sitter-rust, locate the unique ``function_item`` or
+``function_signature_item`` (trait method declarations, WI-duguk) whose line
+span matches, and feed the same inputs rust.py uses into
+``make_typed_stable_id`` — kind, normalized signature and visibility, plus
+``name``, ``qualified_name`` (mandatory since v5 / ADR-0035 §1) and
+``file_stable_id`` (v7). The output is byte-for-byte identical to the
+stable_id rust.py would assign the same function, provided the caller passes
+``rel_path``; without it the file anchor is empty and parity is lost.
 
 Why This Design
 ---------------
-The rust-analyzer SCIP backend (WI-duzul) will see every symbol rust.py sees,
+The rust-analyzer SCIP backend (WI-duzul, shipped) sees every symbol rust.py sees,
 plus extra symbols rust.py cannot resolve (trait-dispatched methods, cross-crate
 references). For cross-pass dedup to work, **shared** symbols must carry the
 same stable_id under both backends — otherwise every Rust symbol would be

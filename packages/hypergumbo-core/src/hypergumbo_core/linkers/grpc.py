@@ -33,12 +33,15 @@ How It Works
 1. Scan .proto files for service and RPC method definitions
 2. Scan implementation files for gRPC patterns
 3. Create symbols for services, clients, and servers
-4. Create kind="route" symbols for each proto RPC method, using the
-   real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>
+4. Create route-marker symbols for each proto RPC method, using the
+   real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>. These
+   carry ``kind="function"`` + ``meta['framework_role']='route'`` (the
+   ADR-0027 Phase-3 route→function fold); there is no ``route`` kind.
 5. Match clients to servers by service name
 6. Create canonical 'calls' edges with meta['protocol']='grpc' linking
    client stubs to servicers (post WI-vumum-juvil; pre-fold was grpc_calls)
-7. Create routes_to edges from RPC route symbols to service symbols
+7. Create ``dispatches_to`` edges (``meta['dispatch_kind']='route'``) from
+   RPC route symbols to service symbols
 
 Unresolved Edge Resolution
 --------------------------
@@ -46,7 +49,9 @@ When the Go analyzer creates unresolved edges to gRPC registration functions
 (e.g., RegisterUserServer), this linker attempts to resolve them by:
 1. Finding unresolved edges with names matching Register*Server pattern
 2. Looking up corresponding symbols created by the linker's file scan
-3. Creating proper resolved edges
+3. Creating replacement ``calls`` edges to the matched servicer. These stay
+   ``is_resolved=False`` — the linker supplies a destination, not a proof
+   that the callee was resolved by name binding.
 
 Why This Design
 ---------------

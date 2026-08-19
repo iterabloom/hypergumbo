@@ -24,7 +24,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **links_to**: Links from document to referenced targets
+- **references** (``meta['ref_construct']='markdown_link'``): links from a
+  document to referenced targets. Emitted only for repo-internal targets;
+  the bespoke ``links_to`` type was folded onto ``references``.
 
 Why This Design
 ---------------

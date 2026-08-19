@@ -6,7 +6,8 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Function declarations (def/defp)
 - Macro declarations (defmacro/defmacrop)
 - Function call relationships
-- Import relationships (use/import/alias)
+- Import relationships (use/import). ``alias`` produces NO edge — it is
+  collected only as a hint for call disambiguation.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
@@ -591,7 +592,7 @@ def _extract_behaviour_callbacks(
     file_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
-    """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
+    """Extract behaviour-callback ``dispatches_to`` edges from OTP/Phoenix decls.
 
     When a module uses ``use GenServer``, ``use Phoenix.LiveView``, etc., or
     declares ``@behaviour Plug``, the framework invokes specific callback

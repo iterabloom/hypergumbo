@@ -32,9 +32,9 @@ Relationship to Route Symbols
 -----------------------------
 Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
 function gets tagged as a route handler). This is complementary to — not a
-replacement for — the ``kind="route"`` symbols that language analyzers create.
+replacement for — the route-marker symbols that language analyzers create.
 Route symbols are first-class IR entities representing the route itself, consumed
-by the ``route_handler`` linker to create ``routes_to`` edges. Both outputs are
+by the ``route_handler`` linker to create ``dispatches_to`` edges. Both outputs are
 derived from the same UsageContext extraction pass in each analyzer.
 
 Why This Design
@@ -1842,7 +1842,7 @@ def materialize_route_symbols(
 
     After ``enrich_symbols()`` tags handler methods with ``concept: route``,
     this function creates corresponding route IR nodes that the
-    ``route_handler`` linker can use to produce ``routes_to`` edges.
+    ``route_handler`` linker can use to produce ``dispatches_to`` edges.
 
     This is needed for annotation-based frameworks (JAX-RS, Spring MVC,
     ASP.NET) where route info is distributed across class/method annotations

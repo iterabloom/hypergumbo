@@ -946,8 +946,9 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "``client_framework``, naming the endpoint that accepts the "
                 "connection."),
     MetaKeySpec("topic", AXIS_EDGE_META,
-                "Message-queue / pub-sub topic (or channel) a message_publish / "
-                "message_subscribe edge targets — the literal topic string, or "
+                "Message-queue / pub-sub topic (or channel) an event_publishes "
+                "edge with meta['channel_kind']='queue' targets — the literal "
+                "topic string, or "
                 "the variable's identifier name when the topic is dynamic (see "
                 "``topic_type``)."),
     MetaKeySpec("topic_type", AXIS_EDGE_META,

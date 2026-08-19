@@ -7,7 +7,8 @@ This analyzer uses tree-sitter to parse Erlang files and extract:
 - Record definitions (-record)
 - Macro definitions (-define)
 - Behaviour implementations (-behaviour) with callback edges
-- Type specifications (-spec, -type)
+- Type declarations (-type). ``-spec`` is NOT extracted — no dispatch
+  branch matches a spec node.
 - Function call relationships
 - Import statements (-import)
 
@@ -177,7 +178,6 @@ def _extract_symbols_from_file(
     - record_decl (records)
     - pp_define (macros)
     - behaviour_attribute (behaviours)
-    - spec (type specs)
     - type_alias (types)
     """
     symbols: list[Symbol] = []
@@ -569,7 +569,7 @@ def _extract_edges_from_file(
                             )
                             edges.append(edge)
 
-    # Behaviour callback edges: -behaviour(gen_server) → invokes_callback → init/1, etc.
+    # Behaviour callback edges: -behaviour(gen_server) → dispatches_to → init/1, etc.
     callback_edges = _extract_behaviour_callback_edges(
         tree, source, file_symbols, run_id,
     )
@@ -584,14 +584,14 @@ def _extract_behaviour_callback_edges(
     file_symbols: list[Symbol],
     run_id: str,
 ) -> list[Edge]:
-    """Extract invokes_callback edges from OTP behaviour declarations.
+    """Extract behaviour-callback ``dispatches_to`` edges from OTP declarations.
 
     When a module declares -behaviour(gen_server), the OTP framework invokes
     specific callback functions (init, handle_call, handle_cast, ...). Without
     these edges, callback functions appear as disconnected orphans in the graph.
 
     For each -behaviour(X) attribute, looks up OTP_BEHAVIOUR_CALLBACKS[X] and
-    creates invokes_callback edges from the module symbol to each implemented
+    creates ``dispatches_to`` edges from the module symbol to each implemented
     callback function.
     """
     edges: list[Edge] = []

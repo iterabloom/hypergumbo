@@ -13,7 +13,8 @@ parsing (no tree-sitter grammars required):
 - Elixir: ``mix.exs`` — ``escript: [main_module: ...]``
 - Ruby: ``*.gemspec`` — ``spec.executables``
 - Scala: ``build.sbt`` — ``mainClass := Some(...)``
-- OCaml: ``dune`` — ``(executable (name ...))``
+- OCaml: ``dune`` — ``(executable (name ...))`` and
+  ``(executables (names ...))``
 - Zig: ``build.zig`` — ``addExecutable(...)``
 - Nim: ``*.nimble`` — ``bin = @[...]``
 
@@ -21,9 +22,10 @@ How It Works
 ------------
 1. Scan repo for manifest files using ``find_files``
 2. Route each file to a format-specific extractor based on name/extension
-3. Extractors regex-parse the file content and yield ``(name, target_path,
-   line, target_function)`` tuples
-4. A shared helper converts each tuple into a Symbol + ``defines_target`` Edge
+3. Extractors regex-parse the file content and call the shared ``_emit``
+   helper directly, appending to the caller-owned ``symbols`` / ``edges``
+   lists. They return ``None``; nothing is yielded.
+4. ``_emit`` builds the Symbol + ``defines_target`` Edge for each target
 5. The build-target linker (``linkers/build_target.py``) later resolves these
    edges to ``main()`` functions
 
@@ -31,8 +33,8 @@ Why Regex
 ---------
 These manifest files have simple, well-defined syntax where regex is
 sufficient and avoids adding tree-sitter grammar dependencies. Each
-extractor is a small function (5-15 lines) that handles the format's
-idiomatic patterns.
+extractor is a small function (roughly 10-20 lines) that handles the
+format's idiomatic patterns.
 """
 
 from __future__ import annotations

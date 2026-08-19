@@ -38,7 +38,13 @@ How It Works
      method name has 2+ candidates in global symbols, creates an unresolved
      edge with ``evidence_type="ast_call"`` + ``meta={"call_construct":
      "method", "resolution_quality": "ambiguous"}`` instead of picking
-     an arbitrary candidate (which would produce a false-positive call edge)
+     an arbitrary candidate (which would produce a false-positive call edge).
+   - EXCEPTION: when at least one candidate is an interface method, the
+     interface-method test is itself the disambiguator, so the call IS
+     resolved — to that interface method, as an ``interface_dispatch`` edge
+     at confidence 0.75, or 0.5 with ``meta["disambiguation_fallback"]=True``
+     when several interface methods tie (``min`` by symbol id). The
+     ``dispatches_to`` edges then route a slice on to the concrete impls.
 7. Stdlib interface method guard:
    - When a method call ``x.Lock()`` has no inferred receiver type and the
      method name matches a well-known Go stdlib interface method (Lock, Close,
@@ -48,7 +54,7 @@ How It Works
      in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
      to ``DirLocker.Lock`` (the only repo candidate), which would give
      DirLocker.Lock 255+ false in-degree edges.
-4. Route detection:
+8. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
    - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)

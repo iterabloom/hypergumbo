@@ -1297,7 +1297,7 @@
               "description": "Database table a database-query edge reads or writes, extracted from the query by the database_query linker."
             },
             "topic": {
-              "description": "Message-queue / pub-sub topic (or channel) a message_publish / message_subscribe edge targets \u2014 the literal topic string, or the variable's identifier name when the topic is dynamic (see ``topic_type``)."
+              "description": "Message-queue / pub-sub topic (or channel) an event_publishes edge with meta['channel_kind']='queue' targets \u2014 the literal topic string, or the variable's identifier name when the topic is dynamic (see ``topic_type``)."
             },
             "topic_type": {
               "description": "Whether the message-queue ``topic`` was a string 'literal' or a 'variable' reference resolved to its identifier name."

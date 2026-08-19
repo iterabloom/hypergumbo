@@ -16,7 +16,9 @@ JavaScript (EventEmitter, custom events):
 - emitter.addEventListener(EVENT_NAME, handler)
 - emitter.dispatchEvent(new CustomEvent('eventName'))
 
-Python (Django signals, custom events):
+Python (Django signals, custom events). The three Django-signal rows are
+scanned only when ``django`` is in ``detected_frameworks`` (or when no
+framework set was supplied at all); the EventBus rows are unconditional:
 - signal.send(sender, **kwargs) - Django signals (identifier-based)
 - signal.connect(receiver, sender)
 - @receiver(signal, sender=Sender)

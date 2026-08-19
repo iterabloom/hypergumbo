@@ -14,9 +14,12 @@ How It Works
    - A route definition: ``METHOD  PATH  CONTROLLER.ACTION(params)``
    - A module include: ``->  PREFIX  module.Routes``
    - A comment or blank line (ignored)
-3. Creates ``kind="route"`` Symbol objects with ``meta.route_path``,
-   ``meta.http_method``, and ``meta.controller_action`` so the route
-   handler linker can wire them to Scala controller methods.
+3. Creates route-marker Symbol objects via ``make_route_symbol`` —
+   ``kind="function"`` with ``meta.framework_role='route'`` per the
+   ADR-0027 Phase-3 route→function fold (there is no ``route`` symbol
+   kind) — carrying ``meta.route_path``, ``meta.http_method``, and
+   ``meta.controller_action`` so the route handler linker can wire them
+   to Scala controller methods.
 
 Why Line-by-Line
 ----------------

@@ -2,27 +2,33 @@
 """Protocol linker: message queue for detecting pub/sub communication patterns.
 
 This linker detects message queue patterns across multiple languages and creates
-message_publish and message_subscribe edges for queue-based communication.
+``event_publishes`` edges carrying ``meta['channel_kind']='queue'``. The bespoke
+``message_publish`` / ``message_subscribe`` types were folded onto the canonical
+type by ADR-0023 §6 Phase 3.
+
+Only ONE direction is emitted. A subscriber is an edge *destination* — there is
+no subscribe-direction edge. The ``-> subscriber`` rows below name the site the
+linker resolves an edge TO, not a second edge type.
 
 Detected Patterns
 -----------------
 Kafka:
-- producer.send('topic', msg) / producer.produce('topic', msg) -> message_publish
-- producer.produce(topic_var, msg) -> message_publish (variable topic)
-- consumer.subscribe(['topic']) -> message_subscribe
-- @KafkaListener(topics="topic") -> message_subscribe (Java/Spring)
+- producer.send('topic', msg) / producer.produce('topic', msg) -> publisher
+- producer.produce(topic_var, msg) -> publisher (variable topic)
+- consumer.subscribe(['topic']) -> subscriber
+- @KafkaListener(topics="topic") -> subscriber (Java/Spring)
 
 RabbitMQ:
-- channel.basic_publish(exchange, routing_key, body) -> message_publish
-- channel.basic_consume(queue, callback) -> message_subscribe
+- channel.basic_publish(exchange, routing_key, body) -> publisher
+- channel.basic_consume(queue, callback) -> subscriber
 
 AWS SQS:
-- sqs.send_message(QueueUrl=..., MessageBody=...) -> message_publish
-- sqs.receive_message(QueueUrl=...) -> message_subscribe
+- sqs.send_message(QueueUrl=..., MessageBody=...) -> publisher
+- sqs.receive_message(QueueUrl=...) -> subscriber
 
 Redis Pub/Sub:
-- redis.publish(channel, message) -> message_publish
-- pubsub.subscribe(channel) / redis.subscribe(channel) -> message_subscribe
+- redis.publish(channel, message) -> publisher
+- pubsub.subscribe(channel) / redis.subscribe(channel) -> subscriber
 
 Topic Detection Strategy
 ------------------------

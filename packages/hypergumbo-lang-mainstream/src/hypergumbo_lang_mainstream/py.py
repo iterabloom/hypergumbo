@@ -10,7 +10,8 @@ Analysis proceeds in two passes for cross-file resolution:
 
 **Pass 1 - Symbol Collection:**
 - Parse each .py file with ast.parse()
-- Extract top-level functions and classes as symbols
+- Extract every function and class as a symbol, at any nesting depth
+  (INV-mofav — nested and closure-local defs are emitted too)
 - Extract methods nested inside classes
 - Build import mappings for cross-file resolution
 - Compute stable_id (signature-based) and shape_id (structure-based)
@@ -59,8 +60,11 @@ pattern.
 
 ID Schemes
 ----------
-- **stable_id**: sha256 of signature (param count, arity flags, decorators).
-  Survives renames and moves if signature unchanged.
+- **stable_id**: sha256 over the v6 tuple — kind, param count, arity flags,
+  decorators, ``name``, ``qualified_name``, and the file-anchored
+  ``containing_stable_id`` (ADR-0035 §2). It does NOT survive a rename or a
+  move: both the name and the containing file feed the hash. Use
+  ``fingerprint`` to join a symbol across a rename (INV-zudob).
 - **shape_id**: sha256 of AST structure (control flow, nesting).
   Detects clones with different variable names.
 

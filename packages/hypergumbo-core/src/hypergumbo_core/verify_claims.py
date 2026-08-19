@@ -26,6 +26,11 @@ Claims are YAML files with a ``claims`` list. Each claim specifies:
 Verdict Types
 -------------
 - ``confirmed``: Claim was actively checked and held (no violations found)
+- ``confirmed_with_caveats``: Clean, but the clean answer rests on something
+  the reader must see — a sanitizer supplied by the analysed repository, or
+  named opaque launch sites. Carries a structured ``caveats`` list and exits
+  **3** (ADR-0016 §4). A consumer testing ``verdict == "confirmed"`` will not
+  see these; use ``CONFIRMING_VERDICTS``.
 - ``violated``: Specific evidence contradicts the claim
 - ``inconclusive``: Verification couldn't proceed or couldn't be trusted —
   no machine-checkable constraint, broken input, missing catalog, or the

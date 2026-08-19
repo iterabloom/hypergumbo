@@ -23,12 +23,16 @@ This linker consumes the ``implements`` edges that the Rust analyzer's
 existing inheritance pass already emits (WI-tulid) — one edge per
 ``impl Trait for Struct`` block, connecting the struct symbol to the
 trait symbol — and, for each such edge, emits ``dispatches_to`` edges
-from the trait symbol to every concrete method named
-``"{Struct}::{method}"`` in the same file as the struct. With those
-edges in place, any path that reaches the trait (a call site on a trait
-object, a trait bound on a generic function, or even a ``use Trait``
-import at a reachable module) transitively reaches the concrete
-implementation bodies.
+from the trait symbol to the concrete methods named
+``"{Struct}::{method}"`` in the same file as the struct.
+
+Scope narrowed by INV-tihim: when the trait declares a non-empty
+requirement set, methods that satisfy one of those requirements are
+SKIPPED here, because ``linkers/type_hierarchy`` now emits the precise
+requirement→implementation edge for them. What remains to this linker is
+the inherent (non-trait-required) methods. Reachability of the concrete
+bodies from the trait is therefore a property of the two linkers
+together, not of this one alone.
 
 Why a Linker (Not Per-Analyzer Logic)
 -------------------------------------

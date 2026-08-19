@@ -38,7 +38,11 @@ Why This Design
 
 Population of ``is_exported`` follows Rust's visibility rule: an item is
 exported only when its declaration carries an unqualified ``pub`` modifier;
-``pub(crate)`` / ``pub(super)`` / private items are not exported.
+``pub(crate)`` / ``pub(super)`` / private items are not exported. Two
+constructs cannot follow that rule and do not: a bodyless trait method
+carries no visibility modifier of its own and is always marked exported,
+and an enum variant inherits the *enum's* modifiers rather than carrying
+its own.
 """
 from __future__ import annotations
 
