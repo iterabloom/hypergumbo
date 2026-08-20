@@ -26,3 +26,18 @@
   clock: 2  # ea18
   nonce: ea18  # ea18
   message: "Re-confirmed + extended on fresh substrate (dogfood_tranche_07 F125.A4): on the 103 event_publishes edges, FOUR meta keys co-encode the same MQ info — queue_type (kafka 85/rabbitmq 12/sqs 4/redis 2), topic_type (literal 87/variable 16), topic, channel. This row documents channel==topic redundancy; this adds that queue_type and topic_type are TWO further co-emitted, undocumented (0 spec/schema hits) MQ meta keys on the same edges. Folds as a sibling-key facet."  # ea18
+- op: update  # 1bad
+  at: '2026-07-30T16:48:24Z'  # 1bad
+  by: agent  # 1bad
+  actor: jgstern_agent  # 1bad
+  clock: 3  # 1bad
+  nonce: 1bad  # 1bad
+  set:  # 1bad
+    status: done  # 1bad
+- op: discuss  # a3af
+  at: '2026-07-30T16:48:24Z'  # a3af
+  by: agent  # a3af
+  actor: jgstern_agent  # a3af
+  clock: 4  # a3af
+  nonce: a3af  # a3af
+  message: "DONE — same root cause and same PR as WI-zisig (see its closure note). meta.channel is registered on the edge axis and emitted on 145 self-corpus edges but was absent from docs/schema.json, because the schema hand-listed 2 of 32 edge-axis keys. Both meta blocks now derive their properties from the axis_meta_keys registry, so channel is documented (Edge.meta 2 -> 34 keys) along with every other registered key, and a ratchet fails if a registered key is missing. The spec half of the item is unchanged by this PR: channel's semantics are already documented via its MetaKeySpec description, which is now what the schema renders."  # a3af

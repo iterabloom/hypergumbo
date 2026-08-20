@@ -212,7 +212,8 @@ class AsmAnalyzer(TreeSitterAnalyzer):
         # Build file_labels list from global_symbols filtered to this rel_path
         file_labels: list[tuple[int, Symbol]] = sorted(
             [(s.span.start_line, s) for s in global_symbols.values()
-             if isinstance(s, Symbol) and s.path == rel_path and s.kind == "function"],
+             if isinstance(s, Symbol) and s.path == rel_path
+             and s.kind == "function" and s.span is not None],
             key=lambda x: x[0],
         )
 

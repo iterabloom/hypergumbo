@@ -225,10 +225,15 @@ node 'server' {
         cls = next((s for s in result.symbols if s.kind == "class"), None)
         assert cls is not None
         # INV-dulah: node.id and stable_id are minted together by
-        # make_doc_symbol_ids; node.id is "puppet:{path}:{kind}:{start_line}:{name}".
-        # Pin the 5-slot shape (numeric start_line in slot 4).
-        _slots = cls.id.split(":", 4)
-        assert len(_slots) == 5 and _slots[0] == "puppet" and _slots[3].isdigit(), cls.id
+        # make_doc_symbol_ids; node.id is the canonical ADR-0036
+        # "{lang}:{path}:{start}-{end}:{name}:{kind}" (was the doc-family
+        # kind-third/name-last order, which put the kind word in the span slot).
+        # Parsed RIGHT-anchored, the way the canonical parser does
+        # (span, name, kind = parts[-3:]), so a colon in the path cannot shift it.
+        _head, _span, _name, _kind = cls.id.rsplit(":", 3)
+        assert _head.startswith("puppet:"), cls.id
+        assert re.match(r"^\d+-\d+$", _span), cls.id
+        assert _kind == cls.kind, cls.id
         assert cls.stable_id != cls.id
         assert cls.stable_id.startswith("sha256:")
 

@@ -34,12 +34,15 @@ Why This Design
 
 import hashlib
 from pathlib import Path
-from typing import ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import tree_sitter
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
@@ -63,12 +66,12 @@ def find_css_files(root: Path) -> Iterator[Path]:
     yield from find_files(root, ["*.css"])
 
 
-def _get_node_text(node, source: bytes) -> str:
+def _get_node_text(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract text from a tree-sitter node."""
     return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
-def _extract_import_path(node, source: bytes) -> str | None:
+def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the path from an @import statement."""
     for child in node.children:
         if child.type == "string_value":
@@ -85,7 +88,7 @@ def _extract_import_path(node, source: bytes) -> str | None:
     return None  # pragma: no cover - defensive
 
 
-def _extract_variable_name(node, source: bytes) -> str | None:
+def _extract_variable_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the variable name from a declaration."""
     for child in node.children:
         if child.type == "property_name":
@@ -95,7 +98,7 @@ def _extract_variable_name(node, source: bytes) -> str | None:
     return None
 
 
-def _extract_keyframes_name(node, source: bytes) -> str | None:
+def _extract_keyframes_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the name from a @keyframes rule."""
     for child in node.children:
         if child.type == "keyframes_name":
@@ -103,7 +106,7 @@ def _extract_keyframes_name(node, source: bytes) -> str | None:
     return None  # pragma: no cover - defensive
 
 
-def _extract_media_query(node, source: bytes) -> str:
+def _extract_media_query(node: "tree_sitter.Node", source: bytes) -> str:
     """Extract the media query string."""
     # Get the query part between @media and {
     text = _get_node_text(node, source)
@@ -119,7 +122,7 @@ def _extract_media_query(node, source: bytes) -> str:
     return "unknown"  # pragma: no cover - defensive
 
 
-def _extract_font_family(node, source: bytes) -> str | None:
+def _extract_font_family(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the font-family from a @font-face rule."""
     for child in node.children:
         if child.type == "block":
@@ -138,7 +141,7 @@ def _extract_font_family(node, source: bytes) -> str | None:
 
 
 def _process_css_tree(
-    root_node,
+    root_node: "tree_sitter.Node",
     symbols: list[Symbol],
     edges: list[Edge],
     rel_path: str,

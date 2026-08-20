@@ -1,0 +1,61 @@
+- op: create  # d8f8
+  at: '2026-08-16T08:38:27Z'  # d8f8
+  by: agent  # d8f8
+  actor: jgstern_agent  # d8f8
+  clock: 1  # d8f8
+  nonce: d8f8  # d8f8
+  data:  # d8f8
+    kind: invariant  # d8f8
+    title: "the per-PR CI pipeline skips every path-conditioned step (empty PR changed-file list) — the merge gate has been decorative since cutover"  # d8f8
+    status: violated  # d8f8
+    priority: 1  # d8f8
+    parent:  # d8f8
+    tags:  # d8f8
+    - ci  # d8f8
+    - trunk_green  # d8f8
+    - security  # d8f8
+    isbefore: []  # d8f8
+    duplicate_of: []  # d8f8
+    not_duplicate_of: []  # d8f8
+    pr_ref:  # d8f8
+    description: "FOUND by rule-12 control-checking on an unrelated PR: the INV-titih PR was\nexpected to trigger the new ~12-minute self-claims-gate step (its diff\nmatches the path filter) yet ci/woodpecker/pr/woodpecker went green after\n~10 seconds of polling. Checking every saved auto-pr log across multiple\nsessions: EVERY pr-context green arrived at ~11s. A pipeline containing\nwhole-tree strict mypy + full pytest cannot complete in 11 seconds.\n\nMECHANISM (best supported): the pipeline-level `when` fires on PRs (target-\nbranch matching confirmed in-file against a real payload), but the per-PR\nCHANGED-FILE LIST evaluates as empty/unavailable, so every step-level\n`path:` condition — and ALL TWELVE steps in woodpecker.yml carry one —\nskips fail-closed. An empty pipeline completes in seconds and posts\nsuccess; auto-pr sees green and merges. Push events carry file lists, so\nthe same steps run for real POST-merge — which is why dev turns red AFTER\nmerges (the ceaba981 ARCHITECTURE.md redness today was this shape: the\nverify-generated step would have failed the PR, but it never ran there).\n\nCONSEQUENCES, stated plainly: the per-PR merge gate has been decorative\nfor the entire Woodpecker era. Everything believed gated at merge time —\nlint, the strict mypy ratchet (whose own step comment records fixing a\nprevious does-not-gate hole at the STEP level; this is the same class one\nlevel up, at the EVENT level), pytest, dco (its AND-ed event+path form\nalso never matched), verify-generated, tracker-validate — actually gated\nnothing on PRs. dev's real protections have been local smart-test\ndiscipline plus post-merge push redness.\n\nFIX SHIPPED WITH THIS FILING (same-day PR): step conditions become\nevent-split ORs — `- event: pull_request` (unconditional on PRs; no\ndependence on PR changed-file computation at all) OR `- event: push` +\n`path:` (push keeps path-scoping). dco drops its path arm (tracker-sync\ncommits carry sign-offs; checking them is safe). self-claims-gate keeps a\npath-scoped push arm and gains a PR arm with an IN-STEP guard (git diff\nagainst merge-base, grep the claim surface, early-exit 0 when untouched)\nso the ~12-minute self-analysis still only runs on claim-surface PRs.\nVALIDATION IS THE FIX PR ITSELF: its pr-context poll must jump from ~11s\nto real minutes with real steps — a self-demonstrating change; and if the\n`when` rewrite is malformed, Woodpecker fails the pipeline loudly and\nauto-pr blocks (fail-closed both ways).\n\nCOST ACCEPTED: every PR now pays real CI wall-clock (~13-15 min, matching\nthe push pipeline) before merge. That is not a regression; it is the\nlatency the project believed it was already paying."  # d8f8
+    fields:  # d8f8
+      statement: "A pipeline that gates merges must actually execute its checks on the gated event. VIOLATED: every step in .woodpecker/woodpecker.yml is path-conditioned, the per-PR changed-file list evaluates empty, so all steps skip and the pr context reports success in ~11 seconds — measured on every saved auto-pr log across multiple sessions."  # d8f8
+      root_cause: "Step-level when.path conditions depend on the forge supplying a changed-file list for the event; Woodpecker's GitHub PR payload yields none here, and a no-match path condition skips the step (fail-closed per-step composes into fail-OPEN for the pipeline: zero steps -> success). The same steps run correctly on push events, which carry file lists — so the real checks run only AFTER merge, on dev."  # d8f8
+- op: update  # 868c
+  at: '2026-08-16T08:48:48Z'  # 868c
+  by: agent  # 868c
+  actor: jgstern_agent  # 868c
+  clock: 2  # 868c
+  nonce: 868c  # 868c
+  set:  # 868c
+    status: needs_human_review  # 868c
+- op: discuss  # 541a
+  at: '2026-08-16T08:48:49Z'  # 541a
+  by: agent  # 541a
+  actor: jgstern_agent  # 541a
+  clock: 3  # 541a
+  nonce: 541a  # 541a
+  message: "FIX SHIPPED, AND ITS FIRST TWO PREDICTIONS FAILED — recorded as\nmeasurements, because both eliminate mechanisms:\n\n1. The event-split fix PR itself polled green in ~10s. Explainable: a PR\n   pipeline may evaluate config from the TARGET branch (old all-skip\n   config at that moment).\n2. THE PROBE PR (docs-only, opened AFTER the fix merged, so both source\n   and target carried the event-split config) ALSO polled green in ~11s.\n   This kills the target-branch-config explanation too. With an\n   unconditional `- event: pull_request` arm on every step, an ~11-second\n   success means the steps STILL did not run on the PR event.\n\nWHAT IS ESTABLISHED vs ELIMINATED:\n- Established: the pr context posts success in ~11s on every PR ever\n  measured; real steps demonstrably run on PUSH events (the push pipeline\n  takes ~15 min and produces real failures, e.g. the ARCHITECTURE.md\n  redness); the pipeline-level `when` (event push/pull_request + branch\n  main/dev) permits PR builds.\n- Eliminated: per-PR path-filter no-match as the SOLE mechanism (the\n  unconditional PR arm changed nothing); target-branch config evaluation\n  as the mechanism (the probe ran with the fix on both sides).\n- Still standing, untestable from this box: (a) the Woodpecker server's\n  repo settings pin a different/empty config for PR builds or filter PR\n  events server-side (the ~11s success would then be a pipeline built\n  from something other than .woodpecker/woodpecker.yml); (b) `when`\n  list-arm semantics differ from OR in this server's version in a way\n  that skips PR arms but not push arms; (c) the status context is posted\n  by something other than a real pipeline run.\n\nPUSH-SIDE SAFETY CHECK (because a wrong `when` rewrite could have\nsilently emptied the push pipeline too): the push run on the fix commit\n6d5992b167 succeeded, and the probe merge's push run stayed\npending-with-running-steps for minutes — the push arms still execute.\nThe rewrite is at worst neutral: PR behavior unchanged (still ungated),\npush behavior unchanged (still real).\n\nBLOCKED ON SERVER-SIDE VISIBILITY. The Woodpecker UI/API sits behind\nCloudflare Access; this box has no credentials (ci-debug says so\nexplicitly for log fetches), so I cannot see WHICH steps a PR pipeline\ncontained, what config it used, or the server's repo settings. Every\nfurther hypothesis is guesswork without one of: (a) a human opening the\nWoodpecker UI page for any recent PR pipeline and reading its step list\n+ config source, or (b) UI/API credentials for this box. Setting\nneeds_human_review for exactly that — one screenshot-level observation\ndecides between the standing hypotheses.\n\nMEANWHILE THE HONEST OPERATING POSTURE, stated for every future session:\nci/woodpecker/pr/woodpecker green is NOT evidence of anything. The real\ngates are local smart-test discipline (mypy ratchet + affected tests +\ncoverage) and the post-merge push pipeline. Treat auto-pr's \"CI Passed\"\nas \"no gate objected\", not \"checks passed\", until this item closes."  # 541a
+- op: discuss  # a2fb
+  at: '2026-08-16T17:40:13Z'  # a2fb
+  by: agent  # a2fb
+  actor: jgstern_agent  # a2fb
+  clock: 4  # a2fb
+  nonce: a2fb  # a2fb
+  message: "RETRACTED — the premise was false, and the falsifier is the direct\nobservation this item's needs_human_review asked for.\n\nWHAT THE OWNER'S WOODPECKER TRANSCRIPT SHOWS (pipeline #1136, the INV-titih\nPR): every step EXECUTED — lint (real ruff/bandit), whole-tree strict mypy,\naudit, hook-tests, prepare-git, build-grammars, verify-generated, dco\n(running fine under its original `event: pull_request` + `path` AND form,\nwith CI_COMMIT_TARGET_BRANCH resolved), the v2 self-claims-gate (first live\nrun: \"check-self-claims-drift: OK — 18 claims unchanged (18\nconfirmed_with_caveats)\"), and pytest (9,240 passed, changed files at\n100%). Path conditions evaluate correctly on PR events. The per-PR gate was\nREAL the entire time.\n\nWHERE THE FALSE PREMISE CAME FROM — the instrument, then me. auto-pr's\npoll telemetry prints a \"[Ns] ...\" line only on STATE TRANSITIONS and a\ndot per 10-second tick in between (scripts/lib/forgejo-api.sh, the\nprev_summary comparison). I read \"[10s] waiting … ✅ CI Passed\" as an\n11-second pass. Counting the dots that sit between those lines: zuhig PR\n~4 min, titih PR ~11 min (matching pipeline #1136's contents), others\n~1.5 min. Every \"11-second green since cutover\" in this item's statement\nwas the same misreading applied to every log. Three of my own standing\nrules fired and I walked past them: read exit codes and instruments, not\ngreen ticks (rule 9); a clean extreme is usually the instrument (the\nWI-zavut thread even records a PRIOR instance of exactly this lesson);\nand I asserted an outcome without computing what the printing mechanism\nproduces (rule 13). The two \"failed predictions\" that followed (fix PR\nand probe PR still \"fast\") were the same artifact again, twice.\n\nREMEDIATION SHIPPED: the event-split `when` rewrite and the\ntarget-branch-config header note — both motivated by the false premise\nand both carrying false load-bearing comments — are REVERTED to the\noriginal path-scoped forms. Net repo change from the episode: a corrected\nheader comment teaching the next reader to count dots, retirement of the\ngenuinely stale \"VERIFY at cutover\" note, and a CHANGELOG retraction\nentry. The one positive by-product: the episode produced the first\nverified live run of the self-claims-gate (noted on WI-ninoz).\n\nRESIDUAL, recorded not theorized: the ratchet/woodpecker-port/probe PRs\npolled ~1.5 min, which is fast for a pipeline containing whole-tree mypy;\nwarm caches on the self-hosted agent may explain it, and pipeline #1136\nproves completeness is possible at these speeds. If a future fast green\ncoincides with a check that should have failed, THAT is the moment to\nlook again — with timestamps, not print lines."  # a2fb
+- op: update  # 005a
+  at: '2026-08-16T17:40:33Z'  # 005a
+  by: agent  # 005a
+  actor: jgstern_agent  # 005a
+  clock: 5  # 005a
+  nonce: 005a  # 005a
+  set:  # 005a
+    status: satisfied  # 005a
+- op: discuss  # fe51
+  at: '2026-08-16T17:40:34Z'  # fe51
+  by: agent  # fe51
+  actor: jgstern_agent  # fe51
+  clock: 6  # fe51
+  nonce: fe51  # fe51
+  message: "Status semantics: 'satisfied' because the invariant's STATEMENT (a gating pipeline must execute its checks on the gated event) HOLDS and always held — pipeline #1136's transcript is the positive evidence. What was false was this item's own violation claim; see the retraction entry above for the full account. 'wont_do' is not in the invariant vocabulary, and deletion would erase the record of the misreading, which is worth keeping — the corrected header comment in woodpecker.yml points here."  # fe51

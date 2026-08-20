@@ -209,6 +209,383 @@ def test_unresolvable_name_is_silently_skipped(tmp_path: Path):
     assert result.advisory_dynamic_emits == ()
 
 
+# --- WI-zigih: dict-indirection / tuple-unpack resolution (extension C) ---
+
+def test_dict_subscript_rhs_resolves_to_value_union(tmp_path: Path):
+    """``et = SOME_MAP[k]`` resolves to the union of the dict's literal
+    string values, so an unregistered value is FLAGGED.
+
+    This is the direct-subscript half of the WI-rorul blind spot: before
+    WI-zigih ``_resolve_simple_rhs`` returned ``None`` for any Subscript
+    RHS, poisoning resolution and letting the value ship unseen.
+    """
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_EDGE_TYPE_MAP = {"call": "otp_call", "cast": "otp_cast"}\n'
+        'def emit(kind):\n'
+        '    et = _EDGE_TYPE_MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    joined = "\n".join(result.strict_violations)
+    assert "otp_call" in joined
+    assert "otp_cast" in joined
+
+
+def test_tuple_unpack_from_dict_subscript_resolves_by_position(tmp_path: Path):
+    """``suffix, et = MAP[k]`` resolves ``et`` to the union of each dict
+    value tuple's element 1 — the exact WI-rorul OTP-linker shape.
+
+    The OTP linker shipped unregistered ``otp_call``/``otp_cast`` through
+    ``handler_suffix, edge_type = CALL_TYPE_MAP[call_type]`` and the gate
+    stayed green because ``_resolve_function_local`` only matched
+    ``ast.Name`` targets, skipping the Tuple target entirely.
+    """
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_CALL_TYPE_MAP = {\n'
+        '    "call": ("_handle_call", "otp_call"),\n'
+        '    "cast": ("_handle_cast", "otp_cast"),\n'
+        '}\n'
+        'def emit(call_type):\n'
+        '    handler_suffix, edge_type = _CALL_TYPE_MAP[call_type]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    joined = "\n".join(result.strict_violations)
+    assert "otp_call" in joined
+    assert "otp_cast" in joined
+    # The position-0 element must NOT leak in as an edge_type candidate.
+    assert "_handle_call" not in joined
+
+
+def test_tuple_unpack_resolves_registered_values_clean(tmp_path: Path):
+    """The post-WI-rorul shape (registered values) stays clean — the new
+    resolution must not manufacture false positives."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_CALL_TYPE_MAP = {\n'
+        '    "call": ("_handle_call", "dispatches_to"),\n'
+        '    "cast": ("_handle_cast", "dispatches_to"),\n'
+        '}\n'
+        'def emit(call_type):\n'
+        '    suffix, edge_type = _CALL_TYPE_MAP[call_type]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"dispatches_to"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_dict_subscript_with_unresolvable_value_is_silently_skipped(
+    tmp_path: Path,
+):
+    """Conservative posture: ONE non-literal dict value poisons the whole
+    resolution, so nothing is flagged (silent skip, no false positive)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_EDGE_TYPE_MAP = {"call": "otp_call", "cast": _compute()}\n'
+        'def emit(kind):\n'
+        '    et = _EDGE_TYPE_MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_tuple_unpack_with_short_value_tuple_is_silently_skipped(
+    tmp_path: Path,
+):
+    """A dict value tuple shorter than the unpack position cannot be
+    resolved at that index — skip rather than guess."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"call": ("only_one",), "cast": ("a", "otp_cast")}\n'
+        'def emit(kind):\n'
+        '    suffix, edge_type = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_unknown_dict_name_subscript_is_silently_skipped(tmp_path: Path):
+    """A subscript over a name that is not a resolvable dict literal
+    (e.g. a function parameter) keeps the pre-WI-zigih silent skip."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def emit(mapping, kind):\n'
+        '    et = mapping[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_function_local_dict_shadows_module_dict(tmp_path: Path):
+    """Resolution order matches Python LEGB: a function-local dict
+    literal shadows a module-level one of the same name."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"k": "module_level_value"}\n'
+        'def emit(kind):\n'
+        '    _MAP = {"k": "local_level_value"}\n'
+        '    et = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    joined = "\n".join(result.strict_violations)
+    assert "local_level_value" in joined
+    assert "module_level_value" not in joined
+
+
+def test_starred_unpack_target_is_silently_skipped(tmp_path: Path):
+    """``a, *rest = MAP[k]`` makes every position after the star
+    ambiguous, so no index can be trusted — skip rather than guess."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"call": ("x", "otp_call")}\n'
+        'def emit(kind):\n'
+        '    first, *edge_type = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_bare_dict_annotation_does_not_block_resolution(tmp_path: Path):
+    """A bare ``_MAP: dict`` declaration creates no binding, so the real
+    assignment below it still resolves."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP: dict\n'
+        '_MAP = {"a": "annotated_map_value"}\n'
+        'def emit(kind):\n'
+        '    et = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert "annotated_map_value" in "\n".join(result.strict_violations)
+
+
+def test_tuple_index_over_non_tuple_value_is_silently_skipped(tmp_path: Path):
+    """An unpack target whose map values are plain strings cannot be
+    indexed per-position — skip."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": "plain_string"}\n'
+        'def emit(kind):\n'
+        '    first, edge_type = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_non_literal_tuple_element_is_silently_skipped(tmp_path: Path):
+    """A map value tuple whose element at the unpack index is not a
+    string constant poisons resolution."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": ("suffix", _COMPUTED)}\n'
+        'def emit(kind):\n'
+        '    first, edge_type = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=edge_type, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_non_name_subscript_base_is_silently_skipped(tmp_path: Path):
+    """``MODULE.MAP[k]`` / ``get_map()[k]`` have no statically-resolvable
+    dict display — skip."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        'def emit(kind):\n'
+        '    et = constants.EDGE_MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+
+
+def test_subscript_at_kwarg_site_resolves_single_value(tmp_path: Path):
+    """``edge_type=MAP[k]`` directly at the call site resolves too — the
+    gate must not depend on whether the producer bound a local first."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": "kwarg_site_value"}\n'
+        'def emit(kind):\n'
+        '    return Edge.create(src="a", dst="b", edge_type=_MAP[kind], line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert "kwarg_site_value" in "\n".join(result.strict_violations)
+
+
+def test_subscript_at_kwarg_site_resolves_multiple_values(tmp_path: Path):
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": "kwarg_one", "b": "kwarg_two"}\n'
+        'def emit(kind):\n'
+        '    return Edge.create(src="a", dst="b", edge_type=_MAP[kind], line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    joined = "\n".join(result.strict_violations)
+    assert "kwarg_one" in joined
+    assert "kwarg_two" in joined
+
+
+def test_unresolvable_subscript_at_kwarg_site_is_silently_skipped(
+    tmp_path: Path,
+):
+    """An empty map (and, equivalently, an unresolvable one) yields no
+    candidates at the kwarg site — silent skip, not an advisory storm."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {}\n'
+        'def emit(kind):\n'
+        '    return Edge.create(src="a", dst="b", edge_type=_MAP[kind], line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    result = find_producer_coherence_violations(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+        registry_names=frozenset({"calls"}),
+    )
+    assert result.strict_violations == ()
+    assert result.advisory_dynamic_emits == ()
+
+
+def test_fstring_segment_over_dict_subscript_stays_unexpanded(tmp_path: Path):
+    """Documented boundary: f-string expansion resolves its segments
+    without the module tree, so a segment bound from a dict subscript
+    stays unexpandable (conservative — no candidate is invented)."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": "suffix_one"}\n'
+        'def emit(kind):\n'
+        '    part = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=f"ast_{part}", line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    emitted = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+    )
+    assert "ast_suffix_one" not in emitted
+
+
+def test_dict_subscript_values_reach_the_enumerator(tmp_path: Path):
+    """``find_emitted_literal_values`` shares ``_classify_value``, so the
+    dict-indirection shape must also enumerate — closing the coverage gap
+    the module docstring listed as 'dict-subscript-target (no)'."""
+    _write(
+        tmp_path / "packages" / "demo" / "src" / "demo.py",
+        '_MAP = {"a": "alpha_edge", "b": "beta_edge"}\n'
+        'def emit(kind):\n'
+        '    et = _MAP[kind]\n'
+        '    return Edge.create(src="a", dst="b", edge_type=et, line=1, '
+        'evidence_type="ast_call_direct", origin="test", origin_run_id="test")\n',
+    )
+    emitted = find_emitted_literal_values(
+        tmp_path,
+        constructor_names=frozenset({"Edge", "Edge.create"}),
+        keyword_arg="edge_type",
+    )
+    assert "alpha_edge" in emitted
+    assert "beta_edge" in emitted
+
+
 def test_test_files_are_excluded_by_default(tmp_path: Path):
     """Test files legitimately construct synthetic axis values; they
     should be skipped by default."""

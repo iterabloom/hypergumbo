@@ -15,10 +15,11 @@
 # project-local taint catalogs (WI-votan) provide per-project
 # classification when needed.
 language: scala
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Scala stdlib (scala.*, scala.collection.*, etc.)
-# on top of the Java parent and adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # Short names that are ambiguous between I/O and non-I/O Scala operations.
@@ -95,7 +96,9 @@ ambiguous_names:
   - resource      # Resource type, generic resource
   - status        # HTTP status, generic status
   - url           # URL string, generic url variable
-  - on            # event handler, query DSL
+  - "on"          # event handler, query DSL. QUOTED DELIBERATELY: bare `on`
+                  # is a YAML 1.1 BOOLEAN, so this entry parsed as True and
+                  # suppressed nothing at all.
   - as            # type cast (asInstanceOf, etc.)
   - toList        # collection conversion
   - toSeq         # collection conversion
@@ -124,11 +127,24 @@ fs_read:
 fs_write:
   - module: scala.sys.process.Process
     methods: [apply, run]
-    notes: "Scala process execution (can write to filesystem via shell commands)"
+    simultaneous: true
+    notes: >-
+      Scala process execution (can write to filesystem via shell commands).
+      INV-zumin: declared `simultaneous` because BOTH this and the `subprocess`
+      row below are true of the same call at the same moment — this row is a
+      statement about what the LAUNCHED PROGRAM does. Before the marker,
+      `lookup_with_module` returned whichever row the YAML declared first, so
+      the launch tagged `fs_write` and was undetectable as a subprocess: a
+      `{boundary: subprocess, must_not_exist: true}` claim found no chain, the
+      HIGH RISK marking never fired, and the auto-derived taint sink landed in
+      zone `host_fs` instead of `subprocess`, inverting a "subprocess allowed,
+      host_fs prohibited" claim. BOTH rows must carry the flag — the loader
+      refuses a half-declared pair rather than picking one.
 
 subprocess:
   - module: scala.sys.process.Process
     methods: [apply, run]
+    simultaneous: true
     notes: "Scala process execution — wraps java.lang.ProcessBuilder"
   - module: scala.sys.process.ProcessBuilder
     methods: [run, lineStream, lazyLines]

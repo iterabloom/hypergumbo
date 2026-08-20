@@ -729,6 +729,87 @@ runs can find prior work:
   F1–F6 fixed in one docs PR; no axis declaration / new ADR needed. Full
   write-up: `~/hypergumbo_lab_notebook/concept-audit-identity-vocabulary_07152026.md`.
 
+- **2026-07-31 — `Symbol.kind` type family (the abstract-type predicate).**
+  Trigger: INV-tihim — seven language-agnostic consumers hand-rolling
+  inconsistent "type-like kind" sets, and `type_hierarchy.py:113` gating
+  virtual dispatch on `child_kind == "interface"` alone. Hypothesis: `class`
+  is apex/peer overloaded, naming both a concrete class and an abstract type.
+  **Outcome: REJECTED on axis-correctness, CONFIRMED on
+  enumeration-completeness.** Measured over 11 languages, every analyzer emits
+  `class` for a class *declaration*; abstract-ness rides on a different field
+  (`modifiers == ['abstract']` in java/csharp/php/scala/kotlin, derivable from
+  `meta.base_classes` in python). All six values CANONICAL — no fold, no
+  ADR-0027 amendment, and therefore no `stable_id` churn behind the v9/v10
+  scheme gate. The defect is the missing *predicate layer*: `Symbol.kind`
+  carries 138 values on one axis, so `symbol_kinds_on_axis()` cannot express
+  "the abstract types" (contrast `Edge.edge_type`, whose ADR tells consumers
+  to call `edge_types_on_axis()` instead of keeping their own list), and every
+  consumer writes a literal. **Three methodological notes worth carrying:**
+  (1) the automated pass beat the manual one again and by more than usual —
+  manual sweep 7 sets, AST walk **47 sites / 24 vocabularies** (26 strict);
+  (2) the first AST heuristic *over*-matched, pulling in Racket special forms
+  and Python builtins because they contain `class`/`struct`/`type` — a
+  membership filter against the live registry was required to make the
+  population honest; (3) **per-language analyzer sets are legitimately
+  incomplete** (java has no traits, swift no interfaces), so only
+  language-agnostic sites can be defects — conflating the two would have
+  turned the whole finding into noise. Proven consequence: a java `interface`
+  yields `implements` AND `dispatches_to`; a swift `protocol` yields
+  `implements` and no dispatch. The propagation mechanism is recorded in a
+  comment (`type_hierarchy.py:493`: the set was copied "to match the
+  inheritance linker's broader definition" — and inherited its omission), and
+  the most recent instance was **the auditing agent's own WI-duguk work the
+  previous day**, which added `protocol` to two of seven sites and swept none
+  of the rest. Second, orthogonal gap: `modifiers` is the right home but is
+  under-populated (typescript and cpp emit `[]` for abstract types; cpp drops
+  abstract method declarations entirely). Incidental find, unrelated to the
+  axis: the Kotlin analyzer emits **zero** type symbols when a file holds 2+
+  bodied type declarations (pre-existing, filed separately). Remedy is a
+  registry-backed type-family predicate + consumer sweep + linter, **not** a
+  new axis under ADR-0024. Full write-up:
+  `docs/audits/0018-symbol-kind-type-family-abstract-predicate.md`.
+
+- **2026-08-12 — `status:` on io_primitives catalogues.** Trigger: cadence
+  overdue (134 commits vs. threshold 72); suspect nominated by the agent from
+  the day's INV-gahuz work and chosen by the human; run on a clean tree
+  immediately after that merge. Hypothesis: `status` carries three unrelated
+  claims through two values — "the author supplied a provenance URL", "this
+  catalogue covers the language", "a catalogue exists at all". **Outcome:
+  confirmed, with one leg refuted and a sharper finding the hypothesis did not
+  predict.** The field is **enforced** as a provenance assertion
+  (`_validate_catalog_dict` checks only that `complete` carries an allowlisted
+  `stdlib_provenance.source_url`) and **consumed** as a coverage assertion
+  (`io_boundary.py:1747` `dst_classification_unreliable`, surfaced at
+  `cli.py:4937`; plus the `:1267` unreliability list). Test 1 fires completely:
+  measured 14/14, `status == "complete"` ⟺ provenance present, zero divergence —
+  the enforced content restates `stdlib_provenance is not None`. Test 2 fires:
+  `complete` is both the maximal explicit claim and the value you get by saying
+  nothing (`:878` / `:480`), though for catalogue *files* the default is safe by
+  accident since it then requires provenance. **The finding the hypothesis
+  missed:** the inventory turned up a THIRD input value, `status: overlay`,
+  which is checked at `:1137` and erased at `:1174` before the object exists —
+  a door password, not a state (Tests 3+4, verdict FOLD; five-shape producer
+  trace confirms zero stored producers, shape 5 finding only the erasure site).
+  **And the sharpest one, the reverse of what was predicted:** `status` does not
+  gate the one thing that grants confirmability — `module_io_is_enumerated`
+  reads `stdlib_module_completeness` and never consults `status`, so python is
+  `complete` with 1 audited module, rust `complete` with 0, erlang `complete`
+  with 0. Live silent bug: erlang declares `complete` on the strength of an
+  `erlang.org` URL while carrying **zero** `subprocess` rows and filing its
+  shell-out `os:cmd` under `env_read` — so `dst_classification_unreliable` is
+  False for every Erlang chain (WI-jupaf, filed earlier the same day from the
+  INV-gahuz measurement; this audit supplies why it was reachable). **Leg 3
+  refuted:** the missing-file `complete` is not smuggling — `load_catalog`
+  returns `is_supported=False` and `status` merely hits its dataclass default;
+  the "exists" question has its own field and consumers check it. Kept with a
+  written re-evaluation trigger (fires the moment any consumer reads `status`
+  without checking `is_supported`, or constructs `IoBoundaryCatalog` outside
+  `_from_dict`). No new axis declared — remedy is naming/documentation plus one
+  small fold. Two items filed: WI-maduh (document what it enforces vs. what
+  gates verdicts), WI-sihiz (fold `overlay` out of the completeness field).
+  Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks

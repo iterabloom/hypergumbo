@@ -5,11 +5,22 @@ Provides the full argparse CLI for tracker operations and the git textconv
 driver for rendering .ops files as readable text.
 
 Entry points:
-- main(): Primary CLI with ~29 subcommands (add, update, list, show, ready,
-  log, discuss, deps, lock, unlock, freeze, unfreeze, repair-drift, promote,
-  demote, stealth, unstealth, validate, count-todos, hash-todos, guidance,
-  check-messages, init, setup, sync, cache-rebuild, reconcile-reset,
-  fork-setup, migrate, batch, tui).
+- main(): Primary CLI with 40 top-level subcommands, grouped by what they
+  touch:
+
+  - **Items:** add, update, delete, show, list, ready, log, discuss, deps,
+    batch, rename
+  - **Field and item locking:** lock, unlock, freeze, unfreeze
+  - **Tier movement:** promote, demote, stealth, unstealth
+  - **Messages:** check-messages, delete-msg, undelete-msg, edit-msg-text
+  - **Tags:** tags (with describe / deprecate / rename subcommands)
+  - **Edit mode:** edit-mode (on / off / status) — the WI-zonur family that
+    suspends auto-sync while a human edits
+  - **Integrity and recovery:** validate, repair-drift, cache-rebuild,
+    reconcile-reset, recover
+  - **Sync and setup:** sync, init, setup, fork-setup, migrate
+  - **Surfaces:** tui, serve, textconv
+  - **Agent governance:** count-todos, hash-todos, guidance
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -1697,7 +1708,7 @@ def _cmd_tags_deprecate(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _warn_deprecated_tags(
-    tracker_root: "Path",  # type: ignore[name-defined]
+    tracker_root: "Path",
     tags: list[str],
 ) -> None:
     """Emit one stderr warning per deprecated tag being applied.
@@ -2567,6 +2578,13 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- cache-rebuild ---
     sub.add_parser("cache-rebuild", help="Rebuild SQLite read cache")
 
+    # --- textconv (git diff driver; see ADR-0013 §"Local diff declutter") ---
+    p_textconv = sub.add_parser(
+        "textconv",
+        help="Emit compiled state for a .ops file (git textconv diff driver)",
+    )
+    p_textconv.add_argument("file", help="Path to .ops file")
+
     # --- reconcile-reset ---
     p_recon = sub.add_parser("reconcile-reset",
                              help="Reset cross-tier conflict (human only)")
@@ -3247,7 +3265,11 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         raise SystemExit(EXIT_USER_ERROR)
 
-    # Commands that don't need TrackerSet
+    # Commands that don't need TrackerSet.
+    # textconv comes FIRST: git calls it once per blob while rendering a diff,
+    # so it must stay a pure, fast read with no tracker-set construction.
+    if args.command == "textconv":
+        raise SystemExit(_cmd_textconv(args))
     if args.command == "init":
         raise SystemExit(_cmd_init(args))
     if args.command == "setup":
@@ -3416,8 +3438,69 @@ def main(argv: list[str] | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _render_textconv(path: str) -> str:
+    """Compile an ops file and return its one-line-per-field text rendering.
+
+    Shared by BOTH textconv entry points — the ``hypergumbo-tracker-textconv``
+    console script (:func:`textconv_main`) and the ``textconv`` subcommand
+    (:func:`_cmd_textconv`). ADR-0013 documents both surfaces; holding the body
+    in one place is what keeps them from drifting, which is how the subcommand
+    came to be documented-but-absent in the first place.
+
+    Raises ``SystemExit(1)`` after writing to stderr on a missing or corrupt
+    file. Note for callers: git ABORTS a diff whose textconv driver writes
+    anything to stderr, so on the success path this must stay silent there.
+    """
+    filepath = Path(path)
+    if not filepath.exists():
+        print(f"error: file not found: {path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Extract ID from filename
+    name = filepath.name
+    if name.startswith(".") and name.endswith(".ops"):
+        item_id = name[1:-4]
+    else:
+        item_id = name
+
+    try:
+        ops = _parse_ops_file(filepath)
+        item = compile_ops(ops, item_id)
+    except CorruptFileError as e:
+        # A textconv driver must NEVER write to stderr or exit non-zero on
+        # content it cannot compile: git aborts the ENTIRE diff in that case,
+        # so one un-compilable blob anywhere in history breaks `git log -p`
+        # for the whole repo.
+        #
+        # And un-compilable blobs are NORMAL in history, not corruption. An
+        # item promoted or demoted between tiers moves its op log file, so the
+        # segment of history before the move has ops without their `create`
+        # ("Op log has no create op"); a mid-append snapshot can be transiently
+        # unparseable too. Degrade to a marker on STDOUT and exit 0 — the same
+        # philosophy as scripts/tracker-textconv, which falls back to raw
+        # content rather than failing when the package is not installed.
+        return f"# {item_id}: op log not compilable at this revision — {e}"
+
+    # Output textconv format
+    lines: list[str] = []
+    lines.append(f"{item.id}  {item.title}")
+    lines.append(f"  status: {item.status}  priority: P{item.priority}  "
+                 f"tags: [{', '.join(item.tags)}]")
+    lines.append(f"  parent: {item.parent or 'null'}  "
+                 f"isbefore: [{', '.join(item.isbefore)}]  "
+                 f"pr_ref: {item.pr_ref or 'null'}")
+    for k, v in item.fields.items():
+        lines.append(f"  fields.{k}: {v}")
+    lines.append(f"  discussion: {len(item.discussion)} entries")
+    if item.locked_fields:
+        lines.append(f"  locked: [{', '.join(sorted(item.locked_fields))}]")
+    lines.append(f"  ops: {len(ops)}  updated: {item.updated_at}")
+
+    return "\n".join(lines)
+
+
 def textconv_main(argv: list[str] | None = None) -> None:
-    """Git textconv driver: reads an ops file, prints compiled state.
+    """``hypergumbo-tracker-textconv`` console-script entry point (ADR-0013).
 
     Output format:
     <ID>  <title>
@@ -3435,42 +3518,20 @@ def textconv_main(argv: list[str] | None = None) -> None:
     parser.add_argument("file", help="Path to .ops file")
     args = parser.parse_args(argv)
 
-    filepath = Path(args.file)
-    if not filepath.exists():
-        print(f"error: file not found: {args.file}", file=sys.stderr)
-        raise SystemExit(1)
-
-    # Extract ID from filename
-    name = filepath.name
-    if name.startswith(".") and name.endswith(".ops"):
-        item_id = name[1:-4]
-    else:
-        item_id = name
-
-    try:
-        ops = _parse_ops_file(filepath)
-        item = compile_ops(ops, item_id)
-    except CorruptFileError as e:
-        print(f"error: {e}", file=sys.stderr)
-        raise SystemExit(1) from e
-
-    # Output textconv format
-    lines: list[str] = []
-    lines.append(f"{item.id}  {item.title}")
-    lines.append(f"  status: {item.status}  priority: P{item.priority}  "
-                 f"tags: [{', '.join(item.tags)}]")
-    lines.append(f"  parent: {item.parent or 'null'}  "
-                 f"isbefore: [{', '.join(item.isbefore)}]  "
-                 f"pr_ref: {item.pr_ref or 'null'}")
-    for k, v in item.fields.items():
-        lines.append(f"  fields.{k}: {v}")
-    lines.append(f"  discussion: {len(item.discussion)} entries")
-    if item.locked_fields:
-        lines.append(f"  locked: [{', '.join(sorted(item.locked_fields))}]")
-    lines.append(f"  ops: {len(ops)}  updated: {item.updated_at}")
-
-    print("\n".join(lines))
+    print(_render_textconv(args.file))
     raise SystemExit(0)
+
+
+def _cmd_textconv(args: argparse.Namespace) -> int:
+    """``hypergumbo-tracker textconv <FILE>`` — the subcommand ADR-0013 §CLI documents.
+
+    Dispatched EARLY in :func:`main`, before ``TrackerSet`` construction and
+    before any auto-sync consideration. Git invokes this once per blob per diff,
+    so it must be fast and free of side effects; loading the tracker set would
+    make ``git log -p`` quadratic in op-log size for no benefit.
+    """
+    print(_render_textconv(args.file))
+    return 0
 
 
 # ``main`` already raises ``SystemExit`` for its own exit codes, so the guard

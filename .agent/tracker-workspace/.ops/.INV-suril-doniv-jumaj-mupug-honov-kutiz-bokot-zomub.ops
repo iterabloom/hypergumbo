@@ -1,0 +1,53 @@
+- op: create  # f736
+  at: '2026-08-10T10:27:43Z'  # f736
+  by: agent  # f736
+  actor: jgstern_agent  # f736
+  clock: 1  # f736
+  nonce: f736  # f736
+  data:  # f736
+    kind: invariant  # f736
+    title: "java.nio.file.Files static methods are catalogued kind=method but emitted with no call_construct, so the entire Files sink surface can never match"  # f736
+    status: violated  # f736
+    priority: 1  # f736
+    parent:  # f736
+    tags:  # f736
+    - taint  # f736
+    - io_boundary  # f736
+    - adr_0017  # f736
+    isbefore: []  # f736
+    duplicate_of: []  # f736
+    not_duplicate_of: []  # f736
+    pr_ref:  # f736
+    description: "FOUND BY THE METHOD-STARVATION COVERAGE GATE on sherpa-onnx (real repo, 14\nlanguages, 2,924 java call edges). Not a synthetic case.\n\nTHE DEFECT. Every java.nio.file.Files entry in io_primitives/java.yaml is declared\nkind=method (readAllBytes, readAllLines, readString, write, copy, list, walk,\nfind, size, ...). But Files' methods are STATIC, and the java analyzer emits a\nstatic/class-qualified call with NO call_construct at all:\n\n    java:java.nio.file.Files:0-0:copy:external_symbol                 cc=None\n    java:java.nio.file.Files:0-0:createTempDirectory:external_symbol  cc=None\n\nContrast the same repo's genuine INSTANCE methods on java.io.File, which are\nstamped correctly and DO match:\n\n    java:java.io.File:0-0:exists:external_symbol           cc=method\n    java:java.io.File:0-0:mkdirs:external_symbol           cc=method\n    java:java.io.File:0-0:listFiles:external_symbol        cc=method\n\nCONSEQUENCE: the io-boundary F3 gate keys the no-module refusal on call_construct,\nso a method-kind catalogue entry needs a method-construct edge to match. The entire\njava.nio.file.Files SINK surface (fs_write: write, copy, move, createDirectories,\ncreateTempDirectory, ...) can therefore never be tagged. Same for\njava.net.http.HttpClient. This is a false NEGATIVE on a write-side primitive, which\nauto-derives a taint sink under ADR-0017 §2b, so it propagates into claim verdicts\nrather than staying cosmetic.\n\nTHIS IS A KNOWN SHAPE, ALREADY SOLVED ONCE, IN THE OPPOSITE DIRECTION. kotlin.yaml's\nlogging entry carries an explicit note: println/print are catalogued as `functions:`\nNOT `methods:` precisely because \"the JVM compiler synthesizes a ConsoleKt receiver\nin bytecode, but our AST-level call construct is a function call ... io-boundary:F3\nwould otherwise suppress a bare println(x)\". java.nio.file.Files is that same\nreasoning un-applied: a static call is a function call at AST level.\n\nCANDIDATE FIX (not yet measured): re-key static-method entries as `functions:` in\njava.yaml, which is what the AST-level construct actually is. Check the sibling\ncatalogues for the same shape before fixing per-site -- this is likely a CLASS\n(any language with static/class methods catalogued as methods:). Do NOT widen F3\nto accept cc=None for method entries; that re-opens the untyped-receiver hole F3\nexists to close.\n\nMEASURE BOTH DIRECTIONS BEFORE LANDING: re-keying makes these entries matchable,\nwhich ADDS boundary tags and therefore ADDS taint sinks. That is the recall\ndirection and is the point, but the FP risk is the bare-short-name fallback\n(`write`, `copy`, `list` are extremely collidable names) -- check ambiguous_names\nand the INV-sapit first-party guard before believing the delta."  # f736
+    fields:  # f736
+      statement: "A catalogued I/O primitive whose call construct differs from the analyzer's emitted construct can never be tagged; static-method entries must be catalogued as the construct the AST actually produces."  # f736
+      root_cause: "io_primitives/java.yaml declares every java.nio.file.Files entry kind=method, but Files' methods are static and the java analyzer emits them with call_construct absent. io-boundary:F3 requires a method-construct edge for a method-kind entry, so the match is refused unconditionally."  # f736
+- op: discuss  # c4e1
+  at: '2026-08-11T17:51:21Z'  # c4e1
+  by: agent  # c4e1
+  actor: jgstern_agent  # c4e1
+  clock: 2  # c4e1
+  nonce: c4e1  # c4e1
+  message: "NOT REPRODUCED BY THE GENERATED REACH PROBE, and the probe answers a NEIGHBOURING\nquestion rather than this one -- recorded so the non-reproduction is not mistaken for\nevidence the item is fixed.\n\nMeasurement 0002 (docs/measurements/0002-catalogue-reach-multilanguage.md) now emits a\ncall site for every java.yaml entry in BOTH forms, because the catalogue does not record\nwhich a class offers and this item is exactly about that:\n\n    instance   new Files(a).write(b)\n    static     Files.write(a, b)\n\nRESULT over 142 catalogued primitives:\n    STATIC   129  (90.8%)\n    INSTANCE   0  ( 0.0%)\n    NEITHER   13  ( 9.2%)  -- all db_read (8) / db_write (5)\n\nSo `java.nio.file.Files` entries DO attribute here, via the static form, despite being\ndeclared `methods:`. That does NOT contradict this item: the probe's fixture carries\n`import java.nio.file.Files;`, so the edge has a MODULE HINT and the io-boundary:F3\nno-module-hint gate this item names is never reached. The probe measures reach under a\nmodule hint; this item is about reach without one.\n\nWHAT THAT MEANS FOR CLOSING IT: the filed repro (sherpa-onnx, dst\n`java:java.nio.file.Files:0-0:copy:external_symbol` with call_construct absent) needs\nre-running against the current tree before either result is trusted -- and if that dst\ncarries a module slot of `java.nio.file.Files`, then F3 is not the gate that refuses it\nand the mechanism field needs refiling onto whatever is.\n\nSIDE FINDING, worth its own look: the INSTANCE column is ZERO across all 142 entries,\nincluding genuine instance methods such as java.io.File.exists. The fixture demonstrably\nparses and resolves (the static form scores 90.8% on the same file), so this is not a\nbroken fixture -- the java analyzer appears to attribute nothing for chained construction\n`new T(a).m(b)`. Not diagnosed."  # c4e1
+- op: discuss  # 25d5
+  at: '2026-08-17T22:03:52Z'  # 25d5
+  by: agent  # 25d5
+  actor: jgstern_agent  # 25d5
+  clock: 3  # 25d5
+  nonce: 25d5  # 25d5
+  message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nRE-VERIFIED AT TIP, STILL VIOLATED, EXACTLY AS FILED. Production analyze_java on a fixture calling both shapes in one method, dev 11a240f83d:\n\n    Files.write(p, b)        -> java:java.nio.file.Files:0-0:Files.write         cc=None\n    Files.readAllBytes(p)    -> java:java.nio.file.Files:0-0:Files.readAllBytes  cc=None\n    d.exists()               -> java:java.io.File:0-0:exists               cc=method\n    d.mkdirs()               -> java:java.io.File:0-0:mkdirs               cc=method\n\nBoth halves reproduce in the SAME run, which is what makes this a static-vs-instance defect rather than a java-analyzer-wide null: the instance calls are stamped correctly beside the static ones that are not. Note also the static dst name carries the 'Files.' prefix (Files.write) while the instance one does not (exists) -- a second shape difference in the same emission, worth checking before re-keying the catalogue.\n\nThe filing's cautions are unchanged and still apply: measure both directions, and do NOT widen F3 to accept cc=None for method entries."  # 25d5
+- op: update  # ae00
+  at: '2026-08-17T22:56:27Z'  # ae00
+  by: agent  # ae00
+  actor: jgstern_agent  # ae00
+  clock: 4  # ae00
+  nonce: ae00  # ae00
+  set:  # ae00
+    priority: 2  # ae00
+- op: discuss  # 51a7
+  at: '2026-08-17T22:56:27Z'  # 51a7
+  by: agent  # 51a7
+  actor: jgstern_agent  # 51a7
+  clock: 5  # 51a7
+  nonce: 51a7  # 51a7
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2. This item is NAMED IN THE MEASUREMENT, in consequence 1: \"Fixes that make more sinks matchable (INV-suril, INV-gijis) will add flows at roughly this precision unless the flows they add are DDG-confirmed. An argument for sequencing, not for abandoning them.\" This is that sequencing, applied. It was at rank 10 while the precision mechanisms the same document names sat at ranks 75-76.\n\nTHE DEFECT IS UNCHANGED and re-reproduced at tip 2026-08-17: Files.write and Files.readAllBytes emit with call_construct=None while File.exists and File.mkdirs emit cc=method in the SAME run."  # 51a7

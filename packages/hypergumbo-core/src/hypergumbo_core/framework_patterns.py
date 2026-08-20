@@ -32,9 +32,9 @@ Relationship to Route Symbols
 -----------------------------
 Enrichment adds ``concept: route`` to *handler* symbols (e.g., a Django view
 function gets tagged as a route handler). This is complementary to — not a
-replacement for — the ``kind="route"`` symbols that language analyzers create.
+replacement for — the route-marker symbols that language analyzers create.
 Route symbols are first-class IR entities representing the route itself, consumed
-by the ``route_handler`` linker to create ``routes_to`` edges. Both outputs are
+by the ``route_handler`` linker to create ``dispatches_to`` edges. Both outputs are
 derived from the same UsageContext extraction pass in each analyzer.
 
 Why This Design
@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from .ir import Symbol
 
 # Import UsageContext at runtime since it's used by matches_usage and extract_usage_value
+from .axis_meta_keys import filter_meta_key, write_meta_key
 from .ir import UsageContext
 
 # Note for YAML authors: if your framework's canonical usage is manifest-declared
@@ -98,9 +99,9 @@ class UsagePatternSpec:
     position: str | None = None
 
     # Compiled regex patterns
-    _kind_re: re.Pattern | None = field(default=None, repr=False, compare=False)
-    _name_re: re.Pattern | None = field(default=None, repr=False, compare=False)
-    _position_re: re.Pattern | None = field(default=None, repr=False, compare=False)
+    _kind_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
+    _name_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
+    _position_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Compile regex patterns for efficiency."""
@@ -282,7 +283,7 @@ class Pattern:
         # WI-limas: compile per-key meta_match regexes. Values that don't
         # appear on Symbol.meta (or whose values fail to match) yield no
         # match, mirroring framework_role semantics.
-        self._meta_match_re: dict[str, re.Pattern] | None = (
+        self._meta_match_re: dict[str, re.Pattern[str]] | None = (
             {key: re.compile(pat) for key, pat in self.meta_match.items()}
             if self.meta_match
             else None
@@ -619,7 +620,7 @@ class Pattern:
         return None
 
     def _extract_http_method(
-        self, metadata: dict[str, Any] | str, match: re.Match, dec_name: str
+        self, metadata: dict[str, Any] | str, match: re.Match[str], dec_name: str
     ) -> str | None:
         """Extract HTTP method from decorator match.
 
@@ -660,7 +661,7 @@ class Pattern:
         return None
 
     def _extract_http_method_from_annotation(
-        self, metadata: dict[str, Any] | str, match: re.Match, ann_name: str
+        self, metadata: dict[str, Any] | str, match: re.Match[str], ann_name: str
     ) -> str | None:
         """Extract HTTP method from annotation match.
 
@@ -891,8 +892,19 @@ class FrameworkPatternDef:
         )
 
 
-# Cache for loaded framework patterns
-_PATTERN_CACHE: dict[str, FrameworkPatternDef | None] = {}
+# Cache for loaded framework patterns, keyed on (frameworks_dir, framework_id).
+#
+# INV-kazij: the key MUST include the resolved directory, because
+# ``get_frameworks_dir`` is patchable and a cache keyed on the id alone
+# memoizes half the function's input. The measured failure mode: a test
+# patched the dir to a tmp path, the convention ids (main-functions,
+# config-conventions, ...) cached as None, and every symbol analyzed
+# afterwards IN THE SAME PROCESS carried zero concepts — so the
+# pyproject-console-script entrypoint test failed on exactly the xdist
+# workers whose earlier schedule included a dir-patching test. That
+# worker-composition dependence spent three cron runs looking like an
+# interpreter, container, and install-set problem in turn.
+_PATTERN_CACHE: dict[tuple[str, str], FrameworkPatternDef | None] = {}
 
 # Framework alias mapping: maps detected framework names to pattern file names
 # Used when multiple frameworks share a single pattern file
@@ -958,22 +970,24 @@ def load_framework_patterns(framework_id: str) -> FrameworkPatternDef | None:
     Returns:
         FrameworkPatternDef if found, None otherwise.
     """
-    if framework_id in _PATTERN_CACHE:
-        return _PATTERN_CACHE[framework_id]
+    frameworks_dir = get_frameworks_dir()
+    cache_key = (str(frameworks_dir), framework_id)
+    if cache_key in _PATTERN_CACHE:
+        return _PATTERN_CACHE[cache_key]
 
     # Resolve alias if present (e.g., "chi" -> "go-web")
     resolved_id = _FRAMEWORK_ALIASES.get(framework_id, framework_id)
 
-    yaml_path = get_frameworks_dir() / f"{resolved_id}.yaml"
+    yaml_path = frameworks_dir / f"{resolved_id}.yaml"
     if not yaml_path.exists():
-        _PATTERN_CACHE[framework_id] = None
+        _PATTERN_CACHE[cache_key] = None
         return None
 
     with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     pattern_def = FrameworkPatternDef.from_dict(data)
-    _PATTERN_CACHE[framework_id] = pattern_def
+    _PATTERN_CACHE[cache_key] = pattern_def
     return pattern_def
 
 
@@ -1378,18 +1392,17 @@ def strip_test_file_only_concepts(symbols: list[Symbol]) -> int:
         meta = symbol.meta
         if not meta:
             continue
-        concepts = meta.get("concepts")
-        if not concepts:
-            continue
-        kept = [
-            c
-            for c in concepts
-            if not (isinstance(c, dict) and c.get("concept") in excluded)
-        ]
-        removed = len(concepts) - len(kept)
-        if removed:
-            stripped += removed
-            meta["concepts"] = kept
+        # INV-hazov (a)/(b). This was `meta["concepts"] = kept` on a LOCAL
+        # ALIAS of symbol.meta, and both halves of that were invisible:
+        # the linter's bypass rule matched only `<expr>.meta["k"] = ...`, so
+        # an alias hid a direct assignment to a merge_union key; and the
+        # chokepoint had no way to express a REMOVAL, since write_meta_key
+        # would have unioned the stripped concepts straight back in.
+        stripped += filter_meta_key(
+            meta,
+            "concepts",
+            lambda c: not (isinstance(c, dict) and c.get("concept") in excluded),
+        )
     return stripped
 
 
@@ -1508,8 +1521,14 @@ def enrich_symbols(
             # concept=route onto an already-marked marker (dual-carry orphans
             # the framework). Lift the framework onto route_framework and drop
             # the redundant concept before stamping.
-            symbol.meta["concepts"] = _dedup_route_marker_concepts(
-                symbol.meta, matches,
+            # INV-hazov instance 7: this was a bare assignment, so a symbol
+            # the ANALYZER had already stamped (python's ``main_guard``,
+            # bash's ``shell_script``, go's ``middleware``) lost that fact
+            # the moment any framework pattern matched it. Both facts are
+            # independently true; the union is the sound fold.
+            write_meta_key(
+                symbol.meta, "concepts",
+                _dedup_route_marker_concepts(symbol.meta, matches),
             )
 
     # Phase 1.5: APIRouter prefix composition
@@ -1628,16 +1647,14 @@ def enrich_symbols(
                 # Both definition-based (Phase 1) and usage-based (Phase 3)
                 # can produce the same concept (e.g., Go route handlers
                 # matched by both decorator and UsageContext patterns).
-                existing = resolved_symbol.meta.get("concepts", [])
-                existing_keys = {
-                    tuple(sorted(c.items())) for c in existing
-                    if isinstance(c, dict)
-                }
-                for m in matches:
-                    if tuple(sorted(m.items())) not in existing_keys:
-                        existing.append(m)
-                        existing_keys.add(tuple(sorted(m.items())))
-                resolved_symbol.meta["concepts"] = existing
+                # INV-hazov: this block used to hand-roll the union (read
+                # existing, dedup by sorted items, append). The identical
+                # fold was ALSO owed by the def-based phase above, which
+                # assigned over the top instead and destroyed producer-set
+                # concepts — one fact, two homes, one of them wrong. Both
+                # now route through the single fold on the key's
+                # merge_union declaration.
+                write_meta_key(resolved_symbol.meta, "concepts", matches)
 
     return symbols
 
@@ -1825,7 +1842,7 @@ def materialize_route_symbols(
 
     After ``enrich_symbols()`` tags handler methods with ``concept: route``,
     this function creates corresponding route IR nodes that the
-    ``route_handler`` linker can use to produce ``routes_to`` edges.
+    ``route_handler`` linker can use to produce ``dispatches_to`` edges.
 
     This is needed for annotation-based frameworks (JAX-RS, Spring MVC,
     ASP.NET) where route info is distributed across class/method annotations
@@ -1852,7 +1869,7 @@ def materialize_route_symbols(
     new_route_symbols: list[SymbolCls] = []
     seen_routes: set[str] = set()  # Dedupe by (method, path)
 
-    # WI-tizad: also dedupe against analyzer-emitted kind="route" symbols.
+    # WI-tizad: also dedupe against analyzer-emitted route-marker symbols.
     # Django's urls.py analyzer creates routes at the URL registration site
     # (e.g. `path("/users/", UsersView.as_view())`) AND the view class's
     # get/post methods get concept=route via framework enrichment. Without
@@ -1949,13 +1966,20 @@ def materialize_route_symbols(
                 stable_id = make_route_stable_id(method, route_path_normalized)
 
                 # Create route symbol at the same location as the handler.
+                # WI-hafap: Symbol.span is Optional. A span-less handler
+                # anchors its route marker at the degenerate zero span —
+                # the line-0 fallback convention, and the same shape
+                # from_dict used to fabricate for span-less artifact symbols.
+                handler_span = sym.span if sym.span is not None else Span(
+                    start_line=0, end_line=0, start_col=0, end_col=0,
+                )
                 # WI-tufil: build the id via make_symbol_id with the symbol's
                 # own kind ("function", the ADR-0027 Phase-3 route->function
                 # fold) so the id kind-slot round-trips against Symbol.kind. The
                 # route signal lives in meta["framework_role"], not the id-slot.
                 route_id = make_symbol_id(
                     sym.language, sym.path,
-                    sym.span.start_line, sym.span.end_line,
+                    handler_span.start_line, handler_span.end_line,
                     route_name, "function",
                 )
                 route_sym = SymbolCls(
@@ -1965,10 +1989,10 @@ def materialize_route_symbols(
                     language=sym.language,
                     path=sym.path,
                     span=Span(
-                        start_line=sym.span.start_line,
-                        end_line=sym.span.end_line,
-                        start_col=sym.span.start_col,
-                        end_col=sym.span.end_col,
+                        start_line=handler_span.start_line,
+                        end_line=handler_span.end_line,
+                        start_col=handler_span.start_col,
+                        end_col=handler_span.end_col,
                     ),
                     origin=pass_id,
                     origin_run_id=origin_run_id,
@@ -1992,8 +2016,8 @@ _HTTP_METHOD_NAMES: frozenset[str] = frozenset(
 
 
 def expand_class_based_view_routes(
-    symbols: list, origin_run_id: str = "",
-) -> tuple[list, set[str]]:
+    symbols: "list[Symbol]", origin_run_id: str = "",
+) -> "tuple[list[Symbol], set[str]]":
     """Expand CBV routes into one route per declared HTTP method.
 
     WI-lojoh: when a Django ``re_path``/``path``/``url`` registers a view via
@@ -2024,8 +2048,8 @@ def expand_class_based_view_routes(
           should be dropped (only populated when expansion succeeded for
           that route).
     """
-    from .analyze.base import make_route_stable_id, make_symbol_id
-    from .ir import Span, Symbol as SymbolCls, make_pass_id
+    from .analyze.base import make_route_symbol
+    from .ir import Span, make_pass_id
 
     # Build view_class_name -> set of declared HTTP method names.
     # Method symbols are named "ClassName.method"; a class can define a
@@ -2041,7 +2065,7 @@ def expand_class_based_view_routes(
             cls_methods.setdefault(cls_name, set()).add(method_name)
 
     pass_id = make_pass_id("django-cbv-method-expander")
-    new_routes: list = []
+    new_routes: "list[Symbol]" = []
     removed_ids: set[str] = set()
 
     for sym in symbols:
@@ -2065,44 +2089,42 @@ def expand_class_based_view_routes(
             continue
 
         route_path = meta.get("route_path") or "/"
+        # WI-hafap: Symbol.span is Optional. A span-less ANY route anchors
+        # its per-method expansions at the degenerate zero span (line-0
+        # fallback convention); make_route_symbol requires a concrete Span.
+        src_span = sym.span if sym.span is not None else Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
         for method_name in sorted(methods):
             http_method = method_name.upper()
-            new_meta = {
-                "route_path": route_path,
-                "http_method": http_method,
-                "view_name": view_name,
-                "view_method": method_name,
-                "expanded_from": sym.id,
-                "framework_role": "route",
-            }
-            # WI-tufil: id kind-slot = the symbol's own kind ("function"), name
-            # slot = the symbol's name, so the id round-trips against Symbol.kind
-            # (the route signal is in meta["framework_role"]).
-            new_name = f"{sym.name}.{method_name}"
-            new_id = make_symbol_id(
-                sym.language, sym.path,
-                sym.span.start_line, sym.span.end_line,
-                new_name, "function",
-            )
-            new_routes.append(
-                SymbolCls(
-                    id=new_id,
-                    name=new_name,
-                    kind="function",
-                    language=sym.language,
-                    path=sym.path,
-                    span=Span(
-                        start_line=sym.span.start_line,
-                        end_line=sym.span.end_line,
-                        start_col=sym.span.start_col,
-                        end_col=sym.span.end_col,
-                    ),
-                    origin=pass_id,
-                    origin_run_id=origin_run_id,
-                    stable_id=make_route_stable_id(http_method, route_path),
-                    meta=new_meta,
-                )
-            )
+            # WI-javag / WI-zugob: mint through the shared chokepoint rather
+            # than deriving a name by string concatenation. The old
+            # f"{sym.name}.{method_name}" inherited whatever the parent marker
+            # was called, and py.py's Django markers were named
+            # "django:{view}" — so the COLON went straight into
+            # make_symbol_id's name slot and produced a SIX-segment id that
+            # could not be parsed back into its ADR-0036 slots at all. Deriving
+            # the name from method+path removes the whole class of problem
+            # instead of sanitizing one instance of it.
+            new_routes.append(make_route_symbol(
+                language=sym.language or "python",
+                path=sym.path,
+                span=Span(
+                    start_line=src_span.start_line,
+                    end_line=src_span.end_line,
+                    start_col=src_span.start_col,
+                    end_col=src_span.end_col,
+                ),
+                method=http_method,
+                route_path=route_path,
+                origin=pass_id,
+                origin_run_id=origin_run_id,
+                extra_meta={
+                    "view_name": view_name,
+                    "view_method": method_name,
+                    "expanded_from": sym.id,
+                },
+            ))
         removed_ids.add(sym.id)
 
     return new_routes, removed_ids

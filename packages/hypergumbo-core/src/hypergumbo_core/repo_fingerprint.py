@@ -12,18 +12,36 @@ consumers can answer "was this the same repo state?" without re-running.
 Two branches, selected by the presence of ``repo_root/.git``:
 
 * **Git branch** — ``sha256(git_head + sorted([(path, sha256(content_bytes))
-  for each dirty file]))``.
-    * ``git_head``: the HEAD commit hash.
-    * "dirty file": every tracked file whose working-tree content differs
-      from HEAD plus every untracked, non-ignored file. The set comes from
-      ``git status --porcelain``, which honors ``.gitignore`` so build
-      products and editor backups don't pollute the hash.
-    * Content-hash each dirty file by reading its bytes. The spec is
-      explicit (line 382): the field must change when dirty contents
-      change, not when paths or mtimes change. This is exactly what makes
-      this function the recommended replacement for the legacy
+  for each source file in the tree]))``.
+    * ``git_head``: the HEAD commit hash, so two trees with identical
+      content on different commits stay distinguishable.
+    * The file set is the same working-tree walk the non-git branch uses.
+    * Content-hash each file by reading its bytes. The spec is explicit
+      (line 382): the field must change when contents change, not when
+      paths or mtimes change. This is what makes this function the
+      recommended replacement for the legacy
       ``sketch_embeddings._get_repo_state_hash`` whose path:size:mtime
       key picks up tracker ``.ops`` mtime jitter (INV-magul).
+    * **This branch used to derive a "dirty file" set from ``git status
+      --porcelain``. It no longer runs git status at all, for security
+      rather than tidiness.** That command executes programs the TARGET
+      repo controls, demonstrated with a canary via three independent
+      vectors — ``core.fsmonitor``; a bare
+      ``.git/hooks/post-index-change`` (which fires with no config keys
+      set, so auditing ``.git/config`` is not a mitigation); and
+      ``filter.<driver>.clean`` armed by an in-tree ``.gitattributes``,
+      which survived ``core.fsmonitor=false`` + ``core.hooksPath=/dev/null``
+      + ``core.attributesFile=/dev/null`` + ``--literal-pathspecs`` +
+      ``--no-optional-locks`` applied together. Since the attacker names
+      the filter driver, no hardening list closes it. The dirty set was
+      only an optimization; hashing the tree is strictly more precise.
+      Pinned by ``test_repo_fingerprint.TestNoCodeExecutionFromTargetRepo``.
+    * COST OF THAT CHANGE, measured rather than assumed: 0.12s on pretix,
+      1.7s on hypergumbo, against analyses that run for minutes. The
+      ``.gitignore`` filtering the old path got for free is replaced by the
+      ``_SOURCE_EXTENSIONS`` allowlist, so build products still cannot
+      pollute the hash — but a gitignored *source* file now counts where it
+      previously did not.
 
 * **Non-git branch** — ``sha256(sorted([(path, sha256(content_bytes))
   for f in tree]))``.
@@ -35,9 +53,10 @@ Two branches, selected by the presence of ``repo_root/.git``:
       actually consume" because the field's documented purpose is
       *cache invalidation* — output files, editor backups, and build
       products are not analyzer inputs, so their changes must not
-      trigger re-analysis. (The git branch gets this for free via
-      ``.gitignore`` filtering inside ``git status --porcelain``; the
-      non-git branch needs an explicit allowlist to match.)
+      trigger re-analysis. (Both branches now share this allowlist; the
+      git branch used to get equivalent filtering from ``.gitignore`` via
+      ``git status --porcelain``, which was removed for the security
+      reason recorded above.)
 
 In both branches the input list is sorted to make order irrelevant; the
 ``sha256`` of the joined input is returned as a 64-char hex digest. An
@@ -56,19 +75,21 @@ unchanged.
 
 ## Performance
 
-Git branch: dirty-files set is typically small (<50 files) so per-file
-content reads are cheap and ``git status --porcelain`` dominates.
-Non-git branch: reads every source file in the tree, which can be slow
-on large repos. The function is intended to run once per analysis and
-the result cached by the caller; do not call it inside per-file hot
-loops.
+Both branches read every source file in the tree, which can be slow on
+large repos — measured at 0.12s (pretix, 1366 files) and 1.7s
+(hypergumbo, 1087 files), against analyses that run for minutes. The git
+branch was previously ~0.01s because it hashed only the dirty set; that
+optimization is gone deliberately (see the security note above) and the
+cost was priced before taking it. The function is intended to run once
+per analysis and the result cached by the caller; do not call it inside
+per-file hot loops.
 """
 
 from __future__ import annotations
 
 import hashlib
 import shutil
-import subprocess  # nosec B404 - required for git inspection
+from .safety_zones import repo_inspect_git
 from pathlib import Path
 
 # Directory names excluded from the non-git branch's file walk. Mirrors
@@ -82,10 +103,22 @@ _EXCLUDED_DIR_NAMES = frozenset({
     "venv",
 })
 
-# Suffixes counted as "source files" in the non-git branch. Mirrors the
-# set the legacy ``sketch_embeddings._get_repo_state_hash`` used so the
-# cache-invalidation semantics carry over unchanged; see module
-# docstring for the rationale.
+# Suffixes counted as "source files". Mirrors the set the legacy
+# ``sketch_embeddings._get_repo_state_hash`` used so the cache-invalidation
+# semantics carry over unchanged; see module docstring for the rationale.
+#
+# KNOWN DRIFT, filed separately rather than fixed here: this list names no
+# ``.yaml``, ``.toml``, ``.json``, ``.xml`` or ``Dockerfile``, all of which
+# hypergumbo has analyzers for, so editing a ``pyproject.toml`` or an
+# Ansible playbook does not invalidate the cache. Deriving the set from
+# ``taxonomy.get_language`` was tried and REVERTED: ``.json`` is both a
+# language hypergumbo analyses AND the extension of hypergumbo's own output
+# artifacts, so classifying by extension alone re-pollutes the cache key on
+# every run when a user writes ``--out`` into their repo — the exact defect
+# ``test_non_source_files_excluded`` exists to prevent. Fixing this properly
+# needs an artifact-name exclusion, not an extension rule, and that is a
+# cache-semantics change that has no business riding along with a security
+# fix.
 _SOURCE_EXTENSIONS = frozenset({
     ".py", ".js", ".ts", ".jsx", ".tsx",
     ".java", ".go", ".rs", ".rb",
@@ -106,7 +139,10 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str]:
     ``sketch_embeddings._run_git_command`` uses (Bandit S607).
     """
     git_path = shutil.which("git") or "git"
-    proc = subprocess.run(  # noqa: S603  # nosec B603 - git_path resolved via shutil.which
+    # WI-fasuv: routed through the repo_inspection zone so the barrier stops
+    # the taint walk here and this records as a declared crossing rather than
+    # a raw `subprocess` one.
+    proc = repo_inspect_git(
         [git_path, *args],
         cwd=cwd,
         capture_output=True,
@@ -169,53 +205,6 @@ def _iter_non_git_files(repo_root: Path) -> list[Path]:
     return out
 
 
-def _git_dirty_files(repo_root: Path) -> list[Path]:
-    """Return the sorted set of dirty (changed + untracked-non-ignored) files.
-
-    Uses ``git status --porcelain -z`` to honor ``.gitignore`` (untracked
-    files inside an ignored directory are excluded) and to handle paths
-    with spaces / newlines safely. Entries with status ``D`` (deleted)
-    are dropped — they have no content to hash and their absence is
-    already reflected in the next commit's HEAD.
-    """
-    rc, stdout = _run_git(
-        ["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
-        cwd=repo_root,
-    )
-    if rc != 0 or not stdout:
-        return []
-
-    dirty: list[Path] = []
-    # `git status --porcelain -z` separates records with NUL. Each record
-    # is `XY<space><path>` where XY is the two-char status code. Renames
-    # ('R ' / ' R') carry the old path in the next record, which we skip
-    # — we only need the new path's content.
-    records = stdout.split("\0")
-    i = 0
-    while i < len(records):
-        record = records[i]
-        if not record:
-            i += 1
-            continue
-        # First two chars are the XY code; record[2] is a space.
-        xy = record[:2]
-        path_part = record[3:]
-        # Rename / copy: next record holds the old path; skip it.
-        if "R" in xy or "C" in xy:
-            i += 2
-            continue
-        # Deletions have nothing to hash.
-        if "D" in xy:
-            i += 1
-            continue
-        candidate = repo_root / path_part
-        if candidate.is_file():
-            dirty.append(candidate)
-        i += 1
-    dirty.sort()
-    return dirty
-
-
 def _git_head(repo_root: Path) -> str:
     """Return HEAD commit SHA, or empty string if no commits yet."""
     rc, stdout = _run_git(["rev-parse", "HEAD"], cwd=repo_root)
@@ -235,12 +224,33 @@ def _format_pairs(pairs: list[tuple[str, str]]) -> str:
 
 
 def _compute_git_fingerprint(repo_root: Path) -> str:
-    """Spec lines 378-382: git branch."""
+    """Spec lines 378-382: git branch.
+
+    NO LONGER USES ``git status``, and that is a security property rather
+    than a refactor. Running ``git status`` with cwd inside a target repo
+    executes programs that repo controls — demonstrated with a canary via
+    three independent vectors: ``core.fsmonitor``, a bare
+    ``.git/hooks/post-index-change`` (which fires with *no* config keys set,
+    so auditing ``.git/config`` is not a mitigation), and
+    ``filter.<driver>.clean`` armed by an in-tree ``.gitattributes``. The
+    last of those was measured to survive ``core.fsmonitor=false``,
+    ``core.hooksPath=/dev/null``, ``core.attributesFile=/dev/null``,
+    ``--literal-pathspecs`` and ``--no-optional-locks`` applied together;
+    suppressing it requires naming the driver, and the attacker picks the
+    name. A hardening list cannot close this, so the command is gone.
+
+    The dirty-file set was only ever an OPTIMIZATION — hash HEAD plus the
+    few changed files instead of the whole tree. Hashing the working tree
+    directly is strictly more precise and needs no subprocess. Measured
+    cost: 0.12s on pretix, 1.7s on hypergumbo, against analyses that run for
+    minutes. HEAD is still mixed in, so two trees with identical content on
+    different commits stay distinguishable.
+    """
     head = _git_head(repo_root)
-    dirty = _git_dirty_files(repo_root)
+    files = _iter_non_git_files(repo_root)
     pairs = sorted(
         (str(p.relative_to(repo_root)), _hash_file_content(p))
-        for p in dirty
+        for p in files
     )
     payload = f"{head}\n{_format_pairs(pairs)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()

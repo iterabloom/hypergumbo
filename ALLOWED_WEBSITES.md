@@ -23,6 +23,14 @@
 - bitbucket.org
 - codeberg.org
 
+## CI
+# This project's own Woodpecker instance, named by WOODPECKER_SERVER in .env
+# rather than written here, so the host is not published in a public repo.
+# Needed because CI logs are NOT retrievable through the GitHub API — the
+# instance sits behind Cloudflare Access — so a failing pipeline is
+# undiagnosable from the agent side without reaching it (WI-solob).
+- $WOODPECKER_SERVER  (see .env)
+
 ## Papers / scholarly
 - arxiv.org
 - openreview.net

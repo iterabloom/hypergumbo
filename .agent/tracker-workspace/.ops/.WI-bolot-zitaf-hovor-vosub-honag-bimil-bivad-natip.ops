@@ -1,0 +1,52 @@
+- op: create  # 6b2a
+  at: '2026-08-15T01:51:48Z'  # 6b2a
+  by: agent  # 6b2a
+  actor: jgstern_agent  # 6b2a
+  clock: 1  # 6b2a
+  nonce: 6b2a  # 6b2a
+  data:  # 6b2a
+    kind: work_item  # 6b2a
+    title: "Phase 3 coverage-directed selection: allow NARROWING, opt-in, never default (precondition: unmeasured tests still selected)"  # 6b2a
+    status: todo_soft  # 6b2a
+    priority: 4  # 6b2a
+    parent:  # 6b2a
+    tags:  # 6b2a
+    - coverage_selection  # 6b2a
+    - developer_experience  # 6b2a
+    isbefore: []  # 6b2a
+    duplicate_of: []  # 6b2a
+    not_duplicate_of: []  # 6b2a
+    pr_ref:  # 6b2a
+    description: "PHASE 3 of coverage-directed selection: let the coverage selector NARROW the\nset, not just add to it. Opt-in flag, never the default, never in CI.\n\nBLOCKED ON EVIDENCE, not on implementation. The code change is small; the\njustification is not. Until Phase 1 has accrued observations showing the\nselector never drops a test that both ran and FAILED, narrowing is a guess.\n\nHARD PRECONDITION, and the one a careless implementation breaks: assert\n`unmeasured` tests are still selected before narrowing. 3,597 tests (15.9%)\nproduce no coverage rows at all -- the whole hypergumbo-tracker package is\noutside COV_PATHS, plus subprocess and scripts/ tests. Coverage can never\nspeak about them, so a narrowing pass that consults only the index would drop\nevery one of them silently.\n\nAlso re-check at that point: the shadow compares FILE-to-FILE because\nsmart-test selects files. Narrowing at NODE granularity (12 tests rather than\n2 files) is where the remaining gain is, and it is a different, larger claim\nthan the one Phase 1 measures. Do not conflate them."  # 6b2a
+    fields: {}  # 6b2a
+- op: update  # fe05
+  at: '2026-08-15T02:02:45Z'  # fe05
+  by: agent  # fe05
+  actor: jgstern_agent  # fe05
+  clock: 2  # fe05
+  nonce: fe05  # fe05
+  set: {}  # fe05
+  add:  # fe05
+    isbefore: [WI-hihuv-tazuf-sijir-manup-tarim-bofib-motun-kariz]  # fe05
+- op: discuss  # 7821
+  at: '2026-08-17T03:13:52Z'  # 7821
+  by: agent  # 7821
+  actor: jgstern_agent  # 7821
+  clock: 3  # 7821
+  nonce: '7821'  # 7821
+  message: "PRECONDITION PARTLY SATISFIED IN ADVANCE, PR #387 (dev cd7534745e). This item's narrowing no longer reaches CI. smart-test now snapshots MANIFEST_TESTS before the local-only region, so a Phase 3 narrowing applied to AFFECTED_TESTS shrinks THIS MACHINE's run and leaves the committed manifest -- which .woodpecker/woodpecker.yml uses to drive the merge gate -- at the static slice. Owner's option A, chosen after measuring per-PR CI at ~3m40s against a local ~8m13s on the same 232-file selection: extending the narrowing to CI was the smaller half of the prize and not worth coupling merge-gate recall to the selector. CONSEQUENCE FOR THIS ITEM'S EVIDENCE BAR: the 30-admissible-commit exit criterion was sized for a change that could drop a test from the merge gate. It no longer can. A miss now costs the minutes until the per-PR gate runs the full affected set, not a full-suite cron cycle, so the bar can be re-set to whatever the owner wants for a local-only convenience. UNCHANGED AND STILL HARD: assert unmeasured tests are still selected before narrowing. 3,605 tests produce no coverage rows at all -- the whole tracker package plus subprocess and scripts/ tests -- and an index-only narrowing drops every one of them silently. That precondition is about correctness on this machine and is not touched by the decoupling."  # 7821
+- op: update  # a387
+  at: '2026-08-17T08:30:12Z'  # a387
+  by: agent  # a387
+  actor: jgstern_agent  # a387
+  clock: 4  # a387
+  nonce: a387  # a387
+  set:  # a387
+    status: done  # a387
+- op: discuss  # 37d8
+  at: '2026-08-17T08:30:13Z'  # 37d8
+  by: agent  # 37d8
+  actor: jgstern_agent  # 37d8
+  clock: 5  # 37d8
+  nonce: 37d8  # 37d8
+  message: "DONE, PR #390 (dev 51703e9a) -- and the cycle-time premise this item and\nWI-kuliv were built on is WRONG, measured after the fact. Both facts belong on\nthe record together.\n\nWHAT SHIPPED. `pytest --narrow`, opt-in as this item required, below the seam.\nThree rules, each with its own failure mode:\n  1. Drop only with positive evidence -- a file qualifies only if it has\n     coverage rows AND none of its tests are `unmeasured`. That is this item's\n     named precondition, and it is enforced at FILE granularity.\n  2. Keep the whole FILE-TOUCH set, not the changed blocks. This item does not\n     mention the constraint that actually decided the design: the local gate is\n     `coverage report --include=<changed files> --fail-under=100`, which is\n     whole-FILE. Narrowing to changed-block tests fails it. Measured at one\n     base: block-select 3 files against a file-touch set of 13, so the naive\n     version drops 10 files that were carrying the coverage. A first --narrow\n     run did exactly that and exited 1.\n  3. Refuse outright on an unknown COVERABLE SOURCE file or a missing changed\n     file. New blocks and unknown TEST files are NOT refusals -- my first\n     measuring script made new blocks a refusal and reported \"narrowing\n     refused\" on every commit examined, because ordinary development adds\n     blocks. The test covering new code is a changed test file, which enters via\n     a selector narrowing never touches.\nOff by default, and off in CI unconditionally (not even HG_SELECT_SHADOW\nre-enables it): between full runs the index can be short a test covering part\nof a changed file, and the gate would read that as a coverage regression.\n\nMEASURED, both directions, one tree:\n  un-narrowed  91 files  1,680 tests  19.3s  changed-file gate 100%\n  narrowed     61 files    945 tests  13.1s  changed-file gate 100%\nManifest still publishes 91.\n\nTHE CEILING, filed as scripts/measure-narrowing-headroom.py so it is\nre-runnable: only 55.3% of the timed suite's wall-clock is index-speakable at\nall. The other 44.7% is unmeasured or unseen and kept unconditionally -- and it\nis held by very little: 133 of the 190 files with unmeasured tests are only\nPARTLY unmeasured (test_profile.py, 9.9 min, is kept by 1 unmeasured test of\n283). This item's note that node granularity is \"where the remaining gain is\"\nunderstates it: at file granularity 15.6% of node ids hold 44.7% of wall-clock.\n\nWHY THE PREMISE WAS WRONG, and this is the part that matters. The owner\nsuspected the bottleneck was the slice step, not pytest. It is. Measured:\n\n    check-mypy-ratchet          0.59 s\n    hypergumbo slice (COLD)   489.36 s\n    hypergumbo slice (again)    4.54 s\n    pytest, 91 files           19.30 s\n\nSeven consecutive smart-test runs this session took 9m39s, 9m32s, 8m49s,\n9m05s, 9m08s, 9m17s, 8m30s. ~97% of the local cycle is the slice re-analyzing\nthe whole repository, because the results cache is keyed on a whole-tree\nstate_hash and any edit invalidates it -- 18 state_hash directories exist under\nthis repo's fingerprint, mtimes matching those runs one-to-one.\n\nSo Phase 3's best case is 6 seconds off a ~550-second loop: 1.1%. The chain\nWI-kuliv -> WI-bolot -> WI-hihuv optimizes the 19 seconds. Filed WI-runiz for\nthe 489. WI-hihuv should be re-priced against it before more effort goes in --\nit is the same 19 seconds.\n\nThis item is still DONE rather than wont_do: narrowing is sound, tested, and\ngives a real cut when the run set is large. It just is not the cycle-time fix,\nand nothing in the chain was."  # 37d8

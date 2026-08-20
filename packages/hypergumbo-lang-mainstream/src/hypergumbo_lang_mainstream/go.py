@@ -7,10 +7,17 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Struct declarations (type X struct)
 - Interface declarations (type X interface)
 - Package-level var aliases (var Name = expr) as variable symbols
+- Struct fields and interface methods as their own symbols
+- Closure-wrapper functions (middleware), tagged ``concepts: [middleware]``
 - Function call relationships
 - Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
-- Web framework routes (Gin, Echo, Fiber, Gorilla mux)
+- ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
+  package-attribute reads, and ``references`` edges for build-tag alternatives
+- UsageContext records, including Cobra ``AddCommand`` registration
+- The module's dependency manifest, parsed from ``go.mod``
+- Web framework routes (Gin, Echo, Fiber, Gorilla mux, Chi, Macaron,
+  go-swagger, and Go 1.22+ ``ServeMux`` "POST /path" patterns)
 
 If tree-sitter with Go support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -38,7 +45,13 @@ How It Works
      method name has 2+ candidates in global symbols, creates an unresolved
      edge with ``evidence_type="ast_call"`` + ``meta={"call_construct":
      "method", "resolution_quality": "ambiguous"}`` instead of picking
-     an arbitrary candidate (which would produce a false-positive call edge)
+     an arbitrary candidate (which would produce a false-positive call edge).
+   - EXCEPTION: when at least one candidate is an interface method, the
+     interface-method test is itself the disambiguator, so the call IS
+     resolved — to that interface method, as an ``interface_dispatch`` edge
+     at confidence 0.75, or 0.5 with ``meta["disambiguation_fallback"]=True``
+     when several interface methods tie (``min`` by symbol id). The
+     ``dispatches_to`` edges then route a slice on to the concrete impls.
 7. Stdlib interface method guard:
    - When a method call ``x.Lock()`` has no inferred receiver type and the
      method name matches a well-known Go stdlib interface method (Lock, Close,
@@ -48,7 +61,7 @@ How It Works
      in the repo. This prevents ``sync.Mutex.Lock()`` calls from resolving
      to ``DirLocker.Lock`` (the only repo candidate), which would give
      DirLocker.Lock 255+ false in-degree edges.
-4. Route detection:
+8. Route detection:
    - Gin/Echo: r.GET("/path", handler), e.POST("/path", handler)
    - Fiber: app.Get("/path", handler) (lowercase methods)
    - Gorilla mux: router.HandleFunc("/path", handler), router.Handle("/path", handler)
@@ -72,6 +85,7 @@ starting with an uppercase letter are exported (public).
 from __future__ import annotations
 
 import os
+import re
 import time
 import warnings
 from pathlib import Path
@@ -88,6 +102,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -99,7 +114,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_file_stable_id,
-    make_route_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -174,8 +189,9 @@ _GO_STDLIB_INTERFACE_METHODS: frozenset[str] = frozenset({
 # Route detection produces two outputs from the same extraction pass:
 # 1. UsageContext records — matched by YAML patterns (ADR-3aaa v1.1.x) to enrich
 #    handler symbols with concept: route metadata.
-# 2. Route symbols (kind="route") — consumed by the route_handler linker to
-#    create routes_to edges. See py.py docstring for full architecture notes.
+# 2. Route-marker symbols (kind="function" + meta.framework_role="route")
+#    — consumed by the route_handler linker to create dispatches_to edges.
+#    See py.py docstring for full architecture notes.
 GO_HTTP_METHODS = {
     "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS",
     "Get", "Post", "Put", "Delete", "Patch", "Head", "Options",
@@ -416,10 +432,66 @@ def _process_import_spec(
         elif alias == "." and dot_imports is not None:
             dot_imports.append(import_path)
     else:
-        # No explicit alias - use last component of path
-        # e.g., "github.com/foo/bar" -> "bar"
-        alias = import_path.rsplit("/", 1)[-1]
+        # No explicit alias - derive the package identifier from the path.
+        alias = _go_package_identifier(import_path)
         aliases[alias] = import_path
+
+
+#: A trailing Go-modules major-version element: ``.../echo/v4`` -> ``v4``.
+#: Matched only for N >= 2 BECAUSE THAT IS THE ACTUAL RULE — Go requires the
+#: ``/vN`` suffix from major version 2 onward and v0/v1 modules carry none, so a
+#: literal ``v1`` element is far more likely to be a real directory than a
+#: version marker. Anchored, and digits-only, so ``v2beta1`` and ``v2bar`` are
+#: not touched.
+_GO_MAJOR_VERSION_ELEMENT = re.compile(r"^v(?:[2-9]|[1-9][0-9]+)$")
+
+#: gopkg.in spells the same thing as a DOTTED SUFFIX: ``gopkg.in/yaml.v2``.
+#: gopkg.in genuinely uses ``.v1`` (``gopkg.in/check.v1``), which is why this
+#: pattern accepts any N and the path-element one above does not.
+_GOPKG_IN_VERSION_SUFFIX = re.compile(r"\.v[0-9]+$")
+
+
+def _go_package_identifier(import_path: str) -> str:
+    """The identifier a Go import binds, derived from its path (INV-javid).
+
+    Go source refers to an imported package by an identifier, and with no
+    explicit alias that identifier is CONVENTIONALLY the last path element.
+    The convention has two documented exceptions, and both put a major-version
+    marker exactly where the identifier is expected:
+
+      * **Go modules semantic import versioning** — a module at major version 2
+        or higher carries the version as a trailing PATH ELEMENT, so
+        ``github.com/labstack/echo/v4`` is imported as ``echo``.
+      * **gopkg.in** — the version is a DOTTED SUFFIX on the last element, so
+        ``gopkg.in/yaml.v2`` is imported as ``yaml``.
+
+    Taking the last element literally therefore bound ``v4`` and left ``echo``
+    unbound, which dropped the module hint from every call on that package and
+    sent the dst to the ``external`` placeholder. Since Go modules, ``/vN`` is
+    the standard for any library at v2+, so this was not an edge case.
+
+    THIS IS A HEURISTIC AND SO WAS WHAT IT REPLACES. A package's real name is
+    declared in its own source (``package gin``) and can differ from its path;
+    for an external dependency that source is not present, so the identifier
+    has to be inferred either way. The change is strictly a better inference,
+    not a move from exact to approximate.
+
+    THE OVER-STRIPPING HAZARD IS THE ONE TO WATCH, because it would invent a
+    defect while closing one. ``v2`` is a legal package name, and
+    Kubernetes-style API packages are routinely named ``v1alpha1`` /
+    ``v2beta1``. Both patterns are anchored and digits-only, the path-element
+    rule refuses to strip when there is no earlier element to fall back to, and
+    the dotted rule is scoped to the ``gopkg.in`` host rather than applied
+    everywhere a name happens to end in ``.vN``.
+    """
+    segments = [s for s in import_path.split("/") if s]
+    if not segments:
+        return import_path  # pragma: no cover - a non-empty path is guaranteed
+    if segments[0] == "gopkg.in":
+        return _GOPKG_IN_VERSION_SUFFIX.sub("", segments[-1]) or segments[-1]
+    if len(segments) > 1 and _GO_MAJOR_VERSION_ELEMENT.match(segments[-1]):
+        return segments[-2]
+    return segments[-1]
 
 
 def _import_path_to_dir_hint(import_path: str) -> str | None:
@@ -545,6 +617,48 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     if import_path == module_path:
         return ""
     return import_path
+
+
+def _external_package_for_type(
+    type_name: str,
+    import_aliases: dict[str, str],
+    module_path: Optional[str],
+) -> Optional[str]:
+    """Import path of ``type_name``'s package, when that package is OUTSIDE this module.
+
+    A package-qualified receiver type reaches the analyzer in two flavours that look
+    identical and must be resolved oppositely. ``notify.Stage`` names a type in a
+    SIBLING PACKAGE OF THIS REPO, whose methods are in ``global_symbols`` under the
+    unqualified ``Stage.Exec`` — stripping the prefix and looking it up is correct.
+    ``http.Client`` names a type this repo does not define at all; stripping its prefix
+    yields a bare ``Client`` that can collide with any same-named local type, and the
+    resulting edge points at the wrong function while claiming
+    ``resolution_quality: typed_receiver``.
+
+    That collision is not hypothetical. go.py already carries a note that
+    ``q.Set("k","v")`` where ``q`` is a ``url.Values`` "absorbed 13 spurious in-edges
+    into one struct, poisoning the centrality ranking" on alertmanager. It was closed
+    then by a guard keyed on the receiver type being UNKNOWN — which held only for as
+    long as external composite literals stayed untyped.
+
+    The discriminator is go.mod: an import path inside this module is a prefix match on
+    the module path. Returns None when the type is unqualified, when its prefix is not
+    an imported alias, when the package IS in this module, or when no module path is
+    known — in that last case in-repo and external are genuinely indistinguishable
+    here, so the caller keeps its existing behaviour rather than guessing. That is a
+    DISCLOSED gap for a Go tree analysed without a go.mod, not a silent one.
+    """
+    if "." not in type_name:
+        return None
+    full_import_path = import_aliases.get(type_name.split(".")[0])
+    if full_import_path is None or not module_path:
+        return None
+    if (
+        full_import_path == module_path
+        or full_import_path.startswith(module_path + "/")
+    ):
+        return None
+    return full_import_path
 
 
 def _count_go_method_arity(
@@ -996,6 +1110,27 @@ def _make_go_qualified_name(
     return sep.join(parts)
 
 
+
+def _go_init_value(
+    var_spec: "tree_sitter.Node", value_node: "tree_sitter.Node | None",
+) -> "tree_sitter.Node | None":
+    """The initializer expression of a Go ``var_spec``.
+
+    Go wraps it in an ``expression_list`` (``var a, b = f(), g()``), so the
+    ``value`` field is absent for the common single-binding case and the
+    expression sits one level down. Returns the first element, which is the
+    initializer for a single-name spec.
+    """
+    node = value_node or find_child_by_type(var_spec, "expression_list")
+    if node is None:
+        return None
+    # The `value` field itself resolves to the expression_list, so unwrap
+    # whichever we got rather than assuming the field is absent.
+    if node.type == "expression_list":
+        return node.children[0] if node.children else None
+    return node
+
+
 def _go_visibility_modifiers(name: str) -> list[str]:
     """Derive visibility modifiers from Go naming convention.
 
@@ -1261,6 +1396,11 @@ def _extract_symbols_from_file(
                                 _m_norm_sig = normalize_go_signature(
                                     _extract_go_signature(iface_child, source)
                                 )
+                                # Guard exactly as the two concrete-method sites
+                                # do: a signature-less method mints NO typed
+                                # stable_id rather than one built from an empty
+                                # signature, which would be the name-only key
+                                # the typed id exists to avoid colliding on.
                                 m_stable_id = make_typed_stable_id(
                                     "method",
                                     _m_norm_sig,
@@ -1270,7 +1410,7 @@ def _extract_symbols_from_file(
                                         package_name, type_name, mname
                                     ),
                                     file_stable_id=file_stable_id,
-                                )
+                                ) if _m_norm_sig else None
                                 m_sym = Symbol(
                                     id=make_symbol_id(
                                         "go", str(file_path),
@@ -1460,6 +1600,12 @@ def _extract_symbols_from_file(
                         origin=PASS_ID,
                         origin_run_id=run.execution_id,
                         modifiers=modifiers,
+                        meta=(
+                            {"constructed_from": _go_cf}
+                            if (_go_cf := constructed_from_callee(
+                                _go_init_value(child, vvalue_node), source))
+                            else None
+                        ),
                         line_span=end_line - start_line + 1,
                         shape_id=_analyzer.compute_shape_id(child),
                         is_exported=bool(vname) and vname[0].isupper(),
@@ -1679,12 +1825,25 @@ def _extract_go_var_types(
             # the RHS (e.g. x := e.Query()), try the return-type
             # registry.  If the RHS is a method call on a receiver
             # whose type is already known, look up the return type.
-            if (  # pragma: no cover - requires Go tree-sitter grammar
+            #
+            # WI-jolif: this used to test ``rhs.type == "call_expression"``
+            # directly, and ``rhs`` is the ``expression_list`` wrapper — a
+            # condition the node can NEVER satisfy, so the whole block was dead
+            # from the day it shipped. It now unwraps through the same helper
+            # ``_type_from_rhs`` uses, so the two consumers cannot disagree about
+            # what "the right-hand side" means. The stale
+            # ``# pragma: no cover - requires Go tree-sitter grammar`` that sat on
+            # this branch is gone with it: the grammar IS installed, and the
+            # pragma was excusing itself on the same false premise that kept the
+            # three end-to-end tests skipped.
+            _rhs_expr = _unwrap_rhs_expression(rhs)
+            if (
                 not type_name
                 and method_return_type_registry
-                and rhs.type == "call_expression"
+                and _rhs_expr is not None
+                and _rhs_expr.type == "call_expression"
             ):
-                call_func = find_child_by_field(rhs, "function")
+                call_func = find_child_by_field(_rhs_expr, "function")
                 if call_func is not None and call_func.type == "selector_expression":
                     operand = find_child_by_field(call_func, "operand")
                     field_node = find_child_by_field(call_func, "field")
@@ -1828,6 +1987,39 @@ def _extract_go_var_types(
     return scoped_var_types
 
 
+def _unwrap_rhs_expression(
+    rhs_node: "tree_sitter.Node",
+) -> "tree_sitter.Node | None":
+    """Peel the ``expression_list`` wrapper off a short-var-declaration RHS.
+
+    THE SINGLE ANSWER to "what expression is actually on the right", because two
+    consumers need it and only one had it. ``short_var_declaration``'s last child
+    is an ``expression_list``, never the expression itself — so ``x := e.Query()``
+    presents as ``expression_list``, not ``call_expression``.
+
+    :func:`_type_from_rhs` unwrapped this inline and worked. The WI-kuroj
+    return-type-registry lookup in :func:`_extract_go_var_types_from_root` did NOT,
+    and guarded on ``rhs.type == "call_expression"`` — a condition the node can
+    never satisfy. That guard was therefore DEAD CODE from the day it shipped: the
+    registry was built, threaded through three call layers, and consulted by a
+    branch nothing could reach, so ``result := e.Query(); result.Rows()`` emitted
+    ``go:external:0-0:Rows:unresolved`` (WI-jolif). Its three end-to-end tests
+    never ran to say so, because a vacuous fixture skipped them.
+
+    Returns ``None`` when the list holds no type-bearing expression, which is the
+    same answer the inline version gave.
+    """
+    node = rhs_node
+    if node.type == "expression_list":
+        for child in node.children:
+            if child.type in (
+                "unary_expression", "composite_literal", "call_expression",
+            ):
+                return child
+        return None
+    return node
+
+
 def _type_from_rhs(
     rhs_node: "tree_sitter.Node",
     source: bytes,
@@ -1846,17 +2038,9 @@ def _type_from_rhs(
 
     Returns the type name string or None.
     """
-    node = rhs_node
-    # Unwrap expression_list
-    if node.type == "expression_list":
-        for child in node.children:
-            if child.type in (
-                "unary_expression", "composite_literal", "call_expression",
-            ):
-                node = child
-                break
-        else:
-            return None
+    node = _unwrap_rhs_expression(rhs_node)
+    if node is None:
+        return None
 
     # &Server{} → unary_expression with & operator
     if node.type == "unary_expression":
@@ -1867,11 +2051,27 @@ def _type_from_rhs(
         else:
             return None  # pragma: no cover - defensive for unrecognized unary
 
-    # Server{} → composite_literal with type_identifier
+    # Server{} / http.Client{} → composite_literal whose ``type`` field names the
+    # type. This delegates to _type_identifier_from_node rather than scanning for a
+    # ``type_identifier`` child, because tree-sitter-go spells a package-qualified
+    # name differently by SYNTACTIC POSITION: an expression gives
+    # ``selector_expression`` (exec.Command(...)), a TYPE gives ``qualified_type``
+    # (&http.Client{}). Matching only ``type_identifier`` therefore bound in-repo
+    # struct literals and silently dropped every external one, so ``client.Do(req)``
+    # emitted the bare ``external`` module placeholder and the no-module gate
+    # (io-boundary:F3) correctly refused it — ``Do`` is in go.yaml's ambiguous_names.
+    # _type_identifier_from_node already answers this question for the ``var x T``
+    # spelling (its docstring calls returning the full ``http.Client`` "critical for
+    # IO boundary detection"); the copy here had drifted narrower, so the two
+    # spellings of one declaration disagreed.
     if node.type == "composite_literal":
-        for child in node.children:
-            if child.type == "type_identifier":
-                return node_text(child, source)
+        type_node = find_child_by_field(node, "type")
+        if type_node is not None and type_node.type in (
+            "type_identifier", "qualified_type",
+        ):
+            return _type_identifier_from_node(type_node, source)
+        # map[k]v{} / []T{} / struct{}{} — composite types name no receiver type.
+        return None
 
     # NewFoo() or pkg.NewFoo() → constructor return type inference
     if node.type == "call_expression":
@@ -2255,6 +2455,14 @@ def _extract_edges_from_file(
                 if func_node:
                     callee_name = None
                     import_path_hint = None
+                    # Set only when the hint was derived from the RECEIVER's own
+                    # tracked type (``q`` is a ``url.Values``), as opposed to from a
+                    # package alias in operand position (``url.Parse(...)``). The
+                    # WI-jopar guard below needs to tell those apart: a typed local
+                    # receiver must terminate resolution either way, and the module
+                    # slot it terminates with should name the real package instead of
+                    # the ``external`` placeholder when we know it.
+                    receiver_module_hint: Optional[str] = None
                     full_import_path = None
 
                     if func_node.type == "identifier":
@@ -2285,36 +2493,34 @@ def _extract_edges_from_file(
                             # receiver-type method disambiguation
                             elif alias in var_types:
                                 receiver_type = var_types[alias]
-                                # Strip package prefix from qualified types
-                                # (e.g. "notify.Stage" → "Stage") since symbol
-                                # names in global_symbols are unqualified.
-                                bare_recv = (
-                                    receiver_type.rsplit(".", 1)[-1]
-                                    if "." in receiver_type
-                                    else receiver_type
+                                # A type from OUTSIDE this module cannot be defined
+                                # by this repo, so the unqualified lookup below would
+                                # only ever find an impostor. Take the import-path
+                                # hint directly. (_strip_module_prefix is a no-op on
+                                # an out-of-module path by construction.)
+                                _external = _external_package_for_type(
+                                    receiver_type, import_aliases, module_path,
                                 )
-                                qualified_name = f"{bare_recv}.{callee_name}"
-                                # Try qualified name in local or global symbols
-                                if qualified_name in local_symbols:
-                                    callee = local_symbols[qualified_name]
-                                    edges.append(Edge.create(
-                                        src=current_function.id,
-                                        dst=callee.id,
-                                        edge_type="calls",
-                                        line=node.start_point[0] + 1,
-                                        evidence_type="ast_call",
-                                        origin=PASS_ID,
-                                        origin_run_id=run.execution_id,
-                                        meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
-                                    ))
-                                    callee_name = None  # Already resolved
-                                elif qualified_name in global_symbols:
-                                    # Direct lookup by qualified name
-                                    candidates = global_symbols[qualified_name]
-                                    if candidates:
+                                if _external is not None:
+                                    full_import_path = _external
+                                    import_path_hint = _external
+                                    receiver_module_hint = _external
+                                else:
+                                    # Strip package prefix from qualified types
+                                    # (e.g. "notify.Stage" → "Stage") since symbol
+                                    # names in global_symbols are unqualified.
+                                    bare_recv = (
+                                        receiver_type.rsplit(".", 1)[-1]
+                                        if "." in receiver_type
+                                        else receiver_type
+                                    )
+                                    qualified_name = f"{bare_recv}.{callee_name}"
+                                    # Try qualified name in local or global symbols
+                                    if qualified_name in local_symbols:
+                                        callee = local_symbols[qualified_name]
                                         edges.append(Edge.create(
                                             src=current_function.id,
-                                            dst=candidates[0].id,
+                                            dst=callee.id,
                                             edge_type="calls",
                                             line=node.start_point[0] + 1,
                                             evidence_type="ast_call",
@@ -2323,28 +2529,42 @@ def _extract_edges_from_file(
                                             meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
                                         ))
                                         callee_name = None  # Already resolved
-                                # Fallback: if receiver_type is a qualified
-                                # type like "http.Client", extract the package
-                                # prefix and recover the import path.  This
-                                # sets import_path_hint so the unresolved edge
-                                # gets the correct module hint (e.g. net/http)
-                                # instead of "external", enabling IO boundary
-                                # detection to classify the call.
-                                elif "." in receiver_type:
-                                    pkg_prefix = receiver_type.split(".")[0]
-                                    if pkg_prefix in import_aliases:
-                                        full_import_path = import_aliases[
-                                            pkg_prefix
-                                        ]
-                                        if module_path:
-                                            import_path_hint = (
-                                                _strip_module_prefix(
-                                                    full_import_path,
-                                                    module_path,
+                                    elif qualified_name in global_symbols:
+                                        # Direct lookup by qualified name
+                                        candidates = global_symbols[qualified_name]
+                                        if candidates:
+                                            edges.append(Edge.create(
+                                                src=current_function.id,
+                                                dst=candidates[0].id,
+                                                edge_type="calls",
+                                                line=node.start_point[0] + 1,
+                                                evidence_type="ast_call",
+                                                origin=PASS_ID,
+                                                origin_run_id=run.execution_id,
+                                                meta={"call_construct": "method", "resolution_quality": "typed_receiver"},
+                                            ))
+                                            callee_name = None  # Already resolved
+                                    # Fallback: a qualified type whose package we
+                                    # could not classify as out-of-module (no go.mod
+                                    # module path). Recover the import path so the
+                                    # unresolved edge still gets a module hint
+                                    # instead of "external".
+                                    elif "." in receiver_type:
+                                        pkg_prefix = receiver_type.split(".")[0]
+                                        if pkg_prefix in import_aliases:
+                                            full_import_path = import_aliases[
+                                                pkg_prefix
+                                            ]
+                                            if module_path:
+                                                import_path_hint = (
+                                                    _strip_module_prefix(
+                                                        full_import_path,
+                                                        module_path,
+                                                    )
                                                 )
-                                            )
-                                        else:
-                                            import_path_hint = full_import_path
+                                            else:
+                                                import_path_hint = full_import_path
+                                            receiver_module_hint = import_path_hint
                         # Chained field access: r.integration.Notify()
                         # Walk selector chain through field_type_registry
                         # to resolve the receiver type.
@@ -2531,21 +2751,37 @@ def _extract_edges_from_file(
                         #
                         # Note: var_types may map ``alias`` to an empty string
                         # when the analyzer recognised the variable but not
-                        # its type (e.g. composite_literal of qualified_type
-                        # like ``url.Values{}``). The empty-string entry is
-                        # still meaningful — it tells us the operand is a
-                        # tracked local, not a free-floating identifier — so
-                        # the guard fires on key presence, not value truthiness.
+                        # its type. The empty-string entry is still meaningful
+                        # — it tells us the operand is a tracked local, not a
+                        # free-floating identifier — so the guard fires on key
+                        # presence, not value truthiness.
+                        #
+                        # WHY THE CONDITION IS NOT ``import_path_hint is None``.
+                        # It used to be, and that worked only while a qualified
+                        # composite literal (``url.Values{}``) left the receiver
+                        # UNTYPED: no type meant no hint, so hint-absence was an
+                        # accidental proxy for "the receiver is a tracked local".
+                        # Once such a receiver types correctly the hint is set,
+                        # the proxy inverts, and this guard stops firing exactly
+                        # where it is most needed — the alertmanager
+                        # ``AlertStore.Set`` false edge came straight back. The
+                        # guard's real subject is the RECEIVER, so it now keys on
+                        # the receiver directly and terminates with the package it
+                        # knows instead of the ``external`` placeholder.
                         if (
                             callee_name
-                            and import_path_hint is None
+                            and (
+                                import_path_hint is None
+                                or receiver_module_hint is not None
+                            )
                             and operand_node is not None
                             and operand_node.type == "identifier"
                         ):
                             _alias = node_text(operand_node, source)
                             if _alias in var_types:
+                                _slot = receiver_module_hint or "external"
                                 dst_id = (
-                                    f"go:external:0-0:{callee_name}:unresolved"
+                                    f"go:{_slot}:0-0:{callee_name}:unresolved"
                                 )
                                 edges.append(Edge.create(
                                     src=current_function.id,
@@ -2553,6 +2789,14 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
+                                    # Stated, not inherited. Edge.create defaults
+                                    # is_resolved=True, so this guard was minting
+                                    # a "resolved" edge onto a dst whose kind slot
+                                    # reads ``unresolved`` — the same incoherence
+                                    # INV-fazim is filed for, latent here only
+                                    # because the guard seldom fired. It is an
+                                    # out-of-repo target by construction.
+                                    is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
                                     meta={"call_construct": "method", "receiver": "external"},
@@ -2632,11 +2876,25 @@ def _extract_edges_from_file(
                                     edge_type="calls",
                                     line=node.start_point[0] + 1,
                                     evidence_type="ast_call",
-                                    # WI-nurun: confidence kept explicit — this is
-                                    # an *ambiguous* method call (resolved to 2+
-                                    # candidates). The ambiguity is encoded in meta,
-                                    # not is_resolved, so derivation would over-score
-                                    # it as a resolved ast_call (0.85).
+                                    # INV-fazim: an ``external`` path slot carries no
+                                    # module evidence and the kind slot reads
+                                    # ``unresolved``, so the edge is NOT resolved.
+                                    # Edge.create defaults the flag to True, and
+                                    # under ADR-0037 ruling 4 that flag is
+                                    # authoritative — a consumer may not re-derive
+                                    # the verdict from the dst string. Left silent,
+                                    # this minted a "resolved" edge that taint's
+                                    # propagation lookup takes into the ungated
+                                    # ``if not path_module: return hits[0]``
+                                    # bare-name fallback, never reaching the F3 gate.
+                                    is_resolved=False,
+                                    # WI-nurun: confidence stays EXPLICIT and stays
+                                    # 0.50. It is not the derived unresolved base
+                                    # (0.40) because this call did resolve — to 2+
+                                    # candidates — which is strictly more evidence
+                                    # than "no idea", and the ambiguity is carried in
+                                    # meta. An explicit value also means the
+                                    # is_resolved correction above cannot move it.
                                     confidence=0.50,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
@@ -2663,6 +2921,13 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
+                                # INV-fazim: the ``external`` placeholder means no
+                                # package was attributed, so the edge is unresolved.
+                                # This guard exists precisely BECAUSE resolution
+                                # would have been wrong (crossing package
+                                # boundaries), which makes claiming resolution here
+                                # self-contradictory.
+                                is_resolved=False,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "visibility": "unexported"},
@@ -2691,6 +2956,12 @@ def _extract_edges_from_file(
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",
+                                # INV-fazim: same rule as the sibling guards. This
+                                # one fires when the receiver type is UNKNOWN and the
+                                # method name merely looks like a stdlib interface
+                                # method — the weakest evidence of the three, so
+                                # reporting it resolved was the least defensible.
+                                is_resolved=False,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
                                 meta={"call_construct": "method", "receiver": "stdlib"},
@@ -2940,6 +3211,8 @@ def _extract_edges_from_file(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
+            # INV-fafol: anchor each read to the callable that performs it.
+            enclosing_symbols=list(local_symbols.values()),
         )
 
     return edges
@@ -3513,11 +3786,11 @@ def _extract_go_routes(
                                 end_line = n.end_point[0] + 1
 
                                 # Detect wrapper pattern
+                                # WI-zugob: route_path / http_method /
+                                # framework_role are owned by make_route_symbol
+                                # below; only producer-specific keys go here.
                                 route_meta: dict[str, str] = {
-                                    "route_path": route_path,
-                                    "http_method": normalized_method,
                                     "handler_name": handler_name,
-                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3555,14 +3828,7 @@ def _extract_go_routes(
                                                         origin_run_id=run.execution_id,
                                                     ))
 
-                                route_sym = Symbol(
-                                    id=make_symbol_id(
-                                        "go", str(file_path), start_line, end_line,
-                                        f"{normalized_method} {route_path}", "function"
-                                    ),
-                                    stable_id=make_route_stable_id(normalized_method, route_path),
-                                    name=handler_name,
-                                    kind="function",
+                                route_sym = make_route_symbol(
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3571,10 +3837,11 @@ def _extract_go_routes(
                                         start_col=n.start_point[1],
                                         end_col=n.end_point[1],
                                     ),
+                                    method=normalized_method,
+                                    route_path=route_path,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta=route_meta,
-                                    line_span=end_line - start_line + 1,
+                                    extra_meta=route_meta,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3636,11 +3903,10 @@ def _extract_go_routes(
                                 end_line = n.end_point[0] + 1
 
                                 # Detect wrapper pattern
+                                # WI-zugob: canonical route keys are owned by
+                                # make_route_symbol below.
                                 route_meta_g: dict[str, str] = {
-                                    "route_path": route_path,
-                                    "http_method": handle_http_method,
                                     "handler_name": handler_name,
-                                    "framework_role": "route",
                                 }
                                 if handler_arg_node is not None:
                                     w_name, corrected = _extract_wrapper_info(
@@ -3676,16 +3942,7 @@ def _extract_go_routes(
                                                         origin_run_id=run.execution_id,
                                                     ))
 
-                                route_sym = Symbol(
-                                    id=make_symbol_id(
-                                        "go", str(file_path), start_line, end_line,
-                                        f"{handle_http_method} {route_path}", "function"
-                                    ),
-                                    stable_id=make_route_stable_id(
-                                        handle_http_method, route_path,
-                                    ),
-                                    name=handler_name,
-                                    kind="function",
+                                route_sym = make_route_symbol(
                                     language="go",
                                     path=str(file_path),
                                     span=Span(
@@ -3694,10 +3951,11 @@ def _extract_go_routes(
                                         start_col=n.start_point[1],
                                         end_col=n.end_point[1],
                                     ),
+                                    method=handle_http_method,
+                                    route_path=route_path,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta=route_meta_g,
-                                    line_span=end_line - start_line + 1,
+                                    extra_meta=route_meta_g,
                                     is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                                 )
                                 routes.append(route_sym)
@@ -3721,14 +3979,7 @@ def _extract_go_routes(
                             start_line = n.start_point[0] + 1
                             end_line = n.end_point[0] + 1
 
-                            route_sym = Symbol(
-                                id=make_symbol_id(
-                                    "go", str(file_path), start_line, end_line,
-                                    f"{normalized_method} {route_path}", "function"
-                                ),
-                                stable_id=make_route_stable_id(normalized_method, route_path),
-                                name=handler_name,
-                                kind="function",
+                            route_sym = make_route_symbol(
                                 language="go",
                                 path=str(file_path),
                                 span=Span(
@@ -3737,15 +3988,11 @@ def _extract_go_routes(
                                     start_col=n.start_point[1],
                                     end_col=n.end_point[1],
                                 ),
+                                method=normalized_method,
+                                route_path=route_path,
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={
-                                    "route_path": route_path,
-                                    "http_method": normalized_method,
-                                    "handler_name": handler_name,
-                                    "framework_role": "route",
-                                },
-                                line_span=end_line - start_line + 1,
+                                extra_meta={"handler_name": handler_name},
                                 is_exported=bool(handler_name) and handler_name.rsplit(".", 1)[-1][:1].isupper(),
                             )
                             routes.append(route_sym)
@@ -3777,18 +4024,18 @@ def _extract_go_routes(
                                     start_line = n.start_point[0] + 1
                                     end_line = n.end_point[0] + 1
 
-                                    mount_sym = Symbol(
-                                        id=make_symbol_id(
-                                            "go", str(file_path), start_line,
-                                            end_line,
-                                            f"MOUNT {mount_prefix}",
-                                            "route_mount",
-                                        ),
-                                        stable_id=make_route_stable_id("MOUNT", mount_prefix),
-                                        name=handler_ref,
-                                        # ADR-0027 Phase 3 / audit-findings 0013:
-                                        # framework-role leak.
-                                        kind="function",
+                                    # WI-zugob: the FIFTH go minting site. The
+                                    # earlier go migration moved the four
+                                    # net/http + mux + chi Handle paths and
+                                    # missed this one, because the go
+                                    # route-parity fixture is net/http only and
+                                    # never exercised a Mount — so the gate
+                                    # could not see that it violated BOTH the id
+                                    # kind-slot (unregistered "route_mount") and
+                                    # the id name-slot (name was the handler,
+                                    # the slot was "MOUNT {prefix}"). The
+                                    # go-mount fixture case now covers it.
+                                    mount_sym = make_route_symbol(
                                         language="go",
                                         path=str(file_path),
                                         span=Span(
@@ -3797,14 +4044,13 @@ def _extract_go_routes(
                                             start_col=n.start_point[1],
                                             end_col=n.end_point[1],
                                         ),
+                                        method="MOUNT",
+                                        route_path=mount_prefix,
                                         origin=PASS_ID,
                                         origin_run_id=run.execution_id,
-                                        meta={
-                                            "mount_prefix": mount_prefix,
-                                            "handler_ref": handler_ref,
-                                            "framework_role": "route_mount",
-                                        },
-                                        line_span=end_line - start_line + 1,
+                                        framework_role="route_mount",
+                                        handler_ref=handler_ref,
+                                        extra_meta={"mount_prefix": mount_prefix},
                                         is_exported=bool(handler_ref) and handler_ref.rsplit(".", 1)[-1][:1].isupper(),
                                     )
                                     routes.append(mount_sym)
@@ -3820,7 +4066,18 @@ def _extract_go_routes(
                                             # local_symbols first, then
                                             # build synthetic ID.
                                             dst_id: str | None = None
-                                            if handler_ref in local_symbols:
+                                            # INV-fazim: the flag MIRRORS THE BRANCH
+                                            # rather than being stated once for the
+                                            # whole call. This is the only external
+                                            # emit site in this file whose dst may be
+                                            # either a resolved in-repo symbol or the
+                                            # ``external`` placeholder, so a blanket
+                                            # is_resolved=False would be as wrong as
+                                            # the inherited default of True.
+                                            _handler_resolved = (
+                                                handler_ref in local_symbols
+                                            )
+                                            if _handler_resolved:
                                                 dst_id = local_symbols[
                                                     handler_ref
                                                 ].id
@@ -3836,6 +4093,7 @@ def _extract_go_routes(
                                                 dst=dst_id,
                                                 edge_type="calls",
                                                 line=start_line,
+                                                is_resolved=_handler_resolved,
                                                 origin=PASS_ID,
                                                 origin_run_id=(
                                                     run.execution_id
@@ -3938,23 +4196,11 @@ def _extract_go_routes(
             start_line = n.start_point[0] + 1
             end_line = n.end_point[0] + 1
 
-            meta: dict[str, str] = {
-                "route_path": route_path,
-                "http_method": normalized_method,
-                "handler_name": handler_name,
-                "framework_role": "route",
-            }
+            meta: dict[str, str] = {"handler_name": handler_name}
             if handler_field:
                 meta["handler_field"] = handler_field
 
-            route_sym = Symbol(
-                id=make_symbol_id(
-                    "go", str(file_path), start_line, end_line,
-                    f"{normalized_method} {route_path}", "function",
-                ),
-                stable_id=make_route_stable_id(normalized_method, route_path),
-                name=handler_name,
-                kind="function",
+            route_sym = make_route_symbol(
                 language="go",
                 path=str(file_path),
                 span=Span(
@@ -3963,10 +4209,11 @@ def _extract_go_routes(
                     start_col=n.start_point[1],
                     end_col=n.end_point[1],
                 ),
+                method=normalized_method,
+                route_path=route_path,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
-                meta=meta,
-                line_span=end_line - start_line + 1,
+                extra_meta=meta,
             )
             routes.append(route_sym)
 

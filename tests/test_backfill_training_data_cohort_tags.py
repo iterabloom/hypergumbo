@@ -501,17 +501,68 @@ class TestRealV0WindowBoundaries:
     # 7310783e1 — 2026-04-08T12:57:57  (injection-history sidecar)
     # 9ac06cc88 — 2026-04-08T15:58:46  (per-session isolation)
 
-    def test_timeline_includes_known_shas(self, bf_mod) -> None:
-        """The timeline includes the four boundary commits."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
-        shas = {sha for _, sha in timeline}
-        for short in ["75596a4153d4", "704548fe1e90", "7310783e1b26", "9ac06cc88a00"]:
-            matches = [s for s in shas if s.startswith(short)]
-            assert matches, f"SHA starting with {short} not found in timeline"
+    @pytest.fixture(scope="class")
+    def timeline(self, bf_mod):
+        """The real-history walk, computed ONCE for the whole class (WI-fodad).
 
-    def test_entry_before_75596a_resolves_to_earlier(self, bf_mod) -> None:
+        Every test here needs the same timeline and each used to recompute it.
+        That walk is `git log --reverse` over full history with a pathspec — the
+        only full-history walk in the suite, and so the only thing in the suite
+        that needed a tree object from every commit. Measured in CI once:
+        1,185,559 ms on the first invocation, 19 ms on every one after.
+        Recomputing it five times turned one slow command into five red tests
+        and burned 5 x the subprocess cap before failing.
+
+        The cost itself is gone — it was never this command's fault. CI was
+        cloning with `--filter=tree:0` (plugin-git's `partial: true` default), so
+        the walk re-fetched every tree from origin one at a time; the clone is
+        now pinned complete and gated in prepare-git (WI-fodad). Sharing one
+        walk across the class is kept anyway: it is strictly less work, and it
+        means any future environment regression fails ONCE and legibly instead
+        of five times in a way that reads like a flaky assertion.
+        """
+        walked = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
+        # NON-VACUITY FLOOR (L17). Without this, an empty timeline makes four of
+        # this class's five tests pass for free: resolve_sha_at_timestamp returns
+        # "" and every `not sha.startswith(...)` assertion holds trivially. CI hit
+        # exactly that and reported 1 failed / 4 passed, which reads as one flaky
+        # assertion instead of "the git walk produced nothing".
+        assert walked, (
+            "get_commit_timeline returned an EMPTY timeline for "
+            f"{bf_mod.INFRA_PATH} in {self.REPO_ROOT}. git failed (its stderr is "
+            "now printed by get_commit_timeline) or the checkout's history for "
+            "this path is missing. Every test in this class is vacuous without it."
+        )
+        return walked
+
+    def test_timeline_includes_known_shas(self, bf_mod, timeline) -> None:
+        """The timeline includes the four boundary commits.
+
+        The failure message is deliberately verbose. This assertion failed once
+        in CI with a bare "SHA not found", which is indistinguishable between
+        "the walk returned a DIFFERENT history" (a truncated/partial clone) and
+        "the walk returned NOTHING" (git errored and get_commit_timeline
+        swallowed it into []). Those need opposite fixes, and the bare message
+        cost a whole CI round-trip to disambiguate.
+        """
+        shas = {sha for _, sha in timeline}
+        missing = [
+            short for short in
+            ["75596a4153d4", "704548fe1e90", "7310783e1b26", "9ac06cc88a00"]
+            if not [s for s in shas if s.startswith(short)]
+        ]
+        assert not missing, (
+            f"boundary SHAs absent from the timeline: {missing}\n"
+            f"timeline length: {len(timeline)} (expected ~52)\n"
+            f"first entry: {timeline[0] if timeline else '<EMPTY>'}\n"
+            f"last entry:  {timeline[-1] if timeline else '<EMPTY>'}\n"
+            "An EMPTY timeline means git failed and get_commit_timeline "
+            "returned [] (it swallows a non-zero returncode). A SHORT timeline "
+            "means the checkout's history for this path is incomplete."
+        )
+
+    def test_entry_before_75596a_resolves_to_earlier(self, bf_mod, timeline) -> None:
         """Entry before the initial sparse-selection commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-03T01:56:54",
@@ -519,18 +570,16 @@ class TestRealV0WindowBoundaries:
         # Should resolve to a commit before 75596a415
         assert not sha.startswith("75596a4153d4")
 
-    def test_entry_at_75596a_resolves_correctly(self, bf_mod) -> None:
+    def test_entry_at_75596a_resolves_correctly(self, bf_mod, timeline) -> None:
         """Entry at the 75596a415 boundary resolves to that commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-03T01:56:55",
         )
         assert sha.startswith("75596a4153d4")
 
-    def test_entry_between_704548_and_7310783(self, bf_mod) -> None:
+    def test_entry_between_704548_and_7310783(self, bf_mod, timeline) -> None:
         """Entry between dynamic-count and injection-history commits."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         # Between 704548fe1 (2026-04-05T16:32:43) and next commit
         sha = bf_mod.resolve_sha_at_timestamp(
@@ -540,9 +589,8 @@ class TestRealV0WindowBoundaries:
         # The key invariant: it must NOT be 7310783e1 (which is Apr 8)
         assert not sha.startswith("7310783e1b26")
 
-    def test_entry_after_9ac06cc_resolves_to_it_or_later(self, bf_mod) -> None:
+    def test_entry_after_9ac06cc_resolves_to_it_or_later(self, bf_mod, timeline) -> None:
         """Entry after per-session isolation commit."""
-        timeline = bf_mod.get_commit_timeline(self.REPO_ROOT, bf_mod.INFRA_PATH)
         ts_only = [t for t, _ in timeline]
         sha = bf_mod.resolve_sha_at_timestamp(
             timeline, ts_only, "2026-04-08T16:00:00",

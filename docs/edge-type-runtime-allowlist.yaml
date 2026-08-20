@@ -84,3 +84,25 @@ allowlist:
       A JavaScript file anchor contains its top-level functions (dispatch:F4)
       while the file pseudo-node also references them from module scope.
     adr_reference: "ADR-0023 §3 amendment (dispatch:F4, 2026-06-25)"
+
+#   - Rust trait requirement/dispatch variance (INV-fimon, 2026-07-31).
+#     WI-duguk taught the Rust analyzer to emit trait members, so the
+#     containment linker now roots a trait over its own required methods while
+#     linkers/rust_trait_dispatch (WI-kivut) emits dispatches_to from the trait
+#     to its impls' concrete methods. The two edges do not share a destination
+#     — contains -> MyTrait::method, dispatches_to -> MyStruct::method — so they
+#     are distinct relationships over one endpoint shape, not a leaked endpoint
+#     property. This entry rules on the PARTITION only; it does not ratify the
+#     trait-rather-than-requirement anchoring, which is tracked separately and
+#     whose fix would SHRINK this list.
+  - src_kind: trait
+    src_language: rust
+    dst_kind: method
+    dst_language: rust
+    permitted_edge_types: [contains, dispatches_to]
+    rationale: >-
+      A Rust trait contains its own required methods (WI-duguk) while
+      rust_trait_dispatch (WI-kivut) dispatches from the trait to the concrete
+      methods of its impls — distinct relationships with distinct destinations
+      sharing one endpoint shape.
+    adr_reference: "ADR-0023 §3 amendment (INV-fimon, 2026-07-31)"

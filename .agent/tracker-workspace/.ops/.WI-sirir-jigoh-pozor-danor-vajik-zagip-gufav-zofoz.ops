@@ -33,3 +33,18 @@
   clock: 3  # af40
   nonce: af40  # af40
   message: "Re-confirms profile top-level disagreement: emitted-not-declared dev_frameworks/framework_mode (WI-sirir) + declared-not-emitted total_files/total_lines (WI-sizis). WI-sirir is the emitted-key face. (dogfood; blinded sev 3)"  # af40
+- op: update  # 42a4
+  at: '2026-07-30T16:48:47Z'  # 42a4
+  by: agent  # 42a4
+  actor: jgstern_agent  # 42a4
+  clock: 4  # 42a4
+  nonce: 42a4  # 42a4
+  set:  # 42a4
+    status: done  # 42a4
+- op: discuss  # 4fda
+  at: '2026-07-30T16:48:47Z'  # 4fda
+  by: agent  # 4fda
+  actor: jgstern_agent  # 4fda
+  clock: 5  # 4fda
+  nonce: 4fda  # 4fda
+  message: "DONE — same PR as WI-sizis (the mirror-image half).\n\nprofile emits dev_frameworks, framework_mode and framework_evidence; the schema declared none of them. All three are now declared, with descriptions: dev_frameworks (frameworks seen only in dev/test deps, kept separate from the production 'frameworks' surface), framework_mode (how frameworks was resolved — manifest declaration vs import promotion), framework_evidence (WI-napuj's {framework: [node_ids]} join, omitted-when-empty per INV-virik).\n\nPurely additive documentation of already-emitted fields, so no SCHEMA_VERSION bump. Note this item and WI-sizis are the two directions of ONE disagreement between profile and its schema — declared-but-not-emitted vs emitted-but-not-declared — which is why they were fixed in one edit."  # 4fda

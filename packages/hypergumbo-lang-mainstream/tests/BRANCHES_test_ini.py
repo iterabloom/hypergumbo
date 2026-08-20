@@ -14,7 +14,6 @@ from pathlib import Path
 from hypergumbo_lang_mainstream.ini import (
     _categorize_section,
     _is_sensitive_key,
-    _make_symbol_id,
     _mask_value,
     analyze_ini,
     find_ini_files,
@@ -26,13 +25,13 @@ def make_ini_file(tmp_path: Path, name: str, content: str) -> None:
     (tmp_path / name).write_text(content)
 
 
+# The per-analyzer _make_symbol_id builder was folded into the shared
+# make_doc_symbol_ids helper (tested in hypergumbo-core test_base.py), so the
+# former test_make_symbol_id_format format test was retired here (INV-dulah).
+
+
 class TestIniHelperFunctions:
     """Branch coverage for helper functions."""
-
-    def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
-        symbol_id = _make_symbol_id(Path("config.ini"), "database", "section", 1)
-        assert symbol_id == "ini:config.ini:section:1:database"
 
     def test_mask_value_short(self) -> None:
         """Test masking short values."""
@@ -349,7 +348,7 @@ certificate = /etc/ssl/cert.pem
 
 [api]
 base_url = https://api.example.com
-api_key = sk_live_12345
+api_key = example-not-a-real-key
 timeout = 30
 """)
         result = analyze_ini(tmp_path)

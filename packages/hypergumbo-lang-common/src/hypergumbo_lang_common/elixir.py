@@ -6,7 +6,8 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Function declarations (def/defp)
 - Macro declarations (defmacro/defmacrop)
 - Function call relationships
-- Import relationships (use/import/alias)
+- Import relationships (use/import). ``alias`` produces NO edge — it is
+  collected only as a hint for call disambiguation.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
@@ -40,7 +41,6 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
 )
-from hypergumbo_core.routes import transport_meta
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
     FileAnalysis,
@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
     find_child_by_type,
     iter_tree,
     make_file_id,
+    make_route_symbol,
     make_symbol_id,
     node_text,
 )
@@ -428,7 +429,8 @@ def _extract_phoenix_routes(
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
-        Symbols have kind="route" which enables route-handler linking.
+        Symbols are route markers (kind="function" +
+        meta.framework_role="route"), which enables route-handler linking.
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
@@ -550,62 +552,33 @@ def _extract_phoenix_routes(
                 ("DELETE", f"{normalized_path}/:id", "delete"),  # Phoenix uses :delete
             ]
             for http_meth, route_pth, act in restful_routes:
-                route_name = f"{http_meth} {route_pth}"
-                route_id = make_symbol_id("elixir",
-                    path=str(file_path),
-                    start_line=span.start_line,
-                    end_line=span.end_line,
-                    name=route_name,
-                    kind="route",
-                )
-                route_symbol = Symbol(
-                    id=route_id,
-                    name=route_name,
-                    kind="function",
+                route_symbols.append(make_route_symbol(
                     language="elixir",
                     path=str(file_path),
                     span=span,
-                    meta={
-                        "http_method": http_meth,
-                        "route_path": route_pth,
-                        "controller": controller,
-                        "action": act,
-                        "framework_role": "route",
-                    },
+                    method=http_meth,
+                    route_path=route_pth,
                     origin=pass_id,
                     origin_run_id=run_id,
-                )
-                route_symbols.append(route_symbol)
+                    extra_meta={"controller": controller, "action": act},
+                ))
         else:
             # Single route (HTTP method or LiveView)
-            route_name = f"{http_method} {normalized_path}"
-            route_id = make_symbol_id("elixir",
-                path=str(file_path),
-                start_line=span.start_line,
-                end_line=span.end_line,
-                name=route_name,
-                kind="route",
-            )
-            route_symbol = Symbol(
-                id=route_id,
-                name=route_name,
-                kind="function",
+            route_extra: dict[str, str] = {}
+            if controller:
+                route_extra["controller"] = controller
+            if action:
+                route_extra["action"] = action
+            route_symbols.append(make_route_symbol(
                 language="elixir",
                 path=str(file_path),
                 span=span,
-                meta={
-                    **transport_meta(http_method),
-                    "route_path": normalized_path,
-                    "framework_role": "route",
-                },
+                method=http_method,
+                route_path=normalized_path,
                 origin=pass_id,
                 origin_run_id=run_id,
-            )
-            if controller:
-                route_symbol.meta["controller"] = controller
-            if action:
-                route_symbol.meta["action"] = action
-            route_symbols.append(route_symbol)
+                extra_meta=route_extra,
+            ))
 
     return contexts, route_symbols
 
@@ -620,7 +593,7 @@ def _extract_behaviour_callbacks(
     file_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
-    """Extract invokes_callback edges from OTP/Phoenix behaviour declarations.
+    """Extract behaviour-callback ``dispatches_to`` edges from OTP/Phoenix decls.
 
     When a module uses ``use GenServer``, ``use Phoenix.LiveView``, etc., or
     declares ``@behaviour Plug``, the framework invokes specific callback
@@ -1515,7 +1488,11 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
         alias_hints = _extract_alias_hints(tree, source)
         usage_contexts, route_symbols = _extract_phoenix_routes(
             tree.root_node, source, file_path, symbol_by_name,
-            run_id, self.pass_id,
+            # WI-zugob: NOT ``self.pass_id`` — that attribute defaults to ""
+            # on TreeSitterAnalyzer (the effective id is resolved downstream as
+            # ``self.pass_id or make_pass_id(self.lang)``), so threading it here
+            # stamped every Phoenix route marker with an empty Symbol.origin.
+            run_id, PASS_ID,
             alias_hints=alias_hints,
         )
         # Stash route symbols to be added in post_process

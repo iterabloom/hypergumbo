@@ -8,7 +8,10 @@ This analyzer uses tree-sitter to parse Clojure files and extract:
 - Macro definitions (defmacro)
 - Protocol definitions (defprotocol)
 - Record/type definitions (defrecord, deftype)
-- Multimethod definitions (defmulti)
+- Multimethod definitions (defmulti) and their implementations (defmethod,
+  emitted as ``method`` — a first-class callable kind here)
+- Per-symbol ``meta`` (visibility, and ``constructed_from`` for def forms
+  whose value is a constructor call), cyclomatic complexity and line span
 - Function call relationships
 - Require/import statements
 - UsageContext records for framework pattern matching (Ring/Compojure routes)
@@ -22,9 +25,10 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Parse all files, extract all symbols into global registry
 2. Pass 2: Detect calls and resolve against global symbol registry
 
-The base class handles grammar checking, parser creation, file discovery,
-and result assembly. This module provides only the Clojure-specific
-extraction logic.
+The base class handles grammar checking, parser creation and result
+assembly. This module provides the Clojure-specific extraction logic and
+overrides ``_find_source_files`` so ``.edn`` data files are not parsed as
+source.
 
 Why This Design
 ---------------
@@ -124,6 +128,51 @@ def _extract_clojure_signature(
             return "[]"
 
     return None  # pragma: no cover - no params found
+
+
+
+def _clojure_constructed_from(
+    inner: "list[tree_sitter.Node]", source: bytes,
+) -> "str | None":
+    """The callee of a ``def``'s value form, for ``meta['constructed_from']``.
+
+    ``(def app (make-c))`` -> ``"make-c"``. Clojure has no ``new`` keyword in
+    idiomatic code — objects come from factory functions — so the same rule
+    the other analyzers apply (record the callee of a call-valued binding)
+    lands on the s-expression's head symbol.
+
+    ``inner`` is the def form's children; index 2 is the value form when
+    present. A value that is not a call (``(def n 3)``) or whose head is not
+    a plain symbol (``(def x ((f) 1))``) yields None rather than a guess.
+    """
+    if len(inner) < 3:
+        return None
+    value = inner[2]
+    if value.type != "list_lit":
+        return None
+    head = next(
+        (c for c in value.children if c.type not in ("(", ")")), None,
+    )
+    if head is None or head.type != "sym_lit":
+        return None
+    return _get_sym_name(head, source) or None
+
+
+
+def _clojure_def_meta(
+    visibility: str, constructed_from: "str | None",
+) -> "dict[str, str] | None":
+    """Assemble a def's meta, omitting the dict entirely when empty.
+
+    Kept as a helper so adding a third key later cannot silently drop one of
+    the first two — the shape that made a conditional literal fragile.
+    """
+    meta: dict[str, str] = {}
+    if visibility == "private":
+        meta["visibility"] = visibility
+    if constructed_from:
+        meta["constructed_from"] = constructed_from
+    return meta or None
 
 
 def _is_def_form(sym_name: str) -> tuple[str, str] | None:
@@ -230,7 +279,10 @@ def _extract_symbols_from_file(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             signature=signature,
-                            meta={"visibility": visibility} if visibility == "private" else None,
+                            meta=_clojure_def_meta(
+                                visibility,
+                                _clojure_constructed_from(inner, source),
+                            ),
                             cyclomatic_complexity=(
                                 compute_cyclomatic_complexity(node, "clojure")
                                 if is_callable else None

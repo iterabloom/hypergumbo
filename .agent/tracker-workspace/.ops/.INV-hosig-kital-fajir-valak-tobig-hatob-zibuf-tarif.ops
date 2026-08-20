@@ -68,3 +68,10 @@
     tags: [dogfood]  # 3ce5
   remove:  # 3ce5
     tags: [dogfooding]  # 3ce5
+- op: discuss  # 405c
+  at: '2026-07-30T16:40:07Z'  # 405c
+  by: agent  # 405c
+  actor: jgstern_agent  # 405c
+  clock: 7  # 405c
+  nonce: 405c  # 405c
+  message: "Re-measured 2026-07-30 on a fresh self-survey: di-resolution-linker analyzed 0 files, ran 3394ms, emitted 0 edges. The premise HOLDS and the cost is slightly WORSE than the filed 2550ms.\n\nSibling measurement for context (same survey, recorded on INV-bikaj): 67 of 95 passes emit 0 edges; the dominant one is subprocess-linker at 991 files / 15947ms / 0 edges. di-resolution is the second-largest pure-overhead pass. Both are activation-gate shaped rather than correctness bugs."  # 405c

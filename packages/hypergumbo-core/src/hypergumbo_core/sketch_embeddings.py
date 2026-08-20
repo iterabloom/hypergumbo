@@ -12,7 +12,32 @@ The main entry points are:
 - batch_embed_files(): Batch embed files with caching
 - compute_5w1h_similarity(): Score a file against the 5W1H rubric
 
-These functions fall back gracefully when sentence-transformers isn't installed.
+Degradation contract — TWO failure modes, not one
+-------------------------------------------------
+"sentence-transformers is unavailable" means two independent things, and
+conflating them is what made ``hypergumbo .`` exit 1 writing zero bytes
+(INV-rupid):
+
+1. **The library is not importable.** ``_has_sentence_transformers()``
+   answers this, and only this — it catches ``ImportError`` and nothing
+   else. Every public function here checks it first.
+2. **The library imports but the model WEIGHTS are not on disk** and
+   cannot be downloaded (no network, ``HF_HUB_OFFLINE``, a cache miss on
+   a machine that has never fetched them). ``_has_sentence_transformers()``
+   returns True in this case. The load itself raises, so
+   ``_load_st_model_offline_first`` converts that into
+   :class:`EmbeddingsUnavailable`.
+
+Callers must handle BOTH. The four public entry points already do: each
+catches :class:`EmbeddingsUnavailable` and degrades to the same result its
+import-guard branch returns, and :func:`_warn_embeddings_unavailable`
+warns once per process rather than per file. Consumers outside this module
+(see ``sketch.py``) degrade to their heuristic path.
+
+The probe is deliberately NOT strengthened to demand weights: a first
+install legitimately has the library and no weights, and downloading them
+then is the sanctioned path. The guard answers "can I import"; the loader
+answers "can I load".
 """
 
 from __future__ import annotations
@@ -20,6 +45,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -35,7 +61,11 @@ _IPV6_CIDR_PATTERN = re.compile(r"[0-9a-fA-F:]*::[0-9a-fA-F:]*/\d+")
 # Set HF env vars BEFORE importing sentence_transformers downstream — most
 # HuggingFace libraries cache these at their own import time (WI-gatot).
 from ._hf_noise import suppress_hf_noise as _suppress_hf_noise  # noqa: E402
-from .safety_zones import cache_save_npy  # noqa: E402
+from .safety_zones import (  # noqa: E402
+    cache_mkdir,
+    cache_save_npy,
+    repo_inspect_git,
+)
 
 _suppress_hf_noise()
 
@@ -79,6 +109,54 @@ def _restore_no_proxy(old_values: tuple[str | None, str | None]) -> None:
         os.environ["no_proxy"] = old_no_proxy_lower
     elif "no_proxy" in os.environ:
         del os.environ["no_proxy"]
+
+
+class EmbeddingsUnavailable(RuntimeError):
+    """The embedding model could not be loaded, so semantic work must degrade.
+
+    Raised by :func:`_load_st_model_offline_first` when neither the local HF
+    cache nor a download can supply the weights — the offline / air-gapped /
+    egress-blocked case. It exists so that consumers can tell "the enhancement
+    is unavailable" apart from a genuine bug, and answer with the SAME empty
+    value their ``_has_sentence_transformers()`` guard already returns.
+
+    INV-rupid: before this existed, the network-allowing fallback constructor
+    was unwrapped, so its ``OSError`` propagated through six unguarded load
+    sites to the CLI top level. ``hypergumbo .`` then exited 1 with a
+    huggingface.co connection error and wrote a zero-byte sketch, while
+    ``hypergumbo survey`` on the same tree exited 0 — the default command was
+    the only casualty, which is the worst place for one in a LOCAL-FIRST tool.
+
+    The originating exception is always attached as ``__cause__``; callers that
+    report to the user should surface it rather than inventing a message.
+    """
+
+
+_EMBEDDINGS_UNAVAILABLE_WARNED = False
+
+
+def _warn_embeddings_unavailable(exc: BaseException) -> None:
+    """Warn ONCE per process that semantic enhancement is being skipped.
+
+    Once, not per call site: six consumers degrade independently and a
+    per-consumer warning would bury the sketch it is attached to. The remedy is
+    named because "couldn't connect to huggingface.co" tells a user what failed
+    but not what to do about it.
+    """
+    global _EMBEDDINGS_UNAVAILABLE_WARNED
+    if _EMBEDDINGS_UNAVAILABLE_WARNED:
+        return
+    _EMBEDDINGS_UNAVAILABLE_WARNED = True
+    warnings.warn(
+        "Embedding model unavailable — continuing without semantic "
+        f"enhancement. Cause: {exc}. The sketch is complete but omits "
+        "semantic config discovery and README description extraction. "
+        "To enable it, run 'hypergumbo install-embeddings' on a machine with "
+        "network access; the weights are then cached under $HF_HOME and no "
+        "further network access is needed.",
+        UserWarning,
+        stacklevel=2,
+    )
 
 
 _cached_embedding_model = None
@@ -183,7 +261,20 @@ def _load_st_model_offline_first(st_cls, model_name, **kwargs):
             os.environ.pop("HF_HUB_OFFLINE", None)
         else:
             os.environ["HF_HUB_OFFLINE"] = prior_offline
-        return st_cls(model_name, **kwargs)
+        try:
+            return st_cls(model_name, **kwargs)
+        except (OSError, ValueError) as exc:
+            # INV-rupid: BOTH sources are exhausted — not cached, and the
+            # download could not happen (offline, air-gapped, egress-blocked,
+            # or HF_HUB_OFFLINE=1 set by the caller). This is the enhancement
+            # being unavailable, NOT a bug, so it must not reach the CLI's
+            # internal-error handler. Raising a typed error rather than
+            # returning None keeps the two failure modes distinguishable and
+            # preserves the original for the operator via __cause__.
+            raise EmbeddingsUnavailable(
+                f"could not load embedding model {model_name!r}: "
+                "not in the local cache and not downloadable"
+            ) from exc
     # Cached-load success: keep HF_HUB_OFFLINE=1 set so encode()-time HF
     # background threads stay offline too.
     return model
@@ -953,8 +1044,21 @@ def extract_readme_description_embedding(
             )
         return None
 
-    # Load model and get pre-computed probe embeddings
-    model = _load_embedding_model()
+    # Load model and get pre-computed probe embeddings. INV-rupid: an
+    # unavailable model answers with the SAME shape the
+    # _has_sentence_transformers() guard above returns, so there is exactly one
+    # definition of "no description could be extracted".
+    try:
+        model = _load_embedding_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)
+        if debug:
+            return ReadmeExtractionDebug(
+                description=None, k_scores=[], final_k=0, stopped_early=False,
+                quality_drop=None, elapsed_seconds=_time.time() - start_time,
+                lines_processed=len(filtered_lines),
+            )
+        return None
     probe_embeddings = _get_readme_probe_embeddings()
 
     # Embed all filtered lines
@@ -1306,11 +1410,10 @@ def _run_git_command(
     Returns:
         Tuple of (return_code, stdout, stderr).
     """
-    import subprocess  # nosec B404 - required for git commands
-
     git_path = _find_git_executable()
     try:
-        result = subprocess.run(  # noqa: S603  # nosec B603 - git_path from shutil.which
+        # WI-fasuv: repo_inspection zone.
+        result = repo_inspect_git(
             [git_path, *args],
             cwd=cwd,
             capture_output=True,
@@ -1428,7 +1531,7 @@ def _get_cache_dir(repo_root: Path) -> Path:
     cache_dir = cache_base / fingerprint / "embeddings"
 
     # Create the full path including parent directories
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_mkdir(cache_dir, parents=True, exist_ok=True)
     return cache_dir
 
 
@@ -1469,7 +1572,7 @@ def _get_results_cache_dir(repo_root: Path) -> Path:
     )
 
     # Create the full path including parent directories
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_mkdir(cache_dir, parents=True, exist_ok=True)
     return cache_dir
 
 
@@ -1671,8 +1774,15 @@ def _get_additional_files_probe_embeddings() -> "np.ndarray":
                 import numpy as np
                 return np.zeros((len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM))
 
-            model = _load_modernbert_model()
             import numpy as np
+            try:
+                model = _load_modernbert_model()
+            except EmbeddingsUnavailable as exc:
+                # INV-rupid: same answer as the guard three lines above.
+                _warn_embeddings_unavailable(exc)
+                return np.zeros(
+                    (len(ADDITIONAL_FILES_PROBES), _MODERNBERT_TRUNCATE_DIM)
+                )
             _ADDITIONAL_FILES_PROBE_EMBEDDINGS = model.encode(
                 ADDITIONAL_FILES_PROBES, convert_to_numpy=True
             )
@@ -1712,7 +1822,11 @@ def embed_file_for_semantic_ranking(
         return None
 
     # Load model and embed
-    model = _load_modernbert_model()
+    try:
+        model = _load_modernbert_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)  # INV-rupid: as the guard returns.
+        return None
     embedding = model.encode(sample_text, convert_to_numpy=True)
 
     # Cache result
@@ -1768,7 +1882,17 @@ def batch_embed_files(
 
     # Phase 2: Batch encode uncached files
     if uncached:
-        model = _load_modernbert_model()
+        try:
+            model = _load_modernbert_model()
+        except EmbeddingsUnavailable as exc:
+            # INV-rupid: cached hits found in phase 1 are REAL and are kept —
+            # degrading must not discard work already done. Only the paths this
+            # phase would have encoded become None, which is what the guard at
+            # the top of the function returns for every path.
+            _warn_embeddings_unavailable(exc)
+            for path, _hash, _sample in uncached:
+                results[path] = None
+            return results
         total_uncached = len(uncached)
 
         for i in range(0, total_uncached, batch_size):

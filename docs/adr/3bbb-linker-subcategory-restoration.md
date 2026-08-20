@@ -2,7 +2,9 @@
 # ADR-3bbb: Linker Subcategory Restoration (extends ADR-3aaa §2.4)
 
 Date: 2026-04-16
-Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-3aaa/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules declare their subcategory; the `generate-architecture` Uncategorized counter is 0 and will surface any future regression.
+Supersedes: ADR-3aaa (partial — §2.4's subcategory vocabulary only; the rest of ADR-3aaa is supplemented, not replaced — see "Supplements" below)
+Superseded by: —
+Status: Implemented — all seven rollout PRs merged 2026-04-16 to 2026-04-17 (this ADR PR #3076, `docs/LINKERS.md` rewrite PR #3077, `docs/hypergumbo-spec.md` in-place corrections PR #3078, ADR-3aaa/0010/0012/0015 corrections PR #3079, module-docstring sweep + README/ARCHITECTURE/CHANGELOG PR #3080, `generate-architecture` subcategory enforcement PR #3084, governance-file edits — `AGENTS.md` + three playbooks — PR #3089 via tracker item WI-hizab). All 45 linker modules present at rollout declared their subcategory; the catalogue has since grown to 61, and the invariant is carried forward mechanically — the `generate-architecture` Uncategorized counter is 0 and will surface any future regression. That counter had a blind spot until 2026-08-19: the module scan skipped every underscore-prefixed filename, so `linkers/_third_party_bases.py` — which registers `django-third-party-dispatch-linker` — could be flagged neither categorized nor Uncategorized, and the generated count read 60 against a registry of 61. The scan now decides on the presence of `@register_linker` rather than on the filename, so an underscore-named linker is counted and subcategory-checked like any other.
 
 ## Supplements
 
@@ -84,7 +86,7 @@ The opening sentence of every file in `packages/hypergumbo-core/src/hypergumbo_c
 ### 4. Cataloguing documents use the subcategory vocabulary
 
 - `docs/LINKERS.md` is renamed (title → "Linkers", not "Cross-Language Linkers") and its table gains a Subcategory column.
-- `docs/hypergumbo-spec.md` §7 is renamed ("Linkers") and restructured around the subcategories. Its existing inclusive definition at line 197 ("*A linker is a Tier 2 pass that creates cross-language or cross-component relationships*") is amplified as the canonical one-sentence definition — it was always correct, it just wasn't propagated into the neighbouring text.
+- `docs/hypergumbo-spec.md` §7 is renamed ("Linkers") and restructured around the subcategories. Its existing inclusive definition ("*A linker is a Tier 2 pass that creates cross-language or cross-component relationships*") is amplified as the canonical one-sentence definition — it was always correct, it just wasn't propagated into the neighbouring text.
 
 ### 5. Every new linker PR includes a subcategory declaration
 
@@ -135,7 +137,7 @@ Implementation was sequenced across **seven** PRs, six non-governance and one go
 
 Verification (all seven PRs landed 2026-04-16 to 2026-04-17; see Status line):
 
-1. **Bias re-audit (verified — landed).** The G-doc survey was re-run (module docstrings checked for the subcategory label). The post-rollout invariant is that all 45 linker modules declare a subcategory in their opening sentence — mechanically confirmed by `generate-architecture`'s `Uncategorized` counter reading 0 (see Status line and §3). This exceeded the original ≥43-of-45 target.
+1. **Bias re-audit (verified — landed).** The G-doc survey was re-run (module docstrings checked for the subcategory label). The post-rollout invariant is that every linker module declares a subcategory in its opening sentence — 45 modules at rollout, 60 today — mechanically confirmed by `generate-architecture`'s `Uncategorized` counter reading 0 (see Status line and §3). This exceeded the original ≥43-of-45 target.
 2. **Bakeoff prioritization cross-check (verified — landed).** The `./scripts/dead-code-prospector-run.py` aggregation was re-run against the 2026-04-11 corpus. The categorizer output was unchanged by this vocabulary work (expected and desired — the WI-vupin categorizer operates on candidate names, not linker docstrings). Follow-up tracker items filed after this ADR tag themselves with the new finer-grained tags rather than the legacy `cross_language_linkers`.
 3. **Retrospective notebook entry (verified — landed).** `~/hypergumbo_lab_notebook/linker_subcategory_restoration_retrospective_04162026.md` records before/after counts, unresolved judgment calls, and any residual risk.
 

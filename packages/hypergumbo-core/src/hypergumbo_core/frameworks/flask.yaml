@@ -128,6 +128,23 @@ patterns:
   - concept: signal_handler
     decorator: "^message_flashed\\.connect$"
 
+
+  # ============ CONSTRUCTION-BASED PATTERNS (WI-nopod) ============
+  # `app = Flask(__name__)` — constructed, not subclassed or decorated, so
+  # the decorator rules above cannot reach the application object itself.
+  # See fastapi.yaml for why the regex needs `(.*\.)?` (meta_match uses
+  # re.match, not re.search).
+  - concept: application
+    symbol_kind: "^variable$"
+    meta_match:
+      constructed_from: "(.*\\.)?Flask$"
+
+  # Blueprints are Flask's sub-application unit.
+  - concept: router
+    symbol_kind: "^variable$"
+    meta_match:
+      constructed_from: "(.*\\.)?Blueprint$"
+
 linkers:
   - http
   - websocket

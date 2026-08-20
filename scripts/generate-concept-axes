@@ -223,6 +223,27 @@ eight clusters; this section lays out the three axes (Cluster A on
 """
 
 
+def _confidence_annotation(spec: object) -> str:
+    """Render a spec's seeded detection-reliability, if it has one.
+
+    Only ``EvidenceTypeSpec`` carries ``base_confidence`` (ADR-0039) — the
+    edge-type and symbol-kind registries have no confidence axis — so this
+    reads defensively and returns ``""`` for them. An *unseeded* pathway
+    also renders nothing: ``derive_confidence`` returns ``None`` there and
+    the producer keeps its own literal, so there is no derived value to
+    document (WI-limom).
+    """
+    base = getattr(spec, "base_confidence", None)
+    if base is None:
+        return ""
+    unresolved = getattr(spec, "base_confidence_unresolved", None)
+    if unresolved is None:
+        return f" _(derived confidence {base:.2f})_"
+    return (
+        f" _(derived confidence {base:.2f}; {unresolved:.2f} when unresolved)_"
+    )
+
+
 def _format_axis_section(
     heading: str, preamble: str, specs: Iterable[object],
 ) -> str:
@@ -234,9 +255,97 @@ def _format_axis_section(
         return "\n".join(lines)
     for spec in bullets:
         lines.append(
-            f"- **`{spec.name}`** — {spec.description}",  # type: ignore[attr-defined]
+            f"- **`{spec.name}`** — {spec.description}"  # type: ignore[attr-defined]
+            f"{_confidence_annotation(spec)}",
         )
     lines.append("")
+    return "\n".join(lines)
+
+
+def _format_confidence_table() -> str:
+    """Render the ADR-0039 R5 Stage-B per-pathway confidence projection.
+
+    This is the generated counterpart to spec §12's prose: the spec
+    explains *how* `Edge.confidence` is derived, this table is the
+    machine-projected *what*, so the two can never drift (the freshness
+    gate is `generate-concept-axes --check`, already wired into
+    pre-commit and verify-generated). WI-limom deferred exactly this
+    rather than hand-transcribing a drift-prone table.
+    """
+    seeded = [e for e in EVIDENCE_TYPES if e.base_confidence is not None]
+    unseeded = sorted(
+        e.name for e in EVIDENCE_TYPES if e.base_confidence is None
+    )
+    conditioned = sorted(
+        (e for e in seeded if e.base_confidence_unresolved is not None),
+        key=lambda e: e.name,
+    )
+
+    by_value: dict[float, list[str]] = {}
+    for spec in seeded:
+        assert spec.base_confidence is not None  # narrowed by the filter above
+        by_value.setdefault(spec.base_confidence, []).append(spec.name)
+
+    lines = [
+        "### Derived confidence — `base_confidence` projection (ADR-0039)",
+        "",
+        "`Edge.create` derives `Edge.confidence` from the edge's "
+        "`evidence_type` via `derive_confidence(evidence_type, is_resolved)` "
+        "— detection *reliability*, not ranking prominence (that lives on "
+        "`rank_score`). Values sit in the analyzer/linker band "
+        "**0.30–0.95**; 1.0 is a reserved ceiling, since no detection "
+        "method is certain. See "
+        "[spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model "
+        "and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.",
+        "",
+        f"**{len(seeded)} of {len(EVIDENCE_TYPES)} pathways are seeded.** "
+        "Each base is the edge-weighted modal confidence that pathway's "
+        "producers historically hardcoded, so the migration off literal "
+        "`confidence=` sites preserved the dominant cohort and collapsed "
+        "per-emitter outliers onto one canonical value.",
+        "",
+        "| Derived confidence | Pathways |",
+        "|---|---|",
+    ]
+    for value in sorted(by_value, reverse=True):
+        names = ", ".join(f"`{n}`" for n in sorted(by_value[value]))
+        lines.append(f"| **{value:.2f}** | {names} |")
+    lines.append("")
+
+    lines.extend([
+        "**`is_resolved`-conditioned pathways.** Two call pathways are "
+        "multimodal — a name-resolved call is more reliable than an "
+        "unresolved one, so they carry a second, lower base that "
+        "`derive_confidence` selects when `is_resolved=False`:",
+        "",
+        "| Pathway | Resolved | Unresolved |",
+        "|---|---|---|",
+    ])
+    for spec in conditioned:
+        assert spec.base_confidence is not None
+        assert spec.base_confidence_unresolved is not None
+        lines.append(
+            f"| `{spec.name}` | {spec.base_confidence:.2f} "
+            f"| {spec.base_confidence_unresolved:.2f} |",
+        )
+    lines.append("")
+
+    lines.extend([
+        f"**Unseeded ({len(unseeded)}).** `derive_confidence` returns "
+        "`None` for these, so the producer keeps whatever literal it "
+        "emits and `confidence_source` stays `emitter_constant`. That is "
+        "the honest state, not a gap to paper over: an unseeded pathway "
+        "has no measured modal cohort to seed from. Seeding one is a "
+        "producer-side migration (the ADR-0039 ruling-1 shape), not a "
+        "documentation change.",
+        "",
+        "<details><summary>Unseeded pathways</summary>",
+        "",
+        ", ".join(f"`{n}`" for n in unseeded),
+        "",
+        "</details>",
+        "",
+    ])
     return "\n".join(lines)
 
 
@@ -316,6 +425,7 @@ def render() -> str:
                 specs,
             ),
         )
+    sections.append(_format_confidence_table())
 
     return "\n".join(sections).rstrip() + "\n"
 

@@ -29,12 +29,18 @@ How It Works
 3. **Semantic hooks** handle non-standard control flow that cannot be reduced
    to the standard categories via YAML mapping alone:
 
-   - ``early_return_on_error``: Dual control flow (Rust ``?`` operator) —
-     Ok path continues, Err path exits function.
+   The names below are the literal top-level YAML keys ``_parse_cfg_mapping``
+   reads. They matter: unknown keys are silently ignored (every lookup is a
+   ``data.get(<key>, [])``), so a mapping that misspells one parses clean and
+   yields a CFG missing that construct with no error and no warning.
+
+   - ``early_return``: Dual control flow (Rust ``?`` operator) — Ok path
+     continues, Err path exits function. The per-entry ``semantics`` value
+     (e.g. ``return_on_err``) selects the variant.
    - ``context_manager``: Entry call before body, exit call after body including
      exceptional paths (Python ``with``).
-   - ``deferred_execution``: Statement body executes at function exit, after
-     all subsequent statements (Go ``defer``).
+   - ``deferred``: Statement body executes at function exit, after all
+     subsequent statements (Go ``defer``).
 
 4. **Unmapped node types** are treated as sequential statements (safe
    overapproximation). A warning is logged at DEBUG level listing unmapped types.
@@ -113,9 +119,21 @@ def register_def_use_extractor(language: str) -> Any:
             language = "python"
             def extract(self, node, source):
                 ...
+
+    Stacking is supported, and is how one grammar serves two language keys::
+
+        @register_def_use_extractor("javascript")
+        @register_def_use_extractor("typescript")
+        class TypeScriptDefUseExtractor: ...
+
+    Each stacked call constructs its OWN instance and stamps ``language`` with
+    the key it was registered under, so the Protocol's ``language`` attribute
+    stays true per registration instead of merely by class-author convention.
+    Without the stamp the second registration would carry the first's name.
     """
     def decorator(cls: Any) -> Any:
         instance = cls()
+        instance.language = language
         _DEF_USE_EXTRACTORS[language] = instance
         return cls
     return decorator
@@ -129,6 +147,25 @@ def get_def_use_extractor(language: str) -> Optional[DefUseExtractor]:
 def clear_def_use_extractors() -> None:
     """Clear all registered extractors (for tests)."""
     _DEF_USE_EXTRACTORS.clear()
+
+
+def registered_def_use_languages() -> frozenset[str]:
+    """Which languages currently have a def/use extractor.
+
+    Exists so :func:`dataflow_scope.ensure_def_use_extractors_registered` can
+    tell "already registered" from "registered, then CLEARED" without reaching
+    into this module's private dict. Registration is an import side effect, and
+    a bare import is a no-op once the module is in ``sys.modules`` — so after a
+    :func:`clear_def_use_extractors` the re-import restores nothing.
+
+    RETURNS THE SET, NOT A BOOLEAN, and that distinction is load-bearing. A
+    "is it non-empty" check looks equivalent and is not: a test that clears the
+    registry and then reloads only ITS OWN extractor module leaves the registry
+    populated but INCOMPLETE, and a truthiness check reports everything fine
+    while ``javascript`` is missing. That is the actual observed failure, and a
+    first attempt at this guard keyed on emptiness and did not fix it.
+    """
+    return frozenset(_DEF_USE_EXTRACTORS)
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +340,18 @@ class CfgNodeMapping:
     # its children, which for Python recurses past expression_statement
     # all the way down to bare identifiers / integers — losing the
     # statement-level granularity that def/use extractors need.
+    #: Tree-sitter node types that ARE a call in this grammar. Declared here
+    #: rather than sniffed from the type name because "does this node invoke
+    #: something" is a per-grammar fact (Go ``call_expression``, Python
+    #: ``call``, Java ``method_invocation``, Rust ``macro_invocation``), and a
+    #: substring heuristic over node-type names is exactly the hand-rolled
+    #: predicate this codebase keeps getting wrong.
+    #:
+    #: Consumed by :func:`uncovered_call_lines` (WI-joluk). A language that
+    #: declares NONE cannot be checked, and the consumer treats that as
+    #: "forfeit everything" rather than "nothing uncovered" — the permitting
+    #: case is enumerated, so an unconfigured language fails CLOSED.
+    call_node_types: list[str] = field(default_factory=list)
     atomic_statements: list[str] = field(default_factory=list)
 
     def classify(self, node_type: str) -> Optional[str]:
@@ -403,19 +452,47 @@ def get_cfg_nodes_dir() -> Path:
     return Path(__file__).parent / "cfg_nodes"
 
 
+#: Languages whose CFG node mapping lives under ANOTHER language's key because
+#: the two share a tree-sitter grammar.
+#:
+#: ``cfg_nodes/typescript.yaml`` already ASSERTS in its own header that it "also
+#: covers JavaScript (same node types in tree-sitter-javascript)". The choice
+#: here is between copying that file to ``javascript.yaml`` — which duplicates
+#: the consequences of the assertion into a second artifact free to drift from
+#: the first — and encoding the assertion once, as this does. The alias is the
+#: cheaper of the two to keep true: a node type added for TypeScript is
+#: automatically available to JavaScript, which is exactly what "same grammar"
+#: means. If the grammars ever genuinely diverge, delete the entry and add the
+#: real file; nothing else has to change.
+_CFG_MAPPING_ALIASES: dict[str, str] = {"javascript": "typescript"}
+
+
 def load_cfg_mapping(language: str, search_dir: Optional[Path] = None) -> Optional[CfgNodeMapping]:
     """Load a CFG node mapping for the given language.
 
     Searches ``cfg_nodes/<language>.yaml`` in the package directory or
-    ``search_dir`` if provided. Returns None if no mapping file exists.
-    Caches results to avoid repeated disk I/O.
+    ``search_dir`` if provided, resolving ``_CFG_MAPPING_ALIASES`` first so a
+    language that shares another's grammar reads that one's file. Returns None
+    if no mapping file exists. Caches results to avoid repeated disk I/O.
+
+    The cache key is the REQUESTED language, not the resolved one, so a caller
+    asking for ``javascript`` and a caller asking for ``typescript`` are
+    independent cache entries that happen to parse the same bytes. Keying on
+    the resolved name would be a micro-optimisation that makes a future
+    per-language post-processing step silently wrong.
     """
-    cache_key = f"{search_dir or 'default'}:{language}"
+    # INV-kazij class: resolve the directory BEFORE keying. The previous key
+    # spelled the default as the literal 'default' while the resolved dir
+    # came from patchable ``get_cfg_nodes_dir()`` — the same
+    # partial-input-memoization hole that poisoned the framework-pattern
+    # cache (a patched dir's Nones cached under the unpatched caller's key).
+    # No test patches this getter today; keyed on the resolved dir so none
+    # ever can.
+    search = search_dir or get_cfg_nodes_dir()
+    cache_key = f"{search}:{language}"
     if cache_key in _MAPPING_CACHE:
         return _MAPPING_CACHE[cache_key]
-
-    search = search_dir or get_cfg_nodes_dir()
-    yaml_path = search / f"{language}.yaml"
+    yaml_path = search / f"{_CFG_MAPPING_ALIASES.get(language, language)}.yaml"
     if not yaml_path.exists():
         _MAPPING_CACHE[cache_key] = None  # type: ignore[assignment]
         return None
@@ -517,6 +594,7 @@ def _parse_cfg_mapping(data: dict[str, Any]) -> CfgNodeMapping:
         context_manager=context_manager,
         deferred=deferred,
         switch=switch,
+        call_node_types=data.get("call_node_types", []),
         atomic_statements=data.get("atomic_statement", []),
     )
 
@@ -713,6 +791,30 @@ class CfgBuilder:
 
         return result
 
+    def _contains_classified_descendant(self, node: Any) -> bool:
+        """Does this subtree hold a node the mapping treats as control flow?
+
+        Used to decide whether an ``atomic_statement`` declaration may be
+        honoured for a particular occurrence. ``atomic_statement`` exists so a
+        def/use extractor receives whole statements instead of decomposed
+        leaves, and that is safe exactly when the statement is straight-line.
+        In an expression-oriented grammar the same node type is sometimes
+        straight-line and sometimes a branch in disguise — Rust's
+        ``expression_statement`` wraps a bare call in one function and an
+        ``if_expression`` in the next — so the decision cannot be made from the
+        node *type* alone, which is all a YAML mapping can express.
+
+        Only named children are walked: anonymous nodes are punctuation and
+        keywords, which no mapping classifies. The walk runs only for a node
+        already known to be atomic, so it is not on the common path.
+        """
+        for child in node.named_children:
+            if self._mapping.classify(child.type) is not None:
+                return True
+            if self._contains_classified_descendant(child):
+                return True
+        return False
+
     def _process_node(self, node: Any, source: bytes) -> Optional[_PartialCfg]:
         """Process a single AST node and return its partial CFG.
 
@@ -765,10 +867,27 @@ class CfgBuilder:
         # node type as an atomic statement, treat it as a single block —
         # def/use extractors operate at the statement level and want the
         # full expression/assignment node, not its decomposed leaves.
+        #
+        # ...UNLESS the atomic node CONTAINS control flow, which is why the
+        # descendant check is here rather than in each mapping. In a
+        # statement-oriented grammar (Go, Python) an atomic type never wraps a
+        # branch: `if_statement` is its own statement. In an EXPRESSION-oriented
+        # grammar it routinely does — Rust parses `if c { } else { }` as
+        # `expression_statement > if_expression` and `let x = f()?;` as
+        # `let_declaration > try_expression`. Declaring the wrapper atomic
+        # there stops the descent before the branch is ever classified, so the
+        # CFG silently loses its true/false edges while every def/use test
+        # still passes, because def/use is exactly what the wrapper was
+        # declared for. Keeping the rule per-mapping would make each new
+        # expression-oriented language rediscover that; making it a property of
+        # the builder closes it once.
         if (
             node.named_child_count > 0
             and self._mapping.classify(node.type) is None
-            and node.type not in self._mapping.atomic_statements
+            and (
+                node.type not in self._mapping.atomic_statements
+                or self._contains_classified_descendant(node)
+            )
         ):
             # Track unmapped compound types
             if node.type not in _SKIP_UNMAPPED_TYPES:
@@ -1366,6 +1485,81 @@ def populate_def_use_for_cfg(
     visit(body_node)
 
 
+def uncovered_call_lines(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+    mapping: CfgNodeMapping,
+) -> Optional[frozenset[int]]:
+    """Call sites in this function's AST that no CFG statement covers (WI-joluk).
+
+    The coverage question behind INV-lupav: did the def/use extractor actually
+    SEE all of this function? If a call node sits outside every statement the
+    CFG recorded, the extractor never ran over it, so any use of a tainted
+    value at that call is invisible to the DDG — and the §3a walk will happily
+    report ``False`` ("every step accounted for") for a value it never followed
+    there. ``False`` is the one verdict that may license removing a reported
+    flow, so the caller passes ``forfeit_refutation=True`` when this returns a
+    non-empty set.
+
+    WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
+    ``CfgBuilder._process_conditional`` records ONLY the condition child of an
+    ``if`` — for Go's ``if err := do(); err != nil`` that is ``err != nil``, and
+    the initializer ``err := do()`` becomes no statement at all. Both are on the
+    same line, so line-matching reports the call as covered and the gate is
+    vacuous exactly where ``cfg_nodes/go.yaml`` self-documents the gap. The
+    recorded statement's byte range does not contain the initializer's, so an
+    extent test catches it.
+
+    RETURNS ``None`` — NOT AN EMPTY SET — when the language declares no
+    ``call_node_types``. Those are different facts: an empty set means "checked,
+    nothing uncovered" and permits refutation, while ``None`` means "cannot
+    check at all". Collapsing them would make every unconfigured language look
+    fully covered, which fails open in the direction that deletes findings. The
+    permitting case is the one enumerated (L54 default-deny).
+
+    Args:
+        cfg: The function's CFG, after :func:`build_function_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        source: Source bytes, for the statement-index match.
+        mapping: The language's CFG node mapping.
+
+    Returns:
+        Frozenset of 1-based lines carrying an uncovered call, empty when the
+        function is fully covered, or ``None`` when coverage is unknowable.
+    """
+    if not mapping.call_node_types:
+        return None
+
+    # Same key as populate_def_use_for_cfg builds — matching AST nodes to CFG
+    # statements is one fact, so it gets one spelling.
+    recorded: set[tuple[int, int, str]] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            recorded.add((stmt.line, stmt.col, stmt.node_type))
+
+    call_types = frozenset(mapping.call_node_types)
+    extents: list[tuple[int, int]] = []
+    calls: list[tuple[int, int, int]] = []
+
+    def visit(node: Any) -> None:
+        key = (node.start_point[0] + 1, node.start_point[1], node.type)
+        if key in recorded:
+            extents.append((node.start_byte, node.end_byte))
+        if node.type in call_types:
+            calls.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
+        for child in node.children:
+            visit(child)
+
+    visit(body_node)
+
+    return frozenset(
+        line
+        for start, end, line in calls
+        if not any(s <= start and end <= e for s, e in extents)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reaching-def solver (ADR-0017 §1b)
 # ---------------------------------------------------------------------------
@@ -1382,6 +1576,14 @@ class DdgEdge:
     Represents the fact that the value assigned at ``def_line`` (in
     ``def_block``) can reach the use at ``use_line`` (in ``use_block``)
     through the variable ``variable``.
+
+    ``symbol_id`` names the function this edge belongs to. Block ids are
+    only unique *within* one function's CFG — ``bb_5`` occurs in every
+    function — so once edges from many functions are aggregated into one
+    repo-level list, a block id alone identifies nothing. Consumers that
+    ask "does this function have DDG data" or index edges per function
+    must key on ``symbol_id``; comparing a block id against a symbol id
+    is a namespace error that silently never matches.
     """
 
     variable: str
@@ -1389,6 +1591,7 @@ class DdgEdge:
     def_line: int
     use_block: str
     use_line: int
+    symbol_id: str = ""
 
 
 @dataclass
@@ -1595,6 +1798,7 @@ def solve_reaching_defs(cfg: FunctionCfg) -> ReachingDefResult:
                             def_line=d.line,
                             use_block=block.id,
                             use_line=stmt.line,
+                            symbol_id=cfg.symbol_id,
                         ))
 
             # Update reaching set: this statement's definitions kill/gen
@@ -1656,9 +1860,28 @@ def select_ddg_targets(
 ) -> DdgTargetSet:
     """Select functions for DDG analysis based on IO, taint, and centrality.
 
-    Implements ADR-0017 §1c targeted analysis selection. DDG analysis is
-    expensive, so only 2-10% of functions are analyzed — those most likely
-    to benefit from intraprocedural precision.
+    .. warning::
+
+       **NOT WIRED — this function has zero production callers.** It is
+       reached only by its own unit tests, which is what holds it at 100%
+       coverage. ``build_repo_ddg`` walks and solves **every** function in
+       every file of a registered language, with no sampling, no budget and
+       no cache.
+
+       The previous wording here — "DDG analysis is expensive, so only 2-10%
+       of functions are analyzed" — described an intended design as though it
+       were current behaviour, and a reader sizing DDG cost from it would be
+       wrong by more than an order of magnitude. Corrected 2026-08-03 rather
+       than deleted, because the selection policy below is still the intended
+       one and is worth keeping until it is either wired or withdrawn.
+
+       Wiring it is deliberately sequenced *after* ADR-0017 §3a lands: it
+       reduces which functions carry DDG data, so switching it on before the
+       forward walk exists would move two variables in one measurement and
+       make §3a's effect unreadable.
+
+    Implements ADR-0017 §1c targeted analysis selection — the *design*, not
+    the running behaviour.
 
     Selection criteria (in priority order):
     1. **IO-critical**: Functions on IO boundary chains (callers of IO

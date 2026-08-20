@@ -1,0 +1,23 @@
+- op: create  # de94
+  at: '2026-08-01T04:51:54Z'  # de94
+  by: agent  # de94
+  actor: jgstern_agent  # de94
+  clock: 1  # de94
+  nonce: de94  # de94
+  data:  # de94
+    kind: invariant  # de94
+    title: "Analyzers silently emit confidently-wrong symbols from ERROR-collapsed parse trees (no failed_files entry, no warning, no provenance marker)"  # de94
+    status: violated  # de94
+    priority: 3  # de94
+    parent:  # de94
+    tags:  # de94
+    - analyzer  # de94
+    - robustness  # de94
+    isbefore: []  # de94
+    duplicate_of: []  # de94
+    not_duplicate_of: []  # de94
+    pr_ref:  # de94
+    description: "**Measured instance (kotlin, 2026-08-01, production grammar tree_sitter_kotlin\n1.1.0).** Two single-line bodied type declarations:\n\n    class A { fun f(): Int = 1 }\n    class B { fun g(): Int = 2 }\n\nparse to a single top-level ERROR node with ZERO class_declaration children;\nthe only recognizable child is a floating function_declaration. analyze_kotlin\nreturns [('f', 'function')] -- wrong kind, wrong name, no owner, no\nfailed_files entry, no warning. A multiline version of the same three-type\ncontent parses clean (has_error=False) and emits all six symbols correctly.\nFull probe and bisection: WI-rufub (re-scoped 2026-08-01).\n\n**Why \"has_error implies disclose\" is NOT the fix.** A single one-liner class\nalso parses with has_error=True yet analyzes CORRECTLY (grammar error recovery\nsucceeds at multiplicity 1). The honest signal is not has_error alone --\ncandidate signals: declarations swallowed by ERROR spans (bytes covered by\nERROR nodes containing declaration keywords), or a recovered-vs-total ratio.\nThis is design work, not a sweep.\n\n**Relation to the section-17 contract and WI-bozih.** Section 17 covers files\nthat fail outright (land in failed_files[], run continues). This invariant\ncovers the gap BETWEEN clean parse and hard failure: partial ERROR-collapse\nwhere the analyzer \"succeeds\" with wrong output. WI-bozih positive-controls\nthe hard path; nothing controls this one.\n\n**Scope honestly stated.** Measured: kotlin, one construct family. Unmeasured:\nevery other tree-sitter analyzer's behavior on ERROR-collapsed input, and the\nreal-corpus frequency of ERROR-bearing parses. First fix step is measurement:\ncount has_error parse rates and ERROR-swallowed declarations across a corpus\nbefore designing the disclosure mechanism.\n\n**Provenance.** Found while adversarially premise-checking WI-rufub (filed as\na P1 analyzer-traversal bug; refuted -- the traversal is correct given the\ntree; the grammar is the defect and the silence is the structural gap)."  # de94
+    fields:  # de94
+      statement: "A source file whose parse tree contains ERROR nodes never yields silently-wrong symbols: every analyzer either recovers to a faithful symbol set or records the degradation (failed_files entry, warning, or a provenance marker on the affected symbols). An analyzer must not emit a well-formed, confidently-wrong result -- wrong kind, wrong name, missing owner -- with no machine-visible signal that the parse degraded."  # de94
+      root_cause: "Tree-sitter analyzers traverse whatever tree the grammar returns and dispatch on named node types; ERROR nodes are neither traversed for salvage nor surfaced as degradation. Measured instance: tree_sitter_kotlin 1.1.0 collapses 2+ single-line bodied type declarations into one ERROR node whose only recognizable child is a function_declaration, so analyze_kotlin emits a phantom top-level function and nothing else (WI-rufub). Other tree-sitter analyzers share the traversal pattern; their ERROR-tree behavior is unmeasured."  # de94

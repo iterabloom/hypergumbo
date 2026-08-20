@@ -3,9 +3,11 @@
 #
 # Maps Go standard library functions to I/O boundary types.
 language: go
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Go stdlib and adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # Method names that are too generic to match without module context.
@@ -14,30 +16,30 @@ status: in_progress
 ambiguous_names:
   - Read          # io.Reader.Read vs any .Read() method
   - Write         # io.Writer.Write vs any .Write() method
-  - Run           # gin.Engine.Run vs testing.T.Run, cobra.Command.Run
-  - Start         # echo.Echo.Start vs any .Start() method
-  - String        # gin.Context.String vs fmt.Stringer.String
+  - Run           # exec.Cmd.Run vs testing.T.Run, cobra.Command.Run
+  - Start         # exec.Cmd.Start vs any .Start() method
+  - String        # fmt.Stringer.String vs any .String() method
   - Close         # net.Conn.Close vs any .Close() method
   - Do            # http.Client.Do vs any .Do() method
   - Get           # http.Client.Get vs map.Get, cache.Get
   - Post          # http.Client.Post vs forum.Post
   - Head          # http.Client.Head vs list.Head
-  - Serve         # grpc.Server.Serve vs any .Serve() method
+  - Serve         # overlay-supplied grpc.Server.Serve vs any .Serve()
   - Accept        # net.Listener.Accept vs any .Accept() method
   - Listen        # net.Listen vs any .Listen() method
   - Dial          # net.Dial vs any .Dial() method
   - DialContext   # grpc.DialContext vs any .DialContext() method
   - Output        # exec.Cmd.Output vs any .Output() method
-  - JSON          # gin.Context.JSON vs encoding/json (not IO)
-  - HTML          # gin.Context.HTML vs template.HTML (not IO)
-  - XML           # gin.Context.XML vs encoding/xml (not IO)
+  - JSON          # overlay-supplied gin.Context.JSON vs encoding/json
+  - HTML          # overlay-supplied gin.Context.HTML vs template.HTML
+  - XML           # overlay-supplied gin.Context.XML vs encoding/xml
   - Send          # net.UdpSocket.Send vs channel send
   - Debug         # slog.Debug vs any .Debug() method
   - Info          # slog.Info vs any .Info() method
   - Warn          # slog.Warn vs any .Warn() method
   - Error         # slog.Error vs error.Error(), any .Error() method
   - Log           # slog.Log vs any .Log() method
-  - Data          # gin.Context.Data vs template.Data, any .Data() method
+  - Data          # smtp.Client.Data vs any .Data() method
   - Mail          # smtp.Client.Mail vs any .Mail() method
   - Handshake     # tls.Conn.Handshake vs any .Handshake() method
 
@@ -98,13 +100,6 @@ net_send:
     methods: [Do, Get, Post, Head]
   - module: net/http.Transport
     methods: [RoundTrip]
-  # Gin/Echo/Fiber/Chi frameworks (response writing)
-  - module: gin.Context
-    methods: [JSON, String, HTML, XML, YAML, Data, IndentedJSON]
-    notes: "Gin web framework response methods"
-  - module: echo.Context
-    methods: [JSON, String, HTML, XML, Blob, Stream]
-    notes: "Echo web framework response methods"
   # gRPC client
   - module: grpc
     functions: [Dial, DialContext, NewClient]
@@ -123,20 +118,6 @@ net_recv:
     methods: [Read]
   - module: net/http
     functions: [ListenAndServe, ListenAndServeTLS, Serve]
-  # Gin/Echo/Fiber frameworks (server startup)
-  - module: gin.Engine
-    methods: [Run, RunTLS]
-    notes: "Gin web framework server"
-  - module: echo.Echo
-    methods: [Start, StartTLS]
-    notes: "Echo web framework server"
-  - module: fiber.App
-    methods: [Listen, ListenTLS]
-    notes: "Fiber web framework server"
-  # gRPC server
-  - module: grpc.Server
-    methods: [Serve]
-    notes: "gRPC server"
   - module: syscall
     functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
   - module: unix

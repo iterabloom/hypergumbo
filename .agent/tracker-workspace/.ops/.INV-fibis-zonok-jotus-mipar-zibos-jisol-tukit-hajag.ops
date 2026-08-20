@@ -1,0 +1,111 @@
+- op: create  # 2d20
+  at: '2026-08-09T01:52:34Z'  # 2d20
+  by: agent  # 2d20
+  actor: jgstern_agent  # 2d20
+  clock: 1  # 2d20
+  nonce: 2d20  # 2d20
+  data:  # 2d20
+    kind: invariant  # 2d20
+    title: "verify-claims returns confirmed for a boundary reachable through modules the catalogue cannot adjudicate (reproduced: poetry 'never sends data over the network', 14 files import requests)"  # 2d20
+    status: violated  # 2d20
+    priority: 1  # 2d20
+    parent:  # 2d20
+    tags:  # 2d20
+    - io_boundary  # 2d20
+    - verify_claims  # 2d20
+    - adr_0016  # 2d20
+    - false_confirm  # 2d20
+    - rct_blocker  # 2d20
+    isbefore: []  # 2d20
+    duplicate_of: []  # 2d20
+    not_duplicate_of: []  # 2d20
+    pr_ref:  # 2d20
+    description: "REPRODUCED LIVE on two UNMODIFIED upstream repos, with a positive control firing in\nthe SAME run (so this is not the analysis being blind and saying so):\n\n  $ hypergumbo verify-claims ~/ALL_REPOS/curriculum_repos/poetry/src/poetry\n    x [CONTROL-FSREAD] violated - 20 fs_read chain(s) found      <- the run WORKED\n    v [NET] This service never sends data over the network.\n        Verdict: confirmed.  No net_send chains found.           <- FALSE\n\npoetry imports requests in 14 files and calls requests.Session()/.get()/.post().\nfull-stack-fastapi-template/backend reproduces the database half: `confirmed` for\n\"never writes to a database\" against crud.py:14-15 session.add(db_obj);\nsession.commit(), read directly from source.\n\nMECHANISM, read in code. compute_boundary_coverage (verify_claims.py) modelled two\nblind spots (WI-kajil / INV-bitig), both at the resolution of \"did this language\nproduce ANY call edges\". Python produces hundreds of thousands, so coverage read\ncomplete and the clean verdict was confirmable. This is EXACTLY the residual already\nrecorded in cli.py's own docstring (\"closing it needs a signal with resolution finer\nthan 'any', e.g. the share of method-construct call edges that resolve to something\nthe catalogue can match\") and pinned as the xfail\ntest_language_with_a_token_call_edge_still_falsely_confirms. That residual was filed\nas a Kotlin problem; it is not language-specific, and Python -- the best-supported\nlanguage and the likely RCT substrate -- reproduces it on real repos.\n\nRELATION TO THE FILED L1 CLAIM. Found while adjudicating INV-linub's 2026-08-08\n\"32.9% sqlalchemy / ZERO catalogue entries\" paragraph. That paragraph is a cohort\nartifact (see the correction filed on INV-linub); this is the real user-facing defect\nsitting underneath it.\n\nNOT MEASURED: any non-Python language; the false-positive direction (does the new\ngate downgrade a verdict that was genuinely earned?) beyond the fixtures and the two\nrepos above; whether the taint arm's behaviour changes on any repo other than\nhypergumbo itself."  # 2d20
+    fields:  # 2d20
+      statement: "Every clean (zero-chain) boundary verdict reported as confirmed must be backed by an analysis that could have classified the I/O -- including calls into third-party modules, whose absence from the catalogue makes them unexamined rather than examined-and-clean."  # 2d20
+      root_cause: "compute_boundary_coverage (packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py) modelled exactly two blind spots, both at the resolution of 'did this language produce ANY call edges' -- zero call edges overall, or a supported language with zero. Python produces hundreds of thousands on any real repo, so both pass and a clean boundary verdict stays confirmable no matter how much of the repo's I/O left through an uncatalogued third-party module. Read in code and reproduced end-to-end on two upstream repos. cli.py's own docstring already recorded this residual and named the fix shape ('a signal with resolution finer than any'), filing it as Kotlin-specific; it is not language-specific."  # 2d20
+- op: update  # 927a
+  at: '2026-08-09T01:53:42Z'  # 927a
+  by: agent  # 927a
+  actor: jgstern_agent  # 927a
+  clock: 2  # 927a
+  nonce: 927a  # 927a
+  set: {}  # 927a
+  add:  # 927a
+    not_duplicate_of: [WI-sulij-nimir-mubig-vasop-pumuz-nokup-zisav-jusuz]  # 927a
+- op: update  # c454
+  at: '2026-08-09T03:17:40Z'  # c454
+  by: agent  # c454
+  actor: jgstern_agent  # c454
+  clock: 3  # c454
+  nonce: c454  # c454
+  set:  # c454
+    pr_ref: '251'  # c454
+- op: discuss  # c0d5
+  at: '2026-08-09T03:17:40Z'  # c0d5
+  by: agent  # c0d5
+  actor: jgstern_agent  # c0d5
+  clock: 4  # c0d5
+  nonce: c0d5  # c0d5
+  message: "PARTIAL FIX MERGED as PR #251 (dev f70cf62fa2). THE ITEM STAYS VIOLATED, and the\nreason is not caution — a named residual is still live and is pinned as a passing\ntest, so the statement does not hold.\n\nWHAT HOLDS NOW, verified by re-running this item's own filed repro rather than by a\nproxy:\n\n  poetry/src/poetry     confirmed -> INCONCLUSIVE at exit 2, naming\n                        cachecontrol, cleo..., dulwich, keyring, requests (51 modules)\n  fastapi-template      confirmed -> INCONCLUSIVE at exit 2, naming\n                        alembic, emails, fastapi... (18 modules)\n  fs_read control       violated / 20 chains, UNCHANGED in both directions\n                        (a violated verdict is not coverage-gated, by design)\n\nMECHANISM: compute_boundary_coverage gained a third blind spot. The permitting case\nis enumerated -- a module supports a clean verdict when the catalog declares a\nprimitive for it or is_stdlib_module knows it. One predicate, both the boundary and\ntaint arms; `catalogs` is a REQUIRED parameter so no caller can silently skip a\nsafety gate.\n\nWHY IT STAYS VIOLATED — the residual, stated rather than papered over. An edge\ncarrying the bare `external` placeholder (an untyped receiver,\npython:external:0-0:get:unresolved) names no module to adjudicate and is NOT counted.\nSo a repo whose I/O is reached ONLY through untyped receivers still gets `confirmed`\ntoday. That was a deliberate scope call: the placeholder population is the largest\nedge population in a Python repo, it identifies no library to report, and counting it\nwould send nearly every repo to inconclusive while telling the reader nothing. It is\nthe receiver-typing gap, INV-linub L3, and closing THIS item requires closing that.\nPinned by test_untyped_receiver_population_is_the_disclosed_residual so a later PR\nthat changes the decision has to argue with an assertion.\n\nTWO THINGS THE FIRST DRAFT GOT WRONG, both caught by measuring on a real repo and\nneither by a test:\n  * it counted `imports` edges -- 231 of the 258 modules it reported on poetry. An\n    import performs no I/O; the catalog classifies CALL SITES.\n  * it blamed poetry's own modules -- 120 of the remaining 171. An unresolved\n    first-party callee is not a catalogue gap, because its source WAS read and\n    whatever I/O it performs was examined on its own edges. supply_chain.tier cannot\n    discriminate these (it reads 3 for every external_symbol node), so first-party is\n    derived from the src side of the edge set.\n\nSTILL NOT MEASURED: any non-Python language; the false-downgrade direction beyond the\nfixtures and these two repos (does the gate ever downgrade a verdict that was\ngenuinely earned?); whether the taint arm's behaviour changes on any repo other than\nhypergumbo itself (its 18 self-claims are unchanged: 16 inconclusive, 2 violated)."  # c0d5
+- op: update  # 86a6
+  at: '2026-08-09T03:17:40Z'  # 86a6
+  by: agent  # 86a6
+  actor: jgstern_agent  # 86a6
+  clock: 5  # 86a6
+  nonce: 86a6  # 86a6
+  set: {}  # 86a6
+  add:  # 86a6
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 86a6
+- op: update  # df18
+  at: '2026-08-09T03:17:49Z'  # df18
+  by: agent  # df18
+  actor: jgstern_agent  # df18
+  clock: 6  # df18
+  nonce: df18  # df18
+  set: {}  # df18
+  remove:  # df18
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # df18
+- op: discuss  # 2910
+  at: '2026-08-09T23:09:08Z'  # 2910
+  by: agent  # 2910
+  actor: jgstern_agent  # 2910
+  clock: 7  # 2910
+  nonce: '2910'  # 2910
+  message: "POPULATION MOVED, ITEM UNCHANGED (PR #254). This item's residual is that a bare\n`external` placeholder names no module, so a repo reaching I/O ONLY through untyped\nreceivers still confirms. PR #254 types constructor-ROOT receivers, which converts 260\npreviously-untyped call edges into catalogue-adjudicable ones across the 7-repo cohort\n(pretix / sqlalchemy / mitmproxy / poetry / pyright / meson / kserve).\n\nThat NARROWS the exposure without closing it, and the narrowing is small against the\npopulation: ~27,085 of 27,354 call-result-root sites in the same cohort still have\nreceivers of genuinely unknown type. Those deliberately emit no edge at all (PR #231\nmeasured that emitting an untyped edge moves zero findings).\n\nWHAT I DID NOT MEASURE, said plainly rather than implied: I did not re-run verify-claims\non those repos to see whether any verdict moved from confirmed to inconclusive or back.\nSo this entry records an input change, NOT a verdict change, and is not closure\nevidence. Status stays violated and the pinned test still passes."  # 2910
+- op: discuss  # 2417
+  at: '2026-08-11T04:56:51Z'  # 2417
+  by: agent  # 2417
+  actor: jgstern_agent  # 2417
+  clock: 8  # 2417
+  nonce: '2417'  # 2417
+  message: "PREMISE RE-VERIFIED, RESIDUAL IS LIVE, AND THE OBVIOUS NEXT FIX IS REFUTED.\n\n1) The filed repro no longer false-confirms — PR #251 holds. poetry/src/poetry today: CONTROL-FSREAD violated (48 chains, so the run works), NET and DB both INCONCLUSIVE naming 59 uncovered modules. Re-ran the item's own repro rather than trusting a proxy.\n\n2) THE RESIDUAL REPRODUCES, and now has a durable fixture. A repo whose egress leaves only through an untyped receiver:\n     def upload(session, url, payload): return session.post(url, data=payload)\n   with a catalogued open() alongside as control. Result: CONTROL-FSREAD violated (2 chains) and NET **confirmed** — 'No net_send chains found'. That is the bucket-A failure verbatim: confirmed when the tool did not look.\n\n3) THE PROPOSED FINER SIGNAL IS DEAD. cli.py's docstring names the fix shape as 'resolution finer than any' — match an untyped call's METHOD NAME against catalogued method-kind primitives for the boundary under claim. Measured on poetry and kserve plus the fixture:\n     poetry  2,241 untyped-receiver edges: EVERY boundary would downgrade (db_read 234, ipc_recv 160, fs_read 93, fs_write 67, db_write 40, net_send 37, net_recv 35, ipc_send 1)\n     kserve  3,370 untyped edges: likewise EVERY boundary downgrades\n     fixture net_send would stay CONFIRMABLE (0 matching edges) while db_read and ipc_recv downgrade on an unrelated dict .get\n   So it blanket-downgrades on real repos — the same outcome already rejected — AND it is anti-correlated with the truth on the one case where the answer is known. The catalogued names are close/get/write/send/read/all/filter/update/save, i.e. the most common method names in Python, and 'post' is not a catalogued method name at all. DO NOT BUILD IT.\n\n4) WHAT IS ACTUALLY UNDERNEATH, filed as INV-fotav: requests, httpx and urllib3 have ZERO rows in the python catalogue. python.yaml's header asserts third-party libraries 'are detected transitively — they ultimately call these primitives', which is false in the normal case because hypergumbo analyzes the repo and not site-packages. Fixture: import requests; requests.post(url, data={'s': secret}) -> 0 net_send chains, with env_read and fs_read controls both firing. Corpus floor ~1,728 requests call sites.\n\nThis item stays violated. Its closure still runs through receiver typing (INV-linub L3) for the param-typed shape, but INV-fotav is the larger and cheaper half and closes both sides of the inconclusive/recall tension at once."  # 2417
+- op: discuss  # e49b
+  at: '2026-08-11T07:29:35Z'  # e49b
+  by: agent  # e49b
+  actor: jgstern_agent  # e49b
+  clock: 9  # e49b
+  nonce: e49b  # e49b
+  message: "INV-fotav merged (dev 0a18354c50): the boundary arm now takes project-local overlays, so a user CAN make third-party egress visible instead of only getting 'inconclusive' on it. That closes the recall half of this item's tension. The residual pinned here is untouched — a receiver arriving as a bare function parameter still names no module, so the param-typed shape (def upload(session, ...): session.post(...)) still confirms. That remains receiver typing (INV-linub L3 / INV-dulum), not a gate."  # e49b
+- op: discuss  # 6214
+  at: '2026-08-11T17:51:21Z'  # 6214
+  by: agent  # 6214
+  actor: jgstern_agent  # 6214
+  clock: 10  # 6214
+  nonce: '6214'  # 6214
+  message: "PREMISE RE-VERIFIED AND THE RESIDUAL IS NOW EXACTLY CHARACTERISED, with a two-arm\ncontrol rather than a single failing fixture.\n\nFIXTURE (stdlib only, so no overlay is involved and nothing depends on INV-fotav):\n\n    def control_fsread(p):\n        with open(p) as fh: return fh.read()\n\n    def send_unannotated(sock, payload):        # the residual\n        return sock.sendall(payload)\n\n    def send_annotated(sock: socket.socket, payload):\n        return sock.sendall(payload)\n\nRESULT, both arms:\n  BOTH functions present   -> CONTROL-FSREAD violated (2 chains); NET-SEND violated,\n                              1 net_send chain. So exactly ONE of the two shapes is seen.\n  ONLY the unannotated one -> CONTROL-FSREAD violated (2 chains); NET-SEND **CONFIRMED**,\n                              \"No net_send chains found.\"\n\nThat is the bucket-A failure verbatim -- confirmed when the tool did not look -- and the\ncontrol fires in both arms, so the null is not a broken run.\n\nSO THE RESIDUAL IS NARROWER THAN THIS ITEM'S TEXT SUGGESTS. An ANNOTATED parameter\nreceiver already works: _external_param_types (py.py) reads\n`func_node.args.args + kwonlyargs`, resolves `_annotation_module_hint`, and its own\ndocstring records the sizing -- of 95,245 method-call edges carrying the `external`\nplaceholder across six repos, 4,160 have a receiver with a resolvable annotation and 63\nreach the catalogue. What remains is precisely the UNANNOTATED parameter, where the\nfunction body contains no information to type the receiver from.\n\nTHE ONLY SOUND FIX IS INTERPROCEDURAL, and it should be sized before it is built:\npropagate the ARGUMENT type at each call site to the parameter (`s = socket.socket()`\nthen `send_unannotated(s, ...)`), typing a parameter only when every observed call site\nagrees on one type. Neither of this item's two previously-proposed fixes survives -- the\nmethod-name gate was measured anti-correlated with the truth and is recorded DO NOT\nBUILD, and annotation reading is already shipped.\n\nWHY IT IS NOT BEING BUILT IN THIS PASS, stated rather than implied. Measurement 0001\n(docs/measurements/0001-taint-flow-precision.md) puts taint-flow precision at ~41%\npopulation-weighted on six real repositories, and this is a RECALL fix that lands into\nthat reporting layer. The pre-registered consequence of the <50% band is that recall work\nwaits on the precision mechanisms being understood. The sizing this needs -- how many\n`external`-placeholder receivers are unannotated parameters whose call sites agree on one\ncatalogued type -- is a corpus measurement in its own right and is the honest next step.\n\nSTATUS UNCHANGED: violated. The repro above is the one to re-run."  # 6214
+- op: discuss  # 1fa2
+  at: '2026-08-17T22:03:47Z'  # 1fa2
+  by: agent  # 1fa2
+  actor: jgstern_agent  # 1fa2
+  clock: 11  # 1fa2
+  nonce: 1fa2  # 1fa2
+  message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nTHE FILED REPRO NO LONGER REPRODUCES. Re-run live at dev 11a240f83d on the unmodified upstream repo this item names, with its own control:\n\n    hypergumbo verify-claims ~/ALL_REPOS/curriculum_repos/poetry/src/poetry --claims <fs_read + net_send, must_not_exist>\n\n      x [CONTROL-FSREAD]  violated, 72 fs_read chains   <- the run WORKED\n      ? [NET]             INCONCLUSIVE                  <- was 'confirmed'\n\nSo the headline defect -- a clean verdict reported as confirmed when the tool could not adjudicate the modules involved -- is not demonstrable on this item's own repro any more.\n\nBUT NOTE WHICH GATE FIRED, because it is not the one this item built. The inconclusive reason given is the OPAQUE-LAUNCH gate: 'the analysis launches an external program at 5 call site(s) (os.execvpe, subprocess.Popen, subprocess.check_call, subprocess.check_output, subprocess.run)'. Not the uncatalogued-module coverage gate from PR #251. poetry now trips a different, earlier gate, so it has stopped being a discriminating repro for THIS item's residual.\n\nSTATUS UNCHANGED: violated. The residual is unaffected and is pinned by test_untyped_receiver_population_is_the_disclosed_residual -- a repo whose I/O is reached ONLY through untyped 'external' receivers still confirms. What is now owed is a repro that ISOLATES that residual: a fixture or repo with an untyped-receiver boundary and no opaque launch. Until then this item has a live defect and no live repro, which is the shape that gets items falsely closed.\n\nTITLE CORRECTED to stop advertising the poetry repro as current."  # 1fa2
+- op: update  # 57e7
+  at: '2026-08-17T22:03:49Z'  # 57e7
+  by: agent  # 57e7
+  actor: jgstern_agent  # 57e7
+  clock: 12  # 57e7
+  nonce: '57e7'  # 57e7
+  set:  # 57e7
+    title: "verify-claims returns confirmed for a boundary reachable only through untyped 'external' receivers the catalogue cannot adjudicate (the filed poetry repro NO LONGER REPRODUCES -- it now trips the opaque-launch gate instead; an isolating repro is owed)"  # 57e7

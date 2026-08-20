@@ -25,3 +25,18 @@
   clock: 2  # 6164
   nonce: '6164'  # 6164
   message: "Dogfood finding (member F160.A2-b, split from F160.A2 — spec/done-marker side), reproduces on the frozen substrate. Mechanism: the serializer never sets evidence_lang or evidence_spans on edges (keys absent everywhere, 0/110533). Yet spec line 1530 lists \"Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)\" as 🟩 done, and §799 prose states the top-level evidence fields \"always reflect the primary record.\" The schema itself lists these fields as optional — so prose-says-required contradicts schema-says-optional AND the actual 0% population. Scope: 2 of the 4 fields named in the done-marked presence test (evidence_lang, evidence_spans) are 0% populated on 110533 edges; affects every run output and the credibility of the done-marker. Exposure/consequence: a consumer who reads the 🟩-done marker or the \"always present\" prose and writes code assuming these edge fields exist dereferences absent fields; more broadly, a 🟩-done claim that is 0% true erodes trust in the spec's status markers when deciding what to depend on. Expectation: a 🟩-done required-presence claim holds — the named fields are present on the edges they describe, and the \"always reflect\" prose is true. This is the spec-credibility / documentation-fix side (correct the 🟩 marker + reconcile prose-vs-schema), distinct from the producer-population rows WI-vozar (evidence_spans never populated; notes the same line-1530 marker) and WI-gijus (meta.evidence[] structurally impossible; cites §799) and WI-kuluh (evidence_lang null). Cross-ref WI-vozar, WI-gijus, WI-kuluh."  # 6164
+- op: update  # d780
+  at: '2026-07-30T17:47:10Z'  # d780
+  by: agent  # d780
+  actor: jgstern_agent  # d780
+  clock: 3  # d780
+  nonce: d780  # d780
+  set:  # d780
+    status: done  # d780
+- op: discuss  # d181
+  at: '2026-07-30T17:47:10Z'  # d181
+  by: agent  # d181
+  actor: jgstern_agent  # d181
+  clock: 4  # d181
+  nonce: d181  # d181
+  message: "DONE — STALE on both halves; no code or doc change needed. Verified rather than assumed.\n\nFiled: 'spec 1530 green-done presence test + 799 always-reflect prose are false for evidence_lang/evidence_spans (0% populated)'.\n\nevidence_lang: measured 138626/138626 edges populated — 100%, not 0%. ADR-0040 central-stamped it at Edge.create (PR f59a286b, 2026-07-11), which POST-DATES this filing. So the spec's green presence test at line 1699 (execution_id, run_signature, evidence_lang) is now TRUE, which is exactly what the item asked for.\n\nevidence_spans: measured 0/138626, correctly — but ADR-0040 REMOVED the field, and the spec already says so at line 890: 'The meta.evidence[] multi-pass accumulator and meta.evidence_spans were descoped per ADR-0040 — never populated by any producer.' So the spec does not make a false promise about it; it discloses the descope.\n\nBoth halves therefore resolve without action. Minor residual noted, deliberately NOT folded in: line 902 still describes evidence_lang as 'optional ... Defaults to src node's language if omitted', which reads oddly now that it is always stamped — though it remains correct as consumer-side guidance for older maps, so changing it is a judgement call rather than a correction."  # d181

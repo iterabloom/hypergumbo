@@ -414,7 +414,7 @@ def create_app(
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def lifespan(app: Starlette):  # type: ignore[type-arg]
+    async def lifespan(app: Starlette):
         """Manage watcher lifecycle: start on startup, stop on shutdown."""
         if tracker_set is not None:
             await start_watcher()

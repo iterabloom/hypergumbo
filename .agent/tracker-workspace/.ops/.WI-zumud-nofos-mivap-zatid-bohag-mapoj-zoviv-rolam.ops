@@ -1,0 +1,47 @@
+- op: create  # e832
+  at: '2026-08-04T09:55:18Z'  # e832
+  by: agent  # e832
+  actor: jgstern_agent  # e832
+  clock: 1  # e832
+  nonce: e832  # e832
+  data:  # e832
+    kind: work_item  # e832
+    title: "Provenance-gate the section 4 lookup: an in-repo path can now shadow a shipped stdlib summary key"  # e832
+    status: todo_hard  # e832
+    priority: 1  # e832
+    parent:  # e832
+    tags:  # e832
+    - taint  # e832
+    - adr_0017  # e832
+    - dataflow  # e832
+    isbefore: []  # e832
+    duplicate_of: []  # e832
+    not_duplicate_of: []  # e832
+    pr_ref:  # e832
+    description: "INTRODUCED BY THE INV-rozaj FIX (PR #200), filed at the same time rather than\ndiscovered later.\n\n_qualified_callee now normalises an in-repo callee's module slot with\n_module_from_symbol_path, which strips the source file extension. That is\ncorrect -- it is what makes a first-party callee catalogueable at all -- but\nthe extension was also an ACCIDENTAL BARRIER:\n\n    before:  go:net/http.go:1-5:Get:function  ->  'net/http.go.Get'\n             'net/http.go.Get' == 'net/http.Get'  ->  False\n    after:   go:net/http.go:1-5:Get:function  ->  'net/http.Get'\n             'net/http.Get'    == 'net/http.Get'  ->  TRUE\n\nSo a repo with a root-level file named after a stdlib module now matches a\nSHIPPED stdlib summary exactly. This is the WI-damir shape (a first-party\nsymbol matching a catalog primitive by name alone) reappearing in the section 4\nlookup rather than in sink matching.\n\nSIZED, NOT ASSUMED. Measured on a hypergumbo self-survey: 42 of 69 shipped\nqualified keys are shadowable in principle, and ZERO collisions occur across\n72,822 call edges / 6,685 distinct callees. So the exposure is real but\nunrealised on this corpus. It has not been measured on the 9-repo cohort.\n\nWHY IT MATTERS ASYMMETRICALLY. A summary that says \"terminates\" lets the\nsection 3a walk CLOSE a branch. A false close removes a real security finding;\na false open only leaves an unknown unknown. This collision can only ever\nproduce false closes, which is the expensive direction.\n\nWHY IT IS NOT URGENT TODAY. Section 3a is confirm-only: the sole call site is\n`_ddg_taint_reaches(...) is True`, so False and None collapse and no branch\nclosure can reach a verdict. The exposure goes live the moment WI-kabif grants\nremoval authority, which is why this is marked isbefore WI-kabif.\n\nCANDIDATE FIXES, none chosen yet:\n  (a) Gate on callee KIND -- an in-repo callee (kind function/method) may match\n      only a PROJECT-LOCAL summary, never a shipped stdlib one. Needs catalogue\n      provenance, which load_function_summaries does not currently carry.\n  (b) Require the callee id's kind slot to be external_symbol/unresolved for\n      any shipped-catalogue match. Simplest, and gives up first-party\n      summaries entirely -- which are currently worth nothing anyway, since no\n      shipped catalogue declares one.\n  (c) Reuse the WI-damir first-party gate (taint.py first-party arm) rather\n      than inventing a third mechanism for the same question.\n\nPrefer (c) if the existing gate's predicate fits; it is the R1 \"the fact\nalready has a home\" reversal.\n\nA test currently PINS the un-guarded behaviour\n(TestQualifiedCallee.test_in_repo_path_can_shadow_a_stdlib_key_known_limitation).\nIt is written to FAIL when a guard lands, so whoever builds the guard is\nprompted to rewrite it into an assertion of the guard rather than silently\nflipping a documented limitation."  # e832
+    fields: {}  # e832
+- op: update  # ada4
+  at: '2026-08-04T09:55:52Z'  # ada4
+  by: agent  # ada4
+  actor: jgstern_agent  # ada4
+  clock: 2  # ada4
+  nonce: ada4  # ada4
+  set: {}  # ada4
+  add:  # ada4
+    isbefore: [WI-kabif-dahad-kufuz-vodoz-misaj-batut-honab-nizib]  # ada4
+- op: update  # a913
+  at: '2026-08-06T02:47:25Z'  # a913
+  by: agent  # a913
+  actor: jgstern_agent  # a913
+  clock: 3  # a913
+  nonce: a913  # a913
+  set:  # a913
+    status: done  # a913
+    pr_ref: '224'  # a913
+- op: discuss  # daf5
+  at: '2026-08-06T02:47:26Z'  # daf5
+  by: agent  # daf5
+  actor: jgstern_agent  # daf5
+  clock: 4  # daf5
+  nonce: daf5  # daf5
+  message: "DONE — PR #224, dev 25ef8937c5. 21978 passed, 100% coverage, mypy ratchet clean at 672.\n\nWHERE THE GATE WENT, and why not where the item's own red test predicted. New\n_catalogue_key_for_edge, called from the index site that populates callee_names. NOT in\n_qualified_callee: gating key CONSTRUCTION would break\ntest_in_repo_callee_key_has_no_file_extension, which pins the INV-rozaj fix. The key SHAPE was\nnever the defect — handing a first-party key to a catalogue that describes stdlib and third-party\nsurfaces was. Candidate (b)/(c) from the filing, using the predicate ADR-0037 ruling 4 names.\n\nPREDICATE: only an edge whose is_resolved is falsey may be catalogued. Read from the FIELD, never\nfrom the dst string's :unresolved suffix — WI-pubiv's boundary-id remap rewrites that suffix to\n:external_symbol on the final graph, so a string check would read every unresolved edge as\nresolved and bypass the gate entirely. Pinned by its own test.\n\nMEASURED EFFECT: ZERO, and the zero is readable because the instrument has a positive control\n(meas/zumud_exposure.py, persisted). Across 55,779 taint call edges on caddy + pretix, 2,668\nmatched a shipped qualified key BEFORE the gate and 2,668 AFTER — nothing refused. The control is\na synthetic resolved edge whose key is deliberately a real shipped key (Array.prototype.filter);\nit IS refused, so the zero is absence rather than a broken predicate. The filing had sized this\nonly on a hypergumbo self-survey (0 collisions / 72,822 edges, 42 of 69 shipped keys shadowable in\nprinciple) and said explicitly it had never been measured on the cohort. It now has been, on two\nof the seven, with the same answer.\n\nDIRECTION, argued not assumed. A summary that says \"terminates\" lets the section 3a walk CLOSE a\nbranch, and a false close REMOVES a real finding. Refusing to catalogue can only produce FEWER\nterminations, hence more unknowns and more surviving violations. The .get(\"is_resolved\", True)\ndefault carries the same direction: an edge with no resolution verdict — an older artifact, a\nhand-edited map — is treated as first-party and is not catalogued (L54 default-deny; the\nPERMITTING case is enumerated, namely \"the callee is known to be external\").\n\nTWO CLAIMS IN THIS ITEM'S OWN SHIPPED RED TEST CORRECTED IN PLACE.\n  1. It predicted \"if a guard lands, it should FAIL and be rewritten to assert the guard\". It did\n     NOT fail, and should not have, for the reason above. Its docstring now records that the\n     prediction about itself was wrong and points at TestCatalogueKeyProvenanceGate.\n  2. Its urgency argument rested on \"section 3a is confirm-only and NOTHING ACTS ON False\". The\n     first half still holds — adjudicated = (walk is True) collapses False and None. The second\n     half has been FALSE since PR #214: the same-function sanitizer path runs a SECOND walk whose\n     False earns `sanitized`, and a sanitized flow is dropped from a claim's violation set. A\n     False does act today. That is why this landed now rather than being deferred to WI-kabif's\n     removal authority.\n\nFIVE TESTS, and the shape is deliberate: the defect; a POSITIVE CONTROL that an unresolved\nexternal edge IS still catalogued (without it the gate could refuse everything and pass); the\ndefault-deny case; the ADR-0037 field-not-suffix case; and a WIRING test that captures the actual\ncallees_at index propagate_taint_ddg hands the walk, because a predicate nobody calls is not a\nfix. The wiring test asserts the walk actually ran before asserting anything about the index.\n\nUNBLOCKS WI-kabif-dahad-kufuz-vodoz-misaj-batut-honab-nizib (the isbefore was real: this is the\ninsurance that had to exist before removal authority is granted)."  # daf5

@@ -9,7 +9,12 @@ This analyzer uses tree-sitter to parse Swift files and extract:
 - Enum declarations (enum)
 - Method declarations (inside classes/structs)
 - Computed properties and subscripts
-- Function call relationships
+- Enum cases and protocol requirements as ``field`` / member symbols
+- Stored properties (``field``) and top-level bindings (``variable``)
+- Route-marker symbols, appended in ``post_process`` once the whole file
+  set is known
+- Function call relationships, and ``references`` edges where a symbol is
+  named without being called
 - Import statements
 - Usage contexts for Vapor/Hummingbird route registrations
 
@@ -20,7 +25,7 @@ How It Works
 ------------
 Uses TreeSitterAnalyzer base class for two-pass orchestration:
 1. Pass 1: Extract functions, classes, structs, protocols, enums with signatures
-2. Pass 2: Extract call edges and import edges using NameResolver
+2. Pass 2: Extract call, import and ``references`` edges using NameResolver
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction
@@ -37,7 +42,10 @@ Why This Design
 Population of ``is_exported`` follows Swift's default-internal rule: a
 declaration is exported only when its modifier list contains ``public`` or
 ``open``; ``internal`` (the implicit default), ``fileprivate``, and
-``private`` items are not exported.
+``private`` items are not exported. Three emitters are exempt and set
+``is_exported=True`` unconditionally, because the construct carries no
+modifier list of its own: enum cases, protocol requirements, and the
+route-marker symbols added in ``post_process``.
 """
 from __future__ import annotations
 
@@ -48,6 +56,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id
 from hypergumbo_core.qualified_name_axis import separator_for_language
 from hypergumbo_core.analyze.base import (
+    constructed_from_callee,
     AnalysisResult,
     FileAnalysis,
     TreeSitterAnalyzer,
@@ -56,6 +65,7 @@ from hypergumbo_core.analyze.base import (
     defer_bare_method_call,
     make_file_id,
     make_file_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -647,6 +657,146 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
+        # WI-duguk: enum CASES. The analyzer already emitted an enum's methods
+        # and computed properties, so an enum carrying one method looked healthy
+        # on any "does this container have a member" probe while every case was
+        # invisible — and a reverse slice from the enum returned it alone.
+        # Emitted as kind="field" (a case is a named value of the type), the
+        # same choice the D and Nim analyzers made.
+        #
+        # ``case green, blue`` is a SINGLE enum_entry carrying TWO
+        # simple_identifier children, so this emits per IDENTIFIER, not per
+        # entry — a per-entry loop drops every case after the first comma. An
+        # associated-value case (``case rgb(Int, Int)``) keeps its types in a
+        # sibling ``enum_type_parameters`` node, so the direct-child scan reads
+        # the bare case name and nothing else.
+        elif node.type == "enum_entry":
+            enclosing_type = _get_enclosing_type(node, source)
+            if enclosing_type:
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_swift(node)
+                type_ancestors = _get_swift_type_ancestors(node, source)
+                for child in node.children:
+                    if child.type != "simple_identifier":
+                        continue
+                    case_name = node_text(child, source)
+                    full_name = f"{enclosing_type}.{case_name}"
+                    qualified = _make_swift_qualified_name(
+                        type_ancestors, case_name,
+                    )
+                    sym = Symbol(
+                        id=make_symbol_id(
+                            "swift", str(file_path), start_line, end_line,
+                            full_name, "field",
+                        ),
+                        name=full_name,
+                        kind="field",
+                        language="swift",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=start_line,
+                            end_line=end_line,
+                            start_col=node.start_point[1],
+                            end_col=node.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run_id,
+                        modifiers=modifiers,
+                        stable_id=make_typed_stable_id(
+                            "field", "",
+                            visibility_from_modifiers(modifiers),
+                            name=case_name, qualified_name=qualified,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=end_line - start_line + 1,
+                        # A case is as reachable as its enum; Swift has no
+                        # per-case access modifier.
+                        is_exported=True,
+                        qualified_name=qualified,
+                    )
+                    analysis.symbols.append(sym)
+                    analysis.node_for_symbol[sym.id] = child
+                    analysis.symbol_by_name[full_name] = sym
+
+        # WI-duguk: protocol REQUIREMENTS. A protocol body emitted nothing at
+        # all, so a reverse slice from a protocol found only the container.
+        # A function requirement is a method; a property requirement is a
+        # ``kind="property"`` rather than a ``field`` because ``{ get }`` is a
+        # computed-access contract and never storage.
+        elif node.type in (
+            "protocol_function_declaration", "protocol_property_declaration",
+        ):
+            is_function = node.type == "protocol_function_declaration"
+            if is_function:
+                id_node = find_child_by_type(node, "simple_identifier")
+            else:
+                pat = find_child_by_type(node, "pattern")
+                id_node = (
+                    find_child_by_type(pat, "simple_identifier") if pat else None
+                )
+            enclosing_type = _get_enclosing_type(node, source)
+            if id_node is not None and enclosing_type:
+                member_name = node_text(id_node, source)
+                full_name = f"{enclosing_type}.{member_name}"
+                kind = "method" if is_function else "property"
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                modifiers = _extract_modifiers_swift(node)
+
+                if is_function:
+                    signature = _extract_swift_signature(node, source)
+                else:
+                    # The declared type is the whole contract of a property
+                    # requirement; read it from the same type_annotation slot
+                    # the stored-property branch uses.
+                    type_ann = find_child_by_type(node, "type_annotation")
+                    signature = None
+                    for tc in type_ann.children if type_ann else ():
+                        if tc.type in (
+                            "user_type", "array_type", "dictionary_type",
+                            "optional_type", "tuple_type", "function_type",
+                        ):
+                            signature = node_text(tc, source)
+                            break
+
+                type_ancestors = _get_swift_type_ancestors(node, source)
+                qualified = _make_swift_qualified_name(type_ancestors, member_name)
+                sym = Symbol(
+                    id=make_symbol_id(
+                        "swift", str(file_path), start_line, end_line,
+                        full_name, kind,
+                    ),
+                    name=full_name,
+                    kind=kind,
+                    language="swift",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    signature=signature,
+                    modifiers=modifiers,
+                    stable_id=make_typed_stable_id(
+                        kind, signature or "",
+                        visibility_from_modifiers(modifiers),
+                        name=member_name, qualified_name=qualified,
+                        file_stable_id=file_stable_id,
+                    ),
+                    line_span=end_line - start_line + 1,
+                    # Reachable exactly when the protocol is; a requirement
+                    # carries no access modifier of its own.
+                    is_exported=True,
+                    qualified_name=qualified,
+                )
+                analysis.symbols.append(sym)
+                analysis.node_for_symbol[sym.id] = node
+                analysis.symbol_by_name[full_name] = sym
+
         # Computed property (var x: T { get { ... } })
         elif node.type == "property_declaration" and find_child_by_type(node, "computed_property"):
             pat = find_child_by_type(node, "pattern")
@@ -765,6 +915,12 @@ def _extract_symbols_from_file(
                     origin_run_id=run_id,
                     signature=prop_type,
                     modifiers=modifiers,
+                    meta=(
+                        {"constructed_from": _sw_cf}
+                        if (_sw_cf := constructed_from_callee(
+                            find_child_by_type(node, "call_expression"), source))
+                        else None
+                    ),
                     stable_id=make_typed_stable_id(
                         kind, prop_type or "",
                         visibility_from_modifiers(modifiers),
@@ -1374,7 +1530,7 @@ def _extract_vapor_usage_contexts(
     and un-tracked builder aliases fail safe (a miss, never a wrong route).
 
     Creates both UsageContext records (for framework pattern matching) and
-    route Symbol objects (kind="route") so routes appear in ``hypergumbo routes``.
+    route-marker Symbol objects so routes appear in ``hypergumbo routes``.
 
     Returns:
         Tuple of (UsageContext list, Symbol list).
@@ -1465,30 +1621,18 @@ def _extract_vapor_usage_contexts(
             span=span,
             metadata={"route_path": route_path, "http_method": http_method},
         ))
-        route_name = f"{http_method} /{route_path}" if route_path else f"{http_method} /"
-        route_id = make_symbol_id(
-            "swift",
-            path=str(file_path),
-            start_line=span.start_line,
-            end_line=span.end_line,
-            name=route_name,
-            kind="route",
-        )
-        route_symbols.append(Symbol(
-            id=route_id,
-            name=route_name,
-            kind="function",
+        route_symbols.append(make_route_symbol(
             language="swift",
             path=str(file_path),
             span=span,
-            meta={
-                "http_method": http_method,
-                "route_path": f"/{route_path}" if route_path else "/",
-                "framework_role": "route",
-            },
+            method=http_method,
+            # Vapor route components arrive without the leading slash; the
+            # factory normalizes an EMPTY path to "/", so the leading slash is
+            # supplied here to keep the name and route_path byte-identical to
+            # what this producer emitted before the migration.
+            route_path=f"/{route_path}" if route_path else "/",
             origin=PASS_ID,
             origin_run_id=run_id,
-            line_span=span.end_line - span.start_line + 1,
             is_exported=True,
         ))
 

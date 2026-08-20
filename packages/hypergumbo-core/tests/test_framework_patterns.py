@@ -102,12 +102,60 @@ class TestStripTestFileOnlyConcepts:
 def _clean_pattern_cache():
     """Clear framework pattern cache between tests.
 
-    Tests that patch get_frameworks_dir poison _PATTERN_CACHE with None
-    entries for convention patterns (main-functions, config-conventions, etc.).
-    With xdist load distribution, stale entries leak to other tests in the
-    same worker process. Clearing before each test prevents this.
+    Belt-and-braces since INV-kazij: the cache is keyed on the RESOLVED
+    frameworks dir, so a test that patches get_frameworks_dir caches its
+    Nones under the patched dir's key and can no longer shadow the real
+    patterns for later tests. This fixture predates that fix — it cleared
+    the cache for THIS file's tests while the poisoned entries leaked to
+    every OTHER file sharing the xdist worker (the mechanism behind the
+    cron-only pyproject-console-script failure: zero concepts, therefore
+    zero concept-derived entrypoints, on whichever worker had run a
+    dir-patching test first). Kept because a clean cache per test is
+    still the right hygiene here.
     """
     clear_pattern_cache()
+
+
+class TestPatternCacheIsDirKeyed:
+    """INV-kazij: a patched frameworks dir must not poison other callers."""
+
+    def test_none_cached_under_patched_dir_does_not_shadow_real_patterns(
+        self, tmp_path: Path,
+    ) -> None:
+        clear_pattern_cache()
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            # Empty dir: every convention pattern resolves to None here...
+            assert load_framework_patterns("main-functions") is None
+            assert load_framework_patterns("config-conventions") is None
+        # ...and once the patch lifts, the REAL patterns must load — the
+        # Nones cached under the patched dir must not shadow them. Before
+        # the dir-keyed cache this returned None and every symbol analyzed
+        # afterwards in the same process carried zero concepts.
+        assert load_framework_patterns("main-functions") is not None
+        assert load_framework_patterns("config-conventions") is not None
+
+    def test_patched_dir_still_caches_within_its_own_scope(
+        self, tmp_path: Path,
+    ) -> None:
+        # The cache still works under a patched dir (same key, same entry) —
+        # the fix adds the dir to the key, it does not disable caching.
+        clear_pattern_cache()
+        yaml_file = tmp_path / "test_fw.yaml"
+        yaml_file.write_text(
+            "id: test_framework\nlanguage: python\npatterns:\n"
+            "  - concept: route\n    decorator: '^app\\.get$'\n"
+        )
+        with patch(
+            "hypergumbo_core.framework_patterns.get_frameworks_dir",
+            return_value=tmp_path,
+        ):
+            first = load_framework_patterns("test_fw")
+            second = load_framework_patterns("test_fw")
+        assert first is not None
+        assert second is first
 
 
 class TestPattern:
@@ -19598,6 +19646,28 @@ class TestMaterializeRouteSymbols:
         routes = materialize_route_symbols([sym])
         assert len(routes) == 0
 
+    def test_none_span_handler_anchors_route_at_zero_span(self) -> None:
+        """WI-hafap: a span-less handler still materializes its route,
+        anchored at the degenerate zero span (the line-0 convention) —
+        pinned so a future rewrite cannot silently change the fallback."""
+        handler = Symbol(
+            id="java:src/Api.java:0-0:doThing:method",
+            name="doThing", kind="method", language="java",
+            path="src/Api.java",
+            span=None,
+            meta={
+                "concepts": [
+                    {"concept": "route", "method": "GET", "path": "/x"},
+                ],
+            },
+        )
+        routes = materialize_route_symbols([handler])
+        assert len(routes) == 1
+        assert routes[0].span == Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
+        assert routes[0].meta["handler_ref"] == "doThing"
+
     def test_existing_route_kind_skipped(self) -> None:
         """Symbols already with kind='route' are not duplicated."""
         sym = Symbol(
@@ -19952,6 +20022,20 @@ class TestExpandClassBasedViewRoutes:
         new_routes, removed = expand_class_based_view_routes([route])
         assert new_routes == []
         assert removed == set()
+
+    def test_none_span_any_route_expands_at_zero_span(self) -> None:
+        """WI-hafap: a span-less ANY route still expands per-method,
+        anchored at the degenerate zero span (make_route_symbol requires
+        a concrete Span; line-0 is the fallback convention)."""
+        route = self._make_route("RevokeKeyView", "/revoke/")
+        route.span = None
+        m_post = self._make_method("RevokeKeyView", "post")
+        new_routes, removed = expand_class_based_view_routes([route, m_post])
+        assert len(new_routes) == 1
+        assert new_routes[0].span == Span(
+            start_line=0, end_line=0, start_col=0, end_col=0,
+        )
+        assert removed == {route.id}
 
     def test_non_cbv_route_untouched(self) -> None:
         """Routes without is_class_based_view flag are not expanded."""

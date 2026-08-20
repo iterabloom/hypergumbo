@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Hypergumbo's security claims, verified by `hypergumbo verify-claims`.
 #
+# SCOPE: THE SHIPPED ARTIFACT. Every claim below governs the installed CLI —
+# its declared sources are python cmd_* handlers — so the proof's denominator
+# is the packaging-declared source trees (packages/*/src), not the repo at
+# large. Repo tooling (scripts/, .githooks/, .agent/hooks/) is not received
+# by `pip install hypergumbo` and cannot be reached from any claimed source;
+# under the old repo-wide denominator it still blocked every claim, and any
+# new import anywhere in the tree re-broke the proof. The runtime discloses
+# this scope on stderr on every run.
+analysis_scope: shipped_artifact
+#
 # Each claim is a taint-flow constraint over the per-entry-point safety
 # zones declared in docs/hypergumbo-self-catalog/. The matcher is flat:
 # verify-claims reports a violation if some unsanitized data with the
@@ -47,8 +57,15 @@ extra_catalogs:
     - hypergumbo-self-catalog/tmp_artifact_sinks.yaml
     - hypergumbo-self-catalog/install_artifact_sinks.yaml
     - hypergumbo-self-catalog/dev_zone_sinks.yaml
+    - hypergumbo-self-catalog/repo_inspection_sinks.yaml
   sanitizers:
     - hypergumbo-self-catalog/zone_barrier_sanitizers.yaml
+  # The third-party half of the boundary catalogue. ADR-0016 §27 keeps the
+  # shipped catalogue stdlib-scoped, so hypergumbo's own dependencies are
+  # declared here by the same mechanism any user would use — and this file
+  # doubles as the worked example of `module_completeness`.
+  io_primitives:
+    - io-primitives-overlays/hypergumbo-self.yaml
 
 claims:
   # =========================================================================
@@ -83,9 +100,28 @@ claims:
 
   - id: runtime-cli-no-subprocess
     text: |
-      Runtime CLI subcommands do not shell out. All subprocess invocations
-      (curl, git, pip, rustup, gitleaks) happen only via extras /
-      build-time subcommands.
+      Runtime CLI subcommands shell out ONLY through the declared
+      repo_inspection zone. Every such invocation is local, read-only, and
+      executes no code originating in the analysed repository:
+
+        - git, for cache-key fingerprinting and repo identity
+          (rev-parse HEAD, rev-list --max-parents=0 HEAD,
+          config --get remote.origin.url). No fetch, no push, no network.
+        - gitleaks, for the best-effort secret scan. Reads content on
+          stdin, reports findings on stdout. Runs only when the optional
+          binary is installed.
+        - rust-analyzer --version, a capability probe that reads nothing.
+          NOT an indexing request: rust-analyzer executes a project's
+          build.rs and proc macros when it indexes, and a default run
+          never asks it to.
+
+      Anything else — curl, pip, rustup, or an unwrapped subprocess call —
+      is prohibited. The previous wording of this claim ("Runtime CLI
+      subcommands do not shell out ... only via extras / build-time
+      subcommands") was FALSE as written: git ran 25 times and gitleaks
+      ran a real scan on a default `sketch`, verified with
+      `strace -f -e trace=execve`. It was restated by DECLARING the
+      capability, not by carving an unenforced exception into the prose.
     constraint:
       taint_flow:
         source_taint: runtime_cli_entry

@@ -73,7 +73,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 from .ir import Symbol, Edge, is_external_boundary
 from .ranking import (
@@ -87,6 +87,8 @@ from .selection.filters import (
     is_excluded_kind,
     is_test_path as _is_test_path,  # re-export: test_compact.py imports this  # noqa: F401
     is_example_path as _is_example_path,
+    key_symbols,
+    production_edges,
 )
 from .paths import is_test_node as _is_test_node
 from .metrics import compute_metrics
@@ -191,7 +193,7 @@ _COMPACT_NODE_FIELDS: tuple[str, ...] = (
 )
 
 
-def compact_node(symbol: Symbol) -> dict:
+def compact_node(symbol: Symbol) -> dict[str, Any]:
     """Project a ``Symbol`` to the slim compact/tiered-view node representation.
 
     Keeps only the LLM-meaningful navigation/understanding fields
@@ -204,7 +206,7 @@ def compact_node(symbol: Symbol) -> dict:
     return {k: full[k] for k in _COMPACT_NODE_FIELDS if full.get(k) is not None}
 
 
-def _recompute_view_metrics(view_map: dict) -> None:
+def _recompute_view_metrics(view_map: dict[str, Any]) -> None:
     """Recompute a projected view's ``metrics`` block from its OWN nodes/edges.
 
     A budget-limited projection (compact/tiered) shallow-copies the source map,
@@ -263,7 +265,7 @@ class IncludedSummary:
     coverage: float
     symbols: List[Symbol]
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "count": self.count,
@@ -284,7 +286,7 @@ class OmittedSummary:
     kinds: Dict[str, int]
     tiers: Dict[int, int]
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "count": self.count,
@@ -310,7 +312,7 @@ class CompactResult:
     # serialized in to_dict.
     centrality: Dict[str, float] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "included": self.included.to_dict(),
@@ -334,7 +336,7 @@ class ConnectivityResult:
     # serialized in to_dict.
     centrality: Dict[str, float] = field(default_factory=dict)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "included": self.included.to_dict(),
@@ -355,7 +357,7 @@ class UnionFind:
     Uses path compression and union by rank for near-O(1) operations.
     """
 
-    def __init__(self, elements: list | None = None):
+    def __init__(self, elements: list[str] | None = None):
         """Initialize Union-Find with optional initial elements.
 
         Args:
@@ -542,7 +544,7 @@ def extract_path_pattern(path: str) -> str:
     return parts[0]
 
 
-def compute_word_frequencies(symbols: List[Symbol]) -> Counter:
+def compute_word_frequencies(symbols: List[Symbol]) -> Counter[str]:
     """Compute word frequencies across symbol names.
 
     Args:
@@ -551,14 +553,14 @@ def compute_word_frequencies(symbols: List[Symbol]) -> Counter:
     Returns:
         Counter of word frequencies.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         tokens = tokenize_name(sym.name)
         counter.update(tokens)
     return counter
 
 
-def compute_path_frequencies(symbols: List[Symbol]) -> Counter:
+def compute_path_frequencies(symbols: List[Symbol]) -> Counter[str]:
     """Compute path pattern frequencies.
 
     Args:
@@ -567,7 +569,7 @@ def compute_path_frequencies(symbols: List[Symbol]) -> Counter:
     Returns:
         Counter of path pattern frequencies.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         pattern = extract_path_pattern(sym.path)
         counter[pattern] += 1
@@ -583,7 +585,7 @@ def compute_kind_distribution(symbols: List[Symbol]) -> Dict[str, int]:
     Returns:
         Dictionary mapping kind to count.
     """
-    counter: Counter = Counter()
+    counter: Counter[str] = Counter()
     for sym in symbols:
         counter[sym.kind] += 1
     return dict(counter)
@@ -598,7 +600,9 @@ def compute_tier_distribution(symbols: List[Symbol]) -> Dict[int, int]:
     Returns:
         Dictionary mapping tier to count.
     """
-    counter: Counter = Counter()
+    # Keyed by `supply_chain_tier`, an int — NOT str like its sibling
+    # distribution helpers above. The declared return type says so.
+    counter: Counter[int] = Counter()
     for sym in symbols:
         tier = getattr(sym, 'supply_chain_tier', 1)
         counter[tier] += 1
@@ -607,7 +611,7 @@ def compute_tier_distribution(symbols: List[Symbol]) -> Dict[int, int]:
 
 def _build_adjacency_list(
     edges: List[Edge],
-) -> Tuple[Dict[str, set], Dict[str, set]]:
+) -> Tuple[Dict[str, set[str]], Dict[str, set[str]]]:
     """Build bidirectional adjacency lists from edges.
 
     Args:
@@ -618,8 +622,8 @@ def _build_adjacency_list(
         outgoing[src] = set of dst nodes
         incoming[dst] = set of src nodes
     """
-    outgoing: Dict[str, set] = {}
-    incoming: Dict[str, set] = {}
+    outgoing: Dict[str, set[str]] = {}
+    incoming: Dict[str, set[str]] = {}
 
     for edge in edges:
         # Skip self-loops — they don't represent useful connectivity
@@ -641,10 +645,10 @@ def _build_adjacency_list(
 
 def _compute_connectivity_score(
     node_id: str,
-    selected_ids: set,
+    selected_ids: set[str],
     uf: UnionFind,
-    outgoing: Dict[str, set],
-    incoming: Dict[str, set],
+    outgoing: Dict[str, set[str]],
+    incoming: Dict[str, set[str]],
     centrality: Dict[str, float],
 ) -> Tuple[int, int, float]:
     """Compute score for adding a node to the selected set.
@@ -707,9 +711,11 @@ def _compute_connectivity_score(
 def select_by_connectivity(
     symbols: List[Symbol],
     edges: List[Edge],
-    seed_ids: set,
+    seed_ids: "set[str] | Sequence[str]",
     max_additional: int,
     centrality: Dict[str, float] | None = None,
+    interleave: bool = False,
+    bridges_per_seed: int = 2,
 ) -> ConnectivityResult:
     """Select symbols to maximize connectivity of the induced subgraph.
 
@@ -728,9 +734,28 @@ def select_by_connectivity(
     Args:
         symbols: All symbols to consider.
         edges: All edges for building adjacency.
-        seed_ids: Initial nodes to include (e.g., entrypoint IDs).
-        max_additional: Maximum additional nodes to add beyond seeds.
+        seed_ids: Initial nodes to include (e.g., entrypoint IDs). A SET is
+            sorted for reproducibility; a SEQUENCE is consumed in the given
+            order, which is what ``interleave`` needs.
+        max_additional: Maximum additional nodes beyond the seeds — except
+            under ``interleave``, where seeds are part of the metered stream
+            and this is the TOTAL emission budget.
         centrality: Optional pre-computed centrality. If None, computes it.
+        bridges_per_seed: greedy picks taken after each seed under
+            ``interleave``. TUNED, not arbitrary: at 1:1 a seed can be admitted
+            and then have both its neighbours out-scored globally, stranding it
+            with no edge in the induced subgraph — measured 14 singletons per
+            100 nodes on the keycloak-shaped fixture. 1:2 drops that to 1 (the
+            final emitted node, a boundary artifact of truncating any stream)
+            and 1:3 / 1:4 buy nothing further. Any FIXED ratio preserves
+            containment, since the stream stays budget-independent; the ratio is
+            therefore a pure quality knob.
+        interleave: When True, alternate seed / greedy-pick instead of
+            preloading every seed first, making the emitted list at a smaller
+            budget an ordered prefix of the list at a larger one (WI-zulij
+            containment). Requires an ordered ``seed_ids``. The default
+            preserves the original preload policy for callers that need every
+            seed present regardless of budget.
 
     Returns:
         ConnectivityResult with selected symbols and induced edges.
@@ -749,56 +774,55 @@ def select_by_connectivity(
         centrality = compute_dampened_centrality(symbols, edges)
 
     # Initialize selected set with seeds
-    selected_ids: set = set()
+    selected_ids: set[str] = set()
     selected_symbols: List[Symbol] = []
 
-    # WI-nivuj: iterate seeds in sorted order so the seed prefix of the output
-    # node list is reproducible (seed_ids is a set — its iteration order is
-    # PYTHONHASHSEED-dependent).
-    for sid in sorted(seed_ids):
-        if sid in symbol_by_id:
-            selected_ids.add(sid)
-            selected_symbols.append(symbol_by_id[sid])
+    # WI-nivuj: a SET's iteration order is PYTHONHASHSEED-dependent, so a set
+    # is sorted to keep the seed prefix reproducible. A SEQUENCE is taken in the
+    # caller's order — that is the interleaved policy's fixed, budget-independent
+    # seed order (WI-zulij), and sorting it would destroy exactly the property it
+    # is there to provide.
+    seed_seq: List[str] = (
+        sorted(seed_ids) if isinstance(seed_ids, (set, frozenset))
+        else list(seed_ids)
+    )
 
-    # Handle empty seed case: start with highest-centrality node
-    if not selected_ids and symbols:
-        best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
-        selected_ids.add(best_sym.id)
-        selected_symbols.append(best_sym)
-        max_additional -= 1
+    uf = UnionFind([])
+    frontier: set[str] = set()
 
-    # Initialize Union-Find with selected nodes
-    uf = UnionFind(list(selected_ids))
+    def _admit(node_id: str) -> None:
+        """Select *node_id*, union it into its components, extend the frontier.
 
-    # Connect seeds that share edges
-    for sid in selected_ids:
-        for dst in outgoing.get(sid, set()):
+        One admission step for seeds and greedy picks alike. Previously the two
+        were separate code blocks that had to agree; the interleaved policy makes
+        them strictly alternate, so a single step is both simpler and the only
+        way they cannot drift.
+        """
+        selected_ids.add(node_id)
+        selected_symbols.append(symbol_by_id[node_id])
+        uf.add(node_id)
+        for dst in outgoing.get(node_id, set()):
             if dst in selected_ids:
-                uf.union(sid, dst)
-        for src in incoming.get(sid, set()):
-            if src in selected_ids:
-                uf.union(sid, src)
-
-    # Build initial frontier: nodes adjacent to selected set
-    frontier: set = set()
-    for sid in selected_ids:
-        for dst in outgoing.get(sid, set()):
-            if dst not in selected_ids and dst in symbol_by_id:
+                uf.union(node_id, dst)
+            elif dst in symbol_by_id:
                 frontier.add(dst)
-        for src in incoming.get(sid, set()):
-            if src not in selected_ids and src in symbol_by_id:
+        for src in incoming.get(node_id, set()):
+            if src in selected_ids:
+                uf.union(node_id, src)
+            elif src in symbol_by_id:
                 frontier.add(src)
+        frontier.discard(node_id)
 
-    # Greedy selection loop
-    added = 0
-    while added < max_additional and frontier:
-        # Score all frontier nodes
+    def _best_frontier_node() -> str | None:
+        """Argmax over the frontier by (component_growth, edges_added, centrality).
+
+        WI-nivuj: the frontier is iterated in SORTED order with a strict ``>``, so
+        a score tie resolves to the lexicographically-smallest id rather than to
+        whatever PYTHONHASHSEED put first. Both halves of that pair are
+        load-bearing — keep them together.
+        """
         best_node = None
         best_score = (-1, -1, -1.0)
-
-        # WI-nivuj: iterate the frontier in sorted order so a SCORE TIE resolves
-        # to the lexicographically-smallest node deterministically (frontier is a
-        # set; without sorting the winner depends on PYTHONHASHSEED).
         for node_id in sorted(frontier):
             score = _compute_connectivity_score(
                 node_id, selected_ids, uf, outgoing, incoming, centrality
@@ -806,34 +830,76 @@ def select_by_connectivity(
             if score > best_score:
                 best_score = score
                 best_node = node_id
+        return best_node
 
-        if best_node is None:  # pragma: no cover
-            # Defensive: frontier should always have scoreable nodes
-            break
+    if interleave:
+        # WI-zulij: the budget is pure TRUNCATION of one budget-independent
+        # stream — next seed, best bridge, next seed, best bridge — so step t
+        # depends only on the first t-1 emissions and a fixed seed order. The
+        # emitted list at a smaller budget is therefore a literal ordered PREFIX
+        # of the list at a larger one, which is containment by construction.
+        #
+        # Why this is the fix and the obvious one is not: the greedy loop never
+        # read the budget in the first place (`max_additional` appears only in
+        # its guard), so bridge expansion was ALREADY prefix-nested. What broke
+        # containment was admitting the whole budget-SIZED seed set before the
+        # first pick — a larger budget handed the scorer a different union-find
+        # state and produced a different SEQUENCE of picks, not a longer one.
+        # Measured on the eight 2026-07-17 maps: 55/120 budget pairs contained
+        # under the old policy, 120/120 with a budget-independent seed set.
+        # Porting WI-vofud's monotone seed QUOTA instead moves 65 violations to
+        # 66 — the seed ORDER was never the problem.
+        #
+        # ``max_additional`` is the TOTAL emission budget here, not a count of
+        # additions beyond free seeds: seeds are part of the stream now, so they
+        # are metered like anything else.
+        # Same bootstrap the preload path uses: with no seeds at all there is no
+        # frontier to grow from and the stream would emit nothing. The
+        # highest-centrality node is budget-independent, so seeding with it costs
+        # containment nothing.
+        if not seed_seq and symbols:
+            _admit(max(symbols, key=lambda s: centrality.get(s.id, 0)).id)
 
-        # Add best node
-        selected_ids.add(best_node)
-        selected_symbols.append(symbol_by_id[best_node])
-        uf.add(best_node)
+        seed_cursor = 0
+        while len(selected_ids) < max_additional:
+            progressed = False
+            while seed_cursor < len(seed_seq):
+                sid = seed_seq[seed_cursor]
+                seed_cursor += 1
+                if sid in symbol_by_id and sid not in selected_ids:
+                    _admit(sid)
+                    progressed = True
+                    break
+            for _ in range(bridges_per_seed):
+                if len(selected_ids) >= max_additional:
+                    break
+                best_node = _best_frontier_node()
+                if best_node is None:
+                    break
+                _admit(best_node)
+                progressed = True
+            if not progressed:
+                # Both streams dry: no seeds left and no reachable frontier.
+                break
+    else:
+        for sid in seed_seq:
+            if sid in symbol_by_id and sid not in selected_ids:
+                _admit(sid)
 
-        # Connect to existing components
-        for dst in outgoing.get(best_node, set()):
-            if dst in selected_ids:
-                uf.union(best_node, dst)
-        for src in incoming.get(best_node, set()):
-            if src in selected_ids:
-                uf.union(best_node, src)
+        # Handle empty seed case: start with highest-centrality node
+        if not selected_ids and symbols:
+            best_sym = max(symbols, key=lambda s: centrality.get(s.id, 0))
+            _admit(best_sym.id)
+            max_additional -= 1
 
-        # Update frontier
-        frontier.discard(best_node)
-        for dst in outgoing.get(best_node, set()):
-            if dst not in selected_ids and dst in symbol_by_id:
-                frontier.add(dst)
-        for src in incoming.get(best_node, set()):
-            if src not in selected_ids and src in symbol_by_id:
-                frontier.add(src)
-
-        added += 1
+        added = 0
+        while added < max_additional and frontier:
+            best_node = _best_frontier_node()
+            if best_node is None:  # pragma: no cover
+                # Defensive: frontier should always have scoreable nodes
+                break
+            _admit(best_node)
+            added += 1
 
     # Compute induced subgraph edges. Iterate the edge LIST (not a
     # (src, dst)-keyed dict) so PARALLEL edges between the same node pair are
@@ -889,7 +955,7 @@ def select_by_coverage(
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
-    force_include_ids: set | None = None,
+    force_include_ids: set[str] | None = None,
 ) -> CompactResult:
     """Select symbols by centrality coverage with residual summarization.
 
@@ -972,7 +1038,7 @@ def select_by_coverage(
     # Select by coverage from the (possibly pre-filtered) candidates
     included: List[Symbol] = []
     included_centrality = 0.0
-    included_ids: set = set()
+    included_ids: set[str] = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
     # These are semantically important and should always be included
@@ -985,23 +1051,34 @@ def select_by_coverage(
                 included_centrality += centrality.get(sym.id, 0)
                 included_ids.add(sid)
 
-    # Then fill remaining budget with highest-centrality symbols
-    for sym in sorted_symbols:
+    # Then fill remaining budget with highest-centrality symbols.
+    #
+    # WI-vofud: the stop rule must be BUDGET-INDEPENDENT or containment
+    # breaks a third way — the old rule counted force-included (seed)
+    # centrality toward coverage, so a larger budget's bigger seed set
+    # inflated the starting coverage and stopped this fill EARLIER,
+    # dropping ranked symbols the smaller budget had kept.  stop_pos is
+    # computed from the fixed global order alone (positions and cumulative
+    # ranked mass), so it is one number for every budget; the walk below is
+    # then a prefix of a fixed list truncated by the budget — nested by
+    # construction.  min_symbols is positional for the same reason; the
+    # included COUNT is always >= the positions walked (a union with the
+    # seeds), so the "at least min_symbols included" guarantee still holds.
+    stop_pos = len(sorted_symbols)
+    walked_mass = 0.0
+    for pos, sym in enumerate(sorted_symbols):
+        walked_mass += centrality.get(sym.id, 0)
+        if (pos + 1 >= config.min_symbols
+                and walked_mass / total_centrality >= config.target_coverage):
+            stop_pos = pos + 1
+            break
+
+    for sym in sorted_symbols[:stop_pos]:
+        if len(included) >= config.max_symbols:
+            break
         # Skip if already included (force-included)
         if sym.id in included_ids:
             continue
-
-        # Check if we've met all stopping conditions
-        coverage = included_centrality / total_centrality
-        at_min = len(included) >= config.min_symbols
-        at_coverage = coverage >= config.target_coverage
-        at_max = len(included) >= config.max_symbols
-
-        if at_max:
-            break
-        if at_min and at_coverage:
-            break
-
         included.append(sym)
         included_centrality += centrality.get(sym.id, 0)
         included_ids.add(sym.id)
@@ -1041,10 +1118,10 @@ def select_by_coverage(
 
 
 def _reproject_features(
-    features: List[dict],
-    included_node_ids: set,
-    included_edge_ids: set,
-) -> List[dict]:
+    features: List[dict[str, Any]],
+    included_node_ids: set[str],
+    included_edge_ids: set[str],
+) -> List[dict[str, Any]]:
     """Re-project feature slices onto the compacted node/edge set (INV-titid).
 
     The compact pass selects a budget-limited subset of nodes and edges, but
@@ -1059,7 +1136,7 @@ def _reproject_features(
     feature scope is re-derived from the emitted graph rather than copied
     wholesale. ``admission_stats`` (not node-keyed) passes through unchanged.
     """
-    reprojected: List[dict] = []
+    reprojected: List[dict[str, Any]] = []
     for feat in features:
         entry_nodes = [
             n for n in feat.get("entry_nodes", []) if n in included_node_ids
@@ -1090,7 +1167,9 @@ def _reproject_features(
     return reprojected
 
 
-def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None:
+def _annotate_node_centrality(
+    nodes: list[dict[str, Any]], centrality: Dict[str, float],
+) -> None:
     """Stamp each projected node dict with its centrality score (WI-zotam).
 
     A budget-limited projection previously emitted no per-node centrality, so a
@@ -1099,10 +1178,16 @@ def _annotate_node_centrality(nodes: list, centrality: Dict[str, float]) -> None
     centrality (rounded), so ``nodes`` and ``nodes_summary`` agree.
     """
     for n in nodes:
-        n["centrality"] = round(centrality.get(n.get("id"), 0.0), 4)
+        # `n.get("id")` alone is `Any | None`, and a None key can never be in
+        # `centrality` — so an id-less node silently scored 0.0 rather than
+        # being distinguishable from a node genuinely at 0.0. Defaulting to ""
+        # keeps that behaviour identical while making the lookup key well-typed;
+        # the ambiguity itself is a projection concern, not one this helper can
+        # resolve.
+        n["centrality"] = round(centrality.get(n.get("id", ""), 0.0), 4)
 
 
-def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
+def _array_projection_summary(original_len: int, emitted_len: int) -> dict[str, Any]:
     """Included/omitted counts for a top-level array truncated by the compact
     projection — the entrypoints/features analogue of ``nodes_summary``
     (WI-kulan). The compact view filters entrypoints to retained nodes and drops
@@ -1116,13 +1201,13 @@ def _array_projection_summary(original_len: int, emitted_len: int) -> dict:
 
 
 def format_compact_behavior_map(
-    behavior_map: dict,
+    behavior_map: dict[str, Any],
     symbols: List[Symbol],
     edges: List[Edge],
     config: CompactConfig,
     force_include_entrypoints: bool = True,
     connectivity_aware: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Format a behavior map in compact mode.
 
     Replaces the full nodes list with a compact selection plus summary.
@@ -1143,80 +1228,135 @@ def format_compact_behavior_map(
     Returns:
         Modified behavior map with compact output.
     """
-    # Extract entrypoint symbol_ids to force-include them
-    force_include_ids: set = set()
+    # WI-zulij: the DEFAULT path ranks the same population sketch does.
+    #
+    # Both surfaces advertise "the important symbols" and both now rank with
+    # compute_dampened_centrality — the 2026-07-09 default flip settled the
+    # ranking FUNCTION. What kept their top-10 apart was the population: sketch
+    # filtered to key symbols over test-source-free edges, this path filtered
+    # nothing. Measured on the eight 2026-07-17 bakeoff maps, top-10 agreement
+    # was 5.6/10; the symbol filter alone takes it to 7.1, the edge filter alone
+    # to 8.4, and both together to 10/10 on all eight.
+    #
+    # The edge filter being the DOMINANT clause is the counter-intuitive part
+    # and the reason both are applied rather than just the obvious one: compact
+    # was crediting symbols for being called by their own test suites.
+    #
+    # Order matters — production_edges must see the UNFILTERED symbol list,
+    # because it resolves each edge's src id to a path, and a src that was
+    # filtered out would otherwise resolve to "" and be kept as non-test.
+    # sketch builds both from the same unfiltered list for exactly this reason.
+    #
+    # Narrowing here rather than at the ranking call site is deliberate: it also
+    # constrains which symbols can become force-included SEEDS, and a seed that
+    # is not a key symbol is precisely the noise leading compact's output today
+    # (sherpa-csharp's top five emitted nodes were all run*.sh file nodes;
+    # zoxide led with a shell completion and install.sh). Connectivity mode is
+    # deliberately exempt: its contract is bridging disconnected components
+    # (see the WI-vofud note below on why it keeps the adaptive seed policy),
+    # and a file node is frequently the only thing joining two islands, so
+    # narrowing it would remove the bridges the mode exists to find.
+    if not connectivity_aware:
+        edges = production_edges(symbols, edges)
+        symbols = key_symbols(symbols)
+
+    # Extract entrypoint symbol_ids to force-include them, ranked by
+    # (-confidence, symbol_id) for a stable, budget-independent order.
+    symbol_id_set = {s.id for s in symbols}
+    sorted_eps: list[str] = []
     if force_include_entrypoints:
-        symbol_ids = {s.id for s in symbols}
         entrypoints_with_ids = []
         for ep in behavior_map.get("entrypoints", []):
             sid = ep.get("symbol_id")
-            if sid and sid in symbol_ids:
+            if sid and sid in symbol_id_set:
                 entrypoints_with_ids.append(ep)
-
-        # Cap entrypoints to leave room for bridge nodes in connectivity mode.
-        # Without this cap, repos with many entrypoints (e.g., keycloak with
-        # 500 JAX-RS handlers) consume most of the node budget, leaving
-        # insufficient room for frontier expansion.  This causes fragmentation:
-        # keycloak had 30 components and 19 singletons in 100-node compact.
-        #
-        # Use adaptive cap: when entrypoints exceed max_symbols (indicating a
-        # large repo with many entry points), cap aggressively (1/3) to leave
-        # room for bridging.  Otherwise use the gentler 1/2 cap.
-        if len(entrypoints_with_ids) > config.max_symbols:
-            max_forced = max(1, config.max_symbols // 3)
-        else:
-            max_forced = max(1, config.max_symbols // 2)
-        if len(entrypoints_with_ids) > max_forced:
-            # Sort by confidence (descending) and take top entries
-            sorted_eps = sorted(
+        sorted_eps = [
+            ep.get("symbol_id")
+            for ep in sorted(
                 entrypoints_with_ids,
                 key=lambda ep: (-ep.get("confidence", 0), ep.get("symbol_id", ""))
             )
-            entrypoints_with_ids = sorted_eps[:max_forced]
+        ]
 
-        force_include_ids = {ep.get("symbol_id") for ep in entrypoints_with_ids}
-
-    # Seed cross-cutting edge endpoints so linker-produced edges survive
-    # the induced-subgraph filter.  Without this, centrality-based selection
-    # drops peripheral nodes (route definitions, dispatch targets, FFI endpoints)
-    # that are endpoints of these high-value edges.
-    symbol_id_set = {s.id for s in symbols}
-    cross_cutting_ids: set = set()
+    # Cross-cutting edge endpoints, ranked by (-edge_count, id): seeded so
+    # linker-produced edges survive the induced-subgraph filter.  Without
+    # this, centrality-based selection drops peripheral nodes (route
+    # definitions, dispatch targets, FFI endpoints) that are endpoints of
+    # these high-value edges.
+    cc_edge_count: Counter[str] = Counter()
     for e in behavior_map.get("edges", []):
         # Edge dicts use "type" key (from Edge.to_dict()), not "edge_type"
         if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
             src, dst = e.get("src"), e.get("dst")
             if src in symbol_id_set:
-                cross_cutting_ids.add(src)
+                cc_edge_count[src] += 1
             if dst in symbol_id_set:
-                cross_cutting_ids.add(dst)
+                cc_edge_count[dst] += 1
+    ranked_cc = sorted(cc_edge_count, key=lambda x: (-cc_edge_count[x], x))
 
-    # Cap cross-cutting seeds to avoid dominating the budget.  The combined
-    # total of entrypoints + cross-cutting seeds must leave at least half of
-    # max_symbols for frontier expansion.
-    remaining_seed_budget = max(0, config.max_symbols // 2 - len(force_include_ids))
-    if len(cross_cutting_ids) > remaining_seed_budget:
-        # Prefer endpoints with higher edge count (more cross-cutting connections)
-        cc_edge_count: Counter = Counter()
-        for e in behavior_map.get("edges", []):
-            if e.get("type") in CROSS_CUTTING_EDGE_TYPES:
-                src, dst = e.get("src"), e.get("dst")
-                if src in cross_cutting_ids:
-                    cc_edge_count[src] += 1
-                if dst in cross_cutting_ids:
-                    cc_edge_count[dst] += 1
-        # Sort by edge count descending, then alphabetically for stability
-        ranked = sorted(cross_cutting_ids, key=lambda x: (-cc_edge_count[x], x))
-        cross_cutting_ids = set(ranked[:remaining_seed_budget])
+    # The fixed, budget-independent seed order both policies draw from:
+    # entrypoints by (-confidence, id), then cross-cutting endpoints by
+    # (-edge_count, id). Building it once, above the branch, is what lets the
+    # connectivity path hand the WHOLE order to the interleave and the
+    # centrality path take a monotone prefix of it.
+    seed_order: List[str] = list(sorted_eps)
+    _seen_seeds = set(seed_order)
+    for _cc in ranked_cc:
+        if _cc not in _seen_seeds:
+            seed_order.append(_cc)
+            _seen_seeds.add(_cc)
 
-    force_include_ids |= cross_cutting_ids
+    force_include_ids: set[str] = set()
+    if connectivity_aware:
+        # WI-zulij: NO cap here any more. The old adaptive policy capped
+        # entrypoints (1/3 or 1/2 of the budget, switching regimes on
+        # len(eps) > max_symbols) and then preloaded that whole set before the
+        # first greedy pick — which is precisely what broke containment, since a
+        # larger budget seeded MORE nodes and so changed the union-find state the
+        # scorer reads, producing a different SEQUENCE of picks rather than a
+        # longer one. The interleave meters seeds against the budget instead, so
+        # the cap is redundant: a small budget simply never reaches the tail of
+        # the order. The keycloak concern the cap was written for (500 JAX-RS
+        # handlers crowding out the bridging budget) is served better by
+        # alternating than by a ratio, because bridges are now guaranteed every
+        # other slot rather than whatever is left over.
+        force_include_ids = set()
+    else:
+        # WI-vofud (WI-kolal regression): the DEFAULT path's contract is
+        # --max-symbols containment monotonicity (nodes(K1) ⊆ nodes(K2) for
+        # K1 <= K2), and the old seed policy broke it two ways — the
+        # entrypoint cap switched regimes on len(eps) > max_symbols, and the
+        # cross-cutting budget (max//2 - len(forced)) SHRANK as the forced
+        # set grew, so a larger budget could drop seeds a smaller budget
+        # kept (measured on 6 of 8 real maps: caddy 50->100 lost its
+        # Dispenser dispatch endpoints).  The monotone replacement: ONE
+        # fixed-order seed list (entrypoints by confidence, then
+        # cross-cutting endpoints by edge count) and ONE quota that can
+        # only grow with the budget.  A prefix of a fixed list under a
+        # monotone quota is nested by construction; the half-budget intent
+        # ("seeds never crowd out the centrality frontier") survives as the
+        # quota itself.
+        # (seed_order is built once above the branch — same fixed order.)
+        # The floor-of-one slot belongs to ENTRYPOINT seeds only (a semantic
+        # anchor survives even max_symbols=1); a pure cross-cutting seed
+        # list gets no floor, matching the old cc budget (max//2, which
+        # floors to zero at tiny budgets) so the top-centrality symbol still
+        # wins the last slot.  The branch condition is budget-independent,
+        # so quota stays monotone in max_symbols either way.
+        if sorted_eps:
+            seed_quota = max(1, config.max_symbols // 2)
+        else:
+            seed_quota = config.max_symbols // 2
+        force_include_ids = set(seed_order[:seed_quota])
 
     if connectivity_aware:
-        # Use connectivity-aware selection
-        # Budget is remaining slots after entrypoints
-        max_additional = max(0, config.max_symbols - len(force_include_ids))
+        # WI-zulij: hand over the WHOLE ordered seed list and the TOTAL budget.
+        # The interleave truncates the stream, so seeds are metered rather than
+        # preloaded — which is what makes a smaller budget's node list an ordered
+        # prefix of a larger one's (measured 55/120 -> 120/120 budget pairs
+        # contained across the eight 2026-07-17 maps, pretix included).
         conn_result = select_by_connectivity(
-            symbols, edges, force_include_ids, max_additional
+            symbols, edges, seed_order, config.max_symbols, interleave=True
         )
 
         # Create compact output
@@ -1306,12 +1446,12 @@ def format_compact_behavior_map(
 
 
 # Backwards compatibility aliases for functions that were moved
-def estimate_node_tokens(node_dict: dict) -> int:
+def estimate_node_tokens(node_dict: dict[str, Any]) -> int:
     """Estimate tokens for a serialized node. Alias for estimate_json_tokens."""
     return estimate_json_tokens(node_dict)
 
 
-def estimate_behavior_map_tokens(behavior_map: dict) -> int:
+def estimate_behavior_map_tokens(behavior_map: dict[str, Any]) -> int:
     """Estimate total tokens for a behavior map. Alias for estimate_json_tokens."""
     return estimate_json_tokens(behavior_map)
 
@@ -1327,7 +1467,7 @@ def select_by_tokens(
     exclude_examples: bool = True,
     language_proportional: bool = True,
     min_per_language: int = 1,
-    force_include_ids: set | None = None,
+    force_include_ids: set[str] | None = None,
 ) -> CompactResult:
     """Select symbols to fit within a token budget.
 
@@ -1444,7 +1584,7 @@ def select_by_tokens(
     included_centrality = 0.0
     tokens_used = 0
     seen_names: set[str] = set()  # For deduplication
-    included_ids: set = set()
+    included_ids: set[str] = set()
 
     # First, force-include any must-include symbols (e.g., entrypoints)
     # These are semantically important but still subject to the token budget.
@@ -1528,7 +1668,7 @@ def select_by_tokens(
 
 
 def recompute_view_summary(
-    view_map: dict,
+    view_map: dict[str, Any],
     population: List[Symbol],
     centrality: Dict[str, float],
     *,
@@ -1586,19 +1726,23 @@ def recompute_view_summary(
         tiers=compute_tier_distribution(omitted),
     )
 
-    summary = {"included": included.to_dict(), "omitted": omitted_summary.to_dict()}
+    # Heterogeneous by construction: two nested summaries plus an optional
+    # int edge count added below.
+    summary: dict[str, Any] = {
+        "included": included.to_dict(), "omitted": omitted_summary.to_dict(),
+    }
     if emit_edge_count:
         summary["included_edges_count"] = len(view_map["edges"])
     view_map["nodes_summary"] = summary
 
 
 def format_tiered_behavior_map(
-    behavior_map: dict,
+    behavior_map: dict[str, Any],
     symbols: List[Symbol],
     edges: List[Edge],
     target_tokens: int,
     force_include_entrypoints: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Format a behavior map for a specific token tier.
 
     Args:
@@ -1624,7 +1768,7 @@ def format_tiered_behavior_map(
     # Cap total force-includes to half the estimated node capacity so
     # bridge nodes always get budget, mirroring compact mode (line ~900).
     _FORCE_INCLUDE_CONFIDENCE_THRESHOLD = 0.7
-    force_include_ids: set = set()
+    force_include_ids: set[str] = set()
     if force_include_entrypoints:
         symbol_ids = {s.id for s in symbols}
         avg_tokens_per_symbol = 75

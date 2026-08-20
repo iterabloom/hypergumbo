@@ -98,7 +98,10 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.19.0"
+SCHEMA_VERSION = "0.20.1"  # 0.20.1: Symbol.span nullable in the schema (WI-hafap
+# Optional[Span] flip). Relaxation only — no producer emits a span-less symbol
+# today, so emitted artifacts are unchanged; consumers that assumed presence
+# should treat span as optional going forward.
 # Canonical ``view`` field values a behavior map (or its budget-limited
 # projections) may carry: the base analysis emits ``behavior_map``; the compact
 # and tiered projections emit their own view name. Single-sourced here so the
@@ -119,7 +122,32 @@ VIEW_NAMES = ("behavior_map", "compact", "tiered")
 # tool version). See the "Version Distinction" module docstring for the three
 # version axes.
 READ_VIEW_SCHEMA_VERSION = "0.1.0"
-CONFIDENCE_MODEL = "hypergumbo-evidence-v2"
+# ``dead-code-maybe`` PROMOTED OUT of the shared placeholder at 0.2.0 (WI-jozah),
+# which is the escape hatch the paragraph above describes: a view that evolves its
+# wire shape gets its own constant rather than dragging five unrelated views'
+# versions with it. 0.2.0 adds a per-candidate ``reachability`` cohort
+# (``test_only`` / ``unreachable``, null under non-default seed modes) and the
+# ``test_only_reachable_candidates`` summary denominator. Additive.
+#
+# The alternative — bumping the shared placeholder — was tried first and is
+# WRONG on two counts. It ASSERTS A FALSEHOOD, since a reader of the ``routes``
+# or ``cache-status`` envelope would see a new version for a view that did not
+# change. And it is measurably expensive: four separate test sites pin this
+# value (``test_cli_config``, ``test_cli_commands``, ``test_cli_cache``,
+# ``test_cli_test_coverage``), so every bump of the shared constant is a
+# four-file edit in views that have nothing to do with the change. That cost is
+# the signal that the placeholder had stopped fitting.
+DEAD_CODE_MAYBE_SCHEMA_VERSION = "0.2.0"
+# WI-huhin: spec Appendix C mandates `hypergumbo-evidence-vMAJOR.MINOR`. This
+# emitted a bare `v2`, which did not match that grammar and left MINOR
+# unexpressible — so ADR-0039's refinement (new evidence types, precisely what
+# MINOR is defined to signal) had no way to announce itself, and the next
+# refinement would have had to pick between a misleading MAJOR bump and silence.
+# `v2.0` is the first CONFORMING rendering of the SAME model: MAJOR unchanged,
+# no scoring behaviour differs. Bump MINOR for a refinement, MAJOR for an
+# incompatible change. `test_confidence_model_matches_documented_grammar` pins
+# the format.
+CONFIDENCE_MODEL = "hypergumbo-evidence-v2.0"
 STABLE_ID_SCHEME = "hypergumbo-stableid-v8"
 # v3 (WI-linon): the Python shape_id hash now folds the symbol kind
 # (class/method/function) and the concrete AST node type into its prefix, so

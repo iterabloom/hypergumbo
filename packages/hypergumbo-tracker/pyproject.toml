@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hypergumbo-tracker"
-version = "0.7.0"
+version = "0.8.0"
 description = "YAML-backed structured tracker for agent governance"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,7 +47,7 @@ dev = [
   "pytest-asyncio>=1.0",
   "pytest-textual-snapshot~=1.1",
   "hypothesis~=6.100",
-  "mypy~=2.1",
+  "mypy~=2.1.0",
   "types-PyYAML~=6.0.12",
 ]
 

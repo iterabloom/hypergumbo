@@ -53,6 +53,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -88,10 +89,6 @@ def is_pony_tree_sitter_available() -> bool:
     """Check if tree-sitter-pony is available."""
     return _analyzer._check_grammar_available()
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def _extract_parameters(node: "tree_sitter.Node") -> list[str]:

@@ -36,15 +36,17 @@ Why This Design
   directories so callers can manage cleanup and reuse for caching if
   they choose.
 
-Out of scope for this module (tracked under WI-duzul Slice C+):
-* Analyzer-registry wiring — ``RustAnalyzerAnalyzer`` class that hooks
-  into the analyzer base class and is registered at higher priority
-  than ``rust.py``.
+Out of scope for this module — each has SHIPPED and lives in a sibling
+(WI-duzul is closed; this list names owners, not pending work):
+* Analyzer-registry wiring — ``analyzer.py``, registered via
+  ``@register_analyzer("rust_analyzer", priority=45)``, above ``rust.py``.
 * The opt-in flag (``HYPERGUMBO_RUST_ANALYZER`` env var +
-  ``--backend rust-analyzer`` CLI flag) that gates whether the shell-
-  out fires at all.
-* Graceful-degrade when the binary is absent (WI-nohah). Callers
-  decide what to do with :class:`RustAnalyzerNotInstalled`.
+  ``--backend rust-analyzer`` CLI flag) that gates whether the shell-out
+  fires at all — ``gate.py``.
+* Graceful-degrade when the binary is absent (WI-nohah) —
+  ``graceful_degrade.py``, which returns ``None`` so the caller falls
+  through to ``rust.py``. Callers still decide what to do with
+  :class:`RustAnalyzerNotInstalled`.
 """
 
 from __future__ import annotations

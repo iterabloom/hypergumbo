@@ -68,9 +68,11 @@ done
 # ------------------------------------------------------------------
 # Validate credentials
 # ------------------------------------------------------------------
-TOKEN="${FORGEJO_TOKEN:-}"
+# Backend-aware (C9); detect_api_base above already set FORGE_BACKEND.
+resolve_forge_token
+TOKEN="${FORGE_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
-	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+	echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 	exit 1
 fi
 

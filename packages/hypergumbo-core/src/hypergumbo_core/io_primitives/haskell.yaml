@@ -7,9 +7,11 @@
 # Third-party web frameworks (Servant, Yesod, Warp) call these primitives
 # transitively, so covering base + common libraries is sufficient.
 language: haskell
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Haskell base/network/etc. and adding
-# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # Function names that are too generic to match without module context.

@@ -21,15 +21,33 @@ shim cannot do on its own:
    using
    :func:`hypergumbo_lang_mainstream.rust_scip.compute_rust_stable_id_from_source`.
    Non-Rust Symbols (SCIP can carry multiple languages in one index),
-   non-function Rust Symbols (structs, modules, constants — rust.py
-   has no signature-level parity for these), and Symbols whose source
-   cannot be read pass through unchanged.
+   Rust Symbols that are neither ``function`` nor ``method`` (structs,
+   modules, constants — rust.py has no signature-level parity for these),
+   and Symbols whose source cannot be read pass through unchanged.
 
 2. **One-shot translate.** :func:`translate_scip_to_hg` bundles the
    three core shim calls (``scip_index_to_symbols``,
    ``scip_index_to_edges``, ``scip_index_to_call_edges``) with the
    parity reassignment so Slice-B's analyzer wrapper can consume a
-   single entry point.
+   single entry point. It also stamps ``run_id`` onto what it emits,
+   falling back to a locally-constructed ``AnalysisRun`` when the caller
+   supplies none (WI-higap).
+
+3. **Symbol resolution, and the deliberate dropping of external edges.**
+   The translate builds an ``id_by_scip_symbol`` map from each Symbol's
+   ``meta['scip_symbol']`` to its hypergumbo id, and passes a ``_resolve``
+   closure to both edge builders as ``resolve_symbol=``. ``_resolve``
+   returns ``None`` for a symbol outside the indexed workspace, and the
+   shims skip the edge rather than emitting it.
+
+   This is load-bearing, not an oversight. Before commit ``9266762d4b``
+   the edge builders used raw SCIP descriptor strings as endpoints, so
+   every scip edge dangled and ``finalize`` silently discarded the entire
+   scip call graph — 0 edges on zoxide, against 739 once resolution
+   landed. The residual consequence is that a Rust call into a dependency
+   or the stdlib yields no edge under this backend, where the tree-sitter
+   analyzer would emit an ``:unresolved`` one. That gap is tracked as
+   WI-gojum sub-component 1 and was parked by its owner on 2026-07-19.
 
 Why This Design
 ---------------
@@ -46,10 +64,11 @@ The ``source_reader`` callable is a caller-owned I/O boundary:
 production callers pass a function that reads ``path`` bytes from the
 indexed workspace; tests pass a dict-backed fake so the whole
 translate path can be exercised without filesystem access. Reader
-failures (``OSError``, ``FileNotFoundError``, arbitrary exceptions)
-degrade to "skip this symbol's reassignment" rather than aborting the
-whole translate — the SCIP-derived ``stable_id`` remains as a
-best-effort fallback.
+failures degrade to "skip this symbol's reassignment" rather than
+aborting the whole translate — the SCIP-derived ``stable_id`` remains as
+a best-effort fallback. The caught set is exactly ``(OSError, ValueError)``
+(``FileNotFoundError`` is an ``OSError``); anything else propagates and
+does abort the translate.
 """
 
 from __future__ import annotations

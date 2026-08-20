@@ -9,9 +9,15 @@ This analyzer uses tree-sitter to parse C# files and extract:
 - Method declarations (inside classes/structs)
 - Constructor declarations
 - Property declarations
+- Field declarations, one ``field`` symbol per declarator (WI-jusus)
+- Enum members, each a ``field`` symbol named ``Enum.Member`` (WI-duguk)
 - Function call relationships (including chained field type resolution)
+- ``decorated_by`` edges from C# attributes
+- ``references`` edges for method-group references (a method named as a
+  value rather than invoked), tagged ``meta.call_construct="method_group"``
 - Using directives (imports)
 - Object instantiation
+- ADR-0015 dataflow annotation on the emitted edges
 
 If tree-sitter with C# support is not installed, the analyzer
 gracefully degrades and returns an empty result.
@@ -852,6 +858,63 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
 
+                # WI-duguk: the enum's MEMBERS. Without them the enum is a
+                # container with nothing in it, so the containment linker roots
+                # nothing and `slice --reverse` from the enum returns the
+                # container alone. Named `Color.Red` to match the class-field
+                # branch below, whose `.` the containment linker splits on.
+                # An explicitly-valued member (`Green = 2`) carries the literal
+                # after its identifier and is otherwise the same node.
+                member_list = find_child_by_type(
+                    node, "enum_member_declaration_list",
+                )
+                for member in member_list.children if member_list else ():
+                    if member.type != "enum_member_declaration":
+                        continue
+                    m_name_node = find_child_by_type(member, "identifier")
+                    if m_name_node is None:  # pragma: no cover - always named
+                        continue
+                    m_name = node_text(m_name_node, source)
+                    m_full = f"{name}.{m_name}"
+                    m_start = member.start_point[0] + 1
+                    m_end = member.end_point[0] + 1
+                    m_qualified = _make_csharp_qualified_name(
+                        ns_name, [*cls_ancestors, name], m_name,
+                    )
+                    m_sym = Symbol(
+                        id=make_symbol_id(
+                            "csharp", str(file_path), m_start, m_end,
+                            m_full, "field",
+                        ),
+                        name=m_full,
+                        kind="field",
+                        language="csharp",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=m_start,
+                            end_line=m_end,
+                            start_col=member.start_point[1],
+                            end_col=member.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        stable_id=make_typed_stable_id(
+                            "field", name,
+                            visibility_from_modifiers(enum_modifiers),
+                            name=m_name, qualified_name=m_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        modifiers=enum_modifiers,
+                        line_span=m_end - m_start + 1,
+                        # A member is as reachable as its enum; C# has no
+                        # per-member access modifier.
+                        is_exported="public" in enum_modifiers,
+                        qualified_name=m_qualified,
+                    )
+                    analysis.symbols.append(m_sym)
+                    analysis.node_for_symbol[m_sym.id] = member
+                    analysis.symbol_by_name[m_full] = m_sym
+
         # Method declaration
         elif node.type == "method_declaration":
             name = _extract_method_name(node, source)
@@ -1189,6 +1252,38 @@ def _resolve_member_chain(
     return current_type
 
 
+def _count_signature_params(signature: "str | None") -> "int | None":
+    """Number of top-level parameters in a C# ctor/method signature string.
+
+    ``"(int a, string b)"`` -> 2, ``"()"`` -> 0. Commas nested inside angle
+    brackets / parens / brackets / braces — generics like ``Dict<K, V>``, tuple
+    types like ``(int, int)`` — are not counted as separators. Returns ``None``
+    when there is no parseable parameter list. Used for arity-based
+    overloaded-constructor disambiguation (WI-mivav); an exact param/arg count
+    match is a heuristic, not full C# overload resolution (optional and
+    ``params`` arguments are not modeled — those fall back to the collapsed pick).
+    """
+    if not signature:
+        return None
+    start = signature.find("(")
+    end = signature.rfind(")")
+    if start == -1 or end == -1 or end < start:
+        return None
+    inner = signature[start + 1:end].strip()
+    if not inner:
+        return 0
+    depth = 0
+    count = 1
+    for ch in inner:
+        if ch in "(<[{":
+            depth += 1
+        elif ch in ")>]}":
+            depth = depth - 1 if depth > 0 else 0
+        elif ch == "," and depth == 0:
+            count += 1
+    return count
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
@@ -1199,6 +1294,7 @@ def _extract_edges_from_file(
     using_aliases: dict[str, str] | None = None,
     method_resolver: ListNameResolver | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
+    global_ctors: dict[str, list[Symbol]] | None = None,
 ) -> list[Edge]:
     """Extract call, import, and instantiation edges from a file.
 
@@ -1216,6 +1312,8 @@ def _extract_edges_from_file(
         resolver = NameResolver(global_symbols)
     if using_aliases is None:  # pragma: no cover - defensive default
         using_aliases = {}
+    if global_ctors is None:  # pragma: no cover - defensive default
+        global_ctors = {}
     try:
         source = file_path.read_bytes()
         tree = parser.parse(source)
@@ -1531,12 +1629,29 @@ def _extract_edges_from_file(
                 # only ever resolves to a constructor. Fall back to the class
                 # node when the type declares no explicit constructor (the
                 # implicit default ctor has no node to anchor on).
-                # NOTE: overloaded constructors collapse to the last-registered
-                # ctor in the global registry, so all instantiations of an
-                # overloaded type share one ctor anchor (arity-precise overload
-                # matching is a follow-up).
+                # WI-mivav: global_symbols/local_symbols are keyed by name and
+                # last-write-wins, so overloaded constructors collapse to one
+                # anchor. When several ctors share this key, prefer the overload
+                # whose parameter count matches this `new X(...)`'s argument
+                # count; fall back to the collapsed pick on a tie/miss (this is a
+                # heuristic, not full C# overload resolution).
                 ctor_key = f"{type_name}.{type_name}"
                 ctor = local_symbols.get(ctor_key) or global_symbols.get(ctor_key)
+                overloads = global_ctors.get(ctor_key)
+                if overloads and len(overloads) > 1:
+                    arg_list = find_child_by_type(node, "argument_list")
+                    arg_count = (
+                        sum(1 for c in arg_list.children if c.type == "argument")
+                        if arg_list is not None else 0
+                    )
+                    matches = [
+                        c for c in overloads
+                        if _count_signature_params(c.signature) == arg_count
+                    ]
+                    if len(matches) == 1:
+                        ctor = matches[0]
+                    elif ctor is None:  # pragma: no cover - global_symbols has the key
+                        ctor = overloads[0]
                 if ctor is not None:
                     edges.append(Edge.create(
                         src=current_function.id,
@@ -1875,12 +1990,18 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
         global_symbols: dict[str, Symbol] = {}
         # AMB-METHOD: multi-value method registry for ambiguity guard
         global_methods: dict[str, list[Symbol]] = {}
+        # WI-mivav: multi-value ctor registry (global_symbols collapses
+        # overloads); keyed by the `Type.Type` name so the object-creation site
+        # can pick the arity-matching overload.
+        global_ctors: dict[str, list[Symbol]] = {}
         for analysis in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
                 if symbol.kind == "method":
                     short = symbol.name.split(".")[-1] if "." in symbol.name else symbol.name
                     global_methods.setdefault(short, []).append(symbol)
+                elif symbol.kind == "constructor":
+                    global_ctors.setdefault(symbol.name, []).append(symbol)
 
         # Aggregate field type registry for chained this.field.field.Method()
         field_type_registry: dict[str, dict[str, str]] = {}
@@ -1905,6 +2026,7 @@ class CSharpAnalyzer(TreeSitterAnalyzer):
                 using_aliases=analysis.import_aliases,
                 method_resolver=method_resolver,
                 field_type_registry=field_type_registry,
+                global_ctors=global_ctors,
             )
             # ADR-0015 Tier 1: annotate edges with dataflow access modes
             try:

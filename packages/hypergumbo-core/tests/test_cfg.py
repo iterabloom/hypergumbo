@@ -18,6 +18,7 @@ import tree_sitter
 from tree_sitter_language_pack import get_language
 
 from hypergumbo_core.cfg import (
+    uncovered_call_lines,
     BasicBlock,
     CfgBuilder,
     CfgEdge,
@@ -666,6 +667,36 @@ class TestCfgBuilderRust:
                 found_branch = True
         assert found_branch
 
+    def test_atomic_statement_with_nested_branch_still_decomposes(self) -> None:
+        """A branch buried inside an atomic statement is still control flow.
+
+        ``let_declaration`` is declared ``atomic_statement`` so the def/use
+        extractor is handed whole bindings rather than decomposed leaves. But
+        Rust is expression-oriented, so a binding can *contain* a branch — here
+        ``let_declaration > call_expression > arguments > if_expression``, three
+        levels down. Honouring the atomic declaration unconditionally would
+        stop the descent and erase the branch from the CFG while every def/use
+        measurement kept working, because the declaration exists for def/use.
+
+        The direct-child case (``expression_statement > if_expression``) is
+        covered by ``test_if_else``; this one is deliberately *nested*, since
+        the containment check recurses and a one-level fixture leaves that
+        recursion unexercised.
+        """
+        cfg = self._build(
+            "fn foo(c: bool) -> i32 {\n"
+            "    let x = compute(if c { 1 } else { 2 });\n"
+            "    x\n"
+            "}\n"
+        )
+        branching = [
+            block for block in cfg.blocks.values()
+            if {"true", "false"} <= {e.edge_type for e in block.successors}
+        ]
+        assert branching, (
+            "a branch nested inside an atomic let_declaration was swallowed"
+        )
+
     def test_while_loop(self) -> None:
         cfg = self._build(
             "fn foo() {\n"
@@ -866,6 +897,34 @@ class TestCfgBuilderGo:
                 if edge.edge_type == "case":
                     found_case = True
         assert found_case
+
+    def test_statements_are_statement_level_not_leaf_tokens(self) -> None:
+        """CFG statements must be Go statement nodes, not decomposed leaves.
+
+        Without ``atomic_statement`` in go.yaml the builder recurses past
+        ``short_var_declaration`` down to bare identifiers. A def/use
+        extractor keyed on statement node types is then never called with
+        one, so it is correct in isolation and inert in the pipeline —
+        the failure mode the sibling reachability tests cannot see,
+        because a CFG of leaf tokens is still fully reachable.
+        """
+        cfg = self._build(
+            "package main\n"
+            "func foo(req *Request) {\n"
+            "    secret := req.Password\n"
+            "    total += 1\n"
+            "    send(secret)\n"
+            "}\n"
+        )
+        types = {s.node_type for b in cfg.blocks.values() for s in b.statements}
+        assert "short_var_declaration" in types
+        assert "assignment_statement" in types
+        assert "expression_statement" in types
+        # Non-vacuity: the leaf decomposition must be GONE, not merely
+        # accompanied by the statement nodes. Asserting only the positives
+        # would pass on a CFG that emits both.
+        assert "identifier" not in types
+        assert "field_identifier" not in types
 
 
 class TestCfgBuilderTypeScript:
@@ -2401,3 +2460,86 @@ class TestPopulateDefUseForCfg:
         # symptoms.
         assert "identifier" not in node_types
         assert "integer" not in node_types
+
+
+class TestUncoveredCallLines:
+    """WI-joluk: does the CFG's recorded coverage reach every call site?
+
+    The gate behind INV-lupav. If the def/use extractor never saw part of a
+    function, the §3a walk can still exhaust its (incomplete) graph and report
+    ``False`` — "every step accounted for" — for a value it never followed.
+    ``False`` is the only verdict that may license removing a reported flow.
+    """
+
+    def test_go_if_initializer_call_is_uncovered(self) -> None:
+        """The motivating case, and the reason the test is on BYTE EXTENTS.
+
+        ``CfgBuilder._process_conditional`` records only the condition child of
+        an ``if``. For ``if n := sink(v); n > 0`` that is ``n > 0``; the
+        initializer becomes no CfgStatement at all. Both sit on the SAME LINE,
+        so a line-based coverage test reports the call as covered and the gate
+        is vacuous precisely where ``cfg_nodes/go.yaml`` self-documents the gap
+        (700 of caddy's 6,596 ``if`` statements carry a call there).
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tw := g(v)\n"
+            "\tif n := sink(v); n > 0 {\n"
+            "\t\tuse(w)\n"
+            "\t}\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
+        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset({5})
+
+    def test_fully_covered_function_reports_empty(self) -> None:
+        """The negative half: a function with no unmodelled construct forfeits
+        nothing. Without this the gate could pass its own test by returning
+        every call line, which would forfeit the entire cohort and read as a
+        finding about the substrate rather than a broken predicate."""
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tw := g(v)\n"
+            "\tuse(w)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
+        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_undeclared_language_returns_None_not_empty(self) -> None:
+        """``None`` and ``frozenset()`` are DIFFERENT facts and must not fold.
+
+        Empty means "checked, nothing uncovered" and permits refutation.
+        ``None`` means "cannot check at all". Java declares no
+        ``call_node_types`` (it has no def/use extractor either), and folding
+        the two would make every unconfigured language look fully covered —
+        failing open, in the direction that deletes findings.
+        """
+        tree, src = _parse_java(
+            "class C { void f() { g(); } }"
+        )
+        mapping = load_cfg_mapping("java")
+        assert mapping.call_node_types == []
+        body = tree.root_node
+        cfg = build_function_cfg(body, src, mapping, "java:C.java:1-1:f:method")
+        assert uncovered_call_lines(cfg, body, src, mapping) is None
+
+    def test_python_and_rust_declare_their_call_types(self) -> None:
+        """Every language with a def/use extractor must be checkable.
+
+        A registered extractor with no ``call_node_types`` would forfeit that
+        language wholesale — safe, but silently, and it would look like a
+        finding about the substrate. Pinned so adding an extractor without the
+        declaration fails here instead.
+        """
+        assert "call" in load_cfg_mapping("python").call_node_types
+        assert "call_expression" in load_cfg_mapping("rust").call_node_types
+        assert "call_expression" in load_cfg_mapping("typescript").call_node_types

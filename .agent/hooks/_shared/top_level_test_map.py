@@ -12,17 +12,63 @@ infrastructure regressions are not caught until the 4-hour full-suite
 cycle (the gap closed by WI-javan at full-suite level; this module
 closes it at the per-PR level).
 
-The mapping rule is conservative: a changed top-level source file maps
-to ``tests/test_<basename>.py`` if that file exists, with one small
-normalization — hyphens in a ``scripts/`` basename become underscores so
-that ``scripts/agent-supervisor`` maps to ``tests/test_agent_supervisor.py``.
-Files that do not have a matching test are silently skipped; the caller
-falls back to its normal behaviour (running only the slice-found tests,
-or writing an empty manifest). False positives (a test that does not
-actually exercise the changed file) are preferred over false negatives
-(a regression that sneaks past the per-PR gate), which is why the
-module does not try to enforce import-graph correctness — that is the
-reverse-slice's job for the code it can reach.
+The mapping rule is a **separator-insensitive prefix match**: a changed
+source maps to every ``tests/test_<stem>*.py`` whose stem, reduced to
+lowercase alphanumerics, starts with the source's basename reduced the
+same way. So ``scripts/agent-supervisor`` reaches both
+``test_agent_supervisor.py`` and ``test_agent_supervisor_meta_breaker.py``.
+Files with no matching test are silently skipped; the caller falls back to
+its normal behaviour (running only the slice-found tests, or writing an
+empty manifest). False positives (a test that does not actually exercise
+the changed file) are preferred over false negatives (a regression that
+sneaks past the per-PR gate), which is why this module does not try to
+enforce import-graph correctness — that is the reverse-slice's job for the
+code it can reach.
+
+Both halves of that rule are load-bearing, and the original 1:1 exact-match
+rule failed WI-bisar on both (measured 2026-07-30: 27 of 73 root tests were
+reachable from any top-level source):
+
+* **Prefix**, because a script's tests are routinely split across files —
+  one exact name reached one of them and left the rest selected by nothing.
+* **Separator-insensitive**, because separator placement drifts between a
+  script's name and its tests. ``scripts/auto-pr`` collapses to ``auto_pr``
+  while its eleven test files are named ``test_autopr_*``; a plain prefix
+  match still reaches **zero** of them, since ``test_autopr_x`` does not
+  start with ``test_auto_pr``. Comparing with separators removed is the only
+  one of the two that fixes the case that motivated the change.
+
+``_shared/`` accepts ``.sh`` as well as ``.py``. That directory holds 13
+shell helpers against 8 Python ones, so requiring ``.py`` there left most of
+a directory this module claims to cover unreachable — while ``scripts/``
+already accepted ``.py``, ``.sh`` and extensionless names. The asymmetry was
+not a decision, just an omission.
+
+Vendor hook dirs (``.agent/hooks/<vendor>/<name>.(sh|py)``, INV-lizor
+re-scope 2026-08-01) map two ways at once: the name-based rule above (so
+``session-start.sh`` reaches ``test_session_start_*``), UNIONED with the
+cross-vendor parity floor ``VENDOR_HOOK_PARITY_TESTS`` — every vendor hook
+is a thin wrapper sourcing ``_shared`` logic (the AGENTS.md Vendor Parity
+table), so the tests that pin that wiring must run for ANY vendor-hook
+change, including hooks whose names match no test at all
+(``post-tool-use-transcript.sh``). The floor is existence-checked, never
+invented.
+
+``.githooks/**`` is deliberately NOT mapped — a considered decision, not an
+omission: its hooks (``reference-transaction``, ``post-checkout``) have no
+name-shaped tests, and smart-test's root-suite fallback for unmapped
+top-level sources covers them with over-selection instead. Same treatment
+as ``scripts/lib/`` (generic basenames would over-match), except that both
+now fail LOUD-AND-BROAD in smart-test rather than silently selecting
+nothing.
+
+Name-based mapping has a floor: a test named for the *behaviour* it pins
+rather than the *file* it covers cannot be reached by any rule of this
+shape, and neither can one covering several sources or a non-source
+artifact. Those are enumerated in ``KNOWN_UNREACHABLE`` in
+``tests/test_top_level_test_map.py``, which ratchets two-sidedly so the list
+can only shrink and cannot rot. Reaching them needs a declarative marker in
+the test file, not a cleverer heuristic.
 
 CLI: reads newline-separated changed paths from stdin (each relative to
 the repo root), prints one matching ``tests/test_*.py`` path per line,
@@ -31,17 +77,37 @@ is normal, not an error.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Iterable, List
+
+
+#: Cross-vendor parity tests every vendor-hook change must select (the
+#: "floor"). These pin the wiring the AGENTS.md Vendor Parity table
+#: requires of every vendor: per-turn hook sources the heartbeat helper,
+#: session-start hook sources the shared session-start logic.
+VENDOR_HOOK_PARITY_TESTS = (
+    "test_touch_heartbeat.py",
+    "test_session_start_respawn.py",
+)
+
+
+def _normalized(name: str) -> str:
+    """Reduce a name to lowercase alphanumerics for comparison.
+
+    Dropping separators entirely is what lets ``auto-pr`` match
+    ``test_autopr_*``; keeping them (in any form) does not.
+    """
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def _candidate_test_basename(path: str) -> str | None:
     """Return the base name of the expected ``test_<base>.py`` file, or None.
 
     Rules:
-    - ``.agent/hooks/_shared/<name>.py`` → ``<name>`` (no transformation;
-      those filenames are already snake_case).
+    - ``.agent/hooks/_shared/<name>.py`` or ``.sh`` → ``<name>`` (no
+      transformation; those filenames are already snake_case).
     - ``scripts/<name>`` (exactly one path component under ``scripts/``)
       → ``<name>`` with hyphens collapsed to underscores so that
       ``auto-pr`` maps to ``auto_pr`` and ``agent-supervisor`` to
@@ -51,11 +117,14 @@ def _candidate_test_basename(path: str) -> str | None:
       over-match unrelated tests.
     - All other paths return None.
     """
-    if path.startswith(".agent/hooks/_shared/") and path.endswith(".py"):
+    if path.startswith(".agent/hooks/_shared/"):
         rel = path[len(".agent/hooks/_shared/"):]
         if "/" in rel:
             return None
-        return rel[:-len(".py")]
+        for ext in (".py", ".sh"):
+            if rel.endswith(ext):
+                return rel[: -len(ext)]
+        return None
     if path.startswith("scripts/"):
         rel = path[len("scripts/"):]
         if not rel or "/" in rel:
@@ -70,19 +139,56 @@ def _candidate_test_basename(path: str) -> str | None:
     return None
 
 
+def _vendor_hook_basename(path: str) -> str | None:
+    """``.agent/hooks/<vendor>/<name>.(sh|py)`` → ``<name>`` with hyphens
+    collapsed, or None. ``_shared/`` is not a vendor (it has its own rule),
+    and deeper nesting falls through to smart-test's root-suite fallback."""
+    if not path.startswith(".agent/hooks/"):
+        return None
+    parts = path[len(".agent/hooks/"):].split("/")
+    if len(parts) != 2 or parts[0] == "_shared":
+        return None
+    name = parts[1]
+    for ext in (".py", ".sh"):
+        if name.endswith(ext):
+            return name[: -len(ext)].replace("-", "_")
+    return None
+
+
 def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
     """Return sorted deduplicated list of matching ``tests/test_*.py`` paths."""
+    tests_dir = repo_root / "tests"
+    if not tests_dir.is_dir():
+        return []
+    candidates = [
+        (p.name, _normalized(p.name[len("test_"):-len(".py")]))
+        for p in sorted(tests_dir.glob("test_*.py"))
+    ]
     out: set[str] = set()
+    vendor_seen = False
     for raw in changed_files:
         path = raw.strip()
         if not path:
             continue
-        base = _candidate_test_basename(path)
+        base = _vendor_hook_basename(path)
+        if base is not None:
+            vendor_seen = True
+        else:
+            base = _candidate_test_basename(path)
         if base is None:
             continue
-        candidate = repo_root / "tests" / f"test_{base}.py"
-        if candidate.is_file():
-            out.add(f"tests/test_{base}.py")
+        prefix = _normalized(base)
+        if not prefix:
+            # A stem with no alphanumerics (``scripts/-``) would make every
+            # ``startswith`` true and select the entire root suite.
+            continue
+        for name, stem in candidates:
+            if stem.startswith(prefix):
+                out.add(f"tests/{name}")
+    if vendor_seen:
+        for name in VENDOR_HOOK_PARITY_TESTS:
+            if (tests_dir / name).is_file():
+                out.add(f"tests/{name}")
     return sorted(out)
 
 

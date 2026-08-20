@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0025: RELOCATED → audit-findings 0001
 
+Status: Reclassified → [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md)
+
 > **RELOCATED — ADR-0025 was reclassified as audit-findings 0001**
 > because it's an audit-findings document (per-value verdicts under
 > existing law from ADR-0023 and ADR-0024), not an architecture

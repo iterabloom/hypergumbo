@@ -948,6 +948,60 @@ class TestSimHash:
         with pytest.warns(UserWarning, match="similar"):
             store.add(kind="invariant", fields=_INV_FIELDS, title=title_similar, description="")
 
+    def test_similarity_warning_suggests_flags_that_actually_exist(
+        self, ops_dir: Path, mock_agent_uid: None
+    ) -> None:
+        """Every --flag the near-duplicate warning suggests must be a real
+        `update` flag.
+
+        The warning is the only place most agents learn how to resolve a
+        near-duplicate, so a wrong flag name sends them to a command that
+        exits with `unrecognized arguments`. Matching on the word "similar"
+        (as the sibling test does) cannot catch that. This asserts against the
+        live argparse parser rather than a hardcoded list, so a future rename
+        of either flag fails here instead of in a user's terminal.
+        """
+        import argparse as _argparse
+        import re as _re
+
+        from hypergumbo_tracker.cli import _build_parser
+
+        store = Store(ops_dir, config=_make_config())
+        title_base = (
+            "symbol resolution stability for all calls edges in every language "
+            "and framework that hypergumbo supports including java python "
+            "typescript ruby kotlin"
+        )
+        title_similar = (
+            "symbol resolution stability for all calls edges in every language "
+            "and framework that hypergumbo supports including java python "
+            "typescript ruby scala"
+        )
+        store.add(kind="invariant", fields=_INV_FIELDS, title=title_base, description="")
+        with pytest.warns(UserWarning, match="similar") as caught:
+            store.add(
+                kind="invariant", fields=_INV_FIELDS, title=title_similar, description=""
+            )
+
+        message = str(caught[0].message)
+        suggested = set(_re.findall(r"--[a-z0-9-]+", message))
+        assert suggested, "warning suggests no flags at all; it cannot be actioned"
+
+        update_parser = None
+        for action in _build_parser()._actions:
+            if isinstance(action, _argparse._SubParsersAction):
+                update_parser = action.choices["update"]
+                break
+        assert update_parser is not None
+        known = {
+            option
+            for action in update_parser._actions
+            for option in action.option_strings
+        }
+        assert suggested <= known, (
+            f"warning suggests flags `update` does not accept: {sorted(suggested - known)}"
+        )
+
     def test_not_duplicate_of_suppresses_warning(
         self, ops_dir: Path, mock_agent_uid: None
     ) -> None:

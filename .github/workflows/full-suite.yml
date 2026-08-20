@@ -296,6 +296,19 @@ jobs:
           python -m hypergumbo_core run . --out /tmp/self-tree.json
           python scripts/check-self-tree-validation \
             /tmp/self-tree.json .ci/self-tree-validation-baselines.json
+      - name: Self-claim drift gate (WI-vanun)
+        run: |
+          # SECURITY.md asserted that claim regressions "fail the gate". No
+          # workflow referenced verify-claims, so there was no gate, and the
+          # published text drifted until it asserted the OPPOSITE of what the
+          # tool reports ("runtime CLI subcommands do not shell out", while
+          # hypergumbo reported 1101 violating flows and a canary caught git
+          # being executed 28 times by `sketch` alone). This is that gate.
+          #
+          # Lives here rather than per-PR for the same reason as the step
+          # above: it runs a full self-analysis. PYTHON is passed explicitly
+          # because the bare `hypergumbo` console script is not on PATH in CI.
+          PYTHON=python ./scripts/check-self-claims
 
   test-mainstream:
     needs: [changes, prep]

@@ -64,6 +64,7 @@ import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from ..member_names import member_short_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -79,11 +80,12 @@ _CLASS_HINT_EDGE_TYPES = frozenset({"calls", "instantiates"})
 
 
 def short_name(name: str) -> str:
-    """Return the unqualified short name for a symbol."""
-    for sep in ("#", "::", "."):
-        if sep in name:
-            return name.rsplit(sep, 1)[-1]
-    return name
+    """Return the unqualified short name for a symbol.
+
+    Delegates to ``member_names`` — this was one of the three independent
+    copies of the separator vocabulary (INV-tihim).
+    """
+    return member_short_name(name)
 
 
 def parse_unresolved_name(dst: str) -> str | None:

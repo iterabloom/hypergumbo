@@ -9,15 +9,9 @@ test -f .git/PR_PENDING && echo "STOP: auto-pr awaiting merge" && exit 1
 ./scripts/auto-pr list  # Check if any PRs are queued
 ./scripts/auto-pr flush # Push them if remote is back
 
-# 3. Determine the authoritative remote (INV-bifud)
-#    CRITICAL: During failover, origin (Codeberg) is stale. selfh is authoritative.
-#    Branching from the wrong remote causes silent divergence and wasted CI cycles.
-if [ -f .git/CI_FAILOVER_ACTIVE ]; then
-  REMOTE=selfh
-  echo "⚠️  Failover active — using selfh as authoritative remote"
-else
-  REMOTE=origin
-fi
+# 3. The authoritative remote is always origin (WI-hajif retired the
+#    selfh CI failover; there is no second remote to choose between).
+REMOTE=origin
 
 # 4. If you have stashed changes to restore, reset affected-tests.txt first
 #    (smart-test regenerates it on every run, causing stash pop conflicts)
@@ -35,8 +29,11 @@ cat CHANGELOG.md
 git checkout -b <author>/feat/<short-name>
 ```
 
-**Why step 3 matters:** On 2026-04-01, the agent skipped failover detection, pulled
-from origin (12 commits behind selfh), branched from stale origin/dev, and spent 45+
-minutes debugging CI failures caused by base-branch divergence. Three stale PRs were
-created before the root cause was identified. The authoritative remote check prevents
-this class of error entirely.
+**Why step 3 is now trivial (and the history worth keeping):** it used to be a real
+decision. On 2026-04-01 the agent skipped failover detection, pulled from origin
+(12 commits behind the failover remote), branched from a stale `origin/dev`, and
+spent 45+ minutes debugging CI failures caused by base-branch divergence — three
+stale PRs before the root cause was found. WI-hajif retired the CI failover, so
+there is now exactly one authoritative remote and that class of error is gone by
+construction rather than by vigilance. Recorded so nobody reintroduces a second
+authoritative remote without knowing what it cost the first time.

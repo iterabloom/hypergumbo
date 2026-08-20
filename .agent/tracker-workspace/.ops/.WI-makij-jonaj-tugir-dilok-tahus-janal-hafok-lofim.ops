@@ -1,0 +1,50 @@
+- op: create  # b696
+  at: '2026-08-03T04:37:59Z'  # b696
+  by: agent  # b696
+  actor: jgstern_agent  # b696
+  clock: 1  # b696
+  nonce: b696  # b696
+  data:  # b696
+    kind: work_item  # b696
+    title: "Chained method calls emit no call edge, making every Class.method catalog entry unreachable"  # b696
+    status: todo_hard  # b696
+    priority: 2  # b696
+    parent:  # b696
+    tags:  # b696
+    - adr_0017  # b696
+    - taint  # b696
+    - analysis_quality  # b696
+    isbefore: []  # b696
+    duplicate_of: []  # b696
+    not_duplicate_of: []  # b696
+    pr_ref:  # b696
+    description: "FOUND WHILE MEASURING INV-karud CLAUSE (b), 2026-08-03.\n\nThe Python analyzer emits NO call edge for a chained method call. Measured on\na two-line fixture:\n\n    plain = Fernet(key).decrypt(token)\n    Path(\"/tmp/out\").write_bytes(plain)\n\n  emitted edges: instantiates -> Fernet, instantiates -> Path, plus imports.\n  calls edges:   NONE.\n\nCONSEQUENCE FOR THE CATALOG, which is the reason this is filed rather than\nnoted: catalog entries written as Class.method are unreachable through this\nshape. That is not a corner case --\n\n  * ALL FOUR built-in python `plaintext` sources are Class.method\n    (Fernet.decrypt, AESGCM.decrypt, AESCCM.decrypt, ChaCha20Poly1305.decrypt)\n  * ALL FOUR built-in python sanitizers are Class.method (.encrypt)\n\nso the shipped crypto catalog cannot exercise a plaintext source-to-sink flow\non Python at all. Clause (b) could only be measured by declaring\nproject-local module-level FUNCTIONS.\n\nThis is the same shape INV-karud's own 2026-08-02 note recorded when its first\npositive control failed (\"a chained call Path(...).write_text(...) which the\nanalyzer does not emit at all\"). It was treated there as a probe-construction\ndetail; it is a catalog-reachability defect.\n\nSCOPE UNMEASURED: whether other languages' analyzers have the same gap, and\nhow much of each language's catalog is Class.method shaped. Count those before\nchoosing a fix."  # b696
+    fields: {}  # b696
+- op: discuss  # 1625
+  at: '2026-08-05T04:13:58Z'  # 1625
+  by: agent  # 1625
+  actor: jgstern_agent  # 1625
+  clock: 2  # 1625
+  nonce: '1625'  # 1625
+  message: "SCOPE MEASURED, as the filing asked (\"count those before choosing a fix\"). Both halves. CATALOGUE HALF, re-measured on the post-#209 catalogue: 469 of 1406 sinks are method-kind (33%), up from the plan-era 337 of 1062 (32%) - the share is stable, the absolute grew. Per language: kotlin 96%, scala 97%, java 97%, objc 90%, swift 88%, rust 53%, python 47%, javascript 35%, go 27%; c/cpp/elixir/erlang/haskell 0%. ANALYZER HALF, measured with a fixture carrying BOTH the chained and the two-step shape per language so the chained case has an in-fixture control, analysed by the real pipeline and run through production _match_propagation_entry against real catalogued sink shapes: java, scala and swift emit and match in BOTH forms; PYTHON emits for two-step and NOTHING for chained, which confirms this item exactly; kotlin and javascript emit for NEITHER form. So THIS ITEM IS PYTHON-SPECIFIC - the chained shape is the defect only here, and the framing does not generalise as its SCOPE UNMEASURED note assumed it might. The kotlin/javascript result is a DIFFERENT defect (external instance-method calls emit no edge at all, swallowing the two-step form too) and is filed separately rather than folded in, because folding a broader per-analyzer gap into a chaining item is the scope-axis error L1 warns about. Positive control held: a module-qualified javascript call (fs.createWriteStream) emits AND matches in the same run that reports nothing for new net.Socket().write(d), so the nulls are evidence rather than a broken harness."  # 1625
+- op: discuss  # f8f4
+  at: '2026-08-05T19:17:31Z'  # f8f4
+  by: agent  # f8f4
+  actor: jgstern_agent  # f8f4
+  clock: 3  # f8f4
+  nonce: f8f4  # f8f4
+  message: "UNREVIEWED DRAFT PATCH EXISTS, produced out-of-band 2026-08-05: a workflow subagent given a READ-ONLY brief for an unrelated design review implemented this item instead (py.py Case 2g: resolve an ast.Call receiver via _resolve_call_target and look up ClassName.method like Case 2c; +21 src lines, +116 test lines). It was reverted from the working tree unexamined and saved to the session scratchpad as UNAUTHORIZED-wi-makij.patch. Treat it as a sketch, not a fix: it reached no test gate, no PR, no review, and its receiver-resolution approach and its is_instantiation interaction are unverified. If this item is picked up, start from the item, not the patch -- red tests first per the normal protocol; the patch may inform the shape."  # f8f4
+- op: discuss  # 4f01
+  at: '2026-08-06T04:53:49Z'  # 4f01
+  by: agent  # 4f01
+  actor: jgstern_agent  # 4f01
+  clock: 4  # 4f01
+  nonce: 4f01  # 4f01
+  message: "Rolled up under class item INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof (filed 2026-08-06), which now holds isbefore on this item. NOT a duplicate finding: the class exists because three per-analyzer items share one invariant, and because reading _match_propagation_entry / _lookup_named_entry showed the chain has FOUR links, not one. Emission (L2) is where these items sit; receiver evidence (L3) and the io-boundary F3 gate (L4) are downstream and can refuse an edge that emission successfully adds. So a fix scoped to emission alone can move zero findings while looking like a win at the analyzer. Do not start a fix here until the class measurement fills go/rust/objc and reads the declining branch in each failing analyzer."  # 4f01
+- op: discuss  # 8ed5
+  at: '2026-08-17T02:07:13Z'  # 8ed5
+  by: agent  # 8ed5
+  actor: jgstern_agent  # 8ed5
+  clock: 5  # 8ed5
+  nonce: 8ed5  # 8ed5
+  message: "TITLE LARGELY OBSOLETE. \"Chained method calls emit no call edge\" is now false for\nseven of the nine at-risk languages. Measured 2026-08-16, dev 0d305fe0e4, via\nINV-linub's chain_probe (production _match_propagation_entry, controls reported).\n\nCHAINED-site emission, all nine languages:\n\n    emit:     go, java, objc, python, rust, scala, swift\n    NO EDGE:  javascript, kotlin        <- WI-nasuf's cell, unchanged\n\nAnd python's CHAINED site does not merely emit, it MATCHES: Path(raw).write_text(x)\ncarries module_hint=pathlib.Path and reaches the catalogue entry. Constructor\nreceiver typing closed it. python is now the only language clean on all three\nchain_probe sites.\n\nWHAT REMAINS UNDER THIS TITLE is not emission. Every other CHAINED row is\n\"emit, NOMATCH\" with module_hint=external -- the edge exists and the F3 gate\ncorrectly refuses it for want of a receiver type. That is INV-linub's L3, not\nthis item's L2. An emission-shaped fix here would now move nothing.\n\nRECOMMEND folding the emission clause into INV-linub's L3 work and keeping this\nitem only if it is re-scoped to a specific remaining language. Not applied --\nflagged for the owner, since two of the languages it named (javascript, kotlin)\nare WI-nasuf's and the rest have moved."  # 8ed5

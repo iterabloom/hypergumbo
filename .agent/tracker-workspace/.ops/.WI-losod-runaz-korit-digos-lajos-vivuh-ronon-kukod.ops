@@ -1,0 +1,28 @@
+- op: create  # 4e2f
+  at: '2026-08-03T01:16:28Z'  # 4e2f
+  by: agent  # 4e2f
+  actor: jgstern_agent  # 4e2f
+  clock: 1  # 4e2f
+  nonce: 4e2f  # 4e2f
+  data:  # 4e2f
+    kind: work_item  # 4e2f
+    title: "Go if/for-clause initializers and range clauses are invisible to def/use"  # 4e2f
+    status: todo_soft  # 4e2f
+    priority: 3  # 4e2f
+    parent:  # 4e2f
+    tags:  # 4e2f
+    - adr_0017  # 4e2f
+    - taint  # 4e2f
+    isbefore: []  # 4e2f
+    duplicate_of: []  # 4e2f
+    not_duplicate_of: []  # 4e2f
+    pr_ref:  # 4e2f
+    description: "Disclosed gap from the Go def/use PR, filed because go.yaml's own comment says\n\"Tracked separately\" and an untracked \"tracked separately\" is a fresh L50\ninstance the day it ships.\n\nThe CFG mapping's conditional and loop hooks name only condition/body/\nconsequence/alternative children, never the initializer. So these Go bindings\nare invisible to def/use:\n\n  if err := do(a); err != nil { ... }     -- if-statement initializer\n  for j := 0; j < n; j++ { ... }          -- for-clause initializer\n  for i, v := range items { ... }         -- range clause\n\nEach is a real definition that no reaching-def chain can start from. Same class\nof gap exists for any language whose CFG mapping uses those hooks."  # 4e2f
+    fields: {}  # 4e2f
+- op: discuss  # 234d
+  at: '2026-08-06T00:30:11Z'  # 234d
+  by: agent  # 234d
+  actor: jgstern_agent  # 234d
+  clock: 2  # 234d
+  nonce: 234d  # 234d
+  message: "RE-RANK UP, on a measurement that inverts WI-vimon's own sequencing advice.\n\nWI-vimon ranked sink_after_source ABOVE this item on VOLUME (sole blocker at 38.6% of pooled\nguard2 sites vs source_tracked's 9.3%) and said \"sequence accordingly\". That ranking is\ncontradicted on VALUE by the WI-vimon measurement (2026-08-05, dev ff5058b172; write-up at\n~/hypergumbo_lab_notebook/taint-area-08052026/WI-vimon-MEASUREMENT.md).\n\nTHE CANONICAL MOTIVATING FALSE NEGATIVE FOR THIS WHOLE AREA IS BLOCKED BY THIS ITEM, ALONE.\ncaddy cmd/main.go printEnvironment:\n\n    470  for _, v := range os.Environ() {     <- source\n    471      fmt.Println(v)                   <- sink\n\ncaptured at guard2 as:  failset=source_tracked  sink=fmt:Println [471]  source=os:Environ [470]\n\nsink_after_source PASSES there (471 > 470) and sink_call_lines PASSES. source_tracked — the\nrange-clause gap this item names — is the SOLE blocker. It is the example ADR-0017's own guard-1\ncomment (taint.py:2489-2497) and the regression test\ntest_untracked_source_definition_never_licenses_removal (test_taint.py:1842) are both built on.\n\nMeanwhile ALL 15 of caddy's sink_after_source failures were classified by reading each source and\nNONE is a dedup artifact: 7 direction-reversed (the SINK produces the value the SOURCE consumes,\nso the guard is load-bearing), 2 sink-genuinely-first-no-flow, 1 flow-on-a-different-callee,\n2 mutually-exclusive-branches, 3 closure (filed separately, §7b-excluded, and a fix there\nSUPPRESSES). Volume was measuring correct blocks.\n\nDIRECTION HERE IS THE GOOD ONE. source_tracked=False blocks the walk, so the flow survives at\n`approximate` rather than `precise` — caddy currently reports \"9 approximate, 1 precise\". This is\na CONFIDENCE DOWNGRADE, not a false negative; the guard is doing its conservative job. Fixing the\nrange clause moves flows approximate -> precise. It can only suppress where a same-function\nsanitizer is registered (taint.py:2569-2575), which is a much narrower exposure than a fix on\nsink_after_source would carry.\n\nCAVEAT ON THE CEILING, unchanged and still honest: WI-vimon measured this item's ceiling at <=4\nadditional adjudications out of 169 caddy sites, and 3 of those 4 would still be blocked by\nsink_after_source. So the VOLUME is genuinely small. The argument for raising it is that its one\nguaranteed win is the area's documented reference case, and the alternatives ranked above it turn\nout to be either correct-as-is or suppressive."  # 234d

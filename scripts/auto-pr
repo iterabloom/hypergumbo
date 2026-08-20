@@ -43,6 +43,49 @@ load_env
 QUEUE_FILE="$REPO_ROOT/.git/PR_QUEUE"
 
 # ------------------------------------------------------------------
+# Amend-ownership guard (WI-libok)
+#
+# `git checkout -b feature dev` leaves HEAD pointing at dev's tip.  Until
+# the branch makes a commit of its own, `git commit --amend` does not amend
+# "my work" — it rewrites the INHERITED base commit, folding whatever is
+# staged into it while keeping that commit's message, author and
+# author-date.  The work then merges impersonating whatever the base tip
+# happened to be.  On 2026-07-29 that tip was a tracker sync commit, so
+# seven files of analyzer work landed on dev under the subject
+# "tracker: 6 files (104 ops)".  The reflog for that branch reads
+# checkout -> commit (amend) -> checkout, with the plain `commit:` entry
+# conspicuously absent — that absence is the signature of the failure.
+#
+# `merge-base --is-ancestor` is the predicate rather than a `rev-list
+# --count` of base..HEAD because it asks the question that actually
+# matters ("is HEAD already contained in the base?") and stays correct
+# after a rebase onto a moved base.
+#
+# Accepts one or more candidate base refs and checks each that resolves.
+# When none resolve it returns 0 (fail-open): a guard that cannot locate a
+# base ref must not block an otherwise-valid PR.
+#
+# Returns 0 (branch owns HEAD, amending is safe) or 1 (refuse to amend).
+# ------------------------------------------------------------------
+_assert_branch_owns_head() {
+	local base_ref
+	for base_ref in "$@"; do
+		[[ -n "$base_ref" ]] || continue
+		git rev-parse --verify --quiet "${base_ref}^{commit}" \
+			>/dev/null 2>&1 || continue
+		if git merge-base --is-ancestor HEAD "$base_ref" 2>/dev/null; then
+			echo "❌ Refusing to amend: HEAD is already contained in $base_ref."
+			echo "   This branch has no commits of its own, so 'git commit --amend'"
+			echo "   would rewrite the inherited base commit — folding your staged"
+			echo "   work into it and keeping its message and author (WI-libok)."
+			echo "   Commit your work first:  git commit -s -m \"<subject>\""
+			return 1
+		fi
+	done
+	return 0
+}
+
+# ------------------------------------------------------------------
 # Sync gate check (WI-nutin)
 #
 # The tracker sync workflow holds an OS-level fcntl flock on
@@ -234,6 +277,27 @@ DESC_FLAG=""
 # ------------------------------------------------------------------
 AUTOPR_RESULT_FILE="${AUTOPR_RESULT_FILE:-$REPO_ROOT/.git/AUTOPR_LAST_RESULT.json}"
 
+# ------------------------------------------------------------------
+# INV-rahib: the convergence LEDGER, a separate artifact from the sentinel.
+#
+# The sentinel above answers "did my backgrounded run succeed?" and is
+# deliberately OVERWRITTEN every run — that is correct for its purpose and is
+# pinned by test_autopr_result_sentinel.py::test_second_run_overwrites_first.
+#
+# Convergence is not a property of one run. INV-rahib asks whether auto-pr
+# always ends in a declared terminal state, which can only be evaluated over a
+# SEQUENCE of invocations — and because the sentinel keeps no history, the
+# item's 2026-06-17 validation criterion ("observe auto-pr converge during a
+# real concurrent nightly") sat unevaluated across 579 commits. Nobody was
+# withholding the measurement; there was nothing to measure.
+#
+# So this is a second file rather than a second meaning bolted onto the first:
+# one fact, one home. Append-only, one compact JSON line per invocation, and
+# best-effort — a ledger write failure must never fail an auto-pr run.
+# Override via AUTOPR_HISTORY_FILE for tests.
+# ------------------------------------------------------------------
+AUTOPR_HISTORY_FILE="${AUTOPR_HISTORY_FILE:-$REPO_ROOT/.git/AUTOPR_HISTORY.jsonl}"
+
 # Action-state variables, mutated as auto-pr makes progress.
 # Default 'unknown' is overwritten before any deliberate exit.
 _autopr_state_final="unknown"
@@ -268,6 +332,7 @@ _autopr_write_sentinel() {
 		AUTOPR_MERGED_SHA="$_autopr_state_merged_sha" \
 		AUTOPR_FINAL_STATE="$_autopr_state_final" \
 		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
+		AUTOPR_HISTORY_OUT="$AUTOPR_HISTORY_FILE" \
 		python3 - <<'PY' 2>/dev/null || true
 import datetime
 import json
@@ -287,6 +352,17 @@ data = {
 with open(os.environ["AUTOPR_OUT"], "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
+
+# INV-rahib convergence ledger. Append-only and best-effort: the sentinel
+# above is the contract, and a ledger failure must never turn a successful
+# auto-pr run into a failed one.
+history_path = os.environ.get("AUTOPR_HISTORY_OUT")
+if history_path and os.path.isdir(os.path.dirname(history_path)):
+    try:
+        with open(history_path, "a") as f:
+            f.write(json.dumps(data, sort_keys=True) + "\n")
+    except OSError:
+        pass
 PY
 }
 
@@ -528,9 +604,7 @@ _autopr_branch_push_fallback() {
 # ------------------------------------------------------------------
 _autopr_pr_web_url() {
 	local pr_num="$1"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		echo "$FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
-	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
 		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
 	else
 		echo "https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
@@ -545,10 +619,16 @@ _autopr_pr_web_url() {
 #   PR for idempotency, matching C10). Sets FALLBACK_PR_NUM — the SAME variable
 #   the WI-hubod desync fallback sets — so the do_pr/flush push-result plumbing
 #   (PR_NUM/HEAD_SHA/AUTOPR_FALLBACK_USED) is unchanged. Returns 1 on a genuine
-#   push/create failure (caller queues a vPR).
-#   Test seam: AUTO_PR_SIMULATE_GH_PUSH=ok|fail bypasses the real push (and the
-#   live idempotency lookup); create_pr is driven by the fake curl / its own
-#   AUTOPR_TEST_CREATE_PR seam.
+#   push/create failure (caller queues a vPR); returns 2 on a NON-FAST-FORWARD
+#   REJECTION with a diverged remote branch (WI-buniz) — the remote is
+#   demonstrably reachable, so the caller must NOT queue a vPR (a queued
+#   duplicate of a remote branch is how phantom vPRs are born; observed live
+#   on PR #144, where the rejection was mislabeled "remote unavailable").
+#   A rejection whose remote tip already equals LOCAL_SHA is treated as a
+#   completed push (auto-pr's own hung-run re-push cycle leaves exactly that).
+#   Test seam: AUTO_PR_SIMULATE_GH_PUSH=ok|fail|reject-same|reject-diverged
+#   bypasses the real push (and the live idempotency lookup); create_pr is
+#   driven by the fake curl / its own AUTOPR_TEST_CREATE_PR seam.
 # ------------------------------------------------------------------
 _autopr_github_push_create() {
 	local remote="$1" branch="$2" base="$3" title="$4" body="$5" local_sha="$6"
@@ -566,10 +646,43 @@ _autopr_github_push_create() {
 	fail)
 		echo "   [test] simulated branch push FAILED"
 		;;
+	reject-same)
+		echo "   [test] simulated push REJECTED; remote already at local sha"
+		echo "   ↩️  Remote branch already at ${local_sha:0:8} — push is already done"
+		pushed=true
+		;;
+	reject-diverged)
+		echo "   ❌ Push REJECTED (non-fast-forward): remote branch '$branch' has diverged."
+		echo "      This is not an offline condition — NOT queueing a vPR (WI-buniz)."
+		echo "      Reconcile (fetch + rebase, or drive the open PR with merge-pr), then retry."
+		return 2
+		;;
 	*)
-		if git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
-			push "$remote" "HEAD:refs/heads/$branch" 2>&1; then
+		local _push_out=""
+		if _push_out=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+			push "$remote" "HEAD:refs/heads/$branch" 2>&1); then
+			echo "$_push_out"
 			pushed=true
+		else
+			echo "$_push_out"
+			# WI-buniz: a non-fast-forward rejection is the remote WORKING,
+			# not the remote missing. Two sub-cases: the remote branch is
+			# already at our sha (a prior push landed — proceed), or it
+			# genuinely diverged (surface it; never queue a duplicate vPR).
+			if grep -qE "\[rejected\]|non-fast-forward" <<<"$_push_out"; then
+				local _remote_tip=""
+				_remote_tip=$(git -c credential.helper="!f() { echo username=$USER; echo password=$FORGE_TOKEN; }; f" \
+					ls-remote "$remote" "refs/heads/$branch" 2>/dev/null | awk '{print $1}') || true
+				if [[ -n "$_remote_tip" && "$_remote_tip" == "$local_sha" ]]; then
+					echo "   ↩️  Remote branch already at ${local_sha:0:8} — push is already done"
+					pushed=true
+				else
+					echo "   ❌ Push REJECTED (non-fast-forward): remote '$branch' at ${_remote_tip:0:8}, local at ${local_sha:0:8}."
+					echo "      This is not an offline condition — NOT queueing a vPR (WI-buniz)."
+					echo "      Reconcile (fetch + rebase, or drive the open PR with merge-pr), then retry."
+					return 2
+				fi
+			fi
 		fi
 		;;
 	esac
@@ -684,17 +797,64 @@ queue_vpr() {
 # Best-effort fetch; if origin/$base is missing entirely, treat the
 # entry as live (return 1) so the user is never warned about a vPR
 # that we genuinely can't classify.
+# Returns: 0 = stale (content contained in origin/<base>), 1 = live,
+#          2 = broken (sha unresolvable locally — e.g. its branch was
+#              deleted after a merge; flush would die on it with git's raw
+#              "Needed a single revision").
+#
+# WI-buniz: staleness is CONTENT identity, not sha identity. A flush
+# REBUILDS commits, so a merged vPR's recorded sha never appears in the
+# base branch and the old ancestor-only check called it "live" forever.
+# Two content checks, cheap first:
+#   (a) tree-diff vs the base TIP, excluding the regenerated-every-run
+#       test manifest (measured on PR #144: the sole difference between
+#       the queued commit and the merged one was the manifest's timestamp
+#       header line);
+#   (b) a bounded patch-id scan over recent base commits, with the same
+#       manifest exclusion, for merges that are no longer at the tip.
 _autopr_vpr_is_stale() {
 	local sha="$1" base="$2"
 	if [[ -z "$sha" || -z "$base" ]]; then
 		return 1
+	fi
+	if ! git cat-file -e "$sha" 2>/dev/null; then
+		return 2
 	fi
 	# Best-effort: don't fail the whole list if fetch is offline.
 	git fetch origin "$base" --quiet 2>/dev/null || true
 	if ! git rev-parse --verify "origin/$base" >/dev/null 2>&1; then
 		return 1
 	fi
-	git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null
+	if git merge-base --is-ancestor "$sha" "origin/$base" 2>/dev/null; then
+		return 0
+	fi
+	# An entry with NO content of its own (an empty commit) cannot be
+	# judged by content — its tree trivially equals whatever it sits on.
+	# Ancestry above is the only stale signal for it; otherwise: live.
+	if ! git rev-parse -q --verify "$sha^" >/dev/null 2>&1 \
+		|| [[ -z "$(git diff "$sha^" "$sha" 2>/dev/null)" ]]; then
+		return 1
+	fi
+	# (a) tree identity with the base tip, modulo the manifest.
+	if [[ -z "$(git diff "origin/$base" "$sha" -- . ':(exclude).ci/affected-tests.txt' 2>/dev/null)" ]]; then
+		return 0
+	fi
+	# (b) bounded filtered-patch-id scan. Needs a parent to diff against.
+	if git rev-parse -q --verify "$sha^" >/dev/null 2>&1; then
+		local want have c
+		want=$(git diff "$sha^" "$sha" -- . ':(exclude).ci/affected-tests.txt' \
+			| git patch-id --stable 2>/dev/null | cut -d' ' -f1)
+		if [[ -n "$want" ]]; then
+			while IFS= read -r c; do
+				have=$(git diff "$c^" "$c" -- . ':(exclude).ci/affected-tests.txt' 2>/dev/null \
+					| git patch-id --stable 2>/dev/null | cut -d' ' -f1)
+				if [[ -n "$have" && "$have" == "$want" ]]; then
+					return 0
+				fi
+			done < <(git rev-list "origin/$base" -100 2>/dev/null)
+		fi
+	fi
+	return 1
 }
 
 # Walk the queue and print, for each entry, "stale" or "live" plus
@@ -709,8 +869,10 @@ _autopr_vpr_is_stale() {
 _autopr_reconcile_queue() {
 	_AUTOPR_RECON_STALE_LINES=()
 	_AUTOPR_RECON_LIVE_LINES=()
+	_AUTOPR_RECON_BROKEN_LINES=()
 	_AUTOPR_RECON_STALE_COUNT=0
 	_AUTOPR_RECON_LIVE_COUNT=0
+	_AUTOPR_RECON_BROKEN_COUNT=0
 
 	if [[ ! -f "$QUEUE_FILE" ]] || [[ ! -s "$QUEUE_FILE" ]]; then
 		return 0
@@ -718,12 +880,19 @@ _autopr_reconcile_queue() {
 
 	while IFS= read -r line; do
 		[[ -z "$line" ]] && continue
-		local sha base
+		local sha base _st_rc
 		sha=$(echo "$line" | json_field "sha")
 		base=$(echo "$line" | json_field "base")
-		if _autopr_vpr_is_stale "$sha" "$base"; then
+		_st_rc=0
+		_autopr_vpr_is_stale "$sha" "$base" || _st_rc=$?
+		if [[ "$_st_rc" -eq 0 ]]; then
 			_AUTOPR_RECON_STALE_LINES+=("$line")
 			_AUTOPR_RECON_STALE_COUNT=$((_AUTOPR_RECON_STALE_COUNT + 1))
+		elif [[ "$_st_rc" -eq 2 ]]; then
+			# WI-buniz: unresolvable sha (branch deleted). Unverifiable AND
+			# unflushable — a dead entry that must be prunable, loudly.
+			_AUTOPR_RECON_BROKEN_LINES+=("$line")
+			_AUTOPR_RECON_BROKEN_COUNT=$((_AUTOPR_RECON_BROKEN_COUNT + 1))
 		else
 			_AUTOPR_RECON_LIVE_LINES+=("$line")
 			_AUTOPR_RECON_LIVE_COUNT=$((_AUTOPR_RECON_LIVE_COUNT + 1))
@@ -870,12 +1039,12 @@ prune_queue() {
 
 	_autopr_reconcile_queue
 
-	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 ]]; then
+	if [[ "$_AUTOPR_RECON_STALE_COUNT" -eq 0 && "$_AUTOPR_RECON_BROKEN_COUNT" -eq 0 ]]; then
 		echo "✅ Queue clean — no stale entries to prune ($count live vPR(s))"
 		return 0
 	fi
 
-	echo "🧹 Pruning $_AUTOPR_RECON_STALE_COUNT stale vPR(s) of $count total..."
+	echo "🧹 Pruning $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) vPR(s) of $count total..."
 	# Print details of what we're about to remove for the audit trail.
 	local stale_line
 	for stale_line in "${_AUTOPR_RECON_STALE_LINES[@]}"; do
@@ -883,7 +1052,22 @@ prune_queue() {
 		vpr=$(echo "$stale_line" | json_field "vpr")
 		branch=$(echo "$stale_line" | json_field "branch")
 		sha=$(echo "$stale_line" | json_field "sha")
-		echo "  − vPR #$vpr ($branch @ ${sha:0:8})"
+		echo "  − vPR #$vpr ($branch @ ${sha:0:8}) — content already in origin"
+	done
+	# WI-buniz: broken entries (unresolvable sha, e.g. the branch was
+	# deleted after its content merged) are unverifiable AND unflushable —
+	# leaving them makes flush die on git's raw 'Needed a single revision'.
+	# Dropping unverifiable content must be LOUD.
+	local broken_line
+	for broken_line in "${_AUTOPR_RECON_BROKEN_LINES[@]}"; do
+		local vpr branch sha
+		vpr=$(echo "$broken_line" | json_field "vpr")
+		branch=$(echo "$broken_line" | json_field "branch")
+		sha=$(echo "$broken_line" | json_field "sha")
+		echo "  ⚠️  vPR #$vpr ($branch @ ${sha:0:8}) — UNRESOLVABLE sha (branch"
+		echo "      deleted?). Content cannot be verified locally; dropping the"
+		echo "      entry. If this was NOT merged, the reflog/PR history is the"
+		echo "      recovery path."
 	done
 
 	# Rewrite the queue file with only the live entries.  Empty file
@@ -891,7 +1075,7 @@ prune_queue() {
 	if [[ "$_AUTOPR_RECON_LIVE_COUNT" -eq 0 ]]; then
 		rm -f "$QUEUE_FILE"
 		echo ""
-		echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — queue is now empty"
+		echo "✅ Pruned $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) entries — queue is now empty"
 		return 0
 	fi
 
@@ -903,7 +1087,7 @@ prune_queue() {
 	done
 	mv "$tmp_queue" "$QUEUE_FILE"
 	echo ""
-	echo "✅ Pruned $_AUTOPR_RECON_STALE_COUNT entries — $_AUTOPR_RECON_LIVE_COUNT live vPR(s) remain"
+	echo "✅ Pruned $((_AUTOPR_RECON_STALE_COUNT + _AUTOPR_RECON_BROKEN_COUNT)) entries — $_AUTOPR_RECON_LIVE_COUNT live vPR(s) remain"
 }
 
 # Flush all vPRs as a single atomic PR
@@ -930,15 +1114,23 @@ flush_queue() {
 		return 0
 	fi
 
+	# Backend-aware credentials (C9). USER is required only on the forgejo
+	# backend, where pushes ride HTTPS credential helpers; on github the push
+	# is SSH and the API authenticates with FORGE_TOKEN alone. These guards run
+	# BEFORE detect_api_base, so detect_forge_backend is called explicitly here.
+	# TOKEN keeps feeding the downstream credential.helper uses: inert on
+	# github/SSH, and identical to FORGEJO_TOKEN on forgejo/HTTPS.
+	detect_forge_backend
+	resolve_forge_token
 	USER="${FORGEJO_USER:-}"
-	TOKEN="${FORGEJO_TOKEN:-}"
-	if [[ -z "$USER" ]]; then
+	TOKEN="${FORGE_TOKEN:-}"
+	if [[ "${FORGE_BACKEND:-forgejo}" != "github" && -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
-		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
@@ -1004,16 +1196,7 @@ Individual commits are preserved in the history."
 	# IMPORTANT: Use index-only operations to avoid overwriting the working
 	# tree. `git checkout <base> -- <file>` would destroy locally-appended
 	# ops (status updates, discussion entries) that haven't synced yet.
-	#
-	# When failover is active, diff against the self-hosted remote's dev
-	# (which may be ahead due to tracker auto-sync) so CI's base matches.
 	local ops_diff_base="$base_branch"
-	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
-	if [[ -f "$failover_file" ]]; then
-		if git fetch selfh "$base_branch" --quiet 2>/dev/null; then
-			ops_diff_base="selfh/$base_branch"
-		fi
-	fi
 	local ops_files
 	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
@@ -1027,23 +1210,15 @@ Individual commits are preserved in the history."
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
+		_assert_branch_owns_head "$ops_diff_base" || exit 1
 		git commit --amend --no-edit -s
 		tip_sha=$(git rev-parse HEAD)
 		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
 	fi
 
 	detect_api_base
-	apply_failover_overrides
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
-		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-	fi
 
 	local push_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="selfh"
-	fi
 
 	local max_attempts=3
 	local attempt=1
@@ -1060,6 +1235,14 @@ Individual commits are preserved in the history."
 	local sha
 	while IFS= read -r line; do
 	  sha=$(echo "$line" | json_field "sha")
+	  # WI-buniz: an unresolvable sha (its branch was deleted) previously
+	  # surfaced here as git's raw "fatal: Not a valid object name" /
+	  # "Needed a single revision" — diagnose it and point at the remedy.
+	  if ! git cat-file -e "$sha" 2>/dev/null; then
+	    echo "❌ vPR commit $sha is UNRESOLVABLE (branch deleted?)."
+	    echo "   Run './scripts/auto-pr prune' to reconcile the queue, then re-flush."
+	    exit 1
+	  fi
 	  if ! git merge-base --is-ancestor "$sha" HEAD; then
 	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
 	    exit 1
@@ -1082,8 +1265,20 @@ Individual commits are preserved in the history."
 		# GitHub: plain push of the queue tip + create_pr (no AGit refs/for);
 		# the PR is identified below via find_open_pr. Failure → vPRs stay queued
 		# (the push_success check below prints the "remote unavailable" exit).
-		if _autopr_github_push_create "$push_remote" "$tip_branch" "$base_branch" "$pr_title" "$push_desc" "$tip_sha"; then
+		_gh_flush_rc=0
+		_autopr_github_push_create "$push_remote" "$tip_branch" "$base_branch" "$pr_title" "$push_desc" "$tip_sha" || _gh_flush_rc=$?
+		if [[ "$_gh_flush_rc" -eq 0 ]]; then
 			push_success=true
+		elif [[ "$_gh_flush_rc" -eq 2 ]]; then
+			# WI-buniz: the queue tip diverged from its remote branch. The
+			# vPRs stay queued (their content lives only here), but this is
+			# NOT the offline path — say so instead of "remote unavailable".
+			echo ""
+			echo "❌ Flush push rejected (non-fast-forward): the queue tip diverged"
+			echo "   from the remote branch. vPRs remain queued. Reconcile the remote"
+			echo "   branch (or prune if the content is already merged), then re-flush."
+			_autopr_state_final="flush_push_rejected"
+			exit 1
 		fi
 	else
 		while [[ $attempt -le $max_attempts ]]; do
@@ -1192,22 +1387,19 @@ Individual commits are preserved in the history."
 	local poll_result=0
 	poll_ci "$HEAD_SHA" || poll_result=$?
 
-	if [[ $poll_result -eq 3 ]]; then
+	# WI-ditav: default-deny. ci_verdict_permits_merge owns the decision; this
+	# site owns only the recovery text, which legitimately differs from the
+	# other call sites (flush resumes via `auto-pr flush`, not merge-pr).
+	if ! ci_verdict_permits_merge "$poll_result"; then
 		echo ""
-		echo "⚠️  CI hung (no jobs started). For flush, retry manually:"
-		echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_hung"
-		exit 3
-	elif [[ $poll_result -eq 1 ]]; then
-		echo ""
-		echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush"
-		_autopr_state_final="ci_failed"
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		echo ""
-		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_timeout"
-		exit 2
+		case $poll_result in
+			3) echo "⚠️  CI was never dispatched. For flush, retry manually:"
+			   echo "  ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			1) echo "Fix the issues, amend commits, then run: ./scripts/auto-pr flush" ;;
+			*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+		esac
+		_autopr_state_final="$CI_VERDICT_STATE"
+		exit "$poll_result"
 	fi
 
 	# Merge PR using fast-forward (default) or squash (if --squash flag)
@@ -1268,9 +1460,6 @@ Individual commits are preserved in the history."
 	# Switch to base and pull
 	git checkout "$base_branch"
 	local flush_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		flush_remote="selfh"
-	fi
 	git pull "$flush_remote" "$base_branch" || true
 
 	# Delete local branches
@@ -1329,15 +1518,23 @@ do_pr() {
 	# warning about.
 	_autopr_run_started_epoch=$(date +%s)
 
+	# Backend-aware credentials (C9). USER is required only on the forgejo
+	# backend, where pushes ride HTTPS credential helpers; on github the push
+	# is SSH and the API authenticates with FORGE_TOKEN alone. These guards run
+	# BEFORE detect_api_base, so detect_forge_backend is called explicitly here.
+	# TOKEN keeps feeding the downstream credential.helper uses: inert on
+	# github/SSH, and identical to FORGEJO_TOKEN on forgejo/HTTPS.
+	detect_forge_backend
+	resolve_forge_token
 	USER="${FORGEJO_USER:-}"
-	TOKEN="${FORGEJO_TOKEN:-}"
-	if [[ -z "$USER" ]]; then
+	TOKEN="${FORGE_TOKEN:-}"
+	if [[ "${FORGE_BACKEND:-forgejo}" != "github" && -z "$USER" ]]; then
 		echo "Error: FORGEJO_USER environment variable is not set."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
 	if [[ -z "$TOKEN" ]]; then
-		echo "Error: FORGEJO_TOKEN environment variable is not set."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		_autopr_state_final="auth_error"
 		exit 1
 	fi
@@ -1366,12 +1563,6 @@ do_pr() {
 	fi
 
 	detect_api_base
-	apply_failover_overrides
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		USER="${SELFHOSTED_FORGEJO_USER:-$USER}"
-		TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-		echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-	fi
 	LOCAL_SHA="$(git rev-parse HEAD)"
 
 	# Resolution per slot: flag form (TITLE_FLAG / DESC_FLAG) wins; any
@@ -1427,6 +1618,8 @@ do_pr() {
 		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
 			echo "   Manifest updated — amending commit"
 			git add .ci/affected-tests.txt
+			_assert_branch_owns_head "$BASE_BRANCH" \
+				"origin/$BASE_BRANCH" || exit 1
 			git commit --amend --no-edit -s
 			LOCAL_SHA="$(git rev-parse HEAD)"
 			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
@@ -1446,12 +1639,6 @@ do_pr() {
 	# of local origin/dev (tracker auto-sync merges happen there).  Diff
 	# against the actual PR target so CI's base matches what we exclude.
 	local ops_diff_base="$BASE_BRANCH"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		local selfh_remote="${push_remote:-selfh}"
-		if git fetch "$selfh_remote" "$BASE_BRANCH" --quiet 2>/dev/null; then
-			ops_diff_base="$selfh_remote/$BASE_BRANCH"
-		fi
-	fi
 	local ops_files
 	ops_files=$(git diff --name-only "$ops_diff_base"..HEAD -- '.agent/tracker*/.ops/' 2>/dev/null || true)
 	if [[ -n "$ops_files" ]]; then
@@ -1466,6 +1653,7 @@ do_pr() {
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
+		_assert_branch_owns_head "$ops_diff_base" || exit 1
 		git commit --amend --no-edit -s
 		LOCAL_SHA="$(git rev-parse HEAD)"
 		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
@@ -1530,9 +1718,6 @@ do_pr() {
 	local PUSH_DESC="${DESC//$'\n'/\\n}"
 
 	local push_remote="origin"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		push_remote="selfh"
-	fi
 
 	# --- INV-rahib fix: create gate BEFORE push ---
 	# Previously PR_PENDING was created after push + PR identification,
@@ -1577,6 +1762,16 @@ do_pr() {
 				exit 0
 			fi
 		else
+			_gh_push_rc=$?
+			if [[ "$_gh_push_rc" -eq 2 ]]; then
+				# WI-buniz: rejection with a diverged remote branch — the
+				# remote is reachable, so queueing would mint a phantom
+				# duplicate of a branch that already exists there.
+				echo ""
+				echo "❌ Push rejected (remote branch diverged) — NOT queueing a vPR."
+				_autopr_state_final="push_rejected_diverged"
+				exit 1
+			fi
 			echo ""
 			echo "❌ GitHub push/PR-create failed — queueing vPR"
 			queue_vpr "$BRANCH" "$BASE_BRANCH" "$TITLE" "$DESC" "$LOCAL_SHA"
@@ -1844,28 +2039,23 @@ do_pr() {
 		poll_ci "$HEAD_SHA" || poll_result=$?
 	done
 
-	if [[ $poll_result -eq 3 ]]; then
+	# WI-ditav: default-deny. The three arms below are RECOVERY TEXT only —
+	# whether we may merge is ci_verdict_permits_merge's call, so a verdict
+	# nobody anticipated stops the merge instead of authorising it.
+	if ! ci_verdict_permits_merge "$poll_result"; then
 		echo ""
-		echo "⚠️  CI hung on all $hung_retries retries (exit code 3)"
-		echo ""
-		echo "Scenario C: CI runners may be down. Recovery steps:"
-		echo "  1. Do NOT accumulate more changes to hypergumbo code"
-		echo "  2. Check runner health: ssh ci-runner systemctl status forgejo-runner-*"
-		echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_hung"
-		exit 3
-	fi
-
-	if [[ $poll_result -eq 1 ]]; then
-		echo ""
-		echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_failed"
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		echo ""
-		echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-		_autopr_state_final="ci_timeout"
-		exit 2
+		case $poll_result in
+			3) echo "⚠️  CI never dispatched on any of $hung_retries retries (exit code 3)"
+			   echo ""
+			   echo "Scenario C: CI runners may be down. Recovery steps:"
+			   echo "  1. Do NOT accumulate more changes to hypergumbo code"
+			   echo "  2. Check runner health on the Woodpecker agent"
+			   echo "  3. When runners recover: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			1) echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+			*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+		esac
+		_autopr_state_final="$CI_VERDICT_STATE"
+		exit "$poll_result"
 	fi
 
 	# Governance mode: stop after CI passes, don't auto-merge
@@ -1914,14 +2104,17 @@ do_pr() {
 					sleep 3  # Give Forgejo a moment to update PR head
 					poll_result=0
 					poll_ci "$HEAD_SHA" || poll_result=$?
-					if [[ $poll_result -eq 1 ]]; then
-						echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci"
-						_autopr_state_final="ci_failed"
-						exit 1
-					elif [[ $poll_result -eq 2 ]]; then
-						echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci"
-						_autopr_state_final="ci_timeout"
-						exit 2
+					# WI-ditav: default-deny. This site enumerated 1 and 2 and
+					# fell through to the merge on exit 3 — and it is the
+					# POST-REBASE merge path, i.e. the one auto-pr takes
+					# whenever the base moved under it.
+					if ! ci_verdict_permits_merge "$poll_result"; then
+						case $poll_result in
+							1) echo "Recovery: fix CI, then ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+							*) echo "Recovery: ./scripts/merge-pr $PR_NUM --wait-for-ci" ;;
+						esac
+						_autopr_state_final="$CI_VERDICT_STATE"
+						exit "$poll_result"
 					fi
 				else
 					echo "   ⚠️  Force-push failed after rebase — do_merge will retry"
@@ -1974,23 +2167,6 @@ do_pr() {
 	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	# Record merged PR in failover state
-	if [[ "$FAILOVER_ACTIVE" == "true" ]] && [[ -f "$REPO_ROOT/.git/CI_FAILOVER_ACTIVE" ]]; then
-		_FAILOVER_PR_TITLE="$TITLE" python3 -c "
-import json, os
-fpath = os.path.join('$REPO_ROOT', '.git', 'CI_FAILOVER_ACTIVE')
-with open(fpath) as f:
-    data = json.load(f)
-data.setdefault('prs_merged_locally', []).append({
-    'branch': '$BRANCH',
-    'pr_num': int('$PR_NUM'),
-    'sha': '$LOCAL_SHA',
-    'title': os.environ.get('_FAILOVER_PR_TITLE', '')
-})
-with open(fpath, 'w') as f:
-    json.dump(data, f, indent=2)
-    f.write('\n')
-" 2>/dev/null || true
-	fi
 
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
@@ -2004,9 +2180,6 @@ cleanup_local() {
 	local branch="$1"
 	local base="$2"
 	local remote="origin"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		remote="selfh"
-	fi
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
@@ -2017,9 +2190,31 @@ cleanup_local() {
 
 	while [[ $attempt -le $max_attempts ]]; do
 		if git pull "$remote" "$base"; then
-			git branch -d "$branch" 2>/dev/null || true
-			# Delete remote branch (keeps Lamport clock branch set small)
-			git push "$remote" --delete "$branch" 2>/dev/null || true
+			# auto-pr merges via REBASE (github-api.sh tries rebase before
+			# merge), so the PR's commits land on the base under new SHAs and
+			# the branch tip is never an ancestor of the updated base. That is
+			# exactly the test `git branch -d` applies, so it refused every
+			# time — silently, because the old code was `2>/dev/null || true`.
+			# `git cherry` compares patch-ids rather than ancestry, so a
+			# rebased-and-merged commit registers as upstream; it is the safety
+			# check that survives a rebase, and the one this repo already
+			# prescribes in place of `git branch --merged`.
+			local unmerged
+			unmerged=$(git cherry "$remote/$base" "$branch" 2>/dev/null | grep -c '^+' || true)
+			if [[ "${unmerged:-1}" -eq 0 ]]; then
+				git branch -D "$branch" >/dev/null 2>&1 ||
+					echo "⚠️  Could not delete local branch $branch"
+			else
+				echo "⚠️  Keeping local branch $branch — $unmerged commit(s) not in $base"
+			fi
+			# The PR head branch is already deleted server-side by
+			# _github_delete_pr_head_branch at merge time, so the old
+			# `git push --delete` here could only ever fail with "remote ref
+			# does not exist". What actually accumulates is the stale
+			# remote-tracking ref: `git pull` does not prune and fetch.prune is
+			# unset, so one is left behind per merge, forever.
+			git fetch --prune "$remote" --quiet ||
+				echo "⚠️  Could not prune stale remote-tracking refs"
 			return 0
 		fi
 
@@ -2133,12 +2328,9 @@ gov_cleanup() {
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env
 	detect_api_base
-	apply_failover_overrides
 
-	local token="${FORGEJO_TOKEN:-}"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
-	fi
+	# (No credential guard here: api_get self-resolves via resolve_forge_token
+	# per call. A `local token=` assignment used to sit here and was never read.)
 
 	_autopr_state_pr_num="$pr_num"
 
@@ -2230,8 +2422,9 @@ help | --help | -h)
 	echo "  [description] PR description (default: commit body)"
 	echo ""
 	echo "Environment:"
-	echo "  FORGEJO_USER            Codeberg username"
-	echo "  FORGEJO_TOKEN           Codeberg API token"
+	echo "  HG_GITHUB_TOKEN         API token (github backend — the live one)"
+	echo "  FORGEJO_USER            Codeberg username (forgejo backend only)"
+	echo "  FORGEJO_TOKEN           Codeberg API token (forgejo backend only)"
 	echo "  BASE_BRANCH             Target branch (default: dev)"
 	echo "  CI_TIMEOUT_SECONDS      CI polling timeout (default: 2400)"
 	echo "  AUTO_PR_SIMULATE_OUTAGE Set to 1 to simulate remote outage (for testing)"

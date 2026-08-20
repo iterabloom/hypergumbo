@@ -1,0 +1,24 @@
+- op: create  # cc3f
+  at: '2026-08-11T16:55:38Z'  # cc3f
+  by: agent  # cc3f
+  actor: jgstern_agent  # cc3f
+  clock: 1  # cc3f
+  nonce: cc3f  # cc3f
+  data:  # cc3f
+    kind: invariant  # cc3f
+    title: "env_read -> host_secret: the boundary means 'reads host description' (GOOS, Getwd, Executable, navigator.platform) while the derived taint label and every claim written against it mean 'secret'"  # cc3f
+    status: violated  # cc3f
+    priority: 2  # cc3f
+    parent:  # cc3f
+    tags:  # cc3f
+    - taint  # cc3f
+    - io_boundary  # cc3f
+    - catalogue  # cc3f
+    isbefore: []  # cc3f
+    duplicate_of: []  # cc3f
+    not_duplicate_of: []  # cc3f
+    pr_ref:  # cc3f
+    description: "FOUND BY THE S9 PRECISION MEASUREMENT (docs/measurements/0001-taint-flow-precision.md).\n`host-secret-*` claims carry 48 of the 85 adjudicated flows and score 22.9% between them --\nthe weakest family in the measurement -- and a large part of the reason is that the label\nmeans something broader than the claims it feeds.\n\nTHE MISMATCH. AUTO_SOURCE_LABEL_MAP derives the taint label `host_secret` from the\nio_primitives boundary `env_read`. But `env_read` is catalogued as \"reads something the\nhost tells you about itself\", not \"reads a secret\":\n\n  io_primitives/go.yaml env_read:\n      os.Getenv, os.LookupEnv, os.Environ, os.Hostname, os.UserHomeDir,\n      os.UserCacheDir, os.UserConfigDir, os.Executable, os.Getwd,\n      runtime.GOOS, runtime.GOARCH\n  javascript contributes navigator.userAgent, navigator.platform, window.screen,\n      window.location, window.document\n\nruntime.GOOS is not a secret. Neither is os.Getwd, os.Executable, navigator.platform or\nwindow.screen. The claim text a user writes says \"credentials, tokens and connection\nstrings\"; the catalogue answers with \"anything about the host\".\n\nMEASURED CONSEQUENCE, not asserted. Three of caddy's five TRUE positives are os.Executable\npath manipulation (os.Rename(thisExecPath, backupExecPath), os.Remove(backupExecPath)) --\nreal data flows whose security meaning is nil. They are correctly labelled TP under a\ndata-flow rubric and are noise under any reading a user cares about. The measurement\nrecords them with signal=benign-by-construction precisely so the distinction is not lost.\n\nTHIS IS A VOCABULARY QUESTION, NOT A PER-ROW EDIT. Two options at least, neither obviously\nright: split `env_read` into an actual-secret boundary and a host-description boundary; or\nkeep one boundary and stop deriving a security-loaded taint LABEL from it. Both change\nwhat every host_secret claim means, so this wants a decision rather than a patch.\n\nSIBLING, SAME FAMILY: INV-vaduk shape 4 asks whether `logging` is a boundary or a purpose\n(haskell hPutStrLn is catalogued as both fs_write and logging, deriving two sinks in two\nzones from one write). Both are candidates for the fundamental-concept audit, whose cadence\nhook is currently overdue."  # cc3f
+    fields:  # cc3f
+      statement: "A boundary that auto-derives a taint label must mean the same thing the label means."  # cc3f
+      root_cause: "AUTO_SOURCE_LABEL_MAP maps the io_primitives boundary env_read to the taint label host_secret, but the env_read catalogue rows include host-description primitives that are not secrets in any ordinary sense."  # cc3f

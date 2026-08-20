@@ -245,7 +245,14 @@ PLAYBOOKS = [
      "Always use the pytest alias (which invokes smart-test) instead of python -m pytest or "
      "direct pytest. Smart-test provides a compact ~20-line summary, saves full output to "
      ".ci/pytest-output.log, and runs only tests affected by changed files. Commit "
-     ".ci/affected-tests.txt with every PR for CI smart test selection."),
+     ".ci/affected-tests.txt with every PR for CI smart test selection. Smart-test also runs "
+     "the mypy strict ratchet FIRST, before slicing or pytest: on a regression it exits "
+     "without running pytest, and you may not run tests until it is clean EVEN IF YOU DID NOT "
+     "CAUSE THE REGRESSION -- 'not my change' is not an exit, because a shrink-only ratchet "
+     "that every agent declines to own is how the surface drifted 672 to 682 across sixty "
+     "commits. Never route around it with direct pytest or HG_SKIP_MYPY_GATE, and never 'fix' "
+     "a breach by raising .ci/mypy-strict-baseline.json (a shrink-only baseline may only "
+     "ratchet DOWN). An infrastructure failure (exit 2) warns and continues."),
     ("output-capture-long-running-playbook",
      ".agent/agent_playbooks_protocols_sops_skills/output-capture-long-running-playbook.md",
      "NEVER pipe the output of long-running commands (auto-pr, merge-pr, pytest, bakeoff-*, "
@@ -787,6 +794,9 @@ def log_training_example(
     try:
         with open(log_path, "a") as f:
             f.write(entry + "\n")
+        # Owner-only (INV-todig): training examples quote transcript
+        # content, and this file is explicitly on a path into model weights.
+        os.chmod(log_path, 0o600)
     except OSError:
         pass  # Best-effort — don't break the pipeline for logging failures
 
@@ -853,6 +863,9 @@ def log_injection_history(
             os.makedirs(agent_dir, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        # Owner-only (INV-todig): injection history quotes transcript
+        # content. chmod on every write also heals pre-contract 664 files.
+        os.chmod(log_path, 0o600)
     except OSError:
         pass  # Best-effort — never break the pipeline for logging failures
 

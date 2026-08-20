@@ -63,9 +63,23 @@ def get_git_commit_sha() -> str | None:
 # so strict equality with HEAD is unworkable. The window absorbs the
 # doc-update commit plus follow-on changes that don't materially affect
 # the self-analysis (typos, comment fixes, README edits, small refactors)
-# without letting the doc rot indefinitely. At ``dev``'s commit cadence,
-# 15 commits ≈ ~3 days of headroom.
-RECENT_COMMIT_WINDOW = 15
+# without letting the doc rot indefinitely.
+#
+# Raised 15 → 30 (2026-08-03) after the window closed mid-PR on a change that
+# touched no architecture at all: a taint-analysis branch was in flight while
+# two feature merges and three tracker auto-syncs landed, and the doc hit 17
+# commits of distance. Pre-flighting cannot prevent that — the counter moves
+# after your last commit, not before your first (L35) — so the failure lands
+# on whoever happens to be holding an open PR.
+#
+# The counter is also consumed by commits that CANNOT invalidate the doc.
+# Tracker auto-sync commits touch only ``.agent/tracker*/.ops`` and never any
+# analyzed source, yet each one advances the distance. Excluding them would
+# fix the cause rather than the symptom; filed separately rather than widened
+# into this change.
+#
+# At ``dev``'s commit cadence, 30 commits ≈ ~6 days of headroom.
+RECENT_COMMIT_WINDOW = 30
 
 
 def get_recent_commit_shas(n: int = RECENT_COMMIT_WINDOW) -> list[str]:
@@ -397,6 +411,27 @@ def extract_module_docstring(file_path: Path) -> str | None:
         return None
 
 
+def _registers_a_linker(py_file: Path) -> bool:
+    """True when a ``linkers/`` module carries a ``@register_linker``.
+
+    The module inventory skips underscore-prefixed files because private
+    helpers (``_concept_utils``, ``_text_filters``, ``_view_template_core``)
+    are not linkers and counting them would inflate the catalogue. But the
+    underscore is a naming convention, not a registration fact, and one
+    module is both: ``linkers/_third_party_bases.py`` registers
+    ``django-third-party-dispatch-linker``.
+
+    Deciding on the decorator instead of the filename closes the class.
+    Before this, an underscore-named linker was skipped outright, so the
+    ADR-3bbb Uncategorized counter could flag it neither way — the
+    enforcement promise had a hole exactly the shape of this file, and the
+    generated count read 60 against a registry of 61.
+    """
+    if py_file.parent.name != "linkers":
+        return False
+    return "@register_linker" in py_file.read_text(encoding="utf-8")
+
+
 def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
     """Categorize modules into logical groups with docstrings."""
     categories: dict[str, list[tuple[str, str | None]]] = {
@@ -422,8 +457,15 @@ def categorize_modules() -> dict[str, list[tuple[str, str | None]]]:
             continue
 
         for py_file in sorted(src_root.rglob("*.py")):
-            # Skip private modules except __init__.py and __main__.py
-            if py_file.name.startswith("_") and py_file.name not in {"__init__.py", "__main__.py"}:
+            # Skip private modules except __init__.py, __main__.py, and any
+            # module that actually registers a linker (see
+            # _registers_a_linker for why the underscore alone cannot decide
+            # this).
+            if (
+                py_file.name.startswith("_")
+                and py_file.name not in {"__init__.py", "__main__.py"}
+                and not _registers_a_linker(py_file)
+            ):
                 continue
 
             rel_path = py_file.relative_to(src_root)
@@ -861,7 +903,7 @@ def extract_tracker_architecture() -> str:
 SCRIPT_CATEGORIES: dict[str, list[str]] = {
     "CI & Release": [
         "auto-pr", "merge-pr", "prepare-release", "release-check",
-        "ci-debug", "ci-failover", "tag-release", "release",
+        "ci-debug", "tag-release", "release",
     ],
     "Testing & Quality": [
         "smart-test", "check-package-coverage", "integration-test",

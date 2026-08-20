@@ -1,0 +1,36 @@
+- op: create  # a957
+  at: '2026-08-02T20:48:25Z'  # a957
+  by: agent  # a957
+  actor: jgstern_agent  # a957
+  clock: 1  # a957
+  nonce: a957  # a957
+  data:  # a957
+    kind: work_item  # a957
+    title: "30 non-realizable taint sinks carry a FILE PATH in the module slot (d3.v6.js/log, logging.go/Log) and 13 record package-not-package.Type - INV-karud's residual after WI-zazul"  # a957
+    status: todo_hard  # a957
+    priority: 1  # a957
+    parent:  # a957
+    tags:  # a957
+    - analysis_quality  # a957
+    - adr_0017  # a957
+    isbefore: []  # a957
+    duplicate_of: []  # a957
+    not_duplicate_of: []  # a957
+    pr_ref:  # a957
+    description: "FOUND BY THE WI-zazul VALIDATION COHORT 2026-08-02, on the 9-repo fresh\nsubstrate, using INV-karud's own realizability probe.\n\nTHE NUMBERS. Non-realizable sink matches (the emitted (lang, module, name) does\nnot exist in the catalog, though the NAME does for that language):\n    before WI-zazul: 51        after WI-zazul: 43\nWI-zazul removed exactly its own 8 substring matches and nothing else. The 43\nsurvivors split into two shapes that are NOT substring matching:\n\n  30  the emitted module slot holds a FILE PATH, not a module\n        18  go          logging.go                              Log\n         8  javascript  .../iframeresizer/iframeResizer.contentWindow.js  warn\n         1  javascript  src/pretix/static/d3/d3.v6.js           log\n         1  javascript  src/pretix/static/d3/d3-dispatch.v2.js  get\n         1  javascript  lib/application.js                      debug\n         1  python      hack/setup/scripts/generate-versions-from-gomod.py  run\n  13  go   net/http  Do   -- a real package, and the match is CORRECT\n        (the catalog entry is net/http.Client and Client.Do does perform\n        network IO). The emitted module records the PACKAGE while the catalog\n        records PACKAGE.TYPE, so no consumer can verify the match by lookup.\n        This is a labelling/provenance defect, not a wrong match, and it should\n        be adjudicated separately from the file-path class.\n\nWHY THIS MATTERS BEYOND THE COUNT, and it is a correction to WI-zazul's filing.\nINV-karud's two headline examples were d3's `log` (the LOGARITHM reported as a\nconsole.log sink) and net/http/httptest.NewRequest. WI-zazul attributed BOTH to\nsubstring module matching and fixed that mechanism. Only httptest was a\nsubstring defect. d3's `log` IS STILL PRESENT after the fix, because `console`\nnever substring-matched a file path -- that flow is matched through the\nNO-MODULE-HINT path (gate_named_entry + ambiguous_names), not through\n_module_matches at all. The filing was wrong on the SCOPE AXIS (L1): every\ncount in it was real, and the generalisation to one mechanism was not.\n\nCONSEQUENCE FOR INV-karud: it stays violated, and its root cause is now known to\nbe at least two distinct mechanisms, of which only one has been fixed.\n\nINVESTIGATION SHAPE (not implemented). Establish where the file path enters the\nmodule slot: is _extract_module_hint returning a path for these symbol ids, or\nis the analyzer emitting a path-shaped module in the id itself? Those need\nopposite fixes. The 18 go/logging.go/Log flows are the cheapest probe -- one\nrepo, one file, one name. Do NOT assume the JS and Go cases share a cause; the\nsubstring bug looked uniform too and turned out to be Go-and-JS-only for\nlanguage-coverage reasons.\n\nDO NOT close this by widening _module_matches. That predicate was just tightened\nfor good reason; a file path is not a module and making it match one would\nrestore the class WI-zazul removed."  # a957
+    fields: {}  # a957
+- op: update  # eeb5
+  at: '2026-08-02T21:54:55Z'  # eeb5
+  by: agent  # eeb5
+  actor: jgstern_agent  # eeb5
+  clock: 2  # eeb5
+  nonce: eeb5  # eeb5
+  set:  # eeb5
+    status: done  # eeb5
+- op: discuss  # 26bd
+  at: '2026-08-02T21:54:55Z'  # 26bd
+  by: agent  # 26bd
+  actor: jgstern_agent  # 26bd
+  clock: 3  # 26bd
+  nonce: 26bd  # 26bd
+  message: "FIXED and merged, PR #171, dev 3038ff6707.\n\nROOT CAUSE. _match_propagation_entry short-circuited every RESOLVED edge to an\nungated `return hits[0]`, so a first-party symbol matched a catalog primitive BY\nNAME ALONE. The justifying comment said \"the symbol is already disambiguated by\nresolution\" — false. Resolution establishes WHICH IN-REPO SYMBOL is called, not\nwhether it IS the catalogued external primitive. Third L50 instance of the day:\na boundary-justifying comment stating a false fact and foreclosing the option it\ndeclares unnecessary.\n\nFIX. The entry's declared module is compared against the symbol's own PATH,\nnormalised to module shape, using the component-aware predicate. The SUFFIX arm\nadded by WI-zazul is what makes it work: hypergumbo_core.cli matches a path of\npackages/.../hypergumbo_core/cli.py while log/slog does not match logging.go. A\ntest pins the first-party-catalog case so this cannot decay into \"reject\neverything resolved\" — which would break every user-supplied catalog and is the\ncase the original comment was protecting.\n\nCOHORT EVIDENCE (same 9 repos, same checkouts, same claims YAML, instrument\ncheck on each arm asserting the gate is active before measuring):\n    non-realizable  43 -> 13\n    flows          312 -> 272\nThe 13 survivors are ALL net/http+Do, where the match is CORRECT and only the\nlabel is lossy (emitted module = package, catalog = net/http.Client).\n\nALL 23 REMOVED FLOWS VERIFIED INDIVIDUALLY AGAINST SOURCE, not counted:\n  14  first-party sinks. caddy's `func Log() *zap.Logger` RETURNS a logger and\n      writes nothing (18 rows); d3's `function log()` builds d3.scaleLog — THE\n      LOGARITHM, INV-karud's headline example, which survived WI-zazul because\n      it was never a substring defect.\n   6  caddy's own Run(cfg) matched to gin.Engine.Run — a framework caddy does\n      not use. The SINK was real; the SOURCE was fabricated. Counting would\n      have missed this entirely; only reading each removed flow found it.\n   3  real flows through a first-party THIN WRAPPER\n      (def run(cmd): return subprocess.run(...).stdout). Filed WI-sirod. The fix\n      belongs in propagation. Restoring 3 real flows by readmitting 20 false\n      ones is a bad trade.\n\nPROCESS NOTE WORTH KEEPING. A length heuristic for \"file extension\" (\"a short\nalphanumeric segment after a dot\") rewrote the real module net.ws to net and was\ncaught by a PRE-EXISTING test within seconds. No threshold separates an\nextension from a short module component; the set is now named explicitly and\npinned by tests. That was the fourth time in this arc that a pre-existing test\ncaught a design error of mine — the others being the Go slash-vs-dot assumption\nand the unqualified-System suffix case. Running the whole affected suite rather\nthan only the new class paid for itself every time.\n\nRESIDUAL, tracked not hidden: WI-sirod (thin-wrapper propagation), WI-nibav\n(defusedcsv catalog gap), and the 13 net/http+Do labelling flows which need\nadjudication — correct match, unverifiable by lookup."  # 26bd

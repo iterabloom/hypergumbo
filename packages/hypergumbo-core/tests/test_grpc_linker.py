@@ -267,6 +267,64 @@ class TestTtrpcPatterns:
             "agentHandler.StartContainer",
         ]
 
+    def test_go_method_without_span_emits_line_zero(self, tmp_path: Path) -> None:
+        """WI-hafap: a span-less implementing method still gets its
+        implements edge, at the conventional line 0 — the same pin as the
+        caddy/kafka line-zero tests (dropping the edge would delete recall
+        for no reason; crashing was the pre-Optional behavior)."""
+        from hypergumbo_core.ir import Span, Symbol
+        from hypergumbo_core.linkers.grpc import link_grpc
+
+        proto_file = tmp_path / "agent.proto"
+        proto_file.write_text(
+            'syntax = "proto3";\n'
+            "package grpc;\n"
+            "service AgentService {\n"
+            "    rpc CreateContainer(CreateContainerRequest) returns (Empty);\n"
+            "}\n"
+        )
+
+        go_file = tmp_path / "agent_ttrpc.pb.go"
+        go_file.write_text(
+            "package grpc\n\n"
+            "func RegisterAgentServiceService(srv *ttrpc.Server, svc AgentServiceService) {\n"
+            '    srv.RegisterService("grpc.AgentService", &ttrpc.ServiceDesc{})\n'
+            "}\n"
+        )
+
+        go_method_syms = [
+            Symbol(
+                id=f"go:{tmp_path}/handler.go:0-0:agentHandler.CreateContainer:method",
+                name="agentHandler.CreateContainer",
+                kind="method",
+                language="go",
+                path=str(tmp_path / "handler.go"),
+                span=None,
+                origin="go",
+                origin_run_id="test",
+            ),
+            Symbol(
+                id=f"go:{tmp_path}/handler.go:5-8:agentHandler:struct",
+                name="agentHandler",
+                kind="struct",
+                language="go",
+                path=str(tmp_path / "handler.go"),
+                span=Span(5, 8, 0, 0),
+                origin="go",
+                origin_run_id="test",
+                meta={"base_classes": ["AgentServiceService"]},
+            ),
+        ]
+
+        result = link_grpc(tmp_path, existing_symbols=go_method_syms)
+
+        impl_edges = [
+            e for e in result.edges
+            if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"
+        ]
+        assert len(impl_edges) == 1
+        assert impl_edges[0].line == 0
+
     def test_detects_ttrpc_health_service(self, tmp_path: Path) -> None:
         """Detects ttrpc RegisterHealthService pattern."""
         from hypergumbo_core.linkers.grpc import link_grpc

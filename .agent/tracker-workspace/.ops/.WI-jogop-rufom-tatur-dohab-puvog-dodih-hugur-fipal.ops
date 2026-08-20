@@ -1,0 +1,38 @@
+- op: create  # f51a
+  at: '2026-08-17T12:14:54Z'  # f51a
+  by: agent  # f51a
+  actor: jgstern_agent  # f51a
+  clock: 1  # f51a
+  nonce: f51a  # f51a
+  data:  # f51a
+    kind: work_item  # f51a
+    title: "stamp_symbol_fingerprints retains every file's source+tree+index for the whole pass — group symbols by file and free per file"  # f51a
+    status: todo_soft  # f51a
+    priority: 2  # f51a
+    parent:  # f51a
+    tags:  # f51a
+    - dogfood  # f51a
+    - performance  # f51a
+    isbefore: []  # f51a
+    duplicate_of: []  # f51a
+    not_duplicate_of: []  # f51a
+    pr_ref:  # f51a
+    description: "Follow-up to WI-balaf (PR #394). Two costs, one cause.\n\nMEASURED. On this monorepo, stamp_symbol_fingerprints holds at peak:\n    source_cache + tree_cache (pre-existing)   847 MB\n    _PyCoverIndex per file (added by #394)     226 MB   (83 bytes/AST node)\nover 1,126 python files and 2,865,626 AST nodes. Instrument: a per-file index build\nloop measuring ru_maxrss deltas; the numbers are peak RSS, not allocation counts.\n\nROOT CAUSE — the pass cannot finish with a file. stamp_symbol_fingerprints iterates\n`for sym in symbols` in whatever order the symbol list arrives, so a given file's\nsymbols are scattered through the iteration and nothing can ever be freed. Both\ncaches therefore grow monotonically to cover the ENTIRE repo, and #394's index\ninherits that lifetime.\n\nTHE FIX IS A REORDER, NOT A CACHE-EVICTION POLICY. Group symbols by (path,\nlanguage) first, process one file's symbols together, then drop that file's source,\ntree and index before moving to the next. Peak memory becomes O(largest file)\ninstead of O(repo), which is a reduction against the PRE-#394 baseline too, not just\nagainst the index I added.\n\nWHY THIS IS SAFE TO REORDER: each symbol is stamped independently from its own span\nagainst its own file's tree. No symbol's fingerprint depends on any other symbol or\non iteration order, so grouping cannot change any emitted value. That claim is\ncheckable the same way #394 was — scripts/compare-survey-fingerprints.py over a\nbefore/after survey should report 0 of ~42,543 changed, with no file edited between\nthe runs this time (the 1 change in #394's check was the edited file itself).\n\nWATCH FOR: `symbols` is typed Iterable[Symbol], so grouping materializes it. It is a\nlist in production (run_survey passes all_symbols), but the signature permits a\ngenerator and a caller relying on streaming would regress. Either narrow the type or\nmaterialize deliberately and say so.\n\nEXPECTED PAYOFF, honestly bounded: this is a memory item, not a latency one. Peak\nRSS should drop substantially on large repos; wall clock should be roughly neutral\n(one grouping sort added, the same trees built once each). If a measurement shows a\nlatency gain too, it would come from better cache locality, and that should be\nmeasured rather than assumed."  # f51a
+    fields: {}  # f51a
+- op: update  # 80d2
+  at: '2026-08-17T21:04:09Z'  # 80d2
+  by: agent  # 80d2
+  actor: jgstern_agent  # 80d2
+  clock: 2  # 80d2
+  nonce: 80d2  # 80d2
+  set:  # 80d2
+    status: wont_do  # 80d2
+  add:  # 80d2
+    tags: [someday]  # 80d2
+- op: discuss  # efe0
+  at: '2026-08-17T21:04:10Z'  # efe0
+  by: agent  # efe0
+  actor: jgstern_agent  # efe0
+  clock: 3  # efe0
+  nonce: efe0  # efe0
+  message: "OWNER RULING (2026-08-17), verbatim: \"I guess we've mined all the processing\nefficiency that's reasonable to mine at this point in the hypergumbo project.\"\n\nPARKED — wont_do + someday. Not \"won't ever\"; \"not at this point in the project\".\nThis item is intact and its ceiling is measured, so re-opening is a status change,\nnot a re-derivation.\n\nWHAT WAS ACTUALLY MINED, so nobody re-measures it:\n  cold run_survey on this monorepo   517.7s -> 139.1s   (3.7x)\n    #394  fingerprint locator was quadratic in file size   -297.7s (62.6% of wall)\n    #395  --minimal declines side outputs a caller never reads   -59.1s\n    #397  one shared CLI scan instead of four                    -23.3s\n\nWHY PARKED — and note this is a MEMORY item, so parking it means accepting a\nmeasured cost, not declining a speedup. stamp_symbol_fingerprints holds every\nfile's source+tree+index for the whole pass: 847 MB pre-existing + 226 MB from\n#394's index (83 B/AST node) on this monorepo.\n\nTWO REASONS IT IS SAFE TO PARK. (a) Nothing has hit an OOM; the +27% rides on a\nretention pattern that predates #394. (b) It is now in TENSION with the only\nremaining parse-sharing idea: sharing fingerprint.py's parse with py.py's would\nREQUIRE holding trees across phases, i.e. more retention. Building both would be\nbuilding against oneself.\n\nRE-OPEN TRIGGER: an actual OOM or a repo whose AST-node total makes the +27%\ndecisive. The fix shape is recorded (group symbols by file, free per file) and\nwould cut the pre-existing 847 MB too."  # efe0

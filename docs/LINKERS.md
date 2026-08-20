@@ -20,7 +20,9 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 |--------|-------------|-------------|
 | airflow_framework_dispatch | Framework | Airflow class-based plugin dispatch: subclasses of `BaseOperator` / `BaseHook` / `BaseSensor` / `BaseTrigger` → their framework-called lifecycle methods (`execute`, `poke`, `run`, `on_kill`, …) via `dispatches_to` edges. |
 | annotation_convention | Protocol | Developer-provided comment directives (`@hg:dispatches`, `@hg:publishes`, `@hg:subscribes`) for cases where pattern-matching alone cannot recover the edge. |
+| argparse_dispatch | Framework | Python `argparse` subcommand dispatch: `set_defaults(func=...)` registrations → the handler function the parser dispatches to. |
 | build_target | Infrastructure | Build manifest files (`Dockerfile`, `Makefile`, entry scripts) → `main()` function or equivalent entry point. |
+| caddy_module_dispatch | Framework | Caddy module structs (identified by the `CaddyModule()` marker method) → their framework-called handler methods via `dispatches_to` edges. |
 | cgo | Bridge | Go `C.funcName()` calls via `import "C"` pseudo-package ↔ C/C++ function implementations. |
 | containment | Infrastructure | Class / interface symbols → their member method / getter / setter symbols via `contains` edges. Consumed by slice, method-call-recovery, and other linkers that assume structural containment. |
 | controller_routes | Framework | Symbols tagged `concept: controller` (class groupings per framework YAML) → the route-handler method symbols whose spans nest within the controller's span in the same file, via `contains_routes` edges (NestJS, Spring Boot, ASP.NET, Laravel, Symfony, Phoenix, Micronaut, Ktor, Grails, CakePHP). |
@@ -30,6 +32,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | dependency | Infrastructure | Manifest dependency declarations (`Cargo.toml`, `pyproject.toml`, `package.json`) → code imports that consume them. |
 | di_resolution | Framework | Interface methods → DI-bound implementation methods via `di_resolves` edges. Supports Guice, Spring `@Bean`, ASP.NET Core DI, NestJS/Angular, InversifyJS, Koin, Python `injector`, Java SPI. Heuristic fallbacks for single-impl and naming conventions. |
 | django_orm_dispatch | Framework | Django ORM/admin/form dispatch: subclasses of Django `Model` / `Manager` / `QuerySet` (and form/admin/DRF/Wagtail bases) → their framework-called override methods (`save`, `delete`, `clean`, `get_queryset`, `__str__`, …) via `dispatches_to` edges. |
+| _third_party_bases | Framework | Registers `django-third-party-dispatch-linker`: third-party Django/DRF/Wagtail/hierarkey subclasses → framework-called override methods via `dispatches_to` edges. Cascade partner to `django_orm_dispatch`, covering bases that live in third-party packages whose `meta.base_classes` in-tree analysis cannot see. |
 | event_sourcing | Protocol | Event publishers (`EventEmitter.emit`, Django signals, Spring `@EventListener`) → subscribers by event name. |
 | go_cobra | Framework | Cobra `cobra.Command{Run: handler}` struct-literal dispatch → `RunE`/`PreRunE` handler functions. |
 | go_memberlist | Framework | HashiCorp `memberlist.Create(delegate)` call sites → `NodeMeta` / `NotifyJoin` / etc. delegate callback methods. |
@@ -56,6 +59,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | phoenix_ipc | Framework | Phoenix Channels (`broadcast!`, `push`, `handle_in`) and LiveView event dispatch in Elixir. |
 | pyffi | Bridge | Python `ctypes` / `cffi` calls, PyO3 bindings ↔ C / C++ / Rust function implementations. |
 | react_component | Framework | JSX `<ComponentName />` usage → component definitions via `renders_component` edges. |
+| receiver_type_dispatch | Infrastructure | Unresolved calls carrying a `receiver_type_hint` → the extension method or UFCS free function whose declared receiver / first-parameter type matches, via a receiver-type-keyed index. |
 | route_handler | Framework | Route symbols → handler functions using framework-specific resolution (Rails, Phoenix, Laravel, Express, Django). |
 | router_routes | Framework | Symbols tagged `concept: router` (module / combinator / route-table groupings per framework YAML) → the `concept: route` registration symbols whose spans nest within the router's span in the same file, via `registers_routes` edges (Phoenix, http4s, Nuxt/Remix filesystem routes, Yesod `parseRoutes`). |
 | ruby_ffi | Bridge | Ruby `FFI.attach_function` / `rb_define_method` C extension registrations ↔ C / C++ function implementations. |
@@ -76,7 +80,7 @@ Prioritisation of linker investment ranks by expected false-positive reduction o
 | websocket | Protocol | Socket.io, native WebSocket, Django Channels, FastAPI WebSocket — senders ↔ receivers by event name. |
 | yjs_crdt | Framework | Yjs shared-type reactive data flow — writers → observers via `crdt_publishes` edges. |
 
-**Count:** 57 linkers — Protocol 11, Bridge 10, Framework 29, Infrastructure 7.
+**Count:** 61 linkers — Protocol 11, Bridge 10, Framework 32, Infrastructure 8. One row is keyed by module rather than linker name: `_third_party_bases` registers `django-third-party-dispatch-linker`.
 
 Subcategory assignments above are the initial baseline per ADR-3bbb Appendix B; borderline cases (e.g., `grpc` is framework-specific in protocol but cross-language in use) are documented in that ADR's appendix and will be refined as the subcategory vocabulary matures.
 

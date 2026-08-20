@@ -131,6 +131,17 @@ def _isolate_shared_scripts(tmp_path: Path) -> Path:
         "rotate-on-session-end.sh",
         "poll-transcript-change.sh",
         "session_id_helpers.sh",
+        # Required by launch-transcript-sync.sh and rotate-on-session-end.sh,
+        # which source archive_scrubbed.sh and invoke scrub_secrets.py. Omitting
+        # them made this sandbox a repo where the scrubber is MISSING, which is
+        # one of the demonstrated data-loss modes -- that is how
+        # test_orphan_sweep_archives_dead_session_files went red.
+        "archive_scrubbed.sh",
+        "scrub_secrets.py",
+        # Required since INV-todig: every shell writer sources the
+        # permission-contract helper; a sandbox without it is a repo where
+        # the scripts die at the source line under set -e.
+        "transcript_perms.sh",
     ):
         src_file = SHARED_DIR / name
         dest_file = shared_dir / name
@@ -1050,3 +1061,116 @@ class TestSyncTranscript:
             _cleanup_proc(proc)
             if pid_file.exists() and pid_file.read_text().strip() == "99999":
                 pid_file.unlink()
+
+    def _fake_inotifywait(self, tmp_path: Path, counter: Path) -> Path:
+        """A stand-in ``inotifywait`` that always fails to initialise.
+
+        Reproduces the production failure exactly:
+        ``Couldn't initialize inotify: Too many open files`` — exit 1,
+        immediately, with no event and no delay.
+        """
+        bindir = tmp_path / "fakebin"
+        bindir.mkdir(exist_ok=True)
+        fake = bindir / "inotifywait"
+        fake.write_text(
+            "#!/bin/bash\n"
+            f"echo x >> {counter}\n"
+            "echo \"Couldn't initialize inotify: Too many open files\" >&2\n"
+            "exit 1\n",
+        )
+        fake.chmod(0o755)
+        return bindir
+
+    def test_inotify_failure_backs_off_instead_of_busy_looping(
+        self, tmp_path: Path,
+    ) -> None:
+        """When ``inotifywait`` cannot start, the watcher must BACK OFF.
+
+        Observed in production: 128/128 ``fs.inotify.max_user_instances``
+        were held by unrelated processes (369 stray ``dbus-daemon``s), so
+        every ``inotifywait`` failed instantly. The watch loop's error path
+        ran ``continue`` with NO delay, so watchers spun at ~16% CPU each —
+        one logged 114 million voluntary context switches and 13.9 hours of
+        CPU. A resource shortage has to degrade, not melt down.
+
+        Bounded by INVOCATION COUNT rather than by CPU%, because a CPU
+        threshold is a race on a loaded box; the count is the mechanism.
+        """
+        shared = _isolate_shared_scripts(tmp_path)
+        sync_script = shared / "sync-transcript.sh"
+        agent_dir = tmp_path / ".agent"
+        counter = tmp_path / "invocations.txt"
+        counter.write_text("")
+        bindir = self._fake_inotifywait(tmp_path, counter)
+
+        src = tmp_path / "src.jsonl"
+        src.write_text('{"type":"user","message":"hello"}\n')
+        sid = "sync-backoff"
+        dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
+
+        env = os.environ.copy()
+        env["PATH"] = f"{bindir}:{env['PATH']}"
+        proc = subprocess.Popen(
+            ["bash", str(sync_script), str(src), str(dest), sid],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+        )
+        try:
+            time.sleep(3)
+            calls = len(counter.read_text().split())
+            assert calls <= 20, (
+                f"inotifywait invoked {calls} times in 3s — that is the "
+                f"busy-loop. The error path must sleep before retrying."
+            )
+        finally:
+            _cleanup_proc(proc)
+
+    def test_mirror_still_updates_when_inotify_is_unavailable(
+        self, tmp_path: Path,
+    ) -> None:
+        """Backing off must not mean going deaf.
+
+        The pre-fix error path ``continue``d without calling ``do_sync``, so
+        while inotify was exhausted the mirror silently stopped updating —
+        the watcher burned CPU AND published nothing. Degraded mode has to
+        keep mirroring, just less promptly.
+        """
+        shared = _isolate_shared_scripts(tmp_path)
+        sync_script = shared / "sync-transcript.sh"
+        agent_dir = tmp_path / ".agent"
+        counter = tmp_path / "invocations.txt"
+        counter.write_text("")
+        bindir = self._fake_inotifywait(tmp_path, counter)
+
+        src = tmp_path / "src.jsonl"
+        src.write_text('{"type":"user","message":"first"}\n')
+        sid = "sync-degraded"
+        dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
+
+        env = os.environ.copy()
+        env["PATH"] = f"{bindir}:{env['PATH']}"
+        proc = subprocess.Popen(
+            ["bash", str(sync_script), str(src), str(dest), sid],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+        )
+        try:
+            for _ in range(50):
+                if dest.exists() and dest.read_text().strip():
+                    break
+                time.sleep(0.1)
+            assert dest.exists() and "first" in dest.read_text(), (
+                "initial sync did not happen"
+            )
+
+            with open(src, "a", encoding="utf-8") as fh:
+                fh.write('{"type":"user","message":"second"}\n')
+
+            for _ in range(80):
+                if "second" in dest.read_text():
+                    break
+                time.sleep(0.25)
+            assert "second" in dest.read_text(), (
+                "mirror never picked up the appended line while inotify was "
+                "unavailable — the watcher went deaf instead of polling"
+            )
+        finally:
+            _cleanup_proc(proc)

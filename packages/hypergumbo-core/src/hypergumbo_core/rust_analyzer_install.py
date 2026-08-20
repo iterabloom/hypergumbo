@@ -50,6 +50,8 @@ import subprocess  # nosec B404 — required for rustup invocations
 import sys
 from typing import Callable, Optional
 
+from .safety_zones import repo_inspect_probe
+
 
 def is_rust_analyzer_integration_installed() -> bool:
     """Return True iff the ``hypergumbo-lang-rust-analyzer`` Python wrapper imports.
@@ -108,9 +110,11 @@ def is_rust_analyzer_available(
     if resolved is None:
         return False
 
-    run = runner if runner is not None else subprocess.run
+    # WI-fasuv: repo_inspection zone. The injectable `runner` is preserved for
+    # tests; the DEFAULT is the wrapper, which is what production takes.
+    run = runner if runner is not None else repo_inspect_probe
     try:
-        completed = run(  # nosec B603
+        completed = run(
             [resolved, "--version"],
             capture_output=True,
             timeout=5.0,

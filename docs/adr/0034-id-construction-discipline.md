@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0034: ID-Construction Discipline
 
-- Status: **Accepted**
+- Status: **Accepted — partially superseded by ADR-0037** (the out-of-scope `:unresolved` dst blessing) **and ADR-0036** (reviewer-checklist item 5's round-trip claim); the core factory-discipline decision is in force
 - Date: 2026-06-01
 - Supersedes: —
 - Superseded by: Partially superseded by ADR-0037 (Out-of-scope `:unresolved` blessing), ADR-0036 (reviewer-checklist item 5 correction); core factory-discipline decision in force
@@ -13,7 +13,7 @@
 
 ### The architectural absence
 
-`Symbol.id` is the primary identity field on every Symbol. The canonical schema is documented at `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:288` as:
+`Symbol.id` is the primary identity field on every Symbol. The canonical schema is documented at `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py::make_symbol_id` as:
 
 ```
 <language>:<path>:<start_line>-<end_line>:<name>:<kind>
@@ -24,7 +24,7 @@ Single-colon separators, exactly five segments, lowercase identifier for the `la
 But six linker passes did NOT use the factory. They constructed IDs by f-string, with their own ad-hoc schema:
 
 ```python
-# linkers/http.py:1324 (pre-migration)
+# linkers/`http.py::_create_client_symbol` (pre-migration)
 id=f"{rel_path}::http_client::{call.line}",
 # Produces e.g. "packages/foo/bar.py::http_client::42"
 ```
@@ -41,7 +41,7 @@ The result was a **silent schema bifurcation** between analyzer Symbols (canonic
 
 The id-construction-discipline lab-notebook entry at `~/hypergumbo_lab_notebook/id-construction-discipline-05312026.md` documented the problem and proposed a reviewer-time checklist:
 
-> Before merging any PR that adds a `Symbol(id=...)` line: confirm the ID is built via one of the canonical factories in `analyze/base.py` (lines 288-309). If you're constructing an ID by f-string, stop and ask whether a factory exists for the shape you need. If no factory fits, the right move is to add a factory, not to invent a new shape.
+> Before merging any PR that adds a `Symbol(id=...)` line: confirm the ID is built via one of the canonical factories in `analyze/base.py`. If you're constructing an ID by f-string, stop and ask whether a factory exists for the shape you need. If no factory fits, the right move is to add a factory, not to invent a new shape.
 
 The lab-notebook explicitly named the limit of this posture:
 
@@ -55,7 +55,7 @@ Adopt **canonical-factory discipline** for `Symbol.id` construction as policy, e
 
 ### The rule
 
-**Every `Symbol(id=...)` site MUST use one of the canonical factories at `analyze/base.py:288-309`.** Specifically:
+**Every `Symbol(id=...)` site MUST use one of the canonical factories in `analyze/base.py` (`make_symbol_id` and siblings).** Specifically:
 
 - `make_symbol_id(lang, path, start_line, end_line, name, kind)` — primary factory for analyzer- and linker-emitted Symbols.
 - `make_file_id(lang, path)` — file pseudo-symbols; equivalent to `make_symbol_id(lang, path, 1, 1, "file", "file")`.
@@ -120,12 +120,12 @@ The checklist above is the documented manual gate. Until the static-AST companio
 ## Implementation status
 
 - **Phase 5 PR1 (landed)**: `id_format` validator class shipped; six INV-sadiv linker sites migrated to `make_symbol_id`:
-  - `linkers/http.py:1324` (http_client call_site)
-  - `linkers/database_query.py:351` (db_query call_site)
-  - `linkers/subprocess_cli.py:329` (subprocess_call call_site)
-  - `linkers/message_queue.py:417` (mq_publisher / mq_subscriber function)
-  - `linkers/graphql_resolver.py:430` (resolver function)
-  - `linkers/graphql.py:208` (graphql_client function)
+  - `linkers/http.py::_create_client_symbol` (http_client call_site)
+  - `linkers/database_query.py::TABLE_EXTRACTION_PATTERNS` (db_query call_site)
+  - `linkers/subprocess_cli.py::SUBPROCESS_VAR_PATTERN` (subprocess_call call_site)
+  - `linkers/message_queue.py::REDIS_SUBSCRIBE_JS_PATTERN` (mq_publisher / mq_subscriber function)
+  - `linkers/graphql_resolver.py::_create_resolver_symbol` (resolver function)
+  - `linkers/graphql.py::_create_client_symbol` (graphql_client function)
 - **Phase 5 PR2 (this ADR)**: policy documentation.
 - **Phase 6 PR1 (planned)**: extend the validator to `Symbol.stable_id` format, address INV-hunup multiplicity and INV-dulah escapes via the same validator-driven cleanup model.
 

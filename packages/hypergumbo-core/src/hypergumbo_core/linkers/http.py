@@ -3,7 +3,14 @@
 
 This linker detects HTTP client calls (fetch, axios, AngularJS $http, jQuery $.ajax,
 requests, OpenAPI clients, RestClient, HTTParty, Faraday, Net::HTTP, RestTemplate,
-Retrofit) and links them to server route handlers detected by language analyzers.
+Retrofit, and Elm's ``Http`` module) and links them to server route handlers
+detected by language analyzers.
+
+Two URL shapes get special handling beyond the literal case. JS/TS template
+literals are folded to a comparable path before matching, so
+``fetch(`/api/users/${id}`)`` lines up with a server route carrying a path
+parameter. And a URL that resolves only to a variable falls back to prefix
+matching against known routes rather than being dropped.
 
 Detected Client Patterns
 ------------------------
@@ -44,13 +51,16 @@ Java:
 - restTemplate.getForObject("/api/users", ...) - Spring RestTemplate
 - restTemplate.postForEntity("/api/users", ...) - Spring RestTemplate
 - restTemplate.exchange("/api/users", HttpMethod.GET, ...) - Spring RestTemplate
-- restTemplate.delete("/api/users/1") - Spring RestTemplate
+  (``put`` and ``delete`` are deliberately NOT matched as bare RestTemplate
+  methods — they collide with ``HashMap.put`` / ``List.delete``; use
+  ``exchange()`` for RestTemplate PUT/DELETE)
 - @GET("/api/users") - Retrofit annotation
 - @POST("/api/items") - Retrofit annotation
 
 Variable URL Detection
 ----------------------
-URLs stored in variables are detected with lower confidence (0.65 vs 0.9):
+URLs stored in variables are detected with lower confidence (0.65 vs 0.9;
+cross-language matches sit at 0.8):
 - const API_URL = '/api/users'; fetch(API_URL) -> detected with url_type="variable"
 - Direct literal URLs have url_type="literal" and higher confidence
 
@@ -67,7 +77,9 @@ Parameterized routes are supported:
 
 How It Works
 ------------
-1. Collect route symbols from language analyzers (kind="route")
+1. Collect route symbols from language analyzers, identified by
+   ``meta['framework_role']=='route'`` or ``concept: route`` — not by
+   ``kind``, which is ``function`` after the ADR-0027 fold
 2. Scan source files for HTTP client calls
 3. Extract URL and method from each call (literal or variable)
 4. Match to route symbols by method + path pattern
@@ -92,7 +104,11 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import urlparse
 
-from ..analyze.base import make_site_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_site_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..routes import is_route, method_token, route_of
@@ -1053,7 +1069,9 @@ def _scan_java_file(file_path: Path, content: str) -> list[HttpClientCall]:
     """Scan a Java file for HTTP client calls.
 
     Detects two families of Java HTTP clients:
-    - Spring RestTemplate: restTemplate.getForObject/postForEntity/exchange/delete/put
+    - Spring RestTemplate: restTemplate.getForObject/getForEntity/postForObject/
+      postForEntity/patchForObject, plus exchange() (put/delete excluded — see
+      JAVA_REST_TEMPLATE_PATTERN)
     - Retrofit: @GET/@POST/@PUT/@DELETE/@PATCH annotations
     """
     calls: list[HttpClientCall] = []
@@ -1319,10 +1337,11 @@ def _create_client_symbol(call: HttpClientCall, root: Path) -> Symbol:
     encountering pseudo-function names like ``"GET event.request"``.
     """
     rel_path = Path(call.file_path).relative_to(root) if root else Path(call.file_path)
+    call_name = f"{call.method} {call.url}"
 
     return Symbol(
-        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, "http_client", "call_site"),
-        name=f"{call.method} {call.url}",
+        id=make_symbol_id(call.language, str(rel_path), call.line, call.line, sanitize_id_name_segment(call_name), "call_site"),
+        name=call_name,
         kind="call_site",
         path=call.file_path,
         span=Span(
@@ -1359,7 +1378,7 @@ def link_http(root: Path, route_symbols: list[Symbol]) -> HttpLinkResult:
 
     Args:
         root: Repository root path.
-        route_symbols: Route symbols from language analyzers (kind="route").
+        route_symbols: Route-marker symbols from language analyzers.
 
     Returns:
         HttpLinkResult with edges linking clients to servers.

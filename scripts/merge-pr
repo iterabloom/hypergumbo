@@ -28,10 +28,6 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 detect_api_base
-apply_failover_overrides
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-fi
 
 # ------------------------------------------------------------------
 # `close` subcommand — WI-vonis.
@@ -90,13 +86,12 @@ cmd_close() {
 		return 1
 	fi
 
-	# Validate credentials
-	local token="${FORGEJO_TOKEN:-}"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		token="${SELFHOSTED_FORGEJO_TOKEN:-$token}"
-	fi
+	# Validate credentials — backend-aware (C9). detect_api_base at top level
+	# already ran detect_forge_backend, so FORGE_BACKEND is set here.
+	resolve_forge_token
+	local token="${FORGE_TOKEN:-}"
 	if [[ -z "$token" ]]; then
-		echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+		echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 		return 1
 	fi
 
@@ -158,11 +153,7 @@ print(json.dumps({'body': f'Closed by merge-pr: {sys.argv[1]}'}))
 
 	echo ""
 	echo "✅ PR #$pr_num closed"
-	if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-		echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$pr_num"
-	else
 		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
-	fi
 	return 0
 }
 
@@ -242,12 +233,11 @@ fi
 # ------------------------------------------------------------------
 # Validate credentials
 # ------------------------------------------------------------------
-TOKEN="${FORGEJO_TOKEN:-}"
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-fi
+# Backend-aware (C9); detect_api_base above already set FORGE_BACKEND.
+resolve_forge_token
+TOKEN="${FORGE_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
-	echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+	echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
 	exit 1
 fi
 
@@ -310,10 +300,13 @@ if [[ "$WAIT_FOR_CI" == "true" ]]; then
 	poll_result=0
 	poll_ci "$HEAD_SHA" || poll_result=$?
 
-	if [[ $poll_result -eq 1 ]]; then
-		exit 1
-	elif [[ $poll_result -eq 2 ]]; then
-		exit 2
+	# WI-ditav: DEFAULT-DENY. This used to enumerate 1 and 2 and fall through
+	# to the merge on anything else — so exit 3 (never dispatched), added later
+	# by a different fix, silently became a permit. Live consequence: PR #160
+	# merged with CI still pending. Refuse on every non-zero verdict; the
+	# decision lives in ci_verdict_permits_merge so it cannot drift per site.
+	if ! ci_verdict_permits_merge "$poll_result"; then
+		exit "$poll_result"
 	fi
 else
 	# Verify CI has already passed (don't merge without CI)
@@ -393,9 +386,6 @@ rm -f "$REPO_ROOT/.git/PR_PENDING"
 
 # Try to update local branch
 pull_remote="origin"
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	pull_remote="selfh"
-fi
 if git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
 	git checkout "$BASE_BRANCH" 2>/dev/null || true
 	git pull "$pull_remote" "$BASE_BRANCH" 2>/dev/null || true
@@ -404,8 +394,4 @@ fi
 
 echo ""
 echo "✅ PR #$PR_NUM merged successfully!"
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-	echo "🔗 $FAILOVER_URL/$FAILOVER_REPO/pulls/$PR_NUM"
-else
 	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
-fi

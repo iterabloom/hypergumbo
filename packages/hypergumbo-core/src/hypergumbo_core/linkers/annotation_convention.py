@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
+from ..analyze.base import make_route_symbol
 from ._text_filters import language_from_path
 from .registry import (
     LinkerActivation,
@@ -276,32 +277,41 @@ def link_annotations(
 
     # --- Create route symbols for @hg:route directives ---
     for route in routes:
-        route_id = f"{route.file_path}:{route.line}:{route.argument}:annotated_route"
-        if route_id not in seen_sym_ids:
-            seen_sym_ids.add(route_id)
-            result_symbols.append(Symbol(
-                id=route_id,
-                stable_id=None,
-                shape_id=None,
-                display_label=f"@hg:route {route.argument}",  # ADR-0032
-                fingerprint=hashlib.sha256(route_id.encode()).hexdigest()[:16],
-                kind="function",
-                name=route.argument,
-                path=route.file_path,
-                # ADR-0031 Class B: synthetic stand-in for an annotated route.
-                language=None,
-                discovery_language=language_from_path(Path(route.file_path)),
-                protocol_origin="annotation",
-                span=Span(
-                    start_line=route.line, end_line=route.line,
-                    start_col=0, end_col=0,
-                ),
-                origin=PASS_ID,
-                origin_run_id=run.execution_id,
-                meta={"hg_annotation": "route", "route_spec": route.argument, "framework_role": "route"},
-                supply_chain_tier=1,
-                supply_chain_reason="@hg:route annotation",
-            ))
+        # The directive grammar is ``@hg:route <method> <path>`` (module
+        # docstring; every test uses it), so the argument splits on the first
+        # run of whitespace. A single-token argument does not match the
+        # documented grammar; it is read as a method with the root path, which
+        # is the factory's own INV-nimik ""->"/" normalization rather than a
+        # second naming rule invented here.
+        method, _, spec_path = route.argument.partition(" ")
+        # WI-zugob: minted through the shared chokepoint. This replaces a raw
+        # f-string id that was only FOUR segments (no language slot) and carried
+        # an unregistered ``annotated_route`` kind-slot — an id that could not be
+        # parsed back into its ADR-0036 slots at all.
+        route_sym = make_route_symbol(
+            language=language_from_path(Path(route.file_path)) or "unknown",
+            path=route.file_path,
+            span=Span(
+                start_line=route.line, end_line=route.line,
+                start_col=0, end_col=0,
+            ),
+            method=method,
+            route_path=spec_path.strip(),
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            protocol_origin="annotation",
+            discovery_language=language_from_path(Path(route.file_path)),
+            extra_meta={"hg_annotation": "route", "route_spec": route.argument},
+        )
+        if route_sym.id not in seen_sym_ids:
+            seen_sym_ids.add(route_sym.id)
+            route_sym.display_label = f"@hg:route {route.argument}"  # ADR-0032
+            route_sym.fingerprint = hashlib.sha256(
+                route_sym.id.encode()
+            ).hexdigest()[:16]
+            route_sym.supply_chain_tier = 1
+            route_sym.supply_chain_reason = "@hg:route annotation"
+            result_symbols.append(route_sym)
 
     # --- Create dispatches_to edges for @hg:dispatches directives ---
     # Build symbol name index for matching dispatch targets

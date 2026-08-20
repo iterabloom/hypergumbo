@@ -1,0 +1,43 @@
+- op: create  # e339
+  at: '2026-08-01T05:33:55Z'  # e339
+  by: agent  # e339
+  actor: jgstern_agent  # e339
+  clock: 1  # e339
+  nonce: e339  # e339
+  data:  # e339
+    kind: work_item  # e339
+    title: "compact --max-symbols containment monotonicity violated on 6/8 bakeoff maps (regression re-check on dev 54a5f34bcc; pretix and express clean)"  # e339
+    status: todo_hard  # e339
+    priority: 2  # e339
+    parent: WI-kolal-bador-gubif-sajob-zonuk-rijaz-rigom-hohon  # e339
+    tags:  # e339
+    - compact  # e339
+    isbefore: []  # e339
+    duplicate_of: []  # e339
+    not_duplicate_of: []  # e339
+    pr_ref:  # e339
+    description: "**Measured 2026-08-01 on dev 54a5f34bcc** (the item's own subcommand, the\nright instrument — NOT the hg.4k/16k/64k budget views, which are the sketch\nside and mismeasured this item once before, corrected 2026-07-16).\n\n**Repro** (input maps = the 2026-07-17 bakeoff artifacts, deep-20260717-200119):\n\n    hypergumbo compact --input <repo>/hg.json --max-symbols N --out cN.json\n    for N in 10 25 50 100; assert nodes(c10) <= nodes(c25) <= nodes(c50) <= nodes(c100)\n\n**Result: containment VIOLATED on 6 of 8 repos; express and pretix clean.**\n\n    caddy            VIOLATED 50->100  (drops Dispenser.Val, Dispenser.Next, fmt.Errorf +2)\n    apollo-server    VIOLATED 50->100  (drops jest globals describe/expect/it)\n    SwiftyJSON       VIOLATED 10->25   (drops JSON.encode, JSON.exists, ComparableTests)\n    zoxide           VIOLATED 25->50 AND 50->100 (drops Query.query_interactive/_list/_first)\n    spring-petclinic VIOLATED 25->50 AND 50->100 (drops PetValidator.validate ...)\n    sherpa-csharp    VIOLATED at every step (10->25, 25->50, 50->100)\n    express          OK\n    pretix           OK\n\nDeterministic: two identical caddy --max-symbols 100 runs produce identical\nnode sets; the c50-minus-c100 difference is stable at 5 nodes. So this is a\nselection-logic property, not tie-break nondeterminism.\n\n**Consistency with the record:** the 2026-07-16 correction verified\n--max-symbols monotonic on pretix — pretix IS clean here too. The\nverification was real but pretix-only; six other repos violate. Note the\ndropped nodes at larger budgets include both real methods AND\nexternal_symbols, and several sweeps did not fill their budget (SwiftyJSON\nsizes 10/12/25/50 for budgets 10/25/50/100) — the --coverage 0.8 default\ninteracting with selection is a plausible mechanism surface, unverified.\n\n**Provenance:** found while validating the awaits_bakeoff_validation queue;\nthe 8 reflect assessments' moved=6 plurality for the parent measured the\nbudget-view artifacts, which do NOT exercise this subcommand. Sweep script\nand outputs preserved in the session scratchpad (compact_sweep.py)."  # e339
+    fields: {}  # e339
+- op: update  # 1fcd
+  at: '2026-08-01T06:28:02Z'  # 1fcd
+  by: agent  # 1fcd
+  actor: jgstern_agent  # 1fcd
+  clock: 2  # 1fcd
+  nonce: 1fcd  # 1fcd
+  set:  # 1fcd
+    status: done  # 1fcd
+    pr_ref: '#144'  # 1fcd
+- op: discuss  # ec89
+  at: '2026-08-01T06:28:03Z'  # ec89
+  by: agent  # ec89
+  actor: jgstern_agent  # ec89
+  clock: 3  # ec89
+  nonce: ec89  # ec89
+  message: "CLOSED done — PR #144, merged to dev as 38933e8f93 (2026-08-01).\n\nFIX: budget-monotone seed policy + budget-independent positional coverage\nstop, default path only (connectivity mode keeps its adaptive policy by\ndesign — bridging is not a ranked prefix and containment was never its\ncontract). Three mechanisms closed: the entrypoint cap's regime switch on\nlen(eps) > max_symbols, the shrinking cross-cutting budget\n(max//2 - len(forced)), and the coverage stop counting seed centrality.\n\nBEHAVIORAL EVIDENCE (the item's own filed repro, re-run on the merged\ncode): the same 8-map sweep that measured 6/8 VIOLATED now reads 8/8 OK —\ncaddy/apollo/SwiftyJSON/zoxide/spring-petclinic/sherpa-csharp all\ncontainment-monotonic at --max-symbols 10/25/50/100 against the 07-17\nbakeoff maps; express and pretix stay clean. TestSeededContainment pins\nthe property in-suite across budgets straddling the regime boundary at\ntwo coverage targets, with feature-preservation guards (seeds included at\ngenerous budgets; seeds never consume the whole budget). 226 compact + 207\nCLI tests green.\n\nMethod note for the record: the first draft of the new test passed\nVACUOUSLY because its centrality-ladder edges used 'calls' — itself a\ncross-cutting type — so every node became a seed candidate and the seed\nmachinery was never isolated. The committed fixture uses 'references' and\ndocuments why. (L17's vacuous-green, caught before commit.)"  # ec89
+- op: discuss  # 9430
+  at: '2026-08-02T01:40:04Z'  # 9430
+  by: agent  # 9430
+  actor: jgstern_agent  # 9430
+  clock: 4  # 9430
+  nonce: '9430'  # 9430
+  message: "CORRECTION TO THIS ITEM'S RECORDED JUSTIFICATION (no status change -- the fix itself is sound and\nstill holds 120/120 on the centrality path). PR #157, dev fa7ae4e388.\n\nThis item's comment scoped the fix to the default path with the reason:\n\n    \"Connectivity mode deliberately keeps the old adaptive policy ... bridge expansion is not a\n     ranked prefix, so budget-containment was never that mode's contract.\"\n\nThat reason is FALSE, and it had been quoted as settled fact for two sessions -- including by me,\ntwice, when assessing whether compact's default could be flipped. It nearly cost the flip.\n\nWHAT IS ACTUALLY TRUE. select_by_connectivity's greedy loop never reads the budget:\nmax_additional appears only in the `while added < max_additional` guard, never in the scorer, the\nfrontier update, or the union-find. With a fixed seed set the algorithm emits ONE fixed sequence\nand a budget K emits its first K elements. Bridge expansion IS a prefix -- a dynamically\ngenerated one, but a prefix. Verified on the PRODUCTION path, not a replica: freezing the seed\nset to a budget-independent value takes connectivity from 55/120 budget pairs contained to\n120/120 across all eight 07-17 maps, pretix (previously 0/15) included, with no other change.\n\nWHAT ACTUALLY BROKE CONTAINMENT was the en-bloc, budget-SIZED seed preload -- every seed admitted\nbefore the first greedy pick, so a larger budget handed the scorer a different union-find state\nand produced a different SEQUENCE of picks rather than a longer one. A node the small budget\nspent a pick on gets displaced by a bridge that only scores well because an extra seed exists.\n\nCONSEQUENCE FOR THIS ITEM'S OWN FIX: the seed-QUOTA half was the wrong half for connectivity\nmode. Transplanting it verbatim moves connectivity from 65 violations to 66 (fixes 4, creates 5)\n-- measured on the production path and independently reproduced twice. The seed ORDER was never\nthe problem. The shipped fix interleaves seeds 1:2 into the stream instead of preloading them.\n\nWHY THIS IS WORTH RECORDING RATHER THAN QUIETLY SUPERSEDING: the sentence read as an explanation\nof a scoping decision, so nobody re-measured it, and it foreclosed the option it described as\nimpossible. That is exactly the L50 shape (a boundary-justifying comment that decays like a\nfiling and is load-bearing precisely when nobody re-checks it) -- this time in a code comment\ninside a fix, rather than in a gate header."  # 9430

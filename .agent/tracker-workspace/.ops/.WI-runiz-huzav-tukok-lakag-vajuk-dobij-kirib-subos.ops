@@ -1,0 +1,36 @@
+- op: create  # 0c19
+  at: '2026-08-17T08:28:34Z'  # 0c19
+  by: agent  # 0c19
+  actor: jgstern_agent  # 0c19
+  clock: 1  # 0c19
+  nonce: 0c19  # 0c19
+  data:  # 0c19
+    kind: work_item  # 0c19
+    title: "smart-test's cold slice is 97% of the local cycle: ~489s re-analyzing the whole repo to find 9 dependent files, because state_hash is whole-tree"  # 0c19
+    status: todo_hard  # 0c19
+    priority: 1  # 0c19
+    parent:  # 0c19
+    tags:  # 0c19
+    - developer_experience  # 0c19
+    - coverage_selection  # 0c19
+    isbefore: []  # 0c19
+    duplicate_of: []  # 0c19
+    not_duplicate_of: []  # 0c19
+    pr_ref:  # 0c19
+    description: "MEASURED 2026-08-17, dev 51703e9a. The local test cycle is ~9 minutes and the\ntests inside it take ~19 seconds. The whole difference is one step: the\n`hypergumbo slice --files` call smart-test uses to find dependent test files\nre-analyzes the ENTIRE repository from cold on every run.\n\nPHASE BREAKDOWN of one smart-test invocation, measured directly:\n\n    check-mypy-ratchet --mode=strict        0.59 s\n    hypergumbo slice --files (COLD)       489.36 s     <- 8m 09s\n    hypergumbo slice --files (again)        4.54 s     <- same tree, warm\n    pytest, 91 test files                 19.30 s\n    pytest, 61 test files (--narrow)      13.12 s\n\nWALL CLOCK of seven consecutive smart-test runs this session, reconstructed\nfrom log-file mtimes: 9m39s, 9m32s, 8m49s, 9m05s, 9m08s, 9m17s, 8m30s. The\npytest phase inside each was 13-19s. So roughly 97% of the local cycle is the\nslice, and the LIVE.md figure recorded as \"local ~8m13s\" was never the test\nrun -- it was this.\n\nWHY IT IS COLD EVERY TIME. The results cache is keyed\n\n    ~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/<analyzer_identity>/\n\nand `<state_hash>` is derived from the analyzed tree's content. Any edit to any\nanalyzed file produces a new state_hash, so the next slice re-analyzes all of\npackages/*/src from scratch. Direct evidence: 18 state_hash directories exist\nunder this repo's fingerprint, with mtimes matching one-to-one the smart-test\nruns above. Each run created a fresh one and warmed it for a tree state that\nthe next edit immediately invalidated.\n\nNOT the analyzer-identity segment. smart-test deliberately uses $STABLE_HG (the\npipx install at ~/.local/share/pipx/venvs/hypergumbo), whose\n`<analyzer_identity>` is constant across working-tree edits. A separate probe\nconfirms that segment DOES churn for the editable install -- adding one comment\nto edge_types.py moves it 09f205d121a3680a -> c0784fc9dcd9a62a -> back on\nrevert -- so an agent running the dev binary against this repo pays the same\ncost for a second, independent reason. But smart-test's cost is the tree hash.\n\nWHAT THE STEP IS ACTUALLY ASKED FOR. The slice's answer in these runs was\n\"9 dependent files\" from 2 changed source files. That is a reverse\nimport/call-reachability query over ~700 files in packages/*/src. It is being\nanswered by building a complete behavior map.\n\nTWO INDEPENDENT DIRECTIONS, deliberately not merged into one:\n\n1. INCREMENTAL PER-FILE ANALYSIS (the product fix, and the one that helps\n   users rather than only this repo). Cache analysis per (file content,\n   analyzer identity) rather than per whole-tree state, re-analyze only the\n   changed files, and re-run the linkers over the union. Every hypergumbo user\n   editing 2 files in their own repo pays this same full-re-analysis cost today;\n   the dogfooding loop is just where it is most visible.\n\n2. A CHEAPER ANSWER FOR THIS QUESTION (the local-tooling fix, much smaller).\n   smart-test needs reverse import reachability, not a behavior map. A\n   pure-Python import-graph walk over packages/*/src is sub-second. The cost is\n   that smart-test stops dogfooding hypergumbo on the hot path, which is a real\n   loss and should be a deliberate trade rather than a side effect.\n\nCONSEQUENCE FOR THE COVERAGE-SELECTION CHAIN (WI-kuliv done, WI-bolot done,\nWI-hihuv open). All three optimize the pytest phase. Phase 3's measured\nbest case on this tree was 19.3s -> 13.1s, i.e. 6 seconds off a ~550-second\nloop -- 1.1%. They are correct and worth having for other reasons (Phase 2\ncatches runtime dependencies the static slice misses; narrowing is sound), but\nnone of them can deliver the cycle-time goal, and WI-hihuv should be re-priced\nagainst this before more effort goes into it."  # 0c19
+    fields: {}  # 0c19
+- op: update  # a221
+  at: '2026-08-17T08:38:37Z'  # a221
+  by: agent  # a221
+  actor: jgstern_agent  # a221
+  clock: 2  # a221
+  nonce: a221  # a221
+  set:  # a221
+    status: done  # a221
+- op: discuss  # d73c
+  at: '2026-08-17T08:38:37Z'  # d73c
+  by: agent  # d73c
+  actor: jgstern_agent  # d73c
+  clock: 3  # d73c
+  nonce: d73c  # d73c
+  message: "THIS ITEM PARTLY DUPLICATES WORK ALREADY FILED, and I should have found it\nbefore filing. Recording the overlap rather than leaving three parallel items.\n\nI searched the tracker for this before filing and searched only TITLES from a\ncapped `list`, which found nothing. Searching every item BODY (1,917 items)\nfinds the stream immediately:\n\n  WI-kazas  P1 todo_soft  MEAS-1: baseline full-run wall-clock. THE GATE.\n  WI-zagij  P2 todo_hard  INC-2: package/workspace-scoped re-analysis.\n  WI-madut  P3 todo_soft  INC-1: per-file memoization on git blob sha.\n  WI-zopis  P4 needs_human_review  persist CFG/DDG as a source-derived sidecar.\n  WI-rukaz  P3 todo_hard  a ~14.6k-file Java repo at >60 min, bottleneck\n                          unlocated -- the plausible \"tens of minutes\" cell.\n\nBoth fix candidates I wrote into this item's description were already filed, with\nbetter-developed hazard analysis than mine: WI-madut names the per-file purity\naudit, the complete-key silent-stale-hit failure mode, the determinism\nprecondition, and the linkers as an irreducible remainder. All three were\nDEFERRED pending MEAS-1 \"proving full-run latency actually hurts. Do NOT build\nuntil the number demands it.\"\n\nSO WHAT THIS ITEM IS ACTUALLY FOR: it is the measurement that satisfied that\ngate, taken from the dogfooding loop rather than from the target-repo spread\nMEAS-1 asked for. The numbers now live on WI-kazas (latency table + band\nverdict), WI-zagij (ungated, P3 -> P2), and WI-madut (why it stays deferred).\nThe distinct contribution not covered by any of them is the PER-EDIT framing:\nMEAS-1's decision rule prices a cold run as a one-off a user waits through,\nwhile the local loop pays it on every invocation, which is what makes 8.2\nminutes read as 97% of the cycle instead of a tolerable wait.\n\nRETAINED, NOT DELETED, for two reasons: deletion needs human authority, and the\nper-edit finding plus the smart-test phase table are worth an address. Status ->\ndone, since the measurement is complete and the fix work belongs on the items\nabove. If the owner would rather have this folded away entirely, it is a\n`tracker delete` away and nothing depends on it.\n\nNEXT MEASUREMENT, cheap and decisive for both fix items: the analysis-vs-linking\nsplit of one cold run. If linking dominates the 489 s then neither package\nscoping nor per-file memoization helps much and the target is the linker stage.\nThe per-pass timers in AnalysisRun already carry the data."  # d73c

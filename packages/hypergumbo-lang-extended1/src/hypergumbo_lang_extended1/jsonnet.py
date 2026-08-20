@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -93,10 +94,6 @@ JSONNET_BUILTINS = frozenset({
     "error", "assert",
 })
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 def find_jsonnet_files(repo_root: Path) -> list[Path]:
@@ -303,8 +300,11 @@ def _extract_edges_recursive(
                 line=node.start_point[0] + 1,
                 origin=PASS_ID,
                 origin_run_id=run_id,
-                evidence_type="tree_sitter",
-                confidence=1.0,
+                # WI-radim: a jsonnet `import` statement is the "import" inference
+                # pathway (already seeded 0.95), not the generic mechanism-label
+                # "tree_sitter"; dropping confidence= derives the in-band value
+                # (confidence_source=evidence_derived) instead of reserved 1.0.
+                evidence_type="import",
                 evidence_lang="jsonnet",
             )
             edges.append(edge)

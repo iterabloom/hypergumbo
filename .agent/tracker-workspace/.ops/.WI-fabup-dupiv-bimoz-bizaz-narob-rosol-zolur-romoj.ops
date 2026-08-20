@@ -46,3 +46,18 @@
     tags: [dogfood]  # 710c
   remove:  # 710c
     tags: [dogfooding]  # 710c
+- op: update  # 4afc
+  at: '2026-07-28T20:46:12Z'  # 4afc
+  by: agent  # 4afc
+  actor: jgstern_agent  # 4afc
+  clock: 5  # 4afc
+  nonce: 4afc  # 4afc
+  set:  # 4afc
+    status: wont_do  # 4afc
+- op: discuss  # 0a8e
+  at: '2026-07-28T20:46:12Z'  # 0a8e
+  by: agent  # 0a8e
+  actor: jgstern_agent  # 0a8e
+  clock: 6  # 0a8e
+  nonce: 0a8e  # 0a8e
+  message: "Owner ruling (2026-07-28): KEEP the INV-fahub no-confidently-wrong-edge posture — untyped/duck receivers (get/patch/run, ~2102 edges) stay biased to python:external:0-0:<attr>:unresolved rather than fanning out to ambiguous_names candidates. The proposed multi-edge fan-out contradicts INV-fahub (would mint many wrong resolved edges). The TYPED half of receiver disambiguation is already delivered (WI-noham/WI-hiziz/WI-gubar trilogy + receiver_type_dispatch/inherited_calls linkers). The ambiguous_names catalog IS wired — into the io-boundary/taint SUPPRESSION consumer (WI-razol), not the call-graph producer, by design. wont_do."  # 0a8e

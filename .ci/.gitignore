@@ -1,5 +1,8 @@
-# CI artifacts - logs are ignored, manifests are committed
-full-suite.log
+# CI artifacts — all logs are ignored, manifests/baselines are committed.
+# Glob so any transient log is covered (full-suite.log, pytest-output.log,
+# smart-test-fallback.log, release-check-pytest.log, and any future one) —
+# an untracked *.log here once tripped release-check's clean-tree gate.
+*.log
 
 # smart-test runtime locks (process-local, never committed)
 .smart-test.lock

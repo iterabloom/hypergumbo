@@ -1,0 +1,28 @@
+- op: create  # 5de8
+  at: '2026-08-17T18:30:46Z'  # 5de8
+  by: agent  # 5de8
+  actor: jgstern_agent  # 5de8
+  clock: 1  # 5de8
+  nonce: 5de8  # 5de8
+  data:  # 5de8
+    kind: work_item  # 5de8
+    title: "AnalysisRun.duration_ms is per-pass WALL time under a thread pool, so it inflates with contention and cannot be summed into a cost"  # 5de8
+    status: todo_hard  # 5de8
+    priority: 2  # 5de8
+    parent:  # 5de8
+    tags:  # 5de8
+    - analysis_runs  # 5de8
+    - dogfood  # 5de8
+    isbefore: []  # 5de8
+    duplicate_of: []  # 5de8
+    not_duplicate_of: []  # 5de8
+    pr_ref:  # 5de8
+    description: "MEASURED 2026-08-17. run_all_analyzers dispatches passes through a\nThreadPoolExecutor, and each pass's duration_ms is its own WALL time. Two\nconsequences, both of which have already misled decisions on this tracker.\n\n1. CARD SUMS DO NOT SUM TO WALL. 96 cards total 157.7s inside a 93.9s wall span.\n   Any \"share of wall\" computed from card sums is inflated; that arithmetic\n   produced the 22%/7%/71% analyzer/linker/overhead split recorded on WI-balaf\n   and WI-kazas, which the direct phase timing later contradicted.\n\n2. WORSE — A CARD INFLATES WITH CONTENTION, so it is not even a stable measure\n   of the pass's own cost. Two fresh-process runs, same repo, same analyzer,\n   SAME 43 FILES both times:\n\n       max_files=1   bash card =  2.3s   (python analyzing 1 file alongside)\n       uncapped      bash card = 49.9s   (python analyzing 1121 files alongside)\n\n   Bash did identical work and its number moved 21x. It was waiting on the GIL\n   while the python analyzer ran 63s of CPU-bound work in a sibling thread. A\n   reader who takes duration_ms as \"what this pass cost\" concludes the bash\n   analyzer is pathologically slow at 1.15 s/file; it is not. I made exactly\n   that error before running the control.\n\nWHY THIS IS A DEFECT AND NOT A DOC GAP: duration_ms is SERIALIZED provenance\n(ir.py AnalysisRun -> to_dict), so it is published to every consumer of a\nsurvey, and INV-gizik already reasons about it (\"a pass that emitted output\ncannot serialize duration_ms=0\"). The field's name and its position beside\nfiles_analyzed / nodes_emitted invite reading it as pass cost. Under a thread\npool it is \"wall time from this pass's start to its end, including time\ndescheduled\", which is a different quantity that happens to coincide when\nnothing else is running.\n\nOPTIONS, not yet decided:\n  a) Record CPU time (time.process_time_ns per worker) alongside or instead of\n     wall, so the field measures the pass rather than the machine's load.\n  b) Keep wall but rename / document it as such at the schema level, and add a\n     sibling field for cost.\n  c) Record both, which is what would actually let a reader see contention.\n\nWhatever is chosen, the axis-declaration and schema-doc surfaces need updating\nwith it, and scripts/measure-survey-phase-split.py stays the instrument of\nrecord for phase cost (it times the phase FUNCTIONS with inclusive/exclusive\naccounting and reconciles to the wall clock)."  # 5de8
+    fields: {}  # 5de8
+- op: discuss  # da63
+  at: '2026-08-17T21:05:56Z'  # da63
+  by: agent  # da63
+  actor: jgstern_agent  # da63
+  clock: 2  # da63
+  nonce: da63  # da63
+  message: "EXPLICITLY NOT COVERED BY THE 2026-08-17 PERF CLOSE. The owner closed the\nprocessing-EFFICIENCY stream; this is a CORRECTNESS item that happened to be\nfound while measuring.\n\nduration_ms is serialized provenance published to every consumer of a survey, and\nunder a ThreadPoolExecutor it reports per-pass WALL time — so it overlaps AND\ninflates with contention. The same 43 bash files billed 2.3s or 49.9s depending\nonly on what the python analyzer was doing alongside. A reader takes it for cost\nand concludes an analyzer is pathologically slow; I did exactly that before\nrunning the control. That defect is unchanged by our decision to stop optimizing,\nand it will mislead the NEXT person to measure — including whoever re-opens a\nparked perf item on the strength of a card sum.\n\nStays todo_hard at P2."  # da63

@@ -29,6 +29,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       tracker_data: ${{ steps.filter.outputs.tracker_data }}
+      claims_surface: ${{ steps.filter.outputs.claims_surface }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,6 +86,23 @@ jobs:
             echo "Tracker data changes detected"
           else
             echo "tracker_data=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Self-claim gate surface (INV-zuhig): the claims file + snapshot,
+          # the self-catalog, overlays, the shipped io/taint catalogues,
+          # package dependency declarations, and the gate scripts themselves.
+          # A change here can move a self-claim verdict, so the drift gate
+          # runs per-PR instead of waiting for the twice-daily full-suite
+          # run. Analyzer/linker .py changes can also move verdicts but run
+          # only in full-suite — gating every core .py PR on a ~10-minute
+          # self-analysis was judged too heavy (the notes' design: per-PR on
+          # dep/catalogue/claims changes, nightly-cadence for the rest).
+          CLAIMS_SURFACE='^docs/hypergumbo\.claims\.yaml$|^docs/hypergumbo\.claims\.expected\.json$|^docs/hypergumbo-self-catalog/|^docs/io-primitives-overlays/|/io_primitives/|/taint_sources/|/taint_sinks/|/taint_sanitizers/|pyproject\.toml$|^scripts/check-self-claims'
+          if echo "$CHANGED" | grep -qE "$CLAIMS_SURFACE"; then
+            echo "claims_surface=true" >> "$GITHUB_OUTPUT"
+            echo "Self-claim surface changes detected"
+          else
+            echo "claims_surface=false" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$has_code" = "true" ]; then
@@ -215,10 +233,26 @@ jobs:
         run: bandit -r packages/*/src/ -c pyproject.toml
 
 
-  # mypy:F2 — NON-BLOCKING whole-tree strict type ratchet (WI-rokup, INV-zogud).
-  # Intentionally absent from ci-complete's `needs` AND continue-on-error: true,
-  # so the type surface is reported on every PR but NEVER gates a merge yet.
-  # WI-rabum flips this to blocking (--mode=strict) once the surface drains.
+  # mypy:F2 — BLOCKING whole-tree strict type ratchet (WI-rokup, WI-rabum,
+  # INV-zogud). Flipped from warning to strict 2026-07-31.
+  #
+  # Why this did NOT wait for the surface to drain: the ratchet fails only when
+  # a code GROWS against the baseline, never on the absolute count, so 1080
+  # errors and 0 errors gate identically. The documented sequence ("grind to
+  # zero, THEN flip") read as a hard dependency and was not one. WI-basat is the
+  # cost of the old rung: seven errors accumulated silently over ten days, not
+  # because anyone ignored a failure but because a non-blocking warning is by
+  # definition a signal nobody must act on.
+  #
+  # The risk WI-rabum had to weigh was a mypy release recategorising errors and
+  # blocking every PR at once. That is now closed rather than accepted: the
+  # baseline records the mypy version that produced it, the ratchet refuses to
+  # compare counts across versions (see its INSTRUMENT MISMATCH branch), and the
+  # pin below is tightened to 2.1.x so a bump is a deliberate edit that must
+  # carry its own `--update-baseline` in the same change. A shrink-only baseline
+  # whose measuring instrument can change under it was never a ratchet; blocking
+  # only made that consequential.
+  #
   # Config lives in root pyproject.toml [tool.mypy] (strict + pyright-resonant,
   # Decision D13). Runs ONE whole-tree invocation via scripts/check-mypy-ratchet
   # — NOT the old per-package loop, which could not follow cross-package imports
@@ -229,7 +263,6 @@ jobs:
     needs: [changes, stop-the-line]
     if: always() && needs.changes.outputs.code == 'true' && needs.stop-the-line.result != 'failure'
     runs-on: self-hosted
-    continue-on-error: true
     env:
       SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
     steps:
@@ -245,12 +278,17 @@ jobs:
           # extra brings Textual so tracker/tui.py types resolve.
           pip install --upgrade pip
           pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
-          pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
-      - name: Whole-tree strict mypy ratchet (non-blocking — WI-rokup)
+          # Pinned to 2.1.x, not ~=2.1: the baseline's counts are only
+          # comparable against the mypy that produced them, so the instrument
+          # is fixed and a bump is a deliberate edit carrying its own
+          # --update-baseline (WI-rabum).
+          pip install "mypy~=2.1.0" "types-PyYAML~=6.0.12"
+      - name: Whole-tree strict mypy ratchet (BLOCKING — WI-rabum)
         run: |
-          # Single whole-tree invocation + shrink-only baseline. Non-blocking
-          # (--mode=warning); WI-rabum flips to --mode=strict to gate merges.
-          scripts/check-mypy-ratchet --mode=warning
+          # Single whole-tree invocation + shrink-only baseline. Fails only when
+          # an error code GROWS against the baseline, or when the running mypy
+          # differs from the one the baseline was measured with.
+          scripts/check-mypy-ratchet --mode=strict
 
 
   # Run bash hook tests on every PR regardless of what changed.
@@ -1251,10 +1289,56 @@ jobs:
       - name: Validate tracker data
         run: scripts/tracker validate
 
+  # Self-claim drift gate, per-PR arm (INV-zuhig). The same gate full-suite
+  # runs twice daily, here scoped to PRs that touch the claim surface (the
+  # `changes` job computes `claims_surface`). The snapshot pins verdict +
+  # caveat kinds + credited-flows bucket per claim, so a catalogue or
+  # dependency change that silently moves a self-claim verdict — or kills
+  # its credited evidence while the verdict stays green — fails the PR that
+  # did it instead of the next cron run.
+  self-claims-gate:
+    needs: [changes]
+    if: needs.changes.outputs.claims_surface == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore grammar wheels
+        uses: actions/cache@v3
+        with:
+          path: /tmp/grammar-wheels
+          key: grammar-wheels-${{ hashFiles('scripts/build-source-grammars') }}
+      - name: Restore pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.local/lib/python3.11/site-packages
+          key: pip-packages-${{ hashFiles('packages/*/pyproject.toml') }}
+      - name: Install dependencies
+        run: |
+          # Mirrors full-suite's self-tree-validation install exactly: the
+          # gate's verdicts depend on which grammars are present, so the
+          # per-PR arm must analyze with the same language set as the cron
+          # arm or the two disagree on identical trees.
+          pip install --upgrade pip
+          pip install jsonschema
+          pip install -e packages/hypergumbo-core \
+                      -e packages/hypergumbo-lang-mainstream \
+                      -e packages/hypergumbo-lang-common \
+                      -e packages/hypergumbo-lang-extended1 \
+                      -e "packages/hypergumbo-tracker[dev]"
+          ./scripts/build-source-grammars --wheels-dir /tmp/grammar-wheels
+      - name: Self-claim drift gate (per-PR arm)
+        run: |
+          PYTHON=python ./scripts/check-self-claims
+
   # Final gate job - ensures workflow completes even when jobs are skipped
   # This fixes Forgejo Actions bug where skipped jobs leave workflow in "running" state
   ci-complete:
-    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate]
+    needs: [changes, stop-the-line, lint, hook-tests, audit, verify-generated, build-grammars, pytest, pytest-retry, dco, tracker-validate, mypy, self-claims-gate]
     if: always()
     runs-on: self-hosted
     timeout-minutes: 5
@@ -1273,6 +1357,8 @@ jobs:
           echo "  pytest-retry: ${{ needs.pytest-retry.result }}"
           echo "  dco: ${{ needs.dco.result }}"
           echo "  tracker-validate: ${{ needs.tracker-validate.result }}"
+          echo "  mypy: ${{ needs.mypy.result }}"
+          echo "  self-claims-gate: ${{ needs.self-claims-gate.result }}"
 
           # pytest passes if primary OR retry succeeded
           pytest_ok=false
@@ -1290,7 +1376,9 @@ jobs:
              [[ "${{ needs.verify-generated.result }}" == "failure" ]] || \
              [[ "$pytest_ok" != "true" ]] || \
              [[ "${{ needs.dco.result }}" == "failure" ]] || \
-             [[ "${{ needs.tracker-validate.result }}" == "failure" ]]; then
+             [[ "${{ needs.tracker-validate.result }}" == "failure" ]] || \
+             [[ "${{ needs.mypy.result }}" == "failure" ]] || \
+             [[ "${{ needs.self-claims-gate.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1
           fi

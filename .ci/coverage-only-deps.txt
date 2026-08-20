@@ -20,3 +20,17 @@
 # solely by the polyglot call-site test, which runs the analyzer end-to-end and
 # never imports java.py.
 packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/java.py  packages/hypergumbo-lang-mainstream/tests/test_polyglot_call_site_coverage.py
+
+# The INV-dulah doc/config-family node.id grammar gate drives the FULL pipeline
+# (run_behavior_map) and so imports only cli/registry/symbol_kinds — never the
+# id-minting chokepoint it exists to guard, nor the four producers that call it.
+# Without these entries the slice does not select it, and a gate CI never runs is
+# not enforcement (it was measurably absent from the manifest when first added).
+# The eleven doc analyzers are deliberately NOT listed: each already carries its
+# own id-shape assertion in its own test, which the slice DOES select on a change
+# to that analyzer, so the per-producer safety net exists without paying the
+# always-run cost eleven more times here.
+packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/ini.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/properties.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py
+packages/hypergumbo-lang-mainstream/src/hypergumbo_lang_mainstream/requirements.py  packages/hypergumbo-core/tests/test_doc_family_id_parity.py

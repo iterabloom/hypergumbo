@@ -9,24 +9,34 @@ endpoint nodes themselves rather than smuggled into the type label.
 This module is the single source of truth: ``scripts/generate-schema``
 imports ``EDGE_TYPES`` to emit both the JSON Schema enum and per-value
 axis annotations (under the ``x-axis-of-values`` extension keyword).
-Consumers that need a subset of edge types (for example
-``ranking._STRUCTURAL_EDGE_TYPES``) should call
-``edge_types_on_axis(...)`` rather than maintain their own hardcoded
-set; the property test in ``tests/test_edge_types.py`` enforces that
-every hardcoded set in the codebase is a subset of this registry.
+
+It also exports the meta-discriminator vocabulary consumers need once
+``edge_type`` alone stopped answering their question: ``IMPORT_EDGE_TYPES``
+and ``INHERITANCE_EDGE_TYPES`` (curated subsets), ``PROTOCOL_KINDS`` and
+``BRIDGE_KINDS`` (the ADR-3bbb linker subcategories a mechanism belongs to),
+``is_grpc_rpc_implementation`` (a predicate that reads ``meta`` because the
+fold moved the distinction there), and ``find_axis_drift`` — the linter that
+fails the build when a registry value stops matching its declared axis.
+Consumers that need a subset of edge types use the curated constants
+this module exports (``IMPORT_EDGE_TYPES``, ``INHERITANCE_EDGE_TYPES``)
+rather than their own literals; the property test in
+``tests/test_edge_types.py`` enforces that every hardcoded set in the
+codebase is a subset of this registry.
 
 Axis taxonomy:
 
 - ``relationship`` — ADR-0023 compliant. The value names the
-  relationship between src and dst.
-- ``endpoint_shape`` — deprecation candidate per ADR-0023 §6. The
-  value's meaning is captured by ``src.kind`` / ``dst.kind`` /
-  language metadata; migration plan folds these back into
-  relationship-shaped names.
-- ``pending_classification`` — deferred to per-family audit per
-  ADR-0023 §5 (the dispatch and publish families contain a mix of
-  genuinely distinct relationships and protocol-conditional aliases;
-  per-value verdicts arrive with each family's audit).
+  relationship between src and dst. **Every registered value now sits
+  on this axis.**
+- ``endpoint_shape`` — **empty.** The ADR-0023 §6 fold retired every
+  value that occupied it (see the note above ``EDGE_TYPES``).
+- ``pending_classification`` — **empty.** The dispatch and publish
+  family audits issued per-value verdicts and promoted or folded every
+  member (audit-findings 0001 onward).
+
+Because exactly one axis is occupied, ``edge_types_on_axis(...)`` is
+degenerate on current data and has no caller outside this module. It is
+kept as the query API for the day a second axis is declared.
 """
 
 from __future__ import annotations

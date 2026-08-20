@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core taint analysis in force
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core STRUCTURAL taint analysis in force; §3a DDG-backed propagation, §3c–3d mixed-coverage verdicts, §4 function summaries and §7a field-sensitivity are SPECIFIED BUT NOT IMPLEMENTED — each has no production consumer (measured 2026-08-02); see Phased Implementation
 
 > Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
@@ -547,7 +547,34 @@ transforms:
 
 #### 3a. On native DDG (primary path)
 
-When a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
+> **NOT IMPLEMENTED — this subsection is a TARGET DESIGN, not a description of
+> current behaviour.** Stated up front rather than as a trailing note, because a
+> fragment read of the numbered steps below would otherwise be indistinguishable
+> from a description of what the code does.
+>
+> **What `propagate_taint_ddg` actually does today** (measured 2026-08-02): it
+> runs the same call-graph BFS as `propagate_taint_structural` and uses DDG data
+> only to choose a label. It builds the forward index `ddg_forward` and the
+> tainted-variable set `tainted_at` and **reads neither**; `ddg_symbols` selects
+> `confidence="precise"` vs `"approximate"` and nothing else. So no step below
+> influences which flows are reported, for any language, and has not since this
+> ADR's Phase 2 landed in March 2026.
+>
+> A second, independent blocker: step 2's walk keys on `DdgEdge.def_block`, a
+> **function-local** basic-block id (`bb_5` recurs in every function — 306
+> distinct values across 1,306 functions on hypergumbo's own core), compared
+> against a *symbol* id. Those namespaces never intersect. `DdgEdge.symbol_id`
+> was added later to make the comparison expressible; that is a prerequisite,
+> not the fix.
+>
+> Implementing this is tracked, together with the four prerequisites and a
+> pre-registered expectation of its effect size. Note also that **step 5 as
+> written is underspecified in the load-bearing way**: "if tainted data reaches
+> a sink" must mean *a tainted variable is an argument at the sink call site*.
+> Read as "a tainted definition reaches the sink's block" it removes almost
+> nothing.
+
+The target design: when a function has been analyzed by the native CFG builder + reaching-def solver (i.e., a def/use extractor exists for its language), taint propagation is a forward graph walk on the computed DDG edges:
 
 1. **Identify taint sources.** For each DDG-analyzed function, match call sites against the taint source catalogs (§2a). If a call site's callee is a taint source, mark the variables receiving its return value with the corresponding taint label.
 2. **Propagate through DDG edges.** Walk forward: if variable `v` is tainted at statement S, and a DDG edge connects S's definition of `v` to a use of `v` at statement T, then T inherits the taint.
@@ -557,7 +584,9 @@ When a function has been analyzed by the native CFG builder + reaching-def solve
 
 > **[Invalidated by ADR-0037]** The dst-string machinery in this subsection and the next — the `{lang}:external:0-0:{name}:unresolved` dst shape, the `external`/`<external>` exemption in `_sink_module_compatible`, and the post-DDG refinement pass's string rewrites of `edge.dst`'s module segment — is invalidated by ADR-0037: the `unresolved` kind-slot token folds into `external_symbol` and `dst_ref` becomes unconditionally derived so consumers stop string-parsing `dst`. Implementing fixes re-key sink matching and refinement on `dst_ref`. The text below is retained as-is for historical context.
 
-**Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved`. A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator applies `_sink_module_compatible(sink_module, callee_module)` as a filter:
+**Short-name sink-matching disambiguation.** Sinks are declared with a module-qualified name (e.g., `multiprocessing.Queue.get`, `os.environ.get`). Edges, however, are not always resolved to a specific module: when the analyzer can't pin down a callee's origin, it emits a synthetic external dst of shape `{lang}:external:0-0:{name}:unresolved`. A naive "match sinks by callee short-name" rule then fires the sink on every `.get()` call site in the codebase. The propagator applies a module filter inside `taint._lookup_named_entry`, which delegates to `io_boundary._module_matches`:
+
+> **Correction (2026-08-02).** This section previously named `_sink_module_compatible` as the filter. That function was added 2026-05-14 and **never had a production caller** — its only reachability was six unit tests, which is what held it at 100% coverage and hid it. The contract described below was implemented by a different function with different internals, and the two drifted: `_module_matches` was bidirectional *substring* containment until WI-zazul made it component-aware, and it ungated *resolved* first-party edges entirely until WI-damir. `_sink_module_compatible` is retired; its `external`/`<external>` exemption — the one thing it had that the live path lacked — was harvested into `_UNRESOLVED_MODULE_PLACEHOLDERS` first.
 
 - When the edge's dst carries a module hint, the sink's declared module must match that hint by direct equality or by prefix (e.g., callee module `os.environ` is compatible with sink module `os.environ` or with `os`).
 - When the dst hint is `external` or `<external>`, the analyzer didn't recover module information; the filter degrades to short-name matching (legacy behavior). This is the documented overapproximation surface — narrowed by the post-DDG IR refinement pass described below.
@@ -579,6 +608,8 @@ When a language lacks a def/use extractor, or a specific function exceeds the 4,
 This is strictly less precise than DDG-based analysis (it cannot distinguish between two variables in the same function), but it catches the most common class of violation: missing sanitizers on entire call paths.
 
 **Dominance-based sanitizer checking.** The structural fallback uses a two-phase BFS to check sanitizer coverage: (1) compute the set of nodes reachable from the taint source *without* passing through any sanitizer function, (2) check whether any taint sink is in that set. This correctly handles cases where some paths are sanitized and others are not — a single unsanitized path from source to sink is a violation even if other paths are sanitized.
+
+**A sanitizer in the SAME function as the source is invisible to this pass, permanently (WI-fasub).** The BFS seed is exempt from the barrier — it must be, since the seed is the taint origin and has to stay reachable — so a barrier called *from* the seed function is never consulted, and `plain = decrypt(t); safe = encrypt(plain); write(safe)` reports an unsanitized flow about code that visibly sanitizes. This is not a defect in the implementation of the fallback but a limit of what a call graph can express: "handler calls encrypt" and "handler calls write" are two edges with no order between them, and the graph is identical whichever order the source actually has, so no refinement of call-graph reachability can distinguish encrypt-then-write from write-then-encrypt. Deciding it requires statement ordering inside the seed function, which is available only where §3a's reaching-definition data exists — so `propagate_taint_ddg` honours the shape (running its forward walk twice, once with the sanitizer call sites as barriers, and earning the `sanitized` label only when the unrestricted walk confirms a dependence *and* the barrier walk exhausts every route with each step accounted for), and `propagate_taint_structural` cannot and never will. Every language without a def/use extractor is served by the structural pass, so this limit covers most of the catalogue; it is published per run in `dataflow_coverage.sanitizer_scope.same_function_honoured_by` rather than left to be rediscovered.
 
 #### 3c. Mixed-coverage analysis
 
@@ -603,6 +634,19 @@ A function on a taint path is a **critical segment** if imprecision at that func
 Functions that merely **pass data through** (call a callee with tainted arguments, return a tainted value) are **not** critical — structural reachability suffices for pass-through, because the function summary (§4) captures whether arguments flow to returns regardless of DDG coverage.
 
 **Practical implication:** If the source function and the sink function both have DDG coverage, the verdict can be "Confirmed" or "Violated" even if intermediate pass-through functions lack DDG data.
+
+#### 3e. Published coverage scope
+
+`verify-claims` emits a `dataflow_coverage` block (envelope schema 1.8; rendered on the text surface too), because a per-flow `analysis_method` is uninterpretable without it. INV-karud clause (a3) requires that a reader can tell data-flow-adjudicated flows from call-reachability-only ones *from the emitted record*, and that "the scope of data-flow coverage may not be left to assumption". A finding labelled `structural` may mean the walk looked and found no dependence, or that nothing in this repository was capable of looking — opposite consequences for a security reader, identical evidence, which is §3c's mixed-coverage problem restated at the scale of a whole run.
+
+The block carries, per analyzed language with a taint catalog: the catalog it would serve (`catalog_sources` / `catalog_sinks` / `catalog_sanitizers`) and four independent capability bits — `cfg_mapping`, `atomic_statement`, `def_use_extractor`, `ddg_spec` — with `dataflow_capable` their conjunction and `blockers` naming the missing ones. Four bits rather than one boolean because each is *individually* sufficient to keep the machinery silently inert: Rust shipped an extractor in March and emitted zero DDG edges for months while failing three at once, and Java ships a `cfg_nodes/java.yaml` mapping while declaring no `atomic_statement` and registering no extractor, so a single "supported?" flag would read `yes` for a language that can adjudicate nothing.
+
+Two constants in the block state facts that no per-run measurement can:
+
+- **`inclusion_decided_by: "call_graph_reachability"`.** §3a is confirm-only — the walk raises a finding's confidence and never removes one — so *every* reported flow, including every `ddg`-labelled flow, was included by call-graph BFS. Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by data flow" is the misreading INV-sadah exists for. Emitting it as data rather than prose gives the claim the executable re-evaluation trigger R16 requires: when §3a gains refutation this value must change or its test fails.
+- **`coverage_granularity: "language"`.** Capability is reported per language, and that is *not* a per-function completeness claim. `cfg_nodes/go.yaml` self-documents that `if err := do(); err != nil` initializers are invisible to def/use, so a language marked capable still contains functions the analysis cannot see into. Per-function coverage is the finer signal WI-joluk would produce (forfeit refutation for any function whose CFG statement extents miss a call node in its body); until then the honest granularity is the language, stated rather than implied.
+
+**`sanitizer_scope` — the same disclosure for §2c (INV-karud clause b).** The sanitizer catalogue is far narrower than the source/sink one: 12 entries across 5 languages, every one cryptographic (`plaintext → ciphertext`, `key_material → derived_key`). So a repository-wide "0 sanitized flows" carries the same ambiguity §3e exists to remove — nothing was protected, or nothing *could* be, because the claims' taint labels and the sanitizers' input labels are disjoint sets. Measured on a nine-repo cohort, it is the second: zero sanitizer call sites across 95,950 taint call edges, with exactly one pre-gate name hit, correctly refused by §2c's resolution-aware gate (a bare unresolved `x.encrypt()` must not bind `Fernet.encrypt`). The block therefore carries the catalogue's size, the languages holding entries, the `input → output` categories it can express, `sanitizable_labels` (what a flow must carry to be reportable as sanitized at all), and `same_function_honoured_by` — a third declared constant, currently `["ddg"]`, whose test fails if the structural pass ever gains the ordering §3b says it cannot have. Categories and labels are derived from the loaded catalogue rather than listed, so extending it moves the disclosure without an edit.
 
 ### 4. Function summaries
 
@@ -715,7 +759,7 @@ No new linkers are needed — existing linker edges provide the call connectivit
 
 For the virtio-vsock bridge (PlazaFlow-specific): the vsock channel is modeled as a sanitizer (§2c) that transforms `plaintext` → `guest_local`, reflecting that data crossing into the VM guest is no longer on the host filesystem but is visible inside the VM.
 
-**Per-language propagation pass for `verify-claims`.** Linker edges enable cross-language taint flow at the bridge boundary, but the per-language *sink* declarations are not language-tagged in the catalogs — a sink declared on the Elixir method `HTTPoison.get` is indistinguishable from the Python method `dict.get` once both are stored under the short callee name `get`. Without an additional filter this produces O(N×M) spurious cross-language matches: every Python `.get()` call in the codebase fires against the Elixir HTTPoison sink declaration. The `verify-claims` consumer therefore invokes propagation **once per language**, with each language's sources, sinks, and sanitizers restricted to that language's catalog entries — preserving genuine cross-language flow through linker edges (which connect symbols carrying their own language tag) while preventing the short-name collision. The §3a `_sink_module_compatible` filter handles the same problem at sink-match granularity within a single propagation run; the per-language outer loop handles it across runs.
+**Per-language propagation pass for `verify-claims`.** Linker edges enable cross-language taint flow at the bridge boundary, but the per-language *sink* declarations are not language-tagged in the catalogs — a sink declared on the Elixir method `HTTPoison.get` is indistinguishable from the Python method `dict.get` once both are stored under the short callee name `get`. Without an additional filter this produces O(N×M) spurious cross-language matches: every Python `.get()` call in the codebase fires against the Elixir HTTPoison sink declaration. The `verify-claims` consumer therefore invokes propagation **once per language**, with each language's sources, sinks, and sanitizers restricted to that language's catalog entries — preserving genuine cross-language flow through linker edges (which connect symbols carrying their own language tag) while preventing the short-name collision. The §3a module filter (`_lookup_named_entry` → `_module_matches`) handles the same problem at sink-match granularity within a single propagation run; the per-language outer loop handles it across runs.
 
 ### 6. Enhanced `verify-claims`
 
@@ -853,24 +897,24 @@ ADR-0015's `access_mode` field (read/write/mutate/delete) classifies what an edg
 - **Taint labels are stored in `Edge.meta` alongside `access_mode`.** New keys: `taint_labels` (list of active taint tags on this edge), `taint_sanitized_by` (sanitizer that transformed taint on this edge, if any). These do not conflict with existing `access_mode`, `data_direction`, or `channel` keys (`dest_access_mode` was removed by ADR-0038 ruling 3).
 - **The dataflow-aware slicer (`--dataflow` flag) and taint analysis are complementary.** A future `--taint` slice flag could filter to edges carrying specific taint labels, analogous to how `--dataflow` filters by `access_mode`. This is not in scope for this ADR but is a natural extension.
 - **Edges without `access_mode` are taint-propagated conservatively.** If an edge lacks ADR-0015 metadata (e.g., a plain `calls` edge from a language without dataflow YAML), the taint solver treats it as a potential propagation path in both directions. This matches the existing graceful-degradation behavior in `slice.py`.
-- **Precedence rule: DDG edges supersede `access_mode` annotations for taint propagation.** When a function has DDG coverage (a def/use extractor produced reaching-def edges), the taint solver uses DDG edges for intraprocedural propagation and ignores `access_mode` annotations on call edges *within* that function — the DDG provides strictly more precise information. `access_mode` annotations remain authoritative for (a) functions without DDG coverage (structural fallback), (b) edges between functions (interprocedural call edges where `access_mode` informs propagation direction), and (c) the dataflow-aware slicer (`--dataflow` flag), which is independent of taint analysis. This mirrors the existing precedence pattern in `dataflow.py` (line 231-233) where linker-provided annotations override automatic annotations — the more precise source wins.
+- **Precedence rule: DDG edges supersede `access_mode` annotations for taint propagation.** When a function has DDG coverage (a def/use extractor produced reaching-def edges), the taint solver uses DDG edges for intraprocedural propagation and ignores `access_mode` annotations on call edges *within* that function — the DDG provides strictly more precise information. `access_mode` annotations remain authoritative for (a) functions without DDG coverage (structural fallback), (b) edges between functions (interprocedural call edges where `access_mode` informs propagation direction), and (c) the dataflow-aware slicer (`--dataflow` flag), which is independent of taint analysis. This mirrors the existing precedence pattern in `dataflow.py` where linker-provided annotations override automatic annotations — the more precise source wins.
 
 ## Phased Implementation
 
-All originally-planned phases have shipped. The phasing is preserved here as a guide to what each phase delivered and where to find its anchor commits, not as a forward-looking roadmap.
+**Not all planned phases run.** Phase 1 (structural taint) is live and is what every production verdict rests on. Several Phase 2–4 deliverables were implemented, tested to 100% coverage, closed `done` — and have no production consumer. Measured 2026-08-02; each is tracked. The phasing below records what each phase *delivered* and where its anchor commits are, with a Runs column stating whether it affects output today.
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| 1 | Taint catalogs + structural taint flow | Shipped (Phase 1 commit `d7f43332d7`) |
-| 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization |
-| 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) |
-| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) |
-| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) |
-| 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) |
+| Phase | Scope | Status | Runs? |
+|-------|-------|--------|-------|
+| 1 | Taint catalogs + structural taint flow | Shipped (Phase 1 commit `d7f43332d7`) | **Yes** — every production verdict |
+| 1b | Precision measurement against synthetic + open-source fixtures (§9) | Carried out; informed Phase 2 prioritization | n/a |
+| 2 | Language-parameterized CFG builder + reaching-def solver + Python / Rust / TypeScript def/use extractors (core patterns) + field-sensitivity lite (§7) | Shipped (CFG builder `6afcd40b03`, solver `7a0728b3c2`, Python `509de245f1`, Rust `b8fc35d173`, TypeScript `7e2ee83a90`) | **Split, and no longer a matter of prose — see §3e.** CFG builder + solver + Python and Go extractors: yes. Rust and TypeScript: **now yes** — WI-tohuk added `atomic_statement` to `rust.yaml` / `typescript.yaml` and force-imported both modules, closing the two independent reasons they emitted zero DDG edges for months while sitting at 100% coverage. **JavaScript: now yes (WI-nonad)** — the TypeScript extractor registered a second time under the `javascript` key, a `*.js` spec, and a `cfg._CFG_MAPPING_ALIASES` entry pointing at `typescript.yaml`, whose header already asserted it covers both grammars. It is the more consequential of that pair: TypeScript has 6 catalogued sources and **zero** sinks, JavaScript has 50 and **83**. All five are covered by a wiring gate over every *registered* extractor rather than a per-language checklist. **Java: mapping only** — `cfg_nodes/java.yaml` declares no `atomic_statement` and no extractor is registered, so its 69 catalogued sinks cannot be data-flow adjudicated. **§7a field-sensitivity: still NO production caller** (`is_field_tainted`). **§3a propagation: confirm-only — it raises confidence and does not decide flow inclusion**; see §3a and the `inclusion_decided_by` constant in §3e. The per-language state above is computed and emitted at runtime by `dataflow_scope`, so this row cannot silently decay the way its predecessor did. |
+| 2b | Rust hard patterns: borrow aliases, `ref`/`ref mut` bindings | Shipped (`03dee372c3`) | No — downstream of the Rust extractor, which has no production caller |
+| 3 | Function summaries (inferred from DDG + YAML-declared) | Shipped (inferred `942100377c`, declared `2df1ec8bf0`) | **No.** `infer_summary` and `load_function_summaries` have zero production callers; the only in-tree reference is a catalog-directory listing. |
+| 4 | Cross-language taint propagation via existing linkers | Shipped (`749a73b47f`) | **Partly.** The bridge edge-types are admitted to the BFS, which is live. The §5 mechanism that looks up a callee's *summary* is dead with Phase 3. |
 
 The original ordering had Rust first (motivated by PlazaFlow's trust-boundary verification needs) with Python as a fallback if PlazaFlow code was delayed; the actual landing order put Python first via the accepted-ADR revision (see `fad503239213` and the "Python is the first extractor" rationale in Context). Phase 1 and Phase 2 together produce structural and DDG-precise taint analysis; Phase 2b extends Rust precision for borrow-mediated mutation; Phase 3 enables interprocedural taint flow via summaries; Phase 4 extends propagation across language boundaries via the existing linker edge types.
 
-**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → DDG-backed propagation with sink-module-compatibility filtering). The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
+**Production deployments.** PlazaFlow (the motivating use case in Context) consumes Phase 1 through Phase 4 once its codebase exists. The first in-tree deployment is hypergumbo's own self-audit: `docs/hypergumbo.claims.yaml` declares per-CLI-entry-point taint-flow claims (every runtime subcommand prohibited from reaching `host_fs` / `network` / `subprocess` / `install_artifact` / `dev_zone`), `docs/hypergumbo-self-catalog/` declares the project-local sources / sinks / sanitizers those claims reference, and `hypergumbo verify-claims docs/hypergumbo.claims.yaml` runs the full pipeline (per-language outer loop → CFG → def/use post-pass → reaching-def → **structural** propagation with module filtering). Two corrections to what that sentence used to claim: the module filter named `_sink_module_compatible` never ran (see §3a), and the propagation is structural — `propagate_taint_ddg` decides inclusion by call-graph BFS and uses DDG data only to select a confidence label. The wrapper-discipline pattern documented in `SECURITY.md` (`safety_zones.py`'s `cache_write`, `user_out_write`, `install_artifact_copy`, …) is the project-local artifact that makes path-bounded zone claims expressible against this ADR's sink-by-callee-name matching model.
 
 ### 8. Testing strategy
 

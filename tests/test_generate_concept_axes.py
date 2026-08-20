@@ -80,6 +80,84 @@ def test_format_axis_section_handles_empty_axis():
     assert "_(empty —" in out
 
 
+# --- WI-limom: the ADR-0039 base_confidence projection ---
+
+def test_render_includes_confidence_projection_section():
+    out = generator.render()
+    assert "### Derived confidence — `base_confidence` projection" in out
+    assert "| Derived confidence | Pathways |" in out
+
+
+def test_every_seeded_pathway_appears_with_its_value():
+    """The table is a faithful projection: every seeded pathway is listed
+    under a row whose value is its registry `base_confidence`."""
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+
+    out = generator.render()
+    table = out.split("### Derived confidence")[1]
+    rows = {
+        line.split("|")[1].strip().strip("*"): line
+        for line in table.splitlines()
+        if line.startswith("| **")
+    }
+    seeded = [e for e in EVIDENCE_TYPES if e.base_confidence is not None]
+    assert seeded, "registry has no seeded pathways — projection is vacuous"
+    for spec in seeded:
+        key = f"{spec.base_confidence:.2f}"
+        assert key in rows, f"no table row for confidence {key}"
+        assert f"`{spec.name}`" in rows[key], (
+            f"{spec.name} missing from the {key} row"
+        )
+
+
+def test_unseeded_pathways_are_disclosed_not_hidden():
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+
+    out = generator.render()
+    unseeded = [e for e in EVIDENCE_TYPES if e.base_confidence is None]
+    assert f"**Unseeded ({len(unseeded)}).**" in out
+    for spec in unseeded:
+        assert f"`{spec.name}`" in out
+
+
+def test_is_resolved_conditioned_pathways_get_both_values():
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+
+    out = generator.render()
+    assert "| Pathway | Resolved | Unresolved |" in out
+    for spec in EVIDENCE_TYPES:
+        if spec.base_confidence_unresolved is None:
+            continue
+        assert (
+            f"| `{spec.name}` | {spec.base_confidence:.2f} "
+            f"| {spec.base_confidence_unresolved:.2f} |"
+        ) in out
+
+
+def test_confidence_annotation_renders_inline_on_evidence_bullets():
+    """Per-value lookup happens on the bullet, not just the summary table."""
+    out = generator.render()
+    assert "_(derived confidence 0.85; 0.40 when unresolved)_" in out
+    assert "_(derived confidence 0.95)_" in out
+
+
+def test_confidence_annotation_is_empty_for_registries_without_the_field():
+    """Edge-type / symbol-kind specs carry no confidence axis; the shared
+    bullet formatter must stay silent for them rather than inventing one."""
+    from hypergumbo_core.edge_types import EDGE_TYPES
+    from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+
+    assert generator._confidence_annotation(EDGE_TYPES[0]) == ""
+    assert generator._confidence_annotation(SYMBOL_KINDS[0]) == ""
+
+
+def test_confidence_annotation_is_empty_for_unseeded_pathway():
+    from hypergumbo_core.evidence_types import EVIDENCE_TYPES
+
+    unseeded = next(e for e in EVIDENCE_TYPES if e.base_confidence is None)
+    assert generator._confidence_annotation(unseeded) == ""
+
+
 # --- main() ---
 
 def test_main_writes_doc_when_no_check_flag(tmp_path: Path, capsys):

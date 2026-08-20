@@ -1,0 +1,23 @@
+- op: create  # be14
+  at: '2026-08-14T02:44:19Z'  # be14
+  by: agent  # be14
+  actor: jgstern_agent  # be14
+  clock: 1  # be14
+  nonce: be14  # be14
+  data:  # be14
+    kind: invariant  # be14
+    title: "opaque-launch caveat renders each bash site as a doubled name (./scripts/auto-pr../scripts/auto-pr), degrading the disclosure ADR-0016 s4 exists for"  # be14
+    status: violated  # be14
+    priority: 3  # be14
+    parent:  # be14
+    tags:  # be14
+    - verify_claims  # be14
+    - io_boundary  # be14
+    isbefore: []  # be14
+    duplicate_of: []  # be14
+    not_duplicate_of: []  # be14
+    pr_ref:  # be14
+    description: "The opaque-launch caveat names its sites, and for the commonest case the\nnames are malformed.\n\nOBSERVED while measuring INV-sarum's A/B on the real self-survey, with bash\npeeled so layer 3 became the front blocker:\n\n  the analysis launches an external program at 81 call site(s)\n  (./scripts/auto-pr../scripts/auto-pr,\n   ./scripts/bump-version../scripts/bump-version,\n   ./scripts/generate-architecture../scripts/generate-arc...)\n\nMECHANISM, and it is deliberate rather than accidental, which is why this is\na legibility item and not a correctness one. _launch_site_name joins\n`module_path` and `name` with a dot so both branches of\n_opaque_launch_sites spell a site the same way. Its own docstring states the\nconsequence for bash: \"a bash launch of `curl` reads `curl.curl` from either\nside.\" When the launched command is a PATH rather than a bare name, the same\njoin produces `./scripts/auto-pr` + \".\" + `./scripts/auto-pr`, which reads as\na doubled path.\n\nWHY IT MATTERS MORE THAN COSMETICS. ADR-0016 section 4's whole argument for\nthe fourth verdict is that a QUALIFIED opinion must name what it excepted --\n\"a qualified opinion that doesn't name what it excepted is just a clean\nopinion with extra words\". The names are the disclosure. A reader handed\n`./scripts/auto-pr../scripts/auto-pr` cannot tell whether that is one script,\ntwo, or a path-construction bug in the tool, so the caveat degrades exactly\nwhere it is supposed to be doing its work. `curl.curl` is the same defect in\na shape that happens to stay readable.\n\nSCOPE: display only. The site SET is correct and the verdict logic is\nunaffected -- opaque_sites feeds the caveat's `entries`, which a consumer\ncounts and may print. So a fix should collapse the duplicate rather than\nchange what is collected, and must keep the two branches of\n_opaque_launch_sites in agreement (that agreement is the reason the join\nexists).\n\nNOT MEASURED: how many of the 81 sites are path-shaped versus bare-name. The\nsample shows the first three are all path-shaped, but three is not a\ndenominator."  # be14
+    fields:  # be14
+      statement: "The opaque-launch caveat must name each site in a form a reader can act on."  # be14
+      root_cause: "_launch_site_name joins module_path and name with a dot so both branches of _opaque_launch_sites spell a site identically. For a bash launch both slots hold the command itself, so a bare name renders curl.curl and a path renders ./scripts/auto-pr../scripts/auto-pr."  # be14

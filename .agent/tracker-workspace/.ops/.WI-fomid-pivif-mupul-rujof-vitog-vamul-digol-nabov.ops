@@ -1,0 +1,28 @@
+- op: create  # 3f98
+  at: '2026-08-17T18:30:56Z'  # 3f98
+  by: agent  # 3f98
+  actor: jgstern_agent  # 3f98
+  clock: 1  # 3f98
+  nonce: 3f98  # 3f98
+  data:  # 3f98
+    kind: work_item  # 3f98
+    title: "max_files is documented as a per-language-analyzer cap but most analyzers ignore it (bash, markdown, json, toml, go, rust, ...)"  # 3f98
+    status: todo_soft  # 3f98
+    priority: 3  # 3f98
+    parent:  # 3f98
+    tags:  # 3f98
+    - cli  # 3f98
+    - dogfood  # 3f98
+    isbefore: []  # 3f98
+    duplicate_of: []  # 3f98
+    not_duplicate_of: []  # 3f98
+    pr_ref:  # 3f98
+    description: "run_survey's `max_files` is documented as \"Optional maximum files per language\nanalyzer. Limits how many files each analyzer processes (for large repos).\"\nMeasured on this repo it binds on some analyzers and is ignored by others.\n\nAt max_files=1, files_analyzed per pass:\n\n    python        1  of 1121   capped\n    javascript    1  of   14   capped\n    bash         43  of   43   IGNORED\n    markdown    132  of  132   IGNORED\n    json         34  of   34   IGNORED\n    toml         10  of   10   IGNORED\n    go/rust/swift/java/gitignore/requirements ...  IGNORED\n\nTotal: 252 of 1385 files still analyzed with the cap set to 1.\n\nWHY IT MATTERS. The flag exists as an escape hatch for large repos, and a user\nwho sets it to bound a run gets a partial bound with no indication which\nanalyzers honored it. It is also a measurement hazard: I used the cap to sweep\nper-file cost and the non-binding analyzers put a floor under every data point,\nwhich produced a nonsensical NEGATIVE intercept (-12.3s) from the linear fit.\nThe sweep is still usable as an upper bound on fixed cost, but only because the\nsmallest configuration is a real measured configuration rather than an\nextrapolation.\n\nFIX SHAPE: either honor the cap at the shared find_files/discovery chokepoint so\nit applies uniformly by construction, or narrow the documented promise to name\nwhich analyzers it governs. The chokepoint version is preferable — it is one\nplace, and \"each analyzer remembers to apply the cap\" is the kind of per-site\nobligation that is already only 2-for-21 compliant."  # 3f98
+    fields: {}  # 3f98
+- op: discuss  # 4a7f
+  at: '2026-08-17T21:05:57Z'  # 4a7f
+  by: agent  # 4a7f
+  actor: jgstern_agent  # 4a7f
+  clock: 2  # 4a7f
+  nonce: 4a7f  # 4a7f
+  message: "EXPLICITLY NOT COVERED BY THE 2026-08-17 PERF CLOSE. `max_files` is a documented\nuser-facing promise (\"maximum files per language analyzer\") that only python and\njavascript honour — 252 of 1385 files were still analyzed at a cap of 1. A user\nwho sets it to bound a run on a large repo gets a partial bound with no indication\nwhich analyzers ignored it.\n\nThat is a flag that does not do what it says, not a performance opportunity, so it\nis unaffected by the decision to stop optimizing. It also has a measurement\nconsequence worth keeping visible: the non-binding analyzers put a floor under\nevery point of an analyzer-scaling sweep, which is what made a linear fit return\nan impossible negative intercept.\n\nStays todo_soft at P3."  # 4a7f

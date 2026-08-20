@@ -5,9 +5,11 @@
 # Third-party packages (express, axios, etc.) trace through these.
 # Also used for TypeScript (same runtime primitives).
 language: javascript
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Node built-ins + browser globals and adding
-# ``stdlib_provenance`` (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # Method/function names that are too generic to match without module context.
@@ -19,7 +21,9 @@ ambiguous_names:
   - close         # fs.close vs any .close()
   - end           # response.end vs stream.end, any .end()
   - send          # socket.send vs express.Response.send
-  - on            # EventEmitter.on (universal in Node.js)
+  - "on"          # EventEmitter.on (universal in Node.js). QUOTED DELIBERATELY:
+                  # bare `on` is a YAML 1.1 BOOLEAN, so this entry parsed as
+                  # True and suppressed nothing at all.
   - get           # http.get vs Map.get, express.app.get (route definition)
   - post          # axios.post vs any .post()
   - put           # axios.put vs Map.set

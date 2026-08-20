@@ -1,0 +1,21 @@
+- op: create  # 3a51
+  at: '2026-08-04T09:55:22Z'  # 3a51
+  by: agent  # 3a51
+  actor: jgstern_agent  # 3a51
+  clock: 1  # 3a51
+  nonce: 3a51  # 3a51
+  data:  # 3a51
+    kind: work_item  # 3a51
+    title: "Two smart-test tests demand the retired CI_FAILOVER_ACTIVE and fail on dev; check-package-coverage reports test failures as coverage gaps"  # 3a51
+    status: todo_hard  # 3a51
+    priority: 2  # 3a51
+    parent:  # 3a51
+    tags:  # 3a51
+    - ci  # 3a51
+    - tests  # 3a51
+    isbefore: []  # 3a51
+    duplicate_of: []  # 3a51
+    not_duplicate_of: []  # 3a51
+    pr_ref:  # 3a51
+    description: "TWO TESTS DEMAND A MECHANISM THE PROJECT DELIBERATELY RETIRED, AND THEY FAIL ON\nCLEAN DEV.\n\n  packages/hypergumbo-core/tests/test_smart_test_slice_robustness.py\n    ::test_baseline_detection_is_failover_aware\n  packages/hypergumbo-core/tests/test_smart_test_coverage_gate.py\n    ::test_baseline_detection_still_failover_aware\n\nBoth assert that scripts/smart-test CONTAINS the string CI_FAILOVER_ACTIVE:\n\n    assert \"CI_FAILOVER_ACTIVE\" in text, (\n        \"smart-test baseline detection is not failover-aware ...\")\n\nWI-hajif step 1 (commit e7e43d678d) retired the self-hosted-Forgejo CI failover\nentirely and updated scripts/smart-test accordingly. Verified:\n\n    git show dev:scripts/smart-test | grep -c CI_FAILOVER_ACTIVE   ->  0\n\nSo both tests fail on dev, unrelated to any in-flight work. Reproduced while\nrunning check-package-coverage for an unrelated taint PR.\n\nTHEY CONTRADICT A PASSING GATE. tests/test_ci_failover_retired.py is the\nWI-hajif recurrence gate; it FORBIDS the very string these two REQUIRE\n(regex CI_FAILOVER_ACTIVE|\\bFAILOVER_ACTIVE\\b|apply_failover_overrides) and it\npasses, 4 tests. The suite therefore contains a test asserting X and a test\nasserting not-X, and both are \"correct\" by their own lights.\n\nWHY CI STAYS GREEN. These two are selected only when scripts/smart-test itself\nchanges -- nothing else imports it. The per-PR gate runs smart-test selection,\nso an ordinary PR never picks them up. This is L48 (a test that cannot be\nSELECTED is indistinguishable from a test that passes) at the retirement-sweep\nlevel: the sweep updated the code and the recurrence gate but left two\nassertions pointing the other way, in files no ordinary change selects.\n\nFIX. Rewrite both to assert the POST-retirement contract rather than deleting\nthem -- the property they were protecting (the merge-base anchors on the\nauthoritative remote, so a stale base does not force a whole-tree slice) is\nstill real; only the failover branch is gone. Deleting them would drop the\nbaseline-anchoring assertion entirely, which is the WI-hajif residual worth\nkeeping. Check the three other WI-hajif-era test files for the same shape\nbefore closing (R8: file the class, not the site).\n\nSECOND, SEPARATE DEFECT FOUND IN THE SAME RUN -- scripts/check-package-coverage\nMISREPORTS TEST FAILURES AS COVERAGE GAPS. Its output was:\n\n    [core] FAILED\n    Coverage gaps for core:\n    <empty>\n    Some packages have coverage gaps when tested in isolation.\n\nwhile the underlying run reported \"TOTAL 29770 0 100%\" and \"Required test\ncoverage of 100% reached\", with the real cause being 2 failed tests. The script\ngreps the per-package log for coverage-shortfall lines and, finding none, still\nprints the coverage-gap explanation and its two suggested fixes -- both of which\nare wrong advice here. A reader following them would go looking for\ncross-package test placement problems that do not exist. It should distinguish\n\"pytest exited non-zero because tests failed\" from \"pytest passed but coverage\nis short\", and print the failing test ids in the first case."  # 3a51
+    fields: {}  # 3a51

@@ -1,0 +1,36 @@
+- op: create  # 0386
+  at: '2026-08-03T01:16:22Z'  # 0386
+  by: agent  # 0386
+  actor: jgstern_agent  # 0386
+  clock: 1  # 0386
+  nonce: '0386'  # 0386
+  data:  # 0386
+    kind: work_item  # 0386
+    title: "cfg_nodes rust/typescript/java lack atomic_statement, so their def/use extractors emit zero DDG edges"  # 0386
+    status: todo_hard  # 0386
+    priority: 2  # 0386
+    parent:  # 0386
+    tags:  # 0386
+    - adr_0017  # 0386
+    - taint  # 0386
+    isbefore: []  # 0386
+    duplicate_of: []  # 0386
+    not_duplicate_of: []  # 0386
+    pr_ref:  # 0386
+    description: "cfg_nodes/rust.yaml, typescript.yaml and java.yaml do not declare\natomic_statement, so CfgBuilder recurses past their statement nodes down to\nleaf tokens and their def/use extractors are never called with a statement\nnode. Measured on one fixture: python 2 DDG edges, rust/typescript/go/java 0.\ngo.yaml was fixed in the Go PR; these three remain.\n\nRust and TypeScript additionally have no LanguageDdgSpec registered, so even\nwith the mapping fixed nothing would invoke them. Both halves belong here.\n\nREMEDY IS A GATE, NOT A SWEEP: for every language with a registered def/use\nextractor, assert (a) its mapping declares atomic_statement and (b) a fixture\nyields at least one DDG edge. That closes this for every future language at\nonce. ADR-0017 section 1d already documents atomic_statement as load-bearing\nand even predicts this failure -- the invariant was declared and unenforced."  # 0386
+    fields: {}  # 0386
+- op: update  # 2c1f
+  at: '2026-08-03T12:07:13Z'  # 2c1f
+  by: agent  # 2c1f
+  actor: jgstern_agent  # 2c1f
+  clock: 2  # 2c1f
+  nonce: 2c1f  # 2c1f
+  set:  # 2c1f
+    status: done  # 2c1f
+- op: discuss  # a0da
+  at: '2026-08-03T12:07:13Z'  # a0da
+  by: agent  # a0da
+  actor: jgstern_agent  # a0da
+  clock: 3  # a0da
+  nonce: a0da  # a0da
+  message: "DONE in PR #186 (dev d853b8cab3). Both halves shipped and the remedy is the\ngate the item asked for, not a three-site sweep.\n\nWHAT SHIPPED. atomic_statement for rust.yaml and typescript.yaml;\nLanguageDdgSpec registrations for both; and the production import list in\ncli.py extended, which was the third independent blocker the item named\n(registration is an import side effect, so an unimported module registers\nnothing). test_ddg_language_wiring.py asserts all of it for EVERY language\nwith a registered def/use extractor, present and future. Red-first: 7 of 14\nfailed.\n\nMEASURED. rust and typescript 0 -> 2 DDG edges on an identical fixture;\nstripping atomic_statement returns both to 0 (mutation proof). Real repos:\nzoxide 273 edges / 72 symbols, apollo-server 1176 / 91. Taint effect zero and\nthat was the contract -- 9-repo cohort A/B: 54 verdict rows, 270 displayed\nevidence rows, 311 total flows, 38 confirmed / 16 violated, 0 cells differ.\n\nA REGRESSION THIS ITEM DID NOT ANTICIPATE, recorded because it generalises.\nDeclaring expression_statement atomic broke three existing Rust CFG tests.\ntree-sitter parses if/else as expression_statement > if_expression and\nlet x = f()?; as let_declaration > try_expression, so the atomic declaration\nstopped the descent before the branch was classified: the CFG lost its\ntrue/false edges while every def/use measurement kept working, because the\nwrapper had been declared FOR def/use. Statement-oriented grammars (Go,\nPython) cannot hit this. Fixed in CfgBuilder rather than the mapping --\natomic_statement is honoured only when the subtree holds no control-flow\ndescendant, deciding per OCCURRENCE rather than per node TYPE, which is all a\nYAML mapping can express. Impact: Python identical (61,113 edges / 6,946\nsymbols on pretix), Go caddy 28,716/1,635 -> 28,650/1,678, Rust zoxide\n297/86 -> 273/72.\n\nThe new gate did NOT catch that regression -- an edge count cannot see a\nswallowed branch -- so it gained a branch-preservation check, mutation-proved\nto redden Rust alone.\n\nSCOPE NOT CLOSED BY THIS ITEM, filed separately: the java half. java.yaml\nlacking atomic_statement is real, but java has NO def/use extractor at all, so\nadding the YAML key alone would leave it emitting zero edges. This item is\nclosed on rust + typescript + the gate."  # a0da

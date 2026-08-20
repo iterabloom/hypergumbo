@@ -1821,6 +1821,25 @@ def test_id_format_validator_flags_malformed_span() -> None:
     assert "malformed_span_segment" in violations[0].message
 
 
+def test_id_format_validator_names_the_name_slot_colon_not_the_span() -> None:
+    """A colon in the NAME slot is diagnosed as such, not as a bad span.
+
+    The parse is right-anchored, so ``org.springframework.boot:spring-boot-
+    starter-web`` in the name slot pushes a name fragment into the span
+    position. Reporting that as ``malformed_span_segment`` names the symptom
+    and points at the wrong producer (INV-dulah).
+    """
+    from hypergumbo_core.spec_validator import _check_id_format
+
+    sym = _FakeSym(
+        id="xml:pom.xml:2-2:org.springframework.boot:spring-boot-starter-web:dependency"
+    )
+    violations = _check_id_format([sym])
+    assert len(violations) == 1
+    assert "colon_in_name_slot" in violations[0].message
+    assert "malformed_span_segment" not in violations[0].message
+
+
 def test_id_format_validator_flags_non_canonical_kind_suffix() -> None:
     """The final kind segment must be a lowercase identifier."""
     from hypergumbo_core.spec_validator import _check_id_format

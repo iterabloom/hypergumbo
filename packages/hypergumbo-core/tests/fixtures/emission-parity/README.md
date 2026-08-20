@@ -35,6 +35,8 @@ for that language:
 | An entrypoint idiom (`__main__` guard / `main()` / top-level run) | `entrypoint_concept` |
 | A module/package-level **variable** (where the language has one) | `emits_variable` |
 | A **class/struct field** (a value member of a type) | `emits_field` |
+| An **enumerated type with named members** (where the language has one) | `emits_enum_members` |
+| An **abstract type with member signatures** — interface / protocol / trait | `emits_abstract_members` |
 
 Per-language shape differs under the same construct: Java/C# have no top-level
 functions, so their `process`/`helper` are static methods inside a class; C#
@@ -49,6 +51,19 @@ member — so `emits_variable` is *not applicable* there and is not a matrix cel
 `emits_field` alone. **(2)** Go's module variable uses `var MaxItems = 5` (the
 form the analyzer emits — a package `const` is not emitted as a `variable`); Rust
 adds a separate `Config` struct for the field because `Service` is a unit struct.
+
+`emits_enum_members` / `emits_abstract_members` (WI-duguk) are the
+container-member cells: does the analyzer emit a Symbol for each *member* of a
+container it already emits? They measure **span nesting**, not `contains` edges
+— this gate runs one analyzer in isolation and `contains` is minted downstream
+by the containment linker, whereas the measured defect is that the member
+symbol is never emitted at all (a missing node, not a missing edge). Three
+per-language applicability notes: **(1)** Python's enumerated type and its
+`Protocol` are both *classes*, so they would be scored through class-member
+emission that `emits_field` already locks — neither is a cell. **(2)**
+JavaScript has neither construct (both are TypeScript-only). **(3)** Go has no
+enumerated type; its idiom is a `const` block whose members are siblings of the
+type rather than nested in its body, so only `emits_abstract_members` applies.
 
 The branchy function is named `process` in every fixture and has exactly three
 `if` statements, so an analyzer that computes McCabe complexity reports `4` and

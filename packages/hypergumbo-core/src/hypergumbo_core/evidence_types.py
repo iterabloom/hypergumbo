@@ -376,7 +376,7 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
 
     # ----------------------------------------------------------------
     # Cluster C (framework-specific dispatch conventions) — Phase 4b
-    # removal complete. Wave 5 (WI-kagik, PRs #3572 + selfh #162-166)
+    # removal complete. Wave 5 (WI-kagik, PRs #3572 + self-hosted-forge #162-166)
     # folded all 65 framework-prefixed values to canonical inference +
     # ``meta['framework_dispatch']`` / ``meta['detection_pattern']`` per
     # audit-findings 0014; deprecated registry entries removed in
@@ -522,6 +522,10 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "behaviour": 0.95,
     "behaviour_callback": 0.9,
     "bridging_header_import": 0.95,
+    # WI-radim: meson `dependency('x')` is a direct, explicit build-file
+    # declaration — as reliable as import/include/require; seeds at the 0.95
+    # ceiling so the producer stops emitting the reserved-1.0 literal.
+    "build_dependency": 0.95,
     "build_target_main": 0.95,
     "canonical_name": 0.95,
     "closure_wrapper": 0.85,
@@ -570,6 +574,8 @@ _CONFIDENCE_SEEDS: dict[str, float] = {
     "stack_construction": 0.85,
     "static": 0.95,
     "struct_field_reference": 0.7,
+    # WI-radim: meson `subdir('x')` is an explicit build-file include directive.
+    "subdir_include": 0.95,
     "trait_impl": 0.95,
     # ADR-0039 R1/R3 (WI-botif): a real dispatch relationship — reliably 0.85;
     # the 1/sqrt(N) fan-out dampener + test-file penalty are RANKING signals that

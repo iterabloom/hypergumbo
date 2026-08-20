@@ -212,8 +212,45 @@ def generate_behavior_map_schema() -> Dict[str, Any]:
                         "type": "array",
                         "items": {"type": "string"}
                     },
-                    "total_files": {"type": "integer"},
-                    "total_lines": {"type": "integer"}
+                    "dev_frameworks": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Frameworks detected only in development/test "
+                            "dependencies, kept separate from `frameworks` "
+                            "(production surface) so a consumer can tell a "
+                            "test harness from an application framework."
+                        )
+                    },
+                    "framework_mode": {
+                        "type": "string",
+                        "description": (
+                            "How `frameworks` was resolved (e.g. manifest "
+                            "declaration vs import-based promotion)."
+                        )
+                    },
+                    "framework_evidence": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        },
+                        "description": (
+                            "WI-napuj: {framework: [node_ids]} — where each "
+                            "declared framework is actually imported, so a "
+                            "framework claim traces to evidence. Omitted when "
+                            "empty (INV-virik present-when-populated)."
+                        )
+                    }
+                    # WI-sizis: `total_files`/`total_lines` were declared here
+                    # and emitted by nothing — the SAME phantom-declaration
+                    # defect WI-bozid removed from `languages[*]` above
+                    # (`lines`/`percentage`), so they are removed rather than
+                    # populated. Populating them would also mint a SECOND home
+                    # for a derivable fact: per-language counts already live in
+                    # `profile.languages[*].{files, loc}` and repo-wide counts
+                    # in `metrics`. That is the duplicate-home the WI-palon
+                    # ruling declined for profile.loc vs node.line_span.
                 }
             },
             "nodes": {

@@ -52,6 +52,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -66,10 +67,6 @@ def find_astro_files(repo_root: Path) -> list[Path]:
     """Find all Astro component files in the repository, excluding vendor dirs."""
     return sorted(find_files(repo_root, ["*.astro"]))
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return node.text.decode("utf-8", errors="replace") if node.text else ""
 
 
 # Built-in HTML elements should not be treated as components

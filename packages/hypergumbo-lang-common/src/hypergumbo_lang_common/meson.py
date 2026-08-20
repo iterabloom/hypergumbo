@@ -35,6 +35,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _get_python_toolchain, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -57,10 +58,6 @@ def find_meson_files(root: Path) -> Iterator[Path]:
         if path.is_file():
             yield path
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:
@@ -300,7 +297,10 @@ def _extract_edges_recursive(
                                         origin=PASS_ID,
                                         origin_run_id=run_id,
                                         evidence_type="build_dependency",
-                                        confidence=1.0,
+                                        # WI-radim: no confidence= — Edge.create
+                                        # derives the in-band 0.95 seed
+                                        # (confidence_source=evidence_derived),
+                                        # not the reserved-1.0 ceiling breach.
                                         evidence_lang="meson",
                                     )
                                     edges.append(edge)
@@ -326,7 +326,7 @@ def _extract_edges_recursive(
                             origin=PASS_ID,
                             origin_run_id=run_id,
                             evidence_type="subdir_include",
-                            confidence=1.0,
+                            # WI-radim: evidence-derived in-band confidence.
                             evidence_lang="meson",
                         )
                         edges.append(edge)

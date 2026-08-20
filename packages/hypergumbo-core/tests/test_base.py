@@ -29,6 +29,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_protocol_stable_id,
     make_route_stable_id,
+    make_route_symbol,
     make_site_stable_id,
     make_symbol_id,
     make_typed_stable_id,
@@ -257,6 +258,94 @@ class TestMakeFileId:
         result = make_file_id("python", "src/main.py")
 
         assert result == "python:src/main.py:1-1:file:file"
+
+
+class TestMakeRouteSymbol:
+    """Tests for make_route_symbol — the WI-zugob route-marker chokepoint."""
+
+    @staticmethod
+    def _span(start: int = 8, end: int = 8):
+        from hypergumbo_core.ir import Span
+
+        return Span(start_line=start, end_line=end, start_col=0, end_col=5)
+
+    def _mint(self, **kw):
+        base = {
+            "language": "go", "path": "main.go", "span": self._span(),
+            "method": "GET", "route_path": "/users", "origin": "go",
+            "origin_run_id": "uuid:test",
+        }
+        base.update(kw)
+        return make_route_symbol(**base)
+
+    def test_id_name_slot_round_trips_against_symbol_name(self) -> None:
+        """ADR-0036 Ruling 1 holds by construction — the whole point of the
+        chokepoint (the invariant every hand-rolled producer drifted from)."""
+        sym = self._mint()
+        assert sym.name == "GET /users"
+        assert sym.id.rsplit(":", 2)[-2] == sym.name
+
+    def test_kind_is_function_not_the_route_fossil(self) -> None:
+        """ADR-0027 Phase-3 route->function fold: `route` is not a registered
+        symbol kind, so an id kind-slot of `route` fails id_format."""
+        sym = self._mint()
+        assert sym.kind == "function"
+        assert sym.id.rsplit(":", 1)[-1] == "function"
+
+    def test_provenance_is_stamped(self) -> None:
+        """cross_field + axis_conformance: the defects WI-zugob filed alongside
+        the id fossil were an absent origin_run_id and an unregistered origin."""
+        sym = self._mint(origin="go", origin_run_id="uuid:abc")
+        assert sym.origin == ["go"]
+        assert sym.origin_run_id == "uuid:abc"
+
+    def test_handler_ref_goes_to_meta_not_the_name(self) -> None:
+        """The handler name must NOT become Symbol.name: a multi-method
+        registration emits several markers at one span, so a handler-derived
+        name-slot would collide their ids. route_handler resolves meta."""
+        sym = self._mint(handler_ref="listUsers")
+        assert sym.meta["handler_ref"] == "listUsers"
+        assert sym.name == "GET /users"
+
+    def test_multi_method_same_span_ids_do_not_collide(self) -> None:
+        """The collision this naming direction exists to prevent."""
+        get_sym = self._mint(method="GET")
+        post_sym = self._mint(method="POST")
+        assert get_sym.id != post_sym.id
+        assert get_sym.stable_id != post_sym.stable_id
+
+    def test_transport_sentinel_splits_out_of_the_verb_field(self) -> None:
+        """INV-tibap: WS/LIVE/RPC are transports, not HTTP verbs."""
+        sym = self._mint(method="WS", route_path="/ws")
+        assert sym.meta["http_method"] is None
+        assert sym.meta["route_protocol"] == "websocket"
+
+    def test_empty_path_normalizes_to_root(self) -> None:
+        """INV-nimik: an empty extracted path hashes as '/'."""
+        sym = self._mint(route_path="")
+        assert sym.meta["route_path"] == "/"
+        assert sym.name == "GET /"
+        assert sym.stable_id == make_route_stable_id("GET", "/")
+
+    def test_colon_bearing_path_is_sanitized_in_the_id_only(self) -> None:
+        """A path parameter like /posts/:id would otherwise push the id past
+        its five anchored segments; Symbol.name keeps full fidelity."""
+        sym = self._mint(route_path="/posts/:id")
+        assert sym.name == "GET /posts/:id"
+        assert sym.id.rsplit(":", 2)[-2] == "GET /posts/.id"
+
+    def test_extra_meta_merges_and_role_is_overridable(self) -> None:
+        """Producer-specific keys (view_name, wrapper_name) survive, and
+        route_mount / route_include reuse the same chokepoint."""
+        sym = self._mint(
+            framework_role="route_mount", extra_meta={"view_name": "HomeView"},
+        )
+        assert sym.meta["framework_role"] == "route_mount"
+        assert sym.meta["view_name"] == "HomeView"
+
+    def test_line_span_is_derived(self) -> None:
+        sym = self._mint(span=self._span(10, 14))
+        assert sym.line_span == 5
 
 
 class TestMakeRouteStableId:
@@ -1911,16 +2000,35 @@ class TestMakeUnresolvedEdge:
         edge = self._call(inherited_field_receiver="self.helper")
         assert edge.meta == {"inherited_field_receiver": "self.helper"}
 
-    def test_all_three_hints_combined(self) -> None:
+    def test_call_construct_lands_in_meta(self) -> None:
+        """``call_construct`` reaches meta, where BOTH taint gates read it.
+
+        ``io_boundary.gate_named_entry`` and ``_register_sanitizer_callers``
+        each refuse an untyped method call, and each reads this exact key. A
+        producer that names a real receiver type in ``module_hint`` also
+        shortens its callee name, which is enough on its own to bind a
+        catalogued sanitizer by short name — so the flag is what keeps that
+        improvement from registering a phantom barrier (INV-linub).
+        """
+        edge = self._call(call_construct="method")
+        assert edge.meta == {"call_construct": "method"}
+
+    def test_call_construct_omitted_stays_out_of_meta(self) -> None:
+        """A receiverless call must not claim to be a method call."""
+        assert self._call().meta is None
+
+    def test_all_four_hints_combined(self) -> None:
         edge = self._call(
             enclosing_class="Foo",
             receiver_type_hint="Bar",
             inherited_field_receiver="self.helper",
+            call_construct="method",
         )
         assert edge.meta == {
             "enclosing_class": "Foo",
             "receiver_type_hint": "Bar",
             "inherited_field_receiver": "self.helper",
+            "call_construct": "method",
         }
 
     def test_module_hint_kwarg_still_works(self) -> None:
@@ -2507,12 +2615,42 @@ class TestMakeDocSymbolIds:
         assert isinstance(result, tuple) and len(result) == 2
 
     def test_node_id_format(self) -> None:
-        # node.id is the doc-family historical shape
-        # f"{language}:{path}:{kind}:{start_line}:{name}" (NOT the ADR-0036
-        # lang:path:span:name:kind grammar — see the function docstring). This
-        # exact string is what the six line-bearing analyzers already emit.
+        # node.id is the canonical ADR-0036 grammar
+        # {lang}:{path}:{start}-{end}:{name}:{kind}. It was previously the
+        # doc-family shape {lang}:{path}:{kind}:{start_line}:{name}, which put
+        # the kind word in the span slot and so did not parse at all
+        # (INV-dulah, doc-family slot-ORDER limb).
         node_id, _ = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
-        assert node_id == "scss:styles/main.scss:variable:1:$primary-color"
+        assert node_id == "scss:styles/main.scss:1-1:$primary-color:variable"
+
+    def test_node_id_delegates_to_make_symbol_id(self) -> None:
+        # The helper must not re-implement the grammar in a local f-string: an
+        # f-string copy is precisely how js_ts.py and json_config.py each opted
+        # out of the shared minter's guarantees, and it is what let this family
+        # drift from ADR-0036 for months. Pinning equality with the canonical
+        # minter means a future edit to the grammar reaches this family too.
+        node_id, _ = make_doc_symbol_ids("twig", "t/page.twig", "macro", "field", 6, 8)
+        assert node_id == make_symbol_id("twig", "t/page.twig", 6, 8, "field", "macro")
+
+    def test_node_id_name_slot_colon_sanitized(self) -> None:
+        # Delegating inherits the WI-sikar always-on name-slot sanitization,
+        # which repairs a real defect the old f-string shipped: svelte's
+        # on:click event symbols carried an id name-slot of "button:click",
+        # whose colon shifted every right-anchored slot and pushed the id to six
+        # segments. The round-trip is documented-lossy (fidelity lives in
+        # Symbol.name); what matters is that the id parses.
+        node_id, _ = make_doc_symbol_ids("svelte", "W.svelte", "event", "button:click", 8, 8)
+        assert node_id == "svelte:W.svelte:8-8:button.click:event"
+        assert len(node_id.split(":")) == 5
+
+    def test_stable_id_unaffected_by_the_node_id_reorder(self) -> None:
+        # The slot-ORDER fix is identity-SAFE: stable_id is computed from the
+        # same argument set regardless of how node.id is laid out, so it stays
+        # byte-identical and no *_scheme bumps (the scheme-bump principle — a
+        # bump follows an ALTERED existing computed value). These digests are
+        # the pre-reorder values.
+        _, scss_sid = make_doc_symbol_ids("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
+        assert scss_sid == make_doc_stable_id("scss", "styles/main.scss", "variable", "$primary-color", 1, 1)
 
     def test_stable_id_is_canonical_and_matches_factory(self) -> None:
         import re

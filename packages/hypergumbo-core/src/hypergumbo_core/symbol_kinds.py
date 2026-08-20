@@ -37,10 +37,45 @@ Consult the per-cluster audit-findings docs (0009 / 0010 / 0011 / 0013
 
 from __future__ import annotations
 
+import ast
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+
+# Type-family taxonomy over the language_construct axis (audit-findings 0018).
+#
+# ABSTRACT means abstract *by construction* — the kind alone is enough, no
+# modifier required. CONCRETE means the declaration is instantiable unless a
+# modifier says otherwise, which is why ``is_abstract_type`` reads
+# ``Symbol.modifiers``: audit 0018 measured that `class` names a concrete
+# declaration in all 11 languages probed, and that java / csharp / php /
+# scala / kotlin all record abstract-ness as ``modifiers=['abstract']``.
+TYPE_FAMILY_ABSTRACT: Final[str] = "abstract_type"
+TYPE_FAMILY_CONCRETE: Final[str] = "concrete_type"
+
+# Which languages actually declare each inherently-abstract kind.
+#
+# Used by :func:`find_partial_abstract_family_literals` so the linter can tell
+# a DEFECT from a correctly-scoped set. ``linkers/jackson_dispatch`` declares
+# ``depends_on=[["java"]]`` and lists ``{class, interface, struct}``: that omits
+# `trait` and `protocol` and is *right*, because no Java symbol is ever either.
+# ``linkers/type_hierarchy`` declares scala/rust/swift among twelve languages
+# and omits `protocol`: that is the measured Swift-loses-dispatch bug.
+#
+# Re-evaluation trigger (R10): when an analyzer starts emitting one of these
+# kinds for a language not listed here, add it — otherwise the linter goes
+# quiet for that language and the omission it exists to catch becomes
+# invisible again.
+ABSTRACT_KIND_LANGUAGES: Final[dict[str, frozenset[str]]] = {
+    "interface": frozenset({
+        "java", "csharp", "go", "typescript", "javascript", "kotlin",
+        "php", "dart",
+    }),
+    "trait": frozenset({"rust", "scala", "groovy", "php"}),
+    "protocol": frozenset({"swift", "solidity"}),
+}
 
 AXIS_LANGUAGE_CONSTRUCT: Final[str] = "language_construct"
 AXIS_PENDING: Final[str] = "pending_classification"
@@ -61,11 +96,26 @@ VALID_AXES: Final[frozenset[str]] = frozenset({
 
 @dataclass(frozen=True)
 class SymbolKindSpec:
-    """A single Symbol.kind value and its axis classification."""
+    """A single Symbol.kind value and its axis classification.
+
+    ``type_family`` is a **taxonomy over** the ``language_construct`` axis,
+    not a second axis (audit-findings 0018). ADR-0024's axis machinery is
+    deliberately not invoked: no IR field changes, no value is reclassified,
+    and every value keeps the axis it already had. What it adds is the
+    ability to *query* a subset, which the flat 138-value axis could not
+    express — the ``Symbol.kind`` analogue of ``edge_types_on_axis()``.
+
+    Leave it ``None`` for anything that is not a nominal type declaration.
+    Assignment is evidence-driven: a value gets a family when a consumer
+    demonstrably needs to reason about it as a type. Under-assignment is
+    recoverable (add it when a consumer appears); over-assignment silently
+    widens every predicate built on it.
+    """
 
     name: str
     axis: str
     description: str
+    type_family: str | None = None
 
 
 SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
@@ -78,9 +128,11 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("method", AXIS_LANGUAGE_CONSTRUCT,
                    "Method on a class / struct / interface."),
     SymbolKindSpec("class", AXIS_LANGUAGE_CONSTRUCT,
-                   "Class declaration."),
+                   "Class declaration.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("interface", AXIS_LANGUAGE_CONSTRUCT,
-                   "Interface declaration."),
+                   "Interface declaration.",
+                   TYPE_FAMILY_ABSTRACT),
     SymbolKindSpec("contract", AXIS_LANGUAGE_CONSTRUCT,
                    "Smart-contract declaration (Solidity / Vyper / Move). "
                    "Sibling to `class` / `interface` / `struct` — names the "
@@ -89,7 +141,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "for `contract_declaration` AST nodes. Consumed by "
                    "`library-exports.yaml`'s `symbol_kind: ^contract$` rule "
                    "that surfaces deployable Solidity contracts as library "
-                   "exports."),
+                   "exports.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("modifier", AXIS_LANGUAGE_CONSTRUCT,
                    "Solidity / Vyper modifier declaration. A function "
                    "modifier is a reusable pre/post-condition block "
@@ -98,11 +151,14 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "`add_symbol(mod_name, \"modifier\", ...)` for "
                    "`modifier_definition` AST nodes."),
     SymbolKindSpec("struct", AXIS_LANGUAGE_CONSTRUCT,
-                   "Struct / record-type declaration."),
+                   "Struct / record-type declaration.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("enum", AXIS_LANGUAGE_CONSTRUCT,
-                   "Enum declaration."),
+                   "Enum declaration.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("union", AXIS_LANGUAGE_CONSTRUCT,
-                   "Union / sum-type declaration."),
+                   "Union / sum-type declaration.",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("error_set", AXIS_LANGUAGE_CONSTRUCT,
                    "Zig error-set declaration. Surfaced by WI-nubuv's "
                    "inline-IfExp / non-string-Constant classifier fixes "
@@ -132,7 +188,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "\"map\", ...)`. Registered per the WI-zipis drain / "
                    "ADR-0027 verdict (audit-findings 0015)."),
     SymbolKindSpec("trait", AXIS_LANGUAGE_CONSTRUCT,
-                   "Trait declaration (Rust / Scala / Groovy)."),
+                   "Trait declaration (Rust / Scala / Groovy).",
+                   TYPE_FAMILY_ABSTRACT),
     SymbolKindSpec("module", AXIS_LANGUAGE_CONSTRUCT,
                    "Module declaration (the source-level construct)."),
     SymbolKindSpec("namespace", AXIS_LANGUAGE_CONSTRUCT,
@@ -194,11 +251,13 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "`dart.py` `extension_declaration`. Registered per the "
                    "WI-zipis drain / ADR-0027 verdict (audit-findings 0015)."),
     SymbolKindSpec("record", AXIS_LANGUAGE_CONSTRUCT,
-                   "Record declaration (Java 14+, Erlang, Haskell)."),
+                   "Record declaration (Java 14+, Erlang, Haskell).",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("abstract", AXIS_LANGUAGE_CONSTRUCT,
                    "Abstract class / member declaration."),
     SymbolKindSpec("instance", AXIS_LANGUAGE_CONSTRUCT,
-                   "Typeclass / interface instance declaration."),
+                   "Typeclass / interface instance declaration "
+                   "(Haskell / Lean / PureScript `instance`, Scala 3 `given`)."),
     SymbolKindSpec("subroutine", AXIS_LANGUAGE_CONSTRUCT,
                    "Subroutine / sub declaration (Fortran / Perl)."),
     SymbolKindSpec("procedure", AXIS_LANGUAGE_CONSTRUCT,
@@ -233,7 +292,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("arrow_function", AXIS_LANGUAGE_CONSTRUCT,
                    "Arrow-function expression (JS / TS)."),
     SymbolKindSpec("object", AXIS_LANGUAGE_CONSTRUCT,
-                   "Object / singleton declaration (Scala / Kotlin)."),
+                   "Object / singleton declaration (Scala / Kotlin).",
+                   TYPE_FAMILY_CONCRETE),
     SymbolKindSpec("prop", AXIS_LANGUAGE_CONSTRUCT,
                    "Component prop declaration (Vue / React)."),
     SymbolKindSpec("slot", AXIS_LANGUAGE_CONSTRUCT,
@@ -427,6 +487,22 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Subscription symbol (GraphQL operation). Top-level construct, "
                    "sibling to query/fragment (audit-findings 0007 omission; "
                    "registered per id-format:F3)."),
+    # GraphQL type-system sibling of type/input/interface/enum/union — all
+    # five of which are registered, and all six of which the GraphQL
+    # analyzer emits from one `type_kinds` dict (graphql.py
+    # `_process_graphql_tree`). `scalar` was the sole omission, and the
+    # cause is instructive: the corpus enumeration the audits were built
+    # from could not see dict-indirected `kind=` emits at all, so this
+    # value was structurally invisible until WI-zigih taught the L3
+    # walker to resolve `MAP[k]`. Registered, not folded: `scalar Date`
+    # is its own GraphQL construct, and `type` is already taken by
+    # `object_type_definition` in that same dict — conflating them would
+    # fuse two distinct constructs (ADR-0027 apex/peer).
+    SymbolKindSpec("scalar", AXIS_LANGUAGE_CONSTRUCT,
+                   "Scalar type-definition symbol (GraphQL `scalar Date`). "
+                   "Top-level type-system construct, sibling to "
+                   "type/input/interface/enum/union (audit-findings 0007 "
+                   "omission, surfaced by the WI-zigih dict-indirection gate)."),
     SymbolKindSpec("entry", AXIS_LANGUAGE_CONSTRUCT,
                    "Entry symbol. CANONICAL per audit-findings 0007."),
     SymbolKindSpec("entity", AXIS_LANGUAGE_CONSTRUCT,
@@ -522,7 +598,8 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
     SymbolKindSpec("event", AXIS_LANGUAGE_CONSTRUCT,
                    "Event symbol (DSL / Solidity). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("protocol", AXIS_LANGUAGE_CONSTRUCT,
-                   "Protocol symbol (Swift / Solidity / DSL). CANONICAL per audit-findings 0007."),
+                   "Protocol symbol (Swift / Solidity / DSL). CANONICAL per audit-findings 0007.",
+                   TYPE_FAMILY_ABSTRACT),
     SymbolKindSpec("index", AXIS_LANGUAGE_CONSTRUCT,
                    "Index symbol (SQL / DSL). CANONICAL per audit-findings 0007."),
     SymbolKindSpec("node", AXIS_LANGUAGE_CONSTRUCT,
@@ -631,6 +708,187 @@ def find_symbol_kind(name: str) -> SymbolKindSpec | None:
         if spec.name == name:
             return spec
     return None
+
+
+def type_like_kind_names() -> frozenset[str]:
+    """Every kind that declares a nominal type (abstract or concrete).
+
+    Use in place of literals like ``("class", "interface", "struct",
+    "trait")``. Audit 0018 found 26 such literals across 24 distinct
+    vocabularies, five of which silently omitted ``protocol``.
+    """
+    return frozenset(
+        spec.name for spec in SYMBOL_KINDS if spec.type_family is not None
+    )
+
+
+def abstract_type_kind_names() -> frozenset[str]:
+    """Kinds that are abstract *by construction* — no modifier needed.
+
+    ``class`` is deliberately absent: audit 0018 measured that it names a
+    concrete declaration in every language probed. For the "is this thing
+    abstract?" question that spans both, use :func:`is_abstract_type`.
+    """
+    return frozenset(
+        spec.name
+        for spec in SYMBOL_KINDS
+        if spec.type_family == TYPE_FAMILY_ABSTRACT
+    )
+
+
+def is_abstract_type(kind: str, modifiers: Sequence[str] = ()) -> bool:
+    """Is a symbol of *kind* with *modifiers* an abstract type?
+
+    True for the inherently-abstract kinds, and for a concrete type kind
+    whose declaration carries the ``abstract`` modifier (java / csharp /
+    php / scala / kotlin all record it there).
+
+    The ``type_like`` guard is load-bearing rather than defensive: an
+    abstract *method* also carries ``modifiers=['abstract']`` — kotlin emits
+    exactly that — so a bare ``"abstract" in modifiers`` check would
+    classify members as types.
+
+    Known gap, tracked separately: typescript and cpp do not populate the
+    modifier at all, so their abstract classes read as concrete here. That
+    is a producer gap, not a predicate gap — this function is correct as
+    soon as they emit it.
+    """
+    spec = find_symbol_kind(kind)
+    if spec is None or spec.type_family is None:
+        return False
+    if spec.type_family == TYPE_FAMILY_ABSTRACT:
+        return True
+    return "abstract" in modifiers
+
+
+def find_partial_abstract_family_literals(repo_root: Path) -> list[str]:
+    """Find language-agnostic literals that enumerate PART of the abstract family.
+
+    The defect audit 0018 measured: a consumer writes
+    ``("class", "interface", "struct", "trait")``, omits ``protocol``, and
+    Swift silently loses interface dispatch. The rule enforced here is
+    "enumerate all or none" — a complete literal is allowed (the resolver is
+    preferred but a complete set is not the bug), a partial one is not.
+
+    Two exemptions, both principled:
+
+    * ``packages/hypergumbo-lang-*`` — a per-language analyzer's incomplete
+      set is *correct*; Java has no traits, Swift no interfaces.
+    * an expression guarded by a ``language`` comparison in the same boolean
+      expression (``s.language == "graphql" and s.kind in (...)``), which is
+      a per-language predicate that merely lives in core.
+    * a module whose ``@register_linker(depends_on=...)`` languages cannot
+      produce the missing kind — see :data:`ABSTRACT_KIND_LANGUAGES`. This is
+      what separates a Java-only framework linker (correct to omit `trait`)
+      from ``type_hierarchy``, which declares scala/rust/swift and omits
+      `protocol`.
+    """
+    full = abstract_type_kind_names()
+    offenders: list[str] = []
+    for pkg_src in sorted((repo_root / "packages").glob("*/src")):
+        if not pkg_src.parent.name.startswith("hypergumbo-core"):
+            continue
+        for path in sorted(pkg_src.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except SyntaxError:  # pragma: no cover - registry source is valid
+                continue
+            guarded = _language_guarded_line_spans(tree)
+            declared = _declared_linker_languages(tree)
+            seen: set[int] = set()
+            for node in ast.walk(tree):
+                names = _string_literal_members(node)
+                # ast.walk yields bare ast.AST, which has no lineno in
+                # typeshed; every node that yields member literals has one
+                # at runtime, so narrow via getattr rather than a cast.
+                lineno: int | None = getattr(node, "lineno", None)
+                if names is None or lineno is None or lineno in seen:
+                    continue
+                present = names & full
+                if not present or present == full:
+                    continue
+                if any(lo <= lineno <= hi for lo, hi in guarded):
+                    continue
+                missing = sorted(
+                    k for k in full - present
+                    if declared is None
+                    or (ABSTRACT_KIND_LANGUAGES.get(k, frozenset()) & declared)
+                )
+                if not missing:
+                    continue
+                seen.add(lineno)
+                offenders.append(
+                    f"{path.relative_to(repo_root)}:{lineno}: "
+                    f"{sorted(names)} omits {missing} — call "
+                    f"abstract_type_kind_names() or is_abstract_type()",
+                )
+    return offenders
+
+
+def _declared_linker_languages(tree: ast.AST) -> frozenset[str] | None:
+    """Languages named in a module's ``@register_linker(depends_on=...)``.
+
+    Returns ``None`` when the module declares none, which means "treat as
+    language-agnostic" — the conservative direction, since an undeclared
+    module may see any language.
+    """
+    langs: set[str] = set()
+    found = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.keyword) or node.arg != "depends_on":
+            continue
+        for sub in ast.walk(node.value):
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                langs.add(sub.value)
+                found = True
+    return frozenset(langs) if found else None
+
+
+def _string_literal_members(node: ast.AST) -> frozenset[str] | None:
+    """Return the string members of a literal collection, or None."""
+    if isinstance(node, (ast.Set, ast.Tuple, ast.List)):
+        elts = node.elts
+    elif (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("frozenset", "set")
+        and node.args
+        and isinstance(node.args[0], (ast.Set, ast.Tuple, ast.List))
+    ):
+        elts = node.args[0].elts
+    else:
+        return None
+    values = [
+        e.value for e in elts
+        if isinstance(e, ast.Constant) and isinstance(e.value, str)
+    ]
+    if len(values) != len(elts) or not values:
+        return None
+    return frozenset(values)
+
+
+def _language_guarded_line_spans(tree: ast.AST) -> list[tuple[int, int]]:
+    """Line spans of boolean expressions that also test a ``language``.
+
+    ``s.language == "graphql" and s.kind in ("type", "field", "interface")``
+    is a per-language predicate. Detecting the sibling comparison is what
+    lets the linter stay strict everywhere else instead of needing an
+    allow-list with a justification field.
+    """
+    spans: list[tuple[int, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BoolOp):
+            continue
+        mentions_language = any(
+            isinstance(sub, ast.Attribute) and sub.attr == "language"
+            for sub in ast.walk(node)
+        ) or any(
+            isinstance(sub, ast.Name) and sub.id == "language"
+            for sub in ast.walk(node)
+        )
+        if mentions_language:
+            spans.append((node.lineno, node.end_lineno or node.lineno))
+    return spans
 
 
 def find_axis_drift(repo_root: Path) -> list[str]:

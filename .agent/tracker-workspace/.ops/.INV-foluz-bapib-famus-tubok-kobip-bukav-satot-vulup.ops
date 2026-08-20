@@ -1,0 +1,47 @@
+- op: create  # 5722
+  at: '2026-08-17T02:33:48Z'  # 5722
+  by: agent  # 5722
+  actor: jgstern_agent  # 5722
+  clock: 1  # 5722
+  nonce: '5722'  # 5722
+  data:  # 5722
+    kind: invariant  # 5722
+    title: "Python emits no call edge for a bare-name call it cannot resolve, so a catalogued section-4 terminating summary (print) can never be applied"  # 5722
+    status: violated  # 5722
+    priority: 1  # 5722
+    parent:  # 5722
+    tags:  # 5722
+    - taint  # 5722
+    - python  # 5722
+    - analyzer  # 5722
+    - adr_0017  # 5722
+    isbefore: []  # 5722
+    duplicate_of: []  # 5722
+    not_duplicate_of: []  # 5722
+    pr_ref:  # 5722
+    description: "MEASURED 2026-08-16 on dev 0d305fe0e4 while re-measuring INV-busis's escape-cause\nbreakdown. This is the LARGEST single cause of section 3a escapes on hypergumbo's\nown tree (10 of 21 CALL-node escape sites, 47.6%), and INV-busis attributes that\nbucket to INV-mumov, which is the wrong owner -- INV-mumov is about attribute-chain\nreceivers, and none of these ten are that shape.\n\nTHE DEFECT. The Python analyzer emits NO call edge for a bare-name call whose\ncallee it cannot resolve in-project. Measured on a fixture, production\nanalyze_python:\n\n    helper(x)                 bare name DEFINED in file    EDGE\n    os.remove(x)              module-qualified             EDGE\n    x.decode()                simple-name receiver         EDGE\n    open(p)                   builtin, WI-mitul's fix      EDGE\n    print(x)                  builtin                      none\n    len(items)                builtin                      none\n    input()                   builtin                      none\n    eval(x)                   builtin                      none\n    getattr(x, \"y\")           builtin                      none\n    undefined_fn(x)           unresolvable bare name       none\n    items[i].startswith(x)    SUBSCRIPT receiver           none\n\nMECHANISM, read in code. py.py's terminal bare-Name arm (~line 6377) emits\npython:builtins:0-0:<name>:unresolved only when the name is in\nBUILTIN_CONSTRUCTOR_NAMES -- \"bare rows that are REAL builtins\", derived from the\nio_primitives catalogue. So the permitting set is \"builtins that are catalogued\nI/O PRIMITIVES\". print / input / eval / len / getattr are not I/O primitives, so\nthey are not in the set, so they emit nothing. Every other analyzer in the fleet\nemits an unresolved edge here via make_unresolved_edge.\n\nWHY IT IS A CLASS AND NOT A LIST OF BUILTINS. WI-mitul (done, PR #385) closed\nexactly one door -- open() -- by adding it to that table. The closure note says\nso: \"for bare builtin I/O constructors (open) via EXTERNAL_CONSTRUCTOR_TYPES\".\nThe gate is a per-name allowlist keyed on a catalogue built for a DIFFERENT\npurpose (I/O classification), so every non-I/O callee that needs an edge for a\nnon-I/O reason is invisible, and each one has to be discovered and added\nseparately. Filed as a class per LIVE.md rule 10 (one door closed is not the\nclass closed) rather than as \"also add print\".\n\nTHE CONSEQUENCE THAT MAKES IT P1, and it is not about I/O at all. ADR-0017\nsection 4 function summaries are how the section 3a walk decides a use TERMINATES\nthe taint rather than propagating it -- the difference between an accounted-for\nstep and an escape. The section 4 index holds a terminating summary for print\nunder BOTH keys:\n\n    builtins.print -> FunctionSummary(side_effect=True, param_to_return={})\n    print          -> FunctionSummary(side_effect=True, param_to_return={})\n\nand it can never be applied, because no edge is ever emitted at a print() call\nsite, so the callee never reaches callees_at. A catalogued terminating summary\nthat the walk structurally cannot consult is the section 3a blocker INV-busis\nexists to name. Same for any future summary keyed on a bare-name builtin.\n\nSCOPE NOT MEASURED, stated so nobody reads more into this than was checked:\n  - Python only. I did not check whether other analyzers withhold bare-name\n    unresolved edges (the ones I sampled emit).\n  - The subscript-receiver shape (items[i].startswith(x)) is in the same\n    \"emits nothing\" bucket but is a DIFFERENT mechanism from the bare-name arm;\n    it may want its own fix and is not covered by the statement above.\n  - I did not measure the corpus-wide edge-count delta a fix would produce.\n    It will be large and positive, and per INV-linub's direction discipline it\n    must be measured on FINDINGS and on BOTH signs before shipping: more\n    callees_at feeds section 7a sanitizer registration, and a barrier False\n    earns 'sanitized' and DROPS a flow (#214). An emission fix here can\n    manufacture suppression."  # 5722
+    fields:  # 5722
+      statement: "Every call site whose callee carries an ADR-0017 section 4 function summary must produce a call edge, or the summary can never be consulted and the section 3a walk must treat an accounted-for step as an escape. VIOLATED for Python bare-name calls: print/input/eval/len/getattr emit no edge, while the section 4 index holds a terminating summary for print under both 'print' and 'builtins.print'."  # 5722
+      root_cause: "py.py's terminal bare-Name call arm emits python:builtins:0-0:<name>:unresolved only for names in BUILTIN_CONSTRUCTOR_NAMES, a set derived from the io_primitives catalogue -- i.e. the permitting condition is 'this builtin is a catalogued I/O primitive'. Callees needing an edge for a non-I/O reason (a section 4 summary) are outside that set by construction. WI-mitul added open() to the same table rather than removing the coupling, so the gate remains a per-name allowlist keyed on an unrelated catalogue."  # 5722
+- op: discuss  # a54b
+  at: '2026-08-17T22:03:53Z'  # a54b
+  by: agent  # a54b
+  actor: jgstern_agent  # a54b
+  clock: 2  # a54b
+  nonce: a54b  # a54b
+  message: "P0/P1 SWEEP 2026-08-17, dev 11a240f83d. Every claim below was re-derived against the current tree, not re-read off this thread.\n\nRE-VERIFIED AT TIP, STILL VIOLATED. This item had zero discussion entries; recording the independent reproduction. Production analyze_python on a single fixture file, dev 11a240f83d -- one run, so the emitting and non-emitting shapes share every other condition:\n\n    EDGE EMITTED                       NO EDGE\n      helper(x)   bare name in file      print(x)      builtin\n      os.remove(x)  module-qualified     len(x)        builtin\n      obj.decode()  simple receiver      undefined_fn(x)  unresolvable\n      obj.related.create(x)  attr chain  x[0].startswith('a')  subscript receiver\n\nTHE SUBSCRIPT-RECEIVER SHAPE IS A SECOND MEMBER, and it is in this item's scope by mechanism (the receiver is not a resolvable name) but is not named in the title. INV-busis records it as 'a distinct subscript-receiver shape'; it should be decided here whether this item owns it or it gets its own filing, because a fix aimed only at bare NAMES will leave it.\n\nThe consequence INV-busis attaches to this item is unchanged and is the reason it is P1: the section 4 index holds a TERMINATING summary for print under both keys (builtins.print and print), and the walk cannot apply it because no edge reaches callees_at -- so the canonical 'the taint ends here' use is counted as an ESCAPE."  # a54b
+- op: update  # fbe7
+  at: '2026-08-17T22:57:09Z'  # fbe7
+  by: agent  # fbe7
+  actor: jgstern_agent  # fbe7
+  clock: 3  # fbe7
+  nonce: fbe7  # fbe7
+  set:  # fbe7
+    priority: 2  # fbe7
+- op: discuss  # 8dcf
+  at: '2026-08-17T22:57:09Z'  # 8dcf
+  by: agent  # 8dcf
+  actor: jgstern_agent  # 8dcf
+  clock: 4  # 8dcf
+  nonce: 8dcf  # 8dcf
+  message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2, AND THIS ONE HAS A SECOND REASON THAT IS NOT ABOUT RANKING. Emitting the missing edges populates callees_at, which lets _use_site_terminates decide sites it currently treats as escapes, which produces MORE False verdicts -- and since PR #214 a barrier False earns `sanitized` and DROPS the flow from the claim's violation set. So fixing this can MANUFACTURE SUPPRESSION, into a reporting layer already at ~41% precision. That is the unsafe direction for a security tool, and it is an argument for doing it AFTER the precision mechanisms are understood, not before.\n\nTHE DEFECT IS UNCHANGED and re-reproduced at tip 2026-08-17: print(x), len(x) and undefined_fn(x) emit no edge while helper(x), os.remove(x) and obj.decode() do, in one run."  # 8dcf

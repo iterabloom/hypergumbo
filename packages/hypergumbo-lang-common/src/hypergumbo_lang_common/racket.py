@@ -4,6 +4,11 @@
 This module provides static analysis for Racket source code, extracting symbols
 (functions, variables, structs) and edges (calls).
 
+Symbols carry docstrings (extracted from the tree), cyclomatic complexity and
+line span. Calls that resolve to a known symbol get confidence 1.0; calls that
+do not are still emitted, pointed at a synthetic ``racket:unresolved:<name>``
+target at confidence 0.6, so an unresolved call is visible rather than absent.
+
 Racket is a general-purpose programming language in the Lisp/Scheme family,
 known for its language-oriented programming features. It's widely used in
 programming language research and computer science education.
@@ -11,12 +16,14 @@ programming language research and computer science education.
 Implementation approach:
 - Uses tree-sitter-language-pack for Racket grammar
 - Two-pass analysis: First pass collects all symbols, second pass extracts edges
-- Handles Racket-specific constructs like define, struct, module+
+- Handles Racket-specific constructs like define and struct.
+  ``module+`` / ``module*`` are NOT extracted — they sit in the call-edge
+  skip set and produce no symbol.
 
 Key constructs extracted:
 - (define (name args) body) - function definitions
 - (define name value) - variable definitions
-- (struct name (fields)) - struct definitions
+- (struct name (fields)) - struct definitions, emitted as ``kind="class"``
 - (name args) - function calls
 """
 
@@ -29,6 +36,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _g
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_symbol_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -44,10 +52,6 @@ def find_racket_files(root: Path) -> Iterator[Path]:
             if path.is_file():
                 yield path
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _is_define_form(node: "tree_sitter.Node") -> bool:

@@ -79,6 +79,7 @@ write an ADR vs an audit-findings document."
 | [0015](0015-symbol-kind-wi-zipis-drain.md) | Symbol.kind — WI-zipis producer-sweep drain (extension/filter/workflow/operator/assumption/list/map + structure→struct) | `Symbol.kind` | All RESOLVED |
 | [0016](0016-resolver-openapi-rpc-family.md) | Resolver / OpenAPI / RPC Family Classifications | `Edge.edge_type` | All RESOLVED |
 | [0017](0017-endpoint-shape-long-tail.md) | Endpoint-Shape Long-Tail Classifications | `Edge.edge_type` | All RESOLVED |
+| [0018](0018-symbol-kind-type-family-abstract-predicate.md) | Symbol.kind Type Family — the abstract-type predicate | `Symbol.kind` | All RESOLVED (no fold; remedy is a consumer predicate layer) |
 
 ## File format
 

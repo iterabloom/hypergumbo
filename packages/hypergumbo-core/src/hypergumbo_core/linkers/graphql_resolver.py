@@ -49,7 +49,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_protocol_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_protocol_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
@@ -432,9 +436,11 @@ def _create_resolver_symbol(pattern: ResolverPattern, root: Path) -> Symbol:
 
     # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
     # Fold to canonical kind="function" + meta["framework_role"].
+    resolver_name = f"{pattern.type_name}.{pattern.field_name}"
+
     return Symbol(
-        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, "resolver", "function"),
-        name=f"{pattern.type_name}.{pattern.field_name}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, sanitize_id_name_segment(resolver_name), "function"),
+        name=resolver_name,
         kind="function",
         path=pattern.file_path,
         span=Span(

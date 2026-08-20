@@ -72,7 +72,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .ir import ExternalRef, _compute_run_signature, _parse_dangling_id
 from .pass_metadata import PassMetadataLookup
@@ -84,6 +84,7 @@ from .visibility import (
     compute_visibility,
 )
 from .spec_validator import (
+    ValidationViolation,
     build_validation_report,
     compute_stable_id_stats,
     validate_ir,
@@ -142,7 +143,7 @@ def _relativize_ir_paths(
     """
     prefix = str(repo_root) + "/"
 
-    def _relativize_meta(meta: "dict | None") -> None:
+    def _relativize_meta(meta: "dict[str, Any] | None") -> None:
         """Relativize prefix-bearing ID strings in a meta dict, in place.
 
         SHAPE CONTRACT (load-bearing — read before threading a new id-embedding
@@ -207,12 +208,12 @@ class FinalizeContext:
     symbols: "list[Symbol]"
     edges: "list[Edge]"
     usage_contexts: "list[UsageContext]"
-    analysis_runs: list[dict]
-    behavior_map: dict
+    analysis_runs: list[dict[str, Any]]
+    behavior_map: dict[str, Any]
     limits: "Limits"
     repo_root: Path
     pass_metadata: PassMetadataLookup
-    violations: list = field(default_factory=list)
+    violations: list[ValidationViolation] = field(default_factory=list)
     repo_fingerprint: str = ""  # set by sub-step 4; surfaced by _freeze
 
 
@@ -220,11 +221,11 @@ class FinalizeContext:
 class FinalizedMap:
     """The single reconciled view §8's round-trip test asserts on (shallow ``frozen``)."""
 
-    behavior_map: dict
-    nodes: tuple
-    edges: tuple
+    behavior_map: dict[str, Any]
+    nodes: tuple[dict[str, Any], ...]
+    edges: tuple[dict[str, Any], ...]
     repo_fingerprint: str
-    validation_report: dict
+    validation_report: dict[str, Any]
 
 
 def _finalize_re_relativize(ctx: FinalizeContext) -> None:
@@ -314,10 +315,27 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
 
     Two honesty signals are reconciled at this single pre-serialization chokepoint:
 
-    * ``partial_results_reason`` — set from any run's ``files_skipped`` count, but
-      never clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
-      a crashed pass is the more severe signal; the file-skip note only fills an
+    * ``partial_results_reason`` — set from EITHER soft file-drop channel, never
+      clobbering a reason already set by ``record_crashed_pass`` (WI-madal L3):
+      a crashed pass is the more severe signal; the file-drop note only fills an
       otherwise-empty summary.
+
+      WI-zafid: it used to key on a run's ``files_skipped`` count alone, so the two
+      equivalent soft drops were asymmetric — a parse-error drop increments
+      ``files_skipped`` and set the reason, while an oversize drop lands only in
+      ``limits.truncated_files`` (``add_truncated_file`` never touches
+      ``files_skipped``) and set nothing. Same user-visible outcome, one signalled
+      and one silent. Both now trigger it.
+
+      NOTE on ``analysis_incomplete``, which WI-zafid also flagged as never
+      tripping: that is CORRECT and is deliberately not changed here. §735 defines
+      it as "analysis terminated *early*", and every drop reaching this function is
+      fail-open — analysis ran to completion over the remaining files, and even the
+      crash path is specified to "continue" (§ Analyzer crashes). The genuine defect
+      the item found on that side is a SPEC self-contradiction, fixed in the spec
+      rather than the code: §1078 claimed the reason is "present only when
+      ``analysis_incomplete: true``", which the 🟩 crash behaviour directly
+      contradicts by prescribing a reason with the flag unset.
     * ``skipped_languages`` (WI-nihir) — the ``add_skipped_language`` setter had zero
       callers, so a language the profile DETECTED but for which no analyzer pass ran
       (grammar unavailable / unsupported / crashed) was silently absent. This is the
@@ -326,9 +344,11 @@ def _finalize_skipped_into_limits(ctx: FinalizeContext) -> None:
       covering every cause without any per-analyzer edit. See
       ``_detected_unanalyzed_languages``.
     """
-    for run in ctx.analysis_runs:
-        if run.get("files_skipped", 0) > 0 and not ctx.limits.partial_results_reason:
-            ctx.limits.partial_results_reason = "some files skipped during analysis"
+    dropped_files = any(
+        run.get("files_skipped", 0) > 0 for run in ctx.analysis_runs
+    ) or bool(ctx.limits.truncated_files)
+    if dropped_files and not ctx.limits.partial_results_reason:
+        ctx.limits.partial_results_reason = "some files skipped during analysis"
     for language in _detected_unanalyzed_languages(ctx):
         ctx.limits.add_skipped_language(language)
     ctx.behavior_map["limits"] = ctx.limits.to_dict()
@@ -407,6 +427,45 @@ def _finalize_edge_resolution(ctx: FinalizeContext) -> None:
             edge.is_resolved = False
             if edge.dst_ref is None:
                 edge.dst_ref = _derive_dst_ref_from_id(edge.dst)
+        _rederive_confidence_from_verdict(edge)
+
+
+def _rederive_confidence_from_verdict(edge: "Edge") -> None:
+    """INV-fazim: re-derive ``evidence_derived`` confidence from the verdict above.
+
+    confidence:F1 (ADR-0039) derives ``Edge.confidence`` from
+    ``(evidence_type, is_resolved)`` inside ``Edge.create`` — at CONSTRUCTION time,
+    against a value ADR-0037 ruling 1 declares advisory. ``Edge.create`` defaults
+    ``is_resolved=True``, so every producer that does not pass the flag derives the
+    RESOLVED base; the loop above then flips the flag for external dsts and, until
+    now, left the stale number behind. ``ast_call`` shipped at 0.85 where the verdict
+    says 0.40, ``ast_call_direct`` at 0.85 where it says 0.50.
+
+    Measured before the fix, on production's own ``create_boundary_nodes`` +
+    resolution sub-step: caddy 6,167, mitmproxy 8,880, poetry 4,074,
+    alertmanager 3,922 — 23,043 edges over four repos and two languages. Not a Go
+    producer defect, which is why it is corrected here at the one place that knows
+    the verdict rather than at each analyzer's emit site.
+
+    Two things are deliberately NOT touched. An explicit producer confidence keeps
+    its value (ADR-0039: re-deriving it would replace a considered judgement with a
+    table lookup). And ``rank_score`` is only re-mirrored while it still equals the
+    old confidence — ruling 3 says it diverges once a producer relocates a ranking
+    adjustment onto it, and clobbering that would silently discard the adjustment.
+
+    Idempotent: re-deriving from the same verdict yields the same value, so the
+    sub-step is safe to re-enter.
+    """
+    if edge.confidence_source != "evidence_derived":
+        return
+    from hypergumbo_core.confidence import derive_confidence
+    derived = derive_confidence(edge.evidence_type, is_resolved=edge.is_resolved)
+    if derived is None or derived == edge.confidence:
+        return
+    was_mirroring = edge.rank_score == edge.confidence
+    edge.confidence = derived
+    if was_mirroring:
+        edge.rank_score = derived
 
 
 def _finalize_compute_visibility(ctx: FinalizeContext) -> None:
@@ -490,7 +549,7 @@ def _finalize_referential_integrity(ctx: FinalizeContext) -> None:
     ctx.violations.extend(validate_ir(ctx.symbols, ctx.edges, ctx.analysis_runs))
 
 
-def _violation_sort_key(v) -> tuple:
+def _violation_sort_key(v: ValidationViolation) -> tuple[str, str, str, str, str]:
     """Total, deterministic order for validation violations (ADR-0043 §6 determinism).
 
     Sorting before the report is built makes the emitted ``validation_report.violations``
@@ -518,7 +577,7 @@ def _freeze(ctx: FinalizeContext) -> FinalizedMap:
 
 
 def _prune_grammars_to_used(
-    analysis_runs: list[dict], seed: dict[str, str]
+    analysis_runs: list[dict[str, Any]], seed: dict[str, str]
 ) -> dict[str, str]:
     """Return only the grammar dists actually exercised by node-producing passes.
 

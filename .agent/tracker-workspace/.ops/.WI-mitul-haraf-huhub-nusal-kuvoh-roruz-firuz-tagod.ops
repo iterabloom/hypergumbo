@@ -52,3 +52,10 @@
   clock: 5  # 5931
   nonce: '5931'  # 5931
   message: "Bakeoff-validated (downstream): pretix fs_read/fs_write open-dependent chains correct, no regression. Drained."  # 5931
+- op: discuss  # 3bc7
+  at: '2026-08-17T02:35:34Z'  # 3bc7
+  by: agent  # 3bc7
+  actor: jgstern_agent  # 3bc7
+  clock: 6  # 3bc7
+  nonce: 3bc7  # 3bc7
+  message: "REOPENED AS A CLASS, not as a regression of this item. The open() fix holds -- verified 2026-08-16 on dev 0d305fe0e4, open(p) still emits python:builtins:0-0:open:unresolved. But it closed one door: the same bare-name arm emits NOTHING for print / input / eval / len / getattr / any unresolvable bare name, because the gate is BUILTIN_CONSTRUCTOR_NAMES, derived from the io_primitives catalogue -- so the permitting condition is 'this builtin is a catalogued I/O primitive'. A callee that needs an edge for a NON-I/O reason is outside the set by construction. That bit: the ADR-0017 section 4 index holds a terminating summary for print under both 'print' and 'builtins.print', and it can never be applied because no edge is ever emitted at a print() call site -- 10 of 21 section-3a escape sites on hypergumbo's own tree (47.6%). Filed as INV-foluz. Recorded here because this item's closure note is the record of how the allowlist got its second entry, and the next person tempted to add a third should file against the class instead."  # 3bc7

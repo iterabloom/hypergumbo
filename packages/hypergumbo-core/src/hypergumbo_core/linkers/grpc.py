@@ -33,12 +33,15 @@ How It Works
 1. Scan .proto files for service and RPC method definitions
 2. Scan implementation files for gRPC patterns
 3. Create symbols for services, clients, and servers
-4. Create kind="route" symbols for each proto RPC method, using the
-   real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>
+4. Create route-marker symbols for each proto RPC method, using the
+   real HTTP/2 wire path /<package>.<ServiceName>/<MethodName>. These
+   carry ``kind="function"`` + ``meta['framework_role']='route'`` (the
+   ADR-0027 Phase-3 route→function fold); there is no ``route`` kind.
 5. Match clients to servers by service name
 6. Create canonical 'calls' edges with meta['protocol']='grpc' linking
    client stubs to servicers (post WI-vumum-juvil; pre-fold was grpc_calls)
-7. Create routes_to edges from RPC route symbols to service symbols
+7. Create ``dispatches_to`` edges (``meta['dispatch_kind']='route'``) from
+   RPC route symbols to service symbols
 
 Unresolved Edge Resolution
 --------------------------
@@ -46,7 +49,20 @@ When the Go analyzer creates unresolved edges to gRPC registration functions
 (e.g., RegisterUserServer), this linker attempts to resolve them by:
 1. Finding unresolved edges with names matching Register*Server pattern
 2. Looking up corresponding symbols created by the linker's file scan
-3. Creating proper resolved edges
+3. Creating replacement ``calls`` edges to the matched servicer. These stay
+   ``is_resolved=False`` — the linker supplies a destination, not a proof
+   that the callee was resolved by name binding.
+
+Also emitted, beyond the numbered flow above:
+
+- ``dispatches_to`` from a servicer or server registration to the proto
+  service it implements, bridging the two components.
+- ``calls`` edges under the WI-ropoz fallback, for a client stub whose
+  servicer is absent from the repository — the alternative was emitting
+  nothing and reporting a clean graph.
+- ``implements`` edges from a Go method to the proto route it satisfies.
+- ttrpc ``Register*Service`` registrations alongside gRPC's
+  ``Register*Server``.
 
 Why This Design
 ---------------
@@ -64,8 +80,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..discovery import find_files, find_non_test_files
+from ..analyze.base import make_route_symbol
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ..routes import transport_meta
 from ._transitive_bases import (
     build_inheritance_index,
     collect_transitive_base_names,
@@ -92,7 +108,7 @@ class GrpcPattern:
     file_path: str  # Source file path
     language: str  # Source language
     # Proto package (only set on type='service' patterns from .proto files).
-    # Used by the routes_to lookup to disambiguate cross-package short-name
+    # Used by the route->service lookup to disambiguate cross-package short-name
     # collisions per WI-patiz (INV-zuhub item 1).
     package: str = ""
 
@@ -204,7 +220,7 @@ def _scan_proto_file(
     ``GrpcPattern`` entries for each ``service`` block.  The *rpc_defs* list
     contains one ``ProtoRpcDef`` per ``rpc`` method, including the enclosing
     service name and the proto package.  These are used downstream to
-    materialise ``kind="route"`` symbols whose path mirrors the real
+    materialise route-marker symbols whose path mirrors the real
     HTTP/2 wire path ``/<package>.<ServiceName>/<MethodName>``.
     """
     patterns: list[GrpcPattern] = []
@@ -419,17 +435,6 @@ def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
     return f"grpc:{file_path}:{line}:{name}:{kind}"
 
 
-def _make_route_stable_id(method: str, path: str) -> str:
-    """Compute a collision-free stable_id for gRPC route symbols.
-
-    Mirrors ``make_route_stable_id`` from ``analyze.base`` but avoids a
-    cross-package import.  Uses sha256("route:{method}:{path}").
-    """
-    import hashlib
-    digest = hashlib.sha256(f"route:{method}:{path}".encode()).hexdigest()[:16]
-    return f"sha256:{digest}"
-
-
 # Regex to find "type <Name> struct {" declarations.
 _GO_STRUCT_DECL = re.compile(r"type\s+(\w+)\s+struct\s*\{")
 
@@ -631,7 +636,7 @@ def _link_go_methods_to_rpc_routes(
             src=sym.id,
             dst=route_id,
             edge_type="implements",
-            line=sym.span.start_line,
+            line=sym.span.start_line if sym.span else 0,
             confidence=0.90,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
@@ -733,7 +738,7 @@ def link_grpc(
         )
         sym_meta: dict[str, object] = {"framework_role": framework_role}
         # WI-patiz: grpc_service symbols carry proto_package so the
-        # routes_to lookup can disambiguate cross-package short-name
+        # route->service lookup can disambiguate cross-package short-name
         # collisions at precision when each RPC's package picks out a
         # unique service candidate. Non-proto patterns (Go/Python/Java
         # impl-side) carry no package — their disambiguation must rely
@@ -870,7 +875,7 @@ def link_grpc(
 
     # Create route symbols for proto RPC definitions.
     # gRPC RPCs are accessed via HTTP/2 at /<package>.<Service>/<Method>.
-    # Build a lookup for service symbols to create routes_to edges.
+    # Build a lookup for service symbols to create dispatches_to edges.
     # WI-patiz (INV-zuhub item 1): multi-value index. Two .proto files
     # in different packages can each declare ``service Foo`` — pre-fix
     # single-value dict overwrote silently and pointed every cross-
@@ -926,7 +931,7 @@ def link_grpc(
                 src=sym.id,
                 dst=target_svc.id,
                 edge_type="dispatches_to",
-                line=sym.span.start_line,
+                line=sym.span.start_line if sym.span else 0,
                 confidence=confidence,
                 origin=PASS_ID,
                 origin_run_id=run.execution_id,
@@ -938,38 +943,34 @@ def link_grpc(
     for rpc in all_rpc_defs:
         prefix = f"{rpc.package}.{rpc.service_name}" if rpc.package else rpc.service_name
         route_path = f"/{prefix}/{rpc.rpc_name}"
-        route_name = f"RPC {route_path}"
-        stable_id = _make_route_stable_id("RPC", route_path)
 
-        route_id = _make_symbol_id(
-            rpc.file_path, rpc.line, route_name, "route"
-        )
-        # ADR-0027 Phase 3 / audit-findings 0013: route Symbol.kind fold
-        # ships in this PR (Wave 5 PR #6) coordinated with all consumers.
-        symbols.append(Symbol(
-            id=route_id,
-            name=route_name,
-            kind="function",
-            # ADR-0031 Class B: Route synthetic has no host discovery
-            # context (it's derived from the proto service definition);
-            # language=None, discovery_language=None, protocol_origin="grpc".
-            language=None,
+        # WI-zugob: minted through the shared chokepoint. Two id-format fixes
+        # ride along with the migration: the kind-slot was the literal ``route``
+        # fossil (unregistered; Symbol.kind was already ``function``), and the
+        # lang-slot was the PROTOCOL ``grpc`` rather than a language — the
+        # protocol now lives in the typed ``protocol_origin`` field, and the
+        # lang-slot names the host file's language like every other Class-B
+        # linker id. ``discovery_language`` stays None deliberately: a gRPC
+        # route is fabricated from a service definition, not discovered inside
+        # a host file, which is why the factory takes it explicitly.
+        route_sym = make_route_symbol(
+            language="proto",
             path=rpc.file_path,
             span=Span(rpc.line, rpc.line, 0, 0),
+            method="RPC",
+            route_path=route_path,
             origin=PASS_ID,
             origin_run_id=run.execution_id,
-            stable_id=stable_id,
             protocol_origin="grpc",
-            meta={
-                "route_path": route_path,
-                **transport_meta("RPC"),
+            extra_meta={
                 "rpc_service": rpc.service_name,
                 "rpc_method": rpc.rpc_name,
-                "framework_role": "route",
             },
-        ))
+        )
+        route_id = route_sym.id
+        symbols.append(route_sym)
 
-        # Create routes_to edge from route to the service symbol.
+        # Create dispatches_to edge from route to the service symbol.
         # WI-patiz: when multiple .proto files declare the same service
         # short name across packages, prefer the candidate whose
         # ``meta["proto_package"]`` matches this RPC's package. A

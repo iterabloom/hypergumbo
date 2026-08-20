@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""CLI for coverage-directed test selection (shadow phase).
+
+DELIBERATELY THIN. Every decision lives in hypergumbo_core.{block_hash,
+selection_index,selection_shadow}, which are unit-tested at 100%; code in
+scripts/ is exercised only through subprocess and so contributes nothing to
+coverage. Anything here that is more than argument shuffling is in the wrong
+file.
+
+NOTHING HERE MAY FAIL A TEST RUN. This rides along on every smart-test
+invocation to accumulate evidence; a selector that breaks the suite it is
+shadowing would be retired within a day and rightly so. Every entry point
+catches broadly and exits 0 — see `main`.
+
+    update  fold one run's coverage contexts into the index
+    shadow  report what coverage WOULD have selected, without acting on it
+    select  print the selection, for a caller that intends to ACT on it
+    narrow  print a run set with provably-irrelevant test files REMOVED
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent
+                      / "packages" / "hypergumbo-core" / "src"))
+
+from hypergumbo_core.selection_index import (
+    Narrowing, narrow_run_set, narrowing_blockers, open_index,
+    rebase_to_repo, selectable_test_files, select_tests, speakable_test_files,
+    touching_test_files, update_from_run,
+)
+from hypergumbo_core.selection_log import (
+    append_observation, evaluate, load_observations,
+)
+from hypergumbo_core.selection_shadow import (
+    compare, failed_tests_from_junit, ran_tests_from_junit,
+)
+
+#: Out-of-repo by default, like test_timings.json: this is rewritten on every
+#: run and must never dirty the working tree.
+DEFAULT_INDEX = Path(
+    os.environ.get("HG_SELECTION_INDEX",
+                   Path.home() / "hypergumbo_lab_notebook" / "selection_index.sqlite")
+)
+
+#: APPEND-ONLY, and out-of-repo for the same reason as the index. The shadow
+#: originally wrote one JSON file per run that the next run overwrote, so no
+#: evidence could accumulate; the observations are a forward-only time series
+#: and a lost run is lost permanently.
+DEFAULT_LOG = Path(
+    os.environ.get("HG_SELECTION_LOG",
+                   Path.home() / "hypergumbo_lab_notebook" / "selection_observations.jsonl")
+)
+
+
+def _lines(path: str | None) -> list[str]:
+    if not path or not Path(path).exists():
+        return []
+    return [ln.strip() for ln in Path(path).read_text().splitlines() if ln.strip()]
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    ran = None
+    if args.junit and Path(args.junit).exists():
+        ran = ran_tests_from_junit(Path(args.junit), root)
+    conn = open_index(Path(args.index))
+    update_from_run(
+        conn, Path(args.coverage_db),
+        ran_tests=ran, git_sha=args.sha, full_run=args.full, repo_root=root,
+    )
+    conn.close()
+    if args.verbose:
+        print(f"[coverage-select] indexed {len(ran or ())} ran tests", file=sys.stderr)
+    return 0
+
+
+def _base_source(root: Path, base: str, rel: str) -> str | None:
+    """Contents of ``rel`` at commit ``base``, or None if it did not exist.
+
+    Change detection is GIT's job. The index stores block -> tests and nothing
+    about what the tree used to look like: it is rewritten after every run, so
+    using its digests as the baseline made every run compare the working tree
+    against itself and select nothing (measured: 0 vs smart-test's 87).
+    """
+    done = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"],
+                          capture_output=True, text=True)
+    return done.stdout if done.returncode == 0 else None
+
+
+def cmd_shadow(args: argparse.Namespace) -> int:
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    if not changed:
+        return 0
+    base_sources = {
+        str(root / c): _base_source(root, args.base, c) for c in changed
+    }
+    conn = open_index(Path(args.index))
+    selection = select_tests(conn, base_sources)
+    known = failed = None
+    if args.junit and Path(args.junit).exists():
+        known = ran_tests_from_junit(Path(args.junit), root)
+        failed = failed_tests_from_junit(Path(args.junit), root)
+    # Index paths are absolute; smart-test speaks repo-relative. Rebase before
+    # comparing or every file differs and the report is pure noise.
+    rebased = rebase_to_repo(selection.tests, root)
+    report = compare(
+        type(selection)(
+            tests=frozenset(rebased),
+            changed_blocks=selection.changed_blocks,
+            new_blocks=selection.new_blocks,
+            unknown_paths=selection.unknown_paths,
+            unmeasured=selection.unmeasured,
+            missing_paths=selection.missing_paths,
+        ),
+        actual_files=_lines(args.actual_tests),
+        known_tests=known,
+        failed=failed,
+        changed_files=[str(root / c) for c in changed],
+    )
+    conn.close()
+    if args.json:
+        Path(args.json).write_text(json.dumps({
+            "changed_files": sorted(changed),
+            "coverage_tests": sorted(report.coverage_tests),
+            "coverage_files": sorted(report.coverage_files),
+            "actual_files": sorted(report.actual_files),
+            "missed_by_coverage": sorted(report.missed_by_coverage),
+            "extra_from_coverage": sorted(report.extra_from_coverage),
+            "new_blocks": report.new_blocks,
+            "unknown_paths": sorted(report.unknown_paths),
+            "missing_paths": sorted(report.missing_paths),
+            "unmeasured": report.unmeasured,
+            "join_rate": report.join_rate,
+            "trustworthy": report.trustworthy,
+        }, indent=2))
+    append_observation(Path(args.log), report, sha=args.sha or "unknown")
+    print("[coverage-select] SHADOW — reporting only, nothing acted on",
+          file=sys.stderr)
+    print(report.summary(), file=sys.stderr)
+    return 0
+
+
+def cmd_select(args: argparse.Namespace) -> int:
+    """Print repo-relative test FILES coverage selects, one per line.
+
+    HOW THIS DIFFERS FROM ``shadow``, given both compute the same selection:
+    shadow needs THIS run's junit, so it can only run after pytest and can only
+    report. A caller that intends to widen the run set needs the same answer
+    BEFORE pytest, with no junit in existence yet. Hence a second entry point
+    over one shared selection, rather than a flag on the first.
+
+    The output is filtered to files that exist (``selectable_test_files``): the
+    index is persistent and remembers renamed or deleted tests, and pytest
+    treats a missing path as a collection error. Stdout is the interface —
+    diagnostics go to stderr — and an empty selection prints nothing, which
+    unions to a no-op.
+    """
+    root = Path(args.repo_root).resolve()
+    changed = _lines(args.changed_files)
+    if not changed:
+        return 0
+    base_sources = {
+        str(root / c): _base_source(root, args.base, c) for c in changed
+    }
+    conn = open_index(Path(args.index))
+    selection = select_tests(conn, base_sources)
+    conn.close()
+    files = selectable_test_files(selection.tests, root)
+    for f in sorted(files):
+        print(f)
+    if args.verbose:
+        print(f"[coverage-select] select: {len(files)} file(s) from "
+              f"{len(selection.tests)} node id(s)", file=sys.stderr)
+    return 0
+
+
+def cmd_narrow(args: argparse.Namespace) -> int:
+    """Print the run set with safely-irrelevant test files REMOVED.
+
+    Phase 3 (WI-bolot). Reads the current run set on ``--run-set`` and prints
+    what survives, one file per line. Refusals go to stderr and the run set is
+    echoed back UNCHANGED, so a caller can pipe unconditionally.
+
+    HOW THIS DIFFERS FROM `select`, since both consult the same index. `select`
+    answers "what does coverage think is relevant" and is unioned IN. `narrow`
+    answers "which of these can I prove is irrelevant" and takes things OUT,
+    which is a strictly stronger claim and carries the three rules in
+    :mod:`hypergumbo_core.selection_index` — drop only with positive evidence,
+    keep the whole file-touch set (the local coverage gate is whole-file, not
+    changed-lines), and refuse outright on an unknown coverable source or a
+    missing changed file.
+    """
+    root = Path(args.repo_root).resolve()
+    run_set = _lines(args.run_set)
+    if not run_set:
+        return 0
+    changed = _lines(args.changed_files)
+    if not changed:
+        for f in run_set:
+            print(f)
+        return 0
+
+    abs_changed = [str(root / c) for c in changed]
+    base_sources = {
+        p: _base_source(root, args.base, c)
+        for p, c in zip(abs_changed, changed, strict=True)
+    }
+    conn = open_index(Path(args.index))
+    selection = select_tests(conn, base_sources)
+    result: Narrowing = narrow_run_set(
+        run_set,
+        keep=touching_test_files(conn, abs_changed, root)
+        | selectable_test_files(selection.tests, root),
+        droppable=speakable_test_files(conn, root),
+        forbidden=narrowing_blockers(selection, root),
+    )
+    conn.close()
+
+    for f in sorted(result.kept):
+        print(f)
+    if result.refusal:
+        print(f"[coverage-select] narrow REFUSED: {result.refusal}",
+              file=sys.stderr)
+    else:
+        print(f"[coverage-select] narrow: {len(run_set)} -> "
+              f"{len(result.kept)} file(s), dropped {len(result.dropped)}",
+              file=sys.stderr)
+        if args.verbose:
+            for f in sorted(result.dropped):
+                print(f"    - {f}", file=sys.stderr)
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Print the accrued evidence and the phase's verdict."""
+    ev = evaluate(load_observations(Path(args.log)))
+    print(f"[coverage-select] evidence from {args.log}")
+    print(ev.summary())
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--index", default=str(DEFAULT_INDEX))
+    parser.add_argument("--junit", default=None)
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--log", default=str(DEFAULT_LOG))
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    up = sub.add_parser("update")
+    up.add_argument("--coverage-db", required=True)
+    up.add_argument("--sha", default=None)
+    up.add_argument("--full", action="store_true")
+    up.set_defaults(func=cmd_update)
+
+    sh = sub.add_parser("shadow")
+    sh.add_argument("--changed-files", default=None)
+    sh.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    sh.add_argument("--actual-tests", default=None)
+    sh.add_argument("--json", default=None)
+    sh.add_argument("--sha", default=None,
+                    help="commit the observation is attributed to")
+    sh.set_defaults(func=cmd_shadow)
+
+    se = sub.add_parser("select")
+    se.add_argument("--changed-files", default=None)
+    se.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    se.set_defaults(func=cmd_select)
+
+    nw = sub.add_parser("narrow")
+    nw.add_argument("--changed-files", default=None)
+    nw.add_argument("--run-set", default=None,
+                    help="the run set to shrink, one file per line")
+    nw.add_argument("--base", default="HEAD",
+                    help="git ref the working tree is diffed against")
+    nw.set_defaults(func=cmd_narrow)
+
+    rp = sub.add_parser("report")
+    rp.set_defaults(func=cmd_report)
+
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except Exception as exc:
+        # NEVER fail the run this is shadowing. A broken selector must degrade
+        # to silence, not to a red suite.
+        print(f"[coverage-select] non-fatal: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

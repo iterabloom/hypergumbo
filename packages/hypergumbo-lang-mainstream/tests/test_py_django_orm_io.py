@@ -247,3 +247,83 @@ class TestClassDirectlyExtendsDjangoModel:
             meta=None,
         )
         assert not _class_directly_extends_django_model("Order", {"Order": sym})
+
+
+class TestAttributeChainReceiverEmitsACallEdge:
+    """INV-mumov: ``obj.deep.method()`` emitted NO call edge at all.
+
+    ``Item.objects.create(...)`` works — the Django marker above handles a
+    chain rooted at a *class*. But ``event.organizer.issued_gift_cards.create()``
+    is rooted at a local, and the analyzer emitted nothing for it. Measured on
+    pretix: four calls to the same Django manager sink on adjacent lines, two
+    emitting and two silent.
+
+    WHY IT MATTERS TWICE OVER. A function whose sink calls are ALL
+    attribute-chain shaped has no sink edge, is never considered, and its flow
+    is never reported — a false negative, the expensive direction. And the same
+    absence makes the call invisible to ``callees_at``, so the §3a walk cannot
+    ask whether the callee consumes the value and records an ESCAPE instead;
+    measured 2026-08-06, a substantial share of INV-busis's "genuine non-call
+    escape sites" are calls in exactly this state.
+    """
+
+    def test_attribute_chain_on_a_local_emits_an_edge(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "app.py").write_text(
+            "def handler(event):\n"
+            "    event.organizer.issued_gift_cards.create(value=1)\n"
+        )
+        result = analyze_python(tmp_path)
+        dsts = {
+            e.dst for e in result.edges
+            if e.edge_type in ("calls", "unresolved_external_call")
+        }
+        assert "python:external:0-0:create:unresolved" in dsts, sorted(dsts)
+
+    def test_single_attribute_on_a_param_still_emits(
+        self, tmp_path: Path
+    ) -> None:
+        """In-fixture positive control — the shape that ALREADY worked.
+
+        ``obj.bar()`` emits ``python:external:0-0:bar:unresolved`` today. Pinned
+        beside the broken case so a regression there cannot hide behind the new
+        assertion, and so the pair shows the defect is about chain DEPTH rather
+        than about attribute calls in general.
+        """
+        (tmp_path / "app2.py").write_text(
+            "def handler(obj):\n"
+            "    obj.bar()\n"
+        )
+        result = analyze_python(tmp_path)
+        dsts = {
+            e.dst for e in result.edges
+            if e.edge_type in ("calls", "unresolved_external_call")
+        }
+        assert "python:external:0-0:bar:unresolved" in dsts, sorted(dsts)
+
+    def test_class_rooted_chain_keeps_its_django_module_hint(
+        self, tmp_path: Path
+    ) -> None:
+        """Non-destructiveness: the Django marker must still win where it fires.
+
+        ``Order.objects.create()`` is also an attribute chain. If a generic
+        chain rule ran first it would emit ``external`` and DEMOTE a
+        module-qualified django edge to an unqualified one — trading a false
+        negative for a precision loss, which is not the trade being made here.
+        """
+        (tmp_path / "app3.py").write_text(
+            "from django.db import models\n"
+            "\n"
+            "class Order(models.Model):\n"
+            "    pass\n"
+            "\n"
+            "def make():\n"
+            "    Order.objects.create(name='x')\n"
+        )
+        result = analyze_python(tmp_path)
+        dsts = {
+            e.dst for e in result.edges
+            if e.edge_type in ("calls", "unresolved_external_call")
+        }
+        assert "python:django.db.models:0-0:create:unresolved" in dsts

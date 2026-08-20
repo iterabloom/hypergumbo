@@ -1,0 +1,32 @@
+- op: create  # 5dd9
+  at: '2026-08-12T07:48:43Z'  # 5dd9
+  by: agent  # 5dd9
+  actor: jgstern_agent  # 5dd9
+  clock: 1  # 5dd9
+  nonce: 5dd9  # 5dd9
+  data:  # 5dd9
+    kind: work_item  # 5dd9
+    title: "verify-claims reason string caps at 5 module names sorted alphabetically, so stdlib names evict the third-party library a reader most needs to see"  # 5dd9
+    status: todo_hard  # 5dd9
+    priority: 2  # 5dd9
+    parent:  # 5dd9
+    tags: []  # 5dd9
+    isbefore: []  # 5dd9
+    duplicate_of: []  # 5dd9
+    not_duplicate_of: []  # 5dd9
+    pr_ref:  # 5dd9
+    description: "FOUND by an adversarial review of the INV-buzab fix. Measured on a fixture\nimporting 10 stdlib modules plus one `requests.post(...)`:\n\n    the analysis makes calls into 12 module(s) that the I/O catalog could not\n    classify (argparse, base64, collections, csv, dataclasses (+7 more))\n\n`requests` — the only module in that list a reader can act on, and the one that\ncarries the actual network risk — is in the \"+7 more\". `_MAX_REPORTED_UNCATALOGUED_MODULES`\nis 5 and the list is `sorted()`, so alphabetically-early stdlib names\ndeterministically evict third-party ones.\n\nThis is load-bearing for the INV-buzab fix's own honesty argument, which rests\non the reason string being actionable. It is true that the gap is DISCLOSED; it\nis not true that the disclosure names what matters.\n\nDIRECTIONS: rank before truncating — third-party (supply_chain tier 3 /\nnot-is_stdlib_module) first, then alphabetical within each group; or raise the\ncap; or split the line into \"third-party: ...\" and \"stdlib: ...\" counts. Ranking\nis the cheapest and keeps the line short.\n\nNOT a regression from INV-buzab: the cap and the sort both predate it. What\nINV-buzab changed is that the list got longer, which makes the eviction bite\nmore often."  # 5dd9
+    fields:  # 5dd9
+      priority: "P3"  # 5dd9
+      status: "todo_hard"  # 5dd9
+      tags: "verify_claims,usability,disclosure"  # 5dd9
+- op: update  # 5385
+  at: '2026-08-12T08:47:03Z'  # 5385
+  by: agent  # 5385
+  actor: jgstern_agent  # 5385
+  clock: 2  # 5385
+  nonce: '5385'  # 5385
+  set:  # 5385
+    priority: 3  # 5385
+  add:  # 5385
+    tags: [verify_claims, usability]  # 5385

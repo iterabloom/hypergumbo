@@ -1,0 +1,52 @@
+- op: create  # 5f4f
+  at: '2026-08-12T21:15:38Z'  # 5f4f
+  by: agent  # 5f4f
+  actor: jgstern_agent  # 5f4f
+  clock: 1  # 5f4f
+  nonce: 5f4f  # 5f4f
+  data:  # 5f4f
+    kind: work_item  # 5f4f
+    title: "UNTESTED: whether a user-supplied --taint-sanitizers entry can delete a real violation (INV-zosun's third door)"  # 5f4f
+    status: todo_hard  # 5f4f
+    priority: 2  # 5f4f
+    parent:  # 5f4f
+    tags: []  # 5f4f
+    isbefore: []  # 5f4f
+    duplicate_of: []  # 5f4f
+    not_duplicate_of: []  # 5f4f
+    pr_ref:  # 5f4f
+    description: "NOT A REPORTED DEFECT — A GAP IN EVIDENCE. INV-zosun named three user-writable\ninputs that reach a verdict and demonstrated two of them. This is the third,\nand after three attempts it is still UNTESTED. Filed so the absence of a result\nis not later read as a negative result.\n\nTHE HYPOTHESIS, stated so it can be refuted: a project-local sanitizer entry\nnames functions that convert a taint label into a safe one, and a flow through\none is reported `sanitized` and DROPPED from the violation set (PR #214). So a\nuser-supplied sanitizer naming a function on the exfiltration path should\nDELETE the finding outright — strictly stronger than the overlay case, which\nonly grants coverage. Same trust model, larger consequence.\n\nTHREE ATTEMPTS, NONE A VALID A/B (all on dev, before/after the INV-todas fix):\n\n 1. fixture: os.environ[\"API_KEY\"] -> scrub(s) -> open().write, sanitizer\n    declares first-party `main.scrub` transforms host_secret -> sanitized.\n    RESULT: still violated rc 1, 2 flows. INVALID: the tool's own disclosure\n    says \"A sanitizer called in the SAME function as the source is honoured\n    only by: ddg\", and source + sanitizer share `main`.\n 2. same shape with `base64.b64encode` as the declared sanitizer (a realistic\n    lie — base64 is not encryption). RESULT: still violated rc 1. INVALID for\n    the same same-function reason.\n 3. split fixture: get_secret() / sanitize() / write_it() in separate\n    functions. RESULT: inconclusive rc 2 — the POSITIVE CONTROL produced no\n    finding at all (the base64 module is uncatalogued, so the INV-buzab gate\n    correctly refused to confirm). INVALID: nothing to delete.\n\nWHAT A VALID TEST NEEDS: a fixture whose baseline is `violated`, with the\nsanitizer call in a DIFFERENT function from the source, over modules the\ncatalogue can classify so the gate does not intervene. INV-funit recorded a\nshape where the barrier arm DID fire — the idiomatic f.decrypt / f.encrypt /\nos.remove pattern went violated@precise -> confirmed with the arm firing — so\nthe working shape is known and should be adapted with a LYING user sanitizer\nsubstituted for the legitimate one.\n\nDIRECTION IF CONFIRMED: this is the expensive direction. A `False` earns\n`sanitized` since #214, and an unearned `False` deletes a finding. If a\nsix-line user file can delete a real violation, disclosure (INV-zosun's fix) is\nnecessary but plainly not sufficient, and option (b) — ADR-0016's unimplemented\nfourth verdict — gets a second, stronger consumer.\n\nDO NOT CLOSE ON NON-REPRODUCTION. Three invalid probes are not evidence the\ndoor is shut."  # 5f4f
+    fields: {}  # 5f4f
+- op: update  # 732a
+  at: '2026-08-12T21:15:47Z'  # 732a
+  by: agent  # 732a
+  actor: jgstern_agent  # 732a
+  clock: 2  # 732a
+  nonce: 732a  # 732a
+  set:  # 732a
+    status: todo_hard  # 732a
+    priority: 1  # 732a
+  add:  # 732a
+    tags: [security, taint, verify_claims]  # 732a
+- op: discuss  # ef16
+  at: '2026-08-12T21:15:47Z'  # ef16
+  by: agent  # ef16
+  actor: jgstern_agent  # ef16
+  clock: 3  # ef16
+  nonce: ef16  # ef16
+  message: "Split out of INV-zosun at closure. INV-zosun's statement (a verdict must disclose user-supplied catalogue input) is satisfied by PR #312; this third door is a separate, unmeasured question and must not inherit that closure."  # ef16
+- op: update  # e78c
+  at: '2026-08-13T04:48:29Z'  # e78c
+  by: agent  # e78c
+  actor: jgstern_agent  # e78c
+  clock: 4  # e78c
+  nonce: e78c  # e78c
+  set:  # e78c
+    status: done  # e78c
+- op: discuss  # a9cd
+  at: '2026-08-13T04:48:29Z'  # a9cd
+  by: agent  # a9cd
+  actor: jgstern_agent  # a9cd
+  clock: 5  # a9cd
+  nonce: a9cd  # a9cd
+  message: "ANSWERED: YES. A user-supplied sanitizer DELETES a real violation, and the\nstrongest form takes the verdict all the way to `confirmed` rc 0. Measured on\nthe shipped CLI at dev adfaaeebf2, with the baseline established FIRST — which\nis what the three earlier attempts lacked.\n\n## Probe 1 — the shape this item recommended (adapted from INV-funit)\n\nfixture dagib/fx/h.py, 12 lines:\n\n    import os\n    from cryptography.fernet import Fernet\n\n    def launder(value):\n        return value                      # does nothing\n\n    def handler(f: Fernet, token):\n        plain = f.decrypt(token)\n        safe = launder(plain)\n        os.remove(safe)\n\nclaim: taint_flow plaintext -> host_fs.\n\n  BASELINE (no user catalogue)\n    hypergumbo verify-claims fx --claims plaintext.claims.yaml\n    -> rc 1, VIOLATED, \"1 unsanitized plaintext flow(s) to host_fs zone\n       [plaintext confidence: precise] [origins: 1 declared]:\n       Fernet.decrypt [python:h.py:10-13:handler:function]\n       -> remove [python:os:0-0:remove:external_symbol]\"\n    Method: 1 ddg. THE POSITIVE CONTROL EXISTS — there is a finding to delete.\n\n  WITH an 8-line --taint-sanitizers file declaring `h.launder` transforms\n  plaintext -> ciphertext\n    -> rc 2, INCONCLUSIVE, \"No unsanitized plaintext data reaches host_fs zone.\n       1 flow(s) reach that zone but pass through a sanitizer on every route.\"\n\n  THE FINDING WAS DELETED. It stopped at rc 2 rather than rc 0 only because an\n  UNRELATED gate intervened (cryptography.fernet.Fernet is uncatalogued for the\n  boundary arm, INV-buzab family). That is luck, not a defence — so:\n\n## Probe 2 — remove the unrelated blocker; catalogued modules on both ends\n\nfixture dagib/fx2/h.py, 11 lines, `os` only:\n\n    import os\n\n    def launder(value):\n        return value\n\n    def handler():\n        secret = os.environ[\"API_KEY\"]\n        safe = launder(secret)\n        os.remove(safe)\n\nclaim: taint_flow host_secret -> host_fs.\n\n  BASELINE  -> rc 1, VIOLATED, \"1 unsanitized host_secret flow(s) to host_fs\n               zone [precise] [origins: 1 env_read]: environ -> remove\"\n  WITH LIE  -> rc 0, CONFIRMED, \"No unsanitized host_secret data reaches\n               host_fs zone. 1 flow(s) reach that zone but pass through a\n               sanitizer on every route.\"\n\n  **violated rc 1 -> confirmed rc 0 from an 8-line file.** The hypothesis this\n  item filed is CONFIRMED, in its strongest form.\n\n## Probe 3 — the form that travels with the repository\n\nSame fixture, the lie moved INSIDE the analysed tree as `fx2/.hg-sanitizers.yaml`\nand referenced from the repo's own claims file:\n\n    extra_catalogs:\n      sanitizers:\n        - .hg-sanitizers.yaml\n\n  -> rc 0, CONFIRMED. The repo grades itself, and no flag is passed by whoever\n     runs the tool.\n\n## What the disclosure does and does not do\n\nINV-zosun's disclosure FIRES and is correct as far as it goes:\n\n    NOTE: these verdicts were computed against USER-SUPPLIED catalogue input.\n      taint_sanitizers: fx2/.hg-sanitizers.yaml  [claims-file extra_catalogs]\n\nSo this is NOT a case of the tool hiding the input. It names the input. What it\ndoes not do is connect the input to the EFFECT:\n\n  1. The verdict sentence is generated from the sanitized-flow COUNT alone\n     (verify_claims.py:1836-1841 — `sanitized_clause` interpolates\n     `sanitized_flows` and nothing else). A lying user entry and a legitimate\n     built-in `Fernet.encrypt` produce BYTE-IDENTICAL verdict text. Verified by\n     reading the constructor, not inferred from the two runs.\n  2. The exit code is 0 either way. A CI gate keys on rc; the NOTE is prose on\n     stdout that no gate reads. INV-zosun's own text says disclosure was chosen\n     over restriction deliberately — that ruling stands, but it was made for the\n     OVERLAY case, which only GRANTS coverage. Deletion is strictly stronger and\n     was unmeasured until now.\n\n## Direction\n\nThis is the expensive direction, exactly as this item predicted. A `False` earns\n`sanitized` since PR #214, and here an unearned `False` came from a file the\nanalysed repository supplies about itself.\n\nFiled as a separate invariant rather than closed into this item, because this\nitem's deliverable was the MEASUREMENT and it is now delivered.\n\n## Not claimed\n\n- Not claimed that this is a departure from the documented trust model: user\n  catalogues are trusted by design (ADR-0016 §27, INV-zosun).\n- Not claimed to be exploitable by a third party: it requires the repo owner (or\n  whoever runs the tool) to write the file.\n- Not swept: I did not test whether user-supplied SOURCES or SINKS can suppress\n  a finding by the same route, only sanitizers."  # a9cd

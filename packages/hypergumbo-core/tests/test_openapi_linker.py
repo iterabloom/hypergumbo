@@ -216,6 +216,65 @@ paths:
         assert result.edges[0].edge_type == "references"
         assert (result.edges[0].meta or {}).get("ref_construct") == "openapi_operation"
 
+    def _spec_with(self, tmp_path: Path, path: str, *methods: str) -> None:
+        ops = "\n".join(
+            f"    {m}:\n      operationId: op{m.capitalize()}" for m in methods
+        )
+        (tmp_path / "openapi.yaml").write_text(
+            'openapi: "3.0.0"\n'
+            "info:\n  title: Test API\n  version: \"1.0\"\n"
+            f"paths:\n  {path}:\n{ops}\n",
+        )
+
+    def _route(self, tmp_path: Path, path: str, method: str) -> Symbol:
+        return Symbol(
+            id=f"python:/app.py:10-20:handler_{method.replace(',', '_')}:function",
+            name="handler",
+            kind="function",
+            language="python",
+            path=str(tmp_path / "app.py"),
+            span=Span(start_line=10, end_line=20, start_col=0, end_col=0),
+            meta={"concepts": [
+                {"concept": "route", "path": path, "method": method},
+            ]},
+        )
+
+    def test_link_all_wildcard_method(self, tmp_path: Path) -> None:
+        """WI-zunal: `ALL` (node-http's catch-all handler) is a wildcard.
+
+        The inline check knew only ANY and *, so an ALL route never linked
+        where an equivalent ANY route would.
+        """
+        self._spec_with(tmp_path, "/users", "get")
+        result = link_openapi(tmp_path, [self._route(tmp_path, "/users", "ALL")])
+        assert len(result.edges) == 1
+
+    def test_link_comma_joined_multi_method_route(self, tmp_path: Path) -> None:
+        """WI-zunal: a YAML-enriched multi-method route links on EACH verb.
+
+        `framework_patterns` joins a list-valued `method` key with ",", and
+        only the route-materializer splits it back — so the linker sees
+        "GET,POST", which can never equal a single op method.
+        """
+        self._spec_with(tmp_path, "/hybrid", "get", "post")
+        result = link_openapi(
+            tmp_path, [self._route(tmp_path, "/hybrid", "GET,POST")],
+        )
+        assert len(result.edges) == 2
+        assert {(e.meta or {}).get("method") for e in result.edges} == {
+            "GET", "POST",
+        }
+
+    def test_comma_joined_route_still_rejects_absent_verb(
+        self, tmp_path: Path,
+    ) -> None:
+        """The multi-method relaxation must not become a wildcard."""
+        self._spec_with(tmp_path, "/hybrid", "delete")
+        result = link_openapi(
+            tmp_path, [self._route(tmp_path, "/hybrid", "GET,POST")],
+        )
+        assert result.edges == []
+
     def test_link_by_operation_id(self, tmp_path: Path) -> None:
         """Links operations to routes by operationId match."""
         spec = tmp_path / "openapi.yaml"

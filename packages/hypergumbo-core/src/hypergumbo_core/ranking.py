@@ -1796,10 +1796,16 @@ def compute_truncation_elbow(
     Returns:
         Token count representing the optimal truncation point.
     """
-    # Filter to symbols in this file that have spans and positive centrality
+    # Filter to symbols in this file that have spans and positive centrality,
+    # pairing each symbol with its span end_line: mypy cannot carry the
+    # comprehension-condition narrowing (span is not None) across the
+    # resulting list, so the sort and cumulative-curve loop below consume
+    # the paired end_line instead of re-dereferencing s.span.
     file_symbols = [
-        s for s in symbols
+        (s, s.span.end_line)
+        for s in symbols
         if s.path == file_path
+        and s.span is not None
         and s.span.end_line > 0
         and centrality.get(s.id, 0) > 0
     ]
@@ -1808,18 +1814,18 @@ def compute_truncation_elbow(
         return default_tokens
 
     # Sort by end_line
-    file_symbols.sort(key=lambda s: s.span.end_line)
+    file_symbols.sort(key=lambda pair: pair[1])
 
     # Build cumulative centrality curve
-    total = sum(centrality.get(s.id, 0) for s in file_symbols)
+    total = sum(centrality.get(s.id, 0) for s, _ in file_symbols)
     if total <= 0:  # pragma: no cover - filtered to positive centrality above
         return default_tokens
 
     cumulative = 0.0
     points: list[tuple[int, float]] = []
-    for s in file_symbols:
+    for s, end_line in file_symbols:
         cumulative += centrality.get(s.id, 0)
-        points.append((s.span.end_line, cumulative / total))
+        points.append((end_line, cumulative / total))
 
     # Need at least 3 points for meaningful elbow detection
     if len(points) < 3:  # pragma: no cover - same as len(file_symbols) check above

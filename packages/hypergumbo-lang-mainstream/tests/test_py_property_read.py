@@ -213,20 +213,19 @@ class TestPropertyReadTypeInference:
         assert _prop_read_edges(res, "val") == []
 
 
-class TestPropertyReadKnownGaps:
-    """Documented scope limits — behaviors D2 deliberately does NOT cover (safe
-    misses, never wrong edges). Locked so a future change to any is intentional.
+class TestReadWritePropertyResolves:
+    """WI-sizut: a read-WRITE property (getter + @x.setter / @x.deleter) now
+    resolves the READ to the getter. The setter/deleter share the qualified
+    name ``C.val`` and win the last-write in the name-keyed registries, and
+    their recorded decorator is the dotted ``val.setter`` / ``val.deleter``
+    (not the bare ``property``) — so the general indexes mask the getter. A
+    dedicated property-getter index, built from the per-file symbols BEFORE the
+    collapse, recovers it. (Was a deferred D2 known gap.)
     """
 
-    def test_read_write_property_getter_not_resolved(
+    def test_read_write_property_getter_resolves(
         self, tmp_path: Path
     ) -> None:
-        # A read-WRITE property (getter + @x.setter) yields no edge: the setter
-        # shares the qualified name ``C.val`` and, being defined later, wins the
-        # last-write in global_symbols; its recorded decorator is the dotted
-        # ``val.setter`` (not ``property``), so _resolve_property_getter returns
-        # None. Read-ONLY properties (the flagship shape) resolve; read-write is
-        # a deferred follow-up. Safe (emits nothing), documented here.
         src = (
             "class C:\n"
             "    @property\n"
@@ -239,7 +238,30 @@ class TestPropertyReadKnownGaps:
             "    return c.val\n"
         )
         res = _analyze(tmp_path, src)
-        assert _prop_read_edges(res, "val") == []
+        reads = _prop_read_edges(res, "val")
+        assert len(reads) == 1
+        assert reads[0].meta.get("receiver_type_hint") == "C"
+
+    def test_getter_setter_deleter_property_read_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        # Three C.val members (getter + setter + deleter): the read still binds.
+        src = (
+            "class C:\n"
+            "    @property\n"
+            "    def val(self):\n"
+            "        return self._v\n"
+            "    @val.setter\n"
+            "    def val(self, x):\n"
+            "        self._v = x\n"
+            "    @val.deleter\n"
+            "    def val(self):\n"
+            "        del self._v\n"
+            "def f(c: C):\n"
+            "    return c.val\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert len(_prop_read_edges(res, "val")) == 1
 
 
 class TestResolvePropertyGetterUnit:
@@ -274,6 +296,30 @@ class TestResolvePropertyGetterUnit:
         )
         idx = {("pkg/m.py", "C.val"): getter}
         assert _resolve_property_getter(cls, "val", {}, idx) is getter
+
+    def test_property_getter_via_dedicated_index_beats_setter(self) -> None:
+        # WI-sizut: the dedicated getter index is consulted first and wins even
+        # when local_symbols and the (path, qualified) index both hold the
+        # same-qualified-name @val.setter (the last-write collapse).
+        cls = self._sym("C", "class", path="pkg/m.py")
+        getter = self._sym(
+            "C.val", "method", path="pkg/m.py", decorators=[{"name": "property"}]
+        )
+        setter = self._sym(
+            "C.val", "method", path="pkg/m.py",
+            decorators=[{"name": "val.setter"}],
+        )
+        pg_index = {("pkg/m.py", "C.val"): getter}
+        assert _resolve_property_getter(
+            cls, "val", {"val": setter}, {("pkg/m.py", "C.val"): setter}, pg_index,
+        ) is getter
+
+    def test_property_getter_index_miss_falls_through(self) -> None:
+        # A present-but-empty getter index falls through to the existing
+        # local_symbols / (path, qualified) resolution (no early return).
+        cls = self._sym("C", "class")
+        getter = self._sym("C.val", "method", decorators=[{"name": "property"}])
+        assert _resolve_property_getter(cls, "val", {"val": getter}, None, {}) is getter
 
     def test_short_name_hit_on_wrong_class_returns_none(self) -> None:
         # A same-short-name getter belonging to a DIFFERENT class (D.val) must

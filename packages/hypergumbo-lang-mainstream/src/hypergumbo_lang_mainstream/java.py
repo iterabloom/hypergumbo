@@ -97,6 +97,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
+from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
@@ -108,6 +109,8 @@ from hypergumbo_core.analyze.base import (
     AnalysisResult,
     TreeSitterAnalyzer,
     emit_module_attribute_refs,
+    symbols_by_path_index,
+    symbols_for_path,
     populate_docstrings_from_tree,
     iter_tree,
     make_file_id,
@@ -1078,6 +1081,68 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
+                # WI-duguk: the enum's CONSTANTS. Without them the enum is a
+                # container with nothing in it, so the containment linker roots
+                # nothing and `slice --reverse` from the enum returns the
+                # container alone. The gap was easy to miss because an enum's
+                # METHODS were already emitted (`Color.label`), so an enum
+                # carrying one method looked populated to any "does this
+                # container have a member" probe.
+                #
+                # Only DIRECT `enum_constant` children of the `enum_body` are
+                # read: the body's other child is `enum_body_declarations`,
+                # holding the enum's methods and fields, which keep flowing
+                # through their own branches. A constant with arguments
+                # (`RED("r")`) carries an argument_list after its identifier and
+                # is otherwise the same node.
+                enum_body = next(
+                    (c for c in node.children if c.type == "enum_body"), None,
+                )
+                const_ancestors = ancestors + [name]
+                for const in enum_body.children if enum_body else ():
+                    if const.type != "enum_constant":
+                        continue
+                    const_name_node = const.child_by_field_name("name")
+                    if const_name_node is None:  # pragma: no cover - always named
+                        continue
+                    const_name = _node_text(const_name_node, source)
+                    const_full = f"{'.'.join(const_ancestors)}.{const_name}"
+                    const_span = Span(
+                        start_line=const.start_point[0] + 1,
+                        end_line=const.end_point[0] + 1,
+                        start_col=const.start_point[1],
+                        end_col=const.end_point[1],
+                    )
+                    const_qualified = _make_java_qualified_name(
+                        package_name, const_ancestors, const_name,
+                    )
+                    symbols.append(Symbol(
+                        id=_make_symbol_id(
+                            str(file_path), const_span.start_line,
+                            const_span.end_line, const_full, "field",
+                        ),
+                        name=const_full,
+                        kind="field",
+                        language="java",
+                        path=str(file_path),
+                        span=const_span,
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        stable_id=make_typed_stable_id(
+                            "field", name,
+                            visibility_from_modifiers(modifiers),
+                            name=const_name,
+                            qualified_name=const_qualified,
+                            file_stable_id=file_stable_id,
+                        ),
+                        # A constant is implicitly `public static final` and is
+                        # as reachable as its enum; Java has no per-constant
+                        # access modifier.
+                        is_exported="public" in modifiers,
+                        qualified_name=const_qualified,
+                        line_span=const_span.end_line - const_span.start_line + 1,
+                    ))
+
         # Method declarations
         elif node.type == "method_declaration":
             name = _get_method_name(node, source)
@@ -1659,8 +1724,22 @@ def _extract_edges(
                             candidate = f"{current_class}.{method_name}"
                             lookup_result = resolver.lookup(candidate, caller_path=_caller_path)
                             if lookup_result.found:
-                                # Scale confidence by resolver's confidence multiplier
-                                edge_confidence = 0.95 * lookup_result.confidence
+                                # Scale the pathway's derived reliability by the
+                                # resolver's confidence multiplier.
+                                #
+                                # INV-zatug: the base was a hardcoded 0.95, so a
+                                # fully-resolved call published 0.95 — above the
+                                # ast_call_direct ceiling of 0.85. The multiplier
+                                # is meaningful and stays; only the base moves to
+                                # the ADR-0039 registry seed, so the value tracks
+                                # the inference pathway instead of a per-emitter
+                                # literal that drifted from it.
+                                edge_confidence = (
+                                    derive_confidence(
+                                        "ast_call_direct", is_resolved=True
+                                    )
+                                    or 0.85
+                                ) * lookup_result.confidence
                                 edge = Edge.create(
                                     src=current_method.id,
                                     dst=lookup_result.symbol.id,
@@ -1864,6 +1943,7 @@ def _extract_edges(
                         # an unresolved edge with structured dst_ref so
                         # consumers can match on (module_path, name).
                         ext_ref: ExternalRef | None = None
+                        pr4_call_construct: str | None = None
                         if (
                             (receiver_name is None or receiver_name == "this")
                             and static_imports is not None
@@ -1896,6 +1976,70 @@ def _extract_edges(
                                 ext_ref = ExternalRef(
                                     lang="java",
                                     module_path=imports[receiver_name],
+                                    name=method_name,
+                                )
+                            # INV-linub: a typed LOCAL receiver
+                            # (``File f = new File(p); f.createNewFile()``).
+                            # The type is already inferred into ``var_types``
+                            # and threaded out as ``receiver_type_hint``, but
+                            # its only consumers were the Tier-2
+                            # ``inherited_calls`` / ``receiver_type_dispatch``
+                            # linkers, which resolve PROJECT-INTERNAL symbols.
+                            # Nothing carried it to the external surface, so
+                            # the dst named the VARIABLE
+                            # (``java:external:0-0:f.createNewFile:unresolved``)
+                            # and every catalogue consumer saw a bare method on
+                            # an unknown receiver.
+                            #
+                            # That is fatal rather than lossy for taint:
+                            # ``io_boundary.gate_named_entry`` opens with
+                            # ``if call_construct == "method": return None``,
+                            # so with no module hint a method call matches
+                            # NOTHING — not a method-kind entry, not even a
+                            # function-kind one. Measured 2026-08-06 across
+                            # nine languages: java emitted for both the
+                            # two-step and chained shapes and matched on
+                            # neither, and 67 of its 69 catalogued sinks are
+                            # method-kind. Emitting the edge was never the
+                            # missing piece; naming the receiver's TYPE is.
+                            #
+                            # Gated on the type being in ``imports`` so the
+                            # module slot only ever carries a path the file
+                            # actually declares. An unqualifiable type is left
+                            # alone rather than written in bare — a simple name
+                            # in the module slot asserts a module that does not
+                            # exist and can collide with a catalogued entry of
+                            # the same short name, which is the bare-name
+                            # category error INV-fazim documents from the other
+                            # direction.
+                            #
+                            # ``call_construct="method"`` is NOT decoration and
+                            # must not be dropped. Naming the type also SHORTENS
+                            # the callee from ``w.doFinal`` to ``doFinal``, and
+                            # ``_register_sanitizer_callers`` matches sanitizers
+                            # on the SHORT NAME while never consulting the module
+                            # hint. Without this flag the shortening alone made
+                            # ``com.example.Widget.doFinal`` bind the catalogued
+                            # ``javax.crypto.Cipher.doFinal`` — a PHANTOM BARRIER,
+                            # which earns `sanitized` and DELETES a real flow
+                            # (#214). Measured, not feared: the barrier really did
+                            # register before this flag was added. The flag costs
+                            # nothing on the sink side because
+                            # ``_lookup_named_entry`` returns from its
+                            # module-filter branch before ``gate_named_entry``
+                            # ever sees it.
+                            elif (
+                                receiver_name
+                                and receiver_name != "this"
+                                and pr4_receiver_type_hint
+                                and pr4_receiver_type_hint in imports
+                            ):
+                                module = imports[pr4_receiver_type_hint]
+                                unresolved_name = method_name
+                                pr4_call_construct = "method"
+                                ext_ref = ExternalRef(
+                                    lang="java",
+                                    module_path=module,
                                     name=method_name,
                                 )
                             # WI-tuhok: when the receiver looks like a
@@ -1936,6 +2080,7 @@ def _extract_edges(
                             inherited_field_receiver=(
                                 pr4_inherited_field_receiver
                             ),
+                            call_construct=pr4_call_construct,
                         ))
 
         # Object creation: new ClassName()
@@ -2247,6 +2392,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     # Pass 1: Parse all files and extract symbols
     parsed_files: list[_ParsedFile] = []
     all_symbols: list[Symbol] = []
+
     files_analyzed = 0
     files_skipped = 0
 
@@ -2286,7 +2432,10 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
 
     for sym in all_symbols:
         global_symbols[sym.name] = sym
-        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
+        # A symbol without a span has no position to index; consumers fall
+        # back to name-based lookup in global_symbols.
+        if sym.span is not None:
+            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind in ("class", "interface", "enum"):
             class_symbols[sym.name] = sym
             if sym.name not in class_by_name:
@@ -2306,6 +2455,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
     syms_by_path: dict[str, list[str]] = {}
     for sym in all_symbols:
         syms_by_path.setdefault(sym.path, []).append(sym.id)
+    _symbols_by_path = symbols_by_path_index(all_symbols)
     for pf in parsed_files:
         file_imports = pf.imports or {}
         if file_imports:
@@ -2469,6 +2619,12 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run_id=run.execution_id,
             call_node_kinds=("__never_match_java__",),
             call_function_field_names=("__unused__",),
+            # INV-fafol: anchor each read to the callable that performs it.
+            enclosing_symbols=symbols_for_path(
+                _symbols_by_path, str(pf.path),
+                str(pf.path.relative_to(repo_root))
+                if pf.path.is_absolute() else str(pf.path),
+            ),
         )
         # ADR-0015 Tier 1: annotate edges with dataflow access modes
         _java_df = _get_dataflow_config("java")

@@ -4574,6 +4574,42 @@ public class Child extends Parent {
         assert len(call_edges) == 1
         assert call_edges[0].evidence_type == "ast_call_direct"
 
+    def test_direct_call_confidence_within_derived_band(
+        self, tmp_path: Path
+    ) -> None:
+        """INV-zatug: a resolved direct call must sit inside the ADR-0039
+        band for ``ast_call_direct``.
+
+        The producer scaled a hardcoded 0.95 by the resolver multiplier, so a
+        fully-resolved call published 0.95 — above the pathway's 0.85 ceiling.
+        The multiplier is meaningful and is kept; only its *base* moves to the
+        registry seed, so the value tracks the inference pathway instead of a
+        per-emitter literal. Asserted against ``confidence_within_band`` rather
+        than a golden number so the test follows the registry if the seed
+        changes.
+        """
+        from hypergumbo_core.confidence import confidence_within_band
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Main.java").write_text(
+            "public class Main {\n"
+            "    private int helper() { return 1; }\n"
+            "    public int process() { return helper(); }\n"
+            "}\n"
+        )
+        result = analyze_java(tmp_path)
+        direct = [
+            e for e in result.edges
+            if e.edge_type == "calls"
+            and e.evidence_type == "ast_call_direct"
+            and e.is_resolved
+        ]
+        assert direct, "expected a resolved direct call edge"
+        for edge in direct:
+            assert confidence_within_band("ast_call_direct", edge.confidence), (
+                f"{edge.confidence} outside the ast_call_direct band"
+            )
+
     def test_inherited_field_method_call(self, tmp_path: Path) -> None:
         """Call on field declared in parent class resolves via inheritance."""
         from hypergumbo_lang_mainstream.java import analyze_java
@@ -4795,6 +4831,220 @@ public class IO {
         assert "fis.read" in callee_names or "read" in callee_names
         for e in unresolved:
             assert e.confidence == 0.50
+
+    def test_typed_local_receiver_puts_the_TYPE_in_the_module_slot(
+        self, tmp_path: Path,
+    ) -> None:
+        """``File f = new File(p); f.createNewFile()`` names ``java.io.File``.
+
+        INV-linub. The analyzer already infers the receiver's type into
+        ``var_types`` and threads it out as ``meta["receiver_type_hint"]`` for
+        the Tier-2 ``inherited_calls`` / ``receiver_type_dispatch`` linkers,
+        which resolve to PROJECT-INTERNAL symbols. Nothing carried that type
+        into the dst's module slot, so the edge named the *variable* —
+        ``java:external:0-0:f.createNewFile:unresolved``. The type was computed
+        and then discarded for every external-surface consumer.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Sites.java").write_text("""
+import java.io.File;
+
+public class Sites {
+    public static void write(String p) throws Exception {
+        File f = new File(p);
+        f.createNewFile();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        edge = next(
+            e for e in result.edges
+            if not e.is_resolved and "createNewFile" in e.dst
+        )
+        assert edge.dst == (
+            "java:java.io.File:0-0:createNewFile:unresolved"
+        ), edge.dst
+        # The hint the Tier-2 linkers read must survive unchanged — this fix
+        # ADDS a consumer for the inferred type, it does not move it.
+        assert (edge.meta or {}).get("receiver_type_hint") == "File"
+
+    def test_typed_local_receiver_edge_reaches_the_taint_catalogue(
+        self, tmp_path: Path,
+    ) -> None:
+        """The point of the module slot: production's matcher must accept it.
+
+        Asserted through ``_match_propagation_entry`` rather than by eyeballing
+        the dst, because the dst string is not the contract — reaching the
+        catalogue entry is. ``gate_named_entry`` refuses an untyped method call
+        unconditionally (``if call_construct == "method": return None``), so an
+        edge that merely EXISTS matches nothing; only one carrying a real module
+        hint can win. Measured 2026-08-06: java emitted for both the two-step
+        and chained shapes and matched on neither.
+        """
+        from hypergumbo_core.taint import (
+            _build_callee_index,
+            _match_propagation_entry,
+            load_builtin_taint_catalog,
+        )
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Sites.java").write_text("""
+import java.io.File;
+
+public class Sites {
+    public static void write(String p) throws Exception {
+        File f = new File(p);
+        f.createNewFile();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        catalog = load_builtin_taint_catalog()
+        index = _build_callee_index(catalog.sinks_for_language("java"))
+        ambiguous = catalog.ambiguous_names_for_language("java")
+
+        edge = next(
+            e for e in result.edges
+            if not e.is_resolved and "createNewFile" in e.dst
+        )
+        matched = _match_propagation_entry(
+            index, edge.dst, ambiguous,
+            (edge.meta or {}).get("call_construct"),
+            is_resolved=edge.is_resolved, language="java",
+        )
+        assert matched is not None, (
+            f"edge {edge.dst} still does not reach the catalogue"
+        )
+        assert matched.qualified_name == "java.io.File.createNewFile"
+
+    def test_typed_receiver_does_not_register_a_PHANTOM_sanitizer(
+        self, tmp_path: Path,
+    ) -> None:
+        """A wrong-typed receiver must not bind a catalogued barrier.
+
+        THE REGRESSION THIS EXISTS FOR. Putting the receiver type in the module
+        slot also SHORTENS the callee name from ``w.doFinal`` to ``doFinal``.
+        ``_register_sanitizer_callers`` matches sanitizers on the SHORT NAME and
+        never consults the module hint, so the shortening alone made
+        ``com.example.Widget.doFinal`` bind ``javax.crypto.Cipher.doFinal``.
+        Before the module-slot change the name was ``w.doFinal``, which is not
+        an index key, so the exposure did not exist — the fix would have traded
+        a recall win for a PHANTOM BARRIER.
+
+        That trade is strictly bad and the direction is why: a phantom barrier
+        earns ``sanitized``, and a sanitized flow is DROPPED from the claim's
+        violation set (#214). Missing a barrier costs precision; inventing one
+        costs a real finding, silently. ``_register_sanitizer_callers``'s own
+        docstring makes the same ruling (INV-finoh).
+
+        The guard is ``call_construct="method"``, which that function already
+        honours — and which does NOT cost the sink match, because
+        ``_lookup_named_entry`` takes its module-filter branch and returns
+        before ever reaching ``gate_named_entry`` when a real module hint is
+        present.
+        """
+        from collections import defaultdict
+
+        from hypergumbo_core.taint import (
+            _build_sanitizer_index_multi,
+            _register_sanitizer_callers,
+            load_builtin_taint_catalog,
+        )
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Wrong.java").write_text("""
+import com.example.Widget;
+
+public class Wrong {
+    public static void go(byte[] pt) throws Exception {
+        Widget w = new Widget();
+        w.doFinal(pt);
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        edge = next(
+            e for e in result.edges
+            if not e.is_resolved and "doFinal" in e.dst
+        )
+        assert (edge.meta or {}).get("call_construct") == "method"
+
+        catalog = load_builtin_taint_catalog()
+        index = _build_sanitizer_index_multi(
+            catalog.sanitizers_for_language("java"),
+        )
+        edge_dicts = [{
+            "src": e.src, "dst": e.dst, "type": e.edge_type,
+            "is_resolved": e.is_resolved, "meta": dict(e.meta or {}),
+        } for e in result.edges]
+        callers: dict = defaultdict(dict)
+        _register_sanitizer_callers(
+            edge_dicts, index, callers,
+            catalog.ambiguous_names_for_language("java"), {},
+        )
+        assert not callers, (
+            f"phantom barrier registered from a non-Cipher receiver: {dict(callers)}"
+        )
+
+    def test_untyped_receiver_still_names_the_variable(
+        self, tmp_path: Path,
+    ) -> None:
+        """No inferred type ⇒ unchanged behaviour, NOT an invented module.
+
+        The non-destructiveness half (L12): when the fix cannot do better it
+        must do exactly what it did before. A receiver with no entry in
+        ``var_types`` has no type evidence, and manufacturing one would be the
+        bare-name category error this whole area is trying to stop.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Sites.java").write_text("""
+public class Sites {
+    public static void go(Object o) {
+        o.hashCode();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        edge = next(
+            e for e in result.edges
+            if not e.is_resolved and "hashCode" in e.dst
+        )
+        assert edge.dst == "java:external:0-0:o.hashCode:unresolved", edge.dst
+
+    def test_typed_local_whose_type_is_not_imported_is_left_alone(
+        self, tmp_path: Path,
+    ) -> None:
+        """A type we cannot qualify must NOT become a bare simple name.
+
+        ``Helper h = new Helper(); h.run();`` with no import gives a type of
+        ``Helper`` and no fully-qualified path for it. Writing ``Helper`` into
+        the module slot would assert a module that does not exist and could
+        collide with a catalogued entry of the same short name — the failure
+        mode INV-fazim documents from the other direction.
+        """
+        from hypergumbo_lang_mainstream.java import analyze_java
+
+        (tmp_path / "Sites.java").write_text("""
+public class Sites {
+    public static void go() {
+        Helper h = new Helper();
+        h.run();
+    }
+}
+""")
+
+        result = analyze_java(tmp_path)
+        edge = next(
+            e for e in result.edges
+            if not e.is_resolved and "run" in e.dst
+        )
+        assert edge.dst == "java:external:0-0:h.run:unresolved", edge.dst
 
     def test_resolved_call_not_unresolved(self, tmp_path: Path) -> None:
         """When callee IS in project, no unresolved edge."""

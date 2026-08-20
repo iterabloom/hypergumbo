@@ -15,10 +15,17 @@ Python subprocess invocations:
 
 Project CLI Detection
 ---------------------
-The linker identifies this project's CLI by:
-1. Reading [project.scripts] from pyproject.toml
-2. Using [project.name] as fallback
-3. Matching both hyphenated and underscored variants
+The linker identifies this project's CLI by unioning, across EVERY
+``pyproject.toml`` and ``setup.py`` the discovery walk finds (not just the
+repo root — that was WI-gadus, which made the linker structurally blind on
+any monorepo whose root manifest declares no scripts):
+1. [project.scripts] entries from each pyproject.toml
+2. [project.name] as fallback
+3. console_scripts / entry_points from each setup.py
+4. Matching both hyphenated and underscored variants
+
+The union over-selects rather than under-selects: a workspace that vendors a
+package named after a common binary will claim that binary's call sites.
 
 Matching Strategy
 -----------------
@@ -49,7 +56,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_symbol_id
+from ..analyze.base import make_symbol_id, sanitize_id_name_segment
 from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import has_concept
@@ -82,6 +89,40 @@ class SubprocessLinkResult:
     run: AnalysisRun | None = None
 
 
+def _leading_constant_args(args_str: str) -> list[str]:
+    """Return the LEADING run of constant elements of a list/tuple display.
+
+    WI-gadus B2. The previous implementation ran ``ast.literal_eval`` over the
+    WHOLE captured argv, so a single non-literal element discarded the entire
+    call site — and real self-invocations are almost never fully literal. The
+    live case is ``scripts/hypergumbo_diag.py``::
+
+        subprocess.run(["hypergumbo", "slice", "--input", in_path, ...])
+
+    where the executable and subcommand ARE plain literals in positions 0 and 1
+    and everything the linker needs sits in front of the first variable. Parsing
+    element-wise and stopping at the first non-constant recovers exactly that
+    prefix, and stopping (rather than skipping) is deliberate: once an element
+    is opaque, positional reasoning about what follows it is unsound — a
+    variable could expand to a flag, a subcommand, or nothing at all.
+
+    Returns ``[]`` when the string does not parse, is not a list/tuple display,
+    or begins with a non-constant.
+    """
+    try:
+        node = ast.parse(args_str.strip(), mode="eval").body
+    except (ValueError, SyntaxError):
+        return []
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    out: list[str] = []
+    for elt in node.elts:
+        if not isinstance(elt, ast.Constant):
+            break
+        out.append(str(elt.value))
+    return out
+
+
 def _extract_command_info(args_str: str) -> tuple[str | None, str | None, bool]:
     """Extract executable, subcommand, and python-m flag from argument string.
 
@@ -92,57 +133,125 @@ def _extract_command_info(args_str: str) -> tuple[str | None, str | None, bool]:
     Returns:
         Tuple of (executable, subcommand, is_python_m)
     """
-    # Try to parse as a Python list literal
-    try:
-        # Use ast.literal_eval for safe parsing of list literals
-        args = ast.literal_eval(args_str)
-        if not isinstance(args, list) or len(args) == 0:
-            return None, None, False
-
-        # Convert all to strings
-        args = [str(a) for a in args]
-
-        # Check for python -m pattern
-        if args[0] in ("python", "python3", "python3.10", "python3.11", "python3.12"):
-            if len(args) >= 3 and args[1] == "-m":
-                # python -m package [subcommand]
-                executable = args[2]
-                subcommand = None
-                if len(args) >= 4 and not args[3].startswith("-"):
-                    subcommand = args[3]
-                return executable, subcommand, True
-
-        # Regular command
-        executable = args[0]
-        subcommand = None
-
-        # Find first non-flag argument as subcommand
-        for arg in args[1:]:
-            if not arg.startswith("-"):
-                subcommand = arg
-                break
-
-        return executable, subcommand, False
-
-    except (ValueError, SyntaxError):  # pragma: no cover
+    args = _leading_constant_args(args_str)
+    if not args:
         return None, None, False
+
+    # Check for python -m pattern
+    if args[0] in ("python", "python3", "python3.10", "python3.11", "python3.12"):
+        if len(args) >= 2 and args[1] == "-m":
+            # python -m package [subcommand]. The package name is the
+            # executable, so a run that stops being literal BEFORE index 2
+            # cannot be resolved at all — fail safe rather than reporting
+            # "python" as the executable, which would join nothing anyway.
+            if len(args) < 3:
+                return None, None, False
+            executable = args[2]
+            subcommand = None
+            if len(args) >= 4 and not args[3].startswith("-"):
+                subcommand = args[3]
+            return executable, subcommand, True
+
+    # Regular command
+    executable = args[0]
+    subcommand = None
+
+    # Find first non-flag argument as subcommand
+    for arg in args[1:]:
+        if not arg.startswith("-"):
+            subcommand = arg
+            break
+
+    return executable, subcommand, False
+
+
+def _cli_names_from_setup_py(setup_path: Path) -> set[str]:
+    """Extract distribution + console_script names from a ``setup.py``.
+
+    WI-gadus B1, second half. ``setup.py`` was never read at all, so a
+    setuptools project that predates PEP 621 was invisible to this linker no
+    matter where its manifest sat. Parsed with ``ast`` rather than executed:
+    the call is located structurally and only literal keyword values are read,
+    so a computed ``name=`` or a dynamically-built ``entry_points`` fails safe
+    to contributing nothing rather than to a wrong name.
+    """
+    names: set[str] = set()
+    try:
+        tree = ast.parse(read_masked_source(setup_path, encoding="utf-8"))
+    except (OSError, IOError, SyntaxError, ValueError):
+        return names
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        fname = (
+            func.id if isinstance(func, ast.Name)
+            else func.attr if isinstance(func, ast.Attribute)
+            else None
+        )
+        if fname != "setup":
+            continue
+        for kw in node.keywords:
+            if kw.arg == "name" and isinstance(kw.value, ast.Constant):
+                if isinstance(kw.value.value, str):
+                    names.add(kw.value.value)
+                    names.add(kw.value.value.replace("-", "_"))
+            elif kw.arg == "entry_points" and isinstance(kw.value, ast.Dict):
+                for key, val in zip(kw.value.keys, kw.value.values, strict=True):
+                    if not (
+                        isinstance(key, ast.Constant)
+                        and key.value == "console_scripts"
+                        and isinstance(val, (ast.List, ast.Tuple))
+                    ):
+                        continue
+                    for elt in val.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(
+                            elt.value, str
+                        ) and "=" in elt.value:
+                            names.add(elt.value.split("=")[0].strip())
+    return names
 
 
 def _detect_project_cli_name(repo_root: Path) -> set[str]:
-    """Detect the project's CLI executable names.
+    """Detect the project's CLI executable names, ANYWHERE in the tree.
 
-    Reads pyproject.toml to find:
-    1. [project.scripts] entries (explicit CLI names)
-    2. [project.name] as fallback
+    Unions, across every ``pyproject.toml`` and ``setup.py`` the discovery
+    excludes admit:
+    1. ``[project.scripts]`` entries (explicit CLI names)
+    2. ``[project.name]`` (plus its underscore variant) as fallback
+    3. ``setup(name=...)`` and ``entry_points={"console_scripts": [...]}``
+
+    WI-gadus B1. This previously read ONLY ``<repo_root>/pyproject.toml``, which
+    made the linker structurally blind on any monorepo whose root manifest is
+    tool-config-only — including hypergumbo itself, whose root has no
+    ``[project]`` table at all while the ``hypergumbo`` console script is
+    declared in ``packages/hypergumbo/pyproject.toml``. The consequence was not
+    a degraded join but the total absence of one: ``_detect_project_cli_name``
+    returned an empty set, so the ``call.executable in project_cli_names`` guard
+    in :func:`link_subprocess` could never pass for any call in the repository,
+    and every downstream mechanism — including the WI-lubap argparse join, which
+    resolves its handlers correctly — was dead code behind it.
+
+    Unioning across nested manifests deliberately over-selects rather than
+    under-selects. A workspace that vendors a package named after a common
+    binary could admit a false executable name; that costs a spurious edge,
+    whereas the previous behavior cost every real one, and vendor directories
+    are already excluded by the shared discovery rules.
 
     Returns:
         Set of possible CLI names for this project.
     """
     names: set[str] = set()
+    for setup_path in find_files(repo_root, ["**/setup.py"]):
+        names |= _cli_names_from_setup_py(setup_path)
+    for pyproject_path in find_files(repo_root, ["**/pyproject.toml"]):
+        names |= _cli_names_from_pyproject(pyproject_path)
+    return names
 
-    pyproject_path = repo_root / "pyproject.toml"
-    if not pyproject_path.exists():
-        return names
+
+def _cli_names_from_pyproject(pyproject_path: Path) -> set[str]:
+    """Extract distribution + script names from ONE ``pyproject.toml``."""
+    names: set[str] = set()
 
     try:
         content = read_masked_source(pyproject_path, encoding="utf-8")
@@ -152,9 +261,9 @@ def _detect_project_cli_name(repo_root: Path) -> set[str]:
             import tomllib  # pragma: no cover
         except ImportError:  # pragma: no cover
             try:
-                import tomli as tomllib  # type: ignore[no-redef]
+                import tomli as tomllib
             except ImportError:
-                tomllib = None  # type: ignore[assignment]
+                tomllib = None
 
         data: dict | None = None
         if tomllib is not None:
@@ -334,7 +443,7 @@ def _create_call_symbol(call: SubprocessCall, root: Path) -> Symbol:
     # the host file (subprocess.Popen calls can surface from non-Python
     # bindings or from polyglot fixtures).
     return Symbol(
-        id=make_symbol_id(language_from_path(Path(call.file_path)), str(rel_path), call.line, call.line, "subprocess_call", "call_site"),
+        id=make_symbol_id(language_from_path(Path(call.file_path)), str(rel_path), call.line, call.line, sanitize_id_name_segment(name), "call_site"),
         name=name,
         kind="call_site",
         path=call.file_path,
@@ -387,6 +496,132 @@ def _argparse_set_defaults_handler(call: "ast.Call") -> tuple[str, str] | None:
     return None
 
 
+@dataclass(frozen=True)
+class _CliScanFacts:
+    """The FILE-DERIVED half of both CLI scans, from one walk of the tree.
+
+    Split out because it is a pure function of the files on disk: only the
+    RESOLUTION half of each scan (handler name → Symbol, class → its methods)
+    depends on the symbol table, and the two scans are handed different symbol
+    lists by different callers. Keeping the file facts symbol-free is what lets
+    one walk serve all four call sites.
+
+    ``argparse_pairs`` is (rel_path, subcommand, handler_name) — the resolved
+    add_parser/set_defaults pairing, before any symbol lookup.
+    ``fire_targets`` is (rel_path, class_name) from ``fire.Fire(<Name>)``.
+    """
+
+    argparse_pairs: tuple[tuple[str, str, str], ...]
+    fire_targets: frozenset[tuple[str, str]]
+
+
+# Single-slot memo of the walk above. SINGLE slot, not a growing dict: the
+# access pattern is "the same root, four times in a row" (the linker and the
+# requirement-check diagnostic), so one entry captures all of it while making an
+# unbounded-growth leak impossible in a long-lived process such as a test run.
+_CLI_SCAN_MEMO: tuple[str, _CliScanFacts] | None = None
+
+
+def _reset_cli_scan_cache() -> None:
+    """Drop the memo. For tests that mutate a tree between scans."""
+    global _CLI_SCAN_MEMO
+    _CLI_SCAN_MEMO = None
+
+
+def _cli_scan_key(root: Path, files: list[Path]) -> str:
+    """Identity of the tree being scanned: path + (size, mtime) of every file.
+
+    WHY NOT JUST ``root``. A memo keyed on the directory alone is a STALE-HIT
+    generator the moment anything edits a file between two scans — the caller
+    silently receives facts for a tree that no longer exists, with nothing in
+    the output saying so. That is the same failure mode WI-madut names for
+    persistent per-file memoization, and it is worth pre-empting here even
+    though a single survey never mutates its own tree mid-run: test suites do,
+    constantly.
+
+    Size+mtime rather than content digests: this runs before the parse, so
+    hashing every file's bytes would reintroduce most of the I/O the memo
+    exists to avoid. The residual hole is a same-size edit within one mtime
+    tick, which ``_reset_cli_scan_cache`` covers for tests that need certainty.
+    """
+    parts = [str(root)]
+    for path in files:
+        try:
+            stat = path.stat()
+        except OSError:  # pragma: no cover - file vanished between walk and stat
+            parts.append(f"{path}:gone")
+            continue
+        parts.append(f"{path}:{stat.st_size}:{stat.st_mtime_ns}")
+    return "\x1f".join(parts)
+
+
+def _scan_python_cli_facts(root: Path) -> _CliScanFacts:
+    """Walk every python file ONCE and extract both scans' file-derived facts.
+
+    Replaces two independent walks that each parsed the whole tree, each of
+    which ran twice per survey (the linker and ``_count_cli_command_symbols``):
+    four full parse-and-walk passes over every python file, measured at ~16s on
+    this monorepo with ~12s of it re-parsing content already parsed.
+    """
+    global _CLI_SCAN_MEMO
+
+    files = list(_find_python_files(root))
+    key = _cli_scan_key(root, files)
+    memo = _CLI_SCAN_MEMO
+    if memo is not None and memo[0] == key:
+        return memo[1]
+
+    argparse_pairs: list[tuple[str, str, str]] = []
+    fire_targets: set[tuple[str, str]] = set()
+    for file_path in files:
+        try:
+            content = read_masked_source(
+                file_path, encoding="utf-8", errors="ignore"
+            )
+            tree = ast.parse(content)
+        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
+            continue
+        rel_path = str(file_path.relative_to(root))
+        # parser-variable → subcommand name (from ``v = X.add_parser("name")``)
+        var_to_subcmd: dict[str, str] = {}
+        # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
+        var_to_handler: dict[str, str] = {}
+        for node in ast.walk(tree):
+            # The fire probe sees EVERY Call node, exactly as its own loop did.
+            # It must NOT hang off the argparse if/elif below: a Call that is an
+            # Assign's value (``cli = fire.Fire(Service)``) takes the first
+            # branch there and would never be offered to the fire probe —
+            # silently dropping a target shape the separate loop had matched.
+            if isinstance(node, ast.Call):
+                target = _fire_target_name(node)
+                if target is not None:
+                    fire_targets.add((rel_path, target))
+            # The argparse branches keep their original if/elif relationship, so
+            # `_argparse_set_defaults_handler` sees exactly the node set it saw
+            # before (bare Calls only, never an Assign's value).
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+                sub = _argparse_add_parser_name(node.value)
+                if sub is not None:
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name):
+                            var_to_subcmd[tgt.id] = sub
+            elif isinstance(node, ast.Call):
+                pair = _argparse_set_defaults_handler(node)
+                if pair is not None:
+                    var_to_handler[pair[0]] = pair[1]
+        for var, subcmd in var_to_subcmd.items():
+            handler_name = var_to_handler.get(var)
+            if handler_name:
+                argparse_pairs.append((rel_path, subcmd, handler_name))
+
+    facts = _CliScanFacts(
+        argparse_pairs=tuple(argparse_pairs),
+        fire_targets=frozenset(fire_targets),
+    )
+    _CLI_SCAN_MEMO = (key, facts)
+    return facts
+
+
 def _scan_argparse_commands(
     root: Path, all_symbols: list[Symbol]
 ) -> dict[str, list[Symbol]]:
@@ -408,38 +643,34 @@ def _scan_argparse_commands(
     symbol) contributes nothing — there is no join target.
     """
     symbols_by_name: dict[str, list[Symbol]] = {}
+    symbols_by_path_name: dict[tuple[str, str], list[Symbol]] = {}
     for sym in all_symbols:
+        # WI-gadus B3: an ``external_symbol`` is a boundary PLACEHOLDER, never a
+        # real handler body, and it carries the ``<external>`` path sentinel —
+        # which sorts before every real path, so the INV-zuhub min-by-id
+        # tie-break below would actively PREFER it. On hypergumbo's own tree the
+        # subcommand ``survey`` resolved to both the real ``cmd_run`` and such a
+        # placeholder, and the placeholder won.
+        if sym.kind == "external_symbol":
+            continue
         symbols_by_name.setdefault(sym.name, []).append(sym)
+        symbols_by_path_name.setdefault((sym.path, sym.name), []).append(sym)
 
     commands: dict[str, list[Symbol]] = {}
-    for file_path in _find_python_files(root):
-        try:
-            content = read_masked_source(
-                file_path, encoding="utf-8", errors="ignore"
-            )
-            tree = ast.parse(content)
-        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
-            continue
-        # parser-variable → subcommand name (from ``v = X.add_parser("name")``)
-        var_to_subcmd: dict[str, str] = {}
-        # parser-variable → handler name (from ``v.set_defaults(func=handler)``)
-        var_to_handler: dict[str, str] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
-                sub = _argparse_add_parser_name(node.value)
-                if sub is not None:
-                    for tgt in node.targets:
-                        if isinstance(tgt, ast.Name):
-                            var_to_subcmd[tgt.id] = sub
-            elif isinstance(node, ast.Call):
-                pair = _argparse_set_defaults_handler(node)
-                if pair is not None:
-                    var_to_handler[pair[0]] = pair[1]
-        for var, subcmd in var_to_subcmd.items():
-            handler_name = var_to_handler.get(var)
-            if handler_name and handler_name in symbols_by_name:
-                for hsym in symbols_by_name[handler_name]:
-                    commands.setdefault(subcmd, []).append(hsym)
+    for rel_path, subcmd, handler_name in _scan_python_cli_facts(root).argparse_pairs:
+        # WI-gadus B3: prefer the handler DEFINED in the same file as the
+        # add_parser/set_defaults pair. ``set_defaults(func=X)`` names a
+        # binding in that module's scope, so a same-file definition is the
+        # binding by construction, and any same-named symbol elsewhere is a
+        # coincidence. Unlike _scan_fire_commands, this FALLS BACK to a
+        # name-only match rather than requiring same-file: the handler is
+        # legitimately imported from a sibling module often enough
+        # (``from .commands import cmd_serve``) that requiring same-file
+        # would trade one wrong-edge class for a recall hole.
+        scoped = symbols_by_path_name.get((rel_path, handler_name))
+        candidates = scoped if scoped else symbols_by_name.get(handler_name)
+        if candidates:
+            commands.setdefault(subcmd, []).extend(candidates)
     return commands
 
 
@@ -494,22 +725,9 @@ def _scan_fire_commands(
     instance / dict / module target, or a class IMPORTED from another module —
     the deferred fire forms) contributes nothing (fails safe to no join).
     """
-    # (fire-file repo-relative path, target class name) pairs.
-    fire_targets: set[tuple[str, str]] = set()
-    for file_path in _find_python_files(root):
-        try:
-            content = read_masked_source(
-                file_path, encoding="utf-8", errors="ignore"
-            )
-            tree = ast.parse(content)
-        except (OSError, IOError, SyntaxError, ValueError):  # pragma: no cover - IO/parse errors hard to force
-            continue
-        rel_path = str(file_path.relative_to(root))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                target = _fire_target_name(node)
-                if target is not None:
-                    fire_targets.add((rel_path, target))
+    # (fire-file repo-relative path, target class name) pairs, from the shared
+    # walk — see _scan_python_cli_facts for why this is no longer a private one.
+    fire_targets = _scan_python_cli_facts(root).fire_targets
     if not fire_targets:
         return {}
     # Keep only targets whose class is DEFINED in the fire.Fire() call's own

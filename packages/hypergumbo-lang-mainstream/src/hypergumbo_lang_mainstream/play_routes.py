@@ -14,9 +14,16 @@ How It Works
    - A route definition: ``METHOD  PATH  CONTROLLER.ACTION(params)``
    - A module include: ``->  PREFIX  module.Routes``
    - A comment or blank line (ignored)
-3. Creates ``kind="route"`` Symbol objects with ``meta.route_path``,
-   ``meta.http_method``, and ``meta.controller_action`` so the route
-   handler linker can wire them to Scala controller methods.
+3. Creates route-marker Symbol objects via ``make_route_symbol`` —
+   ``kind="function"`` with ``meta.framework_role='route'`` per the
+   ADR-0027 Phase-3 route→function fold (there is no ``route`` symbol
+   kind) — carrying ``meta.route_path``, ``meta.http_method``, and
+   ``meta.controller_action`` so the route handler linker can wire them
+   to Scala controller methods.
+4. Mints a second marker for each module-include line, carrying
+   ``meta.framework_role='route_include'`` with ``meta.route_prefix`` and
+   ``meta.module_ref``, so a prefix-mounted sub-router is a node in its own
+   right rather than vanishing from the route table.
 
 Why Line-by-Line
 ----------------
@@ -34,7 +41,7 @@ from typing import Iterator
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
-    make_symbol_id,
+    make_route_symbol,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.discovery import find_files
@@ -101,7 +108,7 @@ def parse_play_routes(
 
     Returns:
         Tuple of (route_symbols, edges). Edges are empty for now;
-        the route_handler linker creates routes_to edges later.
+        the route_handler linker creates dispatches_to edges later.
     """
     symbols: list[Symbol] = []
     edges: list[Edge] = []
@@ -125,33 +132,16 @@ def parse_play_routes(
             # Strip leading @ (instance injection marker)
             action = action.lstrip("@")
 
-            route_name = f"{method} {path}"
             span = Span(start_line=line_no, end_line=line_no, start_col=0, end_col=len(raw_line))
-
-            route_id = make_symbol_id(
-                "scala",
-                path=file_path,
-                start_line=line_no,
-                end_line=line_no,
-                name=route_name,
-                kind="route",
-            )
-
-            symbols.append(Symbol(
-                id=route_id,
-                name=route_name,
-                kind="function",
+            symbols.append(make_route_symbol(
                 language="scala",
                 path=file_path,
                 span=span,
-                meta={
-                    "http_method": method,
-                    "route_path": path,
-                    "controller_action": action,
-                    "framework_role": "route",
-                },
+                method=method,
+                route_path=path,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                extra_meta={"controller_action": action},
             ))
             continue
 
@@ -161,32 +151,22 @@ def parse_play_routes(
             prefix = mm.group(1)
             module_ref = mm.group(2)
             span = Span(start_line=line_no, end_line=line_no, start_col=0, end_col=len(raw_line))
-            inc_name = f"-> {prefix} {module_ref}"
-            inc_id = make_symbol_id(
-                "scala",
-                path=file_path,
-                start_line=line_no,
-                end_line=line_no,
-                name=inc_name,
-                kind="route_include",
-            )
-            # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
-            # Fold runtime kind to "function" + meta["framework_role"]; the
-            # ID's :route_include suffix stays for stable identity.
-            symbols.append(Symbol(
-                id=inc_id,
-                name=inc_name,
-                kind="function",
+            # WI-zugob: name changes from "-> {prefix} {module_ref}" to
+            # "-> {prefix}". The included module keeps its own meta key
+            # (module_ref), so nothing is lost — but a name is now derived from
+            # method+path like every other route marker, instead of a third
+            # bespoke format. The id kind-slot stops being the unregistered
+            # "route_include" fossil; the role stays on meta.framework_role.
+            symbols.append(make_route_symbol(
                 language="scala",
                 path=file_path,
                 span=span,
-                meta={
-                    "route_prefix": prefix,
-                    "module_ref": module_ref,
-                    "framework_role": "route_include",
-                },
+                method="->",
+                route_path=prefix,
                 origin=PASS_ID,
                 origin_run_id=run_id,
+                framework_role="route_include",
+                extra_meta={"route_prefix": prefix, "module_ref": module_ref},
             ))
 
     return symbols, edges

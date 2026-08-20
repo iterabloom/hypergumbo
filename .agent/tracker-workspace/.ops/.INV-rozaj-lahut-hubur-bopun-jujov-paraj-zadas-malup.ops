@@ -1,0 +1,39 @@
+- op: create  # 53da
+  at: '2026-08-04T07:35:55Z'  # 53da
+  by: agent  # 53da
+  actor: jgstern_agent  # 53da
+  clock: 1  # 53da
+  nonce: 53da  # 53da
+  data:  # 53da
+    kind: invariant  # 53da
+    title: "Section 4 catalogue lookup key embeds the file extension for in-repo callees (uses raw module slot, not _module_from_symbol_path)"  # 53da
+    status: violated  # 53da
+    priority: 1  # 53da
+    parent:  # 53da
+    tags:  # 53da
+    - taint  # 53da
+    - adr_0017  # 53da
+    - dataflow  # 53da
+    isbefore: []  # 53da
+    duplicate_of: []  # 53da
+    not_duplicate_of: []  # 53da
+    pr_ref:  # 53da
+    description: "LIVE DEFECT IN MERGED CODE (PR #197, shipped 2026-08-04). Found by an\nadversarial review panel, verified independently before filing.\n\n_qualified_callee (taint.py:1150) builds the ADR-0017 section 4 catalogue\nlookup key from _extract_callee_module, which returns the RAW path slot. For an\nin-repo callee that slot is a FILE PATH WITH ITS EXTENSION:\n\n  python:src/app/views.py:10-20:handler:function\n    _extract_callee_module   -> 'src/app/views.py'\n    _qualified_callee        -> 'src/app/views.py.handler'     <- lookup key\n    _module_from_symbol_path -> 'src/app/views'                <- the normalizer\n\n_module_from_symbol_path (taint.py:1216) exists PRECISELY to strip that\nextension -- it was added by WI-damir for exactly this class of bug -- and the\nnew code does not use it. So no first-party callee can ever match a catalogue\nentry, and the \"first-party in-repo callee\" bucket in the section 4 enumeration\n(9.8% of 264 escape sites) was produced by a key that cannot match anything.\n\nTHIS IS L53 IN PRODUCTION CODE, WRITTEN BY THE AGENT WHO HAD JUST CITED L53\nFIVE TIMES IN THE SAME SESSION. The rule is \"when a production classification\nexists for the thing you are computing, computing it yourself IS the bug\". A\nsecond naive parse of the colon-tolerant id grammar is the same defect\n_symbol_path_slot's header warns about, and the new function's own docstring\nclaims it is \"built from the two existing production extractors rather than a\nfresh parse\" -- which is true of the NAME half and false of the MODULE half.\n\nSECOND, SEPARATE MISS -- the shipped python catalogue is largely unreachable.\npython_stdlib.yaml declares logging.Logger.debug/info/warning/error/exception,\nwhich need module slot 'logging.Logger'. Real ids carry slot 'logging':\n    _qualified_callee(\"python:logging:0-0:info:external_symbol\") -> 'logging.info'\n    'logging.info' in catalogue -> FALSE\n    'logging.Logger.info' in catalogue -> TRUE\nSo five of the six Python TERMINATING entries can never fire. Whether the\nreceiver hint ever upgrades the slot to logging.Logger is unmeasured; the panel\nreports _resolve_receiver_hint returns None when the binding RHS is a call\nexpression, which `logger = logging.getLogger(__name__)` is.\n\nTHIRD, a silent drop worth a diagnostic: the qualified-key filter\n`{k: v for k, v in ... if k == v.function}` (taint.py:2002) discards 44 of 108\nloaded keys with no log line. The filter is correct and deliberate -- the alias\nindex is dangerous here -- but a silent 40% drop should say so.\n\nIMPACT. No verdict moved, because the section 4 result cannot reach a verdict\nat all today (see the call site note below), so this is not a wrong answer\nshipped to a user. It is a capability that was measured as ineffective when\npart of the reason was that its lookup key was malformed. Every \"section 4\nbuys nothing\" number I recorded must be re-measured after this is fixed.\n\nFIX: use _module_from_symbol_path for the module half; add a test with an\nin-repo callee id; re-run the enumeration and the catalogue-coverage numbers.\nAlso decide whether the python logging entries should be keyed on the bare\nmodule, and whether an unresolved receiver should be catalogued at all."  # 53da
+    fields:  # 53da
+      statement: "The ADR-0017 section 4 summary lookup key for a callee must equal the key a catalogue entry declares. For in-repo callees it currently embeds the source file extension, so no first-party callee can ever match."  # 53da
+      root_cause: "_qualified_callee composes _extract_callee_module (raw path slot, extension included) with _extract_callee_name, instead of using _module_from_symbol_path, the production normalizer added by WI-damir to strip exactly that. A second naive parse of the colon-tolerant id grammar where a production classifier already existed (L53)."  # 53da
+- op: update  # aaf3
+  at: '2026-08-04T09:54:40Z'  # aaf3
+  by: agent  # aaf3
+  actor: jgstern_agent  # aaf3
+  clock: 2  # aaf3
+  nonce: aaf3  # aaf3
+  set:  # aaf3
+    status: satisfied  # aaf3
+- op: discuss  # c75d
+  at: '2026-08-04T09:54:40Z'  # c75d
+  by: agent  # c75d
+  actor: jgstern_agent  # c75d
+  clock: 3  # c75d
+  nonce: c75d  # c75d
+  message: "SATISFIED by PR #200 (5ad8a7a6bb). Behavioural evidence, the item's own filed\nrepros re-run on merged dev:\n\n  REPRO 1 -- in-repo callee\n    raw module slot   'src/app/views.py'\n    normalizer        'src/app/views'\n    LOOKUP KEY        'src/app/views.handler'   (was 'src/app/views.py.handler')\n\n  REPRO 2 -- python logging entries\n    _qualified_callee(\"python:logging:0-0:info:external_symbol\") -> 'logging.info'\n    'logging.info' in catalogue        -> True   (was False)\n    'logging.Logger.info' in catalogue -> True   (kept, see below)\n\n  CONTROLS -- every key the shipped catalogues actually declare is external,\n  so these are the load-bearing half:\n    fmt.Printf             -> 'fmt.Printf'             OK\n    net/http.Get           -> 'net/http.Get'           OK\n    go.uber.org/zap.String -> 'go.uber.org/zap.String' OK\n    unresolved placeholder -> ''  (was the fiction 'external.print')\n\nEFFECT ON THE SECTION 4 NUMBERS: DERIVABLY ZERO, not re-measured, and that is\na considered choice rather than a shortcut. The shipped catalogues declare only\nstdlib and third-party names, so an in-repo key still matches nothing.\nMeasured on a self-survey (141,494 edges, 72,822 call-like, 6,685 distinct\ncallees): the key changes for 5,981 distinct callees / 64,177 call-edge\ninstances, and catalogue hits are 0 before and 0 after. Running a 16-minute\ncohort A/B to rediscover a null derivable from five lines of the consumer is\nexactly what L59 was minted for. The re-measurement that IS owed belongs after\nthe variable-identity fix, which changes the substrate underneath all of it.\n\nFACET 2 RESOLVED ON MEASUREMENT, not on the filing's guess. Across 64\nlogger-method call sites the module slots present are `warnings` (51),\n`external` (12) and one file path -- NOT ONE carries `logging.Logger`, so the\nfiling's suspicion was right and is now confirmed rather than assumed.\nBare-module logging.* entries added; the Logger-qualified ones KEPT (correct,\nnever consulted while unmatched, and they fire if receiver resolution ever\nimproves) with the split documented in the YAML instead of left as silent dead\ndata.\n\nFACET 3 NOT DONE, stated rather than implied. The qualified-key filter still\ndrops 44 of 113 loaded keys with no log line. The filter is correct and\ndeliberate; the silent 40% drop is a diagnostic gap, not a defect in the key,\nso it is outside this invariant's statement. Not filed separately -- it is a\none-line disclosure whoever next touches the loader should add.\n\nNEW LIMITATION INTRODUCED BY THIS FIX, filed separately rather than buried\nhere: stripping the extension removes an accidental barrier, so an in-repo path\ncan now normalise onto a stdlib module key (net/http.go -> net/http). 42 of 69\nshipped qualified keys are shadowable in principle; zero collisions across the\n72,822 measured call edges. A false \"terminates\" CLOSES a branch, which deletes\nfindings, so this is the expensive direction. Latent while section 3a is\nconfirm-only."  # c75d

@@ -216,7 +216,8 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     """Link Phoenix Channel patterns across files in a repository.
 
     Scans Elixir files for Phoenix Channel patterns and creates
-    message_send and message_receive edges for matching events.
+    ``event_publishes`` edges for matching events (the pre-fold
+    ``message_send`` / ``message_receive`` pair).
 
     Args:
         repo_root: Root directory of the repository

@@ -11,7 +11,7 @@
 
 ### How we got here
 
-The `Symbol` dataclass (`ir.py:363-388`) declares `language: str` with the docstring "Programming language (python, javascript, etc.)." The implicit semantic: the source language in which this symbol was declared. The field is governed by the catalog-derived language axis per ADR-0024 §4 (lightweight axis carveout), with the catalog computed from `@register_analyzer` / `@register_linker` declarations.
+The `Symbol` dataclass (`ir.py::Symbol`) declares `language: str` with the docstring "Programming language (python, javascript, etc.)." The implicit semantic: the source language in which this symbol was declared. The field is governed by the catalog-derived language axis per ADR-0024 §4 (lightweight axis carveout), with the catalog computed from `@register_analyzer` / `@register_linker` declarations.
 
 When Symbol meant "thing declared in source code" — function, class, method, variable in a real .py / .go / .java file — this semantic was clean. Over time, Symbol's usage grew. Per ADR-0027's audit, the kind axis has 192 distinct values across 8 clusters representing file-shape entities (cluster 27B), framework roles (27D), build entities (27G), document structures (27H), and other non-source-declaration categories. Symbol is effectively now "any node in the graph," not just "thing declared in source code."
 
@@ -35,10 +35,10 @@ The audit-supplement's downstream-consumer analysis found that four linkers depe
 
 | Site | What it does |
 |---|---|
-| `event_sourcing.py:753` | `is_cross_language = pub.language != sub.language` → sets edge `cross_language` meta |
-| `database_query.py:434` | Same shape |
-| `message_queue.py:497-505` | Same shape, **plus** confidence adjustment `-0.1` when cross-language |
-| `graphql_resolver.py:504,530` | Same shape, two comparison sites |
+| `event_sourcing.py::link_events` | `is_cross_language = pub.language != sub.language` → sets edge `cross_language` meta |
+| `database_query.py::link_database_queries` | Same shape |
+| `message_queue.py::link_message_queues` | Same shape, **plus** confidence adjustment `-0.1` when cross-language |
+| `graphql_resolver.py::link_graphql_resolvers` | Same shape, two comparison sites |
 
 These consumers aren't accidentally using `Symbol.language` for cross-language detection; they're deliberately consuming it as a discovery-context signal. The field is overloaded with two semantics — nominally "source language of declaration," operationally "host language where the synthetic was discovered" — and the cross-language detectors read the second.
 
@@ -109,8 +109,8 @@ Per-linker migration target (Class B unless noted):
 | `event_sourcing.py` | INHERIT-EMITTER | Same shape; `protocol_origin="event_sourcing"` |
 | `graphql.py` (client) | INHERIT-EMITTER | Same shape; `protocol_origin="graphql"` |
 | `graphql_resolver.py` | INHERIT-EMITTER | Same shape; `protocol_origin="graphql"` |
-| `grpc.py:230,734` (proto-file scan) | INHERIT-EMITTER via pattern.language | **Class A** for proto-file scans (language="proto" stays); Class B for client-call scans |
-| `grpc.py:944` (Route synthetic) | LITERAL-SENTINEL `"protobuf"` | `language=None`, `discovery_language=None` (route has no host discovery context), `protocol_origin="grpc"` |
+| `grpc.py::_scan_proto_file` / `grpc.py::link_grpc` (proto-file scan) | INHERIT-EMITTER via pattern.language | **Class A** for proto-file scans (language="proto" stays); Class B for client-call scans |
+| `grpc.py::link_grpc` (Route synthetic) | LITERAL-SENTINEL `"protobuf"` | `language=None`, `discovery_language=None` (route has no host discovery context), `protocol_origin="grpc"` |
 | `http.py` | INHERIT-EMITTER | Same shape; `protocol_origin="http"` |
 | `ipc.py` | LITERAL-HOST + INHERIT-EMITTER | `language=None`, `discovery_language=<file language>`, `protocol_origin="ipc"` |
 | `js_module.py` | INHERIT-FROM-IMPORTING-SYMBOL | `language=None`, `discovery_language=<importing symbol's language>`, `protocol_origin="js_module"` or `"npm"` |
@@ -123,27 +123,27 @@ Per-linker migration target (Class B unless noted):
 | `swift_objc.py` | LITERAL-HOST `"swift"` | `language=None`, `discovery_language="swift"`, `protocol_origin="objc_bridge"` |
 | `tauri_ipc.py` | LITERAL-HOST | `language=None`, `discovery_language=<file language>`, `protocol_origin="tauri_ipc"` |
 | `vue_component.py` | LITERAL `"vue"` | Class A: vue IS a real template language. Keep `language="vue"`. |
-| `wasm_bindgen.py:269` (TS-side import) | LITERAL `"typescript"` | `language=None`, `discovery_language="typescript"`, `protocol_origin="wasm"` |
-| `wasm_bindgen.py:399` (WASM module) | LITERAL-SENTINEL `"wasm"` | `language=None`, `discovery_language=None`, `protocol_origin="wasm"` |
+| `wasm_bindgen.py::link_wasm_bindgen` (TS-side import) | LITERAL `"typescript"` | `language=None`, `discovery_language="typescript"`, `protocol_origin="wasm"` |
+| `wasm_bindgen.py::_create_wasm_load_edges` (WASM module) | LITERAL-SENTINEL `"wasm"` | `language=None`, `discovery_language=None`, `protocol_origin="wasm"` |
 | `websocket.py` | INHERIT-EMITTER via `_language_for_file` | Class B; `protocol_origin="websocket"` |
 | `yjs_crdt.py` | LITERAL `"typescript"` | Class B; `discovery_language="typescript"`, `protocol_origin="yjs_crdt"` |
 
 ### 3. The protobuf collapse (separate fix folded into this ADR)
 
-The non-catalog `language="protobuf"` value at `grpc.py:230` (GrpcPattern construction for proto-file scans) is replaced with `"proto"` to match the proto analyzer's registered catalog value. This is one of the four catalog-conformance findings from the main audit, the cheapest of the four to fix, and naturally folds into this ADR's migration scope. The Symbol emit at `grpc.py:734` propagates the change automatically via `pattern.language`. The Route synthetic at `grpc.py:944` migrates to Class B (language=None, protocol_origin="grpc").
+The non-catalog `language="protobuf"` value at `grpc.py::_scan_proto_file` (GrpcPattern construction for proto-file scans) is replaced with `"proto"` to match the proto analyzer's registered catalog value. This is one of the four catalog-conformance findings from the main audit, the cheapest of the four to fix, and naturally folds into this ADR's migration scope. The Symbol emit at `grpc.py::link_grpc` propagates the change automatically via `pattern.language`. The Route synthetic at `grpc.py::link_grpc` migrates to Class B (language=None, protocol_origin="grpc").
 
 ### 4. Consumer migration
 
 Four cross-language-detection sites migrate from `sym.language` to `sym.discovery_language`:
 
-- `event_sourcing.py:753`: `is_cross_language = pub.discovery_language != sub.discovery_language`
-- `database_query.py:434`: same shape
-- `message_queue.py:497-505`: same shape, plus the `-0.1` confidence adjustment
-- `graphql_resolver.py:504,530`: same shape, both comparison sites
+- `event_sourcing.py::link_events`: `is_cross_language = pub.discovery_language != sub.discovery_language`
+- `database_query.py::link_database_queries`: same shape
+- `message_queue.py::link_message_queues`: same shape, plus the `-0.1` confidence adjustment
+- `graphql_resolver.py::link_graphql_resolvers`: same shape, both comparison sites
 
 Filter consumers (the ~7 language-filter sites in linkers like jackson_dispatch, napi, tauri_ipc, crypto_flow that select for specific source languages) require no change — they were already filtering for real source-language Symbols, and synthetic stand-ins now have `language=None` so they're correctly excluded.
 
-Display consumers (slice.py:150, entrypoints.py:716, etc.) need `Symbol.language or "synthetic"` handling, where the display string falls back to either `protocol_origin` or a generic label when `language is None`. Three or four short helper additions in CLI formatters.
+Display consumers (`slice.py`, `entrypoints.py::_detect_from_concepts`, etc.) need `Symbol.language or "synthetic"` handling, where the display string falls back to either `protocol_origin` or a generic label when `language is None`. Three or four short helper additions in CLI formatters.
 
 ### 5. ADR-0024 four-part template instantiation
 
@@ -223,7 +223,7 @@ This double-write / read-prefer pattern eliminates the coordination-window conce
 
 `SCHEMA_VERSION` 0.11.0 → 0.12.0. Two new fields appear in the behavior-map output for every Symbol. `Symbol.language` becomes `Optional` — JSON output includes `"language": null` for synthetic stand-ins post-migration.
 
-Stable_id impact: the seven `stable_id` factories in `analyze/base.py:649-656` use `Symbol.language` as a SHA256 input. Class B Symbols (synthetic stand-ins) now have `language=None`. The factories need a defined behavior for `None` — either hash the string `"none"`, skip the field, or hash a sentinel like `<none>`. The choice affects which Class B Symbols' stable_ids change vs stay stable. This ADR specifies: **hash the empty string `""` for `None` values**, which is the simplest backward-compatible behavior. All Class B Symbols' stable_ids change in this release (~20-30 Symbols across the linker family).
+Stable_id impact: the seven `stable_id` factories in `analyze/base.py::synthesize_file_symbols_for_dangling_edges` use `Symbol.language` as a SHA256 input. Class B Symbols (synthetic stand-ins) now have `language=None`. The factories need a defined behavior for `None` — either hash the string `"none"`, skip the field, or hash a sentinel like `<none>`. The choice affects which Class B Symbols' stable_ids change vs stay stable. This ADR specifies: **hash the empty string `""` for `None` values**, which is the simplest backward-compatible behavior. All Class B Symbols' stable_ids change in this release (~20-30 Symbols across the linker family).
 
 This is the same shape of breakage as ADR-0023 §6 and ADR-0027 Phase 1 step 5; consistent precedent.
 
@@ -278,7 +278,7 @@ Producer-side policies are deprecated (not catalog values):
 - LITERAL-HOST policy → migrates to Class B
 - LITERAL-SENTINEL policy → migrates to Class B (`protocol_origin` carries the sentinel)
 
-The `language="protobuf"` outlier in `grpc.py:230,944` deprecates and collapses to `language="proto"` (matching the proto analyzer's catalog registration) for proto-file scans, and to `language=None` for the Route synthetic.
+The `language="protobuf"` outlier in `grpc.py::_scan_proto_file` / `grpc.py::link_grpc` deprecates and collapses to `language="proto"` (matching the proto analyzer's catalog registration) for proto-file scans, and to `language=None` for the Route synthetic.
 
 ## Open questions
 

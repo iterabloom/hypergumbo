@@ -6,7 +6,11 @@
 # folder is needed so nightly can carry its own py-version matrix). The workflow
 # NAME is this file's stem (`woodpecker`), so this gate keeps posting the GitHub
 # status context `ci/woodpecker/pr/woodpecker` that branch protection marks
-# required (VERIFY the exact context on the first real Woodpecker run at cutover).
+# required (context VERIFIED in production — it is the one auto-pr polls, and
+# auto-pr's poll telemetry prints only on STATE TRANSITIONS, dots in between:
+# a log reading "[10s] waiting … ✅ CI Passed" spans however many dot-ticks sit
+# between those lines, NOT ten seconds. INV-tisug was filed and retracted over
+# exactly that misreading — count the dots before believing a fast green).
 # ACTIVE on GitHub + self-hosted Woodpecker; INERT on Codeberg/Forgejo (which
 # reads `.github/workflows/**`, not `.woodpecker/`) — so it lands dormant while
 # Codeberg is origin, like the rest of the dual-mode migration tooling.
@@ -56,9 +60,39 @@ when:
 # failed merge-base + "last 1 commits"). Full clone — cheap on the self-hosted agent,
 # and it kills that whole class of shallow-history bugs. (GHA used fetch-depth:50 only
 # because GitHub's hosted runners bill bandwidth; we don't.)
+#
+# `partial: false` IS LOAD-BEARING (WI-fodad). It is NOT a synonym for the depth
+# rationale above — shallow and partial are two independent axes, and until this
+# line existed the comment's "Full clone" claim was simply false. plugin-git
+# defaults `partial: true`, and its own defaults.go then sets:
+#     p.Config.Depth  = 1
+#     p.Config.filter = "tree:0"
+# so the checkout is a PROMISOR repo carrying no tree objects beyond the one
+# commit it checked out. `git fetch --unshallow` (prepare-git, below) deepens the
+# COMMIT history but inherits the configured filter, so the trees stay missing.
+# Consequence: every command needing trees across history lazily fetches them
+# from origin ONE OBJECT AT A TIME over HTTPS. Commit-only reads (dco's rev-list,
+# merge-base, the recency window) never notice; a history-wide tree walk pays a
+# network round trip per object. Measured on this agent, `git log --reverse -- <1
+# path>` over 6,445 commits: 1,185,559 ms on first run, 19 ms on the second (the
+# objects are local by then) — against 27 ms on a dev box with a complete clone.
+# That 44,000x is not disk (the volume is a local ext4 SSD) and not contention;
+# it is ~26,000 sequential HTTPS fetches. It is also why the reverted
+# commit-graph warm-up made CI *worse*: `--changed-paths` diffs every commit, so
+# it triggered the identical stampede on every pipeline.
+#
+# THE COST, stated so nobody has to rediscover it: a complete clone transfers the
+# whole pack set (~264 MB today) instead of one commit, and it happens serially
+# in the clone step rather than in prepare-git alongside lint/mypy/audit. That is
+# one bulk transfer on one connection, traded against ~26,000 round trips — and
+# it is the shape this file always claimed to have. The `--unshallow` in
+# prepare-git becomes a no-op ("repo already complete") and is kept as the
+# backstop for a server-side clone override.
 clone:
   git:
     image: woodpeckerci/plugin-git
+    settings:
+      partial: false
 
 steps:
   # ── ruff + bandit ─────────────────────────────────────────────────────────
@@ -86,18 +120,35 @@ steps:
       - ruff check packages/*/src/ packages/*/tests/
       - bandit -r packages/*/src/ -c pyproject.toml
 
-  # ── whole-tree strict mypy ratchet (NON-BLOCKING — WI-rokup/INV-zogud) ─────
+  # ── whole-tree strict mypy ratchet (BLOCKING — WI-rokup/INV-zogud) ─────────
+  #
+  # THIS IS THE PIPELINE THAT GATES MERGES. auto-pr polls exactly one context,
+  # ci/woodpecker/pr/woodpecker, and merges on it; the GitHub Actions mypy job
+  # and its ci-complete gate are not consulted by the merge path. So while
+  # this step was `failure: ignore` + `--mode=warning`, the ratchet AGENTS.md
+  # calls "BLOCKING" could not block anything, and dev drifted 672 -> 682
+  # across sixty commits with nothing to stop it.
+  #
+  # THREE THINGS HAD TO CHANGE TOGETHER, and two of them are silent alone:
+  #   * `failure: ignore` -> removed. With it set, --mode=strict exits 1 and
+  #     Woodpecker still passes the step, so flipping the mode by itself looks
+  #     like a fix and gates exactly nothing.
+  #   * --mode=warning -> --mode=strict. Warning mode exits 0 on a regression.
+  #   * mypy~=2.1 -> mypy~=2.1.0. The baseline's counts are only comparable
+  #     against the mypy that produced them; ~=2.1 lets a fresh install
+  #     resolve 2.2/2.3, at which point the ratchet refuses to compare at all
+  #     — and under the old warning mode that refusal was silent too. ci.yml
+  #     was already pinned this way and carries the same reasoning.
   - name: mypy
     image: python:3.11-bookworm
     depends_on: []
-    failure: ignore           # == GHA continue-on-error: reported, never gates
     when:
       - path: *code_paths
     commands:
       - pip install --upgrade pip
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
-      - pip install "mypy~=2.1" "types-PyYAML~=6.0.12"
-      - scripts/check-mypy-ratchet --mode=warning
+      - pip install "mypy~=2.1.0" "types-PyYAML~=6.0.12"
+      - scripts/check-mypy-ratchet --mode=strict
 
   # ── pip-audit (dependency CVEs) ────────────────────────────────────────────
   # The long --ignore-vuln list is a verbatim carry-over; the rationale comments
@@ -192,6 +243,7 @@ steps:
         tests/test_*github*.py
         tests/test_autopr_*.py
         tests/test_merge_pr_close.py
+        tests/test_ci_verdict_default_deny.py
         tests/test_codeowners_governance.py
 
   # ── unshallow the SHARED workspace .git ONCE ───────────────────────────────
@@ -205,6 +257,25 @@ steps:
     when:
       - path: *non_tracker_paths       # tracker-sync PRs need no history (only tracker-validate runs)
     commands:
+      # WI-fodad gate. `partial: false` in the clone block is the fix; this
+      # asserts it actually TOOK. Worth a gate rather than trust because the
+      # failure it prevents is SILENT and expensive — not an error, just a
+      # 20-minute history walk that reads as a hung runner — and the setting can
+      # stop taking effect without anyone editing this file (a plugin-git bump,
+      # a server-side clone override). DEFAULT-DENY per L54: refuse on the
+      # PRESENCE of any filter rather than enumerating the ones known to hurt.
+      - |
+        _filter=$(git config --get remote.origin.partialclonefilter || true)
+        _promisor=$(git config --get remote.origin.promisor || true)
+        if [ -n "$_filter" ] || [ "$_promisor" = "true" ]; then
+          echo "❌ PARTIAL CLONE ACTIVE — filter='$_filter' promisor='$_promisor'"
+          echo "   This checkout is missing tree objects. Every history-wide git"
+          echo "   walk will fetch them from origin ONE AT A TIME (measured:"
+          echo "   1,185,559 ms for a single 6,445-commit pathspec walk)."
+          echo "   Fix: the clone block must carry 'settings: {partial: false}'."
+          exit 1
+        fi
+        echo "✅ clone carries no partial-clone filter (trees are local)"
       - '[ -f "$(git rev-parse --git-dir)/shallow" ] && git fetch --unshallow origin || echo "repo already complete"'
       - git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
 
@@ -261,6 +332,47 @@ steps:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
 
+  # ── self-claim drift gate, per-PR arm (WI-ninoz / INV-zuhig) ───────────────
+  # Runs `hypergumbo verify-claims` on this tree and fails on any drift from
+  # docs/hypergumbo.claims.expected.json — which pins, per claim, the verdict
+  # PLUS the caveat kinds PLUS whether sanitizer-credited flows are zero or
+  # nonzero (a verdict staying green while its credited evidence collapses is
+  # the INV-zuhig vacuousness shape this gate exists to catch).
+  #
+  # Path-scoped to the claim surface: catalogue/claims/dependency changes can
+  # move a verdict, so they pay the ~10-minute self-analysis per-PR; analyzer
+  # .py changes stay on the cron full-suite cadence (a deliberate scoping
+  # decision — gating every core PR on a self-analysis was judged too heavy).
+  #
+  # THIS pipeline is the one that gates merges (auto-pr polls only
+  # ci/woodpecker/pr/woodpecker — see the mypy step's history for what
+  # happens to gates that live anywhere else). The .github/workflows/ci.yml
+  # twin of this job is the dormant GHA port, not the enforcement point.
+  # Same install + grammar build as full-suite's gate arm so both arms
+  # analyze the same language set and cannot disagree on identical trees.
+  - name: self-claims-gate
+    image: python:3.11-bookworm
+    depends_on: [build-grammars]
+    when:
+      - path:
+          include:
+            - "docs/hypergumbo.claims.yaml"
+            - "docs/hypergumbo.claims.expected.json"
+            - "docs/hypergumbo-self-catalog/**"
+            - "docs/io-primitives-overlays/**"
+            - "**/io_primitives/**"
+            - "**/taint_sources/**"
+            - "**/taint_sinks/**"
+            - "**/taint_sanitizers/**"
+            - "**/pyproject.toml"
+            - "scripts/check-self-claims"
+            - "scripts/check-self-claims-drift"
+    commands:
+      - pip install --upgrade pip && pip install jsonschema
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
+      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
+      - PYTHON=python scripts/check-self-claims
+
   # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
   # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)
   # → conftest.py's smart-test re-exec doesn't fire → direct pytest is safe
@@ -301,19 +413,46 @@ steps:
           release/*) echo "✅ Release branch — skipping pytest (full-suite covers it)"; exit 0 ;;
         esac
 
+        HEAD="$CI_COMMIT_SHA"
         if [ "$CI_PIPELINE_EVENT" = "pull_request" ]; then
           git fetch --no-tags origin "$CI_COMMIT_TARGET_BRANCH"
           BASE=$(git merge-base FETCH_HEAD HEAD)
         else
-          BASE="${CI_PREV_COMMIT_SHA:-HEAD~1}"
+          # WI-vilor: CI_PREV_COMMIT_SHA is the commit of the PREVIOUS PIPELINE,
+          # NOT the previous tip of this branch. auto-pr merges by REBASE, which
+          # rewrites the commit, so after every rebase merge that SHA names an
+          # object which does not exist in this clone (verified: 66737979de was
+          # the pre-rebase copy of 6e92792a34, reachable only from the feature
+          # branch auto-pr then deleted). It can also name a commit on an
+          # entirely unrelated branch. Validate before trusting it.
+          BASE="${CI_PREV_COMMIT_SHA:-}"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "ℹ️  CI_PREV_COMMIT_SHA='${BASE:-<unset>}' is not a commit in this"
+            echo "   clone (expected after a rebase/squash merge) — using HEAD^."
+            BASE="${HEAD}^"
+          fi
         fi
-        HEAD="$CI_COMMIT_SHA"
 
         # No .py changed anywhere in the PR (config/docs-only) → no affected tests →
         # skip cleanly instead of running a stale committed manifest's selections.
-        if [ -z "$(git diff --name-only "$BASE" "$HEAD" | grep -E '\.py$' || true)" ]; then
-          echo "✅ PR changes no .py files — skipping pytest"
-          exit 0
+        #
+        # WI-vilor: capture the diff and its EXIT STATUS separately. A failed
+        # `git diff` writes nothing to stdout, which is byte-identical to a
+        # successful diff that found no Python files — so the old one-line form
+        # could not tell "nothing changed" from "I could not find out", and
+        # resolved that ambiguity by skipping the suite and reporting green.
+        # Skip only on a SUCCESSFUL diff that genuinely reported no .py (L54:
+        # enumerate the permitting case, never the blocking ones).
+        if CHANGED_IN_RANGE=$(git diff --name-only "$BASE" "$HEAD" 2>&1); then
+          if [ -z "$(echo "$CHANGED_IN_RANGE" | grep -E '\.py$' || true)" ]; then
+            echo "✅ PR changes no .py files — skipping pytest"
+            exit 0
+          fi
+        else
+          echo "⚠️  cannot diff $BASE..$HEAD: $CHANGED_IN_RANGE"
+          echo "    Running the committed manifest anyway — a failed diff is NOT"
+          echo "    evidence that nothing changed."
+          CHANGED_IN_RANGE=""
         fi
 
         if [ ! -f "$MANIFEST" ]; then
@@ -321,17 +460,31 @@ steps:
           exit 1
         fi
 
-        # Affected packages come from the PR diff's changed source files.
-        ACTUAL_SOURCE_FILES=$(git diff --name-only "$BASE" "$HEAD" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
+        # WI-modur: the ONLY question that decides whether tests run is "did the
+        # manifest select any?". This used to key on CHANGED **SOURCE** files
+        # instead, which silently skipped the suite for every PR that touched no
+        # packages/*/src/**.py -- i.e. every test-only fix, every scripts/*.py
+        # change, and every .agent/hooks/**.py change -- and reported GREEN.
+        # Caught on the WI-fodad PR: its manifest carried 0 changed source files
+        # and 1 selected test, and CI ran nothing. The two concerns were
+        # conflated in one condition; they are separated below.
+        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+        if [ -z "$SELECTED_TESTS" ]; then
+          echo "✅ manifest selects no tests — skipping pytest"; exit 0
+        fi
+
+        # Changed SOURCE files drive the COVERAGE gate ONLY: a 100%-coverage
+        # target needs changed source to aim at, and there is legitimately
+        # nothing to enforce when none changed. They must never gate execution.
+        # Reuse the range computed above rather than re-running the diff: when it
+        # failed, re-running it just fails again silently and this would size the
+        # coverage gate off an empty set (WI-vilor).
+        ACTUAL_SOURCE_FILES=$(echo "$CHANGED_IN_RANGE" | grep -E '^packages/.*/src/.*\.py$' | sort || true)
         CHANGED_SOURCE_FILES=$(sed -n '/^# === CHANGED_SOURCE_FILES ===/,/^# === SELECTED_TESTS ===/p' "$MANIFEST" | grep -v '^#' | grep -v '^$' || true)
         # Trust the actual diff when the manifest is missing files (staged-before-run drift).
         for f in $ACTUAL_SOURCE_FILES; do
           echo "$CHANGED_SOURCE_FILES" | grep -qF "$f" || CHANGED_SOURCE_FILES="$ACTUAL_SOURCE_FILES"
         done
-
-        if [ -z "$ACTUAL_SOURCE_FILES" ] && [ -z "$CHANGED_SOURCE_FILES" ]; then
-          echo "✅ No Python source files changed — skipping pytest"; exit 0
-        fi
 
         # Per-affected-package coverage, no-embeddings rcfile.
         COV_PATHS=""
@@ -349,8 +502,6 @@ steps:
           esac
         done
 
-        SELECTED_TESTS=$(sed -n '/^# === SELECTED_TESTS ===/,$p' "$MANIFEST" | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
-
         # Bound worker count by the cgroup CPU quota (container sees host nproc).
         if [ -f /sys/fs/cgroup/cpu.max ]; then
           read quota period < /sys/fs/cgroup/cpu.max
@@ -360,8 +511,11 @@ steps:
         fi
 
         echo "=== pytest ($(echo "$SELECTED_TESTS" | wc -w) selected files, -n $WORKERS) ==="
-        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS
-        TEST_EXIT=$?
+        # `|| TEST_EXIT=$?` rather than a bare call: `set -e` is active, so a
+        # bare failing pytest aborts the block before the coverage gate and the
+        # explicit `exit $TEST_EXIT` below. Final exit code is unchanged.
+        TEST_EXIT=0
+        pytest --rootdir=. -n "$WORKERS" --tb=short $COV_PATHS $SELECTED_TESTS || TEST_EXIT=$?
 
         # 100% coverage gate for changed source files only.
         if [ $TEST_EXIT -eq 0 ] && [ -n "$COVERABLE" ]; then

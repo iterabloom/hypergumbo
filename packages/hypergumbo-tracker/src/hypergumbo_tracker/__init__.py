@@ -20,6 +20,24 @@ Key features:
   stealth Stores with write routing, tier movement, and reconciliation.
 - **Cache:** Per-tier SQLite read cache with incremental invalidation,
   write-through on mutations, and corruption recovery.
+- **Journal:** Out-of-repo mirror of every op, written inside the store's
+  own file lock, so no in-repo git command can lose a pending op.
+  ``recover`` union-restores from it; the git hooks call it automatically.
+
+Beyond storage, the package ships the surfaces that consume it:
+
+- **TUI** (``tui.py``): the full-screen interactive client, and the largest
+  module in the package.
+- **Web server** (``serve.py`` and the ``serve_auth_*`` modules): an HTTP
+  view with WebAuthn, password, session and duress-code authentication
+  (ADR-0019).
+- **Sync** (``sync.py``, ``sync_log.py``): the auto-sync mechanism that
+  batches pending ops into a branch, pushes, polls CI and merges, plus its
+  audit log.
+- **Stop hook** (``stop_hook.py``): the agent-governance integration that
+  computes stopping guidance from tracker state.
+- **Embeddings** (``embeddings.py``): optional Tier-2 semantic
+  near-duplicate detection, complementing the SimHash fingerprint above.
 
 See ADR-0013 for the full design specification.
 """
@@ -39,4 +57,4 @@ __all__ = [
     "validate_all",
     "validate_ops_file",
 ]
-__version__ = "0.7.0"
+__version__ = "0.8.0"

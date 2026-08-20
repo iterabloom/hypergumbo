@@ -38,6 +38,60 @@ def test_symbol_has_required_fields() -> None:
     assert symbol.span.end_col == 10
 
 
+def test_symbol_line_properties_none_span() -> None:
+    """WI-hafap: a span-less Symbol reports line 0 through the compat
+    properties — the codebase-wide line-0 convention, matching the 0 these
+    properties already returned for the degenerate ``Span(0, 0, 0, 0)``.
+
+    Pins the convention at the IR chokepoint so a future blanket rewrite
+    cannot silently change it (the failure mode of the reverted 43-guard
+    deletion recorded on WI-hafap).
+    """
+    symbol = Symbol(
+        id="python:test.py:0-0:ghost:function",
+        name="ghost",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=None,
+    )
+    assert symbol.line == 0
+    assert symbol.end_line == 0
+
+
+def test_symbol_none_span_roundtrip() -> None:
+    """WI-hafap honest-carry: span=None serializes to an explicit null
+    (schema-legal — the node schema declares span as oneOf [Span, null])
+    and deserializes back to None, not a fabricated ``Span(0, 0, 0, 0)``."""
+    sym = Symbol(
+        id="python:test.py:0-0:ghost:function",
+        name="ghost",
+        kind="function",
+        language="python",
+        path="test.py",
+        span=None,
+    )
+    d = sym.to_dict()
+    assert d["span"] is None
+    back = Symbol.from_dict(d)
+    assert back.span is None
+
+
+def test_symbol_from_dict_missing_span_is_none() -> None:
+    """WI-hafap honest-carry: a record with NO span key deserializes to
+    span=None rather than a fabricated degenerate ``Span(0, 0, 0, 0)`` —
+    the zero-span passed every guard while claiming to occupy line 0,
+    which is the exact hole the WI-hafap filing named."""
+    back = Symbol.from_dict({
+        "id": "python:test.py:0-0:ghost:function",
+        "name": "ghost",
+        "kind": "function",
+        "language": "python",
+        "path": "test.py",
+    })
+    assert back.span is None
+
+
 def test_analyze_python_returns_symbols(tmp_path: Path) -> None:
     """analyze_python should return AnalysisResult with Symbol objects."""
     py_file = tmp_path / "hello.py"
@@ -681,109 +735,210 @@ def test_deduplicate_edges_preserves_different_types() -> None:
     assert len(result) == 2
 
 
-def test_edge_has_quality() -> None:
-    """Edge should have quality field with score and reason."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
+# ---------------------------------------------------------------------------
+# meta["call_lines"] — the call sites deduplication would otherwise discard.
+#
+# ADR-0017 §4 needs to map "a DDG use at line U" onto "which callee is called
+# at line U". The call graph keeps one edge per (src, dst, type) and that
+# edge's ``line`` is whichever call site happened to be encountered first, so
+# every other site's line was unrecoverable. These tests pin the additive
+# remedy: the survivor carries the full set.
+# ---------------------------------------------------------------------------
+
+
+def _call_edge(line: int, dst: str = "python:b.py:3-4:bar:function") -> Edge:
+    """A calls-edge from one fixed caller, varying only the call site line."""
+    return Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst=dst,
         edge_type="calls",
-        line=5,
-
-        origin="test", origin_run_id="test",
-    )
-    edge.quality = {"score": 0.85, "reason": "Direct AST call"}
-
-    assert edge.quality["score"] == 0.85
-    assert edge.quality["reason"] == "Direct AST call"
-
-
-def test_edge_quality_auto_derived_high_confidence() -> None:
-    """WI-lonoz / Phase 6 PR2: Edge.quality is auto-derived at construction
-    when the producer doesn't set it. confidence >= 0.95 gets the
-    ``high_confidence_direct`` reason tag."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.97,
-    )
-    assert edge.quality == {"score": 0.97, "reason": "high_confidence_direct"}
-
-
-def test_edge_quality_auto_derived_resolved_call_site() -> None:
-    """Confidence in [0.8, 0.95) with is_resolved=True gets
-    ``resolved_call_site``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.85,
-        is_resolved=True,
-    )
-    assert edge.quality["reason"] == "resolved_call_site"
-
-
-def test_edge_quality_auto_derived_low_confidence() -> None:
-    """Confidence < 0.5 gets ``low_confidence_fallback``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.3,
-    )
-    assert edge.quality["reason"] == "low_confidence_fallback"
-
-
-def test_edge_quality_auto_derived_derived_from() -> None:
-    """Mid-confidence with derived_from populated gets
-    ``derived_from_linker_evidence``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.7,
-        derived_from=["python:c.py:1-1:src:function"],
-    )
-    assert edge.quality["reason"] == "derived_from_linker_evidence"
-
-
-def test_edge_quality_auto_derived_medium_confidence() -> None:
-    """Mid-confidence (~0.7), unresolved, no derived_from — gets
-    ``medium_confidence``."""
-    edge = Edge.create(
-        src="python:a.py:1-2:foo:function",
-        dst="python:b.py:3-4:bar:function",
-        edge_type="calls",
-        line=5,
-        origin="test", origin_run_id="test",
-        confidence=0.7,
-        is_resolved=False,
-    )
-    assert edge.quality["reason"] == "medium_confidence"
-
-
-def test_edge_quality_producer_set_wins(tmp_path: Path) -> None:
-    """When the producer pre-populates ``quality``, the auto-derivation
-    does NOT overwrite it. The producer's value wins."""
-    from hypergumbo_core.ir import Edge as _Edge
-    edge = _Edge(
-        id="edge:1", src="a", dst="b", edge_type="calls", line=1,
-        edge_key="edgekey:sha256:0123",
-        confidence=0.85,
-        origin=["test"],
+        line=line,
+        origin="test",
         origin_run_id="test",
-        evidence_type="ast_call_direct",
-        quality={"score": 0.99, "reason": "producer-set"},
     )
-    assert edge.quality == {"score": 0.99, "reason": "producer-set"}
+
+
+def test_deduplicate_edges_records_every_collapsed_call_line() -> None:
+    """The survivor carries all collapsed call sites, its own line included.
+
+    Including the survivor's own line is the point: a consumer must not have
+    to union ``edge.line`` with ``meta["call_lines"]`` to get the call sites,
+    because forgetting that union is a silent single-site regression.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10), _call_edge(20), _call_edge(15)])
+
+    assert len(result) == 1
+    assert (result[0].meta or {}).get("call_lines") == [10, 15, 20]
+
+
+def test_deduplicate_edges_omits_call_lines_for_a_single_call_site() -> None:
+    """One call site emits no ``call_lines`` key at all.
+
+    Absence is the contract for "exactly one site, and it is ``edge.line``".
+    Emitting a one-element list on every edge in the graph would put a list
+    on every edge of every behavior map for no added information.
+    """
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10)])
+
+    assert len(result) == 1
+    assert "call_lines" not in (result[0].meta or {})
+
+
+def test_deduplicate_edges_call_lines_dedupes_repeated_lines() -> None:
+    """Two calls to the same target on one physical line collapse to one entry."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    result = deduplicate_edges([_call_edge(10), _call_edge(10), _call_edge(12)])
+
+    assert (result[0].meta or {}).get("call_lines") == [10, 12]
+
+
+def test_deduplicate_edges_call_lines_is_capped() -> None:
+    """A pathological caller cannot put an unbounded list on one edge.
+
+    Truncation is conservative for every consumer of this field: fewer known
+    call sites can only *narrow* what a dataflow walk will adjudicate, never
+    broaden it. The cap protects artifact size in generated code.
+    """
+    from hypergumbo_core.ir import _CALL_LINES_CAP, deduplicate_edges
+
+    edges = [_call_edge(line) for line in range(1, _CALL_LINES_CAP + 20)]
+    result = deduplicate_edges(edges)
+
+    lines = (result[0].meta or {})["call_lines"]
+    assert len(lines) == _CALL_LINES_CAP
+    assert lines == sorted(lines)
+
+
+def test_deduplicate_edges_call_lines_preserves_other_meta() -> None:
+    """Recording call sites must not clobber the survivor's existing meta."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    first = _call_edge(10)
+    first.meta = {"call_kind": "direct"}
+
+    result = deduplicate_edges([first, _call_edge(20)])
+
+    assert (result[0].meta or {})["call_kind"] == "direct"
+    assert (result[0].meta or {})["call_lines"] == [10, 20]
+
+
+def test_deduplicate_edges_call_lines_survives_serialization() -> None:
+    """``call_lines`` must round-trip: taint reads edges as serialized dicts."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    edge = deduplicate_edges([_call_edge(10), _call_edge(20)])[0]
+
+    revived = Edge.from_dict(edge.to_dict())
+    assert (revived.meta or {})["call_lines"] == [10, 20]
+
+
+def test_deduplicate_edges_self_loop_contributes_no_call_lines() -> None:
+    """A dropped self-loop leaves no survivor, so it records nothing."""
+    from hypergumbo_core.ir import deduplicate_edges
+
+    self_loop = Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst="python:a.py:1-20:foo:function",
+        edge_type="calls",
+        line=10,
+        origin="test",
+        origin_run_id="test",
+    )
+    other = Edge.create(
+        src="python:a.py:1-20:foo:function",
+        dst="python:a.py:1-20:foo:function",
+        edge_type="calls",
+        line=20,
+        origin="test",
+        origin_run_id="test",
+    )
+
+    result = deduplicate_edges([self_loop, other], remove_self_loops=True)
+
+    assert result == []
+    assert "call_lines" not in (self_loop.meta or {})
+
+
+def test_apply_external_id_remap_unions_call_lines() -> None:
+    """The post-dedup remap collapses edges too — it must not lose call sites.
+
+    ``apply_external_id_remap`` runs *after* ``deduplicate_edges`` in the
+    pipeline, so two edges that were distinct at dedup time (distinct external
+    dsts) can become the same edge here. Without the union, whichever one lost
+    takes its call sites with it.
+    """
+    from hypergumbo_core.ir import apply_external_id_remap
+
+    first = _call_edge(10, dst="external:pkg:old_a:function")
+    first.meta = {"call_lines": [10, 11]}
+    second = _call_edge(30, dst="external:pkg:old_b:function")
+    second.meta = {"call_lines": [30, 31]}
+
+    result = apply_external_id_remap(
+        [first, second],
+        {
+            "external:pkg:old_a:function": "external:pkg:merged:function",
+            "external:pkg:old_b:function": "external:pkg:merged:function",
+        },
+    )
+
+    assert len(result) == 1
+    assert (result[0].meta or {})["call_lines"] == [10, 11, 30, 31]
+
+
+def test_apply_external_id_remap_seeds_call_lines_from_edge_line() -> None:
+    """A collapsing edge with no ``call_lines`` still contributes its own line."""
+    from hypergumbo_core.ir import apply_external_id_remap
+
+    result = apply_external_id_remap(
+        [
+            _call_edge(10, dst="external:pkg:old_a:function"),
+            _call_edge(30, dst="external:pkg:old_b:function"),
+        ],
+        {
+            "external:pkg:old_a:function": "external:pkg:merged:function",
+            "external:pkg:old_b:function": "external:pkg:merged:function",
+        },
+    )
+
+    assert len(result) == 1
+    assert (result[0].meta or {})["call_lines"] == [10, 30]
+
+
+def test_edge_to_dict_has_no_quality() -> None:
+    """WI-riguh / WI-humok (ADR-0039 ruling 4): the deprecated Edge.quality
+    field is REMOVED — edges no longer carry a ``quality`` block (it was a pure
+    function of confidence + an emitter-mechanism reason, zero independent
+    signal). Read confidence + confidence_source + is_resolved (and rank_score
+    for ranking) instead."""
+    edge = Edge.create(
+        src="python:a.py:1-2:foo:function",
+        dst="python:b.py:3-4:bar:function",
+        edge_type="calls",
+        line=5,
+        origin="test", origin_run_id="test",
+    )
+    assert not hasattr(edge, "quality")
+    assert "quality" not in edge.to_dict()
+
+
+def test_edge_from_dict_tolerates_legacy_quality() -> None:
+    """A pre-removal cached artifact may carry a ``quality`` key; from_dict
+    ignores it (no crash, no resurrected attribute)."""
+    edge = Edge.from_dict({
+        "id": "edge:1", "src": "a", "dst": "b", "type": "calls", "line": 1,
+        "edge_key": "edgekey:sha256:0123",
+        "confidence": 0.85, "origin": ["test"], "origin_run_id": "test",
+        "meta": {"evidence_type": "ast_call_direct"},
+        "quality": {"score": 0.99, "reason": "legacy"},
+    })
+    assert not hasattr(edge, "quality")
+    assert "quality" not in edge.to_dict()
 
 
 def test_edge_has_evidence_lang() -> None:
@@ -812,11 +967,10 @@ def test_edge_to_dict_includes_new_fields() -> None:
 
         origin="test", origin_run_id="test",
     )
-    edge.quality = {"score": 0.85, "reason": "Direct AST call"}
     d = edge.to_dict()
 
     assert "edge_key" in d
-    assert "quality" in d
+    assert "quality" not in d
     assert "evidence_lang" in d["meta"]
 
 

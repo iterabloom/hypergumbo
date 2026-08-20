@@ -39,6 +39,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FORGEJO_LIB = REPO_ROOT / "scripts" / "lib" / "forgejo-api.sh"
 AUTO_PR = REPO_ROOT / "scripts" / "auto-pr"
@@ -75,7 +77,14 @@ def test_pre_scenario_b_gate_uses_mergeable_plus_poll_retry() -> None:
     gate_start = text.index("_pre_scenario_b_gate()")
     gate_body_end = text.index("\n# ---", gate_start + 1)
     gate_body = text[gate_start:gate_body_end]
-    assert 'mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")' in gate_body
+    # Deliberately loose. This previously pinned the literal source line
+    # `mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")`, which
+    # asserts an IMPLEMENTATION TEXT rather than a behavior — and that exact
+    # line was the site of the INV-rahib Surface 1 defect, so the assertion
+    # broke precisely when the bug was fixed and pointed the fixer at keeping
+    # it. The behavioral `_run_gate` cases below prove the gate consults
+    # mergeability; this only needs to keep the dependency from being deleted.
+    assert "mergeable" in gate_body
     assert "poll_ci" in gate_body
     assert "CI_TIMEOUT_SECONDS=120" in gate_body, (
         "Gate must use a short CI timeout for the retry — long timeouts "
@@ -205,18 +214,38 @@ def test_post_rebase_loop_recovery_hint_only_after_loop_exhausts() -> None:
 def _run_gate(
     *,
     check_merged_rc: int,
-    api_get_response: str,
     api_get_rc: int,
     poll_seq: str,
     tmp_path: Path,
+    api_get_response: str | None = None,
+    api_get_responses: list[str] | None = None,
 ) -> tuple[int, str]:
     """Invoke `_pre_scenario_b_gate` with stubs.
 
     Returns (gate_rc, stdout), where gate_rc is parsed from a `RC=<n>` line
     on stdout (so we capture the function's return code, not the subprocess
     exit code which is the rc of the last `echo`).
+
+    `api_get_responses` supplies a SEQUENCE, one payload per api_get call,
+    with the last entry repeating for any further calls. It exists because
+    the gate re-queries `/pulls/<n>` when mergeability comes back null, and
+    a stub that returns the same payload forever cannot tell "the re-query
+    happened and returned the same thing" apart from "no re-query happened".
+    `CI_POLL_NO_SLEEP` is set so the inter-query delay does not cost the
+    suite real seconds — the same seam poll_ci already uses.
     """
+    if (api_get_response is None) == (api_get_responses is None):
+        raise ValueError("pass exactly one of api_get_response/api_get_responses")
+    payloads = api_get_responses or [api_get_response or ""]
+
     pos_file = tmp_path / "pos"
+    resp_dir = tmp_path / "responses"
+    resp_dir.mkdir()
+    for idx, payload in enumerate(payloads):
+        (resp_dir / f"resp_{idx}").write_text(payload)
+    resp_pos = tmp_path / "resp_pos"
+    last_idx = len(payloads) - 1
+
     script = f"""
 set +e
 source '{FORGEJO_LIB}' >/dev/null 2>&1
@@ -224,9 +253,18 @@ source '{FORGEJO_LIB}' >/dev/null 2>&1
 # Stub _check_pr_merged
 _check_pr_merged() {{ return {check_merged_rc}; }}
 
-# Stub api_get to set API_RESPONSE and return controlled rc
+# Stub api_get: serve the next scripted payload, then repeat the last one.
 api_get() {{
-    API_RESPONSE='{api_get_response}'
+    local n idx
+    n=$(cat '{resp_pos}' 2>/dev/null || echo 0)
+    echo $((n + 1)) > '{resp_pos}'
+    # The reported call number must come from the UNCLAMPED counter; the
+    # clamp only picks which payload to repeat. Reporting the clamped index
+    # would print "call #1" twice and make a re-query invisible.
+    idx=$n
+    if [[ $idx -gt {last_idx} ]]; then idx={last_idx}; fi
+    API_RESPONSE=$(cat '{resp_dir}/resp_'"$idx")
+    echo "[test-seam] api_get call #$((n + 1))"
     return {api_get_rc}
 }}
 
@@ -243,10 +281,11 @@ echo "MERGED=$AUTOPR_GATE_MERGED"
             "PATH": "/usr/bin:/bin",
             "AUTOPR_TEST_POLL_EXITS": poll_seq,
             "AUTOPR_TEST_POLL_EXITS_POS": str(pos_file),
+            "CI_POLL_NO_SLEEP": "1",
         },
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     gate_rc = -1
     for line in result.stdout.splitlines():
@@ -304,7 +343,13 @@ def test_gate_mergeable_but_poll_still_failing_returns_one(tmp_path: Path) -> No
 
 
 def test_gate_not_mergeable_returns_one(tmp_path: Path) -> None:
-    """When mergeable is false (or absent), gate returns 1 (proceed close)."""
+    """When the forge says mergeable=false, gate returns 1 (proceed close).
+
+    Scoped deliberately to the explicit `false`. The docstring here used to
+    read "false (or absent)" while only ever feeding `false`; absent and null
+    are now covered by their own cases below, because they are NOT the same
+    fact and the gate's handling of them differs in consequence.
+    """
     rc, out = _run_gate(
         check_merged_rc=1,
         api_get_response='{"mergeable": false}',
@@ -314,6 +359,94 @@ def test_gate_not_mergeable_returns_one(tmp_path: Path) -> None:
     )
     assert rc == 1
     assert "RC=1" in out
+
+
+def test_gate_mergeable_absent_returns_one(tmp_path: Path) -> None:
+    """An absent `mergeable` key fails safe to 1 (proceed with the close).
+
+    Characterization, and defensible as-is: a response with no `mergeable`
+    field at all is malformed relative to both forge schemas, and refusing to
+    skip the close on a payload we cannot read is the conservative direction.
+    Recorded explicitly so that the null case below is visibly a DIFFERENT
+    situation rather than an unexamined sibling of this one.
+    """
+    rc, out = _run_gate(
+        check_merged_rc=1,
+        api_get_response='{"state": "open"}',
+        api_get_rc=0,
+        poll_seq="0",
+        tmp_path=tmp_path,
+    )
+    assert rc == 1
+    assert "RC=1" in out
+
+
+def test_gate_mergeable_null_must_not_close_a_green_pr(tmp_path: Path) -> None:
+    """Unknown mergeability + green CI must not produce a close-and-repush.
+
+    The narrow claim, and the one this whole surface turns on: "the forge has
+    not computed mergeability yet" and "the forge says this cannot merge" are
+    different facts, and destroying a GREEN PR on the first is not defensible.
+    Before the fix this returned 1 and emitted nothing at all — the gate did
+    not merely decide wrongly, it decided invisibly.
+    """
+    rc, out = _run_gate(
+        check_merged_rc=1,
+        api_get_responses=['{"mergeable": null}'],  # still null on re-query
+        api_get_rc=0,
+        poll_seq="0:0",  # CI is GREEN on the retry
+        tmp_path=tmp_path,
+    )
+    assert rc == 0, (
+        f"gate ordered a close-and-repush of a green PR on unknown "
+        f"mergeability (rc={rc})\n{out}"
+    )
+    assert "[test-seam] api_get call #2" in out, (
+        "the gate must RE-QUERY once before concluding — GitHub's first read "
+        "is often what schedules the mergeability computation"
+    )
+
+
+def test_gate_mergeable_null_then_red_ci_still_closes(tmp_path: Path) -> None:
+    """Unknown mergeability with a RED CI retry still proceeds to the close.
+
+    The complement of the case above, and the one that keeps the fix from
+    being a blanket "never close". Deferring to CI only helps if CI actually
+    gets to decide in both directions.
+    """
+    rc, out = _run_gate(
+        check_merged_rc=1,
+        api_get_responses=['{"mergeable": null}'],
+        api_get_rc=0,
+        poll_seq="1:1",  # CI FAILS on the retry
+        tmp_path=tmp_path,
+    )
+    assert rc == 1, f"gate must fall through to the close on a red retry: {out}"
+
+
+def test_gate_mergeable_null_resolves_to_true_on_requery(tmp_path: Path) -> None:
+    """A null that becomes `true` on the re-query takes the mergeable path.
+
+    This is the case the re-query exists for: GitHub computes mergeability
+    asynchronously and the first read frequently schedules it, so the second
+    read returns a real boolean. Asserting the log line proves the gate took
+    the `true` branch rather than the still-unknown fallback — the two return
+    the same rc, so rc alone cannot distinguish them (L17: a passing
+    assertion that cannot tell the arms apart is not evidence).
+    """
+    rc, out = _run_gate(
+        check_merged_rc=1,
+        api_get_responses=['{"mergeable": null}', '{"mergeable": true}'],
+        api_get_rc=0,
+        poll_seq="0:0",
+        tmp_path=tmp_path,
+    )
+    assert rc == 0, f"gate should skip the close once mergeable resolves: {out}"
+    assert "mergeable=true" in out
+    assert "still uncomputed" not in out, (
+        "gate took the unknown-fallback branch when the re-query had already "
+        "resolved mergeability to true"
+    )
 
 
 def test_gate_api_get_failure_returns_one(tmp_path: Path) -> None:
@@ -443,3 +576,208 @@ def test_poll_ci_confirmation_logic_present() -> None:
     # Reset on a pending sibling AND at the in-progress loop bottom — the two
     # resets that make the count require CONSECUTIVE failure observations.
     assert text.count("failure_confirm_count=0") >= 2
+
+
+# --------------------------------------------------------------------
+# json_bool_state — the tri-state reader the gate depends on.
+#
+# json_field cannot express these apart (it prints '' for null, '' for a
+# missing key and '' on a parse failure), which is the root of Surface 1.
+# --------------------------------------------------------------------
+
+
+def _json_bool_state(payload: str, field: str = "mergeable") -> str:
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"source '{FORGEJO_LIB}' >/dev/null 2>&1; "
+            f"printf '%s' {payload!r} | json_bool_state '{field}'",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return result.stdout.strip()
+
+
+def test_json_bool_state_distinguishes_all_four_shapes() -> None:
+    """true / false / null / absent must be four distinguishable answers.
+
+    This is the whole point of the helper: `json_field` maps three of these
+    to the same empty string, so a caller branching on it silently reads
+    "not computed yet" as "no".
+    """
+    assert _json_bool_state('{"mergeable": true}') == "true"
+    assert _json_bool_state('{"mergeable": false}') == "false"
+    assert _json_bool_state('{"mergeable": null}') == "null"
+    assert _json_bool_state('{"state": "open"}') == "absent"
+
+
+def test_json_bool_state_reports_unreadable_rather_than_guessing() -> None:
+    """A payload that is not JSON is `unreadable`, never `false`.
+
+    Failing to parse and being told "no" are different facts too, and the
+    caller is the only layer that can decide what to do about each.
+    """
+    assert _json_bool_state("not json at all") == "unreadable"
+
+
+def test_json_bool_state_non_boolean_is_other() -> None:
+    """A present-but-non-boolean value is `other`, not coerced to true/false."""
+    assert _json_bool_state('{"mergeable": "clean"}') == "other"
+
+
+def test_json_field_still_conflates_them_which_is_why_the_helper_exists() -> None:
+    """Non-vacuity floor for the three tests above (L17).
+
+    If `json_field` ever grew the same tri-state behavior, the assertions
+    above would still pass while testing nothing anyone depends on. Pin the
+    conflation that motivates the helper, so this file fails loudly if the
+    premise changes rather than quietly measuring a distinction both
+    functions make.
+    """
+    out = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"source '{FORGEJO_LIB}' >/dev/null 2>&1; "
+            'for p in \'{"mergeable": null}\' \'{"state": "open"}\'; do '
+            'printf "[%s]" "$(printf "%s" "$p" | json_field "mergeable")"; done',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    ).stdout.strip()
+    assert out == "[][]", (
+        f"json_field is expected to render BOTH null and absent as the empty "
+        f"string — that conflation is what json_bool_state exists to fix. "
+        f"Got {out!r}"
+    )
+
+
+# --------------------------------------------------------------------
+# The declared terminal-state vocabulary (INV-rahib refined clause (a)/(c)).
+#
+# The invariant's original wording — "merged or explicit failure, no third
+# state" — cannot be satisfied by any conforming implementation: `queued_vpr`
+# is a deliberate, documented, human-approved outcome (WI-hajif Ruling 2),
+# and so are `governance_pending` and `noop_empty_queue`. Owner ruling
+# 2026-08-03 replaced it with a DECLARED CLOSED SET: every run must record a
+# state drawn from this vocabulary, and `unknown` (the default) is the
+# violation signal.
+# --------------------------------------------------------------------
+
+CONVERGED_MERGED = frozenset({"merged", "already_merged"})
+
+CONVERGED_FAILURE = frozenset(
+    {
+        "auth_error",
+        "failed_already_merged_check",
+        "failed_flush_remote_unavailable",
+        "failed_merge",
+        "failed_not_merged",
+        "failed_pr_lookup",
+        "failed_protected_branch",
+        "failed_tracker_sync_pending",
+        "flush_push_rejected",
+        "push_rejected_diverged",
+        # Set by ci_verdict_permits_merge and propagated via CI_VERDICT_STATE.
+        "ci_failed",
+        "ci_timeout",
+        "ci_hung",
+        "ci_unknown",
+    }
+)
+
+# Deliberate non-merge outcomes. Converged by ruling, not by accident.
+CONVERGED_DELIBERATE = frozenset(
+    {"queued_vpr", "governance_pending", "noop_empty_queue"}
+)
+
+# Test seams that live in the production script. Declared rather than
+# silently tolerated, so that their number is visible and does not grow
+# unnoticed.
+TEST_SEAM_STATES = frozenset(
+    {"test_gh_flush_ok", "test_gh_push_ok", "test_desync_fallback_ok"}
+)
+
+NON_CONVERGENT = frozenset({"unknown"})
+
+DECLARED_STATES = (
+    CONVERGED_MERGED
+    | CONVERGED_FAILURE
+    | CONVERGED_DELIBERATE
+    | TEST_SEAM_STATES
+    | NON_CONVERGENT
+)
+
+
+def _emitted_states() -> set[str]:
+    """Every terminal state auto-pr can actually record."""
+    import re
+
+    states = set(re.findall(r'_autopr_state_final="([a-z_]+)"', AUTO_PR.read_text()))
+    # `_autopr_state_final="$CI_VERDICT_STATE"` forwards the CI verdict, whose
+    # values are allocated in the forge library rather than in auto-pr.
+    states |= set(
+        re.findall(r'CI_VERDICT_STATE="([a-z_]+)"', FORGEJO_LIB.read_text())
+    )
+    return states
+
+
+def test_every_emitted_terminal_state_is_declared() -> None:
+    """No auto-pr exit may record a state outside the declared vocabulary.
+
+    This is the executable half of the refined invariant. A new terminal
+    state added without classifying it fails here, which is the point: the
+    2026-06-17 validation criterion went unevaluated for 579 commits partly
+    because nothing ever forced the state list to be looked at.
+    """
+    emitted = _emitted_states()
+    # Non-vacuity floor (L17): a regex that stopped matching would make the
+    # subset assertion below trivially true.
+    assert len(emitted) >= 15, (
+        f"extraction found only {len(emitted)} states — the regex has "
+        f"probably stopped matching: {sorted(emitted)}"
+    )
+    undeclared = emitted - DECLARED_STATES
+    assert not undeclared, (
+        f"auto-pr can record terminal state(s) that no bucket declares: "
+        f"{sorted(undeclared)}. Classify each as converged (merged / explicit "
+        f"failure / deliberate non-merge) or as a violation before shipping."
+    )
+
+
+def test_declared_vocabulary_has_no_dead_entries() -> None:
+    """Every declared state must actually be reachable in the scripts.
+
+    The mirror of the test above, and the one that keeps the vocabulary from
+    decaying into a wish-list: a declared state nobody emits is either a
+    rename nobody finished or a claim about behavior that does not happen.
+    `unknown` is exempt — it is the default initializer, not an emitted value.
+    """
+    emitted = _emitted_states()
+    dead = (DECLARED_STATES - NON_CONVERGENT) - emitted
+    assert not dead, (
+        f"declared but never emitted: {sorted(dead)} — either the state was "
+        f"renamed and the vocabulary was not updated, or it is aspirational."
+    )
+
+
+def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
+    """`unknown` must remain the initializer, unset by any deliberate exit.
+
+    The refined invariant leans on this: an auto-pr run that ends without
+    reaching one of its declared terminal states self-reports as `unknown`,
+    and that is exactly the "third state" the original wording was reaching
+    for. If the default ever becomes a real state, non-convergence stops
+    being detectable.
+    """
+    text = AUTO_PR.read_text()
+    assert '_autopr_state_final="unknown"' in text
+    assert text.count('_autopr_state_final="unknown"') == 1, (
+        "`unknown` must be written in exactly one place (the initializer); "
+        "a second write would make a real exit path indistinguishable from "
+        "a run that fell off the end."
+    )

@@ -1,0 +1,25 @@
+- op: create  # 3ce7
+  at: '2026-08-11T19:34:08Z'  # 3ce7
+  by: agent  # 3ce7
+  actor: jgstern_agent  # 3ce7
+  clock: 1  # 3ce7
+  nonce: 3ce7  # 3ce7
+  data:  # 3ce7
+    kind: invariant  # 3ce7
+    title: "Go stamps call_construct='method' on every selector-expression call, package-qualified free functions included, so the field is constant and cannot separate a function row from a method row"  # 3ce7
+    status: violated  # 3ce7
+    priority: 2  # 3ce7
+    parent:  # 3ce7
+    tags:  # 3ce7
+    - go  # 3ce7
+    - analysis_quality  # 3ce7
+    - io_boundary  # 3ce7
+    - axis  # 3ce7
+    isbefore: []  # 3ce7
+    duplicate_of: []  # 3ce7
+    not_duplicate_of: []  # 3ce7
+    pr_ref:  # 3ce7
+    description: "FOUND 2026-08-11 while correcting the Go arm of measurement 0002. Verified live on\ndev 1102e75bd3.\n\nWHAT IS TRUE. go.py stamps meta={\"call_construct\": \"method\"} on every\nselector-expression call, INCLUDING a package-qualified free function. Observed in\none file, one analyze_go run:\n\n  pkgLevelFunc   http.Get(u)        -> go:net/http:0-0:Get:unresolved   cc=method  receiver=None\n  pkgLevelRead   os.ReadFile(p)     -> go:os:0-0:ReadFile:unresolved    cc=method  receiver=None\n  pkgLevelLog    slog.Info(m)       -> go:log/slog:0-0:Info:unresolved  cc=method  receiver=None\n  methodOnTyped  c.Get(u)  (*http.Client)\n                                    -> go:net/http:0-0:Get:unresolved   cc=method  receiver=external\n  methodOnLogger l.Info(m)  (*slog.Logger)\n                                    -> go:log/slog:0-0:Info:unresolved  cc=method  receiver=external\n\n`http.Get(u)` and `c.Get(u)` are BYTE-IDENTICAL in (name, module_hint,\ncall_construct). A package qualifier and a receiver are the same syntax to the\nemitter, and the field records the SYNTAX, not the construct its name promises.\n\nWHY THIS MATTERS RATHER THAN BEING A COSMETIC MISLABEL. `call_construct` is the\ninput to the io-boundary F3 gate, whose whole job is to refuse a method-kind\ncatalogue entry that arrived with no receiver evidence. On Go the field is a\nconstant, so it carries no information at that gate — the gate is still correct\n(it refuses on absent module evidence, which is a different input), but any FUTURE\npredicate keyed on call_construct to separate a function row from a method row is\nkeyed on a constant and cannot work. That fix WAS proposed for the 9 Go\nmis-credits and is refuted by this item. See the sibling item on kind-blind\ncandidate selection.\n\nTHE ONE DISCRIMINATOR THAT DOES APPEAR IS NOT SAFE TO USE EITHER. `receiver` is\npresent exactly on the true method calls above and absent on the package-qualified\nones — but its VALUE is the string 'external', meaning \"receiver type unknown\",\nso its presence would be doing category work its name does not claim. And it is\nnot reliable: the parenthesized spelling `(&http.Client{}).Get(u)` is a genuine\nmethod call and emits NO receiver key at all. Presence-of-receiver is therefore a\nfalse-negative-prone proxy, not a discriminator. Recording this so the next reader\ndoes not adopt it after rediscovering the first half.\n\nCANDIDATE FOR A FUNDAMENTAL CONCEPT AUDIT (mechanism-vs-category leakage, the\naudit's own fourth test): one field name, `call_construct`, carries \"how the callee\nwas spelled\" on Go and is read by consumers as \"what kind of thing is being\ncalled\". Per-language populations differ wildly and are already on the tracker —\nGo 7,741 populated, JS/TS ZERO of 4,872 (INV-gijis), Java catalogues kind=method\nwhile emitting statics with none (INV-suril). Three languages, three different\nmeanings, one name.\n\nNOT MEASURED: whether any other analyzer stamps call_construct from syntax alone.\nNo language other than Go was read for this item. Per the standing no-analogy rule\nthat is an open question, not an assumed yes.\n\nDIRECTION: none yet. This item is a statement of fact about the vocabulary; it\nprescribes no change. Correcting the producer to distinguish package-qualified\nfrom receiver-qualified calls would ADD information and delete nothing, but it\nwould change a field several consumers read and has not been sized."  # 3ce7
+    fields:  # 3ce7
+      statement: "call_construct must record the CONSTRUCT of a call (package-qualified function vs receiver method), not merely that the callee was written as a selector expression."  # 3ce7
+      root_cause: "go.py emits meta={'call_construct': 'method'} at the selector-expression emit sites without distinguishing a package qualifier from a value receiver. Verified live: http.Get(u) and c.Get(u) on a *http.Client produce byte-identical (name, module_hint, call_construct)."  # 3ce7

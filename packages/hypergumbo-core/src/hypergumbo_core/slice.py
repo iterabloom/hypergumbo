@@ -13,7 +13,7 @@ collect related nodes. Traversal respects configurable limits:
 
 - **max_hops**: Depth limit (default None = unlimited). When unset, max_files
   and hub_threshold bound the slice.
-- **max_files**: File count limit (default 20). Keeps context focused.
+- **max_files**: File count limit (default 100). Keeps context focused.
 - **min_confidence**: Edge confidence threshold. Filters speculative edges.
 - **exclude_tests**: Skips test files to focus on production code.
 - **reverse**: Direction of traversal. False = forward (what does X call?),
@@ -153,7 +153,11 @@ class AmbiguousEntryError(Exception):
             f"in different files:",
         ]
         for sym in candidates:
-            lines.append(f"  [{sym.language}] {sym.path}:{sym.span.start_line}")
+            # Deserialized symbols may carry span=None (legacy maps without a
+            # span key); render the line-0 convention rather than crash the
+            # very error message the user needs to disambiguate.
+            start = sym.span.start_line if sym.span else 0
+            lines.append(f"  [{sym.language}] {sym.path}:{start}")
             lines.append(f"    ID: {sym.id}")
         lines.append("")
         lines.append("Use a full node ID to disambiguate, or filter with --language.")
@@ -553,13 +557,23 @@ def slice_graph(
     #
     # ADR-0027 Phase-2 audit (WI-jukav): every member is AXIS_LANGUAGE_CONSTRUCT
     # (Cluster A) and stable across Phase 3. Intentionally narrower than
-    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``service``, ``message``
-    # for proto IDL nesting) — slice expansion targets ``contains`` edges from
-    # OOP-style class containers, not RPC service nodes. Forward-compatible.
+    # ``linkers.containment.CONTAINER_KINDS`` (which adds ``message`` for proto
+    # IDL nesting, plus the ``contract``/``library``/``type``/``object``/
+    # ``union``/``instance`` language-construct kinds) — slice expansion targets
+    # ``contains`` edges from OOP-style containers, not IDL nesting nodes.
+    # Forward-compatible. (This comment also named ``service``; that was a
+    # pre-ADR-0027-fold fossil — no producer emits ``kind="service"``.)
     # INV-hojus: ``file`` is the canonical "this file" Symbol (orchestrator
     # synthesis + py.py for Python's executable-code files); include it so
     # slice traversal can expand from a file node into its top-level members.
-    _CONTAINER_KINDS = {"class", "interface", "module", "struct", "trait", "enum", "file"}
+    # WI-duguk: `protocol` (Swift, Objective-C) belongs here for the same
+    # reason `interface` does — reverse-slicing from a protocol should reach
+    # the callers of its requirements. Its absence meant a protocol entry was
+    # never expanded even once the containment linker rooted its members.
+    _CONTAINER_KINDS = {
+        "class", "interface", "module", "struct", "trait", "enum", "protocol",
+        "file",
+    }
 
     # Initialize with entry nodes
     for entry in entry_nodes:

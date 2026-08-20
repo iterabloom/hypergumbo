@@ -16,7 +16,9 @@ JavaScript (EventEmitter, custom events):
 - emitter.addEventListener(EVENT_NAME, handler)
 - emitter.dispatchEvent(new CustomEvent('eventName'))
 
-Python (Django signals, custom events):
+Python (Django signals, custom events). The three Django-signal rows are
+scanned only when ``django`` is in ``detected_frameworks`` (or when no
+framework set was supplied at all); the EventBus rows are unconditional:
 - signal.send(sender, **kwargs) - Django signals (identifier-based)
 - signal.connect(receiver, sender)
 - @receiver(signal, sender=Sender)
@@ -29,6 +31,16 @@ Java (Spring ApplicationEvent):
 - applicationEventPublisher.publishEvent(event)
 - @EventListener on methods
 - @TransactionalEventListener
+
+Java (Guava EventBus, and framework-agnostic shapes):
+- eventBus.post(event)
+- @Subscribe on methods
+- generic emitters: fire / dispatch / notify / raise
+- generic listeners: register / addListener / subscribe / on
+
+Go:
+- channel send / receive (ch <- v, <-ch)
+- event-bus publish / subscribe calls
 
 Variable Event Detection
 ------------------------
@@ -771,7 +783,7 @@ def link_events(
     # Post-fold: filter on meta["framework_role"] since kind is now "function".
     publisher_symbol_index: dict[tuple[str, int], Symbol] = {}
     for s in symbols:
-        if (s.meta or {}).get("framework_role") == "event_publisher":
+        if (s.meta or {}).get("framework_role") == "event_publisher" and s.span:
             publisher_symbol_index[(s.path, s.span.start_line)] = s
 
     # Create edges from publishers to matching subscribers

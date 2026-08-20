@@ -83,6 +83,34 @@ class TestContainmentLinker:
         assert edge.dst == field.id
         assert edge.edge_type == "contains"
 
+    def test_instance_owner_roots_field(self) -> None:
+        """WI-pujiz (REUSE-INSTANCE): a typeclass / interface ``instance`` owner
+        (a Scala 3 ``given``, or a Haskell / Lean / PureScript instance) roots
+        its body's dotted-name fields — ``instance`` is in CONTAINER_KINDS.
+        Without that membership the owner is never indexed into
+        ``container_by_name`` and the field (``intOrd.cached``) stays orphaned.
+        """
+        owner = _sym(
+            "scala:app.scala:1-4:intOrd:instance", "intOrd", "instance",
+            language="scala", path="app.scala",
+        )
+        field = _sym(
+            "scala:app.scala:2-2:intOrd.cached:field", "intOrd.cached", "field",
+            language="scala", path="app.scala", start=2, end=2,
+        )
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[owner, field],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        edge = result.edges[0]
+        assert edge.src == owner.id
+        assert edge.dst == field.id
+        assert edge.edge_type == "contains"
+
     def test_swift_struct_body_subscript(self) -> None:
         """WI-fokag: a struct-body subscript (Type.subscript(key:)) roots at its type.
 
@@ -265,6 +293,45 @@ class TestContainmentLinker:
         assert len(result.edges) == 1
         assert result.edges[0].src == iface.id
         assert result.edges[0].dst == method.id
+
+    def test_protocol_contains_requirement(self) -> None:
+        """WI-duguk: `protocol` is a container exactly like `interface`.
+
+        Its absence from CONTAINER_KINDS made Swift/Obj-C protocol containment
+        structurally impossible: with the requirements emitted and correctly
+        named `Drawable.draw`, the protocol still scored `contains_out=0` while
+        a sibling `enum` and `struct` in the same file each rooted 3 members.
+        No analyzer-side change could have fixed that — which is why the
+        emission-parity column (span nesting, one analyzer in isolation) can
+        read green while the pipeline outcome stays broken.
+        """
+        proto = _sym(
+            "swift:Shapes.swift:1-10:Drawable:protocol",
+            "Drawable",
+            "protocol",
+            language="swift",
+            path="Shapes.swift",
+        )
+        requirement = _sym(
+            "swift:Shapes.swift:2-2:Drawable.draw:method",
+            "Drawable.draw",
+            "method",
+            language="swift",
+            path="Shapes.swift",
+            start=2,
+            end=2,
+        )
+
+        ctx = LinkerContext(
+            repo_root=Path("/test"),
+            symbols=[proto, requirement],
+            edges=[],
+        )
+        result = link_containment(ctx)
+
+        assert len(result.edges) == 1
+        assert result.edges[0].src == proto.id
+        assert result.edges[0].dst == requirement.id
 
     def test_nested_class_method(self) -> None:
         """Handles nested class: OuterClass.InnerClass.method -> InnerClass contains method."""

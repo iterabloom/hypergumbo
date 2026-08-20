@@ -11,7 +11,7 @@ the agent's spot-check step in
 ``structural-fix-scope-expansion-protocol.md §"When NOT to file a new tracker item"``
 relies on guessing tag names from memory. This module is the storage layer
 that backs the ``tracker tags`` subcommand and gives every catalogued tag a
-description, four timestamps, and an explicit deprecation flag.
+description, three timestamps, and an explicit deprecation flag.
 
 The three-state status model
 ----------------------------
@@ -52,8 +52,12 @@ with existing terminology rather than introducing a new word; the
 *readable* and writes during a migration window emit warnings rather than
 hard failures. Tag deprecation follows the same rule.
 
-Schema invariants (enforced at load and save time)
---------------------------------------------------
+Schema invariants
+-----------------
+The tag-name shape, the single-line ``description`` rule and the
+``in_favor_of`` shape are enforced at load and/or save time. The timestamp
+FORMAT below is a convention only — neither ``load_catalog`` nor
+``save_catalog`` validates it.
 * Every key in ``tags:`` matches ``^[a-z_][a-z0-9_]*$`` (the existing tag
   name shape; rejecting other shapes prevents the catalog from drifting
   into a state where it documents a tag that ``tracker add --tag`` will
@@ -63,9 +67,10 @@ Schema invariants (enforced at load and save time)
   ``None`` only when the tag has never been added to or removed from any
   item — an edge case that arises when ``tags describe`` or
   ``tags deprecate`` is invoked before the tag is ever applied.
-* ``in_favor_of`` is only meaningful when ``deprecated`` is true; it is
-  ignored on read when ``deprecated`` is false (and not written back in
-  that case to avoid stale-redirect entries).
+* ``in_favor_of`` is only meaningful when ``deprecated`` is true. It is
+  read unconditionally by ``from_dict``, so a non-deprecated entry loaded
+  from disk keeps the redirect in memory; ``to_dict`` drops it on the way
+  out, so it is not written back and cannot persist as a stale redirect.
 * ``description`` is a single-line string; multi-line descriptions are
   rejected at save time so the per-line ``tracker tags --count`` output
   never gets clipped by an embedded newline.
@@ -460,7 +465,7 @@ def backfill_from_op_log(tracker_root: Path) -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for name, bucket in per_tag.items():
         out[name] = {
-            k: v for k, v in bucket.items() if v is not None  # type: ignore[misc]
+            k: v for k, v in bucket.items() if v is not None
         }
     return out
 

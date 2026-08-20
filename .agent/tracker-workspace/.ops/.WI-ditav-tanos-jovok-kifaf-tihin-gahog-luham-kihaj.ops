@@ -1,0 +1,50 @@
+- op: create  # e117
+  at: '2026-08-02T06:30:25Z'  # e117
+  by: agent  # e117
+  actor: jgstern_agent  # e117
+  clock: 1  # e117
+  nonce: e117  # e117
+  data:  # e117
+    kind: work_item  # e117
+    title: "merge-pr merges on poll_ci exit 3 (fails OPEN on unenumerated codes) and branch protection did not block it - PR #160 merged with CI pending"  # e117
+    status: todo_hard  # e117
+    priority: 1  # e117
+    parent:  # e117
+    tags:  # e117
+    - ci_infrastructure  # e117
+    isbefore: []  # e117
+    duplicate_of: []  # e117
+    not_duplicate_of: []  # e117
+    pr_ref:  # e117
+    description: "Observed live 2026-08-02: PR #160 was MERGED while its CI status was still\n`pending`. Nothing caught it.\n\nMECHANISM, two independent holes that compose:\n\n(1) merge-pr does not handle poll_ci exit 3. scripts/merge-pr:297-303 reads:\n\n      poll_ci \"$HEAD_SHA\" || poll_result=$?\n      if   [[ $poll_result -eq 1 ]]; then exit 1   # CI failed\n      elif [[ $poll_result -eq 2 ]]; then exit 2   # timeout\n      fi\n      ... falls through to the merge ...\n\n    poll_ci's exit 3 (hung runner) matches NEITHER branch, so a hung verdict\n    silently becomes \"proceed to merge\". Live transcript:\n      \"No CI jobs have started after 2700s -- possible hung runner (exit code 3)\"\n      \"Merging PR #160...\"  ->  \"Merged via rebase! (GitHub)\"\n    Given WI-ninar (poll_ci declares hung on EVERY run over 300s on this\n    backend), this is not an exotic path -- it is reachable on any slow run.\n\n(2) GitHub branch protection did NOT block the merge. The working assumption\n    when this gap was first spotted (an hour before it fired) was that the\n    required-status-check would refuse a merge on a pending context. It did\n    not. Whether the required check is unconfigured, named differently from\n    ci/woodpecker/pr/woodpecker, or bypassable by the token in use is UNKNOWN\n    and must be established -- do not assume the protection exists.\n\nAGGRAVATOR (separate, worth its own thought): the post-merge push pipeline did\nnot re-test the code either. woodpecker.yml computes the push-event diff base as\n${CI_PREV_COMMIT_SHA:-HEAD~1} and skips pytest when that diff contains no .py\nfiles. A rebase-merge that lands N commits leaves the push pipeline diffing only\nthe LAST one; #160's last commit was YAML-only, so pytest was skipped and dev\nwent GREEN having run no tests for the .py changes in the earlier commit. So the\nPR pipeline (cancelled at merge) and the push pipeline (skipped) between them\nvalidated nothing.\n\nBLAST RADIUS THIS TIME: nil, verified rather than assumed. The merged tree was\nrun locally at 16495 passed / 100pct coverage, and `git diff 59bba2247d\norigin/dev` shows the ONLY differences are .ci/affected-tests.txt and\n.woodpecker/woodpecker.yml -- no Python at all. The danger is the general case:\na PR can merge with tests unrun and dev can display green afterwards.\n\nFIX SHAPE (not implemented): merge-pr must treat any non-zero poll_ci result as\nrefusal-to-merge (default-deny), not just the two codes it enumerates. An\nenumerate-the-bad-cases guard fails open by construction every time a new code\nis added, which is exactly what happened when exit 3 was introduced for the\nhung-runner path. Separately, confirm what branch protection is actually\nconfigured to require."  # e117
+    fields: {}  # e117
+- op: update  # 2eb3
+  at: '2026-08-02T18:30:53Z'  # 2eb3
+  by: agent  # 2eb3
+  actor: jgstern_agent  # 2eb3
+  clock: 2  # 2eb3
+  nonce: 2eb3  # 2eb3
+  set:  # 2eb3
+    status: needs_human_review  # 2eb3
+- op: discuss  # 8084
+  at: '2026-08-02T18:30:53Z'  # 8084
+  by: agent  # 8084
+  actor: jgstern_agent  # 8084
+  clock: 3  # 8084
+  nonce: '8084'  # 8084
+  message: "See WI-ninar for the full proposal and the four-site consumer audit; these two ship as one PR because neither is safe to land alone. This item's specific half: ci_verdict_permits_merge as a chokepoint, replacing four hand-rolled enumerate-the-blocking-codes chains, two of which fall through to merge on exit 3 TODAY (merge-pr:297 and auto-pr:2065, the post-rebase merge path). Awaiting governance approval - scripts/merge-pr, scripts/auto-pr and scripts/lib/forgejo-api.sh are all governance files."  # 8084
+- op: update  # 6e4c
+  at: '2026-08-02T19:08:24Z'  # 6e4c
+  by: agent  # 6e4c
+  actor: jgstern_agent  # 6e4c
+  clock: 4  # 6e4c
+  nonce: 6e4c  # 6e4c
+  set:  # 6e4c
+    status: done  # 6e4c
+- op: discuss  # bfc7
+  at: '2026-08-02T19:08:24Z'  # bfc7
+  by: agent  # bfc7
+  actor: jgstern_agent  # bfc7
+  clock: 5  # bfc7
+  nonce: bfc7  # bfc7
+  message: "FIXED and merged, PR #167, dev c539caf0b7. Ships with WI-ninar - neither is safe\nalone.\n\nTHE AUDIT FOUND FOUR SITES, not the one filed:\n  merge-pr:297     enumerated 1,2   -> merged on exit 3 AS SHIPPED\n  auto-pr:2065     enumerated 1,2   -> merged on exit 3 AS SHIPPED\n                                       (the POST-REBASE merge path)\n  auto-pr:1349     enumerated 3,1,2 -> would fall through on any new code\n  auto-pr:1996     enumerated 3,1,2 -> would fall through on any new code\n  forgejo-api:1474 proceeds only rc==0 -> already SAFE, unchanged\n  forgejo-api:1819 returns 0 only rc==0 -> already SAFE, unchanged\nThe two safe sites were safe for exactly the reason L54 gives: they enumerate\nthe PERMITTING case. That is the argument for making it the only spelling.\n\nFIX: ci_verdict_permits_merge in the forge library is the single home for \"may\nwe merge on this verdict?\" - 0 permits, every other value refuses and preserves\nits code, an unrecognised verdict says so rather than refusing silently. Not\n\"also handle 3\", which reproduces the same shape one code later. Per-site\nrecovery text stays at the call sites (L27); retry-loop conditions are untouched\nbecause \"should we retry?\" is a different question.\n\nRoot-cause note worth keeping: poll_ci's own header comment documented only\n\"0 = success, 1 = failure, 2 = timeout\" and never mentioned 3, which is\nplausibly how four call sites came to omit it. Comment fixed, and it now records\nthat callers may not depend on it being complete.\n\nBEHAVIOURAL EVIDENCE: the helper is exercised directly from the shipped library\nfor 0, 1, 2, 3, three unallocated codes and a non-numeric value; CI_VERDICT_STATE\nis asserted for each. Mutation-tested two ways - making unknown verdicts permit,\nand re-hand-rolling merge-pr's gate - each turns exactly the corresponding test\nred. PR #167 then merged THROUGH the new gate on verdict 0, so the permitting\npath is exercised end to end in production.\n\nNOT OBSERVED: a production REFUSAL. No non-zero verdict has occurred since the\nfix, so the refusal path is test-proven rather than field-proven.\n\nBRANCH PROTECTION, the second half of this item, now answered rather than\nassumed. The required check ci/woodpecker/pr/woodpecker was configured correctly\non both dev and main; \"Do not allow bypassing the above settings\" was UNTICKED,\nso the rules did not apply to the merging account - the only way a merge\nsucceeds against a pending required check. The human has ticked it on both, so\nthere are now two independent barriers: the script-side chokepoint and a\nserver-side rule that no longer exempts us."  # bfc7

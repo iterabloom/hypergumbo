@@ -170,11 +170,18 @@ def _get_enclosing_function_solidity(
 
 def _extract_solidity_signature(
     node: "tree_sitter.Node", source: bytes
-) -> Optional[str]:
+) -> str:
     """Extract function signature from a Solidity function definition.
 
     Solidity syntax: function name(type1 param1, type2 param2) returns (type3)
     Returns signature like "(address to, uint256 amount) returns (bool)".
+
+    Always returns a string: the parameter list degrades to ``"()"`` when the
+    node carries no ``parameter`` children, so there is no failure path. The
+    return type was ``Optional[str]`` until WI-basat, which was over-broad —
+    the single ``return sig`` is unconditional — and that annotation was what
+    made the WI-vibad ``make_typed_stable_id`` call read as a ``str | None``
+    argument.
     """
     params: list[str] = []
     return_type: Optional[str] = None
@@ -512,7 +519,7 @@ def _extract_edges_from_tree(
     symbols_by_span: dict[tuple[int, int], Symbol] = {}
     if all_local_symbols:
         for sym in all_local_symbols:
-            if sym.kind in ("function", "constructor", "modifier"):
+            if sym.kind in ("function", "constructor", "modifier") and sym.span is not None:
                 symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
 
     # Collect `using Library for Type` directives per contract.
@@ -770,7 +777,7 @@ def _extract_edges_from_tree(
                         src=child_sym.id,
                         dst=parent_sym.id,
                         edge_type="overrides",
-                        line=child_sym.span.start_line,
+                        line=child_sym.span.start_line if child_sym.span else 0,
                         confidence=0.85,
                         # vocab:F2 (WI-lojug): resolved by name-matching child
                         # functions against the inheritance hierarchy, not from a

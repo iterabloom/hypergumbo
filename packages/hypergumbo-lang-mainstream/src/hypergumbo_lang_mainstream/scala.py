@@ -647,6 +647,156 @@ def _extract_symbols_from_file(
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[type_name] = symbol
 
+        elif node.type == "enum_definition":
+            # WI-pujiz: emit the Scala 3 enum owner (kind="enum", in
+            # CONTAINER_KINDS) so the containment linker roots the enum body's
+            # val/var fields (Color.rgb -> Color). The `given` owner is emitted
+            # below.
+            #
+            # WI-dorop: the enum's CASES are now emitted too — they were the
+            # "remain out of scope" this comment used to record. Without them a
+            # reverse slice from the enum returned the container alone, which a
+            # consumer reads as "this enum is dead". Same defect WI-duguk
+            # drained for the eight analyzers the G2 parity matrix gates; scala
+            # is outside that matrix, so nothing caught it.
+            name_node = find_child_by_type(node, "identifier")
+            if name_node:
+                type_name = node_text(name_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                symbol = Symbol(
+                    id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "enum"),
+                    name=type_name,
+                    kind="enum",
+                    language="scala",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=_extract_modifiers_scala(node),
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                analysis.symbol_by_name[type_name] = symbol
+
+                # WI-dorop: one kind="field" per enum CASE, named
+                # `Color.Red` — the `.` separator scala already uses for its
+                # fields (`f"{owner}.{prop_name}"`) and methods, and one the
+                # containment linker splits on.
+                #
+                # TWO member node types, not one: `simple_enum_case` (`case
+                # Red`) and `full_enum_case` (`case Node(v: Int)`). And a
+                # single `case Green, Blue` parses as ONE
+                # `enum_case_definitions` holding TWO `simple_enum_case`
+                # siblings, so the walk iterates CASES rather than
+                # case-definition groups — a per-group loop would silently drop
+                # every case after the first comma.
+                #
+                # Modifiers come from the ENUM, not the case: the `case`
+                # keyword is a sibling token of the case node rather than a
+                # child, so `_extract_modifiers_scala(case_node)` returns []
+                # and a case has no visibility of its own to read.
+                enum_modifiers = _extract_modifiers_scala(node)
+                enum_body = find_child_by_type(node, "enum_body")
+                for group in enum_body.children if enum_body else ():
+                    if group.type != "enum_case_definitions":
+                        continue
+                    for case_node in group.children:
+                        if case_node.type not in (
+                            "simple_enum_case", "full_enum_case",
+                        ):
+                            continue
+                        case_name_node = find_child_by_type(
+                            case_node, "identifier",
+                        )
+                        if case_name_node is None:  # pragma: no cover - a case always names
+                            continue
+                        case_name = node_text(case_name_node, source)
+                        case_full = f"{type_name}.{case_name}"
+                        c_start = case_node.start_point[0] + 1
+                        c_end = case_node.end_point[0] + 1
+                        case_sym = Symbol(
+                            id=make_symbol_id(
+                                "scala", str(file_path), c_start, c_end,
+                                case_full, "field",
+                            ),
+                            name=case_full,
+                            kind="field",
+                            language="scala",
+                            path=str(file_path),
+                            span=Span(
+                                start_line=c_start,
+                                end_line=c_end,
+                                start_col=case_node.start_point[1],
+                                end_col=case_node.end_point[1],
+                            ),
+                            origin=PASS_ID,
+                            origin_run_id=run_id,
+                            modifiers=enum_modifiers,
+                            stable_id=make_typed_stable_id(
+                                "field", "",
+                                visibility_from_modifiers(enum_modifiers),
+                                name=case_name, qualified_name=case_full,
+                                file_stable_id=file_stable_id,
+                            ),
+                            line_span=c_end - c_start + 1,
+                            # A case is as reachable as its enum; Scala has no
+                            # per-case visibility modifier.
+                            is_exported=not any(
+                                m in enum_modifiers
+                                for m in ("private", "protected")
+                            ),
+                        )
+                        analysis.symbols.append(case_sym)
+                        analysis.node_for_symbol[case_sym.id] = case_node
+                        # Qualified name only — scala.py deliberately does not
+                        # register short names (see the note on the member
+                        # branches below).
+                        analysis.symbol_by_name[case_full] = case_sym
+
+        elif node.type == "given_definition":
+            # WI-pujiz (REUSE-INSTANCE — 3-lens ADR/spec/spirit audit): a Scala 3
+            # `given` is a typeclass / interface INSTANCE, the same construct
+            # Haskell/Lean/PureScript already emit as kind="instance" (the
+            # cross-language canonical). Per ADR-0027 a distinct source keyword
+            # does NOT earn a new kind when a canonical role already fits (that
+            # would fragment the canonical — Cluster-27C apex/peer), so the NAMED
+            # given owner is emitted as kind="instance"; `instance` is in
+            # CONTAINER_KINDS, so the given body's val/var fields
+            # (intOrd.cached -> intOrd) root under it. Anonymous givens have no
+            # identifier child -> skipped (matches _scala_property_scope).
+            name_node = find_child_by_type(node, "identifier")
+            if name_node:
+                type_name = node_text(name_node, source)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                symbol = Symbol(
+                    id=make_symbol_id("scala", str(file_path), start_line, end_line, type_name, "instance"),
+                    name=type_name,
+                    kind="instance",
+                    language="scala",
+                    path=str(file_path),
+                    span=Span(
+                        start_line=start_line,
+                        end_line=end_line,
+                        start_col=node.start_point[1],
+                        end_col=node.end_point[1],
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    modifiers=_extract_modifiers_scala(node),
+                )
+                analysis.symbols.append(symbol)
+                analysis.node_for_symbol[symbol.id] = node
+                analysis.symbol_by_name[type_name] = symbol
+
         elif node.type in (
             "val_definition", "var_definition",
             "val_declaration", "var_declaration",
@@ -981,7 +1131,7 @@ def _extract_edges_from_file(
                             conf = 0.80 * lookup_result.confidence * _short_name_penalty(callee_name)
                             edges.append(Edge.create(
                                 src=current_function.id,
-                                dst=lookup_result.symbol.id,
+                                dst=_sym.id,
                                 edge_type="calls",
                                 line=node.start_point[0] + 1,
                                 evidence_type="ast_call",

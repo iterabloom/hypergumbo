@@ -5,7 +5,42 @@
 
 ## Audited IO Surface
 
-Hypergumbo's safety claims are verified by ``hypergumbo verify-claims docs/hypergumbo.claims.yaml`` against an analysis of its own source code. The per-entry-point analysis below states what each CLI subcommand is allowed to do; regressions land as taint-flow findings and fail the gate.
+Hypergumbo's safety claims are checked by running hypergumbo against its own source: ``hypergumbo verify-claims . --claims docs/hypergumbo.claims.yaml``, gated in CI by ``scripts/check-self-claims``.
+
+### What this audit covers
+
+**Scope: the installed CLI.** Every claim below takes a python ``cmd_*`` handler as its taint source, so the audit describes what ``hypergumbo`` does when a user installs the package and runs it. That is narrower than "this repository is safe", and the narrower statement is the one that is true.
+
+Code in this repository runs in several other ways, and the claims say nothing about any of them:
+
+| Execution context | What runs | Covered |
+|---|---|---|
+| `pip install` then run the CLI | `packages/*/src` only | **yes** |
+| `pytest` inside the repo | every `conftest.py`, every test, and everything they import | no |
+| git / agent hooks | `.githooks/`, `.agent/hooks/` | no |
+| CI | whatever the workflow declares | no |
+| hypergumbo **analysing** a repo | the rust-analyzer backend executes the target's `build.rs` | no |
+
+The `pytest` row is stronger than it looks: a `conftest.py` executes at **collection**, so `pytest --collect-only` runs it with no test selected — before any selection logic could exclude it. The root `conftest.py` legitimately subprocesses and re-execs the interpreter (ADR-0010's self-healing wrapper), so that capability is live by design.
+
+**Which threat model this serves.** The audit discards flows whose source is a test fixture, on the reasoning that a fixture reaching a real primitive is a fixture doing its job. That is correct for "is the shipped tool safe to run" and exactly backwards for "is this repository safe to run tests in". This file answers the first question only.
+
+**Checked, and not claimed as more than it is.** No `eval()` or `exec()` on file content anywhere in `packages/*/src`; YAML loading uses `CSafeLoader` throughout; `.md` and `.txt` files are not collected as tests. That last one is a **configuration** fact — one line in `pyproject.toml` revokes it — not a structural guarantee, and is recorded here as configuration rather than as a property of the tree.
+
+**Read the claims below as CLAIMS UNDER TEST, not as assurances.** They state what each entry-point category is *intended* to do. What the analysis actually reports is:
+
+| verdict | count | meaning |
+|---|---|---|
+| **violated** | 0 | the tool found flows contradicting the claim |
+| **inconclusive** | 0 | the analysis could not see enough to confirm |
+| **confirmed** | 0 | checked and held |
+| **confirmed_with_caveats** | 18 | held, but on the strength of an entry this repository supplied about itself |
+
+A ``confirmed_with_caveats`` verdict is the qualified form of confirmed: the claim held everywhere the analysis could see, and every caveat names something it could NOT see — control leaving the process at a subprocess launch, or a sanitizer this repository declared about itself and the tool takes on trust.
+
+A ``confirmed`` verdict requires every code-bearing language present to be analysable.
+
+**A ``violated`` verdict from this tool is trustworthy; a ``confirmed`` one means “found nothing, having looked at what it could see”.** What it can see is bounded by the known limitations at the end of this section.
 
 ### Entry-point category: ``add_extras_entry``
 
@@ -14,10 +49,10 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``dev_zone``
 - ``host_fs``
 
-**add-extras-no-host-fs** — add-extras / remove-extras dispatch to install_* subcommands but
+**add-extras-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — add-extras / remove-extras dispatch to install_* subcommands but
 do not perform writes outside the wrapper functions themselves.
 
-**add-extras-no-dev-zone** — add-extras / remove-extras do not transitively reach dev-zone code paths.
+**add-extras-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — add-extras / remove-extras do not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``build_grammars_entry``
 
@@ -27,14 +62,14 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**build-grammars-no-host-fs** — build-grammars writes ONLY through tmp_artifact wrappers — the
+**build-grammars-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — build-grammars writes ONLY through tmp_artifact wrappers — the
 build dir scaffolding goes through tmp_artifact_write, and the
 install effect is via the pip subprocess.
 
-**build-grammars-no-install-artifact** — build-grammars does not directly copy install artifacts; pip
+**build-grammars-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — build-grammars does not directly copy install artifacts; pip
 handles the install side via subprocess.
 
-**build-grammars-no-dev-zone** — build-grammars does not transitively reach dev-zone code paths.
+**build-grammars-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — build-grammars does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_embeddings_entry``
 
@@ -44,14 +79,14 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**install-embeddings-no-host-fs** — install-embeddings does not write directly to arbitrary filesystem
+**install-embeddings-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-embeddings does not write directly to arbitrary filesystem
 paths. The pip subprocess writes to site-packages on its own;
 hypergumbo's code does not write outside its wrappers.
 
-**install-embeddings-no-install-artifact** — install-embeddings does not copy install artifacts to ~/.local/bin
+**install-embeddings-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-embeddings does not copy install artifacts to ~/.local/bin
 or similar (no install_artifact wrapper calls).
 
-**install-embeddings-no-dev-zone** — install-embeddings does not transitively reach dev-zone code paths.
+**install-embeddings-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-embeddings does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_gitleaks_entry``
 
@@ -60,10 +95,10 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``dev_zone``
 - ``host_fs``
 
-**install-gitleaks-no-host-fs** — install-gitleaks writes ONLY through install_artifact / tmp_artifact
+**install-gitleaks-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-gitleaks writes ONLY through install_artifact / tmp_artifact
 wrappers — never directly to arbitrary filesystem paths.
 
-**install-gitleaks-no-dev-zone** — install-gitleaks does not transitively reach dev-zone code paths.
+**install-gitleaks-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-gitleaks does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``install_rust_analyzer_entry``
 
@@ -73,13 +108,13 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``host_fs``
 - ``install_artifact``
 
-**install-rust-analyzer-no-host-fs** — install-rust-analyzer delegates entirely to the rustup subprocess —
+**install-rust-analyzer-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-rust-analyzer delegates entirely to the rustup subprocess —
 hypergumbo's code does not write to disk directly.
 
-**install-rust-analyzer-no-install-artifact** — install-rust-analyzer does not call any install_artifact wrappers
+**install-rust-analyzer-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-rust-analyzer does not call any install_artifact wrappers
 (rustup handles install side-effects).
 
-**install-rust-analyzer-no-dev-zone** — install-rust-analyzer does not transitively reach dev-zone code paths.
+**install-rust-analyzer-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — install-rust-analyzer does not transitively reach dev-zone code paths.
 
 ### Entry-point category: ``runtime_cli_entry``
 
@@ -91,7 +126,7 @@ Prohibited zones (claim: zero unsanitized reach):
 - ``network``
 - ``subprocess``
 
-**runtime-cli-no-host-fs** — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
+**runtime-cli-no-host-fs** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands (cmd_sketch, cmd_run, cmd_slice,
 cmd_search, cmd_routes, cmd_explain, cmd_symbols, cmd_compact,
 cmd_io_boundaries, cmd_verify_claims, cmd_catalog,
 cmd_test_coverage, cmd_dead_code_maybe, cmd_config,
@@ -100,18 +135,37 @@ filesystem paths. All writes go through the safety_zones wrappers
 (cache_write / user_out_write / tmp_artifact_write) in their
 respective peer zones.
 
-**runtime-cli-no-network** — Runtime CLI subcommands do not initiate network sends. Embeddings
+**runtime-cli-no-network** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not initiate network sends. Embeddings
 downloads happen only via the install-embeddings extras subcommand
 and downstream library calls — never from the analyze-my-code path.
 
-**runtime-cli-no-subprocess** — Runtime CLI subcommands do not shell out. All subprocess invocations
-(curl, git, pip, rustup, gitleaks) happen only via extras /
-build-time subcommands.
+**runtime-cli-no-subprocess** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands shell out ONLY through the declared
+repo_inspection zone. Every such invocation is local, read-only, and
+executes no code originating in the analysed repository:
 
-**runtime-cli-no-install-artifact** — Runtime CLI subcommands do not install software (no writes via the
+  - git, for cache-key fingerprinting and repo identity
+    (rev-parse HEAD, rev-list --max-parents=0 HEAD,
+    config --get remote.origin.url). No fetch, no push, no network.
+  - gitleaks, for the best-effort secret scan. Reads content on
+    stdin, reports findings on stdout. Runs only when the optional
+    binary is installed.
+  - rust-analyzer --version, a capability probe that reads nothing.
+    NOT an indexing request: rust-analyzer executes a project's
+    build.rs and proc macros when it indexes, and a default run
+    never asks it to.
+
+Anything else — curl, pip, rustup, or an unwrapped subprocess call —
+is prohibited. The previous wording of this claim ("Runtime CLI
+subcommands do not shell out ... only via extras / build-time
+subcommands") was FALSE as written: git ran 25 times and gitleaks
+ran a real scan on a default `sketch`, verified with
+`strace -f -e trace=execve`. It was restated by DECLARING the
+capability, not by carving an unenforced exception into the prose.
+
+**runtime-cli-no-install-artifact** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not install software (no writes via the
 install_artifact wrappers).
 
-**runtime-cli-no-dev-zone** — Runtime CLI subcommands do not transitively reach dev-zone code
+**runtime-cli-no-dev-zone** — ✓ confirmed WITH CAVEATS (rests on an entry this repository supplied about itself) — Runtime CLI subcommands do not transitively reach dev-zone code
 paths (tracker sync, agent supervisor, repository mutation).
 Hypergumbo's analyze-my-code path is separated from its
 development tooling by package boundaries; this claim makes the
@@ -147,7 +201,11 @@ Each claim verifies that no unsanitized data from the source entry-point categor
 
 ### Known limitations
 
-Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions; the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly.
+Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions.
+
+**This paragraph used to end “the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly”. That phrasing is retired** — the measured verdicts for those two claims are ``confirmed_with_caveats`` and ``confirmed_with_caveats``, and the honest reading is the verdict table above, with its caveats, not an adjective.
+
+Two further limitations bound EVERY ``confirmed`` verdict this tool emits, here or in a user's repository. Receiver typing is incomplete: a method call on a receiver the analysis cannot type (a parameter, a call result it has no chain rule for, a closure capture) may miss the catalogue even when the method itself is catalogued. (``pathlib.Path``, the former worked example here, is no longer one: its methods are catalogued and constructor-result chains like ``Path(p).write_text(x)`` emit edges.) And a language that emits even ONE call edge passes the coverage check while the rest of its call structure may be unanalysable: Kotlin emits one and misses roughly 95% of its catalogued sinks.
 
 The surface above is narrower than it was: the post-DDG IR refinement pass (``hypergumbo_core.taint_refine``) rewrites ``python:external:0-0:NAME:unresolved`` dsts to a module-resolved form (e.g., ``python:os.environ:0-0:NAME:unresolved``) when the data-dependence graph can prove what the receiver was bound to — typically receivers bound by file-scope imports or by local assignment to a module attribute. Sink-matching then runs against the resolved module, so the ``external``-module exemption only applies to the residual unresolvable cases above.
 

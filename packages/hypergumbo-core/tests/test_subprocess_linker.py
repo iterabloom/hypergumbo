@@ -15,6 +15,8 @@ from hypergumbo_core.linkers.subprocess_cli import (
     _scan_python_file,
     _extract_command_info,
     _detect_project_cli_name,
+    _leading_constant_args,
+    _cli_names_from_setup_py,
 )
 from hypergumbo_core.linkers.registry import LinkerContext
 
@@ -993,4 +995,277 @@ class TestFireSubcommandLinking:
         assert edges == [], (
             "a same-named class in another module must not be harvested; "
             f"got {[(e.dst, e.confidence) for e in edges]}"
+        )
+
+
+class TestMonorepoAndNonLiteralArgvBlockers:
+    """WI-gadus: three blockers that make the WI-lubap argparse join
+    unobservable on a real repository, each reproduced in the shape the
+    PRODUCTION tree has rather than the shape a minimal fixture has.
+
+    The pre-existing ``TestArgparseSubcommandLinking`` fixture is green and has
+    been since the WI-lubap fix merged, yet hypergumbo's own pipeline emits ZERO
+    ``subprocess_calls`` edges. That fixture defeats all three blockers by
+    construction — it writes a root ``pyproject.toml`` WITH a ``[project]``
+    table, a fully-literal argv list, and passes exactly one candidate symbol.
+    Every clause below is the same scenario with one of those conveniences
+    removed.
+    """
+
+    def test_detects_cli_name_declared_in_a_nested_package_pyproject(
+        self, tmp_path: Path
+    ) -> None:
+        """B1: a monorepo root whose pyproject carries no ``[project]`` table.
+
+        hypergumbo's own root pyproject.toml is tool-config only; the
+        ``hypergumbo`` console script is declared in
+        ``packages/hypergumbo/pyproject.toml``. Reading only the root file
+        yields an empty set, so the ``call.executable in project_cli_names``
+        guard can never pass for ANY call in such a repo.
+        """
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.black]\nline-length = 88\n"
+        )
+        pkg = tmp_path / "packages" / "myapp"
+        pkg.mkdir(parents=True)
+        (pkg / "pyproject.toml").write_text(
+            '[project]\nname = "myapp"\n\n'
+            '[project.scripts]\nmyapp = "myapp.cli:main"\n'
+        )
+        names = _detect_project_cli_name(tmp_path)
+        assert "myapp" in names, (
+            "a console script declared in a nested package pyproject must be "
+            f"discoverable from the repo root; got {names!r}"
+        )
+
+    def test_detects_cli_name_from_setup_py_entry_points(
+        self, tmp_path: Path
+    ) -> None:
+        """B1: setup.py entry_points are never read at all."""
+        (tmp_path / "setup.py").write_text(
+            "from setuptools import setup\n"
+            "setup(name='legacyapp',\n"
+            "      entry_points={'console_scripts': ['legacyapp=legacyapp.cli:main']})\n"
+        )
+        names = _detect_project_cli_name(tmp_path)
+        assert "legacyapp" in names, (
+            f"setup.py console_scripts must be discoverable; got {names!r}"
+        )
+
+    def test_extracts_leading_literals_from_argv_containing_variables(self) -> None:
+        """B2: one non-literal element must not discard the whole call site.
+
+        The single genuine self-invocation in hypergumbo's tree is
+        ``scripts/hypergumbo_diag.py:960``, whose argv holds five variables
+        after the executable and subcommand. ``ast.literal_eval`` over the
+        WHOLE list raises, so the call is dropped before matching even though
+        the executable and subcommand are plain string literals in positions
+        0 and 1.
+        """
+        args_str = (
+            '["hypergumbo", "slice", "--input", in_path, "--entry", node_id_val, '
+            '"--max-hops", str(max_hops), "--inline", "--out", out_path]'
+        )
+        executable, subcommand, is_python_m = _extract_command_info(args_str)
+        assert executable == "hypergumbo", (
+            f"leading literal executable must survive; got {executable!r}"
+        )
+        assert subcommand == "slice", (
+            f"leading literal subcommand must survive; got {subcommand!r}"
+        )
+        assert is_python_m is False
+
+    def test_scan_python_file_records_call_with_non_literal_argv(
+        self, tmp_path: Path
+    ) -> None:
+        """B2, at the scanner level: the regex matches but nothing is recorded."""
+        code = (
+            "import subprocess\n"
+            "def go(in_path, out_path):\n"
+            "    subprocess.run([\n"
+            '        "myapp", "serve",\n'
+            '        "--input", in_path,\n'
+            '        "--out", out_path,\n'
+            "    ], capture_output=True, check=True)\n"
+        )
+        calls = _scan_python_file(tmp_path / "diag.py", code)
+        assert len(calls) == 1, (
+            f"a call whose argv holds variables must still be recorded; got {calls!r}"
+        )
+        assert calls[0].executable == "myapp"
+        assert calls[0].subcommand == "serve"
+
+    def test_argparse_handler_lookup_ignores_external_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        """B3: bare-name handler lookup harvests an ``<external>`` placeholder.
+
+        On hypergumbo's tree the subcommand ``survey`` resolves to BOTH the real
+        ``cmd_run`` in cli.py and an ``external_symbol`` placeholder of the same
+        name whose path slot is the external sentinel. The INV-zuhub tie-break
+        picks ``min(candidates, key=id)``, and the sentinel path sorts first —
+        so fixing B1 and B2 alone would mint a confidently-wrong edge.
+        """
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n')
+        src = tmp_path / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_serve(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('serve')\n"
+            "    p.set_defaults(func=cmd_serve)\n"
+        )
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_cli.py").write_text(
+            "import subprocess\n"
+            "subprocess.run(['myapp', 'serve'])\n"
+        )
+        real = Symbol(
+            id="python:myapp/cli.py:2-3:cmd_serve:function",
+            name="cmd_serve", kind="function", language="python",
+            path="myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        placeholder = Symbol(
+            id="python:external:0-0:cmd_serve:external_symbol",
+            name="cmd_serve", kind="external_symbol", language="python",
+            path="<external>", span=Span(0, 0, 0, 0),
+        )
+        assert placeholder.id < real.id, (
+            "precondition: the sentinel path must sort first, which is what "
+            "makes the min-by-id tie-break select it"
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[placeholder, real])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1, f"expected exactly one join; got {edges!r}"
+        assert edges[0].dst == real.id, (
+            "the join must land on the handler defined in the argparse file, "
+            f"not the external placeholder; got {edges[0].dst!r}"
+        )
+        assert edges[0].confidence > 0.5, (
+            "a single genuine candidate must not be scored as an ambiguous "
+            f"fallback; got {edges[0].confidence}"
+        )
+
+    def test_end_to_end_monorepo_with_variable_argv_and_placeholder(
+        self, tmp_path: Path
+    ) -> None:
+        """All three blockers at once — the shape the real repository has.
+
+        This is the test that would have caught the live zero: nested-package
+        console script, an argv carrying variables, and a same-named external
+        placeholder competing with the real handler.
+        """
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.ruff]\ntarget-version = \"py310\"\n"
+        )
+        pkg = tmp_path / "packages" / "myapp"
+        pkg.mkdir(parents=True)
+        (pkg / "pyproject.toml").write_text(
+            '[project]\nname = "myapp-core"\n\n'
+            '[project.scripts]\nmyapp = "myapp.cli:main"\n'
+        )
+        src = pkg / "myapp"
+        src.mkdir()
+        (src / "cli.py").write_text(
+            "import argparse\n"
+            "def cmd_slice(args):\n"
+            "    pass\n"
+            "def main():\n"
+            "    sub = argparse.ArgumentParser().add_subparsers()\n"
+            "    p = sub.add_parser('slice')\n"
+            "    p.set_defaults(func=cmd_slice)\n"
+        )
+        scripts = tmp_path / "scripts"
+        scripts.mkdir()
+        (scripts / "diag.py").write_text(
+            "import subprocess\n"
+            "def run_it(in_path, out_path):\n"
+            "    subprocess.run([\n"
+            '        "myapp", "slice",\n'
+            '        "--input", in_path,\n'
+            '        "--out", out_path,\n'
+            "    ], capture_output=True, check=True)\n"
+        )
+        real = Symbol(
+            id="python:packages/myapp/myapp/cli.py:2-3:cmd_slice:function",
+            name="cmd_slice", kind="function", language="python",
+            path="packages/myapp/myapp/cli.py", span=Span(2, 3, 0, 0),
+        )
+        placeholder = Symbol(
+            id="python:external:0-0:cmd_slice:external_symbol",
+            name="cmd_slice", kind="external_symbol", language="python",
+            path="<external>", span=Span(0, 0, 0, 0),
+        )
+        result = link_subprocess(tmp_path, [], all_symbols=[placeholder, real])
+        edges = [e for e in result.edges if e.edge_type == "subprocess_calls"]
+        assert len(edges) == 1, (
+            f"expected the monorepo self-invocation to join; got {edges!r}"
+        )
+        assert edges[0].dst == real.id
+        assert edges[0].meta.get("subcommand") == "slice"
+
+
+class TestWiGadusEdgeCases:
+    """Fail-safe branches of the WI-gadus fixes. Each is a real reachable path
+    (no pragma): malformed input must contribute NOTHING rather than a guess.
+    """
+
+    def test_unparseable_argv_yields_no_command(self) -> None:
+        """A captured argv fragment that is not valid Python parses to nothing.
+
+        SUBPROCESS_CALL_PATTERN captures up to the first ``]``, so a nested list
+        in the argv truncates the capture mid-expression.
+        """
+        assert _leading_constant_args("[unclosed, ") == []
+        assert _extract_command_info("[unclosed, ") == (None, None, False)
+
+    def test_non_list_argv_yields_no_command(self) -> None:
+        """A captured fragment that parses but is not a list/tuple display."""
+        assert _leading_constant_args('"myapp serve"') == []
+
+    def test_python_dash_m_with_non_literal_module_fails_safe(self) -> None:
+        """``python -m <var>`` cannot name its executable, so it resolves to none.
+
+        Reporting "python" here would be worse than nothing: it is not the
+        project's CLI name, so it would never join, and it would occupy the
+        call site with a misleading executable.
+        """
+        executable, subcommand, is_python_m = _extract_command_info(
+            '["python", "-m", pkg_var, "serve"]'
+        )
+        assert (executable, subcommand, is_python_m) == (None, None, False)
+
+    def test_setup_py_that_does_not_parse_contributes_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "setup.py").write_text("def broken(:\n    pass\n")
+        assert _cli_names_from_setup_py(tmp_path / "setup.py") == set()
+
+    def test_setup_py_non_setup_calls_are_skipped(self, tmp_path: Path) -> None:
+        """Calls other than ``setup(...)`` are stepped over, not misread."""
+        (tmp_path / "setup.py").write_text(
+            "from setuptools import setup, find_packages\n"
+            "print('building')\n"
+            "setup(name='mixedapp', packages=find_packages())\n"
+        )
+        names = _cli_names_from_setup_py(tmp_path / "setup.py")
+        assert names == {"mixedapp"}
+
+    def test_setup_py_non_console_scripts_entry_points_ignored(
+        self, tmp_path: Path
+    ) -> None:
+        """Only ``console_scripts`` names a CLI; other groups are not binaries."""
+        (tmp_path / "setup.py").write_text(
+            "from setuptools import setup\n"
+            "setup(name='guiapp',\n"
+            "      entry_points={'gui_scripts': ['guithing=guiapp.ui:main'],\n"
+            "                    'console_scripts': 'notalist'})\n"
+        )
+        names = _cli_names_from_setup_py(tmp_path / "setup.py")
+        assert names == {"guiapp"}, (
+            f"gui_scripts and a non-list console_scripts must both be "
+            f"ignored; got {names!r}"
         )

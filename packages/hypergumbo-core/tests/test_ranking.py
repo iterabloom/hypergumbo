@@ -3528,6 +3528,26 @@ class TestComputeTruncationElbow:
         result = compute_truncation_elbow(syms, centrality, "src/main.py")
         assert result == 500
 
+    def test_span_none_symbol_excluded(self):
+        """WI-hafap: a span=None symbol is excluded from the elbow
+        computation — identical to how ``end_line > 0`` already excludes
+        the degenerate ``Span(0, 0, 0, 0)`` — rather than crashing."""
+        path = "src/main.py"
+        syms = [
+            self._make_sym("func1", path, 1, 10),
+            self._make_sym("func2", path, 20, 30),
+            self._make_sym("func3", path, 40, 50),
+            Symbol(
+                id=f"python:{path}:0:function:spanless",
+                name="spanless", kind="function", language="python",
+                path=path, span=None,
+            ),
+        ]
+        centrality = {s.id: 1.0 for s in syms}
+        with_none = compute_truncation_elbow(syms, centrality, path)
+        without = compute_truncation_elbow(syms[:3], centrality, path)
+        assert with_none == without
+
     def test_symbols_concentrated_at_top(self):
         """High-centrality symbols at top → elbow is early (low token count)."""
         path = "src/main.py"

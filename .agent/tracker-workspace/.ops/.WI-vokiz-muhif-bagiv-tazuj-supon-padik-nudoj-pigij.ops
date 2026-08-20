@@ -1,0 +1,28 @@
+- op: create  # 5d61
+  at: '2026-07-31T12:50:38Z'  # 5d61
+  by: agent  # 5d61
+  actor: jgstern_agent  # 5d61
+  clock: 1  # 5d61
+  nonce: 5d61  # 5d61
+  data:  # 5d61
+    kind: work_item  # 5d61
+    title: "tree_sitter Node.text is bytes|None and ~7 of 34 decode sites are unguarded — invisible until the receiver is annotated"  # 5d61
+    status: todo_soft  # 5d61
+    priority: 3  # 5d61
+    parent:  # 5d61
+    tags:  # 5d61
+    - mypy_adoption  # 5d61
+    - analyzer  # 5d61
+    isbefore: []  # 5d61
+    duplicate_of: []  # 5d61
+    not_duplicate_of: []  # 5d61
+    pr_ref:  # 5d61
+    description: "**Mechanic**: `tree_sitter.Node.text` is typed `bytes | None` by the tree-sitter stubs. Roughly a fifth of the `.text.decode(...)` call sites in `packages/*/src/` dereference it without a guard, so a `None` there raises `AttributeError`. The sites are **invisible to mypy until their receiver is annotated**, because an untyped `node` parameter makes `node.text` an `Any` and silences the check entirely.\n\n**Measured** (dev, whole-tree strict run):\n- 34 `.text.decode(` sites across `packages/*/src/`\n- 27 carry an `if X.text` guard (the ternary `X.text.decode(...) if X.text else \"\"` form)\n- ~7 do not\n\n**Why this is a class and not a handful of typos**: two independent files were found by annotating something else entirely, and in both the file was **half-guarding its own idiom** —\n\n    toml_config.py:93   return node.text.decode(...)                      # unguarded\n    toml_config.py:104  return node.text.decode(...) if node.text else \"\"  # guarded\n    toml_config.py:111  text  = node.text.decode(...) if node.text else \"\"  # guarded\n\n`view_template_spring.py` had four sites and guarded none of them. So the split is not per-file policy; it is per-author habit at the moment each line was written, which means the remaining unguarded sites are distributed unpredictably and will surface one annotation batch at a time.\n\n**Exposure**: `Node.text` returns None for a node whose tree was built without retained source. The analyzers construct their own trees and do retain source, so this is not believed reachable in production today — but that is a property of every current caller, not a guarantee the type offers, and it is exactly the kind of assumption that a new caller (a linker parsing a foreign tree, a cached-tree optimisation) breaks silently.\n\n**THE PART THAT MATTERS MORE THAN THE FIX**: the correct handling DIFFERS BY SITE, so this must not be swept with a uniform ternary. Measured on the four sites in `view_template_spring.py`:\n- two decode text that is immediately COMPARED (`== method_short_name`, `!= \"ModelAndView\"`). An empty-string default is correct there — the comparison fails and the surrounding logic already handles a non-match.\n- two decode text that BECOMES A VIEW NAME and is emitted as an edge. An empty-string default would mint a reference to a view whose name could not be read — a silent wrong-value bug, strictly worse than the crash it replaces. Those two must bail (`return None` / `continue`).\n\nA blanket `if X.text else \"\"` across all 34 sites would satisfy mypy, pass every test, and introduce empty-named edges at the second kind of site. Same shape as the `Counter[int]`-on-string-keys error made earlier in this campaign: the pattern is uniform, the correct answer is not.\n\n**Suggested approach**: do not chase these ahead of the drain. They surface for free as `[union-attr]` errors each time a batch annotates a `node` parameter, and the whole-tree ratchet blocks the batch until they are handled — which is the right forcing function. This item exists so the next person recognises the shape on sight (`Item \"None\" of \"bytes | None\" has no attribute \"decode\"`) and knows to classify each site as compare-site vs value-site before touching it, rather than re-deriving that distinction under time pressure.\n\n**Related**: WI-hafap (the `Symbol.span` half-guarded population — same \"half the codebase defends, half does not, so there is no contract\" shape, and there the declaration rather than the call sites turned out to be wrong); INV-zogud (the drain that keeps surfacing these)."  # 5d61
+    fields: {}  # 5d61
+- op: discuss  # 5d55
+  at: '2026-08-01T08:18:18Z'  # 5d55
+  by: agent  # 5d55
+  actor: jgstern_agent  # 5d55
+  clock: 2  # 5d55
+  nonce: 5d55  # 5d55
+  message: "PROGRESS via PR #149 (WI-sarag): the None-guard this item wants is now\nBAKED INTO the single node.text chokepoint (analyze.base.node_own_text),\nand the 34 private copies that each hand-rolled (or forgot) the guard now\nroute through it. REMAINING on this item: the inline .text.decode sites\nOUTSIDE the swept copies (~7 unguarded of ~34 total at last count, e.g.\ncli.py:3451/3458 and lua.py:840) — re-count before draining, and prefer\nrouting them through node_own_text over adding local guards. The item\nstays open on that residual."  # 5d55

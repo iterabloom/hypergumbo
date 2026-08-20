@@ -20,10 +20,11 @@
 # surface in `external_potential` (Plan C, PR C); project-local taint
 # catalogs (WI-votan) provide per-project classification when needed.
 language: kotlin
-# Plan C, PR B: catalog incomplete — promotion to ``status: complete``
-# requires enumerating Kotlin stdlib (kotlin.io.*, kotlin.coroutines.*)
-# on top of the Java parent and adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py).
+# Plan C, PR B / INV-titih: partial catalog. Promotion to
+# ``status: provenance_declared`` requires adding ``stdlib_provenance``
+# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
+# citation check only; coverage is claimed per-module via
+# ``module_completeness``.
 status: in_progress
 
 # ---------------------------------------------------------------------------

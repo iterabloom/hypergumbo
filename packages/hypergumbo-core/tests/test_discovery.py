@@ -194,8 +194,11 @@ def test_default_excludes_contains_expected_patterns() -> None:
     expected = [
         "node_modules",
         "vendor",  # PHP Composer dependencies
-        "venv",
-        ".venv",
+        # venv / .venv / env are DELIBERATELY ABSENT. They are no longer bare names
+        # here — a directory is a virtualenv because of what it CONTAINS
+        # (VENV_DIR_NAMES + _looks_like_virtualenv), not what it is called. As bare
+        # names they also deleted 427 first-party source files across 39 corpus repos.
+        # test_discovery_venv_content_discriminator.py asserts both directions.
         "dist",
         "build",
         ".git",

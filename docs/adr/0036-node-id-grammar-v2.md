@@ -6,7 +6,7 @@
 
 > **Amended in place** — see the §Enforcement "Amendment — id-format:F3 partial landing (2026-06-13)" section below for the actual landed-vs-advisory enforcement state.
 
-- Supersedes: — (tightens the grammar whose factory discipline ADR-0034 established; ADR-0034 remains in force. Corrects ADR-0034's reviewer-checklist claim that a kind-slot round-trip check already existed — the shipped `id_format` gate is shape-only; Ruling 2's round-trip validator here is the actual instrument)
+- Supersedes: ADR-0034 (partial — reviewer-checklist item 5's claim that a kind-slot round-trip check already existed; the shipped `id_format` gate is shape-only, and Ruling 2's round-trip validator here is the actual instrument). This ADR tightens the grammar whose factory discipline ADR-0034 established; ADR-0034's core factory discipline remains in force.
 - Superseded by: —
 - Related: ADR-0034 (ID-Construction Discipline — the factories this grammar binds), ADR-0033 (Spec-vs-Data Validator Stage — the enforcement substrate), ADR-0035 (stable-id v6 identity contract — the hash-identity sibling; node.id is the *location* identity, stable_id the *semantic* identity), ADR-0037 (edge resolution semantics — owns the `:unresolved` dst-suffix convention on `Edge.dst` that coordinates with Ruling 2's migration), ADR-0027 (Symbol.kind registry — the vocabulary Ruling 2 binds the kind slot to), ADR-0031 (Symbol.language reshape — `discovery_language` for synthetic stand-ins, relevant to the lang slot of synthetic IDs), ADR-0024 (axis-declaration template — governs the `meta.reference_syntax` key registration). Tracker items: see §"Tracker items".
 
@@ -26,7 +26,7 @@
 {lang}:{path}:{start}-{end}:{name}:{kind}
 ```
 
-at `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py:288-306`. But
+at `packages/hypergumbo-core/src/hypergumbo_core/analyze/base.py::make_symbol_id`. But
 `make_symbol_id` is a bare f-string with no validation — any slot value containing `:`
 silently changes the colon count, and nothing defines what a parser should do about it.
 The format is a *convention*, not a *grammar*: no colon policy per slot, no declared
@@ -45,7 +45,7 @@ the defect is one layer deeper than factory bypass.
    cases a parser must survive (Rust `::` paths, 3-colon npm-package IDs, colon-bearing
    route names, a Solidity carry-over).
 2. **The runtime format gate is shape-only.** `_check_id_format` and
-   `_CANONICAL_ID_PATTERN` (`spec_validator.py:1159-1320`) verify the five-slot *shape*
+   `_CANONICAL_ID_PATTERN` (`spec_validator.py::_CANONICAL_ID_PATTERN`) verify the five-slot *shape*
    but never round-trip slot values against `Symbol.name` / `Symbol.kind`. An ID whose
    name slot disagrees with `Symbol.name`, or whose kind slot carries a value that is
    not a symbol-kind registry member, passes the gate.
@@ -58,8 +58,8 @@ the defect is one layer deeper than factory bypass.
    distinct producer bug split out to WI-kugaj.)
 4. **6.0.0 already groped toward the rule, per-site.** The Phase 6 sweeps sanitized
    colons ad hoc at individual emit sites: Rust impl-method `::` → `.` in the ID name
-   slot (`rust.py:953`), websocket event `:` → `_` (`linkers/websocket.py:325`), plus
-   parallel one-off escapes in `markdown.py:78-80` and `js_module.py:235`. Four sites,
+   slot (`rust.py::_unwrap_deref_type`), websocket event `:` → `_` (`linkers/websocket.py::_make_symbol_id`), plus
+   parallel one-off escapes in `markdown.py::_make_link_dst_id` and `js_module.py::_make_npm_package_id`. Four sites,
    three different replacement characters, no governing principle. This ADR codifies
    the rule those fixes were groping toward.
 
@@ -98,7 +98,7 @@ from both ends and is deterministic without escaping:
 Operationally: `rsplit(":", 3)` for the right anchors, `split(":", 1)` for the left
 anchor, then per-slot charset validation; any slot failing its contract is a validator
 violation. This is the normative statement of the parse the IR's `_parse_dangling_id`
-(`ir.py:1093`) and `_CANONICAL_ID_PATTERN` already approximate — v2 makes the
+(`ir.py::deduplicate_edges`) and `_CANONICAL_ID_PATTERN` already approximate — v2 makes the
 last-3-tokens / first-token rule the grammar, not an implementation accident.
 
 ### Ruling 2 — Kind-slot purity
@@ -123,7 +123,7 @@ whose `kind` field itself carries a non-registry value.
 
 Coordination notes:
 - `Edge.dst` strings that reference the migrating IDs (e.g. the cgo linker's
-  `go:C:0-0:{name}:unresolved` prefix match, `linkers/cgo.py:66`) are resolution-status
+  `go:C:0-0:{name}:unresolved` prefix match, `linkers/cgo.py::link_cgo`) are resolution-status
   conventions owned by ADR-0037 (edge resolution semantics, strategy synthetic:F3). The
   ID change and the edge-finalization change land in coordinated releases so the
   `:unresolved` suffix convention is retired from node IDs and re-derived on edges from
@@ -149,9 +149,9 @@ convention or an emitter defect.
 
 | Slot | Sentinel | Meaning | Anchor |
 |---|---|---|---|
-| `path` | `<external>` | external/boundary pseudo-symbol with no file anchor | `ir.py:1130-1136` (parser), `ir.py:1289` (boundary synthesizer) |
-| `span` | `0-0` | synthetic node with no source location (module stand-ins, external references, protocol synthetics) | dependency-linker module IDs (`linkers/dependency.py:56-58`), cgo externals |
-| `span` | `1-1` *(with name `file`, kind `file`)* | file pseudo-symbol | `make_file_id`, `base.py:309-319` |
+| `path` | `<external>` | external/boundary pseudo-symbol with no file anchor | `ir.py::deduplicate_edges` (parser), `ir.py::_canonical_external_id` (boundary synthesizer) |
+| `span` | `0-0` | synthetic node with no source location (module stand-ins, external references, protocol synthetics) | dependency-linker module IDs (`linkers/dependency.py::_extract_root_package`), cgo externals |
+| `span` | `1-1` *(with name `file`, kind `file`)* | file pseudo-symbol | `make_file_id`, `base.py::make_file_id` |
 | `name` | `file` *(only in the file-pseudo-symbol triple above)* | file pseudo-symbol | `make_file_id` |
 
 The `lang` and `kind` slots have **no sentinel values**: `lang` must always be a
@@ -313,7 +313,7 @@ wired into `validate_ir`) shipped as a Wave-2 T0 PR. What landed, and the gating
 - Strategy: `~/hypergumbo_lab_notebook/correctness_strategy_06102026.md` §1
   (id-format-factory-bypass corrected thesis), §2 Wave 1 item 7 (this ADR) and Wave 2
   (synthetic:F2 chokepoint, id-format:F2-F5).
-- Code anchors: `analyze/base.py:288-306` (`make_symbol_id`), `base.py:309-319`
-  (`make_file_id`), `spec_validator.py:1159-1320` (shape-only gate), `ir.py:1093`
-  (`_parse_dangling_id`), `rust.py:953` and `linkers/websocket.py:325` (the 6.0.0
+- Code anchors: `analyze/base.py::make_symbol_id` (`make_symbol_id`), `base.py::make_symbol_id`
+  (`make_file_id`), `spec_validator.py::_check_cross_field_coherence` (shape-only gate), `ir.py::deduplicate_edges`
+  (`_parse_dangling_id`), `rust.py::_unwrap_deref_type` and `linkers/websocket.py::_make_symbol_id` (the 6.0.0
   ad-hoc sanitizations this ADR codifies).

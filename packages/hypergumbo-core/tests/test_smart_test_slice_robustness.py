@@ -138,14 +138,32 @@ def test_slice_skipped_when_no_source_files() -> None:
     )
 
 
-def test_baseline_detection_is_failover_aware() -> None:
-    """Baseline detection must consult the failover marker so the merge-base
-    anchors on the authoritative remote (WI-tolil defect 2). Under permanent
-    failover, ``origin/dev`` is stale and the merge-base would otherwise span
-    the whole tree, forcing a slow/failure-prone whole-repo slice every run."""
+def test_baseline_detection_anchors_on_the_authoritative_remote() -> None:
+    """Baseline detection must anchor the merge-base on the authoritative dev.
+
+    THIS TEST USED TO ASSERT THE OPPOSITE (WI-kasin). It required
+    ``scripts/smart-test`` to consult the failover marker, which was correct
+    under WI-tolil defect 2 — back when a second remote existed and
+    ``origin/dev`` could be stale. WI-hajif step 1 retired the
+    self-hosted-Forgejo failover entirely, updated ``get_baseline``, and added
+    a recurrence gate that FORBIDS the very string this test REQUIRED. The two
+    then contradicted each other, both were "correct" by their own lights, and
+    this one failed on clean dev for as long as it took anyone to run it —
+    which was a while, because nothing but ``scripts/smart-test`` maps to this
+    file, so the per-PR gate never selected it (L48).
+
+    The property being protected is unchanged and still worth pinning: a
+    baseline anchored on something stale inflates the changed set and forces a
+    whole-repo slice. Only the mechanism moved — there is now exactly one
+    authoritative remote, so anchoring correctly means a merge-base against
+    ``origin/dev`` and no second-remote branch at all.
+    """
     text = SMART_TEST.read_text()
-    assert "CI_FAILOVER_ACTIVE" in text, (
-        "smart-test baseline detection is not failover-aware: it does not "
-        "consult .git/CI_FAILOVER_ACTIVE, so under failover it anchors the "
-        "merge-base on a stale origin/dev and slices the whole tree."
+    assert "git merge-base HEAD" in text, (
+        "smart-test no longer anchors its baseline on a merge-base; a baseline "
+        "that is not the branch's own fork point over-selects the whole tree."
+    )
+    assert "origin/dev" in text, (
+        "smart-test's baseline does not name origin/dev, the only "
+        "authoritative remote since WI-hajif retired the failover."
     )

@@ -3,6 +3,21 @@
 using System;
 using System.Collections.Generic;
 
+/// <summary>Enumerated type whose named members are container members.</summary>
+public enum Color
+{
+    Red,
+    Green,
+}
+
+/// <summary>Abstract type whose member signatures are container members.</summary>
+public interface IDrawable
+{
+    string Draw();
+
+    double Area();
+}
+
 public class Service
 {
     private int count = 0;

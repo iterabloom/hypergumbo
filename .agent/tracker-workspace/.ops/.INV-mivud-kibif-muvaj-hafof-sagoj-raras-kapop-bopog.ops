@@ -29,3 +29,19 @@
   clock: 2  # f5e1
   nonce: f5e1  # f5e1
   message: "io-boundary:F3 (PR #4324, dev c261dde7ab) does NOT close this. The kind-aware gate keys on IoPrimitive.kind; 'copy' is FUNCTION-kind (shutil.copy under functions:), so lookup_with_module('copy', None) still returns shutil.copy on a bare function-form call — the gate only suppresses 'copy' when the edge is an explicit method call (call_construct=method, i.e. x.copy()). So a bare external:copy edge that is a genuine method call on an untyped receiver is now suppressed, but a function-form bare copy() still matches. If the filed INV-mivud repro is method-form, F3 fixes it; if function-form, it persists and needs receiver typing (WI-fuvuj-class) or a module hint. Re-verify the filed repro's call_construct to decide; ambiguous_names remains the fallback. Status unchanged."  # f5e1
+- op: update  # fc42
+  at: '2026-08-05T03:25:45Z'  # fc42
+  by: agent  # fc42
+  actor: jgstern_agent  # fc42
+  clock: 3  # fc42
+  nonce: fc42  # fc42
+  set:  # fc42
+    status: satisfied  # fc42
+    pr_ref: '210'  # fc42
+- op: discuss  # b37f
+  at: '2026-08-05T03:25:45Z'  # b37f
+  by: agent  # b37f
+  actor: jgstern_agent  # b37f
+  clock: 4  # b37f
+  nonce: b37f  # b37f
+  message: "SATISFIED with behavioural evidence, and the June discussion question is answered. THE OPEN QUESTION WAS: does io-boundary:F3 close the filed repro, or does the function-form persist? Both, split by call_construct. Re-running the filed repro on the merged tree: python:external:0-0:copy:external_symbol now returns None for call_construct in {None, function, method}; before PR #210 it returned shutil.copy for None and for function, and None only for method. So F3 closed the method-form case in June and the function-form and meta-absent forms were the live residue, which is what this closes. Non-destructiveness also asserted: a module-qualified python:shutil:0-0:copy STILL matches shutil.copy, so the suppression did not trade a false positive for a false negative. THE LIST WAS COMPLETED BY DERIVATION, NOT BY HAND: every catalogued python primitive whose short name also names a builtin or a dict/list/set/str method and was not already suppressed - all, copy, count, filter, remove, update, values. That is 7 names, but NOT the seven the campaign plan predicted. The plan said all seven shutil peers, which is wrong in both directions: copytree, rmtree and make_archive collide with nothing and must stay matchable, while five Django ORM names that do collide were missed. The guard test asserts the RULE rather than the seven literals, and a second test asserts the converse so over-suppression fails too. MEASURED EXPOSURE, stated because it is easy to overclaim: 1509 python unresolved taint call edges on the 9-repo cohort carry one of these names, so the shape is abundant - but 1505 of 1509 are method-form, already handled by F3, and the remaining 4 carry module hints. This moves ZERO flows on that cohort. It is prevention, not a measured improvement."  # b37f

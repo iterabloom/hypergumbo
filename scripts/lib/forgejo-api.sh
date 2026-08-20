@@ -34,9 +34,9 @@ source "${BASH_SOURCE[0]%/*}/github-api.sh"
 # detect_forge_backend [REMOTE_URL]
 #   Set FORGE_BACKEND ("github" or "forgejo").  The HYPERGUMBO_FORGE_BACKEND
 #   env var overrides (used by the forced-backend CI job + tests); otherwise a
-#   github.com origin → "github", anything else → "forgejo" (the dormant
-#   default while Codeberg is origin).  apply_failover_overrides forces
-#   "forgejo" afterward — CI failover always targets the self-hosted Forgejo.
+#   github.com origin → "github", anything else → "forgejo".  Since the
+#   GitHub migration, origin IS github.com, so "github" is the live backend
+#   and the forgejo arm is the dormant one (WI-hajif).
 # ------------------------------------------------------------------
 detect_forge_backend() {
 	local remote_url="${1:-$(git remote get-url origin 2>/dev/null)}"
@@ -51,14 +51,11 @@ detect_forge_backend() {
 
 # ------------------------------------------------------------------
 # resolve_forge_token
-#   Single, failover-aware source of truth for the API/push credential (C9):
-#   under CI failover the self-hosted Forgejo token wins, matching
-#   apply_failover_overrides' precedence.  Sets FORGE_TOKEN.
+#   Single source of truth for the API/push credential (C9): on the github
+#   backend HG_GITHUB_TOKEN wins, else FORGEJO_TOKEN.  Sets FORGE_TOKEN.
 # ------------------------------------------------------------------
 resolve_forge_token() {
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		FORGE_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-${FORGEJO_TOKEN:-}}"
-	elif [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
 		# GitHub maintainer tooling uses a dedicated local PAT (HG_GITHUB_TOKEN,
 		# provisioned + documented in PR-D). Falls back to FORGEJO_TOKEN so an
 		# unset env stays dormant-safe rather than erroring while Codeberg is
@@ -109,27 +106,6 @@ detect_api_base() {
 }
 
 # ------------------------------------------------------------------
-# apply_failover_overrides: Override API_BASE / REPO_SLUG / FORGEJO_TOKEN
-# when CI failover is active. Call after detect_api_base().
-# Sets FAILOVER_ACTIVE=true/false for callers to check.
-# ------------------------------------------------------------------
-apply_failover_overrides() {
-	local failover_file="$REPO_ROOT/.git/CI_FAILOVER_ACTIVE"
-	FAILOVER_ACTIVE=false
-	if [[ -f "$failover_file" ]]; then
-		FAILOVER_ACTIVE=true
-		# CI failover always targets the self-hosted Forgejo — force the
-		# backend regardless of the origin host (C2/C9).
-		FORGE_BACKEND="forgejo"
-		FAILOVER_URL=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_url'])")
-		FAILOVER_REPO=$(python3 -c "import json,sys; print(json.load(open('$failover_file'))['selfhosted_forgejo_repo'])")
-		API_BASE="$FAILOVER_URL/api/v1/repos/$FAILOVER_REPO"
-		REPO_SLUG="$FAILOVER_REPO"
-		export FORGEJO_TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$FORGEJO_TOKEN}"
-	fi
-}
-
-# ------------------------------------------------------------------
 # api_call METHOD URL [DATA]
 #   Safe HTTP wrapper. Sets $API_RESPONSE and $API_HTTP_CODE.
 #   Returns: 0 = 2xx, 1 = non-2xx, 2 = curl failure or non-JSON response
@@ -140,7 +116,7 @@ api_call() {
 	local tmp_file
 	tmp_file="$(mktemp)"
 
-	# Failover-aware credential (C9); FORGE_TOKEN == FORGEJO_TOKEN off failover.
+	# Backend-aware credential (C9).
 	resolve_forge_token
 
 	local curl_args=(
@@ -234,6 +210,49 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || echo ""
+}
+
+# ------------------------------------------------------------------
+# json_bool_state FIELD_PATH   (JSON object on stdin)
+#   Print exactly one of: true | false | null | absent | other | unreadable
+#
+#   WHY THIS EXISTS (INV-rahib Surface 1). json_field cannot tell these
+#   apart: it prints the empty string for a JSON null, the empty string for
+#   a missing key, AND the empty string on a parse failure. Any caller that
+#   branches on its output therefore reads "the forge has not computed this
+#   yet" as "the forge says no" — a conflation the call site cannot detect
+#   and cannot work around.
+#
+#   That is not hypothetical. GitHub computes a pull request's mergeability
+#   ASYNCHRONOUSLY and reports `mergeable: null` until the background job
+#   finishes, which is the normal state in the seconds after a push. The
+#   Scenario B gate below fires exactly in that window, so reading null as
+#   false made it order a close-and-repush of PRs whose CI was green.
+#
+#   Use json_field for strings; use this for anything you branch on as a
+#   boolean, so that "unknown" stays a distinguishable answer.
+# ------------------------------------------------------------------
+json_bool_state() {
+	local dotpath="$1"
+	python3 -c "
+import sys, json, functools
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('unreadable'); raise SystemExit(0)
+try:
+    val = functools.reduce(lambda d, k: d[k], '$dotpath'.split('.'), data)
+except Exception:
+    print('absent'); raise SystemExit(0)
+if val is None:
+    print('null')
+elif val is True:
+    print('true')
+elif val is False:
+    print('false')
+else:
+    print('other')
+" 2>/dev/null || echo "unreadable"
 }
 
 # ------------------------------------------------------------------
@@ -377,11 +396,6 @@ _attempt_desync_resync_push() {
 	fi
 
 	local push_remote="origin" push_user="${FORGEJO_USER:-}" push_token="${FORGEJO_TOKEN:-}"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		push_remote="selfh"
-		push_user="${SELFHOSTED_FORGEJO_USER:-$push_user}"
-		push_token="${SELFHOSTED_FORGEJO_TOKEN:-$push_token}"
-	fi
 
 	echo "   🔁 WI-hubod: plain branch push to resync Codeberg DB, then retry merge..." >&2
 	if ! git -c credential.helper="!f() { echo username=$push_user; echo password=$push_token; }; f" \
@@ -543,7 +557,13 @@ for item in data:
 # poll_ci HEAD_SHA
 #   CI polling with timeout and ci-complete bypass (Scenario A/B).
 #   Uses API_BASE and FORGEJO_TOKEN from environment.
-#   Returns: 0 = success, 1 = failure, 2 = timeout
+#   Returns: 0 = success, 1 = failure, 2 = timeout, 3 = never dispatched
+#
+#   The "3" above was missing from this comment for as long as exit 3 existed,
+#   and four call sites omitted it from their handling — see WI-ditav and
+#   ci_verdict_permits_merge below. Any new verdict added here MUST be added to
+#   this list, but callers are no longer allowed to depend on that: they route
+#   through ci_verdict_permits_merge, which permits ONLY zero.
 # ------------------------------------------------------------------
 poll_ci() {
 	local head_sha="$1"
@@ -581,8 +601,24 @@ poll_ci() {
 	local poll_count=0
 	local prev_summary=""
 
-	# Track whether any job has left pending state (stale-pending detection)
-	local any_job_started=false
+	# WI-ninar. Track whether the pipeline was ever DISPATCHED — which is a
+	# different question from "has any job finished", and the confusion between
+	# the two made this check structurally unsatisfiable on Woodpecker.
+	#
+	# The original predicate asked whether any status context had gone
+	# NON-pending. That was correct for Forgejo Actions, which posted one
+	# context PER JOB: as individual jobs finished, non-pending contexts
+	# appeared while the rest still ran. Woodpecker posts exactly ONE AGGREGATE
+	# context (ci/woodpecker/pr/woodpecker) and it stays `pending` for the
+	# entire pipeline, flipping only when the whole run ends — so "has anything
+	# gone non-pending" was FALSE for the full duration of every run, and any
+	# pipeline outliving stale_pending_threshold (300s default, against a ~360s
+	# suite) was declared a hung runner. It was not detecting anything.
+	#
+	# The right question is whether a context EXISTS AT ALL. Woodpecker posts it
+	# when it creates the run, so its presence is proof of dispatch and its
+	# absence is the dispatch failure this check was written to catch.
+	local run_dispatched=false
 
 	# INV-rahib (confirmation re-poll): a single failure snapshot during
 	# concurrent CI activity can be transiently inconsistent — e.g. a cancelled
@@ -622,42 +658,32 @@ poll_ci() {
 		local state
 		state=$(echo "$API_RESPONSE" | json_field "state")
 
-		# Stale-pending detection: if no job has ever left pending state
-		# and we've been waiting longer than the threshold, the CI run
-		# likely never started (hung runner, dispatch failure).
-		if [[ "$any_job_started" == "false" && $elapsed -ge $stale_pending_threshold ]]; then
-			local has_non_pending
-			has_non_pending=$(echo "$API_RESPONSE" | python3 -c "
+		# Dispatch detection (WI-ninar). Once a context exists for this SHA the
+		# run was accepted and we stop asking; if NOTHING has been posted by the
+		# time the threshold elapses, the run was never created.
+		#
+		# 'unknown' (a parse failure) deliberately matches neither arm: we keep
+		# polling rather than declare a hung runner on a malformed payload. The
+		# overall CI_TIMEOUT_SECONDS still bounds the wait, so an unparseable
+		# backend surfaces as an honest timeout (2) instead of a fabricated
+		# dispatch failure (3).
+		if [[ "$run_dispatched" == "false" ]]; then
+			local _has_context
+			_has_context=$(echo "$API_RESPONSE" | python3 -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
-    statuses = data.get('statuses', [])
-    non_pending = [s for s in statuses if (s.get('state') or s.get('status')) != 'pending']
-    print('yes' if non_pending else 'no')
+    print('yes' if data.get('statuses') else 'no')
 except Exception:
     print('unknown')
 " 2>/dev/null || echo "unknown")
-			if [[ "$has_non_pending" == "yes" ]]; then
-				any_job_started=true
-			elif [[ "$has_non_pending" == "no" ]]; then
+			if [[ "$_has_context" == "yes" ]]; then
+				run_dispatched=true
+			elif [[ "$_has_context" == "no" && $elapsed -ge $stale_pending_threshold ]]; then
 				echo ""
-				echo "⚠️  No CI jobs have started after ${stale_pending_threshold}s — possible hung runner (exit code 3)"
+				echo "⚠️  No CI status context exists for $head_sha after ${stale_pending_threshold}s"
+				echo "    — the pipeline was never dispatched (exit code 3)."
 				return 3
-			fi
-		elif [[ "$any_job_started" == "false" ]]; then
-			# Check if any job has started (so we don't re-check after it's set)
-			local _check_started
-			_check_started=$(echo "$API_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    non_pending = [s for s in data.get('statuses', []) if (s.get('state') or s.get('status')) != 'pending']
-    print('yes' if non_pending else 'no')
-except Exception:
-    print('no')
-" 2>/dev/null || echo "no")
-			if [[ "$_check_started" == "yes" ]]; then
-				any_job_started=true
 			fi
 		fi
 
@@ -824,6 +850,67 @@ except Exception:
 }
 
 # ------------------------------------------------------------------
+# ci_verdict_permits_merge RC
+#   The ONE place that decides whether a poll_ci verdict allows a merge.
+#   Returns 0 only when RC is 0. Every other value — allocated or not —
+#   is a refusal, and RC is preserved as this function's exit status so
+#   callers can keep propagating it. Sets CI_VERDICT_STATE to the
+#   auto-pr state name for the verdict.
+#
+#   WHY THIS EXISTS (WI-ditav). Four call sites each hand-rolled the same
+#   decision by enumerating the codes that BLOCK:
+#       if [[ $rc -eq 1 ]] ... elif [[ $rc -eq 2 ]] ... ; then merge
+#   Exit 3 was added later, by a different fix, for the hung-runner path.
+#   Every one of those guards was correct the day it was written and became
+#   a PERMIT the moment the producer learned a new verdict — merge-pr and
+#   auto-pr's post-rebase path fell through to the merge on exit 3 as
+#   shipped, and PR #160 merged with CI still pending. Branch protection did
+#   not stop it either (the repo's "do not allow bypassing" was unticked, so
+#   the rules did not apply to the merging account).
+#
+#   The fix is not "also handle 3" — that reproduces the same shape one code
+#   later. A guard must enumerate the PERMITTING case and deny by default
+#   (L54). Two sites already did this correctly and needed no change, which is
+#   the argument for making it the only available spelling.
+#
+#   Per-site RECOVERY TEXT deliberately stays at the call sites: the flush
+#   path, the main path and the post-rebase path legitimately advise different
+#   next steps. This owns the field that must be uniform (may we merge?) and
+#   leaves the ones that legitimately differ to the callers (ADR-0027 / L27).
+# ------------------------------------------------------------------
+ci_verdict_permits_merge() {
+	local rc="${1-}"
+
+	if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
+		CI_VERDICT_STATE="ci_unknown"
+		echo ""
+		echo "⚠️  CI verdict is not a number ('$rc') — refusing to merge."
+		return 1
+	fi
+
+	if [[ "$rc" -eq 0 ]]; then
+		CI_VERDICT_STATE=""
+		return 0
+	fi
+
+	case "$rc" in
+		1) CI_VERDICT_STATE="ci_failed" ;;
+		2) CI_VERDICT_STATE="ci_timeout" ;;
+		3) CI_VERDICT_STATE="ci_hung" ;;
+		*)
+			CI_VERDICT_STATE="ci_unknown"
+			echo ""
+			echo "⚠️  poll_ci returned an unrecognised verdict ($rc) — refusing to merge."
+			echo "    A guard that enumerates the codes it knows about fails OPEN the"
+			echo "    moment a new one is added; that is exactly how exit 3 became a"
+			echo "    permit and merged PR #160 with CI pending. If this code is real,"
+			echo "    add it to poll_ci's header comment and to this case block."
+			;;
+	esac
+	return "$rc"
+}
+
+# ------------------------------------------------------------------
 # ci_job_summary
 #   Format one-line job status summary from API_RESPONSE (commit status).
 #   Call after api_get ".../commits/$sha/status".
@@ -868,11 +955,8 @@ except Exception:
 #   Fetch plain-text log for a CI job. Uses the web route; the REST API
 #   /actions/jobs endpoint returns 404 on Codeberg's Forgejo v14.
 #
-#   The log URL path depends on the Forgejo version:
-#   - Codeberg (Forgejo v14+) requires /attempt/1/logs
-#   - Self-hosted older Forgejo uses /logs directly
-#   We detect failover state via FAILOVER_ACTIVE (set by
-#   apply_failover_overrides) to pick the right path.
+#   The log URL path is /attempt/1/logs (Forgejo v14+).  The older
+#   self-hosted /logs variant went away with the failover (WI-hajif).
 #
 #   Strategy (2 API calls + 1 web route):
 #     1. GET /actions/runs?head_sha=<full-sha> → index_in_repo (run number)
@@ -942,12 +1026,8 @@ fetch_job_log() {
 	echo "Fetching log for job '$job_name' (run #$run_number, index $job_index)..." >&2
 
 	# Step 3: Download log via web route.
-	# Pick URL path by Forgejo version: self-hosted (failover active) uses
-	# /logs directly; Codeberg Forgejo v14+ requires /attempt/1/logs.
+	# Forgejo v14+ requires /attempt/1/logs.
 	local log_path="attempt/1/logs"
-	if [[ "${FAILOVER_ACTIVE:-false}" == "true" ]]; then
-		log_path="logs"
-	fi
 
 	# Use -w to capture HTTP status so a 404 body ("Not found.") is not
 	# silently printed as if it were log content.
@@ -1744,10 +1824,20 @@ _pr_landed_in_base() {
 #
 #     (2) About-to-merge with poll-endpoint flake: CI green, PR
 #         mergeable, but /pulls/<n>/statuses was 502'ing intermittently.
-#         Gate fetches /pulls/<n>, checks mergeable=true, then retries
-#         poll_ci once with a short timeout. If both pass, returns 0
-#         with AUTOPR_GATE_MERGED=false (caller falls through to merge
+#         Gate fetches /pulls/<n>, reads mergeability as a TRI-STATE, then
+#         retries poll_ci once with a short timeout. If both pass, returns
+#         0 with AUTOPR_GATE_MERGED=false (caller falls through to merge
 #         instead of close-and-repush).
+#
+#         Mergeability is read with json_bool_state, not json_field. This
+#         sub-case was INERT on the live backend for as long as it existed:
+#         json_field prints '' for a JSON null exactly as it does for a
+#         missing key, so GitHub's `mergeable: null` — the documented value
+#         while mergeability is still being computed asynchronously, i.e.
+#         the normal value in the seconds after a push, i.e. exactly when
+#         this gate fires — was indistinguishable from `false`, and the gate
+#         silently ordered the close it was written to prevent. An unknown
+#         mergeability now re-queries once and then defers to a green CI.
 #
 #   Returns:
 #     0 = "skip the close" (caller checks AUTOPR_GATE_MERGED to know
@@ -1767,9 +1857,36 @@ _pre_scenario_b_gate() {
 
 	if api_get "$API_BASE/pulls/$pr_num"; then
 		local mergeable
-		mergeable=$(echo "$API_RESPONSE" | json_field "mergeable")
-		if [[ "$mergeable" == "True" || "$mergeable" == "true" ]]; then
-			echo "   ℹ️  PR #$pr_num mergeable=true; retrying CI poll once with short timeout..."
+		mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
+
+		# GitHub computes mergeability asynchronously, and the first read is
+		# often what SCHEDULES that computation — so a single re-query after a
+		# short delay usually turns null into a real boolean. Do it once before
+		# concluding anything, rather than deciding a PR's fate on a field the
+		# forge has not filled in yet.
+		if [[ "$mergeable" == "null" ]]; then
+			echo "   ℹ️  PR #$pr_num mergeable=null (not yet computed); re-querying once..."
+			[[ -n "${CI_POLL_NO_SLEEP:-}" ]] || sleep "${GATE_MERGEABLE_RECHECK_SECONDS:-3}"
+			if api_get "$API_BASE/pulls/$pr_num"; then
+				mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
+			fi
+		fi
+
+		# `true` and a STILL-unknown `null` both reach the CI retry, for
+		# different reasons. true: the forge says this can merge, so a red poll
+		# was likely an endpoint flake. null: we still do not know, and closing
+		# and re-pushing a PR whose CI is GREEN is precisely the destructive
+		# churn this gate exists to prevent — so a green CI decides, rather
+		# than an unread field. `false`, `absent` and `unreadable` fall through
+		# to the close: the conservative direction on a payload we can read as
+		# a refusal, or cannot read at all.
+		if [[ "$mergeable" == "true" || "$mergeable" == "null" ]]; then
+			if [[ "$mergeable" == "true" ]]; then
+				echo "   ℹ️  PR #$pr_num mergeable=true; retrying CI poll once with short timeout..."
+			else
+				echo "   ⚠️  PR #$pr_num mergeability still uncomputed after a re-query;"
+				echo "       deferring to CI rather than closing a possibly-green PR..."
+			fi
 			local _saved_timeout="${CI_TIMEOUT_SECONDS:-}"
 			export CI_TIMEOUT_SECONDS=120
 			local _gate_poll_rc=0

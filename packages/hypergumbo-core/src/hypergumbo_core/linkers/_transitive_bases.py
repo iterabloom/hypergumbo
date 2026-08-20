@@ -37,6 +37,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterable
 
+from ..symbol_kinds import type_like_kind_names
+
 if TYPE_CHECKING:
     from ..ir import Edge, Symbol
 
@@ -48,9 +50,7 @@ def build_short_name_collisions(
     symbols: list["Symbol"],
     keys: frozenset[str] | set[str],
     *,
-    kinds: frozenset[str] | set[str] = frozenset(
-        {"class", "interface", "struct", "trait"},
-    ),
+    kinds: frozenset[str] | set[str] | None = None,
     languages: frozenset[str] | set[str] | None = None,
 ) -> frozenset[str]:
     """Return the subset of ``keys`` that collide with an in-tree symbol.
@@ -68,11 +68,16 @@ def build_short_name_collisions(
     external framework type *or* to an in-tree class of the same name,
     and the static analysis cannot disambiguate.
     """
+    # ``kinds=None`` means "every nominal type declaration". Resolved from the
+    # registry rather than defaulted to a literal: audit-findings 0018 measured
+    # that the literal this replaced omitted ``protocol``, so every Swift
+    # caller silently skipped collision detection.
+    effective_kinds = type_like_kind_names() if kinds is None else kinds
     collisions: set[str] = set()
     for sym in symbols:
         if sym.name not in keys:
             continue
-        if sym.kind not in kinds:
+        if sym.kind not in effective_kinds:
             continue
         if languages is not None and sym.language not in languages:
             continue

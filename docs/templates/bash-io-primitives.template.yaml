@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# BEST-EFFORT TEMPLATE — a starting point for telling hypergumbo what your
+# project's shell scripts launch. Copy it, edit it, delete what you do not
+# use, and pass it with:
+#
+#     hypergumbo verify-claims . --io-primitives my-bash-primitives.yaml
+#
+# ─────────────────────────────────────────────────────────────────────────
+# WHAT THIS FILE CAN AND CANNOT DO — read before trusting a verdict
+# ─────────────────────────────────────────────────────────────────────────
+#
+# A row matches a NAMED COMMAND, so this file makes the LAUNCH surface
+# legible. Several categories of shell behaviour are structurally out of
+# its reach, and a clean verdict over a shell-heavy repo should be read
+# with them in mind.
+#
+# YOUR ROWS COVER:
+#   * external commands your scripts launch, by name (aws, terraform,
+#     ./deploy, a vendored binary)
+#
+# HYPERGUMBO COVERS WITHOUT ANY ROW FROM YOU:
+#   * `>` `>>` `>|` writes and `<` reads — redirection is the SHELL's own
+#     I/O and ships in the built-in bash catalogue
+#   * every external command emits a `command_launch` crossing recording
+#     that control left the process
+#
+# NOTHING COVERS — these are yours to reason about, not this file's:
+#   * PIPES. `a | b` is process topology, not a filesystem write. Whether
+#     b's stdin is a sink fed by a is an open modelling question,
+#     deliberately unanswered.
+#   * builtins that write without a redirect, and here-doc bodies
+#   * ENV-VAR FLOW. `SECRET="$API_KEY"` emits no dataflow edge, so a
+#     secret's path through shell variables is not traced.
+#   * WHAT A LAUNCHED PROGRAM ACTUALLY DOES.
+#
+# THAT LAST POINT IS THE IMPORTANT ONE. A row saying `curl` is `net_send`
+# records YOUR claim about curl. hypergumbo cannot see inside a launched
+# process, and a row does NOT remove that opacity — it is ADDED alongside
+# it. Measured on the shipped code, a curl launch with the row below:
+#
+#     io_boundary   = command_launch      <- opacity survives, still primary
+#     io_boundaries = [command_launch, net_send]   <- your claim, unioned
+#
+# So a verdict resting on such a call stays qualified
+# (`confirmed_with_caveats`, exit code 3), never clean. Your row makes the
+# call legible; it does not make it verified.
+#
+# ─────────────────────────────────────────────────────────────────────────
+
+language: bash
+
+# REQUIRED, and it must be exactly this. A project-local overlay declares
+# `overlay`; `complete` asserts a provenance-backed stdlib enumeration and
+# is not available to you, and any other value is rejected outright.
+status: overlay
+
+# SPELLING THAT ACTUALLY MATCHES, because it is easy to get wrong: a bash
+# launch names the command in BOTH slots, so `module` must equal the
+# command and `functions` must list it again. Grouping several commands
+# under one invented module (`module: launch`) matches NOTHING and fails
+# silently — no error, no rows, no coverage.
+
+# ── Network ──────────────────────────────────────────────────────────────
+net_send:
+  - module: curl
+    functions: [curl]
+  - module: wget
+    functions: [wget]
+  - module: scp
+    functions: [scp]
+  # Project-specific example — a deploy script that uploads artifacts:
+  # - module: ./scripts/deploy
+  #   functions: ["./scripts/deploy"]
+  #   notes: "uploads build output to the artifact bucket"
+
+# ── Filesystem ───────────────────────────────────────────────────────────
+# You do NOT need rows for `>` / `>>` / `<`; redirection is modelled
+# already. These are for COMMANDS that touch the filesystem.
+fs_write:
+  - module: tee
+    functions: [tee]
+  - module: dd
+    functions: [dd]
+  - module: cp
+    functions: [cp]
+fs_read:
+  - module: cat
+    functions: [cat]
+
+# ── Destructive ──────────────────────────────────────────────────────────
+# Worth declaring even though the launch is already disclosed as opaque:
+# naming them lets a claim be written against them specifically.
+fs_delete:
+  - module: rm
+    functions: [rm]
+  - module: shred
+    functions: [shred]

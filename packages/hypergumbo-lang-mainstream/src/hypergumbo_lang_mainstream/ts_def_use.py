@@ -1,8 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """TypeScript/JavaScript def/use extractor for intraprocedural dataflow (ADR-0017 §1c).
 
-Extracts variable definitions and uses from TypeScript tree-sitter AST nodes.
-Also works for JavaScript (same core node types). Handles core patterns:
+Extracts variable definitions and uses from TypeScript tree-sitter AST nodes,
+and registers the languages that consume them.
+
+JavaScript is a first-class registration here, not an incidental beneficiary:
+the extractor is registered under both ``typescript`` and ``javascript``, and
+this module registers a ``LanguageDdgSpec`` for each (``*.ts`` and ``*.js``).
+Each spec declares the function-node types the DDG walk will enter — currently
+``function_declaration`` alone, which is the scope limit that decides how much
+of a file the data-dependence graph can see.
+
+Handles core patterns:
 
 - ``const``/``let``/``var`` declarations with simple, array, and object destructuring
 - Assignment expressions (``x = expr``)
@@ -14,14 +23,19 @@ Also works for JavaScript (same core node types). Handles core patterns:
 - Expression statements (bare function calls)
 
 Complex patterns (optional chaining, spread, computed properties, JSX) are
-handled conservatively: all identifiers in unknown constructs are treated as
-uses. This covers the majority of taint-relevant data flow in TypeScript code.
+handled by recursing into the node and collecting identifiers, with two
+deliberate exclusions: names in ``_TS_SKIP_NAMES`` (globals and builtins such
+as ``console``, ``JSON``, ``Promise``, ``parseInt``) never become uses, and
+the callee of a plain call is not a use — in ``foo(a)``, ``a`` is a use and
+``foo`` is not. This covers the majority of taint-relevant data flow in
+TypeScript code.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from hypergumbo_core.cfg import DefUseResult, register_def_use_extractor
+from hypergumbo_core.ddg_build import LanguageDdgSpec, register_ddg_language
 
 
 def _node_text(node: Any, source: bytes) -> str:
@@ -144,9 +158,19 @@ _TS_SKIP_NAMES = frozenset({
 })
 
 
+@register_def_use_extractor("javascript")
 @register_def_use_extractor("typescript")
 class TypeScriptDefUseExtractor:
-    """Extracts variable definitions and uses from TypeScript tree-sitter AST nodes."""
+    """Extracts variable definitions and uses from TypeScript/JavaScript AST nodes.
+
+    Registered under BOTH keys off one class because ``_HANDLERS`` is keyed on
+    tree-sitter node types and tree-sitter-javascript emits the same ones. A
+    second class would be a copy whose only difference is the string it is
+    registered under — and a copy is the thing that drifts.
+
+    Each registration gets its own instance with its own ``language`` stamp;
+    see ``register_def_use_extractor``.
+    """
 
     language = "typescript"
 
@@ -245,3 +269,63 @@ _HANDLERS: dict[str, Any] = {
     "for_in_statement": _handle_for_in_statement,
     "expression_statement": _handle_expression_statement,
 }
+
+
+# Registered so that TypeScript's def/use extractor is actually reachable from
+# the repo-level DDG builder; without a spec, build_repo_ddg skips the language
+# outright and the extractor stays dead no matter how correct it is.
+#
+# SCOPE, deliberately narrow and disclosed rather than implied:
+#
+#   * Only `function_declaration`. Class methods (`method_definition`) are NOT
+#     registered, because the analyzer's kind slot for them is getter/setter
+#     sensitive (js_ts.py decides "method" / "getter" / "setter" inline) and
+#     re-deriving that classification here would put a second copy of a
+#     production judgement in a consumer — the precise shape that has produced
+#     wrong numbers in this subsystem before. Reusing the analyzer's decision
+#     requires extracting it into a shared helper first; filed separately.
+#
+#   * TypeScript currently has ZERO catalogued taint sinks (6 sources, 0 sinks),
+#     so no TypeScript DDG edge can change a taint verdict today whatever this
+#     covers. That is stated so the registration is not mistaken for a taint
+#     improvement: it makes the language conform to the wiring gate and be ready
+#     when sinks land, and nothing more.
+#
+#   * JavaScript is now wired too (WI-nonad), which is why there are two specs
+#     below rather than one. It matters more than the TypeScript registration
+#     it rode in on, and for the opposite reason: TypeScript carries 6 sources
+#     and ZERO sinks, JavaScript carries 50 sources and 83 SINKS, so JavaScript
+#     is the half of this pair whose DDG edges can actually change a taint
+#     verdict. The three keys it needed — mapping, extractor, spec — are all
+#     aliases or second registrations rather than new logic, because
+#     `cfg_nodes/typescript.yaml` states in its own header that it "also covers
+#     JavaScript (same node types in tree-sitter-javascript)". See
+#     `cfg._CFG_MAPPING_ALIASES` for why that assertion is encoded once instead
+#     of copied into a second YAML.
+#
+#     NOT A CLAIM ABOUT RECALL. Wiring makes `.js` files reach the machinery;
+#     it does not establish that any taint verdict improves. That is an A/B on
+#     express (all `.js`) and apollo-server, read per-flow against source, and
+#     it is deliberately NOT asserted here.
+#
+#     One decayed number corrected: an earlier revision of this comment cited
+#     apollo-server at 588 DDG edges over 93 symbols and express at ZERO. The
+#     express-is-zero half is what this change addresses; the apollo-server
+#     figure was measured on an older tree and should be re-measured before
+#     being cited, not copied forward.
+register_ddg_language(LanguageDdgSpec(
+    language="typescript",
+    file_glob="*.ts",
+    function_node_types=frozenset({"function_declaration"}),
+))
+
+# Same grammar, same function node types, different glob. `*.js` only — `.mjs`
+# / `.cjs` / `.jsx` are deliberately NOT claimed here: each is a separate
+# question about what the discovery layer classifies as `javascript`, and
+# widening the glob on an assumption is how a spec starts lying about its own
+# coverage.
+register_ddg_language(LanguageDdgSpec(
+    language="javascript",
+    file_glob="*.js",
+    function_node_types=frozenset({"function_declaration"}),
+))

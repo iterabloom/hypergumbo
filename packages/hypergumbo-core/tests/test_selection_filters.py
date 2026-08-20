@@ -1,13 +1,28 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the selection.filters module."""
 
+from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.selection.filters import (
     is_test_path,
     is_example_path,
     is_excluded_kind,
+    is_key_symbol,
+    key_symbols,
+    production_edges,
     EXCLUDED_KINDS,
+    KEY_SYMBOL_KINDS,
     EXAMPLE_PATH_PATTERNS,
 )
+
+
+def _sym(name, path="src/a.py", kind="function", tier=1):
+    s = Symbol(
+        id=f"python:{path}:1-2:{name}:{kind}",
+        name=name, kind=kind, language="python", path=path,
+        span=Span(1, 2, 0, 0),
+    )
+    s.supply_chain_tier = tier
+    return s
 
 
 class TestIsTestPath:
@@ -285,3 +300,90 @@ class TestExamplePathPatterns:
         assert "/playground/" in patterns
         assert "/tutorial/" in patterns
         assert "/tutorials/" in patterns
+
+
+class TestKeySymbolPolicy:
+    """WI-zulij: the shared "is this worth showing a reader" policy.
+
+    This lived inside ``sketch._format_symbols``'s body, unreachable by anything
+    else, which is how compact's default came to advertise the same thing while
+    ranking a different population. It has one home now, so a change to it moves
+    both surfaces together instead of letting one drift.
+    """
+
+    def test_accepts_a_plain_declaration(self):
+        assert is_key_symbol(_sym("handler"))
+
+    def test_rejects_non_key_kind(self):
+        """``file`` is the shape that actually led compact's output."""
+        assert not is_key_symbol(_sym("src/main.py", kind="file"))
+
+    def test_rejects_test_path(self):
+        assert not is_key_symbol(_sym("helper", path="tests/conftest.py"))
+
+    def test_rejects_test_named_symbol(self):
+        """Substring, not prefix — kept verbatim from the sketch original."""
+        assert not is_key_symbol(_sym("test_thing"))
+        assert not is_key_symbol(_sym("helper_test_case"))
+
+    def test_rejects_derived_artifact(self):
+        """Tier 4 is minified/bundled/generated output."""
+        assert not is_key_symbol(_sym("chunk", tier=4))
+
+    def test_key_symbols_filters_the_population(self):
+        syms = [
+            _sym("real"),
+            _sym("src/main.py", kind="file"),
+            _sym("test_x", path="tests/test_x.py"),
+        ]
+        assert [s.name for s in key_symbols(syms)] == ["real"]
+
+    def test_variable_is_in_both_sets_deliberately(self):
+        """The allowlist and denylist are NOT complements, and this is the
+        overlap that proves it: a Terraform variable is a real declaration
+        surface while a CSS custom property is zero-edge noise. Whichever set a
+        consumer applies is a policy choice about its own output.
+        """
+        assert "variable" in KEY_SYMBOL_KINDS
+        assert "variable" in EXCLUDED_KINDS
+
+
+class TestProductionEdges:
+    """Edges ORIGINATING in a test file are dropped before centrality.
+
+    Measured the dominant clause: on the eight 2026-07-17 bakeoff maps this
+    alone moved sketch/compact top-10 agreement more than the symbol filter did.
+    """
+
+    def _edge(self, src, dst):
+        return Edge(
+            id=f"e:{src}->{dst}", src=src, dst=dst, edge_type="calls",
+            line=1, confidence=0.9, origin="test", origin_run_id="test",
+        )
+
+    def test_drops_edge_from_a_test_file(self):
+        prod = _sym("svc")
+        tst = _sym("test_svc", path="tests/test_svc.py")
+        edges = [self._edge(tst.id, prod.id)]
+        assert production_edges([prod, tst], edges) == []
+
+    def test_keeps_edge_into_a_test_file(self):
+        """Direction matters: an edge INTO a test is still evidence about its
+        target, so only the source side is filtered."""
+        prod = _sym("svc")
+        tst = _sym("test_svc", path="tests/test_svc.py")
+        edges = [self._edge(prod.id, tst.id)]
+        assert len(production_edges([prod, tst], edges)) == 1
+
+    def test_keeps_production_edge(self):
+        a, b = _sym("a"), _sym("b", path="src/b.py")
+        edges = [self._edge(a.id, b.id)]
+        assert len(production_edges([a, b], edges)) == 1
+
+    def test_unknown_src_is_kept(self):
+        """An edge whose src resolves to no symbol cannot be shown to originate
+        in a test, so it is kept — failing open rather than silently dropping
+        linker-minted edges whose endpoints live outside the passed set."""
+        b = _sym("b")
+        edges = [self._edge("python:nowhere:0-0:ghost:function", b.id)]
+        assert len(production_edges([b], edges)) == 1

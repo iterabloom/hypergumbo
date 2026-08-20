@@ -1,25 +1,36 @@
-# .env contains local development tokens (OpenRouter, Forgejo). The file is
-# gitignored but release-check runs `gitleaks --no-git` which walks the
-# filesystem, so per-line entries are needed to quiet scans.
-.env:generic-api-key:8
-.env:generic-api-key:11
-.env:generic-api-key:16
-
-# Hypothesis test framework auto-generated constants
-.hypothesis/constants/022db5084484a444:generic-api-key:4
-.hypothesis/constants/959b519aed8dc0c7:generic-api-key:4
-.hypothesis/constants/fe153fcba53d98bb:generic-api-key:4
-
-# Test fixture with fake API key in INI config example
-packages/hypergumbo-lang-mainstream/tests/BRANCHES_test_ini.py:generic-api-key:352
-
-# Embeddings module references model name strings that look like API keys
-packages/hypergumbo-tracker/src/hypergumbo_tracker/embeddings.py:generic-api-key:12
-
-# Pinned Sourcegraph SCIP proto revision (a commit SHA, not a token). Bumping
-# this is a deliberate public-ABI change; see scripts/build-scip-proto header.
-scripts/build-scip-proto:sourcegraph-access-token:26
-
-# Go identifier "apiv2.NewAPI" cited in a tracker invariant's op-log trips the
-# generic-api-key rule. The .ops file is authoritative tracker state.
-.agent/tracker-workspace/.ops/.INV-popup-fafip-dopud-kahoj-vikum-sukar-vubon-giloh.ops:generic-api-key:52
+# Intentionally carries no fingerprints. Prefer the mechanisms below.
+#
+# Entries here are keyed on FILE:RULE:LINE, so any edit ABOVE a suppressed line
+# silently voids the suppression, and nothing reports that it happened. That is
+# not hypothetical. The entry for BRANCHES_test_ini.py was pinned to line 352 on
+# 2026-03-12 (c44ec3e448); on 2026-07-30 commit d0e45ce33b netted one line out
+# of that file above the fixture, moving the finding to 351. The suppression was
+# dead for seven weeks, and its finding was reaching the release gate.
+#
+# Of the ten fingerprints this file used to hold, four were dead: that one, plus
+# three .env entries superseded by the .env path allowlist in .gitleaks.toml.
+# The other six were live and load-bearing. All ten have been retired in favour
+# of a mechanism that cannot drift:
+#
+#   - `gitleaks:allow` ON the offending line, for a single deliberate
+#     credential-shaped string in source (test fixtures, scrubber bait, a pinned
+#     upstream commit SHA). It travels with the line, so it survives both edits
+#     above it and changes to the value itself, and it blinds exactly that line
+#     -- a real token added elsewhere in the same file still fires.
+#
+#   - a path allowlist in .gitleaks.toml, for a whole CLASS of non-source files
+#     (agent runtime state, bytecode caches, generated caches whose filenames
+#     rotate, the gitignored .env). Only for paths that are never publishable.
+#
+#   - a regex allowlist in .gitleaks.toml, for a fixed benign string in a file
+#     that IS committed source. Prefer this over a path allowlist there: tracker
+#     .ops files are committed, so allowlisting the path would blind the scanner
+#     to a real credential pasted into a discussion thread.
+#
+# Better than any of them: delete the bait. A fixture value that no assertion
+# reads does not need to look like a credential.
+#
+# Add a fingerprint here only when none of the above fits, and treat it as
+# perishable: re-verify it whenever the file it points into changes. Note that
+# `-i <other-path>` does NOT disable this file -- gitleaks still reads the one
+# at the scan root -- so an "ignores off" control run needs a real control.

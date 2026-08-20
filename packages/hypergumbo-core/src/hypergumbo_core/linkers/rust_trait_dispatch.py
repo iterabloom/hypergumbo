@@ -23,12 +23,16 @@ This linker consumes the ``implements`` edges that the Rust analyzer's
 existing inheritance pass already emits (WI-tulid) — one edge per
 ``impl Trait for Struct`` block, connecting the struct symbol to the
 trait symbol — and, for each such edge, emits ``dispatches_to`` edges
-from the trait symbol to every concrete method named
-``"{Struct}::{method}"`` in the same file as the struct. With those
-edges in place, any path that reaches the trait (a call site on a trait
-object, a trait bound on a generic function, or even a ``use Trait``
-import at a reachable module) transitively reaches the concrete
-implementation bodies.
+from the trait symbol to the concrete methods named
+``"{Struct}::{method}"`` in the same file as the struct.
+
+Scope narrowed by INV-tihim: when the trait declares a non-empty
+requirement set, methods that satisfy one of those requirements are
+SKIPPED here, because ``linkers/type_hierarchy`` now emits the precise
+requirement→implementation edge for them. What remains to this linker is
+the inherent (non-trait-required) methods. Reachability of the concrete
+bodies from the trait is therefore a property of the two linkers
+together, not of this one alone.
 
 Why a Linker (Not Per-Analyzer Logic)
 -------------------------------------
@@ -56,6 +60,7 @@ import time
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from ..member_names import member_owner, member_short_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -75,6 +80,27 @@ def _rust_method_owner(name: str) -> str | None:
     if "::" not in name:
         return None
     return name.rsplit("::", 1)[0]
+
+
+def _trait_requirement_short_names(
+    trait_sym: "Symbol", symbols: list["Symbol"],
+) -> frozenset[str]:
+    """Short names of the methods a trait itself declares.
+
+    WI-duguk taught the Rust analyzer to emit `function_signature_item` as
+    ``kind="method"`` named ``"{Trait}::{method}"``, so a trait's required
+    methods are recoverable. Empty when the trait declares none, or when the
+    analyzer failed to emit them — which is why the caller treats empty as
+    "cover everything" rather than "cover nothing".
+    """
+    return frozenset(
+        member_short_name(sym.name)
+        for sym in symbols
+        if sym.language == "rust"
+        and sym.kind == "method"
+        and member_owner(sym.name) == trait_sym.name
+        and (sym.path or "") == (trait_sym.path or "")
+    )
 
 
 def _build_struct_method_index(
@@ -125,14 +151,37 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
     For every ``implements`` edge ``struct_sym → trait_sym``, walks the
     Rust method symbols under ``struct_sym``'s name and file and emits a
     ``dispatches_to`` edge ``trait_sym → method_sym``. Methods that
-    aren't part of the trait's declared interface still receive edges —
-    hypergumbo's Rust analyzer does not emit the trait's required-method
-    list, so distinguishing trait-required methods from inherent
-    methods would require SCIP-level information (which is WI-duzul
-    territory, not this linker's). The resulting edge set may include
-    a few inherent methods that weren't actually dispatched through the
-    trait; the false-positive cost is well below the false-negative
-    cost of leaving every trait-required method looking dead.
+    aren't part of the trait's declared interface still receive edges,
+    so the resulting edge set may include a few inherent methods that
+    weren't actually dispatched through the trait; the false-positive
+    cost is well below the false-negative cost of leaving every
+    trait-required method looking dead.
+
+    **The original rationale for that over-approximation is SUPERSEDED
+    (INV-fimon, 2026-07-31).** It read: "hypergumbo's Rust analyzer does
+    not emit the trait's required-method list, so distinguishing
+    trait-required methods from inherent methods would require
+    SCIP-level information." WI-duguk made that false — the analyzer now
+    emits ``function_signature_item`` as ``kind="method"`` named
+    ``"{Trait}::{method}"``, so the requirement list *is* available and
+    the filter is now possible without SCIP.
+
+    Two consequences are tracked on **INV-tihim** rather than fixed here,
+    because each changes dead-code reachability and deserves its own
+    validation:
+
+    1. The precise anchor for the dispatch is the trait's *requirement*
+       (``MyTrait::method → MyStruct::method``), which is what the
+       framework-agnostic ``linkers/type_hierarchy`` already does for
+       every other language. Re-anchoring would also dissolve the
+       ``(trait, rust, method, rust)`` allow-list entry that this
+       linker's current shape made necessary (ADR-0023 §3, INV-fimon).
+    2. ``type_hierarchy`` cannot see Rust at all today: its
+       ``_get_method_short_name`` / ``_get_class_name_from_method``
+       helpers split on ``#`` and ``.`` but not ``::``, while the
+       containment linker's ``_SEPARATORS`` knows all three. That
+       divergence — one fact about member-name qualification, recorded
+       in two places — is why this Rust-specific linker exists at all.
     """
     start_time = time.time()
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)
@@ -164,7 +213,20 @@ def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
         if trait_sym.language != "rust":
             continue
         methods = method_index.get((struct_sym.path or "", struct_sym.name), [])
+        # INV-tihim: linkers/type_hierarchy now emits the PRECISE
+        # requirement->implementation edge for every trait method (it learned
+        # the `::` separator), so re-emitting those here would duplicate it at
+        # a coarser anchor. What it does NOT cover is inherent methods, which
+        # this linker exists to keep reachable. Narrow to exactly those.
+        #
+        # An EMPTY requirement set means "cover everything", not "cover
+        # nothing": the trait may be external, or the analyzer may have failed
+        # to emit its members. Dropping edges there would resurrect the
+        # dead-code false positives this linker was built to prevent.
+        required = _trait_requirement_short_names(trait_sym, ctx.symbols)
         for method in methods:
+            if required and member_short_name(method.name) in required:
+                continue
             key = (trait_sym.id, method.id, "dispatches_to")
             if key in existing_keys:
                 continue

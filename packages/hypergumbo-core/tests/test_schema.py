@@ -492,7 +492,7 @@ class TestSchemaDataclassSync:
         validator = make_validator(schema, "Symbol")
 
         class_b_node = {
-            "id": "python:app.py:3-3:db_query:call_site",
+            "id": "python:app.py:3-3:SELECT users:call_site",
             "name": "SELECT users",
             "kind": "call_site",
             "language": None,
@@ -843,3 +843,82 @@ class TestTopLevelBlockTyping:
         assert "analysis_runs[].pass_version" in implications
         for named in ("hypergumbo_version", "python_version"):
             assert named in rc["captured"]
+
+
+class TestRegisteredMetaKeysAreDocumented:
+    """WI-zisig / WI-zamum: the schema documents its own registered vocabulary.
+
+    ``axis_meta_keys.META_KEYS`` is the registry of every meta key hypergumbo
+    emits. The schema's ``meta`` blocks used to hand-list their documented keys
+    and drifted immediately — of 32 registered edge-axis keys it described 2,
+    and of 47 symbol-axis keys it described 0. So keys that are registered,
+    emitted and spec-documented (``resolution_quality`` on 1076 self-corpus
+    edges, ``channel`` on 145) were absent from ``docs/schema.json``, and a
+    consumer reading the schema could not learn they exist.
+
+    These are ratchets, not one-off assertions: registering a new key without
+    regenerating the schema fails here rather than becoming the next filed item.
+    """
+
+    def _meta_props(self, schema: dict, defn: str) -> dict:
+        return (
+            schema["$defs"][defn]["properties"]["meta"].get("properties") or {}
+        )
+
+    @pytest.mark.parametrize(
+        "defn,axis_name",
+        [("Edge", "AXIS_EDGE_META"), ("Symbol", "AXIS_SYMBOL_META")],
+    )
+    def test_every_registered_meta_key_is_documented(
+        self, defn: str, axis_name: str
+    ) -> None:
+        from hypergumbo_core import axis_meta_keys as amk
+
+        axis = getattr(amk, axis_name)
+        registered = {spec.name for spec in amk.meta_keys_on_axis(axis)}
+        assert registered, f"{axis_name} registry is empty — vacuous assertion"
+
+        documented = set(self._meta_props(load_schema(), defn))
+        missing = sorted(registered - documented)
+        assert not missing, (
+            f"{defn}.meta does not document registered {axis_name} key(s): "
+            f"{missing}. The schema's meta properties are derived from the "
+            f"registry by generate_schema_lib.registry_meta_properties; run "
+            f"./scripts/generate-schema after registering a key (WI-zisig)."
+        )
+
+    def test_meta_blocks_stay_open_so_documenting_cannot_constrain(self) -> None:
+        """The documented keys must not become a closed whitelist.
+
+        Entries are description-only and ``additionalProperties`` stays open on
+        purpose: ``MetaKeySpec`` records no type, and the values are genuinely
+        mixed (``refresh``/``disambiguation_fallback`` are booleans,
+        ``referring_paths`` is a list, most are strings). Emitting a type — or
+        closing the object — would turn a documentation fix into a wrong
+        constraint that rejects valid maps.
+        """
+        # Hand-curated entries predate the registry derivation and carry real
+        # per-key knowledge (evidence_type ships the ADR-0028 axiom plus the
+        # x-axis-of-values map). They are allowed to constrain; the point of
+        # this guard is that the 79 REGISTRY-DERIVED entries must not.
+        curated = {"evidence_type", "evidence_lang"}
+        schema = load_schema()
+        for defn in ("Edge", "Symbol"):
+            meta = schema["$defs"][defn]["properties"]["meta"]
+            assert meta.get("additionalProperties") is not False, (
+                f"{defn}.meta closed additionalProperties; the registry does not "
+                f"enumerate every emitted key and carries no types, so closing "
+                f"it would reject valid maps."
+            )
+            derived = {
+                name: prop
+                for name, prop in (meta.get("properties") or {}).items()
+                if name not in curated
+            }
+            assert derived, f"{defn}.meta has no registry-derived entries"
+            for name, prop in derived.items():
+                assert "type" not in prop, (
+                    f"{defn}.meta.{name} declares a type the MetaKeySpec "
+                    f"registry cannot support (it records no type, and values "
+                    f"are mixed str/bool/list). Keep entries description-only."
+                )

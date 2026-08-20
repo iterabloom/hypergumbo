@@ -1,0 +1,38 @@
+- op: create  # 5a5d
+  at: '2026-07-30T04:02:54Z'  # 5a5d
+  by: agent  # 5a5d
+  actor: jgstern_agent  # 5a5d
+  clock: 1  # 5a5d
+  nonce: 5a5d  # 5a5d
+  data:  # 5a5d
+    kind: invariant  # 5a5d
+    title: "Transcripts are mode 664 while .env is 600 — the pipeline is a permission downgrade of the credentials it copies"  # 5a5d
+    status: violated  # 5a5d
+    priority: 2  # 5a5d
+    parent:  # 5a5d
+    tags:  # 5a5d
+    - developer_experience  # 5a5d
+    isbefore: []  # 5a5d
+    duplicate_of: []  # 5a5d
+    not_duplicate_of: []  # 5a5d
+    pr_ref:  # 5a5d
+    description: ""  # 5a5d
+    fields:  # 5a5d
+      statement: "A secret's copy is never more readable than its origin. VIOLATED: .env is mode 600 (owner only), but the transcript pipeline copies its values into files at mode 664 and a directory at 2775. Measured 2026-07-29: .env 600; .agent/.last_session_transcript.jsonl 664; .agent/.current_session_transcript.<sid>.jsonl 664; .agent/.archived-transcripts/ 2775 (setgid, group-writable). So any command whose output contains a credential -- git remote -v being the live case -- is silently republished from owner-only to group-and-world-readable. Confirmed live before remediation: those files held 138 occurrences of two live credentials. Scrubbing (WI-scrubber / scripts/scrub-transcript-corpus) removed today's occurrences but does NOT change the invariant: the next session writes 664 again."  # 5a5d
+      root_cause: "Nothing in the pipeline sets a umask or an explicit mode for the files it creates. The per-session .current_* file inherits the process umask (002 in this environment) via the sync daemon, and .archived-transcripts/ was created setgid so archives inherit a group. scrub_secrets.py:scrub_in_place faithfully PRESERVES whatever mode it finds (and restores group ownership), so it propagates the downgrade rather than correcting it -- correcting it there would be the wrong layer anyway, since the file is already 664 by the time it is scrubbed. The fix belongs at creation: an explicit 0600 on the per-session transcript and on the archive writes."  # 5a5d
+- op: update  # fc80
+  at: '2026-08-01T05:16:45Z'  # fc80
+  by: agent  # fc80
+  actor: jgstern_agent  # fc80
+  clock: 2  # fc80
+  nonce: fc80  # fc80
+  set:  # fc80
+    status: satisfied  # fc80
+    pr_ref: '#140'  # fc80
+- op: discuss  # f4fd
+  at: '2026-08-01T05:17:23Z'  # f4fd
+  by: agent  # f4fd
+  actor: jgstern_agent  # f4fd
+  clock: 3  # f4fd
+  nonce: f4fd  # f4fd
+  message: "CLOSED with behavioral evidence (closure-evidence discipline): the item's own\nfiled repro re-run on live state, 2026-08-01, plus production-path tests.\n\nFIX (PR #140, dev a0118af824): permission contract enforced at creation with\none home per language layer. .agent/hooks/_shared/transcript_perms.sh (umask\n077 + idempotent harden helpers) sourced by every shell writer\n(sync-transcript.sh, rotate-on-session-end.sh, launch-transcript-sync.sh,\narchive_scrubbed.sh — parity-tested so a new writer cannot skip the wiring);\nfilter-transcript.py creates the per-session dest at 0o600 (os.open mode) and\nre-chmods on every append; on_transcript_change.py does the same for\ninjection history AND the training log (beyond filed scope — it quotes\ntranscript content and is explicitly on a path into model weights). Rotation\nhardens the four global slots explicitly (mv preserves modes) and strips the\narchive root's setgid with an explicit g-s (GNU chmod preserves directory\nsetgid under numeric modes — a plain chmod 700 left 2700, measured live).\n\nBEHAVIORAL EVIDENCE (the filed repro, re-run):\n  before fix (filed 2026-07-29, re-confirmed 2026-08-01 pre-fix):\n    .env 600; .current_session_transcript.<sid>.jsonl 664;\n    .last_session_transcript.jsonl 664; .archived-transcripts/ 2775\n  after fix + remediation (stat, 2026-08-01):\n    .env 600; .current_session_transcript.<sid>.jsonl 600;\n    .last_session_transcript.jsonl 600; .training-data.jsonl 600;\n    .archived-transcripts/ 700; conformance sweep over the whole archive\n    tree: 0 non-conforming (241 dirs at 700, every file at 600)\n  \"the next session writes 664 again\" is now false BY TEST, not by sweep:\n    tests/test_transcript_permissions.py (12 tests) drives the REAL scripts\n    under umask 002 — the exact failure condition — and asserts fresh dest\n    born 600, pre-existing 664 healed on next write, rotation leaves no\n    group-readable slot, a seeded 2775 setgid archive root comes out exactly\n    700, and archive_scrubbed output is 600 with its fail-safe contract\n    (line-count validation) intact. 130 adjacent pipeline tests green.\n\nSelf-healing beats one-shot remediation here: every write re-chmods, so any\n664 file a pre-fix session left behind (or a backup restore reintroduces)\ntightens on next touch instead of waiting for a human sweep."  # f4fd

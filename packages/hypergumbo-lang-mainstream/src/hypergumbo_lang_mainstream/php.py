@@ -54,6 +54,7 @@ from hypergumbo_core.analyze.base import (
     iter_tree,
     make_file_id,
     make_file_stable_id,
+    make_route_symbol,
     make_symbol_id,
     make_typed_stable_id,
     make_unresolved_edge,
@@ -232,6 +233,18 @@ _PHP_TYPE_CONTAINERS = (
     "trait_declaration",
     "enum_declaration",
 )
+
+# INV-tihim: the symbol walk emitted ONLY `class_declaration`, so three of
+# PHP's four type containers were invisible — an in-file `interface` surfaced
+# as an `external_symbol` placeholder and PHP produced no interface dispatch
+# at all. One branch keyed off this map rather than four copies of it, so a
+# fifth container cannot be added to _PHP_TYPE_CONTAINERS and silently skipped.
+_PHP_CONTAINER_KINDS: dict[str, str] = {
+    "class_declaration": "class",
+    "interface_declaration": "interface",
+    "trait_declaration": "trait",
+    "enum_declaration": "enum",
+}
 
 
 def _enclosing_type_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
@@ -439,14 +452,68 @@ def normalize_php_signature(
     return normalize_signature_php(signature, type_params)
 
 
-def _extract_controller_action(
-    args_node: "tree_sitter.Node", source: bytes
+def _php_string_value(
+    string_node: "tree_sitter.Node", source: bytes
 ) -> str | None:
-    """Extract controller@action from Laravel route second argument.
+    """Return the text inside a PHP ``string`` literal node.
+
+    Prefers the grammar's ``string_content`` child; falls back to stripping
+    the surrounding quotes when the grammar does not expose one (an empty
+    string literal has no content child).
+    """
+    for child in string_node.children:
+        if child.type == "string_content":
+            return node_text(child, source)
+    return node_text(string_node, source).strip("'\"") or None
+
+
+def _laravel_match_methods(
+    node: "tree_sitter.Node", source: bytes
+) -> str | None:
+    """Return the comma-joined verb list from ``Route::match([...], ...)``.
+
+    Laravel's ``match`` declares its verbs as the FIRST argument
+    (``Route::match(['get','post'], '/path', ...)``), which the generic
+    Route:: handler previously discarded in favour of the lossy ``MATCH``
+    aggregate. Returns e.g. ``"GET,POST"`` — the comma-joined shape
+    ``routes.method_matches`` understands — or ``None`` when the verb list
+    is absent or built dynamically (a variable), so the caller can fall back
+    to the aggregate rather than inventing verbs (WI-zunal).
+    """
+    args_node = node.child_by_field_name("arguments")
+    if args_node is None:  # pragma: no cover - defensive
+        return None
+    for child in args_node.children:
+        if child.type != "argument":
+            continue
+        methods: list[str] = []
+        for arg_child in child.children:
+            if arg_child.type != "array_creation_expression":
+                continue
+            for arr_child in arg_child.children:
+                if arr_child.type != "array_element_initializer":
+                    continue
+                for element in arr_child.children:
+                    if element.type != "string":
+                        continue
+                    value = _php_string_value(element, source)
+                    if value:
+                        methods.append(value.strip().upper())
+        return ",".join(methods) if methods else None
+    return None  # pragma: no cover - defensive
+
+
+def _extract_controller_action(
+    args_node: "tree_sitter.Node", source: bytes, *, arg_offset: int = 0
+) -> str | None:
+    """Extract controller@action from a Laravel route's controller argument.
 
     Supports two syntaxes:
     - Array: [Controller::class, 'action']
     - String: 'Controller@action'
+
+    *arg_offset* shifts which positional argument holds the path, for the
+    ``Route::match`` shape whose args[0] is the verb array (WI-zunal).
 
     Returns:
         String like 'UserController@index' or None if not extractable.
@@ -456,12 +523,12 @@ def _extract_controller_action(
         if child.type != "argument":
             continue
 
-        if arg_index == 0:
-            # First arg is route path, skip
+        if arg_index <= arg_offset:
+            # Positional args up to and including the path — skip.
             arg_index += 1
             continue
 
-        if arg_index == 1:
+        if arg_index == arg_offset + 1:
             # Second arg is controller reference
             for arg_child in child.children:
                 # Array syntax: [Controller::class, 'action']
@@ -629,7 +696,8 @@ def _extract_laravel_routes(
 
     Returns:
         Tuple of (UsageContext list, Symbol list) for YAML pattern matching.
-        Symbols have kind="route" which enables route-handler linking.
+        Symbols are route markers (kind="function" +
+        meta.framework_role="route"), which enables route-handler linking.
     """
     contexts: list[UsageContext] = []
     route_symbols: list[Symbol] = []
@@ -661,33 +729,42 @@ def _extract_laravel_routes(
             # below can drop the HTML-form `create` and `edit` actions.
             http_method = "API_RESOURCE"
         elif method_name == "match":
-            http_method = "MATCH"
+            # `Route::match(['get','post'], '/path', ...)` — the verbs are
+            # args[0] and the path is args[1]. Read the real verb list rather
+            # than stamping the lossy `MATCH` aggregate: the comma-joined form
+            # is what `routes.method_matches` understands, so a matched route
+            # links to an OpenAPI GET *and* POST operation (WI-zunal).
+            http_method = _laravel_match_methods(node, source) or "MATCH"
         elif method_name == "any":
             http_method = "ANY"
         else:  # pragma: no cover - unknown Route:: method
             continue
 
-        # Extract route path from first argument
+        # `Route::match` shifts every positional argument right by one: its
+        # args[0] is the verb array, so the path is args[1] and the controller
+        # args[2]. Reading the path from args[0] unconditionally is why every
+        # `Route::match` route was silently DROPPED (WI-zunal).
+        arg_offset = 1 if method_name == "match" else 0
+
         route_path = None
         controller_action = None
         args_node = node.child_by_field_name("arguments")
         if args_node:
+            arg_index = 0
             for child in args_node.children:
-                if child.type == "argument":
+                if child.type != "argument":
+                    continue
+                if arg_index == arg_offset:
                     for arg_child in child.children:
                         if arg_child.type == "string":
-                            for str_child in arg_child.children:
-                                if str_child.type == "string_content":
-                                    route_path = node_text(str_child, source)
-                                    break
-                            if route_path is None:  # pragma: no cover
-                                raw = node_text(arg_child, source)
-                                route_path = raw.strip("'\"")
+                            route_path = _php_string_value(arg_child, source)
                             break
                     break
+                arg_index += 1
 
-            # Extract controller@action from second argument
-            controller_action = _extract_controller_action(args_node, source)
+            controller_action = _extract_controller_action(
+                args_node, source, arg_offset=arg_offset,
+            )
 
         if not route_path:
             continue
@@ -755,63 +832,35 @@ def _extract_laravel_routes(
                     if action in allowed_actions
                 ]
                 for http_meth, route_pth, action in restful_routes:
-                    route_name = f"{http_meth} {route_pth}"
-                    route_id = make_symbol_id("php",
-                        path=str(file_path),
-                        start_line=span.start_line,
-                        end_line=span.end_line,
-                        name=route_name,
-                        kind="route",
-                    )
-                    route_symbol = Symbol(
-                        id=route_id,
-                        name=route_name,
-                        kind="function",
+                    route_symbols.append(make_route_symbol(
                         language="php",
                         path=str(file_path),
                         span=span,
-                        meta={
-                            "http_method": http_meth,
-                            "route_path": route_pth,
-                            "controller_action": f"{controller}@{action}",
-                            "framework_role": "route",
-                        },
+                        method=http_meth,
+                        route_path=route_pth,
                         origin=run.pass_id,
                         origin_run_id=run.execution_id,
-                        line_span=span.end_line - span.start_line + 1,
+                        extra_meta={
+                            "controller_action": f"{controller}@{action}",
+                        },
                         is_exported=True,
-                    )
-                    route_symbols.append(route_symbol)
+                    ))
         else:
             # Single HTTP method route
-            route_name = f"{http_method} {normalized_path}"
-            route_id = make_symbol_id("php",
-                path=str(file_path),
-                start_line=span.start_line,
-                end_line=span.end_line,
-                name=route_name,
-                kind="route",
-            )
-            route_symbol = Symbol(
-                id=route_id,
-                name=route_name,
-                kind="function",
+            route_extra: dict[str, str] = {}
+            if controller_action:
+                route_extra["controller_action"] = controller_action
+            route_symbols.append(make_route_symbol(
                 language="php",
                 path=str(file_path),
                 span=span,
-                meta={
-                    "http_method": http_method,
-                    "route_path": normalized_path,
-                    "framework_role": "route",
-                },
+                method=http_method,
+                route_path=normalized_path,
                 origin=run.pass_id,
                 origin_run_id=run.execution_id,
-                line_span=span.end_line - span.start_line + 1,
+                extra_meta=route_extra,
                 is_exported=True,
-            )
-            if controller_action:
-                route_symbol.meta["controller_action"] = controller_action
-            route_symbols.append(route_symbol)
+            ))
 
     return contexts, route_symbols
 
@@ -963,8 +1012,8 @@ def _extract_symbols(
                 )
                 symbols.append(symbol)
 
-        # Class declarations
-        elif node.type == "class_declaration":
+        # Type-container declarations (class / interface / trait / enum)
+        elif node.type in _PHP_CONTAINER_KINDS:
             name = _find_name_in_children(node, source)
             if name:
                 span = Span(
@@ -978,10 +1027,11 @@ def _extract_symbols(
                 base_classes = _extract_base_classes_php(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                container_kind = _PHP_CONTAINER_KINDS[node.type]
                 symbol = Symbol(
-                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, "class"),
+                    id=make_symbol_id("php", str(file_path), span.start_line, span.end_line, name, container_kind),
                     name=name,
-                    kind="class",
+                    kind=container_kind,
                     language="php",
                     path=str(file_path),
                     span=span,
@@ -1006,7 +1056,11 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                enclosing_class = _get_enclosing_class(node, source)
+                # _enclosing_type_name walks EVERY container; _get_enclosing_class
+                # recognised `class_declaration` alone, so interface and trait
+                # members were emitted BARE and no consumer could tell which
+                # type declared them.
+                enclosing_class = _enclosing_type_name(node, source)
                 full_name = f"{enclosing_class}.{name}" if enclosing_class else name
                 signature = _extract_php_signature(node, source)
                 modifiers = _extract_modifiers_php(node)

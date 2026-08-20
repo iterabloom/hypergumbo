@@ -42,3 +42,34 @@ switch:
     scrutinee_child: "field:value"
     arms_child: "field:body"
     arm_type: switch_case
+
+# Atomic statement node types — the CFG builder treats these as a single
+# CfgStatement and stops descending. Without this the builder recurses past
+# lexical_declaration/assignment_expression down to bare identifiers, so a
+# def/use extractor keyed on statement node types is never called with one:
+# correct in isolation, inert in the pipeline. The reachability tests cannot
+# see that, because a CFG of leaf tokens is still fully reachable.
+#
+# These are exactly the keys of ts_def_use._HANDLERS that classify() does not
+# already own. Deliberately EXCLUDED because listing a type in both would make
+# the atomic check shadow its control-flow role: return_statement (return) and
+# for_in_statement (loop). Both remain _HANDLERS keys, so those handlers fire
+# only if the corresponding control-flow hook surfaces the node to the
+# extractor — a narrower path than the atomic one, and not one this mapping
+# can widen.
+# Node types that ARE a call in this grammar (WI-joluk). Consumed by
+# cfg.uncovered_call_lines to ask whether the CFG's recorded statement
+# extents cover every call site in a function body; a call outside every
+# extent means the def/use extractor never saw it, and the taint walk
+# forfeits its ability to return False for that function. A language that
+# declares NONE is treated as unknowable and forfeits everything.
+call_node_types:
+  - call_expression
+  - new_expression
+
+atomic_statement:
+  - lexical_declaration
+  - variable_declaration
+  - assignment_expression
+  - augmented_assignment_expression
+  - expression_statement

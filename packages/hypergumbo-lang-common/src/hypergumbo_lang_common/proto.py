@@ -251,8 +251,10 @@ def _extract_symbols_and_edges(
                 )
                 symbols.append(rpc_sym)
 
-                # Create contains edge from service to rpc
+                # Create contains edge from service to rpc.
+                # _make_proto_symbol always builds a real Span.
                 if service_name and service_name in service_symbols:
+                    assert rpc_sym.span is not None  # for type checker
                     edges.append(Edge.create(
                         src=service_symbols[service_name].id,
                         dst=rpc_sym.id,

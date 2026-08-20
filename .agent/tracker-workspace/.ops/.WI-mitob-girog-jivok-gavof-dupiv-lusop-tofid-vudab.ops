@@ -26,3 +26,18 @@
   clock: 2  # ce8c
   nonce: ce8c  # ce8c
   message: "Materialized from dogfood tranche 05 (F98.A1 / anon-card-004). Mechanism: usage_contexts[].id emits 'usage:' prefix where spec §9.901 documents 'uc:'. Evidence: frozen substrate.json (8/8 ids prefix 'usage') + spec docs/hypergumbo-spec.md:909/923; fresh tracker run reproduces (usage:sha256:20d859135eb74337). Magnitude: 8/8 usage_contexts (0 documented-prefix matches); 🟩-marked spec surface. Blind severity 3/5, reproduced on frozen substrate + fresh run. RELATED_BUT_DISTINCT from parent META INV-kurup (identifier-bearing fields emit non-canonical formats — this is the usage_context id-prefix instance) and WI-sulaz (done — the Starlette UsageContext extractor / producer). Carded separately from F98.A2 (the metadata.methods vs http_method drift) though both are usage_contexts-shape-vs-spec drifts."  # ce8c
+- op: update  # 706c
+  at: '2026-07-30T16:48:47Z'  # 706c
+  by: agent  # 706c
+  actor: jgstern_agent  # 706c
+  clock: 3  # 706c
+  nonce: 706c  # 706c
+  set:  # 706c
+    status: done  # 706c
+- op: discuss  # a85e
+  at: '2026-07-30T16:48:47Z'  # a85e
+  by: agent  # a85e
+  actor: jgstern_agent  # a85e
+  clock: 4  # a85e
+  nonce: a85e  # a85e
+  message: "DONE — the SPEC was wrong, and it was the only artifact carrying the wrong value.\n\nMeasured: all 20 usage_contexts on a fresh self-survey use the 'usage:' prefix (sample: usage:sha256:8b88608c3173ab8b), emitted by ir.py:1080. The spec's example showed 'uc:...'. A consumer implementing the documented filter matched 0 of 20, which is the filed consequence.\n\nFixed the SPEC, not the emitted value, and the reasoning is worth keeping because the opposite call would also have been defensible. Grepping the whole tree for 'uc:' found exactly ONE occurrence — the spec example itself. No code, no test, no schema, no fixture expects it. So the emitted value is not merely dominant, it is unopposed, and changing it would churn a serialized identity value to adopt a prefix nothing uses.\n\nIt would also have inverted WI-talos Ruling 4, which explicitly REJECTED the mechanical contraction of identity prefixes (hgsid9:/hgshid4:) on the grounds that readable prefixes are the point. 'uc:' is the terse form of 'usage:'; adopting it would be that own-goal in miniature. Same 'reconcile the letter to the verified reality' move as the META-jotih statement amendment (register pt.19)."  # a85e

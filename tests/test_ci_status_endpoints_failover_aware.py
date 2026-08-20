@@ -63,5 +63,6 @@ def test_stop_the_line_read_uses_server_url() -> None:
         "ci.yml's stop-the-line read must set "
         'API_BASE="${{ github.server_url }}/api/v1/repos/${{ github.repository }}" '
         "(WI-kalub Step 2) so the Full Test Suite / aggregate auto-status is read "
-        "from the server the full-suite actually ran on (selfh under failover)."
+        "from the server the full-suite actually ran on, rather than a "
+        "hardcoded host."
     )

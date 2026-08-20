@@ -1,0 +1,31 @@
+- op: create  # 4984
+  at: '2026-08-11T03:19:50Z'  # 4984
+  by: agent  # 4984
+  actor: jgstern_agent  # 4984
+  clock: 1  # 4984
+  nonce: '4984'  # 4984
+  data:  # 4984
+    kind: invariant  # 4984
+    title: "python: module_imports is file-scoped, so a local binding that shadows an imported module name still types a constructor as the stdlib type (socket.socket, http.client.HTTPConnection)"  # 4984
+    status: violated  # 4984
+    priority: 3  # 4984
+    parent:  # 4984
+    tags:  # 4984
+    - taint  # 4984
+    - io_boundary  # 4984
+    - analysis_quality  # 4984
+    isbefore: []  # 4984
+    duplicate_of: []  # 4984
+    not_duplicate_of: []  # 4984
+    pr_ref:  # 4984
+    description: "PRE-EXISTING AT DEPTH 1, WIDENED BY WI-lifol -- filed as its own item rather than folded in, because a scope-aware fix is a change to the import model and carries its own regression surface.\n\nREPRO (both verified live 2026-08-10):\n\n    import socket\n    def f(socket, h):\n        return socket.socket(h)          # -> typed 'socket.socket'   WRONG\n\n    import http.client\n    def f(http, h):\n        return http.client.HTTPConnection(h)   # -> typed 'http.client.HTTPConnection'   WRONG\n\nThe first form predates WI-lifol; the second is the same defect at depth >= 2,\nnewly reachable now that the attribute branch unwinds the chain. WI-lifol did\nnot introduce the class, it widened the surface.\n\nDIRECTION: this is a FALSE-POSITIVE channel. A mistyped receiver mints an\nio-boundary and a taint sink for the wrong module -- the fabricated-finding\ndirection, which is the expensive one. Unmeasured: how often real code shadows\nan imported module name with a local. Measure before fixing; the shape may be\nrare enough that the scope machinery is not worth its own regression surface.\n\nPINNED EXECUTABLY: packages/hypergumbo-lang-mainstream/tests/\ntest_py_catalogue_receiver_types.py::TestDottedModuleConstructorsResolve::\ntest_a_local_shadow_should_not_be_typed carries xfail(strict=True), so a\nscope-aware fix turns that test RED and forces the mark to be removed rather\nthan passing unnoticed."  # 4984
+    fields:  # 4984
+      statement: "A constructor call may be typed from an import binding only when that binding is actually live at the call site; a local name that shadows an imported module must withhold the type."  # 4984
+      root_cause: "_extract_imports builds module_imports by an ast.walk over the whole file, producing a file-scoped map with no scope information; _external_constructor_type's attribute branch consults it directly, so a parameter or local named after an imported module satisfies the root check"  # 4984
+- op: discuss  # e901
+  at: '2026-08-11T17:51:28Z'  # e901
+  by: agent  # e901
+  actor: jgstern_agent  # e901
+  clock: 2  # e901
+  nonce: e901  # e901
+  message: "FIX SHAPE LOCALISED, AND IT CARRIES A TRAP THAT WOULD TURN AN FP FIX INTO AN FN.\nRecorded rather than built, because the trap is the whole difficulty and finding it\nagain would cost the next reader the same hour.\n\nTHE FIX LOOKS FREE AND ALMOST IS. The scope machinery this item needs already exists:\n`_enclosing_shadow(caller_id)` (py.py ~3751) unions `local_names_by_func_id` (LEGB, from\n`_collect_scope_local_names`) with `_stmt_shadow_by_func_id` (WI-luhah). It is in scope at\n`process_code_block`, which is where the three `_external_constructor_module` call sites\nlive (py.py ~4167, ~4200, ~4208, ~4241). So the change is: compute the shadow set once per\nblock, pass it into `_external_constructor_type`, and withhold the type when the attribute\nchain's ROOT name is in it. One predicate, existing home, no new scope machinery -- which\nis what makes it worth doing at all, since this item's own filing warns the shape may be\ntoo rare to justify building any.\n\nTHE TRAP: `_collect_bound_names` (py.py ~4928) FOLDS IMPORT BINDINGS IN WITH ASSIGNMENTS.\nRead the branches -- `ast.Import` and `ast.ImportFrom` both `names.add(...)` alongside\n`ast.Name`/Store. That is correct for its own purpose (LEGB def-shadowing: a local\n`import socket` really does shadow an outer `def socket`), and WRONG for this one:\n\n    def f(h):\n        import socket              # binds `socket` LOCALLY, to the module\n        return socket.socket(h)    # must STILL be typed socket.socket\n\nUsing `_enclosing_shadow` as-is would refuse that, converting this item's false POSITIVE\ninto a false NEGATIVE on a shape that is ordinary (a lazy import inside a function, for\nstartup cost or an optional dependency). So the fix needs a shadow set that is\n\"locally bound by param/assignment but NOT by import\" -- a genuinely different question\nfrom LEGB def-shadowing, so a separate well-named helper is right here rather than a\nreuse, and its docstring should say why it differs or the two will be \"consolidated\" back\ntogether by someone reading only the names.\n\nMEASURE FIRST STILL STANDS, and the cheap instrument is an `ast` scan (NOT hypergumbo --\nthe question is what real code contains): count functions with a param or local\nassignment whose name equals a module imported anywhere in the same file AND which is\nused as an attribute-chain root. Split first-party from stdlib and production from test.\nThis item's own filing already says the shape may be rare enough not to be worth the\nsurface; that scan is what decides it.\n\nCONTEXT FROM MEASUREMENT 0001 (docs/measurements/0001-taint-flow-precision.md): taint-flow\nprecision is ~41% population-weighted on six real repos, and `short-name-collision` -- a\nmistyped receiver producing a call edge that does not exist -- was one adjudicated false\npositive in that sample (Django's `Checkin.objects.create` resolved to\n`QuestionSerializer.create`). This item is the same family. That is an argument for its\npriority, not evidence of its size.\n\nTHE POSITIVE CONTROL IS ALREADY IN THE TREE: test_py_catalogue_receiver_types.py\n::TestDottedModuleConstructorsResolve::test_a_local_shadow_should_not_be_typed carries\nxfail(strict=True), so a correct fix turns it RED and forces the mark to be removed. Add a\nSECOND xfail for the function-local-import case above before touching anything, or the\ntrap ships silently."  # e901

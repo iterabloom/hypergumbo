@@ -19,3 +19,50 @@
     pr_ref:  # 3dd2
     description: "DEFERRED — gated on MEAS-1. The cheap first step before INC-1's full per-file generality: hypergumbo already knows workspace / package boundaries (supply-chain tiers / internal_package_roots / workspace siblings), so a PR touching only package A can re-analyze just A's subtree.\n\nCoarser than INC-1 (whole-package granularity, not per-file), but avoids INC-1's per-file purity-audit + complete-key hazards — a much lower-risk latency win when full-repo is too slow but per-file memoization is not yet justified.\n\nBlocked-by: MEAS-1. Relationship: a lighter alternative / precursor to INC-1; do whichever the MEAS-1 numbers justify."  # 3dd2
     fields: {}  # 3dd2
+- op: discuss  # 3b46
+  at: '2026-08-17T08:37:50Z'  # 3b46
+  by: agent  # 3b46
+  actor: jgstern_agent  # 3b46
+  clock: 2  # 3b46
+  nonce: 3b46  # 3b46
+  message: "UNGATED. MEAS-1's decision rule now points HERE specifically. Detail and\ncaveats on WI-kazas; the short form:\n\n  small repo (67 py files)          33 s\n  medium (nats-server, 251 go)     119 s\n  large (whisper.cpp, 565 src)     201 s\n  MONOREPO (hypergumbo, 7 pkgs)    489 s\n\nWI-kazas's rule: \"minutes -> package-scoping (INC-2) earns its keep\". Three of\nthe four cells are minutes. The monorepo cell is 8.2 min — minutes, not the\n\"tens of minutes\" that would have pointed at per-file memoization (WI-madut)\ninstead. So this item is the one the numbers select, and WI-madut is still\ncorrectly deferred on the user-latency argument.\n\nTHE SECOND ARGUMENT, which is stronger than the band and which MEAS-1 did not\nmodel: this cost is paid PER EDIT in the local loop, not once. The results cache\nis keyed on a whole-tree state_hash, so every `pytest` invocation re-analyzes\nthe whole repo. Seven consecutive smart-test runs this session: 9m39s, 9m32s,\n8m49s, 9m05s, 9m08s, 9m17s, 8m30s — with 13-19 s of tests inside each. 18\nstate_hash cache dirs under this repo's fingerprint, mtimes matching those runs\none-to-one. Filed as WI-runiz.\n\nWHY THIS REPO IS THE IDEAL FIRST TARGET FOR PACKAGE SCOPING. hypergumbo is\nitself a 7-package workspace, and the overwhelming majority of its commits touch\nONE package's src tree. This session's own commits are typical: #389 and #390\neach touched only packages/hypergumbo-core/src. A package-scoped re-analysis\nwould have re-derived one package and reused six.\n\nWHAT TO CHECK BEFORE BUILDING IT, because the naive version is unsound here:\nsmart-test's consumer is a REVERSE slice, and a cross-package dependent must\nstill be found. Changing packages/hypergumbo-core/src has dependents in every\nlang package, so package-scoped ANALYSIS must be paired with a whole-graph\nRE-LINK over cached per-package results — the same \"irreducible remainder\" that\nWI-madut names for linkers. If the re-link is itself most of the 489 s, this\nbuys nothing, and that split (analysis vs linking share of the 489 s) is the\nnext measurement to take. It is cheap: the per-pass timers already exist in\nAnalysisRun.\n\nPriority P3 -> P2. Not P1: the analysis/link split above should be measured\nfirst, since it decides whether this item is worth building at all."  # 3b46
+- op: update  # 78bd
+  at: '2026-08-17T08:37:50Z'  # 78bd
+  by: agent  # 78bd
+  actor: jgstern_agent  # 78bd
+  clock: 3  # 78bd
+  nonce: 78bd  # 78bd
+  set:  # 78bd
+    status: todo_hard  # 78bd
+    priority: 2  # 78bd
+- op: discuss  # 96d2
+  at: '2026-08-17T11:04:24Z'  # 96d2
+  by: agent  # 96d2
+  actor: jgstern_agent  # 96d2
+  clock: 4  # 96d2
+  nonce: 96d2  # 96d2
+  message: "RE-PRICED UPWARD IN RELATIVE TERMS, and the analysis-vs-link split this item asked\nfor first is now measured.\n\nThe WI-balaf fix removed a quadratic that was 62.6% of a cold run, taking cold\nrun_survey on this monorepo 517.7s -> 220.0s. The passes were never the majority of\nthe old wall clock, but they ARE now the largest remaining block:\n\n    passes/run_all_analyzers    64.8s   29.4% of the new wall\n    passes/run_all_linkers      29.3s   13.3%\n    passes total                94.1s   42.8%\n\nSo this item's premise (\"re-analyze only the affected package\") is now aimed at the\nbiggest single remaining target rather than at 22% of a run dominated by something\nelse. Per-pass detail for scoping: python 62.5s and bash 51.8s of card time dominate,\neverything else under 5s — and note those two card numbers sum to more than the\n64.8s wall span they ran inside, i.e. analyzer passes overlap, so package scoping buys\nless than the card sum suggests. Measure the wall span, not the card sum (see the\ncorrection on WI-kazas).\n\nNOT started; still todo_hard at P2. The measurement it wanted first now exists:\nscripts/measure-survey-phase-split.py."  # 96d2
+- op: discuss  # 69c5
+  at: '2026-08-17T18:31:43Z'  # 69c5
+  by: agent  # 69c5
+  actor: jgstern_agent  # 69c5
+  clock: 5  # 69c5
+  nonce: 69c5  # 69c5
+  message: "CEILING MEASURED (2026-08-17), and it CONFIRMS the premise rather than refuting\nit — I expected fixed per-language costs to undercut this item and they do not.\n\nscripts/measure-analyzer-scaling.py calls run_all_analyzers directly (skipping\nthe ~93s of linkers + graph work that this question is not about), sweeping\nmax_files to vary per-file work while holding the language mix fixed.\n\n    max_files=1   analyzer phase wall  2.6s   (252 files still analyzed)\n    uncapped      analyzer phase wall 65.7s   (1385 files)\n    marginal python cost                56.3 ms/file (63.1s / 1120 files)\n\nFIXED COST IS <= 2.6s OF 65.7s, UNDER 4% — and even that 2.6s includes real\nper-file work for 251 non-python files, so the true grammar-load / registry /\ndispatch floor is lower still. The analyzer phase is ~96% per-file work.\n\nCONSEQUENCE FOR THIS ITEM. A per-file cache can win back essentially the whole\nphase: 65.7s -> ~3s when nothing changed. Against the current 160.9s cold\n`--minimal` analysis, that lands the run near 97s, a 1.7x cut. Real, but NOT the\nstep-change to the 4.5s warm number — because the remaining ~93s (linkers ~29s,\ngraph post-processing ~43.5s, ~20.3s still unattributed) is whole-graph work\nthat per-file memoization cannot touch. Anyone hoping this item makes the local\ncycle feel instant should read that sentence twice.\n\nTWO MEASUREMENT CAVEATS, both load-bearing:\n - The linear fit over the sweep returns a NEGATIVE intercept (-12.3s), i.e. the\n   model is wrong, because max_files does not bind uniformly (WI-fomid: bash,\n   markdown, json, toml and ~17 others ignore it, putting a floor of 252 files\n   under every point). The <=2.6s bound survives because it is a MEASURED\n   configuration, not an extrapolation. Do not quote the fit.\n - Per-pass duration_ms cannot be used to price this work at all (WI-nuvam): it\n   is per-pass WALL under a thread pool, so it inflates with contention. Same 43\n   bash files billed 2.3s or 49.9s depending only on what python was doing\n   alongside. Price with the phase-split instrument, never with card sums."  # 69c5
+- op: update  # 1b95
+  at: '2026-08-17T21:04:08Z'  # 1b95
+  by: agent  # 1b95
+  actor: jgstern_agent  # 1b95
+  clock: 6  # 1b95
+  nonce: 1b95  # 1b95
+  set:  # 1b95
+    status: wont_do  # 1b95
+  add:  # 1b95
+    tags: [someday]  # 1b95
+- op: discuss  # a620
+  at: '2026-08-17T21:04:09Z'  # a620
+  by: agent  # a620
+  actor: jgstern_agent  # a620
+  clock: 7  # a620
+  nonce: a620  # a620
+  message: "OWNER RULING (2026-08-17), verbatim: \"I guess we've mined all the processing\nefficiency that's reasonable to mine at this point in the hypergumbo project.\"\n\nPARKED — wont_do + someday. Not \"won't ever\"; \"not at this point in the project\".\nThis item is intact and its ceiling is measured, so re-opening is a status change,\nnot a re-derivation.\n\nWHAT WAS ACTUALLY MINED, so nobody re-measures it:\n  cold run_survey on this monorepo   517.7s -> 139.1s   (3.7x)\n    #394  fingerprint locator was quadratic in file size   -297.7s (62.6% of wall)\n    #395  --minimal declines side outputs a caller never reads   -59.1s\n    #397  one shared CLI scan instead of four                    -23.3s\n\nWHY PARKED. Package scoping attacks the same per-file analyzer work as WI-madut\nwith a coarser key, so it inherits the same soundness question (is per-package\nextraction a pure function of that package?) for a smaller share of the win. It\nwas re-priced UP earlier today when passes became the largest remaining block;\nthat is still true and still not sufficient.\n\nRE-OPEN TRIGGER: a repo where package boundaries are load-bearing AND a measured\ncold run in the tens of minutes. Prefer WI-madut's finer key if either is built —\nsame audit, more of the prize."  # a620

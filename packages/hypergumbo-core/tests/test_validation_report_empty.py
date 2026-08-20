@@ -116,9 +116,19 @@ VALIDATION_BASELINES: dict[str, int] = {
 # Shrink-only runtime_coherence (ADR-0023 §3 edge-type partition coherence)
 # baselines, co-ratcheted as a separate dimension. One un-allow-listed
 # offender today on every substrate: the (file/rust -> external_symbol/rust)
-# partition carries both ``imports`` and ``module_attr_ref``. Pinned in-test
-# rather than allow-listed, to avoid a governance-touching ADR-0023
-# allow-list amendment in this PR.
+# partition carries both ``imports`` and ``module_attr_ref``. It is pinned
+# in-test rather than allow-listed because nobody has ruled on whether that
+# variance is legitimate — NOT because amending the allow-list is expensive.
+# (The original note here said the amendment was "governance-touching"; it is
+# not. Neither ``docs/adr/**`` nor ``docs/edge-type-runtime-allowlist.yaml`` is
+# on the AGENTS.md governance list, and INV-fimon amended both in-band. That
+# stale rationale is what made the trait-partition breach look unfixable.)
+#
+# A second offender, (trait/rust -> method/rust), appeared when WI-duguk taught
+# the Rust analyzer to emit trait members and breached this baseline silently —
+# the per-PR gate never selected this file. It was ruled legitimate and
+# allow-listed under the INV-fimon amendment, so the count is back at 1.
+# Ratchet to 0 when the file-anchor partition is ruled on too.
 RUNTIME_COHERENCE_BASELINES: dict[str, int] = {
     "default": 1,
     "frameworks_all": 1,

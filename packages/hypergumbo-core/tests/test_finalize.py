@@ -209,6 +209,35 @@ def test_skipped_into_limits_sets_reason(tmp_path: Path) -> None:
     assert ctx.behavior_map["limits"] == ctx.limits.to_dict()
 
 
+def test_truncated_files_also_set_the_reason(tmp_path: Path) -> None:
+    """WI-zafid: the two equivalent soft file-drop channels must be symmetric.
+
+    A parse-error drop increments a run's ``files_skipped`` and set the reason; an
+    oversize drop lands only in ``limits.truncated_files`` — ``add_truncated_file``
+    never touches ``files_skipped`` — and set nothing. Same user-visible outcome
+    (a file silently absent from the map), one signalled and one silent. This pins
+    the previously-silent channel; ``test_skipped_into_limits_sets_reason`` above
+    still pins the other, so neither can regress into the old asymmetry.
+    """
+    limits = Limits()
+    limits.add_truncated_file("big.py", 4_500_000, "exceeds --max-file-bytes")
+    ctx = _ctx(tmp_path, analysis_runs=[_ar("a", files_skipped=0)], limits=limits)
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.limits.partial_results_reason == "some files skipped during analysis"
+
+
+def test_no_drops_leaves_reason_empty(tmp_path: Path) -> None:
+    """Non-vacuity control: the reason is not set unconditionally.
+
+    Without this, widening the trigger to cover the truncated channel could have
+    been implemented as "always set it", which would satisfy both channel tests
+    while making the signal meaningless.
+    """
+    ctx = _ctx(tmp_path, analysis_runs=[_ar("a", files_skipped=0)])
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.limits.partial_results_reason == ""
+
+
 def test_skipped_into_limits_does_not_clobber_crash_reason(tmp_path: Path) -> None:
     limits = Limits()
     limits.partial_results_reason = "pass X crashed"

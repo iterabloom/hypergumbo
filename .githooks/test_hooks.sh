@@ -313,7 +313,7 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   echo "PRE-PUSH HOOK TESTS"
   echo "========================================================"
 
-  # Create a clean .git dir without CI_FAILOVER_ACTIVE for non-failover tests
+  # Create a clean .git dir for the pre-push tests
   CLEAN_GIT_DIR="$(mktemp -d -t hypergumbo-clean-git.XXXXXX)"
 
   # Helper: simulate pre-push stdin (local_ref local_sha remote_ref remote_sha)
@@ -353,83 +353,55 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
 
   rm -rf "$CLEAN_GIT_DIR"
 
-  # 7c. Failover remote verification tests
+  # 7c. Pre-push DCO sign-off tests
   # --------------------------------------------------------------------------
   echo ""
   echo "========================================================"
-  echo "PRE-PUSH FAILOVER REMOTE VERIFICATION TESTS"
+  echo "PRE-PUSH DCO SIGN-OFF TESTS"
   echo "========================================================"
 
-  # Helper: test failover-aware pre-push with a fake .git dir for CI_FAILOVER_ACTIVE
-  FAILOVER_SANDBOX="$(mktemp -d -t hypergumbo-failover-test.XXXXXX)"
-  # Create a minimal git repo structure so the hook can find CI_FAILOVER_ACTIVE
-  mkdir -p "$FAILOVER_SANDBOX/.git"
+  DCO_REPO="$(mktemp -d -t hypergumbo-dco-test.XXXXXX)"
+  git -C "$DCO_REPO" init -q
+  git -C "$DCO_REPO" config user.name "Test"
+  git -C "$DCO_REPO" config user.email "test@example.com"
+  git -C "$DCO_REPO" config commit.gpgsign false
+  # hooks off in the fixture so prepare-commit-msg doesn't auto-add the sign-off
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -s -m "signed root"
+  dco_root=$(git -C "$DCO_REPO" rev-parse HEAD)
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -s -m "signed second"
+  dco_signed=$(git -C "$DCO_REPO" rev-parse HEAD)
+  git -C "$DCO_REPO" -c core.hooksPath=/dev/null commit -q --allow-empty -m "unsigned commit"
+  dco_unsigned=$(git -C "$DCO_REPO" rev-parse HEAD)
 
-  run_failover_push_test() {
-    local test_name="$1"
-    local remote_name="$2"
-    local remote_ref="$3"
-    local failover_active="$4"  # "true" or "false"
-    local expect_result="$5"    # "block" or "allow"
-    local disengaging="${6:-}"  # "1" to set CI_FAILOVER_DISENGAGING, empty otherwise
+  # Run the pre-push hook inside the fixture repo with a given stdin line.
+  dco_hook() { ( cd "$DCO_REPO" && echo "$1" | "$PRE_PUSH_HOOK" origin "https://example.com" >/dev/null 2>&1 ); }
 
-    local stdin_line="refs/heads/test abc123 $remote_ref def456"
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: allow a signed-only range"
+  if dco_hook "refs/heads/t $dco_signed refs/heads/t $dco_root"; then
+    echo "  PASS (signed range allowed)"; ((PASS_COUNT++))
+  else
+    echo "  FAIL (signed range should be allowed)"; ((FAIL_COUNT++))
+  fi
 
-    echo "--------------------------------------------------------"
-    echo "TEST: $test_name"
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: block a range containing an unsigned commit"
+  if dco_hook "refs/heads/t $dco_unsigned refs/heads/t $dco_signed"; then
+    echo "  FAIL (unsigned commit should be blocked)"; ((FAIL_COUNT++))
+  else
+    echo "  PASS (unsigned commit blocked)"; ((PASS_COUNT++))
+  fi
 
-    # Set or remove CI_FAILOVER_ACTIVE
-    if [[ "$failover_active" == "true" ]]; then
-      echo "selfh" > "$FAILOVER_SANDBOX/.git/CI_FAILOVER_ACTIVE"
-    else
-      rm -f "$FAILOVER_SANDBOX/.git/CI_FAILOVER_ACTIVE"
-    fi
+  echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: block a new branch (zero base) with an unsigned commit"
+  if dco_hook "refs/heads/t $dco_unsigned refs/heads/t 0000000000000000000000000000000000000000"; then
+    echo "  FAIL (unsigned commit on a new branch should be blocked)"; ((FAIL_COUNT++))
+  else
+    echo "  PASS (unsigned commit on a new branch blocked)"; ((PASS_COUNT++))
+  fi
 
-    # Run the hook with GIT_DIR pointing to our sandbox .git
-    if echo "$stdin_line" | CI_FAILOVER_DISENGAGING="$disengaging" GIT_DIR="$FAILOVER_SANDBOX/.git" "$PRE_PUSH_HOOK" "$remote_name" "https://example.com" >/dev/null 2>&1; then
-      if [[ "$expect_result" == "allow" ]]; then
-        echo "  ✅ PASS (push allowed as expected)"
-        ((PASS_COUNT++))
-      else
-        echo "  ❌ FAIL (push should have been blocked)"
-        ((FAIL_COUNT++))
-      fi
-    else
-      if [[ "$expect_result" == "block" ]]; then
-        echo "  ✅ PASS (push blocked as expected)"
-        ((PASS_COUNT++))
-      else
-        echo "  ❌ FAIL (push should have been allowed)"
-        ((FAIL_COUNT++))
-      fi
-    fi
-  }
+  rm -rf "$DCO_REPO"
 
-  # During failover: push to origin should be BLOCKED
-  run_failover_push_test "Failover: block push to origin" \
-    "origin" "refs/for/dev/my-branch" "true" "block"
-
-  # During failover: push to selfh should be ALLOWED
-  run_failover_push_test "Failover: allow push to selfh" \
-    "selfh" "refs/for/dev/my-branch" "true" "allow"
-
-  # No failover: push to origin should be ALLOWED (feature branch)
-  run_failover_push_test "No failover: allow push to origin" \
-    "origin" "refs/for/dev/my-branch" "false" "allow"
-
-  # During failover: push to selfh on protected branch still BLOCKED
-  run_failover_push_test "Failover: block push to selfh/dev (protected)" \
-    "selfh" "refs/heads/dev" "true" "block"
-
-  # Disengage carve-out: with CI_FAILOVER_DISENGAGING=1, AGit push to origin is ALLOWED
-  run_failover_push_test "Failover + disengaging: allow AGit push to origin" \
-    "origin" "refs/for/dev/repatriation" "true" "allow" "1"
-
-  # Disengage carve-out: even with the env var, direct push to origin/dev still BLOCKED by protected-branch rule
-  run_failover_push_test "Failover + disengaging: still block direct push to origin/dev" \
-    "origin" "refs/heads/dev" "true" "block" "1"
-
-  rm -rf "$FAILOVER_SANDBOX"
 fi
 
 # 8. Stop hook state file tests
@@ -756,7 +728,7 @@ TRK
   echo "--------------------------------------------------------"
   echo "TEST: reference-transaction committed + GIT_REFLOG_ACTION=merge → skips recover"
   reset_reftx_log
-  ( cd "$REFTX_DIR" && echo "" | GIT_REFLOG_ACTION="merge selfh/dev" ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  ( cd "$REFTX_DIR" && echo "" | GIT_REFLOG_ACTION="merge origin/dev" ./.githooks/reference-transaction committed ) >/dev/null 2>&1
   if [[ -z "$(reftx_calls)" ]]; then
     echo "  ✅ PASS (recover skipped for merge reflog action)"
     ((PASS_COUNT++))
@@ -770,7 +742,7 @@ TRK
   echo "--------------------------------------------------------"
   echo "TEST: reference-transaction committed + only remote-tracking refs → skips recover"
   reset_reftx_log
-  ( cd "$REFTX_DIR" && printf '%s %s %s\n' 0000 1111 refs/remotes/selfh/dev | env -u GIT_REFLOG_ACTION ./.githooks/reference-transaction committed ) >/dev/null 2>&1
+  ( cd "$REFTX_DIR" && printf '%s %s %s\n' 0000 1111 refs/remotes/origin/dev | env -u GIT_REFLOG_ACTION ./.githooks/reference-transaction committed ) >/dev/null 2>&1
   if [[ -z "$(reftx_calls)" ]]; then
     echo "  ✅ PASS (recover skipped for fetch — only remote-tracking refs)"
     ((PASS_COUNT++))

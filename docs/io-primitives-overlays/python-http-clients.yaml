@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# EXAMPLE project-local I/O primitive overlay — Python HTTP clients.
+#
+# THIS FILE IS NOT LOADED AUTOMATICALLY, AND THAT IS THE POINT. It lives under
+# docs/ rather than beside the shipped catalogues in
+# hypergumbo_core/io_primitives/ because hypergumbo does not own these rows.
+# ADR-0016 scopes the built-in catalogue to the stdlib on purpose — "a curated
+# list of stdlib functions, not an unbounded set of library APIs" (§27) — since
+# tracking every third-party HTTP library's surface is an unbounded maintenance
+# burden. You own this file; copy it into your repo and edit it.
+#
+# Use it:
+#     hypergumbo io-boundaries . --io-primitives docs/io-primitives-overlays/python-http-clients.yaml
+#     hypergumbo verify-claims . --claims claims.yaml --io-primitives <path>
+#
+# or declare it in your claims file, which is the form that travels with the
+# claims it supports:
+#     extra_catalogs:
+#       io_primitives:
+#         - docs/io-primitives-overlays/python-http-clients.yaml
+#
+# WHY YOU NEED THIS AT ALL. hypergumbo analyzes YOUR repository, not
+# site-packages. A call to `requests.post(url, data=secret)` therefore produces
+# no edge into requests' internals and no network boundary — the library's own
+# use of `socket` is not in the analyzed tree. Without an overlay,
+# `io-boundaries` reports zero net_send for a file that plainly exfiltrates, and
+# `verify-claims` can only return `inconclusive` (it names requests as an
+# uncovered module rather than confirming a clean boundary).
+#
+# COVERAGE HERE IS BY VERB, NOT EXHAUSTIVE. It covers the call forms that
+# dominate real code. It does NOT cover streaming/adapter internals, `Request`
+# object construction, or third-party wrappers around these clients. Extend it
+# for your codebase rather than assuming it is complete.
+
+language: python
+status: overlay
+
+net_send:
+  - module: requests
+    functions: [get, post, put, patch, delete, head, options, request]
+    notes: >-
+      Module-level verbs. Every one issues an outbound request, so the body,
+      headers and URL leave the host. Catalogued as net_send (not net_recv)
+      for the same reason urllib.request.urlopen is: the response is a
+      consequence of the send, and the send is what a security claim is about.
+
+  - module: requests.Session
+    methods: [get, post, put, patch, delete, head, options, request, send]
+    notes: >-
+      Session-scoped equivalents. These reach the catalogue only when the
+      receiver's type is known — `s = requests.Session(); s.post(...)` types
+      via the constructor table, but a Session arriving as a bare function
+      parameter does not (INV-dulum / INV-linub). Declaring them costs nothing
+      and pays off wherever the receiver IS typed.
+
+  - module: httpx
+    functions: [get, post, put, patch, delete, head, options, request, stream]
+    notes: Module-level verbs, requests-compatible surface.
+
+  - module: httpx.Client
+    methods: [get, post, put, patch, delete, head, options, request, send, stream]
+    notes: Synchronous client.
+
+  - module: httpx.AsyncClient
+    methods: [get, post, put, patch, delete, head, options, request, send, stream]
+    notes: >-
+      Async client. The boundary is the same; `await` is control flow, not a
+      different crossing.
+
+  - module: urllib3.PoolManager
+    methods: [request, urlopen, request_encode_body, request_encode_url]
+    notes: >-
+      Lower-level pool manager. requests sits on top of urllib3, but that is
+      invisible here for the same reason the whole file exists — urllib3's
+      source is not in your tree either.
+
+  - module: aiohttp.ClientSession
+    methods: [get, post, put, patch, delete, head, options, request, ws_connect]
+    notes: >-
+      Client half of aiohttp. The shipped catalogue carries only
+      aiohttp.web.run_app, which is the SERVER side (net_recv) — the client
+      side is not covered by it.

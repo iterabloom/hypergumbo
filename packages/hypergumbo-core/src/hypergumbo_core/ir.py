@@ -192,7 +192,7 @@ class Span:
     start_col: int
     end_col: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "start_line": self.start_line,
             "end_line": self.end_line,
@@ -201,7 +201,7 @@ class Span:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Span":
+    def from_dict(cls, d: dict[str, Any]) -> "Span":
         return cls(
             start_line=d.get("start_line", 0),
             end_line=d.get("end_line", 0),
@@ -371,8 +371,8 @@ class AnalysisRun:
             pass_version=pass_version,
         )
 
-    def to_dict(self) -> dict:
-        result: dict = {
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "execution_id": self.execution_id,
             "run_signature": self.run_signature,
             "repo_fingerprint": self.repo_fingerprint,
@@ -565,7 +565,15 @@ class Symbol:
     kind: str  # axis: symbol-kind
     language: Optional[str]  # axis: language
     path: str  # axis: free-text — filesystem path; consumers display/sort/group, never branch on the value itself EXCEPT the documented "<external>" sentinel (ADR-0036 Ruling 3) — the no-file-anchor marker for external/boundary pseudo-symbols, whose module identity lives in the id path-slot + stable_id, NOT here (WI-kapul: by-design; path is the filesystem axis, the id path-slot is the module-identity axis).
-    span: Span
+    # Optional since WI-hafap: ten test files construct Symbol(span=None) and
+    # ~42 production sites dereference .span unguarded — the old non-Optional
+    # declaration made 52 live truthiness guards read as "always true" and 7
+    # is-None guard bodies as "unreachable", laundering the checker's verdict
+    # on every one of them (the 832->789 rewrite deleted 43 live guards on
+    # that basis and only the test suite caught it). The declaration now
+    # matches reality; surfaced unguarded dereferences drain per-site
+    # (guard vs assert decided individually), never as a blanket sweep.
+    span: Optional[Span]
     origin: str | List[str] = field(default_factory=list)  # axis: pass-id
     origin_run_id: str = ""  # axis: identity
     stable_id: Optional[str] = None  # axis: identity
@@ -596,15 +604,17 @@ class Symbol:
             self.origin = [self.origin] if self.origin else []
 
     # Keep line/end_line for backwards compatibility during transition
+    # (span=None falls back to the codebase-wide line-0 convention, matching
+    # the 0 these properties already returned for fabricated Span(0,0,0,0)).
     @property
     def line(self) -> int:
-        return self.span.start_line
+        return self.span.start_line if self.span else 0
 
     @property
     def end_line(self) -> int:
-        return self.span.end_line
+        return self.span.end_line if self.span else 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
             "id": self.id,
@@ -612,7 +622,10 @@ class Symbol:
             "kind": self.kind,
             "language": self.language,
             "path": self.path,
-            "span": self.span.to_dict(),
+            # Schema-legal: docs/schema.json declares node span as oneOf
+            # [Span, null]. Emitting null (not a fabricated zero-Span dict)
+            # keeps the WI-hafap honesty invariant through serialization.
+            "span": self.span.to_dict() if self.span else None,
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "stable_id": self.stable_id,
@@ -649,9 +662,12 @@ class Symbol:
         return result
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Symbol":
+    def from_dict(cls, d: dict[str, Any]) -> "Symbol":
         """Reconstruct a Symbol from its dict representation (e.g., from cached results)."""
-        span_data = d.get("span", {})
+        # WI-hafap honest-carry: a missing or null span deserializes to None
+        # rather than a fabricated degenerate Span(0,0,0,0) that passes every
+        # truthiness guard while claiming to occupy line 0.
+        span_data = d.get("span")
         supply_chain = d.get("supply_chain", {})
         return cls(
             id=d["id"],
@@ -659,7 +675,7 @@ class Symbol:
             kind=d["kind"],
             language=d["language"],
             path=d["path"],
-            span=Span.from_dict(span_data),
+            span=Span.from_dict(span_data) if span_data is not None else None,
             origin=_normalize_origin(d.get("origin", "")),
             origin_run_id=d.get("origin_run_id", ""),
             stable_id=d.get("stable_id"),
@@ -799,8 +815,7 @@ class Edge:
         confidence: Detection-reliability score (0.0-1.0) — the producer's evidence-derived estimate that the relationship EXISTS (ADR-0039 ruling 1). NOT a ranking value; post-detection ranking boosts/penalties live in ``rank_score``.
         confidence_source: Provenance of the ``confidence`` value (ADR-0039 ruling 2), one of ``VALID_CONFIDENCE_SOURCES`` — ``evidence_derived`` / ``emitter_constant`` / ``composite``. See ``VALID_CONFIDENCE_SOURCES`` for the enumeration and re-evaluation trigger.
         rank_score: Ranking prominence (0.0-1.0). Initializes from ``confidence`` and accumulates the ranking adjustments ADR-0039 ruling 3 relocates off ``confidence`` (e.g. the type-hierarchy fan-out dampener). Equal to ``confidence`` until a producer relocates its adjustment. Ranking consumers key on this; reliability consumers key on ``confidence``.
-        quality: Score and reason dict for quality assessment
-        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3).
+        meta: Optional metadata dict. Dataflow edges store access_mode (ADR-0015) and channel here; cross-boundary edges store data_direction (ADR-0038 ruling 3). An edge that survived a collapse of two or more call sites stores the union of their lines in ``call_lines`` (see :func:`deduplicate_edges`); its absence means the one call site is ``line``.
     """
 
     id: str  # axis: identity
@@ -819,7 +834,6 @@ class Edge:
     derived_from: Optional[List[str]] = None  # axis: identity
     confidence_source: str = "emitter_constant"  # axis: bounded-enum
     rank_score: Optional[float] = None
-    quality: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
@@ -845,11 +859,6 @@ class Edge:
         # of a legacy artifact — internally consistent.
         if self.rank_score is None:
             self.rank_score = self.confidence
-        # WI-lonoz / Phase 6 PR2: populate ``quality`` at construction so
-        # the field is never None on the in-memory IR. Producers that
-        # need a custom quality block pass it explicitly.
-        if self.quality is None:
-            self.quality = _derive_edge_quality(self)
 
     @classmethod
     def create(
@@ -975,20 +984,8 @@ class Edge:
             meta=meta,
         )
 
-    def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization.
-
-        WI-lonoz / Phase 6 PR2: when ``self.quality`` is None at
-        serialization time, derive a default quality block from the
-        evidence signals already present on the edge (confidence band,
-        resolution state, derived_from presence). The derivation is
-        deterministic and conservative — producers that pre-populate a
-        quality dict win. The contract:
-
-        - ``score``: float in ``[0.0, 1.0]``, anchored on ``confidence``.
-        - ``reason``: short tag naming the dominant signal; consumers
-          surface this in UIs and graph-quality summaries.
-        """
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
         meta: Dict[str, Any] = {
             "evidence_type": self.evidence_type,
         }
@@ -997,8 +994,6 @@ class Edge:
         # Merge any additional metadata (e.g., channel for IPC edges)
         if self.meta is not None:
             meta.update(self.meta)
-
-        quality = self.quality if self.quality is not None else _derive_edge_quality(self)
 
         out: Dict[str, Any] = {
             "id": self.id,
@@ -1013,7 +1008,6 @@ class Edge:
             "origin": self.origin,
             "origin_run_id": self.origin_run_id,
             "is_resolved": self.is_resolved,
-            "quality": quality,
             "meta": meta,
         }
         if self.dst_ref is not None:
@@ -1023,7 +1017,7 @@ class Edge:
         return out
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Edge":
+    def from_dict(cls, d: dict[str, Any]) -> "Edge":
         """Reconstruct an Edge from its dict representation (e.g., from cached results).
 
         WI-higap: ``__post_init__`` hard-raises on empty ``origin`` /
@@ -1053,43 +1047,47 @@ class Edge:
             derived_from=d.get("derived_from"),
             confidence_source=d.get("confidence_source", "emitter_constant"),
             rank_score=d.get("rank_score"),
-            quality=d.get("quality"),
             meta=meta,
         )
 
 
-def _derive_edge_quality(edge: "Edge") -> Dict[str, Any]:
-    """Compute a default quality block from an Edge's evidence signals.
+# Cap for ``Edge.meta.call_lines`` — the sibling of
+# :data:`_REFERRING_PATHS_CAP`, same value for the same reason. Generated
+# code can call one target hundreds of times from one function; an uncapped
+# list would put that whole tail in the serialized map. Truncation is
+# CONSERVATIVE for every consumer of this field: knowing fewer call sites can
+# only narrow what a dataflow walk adjudicates, never broaden it (see
+# ``taint._ddg_taint_reaches``, which needs a call site to seed from and a
+# later one to reach). The retained set is the LOWEST ``_CALL_LINES_CAP``
+# lines, so it is a deterministic function of the input, not of encounter
+# order.
+_CALL_LINES_CAP = 50
 
-    WI-lonoz / Phase 6 PR2 closure: when a producer doesn't explicitly
-    set ``Edge.quality``, derive a deterministic default so the schema-
-    declared slot is populated (writer-contract sub-pattern 1). The
-    derivation reads ``confidence``, ``is_resolved``, and
-    ``derived_from`` and produces a small ``{score, reason}`` dict.
-    Producers that need finer-grained quality (e.g., signal-strength
-    blending across multiple linker passes) win by pre-populating the
-    field.
 
-    Reason tags (stable enum-like values for consumer tooling):
+def _edge_call_lines(edge: Edge) -> list[int]:
+    """The call sites known for *edge*: its recorded set, else its own line.
 
-    - ``"high_confidence_direct"`` — confidence >= 0.95.
-    - ``"resolved_call_site"`` — confidence in [0.8, 0.95) and is_resolved.
-    - ``"derived_from_linker_evidence"`` — derived_from populated.
-    - ``"low_confidence_fallback"`` — confidence < 0.5.
-    - ``"medium_confidence"`` — everything else.
+    The single-site case deliberately carries no ``meta["call_lines"]`` key
+    (see :func:`deduplicate_edges`), so "absent" has to read as ``[edge.line]``
+    here rather than as "no call sites".
     """
-    score = max(0.0, min(1.0, edge.confidence))
-    if edge.confidence >= 0.95:
-        reason = "high_confidence_direct"
-    elif edge.confidence < 0.5:
-        reason = "low_confidence_fallback"
-    elif edge.derived_from:
-        reason = "derived_from_linker_evidence"
-    elif edge.is_resolved and edge.confidence >= 0.8:
-        reason = "resolved_call_site"
-    else:
-        reason = "medium_confidence"
-    return {"score": round(score, 3), "reason": reason}
+    recorded = (edge.meta or {}).get("call_lines")
+    if isinstance(recorded, list):
+        return [ln for ln in recorded if isinstance(ln, int)]
+    return [edge.line]
+
+
+def _absorb_call_lines(kept: Edge, absorbed: Edge) -> None:
+    """Union *absorbed*'s call sites into *kept*'s ``meta["call_lines"]``.
+
+    Copy-on-write on ``meta`` (matching the ``referring_paths`` collapse in
+    :func:`apply_external_id_remap`) so an edge whose meta dict is shared with
+    another record does not gain call sites by aliasing.
+    """
+    lines = set(_edge_call_lines(kept)) | set(_edge_call_lines(absorbed))
+    meta = dict(kept.meta or {})
+    meta["call_lines"] = sorted(lines)[:_CALL_LINES_CAP]
+    kept.meta = meta
 
 
 def deduplicate_edges(
@@ -1104,13 +1102,30 @@ def deduplicate_edges(
     ``edge_key`` values (line-insensitive).  For a call graph, one edge
     per (src, dst, type) relationship is the correct model.
 
+    **The collapsed call sites are preserved, not discarded.** When two or
+    more edges share a key, the survivor gains ``meta["call_lines"]`` — the
+    sorted union of every collapsed site's line, its own included. One edge
+    per relationship stays the call-graph model (emitting one edge per call
+    site would multiply the graph: a single Go function's ``fmt.Printf`` calls
+    alone turn 1 edge into 12, inflating every centrality and fan-out metric
+    downstream). What changes is that ``edge.line`` stops being the *only*
+    recoverable site. ADR-0017 §4 needs this: to decide what a DDG use at line
+    U flows into, it has to know which callee is called at line U, and with
+    one line per relationship every call site but the first was unrecoverable.
+
+    A single-site edge carries NO ``call_lines`` key — absence is the contract
+    for "exactly one site, and it is ``edge.line``". Emitting a one-element
+    list on every edge would add a list to every edge of every behavior map
+    while saying nothing ``edge.line`` does not already say.
+
     When *remove_self_loops* is True, also drops edges where src == dst.
     Self-loops inflate centrality without adding useful connectivity;
-    common sources include visitor patterns and name collisions.
+    common sources include visitor patterns and name collisions. A dropped
+    self-loop never becomes a survivor, so it records no call sites.
 
     Preserves encounter order: the first edge for each key is kept.
     """
-    seen: set[str] = set()
+    seen: dict[str, Edge] = {}
     result: list[Edge] = []
     for edge in edges:
         key = edge.edge_key
@@ -1120,11 +1135,13 @@ def deduplicate_edges(
         # all None-keyed edges collapse to one — silently dropping edges.
         if key is None:
             key = _compute_edge_key(edge.src, edge.dst, edge.edge_type)
-        if key in seen:
+        kept = seen.get(key)
+        if kept is not None:
+            _absorb_call_lines(kept, edge)
             continue
         if remove_self_loops and edge.src == edge.dst:
             continue
-        seen.add(key)
+        seen[key] = edge
         result.append(edge)
     return result
 
@@ -1346,17 +1363,111 @@ def _canonical_external_stable_id(
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
 
 
-def _extract_path_slot(symbol_id: str) -> Optional[str]:
-    """Extract the ``path`` slot from a ``{lang}:{path}:{span}:{name}:{kind}`` id.
+def symbol_path_slot(symbol_id: str) -> str:
+    """THE path-slot parse for ``{lang}:{path}:{span}:{name}:{kind}`` ids.
 
-    Returns ``None`` if the id doesn't have at least 5 colon-separated parts.
-    Used to record the original referring-site path on edges whose src
-    was collapsed by :func:`apply_external_id_remap`.
+    RIGHT-ANCHORED, because per ADR-0036 (D1a) the path slot is the one
+    colon-TOLERANT slot in the grammar while lang/span/name/kind are colon-free.
+    So the last three tokens are span/name/kind and everything between the
+    language and that suffix is the path — ``dart:dart:io:0-0:module:module``
+    has path ``dart:io``, and ``rust:std::fs:0-0:write:external_symbol`` has
+    path ``std::fs``.
+
+    THIS IS A CHOKEPOINT, and it exists because the fact had four homes of
+    which two took ``parts[1]``: this module's own ``_extract_path_slot`` and
+    ``taint._extract_callee_module``, against the correct ``_parse_dangling_id``
+    thirteen lines below and ``verify_claims._symbol_path_slot``. All four now
+    route here.
+
+    The naive form was not merely untidy. Rust is the only language whose taint
+    catalogue uses ``::`` module paths and ALL NINE of its sink modules are
+    colon-bearing, so ``parts[1]`` truncated every one to ``std``;
+    ``_module_matches('std::fs', 'std')`` is False; and ``_lookup_named_entry``
+    treats a present-but-mismatched module as a REJECTION rather than a
+    degrade. The net effect was inverted: an edge naming ``std::fs`` was
+    refused while an edge carrying no module at all matched.
+
+    ANCHORED ON THE SPAN, not on slot count (INV-fokik). The right-anchored form
+    ``parts[1:-3]`` is correct only while the grammar's colon-free-name rule
+    actually holds in the data, and it does not: 483 ids across two Rust repos are
+    DOUBLE-SPAN — ``rust:external:0-0:Stdio:0-0:null:external_symbol`` — for which
+    ``parts[1:-3]`` yields ``external:0-0:Stdio``. That string is not in
+    ``taint._UNRESOLVED_MODULE_PLACEHOLDERS``, so ``_lookup_named_entry`` compares
+    it as a real module name, matches nothing, and DROPS THE FINDING SILENTLY —
+    the same failure this chokepoint was created to end, reached from the other
+    side. Locating the ``\\d+-\\d+`` span token instead is right on both
+    populations, and it makes this function agree with
+    ``taint._extract_callee_name``, which has anchored on the span all along; the
+    two parsers disagreeing about one string is what exposed the defect.
+
+    FAILS SAFE BY CHOICE. A malformed id has no true path slot, so the question is
+    only which wrong answer to give: ``external`` degrades to short-name matching
+    plus the F3 gate, while ``external:0-0:Stdio`` rejects everything in silence.
+
+    Falls back to the right-anchored parse when there is no span token at all
+    (``just:examples/screenshot.just:6:build:recipe`` — a bare line number, 584
+    occurrences in the same scan), because right-anchoring is already correct
+    there and returning "" would lose a path this function used to report.
+
+    Returns ``""`` for anything with fewer than five colon-separated parts —
+    an unparseable id is not evidence, and every caller treats "" as "no path
+    information" rather than as a path.
     """
-    parts = symbol_id.split(":")
-    if len(parts) >= 5:
-        return parts[1]
-    return None
+    parts = symbol_id.split(":") if symbol_id else []
+    if len(parts) < 5:
+        return ""
+    for idx in range(1, len(parts) - 1):
+        token = parts[idx]
+        if "-" in token and token.replace("-", "").isdigit():
+            return ":".join(parts[1:idx])
+    return ":".join(parts[1:-3])
+
+
+def symbol_name_slot(symbol_id: str) -> str:
+    """THE name-slot parse for ``{lang}:{path}:{span}:{name}:{kind}`` ids.
+
+    The companion to :func:`symbol_path_slot`, and filed under the same defect
+    (INV-fokik). Fixing only the path side moved NOTHING, because the name side
+    carried the mirror bug in the same module: ``io_boundary._extract_callee_name``
+    took "everything after the first three fields", which assumes the PATH slot is
+    colon-free. On ``rust:std::fs:0-0:write:external_symbol`` it returned
+    ``fs:0-0:write``, so every Rust sink missed its catalogue row before the module
+    hint could matter — and the miss is silent.
+
+    Anchored on the span for the same reason the path parse is: it is the only
+    anchor that survives colons on EITHER side. Everything between the span token
+    and the trailing kind is the name, so a colon-bearing objc selector
+    (``writeToFile:atomically:``) is returned whole rather than truncated at its
+    first colon.
+
+    ``taint._extract_callee_name`` has always parsed it this way; this function is
+    where that logic now lives so the two consumers cannot drift apart again. The
+    two disagreeing about one string is what exposed the defect in the first place.
+
+    Falls back to the second-to-last token when there is no span token, and returns
+    ``""`` for anything with fewer than five parts — matching
+    :func:`symbol_path_slot`'s contract, where "" means "no name information".
+    """
+    parts = symbol_id.split(":") if symbol_id else []
+    if len(parts) < 5:
+        return ""
+    for idx in range(1, len(parts) - 1):
+        token = parts[idx]
+        if "-" in token and token.replace("-", "").isdigit():
+            return ":".join(parts[idx + 1:-1])
+    return parts[-2]
+
+
+def _extract_path_slot(symbol_id: str) -> Optional[str]:
+    """Extract the ``path`` slot, or ``None`` for a malformed id.
+
+    Delegates to :func:`symbol_path_slot`; the ``Optional`` return is kept
+    because :func:`apply_external_id_remap` branches on ``None`` to decide
+    whether to record ``meta['referring_paths']`` at all, and "" is a value it
+    would happily store.
+    """
+    slot = symbol_path_slot(symbol_id)
+    return slot if slot else None
 
 
 def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
@@ -1364,12 +1475,15 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
 
     The path slot may itself contain colons (e.g. dart imports like
     ``dart:dart:io:0-0:module:module`` where path = ``dart:io``), so the
-    parse uses the LAST three colon-separated tokens as span / name /
-    kind, joining everything between ``lang`` and that suffix as the
-    path.
+    path half delegates to :func:`symbol_path_slot` rather than repeating
+    the right-anchored parse — this function was one of the two homes that
+    already had it right, and it is now one of four that share it.
 
     Returns ``(language, path, name, kind)``. Falls back to safe defaults
-    when the id has fewer than 5 colon-separated parts.
+    when the id has fewer than 5 colon-separated parts, and the ``<unknown>``
+    path sentinel there is load-bearing: ``_derive_dst_ref_from_id`` branches
+    on that exact value to decline building a fabricated ``ExternalRef``
+    (WI-huzuv), so it must NOT be folded into ``symbol_path_slot``'s "".
     """
     parts = dangling_id.split(":")
     if len(parts) < 5:
@@ -1378,13 +1492,7 @@ def _parse_dangling_id(dangling_id: str) -> tuple[str, str, str, str]:
         name = parts[-2] if len(parts) >= 2 else dangling_id
         kind = parts[-1] if parts else "external_symbol"
         return language, "<unknown>", name, kind
-    language = parts[0]
-    kind = parts[-1]
-    name = parts[-2]
-    # parts[-3] is the span; everything between lang and span is the path
-    # (which may contain colons).
-    path = ":".join(parts[1:-3])
-    return language, path, name, kind
+    return parts[0], symbol_path_slot(dangling_id), parts[-2], parts[-1]
 
 
 def _dedupe_key(
@@ -1491,7 +1599,7 @@ def create_boundary_nodes(
     # (``rust:external:0-0:fs::read_to_string:unresolved`` parsed as
     # ``path="external:0-0:fs"`` and re-emitted with a fabricated extra
     # ``0-0`` slot).
-    dangling_ids: set = set()
+    dangling_ids: set[str] = set()
     dangling_refs: Dict[str, ExternalRef] = {}
     for edge in edges:
         if edge.src not in symbol_ids:
@@ -1509,7 +1617,7 @@ def create_boundary_nodes(
     # Group dangling ids by dedupe key. The key collapses file-id
     # pseudo-symbols per language; other kinds keep full identity.
     groups: Dict[tuple[str, str, str], List[str]] = {}
-    group_ref_kinds: Dict[tuple[str, str, str], set] = {}
+    group_ref_kinds: Dict[tuple[str, str, str], set[str]] = {}
     for dangling_id in dangling_ids:
         ref = dangling_refs.get(dangling_id)
         if ref is not None:
@@ -1571,7 +1679,7 @@ def create_boundary_nodes(
         ):
             directness = dependency_manifest.classify_directness(key_path)
 
-        boundary_meta: dict = {"external_boundary": True}
+        boundary_meta: dict[str, Any] = {"external_boundary": True}
         if directness is not None:
             boundary_meta["directness"] = directness
         # ADR-0036 Ruling 2: preserve the use-site reference syntax that used to
@@ -1643,6 +1751,13 @@ def apply_external_id_remap(
     convention) and the colliding edges' original src paths union into
     its ``referring_paths``.
 
+    This runs AFTER :func:`deduplicate_edges` in the pipeline, so a collapse
+    here can absorb an edge that already carries ``meta["call_lines"]`` — two
+    edges that were genuinely distinct at dedup time (distinct external dsts)
+    become the same edge once both dsts remap to one boundary node. The
+    collapse therefore unions call sites the same way it unions referring
+    paths; without that, whichever edge loses takes its call sites with it.
+
     Mutates edges in place. Returns the surviving edge list (subset of
     input).
     """
@@ -1670,7 +1785,11 @@ def apply_external_id_remap(
             out.append(edge)
             continue
 
-        # Collapse case — union referring_paths into the kept edge.
+        # Collapse case — union call_lines and referring_paths into the kept
+        # edge. call_lines is unconditional: unlike referring_paths it does
+        # not depend on the src having been remapped (a dst-only remap
+        # collapses edges just as effectively).
+        _absorb_call_lines(kept, edge)
         if orig_src_path:
             kept.meta = dict(kept.meta or {})
             existing = list(kept.meta.get("referring_paths") or [])

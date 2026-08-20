@@ -7,11 +7,30 @@ the four ``hypergumbo-lang-*`` packages.
 
 Shared Components
 -----------------
+- **TreeSitterAnalyzer**: the analyzer base class itself, and the bulk of
+  this module. It encapsulates the two-pass architecture every tree-sitter
+  analyzer follows — Pass 1 extracts symbols per file, Pass 2 resolves calls
+  and imports against the global symbol registry — plus grammar loading,
+  file discovery, graceful degradation when a grammar is unavailable, and
+  result assembly. Subclasses override the language-specific extraction
+  hooks and inherit the orchestration. ~105 analyzer modules subclass it.
 - **AnalysisResult**: Universal result type returned by all analyzers
 - **FileAnalysis**: Intermediate per-file analysis result
 - **Tree-sitter helpers**: node_text, find_child_by_type, find_child_by_field
-- **ID generation**: make_symbol_id, make_file_id
+- **ID generation and stable identity**: ``make_symbol_id`` / ``make_file_id``
+  build node ids; a separate layer builds the content-addressed
+  ``stable_id`` that survives re-analysis. ``assemble_stable_id`` is the
+  construction chokepoint (ADR-0034), with typed and route-shaped variants
+  (``make_typed_stable_id``, ``make_route_stable_id``) and post-pass
+  populators that fill or widen identity once the whole symbol set is known
+  (``populate_kind_stable_ids``, ``populate_synthetic_class_b_identity``,
+  ``widen_route_stable_ids``, ``dedup_logical_synthetic_identities``).
+  Signature normalizers feed the typed variant so two spellings of one
+  signature hash alike.
 - **Availability checking**: is_grammar_available
+- **Memory-pressure guard**: ``_check_memory_pressure`` raises
+  ``MemoryPressureError`` rather than letting a large repo take the process
+  down mid-analysis.
 
 Why This Design
 ---------------
@@ -34,6 +53,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
 
 from ..dataflow import annotate_dataflow, get_dataflow_config
@@ -43,6 +63,7 @@ from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
     compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
+from ..axis_meta_keys import write_meta_key
 from ..symbol_resolution import NameResolver
 
 # ---------------------------------------------------------------------------
@@ -248,6 +269,78 @@ def node_text(node: "tree_sitter.Node", source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def node_own_text(node: "tree_sitter.Node") -> str:
+    """Decoded ``node.text``, None-safe — the ONE home for this fact.
+
+    ``tree_sitter.Node.text`` is ``bytes | None``, and 35 analyzers carried
+    a byte-similar private ``_get_node_text`` copy of this two-liner
+    (WI-sarag) — with the None guard present in some copies and absent in
+    others, the half-guarded-population tell (WI-vokiz) that means there
+    is no contract, only local habit. Analyzers import this under their
+    historical local name (``import ... as _get_node_text``); a
+    recurrence test fails if a new private copy appears.
+
+    Distinct from :func:`node_text`, which slices the SOURCE by byte
+    range — that one exists for callers that hold the file bytes and may
+    face nodes from re-parsed sub-trees where ``.text`` is unavailable.
+    """
+    return (node.text or b"").decode("utf-8", errors="replace")
+
+
+def stamp_io_mode_from_call(
+    edges: list[Edge],
+    first_new: int,
+    call_node: "tree_sitter.Node",
+    source: bytes,
+    language: str,
+) -> None:
+    """Record a tree-sitter call's mode literal on the edges it just produced.
+
+    THE PRODUCER SIDE OF ``io_mode``, for tree-sitter analyzers. The catalogue
+    already decides which primitives a mode settles
+    (:func:`~hypergumbo_core.io_boundary.mode_discriminated_primitives`) and
+    where each language puts the argument
+    (:func:`~hypergumbo_core.io_boundary.mode_argument_for`); this is the one
+    place that reads it off a parse tree, so C and C++ cannot answer
+    differently. INV-kaduh is what a per-analyzer copy of this costs: python
+    had one, C had none, and ``fopen(path, "w")`` tagged ``fs_read`` in every
+    C and C++ repo — an EXAMINED negative for the boundary that is true.
+
+    Applied ONCE over ``edges[first_new:]``, keyed on the exact call node
+    rather than on a line number — two calls can share a line, and ADR-0038's
+    retired line-granular classifier is why that is stated rather than assumed.
+
+    A non-literal mode (``fopen(p, m)``) stamps NOTHING. Absence is recorded as
+    absence: :func:`~hypergumbo_core.io_boundary.resolve_mode_boundary` applies
+    the language default, and inventing ``"w"`` from ignorance would rebuild
+    the false-positive population the mechanism exists to remove.
+    """
+    from ..io_boundary import mode_argument_for
+
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None:
+        return  # pragma: no cover - every grammar here names the field
+    short_name = _re.split(r"::|->|\.", node_text(func_node, source))[-1]
+    spec = mode_argument_for(language, short_name)
+    if spec is None:
+        return
+    arg_list = call_node.child_by_field_name("arguments")
+    if arg_list is None:
+        return  # pragma: no cover - a call without an argument list
+    args = [c for c in arg_list.children if c.is_named]
+    if len(args) <= spec.position:
+        return
+    content = find_child_by_type(args[spec.position], "string_content")
+    if content is None:
+        # Not a string literal at all — a variable, a macro, a concatenation.
+        return
+    mode = node_text(content, source)
+    for edge in edges[first_new:]:
+        if edge.meta is None:
+            edge.meta = {}
+        write_meta_key(edge.meta, "io_mode", mode)
+
+
 def find_child_by_type(
     node: "tree_sitter.Node", type_name: str
 ) -> Optional["tree_sitter.Node"]:
@@ -286,6 +379,82 @@ def find_child_by_field(
 # ---------------------------------------------------------------------------
 
 
+# Node types that mean "a value is produced by calling something", and the
+# field each grammar uses for the callee. Shared rather than re-derived per
+# analyzer: WI-nopod's whole point is that a fact recorded in N places
+# diverges, and the parity column
+# (``test_constructed_from_parity``) enforces the semantics uniformly.
+_CALL_NODE_CALLEE_FIELDS: "tuple[str, ...]" = (
+    "function", "constructor", "callee",
+)
+# Name-shaped nodes that can stand in for an unnamed callee field.
+_CALLEE_NAME_NODE_TYPES: frozenset[str] = frozenset({
+    "identifier", "simple_identifier", "scoped_identifier",
+    "member_expression", "navigation_expression", "field_expression",
+    "qualified_name", "selector_expression",
+})
+_CALL_NODE_TYPES: frozenset[str] = frozenset({
+    "call_expression", "new_expression", "call", "constructor_invocation",
+})
+
+
+def constructed_from_callee(
+    value_node: "Optional[tree_sitter.Node]", source: bytes,
+) -> Optional[str]:
+    """Render the callee of a binding's initializer, or None (WI-nopod).
+
+    ``var app = NewC()`` -> ``"NewC"``; ``let app = pkg.Build()`` ->
+    ``"pkg.Build"``. Used to stamp ``Symbol.meta["constructed_from"]`` so a
+    framework YAML can key on a *construction site* — the surface used by
+    every framework you configure by building an object rather than by
+    decorating or subclassing one.
+
+    Three deliberate narrowings, uniform across languages and pinned by the
+    parity column:
+
+    * only a call-valued initializer qualifies (``x = 30`` records nothing,
+      or the key stops being a useful filter);
+    * a constructor and a factory are treated identically, because static
+      analysis cannot distinguish them and claiming otherwise would be a
+      guess dressed as data;
+    * a **computed** callee (``registry[k]()``) records nothing rather than a
+      partial name — a YAML matching a fiction fails silently, so absence is
+      the honest signal.
+
+    Qualification is KEPT: stripping it would make ``orm.declarative_base``
+    indistinguishable from a same-named local, which is unrecoverable
+    downstream rather than merely inconvenient.
+    """
+    if value_node is None or value_node.type not in _CALL_NODE_TYPES:
+        return None
+    callee = None
+    for field_name in _CALL_NODE_CALLEE_FIELDS:
+        callee = value_node.child_by_field_name(field_name)
+        if callee is not None:
+            break
+    if callee is None:
+        # Not every grammar names the callee. Swift's `call_expression` is
+        # simply `(simple_identifier, call_suffix)` with no fields at all, so
+        # fall back to a leading name-shaped child. Restricted to name shapes
+        # so an argument list or an operator can never be mistaken for a
+        # callee — silence is the correct output for anything else.
+        first = value_node.children[0] if value_node.children else None
+        if first is None or first.type not in _CALLEE_NAME_NODE_TYPES:
+            return None
+        callee = first
+    text = node_text(callee, source).strip()
+    if not text:  # pragma: no cover - a callee node always spans source text;
+        # the guard exists so a zero-width node from a damaged parse cannot
+        # produce an empty key that a YAML regex would then match on.
+        return None
+    # Accept a static dotted / scoped path only. `a[k].b` and generics are
+    # computed or parameterised and cannot be keyed on reliably.
+    parts = text.replace("::", ".").split(".")
+    if not all(part.isidentifier() for part in parts):
+        return None
+    return text
+
+
 def make_symbol_id(
     lang: str, path: str, start_line: int, end_line: int, name: str, kind: str
 ) -> str:
@@ -303,8 +472,51 @@ def make_symbol_id(
 
     Returns:
         A unique, location-based symbol ID.
+
+    The ``name`` slot is sanitized ``':' -> '.'`` here — the always-on ADR-0036
+    Ruling-1 chokepoint (WI-sikar). Why the name slot specifically: the
+    canonical parse is anchored from the RIGHT (``span, name, kind =
+    parts[-3:]``), so a colon in the name slot shifts every anchor left by one
+    and the id stops parsing, while colons in the ``path`` slot are harmless and
+    stay verbatim (Rust's ``std::cmp`` module ids depend on that).
+
+    This fold was deferred for a long time on the premise that it would "churn"
+    colon-bearing source identifiers such as Objective-C selectors
+    (``removeItemAtPath:error:``). Measurement reversed that premise: those ids
+    were ALREADY unparseable seven-segment strings, so sanitizing repairs them
+    rather than churning them. Selector-style and coordinate-style names are the
+    beneficiaries.
+
+    The substitution is documented-lossy (full fidelity lives in ``Symbol.name``)
+    and idempotent, so producers that already route through
+    :func:`sanitize_id_name_segment` — the synthetic linker stand-ins per
+    WI-vuzaf, the Maven manifest sites per INV-dulah — are unaffected. Those
+    explicit calls stay: they pin the right *value* into the slot, whereas this
+    only guarantees the slot is colon-free.
     """
-    return f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}"
+    return (
+        f"{lang}:{path}:{start_line}-{end_line}"
+        f":{sanitize_id_name_segment(name)}:{kind}"
+    )
+
+
+def sanitize_id_name_segment(name: str) -> str:
+    """Colon-free ``{name}`` slot for a canonical symbol id (ADR-0036 Ruling 1).
+
+    A literal ``':'`` in the name slot would push the id past its five anchored
+    segments and defeat the from-both-ends round-trip parser, so colons are
+    sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
+    lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
+    folds a protocol address — message-queue ``kafka:publish:topic`` →
+    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
+    producers whose name folds an ecosystem coordinate,
+    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
+
+    :func:`make_symbol_id` applies this to every name slot (WI-sikar), so
+    calling it explicitly is no longer required for correctness. Producers keep
+    doing so where it documents intent, and the substitution is idempotent.
+    """
+    return name.replace(":", ".")
 
 
 def make_file_id(lang: str, path: str) -> str:
@@ -619,6 +831,7 @@ def make_unresolved_edge(
     enclosing_class: Optional[str] = None,
     receiver_type_hint: Optional[str] = None,
     inherited_field_receiver: Optional[str] = None,
+    call_construct: Optional[str] = None,
 ) -> Edge:
     """Create an unresolved-external call edge for a callee not in the project.
 
@@ -651,6 +864,18 @@ def make_unresolved_edge(
         inherited_field_receiver: Receiver identifier when believed to be
             an inherited field (Site 3). Lands on ``Edge.meta`` under
             ``"inherited_field_receiver"``.
+        call_construct: Syntactic form of the call site — ``"method"`` for a
+            call on a receiver. Lands on ``Edge.meta`` under
+            ``"call_construct"``, where BOTH taint gates read it:
+            ``io_boundary.gate_named_entry`` (an untyped method call never
+            matches a catalogued entry) and ``_register_sanitizer_callers``
+            (an untyped method call never registers a barrier). Declaring it
+            is what stops a name-shortening improvement — putting a real
+            receiver type in ``module_hint`` also shortens ``w.doFinal`` to
+            ``doFinal`` — from turning into a PHANTOM BARRIER, since the
+            sanitizer path matches on the short name and never reads
+            ``module_hint``. Omit it only when the call genuinely has no
+            receiver.
     """
     dst_id = f"{lang}:{module_hint}:0-0:{callee_name}:unresolved"
     # ADR-0037 ruling 2: derive dst_ref from the components this helper already holds,
@@ -669,6 +894,8 @@ def make_unresolved_edge(
         hint_meta["receiver_type_hint"] = receiver_type_hint
     if inherited_field_receiver is not None:
         hint_meta["inherited_field_receiver"] = inherited_field_receiver
+    if call_construct is not None:
+        hint_meta["call_construct"] = call_construct
     return Edge.create(
         src=src_id,
         dst=dst_id,
@@ -755,6 +982,123 @@ def make_route_stable_id(method: str, path: str) -> str:
     # hash identically to the root path (INV-nimik).
     normalized = path if path else "/"
     return _short_sha256(f"route:{method.upper()}:{normalized}")
+
+
+def make_route_symbol(
+    *,
+    language: str,
+    path: str,
+    span: Span,
+    method: str,
+    route_path: str,
+    origin: str,
+    origin_run_id: str,
+    framework_role: str = "route",
+    handler_ref: Optional[str] = None,
+    extra_meta: Optional[dict[str, Any]] = None,
+    is_exported: bool = False,
+    protocol_origin: Optional[str] = None,
+    discovery_language: Optional[str] = None,
+) -> Symbol:
+    """Mint a route-marker Symbol with canonical identity + provenance (WI-zugob).
+
+    Every route-marker producer previously hand-rolled this record, and they
+    drifted apart in three ways the validators catch — an id kind-slot left as
+    the literal ``route`` fossil (``route`` is not a registered symbol kind, so
+    ``id_format`` fails), an absent ``origin_run_id`` (``cross_field``), and an
+    unregistered ``origin`` pass-id (``axis_conformance``). This is the shared
+    minting chokepoint the WI-tufil producer scout found did not exist; it
+    encapsulates the shape ``framework_patterns.materialize_route_symbols``
+    already proved for the go/js/java trio.
+
+    **Naming.** ``Symbol.name`` is ``"{METHOD} {path}"`` and the id name-slot is
+    derived from it, so ADR-0036 Ruling 1 (``id name-slot == sanitized(name)``)
+    holds by construction. The handler's own name is NOT the record name — it
+    lives in ``meta['handler_ref']``, which is what ``linkers/route_handler``
+    already resolves against. That direction is forced, not stylistic: a
+    multi-method registration (Starlette ``methods=['GET','POST']``, a Django
+    class-based view expanded per verb) emits several markers at the SAME span,
+    so a handler-derived name-slot would collide their ids, while the
+    method+path pair is unique by construction.
+
+    Args:
+        language: Producer language for the id lang-slot.
+        path: File path the registration appears in.
+        span: Registration span (the marker is anchored at the call site).
+        method: HTTP verb, or a transport sentinel (``WS``/``LIVE``/``RPC``) —
+            split out of the verb field by :func:`routes.transport_meta`.
+        route_path: Route path; empty normalizes to ``"/"`` (INV-nimik).
+        origin: Producing pass-id — MUST be registered (axis_conformance).
+        origin_run_id: ``execution_id`` of the producing AnalysisRun — MUST be
+            non-empty and join a real run (cross_field).
+        framework_role: ``route`` (default), ``route_mount`` or ``route_include``.
+        handler_ref: Handler name, preserved in meta for the route_handler
+            linker. Producers whose linker branch keys on a different meta key
+            (go reads ``handler_name``) pass theirs via ``extra_meta`` instead.
+        extra_meta: Producer-specific meta merged last (e.g. ``view_name``,
+            ``wrapper_name``). Callers should NOT re-supply ``route_path`` /
+            ``http_method`` / ``framework_role`` here — the factory owns those,
+            and re-supplying ``http_method`` would undo the transport split.
+        is_exported: Whether the route's handler is part of the public API
+            (go derives it from the handler's leading capital).
+        protocol_origin: ADR-0031 Class B discriminator. Set it when the marker
+            is a SYNTHETIC stand-in fabricated from a protocol definition rather
+            than a real source declaration (the grpc linker reading a ``.proto``,
+            the annotation linker reading an ``@hg:route`` directive). When set,
+            ``Symbol.language`` becomes ``None`` and the ``language`` argument
+            moves to ``discovery_language`` — the host source language the
+            pattern was discovered in — matching what the other Class-B linkers
+            (message_queue / database_query / subprocess_cli) already emit. The
+            id lang-slot still uses ``language`` either way, so the id stays a
+            parseable five-segment ADR-0036 record for synthetic and real
+            markers alike.
+        discovery_language: Host source language for a synthetic marker, stated
+            EXPLICITLY rather than derived from ``language``. The two are not
+            always the same judgement: the grpc linker deliberately leaves it
+            ``None`` (a gRPC route is fabricated from a service definition, not
+            discovered inside a host file), while the annotation linker sets it
+            to the language of the file carrying the directive. Deriving it here
+            would silently overturn that per-linker decision, so the caller owns
+            it.
+
+    Returns:
+        A route-marker ``Symbol`` with ``kind="function"`` (the ADR-0027 Phase-3
+        route→function fold; the route signal lives in ``meta.framework_role``).
+    """
+    from ..routes import transport_meta
+
+    normalized_path = route_path if route_path else "/"
+    name = f"{method} {normalized_path}"
+    meta: dict[str, Any] = {
+        "route_path": normalized_path,
+        **transport_meta(method),
+        "framework_role": framework_role,
+    }
+    if handler_ref:
+        meta["handler_ref"] = handler_ref
+    if extra_meta:
+        meta.update(extra_meta)
+    return Symbol(
+        id=make_symbol_id(
+            language, path, span.start_line, span.end_line,
+            sanitize_id_name_segment(name), "function",
+        ),
+        name=name,
+        kind="function",
+        # ADR-0031 Class B: a synthetic stand-in has no host language of its
+        # own, so `language` names where it was DISCOVERED, not what it is.
+        language=None if protocol_origin else language,
+        discovery_language=discovery_language,
+        protocol_origin=protocol_origin,
+        path=path,
+        span=span,
+        origin=origin,
+        origin_run_id=origin_run_id,
+        stable_id=make_route_stable_id(method, normalized_path),
+        meta=meta,
+        line_span=span.end_line - span.start_line + 1,
+        is_exported=is_exported,
+    )
 
 
 def make_site_stable_id(protocol_origin: str, rel_path: str, target: str) -> str:
@@ -958,18 +1302,35 @@ def make_doc_symbol_ids(
     ``(language, path, kind, name, start_line, end_line)`` tuple, makes that
     divergence unrepresentable, and dedups the eleven copies onto one definition.
 
-    ``node.id`` shape: ``"{language}:{path}:{kind}:{start_line}:{name}"`` — the
-    historical doc-family shape the six line-bearing adopters
-    (scss/vue/svelte/puppet/astro/twig, plus kdl) already emit, so they migrate
-    byte-for-byte. This is deliberately NOT the documented ADR-0036 node.id
-    grammar (``lang:path:span:name:kind`` — span third, kind last): full grammar
-    conformance for the doc family would re-key every node and is a separate,
-    larger decision (the markdown/gitignore analyzers, which already use the
-    span-third/kind-last shape, are NOT folded onto this helper for that reason).
-    The line-less adopters (rst/robot/pony/sparql) GAIN the ``start_line`` segment
-    here, which both moves their id TOWARD the grammar and resolves their latent
-    same-name-sibling id collision (two ``section`` nodes of the same name in one
-    file previously shared an id).
+    ``node.id`` is the canonical ADR-0036 grammar, minted by delegating to
+    :func:`make_symbol_id` — this helper does NOT re-implement the format. The
+    delegation is the point: an f-string copy of the grammar is exactly how
+    ``js_ts.py`` and ``json_config.py`` each opted out of the shared minter's
+    guarantees, and it is what let the doc family drift for months.
+
+    **This shape changed (INV-dulah, doc-family slot-ORDER limb).** The helper
+    previously emitted ``"{language}:{path}:{kind}:{start_line}:{name}"`` — kind
+    third, no span, name last — deliberately not the documented grammar, on the
+    recorded premise that "full grammar conformance for the doc family would
+    re-key every node and is a separate, larger decision." Measurement retired
+    that framing rather than the work: against the canonical right-anchored parse
+    (``span, name, kind = parts[-3:]``) the *kind word landed in the span slot*,
+    so every id from all eleven adopters failed ``id_format`` with
+    ``malformed_span_segment`` and could not be parsed back into its slots at
+    all. These were not ids in a different-but-workable convention; they were
+    unparseable. The re-key is consumer-visible for ``node.id`` and identity-safe:
+    ``stable_id`` below is computed from the same argument set either way, so it
+    is byte-identical, and no ``*_scheme`` bumps (the scheme-bump principle — a
+    bump follows an ALTERED existing computed value, and none is altered here).
+
+    Delegating also inherits the WI-sikar always-on name-slot sanitization
+    (``':' -> '.'``), which repairs a real six-segment break the old f-string
+    shipped: svelte's ``on:click`` event symbols carried an id name-slot of
+    ``button:click``, whose colon shifted every right-anchored slot.
+
+    The markdown/gitignore analyzers were excluded from this helper *because* it
+    diverged from the grammar; they already mint the canonical shape, so that
+    reason is now spent and folding them on is a clean follow-up.
 
     ``stable_id`` is the canonical ``sha256:<16hex>`` from
     :func:`make_doc_stable_id` — unchanged for every adopter (they already called
@@ -980,7 +1341,7 @@ def make_doc_symbol_ids(
     interpolation the analyzers previously used produced the identical string.
     """
     spath = str(path)
-    symbol_id = f"{language}:{spath}:{kind}:{start_line}:{name}"
+    symbol_id = make_symbol_id(language, spath, start_line, end_line, name, kind)
     stable_id = make_doc_stable_id(language, spath, kind, name, start_line, end_line)
     return symbol_id, stable_id
 
@@ -1245,12 +1606,14 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
         if s.language is None and s.protocol_origin is not None
         and s.stable_id is None
     ]
-    counters: dict[tuple, int] = {}
+    counters: dict[tuple[str | None, str, str, str], int] = {}
     for s in sorted(
         null_class_b,
         key=lambda s: (
             s.protocol_origin, s.kind, s.path, s.name,
-            s.span.start_line, s.span.start_col, s.id,
+            s.span.start_line if s.span else 0,
+            s.span.start_col if s.span else 0,
+            s.id,
         ),
     ):
         key = (s.protocol_origin, s.kind, s.path, s.name)
@@ -1290,9 +1653,16 @@ def populate_synthetic_class_b_identity(symbols: list[Symbol]) -> None:
 _LOGICAL_DEDUP_PROTOCOL_ORIGINS = frozenset({"message_queue", "event_sourcing"})
 
 
-def _occurrence_sort_key(sym: Symbol) -> tuple:
-    """Deterministic within-group order (ADR-0043 §6): span position, then id."""
+def _occurrence_sort_key(sym: Symbol) -> tuple[int, int, int, int, str]:
+    """Deterministic within-group order (ADR-0043 §6): span position, then id.
+
+    A span-less Symbol sorts as position zero — identical to the degenerate
+    ``Span(0, 0, 0, 0)`` that ``Symbol.from_dict`` used to fabricate for a
+    missing span — with ``sym.id`` as the deterministic tie-breaker.
+    """
     sp = sym.span
+    if sp is None:
+        return (0, 0, 0, 0, sym.id)
     return (sp.start_line, sp.start_col, sp.end_line, sp.end_col, sym.id)
 
 
@@ -1776,7 +2146,7 @@ def normalize_generic_params(
         return text
     mapping = {tp: f"${i}" for i, tp in enumerate(type_params)}
 
-    def _replace(m: _re.Match) -> str:
+    def _replace(m: _re.Match[str]) -> str:
         name = m.group(1)
         return mapping.get(name, name)
 
@@ -2174,6 +2544,94 @@ def iter_tree_with_context(
 # ---------------------------------------------------------------------------
 
 
+#: Symbol kinds that can own a dataflow. A ``module_attr_ref`` anchored to
+#: anything else cannot share a caller with a sink, which is the whole point.
+_ATTR_OWNER_KINDS: frozenset[str] = frozenset({"function", "method", "constructor"})
+
+
+def symbols_by_path_index(
+    symbols: "Sequence[Symbol]",
+) -> dict[str, list["Symbol"]]:
+    """Index symbols by their ``path``, for per-file ``enclosing_symbols``.
+
+    INV-fafol. Paired with :func:`symbols_for_path` because the KEY FORMAT IS
+    NOT STABLE across the pipeline and assuming it is cost a silent no-op: at
+    the point js_ts builds this index the symbols carry ABSOLUTE paths, while
+    the per-file name computed at the emit site is repo-RELATIVE. The lookup
+    returned an empty list, the anchoring silently did nothing, and the
+    measured verdict was unchanged — indistinguishable from the fix not
+    working. Both halves live here so neither side can drift into assuming a
+    format the other does not produce.
+    """
+    out: dict[str, list["Symbol"]] = {}
+    for sym in symbols:
+        out.setdefault(sym.path, []).append(sym)
+    return out
+
+
+def symbols_for_path(
+    index: dict[str, list["Symbol"]], *candidates: str,
+) -> list["Symbol"]:
+    """The symbols for a file, trying each spelling of its path in turn.
+
+    Returns the first non-empty match. An empty result is a real answer (a
+    file with no callables), which is why callers must not treat it as an
+    error — but see :func:`symbols_by_path_index` for why it is also the
+    shape a key mismatch takes.
+    """
+    for key in candidates:
+        hit = index.get(key)
+        if hit:
+            return hit
+    return []
+
+
+def _innermost_callable_at(
+    line: int, symbols: "Sequence[Symbol] | None",
+) -> "Symbol | None":
+    """The narrowest callable whose span contains *line*, or None.
+
+    INV-fafol. A taint source must be anchored to the callable that performs
+    the read, or it cannot participate in propagation: propagation pairs a
+    source and a sink that share a caller, and every tree-sitter analyzer was
+    passing the FILE pseudo-symbol as ``caller_symbol``. So a
+    ``module_attr_ref`` edge's src was the file while the sink's src was the
+    function, and the two never met. Measured on one JS file holding both
+    shapes: ``os.hostname() -> fs.writeFileSync`` is found (a CALL, already
+    anchored to its function) while ``process.env.API_KEY ->
+    fs.writeFileSync`` in the sibling function is not — same file, same sink,
+    the only difference being which end anchors where.
+
+    RESOLVED BY LINE SPAN, deliberately, rather than by walking tree-sitter
+    ancestors to a function node. Span containment needs no per-language
+    knowledge of which node kinds are callables, so this stays one rule in one
+    place instead of five copies that drift — and the next analyzer inherits
+    it rather than reimplementing it. The narrowest containing span wins, so a
+    read inside a nested closure is attributed to the closure rather than to
+    its enclosing function.
+
+    Returns None when no callable contains the line, which is correct and
+    load-bearing: a genuinely module-level read (top-of-file ``process.env``)
+    belongs to the file, and the caller keeps its existing pseudo-symbol for
+    exactly that case. The fix must not invent a callable that is not there.
+    """
+    if not symbols:
+        return None
+    best: "Symbol | None" = None
+    best_lo = best_hi = 0
+    for sym in symbols:
+        if sym.kind not in _ATTR_OWNER_KINDS:
+            continue
+        span = getattr(sym, "span", None)
+        lo = getattr(span, "start_line", None)
+        hi = getattr(span, "end_line", None)
+        if lo is None or hi is None or not (lo <= line <= hi):
+            continue
+        if best is None or (lo >= best_lo and hi <= best_hi):
+            best, best_lo, best_hi = sym, lo, hi
+    return best
+
+
 def emit_module_attribute_refs(
     root: "tree_sitter.Node",
     source: bytes,
@@ -2190,6 +2648,7 @@ def emit_module_attribute_refs(
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
+    enclosing_symbols: "Sequence[Symbol] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
 
@@ -2324,11 +2783,13 @@ def emit_module_attribute_refs(
                 continue
             real_module = imports[base_text]
         qname = f"{real_module}.{attr_name}"
+        line_no = node.start_point[0] + 1
+        owner = _innermost_callable_at(line_no, enclosing_symbols)
         edges_out.append(Edge.create(
-            src=caller_symbol.id,
+            src=(owner.id if owner is not None else caller_symbol.id),
             dst=f"{lang}:{real_module}:0-0:{qname}:attribute",
             edge_type="module_attr_ref",
-            line=node.start_point[0] + 1,
+            line=line_no,
             origin=pass_id,
             origin_run_id=run_id,
             evidence_type="module_attribute_reference",
@@ -2434,11 +2895,45 @@ class TreeSitterAnalyzer:
     """Glob patterns for source files (e.g., ["*.go"], ["*.rs"])."""
 
     # -- Grammar source: exactly one of these should be set ----------------
-    grammar_module: Optional[str] = None
-    """Direct grammar package name (e.g., "tree_sitter_go")."""
+    #
+    # Read-only PROPERTIES rather than the `Optional[str] = None` class
+    # attributes they replace. Subclasses still declare them the same way —
+    # `grammar_module = "tree_sitter_go"` in the class body — and nothing about
+    # that changes: a subclass class-attribute precedes this base in the MRO, so
+    # `self.grammar_module` returns the string, while a subclass that declares
+    # neither falls through to the property and gets `None`, exactly as before.
+    #
+    # Why: 105 analyzer subclasses across the three language packages each
+    # narrowed one of these from `str | None` to `str`, which mypy reports as
+    # `mutable-override` — a covariant override of a MUTABLE attribute. That was
+    # 105 of the ~957 strict errors, 11% of the whole surface, from these two
+    # declarations. An attribute that is only ever *read* has no business being
+    # declared mutable, so the fix is the declaration, not 105 subclass edits.
+    #
+    # The tempting alternative — `ClassVar[str] = ""`, matching the `lang` /
+    # `pass_id` sentinels a few lines up — is a LIVE BEHAVIOUR CHANGE and was
+    # rejected: five `is not None` checks below (`_check_grammar_available`,
+    # `_create_parser`) would become permanently true, so every language-pack
+    # analyzer would call `importlib.import_module("")`; and `_get_config_dict`
+    # feeds `compute_config_fingerprint`, a PERSISTED cache key, so every
+    # analyzer's `config_fingerprint` would change. `ClassVar` alone does not
+    # silence the error, and `Final` makes it worse (it adds
+    # "cannot assign to final name" at all 105 sites).
+    #
+    # Residual sharp edge, unexercised today and grepped to confirm it: a
+    # CLASS-level read (`TreeSitterAnalyzer.grammar_module`) now yields the
+    # property object rather than `None`, and `self.grammar_module = ...` would
+    # raise. Every read in `packages/*/src/` is `self.`-qualified and there are
+    # zero such assignments anywhere in the repo.
+    @property
+    def grammar_module(self) -> Optional[str]:
+        """Direct grammar package name (e.g., "tree_sitter_go")."""
+        return None
 
-    language_pack_name: Optional[str] = None
-    """Language-pack grammar name (e.g., "nim")."""
+    @property
+    def language_pack_name(self) -> Optional[str]:
+        """Language-pack grammar name (e.g., "nim")."""
+        return None
 
     # -- Optional configuration --------------------------------------------
     resolver_class: type = NameResolver
@@ -2460,7 +2955,7 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: grammar setup -----------------------------------
 
-    def _get_config_dict(self) -> dict:
+    def _get_config_dict(self) -> dict[str, Any]:
         """Return the analyzer's effective configuration dict for
         ``config_fingerprint`` derivation.
 
@@ -2653,7 +3148,7 @@ class TreeSitterAnalyzer:
         file_path: Path,
         rel_path: str,
         local_symbols: dict[str, Symbol],
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
         run: AnalysisRun,
         import_aliases: dict[str, str],
         resolver: NameResolver,
@@ -2779,7 +3274,7 @@ class TreeSitterAnalyzer:
     def register_symbol(
         self,
         symbol: Symbol,
-        global_symbols: dict,
+        global_symbols: dict[str, Symbol],
     ) -> None:
         """Add a symbol to the global registry for cross-file resolution.
 
@@ -3354,7 +3849,7 @@ class TreeSitterAnalyzer:
             files_analyzed += 1
 
         # 4. Build global symbol registry
-        global_symbols: dict = {}
+        global_symbols: dict[str, Symbol] = {}
         for analysis, _, _source in file_analyses.values():
             for symbol in analysis.symbols:
                 self.register_symbol(symbol, global_symbols)
@@ -3439,7 +3934,7 @@ class TreeSitterAnalyzer:
 
     # -- Registration helper -----------------------------------------------
 
-    def as_registered_analyzer(self) -> Callable:
+    def as_registered_analyzer(self) -> "Callable[..., AnalysisResult]":
         """Return a function suitable for use with @register_analyzer.
 
         Returns a function with signature

@@ -1,0 +1,33 @@
+- op: create  # 7374
+  at: '2026-08-12T07:48:00Z'  # 7374
+  by: agent  # 7374
+  actor: jgstern_agent  # 7374
+  clock: 1  # 7374
+  nonce: '7374'  # 7374
+  data:  # 7374
+    kind: invariant  # 7374
+    title: "external_potential bucket is EMPTY on every repo measured (0 of 4, incl. hypergumbo self with 719 io edges and 507 external_boundary nodes) while the code calls it the dominating bucket"  # 7374
+    status: violated  # 7374
+    priority: 2  # 7374
+    parent:  # 7374
+    tags: []  # 7374
+    isbefore: []  # 7374
+    duplicate_of: []  # 7374
+    not_duplicate_of: []  # 7374
+    pr_ref:  # 7374
+    description: "FOUND while fixing INV-buzab, and filed rather than chased because it is outside\nthat P0's blast radius. Not investigated to root cause.\n\nTHE `external_potential` BUCKET IS EMPTY ON EVERY REPO MEASURED, while the code\nthat produces it describes it as the high-volume one.\n\n    repo                          total_io_edges   external_potential_edges\n    httpx                                    ...                          0\n    poetry                                   ...                          0\n    full-stack-fastapi-template               16                          0\n    hypergumbo (self)                        719                          0\n\nhypergumbo's own analysis is the sharpest instance: 719 real I/O edges across 11\npopulated buckets (command_launch 408, fs_read 373, fs_write 120, logging 108,\nenv_read 59, subprocess 36, net_send 10 ...) and `external_potential` does not\nappear in `boundaries` at all.\n\nTHE INPUTS ARE PRESENT, SO THIS IS NOT \"NOTHING TO CLASSIFY\". On httpx: 2,046\nnodes, of which **507 carry `meta.external_boundary: True`** and 511 are supply\ntier 3 — e.g. `python:rich.console:0-0:Console:external_symbol`,\n`python:external:0-0:encode:external_symbol`. `_compute_external_potential`\n(io_boundary.py) requires exactly that marker plus a dst present in\n`nodes_by_id`, a `_TRACEABLE_EDGE_TYPES` edge, an unset `meta.io_boundary`, and\na supported catalog. Something in that chain rejects all 507.\n\nWHY IT MATTERS BEYOND TIDINESS:\n\n- The code's own doctrine says the opposite. `_DISCLOSED_ONLY_BOUNDARIES`\n  excludes it from the `total_io_edges` headline because it is \"receiver-\n  unresolved speculative noise (WI-huhit/WI-foduh)\", and the CLI hides it from\n  text output by default \"since it tends to dominate the per-primitive view\",\n  offering `--show-external-potential` to get it back. A bucket that dominates\n  and a bucket that is empty are different products; one of those statements is\n  now false and nothing tells the reader which.\n\n- It silently disables two mechanisms. Filter 2 (the closed-world skip) and the\n  `stdlib_other` symbol filter both exist only to prune this bucket. Neither can\n  do anything to an empty bucket. `stdlib_other` is separately empty in all 14\n  shipped catalogues, so that pair is dead twice over.\n\n- It makes a null unreadable. While closing INV-buzab I changed Filter 2 from\n  exact to prefix matching and COULD NOT measure the effect on any real repo for\n  this reason. The change is defensible on unit tests, but \"no corpus delta\" was\n  not available as evidence, and that is exactly the shape of null this project\n  has ruled licenses nothing.\n\n- It probably suppresses a real signal. \"First-party code reaches into untrusted\n  territory\" is the bucket's stated purpose and it is a genuinely useful thing to\n  show a user; on these repos the tool shows none of it.\n\nNOT DETERMINED, and each is a cheap next step: whether the marker nodes fail the\n`nodes_by_id` lookup (an id-format mismatch between node and edge dst would do\nit); whether the edges into them are outside `_TRACEABLE_EDGE_TYPES`; whether\n`meta.io_boundary` is being set on all of them upstream; or whether the bucket\nwas deliberately turned off somewhere and the docstrings were never updated.\nStart by instrumenting the four rejection points and counting each on httpx —\n507 candidate nodes make this a fast bisection.\n\nRELATED but not the same: INV-nanon (META: passes execute and emit no edges) and\nINV-bikaj (61 of 84 AnalysisRun passes produce 0 edges). This is that family's\nshape inside io_boundary rather than in a linker, and it has a concrete\n507-node candidate population to bisect against, which those umbrella items do\nnot."  # 7374
+    fields:  # 7374
+      statement: "A boundary bucket the code discloses, hides by default and filters twice must either produce chains or be documented as inert."  # 7374
+      root_cause: "Not determined. Candidate nodes exist (507 carry meta.external_boundary on httpx) so _compute_external_potential's filter chain rejects all of them; the four rejection points are nodes_by_id lookup, meta.external_boundary, _TRACEABLE_EDGE_TYPES, and the unset-meta.io_boundary test."  # 7374
+      priority: "P2"  # 7374
+      status: "violated"  # 7374
+      tags: "io_boundary,analysis_quality,dead_code,external_potential"  # 7374
+- op: update  # 56c1
+  at: '2026-08-12T08:47:02Z'  # 56c1
+  by: agent  # 56c1
+  actor: jgstern_agent  # 56c1
+  clock: 2  # 56c1
+  nonce: 56c1  # 56c1
+  set: {}  # 56c1
+  add:  # 56c1
+    tags: [io_boundary, analysis_quality, external_potential]  # 56c1

@@ -1,0 +1,36 @@
+- op: create  # 4876
+  at: '2026-07-29T07:35:20Z'  # 4876
+  by: agent  # 4876
+  actor: jgstern_agent  # 4876
+  clock: 1  # 4876
+  nonce: '4876'  # 4876
+  data:  # 4876
+    kind: work_item  # 4876
+    title: "Django CBV route expander emits a 6-segment node.id (unsanitized colon-bearing name) — hard ADR-0036 grammar break"  # 4876
+    status: todo_hard  # 4876
+    priority: 2  # 4876
+    parent:  # 4876
+    tags:  # 4876
+    - wave5  # 4876
+    - route  # 4876
+    isbefore: []  # 4876
+    duplicate_of: []  # 4876
+    not_duplicate_of: []  # 4876
+    pr_ref:  # 4876
+    description: "`framework_patterns.expand_class_based_view_routes` (the django-cbv-method-expander\npost-pass) builds a new symbol name by concatenating the parent route symbol's name\nwith the view method:\n\n    new_name = f\"{sym.name}.{method_name}\"\n    new_id   = make_symbol_id(sym.language, sym.path, start, end, new_name, \"function\")\n\n`sym` here is a py.py Django route marker, whose name is minted as\n`f\"django:{view_name}\"` -- it CONTAINS A COLON. `make_symbol_id` is called with that\nraw, unsanitized name, so the colon lands in the id's name slot and the canonical\n5-segment grammar breaks.\n\nLive repro (2026-07-29), full pipeline on a 2-file Django fixture:\n\n    urls.py:  path(\"admin/\", views.AdminView.as_view())\n    views.py: class AdminView: def get(self, request): ...\n\n  node.name = 'django:AdminView.get'\n  node.id   = python:urls.py:6-6:django:AdminView.get:function\n                                 ^^^^^^^^^^^^^^^^^^^^ 6 segments, not 5\n\nThis is a HARD ADR-0036 grammar break (an id that cannot be parsed back into its\nfive anchored slots), not merely a Ruling-1 name-slot mismatch -- strictly worse\nthan the slot mismatches WI-zugob is sweeping, and an INV-dulah instance.\n\nTwo candidate fixes, both structural rather than a local sanitize() call:\n  (a) migrate the py.py Django site onto `analyze.base.make_route_symbol`, so the\n      parent name becomes \"{METHOD} {path}\" with no colon and the expander inherits\n      a clean base; and\n  (b) have the expander itself mint via `make_route_symbol` (method=the expanded\n      verb, route_path=meta[\"route_path\"], view_method in extra_meta) so it stops\n      deriving a name by string concatenation entirely.\n(b) subsumes (a) for this symbol but (a) is still needed for the un-expanded\ncross-file CBV case, which keeps the \"ANY\" marker in place with the colon name.\n\nNote the site already carries a WI-tufil comment claiming the id \"round-trips\nagainst Symbol.kind\" -- true for the KIND slot, which is what WI-tufil checked.\nThe name slot was never checked, which is exactly the pt.40(a) widen-by-property\nlesson: the gate's unchecked properties hid this.\n\nFound while building route-parity fixtures for WI-zugob."  # 4876
+    fields: {}  # 4876
+- op: update  # 1f88
+  at: '2026-07-29T11:04:22Z'  # 1f88
+  by: agent  # 1f88
+  actor: jgstern_agent  # 1f88
+  clock: 2  # 1f88
+  nonce: 1f88  # 1f88
+  set:  # 1f88
+    status: done  # 1f88
+- op: discuss  # 87f8
+  at: '2026-07-29T11:04:22Z'  # 87f8
+  by: agent  # 87f8
+  actor: jgstern_agent  # 87f8
+  clock: 3  # 87f8
+  nonce: 87f8  # 87f8
+  message: "DONE in 539033b334 (WI-zugob producer batch 3). Fixed at the root rather than by sanitizing: the CBV expander no longer derives a name by concatenation (f\"{sym.name}.{method_name}\", which inherited py.py's colon-bearing \"django:{view}\") but mints through make_route_symbol from method+path, so no parent name can put a colon in the id slot again. Behavioral evidence: the django route-parity case, which reproduced the 6-segment id python:urls.py:6-6:django:AdminView.get:function, now emits python:urls.py:7-7:GET /admin/:function — 5 canonical segments; test_route_marker_id_is_canonical_five_segment passes for it with no xfail (gate at 89 passed / 0 xfailed). Option (b) from the filed fork was taken (migrate the expander itself), which subsumes (a)."  # 87f8

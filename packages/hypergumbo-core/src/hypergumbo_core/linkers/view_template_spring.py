@@ -40,7 +40,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Iterable, Iterator, Optional, Tuple
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import tree_sitter
 
 from ..ir import Symbol
 from ._view_template_core import (
@@ -88,7 +91,7 @@ _NON_TEMPLATE_PREFIXES = ("redirect:", "forward:")
 
 
 @lru_cache(maxsize=64)
-def _get_java_parser():
+def _get_java_parser() -> Optional["tree_sitter.Parser"]:
     try:  # pragma: no cover - exercised only when tree-sitter is installed
         from tree_sitter import Parser
         from tree_sitter_language_pack import get_language
@@ -127,7 +130,9 @@ def _enclosing_class_name(method_sym: Symbol) -> Optional[str]:
     return method_sym.name.rsplit(".", 1)[0]
 
 
-def _parse_java_source(view_path: Path):
+def _parse_java_source(
+    view_path: Path,
+) -> Optional[Tuple["tree_sitter.Tree", bytes]]:
     """Best-effort tree-sitter parse of a Java source file."""
     parser = _get_java_parser()
     if parser is None:  # pragma: no cover - dep import failure
@@ -142,7 +147,9 @@ def _parse_java_source(view_path: Path):
         return None
 
 
-def _find_enclosing_method_node(root, method_short_name: str, body_line: int):
+def _find_enclosing_method_node(
+    root: "tree_sitter.Node", method_short_name: str, body_line: int,
+) -> Optional["tree_sitter.Node"]:
     """Find the ``method_declaration`` node whose name matches and which
     surrounds the given ``body_line``."""
     stack = [root]
@@ -151,7 +158,10 @@ def _find_enclosing_method_node(root, method_short_name: str, body_line: int):
         if node.type == "method_declaration":
             name_node = node.child_by_field_name("name")
             if name_node is not None:
-                name = name_node.text.decode("utf-8", "replace")
+                name = (
+                    name_node.text.decode("utf-8", "replace")
+                    if name_node.text else ""
+                )
                 if name == method_short_name:
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
@@ -161,7 +171,9 @@ def _find_enclosing_method_node(root, method_short_name: str, body_line: int):
     return None
 
 
-def _extract_view_name_from_return(node) -> Optional[Tuple[str, str, int]]:
+def _extract_view_name_from_return(
+    node: "tree_sitter.Node",
+) -> Optional[Tuple[str, str, int]]:
     """Extract ``(view_name, detection_pattern, lineno)`` from a ``return_statement``.
 
     Recognised shapes:
@@ -179,6 +191,8 @@ def _extract_view_name_from_return(node) -> Optional[Tuple[str, str, int]]:
         return None
 
     if expr.type == "string_literal":
+        if expr.text is None:  # pragma: no cover - defensive; source is retained
+            return None
         text = expr.text.decode("utf-8", "replace")
         view_name = _strip_string_literal_quotes(text)
         return view_name, "return_string", node.start_point[0] + 1
@@ -187,7 +201,9 @@ def _extract_view_name_from_return(node) -> Optional[Tuple[str, str, int]]:
         type_node = expr.child_by_field_name("type")
         if type_node is None:
             return None  # pragma: no cover — well-formed ModelAndView always has a type
-        type_text = type_node.text.decode("utf-8", "replace")
+        type_text = (
+            type_node.text.decode("utf-8", "replace") if type_node.text else ""
+        )
         if type_text != "ModelAndView":
             return None
         args_node = expr.child_by_field_name("arguments")
@@ -195,6 +211,8 @@ def _extract_view_name_from_return(node) -> Optional[Tuple[str, str, int]]:
             return None  # pragma: no cover — well-formed call always has args node
         for arg in args_node.children:
             if arg.type == "string_literal":
+                if arg.text is None:  # pragma: no cover - defensive; source is retained
+                    continue
                 text = arg.text.decode("utf-8", "replace")
                 view_name = _strip_string_literal_quotes(text)
                 return (
@@ -216,7 +234,9 @@ def _strip_string_literal_quotes(text: str) -> str:
     return text  # pragma: no cover — tree-sitter string_literal always has quotes
 
 
-def _walk_returns_in_method(method_node) -> Iterator:
+def _walk_returns_in_method(
+    method_node: "tree_sitter.Node",
+) -> Iterator["tree_sitter.Node"]:
     """Yield every ``return_statement`` reachable from a method body."""
     body = method_node.child_by_field_name("body")
     if body is None:

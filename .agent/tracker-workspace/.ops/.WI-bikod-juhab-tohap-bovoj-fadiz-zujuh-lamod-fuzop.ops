@@ -1,0 +1,45 @@
+- op: create  # 185b
+  at: '2026-08-17T11:06:04Z'  # 185b
+  by: agent  # 185b
+  actor: jgstern_agent  # 185b
+  clock: 1  # 185b
+  nonce: 185b  # 185b
+  data:  # 185b
+    kind: work_item  # 185b
+    title: "Implicit auto-analysis inherits survey side-emission defaults for ten commands that never requested them"  # 185b
+    status: needs_human_review  # 185b
+    priority: 2  # 185b
+    parent:  # 185b
+    tags:  # 185b
+    - developer_experience  # 185b
+    - cli  # 185b
+    isbefore: []  # 185b
+    duplicate_of: []  # 185b
+    not_duplicate_of: []  # 185b
+    pr_ref:  # 185b
+    description: "MEASURED CONSEQUENCE, NOT A STYLE COMPLAINT. _get_or_run_analysis is the single\nchokepoint through which ten commands auto-run an analysis on a cache miss:\nslice, search, routes, explain, symbols, io_boundaries, verify_claims,\ntest_coverage, repeat_finder, dead_code_maybe. It calls\n\n    run_survey(repo_root=..., out_path=None, progress=...)\n\nwith NO side-emission flags, so every survey default applies. cmd_survey passes its\nown flags and is unaffected.\n\nThe result is that a caller who typed `slice --files` gets survey's full side-output\nbill. One such invocation on this monorepo — whose question was \"which test files\ndepend on these 2 source files\", answer: 9 files — wrote a 203 MB survey.json, three\ntier previews and 16 handler slices, 204 MB across 20 artifacts. _handle_files_mode\nreads only nodes and edges (Symbol.path, Symbol.id, Edge.src, Edge.dst); it touches\nnothing from sketch_precomputed, entrypoints, metrics, supply_chain_summary, the tier\nfiles or the handler slices.\n\nWHAT IT COSTS, measured (scripts/measure-survey-phase-split.py, --lean arm):\ndeclining sketch fan-out + handler slices + sketch pre-computation on the same tree\ntakes a cold run 517.7s -> 455.0s. So the side-output family is 62.7s, about 12% of\nthe pre-fix wall clock, and roughly 28% of the 220.0s that remains after the WI-balaf\nfix. Not the headline number — that was the fingerprint quadratic — but no longer\nnoise either.\n\nTWO FACTS THAT BOUND THE OPTIONS:\n 1. Cache discovery keys on survey.json ALONE (_discover_input_file ->\n    find_survey_in_dir). The tier files and slice dir are separate artifacts, so\n    declining them cannot break a later cache hit.\n 2. sketch reads sketch_precomputed behind `\"sketch_precomputed\" in cached_results\n    and ... is not None` guards at all four sites, so its absence degrades to\n    recomputing live rather than to wrong output. Skipping it is safe but shifts cost\n    onto a later `sketch` run on the same tree.\n\nWHY THIS IS FILED RATHER THAN FIXED. The owner ruled on the adjacent surface in\nWI-pijal (2026-05-04): \"don't jettison any of those files -- they're earning their\nplace; the friction is purely awareness\", and WI-pijal was narrowed to help-text only\nwith \"behavior change of any kind\" explicitly out of scope. That ruling was about\nexplicit `run --out`, where the user typed the verb. The implicit path is arguably a\ndifferent case — nobody typed `survey`, and the ten callers cannot pass flags — but\n\"arguably different from an explicit owner ruling\" is exactly the shape that should be\nasked rather than assumed.\n\nTHE QUESTION: should the implicit auto-analysis decline side outputs its caller does\nnot read?\n\n  Option A -- decline the separate ARTIFACTS only (tier previews + handler slices),\n    keep sketch_precomputed. Safe by fact 1: the cached map is byte-for-byte the same\n    map, only the uninvited extra files stop appearing. Buys the smaller share.\n  Option B -- A, plus skip sketch pre-computation. Buys the larger share (it is the\n    bulk of the 62.7s: mention-centrality 27.3s + config-info 15.4s), at the cost of\n    a later `sketch` recomputing. Changes what the cached survey.json CONTAINS, which\n    is the part worth a human decision.\n  Option C -- leave it. The files are cheap now relative to the whole run, and\n    WI-pijal's steer extends to this path too.\n\nNo PR proposed. Awaiting triage."  # 185b
+    fields: {}  # 185b
+- op: update  # f2f4
+  at: '2026-08-17T11:07:38Z'  # f2f4
+  by: agent  # f2f4
+  actor: jgstern_agent  # f2f4
+  clock: 2  # f2f4
+  nonce: f2f4  # f2f4
+  set: {}  # f2f4
+  add:  # f2f4
+    not_duplicate_of: [WI-gupaz-sutul-bukat-vojuk-pusik-jupaf-lojuh-tadot]  # f2f4
+- op: update  # a1b4
+  at: '2026-08-17T19:25:18Z'  # a1b4
+  by: agent  # a1b4
+  actor: jgstern_agent  # a1b4
+  clock: 3  # a1b4
+  nonce: a1b4  # a1b4
+  set:  # a1b4
+    status: done  # a1b4
+- op: discuss  # 7a34
+  at: '2026-08-17T19:25:58Z'  # 7a34
+  by: agent  # 7a34
+  actor: jgstern_agent  # 7a34
+  clock: 4  # 7a34
+  nonce: 7a34  # 7a34
+  message: "OWNER RULING (2026-08-17), verbatim: \"we should add a new flag such as `--minimal`\nto the `slice` subcommand and any other relevant subcommand, so that if that flag\nis included (and only then), hypergumbo skips the separate extra files and the\nsketch precomputation\" -- followed by \"and then we should add that flag in the\nappropriate places/invocations\".\n\nThat is neither of the three options I offered: not A (artifacts only), not B\n(also skip sketch precompute, unconditionally), not C (leave it). It is B's\nSCOPE under an explicit opt-in, which preserves the WI-pijal steer intact --\nnothing is jettisoned; a caller that never asked for a survey can now say so.\n\nSHIPPED as PR #395 (dev bdf52fd7f9).\n\nRegistered on the ten subcommands that reach _get_or_run_analysis: slice, search,\nroutes, explain, symbols, io-boundaries, verify-claims, test-coverage,\nrepeat-finder, dead-code-maybe. Applied ONCE at the chokepoint rather than at ten\ncall sites. NOT on `survey`, which already has --budgets / --no-sketch-fan-out /\n--no-handler-slices and whose user typed the verb that produces the artifacts;\nthat boundary is pinned by a test so it is not \"helpfully\" added later.\n\nMEASURED, cold run_survey on this monorepo, same tree, same instrument:\n    default    220.0s\n    --minimal  160.9s     (-59.1s, -26.9%)\nThe default arm reproduced 220.0s independently of the earlier run that produced\nthat figure, so the baseline has two trials.\n\nBEHAVIORAL EVIDENCE, BOTH SIGNS, two tiny repos so each run was a real cache miss:\n    default    3 tier previews | slices dir present | sketch_precomputed present\n    --minimal  0 tier previews | slices dir absent  | sketch_precomputed absent\nBoth arms returned the SAME answer (2 dependent files) -- non-destruction\nasserted, not merely absence (LIVE.md rule 7). And `sketch` against a --minimal\ncache exits 0 with a complete 114-line sketch, so the documented degradation is\nrecompute-not-incorrectness, verified rather than inferred from the guards.\n\n\"THE APPROPRIATE INVOCATIONS\" -- what was and was not wired:\n - scripts/smart-test: YES, and CAPABILITY-PROBED. The slice runs through the\n   pipx $STABLE_HG, which lags the working tree and did NOT know the flag on this\n   machine. An unrecognized argument exits non-zero and smart-test's slice-failure\n   branch routes to run_full_suite, so blind adoption would have turned every\n   local run into a ~90-minute full suite WHILE REPORTING SUCCESS. A --help probe\n   (~0.2s) gates it. Consequence to expect: the saving does not appear locally\n   until the pipx stable is reinstalled from post-merge dev.\n - bakeoff-broad / bakeoff-deep: NO, deliberately. Every one of those invocations\n   passes --input <hg.json>, so _get_or_run_analysis returns early and no analysis\n   runs; the flag would be a no-op. Verified by reading the call sites, not\n   assumed.\n - dead-code-prospector-run.py and measure-catalogue-reach.py DO run without\n   --input and would benefit. Left out on purpose: each carries its own version-\n   compatibility question, and a batch tool failing loudly is a different risk\n   profile from smart-test failing silently. Raised with the owner; no objection\n   recorded either way, so they remain unwired."  # 7a34

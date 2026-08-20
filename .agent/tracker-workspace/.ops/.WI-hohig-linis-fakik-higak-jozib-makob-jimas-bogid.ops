@@ -1,0 +1,22 @@
+- op: create  # df62
+  at: '2026-08-06T00:29:46Z'  # df62
+  by: agent  # df62
+  actor: jgstern_agent  # df62
+  clock: 1  # df62
+  nonce: df62  # df62
+  data:  # df62
+    kind: work_item  # df62
+    title: "ir.py _CALL_LINES_CAP comment claims truncation is conservative for EVERY consumer but reasons only about the walk — dropping later SOURCE lines broadens the guard (measured: 0.06% saturation, nil impact)"  # df62
+    status: todo_soft  # df62
+    priority: 4  # df62
+    parent:  # df62
+    tags:  # df62
+    - taint  # df62
+    - docs  # df62
+    - measurement  # df62
+    isbefore: []  # df62
+    duplicate_of: []  # df62
+    not_duplicate_of: []  # df62
+    pr_ref:  # df62
+    description: "ir.py:1054-1064 caps `Edge.meta.call_lines` at 50 entries, keeping the LOWEST 50\n(`sorted(lines)[:_CALL_LINES_CAP]`). Its comment claims:\n\n    \"Truncation is CONSERVATIVE for every consumer of this field: knowing fewer call sites can\n     only narrow what a dataflow walk adjudicates, never broaden it (see\n     ``taint._ddg_taint_reaches``, which needs a call site to seed from and a later one to\n     reach).\"\n\nThe claim says \"every consumer\" and then reasons about ONE consumer. There is a second consumer\nit does not consider: the guard at taint.py:2517-2522.\n\n    sink_after_source = any(sink_line > source_line for sink_line in sink_call_lines\n                                                    for source_line in source_call_lines)\n\nTruncating the SINK side to the lowest 50 removes large sink lines -> makes the `any` less\nlikely true -> blocks the walk -> conservative, as claimed.\n\nTruncating the SOURCE side to the lowest 50 removes large source lines, leaving only small ones\n-> makes `sink_line > source_line` MORE likely true -> lets a walk run that otherwise would not.\nThat is broadening, not narrowing. Passing the guard is the precondition for `adjudicated`, and\n`adjudicated` + a same-function sanitizer is the one route to `sanitized` (taint.py:2569-2575),\nwhich drops a flow from a claim's violation set.\n\nSo the comment is UNDER-SCOPED rather than flatly wrong.\n\nMEASURED IMPACT ON THE CURRENT COHORT: NIL, and stated as such rather than left implicit.\nOn caddy's behavior map: 3,181 edges carry `meta.call_lines`; **2 are at the cap (0.06%)**, and\nneither is taint-relevant (`Dispenser.Val`, `newRequest`). No `sink_after_source` failure carries\nmore than 12 recorded lines. A Go-side reader independently noted the cap \"produces a 50-element\nlist, not a 1-element one\", so it also cannot explain the single-line cases WI-vimon investigated.\n\nThis is filed as a correctness-of-documentation item with a measured zero, NOT as a live defect.\nTwo honest options:\n\n  (a) Narrow the comment's scope to the walk and name the guard as the consumer whose direction\n      is opposite. Cheap, correct, no behaviour change.\n  (b) Make truncation direction-aware (keep the highest N source lines, lowest N sink lines).\n      This CHANGES BEHAVIOUR and needs its own direction argument and a cohort measurement\n      first. Do not do this on the strength of the reasoning above alone.\n\nRE-EVALUATION TRIGGER: re-measure cap saturation if a cohort adds a repo with generated code, or\nif `_CALL_LINES_CAP` is ever lowered. Saturation above ~1% of call_lines edges, or any at-cap\nedge whose dst is a catalogued source/sink, promotes this from documentation to defect.\n\nSource: ~/hypergumbo_lab_notebook/taint-area-08052026/WI-vimon-MEASUREMENT.md section 8."  # df62
+    fields: {}  # df62

@@ -19,3 +19,18 @@
     pr_ref:  # 6b82
     description: "**Defect.** Two framework-naming surfaces in the same map disagree: `meta.framework_dispatch` names frameworks that `profile.frameworks` says are not present.\n\n**Evidence.** 328 edges carry meta.framework_dispatch; the framework-named values include fastapi=18 and django_channels=4, both absent from profile.frameworks (which lists lit and starlette). Neither fastapi nor django is a declared dependency (grep over all pyproject.toml = 0 hits), and 17/18 fastapi and 4/4 django dispatch edges are test-fixture-sourced (test_websocket.py). Manifest-declared starlette is promoted to profile.frameworks while code-pattern-only fastapi/django are not — an opaque/inconsistent promotion criterion.\n\n**Contract.** The two framework surfaces should agree on which frameworks the repo uses, or the promotion criterion should be documented and consistent.\n\n**Consequence.** A consumer reading framework_dispatch=fastapi believes the repo uses FastAPI; profile.frameworks denies it. Two emitted surfaces give contradictory answers about the tech stack.\n\n**Related (not duplicate).** Distinct from INV-rojip (promotion-mechanism gap) and WI-napuj (profile.frameworks no node link) — this is the concrete two-emitted-surface contradiction plus the test-fixture-source dimension."  # 6b82
     fields: {}  # 6b82
+- op: update  # 140f
+  at: '2026-07-30T17:47:10Z'  # 140f
+  by: agent  # 140f
+  actor: jgstern_agent  # 140f
+  clock: 2  # 140f
+  nonce: 140f  # 140f
+  set:  # 140f
+    status: wont_do  # 140f
+- op: discuss  # 06d9
+  at: '2026-07-30T17:47:10Z'  # 06d9
+  by: agent  # 06d9
+  actor: jgstern_agent  # 06d9
+  clock: 3  # 06d9
+  nonce: 06d9  # 06d9
+  message: "WONT_DO — the named instance does not reproduce, and the general framing rests on a category error an existing ruling already settled.\n\nFiled: 'meta.framework_dispatch names fastapi/django_channels absent from profile.frameworks; two surfaces contradict.'\n\nMeasured on a fresh self-survey:\n  framework_dispatch values: registry_dispatch 296, npm_package 8, starlette 2, rust_trait_dispatch 1, native_websocket 1\n  profile.frameworks: [lit, protobuf, pytest, starlette]\n\n(1) Neither fastapi nor django_channels appears in framework_dispatch at all, so the specific contradiction filed is gone. (2) The one value that IS a framework name — starlette — appears in profile.frameworks too, so it agrees rather than contradicts.\n\n(3) The general reading is the category error. The remaining values (registry_dispatch, npm_package, rust_trait_dispatch, native_websocket) are dispatch MECHANISMS, not framework names, so their absence from profile.frameworks is correct rather than a disagreement. This is settled: INV-junid's four-lens ADR/spec/history/spirit review (register pt.19, PR #753) ruled framework_dispatch a coherent 'framework-dispatch CONVENTION' axis whose values are deliberately BOTH framework-specific compounds (django_orm, kafka_streams) AND framework-agnostic mechanisms (registry_dispatch, npm_package) — and explicitly declined promoting it to a typed Edge.framework. Treating it as a list of framework names, then diffing it against profile.frameworks, is the reading that review rejected.\n\nClosing wont_do rather than done: there is nothing to fix, and reopening would need a NEW instance where a genuine framework compound is missing from profile.frameworks."  # 06d9

@@ -1,0 +1,37 @@
+- op: create  # a062
+  at: '2026-08-10T04:34:34Z'  # a062
+  by: agent  # a062
+  actor: jgstern_agent  # a062
+  clock: 1  # a062
+  nonce: a062  # a062
+  data:  # a062
+    kind: work_item  # a062
+    title: "Go return-type registry: 3 integration tests never ran (vacuous fixture) and all fail when un-skipped"  # a062
+    status: todo_hard  # a062
+    priority: 2  # a062
+    parent:  # a062
+    tags:  # a062
+    - go  # a062
+    - analysis_quality  # a062
+    - test_quality  # a062
+    isbefore: []  # a062
+    duplicate_of: []  # a062
+    not_duplicate_of: []  # a062
+    pr_ref:  # a062
+    description: "Found 2026-08-10 while adding Go composite-literal receiver typing.\n\nTHE FIXTURE COULD NOT FAIL. test_go_return_type_registry.py's go_available fixture\nprobed _analyzer.is_grammar_available() inside a bare `except Exception: pytest.skip`.\nNo such method exists -- is_grammar_available is a MODULE FUNCTION in\nhypergumbo_core.analyze.base, not a method on the analyzer object -- so every call\nraised AttributeError, the handler swallowed it, and all three integration tests\nreported \"Go analyzer not available\" on a machine where tree_sitter_go is installed and\nthe 15 unit tests in the same file pass.\n\nThey had never executed. The unit half of WI-kuroj / INV-dihos was covered; the\nend-to-end half was a green tick over a hole.\n\nWHEN THE FIXTURE IS REPAIRED, ALL THREE FAIL:\n  test_chained_method_call_resolves_via_registry\n  test_constructor_return_type_enables_chaining\n  test_tuple_return_with_error_resolves\n\nObserved on `result := e.Query(); result.Rows()`:\n  expected  a calls edge to Result.Rows\n  actual    go:external:0-0:Rows:unresolved\n\nA/B CONFIRMS PRE-EXISTING, NOT INTRODUCED. Reverting go.py to dev (c675fc484f) and\nre-running with the repaired fixture reproduces all three failures identically. The\ncomposite-literal PR neither caused nor fixes them.\n\nTHE REGISTRY IS WIRED, SO THIS IS NOT A PLUMBING GAP. method_return_type_registry is\nbuilt at go.py:4444-4447 and passed to _extract_edges_from_file at go.py:4471; it\nreaches _extract_go_var_types (go.py:2301) and the consumption sites at go.py:1759-1772\nand go.py:2553-2574. Something inside that chain does not fire. Not localized further.\n\nCORROBORATING SMELL, same area: the WI-kuroj fallback block at go.py:1715-1732 carries\n`# pragma: no cover - requires Go tree-sitter grammar` while the grammar IS installed\nand the surrounding code is exercised -- the pragma is excusing itself on the same false\npremise that kept the tests skipped.\n\nDISPOSITION IN THE MEANTIME: the three tests are marked xfail(strict=True) rather than\nleft skipped, so they RUN, fail honestly, and flip the suite red the moment the feature\nstarts working (prompting removal of the marker). The repaired fixture has no exception\nhandler at all -- a skip reachable by a typo is what caused this."  # a062
+    fields: {}  # a062
+- op: update  # df77
+  at: '2026-08-10T14:38:33Z'  # df77
+  by: agent  # df77
+  actor: jgstern_agent  # df77
+  clock: 2  # df77
+  nonce: df77  # df77
+  set:  # df77
+    status: done  # df77
+- op: discuss  # ebd8
+  at: '2026-08-10T14:38:34Z'  # ebd8
+  by: agent  # ebd8
+  actor: jgstern_agent  # ebd8
+  clock: 3  # ebd8
+  nonce: ebd8  # ebd8
+  message: "LOCALIZED AND FIXED, 2026-08-10. The item recorded \"Something inside that chain\ndoes not fire. Not localized further.\" It is one condition.\n\nTHE DEFECT. The WI-kuroj return-type-registry lookup in _extract_go_var_types\nguarded on `rhs.type == \"call_expression\"`. `rhs` is `node.children[-1]` of a\n`short_var_declaration`, and that child is an `expression_list` WRAPPER -- never\nthe expression itself. So the condition could not be true for any input, and the\nblock was DEAD CODE from the day it shipped. The registry was built (go.py:4483),\nthreaded through three call layers, and consulted by a branch nothing could reach.\n\nAST evidence:\n    short_var_declaration: left='result'  rightType=expression_list\n                           right child:   type=call_expression text='e.Query()'\n\nWHY THE SIBLING WORKED. `_type_from_rhs` unwrapped the `expression_list` inline\nand therefore resolved `e := &Engine{}` correctly, which is why var_types showed\n{'e': 'Engine', 'result': ''} -- one consumer unwrapping and one not, for the same\nquestion. Both now route through `_unwrap_rhs_expression`.\n\nCONFIRMED BEFORE THE FIX, directly against production's own extractor:\n    registry={'Engine.Query': 'Result'} -> main={'e': 'Engine', 'result': ''}\nand after:\n    registry={'Engine.Query': 'Result'} -> main={'e': 'Engine', 'result': 'Result'}\n\nALL THREE TESTS NOW XPASS, so the xfail(strict=True) marker is removed. strict is\nwhat did the work here: it flipped the suite red the moment the feature started\nworking, which is exactly the signal the marker was placed for. The single unwrap\nfixes all three, including the tuple-return case (`result, _ := e.Query()`).\n\nTHE STALE PRAGMA IS GONE TOO. The item's \"corroborating smell\" was right: the\nblock carried `# pragma: no cover - requires Go tree-sitter grammar` while the\ngrammar is installed. It was excusing itself from coverage on the same false\npremise that kept the tests skipped.\n\nMEASURED ON A REAL REPO, BOTH DIRECTIONS, BOTH DENOMINATORS (alertmanager):\n    call edges          8,322 -> 8,321\n    gained 108, lost 109  -- near 1:1, so these are UPGRADES not inventions\n    external placeholders 1,576 -> 1,467\n    resolution_quality typed_receiver 577 -> 685\nSampled pairs confirm replacement rather than creation:\n    go:external:0-0:isEOF  ->  matcher/parse/token.go:token.isEOF:method\n    go:external:0-0:Next   ->  provider/provider.go:AlertIterator.Next:method\n\n*** 102 OF THE 108 GAINED HAVE A _test.go SOURCE. *** Production-path payoff is\n6, not 108. Quoting 108 alone would overstate it 18x, which is this repo's\nrecurring sizing error and is stated here so the next reader does not repeat it.\n\nPRECISION RISK, DISCLOSED NOT BURIED. The \"typing a receiver re-opens name\ncollisions\" landmine fired exactly once: 107 of 108 gained edges land on a\n`:method` dst, one lands on a `:field` (InhibitRule.hasEqual ->\ntemplate/template.go:Alert.Fingerprint:field). A `calls` edge to a field kind is\nincoherent on its face. It is NOT introduced here -- alertmanager already carries\n266 such edges and this change takes it to 267 -- but those 266 deserve their own\nlook and no item currently covers them."  # ebd8

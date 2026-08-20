@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: containment for creating `contains` edges between containers and members.
 
-This linker connects container symbols (classes, interfaces, structs, traits,
-enums, modules, services, messages) to their member symbols (methods, getters,
+This linker connects container symbols (classes, interfaces, protocols, structs,
+traits, enums, modules, messages) to their member symbols (methods, getters,
 setters, RPCs, nested messages, and nested containers) based on naming
 conventions, creating `contains` edges. Without these edges, members are
 orphaned in the graph — disconnected from their parent types — which inflates
@@ -58,6 +58,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from ..member_names import member_owner
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
 
@@ -120,8 +121,12 @@ CONTAINABLE_KINDS = frozenset(
 )
 
 # Symbol kinds that can "contain" other symbols.
-# Includes struct/trait/enum for Rust (and Go/C/Zig structs),
-# service for proto (contains RPCs), message for proto (nested messages).
+# Includes struct/trait/enum for Rust (and Go/C/Zig structs) and message for
+# proto (nested messages). NOT `service`: the ADR-0027 Cluster-D fold made
+# `interface` + meta["framework_role"]="service" the canonical, and proto.py
+# emits exactly that today — so a `service` entry here would be dead. (This
+# comment previously named `service` as a member of the set; it was a
+# pre-fold fossil, and slice.py cited it as fact.)
 #
 # ADR-0027 Phase-2 audit (WI-jukav slice 2 verdict): no dual-shape
 # predicate needed. The post-fold canonical for Cluster D ``service``
@@ -141,6 +146,22 @@ CONTAINER_KINDS = frozenset({
     # SYMBOL_KINDS; `_find_parent`'s same-language + same-file/unique gate bounds
     # false positives for the widely-emitted `type` kind.
     "contract", "library", "type", "object", "union",
+    # WI-pujiz (REUSE-INSTANCE): typeclass / interface INSTANCE declarations
+    # (Haskell / Lean / PureScript `instance`, and the Scala 3 `given` owner)
+    # have body members that root under them — the same one-line pattern as the
+    # WI-sakug kinds above. `_find_parent`'s same-language + same-file/unique
+    # gate isolates e.g. Haskell's space-separated `instance` names from Scala's.
+    "instance",
+    # WI-duguk: `protocol` (Swift, Objective-C) is a container exactly like
+    # `interface` — its members root under it by the same dotted-name rule.
+    # Its absence made Swift protocol containment structurally impossible:
+    # with the members emitted and correctly named `Drawable.draw`, the
+    # protocol still scored `contains_out=0` while a sibling `enum` and
+    # `struct` in the same file each rooted 3 members. Analyzer-side emission
+    # alone could never have fixed that, which is why the emission-parity
+    # column (span nesting, one analyzer in isolation) can read green while
+    # the pipeline outcome stays broken.
+    "protocol",
     # INV-hojus: file-kind Symbols are the canonical file representation
     # (orchestrator synthesis + py.py for Python with module-level code,
     # js_module linker for TS, etc.). Including them here lets Phase 2's
@@ -149,10 +170,8 @@ CONTAINER_KINDS = frozenset({
     "file",
 })
 
-# Separators used in method names, ordered by specificity
-# Ruby `#` and Rust `::` are checked before `.` to avoid
-# mis-splitting on languages that use both
-_SEPARATORS = ("#", "::", ".")
+# Separator vocabulary lives in ``member_names`` (INV-tihim): it was
+# recorded in three consumers and they disagreed.
 
 
 def _extract_parent_name(method_name: str) -> str | None:
@@ -172,13 +191,7 @@ def _extract_parent_name(method_name: str) -> str | None:
     Returns:
         The parent name, or None if there is no parent.
     """
-    for sep in _SEPARATORS:
-        if sep in method_name:
-            # rsplit with maxsplit=1 to get the immediate parent
-            parent, _method = method_name.rsplit(sep, 1)
-            if parent:
-                return parent
-    return None
+    return member_owner(method_name)
 
 
 def _find_parent(

@@ -94,6 +94,60 @@ class TestGoReturnTypeFromSignature:
 # ---------------------------------------------------------------------------
 
 
+class TestUnwrapRhsExpression:
+    """The shared unwrap, asserted directly — it is the whole WI-jolif fix.
+
+    ``short_var_declaration``'s last child is an ``expression_list``, never the
+    expression. Two consumers ask "what is on the right": ``_type_from_rhs``
+    unwrapped it and worked, the registry lookup did not and was dead code. One
+    helper now answers for both.
+    """
+
+    @staticmethod
+    def _rhs_of(source: str):
+        import tree_sitter
+        import tree_sitter_go
+
+        from hypergumbo_lang_mainstream.go import iter_tree
+
+        parser = tree_sitter.Parser(
+            tree_sitter.Language(tree_sitter_go.language()),
+        )
+        tree = parser.parse(source.encode("utf-8"))
+        for node in iter_tree(tree.root_node):
+            if node.type == "short_var_declaration":
+                return node.children[-1]
+        raise AssertionError("no short_var_declaration in fixture")
+
+    def test_wrapper_is_peeled_to_the_call(self, go_available: None) -> None:
+        from hypergumbo_lang_mainstream.go import _unwrap_rhs_expression
+
+        rhs = self._rhs_of("package main\nfunc f() { x := e.Query() }\n")
+        assert rhs.type == "expression_list", (
+            "if this ever stops being a wrapper the fix is unnecessary and the "
+            "guard it replaced was not dead after all"
+        )
+        assert _unwrap_rhs_expression(rhs).type == "call_expression"
+
+    def test_a_list_with_no_type_bearing_expression_yields_none(
+        self, go_available: None,
+    ) -> None:
+        """``x := 42`` carries an int literal — no type to infer, and the
+        registry lookup must not be handed one."""
+        from hypergumbo_lang_mainstream.go import _unwrap_rhs_expression
+
+        rhs = self._rhs_of("package main\nfunc f() { x := 42 }\n")
+        assert _unwrap_rhs_expression(rhs) is None
+
+    def test_a_bare_expression_passes_through(self, go_available: None) -> None:
+        """Not every caller hands in a wrapper, so the helper is idempotent."""
+        from hypergumbo_lang_mainstream.go import _unwrap_rhs_expression
+
+        rhs = self._rhs_of("package main\nfunc f() { x := &Server{} }\n")
+        inner = _unwrap_rhs_expression(rhs)
+        assert _unwrap_rhs_expression(inner) is inner
+
+
 def _make_go_module(tmp_path: Path, files: dict[str, str]) -> Path:
     """Create a fake Go module with the given files."""
     repo = tmp_path / "fakerepo"
@@ -108,19 +162,46 @@ def _make_go_module(tmp_path: Path, files: dict[str, str]) -> Path:
 
 @pytest.fixture()
 def go_available():
-    """Skip if Go tree-sitter grammar is not installed."""
-    try:
-        from hypergumbo_lang_mainstream.go import _analyzer
-        if not _analyzer.is_grammar_available():
-            pytest.skip("Go tree-sitter grammar not available")
-    except Exception:
-        pytest.skip("Go analyzer not available")
+    """Skip ONLY when the Go grammar is genuinely absent.
+
+    This fixture used to probe ``_analyzer.is_grammar_available()`` inside a bare
+    ``except Exception: pytest.skip``. No such method exists — ``is_grammar_available``
+    is a module function in ``hypergumbo_core.analyze.base`` — so every call raised
+    ``AttributeError``, the handler swallowed it, and all three integration tests below
+    reported as skipped on a machine where the grammar was installed and working. They
+    had never executed. A skip reachable by a typo is a green tick over a hole, so the
+    probe is now a direct call with no handler: if it breaks, the suite breaks loudly.
+    """
+    from hypergumbo_core.analyze.base import is_grammar_available
+
+    if not is_grammar_available("tree_sitter_go"):
+        pytest.skip("Go tree-sitter grammar not installed")
 
 
 class TestGoReturnTypeRegistryIntegration:
     """End-to-end: analyze Go code with chained method calls and
     verify that the return-type registry enables ``typed_receiver_call``
-    edges for the chained call."""
+    edges for the chained call.
+
+    WI-jolif, CLOSED. These three never executed: the ``go_available`` fixture
+    probed a method that does not exist inside a bare ``except Exception:
+    pytest.skip``, so every call raised ``AttributeError``, the handler swallowed
+    it, and all three reported "grammar unavailable" on a machine where the
+    grammar is installed and the 15 unit tests beside them pass. The unit half of
+    the feature was covered; the end-to-end half was a green tick over a hole.
+
+    WHEN THE FIXTURE WAS REPAIRED, ALL THREE FAILED, and they were marked
+    ``xfail(strict=True)`` rather than left skipped so they would RUN and fail
+    honestly. The defect they were failing on: the WI-kuroj registry lookup
+    guarded on ``rhs.type == "call_expression"``, but a
+    ``short_var_declaration``'s last child is an ``expression_list`` WRAPPER —
+    a condition that node can never satisfy. The block was dead from the day it
+    shipped, so the registry was built, threaded through three call layers, and
+    consulted by a branch nothing could reach. It now unwraps through the same
+    helper ``_type_from_rhs`` uses. ``strict=True`` is what turned the fix into a
+    red suite demanding this marker's removal, which is exactly the signal it was
+    put there for.
+    """
 
     def test_chained_method_call_resolves_via_registry(
         self, tmp_path: Path, go_available: None,

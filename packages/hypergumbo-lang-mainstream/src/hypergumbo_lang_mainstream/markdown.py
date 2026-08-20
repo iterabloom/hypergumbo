@@ -16,6 +16,12 @@ are collected during symbol extraction and flushed via post_process.
 2. post_process: flushes accumulated link edges into the final edge list
 3. _find_source_files: overridden for *.md + *.markdown with dedup
 
+Link destinations are reshaped by ``_make_link_dst_id`` into a 5-part
+external symbol id rather than being used raw: a bare URL in the id would
+land in the language slot when ``ir.create_boundary_nodes`` mints the
+boundary node (WI-diruj). Every emitted symbol also carries a canonical
+sha256 ``stable_id`` from ``make_doc_stable_id``.
+
 Symbols Extracted
 -----------------
 - **Sections**: Document sections with heading levels (h1-h6)
@@ -24,7 +30,9 @@ Symbols Extracted
 
 Edges Extracted
 ---------------
-- **links_to**: Links from document to referenced targets
+- **references** (``meta['ref_construct']='markdown_link'``): links from a
+  document to referenced targets. Emitted only for repo-internal targets;
+  the bespoke ``links_to`` type was folded onto ``references``.
 
 Why This Design
 ---------------

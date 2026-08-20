@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Run hypergumbo against its OWN security claims and fail if the result drifts
+# from the checked-in snapshot.
+#
+# WHY THIS EXISTS. SECURITY.md asserted that claim regressions "fail the gate".
+# There was no gate: no workflow referenced verify-claims (WI-vanun). With
+# nothing checking, the published text drifted until it asserted the OPPOSITE
+# of what the tool reports — "runtime CLI subcommands do not shell out" while
+# hypergumbo reported 1101 violating flows, independently confirmed with a
+# canary that caught `git` being executed 28 times by `sketch` alone.
+#
+# WHY A SNAPSHOT AND NOT "ALL MUST CONFIRM". Two claims are currently VIOLATED
+# and sixteen are INCONCLUSIVE; a gate demanding all-confirmed would fail
+# forever and be switched off within a week. A gate demanding "no worse than
+# recorded" is one a human keeps. Any change in EITHER direction fails, so an
+# improvement also has to be acknowledged by updating the snapshot — that is
+# deliberate: a verdict silently improving is how you stop noticing what the
+# tool actually says.
+#
+# NOT A RATCHET. The mypy ratchet is shrink-only because its metric is a count.
+# This one is a per-claim verdict map, and a verdict moving inconclusive ->
+# violated is a regression while confirmed -> inconclusive may be an honest
+# coverage change. Both need a human to look, so both fail here.
+#
+# WHAT THE SNAPSHOT PINS (v2 — INV-zuhig). Not just the verdict: also each
+# claim's caveat KINDS and whether its sanitizer-credited flow count is zero
+# or nonzero. The self-proof once "improved" to all-confirmed while its
+# credited flows collapsed 2,658 -> 0 (the evidence had been test-minted all
+# along); a verdict-only snapshot waves exactly that through. Comparison
+# logic lives in scripts/check-self-claims-drift, pinned by
+# tests/test_check_self_claims_drift.py.
+#
+# Usage:
+#   scripts/check-self-claims            # verify against the snapshot
+#   scripts/check-self-claims --update   # re-record it (review the diff!)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+CLAIMS="docs/hypergumbo.claims.yaml"
+SNAPSHOT="docs/hypergumbo.claims.expected.json"
+ACTUAL="$(mktemp)"
+trap 'rm -f "$ACTUAL"' EXIT
+
+# INVOKE VIA `python -m hypergumbo_core`, NOT the bare `hypergumbo` console
+# script. That script lives in the meta-package, which CI never installs
+# (it pulls PyTorch/CUDA), so on CI the bare command is exit 127 — and an
+# earlier draft of this gate keyed on `command -v hypergumbo` and would have
+# SKIPPED WITH EXIT 0 in the only place it matters, i.e. been a gate that
+# silently does nothing. Same reasoning as the WI-jigup self-tree step and
+# the check-schema-coverage pattern.
+PY_BIN="${PYTHON:-python3}"
+if ! "$PY_BIN" -c "import hypergumbo_core" 2>/dev/null; then
+    echo "check-self-claims: hypergumbo_core not importable — INFRASTRUCTURE" >&2
+    echo "  failure (exit 2), not a claim regression." >&2
+    exit 2
+fi
+
+echo "check-self-claims: analysing hypergumbo with hypergumbo ..." >&2
+# verify-claims exits 1 for violated / 2 for inconclusive. Both are expected
+# states here — the snapshot decides pass/fail, not the exit code.
+"$PY_BIN" -m hypergumbo_core verify-claims . --claims "$CLAIMS" --json \
+    > "$ACTUAL" 2>/dev/null || true
+
+if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ACTUAL" 2>/dev/null; then
+    echo "check-self-claims: verify-claims produced no parseable JSON." >&2
+    echo "  Treated as INFRASTRUCTURE failure (exit 2), not a claim regression." >&2
+    exit 2
+fi
+
+python3 scripts/check-self-claims-drift "$ACTUAL" "$SNAPSHOT" "${1:-}"

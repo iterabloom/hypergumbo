@@ -2248,7 +2248,7 @@ class TestCheckTextconv:
             root / "tracker-workspace" / ".ops",
         ]:
             (ops_dir / ".gitattributes").write_text(
-                "*.ops merge=union\n*.ops diff=tracker-ops\n"
+                "*.ops merge=union\n*.ops diff=tracker\n"
             )
         # Root .gitattributes also needs the entries
         root_ga = tmp_path / ".gitattributes"
@@ -2258,7 +2258,7 @@ class TestCheckTextconv:
         )
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -2273,7 +2273,7 @@ class TestCheckTextconv:
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
 
         call_count = 0
 
@@ -2341,7 +2341,7 @@ class TestCheckTextconv:
         # Driver already configured, but no diff line in .gitattributes
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -2353,14 +2353,14 @@ class TestCheckTextconv:
             root / "tracker-workspace" / ".ops",
         ]:
             content = (ops_dir / ".gitattributes").read_text()
-            assert "*.ops diff=tracker-ops" in content
+            assert "*.ops diff=tracker" in content
 
     def test_diff_line_appended_to_existing(self, tmp_path: Path) -> None:
         root = _make_full_agent_dir(tmp_path)
         ga = root / "tracker" / ".ops" / ".gitattributes"
         ga.write_text("*.ops merge=union")
         (root / "tracker-workspace" / ".ops" / ".gitattributes").write_text(
-            "*.ops merge=union\n*.ops diff=tracker-ops\n"
+            "*.ops merge=union\n*.ops diff=tracker\n"
         )
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -2373,7 +2373,7 @@ class TestCheckTextconv:
         assert result.status == "fixed"
         content = ga.read_text()
         assert "*.ops merge=union" in content
-        assert "*.ops diff=tracker-ops" in content
+        assert "*.ops diff=tracker" in content
 
     def test_safe_directory_auto_fixed(self, tmp_path: Path) -> None:
         """safe.directory is auto-added, then textconv is configured."""
@@ -2382,7 +2382,7 @@ class TestCheckTextconv:
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
         # Provide root gitattributes so only safe.directory is the fix
         root_ga = tmp_path / ".gitattributes"
         root_ga.write_text(
@@ -2392,7 +2392,7 @@ class TestCheckTextconv:
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=True),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -2402,42 +2402,114 @@ class TestCheckTextconv:
         assert result.status == "fixed"
         assert "1 fix" in result.message
 
-    def test_local_config_not_writable_falls_back_to_global(
+    def test_local_config_not_writable_warns_and_never_writes_global(
         self, tmp_path: Path
     ) -> None:
-        """Local git config not writable — falls back to --global."""
+        """Local git config not writable — WARNS; must never write --global.
+
+        Rewritten from a test that asserted the opposite. The old ``--global``
+        fallback leaked a per-repo diff driver into the user's machine-wide
+        gitconfig, where it applied to every other repo and outlived this
+        checkout — and it did fire in practice. A per-repo concern stays
+        per-repo; if we cannot set it locally we say so.
+        """
         root = _make_full_agent_dir(tmp_path)
         for ops_dir in [
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
 
-        call_count = 0
+        calls: list[list[str]] = []
 
         def mock_run(cmd, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
+            calls.append(list(cmd))
+            if len(calls) == 1:
                 # Check config — not set
                 result = MagicMock()
                 result.returncode = 1
                 result.stdout = ""
                 return result
-            if call_count == 2:
-                # Local config write fails
-                raise subprocess.CalledProcessError(1, cmd)
-            # Global config write succeeds
-            result = MagicMock()
-            result.returncode = 0
-            return result
+            # Every write attempt fails (local .git/config not writable)
+            raise subprocess.CalledProcessError(1, cmd)
 
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", side_effect=mock_run),
         ):
             result = _check_textconv(root, tmp_path)
-        assert result.status == "fixed"
+
+        assert result.status == "warn"
+        assert "not writable" in result.message
+        # The load-bearing assertion: no --global anywhere in what we ran.
+        assert not any("--global" in c for c in calls), (
+            f"attempted a machine-wide config write: {calls}"
+        )
+        # And the warning must tell the user how to fix it themselves.
+        assert any("git config --local" in d for d in result.details)
+
+
+class TestTextconvBehaviouralVerification:
+    """_check_textconv must report a configured-but-broken driver as a problem.
+
+    The check previously asserted only that the config KEY was set, and so
+    reported "Git textconv driver ✓" for months while the configured command did
+    not exist — `git log -p` exited 128 repo-wide. Presence of configuration is a
+    proxy; running the driver is the behaviour.
+    """
+
+    def test_broken_driver_is_reported_as_warn_not_ok(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        # A real op log must exist, else there is nothing to probe with.
+        ops = root / "tracker" / ".ops" / ".WI-probe-aaaaa-bbbbb-ccccc-ddddd-eeeee-fffff-ggggg.ops"
+        ops.parent.mkdir(parents=True, exist_ok=True)
+        ops.write_text("- op: create  # a1b2\n  nonce: a1b2  # a1b2\n")
+        for d in (root / "tracker" / ".ops", root / "tracker-workspace" / ".ops"):
+            (d / ".gitattributes").write_text("*.ops merge=union\n*.ops diff=tracker\n")
+
+        cfg = MagicMock()
+        cfg.returncode = 0
+        cfg.stdout = "hypergumbo-tracker textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=cfg),
+            patch(
+                "hypergumbo_tracker.setup._verify_textconv_runs",
+                return_value="driver exited 2: invalid choice: 'textconv'",
+            ),
+        ):
+            result = _check_textconv(root, tmp_path)
+
+        assert result.status == "warn"
+        assert "does NOT work" in result.message
+        joined = " ".join(result.details)
+        assert "invalid choice" in joined
+        # The report must name the user-visible consequence, not just the error.
+        assert "git log -p" in joined
+
+    def test_healthy_driver_reports_verified(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        ops = root / "tracker" / ".ops" / ".WI-probe-aaaaa-bbbbb-ccccc-ddddd-eeeee-fffff-ggggg.ops"
+        ops.parent.mkdir(parents=True, exist_ok=True)
+        ops.write_text("- op: create  # a1b2\n  nonce: a1b2  # a1b2\n")
+        for d in (root / "tracker" / ".ops", root / "tracker-workspace" / ".ops"):
+            (d / ".gitattributes").write_text("*.ops merge=union\n*.ops diff=tracker\n")
+
+        cfg = MagicMock()
+        cfg.returncode = 0
+        cfg.stdout = "hypergumbo-tracker textconv\n"
+        with (
+            patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
+            patch("hypergumbo_tracker.setup.subprocess.run", return_value=cfg),
+            patch("hypergumbo_tracker.setup._verify_textconv_runs", return_value=None),
+        ):
+            result = _check_textconv(root, tmp_path)
+
+        # "fixed" when this fixture also needed root .gitattributes lines added,
+        # "ok" when it did not — either way the driver was VERIFIED, not just
+        # found configured, and the message must say so.
+        assert result.status in ("ok", "fixed")
+        assert "verified" in result.message
 
 
 class TestRootGitattributes:
@@ -2450,10 +2522,10 @@ class TestRootGitattributes:
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -2473,12 +2545,12 @@ class TestRootGitattributes:
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
         root_ga = tmp_path / ".gitattributes"
         root_ga.write_text("some-other-rule")  # No trailing newline
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -2496,7 +2568,7 @@ class TestRootGitattributes:
             root / "tracker" / ".ops",
             root / "tracker-workspace" / ".ops",
         ]:
-            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker-ops\n")
+            (ops_dir / ".gitattributes").write_text("*.ops diff=tracker\n")
         # Only one of the two lines exists
         root_ga = tmp_path / ".gitattributes"
         root_ga.write_text(
@@ -2504,7 +2576,7 @@ class TestRootGitattributes:
         )
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stdout = "python -m hypergumbo_tracker.cli textconv\n"
+        mock_result.stdout = "hypergumbo-tracker textconv\n"
         with (
             patch("hypergumbo_tracker.setup._ensure_safe_directory", return_value=False),
             patch("hypergumbo_tracker.setup.subprocess.run", return_value=mock_result),
@@ -3410,7 +3482,7 @@ class TestRunSetup:
             root / "tracker-workspace" / ".ops",
         ]:
             (ops_dir / ".gitattributes").write_text(
-                "*.ops merge=union\n*.ops diff=tracker-ops\n"
+                "*.ops merge=union\n*.ops diff=tracker\n"
             )
         (root / "tracker" / ".gitignore").write_text("config.yaml\n")
         (root / "tracker-workspace" / "stealth" / ".gitignore").write_text("*.ops\n")

@@ -39,9 +39,16 @@ matrix:
     - "3.12"
     - "3.13"
 
+# `partial: false` is load-bearing — see the per-PR gate's clone block for the
+# full rationale (WI-fodad). plugin-git defaults to `--depth=1 --filter=tree:0`;
+# the resulting promisor repo makes any history-wide tree walk fetch objects from
+# origin one at a time. Nightly has no prepare-git step, so it would otherwise be
+# both shallow AND tree-less — the worst of the three shapes.
 clone:
   git:
     image: woodpeckerci/plugin-git
+    settings:
+      partial: false
 
 steps:
   - name: build-grammars

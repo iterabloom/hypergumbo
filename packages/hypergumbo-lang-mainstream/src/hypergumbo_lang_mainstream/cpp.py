@@ -60,6 +60,7 @@ from hypergumbo_core.analyze.base import (
     make_symbol_id as _base_make_symbol_id,
     make_unresolved_edge,
     node_text as _node_text,
+    stamp_io_mode_from_call,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_lang_mainstream.symbol_introspection import (
@@ -141,6 +142,90 @@ def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: 
 def _make_file_id(path: str) -> str:
     """Generate ID for a C++ file node (used as include edge source)."""
     return _base_make_file_id("cpp", path)
+
+
+def _cpp_pure_virtual_name(
+    field_decl: "tree_sitter.Node", source: bytes,
+) -> "str | None":
+    """The method name if *field_decl* is a PURE virtual, else None.
+
+    A pure virtual is ``virtual T f() = 0;`` — the grammar gives it a
+    ``virtual`` child, a ``function_declarator``, and an ``=`` followed by a
+    ``number_literal`` of ``0``. Scoped to pure virtuals on purpose: a
+    non-pure declaration has its definition in another translation unit and
+    hypergumbo has no decl/def merging for cpp, so emitting those would yield
+    two symbols for one method. A pure virtual has no definition anywhere by
+    construction (audit-findings 0018).
+    """
+    if not any(c.type == "virtual" for c in field_decl.children):
+        return None
+    saw_equals = False
+    for child in field_decl.children:
+        if child.type == "=":
+            saw_equals = True
+        elif saw_equals and child.type == "number_literal":
+            if _node_text(child, source).strip() != "0":
+                return None  # pragma: no cover - `virtual T f() = 1;` is not
+                # valid C++; tree-sitter parses permissively, so the guard is
+                # kept for malformed or macro-expanded input.
+            declarator = _find_child_by_type(field_decl, "function_declarator")
+            if declarator is None:
+                return None  # pragma: no cover - a `virtual` data member with
+                # an initializer (`virtual int x = 0;`) is not valid C++, so no
+                # well-formed input reaches this branch.
+            ident = _find_child_by_type(declarator, "field_identifier") or \
+                _find_child_by_type(declarator, "identifier")
+            return _node_text(ident, source) if ident is not None else None
+    return None
+
+
+def _cpp_has_pure_virtual(type_node: "tree_sitter.Node", source: bytes) -> bool:
+    """Whether a class/struct body declares any pure virtual — i.e. is abstract."""
+    body = _find_child_by_type(type_node, "field_declaration_list")
+    if body is None:
+        return False
+    return any(
+        child.type == "field_declaration"
+        and _cpp_pure_virtual_name(child, source) is not None
+        for child in body.children
+    )
+
+
+def _emit_cpp_pure_virtual(
+    field_decl: "tree_sitter.Node",
+    method_name: str,
+    owner_name: str,
+    visibility: str,
+    file_path: "Path",
+    analysis: "AnalysisResult",
+    run: AnalysisRun,
+) -> None:
+    """Emit a ``kind="method"`` Symbol for one pure virtual declaration.
+
+    Named ``Owner::method`` to match every other cpp member, so the shared
+    member-name splitter recovers the owner. Carries the ``abstract``
+    modifier, which is where ``is_abstract_type`` reads abstractness.
+    """
+    start_line = field_decl.start_point[0] + 1
+    end_line = field_decl.end_point[0] + 1
+    full_name = f"{owner_name}::{method_name}"
+    analysis.symbols.append(Symbol(
+        id=_make_symbol_id(str(file_path), start_line, end_line, full_name, "method"),
+        name=full_name,
+        kind="method",
+        language="cpp",
+        path=str(file_path),
+        span=Span(
+            start_line=start_line,
+            end_line=end_line,
+            start_col=field_decl.start_point[1],
+            end_col=field_decl.end_point[1],
+        ),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        modifiers=[visibility, "virtual", "abstract"],
+        line_span=end_line - start_line + 1,
+    ))
 
 
 def _extract_base_classes_cpp(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -469,6 +554,13 @@ def _emit_cpp_field_symbols(
             continue
         if child.type != "field_declaration":
             continue
+        pure_virtual = _cpp_pure_virtual_name(child, source)
+        if pure_virtual is not None:
+            _emit_cpp_pure_virtual(
+                child, pure_virtual, owner_name, current_visibility,
+                file_path, analysis, run,
+            )
+            continue
         names, is_function, has_nested_type = _cpp_data_declarators(child, source)
         if is_function or has_nested_type or not names:
             continue
@@ -545,10 +637,18 @@ def _extract_symbols_from_tree(
                 base_classes = _extract_base_classes_cpp(node, source)
                 meta = {"base_classes": base_classes} if base_classes else None
 
+                # A cpp class declaring a pure virtual IS abstract. Recorded in
+                # modifiers, where the shared type-family predicate reads it —
+                # audit 0018 measured cpp emitting an empty modifier list on
+                # every symbol, so abstract bases read as concrete.
+                class_modifiers = (
+                    ["abstract"] if _cpp_has_pure_virtual(node, source) else []
+                )
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), start_line, end_line, name, "class"),
                     name=name,
                     kind="class",
+                    modifiers=class_modifiers,
                     language="cpp",
                     path=str(file_path),
                     span=Span(
@@ -663,6 +763,62 @@ def _extract_symbols_from_tree(
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
                 analysis.symbol_by_name[name] = symbol
+
+                # WI-dorop: one kind="field" per enumerator, named
+                # `Color::Red` — the `::` separator cpp already uses for its
+                # fields (`f"{owner_name}::{field_name}"`) and methods, and one
+                # the containment linker splits on. Without these the enum is a
+                # container with nothing in it and a reverse slice from it
+                # returns the container alone.
+                #
+                # Deliberately INSIDE the `if name_node:` guard. An anonymous
+                # enum (`typedef enum { P, Q } Anon;`) has no `type_identifier`
+                # and emits no container, so emitting its members here would
+                # produce symbols whose dotted owner does not exist — orphans by
+                # construction, which is worse than the recall miss. Scoped
+                # (`enum class`) and unscoped enums are the same
+                # `enum_specifier` node; the scope keyword is just a token, so
+                # both are covered. A forward declaration has no
+                # `enumerator_list` and is already excluded by `has_body`.
+                member_list = _find_child_by_type(node, "enumerator_list")
+                for member in member_list.children if member_list else ():
+                    if member.type != "enumerator":
+                        continue
+                    m_name_node = _find_child_by_type(member, "identifier")
+                    if m_name_node is None:  # pragma: no cover - always names
+                        continue
+                    m_name = _node_text(m_name_node, source)
+                    m_full = f"{name}::{m_name}"
+                    m_start = member.start_point[0] + 1
+                    m_end = member.end_point[0] + 1
+                    m_sym = Symbol(
+                        id=_make_symbol_id(
+                            str(file_path), m_start, m_end, m_full, "field",
+                        ),
+                        name=m_full,
+                        kind="field",
+                        language="cpp",
+                        path=str(file_path),
+                        span=Span(
+                            start_line=m_start,
+                            end_line=m_end,
+                            start_col=member.start_point[1],
+                            end_col=member.end_point[1],
+                        ),
+                        origin=PASS_ID,
+                        origin_run_id=run.execution_id,
+                        # An enumerator is as reachable as its enum; C++ has no
+                        # per-enumerator access specifier.
+                        modifiers=["public"],
+                        is_exported=True,
+                        stable_id=_analyzer.compute_stable_id(
+                            member, kind="field", name=m_full,
+                            file_stable_id=file_stable_id,
+                        ),
+                        line_span=m_end - m_start + 1,
+                    )
+                    analysis.symbols.append(m_sym)
+                    analysis.node_for_symbol[m_sym.id] = member
 
         # Function definition
         elif node.type == "function_definition":
@@ -1080,6 +1236,11 @@ def _extract_edges_from_tree(
 
         # Function call
         elif node.type == "call_expression":
+            # INV-kaduh — see the identical anchor in c.py. C++ inherits the C
+            # catalogue (``_CATALOG_PARENTS['cpp'] = 'c'``) and so inherited
+            # the missing producer; ``mode_argument_for`` walks the same parent
+            # link rather than growing a second ``cpp`` table to drift.
+            _edges_before_call = len(edges)
             if current_function is not None:
                 callee_name = get_callee_name(node)
                 if callee_name:
@@ -1183,6 +1344,25 @@ def _extract_edges_from_tree(
                         # unresolved edge stamped with ``enclosing_class`` (INV-nogof
                         # withhold-not-pick-first + INV-nilud linker-owns-resolution).
                         _enclosing_type = _get_enclosing_class(node, source)
+                        # INV-nizom: the ONE fact that separates a real POSIX
+                        # ``wait()`` from ``std::future::wait()`` once the
+                        # receiver type is unknown. ``is_member_call`` is
+                        # already computed above (it has to be, to suppress the
+                        # STL fallback) and was being discarded, so
+                        # ``gate_named_entry``'s ``call_construct == "method"``
+                        # refusal — the whole of io-boundary:F3's precision half
+                        # — was unreachable for C++: 1 of 34,983 call edges on
+                        # whisper.cpp carried the value, from a two-level
+                        # ``this->field->method()`` chain.
+                        #
+                        # ``None``, not ``"function"``, for the negative case.
+                        # The gate falls through on any value that is not
+                        # literally ``"method"``, so the two are equivalent to
+                        # it; but a bare call whose receiver we never saw is not
+                        # KNOWN to be a free function, and saying so would put a
+                        # claim in the meta that no consumer can audit. Absent
+                        # means unknown, which is what this branch actually has.
+                        _unresolved_construct = "method" if is_member_call else None
                         _sym = lookup_result.symbol
                         _defer = _sym is not None and defer_bare_method_call(
                             _sym.kind, _sym.name,
@@ -1223,6 +1403,7 @@ def _extract_edges_from_tree(
                                     module_hint=module_hint,
                                     dst_ref=ext_ref,
                                     enclosing_class=_enclosing_type,
+                                    call_construct=_unresolved_construct,
                                 ))
                             else:
                                 edges.append(make_unresolved_edge(
@@ -1230,6 +1411,7 @@ def _extract_edges_from_tree(
                                     node.start_point[0] + 1, PASS_ID,
                                     run.execution_id,
                                     enclosing_class=_enclosing_type,
+                                    call_construct=_unresolved_construct,
                                 ))
 
                     # Callback argument detection: bare identifiers in the
@@ -1258,6 +1440,10 @@ def _extract_edges_from_tree(
                                     origin_run_id=run.execution_id,
                                     evidence_type="function_pointer_arg",
                                 ))
+
+            stamp_io_mode_from_call(
+                edges, _edges_before_call, node, source, "cpp",
+            )
 
         # new expression
         elif node.type == "new_expression":
@@ -1536,6 +1722,9 @@ def _extract_edges_from_tree(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
+        # INV-fafol: anchor each read to the callable that performs it, not to
+        # the file. A source and a sink must share a caller to propagate.
+        enclosing_symbols=list(local_symbols.values()),
     )
 
     return edges

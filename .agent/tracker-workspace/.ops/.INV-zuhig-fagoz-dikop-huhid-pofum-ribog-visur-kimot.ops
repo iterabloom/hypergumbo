@@ -1,0 +1,48 @@
+- op: create  # 72a6
+  at: '2026-08-16T04:17:56Z'  # 72a6
+  by: agent  # 72a6
+  actor: jgstern_agent  # 72a6
+  clock: 1  # 72a6
+  nonce: 72a6  # 72a6
+  data:  # 72a6
+    kind: invariant  # 72a6
+    title: "under artifact scope the self-proof's taint sources mint ZERO flows - argparse dispatch is a references edge, so every rc-3 confirm is vacuous on the taint side"  # 72a6
+    status: violated  # 72a6
+    priority: 1  # 72a6
+    parent:  # 72a6
+    tags:  # 72a6
+    - verify_claims  # 72a6
+    - taint  # 72a6
+    - security  # 72a6
+    isbefore: []  # 72a6
+    duplicate_of: []  # 72a6
+    not_duplicate_of: []  # 72a6
+    pr_ref:  # 72a6
+    description: "Found at the LAST step of the INV-dabuf path-out, and it is the reason rc 3 is REACHED but not CLAIMED tonight. Sequence, all measured on the cached self-survey: artifact scope (PR #364) 81->2 launches; stdlib climb (PR #365) stdlib blockers to zero; overlay climb + INV-liloh infix fix -> unknown EMPTY, qualifying_only True, CLI returns rc 3 with 18/18 confirmed_with_caveats naming subprocess.run/Popen. Then the control that keeps this honest: the sanitized-flow disclosure went 2,658 -> 0, and the A/B with the scope key stripped plus an edge bisect traced it to the dispatch shape above. THE VERDICT MACHINERY IS CORRECT AT EVERY STEP - what is thin is the EVIDENCE: a confirm over sources that cannot mint is the vacuous-confirmed shape (INV-potuf's both-halves rule, recurring one level up at the SOURCE-minting layer). Do not present rc 3 as the terminal state until sources mint from production structure. The plan's decision point 4 (stop when a change deletes findings) fired on the 2,658 disappearing; this filing is that stop."  # 72a6
+    fields:  # 72a6
+      statement: "A taint source must mint flows from the production structure that actually invokes it, or every claim over it is vacuously confirmable. VIOLATED: all 18 self-proof claims declare cmd_* handlers as start_at:callee sources; the only in-artifact edges into them are 'references' (build_parser's set_defaults(func=cmd_sketch)) and 'contains', because argparse dispatch is dynamic (args.func(args)). Sources mint on CALL edges, so under analysis_scope:shipped_artifact they mint nothing - measured: sanitized_flows=0 on all 18 verdicts while the taint arm finds 295 flows elsewhere, versus 2,658 credited flows pre-scope, ALL of which were minted by TEST invocations of the handlers."  # 72a6
+      root_cause: "Two facts compose: (1) the pre-scope evidentiary base for the sanitizer arm was test-driven - tests were the only concrete CALLERS of cmd_* handlers, so WI-bifob's production-default filtered test-SOURCED flows but flows SOURCED AT cmd_* by test call-sites still minted and dominated the credited population; (2) the real production invocation path is argparse handler dispatch, a framework pattern the analyzer records as a references edge that start_at:callee source matching does not consume. Artifact scope removed (1) and exposed (2). Candidate fixes, undecided: teach the argparse-dispatch Framework linker to emit the call-shaped edge (recall fix, benefits every argparse repo); or let declared sources that are ENTRYPOINTS mint unconditionally (they are invoked from outside the analysis boundary by construction). The first is preferred - it fixes the graph everyone sees rather than special-casing the self-proof."  # 72a6
+- op: update  # eaf3
+  at: '2026-08-16T04:59:55Z'  # eaf3
+  by: agent  # eaf3
+  actor: jgstern_agent  # eaf3
+  clock: 2  # eaf3
+  nonce: eaf3  # eaf3
+  set: {}  # eaf3
+  add:  # eaf3
+    isbefore: [INV-dabuf-saroz-fosir-bonag-dijil-savoz-hanig-guzag]  # eaf3
+- op: update  # f450
+  at: '2026-08-16T07:16:04Z'  # f450
+  by: agent  # f450
+  actor: jgstern_agent  # f450
+  clock: 3  # f450
+  nonce: f450  # f450
+  set:  # f450
+    status: satisfied  # f450
+- op: discuss  # 30bd
+  at: '2026-08-16T07:16:05Z'  # 30bd
+  by: agent  # 30bd
+  actor: jgstern_agent  # 30bd
+  clock: 4  # 30bd
+  nonce: 30bd  # 30bd
+  message: "SATISFIED — behavioral evidence on the merged tree (dev 504b994721, PR #367).\n\nFIX SHIPPED, two halves. (1) New Framework linker `argparse_dispatch`: emits\n`dispatches_to` from the enclosing function of each `*.set_defaults(kw=<identifier>)`\nregistration to the resolved handler (go_cobra conventions: two-anchor pre-filter,\nparen-balanced spans, callable-kind filter, 0.5-confidence short-name fallback).\nRecovers all 26 cmd_* registrations on cli.py with zero non-func noise.\n(2) `dispatches_to` added to TAINT_CALL_EDGE_TYPES — the CLASS fix: all eight\nFramework dispatch linkers emitted edges taint could not see, so no\nframework-dispatched handler could ever mint as a start_at:callee source.\n\nREPRO RE-RUN ON THE MERGED TREE (the item's own filed instrument,\n`hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml`):\n  rc 3, 18/18 confirmed_with_caveats (unchanged) — but sanitizer-credited\n  flows went 0 -> 98 (runtime-cli-no-host-fs 78, runtime-cli-no-subprocess 12,\n  install-gitleaks-no-host-fs 5, build-grammars-no-host-fs 3), each verdict now\n  carrying the user_supplied_sanitizer disclosure caveat. Total examined flows\n  295 -> 1,007. The structural 28 -> 12 shift is path-relabelling into\n  ddg_mixed on the enlarged graph (+728 = 712 new + 16 relabeled; pure-ddg\n  count byte-stable at 16); the one non-additive surface (sanitizer\n  registration over dispatch edges) cannot fire here because every dispatch\n  dst is a cmd_* handler, never a sanitizer.\n\nATTRIBUTION BY CONSTRUCTION: runtime_cli_entry mints only at cmd_*; tests are\noutside artifact scope; the only in-artifact call-shaped edges into cmd_* are\nthe linker's. Same tree without the change: 0 credited flows on all 18.\n\nBOTH LANGUAGES MEASURED (plan discipline): python = the self-proof above.\nGo = cobra fixture in the package-level `var rootCmd = &cobra.Command{...}`\nidiom (which, unlike the instance form, gets NO analyzer calls-edge): claim\nover the registered handler correctly VIOLATED (source minted through the\ndispatch edge, the only call-shaped edge into it); identical unregistered\norphan handler could not mint (negative control, verdict inconclusive via the\nopaque-launch gate, NOT violated).\n\nBoundary pinned by test (test_taint_dispatches_to_edges.py): a raw\n`references` edge still does NOT mint — the analyzer's registration edge\nstays inert; only the linker's call-shaped edge is evidence the handler runs."  # 30bd

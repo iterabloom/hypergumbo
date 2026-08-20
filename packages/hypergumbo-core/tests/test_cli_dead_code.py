@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.cli import cmd_dead_code_maybe
+from hypergumbo_core.schema import DEAD_CODE_MAYBE_SCHEMA_VERSION
 
 
 def _make_behavior_map(tmp_path: Path, nodes: list, edges: list) -> Path:
@@ -62,7 +63,11 @@ class TestDeadCodeMaybe:
         # helper IS reachable from main → NOT dead
         assert "helper" not in dead_names
         # INV-fipol: dead-code-maybe JSON now carries the schema envelope
-        assert output["schema_version"] == "0.1.0"
+        # WI-jozah: this view PROMOTED out of the shared read-view
+        # placeholder when it evolved its wire shape, which is the escape
+        # hatch schema.py documents. Asserted against the constant, never a
+        # literal — a literal is a second home for a single-sourced value.
+        assert output["schema_version"] == DEAD_CODE_MAYBE_SCHEMA_VERSION
         assert output["view"] == "dead_code_maybe"
 
     def test_all_reachable_returns_empty(self, tmp_path: Path) -> None:
@@ -1951,3 +1956,132 @@ class TestProductionCallablesClassBExclusion:
         }
         production, _t, _e = production_callables([route_marker])
         assert route_marker["id"] in production
+
+
+class TestPerCandidateReachabilityCohort:
+    """WI-jozah — the cohort must be ON each candidate, not only in the summary.
+
+    ``test_only_reachable`` was computed and reported as an aggregate count
+    only, while every one of the candidate records carried an identical field
+    set. That made the highest-value cohort in the whole output unselectable:
+    "reachable only from tests" means the function has tests but no production
+    caller, so the tests are load-bearing for nothing and the coverage gate is
+    actively concealing the deadness. On hypergumbo's own tree that is 1859 of
+    2107 candidates — a list a consumer could count but not filter.
+
+    THE FILING SUGGESTED THREE VALUES AND ONLY TWO ARE MEANINGFUL. It proposed
+    ``test_only`` / ``entrypoint_only`` / ``unreachable``. But a dead candidate
+    is by definition not reachable from the *production* seeds, and those are a
+    superset of the entrypoint seeds — so every dead candidate is
+    entrypoint-only-dead by construction and the label would partition nothing.
+    ``entrypoint_only_dead`` is a different, larger cohort (4314 against 2107 on
+    the self-tree), which is why it stays a summary count. The per-candidate
+    discriminator is binary, and it is the one with an action attached.
+    """
+
+    def test_test_only_candidate_is_labelled(self, tmp_path: Path) -> None:
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production",
+        )
+        assert rc == 0
+        by_name = {
+            d["name"]: d for d in json.loads(out)["dead_candidates"]
+        }
+        # ``tested_fn`` is called only from ``tests/test_svc.py``.
+        assert by_name["tested_fn"]["reachability"] == "test_only"
+
+    def test_unreachable_candidate_is_labelled(self, tmp_path: Path) -> None:
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production",
+        )
+        by_name = {
+            d["name"]: d for d in json.loads(out)["dead_candidates"]
+        }
+        # ``truly_dead`` has no caller at all, test or otherwise.
+        assert by_name["truly_dead"]["reachability"] == "unreachable"
+
+    def test_labels_partition_and_reconcile_against_their_own_denominator(
+        self, tmp_path: Path,
+    ) -> None:
+        """The per-item labels must reconcile — with the RIGHT aggregate.
+
+        THIS TEST FIRST ASSERTED THE WRONG THING AND PASSED. It compared the
+        label count against ``test_only_reachable``, which counts the cohort
+        over *all production symbols*; the emitted candidate list has the FP
+        demoters applied (generated files, cross-language name hits,
+        virtual-dispatch overrides). On this fixture nothing is demoted, so the
+        two happen to be equal and the assertion held. On the self-tree they are
+        **1859 against 1747** — a 112-symbol gap that would have shipped as a
+        false equality nobody could reproduce from the fixture. Caught by
+        measuring on a real repository, not by the test.
+
+        So the summary now publishes both denominators and this asserts the
+        relationship that is actually invariant: the candidate-scoped count is
+        exact, and it can only be ≤ the production-scoped one.
+        """
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production",
+        )
+        data = json.loads(out)
+        summary = data["summary"]
+        labels = [d["reachability"] for d in data["dead_candidates"]]
+        assert set(labels) <= {"test_only", "unreachable"}
+        assert (
+            labels.count("test_only")
+            == summary["test_only_reachable_candidates"]
+        )
+        assert (
+            summary["test_only_reachable_candidates"]
+            <= summary["test_only_reachable"]
+        )
+        # Non-vacuity: both cohorts must be present, or the partition is
+        # untested and any constant would satisfy the assertions above.
+        assert labels.count("test_only") >= 1
+        assert labels.count("unreachable") >= 1
+
+    def test_both_denominators_are_null_together(self, tmp_path: Path) -> None:
+        """Neither count exists outside the production view — and they agree.
+
+        A pair of fields where one is null and the other is 0 would invite
+        exactly the misreading the pair exists to prevent.
+        """
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="entrypoints",
+        )
+        summary = json.loads(out)["summary"]
+        assert summary["test_only_reachable"] is None
+        assert summary["test_only_reachable_candidates"] is None
+
+    def test_label_is_null_when_the_cohort_was_not_computed(
+        self, tmp_path: Path,
+    ) -> None:
+        """Parity with the summary bucket, which is null under explicit modes.
+
+        Emitting ``unreachable`` here would be a lie of exactly the kind this
+        item is about: under ``--seeds entrypoints`` no test-seeded walk ran, so
+        the tool does not know which cohort a candidate is in. Absence of
+        knowledge gets ``null``, not a default.
+        """
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="entrypoints",
+        )
+        data = json.loads(out)
+        assert data["summary"]["test_only_reachable"] is None
+        assert all(
+            d["reachability"] is None for d in data["dead_candidates"]
+        )
+
+    def test_text_output_annotates_the_cohort(self, tmp_path: Path) -> None:
+        """A disclosure only under ``--json`` is half shipped.
+
+        Same rule the taint work has been applying: WI-bifob's exclusion bucket
+        reached the dataclass and never the text renderer.
+        """
+        rc, out, _ = _run_dead_code_f2(
+            tmp_path, _f2_behavior_map(), seeds="production", fmt="text",
+        )
+        assert rc == 0
+        lines = [ln for ln in out.splitlines() if "tested_fn" in ln]
+        assert lines and "test-only" in lines[0]
+        dead_lines = [ln for ln in out.splitlines() if "truly_dead" in ln]
+        assert dead_lines and "test-only" not in dead_lines[0]

@@ -1,0 +1,51 @@
+- op: create  # 7737
+  at: '2026-07-31T00:52:34Z'  # 7737
+  by: agent  # 7737
+  actor: jgstern_agent  # 7737
+  clock: 1  # 7737
+  nonce: '7737'  # 7737
+  data:  # 7737
+    kind: work_item  # 7737
+    title: "top-level test mapper is 1:1, so 10 of 11 auto-pr test files are never selected per-PR"  # 7737
+    status: todo_hard  # 7737
+    priority: 1  # 7737
+    parent:  # 7737
+    tags:  # 7737
+    - infra  # 7737
+    - testing  # 7737
+    isbefore: []  # 7737
+    duplicate_of: []  # 7737
+    not_duplicate_of: []  # 7737
+    pr_ref:  # 7737
+    description: "The WI-jozan top-level test mapper is 1:1, so nearly every top-level test file\nit was built to reach is still selected by nothing.\n\n`.agent/hooks/_shared/top_level_test_map.py` maps a changed `scripts/<name>` to\nexactly one candidate: `tests/test_<name, hyphens->underscores>.py`. Any other\ntest file covering that script is invisible to per-PR selection.\n\nMEASURED on scripts/auto-pr (2026-07-30):\n\n  ten test files exist   tests/test_autopr_closure_guard.py\n                         tests/test_autopr_desync_fallback.py\n                         tests/test_autopr_exit2_retry.py\n                         tests/test_autopr_github_arm.py\n                         tests/test_autopr_merge_ground_truth.py\n                         tests/test_autopr_ops_union_restore.py\n                         tests/test_autopr_rahib_convergence.py\n                         tests/test_autopr_result_sentinel.py\n                         tests/test_autopr_title_desc_flags.py\n                         tests/test_autopr_tracker_id.py\n  mapper looks for       tests/test_auto_pr.py   (did not exist until WI-libok)\n  therefore selected     0 of 141 tests\n\nThe whole chain then goes quiet: a change touching only `scripts/auto-pr`\nproduces no reverse-slice (that walks packages/*/src/**), smart-test's TDD\nfallback scans only `packages/*/tests/` so root-level tests cannot rescue it,\nthe manifest is written with \"Selected tests: 0\", and ci.yml:811 prints\n\"No Python source files changed - skipping pytest\". A regression in the script\nthat merges every PR in this repo ships with no per-PR test signal at all.\n\nWI-libok worked around it for one file by naming its suite `tests/test_auto_pr.py`\nto match the mapper's contract. That makes the new guard's ratchet execute, and\ndoes nothing for the other ten.\n\nThis is the mechanism's own stated purpose unmet: the module docstring says it\nexists because \"a PR that only touches .agent/hooks/_shared/*.py or scripts/*\nproduced an empty slice and the per-PR CI gate was silent.\"\n\nWHY THIS WAS INVISIBLE. The mapper's tests (tests/test_top_level_test_map.py)\nbuild an isolated tmp tree \"so they do not depend on the repo's current test\nlayout\" -- a deliberate and defensible choice that also means no test compares\nthe mapping against the real tests/ directory. The unit is correct; the wiring\ninto this repo's actual filenames is what is unmeasured. Same shape as the\nINV-fahub lesson that a component correct at unit level can be inert in the\npipeline.\n\nCANDIDATE FIXES\n\n  (a) Prefix-match: map `scripts/<name>` to `tests/test_<name>*.py`, i.e. glob\n      rather than exact-match. Cheap, and it picks up all ten immediately.\n      Risk: over-matching where a short script name prefixes an unrelated test.\n  (b) Keep 1:1 but add a coverage gate -- a test asserting every\n      `tests/test_*.py` is reachable from some top-level source path, so an\n      unreachable test file fails CI rather than sitting dark.\n  (c) Rename the ten files to a mapped prefix. Rejected as churn that the next\n      contributor re-introduces; it fixes instances, not the class.\n\n(a) and (b) compose: (a) closes today's gap, (b) prevents the next one and is\nthe structural half. Worth checking whether `.agent/hooks/_shared/*.py` has the\nsame shape before choosing.\n\nGOVERNANCE: `.agent/**` requires human approval; do not self-merge."  # 7737
+    fields: {}  # 7737
+- op: update  # 0b12
+  at: '2026-07-31T01:17:07Z'  # 0b12
+  by: agent  # 0b12
+  actor: jgstern_agent  # 0b12
+  clock: 2  # 0b12
+  nonce: 0b12  # 0b12
+  set:  # 0b12
+    status: done  # 0b12
+- op: discuss  # a763
+  at: '2026-07-31T01:17:07Z'  # a763
+  by: agent  # a763
+  actor: jgstern_agent  # a763
+  clock: 3  # a763
+  nonce: a763  # a763
+  message: "Fixed in PR #105, merged to dev 33b214f5ea. Owner approved the .agent/** governance change in-session, without --gov.\n\nMY OWN FILING WAS WRONG ON ITS CENTRAL PROPOSAL. Candidate (a) was written here as \"prefix-match ... it picks up all ten immediately\". Measured, it picks up ZERO. scripts/auto-pr collapses to auto_pr while its test files are named test_autopr_*, and test_autopr_x does not start with test_auto_pr. Plain prefix-matching moves reachability 27 -> 43 and leaves the motivating case at 0. What shipped is a SEPARATOR-INSENSITIVE prefix match -- compare with all non-alphanumerics stripped -- which was not in the filing. The claim was asserted rather than measured; that is the defect in how it was filed.\n\nALSO UNDER-SCOPED. Filed as an auto-pr problem. Measured across the real tree: 46 of 73 root tests were unreachable from any top-level source -- bakeoff, ci-debug, merge-pr, prepare-release, session hooks, agent-supervisor. Additionally .agent/hooks/_shared/ holds 13 shell helpers against 8 Python ones while the mapper required .py there, so most of a directory it claims to cover was unreachable (test_touch_heartbeat.py was dark despite _shared/touch_heartbeat.sh beside it). _shared/ now accepts .sh. scripts/lib/ deliberately left alone -- that one IS a considered decision recorded in the module docstring, and overriding it silently would be the wrong direction.\n\nALSO OVER-STATED. The filing said \"no per-PR test signal at all\". full-suite.yml's test-agent-infra job runs `pytest tests/` -- the whole root directory -- twice daily. These tests were never unrun; they were unrun BEFORE merge. The real severity is a feedback-latency gap of up to ~12 hours against \"keep dev green and deployable at all times\", not a coverage hole. Corrected in the CHANGELOG rather than left standing.\n\nBEHAVIORAL EVIDENCE on merged dev, not inferred from the merge:\n  scripts/auto-pr                        -> 11 tests  (was 1)\n  scripts/bakeoff-deep                   ->  6        (was 1)\n  .agent/hooks/_shared/touch_heartbeat.sh ->  1       (was 0)\n  reachable overall                      -> 55 of 73  (was 27)\n  tests/test_top_level_test_map.py       -> 30 passed, mapper module at 100%\n\nRATCHET. Two-sided and measured against the REAL tree: a newly-added unreachable root test fails, and an exempt test that becomes reachable also fails so the list cannot rot. 18 exemptions, each with a reason verified by reading what the test actually covers rather than inferred from its name -- several were not what the name suggested. Three groups: scripts/lib/ (deliberately unmapped), hook paths outside _shared/, and tests named for the BEHAVIOUR they pin rather than the FILE they cover. That last group is the floor of any name-based rule and wants a declarative \"covers:\" marker, not a cleverer heuristic.\n\nWHY IT SURVIVED. The mapper's existing tests build isolated tmp trees \"so they do not depend on the repo's current test layout\" -- deliberate, defensible, and precisely why nothing ever compared the mapping against the repo's real filenames. Unit correct, wiring inert. Same shape as the standing lesson that a component correct at unit level can be inert in the pipeline.\n\nSPUN OUT: WI-kahoj. Running the FULL root suite (which the targeted selection would never have surfaced) exposed a pre-existing failure: tests/_forge_github_harness.py:205 prepends the fake bindir to PATH instead of replacing it, so TestGitHubFallbackWhenGhAbsent never makes gh absent and on any machine with gh the real binary calls the live GitHub API. Reproduced on clean origin/dev in an isolated worktree, so not introduced here. 19 call sites share the premise. CI runners have no gh, so it passes there -- a green that measures nothing."  # a763
+- op: update  # 9b3b
+  at: '2026-07-31T01:18:16Z'  # 9b3b
+  by: agent  # 9b3b
+  actor: jgstern_agent  # 9b3b
+  clock: 4  # 9b3b
+  nonce: 9b3b  # 9b3b
+  set:  # 9b3b
+    title: "top-level test map was 1:1, so 46 of 73 root tests were never selected per-PR"  # 9b3b
+- op: discuss  # bbd3
+  at: '2026-07-31T01:18:16Z'  # bbd3
+  by: agent  # bbd3
+  actor: jgstern_agent  # bbd3
+  clock: 5  # bbd3
+  nonce: bbd3  # bbd3
+  message: "Re-titled: the original said \"10 of 11 auto-pr test files\", which was the measurement I filed it on and which the real measurement superseded (46 of 73 root tests, across bakeoff / ci-debug / merge-pr / prepare-release / session hooks -- auto-pr was one instance, not the scope). Leaving a known-understated title on a closed item is the deferral the decision register calibration note warns about, so fixing it now rather than at a hygiene sweep."  # bbd3

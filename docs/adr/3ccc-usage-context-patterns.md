@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-3ccc: Usage Context Patterns (extends ADR-3aaa)
 
-## Status
-Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py:939`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-3aaa v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
+Supersedes: ADR-3aaa (partial — the §1.4/§2.6 framework-concept treatment only; the rest of ADR-3aaa is extended, not replaced — see "Relationship to ADR-3aaa" below)
+Superseded by: —
+Status: Implemented — the `UsageContext` IR type is live at `packages/hypergumbo-core/src/hypergumbo_core/ir.py::UsageContext`, serialised via `schema.py`, produced by `analyze/base.py` + `analyze/all_analyzers.py`, surfaced in `cli.py` output, and consumed by `linkers/route_handler.py`. All five example frameworks listed in this document have YAML pattern files: `django.yaml` (call-based), `express.yaml` (call-based), `hapi.yaml` (data-driven), `nextjs.yaml` (file-based), and `sinatra.yaml` (block/DSL-based). The Clojure data-driven axis is covered by `ring-compojure.yaml`. 22 framework YAML files currently use usage-context patterns in one shape or another. The Django YAML's header comment ("ADR-3aaa v1.0.x + v1.1.x … Usage-based patterns (v1.1.x): Match URL routing via `path()`/`re_path()` calls") tracks the phased rollout explicitly.
 
 ## Relationship to ADR-3aaa
 
@@ -138,7 +139,7 @@ get "/users", UserController, :index
 
 ## Proposed Solution: Unified Usage Context
 
-> **Proposal-era design — IMPLEMENTED; see the Status line for shipped state** (the `UsageContext` IR type is live at `ir.py:939`, serialised via `schema.py`, produced by the analyzers, surfaced in `cli.py`, consumed by `linkers/route_handler.py`; ~22 framework YAMLs use usage-context patterns). The dataclass, YAML syntax, extraction DSL, and per-framework examples below are the original design as proposed; the field names / DSL operators / YAML key shapes shown here may differ in detail from the shipped implementation — treat the live code (`ir.py`, the framework YAML files, `route_handler.py`) as authoritative, and the blocks below as the design rationale.
+> **Proposal-era design — IMPLEMENTED; see the Status line for shipped state** (the `UsageContext` IR type is live at `ir.py::UsageContext`, serialised via `schema.py`, produced by the analyzers, surfaced in `cli.py`, consumed by `linkers/route_handler.py`; ~22 framework YAMLs use usage-context patterns). The dataclass, YAML syntax, extraction DSL, and per-framework examples below are the original design as proposed; the field names / DSL operators / YAML key shapes shown here may differ in detail from the shipped implementation — treat the live code (`ir.py`, the framework YAML files, `route_handler.py`) as authoritative, and the blocks below as the design rationale.
 
 ### Core Abstraction
 

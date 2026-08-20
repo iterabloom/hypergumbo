@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Framework linker: router → route registrations containment.
 
-Creates ``registers_routes`` edges from symbols tagged ``concept: router``
-(module / combinator / route-table groupings per framework YAML) to the
-``concept: route`` registration symbols whose spans nest within the
-router's span in the same file.
+Creates ``references`` edges (``meta['mechanism']='route_registration'``)
+from symbols tagged ``concept: router`` (module / combinator / route-table
+groupings per framework YAML) to the ``concept: route`` registration symbols
+whose spans nest within the router's span in the same file.
 
 Semantic Distinction From ``controller_routes``
 -----------------------------------------------
@@ -12,20 +12,23 @@ Two different dispatch containers in the concept vocabulary both enclose
 ``route`` symbols:
 
 - **Controller** (Phase 2 / WI-gokop): class-grouping of route handler
-  *methods* (``UsersController.index``, ``UserViewSet.list``). The
-  linker's edge type is ``contains_routes``.
+  *methods* (``UsersController.index``, ``UserViewSet.list``). Emits
+  ``contains`` with ``meta['framework_dispatch']='controller_routes'``.
 - **Router** (this linker, Phase 3 / WI-gudob): module / combinator /
   route-table grouping of route *registration* call sites (Phoenix
   ``get "/path", Controller, :action``; http4s ``HttpRoutes.of { case
   GET -> Root / "x" => ... }``; Nuxt/Remix filesystem-conventional
-  routes; Yesod ``parseRoutes`` quasiquote). The linker's edge type is
-  ``registers_routes`` — the source is not a handler class but a
-  registration container.
+  routes; Yesod ``parseRoutes`` quasiquote). Emits ``references`` with
+  ``meta['mechanism']='route_registration'`` — the source is not a
+  handler class but a registration container.
 
-Keeping edge types distinct matters for slice queries ("which routes
-does this controller class handle?" versus "which routes does this
-router module register?") and avoids collapsing semantically different
-relationships into one bucket.
+Both bespoke edge types (``contains_routes`` / ``registers_routes``) were
+folded onto the shared canonical types by ADR-0023 §6 Phase 3
+(audit-findings 0001 / WI-vasik-jofiv). The distinction that used to live
+in the edge type now lives in ``meta``: a slice query asking "which routes
+does this controller class handle?" versus "which routes does this router
+module register?" discriminates on ``meta['framework_dispatch']``, not on
+``edge_type``.
 
 Scope of Coverage (Honest Enumeration)
 --------------------------------------
@@ -62,8 +65,9 @@ How It Works
    wins — avoids redundant edges when nested combinators coexist in
    the same file (http4s: an outer ``HttpRoutes`` call combined with
    an inner ``HttpRoutes.of`` arm).
-5. Emit ``registers_routes`` edges with
-   ``evidence_type="router_routes"`` and confidence 0.80.
+5. Emit ``references`` edges with ``evidence_type="ast_call_direct"``,
+   confidence 0.80, and ``meta={"mechanism": "route_registration",
+   "framework_dispatch": "router_routes"}``.
 
 Why This Design
 ---------------
@@ -72,8 +76,8 @@ semantics live in the YAML (which symbols are tagged as router /
 route); the linker itself is framework-agnostic code that consumes
 those tags (INV-nimuj). Keeping router and controller as *two*
 linkers (rather than one generalized ``dispatch_container`` linker
-matching either concept) preserves the edge-type semantic distinction
-and keeps the two linkers independently auditable.
+matching either concept) preserves the dispatch-mechanism distinction
+in ``meta`` and keeps the two linkers independently auditable.
 
 Why the Innermost Router Wins
 -----------------------------
@@ -99,7 +103,7 @@ Limitations
 
 Subcategory: Framework (framework-specific dispatch — route
 registration under per-framework router conventions). Target concept
-``router`` carries 14 producer frameworks per docs/CONCEPTS.md
+``router`` carries 16 producer frameworks per docs/CONCEPTS.md
 (Phase 3 of WI-gudob).
 """
 
@@ -114,21 +118,21 @@ from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
-    from ..ir import Symbol
+    from ..ir import Span, Symbol
 
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("router-routes-linker")
 
 
-def _encloses(container_span, member_span) -> bool:
+def _encloses(container_span: "Span", member_span: "Span") -> bool:
     return (
         container_span.start_line <= member_span.start_line
         and container_span.end_line >= member_span.end_line
     )
 
 
-def _span_size(span) -> int:
+def _span_size(span: "Span") -> int:
     return span.end_line - span.start_line
 
 
@@ -141,24 +145,29 @@ def _span_size(span) -> int:
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
 )
 def link_router_routes(ctx: LinkerContext) -> LinkerResult:
-    """Create registers_routes edges from routers to nested route symbols."""
+    """Create route-registration ``references`` edges from routers to routes."""
     run = AnalysisRun.create(
         pass_id=PASS_ID,
         version=PASS_VERSION,
     )
 
-    routers_by_file: dict[str, list[Symbol]] = {}
-    routes_by_file: dict[str, list[Symbol]] = {}
+    # (Symbol, Span) tuples: the entry filter establishes span presence, and
+    # carrying the narrowed Span in the bucket lets the type system hold that
+    # invariant across the collection boundary (mypy cannot re-derive it from
+    # dict[str, list[Symbol]] downstream).
+    routers_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
+    routes_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
 
     for sym in ctx.symbols:
-        if sym.span is None:
+        span = sym.span
+        if span is None:
             continue
         if is_test_file(sym.path):
             continue
         if has_concept(sym, "router"):
-            routers_by_file.setdefault(sym.path, []).append(sym)
+            routers_by_file.setdefault(sym.path, []).append((sym, span))
         if has_concept(sym, "route"):
-            routes_by_file.setdefault(sym.path, []).append(sym)
+            routes_by_file.setdefault(sym.path, []).append((sym, span))
 
     edges: list[Edge] = []
 
@@ -166,11 +175,17 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
         routes = routes_by_file.get(path, [])
         if not routes:
             continue
-        for route in routes:
-            enclosing = [r for r in routers if _encloses(r.span, route.span)]
+        for route, route_span in routes:
+            enclosing = [
+                (r, r_span)
+                for r, r_span in routers
+                if _encloses(r_span, route_span)
+            ]
             if not enclosing:
                 continue
-            winner = min(enclosing, key=lambda r: _span_size(r.span))
+            winner, winner_span = min(
+                enclosing, key=lambda pair: _span_size(pair[1])
+            )
             # ADR-0023 §6 Phase 3 / audit-findings 0001 (WI-vasik-jofiv):
             # Router declares routes (declaration-time, not dispatch).
             # Canonical 'references' +
@@ -179,7 +194,7 @@ def link_router_routes(ctx: LinkerContext) -> LinkerResult:
                 src=winner.id,
                 dst=route.id,
                 edge_type="references",
-                line=winner.span.start_line,
+                line=winner_span.start_line,
                 origin=PASS_ID,
                 evidence_type="ast_call_direct",
                 confidence=0.80,

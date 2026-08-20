@@ -1,0 +1,52 @@
+- op: create  # 202f
+  at: '2026-08-15T01:52:35Z'  # 202f
+  by: agent  # 202f
+  actor: jgstern_agent  # 202f
+  clock: 1  # 202f
+  nonce: 202f  # 202f
+  data:  # 202f
+    kind: work_item  # 202f
+    title: "Shadow observations are overwritten每 run, so the Phase 1 exit criterion is undecidable: accumulate them and report misses that also FAILED"  # 202f
+    status: todo_hard  # 202f
+    priority: 2  # 202f
+    parent:  # 202f
+    tags:  # 202f
+    - coverage_selection  # 202f
+    - developer_experience  # 202f
+    isbefore:  # 202f
+    - WI-kuliv-nofiv-hazas-papiz-kulij-vosok-lorus-vokas  # 202f
+    duplicate_of: []  # 202f
+    not_duplicate_of: []  # 202f
+    pr_ref:  # 202f
+    description: "PHASE 1 residual: the shadow reports per-run but NOTHING ACCUMULATES, so its\nexit criterion is currently undecidable.\n\nTHE GAP. scripts/coverage-select writes .ci/selection-shadow.json, which is\noverwritten on every run and gitignored. Each observation destroys the last.\nThe phase was designed to accrue evidence for free from ordinary work, and as\nshipped it accrues nothing.\n\nWHAT TO BUILD.\n  1. Append each observation to a durable out-of-repo log (alongside the index\n     in ~/hypergumbo_lab_notebook/, for the same reason: per-run churn must not\n     touch the working tree).\n  2. A reporter that computes the exit criterion: over >=30 commits, did any\n     test appear in MISSED_BY_COVERAGE that both RAN and FAILED? That is the\n     only safety claim worth having. \"The counts look similar\" is not one.\n  3. Track the INFORMATIVE RATE. Observations from a cold index, or where every\n     changed file is new code, are excluded by design -- they report every test\n     as a miss. If most observations are disqualified, evidence accrues far\n     slower than \"30 commits\" implies, and that must be visible from the\n     counter rather than discovered later.\n\nALSO OUTSTANDING: a genuine head-to-head. The 12-tests-across-2-files demo was\nrun by invoking coverage-select directly with an EMPTY actual-tests list, so\nits EXTRA_FROM_COVERAGE=2 is an artifact of an empty comparison, not a win\nover the slice. The first tracked-file change through smart-test gives the\nreal number. Today produced exactly one admissible observation."  # 202f
+    fields: {}  # 202f
+- op: update  # 9a4d
+  at: '2026-08-15T01:52:44Z'  # 9a4d
+  by: agent  # 9a4d
+  actor: jgstern_agent  # 9a4d
+  clock: 2  # 9a4d
+  nonce: 9a4d  # 9a4d
+  set:  # 9a4d
+    title: "Shadow observations are overwritten every run, so the Phase 1 exit criterion is undecidable: accumulate them and report misses that also FAILED"  # 9a4d
+- op: update  # a473
+  at: '2026-08-15T03:03:42Z'  # a473
+  by: agent  # a473
+  actor: jgstern_agent  # a473
+  clock: 3  # a473
+  nonce: a473  # a473
+  set:  # a473
+    status: done  # a473
+- op: discuss  # 1ab6
+  at: '2026-08-15T03:03:42Z'  # 1ab6
+  by: agent  # 1ab6
+  actor: jgstern_agent  # 1ab6
+  clock: 4  # 1ab6
+  nonce: 1ab6  # 1ab6
+  message: "Done in PR #347 (origin/dev ea0d6a83ab), verified on the merged tree.\n\nBEHAVIOURAL EVIDENCE, not a proxy. Before: the shadow wrote one JSON file per run that the next run overwrote, so the log was permanently 1 observation. After, on the merged tree: two consecutive smart-test runs leave two rows, and 'coverage-select report' prints observations/informative/commits/DANGEROUS MISSES/verdict, currently 1 admissible commit of 30 -> INSUFFICIENT (correct).\n\nTHE ITEM UNDERSTATED THE WORK, and this is the part worth carrying forward. The exit criterion is 'a miss that ALSO FAILED', and the shadow recorded NO failure data at all -- a durable log alone would have accrued 30 commits of undecidable evidence. failed_tests_from_junit now counts <error> beside <failure> (a collection error is a test that did not pass -- the INV-vilag shape).\n\nTHREE KINDS OF OBSERVATION ARE EXCLUDED rather than counted as passes, each seen live during implementation: cold index, all-new-code commit, and collapsed join. The join case was a genuine ordering defect: the shadow ran BEFORE the suite, so it read the PREVIOUS run's junit -- 0% join and a failure set belonging to a different commit. Observations attributing one commit's failures to another change would have looked entirely healthy. It now runs after the suite and before fold_selection_index, the only window where this run's results and the pre-run index both exist.\n\nAlso fixed a green-run-reported-red abort: fold_selection_index read a bare $1 under set -u, aborting after 1,585 tests had passed.\n\nMeasured this session: raw MISSED_BY_COVERAGE was 84 on a green run with 0 dangerous misses -- which is exactly why miss counts are not the criterion.\n\nNEXT: WI-kuliv (Phase 2) stays blocked until the counter reaches 30 admissible commits. Watch informative_rate: if most observations are disqualified, '30 commits' is a much longer wait than it sounds."  # 1ab6
+- op: discuss  # a165
+  at: '2026-08-17T02:00:47Z'  # a165
+  by: agent  # a165
+  actor: jgstern_agent  # a165
+  clock: 5  # a165
+  nonce: a165  # a165
+  message: "CROSS-REF, not a reopening. This item's closing note ends 'NEXT: WI-kuliv (Phase 2) stays blocked until the counter reaches 30 admissible commits.' That sentence attached this item's Phase-3 exit criterion to Phase 2, which is additive-only and cannot incur the drop-risk the criterion measures. Owner lifted it 2026-08-16; the reasoning and the shadow-log evidence (10 observations, 100% informative, 0 dangerous misses, 7/10 runs adding tests the static slice missed) are recorded on WI-kuliv. The counter itself remains correct and remains Phase 3's (WI-bolot) gate. Also worth carrying: the informative_rate risk this item flagged did not materialise -- nothing has been disqualified."  # a165

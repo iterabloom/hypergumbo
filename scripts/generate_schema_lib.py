@@ -47,10 +47,43 @@ import dataclasses
 import typing
 from typing import Any, Callable, Dict, List, Optional, Set, get_args, get_origin
 
+from hypergumbo_core.axis_meta_keys import (
+    AXIS_EDGE_META,
+    AXIS_SYMBOL_META,
+    meta_keys_on_axis,
+)
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
+
+
+def registry_meta_properties(axis: str) -> Dict[str, Dict[str, Any]]:
+    """Schema ``properties`` for every ``MetaKeySpec`` registered on ``axis``.
+
+    WI-zisig / WI-zamum. The ``meta`` blocks used to hand-list their documented
+    keys, which drifted immediately: of 32 registered edge-axis keys the schema
+    described 2, and of 47 symbol-axis keys it described 0 — so registered,
+    emitted, spec-documented keys (``resolution_quality`` on 1076 edges,
+    ``channel`` on 145) were absent from ``docs/schema.json`` and a consumer
+    reading the schema could not learn they exist. Deriving the list from
+    ``axis_meta_keys`` makes the registry the single home for the vocabulary, so
+    a newly registered key documents itself instead of accruing a new item.
+
+    Entries carry a ``description`` and **deliberately no ``type``**.
+    ``MetaKeySpec`` records no type, and the values genuinely are not uniform —
+    ``refresh`` and ``disambiguation_fallback`` are booleans, ``referring_paths``
+    is a list, most others are strings. Emitting ``"type": "string"`` across the
+    board would be a claim the registry cannot support and would turn a
+    documentation gap into a wrong constraint. A description-only entry is
+    honest and, because both ``meta`` objects leave ``additionalProperties``
+    open, changes no validation outcome — it is purely descriptive, which is why
+    this needs no ``SCHEMA_VERSION`` bump.
+    """
+    return {
+        spec.name: {"description": spec.description}
+        for spec in sorted(meta_keys_on_axis(axis), key=lambda s: s.name)
+    }
 
 
 class SchemaDriftError(Exception):
@@ -383,6 +416,16 @@ def _symbol_spec() -> ClassSpec:
             },
         },
         overrides={
+            # WI-zisig / WI-zamum: Symbol.meta is a bare Dict[str, Any], so the
+            # generator emitted a contentless {"type": "object"} and described
+            # 0 of the 47 registered symbol-axis meta keys. The registry now
+            # supplies them; additionalProperties stays open, so this documents
+            # without constraining.
+            "meta": {
+                "type": "object",
+                "description": "Symbol metadata",
+                "properties": registry_meta_properties(AXIS_SYMBOL_META),
+            },
             # minimum lives inside the oneOf integer branch — not flat-mergeable.
             "cyclomatic_complexity": {
                 "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}],
@@ -578,6 +621,12 @@ def _edge_spec() -> ClassSpec:
                 "type": "object",
                 "description": "Edge metadata",
                 "properties": {
+                    # WI-zisig / WI-zamum: every registered edge-axis meta key
+                    # documents itself from axis_meta_keys. Listed FIRST so the
+                    # two curated entries below override the registry's shorter
+                    # descriptions (evidence_type carries the ADR-0028 axiom and
+                    # the x-axis-of-values map, which the registry does not).
+                    **registry_meta_properties(AXIS_EDGE_META),
                     "evidence_type": {
                         "type": "string",
                         "description": (
@@ -739,18 +788,6 @@ def _edge_spec() -> ClassSpec:
                     "label. Default True (the ~90% case); Phase 3 "
                     "producers explicitly set False for the "
                     "Cluster B fold targets."
-                ),
-            },
-            "quality": {
-                "deprecated": True,
-                "description": (
-                    "DEPRECATED (ADR-0039 ruling 4; WI-humok / WI-riguh). "
-                    "quality.score is a pure function of confidence "
-                    "(round(clamp(confidence), 3)) and quality.reason encodes "
-                    "the emitter mechanism, not a confidence tier — it carries "
-                    "zero independent signal. Read confidence + confidence_source "
-                    "+ is_resolved instead. Still emitted for one deprecation "
-                    "release; removed the next."
                 ),
             },
         },

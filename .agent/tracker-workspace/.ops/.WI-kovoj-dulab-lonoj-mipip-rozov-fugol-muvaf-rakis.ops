@@ -1,0 +1,21 @@
+- op: create  # f3a5
+  at: '2026-08-08T22:33:37Z'  # f3a5
+  by: agent  # f3a5
+  actor: jgstern_agent  # f3a5
+  clock: 1  # f3a5
+  nonce: f3a5  # f3a5
+  data:  # f3a5
+    kind: work_item  # f3a5
+    title: "Parallel measurement agents silently truncate their cohort on ENOSPC — a shrunken denominator looks identical to a full one"  # f3a5
+    status: todo_hard  # f3a5
+    priority: 3  # f3a5
+    parent:  # f3a5
+    tags:  # f3a5
+    - analysis_quality  # f3a5
+    - process  # f3a5
+    isbefore: []  # f3a5
+    duplicate_of: []  # f3a5
+    not_duplicate_of: []  # f3a5
+    pr_ref:  # f3a5
+    description: "Parallel measurement agents silently TRUNCATE their cohort when /tmp fills, and\na truncated denominator is indistinguishable from a complete one.\n\nOBSERVED, twice, in one session:\n 1. The eight-invariant re-measurement reported \"kserve and meson were\n    ENOSPC-dropped from the primary busis/lupav run\". Consequence: that run\n    reported INV-busis's population as 73 blocked / 16 production sites. An\n    adversarial re-measurement that did NOT hit the ceiling found the true\n    population is 137 blocked / 68 production over 5 repos -- the primary had\n    measured 23.5% of it and had no way to know.\n 2. `check-package-coverage` then failed with exit 1 for what looked like a\n    coverage gap. It was ENOSPC: /tmp was 100% full and the process could not\n    write its own stdout. Re-run after cleanup: all 6 packages PASSED.\n\nMECHANISM: each measurement agent caches full behavior maps of multi-thousand-\nfile repos under its scratchpad. One session's scratchpad reached 7.0 GB across\n106 files >5MB (inv8 1.3G, ictp-sizing 1.25G, pathjoin 1.24G, wi-zilag 782M,\nlens1_kipor 644M, maps 642M, lens3 642M) against a 12G tmpfs.\n\nWHY IT IS DANGEROUS RATHER THAN MERELY ANNOYING: the failure mode is a SILENT\nSHRINK of the denominator, in a project whose standing rule is to name the\ndenominator. An agent that drops two repos and reports a share computed over the\nrest produces a number that looks exactly like a full-cohort number. Every\n\"share of sites\" figure from a parallel run is suspect unless the run states its\ncohort explicitly.\n\nMITIGATIONS, in order of strength:\n 1. Any fan-out that analyses repos must REPORT ITS ACTUAL COHORT (repos\n    attempted vs completed) in its return value, so a drop is visible in the\n    result rather than in a log nobody reads. Prompt for it explicitly.\n 2. Check free space before a fan-out: `df -h /tmp`. 12G tmpfs supports roughly\n    4-6 concurrent multi-repo agents.\n 3. Clean between phases: `find <scratchpad> -type f -size +5M -delete` keeps\n    the instruments (scripts) and drops the caches. 7.0G -> 4.9G used, 959\n    scripts preserved, in one command.\n 4. A tool failure with a plausible-looking exit code should be checked against\n    `df` before it is diagnosed as a real failure.\n\nACTION ITEM CARRIED: INV-busis's site population must be re-measured over the\nfull 5-repo cohort (pretix, mitmproxy, caddy, kserve, meson) before any of its\nnumbers are acted on. The 73/16 figure is in its thread and is NOT the\npopulation."  # f3a5
+    fields: {}  # f3a5

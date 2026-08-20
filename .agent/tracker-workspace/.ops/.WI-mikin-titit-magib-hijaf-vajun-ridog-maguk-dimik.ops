@@ -19,3 +19,18 @@
     pr_ref:  # c910
     description: "**Defect.** The `metrics.debug` block emits an undocumented third key.\n\n**Evidence.** Spec §942 documents metrics.debug as carrying two non-canonical file counts; the producer emits three — analyzed_file_symbols, profile_files_sum, unique_paths_in_analysis — where profile_files_sum (=1218, the value total_files was supposed to be) is undocumented.\n\n**Contract.** The debug block should carry exactly the documented set of keys, or the extra key should be documented.\n\n**Consequence.** A consumer reading the documented debug block encounters an extra key with no contract and cannot tell whether it is a stable field or transient noise; schema/spec-driven validation of the debug block is incomplete."  # c910
     fields: {}  # c910
+- op: update  # 2c02
+  at: '2026-07-30T17:20:25Z'  # 2c02
+  by: agent  # 2c02
+  actor: jgstern_agent  # 2c02
+  clock: 2  # 2c02
+  nonce: 2c02  # 2c02
+  set:  # 2c02
+    status: done  # 2c02
+- op: discuss  # a39b
+  at: '2026-07-30T17:20:25Z'  # a39b
+  by: agent  # a39b
+  actor: jgstern_agent  # a39b
+  clock: 3  # a39b
+  nonce: a39b  # a39b
+  message: "DONE — spec-only. metrics.debug was described as carrying 'two' non-canonical file counts while emitting three; profile_files_sum was undocumented.\n\nVerified on a fresh self-survey: metrics.debug = {analyzed_file_symbols, profile_files_sum, unique_paths_in_analysis}.\n\nDocumented WITH the property that makes it non-interchangeable with its neighbour, which is the point of documenting it at all: profile_files_sum sums profile.languages[*].files and therefore counts a file once per language that claims it, so it OVER-counts relative to unique_paths_in_analysis, which de-duplicates by path. A consumer that treated the three as alternative spellings of the same quantity would silently pick the wrong one; the spec now says which is which."  # a39b

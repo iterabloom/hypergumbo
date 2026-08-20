@@ -43,6 +43,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.analyze.base import node_own_text as _get_node_text
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -58,10 +59,6 @@ def find_odin_files(root: Path) -> Iterator[Path]:
         if path.is_file():
             yield path
 
-
-def _get_node_text(node: "tree_sitter.Node") -> str:
-    """Get the text content of a node."""
-    return (node.text or b"").decode("utf-8", errors="replace")
 
 
 def _get_identifier(node: "tree_sitter.Node") -> Optional[str]:

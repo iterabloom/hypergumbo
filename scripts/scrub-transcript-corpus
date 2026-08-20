@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Backfill: redact known secrets across the whole retained transcript corpus.
+
+Why this exists
+---------------
+The transcript pipeline is forward-only. Rotation archives, demotes and promotes
+files, but nothing ever re-opens what it has already written -- so a credential
+that reached disk before any scrubbing existed stays there permanently. An
+adversarial review measured roughly 560 live-credential occurrences spread over
+four stores that no hook can reach:
+
+* ``.agent/.archived-transcripts/*/*.jsonl.gz`` -- 237 sessions, terminal once
+  written;
+* ``.agent/.training-data.jsonl`` -- ~1.2GB, explicitly maintained for
+  finetuning, so a credential here is on a path into model weights;
+* ``.agent/.deprecated-datasets/*.jsonl`` -- referenced by no script;
+* ``.agent/.current_session_transcript.<sid>.jsonl`` whose PID file is gone --
+  the orphan sweep iterates PID files and derives the transcript name from them,
+  so a transcript without one is invisible to it forever.
+
+Design
+------
+Dry-run by DEFAULT. This rewrites large irreplaceable files, so the safe mode is
+the one you get without thinking; ``--apply`` is required to change anything.
+
+Gzip members are decompressed, scrubbed and recompressed through a temp file and
+only swapped in after the replacement verifies as a valid gzip stream -- the
+review's central lesson was that a fallible step between bytes and their only
+copy must never be able to truncate or empty the destination.
+
+Counts are reported; secret values are never printed. Scrubbing is idempotent,
+so re-running is safe and reports zero.
+"""
+from __future__ import annotations
+
+import argparse
+import gzip
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_SCRUBBER = _REPO_ROOT / ".agent" / "hooks" / "_shared" / "scrub_secrets.py"
+
+
+def _load_scrubber():
+    spec = importlib.util.spec_from_file_location("scrub_secrets", _SCRUBBER)
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        raise SystemExit(f"cannot load scrubber at {_SCRUBBER}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def iter_targets(agent_dir: Path) -> list[Path]:
+    """Every retained file that can hold transcript text, in a stable order."""
+    targets: list[Path] = []
+    targets.extend(sorted(agent_dir.glob(".archived-transcripts/*/*.jsonl.gz")))
+    for name in (".last_session_transcript.jsonl",
+                 ".second_to_last_transcript.jsonl",
+                 ".last_injection_history.jsonl",
+                 ".second_to_last_injection_history.jsonl",
+                 ".training-data.jsonl"):
+        p = agent_dir / name
+        if p.is_file():
+            targets.append(p)
+    # Every per-session current file, whether or not a PID file exists -- the
+    # glob is what makes PID-less orphans reachable at all.
+    targets.extend(sorted(agent_dir.glob(".current_session_transcript.*.jsonl")))
+    targets.extend(sorted(agent_dir.glob(".current_injection_history.*.jsonl")))
+    targets.extend(sorted(agent_dir.glob(".deprecated-datasets/*.jsonl")))
+    return targets
+
+
+def count_occurrences(path: Path, secrets: list[str], *, gz: bool) -> int:
+    """How many secret occurrences ``path`` holds. Streams; never prints values."""
+    if not secrets:
+        return 0
+    secrets_b = [s.encode("utf-8") for s in secrets]
+    hold = max(len(s) for s in secrets_b) - 1
+    opener = gzip.open if gz else open
+    total = 0
+    carry = b""
+    with opener(path, "rb") as fh:  # type: ignore[operator]
+        while True:
+            chunk = fh.read(1 << 20)
+            if not chunk:
+                break
+            buf = carry + chunk
+            for s in secrets_b:
+                total += buf.count(s)
+            carry = buf[-hold:] if hold and len(buf) > hold else b""
+    return total
+
+
+def scrub_plain(mod, path: Path, secrets: list[str]) -> int:
+    count, _clean = mod.scrub_in_place(path, secrets)
+    return count
+
+
+def scrub_gzip(mod, path: Path, secrets: list[str]) -> int:
+    """Rewrite a .gz in place, swapping only after the replacement validates."""
+    st = path.stat()
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".scrub-")
+    tmp = Path(tmp_name)
+    try:
+        os.close(fd)
+        with gzip.open(path, "rb") as src, gzip.open(tmp, "wb") as out:
+            count, _clean = mod.scrub_stream(src, out, secrets)
+        # Validate before swapping: an empty or truncated archive must never
+        # replace a good one. This is the failure the review demonstrated.
+        with gzip.open(tmp, "rb") as check:
+            if not check.read(1) and st.st_size > 0:
+                raise OSError("scrubbed archive decompresses to nothing")
+        os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+        tmp.chmod(st.st_mode & 0o7777)
+        tmp.replace(path)
+        return count
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="scrub-transcript-corpus",
+        description="Redact known secrets across the retained transcript corpus.",
+    )
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="Actually rewrite files (default: dry run, report only)",
+    )
+    parser.add_argument(
+        "--repo-root", default=str(_REPO_ROOT),
+        help="Repo root holding .env and the secrets list",
+    )
+    parser.add_argument(
+        "--agent-dir", default=None,
+        help="Directory to sweep (default: <repo-root>/.agent)",
+    )
+    args = parser.parse_args(argv)
+
+    mod = _load_scrubber()
+    repo_root = Path(args.repo_root)
+    agent_dir = Path(args.agent_dir) if args.agent_dir else repo_root / ".agent"
+
+    secrets = mod.collect_secrets(repo_root)
+    if not secrets:
+        print("No secrets configured — nothing to do.", file=sys.stderr)
+        print(
+            f"Add values to {repo_root / mod.SECRETS_FILENAME} "
+            "(see the committed .example) or set credential-shaped .env keys.",
+            file=sys.stderr,
+        )
+        return 0
+
+    targets = iter_targets(agent_dir)
+    if not targets:
+        print(f"No transcript files found under {agent_dir}", file=sys.stderr)
+        return 0
+
+    mode = "APPLY" if args.apply else "DRY RUN"
+    print(f"[{mode}] {len(secrets)} secret(s) configured; "
+          f"{len(targets)} candidate file(s) under {agent_dir}")
+
+    dirty: list[tuple[Path, int]] = []
+    total_before = 0
+    for path in targets:
+        gz = path.suffix == ".gz"
+        try:
+            n = count_occurrences(path, secrets, gz=gz)
+        except OSError as exc:
+            print(f"  SKIP  {path.name}: unreadable ({exc.__class__.__name__})")
+            continue
+        if n:
+            dirty.append((path, n))
+            total_before += n
+
+    if not dirty:
+        print("  clean — no known secret found in any retained transcript.")
+        return 0
+
+    print(f"\n  {len(dirty)} file(s) hold {total_before} occurrence(s):")
+    for path, n in dirty:
+        try:
+            rel = path.relative_to(agent_dir)
+        except ValueError:  # pragma: no cover - defensive
+            rel = path
+        size_mb = path.stat().st_size / (1 << 20)
+        print(f"    {n:6d}  {size_mb:8.1f} MB  {rel}")
+
+    if not args.apply:
+        print("\n  Dry run — nothing written. Re-run with --apply to redact.")
+        print("  NOTE: scrubbing does not un-disclose a credential that has "
+              "already been on disk. Rotate it as well.")
+        return 0
+
+    print()
+    failures = 0
+    scrubbed = 0
+    for path, _n in dirty:
+        try:
+            count = (scrub_gzip if path.suffix == ".gz" else scrub_plain)(
+                mod, path, secrets
+            )
+            scrubbed += count
+            print(f"  redacted {count:6d}  {path.name}")
+        except (OSError, ValueError) as exc:
+            failures += 1
+            print(f"  FAILED  {path.name}: {exc.__class__.__name__} "
+                  "(original left intact)")
+
+    print(f"\n  redacted {scrubbed} occurrence(s) across "
+          f"{len(dirty) - failures} file(s); {failures} failure(s)")
+    remaining = sum(
+        count_occurrences(p, secrets, gz=p.suffix == ".gz") for p, _ in dirty
+        if p.is_file()
+    )
+    print(f"  verification: {remaining} occurrence(s) remain")
+    if remaining or failures:
+        return 1
+    print("  Rotate the credential too — scrubbing cannot un-disclose it.")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

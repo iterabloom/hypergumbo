@@ -3,10 +3,13 @@
 
 Uniform construct set (see tests/fixtures/emission-parity/README.md):
 import, documented callable with a branchy body (complexity > 1) that calls a
-helper, a helper callee, a class with a method, an exported public surface, and
-an entrypoint idiom (the ``__main__`` guard).
+helper, a helper callee, a class with a method, an exported public surface, an
+entrypoint idiom (the ``__main__`` guard), an enumerated type with named
+members, and an abstract type with member signatures.
 """
 import os
+from enum import Enum
+from typing import Protocol
 
 MAX_ITEMS = 100
 
@@ -36,6 +39,25 @@ class Service:
     def run(self):
         """Run the service."""
         return process([1, 2, 3], True)
+
+
+class Color(Enum):
+    """Enumerated type whose named members are container members."""
+
+    RED = "red"
+    GREEN = "green"
+
+
+class Drawable(Protocol):
+    """Abstract type whose member signatures are container members."""
+
+    def draw(self) -> str:
+        """Render."""
+        ...
+
+    def area(self) -> float:
+        """Measure."""
+        ...
 
 
 if __name__ == "__main__":

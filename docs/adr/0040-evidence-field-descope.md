@@ -13,25 +13,25 @@ Decision provenance: this ruling was made explicitly by the project owner in a d
 
 ### The edge-evidence triple and its verified state
 
-The Edge dataclass (`ir.py:601-617`) declares three evidence-adjacent fields beyond `evidence_type`:
+The Edge dataclass (`ir.py::Edge`) declares three evidence-adjacent fields beyond `evidence_type`:
 
-- `evidence_lang: Optional[str]` (`ir.py:611`, `# axis: language`) — "Language for confidence scoring."
-- `evidence_spans: Optional[List[Dict[str, Any]]]` (`ir.py:612`) — "Structured locations of evidence."
-- `meta.evidence[]` — a multi-pass evidence accumulator promised in spec prose (`docs/hypergumbo-spec.md:814`): "When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations."
+- `evidence_lang: Optional[str]` (`ir.py::Edge.evidence_lang`, `# axis: language`) — "Language for confidence scoring."
+- `evidence_spans: Optional[List[Dict[str, Any]]]` (`ir.py::Edge`, since removed) — "Structured locations of evidence."
+- `meta.evidence[]` — a multi-pass evidence accumulator promised in spec prose (`docs/hypergumbo-spec.md` §9): "When multiple analysis passes observe the same relationship, `meta.evidence[]` accumulates their individual observations."
 
 The dogfood tranches and the 2026-06-10 root-cause analysis verified the production state of all three on the frozen self-corpus substrate (110,533 edges):
 
 | Field | Declared | Populated | Mechanism |
 |---|---|---|---|
-| `evidence_lang` | `ir.py:611`, `schema.json:1160-1162`, spec:826 | 0 / 110,533 | ~22 long-tail analyzers stamp it per-site (a HEAD grep finds 25 producer modules passing `evidence_lang=`); none of them produced edges on the self-corpus. The mainstream Python/JavaScript/HTML analyzers never adopted it. |
-| `evidence_spans` | `ir.py:612`, `schema.json:1163-1165`, spec:827 | 0 / 110,533 | **Zero producers ever.** No emit site outside `ir.py` has ever passed `evidence_spans=`. The done-marker at spec:1545 was satisfied solely by a constructor round-trip test (`test_ir.py:607`, `test_edge_has_evidence_spans`) that exercises no producer. |
-| `meta.evidence[]` | spec:814 prose only | 0 / 110,533 | **Structurally unemittable.** The Edge dataclass at `ir.py:601-617` has no backing `evidence` list field at all — the spec promises what the IR cannot represent. |
+| `evidence_lang` | `ir.py::Edge.evidence_lang`, `docs/schema.json`, spec §9 | 0 / 110,533 | ~22 long-tail analyzers stamp it per-site (a HEAD grep finds 25 producer modules passing `evidence_lang=`); none of them produced edges on the self-corpus. The mainstream Python/JavaScript/HTML analyzers never adopted it. |
+| `evidence_spans` | `ir.py::Edge`, `docs/schema.json`, spec §9 | 0 / 110,533 | **Zero producers ever.** No emit site outside `ir.py` has ever passed `evidence_spans=`. The done-marker at spec §16 was satisfied solely by a constructor round-trip test (`test_edge_has_evidence_spans`, since deleted with the field) that exercises no producer. |
+| `meta.evidence[]` | spec §9 prose only | 0 / 110,533 | **Structurally unemittable.** The Edge dataclass at `ir.py::Edge` has no backing `evidence` list field at all — the spec promises what the IR cannot represent. |
 
-The serializer (`Edge.to_dict`, `ir.py:731-734`) emits `evidence_lang` / `evidence_spans` only when non-`None`, so no behavior-map artifact ever produced contains any of these keys. The spec nonetheless carries a 🟩 done-marker at spec:1545 — "Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)" — over-claiming delivery of two 0%-coverage fields, and the confidence pseudocode at spec:1191 reads "`lang: Language (from edge.meta.evidence_lang or src.language)`", a fallback that fires on 100% of edges.
+The serializer (`Edge.to_dict`, `ir.py::Edge.to_dict`) emits `evidence_lang` / `evidence_spans` only when non-`None`, so no behavior-map artifact ever produced contains any of these keys. The spec nonetheless carries a 🟩 done-marker at spec §16 — "Required field presence (execution_id, run_signature, evidence_lang, evidence_spans)" — over-claiming delivery of two 0%-coverage fields, and the confidence pseudocode at spec §9 reads "`lang: Language (from edge.meta.evidence_lang or src.language)`", a fallback that fires on 100% of edges.
 
 ### Why `evidence_lang` is different from the other two
 
-`evidence_lang` is not a fiction in the same sense. It has real (if long-tail) producers, a registered axis (`# axis: language`, catalog-checked by the axis-conformance machinery), and a load-bearing consumer story: it is the language coordinate for cross-language edge reasoning and the `lang` input to the spec's `EVIDENCE_CONFIDENCE_MATRIX` (spec:1169-1208, the confidence-derivation layer ADR-0039 governs). The spec marks it **Required** for cross-language edges where src/dst languages differ (spec:826) — exactly the sub-population (63 edges on the tranche-03 substrate) where it is most acutely null today.
+`evidence_lang` is not a fiction in the same sense. It has real (if long-tail) producers, a registered axis (`# axis: language`, catalog-checked by the axis-conformance machinery), and a load-bearing consumer story: it is the language coordinate for cross-language edge reasoning and the `lang` input to the spec's `EVIDENCE_CONFIDENCE_MATRIX` (spec §12, the confidence-derivation layer ADR-0039 governs). The spec marks it **Required** for cross-language edges where src/dst languages differ (spec §9) — exactly the sub-population (63 edges on the tranche-03 substrate) where it is most acutely null today.
 
 Its history is instead the family's proven *delivery* failure mode: per-producer adoption. Stamping `evidence_lang` was attempted as a sweep across the ~130 Edge emit sites and demonstrably stalled at the ~22 long-tail analyzers — leaving the mainstream analyzers, which produce essentially all edges on real corpora, unstamped. The strategy analysis names this the "no-chokepoint producer accident" pattern (its anti-leverage note: "per-symptom patching is empirically the worst strategy in this corpus — ... evidence_lang adoption stalled at 22 analyzers") and prescribes the same remedy shape used for fingerprints: a single central stamping point, never a per-site sweep.
 
@@ -43,21 +43,21 @@ The strategy's Wave 4 includes schema:F3, a schema-generation content pass that 
 
 ### 1. Remove `evidence_spans` and `meta.evidence[]`
 
-- Delete `evidence_spans` from the Edge dataclass (`ir.py:612`), from `Edge.create`'s parameter list, and from the `to_dict` serialization branch (`ir.py:733-734`).
-- Delete the `evidence_spans` declaration from `docs/schema.json` (currently `schema.json:1163-1165`, under Edge `meta` properties).
-- Delete the `meta.evidence[]` multi-pass-accumulator paragraph from the spec (spec:814) and the residual "including evidence" phrasing in the schema's Edge-meta description (`schema.json:1026`) to the extent it implies an evidence array.
-- Correct the spec field tables: drop the `evidence_spans[]` bullet (spec:827), and flip the stale done-marker at spec:1545 — the "Required field presence" line must stop listing `evidence_spans` (and must not claim `evidence_lang` until central stamping actually lands).
-- Delete `test_edge_has_evidence_spans` (`test_ir.py:607`) with the field. It is the campaign's worked example of presence-only closure evidence: a constructor round-trip satisfying a done-marker while production coverage is 0%.
+- Delete `evidence_spans` from the Edge dataclass (`ir.py::Edge.create`), from `Edge.create`'s parameter list, and from the `to_dict` serialization branch (`ir.py::to_dict`).
+- Delete the `evidence_spans` declaration from `docs/schema.json` (currently `docs/schema.json`, under Edge `meta` properties).
+- Delete the `meta.evidence[]` multi-pass-accumulator paragraph from the spec (spec §9) and the residual "including evidence" phrasing in the schema's Edge-meta description (`docs/schema.json`) to the extent it implies an evidence array.
+- Correct the spec field tables: drop the `evidence_spans[]` bullet (spec §9), and flip the stale done-marker at spec §16 — the "Required field presence" line must stop listing `evidence_spans` (and must not claim `evidence_lang` until central stamping actually lands).
+- Delete `test_edge_has_evidence_spans` from `test_ir.py` with the field. It is the campaign's worked example of presence-only closure evidence: a constructor round-trip satisfying a done-marker while production coverage is 0%.
 
 Removal is **byte-invisible on every artifact ever produced**: the serializer only emitted these keys when non-`None`, and they never were. This is a contraction of promises, not a change in emitted shape — no schema-version bump is forced on wire-format grounds.
 
 ### 2. Keep `evidence_lang`, stamped once at the chokepoint
 
-`evidence_lang` is retained on Edge (`ir.py:611`) with its `# axis: language` declaration and catalog check unchanged. Its population contract changes from "each producer should remember to stamp it" to:
+`evidence_lang` is retained on Edge (`ir.py::Edge.evidence_lang`) with its `# axis: language` declaration and catalog check unchanged. Its population contract changes from "each producer should remember to stamp it" to:
 
 > `evidence_lang` is stamped at exactly ONE central point — the `Edge.create` chokepoint — defaulting to the src symbol's language. Producers with genuine cross-language nuance (e.g., a Protocol linker whose evidence lives on the dst side) may pass an explicit value; everything else inherits the default.
 
-`Edge.create` (`ir.py:642-661`) already accepts `evidence_lang: Optional[str] = None`; the landing PR wires the default. Where the src symbol's language is not resolvable at `Edge.create` call time (the factory receives an ID string, not a Symbol), the stamp is completed by the central finalize sweep that already exists for fingerprint-class post-passes — the contract is "one stamping point, default `src.language`", not "every call site computes it." This turns the spec's documented-but-unimplemented fallback clause ("Defaults to `src` node's language if omitted", spec:826) from a consumer-side hope (spec:1191's `or src.language`) into a producer-side guarantee, and it satisfies the spec's Required-for-cross-language-edges clause structurally rather than by a second adoption sweep.
+`Edge.create` (`ir.py::Edge.create`) already accepts `evidence_lang: Optional[str] = None`; the landing PR wires the default. Where the src symbol's language is not resolvable at `Edge.create` call time (the factory receives an ID string, not a Symbol), the stamp is completed by the central finalize sweep that already exists for fingerprint-class post-passes — the contract is "one stamping point, default `src.language`", not "every call site computes it." This turns the spec's documented-but-unimplemented fallback clause ("Defaults to `src` node's language if omitted", spec §9) from a consumer-side hope (spec §9's `or src.language`) into a producer-side guarantee, and it satisfies the spec's Required-for-cross-language-edges clause structurally rather than by a second adoption sweep.
 
 The ~22 long-tail per-site stamps become redundant once the chokepoint default lands; they may be deleted in the same PR or swept opportunistically — either way the central stamp, not the per-site code, is the contract.
 
@@ -84,7 +84,7 @@ This descope MUST land before the schema-generation content pass (strategy Wave 
 
 ### Positive
 
-- **The schema stops promising what the IR cannot represent.** `meta.evidence[]` (no backing field) and `evidence_spans` (no producer ever) leave `ir.py`, `schema.json`, and the spec field tables; the stale done-marker at spec:1545 is corrected. Consumers reading the contract no longer code against keys that appear on 0% of edges.
+- **The schema stops promising what the IR cannot represent.** `meta.evidence[]` (no backing field) and `evidence_spans` (no producer ever) leave `ir.py`, `schema.json`, and the spec field tables; the stale done-marker at spec §16 is corrected. Consumers reading the contract no longer code against keys that appear on 0% of edges.
 - **`evidence_lang` goes from 0% to 100% population structurally.** One chokepoint default replaces the stalled ~130-site sweep; the spec-required cross-language sub-population is covered by construction. WI-kuluh's defect class (partial-adoption states passing both producer- and consumer-side gates) is closed by making partial adoption impossible rather than detectable.
 - **The confidence-derivation layer (ADR-0039) gets its `lang` input.** The `(language, evidence_type)` matrix lookup becomes matchable on the mainstream pathway for the first time.
 - **Wave-4 schema generation (schema:F3) starts from a truthful field inventory** — the sequencing constraint guarantees no dead declaration is canonized.
@@ -113,5 +113,5 @@ This descope MUST land before the schema-generation content pass (strategy Wave 
 - ADR-0028 — `evidence_type` axiom (inference pathway); unaffected by this descope.
 - ADR-0033 — the validator stage whose writer-contract class makes "declared ⇒ populated" checkable; the enforcement home for the new `evidence_lang` contract row.
 - ADR-0039 — confidence separation; consumes `evidence_lang` as the matrix `lang` coordinate.
-- Code: `ir.py:601-617` (Edge fields), `ir.py:642-661` (`Edge.create` chokepoint), `ir.py:731-734` (`to_dict` None-dropping), `test_ir.py:607` (the round-trip-only test).
-- Spec/schema: spec:814 (meta.evidence[] prose), spec:825-827 (meta-fields bullets), spec:1191 (consumer-side fallback), spec:1545 (stale done-marker); `schema.json:1160-1165` (evidence_lang / evidence_spans declarations), `schema.json:1026` (Edge-meta description).
+- Code: `ir.py::Edge.create` (Edge fields), `ir.py::Edge.create` (`Edge.create` chokepoint), `ir.py::Edge.create` (`to_dict` None-dropping), `test_edge_has_evidence_spans` in `test_ir.py` (the round-trip-only test, deleted with the field).
+- Spec/schema: spec §9 (meta.evidence[] prose), spec §9 (meta-fields bullets), spec §9 (consumer-side fallback), spec §16 (stale done-marker); `docs/schema.json` (evidence_lang / evidence_spans declarations), `docs/schema.json` (Edge-meta description).

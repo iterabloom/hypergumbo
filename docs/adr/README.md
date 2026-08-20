@@ -13,7 +13,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [3bbb](3bbb-linker-subcategory-restoration.md) | Linker Subcategory Restoration (extends 3aaa §2.4) | Implemented | 2026-04-16 |
 | [3ccc](3ccc-usage-context-patterns.md) | Usage Context Patterns (extends 3aaa) | Implemented | |
 | [0004](0004-file-taxonomy.md) | File Taxonomy: Tier and Role Classification | Accepted | 2025-01-14 |
-| [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Accepted — partially superseded by ADR-0039 (forward-conditional) | 2025-01-15 |
+| [0005](0005-sketch-budget-allocation.md) | Sketch Budget Allocation and Section Composition | Partially superseded by ADR-0039 (entrypoint selection — in effect) | 2025-01-15 |
 | [0006](0006-variable-type-inference.md) | Variable Type Inference for Method Call Resolution | Accepted | 2025-01-21 |
 | [0007](0007-import-tracking-for-call-resolution.md) | Import Tracking for Cross-File Call Resolution | Accepted | 2026-01-22 |
 | [0008](0008-autonomous-governance-and-vendor-agnostic-hooks.md) | Autonomous Governance and Vendor-Agnostic Hooks | Accepted | 2026-01-24 |
@@ -27,12 +27,12 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0016](0016-io-boundary-analysis.md) | I/O Boundary Analysis and Security Claim Verification | Accepted | 2026-03-18 |
 | [0017](0017-taint-zone-dataflow.md) | Taint-Zone Dataflow Analysis | Partially superseded by ADR-0037, ADR-0038 | 2026-03-22 |
 | [0018](0018-transcript-sync-and-playbook-injection.md) | Vendor-Agnostic Transcript Sync and LLM-Driven Playbook Injection | Accepted | 2026-03-29 |
-| [0019](0019-remote-access-transport.md) | Remote Access Transport | Proposed | 2026-03-30 |
-| [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Proposed | 2026-03-30 |
+| [0019](0019-remote-access-transport.md) | Remote Access Transport | Accepted — Part A server side implemented (tracker v0.2.0); native client absent; Part B not started | 2026-03-30 |
+| [0020](0020-tui-screenshot-annotation-and-inline-preview.md) | TUI Screenshot Annotation and Inline Preview | Implemented (tracker v0.2.0) | 2026-03-30 |
 | [0021](0021-tracker-federation.md) | Tracker Federation | Proposed | 2026-03-30 |
 | [0022](0022-language-profile-registry.md) | Per-Language Configuration Surface and Language Profile Registry | Partially superseded by own evolution (by-language half deferred) | 2026-04-10 |
-| [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 migration in progress) | 2026-04-29 |
-| [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Accepted | 2026-04-30 (updated 2026-05-02) |
+| [0023](0023-edge-type-relationship-not-endpoints.md) | Edge Type Names the Relationship, Not the Endpoints | Accepted (§6 fold complete 2026-07-21) | 2026-04-29 |
+| [0024](0024-axis-declaration-template.md) | Axis Declaration Template for Multi-Value Fields | Accepted — OQ1 partially superseded by ADR-0038 | 2026-04-30 (updated 2026-05-02) |
 | [0027](0027-symbol-kind-language-construct-only.md) | Symbol.kind Names the Source-Language Syntactic Construct | Accepted (Phases 1–4 complete) | 2026-05-02 |
 | [0028](0028-evidence-type-inference-pathway-only.md) | Edge.evidence_type Names the Inference Pathway | Accepted — §sibling-field superseded by ADR-0037 | 2026-05-02 |
 | [0029](0029-cross-language-inherited-call-linker.md) | Cross-Language Inherited-Call Linker | Accepted | 2026-05-25 |
@@ -40,12 +40,12 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0031](0031-symbol-language-reshape.md) | Symbol.language Reshape — discovery_language and protocol_origin Typed Fields | Accepted | 2026-05-30 |
 | [0032](0032-canonical-name-fingerprint-reshape.md) | canonical_name and fingerprint Reshape — display_label and qualified_name Typed Fields; Format 1 Fingerprint Demolition | Accepted | 2026-05-31 |
 | [0033](0033-spec-vs-data-validator-stage.md) | Spec-vs-Data Validator Stage | Accepted | 2026-05-31 |
-| [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Partially superseded by ADR-0037, ADR-0036 | 2026-06-01 |
+| [0034](0034-id-construction-discipline.md) | ID-Construction Discipline | Accepted — partially superseded by ADR-0037, ADR-0036; core factory discipline in force | 2026-06-01 |
 | [0035](0035-stable-id-v6-identity-contract.md) | stable_id v6 Identity Contract | Accepted | 2026-06-10 |
-| [0036](0036-node-id-grammar-v2.md) | node.id Grammar v2 | Accepted | 2026-06-10 |
-| [0037](0037-edge-resolution-semantics.md) | Edge Resolution Semantics | Mosaic — rulings 1/2/3/5 done; ruling 4 deferred | 2026-06-10 |
+| [0036](0036-node-id-grammar-v2.md) | node.id Grammar v2 | Accepted — Decision/Enforcement only partially landed | 2026-06-10 |
+| [0037](0037-edge-resolution-semantics.md) | Edge Resolution Semantics | Accepted — Implemented (all rulings 1–5; ruling 4 landed 2026-07-02) | 2026-06-10 |
 | [0038](0038-access-mode-contract.md) | The access_mode Contract | Accepted | 2026-06-10 |
-| [0039](0039-confidence-separation.md) | Confidence Separation | Accepted | 2026-06-10 |
+| [0039](0039-confidence-separation.md) | Confidence Separation | Accepted — Implemented (all five rulings) | 2026-06-10 |
 | [0040](0040-evidence-field-descope.md) | Evidence-Field Descope | Accepted | 2026-06-10 |
 | [0041](0041-supply-tier-purity.md) | Supply-Chain Tier Purity | Accepted | 2026-06-10 |
 | [0042](0042-survey-rename.md) | Survey Rename | Accepted | 2026-06-10 |

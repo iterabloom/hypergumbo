@@ -2,9 +2,12 @@
 """Idempotent setup wizard for the hypergumbo tracker.
 
 Runs a sequence of checks that inspect the tracker's operational state,
-auto-fix what can be fixed (directory creation, gitattributes, config copy),
-and report advisory diagnostics for things that require human action
-(agent instructions, hook integration).
+auto-fix what can be fixed, and report advisory diagnostics for the rest.
+Auto-fix covers directory creation, gitattributes (both the tracker-local
+and repo-root files), config copy, config ownership and permissions, group
+permissions, ``core.sharedRepository``, the textconv driver,
+``safe.directory``, the wrapper shim, the managed AGENTS.md block, and
+``core.hooksPath``.
 
 Each check returns a CheckResult with status ok/fixed/warn/error. The wizard
 is idempotent: running it twice with no changes between runs produces all
@@ -16,11 +19,14 @@ The check sequence covers three areas:
    textconv driver, data integrity.
 2. **Agentic infrastructure** (checks 16-21): wrapper scripts, agent
    instructions, hook integration, autonomous mode consistency, reflection
-   state validity. Read-only / advisory only.
+   state validity. NOT read-only — the wrapper-shim, AGENTS.md-block and
+   ``core.hooksPath`` checks all write to the repo and return
+   ``status="fixed"``.
 3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
    git identity — advisory check for ``htrac sync`` workflow.
 
-Entry point: ``run_setup(root, repo_root)`` returns a list of CheckResult.
+Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
+returns a list of CheckResult; the keyword drives policy-template scaffolding.
 The CLI handler in cli.py formats and prints them.
 """
 
@@ -32,6 +38,7 @@ import json
 import os
 import pwd
 import re
+import shlex
 import shutil
 import tempfile
 import subprocess  # nosec B404
@@ -1436,6 +1443,66 @@ def _ensure_safe_directory(repo_root: Path) -> bool:
     return True
 
 
+# The single git-config key for the .ops diff driver. Must match the ``diff=``
+# attribute in BOTH the repo-root .gitattributes and the nested .ops ones —
+# ADR-0013 names it ``tracker``.
+_TEXTCONV_CONFIG_KEY = "diff.tracker.textconv"
+
+
+def _resolve_textconv_command(repo_root: Path | None) -> str:
+    """Pick the textconv command for this deployment.
+
+    In-repo, ``scripts/tracker-textconv`` is preferred: it already handles the
+    console-script-then-``python -m`` fallback, so it works before and after an
+    editable install. Standalone (``pip install hypergumbo-tracker`` in someone
+    else's repo) there is no such script, so use the CLI subcommand documented
+    in ADR-0013 §CLI.
+    """
+    if repo_root is not None:
+        script = repo_root / "scripts" / "tracker-textconv"
+        if script.exists():
+            return str(script)
+    return "hypergumbo-tracker textconv"
+
+
+def _verify_textconv_runs(repo_root: Path | None, ops_file: Path) -> str | None:
+    """Execute the configured driver; return a failure reason, or None if healthy.
+
+    This exists because the previous check only asked whether the config key was
+    *set*, never whether the command *worked* — so it reported "Git textconv
+    driver ✓" for months while the configured command did not exist. Presence of
+    configuration is a proxy; running it is the behaviour.
+
+    Two conditions, both required by git: exit 0 AND **empty stderr**. Git
+    aborts the whole diff when a textconv driver writes to stderr even if it
+    exits 0, which is the failure mode that made ``git log -p`` exit 128.
+    """
+    command = subprocess.run(  # noqa: S603  # nosec B603, B607
+        ["git", "config", _TEXTCONV_CONFIG_KEY],  # noqa: S607
+        capture_output=True, text=True, cwd=str(repo_root) if repo_root else None,
+    ).stdout.strip()
+    if not command:
+        return "no command configured"
+    try:
+        proc = subprocess.run(  # noqa: S603  # nosec B603, B607
+            [*shlex.split(command), str(ops_file)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"driver could not be executed ({exc})"
+    if proc.returncode != 0:
+        first = (proc.stderr or proc.stdout).strip().splitlines()
+        return f"driver exited {proc.returncode}: {first[0] if first else '(no output)'}"
+    if proc.stderr:
+        return (
+            "driver wrote to stderr; git aborts diffs in that case: "
+            f"{proc.stderr.strip().splitlines()[0]}"
+        )
+    if not proc.stdout.strip():
+        return "driver produced no output"
+    return None
+
+
 def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
     """Check #13: Git textconv driver for .ops files.
 
@@ -1460,23 +1527,28 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
     if safe_dir_fixed:
         fixed.append("safe.directory")
 
-    # Check git config for textconv driver
+    # Check git config for the textconv driver.
+    #
+    # ONE attribute name, ``tracker``, matching ADR-0013 and the repo-root
+    # .gitattributes. A second name (``tracker-ops``) used to be configured
+    # here; because the nested .ops/.gitattributes files win over the root
+    # pattern by path specificity, that second name silently overrode the
+    # working driver and left `git log -p` exiting 128 across the repo.
     try:
-        result = subprocess.run(  # nosec B603, B607
-            ["git", "config", "diff.tracker-ops.textconv"],  # noqa: S607
+        result = subprocess.run(  # noqa: S603  # nosec B603, B607
+            ["git", "config", _TEXTCONV_CONFIG_KEY],  # noqa: S607
             capture_output=True,
             text=True,
             cwd=str(repo_root),
         )
         if result.returncode != 0 or not result.stdout.strip():
-            # Try local config first, fall back to --global if not writable
-            textconv_value = "python -m hypergumbo_tracker.cli textconv"
+            textconv_value = _resolve_textconv_command(repo_root)
             try:
                 subprocess.run(  # noqa: S603  # nosec B603, B607
                     [  # noqa: S607
                         "git",
                         "config",
-                        "diff.tracker-ops.textconv",
+                        _TEXTCONV_CONFIG_KEY,
                         textconv_value,
                     ],
                     capture_output=True,
@@ -1486,20 +1558,21 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
                 )
                 fixed.append("textconv driver")
             except subprocess.CalledProcessError:
-                # Local .git/config not writable — use --global
-                subprocess.run(  # noqa: S603  # nosec B603, B607
-                    [  # noqa: S607
-                        "git",
-                        "config",
-                        "--global",
-                        "diff.tracker-ops.textconv",
-                        textconv_value,
+                # Deliberately NOT falling back to `git config --global`.
+                # This is a per-repo concern; writing it machine-wide leaks a
+                # driver definition into every other repo the user touches and
+                # outlives this checkout. Local-first means local-only here.
+                return CheckResult(
+                    name="textconv",
+                    status="warn",
+                    message="Could not configure textconv driver (repo config not writable)",
+                    details=[
+                        f"Set it by hand: git config --local {_TEXTCONV_CONFIG_KEY} "
+                        f"{_resolve_textconv_command(repo_root)!r}",
+                        "Not writing to --global: a per-repo driver does not belong "
+                        "in machine-wide config.",
                     ],
-                    capture_output=True,
-                    text=True,
-                    check=True,
                 )
-                fixed.append("textconv driver (global)")
     except (subprocess.CalledProcessError, FileNotFoundError):
         return CheckResult(
             name="textconv",
@@ -1508,8 +1581,8 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
             details=["git config command failed"],
         )
 
-    # Check .gitattributes in .ops dirs for diff=tracker-ops
-    diff_line = "*.ops diff=tracker-ops"
+    # Check .gitattributes in .ops dirs for diff=tracker
+    diff_line = "*.ops diff=tracker"
     ops_dirs = [
         root / "tracker" / ".ops",
         root / "tracker-workspace" / ".ops",
@@ -1545,16 +1618,38 @@ def _check_textconv(root: Path, repo_root: Path | None) -> CheckResult:
                     f.write(ln + "\n")
             fixed.append("root .gitattributes")
 
+    # BEHAVIOURAL verification, not a presence check: run the driver against a
+    # real op log. Skipped only when the repo has no .ops file to feed it.
+    probe = next(
+        (p for d in ops_dirs if d.is_dir() for p in sorted(d.glob(".*.ops"))),
+        None,
+    )
+    if probe is not None:
+        reason = _verify_textconv_runs(repo_root, probe)
+        if reason is not None:
+            return CheckResult(
+                name="textconv",
+                status="warn",
+                message="Git textconv driver is configured but does NOT work",
+                details=[
+                    reason,
+                    f"probe file: {probe}",
+                    "Effect: `git log -p` / `git diff` / `git blame` fail (exit 128) "
+                    "on any .ops path.",
+                    f"Expected command: {_resolve_textconv_command(repo_root)!r}",
+                ],
+            )
+
     if fixed:
         return CheckResult(
             name="textconv",
             status="fixed",
-            message=f"Git textconv driver configured ({len(fixed)} fix{'es' if len(fixed) != 1 else ''})",
+            message=f"Git textconv driver configured and verified ({len(fixed)} fix{'es' if len(fixed) != 1 else ''})",
         )
     return CheckResult(
         name="textconv",
         status="ok",
-        message="Git textconv driver",
+        message="Git textconv driver (verified against a real op log)",
     )
 
 

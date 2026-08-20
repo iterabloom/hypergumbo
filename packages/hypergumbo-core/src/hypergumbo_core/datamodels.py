@@ -93,6 +93,11 @@ class DataModel:
     confidence: float
     label: str  # axis: free-text — human-readable label for display; consumers render, never branch on the value itself.
     framework: str = ""  # axis: free-text — framework label like "Django", "Pydantic"; consumers display, never branch on the value itself.
+    # ADR-0039 (WI-gozik): ranking prominence (base confidence + centrality
+    # boost). `confidence` stays the pure evidence-derived detection reliability;
+    # `rank_score` carries the importance signal that ordering keys on. Set by
+    # ``detect_datamodels`` after dedup; default 0.0 for a bare-constructed model.
+    rank_score: float = 0.0
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -102,6 +107,7 @@ class DataModel:
             "confidence": self.confidence,
             "label": self.label,
             "framework": self.framework,
+            "rank_score": self.rank_score,
         }
 
 
@@ -379,21 +385,26 @@ def detect_datamodels(
 
     unique_models = list(best_by_id.values())
 
-    # Boost confidence based on centrality (incoming edges)
-    # Data models that are widely referenced are more important
+    # ADR-0039 (WI-gozik): rank_score carries importance. Data models that are
+    # widely referenced (high in-degree) are more prominent, but centrality is a
+    # RANKING signal — it must not inflate `confidence` (pure evidence-derived
+    # detection reliability, which the old confidence+boost sum could also push
+    # onto the reserved 1.0 ceiling). rank_score starts at confidence and absorbs
+    # the centrality boost; ordering keys on it.
     incoming_counts: dict[str, int] = {}
     for edge in edges:
         incoming_counts[edge.dst] = incoming_counts.get(edge.dst, 0) + 1
 
     for model in unique_models:
+        model.rank_score = model.confidence
         in_degree = incoming_counts.get(model.symbol_id, 0)
         if in_degree > 0:
-            # Logarithmic boost: diminishing returns for very high counts
-            # Cap at 0.15 to avoid overwhelming the base confidence
+            # Logarithmic boost: diminishing returns for very high counts,
+            # capped at 0.15 so centrality never overwhelms the base signal.
             centrality_boost = min(0.15, math.log(1 + in_degree) / 20)
-            model.confidence = min(1.0, model.confidence + centrality_boost)
+            model.rank_score = min(1.0, model.rank_score + centrality_boost)
 
-    # Sort by confidence (highest first)
-    unique_models.sort(key=lambda m: m.confidence, reverse=True)
+    # Sort by rank_score (importance), highest first.
+    unique_models.sort(key=lambda m: m.rank_score, reverse=True)
 
     return unique_models

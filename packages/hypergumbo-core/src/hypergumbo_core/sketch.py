@@ -14,21 +14,23 @@ budget. Section budget allocation follows ADR-0005 (Entry Points
 what remains after the structural sections; etc.).
 
 Sections in emission order:
-1.  Header — repo name, language breakdown, LOC estimate (always)
-2.  Overview — README-derived elevator pitch when available
+1.  Header — repo name, plus the README-derived elevator pitch when
+    one is available (always)
+2.  Overview — language breakdown and LOC estimate
 3.  Structure — top-level directory tree
 4.  Frameworks — detected build systems / web frameworks /
     test frameworks
 5.  Tests — test framework + estimated coverage breakdown
-6.  Configuration — environment variables, dotenv keys, config-file
-    callouts
+6.  Configuration — config-file callouts (``CONFIG_FILES_BY_LANG``).
+    Environment variables and dotenv keys are NOT extracted
 7.  Entry Points — CLI commands, HTTP routes, IPC handlers,
     cron / scheduler entries
 8.  Data Models — dataclasses, ORM entities, schema definitions,
     with the four-strategy detection from ``datamodels.py``
 9.  Source Files — centrality-ranked file list with stats
 10. Key Symbols — top symbols by dampened centrality
-11. Additional Files — extra files included by ``--with-source``
+11. Additional Files — always emitted when the budget allows;
+    ``--with-source`` shrinks its budget to 5% rather than gating it
 12. Source Files Content — full source for the top-ranked files
     (only when ``with_source=True``)
 13. Additional Files Content — full source for additional files
@@ -36,8 +38,9 @@ Sections in emission order:
 Behavioral flags
 ----------------
 - ``with_source`` — include sections 12-13 (full file content).
-- ``require_sections`` — fail loudly if a required section can't
-  emit (rather than silently skipping).
+- ``require_sections`` — force-include the named sections even when
+  the token budget is exhausted, and skip final truncation. It does not
+  raise; it overrides the budget gate (WI-nakam).
 - ``stats_out`` — emit per-section size statistics for sketch
   tuning experiments.
 - ``language_proportional`` — switch from global ranking to
@@ -47,15 +50,16 @@ Behavioral flags
   fan-out sketch files alongside the main sketch.
 
 Token budgeting uses a simple heuristic (~4 chars per token) which is
-accurate enough for approximate sizing. For precise counting,
-tiktoken can be used as an optional dependency.
+accurate enough for approximate sizing. There is no exact-tokenizer
+path — the heuristic is the only counter.
 
 Centrality dampening
 --------------------
 Symbol ranking flows through ``compute_dampened_centrality``, which
-applies the pinned ``_CANONICAL_DAMPENERS`` stage stack (tier and
-file-kind weighting, common-method-name multipliers, sibling-impl
-group weights, etc.). The stack order is invariant — its pinning
+applies the pinned ``_CANONICAL_DAMPENERS`` stage stack — seven stages:
+tier, noise, utility, common_method, trivial_sink, generated, file_kind.
+(The sibling-impl group weighting was removed by WI-karad.) The stack
+order is invariant — its pinning
 tests live alongside this module and catch internal-reorder
 regressions a tuple-identity check would miss.
 
@@ -78,6 +82,7 @@ if TYPE_CHECKING:
 from .discovery import find_files, DEFAULT_EXCLUDES
 from .profile import detect_profile, RepoProfile
 from .ir import Symbol, Edge, is_external_boundary
+from .paths import names_no_source_file
 from .entrypoints import detect_entrypoints, Entrypoint, EntrypointKind
 from .datamodels import detect_datamodels, DataModel
 from .ranking import (
@@ -93,6 +98,10 @@ from .ranking import (
 from .selection.language_proportional import (
     allocate_language_budget as _allocate_language_budget,
     group_files_by_language as _group_files_by_language,
+)
+from .selection.filters import (
+    key_symbols as select_key_symbols,
+    production_edges as select_production_edges,
 )
 from .selection.token_budget import (
     estimate_tokens,
@@ -140,7 +149,7 @@ class SketchStats:
     has_entrypoints: bool = False
     has_datamodels: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-safe dict of the flat scalar fields.
 
         Used to cache the 4x/16x comparison-sketch stats alongside their
@@ -151,7 +160,7 @@ class SketchStats:
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SketchStats":
+    def from_dict(cls, data: dict[str, Any]) -> "SketchStats":
         """Reconstruct from :meth:`to_dict` output, tolerating schema drift.
 
         Unknown keys are ignored and missing keys take their field default, so
@@ -1397,7 +1406,11 @@ def _discover_config_files_embedding(
         Set of discovered config file paths.
     """
     try:
-        from .sketch_embeddings import _load_embedding_model
+        from .sketch_embeddings import (
+            EmbeddingsUnavailable,
+            _load_embedding_model,
+            _warn_embeddings_unavailable,
+        )
         import numpy as np
     except ImportError:  # pragma: no cover
         return set()  # No discovery without sentence-transformers
@@ -1511,8 +1524,14 @@ def _discover_config_files_embedding(
             reverse=True
         )[:max_candidates]
 
-    # Load embedding model and compute similarities
-    model = _load_embedding_model()  # pragma: no cover
+    # Load embedding model and compute similarities. INV-rupid: an unavailable
+    # model answers exactly as the ImportError arm at the top of this function
+    # does — no discovery without the enhancement.
+    try:
+        model = _load_embedding_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)
+        return set()
 
     # Embed known config file names
     known_embeddings = model.encode(known_names, convert_to_numpy=True)  # pragma: no cover
@@ -1807,7 +1826,11 @@ def _extract_config_embedding(
         List of extracted metadata lines, ordered by file then relevance.
     """
     try:
-        from .sketch_embeddings import _load_embedding_model
+        from .sketch_embeddings import (
+            EmbeddingsUnavailable,
+            _load_embedding_model,
+            _warn_embeddings_unavailable,
+        )
         import numpy as np
     except ImportError:  # pragma: no cover
         # Fall back to heuristic if sentence-transformers not available
@@ -1827,9 +1850,16 @@ def _extract_config_embedding(
         if _verbose:  # pragma: no cover
             print(f"[embed] {msg}", file=_sys.stderr)
 
-    # Load embedding model once
+    # Load embedding model once. INV-rupid: an unavailable model takes the SAME
+    # branch the ImportError arm above takes — the heuristic extractor, not an
+    # empty list. Degrading to [] here would silently drop config metadata that
+    # pattern matching can still recover without any model at all.
     _t_load = _time.time()
-    model = _load_embedding_model()
+    try:
+        model = _load_embedding_model()
+    except EmbeddingsUnavailable as exc:
+        _warn_embeddings_unavailable(exc)
+        return _extract_config_heuristic(repo_root)[:max_lines]
     _vlog(f"Model loaded in {_time.time() - _t_load:.1f}s")
 
     # Compute normalized embeddings for both probes
@@ -3073,7 +3103,7 @@ def _format_structure_tree(
 
     # Build a tree from paths
     # Tree node: {"name": str, "children": dict, "is_file": bool, "shown": bool}
-    def make_node(name: str, is_file: bool = False) -> dict:
+    def make_node(name: str, is_file: bool = False) -> dict[str, Any]:
         return {"name": name, "children": {}, "is_file": is_file, "shown": False}
 
     root = make_node(repo_root.name)
@@ -3111,7 +3141,7 @@ def _format_structure_tree(
         """
         return _count_dir_items(path, repo_root, name_excludes)
 
-    def render_tree(node: dict, path: Path, prefix: str = "") -> list[str]:
+    def render_tree(node: dict[str, Any], path: Path, prefix: str = "") -> list[str]:
         """Render tree node and its children."""
         lines: list[str] = []
 
@@ -4969,7 +4999,7 @@ def _is_test_symbol(symbol: Symbol) -> bool:
 
 
 def _estimate_test_coverage(
-    symbols: list[Symbol], edges: list
+    symbols: list[Symbol], edges: list[Edge]
 ) -> tuple[int, int, float] | None:
     """Estimate test coverage from call graph using transitive BFS.
 
@@ -5152,7 +5182,7 @@ def _run_analysis(
     profile: RepoProfile,
     exclude_tests: bool = False,
     progress_callback: Callable[..., Any] | None = None,
-) -> tuple[list[Symbol], list, tuple[int, int, float] | None]:
+) -> tuple[list[Symbol], list[Edge], tuple[int, int, float] | None]:
     """Run static analysis to get symbols and edges.
 
     Only runs analysis for detected languages to avoid unnecessary work.
@@ -5173,7 +5203,7 @@ def _run_analysis(
     from .supply_chain import classify_file, detect_package_roots
 
     all_symbols: list[Symbol] = []
-    all_edges: list = []
+    all_edges: list[Edge] = []
 
     # Find which analyzers need to run based on detected languages
     detected_langs = set(profile.languages)
@@ -5431,8 +5461,8 @@ def _format_datamodels(
     # Build symbol lookup for path info
     symbol_by_id = {s.id: s for s in symbols}
 
-    # Sort by confidence (highest first) - already sorted but ensure
-    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+    # Sort by rank_score (highest first) - already sorted but ensure
+    sorted_models = sorted(datamodels, key=lambda m: -m.rank_score)
 
     # Truncate to max_entries first, then group
     shown = sorted_models[:max_entries]
@@ -5521,7 +5551,7 @@ def _select_symbols_two_phase(
         return []
 
     # Track per-file state: next symbol index and pick count
-    file_state: dict[str, dict] = {
+    file_state: dict[str, dict[str, Any]] = {
         f: {"next_idx": 0, "picks": 0, "symbols": syms}
         for f, syms in eligible_by_file.items()
     }
@@ -5626,7 +5656,7 @@ def _select_symbols_two_phase(
 
 def _format_symbols(
     symbols: list[Symbol],
-    edges: list,
+    edges: list[Edge],
     repo_root: Path,
     max_symbols: int = 100,
     first_party_priority: bool = True,
@@ -5709,52 +5739,13 @@ def _format_symbols(
     #   it captures the intent "key declaration kinds across all
     #   languages" and Phase 3 doesn't change which values populate
     #   that intent.
-    KEY_SYMBOL_KINDS = frozenset({
-        # OOP languages
-        "function", "class", "method", "constructor",
-        # Structs and data types
-        "struct", "enum", "type", "record", "union", "abstract",
-        # Interfaces and traits
-        "interface", "trait", "protocol",
-        # Modules and namespaces
-        "module", "object", "namespace", "instance",
-        # Nix
-        "binding", "derivation", "input",
-        # Terraform/HCL
-        "resource", "data", "variable", "output", "provider", "local",
-        # Elixir/Erlang
-        "macro",
-        # Elm
-        "port",
-        # SQL
-        "table", "view", "procedure", "trigger",
-        # Dockerfile
-        "stage",
-        # F#
-        "value",
-        # Lean (theorem prover)
-        "theorem", "inductive",
-        # Fortran/COBOL
-        "program", "subroutine",
-        # VHDL (hardware design)
-        "entity", "architecture", "component",
-    })
-    key_symbols = [
-        s for s in symbols
-        if s.kind in KEY_SYMBOL_KINDS
-        and not _is_test_path(s.path)
-        and "test_" not in s.name  # Exclude test functions
-        and s.supply_chain_tier != 4  # Exclude derived artifacts (bundles, etc.)
-    ]
-
-    # Build lookup: symbol ID -> path (for filtering edges by source)
-    symbol_path_by_id = {s.id: s.path for s in symbols}
-
-    # Filter edges: exclude edges originating from test files
-    production_edges = [
-        e for e in edges
-        if not _is_test_path(symbol_path_by_id.get(getattr(e, 'src', ''), ''))
-    ]
+    # WI-zulij: the kind set and the four filter clauses used to be declared
+    # here, in this function's body, reachable by nothing else — which is how
+    # compact's default came to advertise "important symbols" while filtering a
+    # different population. Both surfaces now read one definition in
+    # selection.filters; changing it moves them together.
+    key_symbols = select_key_symbols(symbols)
+    production_edges = select_production_edges(symbols, edges)
 
     if not key_symbols:
         return ""
@@ -5932,11 +5923,7 @@ def _format_symbols(
     return "\n".join(lines)
 
 
-# Node "path" values that name no filesystem file (e.g. "<external>").
-_NON_FILE_PATH_PREFIX = "<"
-
-
-def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[Path]:
+def _map_source_paths(repo_root: Path, cached_results: Optional[dict[str, Any]]) -> list[Path]:
     """Distinct absolute source paths named by a behavior map's nodes.
 
     INV-jumim: the read-path scoping (and the ``cmd_sketch`` staleness check)
@@ -5951,7 +5938,12 @@ def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[P
     out: list[Path] = []
     for node in cached_results.get("nodes", []):
         path = node.get("path")
-        if not path or path.startswith(_NON_FILE_PATH_PREFIX):
+        # INV-sarum: one home for "this node names no source file". The
+        # private prefix constant that used to live here is now
+        # ``paths.names_no_source_file``, shared with the taint language
+        # census, which needed the identical question and got it wrong by
+        # asking a different one.
+        if names_no_source_file(path):
             continue
         abs_path = repo_root / path
         if abs_path in seen:
@@ -5962,7 +5954,7 @@ def _map_source_paths(repo_root: Path, cached_results: Optional[dict]) -> list[P
 
 
 def _file_index_from_map(
-    repo_root: Path, cached_results: Optional[dict]
+    repo_root: Path, cached_results: Optional[dict[str, Any]]
 ) -> "FileIndex | None":
     """Synthesize a :class:`FileIndex` scoped to a behavior map's file universe.
 
@@ -5977,7 +5969,7 @@ def _file_index_from_map(
     return FileIndex.from_paths(repo_root, paths)
 
 
-def _peek_cached_results(repo_root: Path) -> Optional[dict]:
+def _peek_cached_results(repo_root: Path) -> Optional[dict[str, Any]]:
     """Read an existing on-disk behavior map for ``repo_root`` WITHOUT running
     analysis.
 
@@ -6015,7 +6007,7 @@ def generate_sketch(
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
     progress: bool = False,
-    cached_results: Optional[dict] = None,
+    cached_results: Optional[dict[str, Any]] = None,
     with_source: bool = False,
     stats_out: Optional[SketchStats] = None,
     require_sections: Optional[List[str]] = None,
@@ -6074,7 +6066,7 @@ def _generate_sketch_impl(
     max_chunk_chars: int = 800,
     language_proportional: bool = True,
     progress: bool = False,
-    cached_results: Optional[dict] = None,
+    cached_results: Optional[dict[str, Any]] = None,
     with_source: bool = False,
     stats_out: Optional[SketchStats] = None,
     require_sections: Optional[List[str]] = None,
@@ -6514,7 +6506,7 @@ def _generate_sketch_impl(
 
     # Section 5: Data Models (if we have analysis results and budget)
     # ADR-0005: Data Models come after Entry Points, before Source Files
-    datamodels: list = []  # Initialize for structure tree update
+    datamodels: list[DataModel] = []  # Initialize for structure tree update
     if _section_ok("Data Models", remaining_tokens) and symbols:
         datamodels = detect_datamodels(symbols, edges)
         if datamodels:
@@ -6534,7 +6526,7 @@ def _generate_sketch_impl(
                 sections.append(dm_section)
                 # Track stats: compute confidence sum of selected datamodels
                 if stats_out is not None:
-                    sorted_models = sorted(datamodels, key=lambda m: -m.confidence)
+                    sorted_models = sorted(datamodels, key=lambda m: -m.rank_score)
                     stats_out.datamodels_confidence = sum(
                         dm.confidence for dm in sorted_models[:max_models]
                     )

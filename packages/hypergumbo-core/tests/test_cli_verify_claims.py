@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from hypergumbo_core.cli import cmd_verify_claims
@@ -191,13 +192,21 @@ def test_verify_claims_json_exposes_unsupported_taint_languages(
 ) -> None:
     """WI-nulot: the INV-javam taint-coverage signal (previously stderr-only) is
     machine-visible in --json. A taint-flow claim evaluated against a repo whose
-    language has no taint catalog (e.g. bash) exposes that language in
+    language has no taint catalog exposes that language in
     ``unsupported_taint_languages`` — so a CI gate parsing the JSON can tell a
-    'confirmed' verdict apart from a genuinely-verified one."""
+    'confirmed' verdict apart from a genuinely-verified one.
+
+    The example was BASH until INV-jurif gave it an environment-read source to
+    go with INV-vavup's redirection sinks; bash now satisfies the both-halves
+    predicate and is correctly absent from this list. Switched to a language
+    that genuinely has no catalogue, so the test still exercises the signal
+    rather than quietly asserting nothing — a fixture that stops discriminating
+    is worse than a deleted test, because it still looks like coverage.
+    """
     bmap = _make_behavior_map(
         nodes=[
-            {"id": "bash:deploy.sh:1-10:main:function", "name": "main",
-             "kind": "function", "language": "bash", "path": "deploy.sh",
+            {"id": "markdown:README.md:1-10:intro:section", "name": "intro",
+             "kind": "section", "language": "markdown", "path": "README.md",
              "span": {"start_line": 1, "end_line": 10}},
         ],
         edges=[],
@@ -224,7 +233,11 @@ def test_verify_claims_json_exposes_unsupported_taint_languages(
     cmd_verify_claims(args)
 
     data = json.loads(capsys.readouterr().out)
-    assert "bash" in data["unsupported_taint_languages"]
+    assert "markdown" in data["unsupported_taint_languages"]
+    assert "bash" not in data["unsupported_taint_languages"], (
+        "bash carries both taint halves as of INV-jurif and must no longer be "
+        "reported as an unverified language"
+    )
 
 
 def test_verify_claims_missing_file(tmp_path: Path) -> None:
@@ -554,7 +567,7 @@ def test_verify_claims_notice_for_unsupported_taint_language(
                 "text": "No secrets to disk",
                 "constraint": {
                     "taint_flow": {
-                        "source_taint": "secret",
+                        "source_taint": "host_secret",
                         "prohibited_sink_zone": "host_fs",
                     },
                 },
@@ -571,14 +584,107 @@ def test_verify_claims_notice_for_unsupported_taint_language(
     args.json_output = False
 
     rc = cmd_verify_claims(args)
-    # Verdict is still "confirmed" (no taint findings) but the notice
-    # must be present so humans don't misread the verdict as a pass.
-    assert rc == 0
-    _, err = capsys.readouterr()
+    # BEHAVIOUR CHANGED, deliberately. This test used to assert rc == 0 with
+    # the comment "verdict is still confirmed ... but the notice must be
+    # present so humans don't misread the verdict as a pass". A stderr notice
+    # is not proportionate to a verdict: `confirmed` at rc=0 is what a CI gate
+    # keys on and what a human reads as a pass, and the notice is not in the
+    # JSON verdict at all. The tool must not report a clean bill of health for
+    # a language it never analysed — measured live, a PHP file doing
+    # `file_put_contents("/tmp/out", $_GET['payload'])` returned `confirmed`.
+    # The boundary side of this same command already downgrades a blind
+    # analysis to INCONCLUSIVE (WI-kajil / INV-bitig); taint was the
+    # inconsistent one. The notice stays — it says WHICH language is unverified.
+    assert rc == 2
+    out, err = capsys.readouterr()
+    assert "INCONCLUSIVE" in out
     assert "brainfuck" in err
     assert "no taint-flow catalog" in err
     assert "NOT actually verified" in err
     assert "INV-javam" in err
+
+
+def test_a_data_file_in_a_covered_repo_does_not_block_confirmation(
+    tmp_path: Path, capsys,
+) -> None:
+    """A language with no taint catalogue but NO CODE must not block a verdict.
+
+    REGRESSION. The first version of this gate blocked on
+    ``unsupported_taint_languages`` directly, so a repo containing a single
+    YAML file — or JSON, or markdown, i.e. every real repo, including one
+    that merely keeps its own claims file in-tree — returned ``inconclusive``
+    forever and ``confirmed`` became unreachable. That is the blanket
+    downgrade that makes a verdict worthless in the opposite direction, and
+    it is why the gate keys on languages that produced CALL EDGES rather than
+    on languages merely present.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
+             "language": "python", "path": "a.py",
+             "span": {"start_line": 1, "end_line": 5}},
+            # Present, uncatalogued for taint, and carrying no call structure.
+            {"id": "yaml:conf.yaml:1:root:config", "name": "root",
+             "kind": "config", "language": "yaml", "path": "conf.yaml",
+             "span": {"start_line": 1, "end_line": 2}},
+        ],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:b.py:1:g:function",
+                "type": "calls", "confidence": 0.9}],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-YAML", "text": "No secrets to disk",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0, "a data file must not make every verdict inconclusive"
+    assert "CONFIRMED" in capsys.readouterr().out
+
+
+def test_taint_claim_confirms_when_every_language_is_covered(
+    tmp_path: Path, capsys,
+) -> None:
+    """CONTROL for the downgrade above: the gate must not be blanket.
+
+    A repo whose only language has a taint catalogue, with call edges present
+    and no violating flow, still CONFIRMS at rc=0. Without this control the
+    downgrade could be implemented as "always inconclusive" and the test above
+    would still pass — the failure mode that makes a safety gate useless by
+    making every verdict meaningless.
+    """
+    bmap = _make_behavior_map(
+        nodes=[_node("python:a.py:1:f:function", "python", "a.py")],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:helpers.py:1:helper:function",
+                "type": "calls", "confidence": 0.9}],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-002", "text": "No secrets to disk",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 0
+    assert "CONFIRMED" in capsys.readouterr().out
 
 
 def test_verify_claims_no_notice_when_no_taint_claims(
@@ -637,7 +743,18 @@ def test_verify_claims_no_notice_when_taint_language_supported(
              "kind": "function", "language": "python", "path": "a.py",
              "span": {"start_line": 1, "end_line": 5}},
         ],
-        edges=[],
+        # A realistic analysed repo produces call edges. This fixture used
+        # edges=[], which is a VACUOUS analysis — nothing was examined — and
+        # a taint claim can no longer be confirmed against one, for the same
+        # INV-bitig reason a boundary claim never could
+        # (test_verify_claims_vacuous_analysis_inconclusive). The property
+        # under test here is that the NOTICE does not fire for a supported
+        # language, which is unchanged; the fixture just has to describe a
+        # repo the analysis actually looked at. Same fix as the comment in
+        # test_verify_claims_json_output.
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:b.py:1:g:function",
+                "type": "calls", "confidence": 0.9}],
     )
     input_file = tmp_path / "hg.json"
     input_file.write_text(json.dumps(bmap))
@@ -1211,8 +1328,15 @@ def test_verify_claims_skips_language_with_only_sinks(
     rc = cmd_verify_claims(args)
     # shellscript has no taint sources in the auto-derived catalog →
     # per-language loop hits the `continue` branch (cli.py:4055) →
-    # no propagation runs for shellscript → claim confirmed vacuously.
-    assert rc == 0
+    # no propagation runs for shellscript.
+    #
+    # THE VERDICT USED TO BE ``confirmed`` (rc 0) HERE, and the comment above
+    # said so in as many words: "claim confirmed vacuously". Vacuous is the
+    # problem — shellscript has no I/O catalogue, so the analysis could not
+    # look, and INV-dabov replaced that all-clear with ``inconclusive``. The
+    # branch this test exists to cover is still exercised: the per-language
+    # loop runs before any verdict is produced.
+    assert rc == 2
 
 
 def _load_error_args(tmp_path: Path, claims_text: str) -> "FakeArgs":
@@ -1273,6 +1397,190 @@ def test_verify_claims_unknown_field_exits_2(tmp_path: Path, capsys) -> None:
     rc = cmd_verify_claims(args)
     assert rc == 2
     assert "Error" in capsys.readouterr().err
+
+
+def _taint_vocab_args(
+    tmp_path: Path,
+    source_taint: str,
+    prohibited_sink_zone: str,
+    sink_yaml: "str | None" = None,
+) -> "FakeArgs":
+    """Args for a taint_flow claim, over a behavior map with a real call edge.
+
+    The map is deliberately non-empty: a claim rejected for its VOCABULARY must
+    be rejected on a run that could otherwise have produced findings, or the
+    test cannot tell refusal apart from an empty analysis.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "shellscript:Main.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "shellscript", "path": "Main.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "shellscript:Main.sh:1-10:main:function",
+             "dst": "shellscript:my.pkg:0-0:doStuff:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [{
+        "id": "TF-1", "text": "x",
+        "constraint": {"taint_flow": {
+            "source_taint": source_taint,
+            "prohibited_sink_zone": prohibited_sink_zone,
+        }},
+    }]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    if sink_yaml is not None:
+        sinks_file = tmp_path / "sinks.yaml"
+        sinks_file.write_text(sink_yaml, encoding="utf-8")
+        args.taint_sinks = [str(sinks_file)]
+    return args
+
+
+def test_verify_claims_unknown_source_taint_exits_2(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-todas: an unrecognised ``source_taint`` must not read as an
+    all-clear.
+
+    The boundary arm has had this guard since INV-gobob / WI-ruzib and its
+    comment states the mechanism exactly: an unknown value makes the lookup
+    return nothing, so ``chain_count`` is 0 and the claim confirms. The taint
+    arm has the identical shape — ``verify_claim`` filters findings on
+    ``f.taint_label == tf.source_taint`` — and was never given the check.
+
+    Measured before the fix, on a fixture that really leaks
+    (``os.environ["API_KEY"]`` through ``open(...).write``): ``source_taint:
+    secret_material`` returned **confirmed, rc 0**, while the correct label
+    ``host_secret`` returned violated, rc 1.
+    """
+    rc = cmd_verify_claims(
+        _taint_vocab_args(tmp_path, "secret_material", "host_fs"),
+    )
+    assert rc == 2, (
+        "an unrecognised taint label resolved the claim instead of refusing "
+        "it; 'I could not parse your claim' and 'your claim holds' must not "
+        "share an exit code"
+    )
+    err = capsys.readouterr().err
+    assert "secret_material" in err, "the error must name the offending value"
+    assert "host_secret" in err, (
+        "the error must list the vocabulary — the labels are not discoverable "
+        "anywhere else on the error path"
+    )
+
+
+def test_verify_claims_unknown_sink_zone_exits_2_with_a_suggestion(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-todas, the other half — and the near-miss that motivates it.
+
+    ``host_filesystem`` for ``host_fs`` is the shape an author actually
+    produces on a first attempt. Before the fix it returned confirmed, rc 0.
+    """
+    rc = cmd_verify_claims(
+        _taint_vocab_args(tmp_path, "host_secret", "host_filesystem"),
+    )
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "host_filesystem" in err
+    assert "host_fs" in err, (
+        "a near miss must get the did-you-mean the boundary arm already gives"
+    )
+
+
+def test_a_boundary_claim_earlier_in_the_file_does_not_mask_a_taint_typo(
+    tmp_path: Path, capsys,
+) -> None:
+    """A mixed claims file must be scanned THROUGH, not up to the first
+    non-taint claim.
+
+    Most real claims files carry both kinds. A boundary claim has no
+    ``taint_flow``, so the vocabulary loop skips it — and had that skip been
+    written as a ``break`` rather than a ``continue``, every taint claim after
+    the first boundary claim would go unchecked and INV-todas would be half
+    open, silently, in exactly the files most likely to exist. The boundary
+    claim is placed FIRST here so the test fails if that ever regresses.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "shellscript:Main.sh:1-10:main:function", "name": "main",
+             "kind": "function", "language": "shellscript", "path": "Main.sh",
+             "span": {"start_line": 1, "end_line": 10}},
+        ],
+        edges=[
+            {"src": "shellscript:Main.sh:1-10:main:function",
+             "dst": "shellscript:my.pkg:0-0:doStuff:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "B-1", "text": "no network",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+        {"id": "TF-1", "text": "x",
+         "constraint": {"taint_flow": {
+             "source_taint": "host_secret",
+             "prohibited_sink_zone": "host_filesystem",
+         }}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2, (
+        "the typo'd taint claim after a boundary claim was not reached"
+    )
+    assert "host_filesystem" in capsys.readouterr().err
+
+
+def test_a_user_supplied_zone_is_still_accepted(tmp_path: Path, capsys) -> None:
+    """NON-VACUITY, and the reason this check cannot live in ``load_claims``.
+
+    Unlike ``KNOWN_IO_BOUNDARIES``, the taint vocabularies are NOT constants —
+    ``--taint-sinks`` may legitimately declare a zone no built-in catalogue
+    mentions. Validating against built-ins alone would reject a correct claim,
+    which is a different failure and not an improvement. So the check runs
+    against the RESOLVED catalogue, and this pins that a user-declared zone
+    survives it.
+    """
+    cmd_verify_claims(_taint_vocab_args(
+        tmp_path, "plaintext", "custom_zone",
+        sink_yaml=(
+            "zone: custom_zone\n"
+            "trust_level: untrusted\n"
+            "sinks:\n"
+            "  shellscript:\n"
+            "    - module: my.pkg\n"
+            "      functions: [doStuff]\n"
+        ),
+    ))
+    # ASSERTED ON THE REASON, NOT THE EXIT CODE. This test first checked
+    # ``rc != 2`` and that was too weak to mean anything: rc 2 covers every
+    # inconclusive cause, and INV-dabov later made this same fixture exit 2 for
+    # an unrelated one (``shellscript`` has no I/O catalogue). An exit code
+    # that two different mechanisms can produce cannot discriminate between
+    # them, so the vocabulary check is verified by its own absence from the
+    # error stream instead.
+    err = capsys.readouterr().err
+    assert "unknown prohibited_sink_zone" not in err, (
+        "a zone the user declared was rejected as unknown vocabulary; the "
+        "check is reading built-ins instead of the resolved catalogue"
+    )
+    assert "custom_zone" not in err
 
 
 def _boundary_claim_args(tmp_path: Path, bmap: dict) -> "FakeArgs":
@@ -1423,8 +1731,17 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     assert rc == 1
     assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "violated"
 
-    # With CLI override: entry is relabeled cli_label, so claims_label no longer
-    # seeds -> the claims_label claim is confirmed (the override displaced it).
+    # With CLI override: entry is relabeled cli_label, so claims_label no
+    # longer seeds anything.
+    #
+    # THIS ASSERTION CHANGED, AND THE OLD ONE WAS THE DEFECT (INV-todas). It
+    # read ``rc == 0`` / ``confirmed``, with the rationale "the override
+    # displaced it" — but a displaced label can be carried by no finding, so
+    # that was the tool answering "I cannot evaluate your claim" with "your
+    # claim holds". rc 2 is the honest verdict, and it is also STRONGER
+    # evidence for the precedence this test exists to prove: the error names
+    # the winner and the loser, so the override is visible in the output
+    # rather than inferred from a silence.
     over = FakeArgs()
     over.path = str(tmp_path)
     over.input = str(input_file)
@@ -1432,5 +1749,533 @@ def test_verify_claims_cli_source_overrides_claims_file_source(
     over.json_output = True
     over.taint_sources = [str(tmp_path / "cli_src.yaml")]
     rc = cmd_verify_claims(over)
-    assert rc == 0
-    assert json.loads(capsys.readouterr().out)["verdicts"][0]["verdict"] == "confirmed"
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "claims_label" in err, "the displaced label must be named"
+    assert "cli_label" in err, (
+        "the CLI label must appear in the surviving vocabulary — that IS the "
+        "precedence evidence"
+    )
+
+
+def test_language_with_a_token_call_edge_still_falsely_confirms(
+    tmp_path: Path, capsys,
+) -> None:
+    """A catalogued-but-blind language must not yield ``confirmed``.
+
+    CLOSED by :func:`verify_claims.method_starved_modules`. Kotlin's catalogue is
+    method-shaped (30 method-keyed modules against 1 function-keyed), and Kotlin
+    emits no call edge for an external instance-method call — ~95% of its
+    catalogued sinks (WI-nasuf). The gate now asks whether any method-construct
+    call edge landed in a method-keyed module the repo actually calls, instead of
+    "did this language produce ANY call edge".
+
+    THE FIXTURE WAS CORRECTED WHEN THIS WAS CLOSED, and that matters more than the
+    marker removal. It asserted the right verdict against a map that did not model
+    the defect: its only edge went to ``kotlin:App.kt:9-12:helper:function``, a bare
+    intra-repo symbol naming no catalogued module. Running ``hypergumbo survey`` over
+    the real Kotlin source this test describes — a ``Socket`` read written to a
+    ``File`` — emits something different and more specific: the CONSTRUCTOR calls
+    ``kotlin:java.net.Socket:0-0:Socket:external_symbol`` and
+    ``kotlin:java.io.File:0-0:File:external_symbol``, with ``writeText`` and
+    ``readBytes`` producing no edge at all. The edges below are that real output.
+
+    BEHAVIOURAL EVIDENCE, since this test's failure mode is a silent pass: the live
+    fixture repo goes ``rc=0 confirmed`` -> ``rc=2 inconclusive``, while a clean
+    Kotlin repo, a pure-computation Python repo and a Python repo with a real
+    ``asyncio.start_server`` -> ``os.mkdir`` flow all keep their prior verdicts
+    (``confirmed`` / ``confirmed`` / ``violated``). The per-predicate measurement is
+    in ``scripts/measure-blind-language-signal.py``.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "kotlin:App.kt:1-8:handler:function", "name": "handler",
+             "kind": "function", "language": "kotlin", "path": "App.kt",
+             "span": {"start_line": 1, "end_line": 8}},
+        ],
+        # Real `survey` output: the constructors are emitted, the METHOD calls on
+        # them (writeText / readBytes) are not. Enough call edges for the old
+        # 'produced any call edges' check to consider the language covered.
+        edges=[
+            {"src": "kotlin:App.kt:1-8:handler:function",
+             "dst": "kotlin:java.io.File:0-0:File:external_symbol",
+             "type": "calls", "confidence": 0.9},
+            {"src": "kotlin:App.kt:1-8:handler:function",
+             "dst": "kotlin:java.net.Socket:0-0:Socket:external_symbol",
+             "type": "calls", "confidence": 0.9},
+            # LOAD-BEARING, and dropping it is what caught the abstention rule
+            # while this was being written. The gate abstains for any language
+            # that never stamps ``call_construct`` (JS/TS stamp it zero times),
+            # so Kotlin has to demonstrate it stamps the field at all before an
+            # unstamped external call counts as evidence of blindness. Real
+            # ``survey`` output supplies exactly this edge for the intra-repo
+            # ``main() -> Handler`` call.
+            {"src": "kotlin:App.kt:12-14:main:function",
+             "dst": "kotlin:App.kt:4-10:Handler:class",
+             "type": "calls", "confidence": 0.9,
+             "meta": {"call_construct": "function"}},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-KT", "text": "No untrusted input to disk",
+         "constraint": {"taint_flow": {"source_taint": "untrusted_input",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2, "a language whose sinks are structurally invisible must " \
+                    "not produce a confirmed verdict"
+
+
+def test_uncatalogued_language_WITH_code_blocks_confirmation(
+    tmp_path: Path, capsys,
+) -> None:
+    """A code-bearing language with no taint catalogue makes a claim inconclusive.
+
+    This is the branch the PHP repro exercises live:
+    ``file_put_contents("/tmp/out", $_GET['payload'])`` returned ``confirmed``
+    at exit 0 because PHP has no taint sources or sinks.
+
+    It needs a fixture where an uncatalogued language carries CALL EDGES
+    alongside a catalogued language that also does. The sibling brainfuck
+    test above cannot reach it: its fixture has no edges at all, so it goes
+    inconclusive down the vacuous-analysis path instead and would keep
+    passing if the uncatalogued-language rule were deleted outright.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
+             "language": "python", "path": "a.py",
+             "span": {"start_line": 1, "end_line": 5}},
+            {"id": "brainfuck:m.bf:1:main:function", "name": "main",
+             "kind": "function", "language": "brainfuck", "path": "m.bf",
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[
+            {"src": "python:a.py:1:f:function",
+             "dst": "python:b.py:1:g:function",
+             "type": "calls", "confidence": 0.9},
+            # The uncatalogued language HAS call structure — so a taint flow
+            # could travel through it and the analysis cannot say it does not.
+            {"src": "brainfuck:m.bf:1:main:function",
+             "dst": "brainfuck:m.bf:9:helper:function",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-BF", "text": "No secrets to disk",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+
+    rc = cmd_verify_claims(args)
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "INCONCLUSIVE" in out
+    assert "brainfuck" in out, "the verdict must name WHICH language was blind"
+
+
+def _fixture_only_uncatalogued_args(tmp_path: Path, *, code_path: str):
+    """A repo whose ONLY uncatalogued-language code sits at ``code_path``.
+
+    Mirrors ``test_uncatalogued_language_WITH_code_blocks_confirmation``
+    exactly except for that path, so the pair is a controlled comparison:
+    same languages, same edge shapes, same claim. The only variable is
+    whether the brainfuck file is production code or a test fixture.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:a.py:1:f:function", "name": "f", "kind": "function",
+             "language": "python", "path": "a.py",
+             "span": {"start_line": 1, "end_line": 5}},
+            {"id": f"brainfuck:{code_path}:1:main:function", "name": "main",
+             "kind": "function", "language": "brainfuck", "path": code_path,
+             "span": {"start_line": 1, "end_line": 5}},
+        ],
+        edges=[
+            {"src": "python:a.py:1:f:function",
+             "dst": "python:b.py:1:g:function",
+             "type": "calls", "confidence": 0.9},
+            {"src": f"brainfuck:{code_path}:1:main:function",
+             "dst": f"brainfuck:{code_path}:9:helper:function",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({"claims": [
+        {"id": "TF-BF", "text": "No secrets to disk",
+         "constraint": {"taint_flow": {"source_taint": "host_secret",
+                                       "prohibited_sink_zone": "host_fs"}}},
+    ]}))
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = False
+    return args
+
+
+def test_a_fixture_only_uncatalogued_language_does_not_block_confirmation(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-dabuf — the language census must ask the SAME production question
+    the flow filter already asks.
+
+    ``verify_claims`` excludes test/fixture/migration-SOURCED flows by default
+    (``include_non_production=False``, WI-bifob): a taint flow originating in a
+    fixture is not the shipped application doing it. The language census that
+    decides whether ANY claim may be confirmed asked no such question — it
+    counted every ``calls`` edge in the tree — so one fixture file in a
+    language with no taint catalogue blocked every claim in the repo. One tool,
+    two answers about whether a fixture counts.
+
+    MEASURED on hypergumbo's own self-proof at dev ``d7b069b106``: 18 of 18
+    claims inconclusive, rc 2, every one blocked by
+    ``(bash, csharp, solidity)`` — where csharp is 3 files and solidity 1,
+    ALL of them under ``tests/fixtures/``.
+    """
+    args = _fixture_only_uncatalogued_args(
+        tmp_path, code_path="tests/fixtures/schema-corpus/m.bf",
+    )
+    rc = cmd_verify_claims(args)
+    out = capsys.readouterr().out
+    assert "brainfuck" not in out, (
+        f"a brainfuck FIXTURE cannot be the shipped application reaching the "
+        f"filesystem, so it must not block the verdict; got: {out!r}"
+    )
+    assert rc == 0, f"expected the claim to resolve; got rc={rc}, out={out!r}"
+
+
+def test_include_non_production_sources_puts_the_fixture_back_in_the_census(
+    tmp_path: Path, capsys,
+) -> None:
+    """SYMMETRY WITH THE FLOW FILTER, which is the whole justification.
+
+    The fix is defensible only because it makes the census ask the question
+    the flow filter already asks. If the flag that widens the flow filter did
+    not also widen the census, the two would disagree again in the opposite
+    direction — a user who asked to count fixture flows would still be told
+    the fixture's language was irrelevant.
+    """
+    args = _fixture_only_uncatalogued_args(
+        tmp_path, code_path="tests/fixtures/schema-corpus/m.bf",
+    )
+    args.include_non_production_sources = True
+    rc = cmd_verify_claims(args)
+    out = capsys.readouterr().out
+    assert rc == 2 and "brainfuck" in out, (
+        f"with fixtures counted, the uncatalogued fixture language must block "
+        f"again; got rc={rc}, out={out!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# INV-zosun: a verdict must record what catalogue it trusted.
+# ---------------------------------------------------------------------------
+
+_PROVENANCE_OVERLAY = (
+    "language: python\n"
+    "status: overlay\n"
+    "net_send:\n"
+    "  - module: requests\n"
+    "    functions: [post]\n"
+)
+
+
+def _provenance_args(
+    tmp_path: Path,
+    *,
+    cli_overlay: bool = False,
+    claims_overlay: bool = False,
+    json_output: bool = True,
+) -> "FakeArgs":
+    """A boundary claim over a trivial map, with overlays on either layer."""
+    bmap = _make_behavior_map(
+        nodes=[{"id": "python:a.py:1:f:function", "name": "f",
+                "kind": "function", "language": "python", "path": "a.py",
+                "span": {"start_line": 1, "end_line": 5}}],
+        edges=[{"src": "python:a.py:1:f:function",
+                "dst": "python:os:0-0:os.listdir:external_symbol",
+                "type": "calls", "confidence": 0.9}],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+    overlay = tmp_path / "ov.yaml"
+    overlay.write_text(_PROVENANCE_OVERLAY, encoding="utf-8")
+
+    claims: dict = {"claims": [
+        {"id": "SC-1", "text": "no network",
+         "constraint": {"boundary": "net_send", "must_not_exist": True}},
+    ]}
+    if claims_overlay:
+        claims["extra_catalogs"] = {"io_primitives": [str(overlay)]}
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump(claims))
+
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = json_output
+    if cli_overlay:
+        args.io_primitives = [str(overlay)]
+    return args
+
+
+def test_the_envelope_records_a_cli_supplied_catalogue(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-zosun: a `confirmed` reached against a user-supplied catalogue and
+    one reached against the shipped catalogue were byte-identical.
+
+    The only trace was a stderr line naming the overlay path — absent from the
+    ``--json`` envelope entirely, so it vanished the moment anyone piped the
+    output anywhere. That matters because a row is not a detection-only grant:
+    since INV-buzab a classified call is what ``examined`` MEANS, so a row
+    carrying the wrong boundary buys a `confirmed` for the boundary actually
+    claimed. Demonstrated end-to-end: the same fixture went
+    ``inconclusive`` rc 2 -> ``confirmed`` rc 0 on a five-line overlay whose
+    only lie was filing ``requests.post`` under ``fs_read``.
+
+    This does not change any verdict. It makes the trust decision visible.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path, cli_overlay=True))
+    env = json.loads(capsys.readouterr().out)
+    prov = env["catalog_provenance"]
+    assert prov["user_supplied"] is True
+    assert prov["layers"]["io_primitives"]["cli"], (
+        "the overlay the verdict was computed against is not in the envelope"
+    )
+    assert prov["layers"]["io_primitives"]["claims_file"] == []
+
+
+def test_the_envelope_separates_the_claims_file_layer_from_the_cli_layer(
+    tmp_path: Path, capsys,
+) -> None:
+    """THE DISTINCTION THAT MATTERS FOR A SELF-GRADING REPO.
+
+    A catalogue passed on the command line is supplied by whoever RAN the
+    tool. One reached through the claims file's ``extra_catalogs:`` travels
+    WITH the repo — and if the claims file and its catalogues live inside the
+    tree under analysis, the repo is grading itself. Demonstrated: a directory
+    containing ``main.py``, ``claims.yaml`` and an overlay mislabelling
+    ``requests.post`` returns ``confirmed`` rc 0, where the same repo without
+    the ``extra_catalogs:`` line returns ``inconclusive`` rc 2.
+
+    Collapsing the two layers into one list would report that a catalogue was
+    used while hiding the fact that the subject supplied it.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path, claims_overlay=True))
+    prov = json.loads(capsys.readouterr().out)["catalog_provenance"]
+    assert prov["user_supplied"] is True
+    assert prov["layers"]["io_primitives"]["claims_file"], (
+        "a claims-file-supplied catalogue must be attributed to that layer"
+    )
+    assert prov["layers"]["io_primitives"]["cli"] == []
+
+
+def test_the_key_is_present_and_negative_on_a_shipped_catalogue_run(
+    tmp_path: Path, capsys,
+) -> None:
+    """NON-VACUITY, and a stable envelope shape.
+
+    ``user_supplied: false`` is the load-bearing half — a consumer must be
+    able to assert that a verdict rested on the shipped catalogue alone.
+    Emitting the key only when an overlay is present would teach consumers to
+    read absence as "none", which is the same mistake as reading "no chains
+    found" as "no I/O". The envelope follows the existing convention
+    (``dataflow_coverage``, INV-karud a3): always present.
+    """
+    cmd_verify_claims(_provenance_args(tmp_path))
+    prov = json.loads(capsys.readouterr().out)["catalog_provenance"]
+    assert prov["user_supplied"] is False
+    for kind, layers in prov["layers"].items():
+        assert layers == {"cli": [], "claims_file": []}, kind
+    assert set(prov["layers"]) == {
+        "io_primitives", "taint_sources", "taint_sinks", "taint_sanitizers",
+    }
+
+
+def test_the_text_reader_is_told_too(tmp_path: Path, capsys) -> None:
+    """A disclosure that exists only under --json is half shipped.
+
+    That is this file's own precedent, recorded on INV-karud (a3) when
+    WI-bifob's exclusion bucket reached the dataclass and never the text
+    renderer. The stderr line that exists today is worse than json-only: it is
+    discarded by any redirect, and it is not attached to the verdict.
+    """
+    cmd_verify_claims(
+        _provenance_args(tmp_path, cli_overlay=True, json_output=False),
+    )
+    out = capsys.readouterr().out
+    assert "ov.yaml" in out, (
+        "the text verdict does not say which catalogue produced it"
+    )
+
+
+# ---------------------------------------------------------------------------
+# INV-pojib (b)/(c): the exit code carries the repo-supplied dependency
+# ---------------------------------------------------------------------------
+
+
+def _caveat_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    """A flow that exists, and a project-local sanitizer that removes it.
+
+    Shaped so the STRUCTURAL pass adjudicates it: the sanitizer is called by an
+    intermediate function rather than by the seed, because the barrier exempts
+    the seed function by design and a same-function sanitizer is honoured only
+    on the DDG arm.
+    """
+    bmap = _make_behavior_map(
+        nodes=[
+            {"id": "python:app.py:1-10:handler:function", "name": "handler",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 1, "end_line": 10}},
+            {"id": "python:app.py:11-20:mid:function", "name": "mid",
+             "kind": "function", "language": "python", "path": "app.py",
+             "span": {"start_line": 11, "end_line": 20}},
+        ],
+        edges=[
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:external:0-0:myapp.config.get_secret:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:1-10:handler:function",
+             "dst": "python:app.py:11-20:mid:function",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:11-20:mid:function",
+             "dst": "python:external:0-0:myapp.util.launder:unresolved",
+             "type": "calls", "confidence": 0.9},
+            {"src": "python:app.py:11-20:mid:function",
+             "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+             "type": "calls", "confidence": 0.9},
+        ],
+    )
+    input_file = tmp_path / "hg.json"
+    input_file.write_text(json.dumps(bmap))
+
+    user_src = tmp_path / "project_sources.yaml"
+    user_src.write_text(
+        'description: "Project secrets"\n'
+        "taint_label: project_secret\n"
+        "sources:\n"
+        "  python:\n"
+        "    - module: myapp.config\n"
+        "      functions: [get_secret]\n"
+        "      return_tainted: true\n"
+    )
+
+    san = tmp_path / "project_sanitizers.yaml"
+    san.write_text(
+        'description: "Project-local laundering"\n'
+        "transforms:\n"
+        "  - input_taint: project_secret\n"
+        "    output_taint: safe\n"
+        "    functions:\n"
+        "      python:\n"
+        "        - myapp.util.launder\n"
+    )
+
+    claims_file = tmp_path / "claims.yaml"
+    claims_file.write_text(yaml.dump({
+        "claims": [{
+            "id": "TF-POJIB",
+            "text": "Project secrets must not reach host_fs",
+            "constraint": {"taint_flow": {
+                "source_taint": "project_secret",
+                "prohibited_sink_zone": "host_fs",
+            }},
+        }],
+    }))
+    return input_file, user_src, san, claims_file
+
+
+def _caveat_args(tmp_path: Path, *, with_sanitizer: bool, as_json: bool):
+    input_file, user_src, san, claims_file = _caveat_fixture(tmp_path)
+    args = FakeArgs()
+    args.path = str(tmp_path)
+    args.input = str(input_file)
+    args.claims = str(claims_file)
+    args.json_output = as_json
+    args.taint_sources = [str(user_src)]
+    if with_sanitizer:
+        args.taint_sanitizers = [str(san)]
+    return args
+
+
+def test_verify_claims_exit_3_when_a_repo_supplied_sanitizer_holds_it_up(
+    tmp_path: Path, capsys,
+) -> None:
+    """INV-pojib (b). THE POINT OF THE WHOLE ITEM: a CI gate reads ``$?``.
+
+    Remedy (a1) already named the sanitizer in the verdict prose. Measured on
+    the shipped CLI at dev 1ec23deb31, that left the machine surface unchanged —
+    an 8-line sanitizer file turned a real ``violated`` rc 1 into ``confirmed``
+    rc 0, byte-identical to a verdict the analysis earned unaided. Nothing a
+    gate reads had moved.
+    """
+    rc = cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=True, as_json=True,
+    ))
+    assert rc == 3, (
+        "a verdict resting on an entry the analysed repository supplied about "
+        "itself must not exit 0 alongside verdicts the analysis earned"
+    )
+    data = json.loads(capsys.readouterr().out)
+    verdict = data["verdicts"][0]
+    assert verdict["verdict"] == "confirmed_with_caveats"
+    assert verdict["caveats"][0]["kind"] == "user_supplied_sanitizer"
+    assert "myapp.util.launder" in verdict["caveats"][0]["entries"]
+
+
+def test_verify_claims_exit_1_without_the_sanitizer(
+    tmp_path: Path, capsys,
+) -> None:
+    """CONTROL, and the one that makes the test above mean anything.
+
+    The same fixture with no sanitizer file is a real violation. Without this,
+    exit 3 could equally be a fixture that never had a flow.
+    """
+    rc = cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=False, as_json=True,
+    ))
+    assert rc == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["verdicts"][0]["verdict"] == "violated"
+
+
+def test_caveated_verdict_is_visible_on_the_text_surface(
+    tmp_path: Path, capsys,
+) -> None:
+    """A disclosure that exists only under ``--json`` is half shipped — the
+    same argument that put WI-bifob's exclusion bucket and INV-zosun's
+    provenance block on the text renderer.
+    """
+    cmd_verify_claims(_caveat_args(
+        tmp_path, with_sanitizer=True, as_json=False,
+    ))
+    out = capsys.readouterr().out
+    assert "CONFIRMED WITH CAVEATS" in out
+    assert "CAVEAT (user_supplied_sanitizer)" in out
+    assert "myapp.util.launder" in out
+    assert "all 1 CONFIRMED" not in out, (
+        "the summary line must not report a caveated verdict as an unqualified "
+        "pass — that line is what a human skims"
+    )

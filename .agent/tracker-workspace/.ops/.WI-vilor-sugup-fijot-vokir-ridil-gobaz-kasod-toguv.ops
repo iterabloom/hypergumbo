@@ -1,0 +1,36 @@
+- op: create  # f941
+  at: '2026-08-02T09:37:28Z'  # f941
+  by: agent  # f941
+  actor: jgstern_agent  # f941
+  clock: 1  # f941
+  nonce: f941  # f941
+  data:  # f941
+    kind: work_item  # f941
+    title: "per-PR pytest gate fails OPEN when git diff errors, and the push-event BASE is a rewritten commit that no longer exists - post-merge pipelines report green having run zero tests"  # f941
+    status: todo_hard  # f941
+    priority: 1  # f941
+    parent:  # f941
+    tags:  # f941
+    - ci_infrastructure  # f941
+    - test_selection  # f941
+    isbefore: []  # f941
+    duplicate_of: []  # f941
+    not_duplicate_of: []  # f941
+    pr_ref:  # f941
+    description: "OBSERVED LIVE 2026-08-02 on the dev push pipeline for 6e92792a34 (the WI-fodad\nmerge). The pytest step printed:\n\n    fatal: bad object 66737979dee9a56daeebf55731181ddf057ac53c\n    OK PR changes no .py files - skipping pytest\n\nand the pipeline reported SUCCESS having run no tests at all, on a commit whose\ndiff touches 9 files including 4 Python files.\n\nTWO DEFECTS, one of which is systematic.\n\n(1) THE GATE FAILS OPEN ON A GIT ERROR. The block computes\n\n      if [ -z \"$(git diff --name-only \"$BASE\" \"$HEAD\" | grep -E '\\.py$' || true)\" ]; then\n        echo \"PR changes no .py files - skipping pytest\"; exit 0\n      fi\n\n    A FAILED git diff produces empty stdout, which is byte-identical to a\n    successful diff that found no Python files. The gate cannot tell \"nothing\n    changed\" from \"I could not find out\", and it resolves the ambiguity by\n    SKIPPING THE SUITE. This is L54 exactly (a guard must default-DENY) and it\n    is the same block WI-modur repaired for a different hole: WI-modur fixed\n    which QUESTION the gate asks, this is about what it does when it cannot get\n    an answer.\n\n(2) THE PUSH-EVENT BASE IS THE WRONG COMMIT BY CONSTRUCTION. BASE is\n    CI_PREV_COMMIT_SHA, which in Woodpecker is the commit of the PREVIOUS\n    PIPELINE - not the previous tip of this branch. Verified for this run:\n    66737979de is the PRE-REBASE copy of the merged commit, present only on the\n    feature branch auto-pr then deleted, and NOT an ancestor of dev\n    (git merge-base --is-ancestor says no; git branch --contains names only the\n    feature branch). auto-pr merges by REBASE by default, which rewrites the\n    commit, so the previous pipeline's SHA is guaranteed not to exist in the\n    post-merge clone. That makes this fire on EVERY rebase-merged push, not\n    intermittently. It can also point at an unrelated branch entirely, since the\n    previous pipeline need not have been on dev.\n\nWHY IT MATTERS. Post-merge push pipelines are the safety net for exactly the\nclass of change the per-PR targeted manifest cannot cover. They have been\nreporting green while running zero tests. This is the fifth distinct route in\nthe L48 family and the second inside this one shell block.\n\nFIX SHAPE. Default-deny: capture the diff and its exit status separately, and\nskip ONLY when the diff SUCCEEDED and genuinely reported no .py files; on\nfailure, run the committed manifest and say why. Separately, validate BASE\nbefore use - if CI_PREV_COMMIT_SHA is empty or not resolvable as a commit in\nthis clone, fall back to CI_COMMIT_SHA^ rather than trusting it.\n\nREPRO: any rebase merge to dev; inspect the push pipeline's pytest step."  # f941
+    fields: {}  # f941
+- op: update  # 713b
+  at: '2026-08-02T18:23:38Z'  # 713b
+  by: agent  # 713b
+  actor: jgstern_agent  # 713b
+  clock: 2  # 713b
+  nonce: 713b  # 713b
+  set:  # 713b
+    status: done  # 713b
+- op: discuss  # 68cd
+  at: '2026-08-02T18:23:38Z'  # 68cd
+  by: agent  # 68cd
+  actor: jgstern_agent  # 68cd
+  clock: 3  # 68cd
+  nonce: 68cd  # 68cd
+  message: "FIXED and merged, dev 908968add9 (PR on branch jgstern-agent/fix/ci-gate-fail-closed).\n\nBoth halves fixed in .woodpecker/woodpecker.yml's pytest step:\n (1) the diff and its exit status are captured separately, and the skip fires\n     ONLY on a successful diff that genuinely reported no .py files;\n (2) the push-event base is validated with git cat-file -e before use, falling\n     back to HEAD^ only when CI_PREV_COMMIT_SHA does not resolve - scoped\n     deliberately, since always diffing HEAD^ undercounts a multi-commit push.\n\nBEHAVIOURAL EVIDENCE, not a proxy. tests/test_ci_pytest_selection_gate.py\nEXECUTES the shell block extracted from the YAML against stub binaries on a\nreplaced PATH (L49) and asserts on whether pytest was actually invoked - a\nproduction-path test, not a source-text assertion. Three new cases, all\nmutation-tested against the real workflow file:\n  - reinstating the one-line diff  -> test_failed_diff_does_not_skip_the_suite FAILS\n  - reinstating the unvalidated base -> test_push_event_falls_back_when_prev_sha_was_rewritten FAILS\n  - restored                        -> 7 passed\nThe third case (test_push_event_keeps_a_resolvable_prev_sha) exists so the fix\nis not indistinguishable from \"always use HEAD^\".\n\nNOT CLAIMED: I have not observed a post-merge push pipeline exercising the\nfixed path in CI, because the fix landed on the same push it would first apply\nto. The next merge to dev is the natural observation point."  # 68cd

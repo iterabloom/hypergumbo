@@ -168,7 +168,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`index`** — Index symbol (SQL / DSL). CANONICAL per audit-findings 0007.
 - **`inductive`** — Lean ``inductive`` type declaration (``lean.py:247``). CANONICAL per audit-findings 0007 (reclassified Wave 6 PR 4 — the original DEPRECATE-NO-FOLD verdict was a literal-grep blind-spot miss; ``lean.py`` emits via ``add_symbol(..., 'inductive')`` indirection).
 - **`input`** — Input symbol (Terraform / shader). CANONICAL per audit-findings 0007.
-- **`instance`** — Typeclass / interface instance declaration.
+- **`instance`** — Typeclass / interface instance declaration (Haskell / Lean / PureScript `instance`, Scala 3 `given`).
 - **`interface`** — Interface declaration.
 - **`keyframes`** — CSS @keyframes symbol. CANONICAL per audit-findings 0007.
 - **`keyword`** — Keyword-shaped construct (configuration languages).
@@ -215,6 +215,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`requirement`** — Requirement / pip requirement. CANONICAL per audit-findings 0006.
 - **`resource`** — Resource symbol (Terraform / k8s). CANONICAL per audit-findings 0007.
 - **`rule_set`** — CSS / shader rule-set symbol. CANONICAL per audit-findings 0007.
+- **`scalar`** — Scalar type-definition symbol (GraphQL `scalar Date`). Top-level type-system construct, sibling to type/input/interface/enum/union (audit-findings 0007 omission, surfaced by the WI-zigih dict-indirection gate).
 - **`section`** — Section symbol (markdown / config). CANONICAL per audit-findings 0007.
 - **`setter`** — Property setter accessor.
 - **`setting`** — Setting / option symbol. CANONICAL per audit-findings 0006.
@@ -287,118 +288,118 @@ until per-cluster audit-findings docs ship).
 
 Values that name the inference pathway by which the analyzer concluded this edge exists. Per ADR-0028, this is the only axis a new `Edge.evidence_type` value should occupy. Resolution status moves to the new sibling `Edge.is_resolved`; framework-specific dispatch conventions move to `Edge.meta`.
 
-- **`ast_annotation`** — Edge inferred from a type/decorator annotation in source AST.
-- **`ast_attribute`** — Edge inferred from an attribute access in source AST.
-- **`ast_call`** — Edge inferred from a generic call expression in source AST.
-- **`ast_call_direct`** — Edge inferred from a direct (non-method) call site.
-- **`ast_call_extension`** — Edge inferred from an extension-method call (Kotlin / Swift / C#).
+- **`ast_annotation`** — Edge inferred from a type/decorator annotation in source AST. _(derived confidence 0.50)_
+- **`ast_attribute`** — Edge inferred from an attribute access in source AST. _(derived confidence 0.95)_
+- **`ast_call`** — Edge inferred from a generic call expression in source AST. _(derived confidence 0.85; 0.40 when unresolved)_
+- **`ast_call_direct`** — Edge inferred from a direct (non-method) call site. _(derived confidence 0.85; 0.50 when unresolved)_
+- **`ast_call_extension`** — Edge inferred from an extension-method call (Kotlin / Swift / C#). _(derived confidence 0.80)_
 - **`ast_call_inherited`** — Edge inferred from a call on an inherited member.
 - **`ast_call_inherited_field`** — Edge inferred from access to an inherited field.
 - **`ast_call_inherited_method`** — Edge inferred from a call on an inherited method.
 - **`ast_call_static`** — Edge inferred from a static (class-level) method call.
 - **`ast_call_this`** — Edge inferred from a `this`/`self` receiver call.
 - **`ast_call_this_property`** — Edge inferred from a `this.property` / `self.attr` resolved access.
-- **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred.
-- **`ast_call_ufcs`** — Edge inferred from a UFCS free-function call written with method syntax (x.foo() resolving to foo(x); D / Nim).
+- **`ast_call_type_inferred`** — Edge inferred from a call site where the receiver type was inferred. _(derived confidence 0.85)_
+- **`ast_call_ufcs`** — Edge inferred from a UFCS free-function call written with method syntax (x.foo() resolving to foo(x); D / Nim). _(derived confidence 0.80)_
 - **`ast_cite`** — Edge inferred from a citation/cross-reference link in source.
-- **`ast_decorator`** — Edge inferred from a decorator/annotation node in source AST.
-- **`ast_extends`** — Edge inferred from an `extends` clause in source AST.
-- **`ast_implements`** — Edge inferred from an `implements` clause in source AST.
-- **`ast_import`** — Edge inferred from an import statement in source AST.
+- **`ast_decorator`** — Edge inferred from a decorator/annotation node in source AST. _(derived confidence 0.95)_
+- **`ast_extends`** — Edge inferred from an `extends` clause in source AST. _(derived confidence 0.95)_
+- **`ast_implements`** — Edge inferred from an `implements` clause in source AST. _(derived confidence 0.95)_
+- **`ast_import`** — Edge inferred from an import statement in source AST. _(derived confidence 0.95)_
 - **`ast_include`** — Edge inferred from an include directive in source AST (C/C++).
 - **`ast_includes`** — Edge inferred from a runtime mixin declaration (Ruby `include`/`extend`, etc.) — WI-hatip.
-- **`ast_method_inferred`** — Edge inferred from a method call where dispatch was inferred.
+- **`ast_method_inferred`** — Edge inferred from a method call where dispatch was inferred. _(derived confidence 0.70)_
 - **`ast_method_this`** — Edge inferred from a `this`/`self` method call.
-- **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference.
-- **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver.
-- **`ast_name_read`** — Edge inferred from a bare-name read of a module-level variable (WI-jagus).
-- **`ast_new`** — Edge inferred from a `new` constructor expression.
+- **`ast_method_this_property`** — Edge inferred from a `this.prop` / `self.attr` reference. _(derived confidence 0.90)_
+- **`ast_method_type_inferred`** — Edge inferred from a method call with type-inferred receiver. _(derived confidence 0.85)_
+- **`ast_name_read`** — Edge inferred from a bare-name read of a module-level variable (WI-jagus). _(derived confidence 0.85)_
+- **`ast_new`** — Edge inferred from a `new` constructor expression. _(derived confidence 0.95)_
 - **`ast_package`** — Edge inferred from a package declaration.
 - **`ast_perform`** — Edge inferred from a `perform`/effect-handler invocation (OCaml/Eff).
 - **`ast_ref`** — Edge inferred from a generic name reference in source AST.
 - **`ast_static_call`** — Edge inferred from a static method call (qualifier-resolved).
-- **`ast_type_ref`** — Edge inferred from a type reference (annotation, generic, etc.).
-- **`async_spawn`** — Edge inferred from an async spawn / task-creation construct.
-- **`behaviour`** — Edge inferred from an Erlang `-behaviour(...)` attribute.
-- **`behaviour_callback`** — Edge inferred from an Erlang behaviour callback definition.
-- **`bridging_header_import`** — Edge inferred from an Objective-C bridging-header import.
-- **`build_dependency`** — Edge inferred from a build-system dependency declaration.
-- **`build_target_main`** — Edge inferred from a build target's main entry point.
+- **`ast_type_ref`** — Edge inferred from a type reference (annotation, generic, etc.). _(derived confidence 0.85)_
+- **`async_spawn`** — Edge inferred from an async spawn / task-creation construct. _(derived confidence 0.85)_
+- **`behaviour`** — Edge inferred from an Erlang `-behaviour(...)` attribute. _(derived confidence 0.95)_
+- **`behaviour_callback`** — Edge inferred from an Erlang behaviour callback definition. _(derived confidence 0.90)_
+- **`bridging_header_import`** — Edge inferred from an Objective-C bridging-header import. _(derived confidence 0.95)_
+- **`build_dependency`** — Edge inferred from a build-system dependency declaration. _(derived confidence 0.95)_
+- **`build_target_main`** — Edge inferred from a build target's main entry point. _(derived confidence 0.95)_
 - **`callable_reference`** — Edge inferred from a callable reference (Kotlin `::fn`, etc.).
-- **`callback_argument_reference`** — Edge inferred from a callback function passed as an argument.
-- **`canonical_name`** — Edge inferred from canonical-name resolution.
+- **`callback_argument_reference`** — Edge inferred from a callback function passed as an argument. _(derived confidence 0.75)_
+- **`canonical_name`** — Edge inferred from canonical-name resolution. _(derived confidence 0.95)_
 - **`cgo_call`** — Edge inferred from a Go cgo C-function call.
-- **`closure_wrapper`** — Edge inferred from a closure/lambda wrapper construct.
+- **`closure_wrapper`** — Edge inferred from a closure/lambda wrapper construct. _(derived confidence 0.85)_
 - **`cmake_target_link`** — Edge inferred from a CMake `target_link_libraries` call.
 - **`constructor_reference`** — Edge inferred from a constructor reference (Java `::new`, etc.).
 - **`designated_init_fptr`** — Edge inferred from a designated-initializer function pointer (C99).
-- **`dispatch_pattern`** — Edge inferred from a generic dispatch-pattern recognition.
+- **`dispatch_pattern`** — Edge inferred from a generic dispatch-pattern recognition. _(derived confidence 0.70)_
 - **`dispatch_table_initializer`** — Edge inferred from a dispatch-table initializer entry.
-- **`dispatch_table_reference`** — Edge inferred from a reference into a dispatch table.
-- **`dockerfile_copy_from`** — Edge inferred from a Dockerfile `COPY --from=...` directive.
-- **`dockerfile_from`** — Edge inferred from a Dockerfile `FROM` directive.
-- **`enclosing_scope`** — Edge inferred from an enclosing-scope relationship.
-- **`eta_expansion`** — Edge inferred from an eta-expansion (point-free → pointed).
-- **`extends`** — Edge inferred from a generic extends/inheritance relationship.
-- **`function_pointer`** — Edge inferred from a function-pointer assignment or use.
+- **`dispatch_table_reference`** — Edge inferred from a reference into a dispatch table. _(derived confidence 0.85)_
+- **`dockerfile_copy_from`** — Edge inferred from a Dockerfile `COPY --from=...` directive. _(derived confidence 0.95)_
+- **`dockerfile_from`** — Edge inferred from a Dockerfile `FROM` directive. _(derived confidence 0.95)_
+- **`enclosing_scope`** — Edge inferred from an enclosing-scope relationship. _(derived confidence 0.90)_
+- **`eta_expansion`** — Edge inferred from an eta-expansion (point-free → pointed). _(derived confidence 0.85)_
+- **`extends`** — Edge inferred from a generic extends/inheritance relationship. _(derived confidence 0.95)_
+- **`function_pointer`** — Edge inferred from a function-pointer assignment or use. _(derived confidence 0.85)_
 - **`function_pointer_arg`** — Edge inferred from a function pointer passed as an argument.
-- **`function_reference`** — Edge inferred from a function reference (not a call).
-- **`function_reference_arg`** — Edge inferred from a function reference passed as an argument.
-- **`grpc_stub_resolution`** — Edge inferred from a gRPC stub-method resolution lookup. Cluster B canonical for `grpc_unresolved_resolution` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
-- **`hash_field_reference`** — Edge inferred from a hash/dict field reference.
-- **`hg_annotation`** — Edge inferred from a hypergumbo-emitted analyzer annotation.
-- **`import`** — Edge inferred from a generic import construct.
-- **`import_declaration`** — Edge inferred from an import declaration node.
-- **`import_directive`** — Edge inferred from an import directive (C# `using`, etc.).
-- **`import_statement`** — Edge inferred from an import statement node.
-- **`import_static`** — Edge inferred from a Java `import static` declaration.
-- **`import_to_manifest`** — Edge inferred from a manifest-driven import resolution.
-- **`include`** — Edge inferred from a generic include construct.
-- **`include_directive`** — Edge inferred from a `#include` directive (C / C++).
-- **`instance`** — Edge inferred from a typeclass / trait instance declaration.
+- **`function_reference`** — Edge inferred from a function reference (not a call). _(derived confidence 0.80)_
+- **`function_reference_arg`** — Edge inferred from a function reference passed as an argument. _(derived confidence 0.70)_
+- **`grpc_stub_resolution`** — Edge inferred from a gRPC stub-method resolution lookup. Cluster B canonical for `grpc_unresolved_resolution` (ADR-0028 §Phase 3 Cluster B / WI-nunal). _(derived confidence 0.75)_
+- **`hash_field_reference`** — Edge inferred from a hash/dict field reference. _(derived confidence 0.80)_
+- **`hg_annotation`** — Edge inferred from a hypergumbo-emitted analyzer annotation. _(derived confidence 0.95)_
+- **`import`** — Edge inferred from a generic import construct. _(derived confidence 0.95)_
+- **`import_declaration`** — Edge inferred from an import declaration node. _(derived confidence 0.95)_
+- **`import_directive`** — Edge inferred from an import directive (C# `using`, etc.). _(derived confidence 0.95)_
+- **`import_statement`** — Edge inferred from an import statement node. _(derived confidence 0.95)_
+- **`import_static`** — Edge inferred from a Java `import static` declaration. _(derived confidence 0.95)_
+- **`import_to_manifest`** — Edge inferred from a manifest-driven import resolution. _(derived confidence 0.90)_
+- **`include`** — Edge inferred from a generic include construct. _(derived confidence 0.95)_
+- **`include_directive`** — Edge inferred from a `#include` directive (C / C++). _(derived confidence 0.95)_
+- **`instance`** — Edge inferred from a typeclass / trait instance declaration. _(derived confidence 0.90)_
 - **`interface_dispatch`** — Edge inferred from interface-method dispatch resolution.
 - **`jsx_element`** — Edge inferred from a JSX element reference.
-- **`link`** — Edge inferred from an OTP link/monitor relationship.
+- **`link`** — Edge inferred from an OTP link/monitor relationship. _(derived confidence 0.95)_
 - **`luajit_ffi_lookup`** — Edge inferred from a LuaJIT FFI symbol lookup. Cluster B canonical for `luajit_ffi_unresolved` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
 - **`make_prerequisite`** — Edge inferred from a Make/CMake prerequisite declaration.
-- **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk).
-- **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.).
-- **`module_attribute_reference`** — Edge inferred from a module-level attribute reference.
-- **`module_export_heuristic`** — Edge inferred from a module-export heuristic recognition.
-- **`module_identifier_reference`** — Edge inferred from a module-qualified identifier reference.
-- **`module_source`** — Edge inferred from a module's source-file relationship.
-- **`naming_convention`** — Edge inferred from a language-level naming convention.
-- **`notify`** — Edge inferred from a notification/signal construct.
-- **`object_field_reference`** — Edge inferred from an object-field reference.
-- **`open`** — Edge inferred from an `open` directive (OCaml / F#).
-- **`open_import`** — Edge inferred from a Go open-import (qualified-but-unbound).
+- **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk). _(derived confidence 0.90)_
+- **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.). _(derived confidence 0.85)_
+- **`module_attribute_reference`** — Edge inferred from a module-level attribute reference. _(derived confidence 0.85)_
+- **`module_export_heuristic`** — Edge inferred from a module-export heuristic recognition. _(derived confidence 0.75)_
+- **`module_identifier_reference`** — Edge inferred from a module-qualified identifier reference. _(derived confidence 0.85)_
+- **`module_source`** — Edge inferred from a module's source-file relationship. _(derived confidence 0.95)_
+- **`naming_convention`** — Edge inferred from a language-level naming convention. _(derived confidence 0.85)_
+- **`notify`** — Edge inferred from a notification/signal construct. _(derived confidence 0.90)_
+- **`object_field_reference`** — Edge inferred from an object-field reference. _(derived confidence 0.80)_
+- **`open`** — Edge inferred from an `open` directive (OCaml / F#). _(derived confidence 0.95)_
+- **`open_import`** — Edge inferred from a Go open-import (qualified-but-unbound). _(derived confidence 0.95)_
 - **`recipe_dependency`** — Edge inferred from a Bazel/Buck recipe-dependency declaration.
-- **`reference`** — Edge inferred from a generic name-reference.
-- **`require`** — Edge inferred from a `require` construct (Ruby / Node).
+- **`reference`** — Edge inferred from a generic name-reference. _(derived confidence 0.95)_
+- **`require`** — Edge inferred from a `require` construct (Ruby / Node). _(derived confidence 0.95)_
 - **`require_alias_call`** — Edge inferred from a `require(...)` aliased to a local name.
-- **`require_dynamic`** — Edge inferred from a dynamic `require(...)` call.
-- **`require_statement`** — Edge inferred from a top-level `require` statement.
-- **`require_static`** — Edge inferred from a static `require(...)` invocation.
+- **`require_dynamic`** — Edge inferred from a dynamic `require(...)` call. _(derived confidence 0.40)_
+- **`require_statement`** — Edge inferred from a top-level `require` statement. _(derived confidence 0.95)_
+- **`require_static`** — Edge inferred from a static `require(...)` invocation. _(derived confidence 0.90)_
 - **`schema_relation`** — Edge inferred from a schema-declared relation.
 - **`scip_occurrence_ref`** — Edge inferred from a SCIP occurrence cross-reference.
 - **`scip_relationship`** — Edge inferred from a SCIP-emitted symbol-relationship record.
-- **`signal_constraint`** — Edge inferred from an HDL signal-constraint declaration.
-- **`source_statement`** — Edge inferred from a generic source-level statement.
-- **`span_overlap`** — Edge inferred from text-span overlap between symbols.
+- **`signal_constraint`** — Edge inferred from an HDL signal-constraint declaration. _(derived confidence 0.85)_
+- **`source_statement`** — Edge inferred from a generic source-level statement. _(derived confidence 0.95)_
+- **`span_overlap`** — Edge inferred from text-span overlap between symbols. _(derived confidence 0.90)_
 - **`sql_foreign_key`** — Edge inferred from a SQL `FOREIGN KEY` constraint.
-- **`stack_construction`** — Edge inferred from a stack-frame construction site.
-- **`static`** — Edge inferred from a static-linkage declaration.
-- **`struct_field_reference`** — Edge inferred from a struct-field reference.
-- **`subdir_include`** — Edge inferred from a subdirectory-include in a build file.
-- **`trait_impl`** — Edge inferred from a Rust `impl Trait for Type` block.
+- **`stack_construction`** — Edge inferred from a stack-frame construction site. _(derived confidence 0.85)_
+- **`static`** — Edge inferred from a static-linkage declaration. _(derived confidence 0.95)_
+- **`struct_field_reference`** — Edge inferred from a struct-field reference. _(derived confidence 0.70)_
+- **`subdir_include`** — Edge inferred from a subdirectory-include in a build file. _(derived confidence 0.95)_
+- **`trait_impl`** — Edge inferred from a Rust `impl Trait for Type` block. _(derived confidence 0.95)_
 - **`tree_sitter`** — Edge inferred from a tree-sitter query match.
-- **`type_hierarchy`** — Edge inferred from a type-hierarchy traversal.
-- **`typeclass_instance`** — Edge inferred from a typeclass-instance declaration (Haskell, Scala).
-- **`use`** — Edge inferred from a `use` directive (Rust, PHP).
-- **`use-package`** — Edge inferred from a Common Lisp `use-package` form (hyphenated identifier per CL convention).
-- **`use_declaration`** — Edge inferred from a `use` declaration node.
-- **`use_directive`** — Edge inferred from a `use` directive (qualifier-bound).
-- **`using_directive`** — Edge inferred from a `using` directive (C# / C++).
+- **`type_hierarchy`** — Edge inferred from a type-hierarchy traversal. _(derived confidence 0.85)_
+- **`typeclass_instance`** — Edge inferred from a typeclass-instance declaration (Haskell, Scala). _(derived confidence 0.90)_
+- **`use`** — Edge inferred from a `use` directive (Rust, PHP). _(derived confidence 0.95)_
+- **`use-package`** — Edge inferred from a Common Lisp `use-package` form (hyphenated identifier per CL convention). _(derived confidence 0.95)_
+- **`use_declaration`** — Edge inferred from a `use` declaration node. _(derived confidence 0.95)_
+- **`use_directive`** — Edge inferred from a `use` directive (qualifier-bound). _(derived confidence 0.95)_
+- **`using_directive`** — Edge inferred from a `using` directive (C# / C++). _(derived confidence 0.95)_
 - **`variable_match`** — Edge inferred from a variable-name match across sites.
 - **`verilog_instantiation`** — Edge inferred from a Verilog module instantiation.
 - **`vhdl_architecture`** — Edge inferred from a VHDL architecture declaration.
@@ -417,3 +418,35 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 - **`ipc_channel_match`** — Electron IPC channel-name matching inference (linkers/ipc.py:546). Emitted in the canonical-`event_publishes` fold for the Electron renderer→main exchange when the publisher's channel name matches the subscriber's pattern. Sibling of `variable_match` (already canonical). At-risk Cluster A: candidate for promotion to AXIS_INFERENCE_PATHWAY or fold to `naming_convention` + `meta['detection_pattern']='ipc_channel'`. Pending cluster-A/C audit.
 - **`qualified_call`** — R qualified function call via `pkg::fn` (hypergumbo-lang-common/r_lang.py:385). Sibling of the canonical `static` inference label; emitted from the inline ternary ``'static' if not path_hint else 'qualified_call'`` that the pre-WI-nubuv classifier silently skipped. At-risk Cluster D call-construct: fold candidate to `static` + `meta['call_construct']='qualified'`. Pending cluster-D audit.
 - **`topic_match`** — Message-queue topic-name matching inference (linkers/message_queue.py:516). Emitted in the canonical-`event_publishes` fold for MQ publisher→subscriber via topic when the publisher's topic matches the subscriber's pattern. Sibling of `variable_match`. At-risk Cluster A: candidate for promotion or fold to `naming_convention` + `meta['detection_pattern']='mq_topic'`. Pending cluster-A/C audit.
+
+### Derived confidence — `base_confidence` projection (ADR-0039)
+
+`Edge.create` derives `Edge.confidence` from the edge's `evidence_type` via `derive_confidence(evidence_type, is_resolved)` — detection *reliability*, not ranking prominence (that lives on `rank_score`). Values sit in the analyzer/linker band **0.30–0.95**; 1.0 is a reserved ceiling, since no detection method is certain. See [spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.
+
+**80 of 125 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
+
+| Derived confidence | Pathways |
+|---|---|
+| **0.95** | `ast_attribute`, `ast_decorator`, `ast_extends`, `ast_implements`, `ast_import`, `ast_new`, `behaviour`, `bridging_header_import`, `build_dependency`, `build_target_main`, `canonical_name`, `dockerfile_copy_from`, `dockerfile_from`, `extends`, `hg_annotation`, `import`, `import_declaration`, `import_directive`, `import_statement`, `import_static`, `include`, `include_directive`, `link`, `module_source`, `open`, `open_import`, `reference`, `require`, `require_statement`, `source_statement`, `static`, `subdir_include`, `trait_impl`, `use`, `use-package`, `use_declaration`, `use_directive`, `using_directive` |
+| **0.90** | `ast_method_this_property`, `behaviour_callback`, `enclosing_scope`, `import_to_manifest`, `instance`, `message_send`, `notify`, `require_static`, `span_overlap`, `typeclass_instance` |
+| **0.85** | `ast_call`, `ast_call_direct`, `ast_call_type_inferred`, `ast_method_type_inferred`, `ast_name_read`, `ast_type_ref`, `async_spawn`, `closure_wrapper`, `dispatch_table_reference`, `eta_expansion`, `function_pointer`, `method_reference`, `module_attribute_reference`, `module_identifier_reference`, `naming_convention`, `signal_constraint`, `stack_construction`, `type_hierarchy` |
+| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `object_field_reference` |
+| **0.75** | `callback_argument_reference`, `grpc_stub_resolution`, `module_export_heuristic` |
+| **0.70** | `ast_method_inferred`, `dispatch_pattern`, `function_reference_arg`, `struct_field_reference` |
+| **0.50** | `ast_annotation` |
+| **0.40** | `require_dynamic` |
+
+**`is_resolved`-conditioned pathways.** Two call pathways are multimodal — a name-resolved call is more reliable than an unresolved one, so they carry a second, lower base that `derive_confidence` selects when `is_resolved=False`:
+
+| Pathway | Resolved | Unresolved |
+|---|---|---|
+| `ast_call` | 0.85 | 0.40 |
+| `ast_call_direct` | 0.85 | 0.50 |
+
+**Unseeded (45).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
+
+<details><summary>Unseeded pathways</summary>
+
+`alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_lookup`, `make_prerequisite`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
+
+</details>

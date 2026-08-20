@@ -6,8 +6,10 @@
 # Works with any Forgejo/Gitea/Codeberg instance. Detects the API
 # base URL from git remote origin automatically.
 #
-# Required environment variable:
-#   FORGEJO_TOKEN - API token for authentication
+# Required environment variable (whichever the backend needs — see C9 in
+# lib/forgejo-api.sh::resolve_forge_token):
+#   HG_GITHUB_TOKEN - API token on the github backend (origin is github.com)
+#   FORGEJO_TOKEN   - API token on the forgejo backend (dormant, WI-hajif)
 #
 # Configuration via .env file or environment:
 #   FORGEJO_API_BASE - Override auto-detected API URL (optional)
@@ -21,17 +23,14 @@ source "$SCRIPT_DIR/lib/forgejo-api.sh"
 
 load_env
 detect_api_base
-apply_failover_overrides
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-  echo "[SELF-HOSTED] Failover active — targeting self-hosted Forgejo"
-fi
 
-TOKEN="${FORGEJO_TOKEN:-}"
-if [[ "$FAILOVER_ACTIVE" == "true" ]]; then
-  TOKEN="${SELFHOSTED_FORGEJO_TOKEN:-$TOKEN}"
-fi
+# Backend-aware credential guard (C9): the API layer resolves FORGE_TOKEN itself
+# per call, so this early check exists only to fail fast with a clear message.
+# detect_api_base (above) already ran detect_forge_backend, so FORGE_BACKEND is set.
+resolve_forge_token
+TOKEN="${FORGE_TOKEN:-}"
 if [[ -z "$TOKEN" ]]; then
-  echo "Error: FORGEJO_TOKEN not set. Source .env or set FORGEJO_TOKEN."
+  echo "Error: no forge credential. Set HG_GITHUB_TOKEN (github backend) or FORGEJO_TOKEN in .env."
   exit 1
 fi
 
@@ -200,19 +199,27 @@ cmd_pr_status() {
     exit 1
   fi
 
-  local state merged title head_sha head_branch base_branch
+  local state merged title head_sha head_branch base_branch mergeable
   state=$(echo "$API_RESPONSE" | json_field "state")
   merged=$(echo "$API_RESPONSE" | json_field "merged")
   title=$(echo "$API_RESPONSE" | json_field "title")
   head_sha=$(echo "$API_RESPONSE" | json_field "head.sha")
   head_branch=$(echo "$API_RESPONSE" | json_field "head.ref")
   base_branch=$(echo "$API_RESPONSE" | json_field "base.ref")
+  # Tri-state on purpose (INV-rahib Surface 1). auto-pr's Scenario B gate
+  # branches on this field, and GitHub reports it as null while mergeability
+  # is still being computed — so "null" and "false" being separately visible
+  # here is the whole point. Without it the gate's live input was
+  # unobservable through any approved script, which is why the defect went
+  # unverified against the real backend for as long as it did.
+  mergeable=$(echo "$API_RESPONSE" | json_bool_state "mergeable")
 
-  echo "  Title:   $title"
-  echo "  State:   $state"
-  echo "  Merged:  $merged"
-  echo "  Branch:  $head_branch → $base_branch"
-  echo "  HEAD:    ${head_sha:0:12}"
+  echo "  Title:     $title"
+  echo "  State:     $state"
+  echo "  Merged:    $merged"
+  echo "  Mergeable: $mergeable"
+  echo "  Branch:    $head_branch → $base_branch"
+  echo "  HEAD:      ${head_sha:0:12}"
 
   # Also show CI status for the PR's head commit
   if [[ -n "$head_sha" ]]; then

@@ -1,0 +1,22 @@
+- op: create  # 48bd
+  at: '2026-08-05T01:31:24Z'  # 48bd
+  by: agent  # 48bd
+  actor: jgstern_agent  # 48bd
+  clock: 1  # 48bd
+  nonce: 48bd  # 48bd
+  data:  # 48bd
+    kind: work_item  # 48bd
+    title: "Threat-model question: subprocess OUTPUT is not a catalogued untrusted_input source in any language (25 subprocess SINKS, 0 sources)"  # 48bd
+    status: needs_human_review  # 48bd
+    priority: 3  # 48bd
+    parent:  # 48bd
+    tags:  # 48bd
+    - adr_0017  # 48bd
+    - taint  # 48bd
+    - security  # 48bd
+    isbefore: []  # 48bd
+    duplicate_of: []  # 48bd
+    not_duplicate_of: []  # 48bd
+    pr_ref:  # 48bd
+    description: "SURFACED 2026-08-04 while refuting WI-sirod's filed repro. This is a\nTHREAT-MODEL DECISION with security consequences, not a bug -- filed as a\nquestion for adjudication rather than implemented.\n\nTHE FACT. Python's built-in taint catalogue declares 83 sources. ZERO of them\nmention subprocess. Subprocess appears only on the SINK side, where it is\nthoroughly covered -- 25 subprocess-zone sinks (subprocess.run, subprocess.Popen,\nsubprocess.call, subprocess.check_call, subprocess.check_output, os.system,\nos.popen, and the os.exec*/os.spawn*/os.fork families).\n\nSo hypergumbo currently models \"data flows INTO a subprocess\" and does not model\n\"data flows OUT OF a subprocess\".\n\nTHE QUESTION. Should the output of a subprocess (`subprocess.run(...).stdout`,\n`check_output(...)`, `os.popen(...).read()`) be an `untrusted_input` source?\n\nARGUMENT FOR. Command output is untrusted in most threat models: the invoked\nprogram may be attacker-controlled, may process attacker-controlled input, or\nmay simply be unvalidated relative to the calling program's expectations. A\npipeline that shells out to a tool and writes its stdout to a file or a\ndatabase is a real injection path, and hypergumbo cannot currently express it.\nOther taint engines commonly model process output as tainted.\n\nARGUMENT AGAINST, AND IT IS NOT WEAK. Almost every build script, dev tool and\nCI helper shells out and does something with the result, so this could be a\nlarge volume of flows whose taint label is technically defensible and\npractically uninteresting -- which is the saturation problem that already\nmotivated WI-bifob (exclude test-sourced flows) and WI-vazal (make ORM reads\nseparable). Adding a very common source without a way to scope it could push\nseveral claims to permanently `violated` and make them uninformative, the exact\nfailure mode the cont.43 roadmap bearing describes: a claim verdict is a\ndisjunction, and a saturated disjunction cannot be improved by precision work.\n\nWHAT WOULD MAKE THIS DECIDABLE, IF IT IS TAKEN UP. Measure first, on the\nexisting 9-repo cohort (full behavior maps are on disk): how many additional\nflows would a `subprocess -> untrusted_input` source family produce, how many\ndistinct claims would flip, and what share originate in build/CI scripts that\nWI-bifob's test/fixture exclusion would NOT catch (a hack/ or scripts/ directory\nis not a test directory). Do not add the entries and then measure -- the volume\nquestion is the whole decision.\n\nSCOPE NOTE. If taken, this is a per-language catalogue question, not a python\none: go's os/exec, rust's std::process, java's ProcessBuilder and node's\nchild_process have the same asymmetry. Check before scoping to python.\n\nRELATED: WI-nibav (catalogue completeness for drop-in wrappers) is the same\nfamily -- both are \"the catalogue does not describe a real primitive\" rather\nthan \"the engine mis-handles a described one\"."  # 48bd
+    fields: {}  # 48bd

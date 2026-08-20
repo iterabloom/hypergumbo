@@ -2,27 +2,38 @@
 """Protocol linker: message queue for detecting pub/sub communication patterns.
 
 This linker detects message queue patterns across multiple languages and creates
-message_publish and message_subscribe edges for queue-based communication.
+``event_publishes`` edges carrying ``meta['channel_kind']='queue'``. The bespoke
+``message_publish`` / ``message_subscribe`` types were folded onto the canonical
+type by ADR-0023 §6 Phase 3.
+
+Only ONE direction is emitted. A subscriber is an edge *destination* — there is
+no subscribe-direction edge. The ``-> subscriber`` rows below name the site the
+linker resolves an edge TO, not a second edge type.
 
 Detected Patterns
 -----------------
 Kafka:
-- producer.send('topic', msg) / producer.produce('topic', msg) -> message_publish
-- producer.produce(topic_var, msg) -> message_publish (variable topic)
-- consumer.subscribe(['topic']) -> message_subscribe
-- @KafkaListener(topics="topic") -> message_subscribe (Java/Spring)
+- producer.send('topic', msg) / producer.produce('topic', msg) -> publisher
+- producer.produce(topic_var, msg) -> publisher (variable topic)
+- consumer.subscribe(['topic']) -> subscriber
+- @KafkaListener(topics="topic") -> subscriber (Java/Spring)
+
+Kafka (Java/Spring):
+- kafkaTemplate.send('topic', msg) -> publisher
 
 RabbitMQ:
-- channel.basic_publish(exchange, routing_key, body) -> message_publish
-- channel.basic_consume(queue, callback) -> message_subscribe
+- channel.basic_publish(exchange, routing_key, body) -> publisher
+- channel.basic_consume(queue, callback) -> subscriber
+- channel.sendToQueue(queue, msg) / channel.consume(queue, cb) -> JS amqplib
 
 AWS SQS:
-- sqs.send_message(QueueUrl=..., MessageBody=...) -> message_publish
-- sqs.receive_message(QueueUrl=...) -> message_subscribe
+- sqs.send_message(QueueUrl=..., MessageBody=...) -> publisher
+- sqs.receive_message(QueueUrl=...) -> subscriber
+- .sendMessage(...) / .receiveMessage(...) -> JS AWS SDK
 
 Redis Pub/Sub:
-- redis.publish(channel, message) -> message_publish
-- pubsub.subscribe(channel) / redis.subscribe(channel) -> message_subscribe
+- redis.publish(channel, message) -> publisher
+- pubsub.subscribe(channel) / redis.subscribe(channel) -> subscriber
 
 Topic Detection Strategy
 ------------------------
@@ -58,7 +69,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from ..analyze.base import make_protocol_stable_id, make_symbol_id
+from ..analyze.base import (
+    make_protocol_stable_id,
+    make_symbol_id,
+    sanitize_id_name_segment,
+)
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker
@@ -410,13 +425,16 @@ def _create_symbol(pattern: MessageQueuePattern, root: Path) -> Symbol:
 
     # ADR-0027 Phase 3 / audit-findings 0013 (WI-nitil): framework-role
     # leak. Fold to canonical kind="function" + meta["framework_role"].
-    # The framework-role string remains the ID disambiguator so cross-PR
-    # identity is stable.
+    # framework_role remains the meta role; the id name slot now carries the
+    # specific Symbol.name (queue:type:topic, colon-sanitized via
+    # sanitize_id_name_segment) per ADR-0036 Ruling 1 / WI-vuzaf — more
+    # disambiguating than the shared role token and still deterministic.
     framework_role = "mq_publisher" if pattern.type == "publish" else "mq_subscriber"
+    mq_name = f"{pattern.queue_type}:{pattern.type}:{pattern.topic}"
 
     return Symbol(
-        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, framework_role, "function"),
-        name=f"{pattern.queue_type}:{pattern.type}:{pattern.topic}",
+        id=make_symbol_id(pattern.language, str(rel_path), pattern.line, pattern.line, sanitize_id_name_segment(mq_name), "function"),
+        name=mq_name,
         kind="function",
         path=pattern.file_path,
         span=Span(
@@ -496,7 +514,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
 
     # Build (file_path, line) -> symbol index for fast lookup
     symbol_by_location: dict[tuple[str, int], Symbol] = {
-        (s.path, s.span.start_line): s for s in symbols
+        (s.path, s.span.start_line): s for s in symbols if s.span
     }
 
     # Create edges from publishers to subscribers

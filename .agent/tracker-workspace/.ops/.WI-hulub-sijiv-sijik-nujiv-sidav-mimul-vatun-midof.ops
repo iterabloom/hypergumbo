@@ -30,3 +30,10 @@
     tags: [dogfood_tranche_03]  # fdac
   remove:  # fdac
     tags: [dogfood_tranch_03]  # fdac
+- op: discuss  # 0c92
+  at: '2026-07-30T17:20:26Z'  # 0c92
+  by: agent  # 0c92
+  actor: jgstern_agent  # 0c92
+  clock: 3  # 0c92
+  nonce: 0c92  # 0c92
+  message: "Re-measured 2026-07-30 on a fresh self-survey (40979 nodes / 138626 edges). The filed figures are stale in BOTH directions, mostly because the registries themselves moved:\n\n  filed:    18/54 edge_types, 26/140 symbol_kinds, 33/125 evidence_types\n  measured: 17/25 edge_types, 29/152 symbol_kinds, 39/125 evidence_types\n\nThe edge_type denominator fell 54 -> 25 because the endpoint_shape and pending_classification axes were drained to empty (ADR-0023 fold, register pt.24/pt.25), so coverage there is now 68% rather than 33% — the gap largely closed by deleting unemitted vocabulary rather than by emitting more. symbol_kinds went the other way (140 -> 152 registered) while emitted rose only 26 -> 29, so that ratio worsened.\n\nNo action taken. Recorded because the item is framed as a coverage OBSERVATION and its numbers are the whole content; anyone acting on it should start from these rather than re-deriving them."  # 0c92

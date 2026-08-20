@@ -212,7 +212,9 @@ def _extract_symbols_and_edges(
                     )
                     symbols.append(func_sym)
 
-                    # Create contains edge from service to function
+                    # Create contains edge from service to function.
+                    # make_symbol (above) always builds a real Span.
+                    assert func_sym.span is not None  # for type checker
                     edges.append(Edge.create(
                         src=service_sym.id,
                         dst=func_sym.id,

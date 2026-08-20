@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ADR-0016: I/O primitive catalog for POSIX shell redirection (INV-vavup)
+#
+# WHAT THIS DOES AND DOES NOT COVER, because the distinction is the whole
+# reason this file is allowed to exist. ADR-0016 forbids populating the
+# subprocess boundary "via an io_primitives data-I/O catalog THAT WOULD
+# MIS-ATTRIBUTE CURL'S NETWORK ACTIVITY TO THE SHELL SCRIPT ITSELF". That
+# objection is correct and is untouched here:
+#
+#   curl -o file    write performed by an OPAQUE EXTERNAL PROGRAM
+#                   -> stays subprocess + opacity, NOT catalogued as fs_write
+#   echo x > file   write performed by THE SHELL ITSELF (echo is a builtin,
+#                   and even for an external command the shell establishes
+#                   the redirection before exec)
+#                   -> the shell's own primitive, and catalogued here
+#
+# Two surfaces; the prohibition only ever covered the first. Attributing
+# fs_write to the second is exactly right — the same standing os.remove has
+# in python.
+#
+# NOT A CALL, AND THAT IS FINE. Redirection is syntax, so these rows are
+# matched against an edge the ANALYZER synthesizes for the construct
+# (bash.py's file_redirect branch), on the shipped module_attr_ref
+# precedent: os.environ is an attribute access, not a call, and reaches the
+# boundary pipeline the same way.
+#
+# CONSERVED SET. POSIX redirection is a handful of forms shared essentially
+# unchanged across sh / bash / zsh / ksh / dash — fixed by grammar rather
+# than by a release cadence, so this is MORE stable than a stdlib, not less.
+# tcsh and fish diverge and would get their own files; that is what
+# per-language catalogs are for.
+language: bash
+# NOT `complete`: this covers the shell's REDIRECTION surface only. Pipes are
+# deliberately excluded (a | b is a process topology, not a filesystem
+# write, and modelling it means deciding whether b's stdin is a taint sink
+# fed by a). Builtins that write without redirection, env-var flow, and
+# here-doc bodies are also unmodelled. Marking this `complete` would assert a
+# coverage this file does not have.
+status: in_progress
+
+# INV-jurif: the environment READ surface. `$API_KEY` is to bash what
+# `os.environ` is to python — an attribute access, not a call — and it is
+# matched against the module_attr_ref edge bash.py synthesizes for a variable
+# expansion whose name is never assigned in the file.
+#
+# ONE ROW, NOT A NAME LIST, on the os.environ precedent. Python does not
+# enumerate environment variable names and neither can this: a curated list is
+# wrong the moment a repo invents a name, and wrong in the SILENT direction (a
+# secret read that matches nothing). The variable that was read is carried on
+# the edge's meta for the reader, not used for matching.
+#
+# WHY IT MATTERS BEYOND BASH: with zero sources, bash failed the both-halves
+# taint predicate, so ANY repository containing a shell script made every
+# taint claim `inconclusive` — including hypergumbo's own 18-claim self-proof.
+env_read:
+  - module: env
+    attributes: [environ]
+    notes: "A parameter expansion of a name not assigned in the file"
+
+fs_write:
+  # `>` and `>>` are ONE primitive at two modes, not two primitives. The
+  # truncate/append distinction rides on io_mode (the builtins.open pattern)
+  # rather than on separate boundary rows, so it cannot become an INV-zumin
+  # row-order collision.
+  - module: redirect
+    functions: [">", ">|", ">>"]
+    notes: >-
+      Truncate and append are ONE primitive at two modes: each operator
+      appears under exactly one boundary here, and w/a rides on io_mode
+      (the builtins.open pattern), so no operator can be claimed by two
+      rows under INV-zumin. `>|` is `>` with noclobber defeated.
+fs_read:
+  - module: redirect
+    functions: ["<"]

@@ -18,7 +18,7 @@ and what to do if you depend on the old behavior.
 - The JSON output gains a `boundaries.external_potential` key and a
   `dst_classification_unreliable` field on every chain.
 - Catalog YAML files now require a `status` declaration plus, for
-  `status: complete`, a `stdlib_provenance` block whose URL hostname
+  `status: provenance_declared`, a `stdlib_provenance` block whose URL hostname
   suffix-matches an allowlist of official documentation hosts.
 
 ## Why the change
@@ -35,9 +35,9 @@ and instead expose the **shape** of untrusted-territory reach as its
 own signal. That is what the new `external_potential` bucket is.
 
 The catalog now enumerates **only** stdlib symbols, with a per-
-language `status` declaration (`complete` or `in_progress`) so
-absence-from-the-catalog has a clear meaning: for `status: complete`
-languages, "not in the catalog" = "not stdlib, probably third-party";
+language `status` declaration (`provenance_declared` or
+`in_progress`) so absence-from-the-catalog has a clear meaning: for
+`status: provenance_declared` languages, "not in the catalog" = "not stdlib, probably third-party";
 for `status: in_progress` languages, the absence is flagged as
 not-yet-authoritative.
 
@@ -72,7 +72,7 @@ chain in `external_potential` carries an `[unreliable]` marker:
 The `[unreliable]` marker means: "this language's stdlib catalog
 hasn't been audited end-to-end yet, so the absence-of-catalog-hit
 that caused this chain to land in `external_potential` isn't
-authoritative — after the catalog is promoted to `status: complete`,
+authoritative — after the catalog is promoted to `status: provenance_declared`,
 the chain may either stay here or move into a classical bucket."
 
 ### JSON mode
@@ -175,12 +175,17 @@ top-level fields:
 language: <lang>
 
 # REQUIRED. "complete" means the catalog enumerates the entire
-# stdlib of the language and declares stdlib_provenance.
+# "provenance_declared" means the catalog cites its stdlib source.
 # "in_progress" means the catalog is partial; external_potential
 # chains in this language are flagged unreliable.
-status: complete | in_progress
+# INV-titih: the value names what is CHECKED — a stdlib citation,
+# not row coverage (coverage is claimed per-module via
+# module_completeness). The old spelling `complete` is refused at
+# load: it read as a coverage claim nothing verified.
+status: provenance_declared | in_progress
 
-# REQUIRED for status: complete. Optional for status: in_progress.
+# REQUIRED for status: provenance_declared. Optional for
+# status: in_progress.
 # Cited at load time; URL hostname must suffix-match an allowlist
 # of official-stdlib documentation hosts declared in
 # io_boundary.py.
@@ -201,10 +206,10 @@ stdlib_other:
     functions: [sqrt, sin, cos, ...]
 ```
 
-Promoting a language from `in_progress` to `complete` is a regular
-PR: audit the catalog against the language's official stdlib
-documentation, add `stdlib_provenance`, and flip `status` to
-`complete`. Adding a hostname to the provenance allowlist is a
+Promoting a language from `in_progress` to `provenance_declared` is
+a regular PR: audit the catalog against the language's official
+stdlib documentation, add `stdlib_provenance`, and flip `status` to
+`provenance_declared`. Adding a hostname to the provenance allowlist is a
 governance change requiring PR review (same shape as
 `ALLOWED_WEBSITES.md`).
 
@@ -213,8 +218,8 @@ governance change requiring PR review (same shape as
 The catalog principle is now: **catalog membership = stdlib
 (language ships it); absence = probably third-party, not certain**.
 A load-time validator hard-errors on any catalog declaring
-`status: complete` without provenance, so completeness claims are
-auditable. The hostname allowlist defends against typos and
+`status: provenance_declared` without provenance, so citation claims
+are auditable. The hostname allowlist defends against typos and
 unofficial sources.
 
 Project-local catalogs remain the escape hatch for "my project

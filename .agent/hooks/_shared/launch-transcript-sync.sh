@@ -35,7 +35,15 @@ set -euo pipefail
 SRC="$1"
 SESSION_ID="$2"
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")"/../../.. && pwd)}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(CDPATH= cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/archive_scrubbed.sh"
+# Permission contract (INV-todig): the orphan/stray sweeps below create
+# archive subdirs, and the watcher launched at the bottom inherits this
+# process's umask — owner-only for both.
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/transcript_perms.sh"
+harden_transcript_umask
 AGENT_DIR="$REPO_ROOT/.agent"
 DEST="$AGENT_DIR/.current_session_transcript.${SESSION_ID}.jsonl"
 
@@ -166,17 +174,28 @@ for orphan_pid_file in "$AGENT_DIR"/.transcript-sync.*.pid; do
         STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
         ARCHIVE_SUBDIR="$AGENT_DIR/.archived-transcripts/crashed-${STAMP}-${orphan_sid}"
         mkdir -p "$ARCHIVE_SUBDIR" || true
+        harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$ARCHIVE_SUBDIR"
+        # The `rm` is now CONDITIONAL on a validated archive. Previously it sat
+        # outside the `if`, so a scrubber failure produced a 20-byte empty gzip
+        # and deleted the only copy -- silently, since this path had no `else`
+        # warn and `2>/dev/null` ate the traceback.
         if [[ -s "$orphan_dest" ]]; then
-            if gzip -c "$orphan_dest" > "$ARCHIVE_SUBDIR/transcript.jsonl.gz" 2>/dev/null; then
-                touch -r "$orphan_dest" "$ARCHIVE_SUBDIR/transcript.jsonl.gz" 2>/dev/null || true
+            if archive_scrubbed "$orphan_dest" \
+                    "$ARCHIVE_SUBDIR/transcript.jsonl.gz" "$REPO_ROOT"; then
+                rm -f "$orphan_dest"
+            else
+                echo "warn: could not archive $orphan_dest; LEAVING IT IN" \
+                     "PLACE (next sweep retries)" >&2
             fi
-            rm -f "$orphan_dest"
         fi
         if [[ -s "$orphan_inj" ]]; then
-            if gzip -c "$orphan_inj" > "$ARCHIVE_SUBDIR/injection_history.jsonl.gz" 2>/dev/null; then
-                touch -r "$orphan_inj" "$ARCHIVE_SUBDIR/injection_history.jsonl.gz" 2>/dev/null || true
+            if archive_scrubbed "$orphan_inj" \
+                    "$ARCHIVE_SUBDIR/injection_history.jsonl.gz" "$REPO_ROOT"; then
+                rm -f "$orphan_inj"
+            else
+                echo "warn: could not archive $orphan_inj; LEAVING IT IN" \
+                     "PLACE (next sweep retries)" >&2
             fi
-            rm -f "$orphan_inj"
         fi
     else
         # No content to archive; just clean up empty files if any.
@@ -189,6 +208,44 @@ for orphan_pid_file in "$AGENT_DIR"/.transcript-sync.*.pid; do
     rm -f "$AGENT_DIR/.transcript-poll-state.${orphan_sid}"
     rm -f "$AGENT_DIR/.transcript-injection-state.${orphan_sid}.json"
 done
+
+# ---------------------------------------------------------------------------
+# Second sweep: transcripts whose PID FILE IS GONE.
+#
+# The loop above derives the transcript name FROM the PID filename, so a
+# .current_session_transcript.<sid>.jsonl with no matching .transcript-sync
+# .<sid>.pid is invisible to it -- permanently, since rotation for that SID will
+# never fire again either. One such file was found live: 16.8MB from 2026-07-12
+# holding 8 occurrences of a live credential, unreachable by any code path.
+# Globbing transcripts instead of PID files is what closes that class.
+shopt -s nullglob
+for stray in "$AGENT_DIR"/.current_session_transcript.*.jsonl; do
+    stray_sid="${stray##*/.current_session_transcript.}"
+    stray_sid="${stray_sid%.jsonl}"
+    [[ "$stray_sid" == "$SESSION_ID" ]] && continue
+    # A live sibling still has its PID file; leave it alone.
+    [[ -f "$AGENT_DIR/.transcript-sync.${stray_sid}.pid" ]] && continue
+    [[ -s "$stray" ]] || { rm -f "$stray"; continue; }
+    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    STRAY_DIR="$AGENT_DIR/.archived-transcripts/stray-${STAMP}-${stray_sid}"
+    mkdir -p "$STRAY_DIR" || true
+    harden_transcript_dir "$AGENT_DIR/.archived-transcripts" "$STRAY_DIR"
+    if archive_scrubbed "$stray" "$STRAY_DIR/transcript.jsonl.gz" "$REPO_ROOT"; then
+        rm -f "$stray"
+    else
+        echo "warn: could not archive stray $stray; LEAVING IT IN PLACE" >&2
+    fi
+    stray_inj="$AGENT_DIR/.current_injection_history.${stray_sid}.jsonl"
+    if [[ -s "$stray_inj" ]]; then
+        if archive_scrubbed "$stray_inj" \
+                "$STRAY_DIR/injection_history.jsonl.gz" "$REPO_ROOT"; then
+            rm -f "$stray_inj"
+        else
+            echo "warn: could not archive stray $stray_inj; LEAVING IT" >&2
+        fi
+    fi
+done
+
 shopt -u nullglob
 
 # ---------------------------------------------------------------------------

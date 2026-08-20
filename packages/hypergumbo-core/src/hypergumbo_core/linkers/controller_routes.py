@@ -95,21 +95,21 @@ from ._concept_utils import has_concept
 from .registry import LinkerContext, LinkerResult, register_linker
 
 if TYPE_CHECKING:
-    from ..ir import Symbol
+    from ..ir import Span, Symbol
 
 logger = logging.getLogger(__name__)
 
 PASS_ID = make_pass_id("controller-routes-linker")
 
 
-def _encloses(container_span, member_span) -> bool:
+def _encloses(container_span: "Span", member_span: "Span") -> bool:
     return (
         container_span.start_line <= member_span.start_line
         and container_span.end_line >= member_span.end_line
     )
 
 
-def _span_size(span) -> int:
+def _span_size(span: "Span") -> int:
     return span.end_line - span.start_line
 
 
@@ -124,24 +124,29 @@ def _span_size(span) -> int:
     depends_on=[["python", "javascript", "ruby", "java", "go", "elixir", "php"]],
 )
 def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
-    """Create contains_routes edges from controllers to their route methods."""
+    """Create ``contains`` edges from controllers to their route methods."""
     run = AnalysisRun.create(
         pass_id=PASS_ID,
         version=PASS_VERSION,
     )
 
-    controllers_by_file: dict[str, list[Symbol]] = {}
-    routes_by_file: dict[str, list[Symbol]] = {}
+    # (Symbol, Span) tuples: the entry filter establishes span presence, and
+    # carrying the narrowed Span in the bucket lets the type system hold that
+    # invariant across the collection boundary (mypy cannot re-derive it from
+    # dict[str, list[Symbol]] downstream).
+    controllers_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
+    routes_by_file: dict[str, list[tuple[Symbol, Span]]] = {}
 
     for sym in ctx.symbols:
-        if sym.span is None:
+        span = sym.span
+        if span is None:
             continue
         if is_test_file(sym.path):
             continue
         if has_concept(sym, "controller"):
-            controllers_by_file.setdefault(sym.path, []).append(sym)
+            controllers_by_file.setdefault(sym.path, []).append((sym, span))
         if has_concept(sym, "route"):
-            routes_by_file.setdefault(sym.path, []).append(sym)
+            routes_by_file.setdefault(sym.path, []).append((sym, span))
 
     edges: list[Edge] = []
 
@@ -149,20 +154,24 @@ def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
         routes = routes_by_file.get(path, [])
         if not routes:
             continue
-        for route in routes:
+        for route, route_span in routes:
             # Find innermost (tightest) controller whose span encloses
             # the route's span in the same file.
             enclosing = [
-                c for c in controllers if _encloses(c.span, route.span)
+                (c, c_span)
+                for c, c_span in controllers
+                if _encloses(c_span, route_span)
             ]
             if not enclosing:
                 continue
-            winner = min(enclosing, key=lambda c: _span_size(c.span))
+            winner, winner_span = min(
+                enclosing, key=lambda pair: _span_size(pair[1])
+            )
             edge = Edge.create(
                 src=winner.id,
                 dst=route.id,
                 edge_type="contains",
-                line=winner.span.start_line,
+                line=winner_span.start_line,
                 origin=PASS_ID,
                 evidence_type="ast_call_direct",
                 confidence=0.80,

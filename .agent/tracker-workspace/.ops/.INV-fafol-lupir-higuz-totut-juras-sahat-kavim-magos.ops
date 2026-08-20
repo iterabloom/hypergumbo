@@ -1,0 +1,40 @@
+- op: create  # 93a4
+  at: '2026-08-14T15:47:52Z'  # 93a4
+  by: agent  # 93a4
+  actor: jgstern_agent  # 93a4
+  clock: 1  # 93a4
+  nonce: 93a4  # 93a4
+  data:  # 93a4
+    kind: invariant  # 93a4
+    title: "Every tree-sitter analyzer anchors module_attr_ref to the FILE, so all 21 attribute-kind js/ts taint sources (process.env included) can never start a flow"  # 93a4
+    status: violated  # 93a4
+    priority: 1  # 93a4
+    parent:  # 93a4
+    tags:  # 93a4
+    - taint  # 93a4
+    - security  # 93a4
+    - verify_claims  # 93a4
+    - analysis_quality  # 93a4
+    isbefore: []  # 93a4
+    duplicate_of: []  # 93a4
+    not_duplicate_of: []  # 93a4
+    pr_ref:  # 93a4
+    description: "FOUND while landing INV-potuf, as its non-vacuity check: with typescript's\nsinks finally deriving, the end-to-end flow STILL was not found -- and the\njavascript control returned the same clean verdict, which is what identified\nthis as pre-existing and language-general rather than anything INV-potuf did.\n\nTHE DEFECT. `emit_module_attribute_refs` takes a `caller_symbol` used as the\nedge `src`. Its own docstring says the root argument may be \"the file root for\nmodule-level reads, or a function body for per-function emission\" -- so the\nhelper supports both. EVERY tree-sitter caller passes the FILE pseudo-symbol\nand the file root:\n\n    js_ts.py:5979   file_mod_sym         go.py:3186    file_pseudo_symbol\n    java.py:2604    (file symbol)        cpp.py:1689   (file symbol)\n    rust.py:2580    (file symbol)\n\nPython is the exception: its own in-module helper (WI-guhok) anchors to the\nenclosing callable, which is why the identical flow shape IS caught in python.\n\nMEASURED, with the control that separates the two source kinds. Same claim\n({source_taint: host_secret, prohibited_sink_zone: host_fs}), same sink\n(`fs.writeFileSync`), same enclosing function, only the SOURCE KIND differs:\n\n    call-kind source       os.hostname()          -> rc 1 violated    (found)\n    attribute-kind source  process.env.API_KEY    -> rc 0 confirmed   (MISSED)\n\nThe edges show exactly why:\n\n    calls            src=...:3-6:dump:function   dst=...:fs:0-0:writeFileSync:unresolved\n    module_attr_ref  src=...:1-1:file:file       dst=...:process:0-0:process.env:attribute\n\nThe source and the sink do not share a caller, so no flow can be constructed.\nIdentical in javascript and typescript.\n\nSCALE, from the derived catalogue rather than estimated: javascript has 50\ntaint sources of which **21 are kind=attribute** -- including the whole\n`process.env` / `process.argv` family, which is the canonical way a Node\nprogram reads a secret. All 21 are structurally incapable of starting a flow.\nThe same shape applies to go, java, cpp and rust, whose attribute counts are\nNOT broken out here and are unmeasured rather than known-small.\n\nWHY THIS IS FILED SEPARATELY FROM WI-pimun (P2, same anchoring, different\nclaim). WI-pimun says a consumer \"cannot tell which function performs the I/O\"\n-- an ATTRIBUTION gap, and its reproducer is python-specific\n(`subprocess.Popen`, a calls edge). This is the SECURITY consequence of the\nsame anchor in a different producer: an attribute source cannot participate in\ntaint propagation at all, so a real `process.env` -> `fs.writeFileSync` leak\nreturns `confirmed` rc 0. That is a false confirm, not a missing label, and it\nis not reachable from WI-pimun's description. Cross-referenced deliberately\nrather than folded: closing WI-pimun's python calls-edge case would not touch\nthis, and someone reading WI-pimun would not learn that js/ts taint is blind to\n`process.env`.\n\nFIX SHAPE (not costed, and the reason INV-potuf shipped without it). The helper\nalready accepts a per-function root, so the change is at the five CALL SITES,\nnot in the helper -- but it moves the `src` of every attribute-ref edge in five\nlanguages, which re-anchors io-boundary chains, and the double-emission\nquestion (a file-root walk descends into function bodies) has to be answered\nbefore it is safe. That is a larger blast radius than the alias fix it was\ndiscovered by, and the freeze rule is minimal independently-revertable PRs.\n\nDIRECTION WARNING for whoever takes it: this ADDS findings (attribute sources\nstart participating). That is the safe direction, but it should still be\nmeasured on both signs, and on more than javascript."  # 93a4
+    fields:  # 93a4
+      statement: "A taint source must be anchored to the callable that performs the read, or it cannot participate in propagation. VIOLATED for every tree-sitter analyzer (js_ts, go, java, cpp, rust): emit_module_attribute_refs is called with the FILE pseudo-symbol as caller_symbol, so a module_attr_ref edge's src is the file while the sink's src is the function, and the two never share a caller. Measured: process.env.API_KEY -> fs.writeFileSync returns confirmed rc 0, while os.hostname() -> fs.writeFileSync in the same function returns violated rc 1."  # 93a4
+      root_cause: "emit_module_attribute_refs documents that its root argument may be a function body for per-function emission, but all five tree-sitter call sites pass the file root and a file pseudo-symbol (js_ts.py:5979, go.py:3186, java.py:2604, cpp.py:1689, rust.py:2580). Python is unaffected because its own WI-guhok helper anchors to the enclosing callable."  # 93a4
+- op: update  # bea2
+  at: '2026-08-15T19:39:31Z'  # bea2
+  by: agent  # bea2
+  actor: jgstern_agent  # bea2
+  clock: 2  # bea2
+  nonce: bea2  # bea2
+  set:  # bea2
+    status: satisfied  # bea2
+- op: discuss  # 7f0e
+  at: '2026-08-15T19:39:31Z'  # 7f0e
+  by: agent  # 7f0e
+  actor: jgstern_agent  # 7f0e
+  clock: 3  # 7f0e
+  nonce: 7f0e  # 7f0e
+  message: "SATISFIED. PR #356, measured end to end rather than at the analyzer. One JS file holding both shapes in sibling functions: os.hostname() -> fs.writeFileSync was already found (a CALL, anchored to its function) while process.env.API_KEY -> fs.writeFileSync was missed (an ATTRIBUTE, anchored to the file). After: 2 flows instead of 1, and the edge reads src=javascript:app.js:4-7:leakEnv:function. All five tree-sitter call sites now pass enclosing_symbols; a parity test enumerates them so the next analyzer fails a test rather than silently repeating this. Resolved by LINE SPAN rather than by walking to a function node, so the rule needs no per-language knowledge of callable node kinds and lives once. A genuinely module-level read still anchors to the file, which is correct and asserted. The tripwire test that pinned the defect went red exactly as its docstring predicted and was replaced with the positive assertion it named, plus one asserting source and sink SHARE an anchor. Three of my own errors on the way, each caught by measuring: a scripted edit anchored on a pattern put the kwarg inside the wrong call in rust and cpp; the js_ts path index keyed on ABSOLUTE paths while the lookup used a RELATIVE name, so the fix silently did nothing and the verdict was unchanged; and Symbol.span is a Span object, not a tuple, so len() raised inside the analyzer and the pipeline swallowed it into a 0-edge analysis."  # 7f0e

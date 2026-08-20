@@ -3,7 +3,13 @@
 
 This analyzer uses tree-sitter to parse JS/TS/Svelte/Vue files and
 extract:
-- Function and class declarations (symbols)
+- Function and class declarations (symbols), plus anonymous callbacks and
+  IIFEs so a handler passed inline is still a node
+- TypeScript-only declarations as their own kinds: ``interface``, ``type``,
+  ``enum``, and the members of interfaces and enums
+- ``field`` symbols for class properties and ``variable`` for module-level
+  bindings
+- One ``file`` symbol per module, anchoring top-level calls
 - Import/require statements (edges)
 - Function call relationships (edges)
 - Method call relationships (edges)
@@ -11,12 +17,16 @@ extract:
 - Inheritance: ``extends`` / ``implements`` (edges)
 - Decorator application: ``decorated_by`` (edges)
 - TypeScript type references — type alias / interface signatures —
-  emitted as ``type_ref`` edges (refactoring blast radius)
+  emitted as ``references`` edges carrying
+  ``evidence_type="ast_type_ref"`` (refactoring blast radius). The
+  bespoke ``type_ref`` edge type was folded onto ``references``.
 
-Cross-file call edges populate ``Edge.dst_ref`` with the canonical
-``(lang, module_path, name)`` triple resolved through the per-file
-import scope's ``named_import_originals`` map, so renamed imports
-(``import { foo as bar }``) attribute to ``foo``, not ``bar``.
+UNRESOLVED cross-file call edges populate ``Edge.dst_ref`` with the
+canonical ``(lang, module_path, name)`` triple resolved through the
+per-file import scope's ``named_import_originals`` map, so renamed
+imports (``import { foo as bar }``) attribute to ``foo``, not ``bar``.
+A cross-file call that RESOLVES to a symbol in the graph carries no
+``dst_ref`` — ``dst`` already names the target.
 
 Rich Metadata (ADR-3aaa)
 ------------------------
@@ -30,7 +40,8 @@ Class and method symbols include rich metadata in their `meta` field:
 
 **Method metadata:**
 - `decorators`: List of decorator dicts with name, args, kwargs
-- `route_path`: NestJS route path if detected (legacy, also in decorators)
+  (a NestJS route path is read off the decorators for ``stable_id``
+  construction, but is NOT copied into method ``meta``)
 
 If tree-sitter is not installed, the analyzer gracefully degrades and
 reports the pass as skipped with reason.
@@ -82,6 +93,9 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     defer_bare_method_call,
     emit_module_attribute_refs,
+    symbols_by_path_index,
+    symbols_for_path,
+    make_symbol_id,
     make_unresolved_edge,
     populate_docstrings_from_tree,
     find_child_by_field,
@@ -89,6 +103,7 @@ from hypergumbo_core.analyze.base import (
     make_file_id,
     make_file_stable_id,
     make_route_stable_id,
+    make_route_symbol,
     make_typed_stable_id,
     make_variable_stable_id,
     node_text as _node_text,
@@ -310,8 +325,14 @@ class _ParsedFile:
 
 
 def _make_symbol_id(path: str, start_line: int, end_line: int, name: str, kind: str, lang: str) -> str:
-    """Generate location-based ID."""
-    return f"{lang}:{path}:{start_line}-{end_line}:{name}:{kind}"
+    """Generate a location-based ID via the shared ADR-0036 minter.
+
+    Delegates rather than re-implementing the grammar as an f-string: a private
+    copy silently opts out of the minter's name-slot sanitization (WI-sikar).
+    The argument order differs from ``make_symbol_id`` (``lang`` last) because
+    every call site in this module passes it that way.
+    """
+    return make_symbol_id(lang, path, start_line, end_line, name, kind)
 
 
 def _get_language_for_file(file_path: Path) -> str:
@@ -3210,6 +3231,42 @@ def _extract_field_modifiers(node: "tree_sitter.Node", source: bytes) -> list[st
     return mods
 
 
+def _jsts_constructed_from(
+    declarator: "tree_sitter.Node", source: bytes,
+) -> "str | None":
+    """The callee of a declarator's initializer, for ``meta['constructed_from']``.
+
+    ``const app = new Koa()`` -> ``"Koa"``; ``const r = express.Router()`` ->
+    ``"express.Router"``. Both ``new_expression`` and a plain
+    ``call_expression`` count: JS frameworks use each (``new Koa()`` vs
+    ``express()``), and a YAML author keying on the framework's export does
+    not care which. Qualification is kept so a namespaced callee stays
+    distinguishable from a same-named local.
+
+    A computed callee (``registry[k]()``) has no static name and yields None
+    rather than a guess — a pattern matching a fiction would fail silently.
+    """
+    value = declarator.child_by_field_name("value")
+    if value is None or value.type not in ("new_expression", "call_expression"):
+        return None
+    callee = value.child_by_field_name(
+        "constructor" if value.type == "new_expression" else "function",
+    )
+    if callee is None:  # pragma: no cover - the JS/TS grammar always fills
+        # the callee slot: `new (f())()` and `(0,f)()` yield a
+        # `parenthesized_expression` rather than nothing, and those fall
+        # through to the name-shape check below. Kept as a guard against a
+        # damaged parse.
+        return None
+    if callee.type == "identifier":
+        return _node_text(callee, source)
+    if callee.type == "member_expression":
+        text = _node_text(callee, source)
+        # Only a dotted static path qualifies; `a[b].c` is computed.
+        return text if all(part.isidentifier() for part in text.split(".")) else None
+    return None
+
+
 def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Return the type-annotation text (without the leading ``: ``, e.g.
     ``"string[]"``) of a class field (``public_field_definition``) or a variable
@@ -3220,6 +3277,133 @@ def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str
         if child.type == "type_annotation":
             return _node_text(child, source).lstrip(": ").strip() or None
     return None
+
+
+def _method_signature_text(
+    node: "tree_sitter.Node", source: bytes
+) -> Optional[str]:
+    """TS-idiomatic signature of an interface ``method_signature``: ``"(): string"``.
+
+    Built from the node's own ``formal_parameters`` plus its return
+    ``type_annotation``, the same two slots the class ``method_definition`` path
+    reads. Returns None when there are no parameters to read, which is the
+    signal the caller uses to leave ``Symbol.signature`` unset rather than
+    storing an empty string.
+    """
+    params = next(
+        (c for c in node.children if c.type == "formal_parameters"), None
+    )
+    if params is None:  # pragma: no cover - a method_signature always has them
+        return None
+    text = _node_text(params, source)
+    ret = next((c for c in node.children if c.type == "type_annotation"), None)
+    if ret is not None:
+        text += ": " + _node_text(ret, source).lstrip(": ").strip()
+    return text
+
+
+def _container_member_specs(
+    body: "tree_sitter.Node", source: bytes
+) -> list[tuple["tree_sitter.Node", str, str, Optional[str]]]:
+    """``(node, member_name, kind, signature)`` per NAMED member of a TS
+    ``enum_body`` / ``interface_body`` (WI-duguk).
+
+    Kinds mirror the class-member branches so a consumer sees one vocabulary:
+    a callable member is a ``method``, a value member is a ``field``. Enum
+    members are ``field`` for the same reason the D and Nim analyzers chose it
+    — they are named values of the type.
+
+    Members with no ``property_identifier`` are skipped and thereby left out of
+    the graph: ``construct_signature`` (``new (x: number): D``) and
+    ``index_signature`` (``[key: string]: unknown``) have no name to anchor, and
+    inventing one would be a wrong-name phantom — strictly worse than the
+    fails-safe recall miss of omitting them.
+    """
+    specs: list[tuple["tree_sitter.Node", str, str, Optional[str]]] = []
+    for child in body.children:
+        if child.type == "enum_assignment":
+            # ``Red = 'red'`` — the name is the assignment's own identifier.
+            name = _find_field_name(child, source)
+            if name:
+                specs.append((child, name, "field", None))
+        elif child.type == "property_identifier":
+            # A bare ``Green`` member sits directly under the enum body.
+            specs.append((child, _node_text(child, source), "field", None))
+        elif child.type == "method_signature":
+            name = _find_field_name(child, source)
+            if name:
+                specs.append(
+                    (child, name, "method", _method_signature_text(child, source))
+                )
+        elif child.type == "property_signature":
+            name = _find_field_name(child, source)
+            if name:
+                specs.append(
+                    (child, name, "field", _extract_field_type(child, source))
+                )
+    return specs
+
+
+def _make_container_member_symbols(
+    container: "tree_sitter.Node",
+    body_type: str,
+    source: bytes,
+    container_name: str,
+    file_path: object,
+    lang: str,
+    run_id: str,
+    line_offset: int,
+    file_stable_id: str,
+) -> list["Symbol"]:
+    """Symbols for an enum's / interface's named members (WI-duguk).
+
+    Emitted from inside the container's own branch rather than as a top-level
+    node-type case, so the owner name is already in hand and no span- or
+    ancestor-walk is needed to find it — which is what keeps an interface and an
+    implementing class in the same file from claiming each other's members.
+    """
+    body = next((c for c in container.children if c.type == body_type), None)
+    if body is None:  # pragma: no cover - a named container always has a body
+        return []
+    out: list["Symbol"] = []
+    for member, member_name, kind, signature in _container_member_specs(
+        body, source
+    ):
+        span = Span(
+            start_line=member.start_point[0] + 1 + line_offset,
+            end_line=member.end_point[0] + 1 + line_offset,
+            start_col=member.start_point[1],
+            end_col=member.end_point[1],
+        )
+        # ``Owner.member`` — ``.`` is the JS/TS separator the containment
+        # linker splits on, matching the class-member branches.
+        full_name = f"{container_name}.{member_name}"
+        qualified_name = _make_jsts_qualified_name(
+            [container_name], member_name, lang,
+        )
+        out.append(Symbol(
+            id=_make_symbol_id(
+                str(file_path), span.start_line, span.end_line,
+                full_name, kind, lang,
+            ),
+            name=full_name,
+            kind=kind,
+            language=lang,
+            path=str(file_path),
+            span=span,
+            origin=PASS_ID,
+            origin_run_id=run_id,
+            signature=signature,
+            stable_id=make_typed_stable_id(
+                kind, signature or "",
+                name=member_name,
+                qualified_name=qualified_name,
+                file_stable_id=file_stable_id,
+            ),
+            qualified_name=qualified_name,
+            line_span=span.end_line - span.start_line + 1,
+        ))
+    return out
 
 
 def _is_module_level_declaration(node: "tree_sitter.Node") -> bool:
@@ -3535,21 +3719,20 @@ def _extract_symbols(
                             start_col=handler_node.start_point[1],
                             end_col=handler_node.end_point[1],
                         )
-                        name = handler_name or f"_{http_method}_handler"
-                        symbol = Symbol(
-                            id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "route", lang),
-                            name=name,
-                            kind="function",
+                        # WI-zugob: Symbol.name changes from the handler name
+                        # to "{METHOD} {path}". Handler identity is preserved in
+                        # meta["handler_ref"] — the key linkers/route_handler
+                        # already resolved against; it never read Symbol.name.
+                        symbols.append(make_route_symbol(
                             language=lang,
                             path=str(file_path),
                             span=span,
+                            method=http_method,
+                            route_path=route_path or "",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            stable_id=make_route_stable_id(http_method, route_path) if route_path else None,
-                            meta={"route_path": route_path, "http_method": http_method, "handler_ref": handler_name, "framework_role": "route"},
-                            line_span=span.end_line - span.start_line + 1,
-                        )
-                        symbols.append(symbol)
+                            handler_ref=handler_name,
+                        ))
                     else:
                         # Inline handler: router.get('/path', (req, res) => {})
                         name = None
@@ -3633,25 +3816,16 @@ def _extract_symbols(
                     start_col=node.start_point[1],
                     end_col=node.end_point[1],
                 )
-                route_meta: dict[str, object] = {
-                    "route_path": rpath,
-                    "http_method": "GET",
-                    "handler_ref": comp,
-                    "framework_role": "route",
-                }
-                route_meta.update(extra_meta)
-                symbols.append(Symbol(
-                    id=_make_symbol_id(str(file_path), span.start_line, span.end_line, handler_name, "route", lang),
-                    name=handler_name,
-                    kind="function",
+                symbols.append(make_route_symbol(
                     language=lang,
                     path=str(file_path),
                     span=span,
+                    method="GET",
+                    route_path=rpath,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
-                    stable_id=make_route_stable_id("GET", rpath),
-                    meta=route_meta,
-                    line_span=span.end_line - span.start_line + 1,
+                    handler_ref=comp,
+                    extra_meta=dict(extra_meta),
                 ))
 
         # Function declarations, incl. generators ``function* g() {}`` (WI-zavad
@@ -3820,6 +3994,11 @@ def _extract_symbols(
                                 # collision post-pass (ADR-0035).
                                 stable_id=make_variable_stable_id(lang, normalize_path(file_name), var_name),
                                 signature=_extract_field_type(child, source),
+                                meta=(
+                                    {"constructed_from": _jsts_cf}
+                                    if (_jsts_cf := _jsts_constructed_from(child, source))
+                                    else None
+                                ),
                                 is_exported=node.parent is not None and node.parent.type == "export_statement",
                                 line_span=vspan.end_line - vspan.start_line + 1,
                             ))
@@ -3846,6 +4025,16 @@ def _extract_symbols(
                     if base_classes:
                         meta["base_classes"] = base_classes
 
+                # audit-findings 0018: the grammar hands us a distinct
+                # `abstract_class_declaration`, so abstractness needs no
+                # inference — but modifiers was left empty, making TS abstract
+                # classes indistinguishable from concrete ones to
+                # `is_abstract_type`. Five other languages record it here.
+                class_modifiers = (
+                    ["abstract"]
+                    if node.type == "abstract_class_declaration"
+                    else []
+                )
                 symbol = Symbol(
                     id=_make_symbol_id(str(file_path), span.start_line, span.end_line, name, "class", lang),
                     name=name,
@@ -3856,6 +4045,7 @@ def _extract_symbols(
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     meta=meta,
+                    modifiers=class_modifiers,
                     shape_id=_jsts_analyzer.compute_shape_id(node),
                     line_span=span.end_line - span.start_line + 1,
                     qualified_name=_make_jsts_qualified_name(
@@ -3890,6 +4080,11 @@ def _extract_symbols(
                     ),
                 )
                 symbols.append(symbol)
+                # WI-duguk: the interface's own member signatures.
+                symbols.extend(_make_container_member_symbols(
+                    node, "interface_body", source, name, file_path, lang,
+                    run.execution_id, line_offset, file_stable_id,
+                ))
 
         # TypeScript type alias declarations
         elif node.type == "type_alias_declaration":
@@ -3945,6 +4140,11 @@ def _extract_symbols(
                     ),
                 )
                 symbols.append(symbol)
+                # WI-duguk: the enum's own named members.
+                symbols.extend(_make_container_member_symbols(
+                    node, "enum_body", source, name, file_path, lang,
+                    run.execution_id, line_offset, file_stable_id,
+                ))
 
         # Method definitions inside classes (including getters/setters)
         elif node.type == "method_definition":
@@ -5124,17 +5324,17 @@ def _extract_edges(
                             if lookup_result.found and lookup_result.symbol is not None:
                                 target = lookup_result.symbol
                         # Route symbols can shadow function symbols in
-                        # global_symbols (last-one-wins).  When target is
-                        # a route, prefer the function symbol with the
-                        # same name via symbols_by_name, so the edge
-                        # points to the function definition.
-                        if target is not None and (target.meta or {}).get("framework_role") == "route" and symbols_by_name:
-                            fn_candidates = [
-                                s for s in symbols_by_name.get(arg_name, [])
-                                if s.kind in ("function", "method")
-                            ]
-                            if fn_candidates:
-                                target = fn_candidates[0]
+                        # global_symbols (last-one-wins).
+                        #
+                        # WI-zugob: a route-marker disambiguation used to live
+                        # here — when this name lookup returned a route rather
+                        # than the handler, it preferred the function with the
+                        # same name. That collision was only possible because
+                        # route markers were NAMED AFTER THEIR HANDLER, which is
+                        # the defect the make_route_symbol migration removed: a
+                        # marker is now "{METHOD} {path}", which is never a valid
+                        # identifier, so an identifier lookup can no longer
+                        # return one. The branch became unreachable and is gone.
                         if (
                             target is not None
                             and target.kind in ("function", "method", "route")
@@ -5185,14 +5385,11 @@ def _extract_edges(
                         resolved: Symbol | None = None
                         if arg.type == "identifier":
                             arg_name = _node_text(arg, source)
+                            # WI-zugob: the sibling route-marker
+                            # disambiguation is gone for the same reason as
+                            # above — "{METHOD} {path}" cannot collide with an
+                            # identifier.
                             resolved = global_symbols.get(arg_name)
-                            if resolved is not None and (resolved.meta or {}).get("framework_role") == "route" and symbols_by_name:
-                                fn_cands = [
-                                    s for s in symbols_by_name.get(arg_name, [])
-                                    if s.kind in ("function", "method")
-                                ]
-                                if fn_cands:
-                                    resolved = fn_cands[0]
                         elif arg.type == "call_expression":
                             # Factory call like need('txt') — resolve the
                             # factory function itself.
@@ -5721,6 +5918,11 @@ def _analyze_javascript_impl(
     global_methods: dict[str, list[Symbol]] = {}
     global_classes: dict[str, Symbol] = {}
     # All symbols indexed by name (supports multiple with same name for disambiguation)
+    # INV-fafol: path -> that file's symbols, built once. Symbols carry a
+    # repo-relative ``path`` and ``pf_name`` is computed the same way, so the
+    # keys agree; a mismatch would yield an empty list and silently make the
+    # anchoring inert, which is the failure mode this fix exists to remove.
+    _symbols_by_path = symbols_by_path_index(all_symbols)
     symbols_by_name: dict[str, list[Symbol]] = {}
     # Position-based lookup for inline route handlers: (file_path, start_line, start_col) -> Symbol
     symbol_by_position: dict[tuple[str, int, int], Symbol] = {}
@@ -5731,8 +5933,11 @@ def _analyze_javascript_impl(
         if sym.name not in symbols_by_name:
             symbols_by_name[sym.name] = []
         symbols_by_name[sym.name].append(sym)
-        # Index by position for inline handler lookup in UsageContext creation
-        symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
+        # Index by position for inline handler lookup in UsageContext creation.
+        # A symbol without a span has no position to index; consumers fall
+        # back to name-based lookup in global_symbols.
+        if sym.span is not None:
+            symbol_by_position[(sym.path, sym.span.start_line, sym.span.start_col)] = sym
         if sym.kind == "method":
             method_name = sym.name.split(".")[-1] if "." in sym.name else sym.name
             if method_name not in global_methods:
@@ -5803,6 +6008,15 @@ def _analyze_javascript_impl(
             run_id=run.execution_id,
             call_node_kinds=("call_expression",),
             call_function_field_names=("function",),
+            # INV-fafol: anchor each read to the callable that performs it,
+            # not to the file. Propagation pairs a source and a sink that
+            # share a caller, so a file-anchored source can never reach any
+            # sink -- measured: process.env.API_KEY -> fs.writeFileSync was
+            # missed while os.hostname() -> fs.writeFileSync in the sibling
+            # function was found.
+            enclosing_symbols=symbols_for_path(
+                _symbols_by_path, str(pf.path), pf_name,
+            ),
         )
         # ADR-0015 Tier 1: automatic dataflow annotation from AST context
         if _df_config is not None:

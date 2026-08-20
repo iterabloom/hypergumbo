@@ -6,8 +6,14 @@ This analyzer uses tree-sitter to parse Agda files and extract:
 - Function definitions (including theorems, lemmas, postulates)
 - Data type definitions
 - Record type definitions and record field declarations
-- Import statements (open import, import)
+- Import statements (open import, import), including ``renaming (x to y)``
+  clauses, which feed alias resolution so a renamed import still resolves
+- Type signatures, captured onto the symbol's ``signature`` field
 - Reference relationships from both pattern clause bodies AND type signatures
+
+Cyclomatic complexity and line span are stamped for callables only (INV-loguk):
+Agda's grammar has no decision-point nodes for the non-callable kinds, so a
+number there would be a constant masquerading as a measurement.
 
 Agda is a dependently typed programming language and proof assistant.
 Unlike typical programming languages, "calls" are less meaningful than

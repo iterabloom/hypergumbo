@@ -215,6 +215,24 @@ class TestAmbiguousEntryDetection:
         assert py_ping.id in [c.id for c in error.candidates]
         assert ts_ping.id in [c.id for c in error.candidates]
 
+    def test_ambiguous_entry_error_none_span_renders_line_zero(self) -> None:
+        """WI-hafap: a span-less candidate renders ``path:0`` in the
+        disambiguation message instead of crashing the very error the
+        user needs (deserialized symbols may carry span=None)."""
+        s1 = Symbol(
+            id="python:a.py:0-0:ping:function",
+            name="ping", kind="function", language="python",
+            path="a.py", span=None,
+        )
+        s2 = Symbol(
+            id="python:b.py:0-0:ping:function",
+            name="ping", kind="function", language="python",
+            path="b.py", span=None,
+        )
+        with pytest.raises(AmbiguousEntryError) as exc_info:
+            raise_if_ambiguous("ping", [s1, s2])
+        assert "a.py:0" in str(exc_info.value)
+
     def test_no_error_when_exact_id_used(self) -> None:
         """Should not raise error when entry is specified by exact node ID."""
         py_ping = make_symbol("ping", path="src/app.py", language="python")
@@ -1586,6 +1604,41 @@ class TestReverseSliceClassExpansion:
         assert find_method.id in result.node_ids
         assert search_method.id in result.node_ids
         assert controller.id in result.node_ids
+        assert calls1.id in result.edge_ids
+
+    def test_protocol_entry_expands_to_requirements(self) -> None:
+        """WI-duguk: a `protocol` entry expands like an `interface` entry.
+
+        `protocol` was absent from the slicer's container set, so reverse-slicing
+        from a Swift/Obj-C protocol never expanded to its requirements and
+        returned the container alone — indistinguishable, to a consumer, from
+        "this protocol has no users".
+        """
+        drawable = make_symbol(
+            "Drawable", kind="protocol",
+            path="src/Shapes.swift", start_line=1, end_line=10, language="swift",
+        )
+        draw_req = make_symbol(
+            "Drawable.draw", kind="method",
+            path="src/Shapes.swift", start_line=2, end_line=2, language="swift",
+        )
+        caller = make_symbol(
+            "Renderer.run", kind="method",
+            path="src/Renderer.swift", start_line=1, end_line=8, language="swift",
+        )
+
+        contains1 = make_edge(drawable, draw_req, "contains")
+        calls1 = make_edge(caller, draw_req, "calls")
+
+        nodes = [drawable, draw_req, caller]
+        edges = [contains1, calls1]
+
+        query = SliceQuery(entrypoint="Drawable", max_hops=3, reverse=True)
+        result = slice_graph(nodes, edges, query)
+
+        assert drawable.id in result.node_ids
+        assert draw_req.id in result.node_ids
+        assert caller.id in result.node_ids
         assert calls1.id in result.edge_ids
 
     def test_class_entry_expansion_multi_hop(self) -> None:

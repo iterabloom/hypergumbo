@@ -18,3 +18,18 @@
     pr_ref:  # 0f78
     description: "- **Subject:** Two spec sections give mutually inconsistent contracts for the same entrypoint-confidence field.\n- **Mechanic:** One spec section models entrypoint `confidence` as a discrete four-tier value; another spec section models the same field as continuous (penalties of −50%/−70%/−50% plus a connectivity boost up to +0.25). The two sections describe the same field under contradictory contracts.\n- **Expectation:** The two spec sections should be reconciled into one coherent contract for the field.\n- **Scope:** The same `confidence` field is documented as discrete tiers in one section and as a continuous penalty+boost computation in another.\n- **Exposure:** Any reader of the spec trying to determine what the entrypoint confidence value means or how to interpret it.\n- **Consequence:** The reader cannot determine the field's contract — whichever section they trust, the other contradicts it — so any interpretation or reproduction of entrypoint confidence is built on an internally inconsistent spec.\n\n---\n\n(Filed from dogfooding.)"  # 0f78
     fields: {}  # 0f78
+- op: update  # c6d4
+  at: '2026-07-30T17:47:10Z'  # c6d4
+  by: agent  # c6d4
+  actor: jgstern_agent  # c6d4
+  clock: 2  # c6d4
+  nonce: c6d4  # c6d4
+  set:  # c6d4
+    status: done  # c6d4
+- op: discuss  # ef1d
+  at: '2026-07-30T17:47:10Z'  # ef1d
+  by: agent  # ef1d
+  actor: jgstern_agent  # ef1d
+  clock: 3  # ef1d
+  nonce: ef1d  # ef1d
+  message: "DONE — spec-only. The two contradicting descriptions turned out to be describing what are now TWO DIFFERENT FIELDS, so the contradiction dissolves rather than needing a winner.\n\nThe section modelled entrypoint confidence as discrete four-tier in one place and as continuous (penalties of x0.1/x0.3/x0.5 plus a boost) in another. ADR-0039 split those roles: confidence became pure detection reliability holding only the discrete base, and every penalty/demotion/boost moved to rank_score (thread A PR-4, closing WI-lutad + WI-dojor). The spec had NOT been updated — it still said the penalties apply to confidence and that the move was 'slated', a forward-looking phrase describing something already shipped.\n\nVerified on a fresh self-survey: all 118 entrypoints carry BOTH fields; confidence holds the discrete bases while rank_score spans 0.345-1.000 continuously.\n\nFixed en route, same root: SORTING was documented on the wrong key. The spec said 'Ranked by confidence (highest first)'; entrypoints.py:1600 sorts by rank_score, and the emitted array is verifiably ordered by rank_score and NOT by confidence (checked both orderings directly). Two producer docstrings (entrypoints.py:41 and the detect_entrypoints Returns block) repeated the stale claim and were corrected too — leaving them would have let the contradiction be restored from the code side by anyone trusting the docstring over the sort."  # ef1d

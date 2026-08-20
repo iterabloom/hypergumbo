@@ -20,3 +20,42 @@
     pr_ref:  # 64b1
     description: "The one measurement that GATES the entire incremental-analysis stream (INC-1 / INC-2). Cheap experiment, startable NOW, NO dependencies.\n\nMeasure full `hypergumbo survey` wall-clock across a representative repo spread: small (~1k LOC), medium (~50k), large (~500k), and a monorepo. Report a latency table.\n\nDecision rule it feeds:\n- tens of seconds  -> the \"recomputation\" worry evaporates; cached-base + structural diff (WI-zomuk) is plainly enough; INC-1 / INC-2 are NOT needed.\n- minutes           -> package-scoping (INC-2) earns its keep.\n- tens of minutes on a monorepo -> file-level memoization (INC-1) earns its keep.\n\nMethod: 1-repo mini-trial first to validate setup + estimate runtime, per the experiment-design playbook. If any single-command extrapolation exceeds ~8h, document the design in the lab notebook instead of running it.\n\nNo dependencies — this is the fork-of-the-road input; do it before committing to any INC-* work."  # 64b1
     fields: {}  # 64b1
+- op: discuss  # 59bc
+  at: '2026-08-17T08:36:55Z'  # 59bc
+  by: agent  # 59bc
+  actor: jgstern_agent  # 59bc
+  clock: 2  # 59bc
+  nonce: 59bc  # 59bc
+  message: "PARTIAL MEAS-1, MEASURED 2026-08-17 — and it is enough to resolve the fork in\nthis item's own decision rule. Read the caveats before quoting the numbers.\n\nCOLD FULL-ANALYSIS WALL-CLOCK, one trial each:\n\n  repo                    analyzed scale        subcommand      cold\n  smoke (linkers/ copy)   67 .py files          survey            33 s\n  cockroach (stub)        ~0 matched src         io-boundaries     17 s\n  nats-server (Go)        251 .go files          io-boundaries    119 s\n  whisper.cpp (polyglot)  565 C/C++/other        survey           201 s\n  whisper.cpp             same                   io-boundaries    212 s\n  hypergumbo (MONOREPO)   ~700 .py in 7 pkgs     slice --files    489 s\n\nCAVEATS, stated because this is opportunistic data rather than a benchmark:\nsingle trial per cell, three different subcommands (all of which perform the\nsame full analysis first), a shared machine with other work in flight, and the\n\"cockroach\" corpus entry is a stub, not the real repo — it is in the table only\nas the floor. The band placement is what these support; the individual seconds\nare not repeatable to better than tens of percent.\n\nAGAINST THIS ITEM'S OWN DECISION RULE:\n  \"tens of seconds\"                -> only the small cell (33 s).\n  \"minutes\"                        -> medium (2 min), large (3.4 min), and the\n                                      monorepo (8.2 min). THREE OF FOUR CELLS.\n  \"tens of minutes on a monorepo\"  -> NOT reached. 8.2 min, not 20-60.\n\nVERDICT: INC-2 / package-scoped re-analysis (WI-zagij) EARNS ITS KEEP by this\nitem's stated rule. INC-1 / per-file memoization (WI-madut) does NOT yet, on\nthe user-latency argument alone — the monorepo cell is minutes, not tens of\nminutes. I am not going to stretch 8.2 into \"tens\".\n\nWHAT THE RULE DID NOT ANTICIPATE, and why it matters more than the band. This\nrule prices a full run as a ONE-OFF a user waits through. In the dogfooding\nloop it is paid PER EDIT: the results cache is keyed on a whole-tree state_hash,\nso every local `pytest` invocation re-analyzes the repo. Seven consecutive\nsmart-test runs this session took 9m39s, 9m32s, 8m49s, 9m05s, 9m08s, 9m17s,\n8m30s, of which the tests were 13-19 s. 18 state_hash directories exist under\nthis repo's cache fingerprint, mtimes matching those runs one-to-one. So the\nsame 489 s that reads as \"8 minutes, tolerable once\" is ~97% of every\nedit-test cycle. Filed as WI-runiz.\n\nSTILL UNMEASURED, so this item is not closed: a real large single-repo (the\nwhisper.cpp cell is 69 MB but only 565 source files), a genuine 500k-LOC repo,\nand repeat trials for variance. WI-rukaz separately records a Java repo at\n~14.6k files taking >60 min with the bottleneck unlocated — if that reproduces\nit IS the \"tens of minutes\" cell and would ungate WI-madut too."  # 59bc
+- op: update  # e670
+  at: '2026-08-17T08:36:55Z'  # e670
+  by: agent  # e670
+  actor: jgstern_agent  # e670
+  clock: 3  # e670
+  nonce: e670  # e670
+  set:  # e670
+    priority: 1  # e670
+- op: discuss  # 87af
+  at: '2026-08-17T11:04:23Z'  # 87af
+  by: agent  # 87af
+  actor: jgstern_agent  # 87af
+  clock: 4  # 87af
+  nonce: 87af  # 87af
+  message: "MEAS-1 CORRECTION — the pass/non-pass split recorded on this item and on WI-balaf was\ncomputed with a metric that does not sum to the wall clock, so the earlier\n\"analyzers 22% / linkers 7% / overhead 71%\" numbers overstate the pass share.\n\nSumming per-pass duration_ms treats concurrent passes as if they were serial. On\nhypergumbo itself: 96 cards total 157.7s of duration_ms, but the run_all_analyzers +\nrun_all_linkers spans measured 93.9s of WALL. Card sums are closer to CPU time than\nto elapsed, so any \"share of wall\" derived from them is inflated, and the residual\nattributed to non-pass overhead by subtraction is correspondingly understated in\nkind (though it was still the dominant term).\n\nWall-clock shares from direct phase timing (scripts/measure-survey-phase-split.py,\ninclusive/exclusive accounting, reconciling to 95.7%):\n    analyzers 12.6%  |  linkers 5.6%  |  fingerprint post-pass 62.6%\n\nCONSEQUENCE FOR THIS ITEM'S BASELINE TABLE. The cells recorded here (33s / 119s /\n201s / 489s cold full analysis) are wall-clock and remain valid as totals. What is\nNOT valid is decomposing any of them via card sums. If MEAS-1 wants a per-phase\ndecomposition per repo, the phase-split instrument produces one directly, and its\n--lean arm additionally prices the side outputs.\n\nAlso relevant to the band decision rule: after the WI-balaf fix a cold full analysis\nof this monorepo is 220.0s, not 517.7s. The rule keys on measured wall clock, so\nre-read it against the new figure rather than the old one."  # 87af
+- op: update  # c5ce
+  at: '2026-08-17T21:04:10Z'  # c5ce
+  by: agent  # c5ce
+  actor: jgstern_agent  # c5ce
+  clock: 5  # c5ce
+  nonce: c5ce  # c5ce
+  set:  # c5ce
+    status: wont_do  # c5ce
+  add:  # c5ce
+    tags: [someday]  # c5ce
+- op: discuss  # fd61
+  at: '2026-08-17T21:04:10Z'  # fd61
+  by: agent  # fd61
+  actor: jgstern_agent  # fd61
+  clock: 6  # fd61
+  nonce: fd61  # fd61
+  message: "OWNER RULING (2026-08-17), verbatim: \"I guess we've mined all the processing\nefficiency that's reasonable to mine at this point in the hypergumbo project.\"\n\nPARKED — wont_do + someday. Not \"won't ever\"; \"not at this point in the project\".\nThis item is intact and its ceiling is measured, so re-opening is a status change,\nnot a re-derivation.\n\nWHAT WAS ACTUALLY MINED, so nobody re-measures it:\n  cold run_survey on this monorepo   517.7s -> 139.1s   (3.7x)\n    #394  fingerprint locator was quadratic in file size   -297.7s (62.6% of wall)\n    #395  --minimal declines side outputs a caller never reads   -59.1s\n    #397  one shared CLI scan instead of four                    -23.3s\n\nWHY PARKED. MEAS-1 existed to decide whether full-run latency hurt enough to\njustify the incremental designs. That question is now ANSWERED by other means and\nthe designs are parked, so the remaining cells (a real large single-repo cell,\nrepeat trials) would be measurement without a decision attached.\n\nWHAT SURVIVES AND SHOULD NOT BE LOST: the band rule, and the correction that its\nown numbers must not be decomposed via per-pass duration_ms sums (WI-nuvam). Any\nfuture latency question should start from scripts/measure-survey-phase-split.py,\nwhich reconciles to the wall clock, rather than re-running this item's protocol.\n\nRE-OPEN TRIGGER: a new latency complaint on a repo class not represented in the\nrecorded cells (33s / 119s / 201s / 489s-now-139.1s)."  # fd61

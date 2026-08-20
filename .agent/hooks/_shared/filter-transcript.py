@@ -227,10 +227,19 @@ def filter_new_lines(src_path, dest_path, state):
         dest_dir = os.path.dirname(dest_path)
         if dest_dir:
             os.makedirs(dest_dir, exist_ok=True)
-        with open(dest_path, "ab") as f:
+        # Owner-only, both at creation (the 0o600 in os.open) and on every
+        # append (the chmod, which heals files a pre-contract session left
+        # at 664 — mv and the scrubber preserve modes, so nothing downstream
+        # ever tightens them). INV-todig: transcripts republish command
+        # output verbatim, so their mode must match .env's, not the umask.
+        fd = os.open(
+            dest_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600
+        )
+        with os.fdopen(fd, "wb") as f:
             for line in output_lines:
                 f.write(line)
                 f.write(b"\n")
+        os.chmod(dest_path, 0o600)
 
     return {
         "offset": new_offset,
