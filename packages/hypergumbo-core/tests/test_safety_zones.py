@@ -26,6 +26,7 @@ from hypergumbo_core.safety_zones import (
     cache_write_zip,
     _safety_zone_barrier,
     cache_mkdir,
+    cache_rename,
     cache_rmtree,
     cache_save_npy,
     cache_write,
@@ -200,7 +201,7 @@ def test_every_destructive_wrapper_enforces_a_zone() -> None:
 
     destructive = {
         name for name in dir(sz)
-        if name.endswith(("_rmtree", "_unlink"))
+        if name.endswith(("_rmtree", "_unlink", "_rename"))
         and callable(getattr(sz, name))
     }
     assert destructive, "no destructive wrappers found — check the naming rule"
@@ -365,3 +366,118 @@ def test_cache_write_zip_refuses_a_destination_outside_its_zone(
     with pytest.raises(SafetyZoneViolation):
         cache_write_zip(outside, root, [member])
     assert not outside.exists()
+
+
+def test_cache_rename(tmp_path: Path, monkeypatch) -> None:
+    """Renames a path inside the zone.
+
+    ``_archive_entry`` renames a ``.partial`` archive into place and moves an
+    evicted entry to a scratch name. Both are cache-internal writes, but a
+    bare ``Path.rename`` is an unwrapped fs mutation reachable from the
+    runtime CLI — the same population ``cache_unlink`` exists to keep out of
+    ``runtime-cli-no-host-fs``.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "hypergumbo" / "soft-deleted-surveys"
+    d.mkdir(parents=True)
+    src = d / "repo__state.zip.partial"
+    src.write_bytes(b"archive")
+    dst = d / "repo__state.zip"
+    cache_rename(src, dst)
+    assert dst.read_bytes() == b"archive"
+    assert not src.exists()
+
+
+def test_cache_rename_refuses_a_source_outside_its_zone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The guard is enforced, not merely documented."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "hgcache"))
+    outside = tmp_path / "precious.txt"
+    outside.write_text("do not move me")
+    with pytest.raises(SafetyZoneViolation):
+        cache_rename(outside, tmp_path / "hgcache" / "hypergumbo" / "moved.txt")
+    assert outside.exists(), "the refusal must be a refusal, not a warning"
+
+
+def test_cache_rename_refuses_a_destination_outside_its_zone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A rename has TWO endpoints; checking only the source is an escape.
+
+    This is the one way ``cache_rename`` differs in shape from every other
+    wrapper in this module: ``cache_unlink`` / ``cache_rmtree`` take a single
+    path, so a single ``_require_within_zone`` call is the whole guard. A
+    rename whose source is in-zone can still deposit the bytes anywhere on
+    the host, so the destination needs its own check.
+    """
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    d = tmp_path / "hypergumbo"
+    d.mkdir(parents=True)
+    src = d / "entry.zip"
+    src.write_bytes(b"archive")
+    escape = tmp_path / "escaped.zip"
+    with pytest.raises(SafetyZoneViolation):
+        cache_rename(src, escape)
+    assert not escape.exists(), "the destination guard must block the write"
+    assert src.exists(), "a refused rename must leave the source intact"
+
+
+def test_cache_rename_honours_an_explicit_zone_root(tmp_path: Path) -> None:
+    """``zone_root`` checks against the caller's own resolved root.
+
+    Mirrors ``cache_rmtree`` / ``cache_unlink``: a caller that already
+    resolved the cache base passes it in so the guard is checked against the
+    SAME root it is operating in, rather than a second XDG-derived one.
+    """
+    root = tmp_path / "explicit-cache"
+    root.mkdir()
+    src = root / "a.zip.partial"
+    src.write_bytes(b"x")
+    dst = root / "a.zip"
+    cache_rename(src, dst, zone_root=root)
+    assert dst.exists()
+
+
+def test_cli_has_no_bare_rename_calls() -> None:
+    """Positive control for the defect CLASS, not just the two call sites.
+
+    ``safety_zones`` shipped wrappers for write / write_bytes / rmtree /
+    write_zip / unlink / mkdir / copy / chmod and no rename wrapper at all,
+    so ``_archive_entry``'s two renames were bare because there was nothing
+    to call. When ``pathlib.Path``'s surface was rowed, ``rename`` became a
+    catalogued ``host_fs`` sink and ``runtime-cli-no-host-fs`` flipped
+    ``confirmed_with_caveats`` -> ``violated`` on exactly those two flows.
+
+    NOT A DUPLICATE of ``test_runtime_fs_write_wrapper_discipline.py``, which
+    walks the same ASTs over the same modules — do not delete this as
+    redundant. That guard derives its primitive set from the live catalogue
+    and then subtracts ``catalog.ambiguous_names``; ``rename`` IS catalogued
+    ``fs_write`` (``pathlib.Path.rename`` and ``os.rename``) but IS ambiguous,
+    so it is filtered out there. That is deliberate and documented — the
+    guard calls itself "a syntactic backstop for the unambiguous majority"
+    and delegates the rest to "the boundary analysis, which has receiver
+    evidence". The boundary analysis is the ``self-claims-gate`` CI step,
+    which is path-triggered on the claim surface and had not run for 63
+    commits when this defect landed. Both layers were open at once. This
+    test closes the ``rename`` name specifically, by name, unconditionally.
+
+    Parsed as an AST rather than grepped: a regex over source also matches
+    its own docstrings, and this very docstring names ``.rename`` repeatedly.
+    """
+    import ast
+
+    src = Path(__file__).resolve().parents[1] / "src" / "hypergumbo_core" / "cli.py"
+    tree = ast.parse(src.read_text())
+    bare = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "rename"
+    ]
+    assert bare == [], (
+        f"bare .rename() call(s) in cli.py at line(s) {bare} — route "
+        f"cache-internal renames through safety_zones.cache_rename so the "
+        f"zone-barrier sanitizer applies"
+    )

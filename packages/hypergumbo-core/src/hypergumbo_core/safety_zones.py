@@ -271,6 +271,44 @@ def cache_unlink(path: Path, zone_root: Path | None = None) -> None:
     path.unlink()
 
 
+def cache_rename(src: Path, dst: Path, zone_root: Path | None = None) -> None:
+    """Rename a path within ``~/.cache/hypergumbo/``.
+
+    SAFETY ZONE: ``user_cache``. Used by ``_archive_entry`` to publish a
+    ``.partial`` archive under its final name and to move an evicted entry to
+    the ``.evicting-`` scratch name — the rename-before-delete ordering that
+    is the whole crash-safety argument for soft eviction.
+
+    WHY THIS WRAPPER HAD TO EXIST. It did not, and that was the defect. The
+    module shipped ``cache_write`` / ``cache_write_bytes`` / ``cache_rmtree``
+    / ``cache_write_zip`` / ``cache_unlink`` / ``cache_mkdir`` and no rename
+    of any zone, so ``_archive_entry``'s two renames were bare for want of
+    anything to call. Once ``pathlib.Path``'s surface was rowed in the I/O
+    catalogue, ``Path.rename`` became a catalogued ``host_fs`` sink and
+    ``runtime-cli-no-host-fs`` went ``confirmed_with_caveats`` ->
+    ``violated`` on precisely those two flows, reachable from ``cmd_run`` and
+    ``cmd_cache_status`` via ``_maybe_evict_cache``. The writes were always
+    inside the cache; what was missing was the barrier that says so. This is
+    the same argument ``cache_unlink``'s docstring makes about a bare
+    ``Path.unlink``, one primitive later.
+
+    ENFORCED, not merely declared: **both** endpoints must lie within the
+    cache root or :class:`SafetyZoneViolation` is raised. Checking only the
+    source would leave the wrapper able to deposit cache bytes anywhere on
+    the host, which is the one way a rename's guard differs in shape from
+    every single-path wrapper above.
+
+    ``zone_root`` has the same meaning as in :func:`cache_rmtree`: a caller
+    that already resolved the cache base passes it in so the guard is checked
+    against the SAME root it is operating in.
+    """
+    _safety_zone_barrier()
+    root = zone_root or _cache_zone_root()
+    _require_within_zone(src, root, "user_cache")
+    _require_within_zone(dst, root, "user_cache")
+    src.rename(dst)
+
+
 def cache_save_npy(path: Path, embedding: "np.ndarray") -> None:  # pragma: no cover - exercised by test_cache_save_npy with importorskip
     """Save a numpy array to a cache path via ``np.save``.
 
