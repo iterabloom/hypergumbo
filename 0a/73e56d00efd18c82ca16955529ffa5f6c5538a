@@ -1,0 +1,58 @@
+Original commit body from 5ba8c9000aa62b31808af9fb4001151f3f86adb4:
+
+Tagging v8.0.0 signed cleanly and then died at the push:
+
+  remote: Invalid username or token. Password authentication is not
+          supported for Git operations.
+  fatal: Authentication failed for 'https://github.com/...'
+
+GitHub removed password auth for Git in 2021, so an https origin with no
+credential helper prompts for a password that can never work. The release
+was then wedged in a state the script could not recover from on its own: a
+signed local tag, nothing on the remote, and a step 3 that offers to DELETE
+AND RECREATE the very tag just signed. Ordering is the fix -- new step 4
+verifies credentials before step 5 creates the tag, so the failure costs
+nothing and the script stays re-runnable.
+
+THE PROBE IS git ls-remote, not a protocol-specific check: it exercises the
+same credential path the push will use, for ssh and https alike.
+GIT_TERMINAL_PROMPT=0 turns "hang forever waiting for a username" into a
+fast non-zero, which is what makes it usable as a preflight. On an https
+origin that fails, it runs gh auth login + gh auth setup-git and RE-PROBES
+-- gh can exit 0 with the push still impossible, and without the re-probe
+this returns success and signs an unpushable tag, i.e. the original defect
+one layer down.
+
+ssh -T git@github.com is printed as a diagnostic and never branched on: it
+exits 1 even on SUCCESS, so anything keying on its status reads a working
+key as broken.
+
+IDENTITY. The org pays for two seats, josh-iterabloom (human) and
+jgstern-agent (agent). The step reports the login and warns when it is
+neither. It also warns when GH_TOKEN/GITHUB_TOKEN is set, because those
+override gh auth login silently -- the human can log in as themselves and
+still push as the agent. HG_GITHUB_TOKEN is deliberately NOT warned on: gh
+does not read that name, and a warning that fires on every run is one that
+gets ignored. Advisory, not blocking: an ssh push needs no gh login at all.
+
+TESTS execute the shipped function against stub git/gh on PATH, per the
+rule that a shell guard which cannot be shown to fire is indistinguishable
+from one matching nothing. Each arm is separated by an input: the re-probe
+test fails if the re-probe is dropped, the ssh test fails if gh is invoked,
+the ordering test fails if the call moves after tag creation. Two findings
+from writing them:
+  - the harness must be hermetic. gh IS installed at /usr/bin/gh here, so
+    an earlier PATH that appended /usr/bin let the "gh not installed" case
+    reach the REAL gh and block on an interactive login until timeout.
+  - PATH holding only stubs means the stubs themselves may use nothing but
+    builtins: absolute shebang, and `: > file` rather than touch.
+
+Docs updated to the 6-step flow in both homes that carried the old list
+(docs/sops/RELEASE_SOP.md and the release-workflow playbook), each stating
+why step 4 precedes step 5 rather than just renumbering. The playbook also
+drops a stale "merge the PR on Codeberg web UI" -- origin is GitHub.
+
+Playbook edit under .agent/** made with explicit owner approval in-session,
+including approval to use auto-pr without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
