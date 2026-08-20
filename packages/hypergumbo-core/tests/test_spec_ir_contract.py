@@ -217,3 +217,125 @@ def test_spec_names_every_cli_subcommand() -> None:
         f"these subcommands ship but are never shown as `hypergumbo <cmd>` in "
         f"docs/hypergumbo-spec.md: {unnamed}"
     )
+
+
+# --- Entrypoint confidence bases -------------------------------------------
+#
+# 4. **One fact, three homes.** The entrypoint confidence bases were written
+#    out in §8 (a four-row table), in §9 (an eight-row list grouped by
+#    ``evidence_type``), and in §12 (prose asserting "the four standard tiers
+#    span [0.70, 0.99]"). WI-logad corrected §9 and left the other two. The
+#    result: §8 omitted the 0.75 ``library_export`` base that, by §9's own
+#    measurement, the plurality of entrypoints carry (45 of 118), and §12
+#    claimed the only non-tier values sat *below* [0.70, 0.99] when 0.90,
+#    0.80 and 0.75 sit inside it. Both surfaces were internally plausible.
+#    §12 no longer enumerates; §8 and §9 still do, so both are pinned here to
+#    the detector's literals.
+
+_SENTINEL_SUPPRESSION = 0.05
+"""Frontend-route suppression: emitted, then filtered by MIN_ENTRYPOINT_CONFIDENCE.
+
+Documented in §8 as a sentinel rather than a tier, so it is excluded from the
+tier-set comparison instead of being expected in either table.
+"""
+
+
+def _detector_confidence_literals() -> set[float]:
+    """Every ``confidence=<float>`` the entrypoint detector actually emits.
+
+    Parsed from the AST, not grepped: a regex over the source also matches the
+    three ``confidence=0.9x`` mentions inside ``_detect_from_concepts``'s
+    docstring, which inflated the count that first surfaced this drift.
+    """
+    import ast
+
+    from hypergumbo_core import entrypoints
+
+    tree = ast.parse(Path(entrypoints.__file__).read_text(encoding="utf-8"))
+    found: set[float] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.keyword)
+            and node.arg == "confidence"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, float)
+        ):
+            found.add(node.value.value)
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+            if isinstance(node.value.value, float) and any(
+                isinstance(t, ast.Name) and t.id == "confidence" for t in node.targets
+            ):
+                found.add(node.value.value)
+    return found
+
+
+def _spec_section8_tier_table() -> set[float]:
+    """Confidence values in §8's canonical ``Entrypoint Confidence Tiers`` table."""
+    block = re.search(
+        r"### Entrypoint Confidence Tiers\n(.*?)\n### ",
+        _spec_text(),
+        re.S,
+    )
+    assert block is not None, "§8 tier table section not found"
+    return {float(m) for m in re.findall(r"^\|[^|]+\|\s*(0\.\d+)\s*\|", block.group(1), re.M)}
+
+
+def _spec_section9_tier_list() -> set[float]:
+    """Confidence values in §9's ``Confidence tiers`` list (grouped by evidence_type)."""
+    block = re.search(r"\*\*Confidence tiers\*\*[^\n]*\n((?:- .*\n)+)", _spec_text())
+    assert block is not None, "§9 confidence-tier list not found"
+    return {float(m) for m in re.findall(r"^- (0\.\d+):", block.group(1), re.M)}
+
+
+def test_entrypoint_extractors_are_not_vacuous() -> None:
+    """Positive control: a matcher that silently matches nothing proves nothing.
+
+    Each of the three extractors above is a regex or an AST walk over a
+    document that changes. If one of them quietly stopped matching, the
+    equality assertions below would pass on two empty sets.
+    """
+    literals = _detector_confidence_literals()
+    table = _spec_section8_tier_table()
+    listed = _spec_section9_tier_list()
+
+    assert len(literals) >= 8, f"AST walk found only {literals}"
+    assert len(table) >= 8, f"§8 table extractor found only {table}"
+    assert len(listed) >= 8, f"§9 list extractor found only {listed}"
+    # Anchor values at both ends of the band, so a truncated match is caught.
+    for probe in (0.99, 0.50):
+        assert probe in literals and probe in table and probe in listed
+
+
+def test_spec_entrypoint_tiers_match_the_detector_literals() -> None:
+    """§8's table must name every base the detector emits, and no others."""
+    expected = _detector_confidence_literals() - {_SENTINEL_SUPPRESSION}
+    documented = _spec_section8_tier_table()
+
+    assert documented == expected, (
+        f"§8 tier table drifted from entrypoints.py: "
+        f"missing {sorted(expected - documented)}, "
+        f"undocumented-in-code {sorted(documented - expected)}"
+    )
+
+
+def test_spec_section9_tier_list_agrees_with_section8() -> None:
+    """The second home must not drift from the canonical one."""
+    assert _spec_section9_tier_list() == _spec_section8_tier_table()
+
+
+def test_spec_symbol_meta_key_count_matches_the_registry() -> None:
+    """§9's ``(N keys)`` for the symbol_meta axis must be the registry's count.
+
+    The spec said 47 while the registry held 50; the count is written by hand
+    and nothing recomputed it.
+    """
+    from hypergumbo_core import axis_meta_keys
+
+    live = len(axis_meta_keys.meta_keys_on_axis(axis_meta_keys.AXIS_SYMBOL_META))
+    m = re.search(
+        r"the `symbol_meta` axis in `axis_meta_keys\.py` \((\d+) keys\)", _spec_text()
+    )
+    assert m is not None, "§9 symbol_meta key-count claim not found"
+    assert int(m.group(1)) == live, (
+        f"spec says {m.group(1)} symbol_meta keys; registry has {live}"
+    )
