@@ -19,7 +19,7 @@ Three case studies illustrate this (documented in full in `docs/governance-case-
 | JS/TS anonymous functions | 0 call edges | `_get_enclosing_function()` returns None for arrow functions | Added position-based lookup to populate `symbol_ref` | Partial fix (JS/TS only) |
 | Library exports | No entrypoints for libraries | `symbol_ref` gate skips anonymous exports | Set `symbol_ref` when name resolves | Partial fix (named exports only) |
 
-**Common thread:** All three work around the same gate at `framework_patterns.py:992-993`:
+**Common thread:** All three work around the same gate in `framework_patterns.py::enrich_symbols`:
 
 ```python
 for ctx in usage_contexts:
@@ -366,7 +366,7 @@ For the last change made:
 - [ ] If root cause fixed or truly isolated: document in invariant ledger, then stop
 
 ## Current Root Causes (Known Unfixed)
-- `symbol_ref` gate at `framework_patterns.py:992-993`
+- `symbol_ref` gate in `framework_patterns.py::enrich_symbols`
 ```
 
 ### 4. Create the Invariant Ledger
@@ -386,12 +386,12 @@ For the last change made:
 ## INV-002: Usage-to-Concept Flow
 - **Statement:** Usage patterns extracted by analyzers become concepts on nodes
 - **Status:** ❌ UNFIXED
-- **Root cause:** `symbol_ref` gate at `framework_patterns.py:992-993`
+- **Root cause:** `symbol_ref` gate in `framework_patterns.py::enrich_symbols`
 - **Workarounds:**
   - Rails: Direct Symbol creation (bypasses UsageContext flow)
   - Library exports: Set `symbol_ref` when name resolves
 - **Affected frameworks:** Rails, Django string views, any string-based handler reference
-- **Regression tests:** `test_ruby.py::test_rails_routes` (tests workaround, not fix)
+- **Regression tests:** `test_ruby.py::test_rails_route_with_to_option` (tests workaround, not fix)
 
 ## INV-003: [Template for new invariants]
 - **Statement:** [What must always be true]
@@ -472,7 +472,7 @@ cat .agent/invariant-ledger.md | grep -A5 "Status: ❌"
 
 - `docs/governance-case-critiques.md`: Full technical analysis with case critiques
 - ADR-0001: Portable Agent Instructions (establishes `AGENTS.md` as canonical)
-- `framework_patterns.py:992-993`: The `symbol_ref` gate
+- `framework_patterns.py::enrich_symbols`: The `symbol_ref` gate
 - [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks.md)
 - [Gemini CLI Hooks Reference](https://geminicli.com/docs/hooks/reference/)
 - [Cursor Hooks Docs](https://cursor.com/docs/agent/hooks)

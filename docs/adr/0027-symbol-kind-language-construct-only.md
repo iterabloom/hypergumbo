@@ -11,7 +11,7 @@
 
 ## Context
 
-Hypergumbo's `Symbol` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py:251`) defines `kind` as a free-form `str` with the docstring "Type of symbol (function, class, etc.)". There is no enum, no canonical vocabulary, and no governing principle that constrains what a `kind` value should encode. Each analyzer and linker invents its label in isolation.
+Hypergumbo's `Symbol` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py::Symbol`) defines `kind` as a free-form `str` with the docstring "Type of symbol (function, class, etc.)". There is no enum, no canonical vocabulary, and no governing principle that constrains what a `kind` value should encode. Each analyzer and linker invents its label in isolation.
 
 The 2026-04-30 Adjacent Concept Sweep (the periodic audit-playbook §5 sweep) flagged this field as a confirmed leak. The follow-on deep audit at `WI-dumiz-bikul` returned an inventory of **192 distinct `Symbol.kind` values** in production code (lowercase identifier-shaped string literals at `kind=` sites under `packages/`, excluding tests) and clustered them into eight groups along three orthogonal axes that are silently sharing one field. The audit's verdict was DEPRECATE: full ADR-0023-shape migration warranted.
 

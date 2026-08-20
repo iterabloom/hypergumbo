@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0039: Confidence Separation — confidence Is Pure Detection Reliability; Ranking Moves to rank_score; quality.* Deleted
 
-- Status: **Accepted — Implemented (all five rulings).** `naming_convention` seeded at 0.85 (ruling 1); `Edge.confidence_source` with `VALID_CONFIDENCE_SOURCES` (ruling 2); ranking relocated to `rank_score`, which `entrypoints.py:1605` sorts on while the `:1661-1685` penalties mutate it and leave `confidence` at its construction base (ruling 3); `Edge.quality` deleted at `SCHEMA_VERSION` 0.20.0 (ruling 4); the fictional `EVIDENCE_CONFIDENCE_MATRIX` block and the unimplemented 0.30-default MUST removed from the spec (ruling 5 Stage A); and the per-evidence-type table regenerated from the registry (ruling 5 Stage B) — it lives in [`docs/concept-axes.md`](../concept-axes.md#derived-confidence--base_confidence-projection-adr-0039), emitted from `evidence_types.EVIDENCE_TYPES` by `scripts/generate-concept-axes`, held fresh by that script's `--check` gate in `.githooks/pre-commit`, and pinned by `tests/test_generate_concept_axes.py::test_every_seeded_pathway_appears_with_its_value`. Spec §12 owns the *model* and links out to that table for the *values*, which is the separation Stage B specified
+- Status: **Accepted — Implemented (all five rulings).** `naming_convention` seeded at 0.85 (ruling 1); `Edge.confidence_source` with `VALID_CONFIDENCE_SOURCES` (ruling 2); ranking relocated to `rank_score`, which `entrypoints.py::detect_entrypoints` sorts on while its multiplicative penalties mutate it and leave `confidence` at its construction base (ruling 3); `Edge.quality` deleted at `SCHEMA_VERSION` 0.20.0 (ruling 4); the fictional `EVIDENCE_CONFIDENCE_MATRIX` block and the unimplemented 0.30-default MUST removed from the spec (ruling 5 Stage A); and the per-evidence-type table regenerated from the registry (ruling 5 Stage B) — it lives in [`docs/concept-axes.md`](../concept-axes.md#derived-confidence--base_confidence-projection-adr-0039), emitted from `evidence_types.EVIDENCE_TYPES` by `scripts/generate-concept-axes`, held fresh by that script's `--check` gate in `.githooks/pre-commit`, and pinned by `tests/test_generate_concept_axes.py::test_every_seeded_pathway_appears_with_its_value`. Spec §12 owns the *model* and links out to that table for the *values*, which is the separation Stage B specified
 - Date: 2026-06-10
 - Supersedes: ADR-0005 (partial — its entrypoint-selection tables key on the composite confidence; post-implementation they read as `rank_score`-keyed)
 - Superseded by: —
@@ -17,22 +17,22 @@ This ADR records a **decided ruling, not a proposal**. The decision was made by 
 
 1. **Detection reliability** — how sure the producer is that the relationship exists. This is what the spec describes and what consumers are told they are reading.
 2. **Ranking adjustment** — post-detection boosts and penalties that encode "how prominently should this rank," applied multiplicatively or additively in place:
-   - `linkers/type_hierarchy.py:544` — the `0.85 / sqrt(N)` fan-out dampener (WI-kabom: interfaces with many implementors otherwise dominate reverse slices), and the flat `0.30` test-file override penalty at `:566-567` (WI-supok).
-   - `entrypoints.py:1316-1342` — multiplicative penalties: ×0.1 test files (the DMD case: 98% of `main()`s in test files), ×0.5 utility/example files, ×0.3 vendor tiers, ×0.5 deeply nested Go `cmd/`.
-   - `entrypoints.py:1419` — library-export demotion ×0.1 when semantic entrypoints exist (the "forgejo problem," `:1350`: 7,474 Go uppercase exports outranking real routes).
-   - `entrypoints.py:1504-1519` — additive in-degree (cap +0.35) and out-degree (cap +0.25) connectivity boosts with language-dominance scaling (the gemini-cli telemetry-export case, `:1491`).
+   - `linkers/type_hierarchy.py::link_type_hierarchy` — the `0.85 / sqrt(N)` fan-out dampener (WI-kabom: interfaces with many implementors otherwise dominate reverse slices), and the flat `0.30` test-file override penalty (WI-supok).
+   - `entrypoints.py::detect_entrypoints` — multiplicative penalties: ×0.1 test files (the DMD case: 98% of `main()`s in test files), ×0.5 utility/example files, ×0.3 vendor tiers, ×0.5 deeply nested Go `cmd/`.
+   - `entrypoints.py::_detect_script_modules` — library-export demotion ×0.1 when semantic entrypoints exist (the "forgejo problem": 7,474 Go uppercase exports outranking real routes).
+   - `entrypoints.py::detect_entrypoints` — additive in-degree (cap +0.35) and out-degree (cap +0.25) connectivity boosts with language-dominance scaling (the gemini-cli telemetry-export case).
 
-The blend is not hypothetical drift; it is measurable. Only **2 of 104** entrypoint confidences on the self-analysis corpus land on any documented tier value — the producers' base constants match the spec's tiers, but post-detection adjustments move nearly every published value off-tier. Range violations exist in **both directions**: `linkers/containment.py:266` emits 18,388 `naming_convention` edges at exactly **1.0**, above the documented 0.95 linker ceiling (WI-lutad), while the `1/sqrt(N)` dampener drives `dispatches_to` edges down to **~0.094**, below every documented floor — 313 edges under 0.40, 236 under even the 0.30 analyzer floor (WI-botif). The ranges are unenforceable because the field's two meanings make any single range wrong for one of them.
+The blend is not hypothetical drift; it is measurable. Only **2 of 104** entrypoint confidences on the self-analysis corpus land on any documented tier value — the producers' base constants match the spec's tiers, but post-detection adjustments move nearly every published value off-tier. Range violations exist in **both directions**: `linkers/containment.py::_find_parent` emits 18,388 `naming_convention` edges at exactly **1.0**, above the documented 0.95 linker ceiling (WI-lutad), while the `1/sqrt(N)` dampener drives `dispatches_to` edges down to **~0.094**, below every documented floor — 313 edges under 0.40, 236 under even the 0.30 analyzer floor (WI-botif). The ranges are unenforceable because the field's two meanings make any single range wrong for one of them.
 
 ### No derivation layer
 
-Independently of the blend, the "evidence-derived" half of the contract is also fictional. There is no evidence→confidence derivation anywhere: confidence is assigned at ~566 hardcoded `confidence=` call sites across `packages/*/src`, plus the flat dataclass default `0.85` (`ir.py:607`, mirrored in `Edge.create` at `ir.py:651`). The modal published value — 0.85 on ~41.7k edges — is the modal value **purely because the largest emit path passes nothing** and inherits the default, not because anything assessed those edges at 0.85 (INV-suvil). Confidence is not even a function of `evidence_type`: `ast_call` carries 4 distinct constants and `ast_call_direct` carries 5, with the variance persisting when (evidence_type, edge_type, language) is held fixed (WI-fuhof).
+Independently of the blend, the "evidence-derived" half of the contract is also fictional. There is no evidence→confidence derivation anywhere: confidence is assigned at ~566 hardcoded `confidence=` call sites across `packages/*/src`, plus the flat dataclass default `0.85` (`ir.py::Edge.create`, mirrored in `Edge.create` at `ir.py::Edge.create`). The modal published value — 0.85 on ~41.7k edges — is the modal value **purely because the largest emit path passes nothing** and inherits the default, not because anything assessed those edges at 0.85 (INV-suvil). Confidence is not even a function of `evidence_type`: `ast_call` carries 4 distinct constants and `ast_call_direct` carries 5, with the variance persisting when (evidence_type, edge_type, language) is held fixed (WI-fuhof).
 
-The spec is internally inconsistent about this rather than merely violated: §12 self-discloses "Not yet implemented … Edge default confidence is 0.85 in code" (spec:1165) while keeping normative MUSTs anchored to the unimplemented model — "Consumers MUST default unknown `evidence_type` values to 0.30" (spec:1161, repeated at spec:1797) — and a ~40-line `EVIDENCE_CONFIDENCE_MATRIX` code block (spec:1169-1208) that has zero implementation.
+The spec is internally inconsistent about this rather than merely violated: §12 self-discloses "Not yet implemented … Edge default confidence is 0.85 in code" (spec §12) while keeping normative MUSTs anchored to the unimplemented model — "Consumers MUST default unknown `evidence_type` values to 0.30" (spec §12, repeated at spec §12) — and a ~40-line `EVIDENCE_CONFIDENCE_MATRIX` code block (spec §12) that has zero implementation.
 
 ### quality.* carries zero independent signal
 
-`Edge.quality` (`{score, reason}`, derived at `ir.py:816-827` via `_derive_edge_quality`) was verified to be a pure function of `(confidence, is_resolved, derived_from)`: `quality.score == round(clamp(confidence, 0, 1), 3)` on **110,533 / 110,533** edges of the verification corpus — no edge anywhere carries independent quality signal. The 5-value `quality.reason` vocabulary is undocumented (zero hits in spec or schema.json) and its tier-named values (`high_confidence_direct`, `medium_confidence`, `low_confidence_fallback`) do not partition the confidence axis — the field encodes the emitter mechanism, not a tier (WI-humok). The rounding even makes `quality.score` diverge cosmetically from top-level confidence on the 257 `dispatches_to` edges whose computed confidence carries more than 3 decimals (WI-riguh).
+`Edge.quality` (`{score, reason}`, derived at `ir.py::Edge` via `_derive_edge_quality`) was verified to be a pure function of `(confidence, is_resolved, derived_from)`: `quality.score == round(clamp(confidence, 0, 1), 3)` on **110,533 / 110,533** edges of the verification corpus — no edge anywhere carries independent quality signal. The 5-value `quality.reason` vocabulary is undocumented (zero hits in spec or schema.json) and its tier-named values (`high_confidence_direct`, `medium_confidence`, `low_confidence_fallback`) do not partition the confidence axis — the field encodes the emitter mechanism, not a tier (WI-humok). The rounding even makes `quality.score` diverge cosmetically from top-level confidence on the 257 `dispatches_to` edges whose computed confidence carries more than 3 decimals (WI-riguh).
 
 ## Decision
 
@@ -42,8 +42,8 @@ Five rulings, all decided.
 
 `Edge.confidence`'s contract narrows to: *the producer's evidence-derived estimate that the relationship exists.* An evidence→confidence derivation layer is built to make that true:
 
-- `EvidenceTypeSpec` (`evidence_types.py:87-93`) gains `base_confidence: float` and a `[lo, hi]` legal range per evidence type. The per-type values live in the ADR-0028 registry, making the range contract registry-backed instead of prose-only.
-- A `derive_confidence(...)` function reads the registry; `Edge.create` routes through it **when no explicit confidence is passed**, replacing the flat `0.85` dataclass default (`ir.py:607` / `ir.py:651`). The ~41.7k edges that today inherit 0.85 by omission instead get the registered base confidence for their `evidence_type`.
+- `EvidenceTypeSpec` (`evidence_types.py::EvidenceTypeSpec`) gains `base_confidence: float` and a `[lo, hi]` legal range per evidence type. The per-type values live in the ADR-0028 registry, making the range contract registry-backed instead of prose-only.
+- A `derive_confidence(...)` function reads the registry; `Edge.create` routes through it **when no explicit confidence is passed**, replacing the flat `0.85` dataclass default (`ir.py::Edge.create` / `ir.py::Edge.create`). The ~41.7k edges that today inherit 0.85 by omission instead get the registered base confidence for their `evidence_type`.
 - Range validation (each edge's confidence within its evidence type's `[lo, hi]`) becomes mechanically checkable and joins the ADR-0033 validator stage.
 
 ### 2. `confidence_source` discriminator enables incremental migration
@@ -60,25 +60,25 @@ The discriminator lets the ~566 hardcoded emitter constants migrate incrementall
 
 The ranking adjustments move, unchanged in formula and magnitude, to a separate `rank_score` field; published `confidence` stops absorbing them:
 
-- `linkers/type_hierarchy.py`: the `1/sqrt(N)` fan-out dampener (`:544`) and the 0.30 test-override penalty (`:566-567`).
-- `entrypoints.py`: the multiplicative penalties (`:1316-1342`), the library-export demotion (`:1419`), and the in/out-degree connectivity boosts (`:1504-1519`).
+- `linkers/type_hierarchy.py`: the `1/sqrt(N)` fan-out dampener and the 0.30 test-override penalty.
+- `entrypoints.py`: the multiplicative penalties, the library-export demotion, and the in/out-degree connectivity boosts.
 
-Entrypoint sorting (`entrypoints.py:1528`) and `MIN_ENTRYPOINT_CONFIDENCE` filtering (`:1541`) re-key from `confidence` to `rank_score`. **The ruling explicitly requires the ranking signal survive relocation unchanged**: these adjustments encode hard-won bakeoff fixes — the forgejo Go-export demotion (`:1350`), the DMD test-`main()` penalty (`:1310-1315`), the gemini-cli telemetry-export carve-out (`:1491`) are named in the code comments — and regressing them is out of scope. `rank_score` initializes from detection confidence and accumulates the same adjustments the confidence field accumulates today; only the field name changes for the ranking consumer. Edges/entrypoints whose producers have not yet separated continue publishing `confidence_source=composite` until their migration PR lands.
+Entrypoint sorting (`entrypoints.py::MIN_ENTRYPOINT_CONFIDENCE`) and `MIN_ENTRYPOINT_CONFIDENCE` filtering re-key from `confidence` to `rank_score`. **The ruling explicitly requires the ranking signal survive relocation unchanged**: these adjustments encode hard-won bakeoff fixes — the forgejo Go-export demotion, the DMD test-`main()` penalty, the gemini-cli telemetry-export carve-out are named in the code comments — and regressing them is out of scope. `rank_score` initializes from detection confidence and accumulates the same adjustments the confidence field accumulates today; only the field name changes for the ranking consumer. Edges/entrypoints whose producers have not yet separated continue publishing `confidence_source=composite` until their migration PR lands.
 
 `rank_score` is a numeric field (not axis-governed vocabulary); `confidence_source` carries the bounded-enum axis declaration per ADR-0024.
 
 ### 4. `quality.score` / `quality.reason` are deleted via a one-version deprecation window
 
-Verified vacuous (pure function of `(confidence, is_resolved, derived_from)`; `score == round(clamped confidence, 3)` on 110,533/110,533 edges; `ir.py:816-827`), `quality.*` is removed rather than repaired or repurposed:
+Verified vacuous (pure function of `(confidence, is_resolved, derived_from)`; `score == round(clamped confidence, 3)` on 110,533/110,533 edges; `ir.py::Edge`), `quality.*` is removed rather than repaired or repurposed:
 
 - **Deprecation release (N):** `quality` continues to be emitted, marked deprecated in the spec and schema with a pointer to `confidence` + `confidence_source` + `is_resolved` as the replacement surface.
-- **Removal release (N+1):** `_derive_edge_quality`, the `__post_init__` population (`ir.py:639`), the serialization (`ir.py:739`), and the `quality` field itself are deleted. Schema bump accordingly.
+- **Removal release (N+1):** `_derive_edge_quality`, the `__post_init__` population (`ir.py::__post_init__`), the serialization (`ir.py::__post_init__`), and the `quality` field itself are deleted. Schema bump accordingly.
 
 The `reason` vocabulary is not migrated anywhere: its mechanism-encoding job is already done better by `evidence_type` (ADR-0028) and `derived_from`, and its tier-encoding pretense was false (WI-humok).
 
 ### 5. Spec reconciliation is two-stage
 
-- **Stage A (immediate truth-telling; no code prerequisites):** delete the fictional `EVIDENCE_CONFIDENCE_MATRIX` block (spec:1169-1208); withdraw the unimplemented 0.30-default MUST (spec:1161 and spec:1797). The spec stops asserting normative requirements against a model it simultaneously discloses as unimplemented. Stage A precedes everything else in this ADR.
+- **Stage A (immediate truth-telling; no code prerequisites):** delete the fictional `EVIDENCE_CONFIDENCE_MATRIX` block (spec §12); withdraw the unimplemented 0.30-default MUST (spec §12 and spec §12). The spec stops asserting normative requirements against a model it simultaneously discloses as unimplemented. Stage A precedes everything else in this ADR.
 - **Stage B (after rulings 1–3 land):** regenerate the per-evidence-type confidence table **from the registry** (the `EvidenceTypeSpec` `base_confidence`/range data), in the same generated-docs pattern as the concept-axes docs. The spec's table becomes a projection of the code's single source of truth, not parallel prose.
 
 ## Alternatives considered
@@ -118,13 +118,13 @@ The `reason` vocabulary is not migrated anywhere: its mechanism-encoding job is 
 | `WI-fuhof-nizos-zofok-lotot-sadah-famar-novor-vunag` | Confidence not a function of evidence_type (4–5 distinct constants per type); closed by the ruling-1 derivation layer. |
 | `WI-botif-kufat-nunal-havuh-mikit-lulof-hulud-fukid` | type-hierarchy `dispatches_to` edges down to ~0.094 below every floor; closed by ruling 3 (dampener moves to `rank_score`). |
 | `WI-lutad-huhaj-kuvak-vonis-vifut-fadig-jivim-sibut` | 18,388 linker edges at 1.0 above ceiling + 81/104 entrypoints below floor; closes jointly via rulings 1 and 3. |
-| `WI-dojor-rajaf-bajos-hifan-lilos-sikuj-todaj-horod` | Undocumented in-degree boost at `entrypoints.py:1504-1507`; resolved by ruling 3 (relocation) + ruling 5 Stage B (documentation from truth). |
+| `WI-dojor-rajaf-bajos-hifan-lilos-sikuj-todaj-horod` | Undocumented in-degree boost at `entrypoints.py::detect_entrypoints`; resolved by ruling 3 (relocation) + ruling 5 Stage B (documentation from truth). |
 | `WI-humok-nisaj-pilov-daboz-tunup-jikaf-garam-nobur` | `quality.reason` taxonomy undocumented and mis-named; closed by ruling 4 deletion. |
 | `WI-riguh-kogar-zasol-fobos-volin-valum-nujik-sobiv` | `quality.score` rounding divergence on 257 edges; mooted by ruling 4 deletion. |
 
 ## References
 
 - Strategy document: `~/hypergumbo_lab_notebook/correctness_strategy_06102026.md` (confidence-evidence-derivation family, fixes F1/F2/F3/F4/F6) and its raw workflow result JSON.
-- Code: `ir.py:607,651` (0.85 default), `ir.py:816-827` (quality derivation), `evidence_types.py:87-93` (EvidenceTypeSpec), `linkers/type_hierarchy.py:544,566-567`, `linkers/containment.py:266`, `entrypoints.py:1316-1342,1419,1504-1519,1528,1541`.
+- Code: `ir.py::Edge.create` (0.85 default), `ir.py::Edge` (quality derivation), `evidence_types.py::EvidenceTypeSpec`, `linkers/type_hierarchy.py::link_type_hierarchy`, `linkers/containment.py::_find_parent`, `entrypoints.py::detect_entrypoints`.
 - Spec: `docs/hypergumbo-spec.md` §12 — range table (:1155-1161), self-disclosure (:1165), fictional matrix (:1169-1208), repeated MUST (:1797).
 - ADR-0024 (axis declaration for `confidence_source`), ADR-0028 (evidence-type registry extended here), ADR-0033 (validator stage hosting the range checks), ADR-0037 (`is_resolved` semantics read by the deleted quality derivation).

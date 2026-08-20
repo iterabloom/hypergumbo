@@ -11,8 +11,8 @@
 
 Inheritance-aware call resolution — the rule that `someMethod()` inside class `Foo` might dispatch to `Foo`'s parent's method when `Foo` itself doesn't define it — was duplicated in 2 of 14 language analyzers when this work began:
 
-- **Java** (`packages/hypergumbo-lang-mainstream/.../java.py:1414-1591`) — three call sites emitting `ast_call_inherited` (Site 1: bare/`this` calls), `ast_call_inherited_method` (Site 2: typed-receiver calls), and `ast_call_inherited_field` (Site 3: inherited-field-receiver calls). Each site walks the class's parent chain up to 10 hops looking for the called method short-name.
-- **Ruby** (`packages/hypergumbo-lang-mainstream/.../ruby.py:1901-1956`) — `_find_inherited_initialize` walks the `base_classes` metadata chain at constructor (`SomeClass.new`) sites to find inherited `#initialize` methods.
+- **Java** (`java.py`) — three call sites emitting `ast_call_inherited` (Site 1: bare/`this` calls), `ast_call_inherited_method` (Site 2: typed-receiver calls), and `ast_call_inherited_field` (Site 3: inherited-field-receiver calls). Each site walks the class's parent chain up to 10 hops looking for the called method short-name.
+- **Ruby** (`ruby.py`) — `_find_inherited_initialize` walks the `base_classes` metadata chain at constructor (`SomeClass.new`) sites to find inherited `#initialize` methods.
 
 The other 12 analyzers (Python, Kotlin, Scala, PHP, C#, C++, Go, Swift, Obj-C, Groovy, Rust, JS/TS) had no equivalent walk, producing a silent dead-code FP shape for every framework convention or analog that relies on inherited dispatch.
 

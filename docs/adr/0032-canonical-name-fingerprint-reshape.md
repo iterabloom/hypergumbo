@@ -17,7 +17,7 @@ The 2026-05-30 symbol-emit-coherence survey + 2026-05-31 desire-paths analysis f
 |---|---|---|
 | 1. Config-analyzer "duplicate of `name`" | cmake / css / json_config / toml_config / sql / xml_config / dockerfile / make / manifest_targets / powershell (10 analyzers) | `canonical_name=name` (same string already passed to `name=`) |
 | 2. Linker-synthetic "display label" | tauri_ipc / crypto_flow / wasm_bindgen / annotation_convention / message_dispatch / yjs_crdt (~15 emit sites across 6 linkers) | Expression-form description: `"invoke('save_data')"`, `"@hg:publishes channel"`, `"crypto.user-events"`, `"dispatch.send(user-events)"` |
-| 3. Code-analyzer "fully-qualified name" (documented intent, not implemented) | Aspirational only — `linkers/containment.py:217,275` test docstrings show the intended semantic; **zero** code analyzers populate `canonical_name=` at construction time today | `"hello.HelloService.BidiHello"` (dotted scope chain) |
+| 3. Code-analyzer "fully-qualified name" (documented intent, not implemented) | Aspirational only — `linkers/containment.py::_find_parent` test docstrings show the intended semantic; **zero** code analyzers populate `canonical_name=` at construction time today | `"hello.HelloService.BidiHello"` (dotted scope chain) |
 
 Three distinct semantics. One field name. No documentation of which fits when.
 
@@ -26,7 +26,7 @@ Three distinct semantics. One field name. No documentation of which fits when.
 - **Format 1 — producer-side raw-bytes hash.** Used by config analyzers (cmake / css / json_config / toml_config / sql / xml_config) and one linker (wasm_bindgen). Algorithm: `hashlib.sha256(source[node.start_byte:node.end_byte]).hexdigest()[:16]`. Output: 16-char hex, no scheme prefix. Hashes raw bytes including comments and whitespace.
 - **Format 2 — centralized structural hash via WI-fanun.** Computed by `stamp_symbol_fingerprints` in `packages/hypergumbo-core/src/hypergumbo_core/fingerprint.py`. Walks the Symbol's source span via tree-sitter, builds a structural hash (node types + identifier text + literal values), filters comment nodes, tags with `hgfp1:` prefix. Output: 70-char `hgfp1:<64-char-sha256>`. The post-pass skips Symbols that already carry a non-None fingerprint, so Format 1 "wins" by precedence for producers that emit it; Format 2 fills in everywhere else.
 
-> **Scheme-drift note (concept-audit 2026-07-15).** The retained Format 2 hash shipped as **`hgfp2:<16-hex>`** (`fingerprint.py:106` `_SCHEME_PREFIX = "hgfp2:"`; spec §"symbol_fingerprint_scheme"), *not* the `hgfp1:` / 70-char / 64-char-sha256 form this ADR describes — the scheme prefix was bumped `hgfp1:`→`hgfp2:` and the digest truncated to 16 hex after this ADR shipped. The `hgfp1:` and 64-char references throughout the rest of this ADR are historical (the ADR-era plan); the current scheme's source of truth is `fingerprint.py` + the spec, not this document. (This ADR does not govern the fingerprint *shape* — see the Related list's ADR-0014 note.)
+> **Scheme-drift note (concept-audit 2026-07-15).** The retained Format 2 hash shipped as **`hgfp2:<16-hex>`** (`fingerprint.py::_SCHEME_PREFIX` (`"hgfp2:"`); spec §"symbol_fingerprint_scheme"), *not* the `hgfp1:` / 70-char / 64-char-sha256 form this ADR describes — the scheme prefix was bumped `hgfp1:`→`hgfp2:` and the digest truncated to 16 hex after this ADR shipped. The `hgfp1:` and 64-char references throughout the rest of this ADR are historical (the ADR-era plan); the current scheme's source of truth is `fingerprint.py` + the spec, not this document. (This ADR does not govern the fingerprint *shape* — see the Related list's ADR-0014 note.)
 
 INV-fogum tracks the format gap specifically: TOML dependency nodes carry Format 1 (no `hgfp1:` prefix), 99 nodes at runtime.
 
@@ -150,7 +150,7 @@ One major version after Phase 2 PR3's deprecation. The field has no remaining us
 
 ## Stable_id impact
 
-`canonical_name` and `fingerprint` are NOT inputs to the 10 `stable_id` factories at `analyze/base.py:513-640` (those use `language`, `path`, `name`, `kind`). **Stable_ids do not change across this ADR's migration.** This is in deliberate contrast to ADR-0031's combined 0.12.0 release, where `Symbol.language=None` for ~20-30 Class B synthetic stand-ins does change those Symbols' stable_ids (per ADR-0031 Phase 3).
+`canonical_name` and `fingerprint` are NOT inputs to the 10 `stable_id` factories at `analyze/base.py::sanitize_id_name_segment` (those use `language`, `path`, `name`, `kind`). **Stable_ids do not change across this ADR's migration.** This is in deliberate contrast to ADR-0031's combined 0.12.0 release, where `Symbol.language=None` for ~20-30 Class B synthetic stand-ins does change those Symbols' stable_ids (per ADR-0031 Phase 3).
 
 Fingerprint *values* change for Format-1-producing Symbols when Phase 2 PR2 lands, because Format 1 (raw-bytes hash) and Format 2 (`hgfp1:` structural hash) produce different strings. But `Symbol.fingerprint` itself isn't a stable_id input, so cross-version stable_id pinning isn't affected — only consumers reading `Symbol.fingerprint` directly see the value change. Documented in the combined `MIGRATION-6.0-CONCEPT-AXES.md` entry.
 

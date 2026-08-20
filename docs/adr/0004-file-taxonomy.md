@@ -232,6 +232,6 @@ Each phase can be a separate PR with tests verifying behavioral equivalence.
 ## References
 
 * Existing supply chain classification: `src/hypergumbo/supply_chain.py`
-* Current language extensions: `src/hypergumbo/profile.py` lines 61-120
-* Current source extensions: `src/hypergumbo/sketch.py` lines 2472-2486
+* Current language extensions: `src/hypergumbo/profile.py`
+* Current source extensions: `src/hypergumbo/sketch.py`
 * Industry tools for comparison: cloc, tokei, sloccount

@@ -1569,7 +1569,7 @@ echo "$CHANGED" | grep -E "$YAML_PATTERN" | grep -vqE "$TRACKER_DATA" && has_cod
 echo "code=$has_code" >> "$GITHUB_OUTPUT"
 ```
 
-Apply this to both `.github/workflows/ci.yml` (line 52) and `.github/workflows/full-suite.yml` (line 60).
+Apply this to both `.github/workflows/ci.yml` and `.github/workflows/full-suite.yml`.
 
 #### .gitattributes
 
