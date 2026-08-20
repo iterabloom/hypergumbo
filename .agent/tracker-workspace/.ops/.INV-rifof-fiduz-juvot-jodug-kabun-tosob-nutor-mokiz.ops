@@ -1,0 +1,41 @@
+- op: create  # 184c
+  at: '2026-08-19T08:31:20Z'  # 184c
+  by: agent  # 184c
+  actor: jgstern_agent  # 184c
+  clock: 1  # 184c
+  nonce: 184c  # 184c
+  data:  # 184c
+    kind: invariant  # 184c
+    title: "A line-number-keyed suppression expires silently: nothing reports the transition from suppressing to not"  # 184c
+    status: satisfied  # 184c
+    priority: 2  # 184c
+    parent:  # 184c
+    tags:  # 184c
+    - security  # 184c
+    - ci_infrastructure  # 184c
+    - release  # 184c
+    - tooling  # 184c
+    isbefore: []  # 184c
+    duplicate_of: []  # 184c
+    not_duplicate_of: []  # 184c
+    pr_ref: '418'  # 184c
+    description: "WHAT HAPPENED. release-check reported 4 gitleaks findings. One of them,\n`api_key = sk_live_12345` in BRANCHES_test_ini.py, was ALREADY SUPPRESSED: a\n.gitleaksignore entry pinned to line 352, added 2026-03-12 in c44ec3e448. On\n2026-07-30, commit d0e45ce33b (the INV-dulah node.id fix) netted one line out of\nthat file above the fixture, moving the finding to line 351. The entry kept\npointing at 352. The suppression was dead for seven weeks and nothing reported\nthe transition -- not gitleaks, not release-check, not the commit that caused it.\n\nWHY IT GENERALIZES. .gitleaksignore entries are keyed FILE:RULE:LINE and live in\na DIFFERENT file from the code they excuse. That is the whole defect: a\nsuppression that does not travel with its target is invalidated by edits it\ncannot see, and its expiry is not an event anything reports. Inline forms\n(`# noqa`, `# nosec`, `gitleaks:allow`) do not have this property -- they move\nwith the line.\n\nDIRECTION OF FAILURE. Here it failed toward NOISE (an unsuppressed false\npositive reaching the gate), which is the safe direction and is why it was\neventually visible at all. Nothing about the mechanism guarantees that. A\nfingerprint that drifts ONTO a line that later acquires a real credential fails\ntoward SILENCE, and would not be visible at all.\n\nFIX. All ten fingerprints retired for mechanisms that cannot drift:\n  - `gitleaks:allow` ON the offending line, for deliberate credential-shaped\n    strings in source (scrubber test bait, a pinned upstream commit SHA, and one\n    generic-api-key regex artifact where the reported \"secret\" was the literal\n    text `prohibited_sink_zone=`);\n  - a .gitleaks.toml PATH allowlist for the gitignored .hypothesis/ cache, whose\n    filenames are content hashes that rotate -- three of the ten fingerprints\n    were pinned to hashes that no longer exist;\n  - a .gitleaks.toml REGEX allowlist for two fixed benign strings\n    (`apiv2.NewAPI`, `L2-normalized.`), scoped to the STRINGS rather than their\n    files, because tracker .ops files are committed and a path allowlist there\n    would blind the scanner to a real credential pasted into a discussion thread;\n  - and for the INI fixture, deletion of the bait rather than any suppression:\n    `_is_sensitive_key` matches on the key NAME and `_mask_value` is\n    length-driven, so no assertion read the value.\n.gitleaksignore now holds zero fingerprints and a header stating the rule.\n\nCLASS SWEPT, not assumed. .gitleaksignore was the only external\nline-number-keyed suppression in the repo. Every other baseline keys on\npath+count (.ci/mypy-strict-baseline.json), on path (ruff per-file-ignores in\npyproject.toml), or lives inline in the file it affects. The one line-shaped\nstring in .ci/selection-shadow.json is a pytest parameter id\n(`src/app/views.py:10-20` inside a test name), not a suppression.\n\nMETHOD ERROR WORTH KEEPING. The first audit pass reported all ten fingerprints\ndead. Six were live and load-bearing; emptying the file re-fired them (4 findings\n-> 7). The audit had run gitleaks with `-i <empty-dir>` believing that disabled\nthe repo's .gitleaksignore. It does not: gitleaks still reads the one at the scan\nroot, verified with a two-arm control. The tell was that the \"ignores disabled\"\nrun returned EXACTLY the same 4 findings as the uncontrolled run -- identical\noutput from a control and its subject means the control did not take (LIVE.md\nrule 13). Recorded in the .gitleaksignore header so it is not repeated.\n\nRELATED. INV-pirad (satisfied) is the same FAMILY -- a security check that\nsilently became a no-op -- but a distinct mechanic: an external-CLI contract\nbreak in hypergumbo's own runtime scan_content, versus repo-tooling suppression\nexpiry here. Filed separately per INV-pirad's own note that a distinct mechanic\nwarrants its own item."  # 184c
+    fields:  # 184c
+      statement: "A security-scan suppression must either remain valid under edits to the file it points into, or report its own expiry. A suppression that has silently stopped matching is indistinguishable from one that never matched, and the check it guards silently changes what it reports without any signal that it did."  # 184c
+      root_cause: ".gitleaksignore entries are keyed FILE:RULE:LINE and live in a different file from the code they excuse, so any edit shifting the target line voids the entry. Neither gitleaks nor release-check reports a dangling entry or a newly-unsuppressed finding as a state change, so the expiry is invisible until a human reads the scan output."  # 184c
+- op: discuss  # de17
+  at: '2026-08-19T08:32:49Z'  # de17
+  by: agent  # de17
+  actor: jgstern_agent  # de17
+  clock: 2  # de17
+  nonce: de17  # de17
+  message: "CLOSURE EVIDENCE (behavioral, on the merged tree at 3dfb7f7ad4, not the branch). BEFORE: gitleaks detect --source . --no-git --no-banner reported \"leaks found: 4\" (exit 1) and release-check reported 4 failed checks. AFTER: the same gitleaks invocation exits 0 with \"no leaks found\", and release-check reports 2 failed checks -- both of which are the known non-issues, \"Uncommitted changes detected\" (the tracker .ops file that auto-sync owns) and \"Tag v7.0.0 already exists\" (no version bump yet). Its security and lint lines now read \"No secrets detected (gitleaks)\" and \"Linting passed (Ruff)\". POSITIVE CONTROL, because a suppression that cannot be shown to discriminate is indistinguishable from one that suppresses everything: a fresh un-annotated gho_ token appended to tests/test_scrub_secrets.py -- a file whose line 52 IS annotated -- fired at its own line 485, and only there. So the allow is line-scoped, not file-scoped. Also verified: 1617 tests pass with the mypy ratchet clean, and 98 pass across the six edited test files. Merged in PR #418."  # de17
+- op: update  # 9e0d
+  at: '2026-08-19T08:33:54Z'  # 9e0d
+  by: agent  # 9e0d
+  actor: jgstern_agent  # 9e0d
+  clock: 3  # 9e0d
+  nonce: 9e0d  # 9e0d
+  set: {}  # 9e0d
+  add:  # 9e0d
+    not_duplicate_of: [WI-sivuz-bahuv-halug-jitaf-jubuj-fokug-livaf-dupod]  # 9e0d

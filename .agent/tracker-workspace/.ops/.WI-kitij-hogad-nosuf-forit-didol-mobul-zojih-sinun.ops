@@ -1,0 +1,20 @@
+- op: create  # d359
+  at: '2026-08-20T00:14:24Z'  # d359
+  by: agent  # d359
+  actor: jgstern_agent  # d359
+  clock: 1  # d359
+  nonce: d359  # d359
+  data:  # d359
+    kind: work_item  # d359
+    title: "On-demand checker: every ADR `path::Symbol` citation must resolve (AST, not grep)"  # d359
+    status: todo_soft  # d359
+    priority: 2  # d359
+    parent:  # d359
+    tags:  # d359
+    - developer_experience  # d359
+    isbefore: []  # d359
+    duplicate_of: []  # d359
+    not_duplicate_of: []  # d359
+    pr_ref:  # d359
+    description: "ADR citations were converted from `path.py:NNN` line numbers to `path.py::Symbol`\naddresses (the mega-PR on branch jgstern-agent/docs/adr-symbol-citations). That\nconversion changes the FAILURE MODE — a renamed symbol fails to resolve instead of\nsilently pointing at unrelated code — but it does not add a MECHANISM. Production\ncode gets rename enforcement from tests and the type checker; ADR prose gets none.\n\nDeliver an on-demand checker (NOT a CI gate — the human explicitly scoped it that\nway; nothing about a stale ADR citation should block a PR):\n\n  * Parse every `` `path::Symbol` `` in docs/adr/*.md.\n  * Resolve `path` (prefer /src/ candidates; report ambiguity rather than guessing).\n  * Resolve `Symbol` via AST — def / class / qualified method / module-level\n    constant / dataclass field. NOT grep: this repo has been bitten repeatedly by\n    grep-vs-registry counts (AGENTS.md rule 12).\n  * Report unresolved citations; exit non-zero on any.\n\nA working throwaway implementation lives in the PR's scratchpad and can be lifted:\nit caught 11 unresolved citations on first run, including FOUR symbol names the\nagent had fabricated during the conversion (`framework_patterns.py::_resolve_symbol_ref`,\nand `_extract_symbols_from_file` guessed for svelte/astro/vue when astro's real\nfunction has no leading underscore). Without it those would have shipped as\nconfident-looking wrong symbols.\n\nAlso note: `test_ruby.py::test_rails_routes` in ADR-0008 was ALREADY in `::` form\nbefore this conversion and was ALREADY broken (the real tests are\n`test_rails_route_with_to_option` and siblings). That is direct evidence that\nsymbol citations rot too — just more slowly, and only on rename rather than on\nevery insertion above the line. It is the concrete argument for having the checker\nat all.\n\nFold the checker into the periodic audit family (docstring-staleness /\nchangelog-audit / cruft-audit), which is where doc-drift detection belongs.\n\nRequires 100% coverage per AGENTS.md, and tests must live in the package that owns\nthe code."  # d359
+    fields: {}  # d359
