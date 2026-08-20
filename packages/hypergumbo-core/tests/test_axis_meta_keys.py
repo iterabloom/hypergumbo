@@ -317,3 +317,50 @@ def test_valid_data_directions_vocabulary():
     assert VALID_DATA_DIRECTIONS == frozenset(
         {"src_to_dst", "dst_to_src", "bidirectional"}
     )
+
+
+# --- WI-toruz: the call-family scope is DECLARED, not described ---
+
+def test_call_construct_declares_the_call_family_scope():
+    """WI-toruz: ``call_construct``'s edge scope is a typed field, not prose.
+
+    The prose said "on ``calls`` edges" and the sibling ``ref_construct``
+    entry said the two keys have "distinct edge families, zero overlap".
+    That was written on 2026-06-30 (INV-lajov) from a corpus measurement
+    that contained no Dart or C# object creation, and it was already false
+    by the five ``constructor``-on-``instantiates`` sites that landed
+    2026-05-05 (audit-findings 0012 sec 4, WI-nibis Wave 4).
+
+    A scope that lives only in a sentence cannot be checked, which is why
+    it drifted. Declaring it on ``applicable_edge_types`` — the field
+    ADR-0038 ruling 2 already built for exactly this — makes it
+    machine-readable, and lets the live-tree producer gate assert against
+    the declaration instead of against a hand-maintained literal.
+    """
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types == frozenset({"calls", "instantiates"})
+
+
+def test_call_construct_scope_is_canonical_edge_types():
+    """The declared scope may only name registered relationship values."""
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types is not None
+    assert spec.applicable_edge_types <= all_edge_type_names()
+
+
+def test_call_construct_scope_covers_instantiates_deliberately():
+    """``instantiates`` is in scope because ``edge_type`` is NOT a function
+    of the construct: ruby emits ``calls`` for the same source construct
+    (``Klass.new`` resolves to ``Klass#initialize``), while dart/csharp emit
+    ``instantiates``. So ``call_construct='constructor'`` is the only
+    cross-language invariant for object creation that survives the
+    relationship-label disagreement, and it is NOT redundant with
+    ``edge_type``. Tracked as INV-kahig; this assertion pins the reason the
+    scope is two-valued so a later reader does not "tidy" it back to one.
+    """
+    spec = find_meta_key("call_construct")
+    assert spec is not None
+    assert spec.applicable_edge_types is not None
+    assert "instantiates" in spec.applicable_edge_types
