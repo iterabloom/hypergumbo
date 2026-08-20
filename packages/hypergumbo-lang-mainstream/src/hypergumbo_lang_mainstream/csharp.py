@@ -1737,7 +1737,7 @@ def _extract_edges_from_file(
                             evidence_type="ast_call",
                             origin=PASS_ID,
                             origin_run_id=run.execution_id,
-                            meta={"call_construct": "method_group"},
+                            meta={"ref_construct": "method_group"},
                         ))
 
         # Pattern 2: variable_declarator with RHS identifier — Action handler = Handle
@@ -1771,7 +1771,7 @@ def _extract_edges_from_file(
                                 evidence_type="ast_call",
                                 origin=PASS_ID,
                                 origin_run_id=run.execution_id,
-                                meta={"call_construct": "method_group"},
+                                meta={"ref_construct": "method_group"},
                             ))
 
     return edges
