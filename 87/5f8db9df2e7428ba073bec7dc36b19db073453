@@ -1,0 +1,16 @@
+Original commit body from 4c0638c2e7ed9818d3ff8de64bb5f5ab08ce3704:
+
+The Unreleased section filed everything under '### Fixed', including a new
+public CLI surface and a removal. A reader pricing the release off the
+section headings would conclude 0.7.1; the content is a minor bump.
+
+- '### Added': 'tracker textconv <file>' is a real subcommand. It did not
+  exist before this cycle -- the .gitattributes diff driver named it and
+  only the hypergumbo-tracker-textconv console script was ever built.
+- '### Removed': setup.py's 'git config --global' fallback, which leaked a
+  per-repo diff driver into the user's machine-wide git config.
+
+Both were buried mid-paragraph inside a Fixed entry. The '--global' clause
+is trimmed from that entry so the fact has one home rather than two.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
