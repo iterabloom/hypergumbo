@@ -1,0 +1,38 @@
+Original commit body from 93b6ff9e96d2eacb8922ed4ce914465eaeefddef:
+
+§9 carried the complete eight-base entrypoint confidence list. §8's tier table
+carried four of them and closed "All four confidence tiers are now implemented."
+§12 asserted the four "span [0.70, 0.99]" and that the only other values sat
+below that band. Both of the latter are false against the detector: 0.90, 0.80
+and 0.75 sit inside [0.70, 0.99] and are none of the four, and the omitted 0.75
+library_export is — by §9's own measurement, twelve hundred lines away — the
+most common entrypoint kind on this repo's corpus (45 of 118). WI-logad fixed
+one copy of the table and left the other two standing.
+
+§8's table is now the canonical eight rows and says so; §12 stops enumerating
+and records what it previously got wrong; 0.05 is named as a suppression
+sentinel below MIN_ENTRYPOINT_CONFIDENCE (0.10), not as a tier.
+
+Two more hand-maintained numbers, same class:
+
+Symbol.meta's registered-key count was three short — §9 said 47 where
+meta_keys_on_axis(AXIS_SYMBOL_META) returns 50.
+
+§3's io-boundaries entry advertised "150+ framework IO entries" for catalogues
+ADR-0016 rules stdlib-only ("the stdlib-only catalog scope is sound and stays").
+The claim predates the strict-stdlib cull that removed third-party rows by a
+month, and it was unfalsifiable as written: entries carry module/methods/notes
+and no stdlib-vs-framework marker, so the number could not be checked even in
+principle. Replaced with the scope rule and the census that is checkable.
+
+Guarded by test_spec_ir_contract.py: §8's table and §9's list must each equal
+the set of confidence= literals the detector emits, read from the AST. A regex
+over entrypoints.py also matches the three confidence=0.9x mentions inside
+_detect_from_concepts's docstring — which is how the first pass at this finding
+over-counted emit sites (41; actually 38) and briefly mistook that function's
+accurate per-family docstring for a fourth competing model. A vacuity control
+asserts all three extractors still match, so equality cannot pass on empty sets.
+Verified by differential: reverting either defect fails the guard naming it
+(missing [0.75]; spec says 47, registry has 50).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
