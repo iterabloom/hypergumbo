@@ -28,7 +28,7 @@ Superseded by: ADR-0035 (partial — see amendment table)
 
 | Section | Standing under ADR-0035 |
 |---|---|
-| Status line (per-package shape_id/stable_id coverage census) | **Fully in force — unique home.** `docs/hypergumbo-spec.md:341` (typed-tier coverage roadmap) and `spec:355` (shape_id live coverage table) actively delegate to "the ADR-0014 status line"; no other document carries the census. |
+| Status line (per-package shape_id/stable_id coverage census) | **Fully in force — unique home.** `docs/hypergumbo-spec.md` §7 (typed-tier coverage roadmap) and `spec §6` (shape_id live coverage table) actively delegate to "the ADR-0014 status line"; no other document carries the census. |
 | §1 shape_id (generic CST walker + Python `ast` override) | **In force as amended by ADR-0035.** ADR-0035 §1 delegates refactor-tracking *to* `shape_id`/fingerprint ("the content hashes are the refactor-tracking instruments"); shape_id changes are a trailing event (WI-vufah, shapeid v2→v3). The Python `ast` intentional-divergence rationale stands. |
 | §2 untyped-tier formula (`sha256(kind:param_count:arity_flags:decorators:containing_stable_id)`) | **SUPERSEDED by ADR-0035.** The printed formula is doubly stale: shipped v5 already added `name`+`qualified_name` (the ghost amendment recorded above), and ADR-0035 §1 supersedes it again with full scope-chain folding at v6. The `ArityFlags`/`classify_parameter_flags` *mechanism* survives as a structural input. |
 | §3 typed tier (`make_typed_stable_id`, Option-A language-scoped normalization) | **In force as amended by ADR-0035 §1:** `make_typed_stable_id` gains mandatory `name`/`qualified_name` parameters (closes WI-zitod). The tier, per-language `normalize_signature()` rules, and the Option-A-vs-Option-B rationale stand. |
@@ -36,7 +36,7 @@ Superseded by: ADR-0035 (partial — see amendment table)
 | §5 containing_module recursion + v1→v2 scheme bump | **SUPERSEDED by ADR-0035 §1.** The full scope chain (module/path → classes → enclosing functions → name → kind → occurrence index) subsumes and extends recursive containment, fixing the gap §5 left (WI-gitun: function-locals omit the enclosing function) and unifying py.py's divergent local `_compute_stable_id`. The v1→v2 bump is history (WI-foful backfill). |
 | §5a class_body_sig + `(stable_id, canonical_name)` escape hatch | **SUPERSEDED by ADR-0035.** The load-bearing rationale (class's own name excluded "by design — survives renames") was falsified by shipped v5 and is formally reversed by ADR-0035 §2 (name STAYS in the hash; rename-tracking is fingerprint's job). The escape hatch is dead since ADR-0032 removed `canonical_name`; ADR-0035 Alternative 1 rejects rebuilding it. |
 | §5b eight kind-factories + `populate_kind_stable_ids` backstop precedence | **In force, EXCEPT** the `dependency` row, superseded by ADR-0035 §4 (manifest path joins the hash; a package declared in N manifests becomes N nodes). The `module`/`interface`/`type` rows are pending ADR-0035 §4's same-train path-anchoring audit. The `file`/`variable`/`export`/`project` rows and the never-override-non-`None` precedence rule remain fully in force — this is their only decision-document home. |
-| §6 grammar version stability contract | **Fully in force — unique home.** Untouched by ADRs 0035–0042 (shape_id mechanics ride a trailing event). `docs/grammars/vendor-sync.md:61` cites §6 as the authority for the SHAPE_ID_SCHEME-bump-on-grammar-change step; the algorithm-version-vs-grammar-version division of labor and the no-cross-version-tests ruling exist nowhere else. |
+| §6 grammar version stability contract | **Fully in force — unique home.** Untouched by ADRs 0035–0042 (shape_id mechanics ride a trailing event). `docs/grammars/vendor-sync.md` cites §6 as the authority for the SHAPE_ID_SCHEME-bump-on-grammar-change step; the algorithm-version-vs-grammar-version division of labor and the no-cross-version-tests ruling exist nowhere else. |
 | Context, Implementation Order, Consequences, Relationship to Other ADRs, References | **Historical narrative.** No live law; ADR-0035's Context now carries the authoritative falsification narrative. |
 
 ### Planned retirement (post-v6-train)
@@ -46,15 +46,15 @@ WI-foful's spec scheme-history backfill and ADR-0035 §4's path-anchoring
 audit for the `module`/`interface`/`type` factory rows), the fold-forward
 plan relocates the surviving law and this file takes a permanent
 0025/0026-style stub: the status-line coverage tables fold into the spec's
-identity-fields blocks at the two delegation sites (spec:341, spec:355);
+identity-fields blocks at the two delegation sites (spec §6, spec §6);
 §1's within-language-comparison rationale folds into the spec shape_id block
 and the `compute_shape_id` docstring; §3's Option-A rationale folds into
-spec:335-336; §4's ~25 code/test citations repoint to ADR-0035 §3 (already
+spec §6; §4's ~25 code/test citations repoint to ADR-0035 §3 (already
 the normative home); §5b's surviving factory rows plus the backstop
 precedence rule fold into the spec identity-fields section or an ADR-0035
 §3/§4 amendment after the path-anchoring audit decides their final formulas;
 §6 folds into `docs/grammars/vendor-sync.md` plus the spec's scheme-versioning
-section (spec:1838-1845); dead-section history (§2 formula, §5, §5a, the
+section (spec §16); dead-section history (§2 formula, §5, §5a, the
 v1→v5 bumps) is recorded in the spec's `stable_id_scheme` version history
 (WI-foful's backfill). **Until then, this document remains the authority for
 its in-force sections.**
@@ -73,16 +73,16 @@ The spec (§6, "Identity field semantics") defines `stable_id` and `shape_id` as
 
 | Analyzer | `stable_id` value | Collision scope |
 |----------|-------------------|-----------------|
-| Go Gin/Echo (`go.py:1186`) | `http_method.lower()` (e.g., `"get"`) | All GET routes in a file |
-| Go Gorilla mux (`go.py:1231`) | `"any"` (hardcoded) | All HandleFunc routes |
-| JS/TS Express (`js_ts.py:1978`) | `http_method` (e.g., `"GET"`) | All GET routes in a file |
-| JS/TS NestJS (`js_ts.py:2211`) | `http_method` or `None` | All same-method handlers |
-| WGSL (`wgsl.py:232`) | `entry_type` (e.g., `"vertex"`) | All vertex shaders |
-| Python Django CBV (`py.py:1441-1443`) | `item.name.upper()` (e.g., `"GET"`) | All same-method CBV handlers |
+| Go Gin/Echo (`go.py::_extract_symbols_from_file`) | `http_method.lower()` (e.g., `"get"`) | All GET routes in a file |
+| Go Gorilla mux (`go.py::_extract_symbols_from_file`) | `"any"` (hardcoded) | All HandleFunc routes |
+| JS/TS Express (`js_ts.py::_extract_nextjs_usage_contexts`) | `http_method` (e.g., `"GET"`) | All GET routes in a file |
+| JS/TS NestJS (`js_ts.py`) | `http_method` or `None` | All same-method handlers |
+| WGSL (`wgsl.py::_extract_wgsl_symbols`) | `entry_type` (e.g., `"vertex"`) | All vertex shaders |
+| Python Django CBV (`py.py::_extract_flask_usage_contexts`) | `item.name.upper()` (e.g., `"GET"`) | All same-method CBV handlers |
 
 This is a spec violation. The spec defines `stable_id` as semantic identity — a unique fingerprint. `GET /users` and `GET /posts` currently produce identical `stable_id="GET"`. The `id` field disambiguates (it includes file, line, and handler name), but `stable_id` is the field designed for cross-refactor tracking.
 
-**Category 4: Python-only real hashes.** Only `py.py` computes both `stable_id` (signature hash via `_compute_stable_id`, line 836) and `shape_id` (AST structure hash via `_compute_shape_id`, line 894). No other analyzer computes `shape_id` at all.
+**Category 4: Python-only real hashes.** Only `py.py` computes both `stable_id` (signature hash via `py.py::_compute_stable_id`) and `shape_id` (AST structure hash via `py.py::_compute_shape_id`). No other analyzer computes `shape_id` at all.
 
 ### Implementation gap: containing_module_stable_id
 
@@ -92,7 +92,7 @@ The spec includes `{containing_module_stable_id}` in the hash formula for both t
 
 All 46 PyPI grammar dependencies use pessimistic version constraints (`~=X.Y.Z`), providing reasonable stability. However, build-from-source grammars (Lean, Wolfram) use `git clone --depth 1` from HEAD (`scripts/build-source-grammars:105`) with no commit pinning. `shape_id` values for these languages are not reproducible across builds.
 
-The spec provides scheme identifiers (`STABLE_ID_SCHEME`, `SHAPE_ID_SCHEME` in `schema.py:72-73`) for detecting algorithm changes, but a grammar patch release could silently change CST structure without triggering a scheme bump.
+The spec provides scheme identifiers (`STABLE_ID_SCHEME`, `SHAPE_ID_SCHEME` in `schema.py::SHAPE_ID_SCHEME`) for detecting algorithm changes, but a grammar patch release could silently change CST structure without triggering a scheme bump.
 
 ### Why this matters now
 
@@ -110,7 +110,7 @@ Add a `compute_shape_id(node)` method to `TreeSitterAnalyzer` that walks any tre
 - Error/missing nodes (`"ERROR"`, `"MISSING"`)
 - Identifier and literal leaf nodes: replace with just their type name (matching Python's `ast`-based approach of stripping names and values while preserving structural position)
 
-**Implementation:** Build on the existing `iter_tree()` utility (`base.py:200-222`), which provides non-recursive depth-first traversal (required for deeply nested files that exceed Python's recursion limit).
+**Implementation:** Build on the existing `iter_tree()` utility (`base.py::FileAnalysis`), which provides non-recursive depth-first traversal (required for deeply nested files that exceed Python's recursion limit).
 
 **Python keeps its `ast`-based override.** Python's `ast` module produces a cleaner, more semantically precise hash — no formatting noise, no intermediate wrapper nodes. A tree-sitter CST walker would produce *different* hashes for the same Python code. Keeping Python's `_compute_shape_id()` and using tree-sitter for everything else preserves existing hash stability for Python consumers. This is an intentional divergence, not technical debt.
 
@@ -316,23 +316,23 @@ SUPERSEDED by ADR-0035 §2 — see amendment table; original: `git show 51635518
 
 | What | Where |
 |------|-------|
-| Spec §6 identity field semantics | `docs/hypergumbo-spec.md:285` |
-| Symbol class (`stable_id`, `shape_id` fields) | `ir.py:237-238` |
-| Scheme version constants | `schema.py:73-74` |
-| Python `_compute_stable_id()` | `py.py:1227` |
-| Python `_compute_shape_id()` / `_ast_structure()` | `py.py:1277` / `py.py:1263` |
-| Python Django CBV route identity | `py.py:1831-1833` |
-| `iter_tree()` utility | `base.py:937` |
-| `ArityFlags` dataclass | `base.py:162` |
-| `classify_parameter_flags()` | `base.py:1523` |
-| `compute_shape_id()` (generic CST walker) | `base.py:1424` |
-| `compute_stable_id()` (untyped tier) | `base.py:1599` |
-| `make_route_stable_id()` | `base.py:315` |
-| `make_entry_stable_id()` | `base.py:334` |
-| `make_typed_stable_id()` | `base.py:353` |
+| Spec §6 identity field semantics | `docs/hypergumbo-spec.md` §6 |
+| Symbol class (`stable_id`, `shape_id` fields) | `ir.py::compute_config_fingerprint` |
+| Scheme version constants | `schema.py::STABLE_ID_SCHEME` / `schema.py::SHAPE_ID_SCHEME` |
+| Python `_compute_stable_id()` | `py.py::_collect_module_constants` |
+| Python `_compute_shape_id()` / `_ast_structure()` | `py.py::_scan_router_prefixes` / `py.py::_collect_module_constants` |
+| Python Django CBV route identity | `py.py::_compute_stable_id` |
+| `iter_tree()` utility | `base.py::defer_bare_method_call` |
+| `ArityFlags` dataclass | `base.py::ArityFlags` |
+| `classify_parameter_flags()` | `base.py::make_synthetic_symbol_identity` |
+| `compute_shape_id()` (generic CST walker) | `base.py::make_protocol_stable_id` |
+| `compute_stable_id()` (untyped tier) | `base.py::populate_synthetic_class_b_identity` |
+| `make_route_stable_id()` | `base.py::stamp_io_mode_from_call` |
+| `make_entry_stable_id()` | `base.py::stamp_io_mode_from_call` |
+| `make_typed_stable_id()` | `base.py::find_child_by_type` |
 | Go routes (fixed, uses `make_route_stable_id`) | `go.py` (multiple call sites) |
 | JS/TS routes (fixed, uses `make_route_stable_id`) | `js_ts.py` (multiple call sites) |
-| WGSL entry points (fixed, uses `make_entry_stable_id`) | `wgsl.py:234` |
+| WGSL entry points (fixed, uses `make_entry_stable_id`) | `wgsl.py::_extract_wgsl_symbols` |
 | Hack (fixed, uses `compute_stable_id`) | `hack.py` (multiple call sites) |
 | Smithy (fixed, uses `compute_stable_id`) | `smithy.py` (multiple call sites) |
 | Pinned build-from-source grammars | `scripts/build-source-grammars:27-33` |

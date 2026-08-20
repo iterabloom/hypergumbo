@@ -63,7 +63,7 @@ if not callee_symbol:
 Investigating this bug revealed that JavaScript/TypeScript has the **exact same gap**:
 
 ```python
-# js_ts.py line 1984-1987
+# js_ts.py
 elif obj_name and obj_name in namespace_imports:
     # Has module path in namespace_imports[obj_name] but doesn't use it!
     lookup_result = resolver.lookup(method_name)  # No path_hint!
@@ -133,7 +133,7 @@ For each analyzer in the priority list above:
 
 ### Implementation Pattern
 
-Based on Go's correct implementation (`go.py:468-494`):
+Based on Go's correct implementation (`go.py::_go_package_identifier`):
 
 ```python
 @dataclass

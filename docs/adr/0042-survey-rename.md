@@ -15,10 +15,10 @@ Decided by the project owner via design interview on 2026-06-10, reviewing evide
 
 hypergumbo's primary output — the JSON envelope containing symbols, edges, entrypoints, and provenance — circulates under four names, none of which was ever the subject of a naming decision:
 
-1. **`hypergumbo.results.json`** — the CLI default. `_discover_input_file` (cli.py:416) searches the results cache and then the repo root for this basename; `cmd_run` writes it to `~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json` (cli.py:7775); roughly nine `--input` help strings repeat it.
-2. **`hg.json`** — docs and bakeoff shorthand, which `find_behavior_map` (behavior_map_io.py:50) hardcodes as a *different* resolver default. Two discovery resolvers, two default basenames, no shared constant.
+1. **`hypergumbo.results.json`** — the CLI default. `_discover_input_file` (`cli.py::_discover_input_file`) searches the results cache and then the repo root for this basename; `cmd_run` writes it to `~/.cache/hypergumbo/<fingerprint>/results/<state_hash>/hypergumbo.results.json` (`cli.py`); roughly nine `--input` help strings repeat it.
+2. **`hg.json`** — docs and bakeoff shorthand, which `find_behavior_map` (`survey_io.py::find_behavior_map`) hardcodes as a *different* resolver default. Two discovery resolvers, two default basenames, no shared constant.
 3. **`bm.json`** — the test/dogfood substrate convention. 52 open tracker items reference it (grep-measured 2026-06-10; the count drifted from 17 earlier in the campaign window — counts in this family rot continuously).
-4. **`behavior_map.json`** — legacy from the original Dec-2025 MVP spec. It survives as the name of the view in the spec's v0.x stability commitment ("No breaking changes to `behavior_map.json` view within v0.x series", docs/hypergumbo-spec.md §Appendix C, ~line 1857).
+4. **`behavior_map.json`** — legacy from the original Dec-2025 MVP spec. It survives as the name of the view in the spec's v0.x stability commitment ("No breaking changes to `behavior_map.json` view within v0.x series", docs/hypergumbo-spec.md §Appendix C).
 
 Per INV-firuh's root-cause record: the names accumulated organically — `behavior_map.json` from the MVP spec, `hg.json` as docs-shorthand drift, `bm.json` as substrate convention, `hypergumbo.results.json` as pre-release CLI polish. No single naming decision was ever authored. The rename *is* the consolidation.
 
@@ -44,16 +44,16 @@ The concept name for the JSON envelope changes from "behavior map" to "survey" a
 
 The `.agent/` playbook portion of the docs sweep splits into a separate human-approved PR (governance files; cannot self-merge).
 
-**The schema does not change.** This ruling is filename and vocabulary only: no field is added, removed, or retyped; `SCHEMA_VERSION` (0.14.1 at time of writing, schema.py:73) is not bumped by this ADR. The spec's v0.x stability commitment is unaffected — the clause at spec ~line 1857 is rephrased to name the survey view, and the commitment itself carries over verbatim.
+**The schema does not change.** This ruling is filename and vocabulary only: no field is added, removed, or retyped; `SCHEMA_VERSION` (0.14.1 at time of writing, `schema.py::SCHEMA_VERSION`) is not bumped by this ADR. The spec's v0.x stability commitment is unaffected — the clause in spec §Appendix C is rephrased to name the survey view, and the commitment itself carries over verbatim.
 
 ### 3. Verb rename: `hypergumbo survey` (the WI-rital decision)
 
-`hypergumbo survey` becomes the primary verb producing `survey.json`. `hypergumbo run` (cli.py:6033) remains a **deprecated alias for one minor version** — fully functional, warning on use — then is removed. This was tracked as a separate user-gated decision (WI-rital); the project owner folded it into this ADR per the interview. The deciding argument is noun-verb-artifact consistency: *survey* produces *survey.json*, and the docs read naturally ("survey the repo") instead of permanently reading "run produces a survey."
+`hypergumbo survey` becomes the primary verb producing `survey.json`. `hypergumbo run` (`cli.py`) remains a **deprecated alias for one minor version** — fully functional, warning on use — then is removed. This was tracked as a separate user-gated decision (WI-rital); the project owner folded it into this ADR per the interview. The deciding argument is noun-verb-artifact consistency: *survey* produces *survey.json*, and the docs read naturally ("survey the repo") instead of permanently reading "run produces a survey."
 
 ### 4. Migration mechanics
 
 - **One constant + declared alias list** (§1), defined once in core and imported everywhere — no resolver, script, or help string hardcodes a basename again.
-- **The two divergent discovery resolvers merge.** `_discover_input_file` (cli.py:416, cache-then-repo-root search for `hypergumbo.results.json`) and `find_behavior_map` (behavior_map_io.py:50, directory search for `hg.json`) collapse into the single shared substrate loader being built in the same campaign — the Wave-4 joint deliverable of survey:F2 (constant + aliases + merged resolver, this ADR) and cli-input:F3 (typed SubstrateError, dict-root check, view discriminator, schema_version warn-first gate; under the INV-fabov umbrella). One loader, consumed by every CLI subcommand and bakeoff/analysis script.
+- **The two divergent discovery resolvers merge.** `_discover_input_file` (`cli.py::_discover_input_file`, cache-then-repo-root search for `hypergumbo.results.json`) and `find_behavior_map` (`survey_io.py::find_behavior_map`, directory search for `hg.json`) collapse into the single shared substrate loader being built in the same campaign — the Wave-4 joint deliverable of survey:F2 (constant + aliases + merged resolver, this ADR) and cli-input:F3 (typed SubstrateError, dict-root check, view discriminator, schema_version warn-first gate; under the INV-fabov umbrella). One loader, consumed by every CLI subcommand and bakeoff/analysis script.
 - **The ~65-reference `scripts/` surface is in scope.** It was owned by no campaign member when the analysis ran; it is assigned to the loader-consumption sweep.
 - **The 52 affected open tracker items are re-grepped at sweep time.** Counts in this family drift (17 → 52 within the campaign window); per the family's own discipline, every sweep re-greps before editing rather than trusting recorded counts.
 
@@ -111,5 +111,5 @@ INV-firuh flips violated → satisfied when S1–S8 land; the verb removal at wi
 
 - Strategy doc: `~/hypergumbo_lab_notebook/correctness_strategy_06102026.md` — survey-rename-campaign family verdict, the two-resolver finding, the 65-ref / 52-item measurements, the S1→S8 chain, and shared seam (c) (the substrate loader).
 - Raw analysis: `~/hypergumbo_lab_notebook/correctness_strategy_06102026_full_workflow_result.json`.
-- Code: `packages/hypergumbo-core/src/hypergumbo_core/cli.py:416` (`_discover_input_file`, default `hypergumbo.results.json`); `packages/hypergumbo-core/src/hypergumbo_core/behavior_map_io.py:50` (`find_behavior_map`, default `hg.json`); `cli.py:6033` (`run` subparser); `schema.py:73` (`SCHEMA_VERSION = "0.14.1"`, unchanged by this ADR).
-- Spec: `docs/hypergumbo-spec.md` ~line 1857 — the v0.x stability commitment whose wording (not substance) updates in the S4 sweep.
+- Code: `packages/hypergumbo-core/src/hypergumbo_core/cli.py::_discover_input_file` (`_discover_input_file`, default `hypergumbo.results.json`); `packages/hypergumbo-core/src/hypergumbo_core/survey_io.py::find_behavior_map` (default `hg.json`; re-exported by the `behavior_map_io` shim); `cli.py` (`run` subparser); `schema.py::SCHEMA_VERSION` (unchanged by this ADR).
+- Spec: `docs/hypergumbo-spec.md` §Appendix C — the v0.x stability commitment whose wording (not substance) updates in the S4 sweep.

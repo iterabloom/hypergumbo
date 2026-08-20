@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0028: Edge.evidence_type Names the Inference Pathway
 
-- Status: Accepted — §"Sibling-field design call-out" superseded by ADR-0037 (`is_resolved` is centrally derived at edge finalization, not producer-stamped); the evidence-type axis law is in force (Phases 1–4 complete through `SCHEMA_VERSION` 0.7.0; endpoint_shape closure shipped per Wave 8 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` per audit-findings 0008/0012/0014, including the `Edge.is_resolved: bool` sibling field at `ir.py:399`)
+- Status: Accepted — §"Sibling-field design call-out" superseded by ADR-0037 (`is_resolved` is centrally derived at edge finalization, not producer-stamped); the evidence-type axis law is in force (Phases 1–4 complete through `SCHEMA_VERSION` 0.7.0; endpoint_shape closure shipped per Wave 8 — all 111 endpoint_shape values removed from `EVIDENCE_TYPES` per audit-findings 0008/0012/0014, including the `Edge.is_resolved: bool` sibling field at `ir.py::AnalysisRun.to_dict`)
 - Date: 2026-05-02
 - Supersedes: —
 - Superseded by: ADR-0037 (partial — the §"Sibling-field design call-out" producer-stamped `is_resolved` contract only; see the 2026-06-11 amendment below)
@@ -11,7 +11,7 @@
 
 ## Context
 
-Hypergumbo's `Edge` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py:395`) defines `evidence_type` as a free-form `str` with default `"ast_call_direct"` and the docstring "Type of evidence (e.g., ast_call_direct)". The documented purpose of the field is to record **how the analyzer concluded this edge exists** — the inference pathway from source code to recovered relationship. There is no enum, no canonical vocabulary, and no governing principle constraining what an `evidence_type` value should encode. Each analyzer, linker, and inference rule invents its label in isolation.
+Hypergumbo's `Edge` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py::Edge`) defines `evidence_type` as a free-form `str` with default `"ast_call_direct"` and the docstring "Type of evidence (e.g., ast_call_direct)". The documented purpose of the field is to record **how the analyzer concluded this edge exists** — the inference pathway from source code to recovered relationship. There is no enum, no canonical vocabulary, and no governing principle constraining what an `evidence_type` value should encode. Each analyzer, linker, and inference rule invents its label in isolation.
 
 The 2026-04-30 Adjacent Concept Sweep (the periodic audit-playbook §5 sweep) flagged this field as a confirmed leak. The follow-on deep audit at `WI-turin-pajuk` returned an inventory of **210 distinct `evidence_type` values** in production code (lowercase identifier-shaped string literals at `evidence_type=` sites under `packages/`, excluding tests) and clustered them along three axes that are silently sharing one field. The audit's verdict was DEPRECATE: full ADR-0023-shape migration warranted. This confirms ADR-0023's Open Question #2 prediction ("Probably needs its own ADR").
 
@@ -189,7 +189,7 @@ Mirrors ADR-0023's four-phase shape; consumers can keep working throughout. JSON
 Mirrors ADR-0023 Phase 1 but with one extra artifact (the new sibling field). Land:
 
 1. The registry module at `packages/hypergumbo-core/src/hypergumbo_core/evidence_types.py` with `AXIS_*` constants, `EvidenceTypeSpec` frozen dataclass, the `EVIDENCE_TYPES` tuple-of-specs (seeded with Cluster 28A on `inference_pathway`, Clusters 28B / 28C on `endpoint_shape`, Cluster 28D apex+peers split between `inference_pathway` and `endpoint_shape` per the audit), and the accessors.
-2. The `Edge.is_resolved: bool = True` field on the `Edge` dataclass at `ir.py:368-410` (the field block where `evidence_type` lives), plus serialization round-trips in `to_dict` / `from_dict`. Schema regeneration adds the new key.
+2. The `Edge.is_resolved: bool = True` field on the `Edge` dataclass at `ir.py::Edge` (the field block where `evidence_type` lives), plus serialization round-trips in `to_dict` / `from_dict`. Schema regeneration adds the new key.
 3. The drift-coherence linter at `scripts/check-evidence-type-drift`, wiring into `.githooks/pre-commit`.
 4. The property test in `tests/test_evidence_types.py`: registry invariants + drift-detection test + `Edge.is_resolved` round-trip + `is_resolved` defaults to `True` invariant.
 5. By-axis view extension: add the `Edge.evidence_type` axis's three sections to `scripts/generate-concept-axes`'s `_SECTIONS` table; regenerate `docs/concept-axes.md`.

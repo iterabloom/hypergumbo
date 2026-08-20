@@ -86,7 +86,7 @@ The opening sentence of every file in `packages/hypergumbo-core/src/hypergumbo_c
 ### 4. Cataloguing documents use the subcategory vocabulary
 
 - `docs/LINKERS.md` is renamed (title → "Linkers", not "Cross-Language Linkers") and its table gains a Subcategory column.
-- `docs/hypergumbo-spec.md` §7 is renamed ("Linkers") and restructured around the subcategories. Its existing inclusive definition at line 197 ("*A linker is a Tier 2 pass that creates cross-language or cross-component relationships*") is amplified as the canonical one-sentence definition — it was always correct, it just wasn't propagated into the neighbouring text.
+- `docs/hypergumbo-spec.md` §7 is renamed ("Linkers") and restructured around the subcategories. Its existing inclusive definition ("*A linker is a Tier 2 pass that creates cross-language or cross-component relationships*") is amplified as the canonical one-sentence definition — it was always correct, it just wasn't propagated into the neighbouring text.
 
 ### 5. Every new linker PR includes a subcategory declaration
 

@@ -44,15 +44,15 @@ Nine analyzers implement variable type inference. The original six (Python, Java
 
 | Analyzer | Constructor | Parameter | Field | Return | Chained | Scope |
 |----------|:-----------:|:---------:|:-----:|:------:|:-------:|:------|
-| Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py:1904-1942`) | ✅ (`py.py:118`, `1648-1661`) | ❌ (Phase 4) | Method-scoped (`py.py:1944-1960`) |
-| Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py:1060-1070`) | ✅ (`java.py:231`, `1197-1210`) | ❌ (Phase 1) | File-scoped |
-| Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py:529-541`) | ✅ (`kotlin.py:158`, `702-720`) | ❌ (Phase 2) | File-scoped |
-| TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py:526`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
-| C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py:865-889`) | ✅ (`csharp.py:302`, `327-362`) | ❌ (Phase 2) | File-scoped |
-| Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py:157`, `539-601`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
-| Go       | ✅ (short var, var spec, `go.py:593-635`) | ✅ (`go.py:638-671`) | ❌ | ❌ | ❌ (Phase 1) | File-scoped |
-| Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py:1973-2017`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
-| Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py:235-295`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
+| Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py::_compute_shape_id`) | ✅ (`py.py`) | ❌ (Phase 4) | Method-scoped (`py.py::_compute_value_shape_id`) |
+| Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py::_extract_symbols`) | ✅ (`java.py::_extract_java_signature`, `1197-1210`) | ❌ (Phase 1) | File-scoped |
+| Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py::_extract_kotlin_return_type_name`) | ✅ (`kotlin.py::_KOTLIN_MODIFIER_NODE_TYPES`) | ❌ (Phase 2) | File-scoped |
+| TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py::_extract_named_imports`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
+| C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py::_extract_symbols_from_file`) | ✅ (`csharp.py::_extract_csharp_signature`, `327-362`) | ❌ (Phase 2) | File-scoped |
+| Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py::_extract_dart_signature`, `539-601`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
+| Go       | ✅ (short var, var spec, `go.py::_parse_require_line`) | ✅ (`go.py::_external_package_for_type`) | ❌ | ❌ | ❌ (Phase 1) | File-scoped |
+| Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
+| Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
 | Rust     | ✅ (let-binding constructor / struct-expression / type-annotated let, `rust.py:_extract_var_types_rust`) | ✅ (`rust.py:_extract_param_types_rust`) | Partial (via `field_type_registry`, `self.field` only) | ✅ (`rust.py:_extract_rust_return_type_name` — Result/Option/Box/Rc/Arc unwrap, impl/dyn Trait opaque) | ✅ (Phase 3 / WI-titor) | File-scoped |
 
 The **Chained** column tracks INV-dihos source 5: "this analyzer's `var_types` consults a global function-signature registry when assigning the result of a method call." A `❌` means the analyzer name-guesses the var type from the method name (or gives up); a `(Phase N)` annotation places the analyzer in the rollout plan in §Future Work. Languages with no return-type annotations at all (Ruby, Lua) are marked `n/a` because there is no source data to register; the same is true for fully-dynamic Python without PEP 484 annotations, but type-annotated Python is tracked by Phase 4.
@@ -98,7 +98,7 @@ different types. However:
 
 **Exception: Python is method-scoped.** Each function gets a fresh `param_types` dict
 (seeded from parameter annotations + class field types) passed to `process_code_block()`.
-The dict does not leak across function boundaries (`py.py:1944-1960`).
+The dict does not leak across function boundaries (`py.py::_compute_value_shape_id`).
 
 ### Return-Type Registry Pre-Pass (INV-dihos)
 
@@ -262,7 +262,7 @@ shipped one phase at a time, with bakeoff validation between phases:
 | **1** | Java + Go | Highest-value statically-typed languages with the most repos in the deep-bakeoff pool. Both already track receiver types in `var_types`. INV-dihos was discovered on Go (prometheus); Java has a parallel gap on Spring repos. | INV-dihos directly. |
 | **2** | Kotlin + C# | Existing `var_types` infrastructure with parameter and return tracking. Smallest delta after Phase 1 since the Tier 2 escape hatches (nullable, async unwrapping) are well-understood. | Spotted on kserve (Kotlin) and aspnet (C#) deep-bakeoff repos. |
 | **3** | Rust + C++ + Scala | No existing `var_types` infrastructure to extend. Each requires a parameter/constructor extractor first (see §Analyzers Without Type Tracking) before signature registration is meaningful. Largest delta. | Surfaced by alertmanager Rust workspace and any LLVM-style C++ repo. |
-| **4** | Type-annotated Python | PEP 484 annotations are well-defined; `py.py` already extracts return type annotations for the *current* function (`py.py:1648`). Promote to global registry. Untyped Python remains a `n/a`. | Spotted on kserve (mixed-typed Python). |
+| **4** | Type-annotated Python | PEP 484 annotations are well-defined; `py.py` already extracts return type annotations for the *current* function (`py.py::_extract_flask_usage_contexts`). Promote to global registry. Untyped Python remains a `n/a`. | Spotted on kserve (mixed-typed Python). |
 | **5** *(follow-on)* | Cross-linker integration | type_hierarchy.py fallback for ambiguous receivers; dataflow.py refinement for chained method-call `access_mode`. | Optional, only after Phases 1–4 are validated. |
 
 Each phase ships as its own PR, adds regression tests against the
@@ -306,7 +306,7 @@ analyzer(s).
 4. **Return-Type Registry Pre-Pass — Phase 1: Java + Go** (INV-dihos): build the global signature registry and wire it into both analyzers' `var_types` resolution loop. Add `signatures` YAML sections to `java.yaml` and `go.yaml`, plus Tier 2 Python escape hatches in a new `signatures.py` module for tuple/error unwrapping (Go) and constructor handling (Java). Validation: forward slice from `cmd/promtool/main.go:queryRange` should reach `promql.Engine.exec`; bakeoff repo: prometheus.
 5. **Return-Type Registry Pre-Pass — Phase 2: Kotlin + C#**: extend the registry to two more analyzers with existing var_types infrastructure. Tier 2 escape hatches: Kotlin nullable suffix (`Foo?` → `Foo`); C# `Task<T>` / `ValueTask<T>` async unwrapping. Bakeoff repos: kserve (Kotlin), aspnet (C#).
 6. **Return-Type Registry Pre-Pass — Phase 3: Rust + C++ + Scala**: requires bootstrapping `var_types` infrastructure for these analyzers first (see §Analyzers Without Type Tracking). Tier 2 escape hatches: Rust `Result<T, E>` / `Option<T>` unwrapping and `impl Trait` opacity; C++ pointer/reference stripping; Scala implicits left as future work.
-7. **Return-Type Registry Pre-Pass — Phase 4: Type-annotated Python**: PEP 484 makes this tractable for code that uses type hints. Untyped Python remains `n/a`. The existing local return-type extraction in `py.py:1648` is promoted to a global registry entry.
+7. **Return-Type Registry Pre-Pass — Phase 4: Type-annotated Python**: PEP 484 makes this tractable for code that uses type hints. Untyped Python remains `n/a`. The existing local return-type extraction in `py.py::_extract_flask_usage_contexts` is promoted to a global registry entry.
 8. **Return-Type Registry Pre-Pass — Phase 5 (follow-on): cross-linker integration**: type_hierarchy.py fallback for ambiguous receiver types in the registry; dataflow.py refinement for chained method-call `access_mode` annotations. Optional, only after Phases 1–4 are validated against deep-bakeoff metrics.
 9. **Consider method-scoped tracking for non-Python analyzers** (if false positives become a problem)
 10. **Add Rust type tracking** (medium effort, good value for trait-based dispatch) — superseded by Phase 3 above; this entry is kept for the constructor/parameter portion which is a prerequisite for Phase 3.

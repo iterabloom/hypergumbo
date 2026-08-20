@@ -24,7 +24,7 @@ Status: Accepted — §6 fold COMPLETE (2026-07-21, WI-pumav): all endpoint_shap
 
 ## Context
 
-Hypergumbo's `Edge` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py:336`)
+Hypergumbo's `Edge` dataclass (`packages/hypergumbo-core/src/hypergumbo_core/ir.py::Edge`)
 defines `edge_type` as a free-form `str`, with the docstring "Type of relationship
 (calls, imports, inherits, etc.)". There is no enum, no canonical vocabulary, no
 governing principle, and no ADR that constrains what an `edge_type` value should
@@ -48,8 +48,8 @@ src or dst happens to be. Four representative families:
 | Edge type | Producer | Same syntactic construct? |
 |---|---|---|
 | `imports` | Python (`py.py:_extract_import_edges`), most languages | Yes — import statement |
-| `imports_module` | `linkers/js_module.py:772, 827` | Yes — JS module import |
-| `imports_component` | `linkers/vue_component.py:235`, `lang-common/svelte.py:264`, `lang-common/astro.py:335`, `lang-common/vue.py:584` | Yes — component framework import |
+| `imports_module` | `linkers/js_module.py::link_js_modules` | Yes — JS module import |
+| `imports_component` | `linkers/vue_component.py::link_vue_components`, `svelte.py`, `astro.py::extract_symbols_from_file`, `vue.py` | Yes — component framework import |
 
 All three are "this file has an import statement that brings in a name from
 elsewhere." The label varies by what the dst happens to be (a JS module file vs.
@@ -70,7 +70,7 @@ from the dst's `kind` field.
 
 #### "References" is also overloaded as both apex and peer
 
-`packages/hypergumbo-core/src/hypergumbo_core/scip/calls.py:48` documents:
+`packages/hypergumbo-core/src/hypergumbo_core/scip/calls.py` documents:
 
 > `edge_type="references"` uniformly. SCIP's SymbolRole bitfield (ReadAccess /
 > WriteAccess / Import / Generated / Test / Definition / ForwardDefinition) is
@@ -148,7 +148,7 @@ direction-of-access is queried from `meta`.
 
 The lack of a typing principle has shipped bugs:
 
-1. **`packages/hypergumbo-core/src/hypergumbo_core/ranking.py:1053`** —
+1. **`packages/hypergumbo-core/src/hypergumbo_core/ranking.py::filter_edges_for_ranking`** —
    ```python
    _IMPORT_EDGE_TYPES = {"imports", "imports_module"}
    ```
@@ -157,7 +157,7 @@ The lack of a typing principle has shipped bugs:
    edges instead of import edges. Whether this is intentional or oversight is
    undocumented.
 
-2. **`packages/hypergumbo-core/src/hypergumbo_core/slice.py:640`** —
+2. **`packages/hypergumbo-core/src/hypergumbo_core/slice.py::slice_graph`** —
    ```python
    if query.exclude_imports and edge.edge_type in ("imports", "imports_module"):
    ```
@@ -167,10 +167,10 @@ The lack of a typing principle has shipped bugs:
 3. **SCIP / native edge reconciliation.** The SCIP integration emits
    `references` as a generic supertype while native analyzers emit
    construct-specific types. The "downstream specialization pass" mentioned in
-   `scip/calls.py:48` does not exist. The same logical edge can appear twice
+   `scip/calls.py` does not exist. The same logical edge can appear twice
    with different `edge_type` values depending on which analyzer found it.
 
-4. **`packages/hypergumbo-core/src/hypergumbo_core/taint.py:736`** —
+4. **`packages/hypergumbo-core/src/hypergumbo_core/taint.py::TaintCatalog.match_source`** —
    surfaced when the canonical-registry property test (PR (a)) AST-walked
    the package tree:
 
@@ -179,10 +179,10 @@ The lack of a typing principle has shipped bugs:
    ```
 
    `unresolved_external_call` is an `Edge.evidence_type` value, not an
-   `Edge.edge_type` value (see `analyze/base.py:410`); this membership test
+   `Edge.edge_type` value (see `analyze/base.py::constructed_from_callee`); this membership test
    would never match at runtime. Removed alongside the registry landing.
 
-5. **`packages/hypergumbo-core/src/hypergumbo_core/compact.py:108`** —
+5. **`packages/hypergumbo-core/src/hypergumbo_core/compact.py`** —
    surfaced by the same property test:
 
    ```python
@@ -484,8 +484,8 @@ Update the ~10 consumer files to query by `(edge_type, dst.kind)` rather
 than by hardcoded edge-type sets. Known consumers:
 
 - `packages/hypergumbo-core/src/hypergumbo_core/ranking.py` (`_IMPORT_EDGE_TYPES`,
-  edge-type weight table around line 198).
-- `packages/hypergumbo-core/src/hypergumbo_core/slice.py` (line 640
+  edge-type weight table).
+- `packages/hypergumbo-core/src/hypergumbo_core/slice.py` (
   `exclude_imports` set; possibly other edge-type filters elsewhere).
 - `packages/hypergumbo-core/src/hypergumbo_core/sketch.py`
   (any edge-type-based section selection).
@@ -748,5 +748,5 @@ ADR-0015 metadata pattern. **Recommended.**
   bump protocol applicable here.
 - **Likely follow-up**: `Symbol.kind` taxonomy audit (separate ADR);
   `evidence_type` boundary ADR (Open Question #2).
-- **Bug references**: silent miscategorization at `ranking.py:1053`,
-  `slice.py:640`; SCIP merger non-existence at `scip/calls.py:48`.
+- **Bug references**: silent miscategorization at `ranking.py::filter_edges_for_ranking`,
+  `slice.py::slice_graph`; SCIP merger non-existence at `scip/calls.py`.
