@@ -12,6 +12,10 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **`contribute` failed instead of falling back when `gh` was installed but non-functional.** The arm-selection gate was `command -v gh` — "is the binary installed" — where the question it needed answered was "can gh complete a request". Ubuntu's packaged build (2.45.0-1ubuntu0.3) emits a malformed `User-Agent` (`GitHub CLI ` with a trailing space, the version never injected) that api.github.com rejects as an HTTP/2 `PROTOCOL_ERROR`, so every gh API call failed while `command -v gh` succeeded. `contribute` took the gh arm and exited 1 with `Failed to create PR`, never reaching the curl/`api_post` arm a few lines below — the same REST path `auto-pr` drives against that API every day, and already covered by `test_github_without_gh_falls_back_to_api_post`. A working fallback that is never reached is not a fallback. The gate now probes function (`gh auth status`, evaluated once and cached since it costs a round trip) and says why it fell back, so an installed-but-broken gh degrades to a working path instead of failing the contributor's PR. Third instance of the probe-asks-the-wrong-question class after INV-rupid ("is the library importable" ≠ "are the weights on disk") and WI-dojud ("is the binary present" ≠ "is the backend on"). `contribute` also gains `--help`, whose absence meant the script had no invocation that did not attempt to create a PR.
+
 ## [8.0.0] - 2026-08-20
 
 ### Summary
