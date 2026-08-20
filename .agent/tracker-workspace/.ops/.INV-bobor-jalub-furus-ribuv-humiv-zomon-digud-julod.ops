@@ -1,0 +1,23 @@
+- op: create  # 5957
+  at: '2026-08-20T18:43:35Z'  # 5957
+  by: agent  # 5957
+  actor: jgstern_agent  # 5957
+  clock: 1  # 5957
+  nonce: '5957'  # 5957
+  data:  # 5957
+    kind: invariant  # 5957
+    title: "self-claims-gate is path-triggered only, so a claim regression introduced by claim-surface work hides behind green CI (63 commits measured)"  # 5957
+    status: violated  # 5957
+    priority: 1  # 5957
+    parent:  # 5957
+    tags:  # 5957
+    - ci_infrastructure  # 5957
+    - self_analysis  # 5957
+    isbefore: []  # 5957
+    duplicate_of: []  # 5957
+    not_duplicate_of: []  # 5957
+    pr_ref:  # 5957
+    description: "A CI gate whose trigger is a path include-list cannot see a regression that its\nown subject matter introduces elsewhere. Demonstrated, not hypothesised.\n\nWHAT HAPPENED. The self-claims-gate step in .woodpecker/woodpecker.yml runs only\nwhen a commit touches one of: the claims files, docs/hypergumbo-self-catalog/**,\ndocs/io-primitives-overlays/**, **/io_primitives/**, **/taint_sources|sinks|\nsanitizers/**, **/pyproject.toml, or the two gate scripts. Work in the 8.0.0\ncycle rowed pathlib.Path's surface in the I/O catalogue, which made Path.rename a\ncatalogued host_fs sink. Two long-standing bare Path.rename calls in\n_archive_entry immediately became unsanitized flows and runtime-cli-no-host-fs\nwent confirmed_with_caveats -> violated.\n\nIt then sat on green dev for 63 COMMITS (gate last ran at e6cb77fa15) because no\ncommit in that window touched a trigger path. It surfaced only when a version\nbump edited all seven pyproject.toml files during the v8.0.0 release, i.e. by\ncoincidence, during an unrelated operation, on a release branch.\n\nWHY THE OTHER LAYER DID NOT COVER IT. tests/../test_runtime_fs_write_wrapper_\ndiscipline.py derives its primitive set from the live catalogue and then\nsubtracts catalog.ambiguous_names. rename IS catalogued fs_write (pathlib.Path\n.rename and os.rename) and IS ambiguous, so it is filtered out there. That is\ndeliberate and documented: the guard calls itself \"a syntactic backstop for the\nunambiguous majority\" and explicitly delegates the remainder to \"the boundary\nanalysis, which has receiver evidence\". The boundary analysis IS this gate. So\nlayer 1 delegated its blind spot to a layer that was not running.\n\nCURRENT EXPOSURE, measured on dev 4799c634e9 rather than assumed: replace and\nremove remain in the same position -- catalogued fs_write, ambiguous, therefore\ninvisible to layer 1 and dependent on a gate that may be dormant. An AST scan of\nthe three runtime modules finds NO unwrapped fs-write among them today (every\n.replace call is str.replace -- two args; Path.replace takes one), so the\nexposure is latent rather than live. The next ambiguous fs-write primitive added\nto the catalogue lands in the same gap.\n\nWHAT WOULD CLOSE IT. A scheduled arm alongside the path trigger is the obvious\ncandidate -- full-suite already runs twice daily and could carry the gate, which\nwould have bounded detection at ~12 hours instead of 63 commits. Alternatives\nworth pricing before choosing: widening the trigger to any packages/**/*.py\n(cheap to state, expensive per-PR), or making the ambiguous-name set fail closed\nin layer 1 with a receiver-typed check rather than a name filter.\n\nRANKING NOTE, stated rather than smuggled: the standing owner ruling is to rank\nthe queue by the pre-registered <50% taint-precision band (WI-sivuz). This item\nis not in that band's scope -- it is CI gate coverage, not precision or recall\nwork -- so its P1 does not displace that ordering and should not be read as\ndoing so. Filed P1 because it is the mechanism by which a security-claim\nregression survived 63 commits behind a green pipeline."  # 5957
+    fields:  # 5957
+      statement: "A self-claim regression must become visible to CI within a bounded number of commits of its introduction, regardless of which paths the introducing commit happens to touch."  # 5957
+      root_cause: "The self-claims-gate step in .woodpecker/woodpecker.yml is conditioned on a path include-list. A commit that changes claim-relevant behaviour without touching one of those paths does not run the gate, and the AST discipline guard that would otherwise catch fs-write regressions explicitly delegates its ambiguous-name blind spot (rename, replace, remove) to this same gate."  # 5957
