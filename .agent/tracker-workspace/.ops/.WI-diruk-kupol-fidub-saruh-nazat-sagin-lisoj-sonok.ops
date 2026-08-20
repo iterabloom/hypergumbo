@@ -20,3 +20,25 @@
     pr_ref:  # 2502
     description: "Found by the Fundamental Concept Audit of `edge.meta['call_construct']`\n(2026-08-20), by an AST check asserting every `call_construct` sits on a\ncalls-family edge.\n\n`csharp.py:1732` and `csharp.py:1766` emit:\n\n    edge_type=\"references\"\n    meta={\"call_construct\": \"method_group\"}\n\nA C# method group (`Foo` passed without parens, e.g. `Action handler = Handle;`)\nis a REFERENCE to a method, not an invocation. The `edge_type=\"references\"` is\ncorrect. The meta KEY is wrong: `ref_construct` is the registered key for\n\"source-language construct on a reference-FAMILY (non-call) edge\", and its\nMetaKeySpec explicitly lists `references` as one of its edge types.\n\n`call_construct`'s own declaration (axis_meta_keys.py) says the two keys are\n\"distinct vocabularies, distinct edge families, zero overlap\". These two sites\nare the overlap.\n\nFix: rename the key at both sites to `ref_construct` and add `method_group` to\nthat key's documented value space. Behavioural check: a C# fixture with a\nmethod-group assignment emits a `references` edge carrying\n`meta['ref_construct'] == 'method_group'` and NO `call_construct`. Precedent\nfor the exact shape: INV-vakaf's fix (bash.py/objc.py stopped writing the wrong\nkey and wrote the right one; tests assert both the new key present AND the old\nkey absent).\n\nDistinct from the sibling item on `constructor`-on-`instantiates`: that one was\nruled a KEEP (the value is the only cross-language invariant for object\ncreation), this one is a straightforward misfiled key."  # 2502
     fields: {}  # 2502
+- op: update  # f529
+  at: '2026-08-20T22:57:30Z'  # f529
+  by: agent  # f529
+  actor: jgstern_agent  # f529
+  clock: 2  # f529
+  nonce: f529  # f529
+  set:  # f529
+    status: done  # f529
+- op: discuss  # 9626
+  at: '2026-08-20T22:57:30Z'  # 9626
+  by: agent  # 9626
+  actor: jgstern_agent  # 9626
+  clock: 3  # 9626
+  nonce: '9626'  # 9626
+  message: "Done. Merged 70590ac75c (auto-pr rebased, so the local SHA c5922d505b does not appear in origin -- verified by CONTENT instead: origin/dev's csharp.py carries 2 ref_construct method_group sites and 0 call_construct ones). Both producer sites moved from meta['call_construct'] to meta['ref_construct'], and method_group joins ref_construct's documented value space. EVIDENCE. Four production-path tests in test_csharp.py (as_argument, assignment, argument_cross_file, assignment_cross_file) now assert the NEW key present AND the OLD key absent, following INV-vakaf's precedent so a partial migration writing both keys cannot pass; the two cross-file cases previously asserted only an edge COUNT, which is why an edge count alone would never have caught this. Red confirmed on all four before the fix, green after. Full gated suite: 11547 passed, 0 failed, coverage 100%, mypy ratchet clean, 16/16 pre-commit gates. NO CONSUMER AFFECTED, checked rather than assumed: every reader of call_construct in the tree tests it against the single literal 'method' (io_boundary.py:507 and :874, taint.py:1891, verify_claims.py:1755), and method_group had no reader at all. docs/schema.json regenerated, description-only, no SCHEMA_VERSION bump."  # 9626
+- op: discuss  # 1bdd
+  at: '2026-08-20T22:58:05Z'  # 1bdd
+  by: agent  # 1bdd
+  actor: jgstern_agent  # 1bdd
+  clock: 4  # 1bdd
+  nonce: 1bdd  # 1bdd
+  message: "CORRECTION to the closure note immediately above, caught by re-running the verification grep rather than trusting it. That note says origin/dev carries '0 call_construct method_group' sites. The PRODUCER count is 0 and that part stands -- both emit sites moved. But the grep returns 1, and the survivor is csharp.py's MODULE DOCSTRING at line 17, which still reads 'tagged meta.call_construct=\"method_group\"'. The code is fixed and its own documentation still describes the key it no longer writes -- the exact drift class this audit was opened to find, reproduced by my own change within the hour. Being fixed as a one-line docstring correction carried in the next PR (the INV-lalad branch) rather than a dedicated PR cycle for a single line; it is documentation-only, no behavior, and it is recorded here so the fix is attributable to this item rather than looking like an unrelated drive-by. Lesson worth keeping: a producer-site count is not a file-wide count, and I quoted one as the other."  # 1bdd
