@@ -2342,7 +2342,16 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Run" in e.src and "Process" in e.dst
         ]
         assert len(ref_edges) == 1
-        assert (ref_edges[0].evidence_type == "ast_call" and ref_edges[0].meta.get("call_construct") == "method_group")
+        assert ref_edges[0].evidence_type == "ast_call"
+        # WI-diruk: a method GROUP is a reference to a method, not an
+        # invocation, so the construct label belongs on ``ref_construct``
+        # (the reference-family key, which lists ``references`` among its
+        # edge types) and NOT on ``call_construct`` (scoped to the call
+        # family by WI-toruz). Both halves are asserted, per the INV-vakaf
+        # precedent: new key present AND old key absent, so a partial
+        # migration that writes both cannot pass.
+        assert ref_edges[0].meta.get("ref_construct") == "method_group"
+        assert "call_construct" not in (ref_edges[0].meta or {})
 
     def test_method_group_assignment(self, tmp_path: Path) -> None:
         """Method group assigned to variable creates references edge."""
@@ -2363,7 +2372,16 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Run" in e.src and "Handle" in e.dst
         ]
         assert len(ref_edges) == 1
-        assert (ref_edges[0].evidence_type == "ast_call" and ref_edges[0].meta.get("call_construct") == "method_group")
+        assert ref_edges[0].evidence_type == "ast_call"
+        # WI-diruk: a method GROUP is a reference to a method, not an
+        # invocation, so the construct label belongs on ``ref_construct``
+        # (the reference-family key, which lists ``references`` among its
+        # edge types) and NOT on ``call_construct`` (scoped to the call
+        # family by WI-toruz). Both halves are asserted, per the INV-vakaf
+        # precedent: new key present AND old key absent, so a partial
+        # migration that writes both cannot pass.
+        assert ref_edges[0].meta.get("ref_construct") == "method_group"
+        assert "call_construct" not in (ref_edges[0].meta or {})
 
     def test_method_group_argument_cross_file(self, tmp_path: Path) -> None:
         """Method group in argument resolves cross-file via resolver."""
@@ -2388,6 +2406,8 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Run" in e.src and "Transform" in e.dst
         ]
         assert len(ref_edges) == 1
+        assert ref_edges[0].meta.get("ref_construct") == "method_group"
+        assert "call_construct" not in (ref_edges[0].meta or {})
 
     def test_method_group_assignment_cross_file(self, tmp_path: Path) -> None:
         """Method group assignment resolves cross-file via resolver."""
@@ -2411,6 +2431,8 @@ class TestCSharpMethodGroupReferences:
             if e.edge_type == "references" and "Setup" in e.src and "OnClick" in e.dst
         ]
         assert len(ref_edges) == 1
+        assert ref_edges[0].meta.get("ref_construct") == "method_group"
+        assert "call_construct" not in (ref_edges[0].meta or {})
 
     def test_no_reference_for_non_method_identifier(self, tmp_path: Path) -> None:
         """Variable name in argument should not create references edge."""
