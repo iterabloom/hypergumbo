@@ -1,0 +1,39 @@
+Original commit body from 32f0061342db28753d1b41625fcd3bd3fb1b08de:
+
+``axis_meta_keys`` described ``call_construct`` as the call construct on
+``calls`` edges, and the sibling ``ref_construct`` entry asserted the two keys
+had "distinct edge families, zero overlap". That wording landed 2026-06-30
+(INV-lajov) on the strength of a corpus measurement in which every observed
+``call_construct`` sat on a ``calls`` edge. It described the sample, not the
+field — and was already false by the five ``constructor``-on-``instantiates``
+sites that audit-findings 0012 sec 4 (WI-nibis Wave 4) had deliberately
+created eight weeks earlier, on 2026-05-05.
+
+The scope now lives on ``applicable_edge_types``, the typed field ADR-0038
+ruling 2 already built for per-edge-type applicability. A scope in a sentence
+cannot be checked, which is exactly how this one drifted; a scope in a field
+can be, and the live-tree producer gate can assert against the declaration
+instead of a hand-maintained literal.
+
+``instantiates`` is in scope deliberately, not as an accommodation.
+``edge_type`` is NOT a function of the construct: ruby resolves ``Klass.new``
+to ``Klass#initialize`` and emits ``calls``, while dart/csharp emit
+``instantiates`` for the same source construct. That makes
+``call_construct='constructor'`` the only cross-language invariant for object
+creation rather than a redundant restatement of the relationship, so the
+"drop it as derivable from edge_type" reading is wrong. The underlying
+producer disagreement is filed as INV-kahig.
+
+``method_call_recovery``'s two-value edge-type set is re-commented to say WHY
+it holds two values — the analyzers disagree about the dst — instead of
+naming, stalely, which languages take which arm: java.py and py.py both emit
+``instantiates`` today, and ruby is the language that never does.
+
+docs/schema.json regenerated (description-only, 2 lines). No SCHEMA_VERSION
+bump: no format change and no new type definition, matching the call INV-lajov
+made for this same key.
+
+Refs: WI-toruz, INV-kahig, INV-lajov, WI-nibis
+
+Claude-Session: a dolphin teaching syneresis to a class of turtles in a blimp
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
