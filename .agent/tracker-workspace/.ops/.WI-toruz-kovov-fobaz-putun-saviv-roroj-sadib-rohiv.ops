@@ -1,0 +1,22 @@
+- op: create  # 5144
+  at: '2026-08-20T21:03:47Z'  # 5144
+  by: agent  # 5144
+  actor: jgstern_agent  # 5144
+  clock: 1  # 5144
+  nonce: '5144'  # 5144
+  data:  # 5144
+    kind: work_item  # 5144
+    title: "call_construct axis wording asserts a calls-only scope that was never true; scope the declaration to the call family (calls + instantiates)"  # 5144
+    status: todo_hard  # 5144
+    priority: 3  # 5144
+    parent:  # 5144
+    tags:  # 5144
+    - analyzer  # 5144
+    - classification_axes_audit  # 5144
+    - concept_audit  # 5144
+    isbefore: []  # 5144
+    duplicate_of: []  # 5144
+    not_duplicate_of: []  # 5144
+    pr_ref:  # 5144
+    description: "Ruling from the Fundamental Concept Audit of `edge.meta['call_construct']`\n(2026-08-20). The producers are correct; the WORDING is wrong.\n\n`axis_meta_keys.py` declares `call_construct` as the call construct on\n`calls` edges, and the sibling `ref_construct` entry states the two have\n\"distinct vocabularies, distinct edge families, zero overlap\".\n\nMeasured: 7 of 95 attributable sites carry `call_construct` on a non-`calls`\nedge — 5 x `constructor` on `instantiates` (dart:1019,1060;\ncsharp:1656,1668,1683) and 2 x `method_group` on `references` (csharp, filed\nseparately as a genuine misfile).\n\n**Why the 5 constructor sites are CANONICAL and must not be \"fixed\":**\n\nChronology shows the wording was wrong on arrival:\n\n    2026-05-05  0dae2af808  WI-nibis Wave 4 lands audit-findings 0012 sec 4,\n                            deliberately unifying dart `constructor_call` and\n                            csharp `object_creation` onto\n                            call_construct=\"constructor\". Those edges were\n                            ALREADY instantiates.\n    2026-06-30  4279d3a4bd  INV-lajov renames construct -> ref_construct and\n                            writes \"names the call SHAPE on `calls` edges\".\n\nINV-lajov's own statement records its evidence: \"call_construct (21189 edges,\nvalues method 20898 + function 213 + cross_file 78, **all type=calls**)\". That\nwas a measurement of a corpus containing no Dart or C# object creation. The\nobservation \"every one I saw was on calls\" was promoted into a contract. It\ndescribed the sample, not the field — and was already false by 5 sites that had\nlanded eight weeks earlier.\n\n**And the value is NOT redundant with edge_type.** The redundancy argument\nrequires `constructor` to be derivable from `instantiates`. It is not, because\n`edge_type` is not a function of the construct: ruby emits `calls` for the same\nsource construct (see the sibling object-creation item). `call_construct=\n\"constructor\"` is the ONLY cross-language invariant for object creation that\nsurvives the edge_type disagreement. Dropping it would destroy the one signal\nthat lets a consumer ask \"show me every object creation\" uniformly — and would\nre-split the cross-language unification audit-findings 0012 sec 4 deliberately\nbuilt, along a new seam.\n\n**The change:** scope the `call_construct` declaration to the CALL FAMILY\n(`calls` + `instantiates`) rather than `calls` alone, and restate the\n`ref_construct` disambiguation so it distinguishes the two by edge FAMILY\nwithout asserting a `calls`-only scope that was never true.\n\n**Re-evaluation trigger** (required for a Keep verdict per AGENTS.md\n\"Fundamental Concept Audit\"): revisit if the object-creation representation\nitem is ruled in a way that makes one edge_type carry all object creation\nacross every language — at that point `constructor` becomes derivable from\n`edge_type` and the Keep verdict flips to a fold.\n\nAlso fix in the same change: `linkers/method_call_recovery.py:77`'s comment\nnames Java and Python as `calls`-fallback languages, but java.py and py.py both\nemit `instantiates` today."  # 5144
+    fields: {}  # 5144

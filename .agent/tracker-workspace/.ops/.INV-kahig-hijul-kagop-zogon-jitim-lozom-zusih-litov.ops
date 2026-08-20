@@ -22,3 +22,10 @@
     fields:  # 653e
       statement: "One source-language construct (object creation) must produce one relationship label across languages, so a consumer can enumerate every object creation with a single edge_type query."  # 653e
       root_cause: "The analyzers disagree about the dst of an object-creation edge, and edge_type co-varies with that choice. ruby.py:2263 resolves Klass.new to Klass#initialize and emits edge_type=calls with dst = the initialize METHOD; dart/csharp/java/py/js_ts/php/cpp/verilog emit edge_type=instantiates with dst = the class or constructor symbol. Each label is locally correct under ADR-0023 for the dst its own analyzer chose, so the defect is upstream of edge_type, in the dst choice. ruby emits instantiates zero times and no linker mints it, so there is no cross-language backstop."  # 653e
+- op: discuss  # 92b2
+  at: '2026-08-20T21:06:13Z'  # 92b2
+  by: agent  # 92b2
+  actor: jgstern_agent  # 92b2
+  clock: 2  # 92b2
+  nonce: 92b2  # 92b2
+  message: "DEPENDENCY NOTE: WI-toruz carries a re-evaluation trigger keyed on THIS item's ruling. WI-toruz rules call_construct=constructor CANONICAL on instantiates edges, and its stated reason is that the value is the only cross-language invariant for object creation that survives the edge_type disagreement documented here. If this item is ruled such that ONE edge_type carries all object creation across every language, then constructor becomes derivable from edge_type and WI-toruz's Keep verdict flips to a fold. Whoever rules this item should re-read WI-toruz before closing."  # 92b2

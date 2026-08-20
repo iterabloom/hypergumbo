@@ -22,3 +22,12 @@
     fields:  # f3a6
       statement: "Every value of edge.meta.call_construct names the source-language syntactic call construct and nothing else, so a consumer reads the construct without decoding resolution status or dispatch mechanism."  # f3a6
       root_cause: "INV-vakaf split only the cross_file locality value out of this field (bash/objc, into the new call_locality key). Four values of the same mechanic remain. erlang remote_external (erlang.py:540) and haskell application_external (haskell.py:551) differ from their siblings remote/application ONLY by whether the resolver lookup succeeded, being the else-branch that mints a synthetic external node, which is resolution status derivable from Edge.is_resolved and the dst. go chained_return_type (go.py:2702) names how the receiver type was resolved, not the call syntax. go interface_dispatch (go.py:2855,2857) names the dispatch mechanism, for which the sibling meta key named mechanism already exists."  # f3a6
+- op: update  # 988d
+  at: '2026-08-20T21:02:06Z'  # 988d
+  by: agent  # 988d
+  actor: jgstern_agent  # 988d
+  clock: 2  # 988d
+  nonce: 988d  # 988d
+  set: {}  # 988d
+  add:  # 988d
+    not_duplicate_of: [WI-vigih-lafab-kolif-batop-gizuj-rosap-nadad-hodud]  # 988d
