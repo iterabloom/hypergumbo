@@ -1,0 +1,33 @@
+Original commit body from f822eef658920c84eadb7453de07d670bd4e717b:
+
+`scripts/contribute` genuinely invokes `gh pr list` / `gh pr create` for
+the fork-based external-contributor flow, so a working gh is a dependency
+of shipped tooling rather than a convenience. It is currently broken on
+this box and fails at the point of use: the distro build (Ubuntu
+2.45.0-1ubuntu0.3) emits a malformed User-Agent -- `GitHub CLI ` with a
+trailing space, the version string never injected -- which api.github.com
+rejects as an HTTP/2 PROTOCOL_ERROR. Every gh API call fails, not just
+auth. Surfaced while diagnosing a failed `gh auth login` during the v8.0.0
+tag push.
+
+Worth noting why nobody hit this sooner: the core automation (auto-pr,
+merge-pr, ci-debug, forgejo-api.sh) talks to api.github.com with curl and
+tokens, never through gh, so the daily path was unaffected.
+tests/test_contribute_github.py stubs gh, so the suite stays green while
+the real binary cannot complete a request -- the logic is proven, the tool
+is not.
+
+The allowlist's own rules require a domain plus rationale, and both are
+recorded above the entry. The SCOPE LIMIT is stated rather than left
+implicit: this covers the apt path only. GitHub serves release-tarball
+assets from objects.githubusercontent.com, which is deliberately NOT added
+-- broadening a security boundary past what was asked for is how an
+allowlist stops meaning anything.
+
+ALLOWED_WEBSITES.md is a governance file (CODEOWNERS: @jgstern). Added
+with explicit owner approval in-session, including approval to use auto-pr
+without --gov. No consumer parses this file -- the references in
+io_boundary.py and stop_hook.py are comments -- so the change cannot move
+a verify-claims verdict.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
