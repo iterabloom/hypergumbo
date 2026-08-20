@@ -276,7 +276,18 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "Source-language call construct collapsed under "
                 "``ast_call`` apex (e.g. 'method', 'function', "
                 "'pipe', 'application'). Fold residue per "
-                "audit-findings 0012 / WI-nibis Wave 4."),
+                "audit-findings 0012 / WI-nibis Wave 4. Scoped to the CALL "
+                "FAMILY -- ``calls`` and ``instantiates`` -- declared on "
+                "``applicable_edge_types`` below rather than asserted in this "
+                "sentence, because a scope that lives only in prose cannot be "
+                "checked and this one drifted (WI-toruz). ``instantiates`` is "
+                "in scope deliberately: ``edge_type`` is NOT a function of the "
+                "construct, since ruby emits ``calls`` for the same source "
+                "construct that dart/csharp emit ``instantiates`` for "
+                "(INV-kahig), so 'constructor' is the only cross-language "
+                "invariant for object creation and is NOT redundant with "
+                "``edge_type``.",
+                applicable_edge_types=frozenset({"calls", "instantiates"})),
     MetaKeySpec("call_locality", AXIS_EDGE_META,
                 "File-locality of a call edge — whether caller and "
                 "callee live in the same source file ('same_file') or "
@@ -329,8 +340,14 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "handler, direction-preserving). Renamed from ``construct`` "
                 "per INV-lajov "
                 "to disambiguate from the sibling ``call_construct`` (which "
-                "names the call SHAPE on ``calls`` edges): distinct "
-                "vocabularies, distinct edge families, zero overlap."),
+                "names the call SHAPE on the CALL family -- ``calls`` and "
+                "``instantiates``, see that key's ``applicable_edge_types``): "
+                "distinct vocabularies, distinct edge families. INV-lajov "
+                "originally wrote 'zero overlap' here on the strength of a "
+                "corpus measurement in which every observed ``call_construct`` "
+                "sat on a ``calls`` edge; that described the sample rather "
+                "than the field, and was already false by five "
+                "``constructor``-on-``instantiates`` sites (WI-toruz)."),
     MetaKeySpec("refresh", AXIS_EDGE_META,
                 "Boolean flag on a ``depends_on`` edge marking an ordering "
                 "dependency that ALSO triggers a refresh-on-change of the dst "

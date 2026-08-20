@@ -73,9 +73,20 @@ if TYPE_CHECKING:
 
 PASS_ID = make_pass_id("method-call-recovery-linker")
 
-# Edge types that signal "this caller refers to this class" — could be a
-# fallback ``calls`` (Java/Kotlin/Python) or an explicit ``instantiates``
-# (JS/TS ``new Foo()``).
+# Edge types that signal "this caller refers to this class". This set is two
+# values because the ANALYZERS DISAGREE about the dst of an object-creation
+# edge, not because two different relationships are being collected: ruby
+# resolves ``Klass.new`` to ``Klass#initialize`` and emits ``calls`` with the
+# initialize METHOD as dst, while dart/csharp/java/py/js_ts/php/cpp/verilog emit
+# ``instantiates`` with the class (or constructor) as dst. Each is locally
+# correct under ADR-0023 for the dst its analyzer chose, so this linker has to
+# accept both. Tracked as INV-kahig; if that item rules one representation
+# canonical, this set collapses to one value.
+#
+# The previous comment here named "Java/Kotlin/Python" as the fallback-``calls``
+# languages and JS/TS as the ``instantiates`` one. That was stale in both
+# directions — java.py and py.py both emit ``instantiates`` today, and ruby is
+# the language that actually never does (WI-toruz).
 _CLASS_HINT_EDGE_TYPES = frozenset({"calls", "instantiates"})
 
 
