@@ -1,0 +1,22 @@
+- op: create  # 2502
+  at: '2026-08-20T21:03:29Z'  # 2502
+  by: agent  # 2502
+  actor: jgstern_agent  # 2502
+  clock: 1  # 2502
+  nonce: '2502'  # 2502
+  data:  # 2502
+    kind: work_item  # 2502
+    title: "csharp stamps call_construct=method_group on references edges; a method group is a reference, not a call, so the key should be ref_construct"  # 2502
+    status: todo_hard  # 2502
+    priority: 3  # 2502
+    parent:  # 2502
+    tags:  # 2502
+    - analyzer  # 2502
+    - classification_axes_audit  # 2502
+    - concept_audit  # 2502
+    isbefore: []  # 2502
+    duplicate_of: []  # 2502
+    not_duplicate_of: []  # 2502
+    pr_ref:  # 2502
+    description: "Found by the Fundamental Concept Audit of `edge.meta['call_construct']`\n(2026-08-20), by an AST check asserting every `call_construct` sits on a\ncalls-family edge.\n\n`csharp.py:1732` and `csharp.py:1766` emit:\n\n    edge_type=\"references\"\n    meta={\"call_construct\": \"method_group\"}\n\nA C# method group (`Foo` passed without parens, e.g. `Action handler = Handle;`)\nis a REFERENCE to a method, not an invocation. The `edge_type=\"references\"` is\ncorrect. The meta KEY is wrong: `ref_construct` is the registered key for\n\"source-language construct on a reference-FAMILY (non-call) edge\", and its\nMetaKeySpec explicitly lists `references` as one of its edge types.\n\n`call_construct`'s own declaration (axis_meta_keys.py) says the two keys are\n\"distinct vocabularies, distinct edge families, zero overlap\". These two sites\nare the overlap.\n\nFix: rename the key at both sites to `ref_construct` and add `method_group` to\nthat key's documented value space. Behavioural check: a C# fixture with a\nmethod-group assignment emits a `references` edge carrying\n`meta['ref_construct'] == 'method_group'` and NO `call_construct`. Precedent\nfor the exact shape: INV-vakaf's fix (bash.py/objc.py stopped writing the wrong\nkey and wrote the right one; tests assert both the new key present AND the old\nkey absent).\n\nDistinct from the sibling item on `constructor`-on-`instantiates`: that one was\nruled a KEEP (the value is the only cross-language invariant for object\ncreation), this one is a straightforward misfiled key."  # 2502
+    fields: {}  # 2502
