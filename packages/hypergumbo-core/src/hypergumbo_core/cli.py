@@ -93,6 +93,7 @@ from .linkers.registry import LinkerContext, run_all_linkers
 from .pass_metadata import build_pass_metadata
 from .safety_zones import (
     cache_mkdir,
+    cache_rename,
     cache_rmtree,
     cache_unlink,
     cache_write,
@@ -3796,12 +3797,12 @@ def _archive_entry(entry_path: Path, repo: str, cache_dir: Path) -> None:
         cache_write_zip(partial, entry_path, members, zone_root=cache_dir)
         staged.append((partial, final))
     for partial, final in staged:
-        partial.rename(final)
+        cache_rename(partial, final, zone_root=cache_dir)
 
     scratch = entry_path.parent / (_EVICTION_SCRATCH_PREFIX + entry_path.name)
     if scratch.exists():  # pragma: no cover - prior residue at the same name
         cache_rmtree(scratch, zone_root=cache_dir)  # pragma: no cover
-    entry_path.rename(scratch)
+    cache_rename(entry_path, scratch, zone_root=cache_dir)
     cache_rmtree(scratch, zone_root=cache_dir)
 
 
