@@ -1,0 +1,53 @@
+Original commit body from c2726449aed52d5978ce84c6eab3734c3b649548:
+
+runtime-cli-no-host-fs was VIOLATED on dev with 2 unsanitized flows:
+
+  cmd_run          -> _maybe_evict_cache -> _archive_entry -> pathlib.Path.rename
+  cmd_cache_status -> _maybe_evict_cache -> _archive_entry -> pathlib.Path.rename
+
+_archive_entry routes everything else through zone wrappers -- cache_mkdir,
+cache_write_zip, cache_rmtree -- and even carries a comment on why a bare
+ZipFile is forbidden there. Its two renames were bare because safety_zones
+shipped no rename wrapper of any zone. Once pathlib.Path's surface was rowed
+this cycle, Path.rename became a catalogued host_fs sink and the claim flipped.
+
+The writes were always inside the cache. What was missing was the barrier that
+says so, which is the same argument cache_unlink's docstring already makes
+about a bare Path.unlink -- one primitive later.
+
+cache_rename guards BOTH endpoints. That is the one way a rename's guard
+differs in shape from every single-path wrapper in the module: an in-zone
+source can still deposit bytes anywhere on the host.
+
+EVIDENCE, reconciled to a total rather than asserted:
+  unsanitized flows  2 -> 0
+  sanitized flows   85 -> 87
+85 + 2 = 87, so the flows are NEUTRALISED, not deleted -- the #214 failure mode
+where an unearned False removes a finding. check-self-claims exits 0 with the
+snapshot UNCHANGED: the recorded verdict is restored, not redefined.
+
+WHY IT SAT ON GREEN dev. Two layers were open at once.
+  1. test_runtime_fs_write_wrapper_discipline.py derives its primitive set
+     from the live catalogue then subtracts catalog.ambiguous_names. rename IS
+     catalogued fs_write (pathlib.Path.rename, os.rename) and IS ambiguous, so
+     it was filtered -- by design; that guard calls itself a backstop for the
+     unambiguous majority and delegates the rest to the boundary analysis.
+  2. The boundary analysis is the self-claims-gate CI step, path-triggered on
+     the claim surface. It had not run for 63 commits (last: e6cb77fa15).
+The delegation in (1) pointed at a gate that was not running. replace and
+remove remain in that same position; see the INV-zudak thread.
+
+TESTS. Four cache_rename tests incl. a destination-outside-zone refusal, since
+checking only the source is the escape. Two pin the CLASS: an AST-parsed guard
+for bare .rename() in cli.py (parsed, not grepped -- a regex over source also
+matches its own docstrings), and the existing parity test's naming rule extended
+from (_rmtree, _unlink) to include _rename, which its docstring already promised
+would catch a newly added wrapper and would not have.
+
+Verified: 4338 passed / 100% on changed files / all 6 packages 100% in
+isolation / mypy ratchet clean.
+
+Refs: INV-zudak (property of its statement -- fs-write primitives on an
+asserted no-direct-host_fs entry point must route through a wrapper)
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
