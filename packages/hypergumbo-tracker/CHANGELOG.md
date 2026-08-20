@@ -7,6 +7,8 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-20
+
 ### Added
 
 - **`tracker textconv <file>` is a real subcommand.** The `.gitattributes` diff driver had named a `textconv` subcommand that was never built — only the `hypergumbo-tracker-textconv` console script existed — so the configured driver aborted every patch-producing git walk. Both surfaces now share one `_render_textconv` body. See the Fixed entry below for the defect this closes.
