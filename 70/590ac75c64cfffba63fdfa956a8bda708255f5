@@ -1,0 +1,34 @@
+Original commit body from f6e2b95fb282510495c8f9ffb1a10339e21e9431:
+
+``csharp.py`` stamped ``meta["call_construct"] = "method_group"`` on the two
+``references`` edges it emits for a C# method group (``Action h = Handle;``,
+``items.ForEach(Process)``). A method group REFERENCES a method without
+invoking it — the ``edge_type="references"`` was already correct; the meta KEY
+was wrong.
+
+These two sites were the only place in the tree where the two sibling keys
+actually overlapped, against a declaration (``ref_construct``'s MetaKeySpec)
+that says they have distinct edge families. Found by the Fundamental Concept
+Audit of ``call_construct`` via an AST check asserting every producer site sits
+on an edge type within the key's declared scope; the manual sweep had missed
+them, which is the audit playbook's own prediction about manual sweeps.
+
+``method_group`` joins ``ref_construct``'s documented value space, alongside
+the other reference-family constructs (jsx, script_src, view_render, ...).
+
+NO CONSUMER IS AFFECTED, and this is checkable rather than hopeful: every
+reader of ``call_construct`` in the tree tests it against the single literal
+``"method"`` (io_boundary.py:507 and :874, taint.py:1891,
+verify_claims.py:1755), and ``method_group`` had no reader at all.
+
+Tests follow the INV-vakaf precedent — assert the NEW key present AND the OLD
+key absent, so a partial migration that writes both cannot pass. The two
+cross-file cases previously asserted only an edge count; they now assert the
+meta as well, since an edge count alone would not have caught this defect.
+
+docs/schema.json regenerated (description-only). No SCHEMA_VERSION bump.
+
+Refs: WI-diruk, INV-lajov, INV-vakaf, WI-toruz
+
+Claude-Session: a kiwi playing chess against a trivia champion in an opera house
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
