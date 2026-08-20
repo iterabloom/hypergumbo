@@ -54,8 +54,26 @@ while [[ $# -gt 0 ]]; do
             BODY="$2"
             shift 2
             ;;
+        -h|--help)
+            echo "Usage: $0 [--title \"PR title\"] [--body \"PR description\"]"
+            echo ""
+            echo "Creates a PR from YOUR fork to the upstream repository."
+            echo "Run from a feature branch in a clone of your own fork."
+            echo ""
+            echo "Options:"
+            echo "  --title TEXT   PR title (default: subject of the last commit)"
+            echo "  --body TEXT    PR description (default: commit subjects since dev)"
+            echo "  -h, --help     Show this help"
+            echo ""
+            echo "Prerequisites:"
+            echo "  - 'upstream' remote pointing at the upstream repo"
+            echo "  - FORGEJO_USER set to your fork owner"
+            echo "  - HG_GITHUB_TOKEN (github upstream) or FORGEJO_TOKEN in .env"
+            exit 0
+            ;;
         *)
             echo "Unknown option: $1"
+            echo "Try '$0 --help'."
             exit 1
             ;;
     esac
@@ -243,10 +261,51 @@ if [[ -z "$BODY" ]]; then
     BODY=$(git log dev..HEAD --pretty=format:'- %s' | head -10)
 fi
 
+# PRESENCE IS NOT FUNCTION. This gate used to be `command -v gh`, which asks
+# "is the binary installed" when the question the branch actually needs answered
+# is "can gh complete a request". They came apart in practice: Ubuntu's packaged
+# gh (2.45.0-1ubuntu0.3) emits a malformed User-Agent — `GitHub CLI ` with a
+# trailing space, the version never injected — and api.github.com rejects that
+# as an HTTP/2 PROTOCOL_ERROR. Every gh API call fails on that build while
+# `command -v gh` happily succeeds, so contribute took this branch and exited 1
+# with "Failed to create PR" — while the curl/api_post path a few lines below,
+# which auto-pr uses against the same API every day, would have worked. A
+# working fallback that is never reached is not a fallback.
+#
+# Same shape as INV-rupid ("is the library importable" != "are the weights on
+# disk") and WI-dojud ("is the binary present" != "is the backend on"). This is
+# the third instance, so the probe asks the caller's real question directly.
+#
+# `gh auth status` is the probe because it is the cheapest call that exercises
+# the whole path this branch depends on — binary, credential, and transport to
+# the API. One extra round trip in a human-run, once-per-PR script is a fair
+# price for not failing deep with a misleading message.
+gh_is_usable() {
+    command -v gh >/dev/null 2>&1 || return 1
+    GH_TOKEN="$TOKEN" gh auth status >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# Probed ONCE and cached: gh_is_usable makes a network round trip, so calling
+# it again in the branch condition would double it.
+USE_GH=false
+if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+    if gh_is_usable; then
+        USE_GH=true
+    elif command -v gh >/dev/null 2>&1; then
+        # Say WHY we are not using the tool sitting right there, or the
+        # fallback reads as the script ignoring an installed gh.
+        echo -e "${YELLOW}!${NC} gh is installed but cannot complete an API request"
+        echo "    (diagnose with: gh auth status)"
+        echo "    Falling back to the REST API path — no action needed."
+        echo ""
+    fi
+fi
+
 # GitHub via gh: auto-forks + collapses the token/fork ceremony (the one place
 # gh earns its keep — contributor-facing, human-run). Falls through to the
-# curl/api_post path below when gh is unavailable.
-if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]] && command -v gh >/dev/null 2>&1; then
+# curl/api_post path below when gh is missing OR present-but-non-functional.
+if $USE_GH; then
     # gh maps --head to the bare headRefName (no owner), so pass the bare
     # branch and disambiguate cross-fork PRs by the head repo owner in the JSON.
     EXISTING_PR=$(GH_TOKEN="$TOKEN" gh pr list --repo "$UPSTREAM_SLUG" \

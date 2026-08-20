@@ -140,9 +140,10 @@ if outfile:
 sys.stdout.write(code)
 '''
 
-# Fake ``gh`` for contribute: logs argv; ``pr list`` prints $GH_PR_LIST,
-# ``pr create`` prints $GH_PR_CREATE_URL (default a github.com pull URL) and
-# exits $GH_EXIT, ``pr view`` prints $GH_PR_VIEW.
+# Fake ``gh`` for contribute: logs argv; ``auth status`` exits $GH_AUTH_EXIT
+# (contribute's usability probe), ``pr list`` prints $GH_PR_LIST, ``pr create``
+# prints $GH_PR_CREATE_URL (default a github.com pull URL) and exits $GH_EXIT,
+# ``pr view`` prints $GH_PR_VIEW.
 FAKE_GH = r'''#!/usr/bin/env python3
 import json, os, sys
 argv = sys.argv[1:]
@@ -151,6 +152,12 @@ if log:
     with open(log, "a") as fh:
         fh.write(json.dumps(argv) + "\n")
 sub = " ".join(argv[:2])
+if sub == "auth status":
+    # contribute's gh_is_usable probe. Its OWN knob, deliberately not GH_EXIT:
+    # a test that makes `pr create` fail (GH_EXIT=1) still needs the probe to
+    # succeed, or the script would route to the curl arm and that test would
+    # silently stop covering the gh failure path it was written for.
+    sys.exit(int(os.environ.get("GH_AUTH_EXIT", "0")))
 if sub == "pr list":
     sys.stdout.write(os.environ.get("GH_PR_LIST", ""))
     sys.exit(0)
