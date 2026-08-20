@@ -1,0 +1,51 @@
+Original commit body from 83c3a04922332be68de13fafb2202b60131119f4:
+
+The arm-selection gate was `command -v gh` -- "is the binary installed" --
+where the question it needed answered was "can gh complete a request".
+
+Those came apart in practice. Ubuntu's packaged gh (2.45.0-1ubuntu0.3)
+emits a malformed User-Agent -- `GitHub CLI ` with a trailing space, the
+version never injected -- and api.github.com rejects it as an HTTP/2
+PROTOCOL_ERROR. Every gh API call fails on that build while `command -v
+gh` happily succeeds, so contribute took the gh arm and exited 1 with
+"Failed to create PR". The curl/api_post arm sits a few lines below,
+already handles a github upstream, is what auto-pr drives against the same
+API every day, and is covered by an existing test. A working fallback that
+is never reached is not a fallback.
+
+Found while diagnosing a failed `gh auth login` during the v8.0.0 tag push
+-- the same broken binary, one script over.
+
+THIRD INSTANCE OF A NAMED CLASS: INV-rupid ("is the library importable" !=
+"are the weights on disk"), WI-dojud ("is the binary present" != "is the
+backend on"), now this. The probe asks the caller's real question via `gh
+auth status`, the cheapest call exercising the whole path the branch
+depends on -- binary, credential, transport. Evaluated ONCE and cached;
+putting it in the branch condition would double a network round trip.
+
+It also says WHY it fell back, because a silent fallback reads as the
+script ignoring an installed gh.
+
+TESTS, and the differential that makes them non-vacuous: reverting only
+the production hunk fails exactly the two new fallback tests (2 failed / 7
+passed) and passes them with it (9 passed). The pinning assertion is not
+rc==0 but that `pr create` was never ATTEMPTED -- rc==0 alone would also
+hold if the gh arm succeeded. A negative control asserts a working gh
+still takes the gh arm, without which a probe hardwired to false would
+pass every other test here while silently retiring the gh path.
+
+The fake gh gains an `auth status` knob with its OWN variable rather than
+reusing GH_EXIT: the existing failure test sets GH_EXIT=1 to make `pr
+create` fail, and had the probe shared that knob, that test would have
+routed to the curl arm and silently stopped covering the gh failure path
+it was written for.
+
+Also adds `--help`. Its absence meant contribute had NO invocation that
+did not attempt to create a real upstream PR, which is why a broken
+dependency could sit undetected -- the script was only testable by using
+it for real.
+
+Governance file (CODEOWNERS: /scripts/contribute @jgstern); changed with
+explicit owner approval in-session, including auto-pr without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
