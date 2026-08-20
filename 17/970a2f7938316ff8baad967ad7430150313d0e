@@ -1,0 +1,55 @@
+Original commit body from 98f3543e825454bbb6919be7fe97bd1374353757:
+
+The changelog-audit playbook calibrates against the released sections'
+detail level. This applies a sharper version of that rule: a word target
+derived from commit volume, so the section is sized to the work it
+documents rather than to how much was written about it.
+
+  7.0.0    4,992 words / 461 main-only commits = 10.83 words per commit
+  6.1.0    2,052 words /  93 main-only commits = 22.06 words per commit
+
+Unreleased covers 290 main-only commits (428 raw, less tracker-package
+and .ops-only commits). At the last release's rate that is a target of
+**3,140 words**. It stood at 15,750 -- 5.0x its share, and larger than
+the last three released sections combined.
+
+Main changelog: 15,750 -> 3,413 words, 129 -> 44 bullets, 122 -> 77 words
+per bullet against 7.0.0's 73. Median bullet is 66 words.
+
+- Documentation 41 bullets -> 6. It was a blow-by-blow log of five
+  spec/ADR audits and six docstring-staleness passes, narrating each
+  pass's internal process; it alone ran 5,874 words, more than all of
+  7.0.0 and 18.6x that release's own Documentation section.
+- Coverage-directed test selection had one bullet per rollout phase
+  (shadow, Phase 2, Phase 3). One feature, one bullet.
+- Cache lifecycle 5 -> 2, Security 5 -> 3, verify-claims 5 -> 3, and the
+  nine Fixed subheads collapse to eight by folding Release gate together
+  with CI and developer workflow.
+- "### Fixed -- developer experience" is dissolved. Keep a Changelog has
+  fixed categories and the section already had a "### Fixed"; its bullets
+  are distributed into the subsections that already owned their topics.
+  The section now carries only Summary / Added / Changed / Removed /
+  Fixed / Documentation.
+
+Tracker changelog: at 11 commits against 0.7.0's 718 words / 10 commits,
+its target is 790 and it now sits at 558 -- already under, so it takes
+only the textconv-grouping and concision pass, not a cut.
+
+Twenty-four WI-/INV- tracker identifiers are stripped, per the playbook's
+rule that item ids are inside-baseball while ADR references, code
+identifiers and version transitions stay.
+
+Verified rather than asserted, against the pre-audit text: all 28 ADR
+references, 4 SCHEMA_VERSION constants, 4 PYSEC ids and 5 HYPERGUMBO_*
+env vars survive; markup is balanced; both files' released sections are
+byte-identical. An intermediate pass dropped 17 ADR references and they
+were reinstated in the bullets that inherited their subject matter.
+
+Honest residual: the result is 3,413 against the 3,140 target, 8.7% over.
+The overshoot is concentrated in the six Documentation bullets, which
+carry all 28 ADR references between them and have a floor the playbook's
+preserve-every-reference rule sets. The estimator is also softer than one
+figure suggests -- 6.1.0's rate would put the target at 6,399, so the two
+reference releases disagree by 2x on words per commit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
