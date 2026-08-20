@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0012: Pass Unification and Multi-Fidelity Architecture
 
-Status: Step 1 implemented (analyzer registration unified); Steps 2-3 remain design targets.
+Status: Step 1 implemented (analyzer registration unified); Steps 2-3 remain design targets. Counts corrected 2026-08-19: the Context section's linker count is as-of-filing (24) and the two-tier and reference sections no longer restate a total — they had drifted to 45 linkers / 24 linkers / 104 analyzers against a live registry of 61 and 118, contradicting the spec and ARCHITECTURE.md, both of which said 61.
 
 > Amended in place — see docs/adr/README.md "ADR lifecycle" (status-line convention + Context/References reconciliation note).
 
@@ -21,7 +21,7 @@ On January 5, 2026 (commit `9f74a49`), a single refactoring commit created both 
 
 Only one analyzer (Go) ever adopted the decorator. Go is also registered via `AnalyzerSpec` in its package's entry-points, which is what actually gets called. The `@register_analyzer` decorator on Go populates a dict that nothing reads.
 
-The following day (January 6), `linkers/registry.py` was created, its commit message explicitly stating it was "mirroring the pattern used in `analyze/registry.py`." The linker registry was wired into `cli.py` the same day and had all linkers migrated within 48 hours. It is now actively used by 24 linkers with 710 lines of well-tested code.
+The following day (January 6), `linkers/registry.py` was created, its commit message explicitly stating it was "mirroring the pattern used in `analyze/registry.py`." The linker registry was wired into `cli.py` the same day and had all linkers migrated within 48 hours. It was actively used by 24 linkers at the time of this ADR's filing; the catalogue has since grown — `docs/LINKERS.md` publishes the current count, and `tests/test_generate_architecture_linker_inventory.py` plus `packages/hypergumbo-core/tests/test_spec_linker_count.py` keep it honest.
 
 ### The two-tier execution model
 
@@ -29,7 +29,7 @@ The analysis pipeline in `run_behavior_map()` runs in two tiers:
 
 **Tier 1 — Language analyzers (independent producers):** 100+ analyzer functions, each taking `repo_root` and returning `AnalysisResult` (symbols + edges). They run independently and do not see each other's output. Dispatched via `all_analyzers.py`.
 
-**Tier 2 — Linkers and enrichment (context-dependent refiners):** After all analyzers complete, the orchestrator collects the unified symbol graph and runs: deferred symbol resolution, framework pattern enrichment, 45 linkers (via `linkers/registry.py`) across four subcategories — Protocol / Bridge / Framework / Infrastructure per [ADR-3bbb](3bbb-linker-subcategory-restoration.md) — and entrypoint detection. These passes receive the accumulated state and produce new edges or metadata.
+**Tier 2 — Linkers and enrichment (context-dependent refiners):** After all analyzers complete, the orchestrator collects the unified symbol graph and runs: deferred symbol resolution, framework pattern enrichment, the linker suite (registered via `linkers/registry.py`; count published in [`docs/LINKERS.md`](../LINKERS.md)) across four subcategories — Protocol / Bridge / Framework / Infrastructure per [ADR-3bbb](3bbb-linker-subcategory-restoration.md) — and entrypoint detection. These passes receive the accumulated state and produce new edges or metadata.
 
 ### The spec's `AnalysisPass(Protocol)`
 
@@ -51,7 +51,7 @@ AST-only analysis tends to be sufficient for architectural maps, simple function
 
 **Graduated fidelity with transparent uncertainty.** No existing tool offers a code graph where AST-derived edges carry lower confidence scores that get upgraded when type resolution confirms them. Both edges coexist: `ast_call_method (0.85)` and `type_resolved_call (0.95)` at the same callsite, with provenance tracking which pass produced each. This maps directly to how AI agents should reason about code — making bolder edits when analysis is high-confidence and more cautious exploration when it isn't.
 
-**Cross-language type anchoring.** Language servers operate within a single language boundary. Hypergumbo's Bridge and cross-language Framework linkers (a subset of the 45 total linkers — see [ADR-3bbb](3bbb-linker-subcategory-restoration.md)) already bridge those boundaries at the AST level. Adding type-resolved anchors on each side of a cross-language edge (e.g., confirming that a Python function calling a REST endpoint actually matches the TypeScript handler's type signature) would create a level of cross-language assurance that no tool currently provides.
+**Cross-language type anchoring.** Language servers operate within a single language boundary. Hypergumbo's Bridge and cross-language Framework linkers (a subset of the linker catalogue — see [ADR-3bbb](3bbb-linker-subcategory-restoration.md)) already bridge those boundaries at the AST level. Adding type-resolved anchors on each side of a cross-language edge (e.g., confirming that a Python function calling a REST endpoint actually matches the TypeScript handler's type signature) would create a level of cross-language assurance that no tool currently provides.
 
 **Token-budgeted, multi-fidelity slicing.** An AI agent could request: "Give me the high-confidence, type-resolved subgraph around this function, plus the medium-confidence AST-heuristic neighborhood two hops out, fitted to 8K tokens." Fewer missing callees means fewer hallucinations about what happens downstream. This graduated context construction aligns with research showing that context quality matters more than context quantity.
 
@@ -71,7 +71,7 @@ The long-term architecture should converge on a unified pass interface. The migr
 
 ### Step 1: Unify analyzer registration (decorator-based registry)
 
-Migrate all analyzers from `AnalyzerSpec` (string-based, in `all_analyzers.py`) to `@register_analyzer` (decorator-based, in `analyze/registry.py`), mirroring the pattern already proven by 24 linkers.
+Migrate all analyzers from `AnalyzerSpec` (string-based, in `all_analyzers.py`) to `@register_analyzer` (decorator-based, in `analyze/registry.py`), mirroring the pattern already proven by the linker registry.
 
 **Rationale:**
 - Consistency with the linker registry, which uses the same decorator pattern successfully
@@ -136,8 +136,8 @@ An alternative or complementary path: build an importer that accepts externally-
 
 - Spec §5 "Architecture" — updated to describe the two-tier model and mark the Protocol as 🟪
 - `packages/hypergumbo-core/src/hypergumbo_core/analyze/all_analyzers.py` — facade delegating to the registry
-- `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py` — canonical decorator registry (active, 104 analyzers)
-- `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py` — decorator registry (active, 24 linkers)
+- `packages/hypergumbo-core/src/hypergumbo_core/analyze/registry.py` — canonical decorator registry (active; `get_all_analyzers()` after `ensure_discovered()` is the live count)
+- `packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py` — decorator registry (active; `list_registered()` is the live count)
 - Li et al., "Scaling static analyses at Facebook" (ICSE 2020) — call graph precision/recall benchmarks
 - PyCG, "Practical Call Graph Generation in Python" (ICSE 2021) — Python call graph analysis
 - Liu et al., "STALL+: Boosting LLM-Based Repository-Level Code Completion with Static Analysis" (2024)
