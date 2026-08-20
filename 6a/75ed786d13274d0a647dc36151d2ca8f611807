@@ -1,0 +1,42 @@
+Original commit body from eda4309814e739678463fe3e28e3b83c730d6761:
+
+A `path.py:NNN` citation rots silently. The cited code slides downward on any
+insertion above it, so the reader lands on unrelated lines with nothing to
+signal that anything is wrong. Across docs/adr that had happened at scale:
+21 of 241 backticked citations were provably broken before this change (one
+past EOF, twenty landing on blank lines), and every non-blank one sampled by
+hand had drifted too.
+
+The drift was not cosmetic. ADR-0037 pointed at `to_dict` serialization while
+asserting it was the boundary remap. ADR-0040 cited three Edge fields at lines
+inside Symbol. ADR-0035's five `make_*_stable_id` citations all landed in one
+unrelated function. Two were in status lines, which docs/adr/README.md requires
+not to lie: ADR-0028 placed `Edge.is_resolved` 433 lines from where it lives,
+ADR-3ccc placed `UsageContext` 219 lines away.
+
+274 references across 29 ADRs now name the symbol instead of the line, in five
+notations that had to be found separately: backticked `path:NNN`, bare `:NNN`,
+comma-joined lists, unbackticked `path.py:NNN`, and `spec:NNN` / `schema.json:NNN`.
+Where the prose already named the right symbol the conversion repaired the
+pointer rather than re-addressing it — all 62 such citations were pointing
+somewhere else.
+
+Four references whose named code no longer exists are marked historical rather
+than re-pointed: ADR-0042's `find_behavior_map` (moved to `survey_io.py` in the
+very rename ADR-0042 specifies), ADR-0040's `test_edge_has_evidence_spans`
+(deleted with its field), ADR-0041's tier-min relabeling (retired by its own
+ruling), ADR-0029's `_find_inherited_initialize` (deleted upstream). Two line
+numbers are kept deliberately, both into immutable artifacts.
+
+An AST validator gated the conversion and caught 11 unresolved citations,
+four of them symbol names the conversion itself had invented. It also caught
+`test_ruby.py::test_rails_routes` in ADR-0008, which was already in `::` form
+and already broken — symbol citations rot too, just only on rename rather than
+on every insertion above the line. Shipping that validator as an on-demand
+checker (deliberately not a CI gate) is WI-kitij.
+
+Verified: 251 symbol citations resolve, 0 unresolved; 0 line references of any
+form remain except the two immutable ones; mypy ratchet clean; the three
+ADR/spec guards pass (11 tests).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
