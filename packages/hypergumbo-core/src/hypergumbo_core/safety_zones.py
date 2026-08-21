@@ -71,6 +71,8 @@ import json
 import shutil
 # The repo_inspection zone below is built on this; see its section header.
 import subprocess  # nosec B404
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -444,6 +446,40 @@ def tmp_artifact_rmtree(path: Path) -> None:
     _safety_zone_barrier()
     _require_within_zone(path, _tmp_zone_root(), "tmp_artifact")
     shutil.rmtree(path)
+
+
+@contextmanager
+def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
+    """Create (and clean up) an ephemeral scratch DIRECTORY in the tmp zone.
+
+    SAFETY ZONE: ``tmp_artifact``. The context-manager sibling of
+    :func:`tmp_artifact_write` / :func:`tmp_artifact_mkdir` /
+    :func:`tmp_artifact_rmtree`, for callers that need a whole throwaway
+    directory rather than a named path — ``gitleaks.install_gitleaks`` (archive
+    extraction) and the rust-analyzer probe in ``graceful_degrade``.
+
+    WHY THIS ARRIVED LATE (INV-lalad). INV-zudak established that every
+    fs-write primitive on a claimed entry point must route through a wrapper,
+    and enumerated them as write_text / mkdir / unlink / chmod / copy2 /
+    rmtree / replace. ``tempfile.TemporaryDirectory`` is none of those: it is
+    CONSTRUCTOR-shaped, and until INV-lalad the taint walk could not traverse
+    construction edges at all (``instantiates`` was absent from
+    ``TAINT_CALL_EDGE_TYPES``). So the two unwrapped call sites never surfaced
+    as raw ``host_fs`` flows, and the drain looked complete while two writes
+    sat outside the discipline the claims assert. An enumerated list of
+    primitives is only as complete as the analysis that would notice a
+    missing one.
+
+    No ``_require_within_zone`` check: unlike the other wrappers this does not
+    accept a caller-supplied path — ``TemporaryDirectory`` allocates inside
+    :func:`_tmp_zone_root` by construction, so the zone is guaranteed by the
+    primitive rather than asserted against an argument.
+    """
+    import tempfile
+
+    _safety_zone_barrier()
+    with tempfile.TemporaryDirectory(prefix=prefix) as tmpdir:
+        yield tmpdir
 
 
 def install_artifact_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:

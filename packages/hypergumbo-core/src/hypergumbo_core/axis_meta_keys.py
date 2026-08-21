@@ -193,6 +193,24 @@ class MetaKeySpec:
     discipline_note: str = ""
 
 
+# WI-toruz / INV-lalad: the CALL FAMILY — the edge types on which a call
+# construct can appear, i.e. the edge types that carry an invocation.
+# ``instantiates`` is a member because a constructor call IS a call: data
+# passed to it crosses into a callable exactly as through ``calls``. Declared
+# ONCE here and read by both ``call_construct``'s ``applicable_edge_types``
+# and :func:`call_family_edge_types`, so consumers stop keeping private copies
+# — the disagreeing-copies defect INV-nosoz names for the inheritance family.
+#
+# NOT a general-purpose "taint cares about this" set: consumers legitimately
+# add their own extras (taint carries ``module_attr_ref`` per WI-lokuv and
+# ``dispatches_to`` per INV-zuhig, neither of which is a call construct).
+# Union with those; never replace them.
+_CALL_FAMILY_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "calls",
+    "instantiates",
+})
+
+
 # ADR-0038 ruling 2: the ``access_mode`` per-edge-type applicability matrix.
 # APPLICABLE — a ``None`` value counts as missing data (fix the emitter).
 # DECLARED-N/A — a ``None`` value means the question does not arise (the
@@ -287,7 +305,7 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "(INV-kahig), so 'constructor' is the only cross-language "
                 "invariant for object creation and is NOT redundant with "
                 "``edge_type``.",
-                applicable_edge_types=frozenset({"calls", "instantiates"})),
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
     MetaKeySpec("call_locality", AXIS_EDGE_META,
                 "File-locality of a call edge — whether caller and "
                 "callee live in the same source file ('same_file') or "
@@ -1043,6 +1061,23 @@ def access_mode_applicable_edge_types() -> frozenset[str]:
     17-type census.
     """
     return _ACCESS_MODE_APPLICABLE_EDGE_TYPES
+
+
+def call_family_edge_types() -> frozenset[str]:
+    """The edge types that carry an invocation — the CALL FAMILY.
+
+    The single source for "is this edge a call?", read from
+    ``call_construct``'s declared ``applicable_edge_types`` (WI-toruz).
+    ``instantiates`` is a member: a constructor call is a call, and data
+    passed to it crosses into a callable exactly as through ``calls``.
+
+    Consumers that need the call family PLUS their own extras must UNION,
+    never replace: ``taint.TAINT_CALL_EDGE_TYPES`` also carries
+    ``module_attr_ref`` (WI-lokuv) and ``dispatches_to`` (INV-zuhig), and
+    neither is a call construct. Replacing rather than unioning deletes them
+    — the mistake INV-lalad's fix design flags because it reads as a cleanup.
+    """
+    return _CALL_FAMILY_EDGE_TYPES
 
 
 def access_mode_na_edge_types() -> frozenset[str]:

@@ -51,10 +51,10 @@ import stat
 import subprocess  # nosec B404 - subprocess needed to run gitleaks
 import sys
 import tarfile
-import tempfile
 import zipfile
 
 from .safety_zones import (
+    tmp_artifact_dir,
     cache_mkdir,
     cache_write,
     install_artifact_chmod,
@@ -207,7 +207,7 @@ def install_gitleaks(quiet: bool = False) -> bool:
 
     # Extract binary - all of this is network-dependent
     try:  # pragma: no cover
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tmp_artifact_dir() as tmpdir:
             tmppath = Path(tmpdir)
             archive_path = tmppath / filename
 

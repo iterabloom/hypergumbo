@@ -34,13 +34,13 @@ the default :func:`run_rust_analyzer_scip` /
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from google.protobuf.message import DecodeError
 
 from hypergumbo_core.ir import Edge, Symbol
+from hypergumbo_core.safety_zones import tmp_artifact_dir
 
 from .invoke import (
     RustAnalyzerError,
@@ -156,7 +156,7 @@ def try_analyze_with_rust_analyzer(
     translate_fn = translate if translate is not None else translate_scip_to_hg
     emit = log if log is not None else (lambda _msg: None)
 
-    with tempfile.TemporaryDirectory(prefix="hg_rust_analyzer_") as tmpdir:
+    with tmp_artifact_dir(prefix="hg_rust_analyzer_") as tmpdir:
         scratch = Path(tmpdir)
         try:
             scip_bytes = invoke_fn(workspace, cwd=scratch)

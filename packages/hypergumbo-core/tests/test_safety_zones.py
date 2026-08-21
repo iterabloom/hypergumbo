@@ -481,3 +481,37 @@ def test_cli_has_no_bare_rename_calls() -> None:
         f"cache-internal renames through safety_zones.cache_rename so the "
         f"zone-barrier sanitizer applies"
     )
+
+
+def test_tmp_artifact_dir_inv_lalad() -> None:
+    """INV-lalad: ``tmp_artifact_dir`` routes ephemeral SCRATCH DIRECTORY
+    creation through the tmp_artifact wrapper.
+
+    INV-zudak added ``tmp_artifact_write`` / ``_mkdir`` / ``_rmtree`` so that
+    "every fs-write primitive" routed through a wrapper — but it enumerated
+    write_text / mkdir / unlink / chmod / copy2 / rmtree / replace, and
+    ``tempfile.TemporaryDirectory`` is none of those. It is CONSTRUCTOR-shaped,
+    and the taint walk could not traverse construction edges at all, so the two
+    unwrapped call sites (gitleaks.py, graceful_degrade.py) never surfaced as
+    raw ``host_fs`` flows and INV-zudak's drain looked complete. Closing the
+    taint blind spot made them visible; this wrapper is the fix.
+    """
+    from hypergumbo_core.safety_zones import tmp_artifact_dir
+
+    with tmp_artifact_dir() as tmpdir:
+        created = Path(tmpdir)
+        assert created.is_dir()
+        # It really is a scratch dir inside the tmp_artifact zone.
+        assert created.is_relative_to(Path(tempfile.gettempdir()))
+        (created / "scratch.txt").write_text("x")
+    # The context manager cleans up after itself, like TemporaryDirectory.
+    assert not created.exists()
+
+
+def test_tmp_artifact_dir_honours_prefix() -> None:
+    """``graceful_degrade`` passes ``prefix=`` so the scratch dir is
+    identifiable in a temp listing; the wrapper must not swallow it."""
+    from hypergumbo_core.safety_zones import tmp_artifact_dir
+
+    with tmp_artifact_dir(prefix="hg_probe_") as tmpdir:
+        assert Path(tmpdir).name.startswith("hg_probe_")

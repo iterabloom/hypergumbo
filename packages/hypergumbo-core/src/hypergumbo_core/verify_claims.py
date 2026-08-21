@@ -113,6 +113,7 @@ if TYPE_CHECKING:
 
 import yaml
 
+from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import (
     KNOWN_IO_BOUNDARIES,
@@ -1291,10 +1292,13 @@ _EXTERNAL_DST_TERMINAL_SLOTS: frozenset[str] = frozenset({
 #: of 258 reported modules. ``instantiates`` IS included because a constructor
 #: is a genuine classification opportunity — ``socket.socket()`` is a catalogued
 #: primitive.
-_CALL_SITE_EDGE_TYPES: frozenset[str] = frozenset({
-    "calls",
+#: INV-lalad: the ``calls`` + ``instantiates`` half is the CALL FAMILY and is
+#: now read from the registry rather than restated, so this set and
+#: ``taint.TAINT_CALL_EDGE_TYPES`` agree by construction instead of by
+#: coincidence. ``module_attr_ref`` stays an explicit local addition — it is an
+#: attribute READ, not an invocation, so it is not a call-family member.
+_CALL_SITE_EDGE_TYPES: frozenset[str] = call_family_edge_types() | frozenset({
     "module_attr_ref",
-    "instantiates",
 })
 
 
