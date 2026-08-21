@@ -1,0 +1,33 @@
+Original commit body from 2afb7906b3e3ccca1f55e64dcb9c6fca66dfd7ee:
+
+The shipped entry said construction edges being absent from the reachability
+BFS made "the constructor and everything downstream of it false dead code for
+all eight languages". The mechanism was broken for every emitting language, but
+the CONSEQUENCE only lands where the edge's dst is a callable.
+
+Measured after merge, on the instrument the owner suggested: an ephemeral clone
+rewound to 9db326c416, run via PYTHONPATH shadowing so the console script loads
+the pre-fix cli.py, with BOTH versions fed one fixed 44,842-node survey of
+hypergumbo itself. Instrument verified before use — the old process resolves to
+the clone and reports the literal {"calls", "dispatches_to", "wraps"}. Result:
+byte-identical output. 5201 production functions, 2843 reachable, 2152 dead,
+41.4% on both sides.
+
+Zero delta, and the reason is structural: all 11,260 `instantiates` edges in
+that graph point at kind=class (8,919) or external_symbol (2,341) and NONE at a
+callable, while the 524 class nodes they target have only contains / extends /
+decorated_by leaving them — none traversable, correctly, because containing is
+not calling. So the walk reaches a class and stops.
+
+The fix remains right and the hole was real (a Ruby fixture recovers three
+symbols, two transitively). Its realized value is conditional on the dst
+choice, which the entry now says. Filed as INV-rolok, with the sizing stated
+honestly: 0 of 2152 dead candidates are `__init__`, so this is a latent recall
+hole rather than present false positives.
+
+Also commits `.agent/.last_concept_audit.json`, the cadence record for concept
+audit #12 (`call_construct`) — the audit that found INV-kahig, INV-lalad,
+INV-tadup, WI-diruk and WI-toruz.
+
+Claude-Session: a koala playing a grand piano in a field of giant sunflowers in a dinosaur-themed salad buffet with a symposium of beetles made of prayer shawls
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
