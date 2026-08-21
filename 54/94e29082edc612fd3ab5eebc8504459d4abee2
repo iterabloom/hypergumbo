@@ -1,0 +1,46 @@
+Original commit body from f9c8115d1514c636c11702f8c998fc90ea94bbcd:
+
+INV-lalad added `instantiates` to TAINT_CALL_EDGE_TYPES so the taint walk could
+traverse construction edges. That is recall work landing into measurement
+0001's pre-registered `<50%` band, whose stated rule is that recall work should
+stop until precision is understood. I shipped it and had not measured the
+precision half. This is that measurement.
+
+DESIGN: a delta census, not a re-run. 0001's census population was 60 flows on
+2026-08-11; the same five repos produce 298 at this fix's parent commit nine
+days later, so a re-run would have pooled 238 flows of unrelated drift into this
+change's account. Baseline 148fae52b3 in an ephemeral clone, subject
+d8d415dd0d, the same instrument from the working tree in both arms, and an
+isolated XDG_CACHE_HOME per arm so neither could read the other's cached
+behaviour map. The control was verified before any number was read: under the
+baseline path the interpreter resolves taint.py to the clone and reports
+{calls, dispatches_to, module_attr_ref}; unshadowed it adds instantiates.
+
+RESULT: 35 added, 0 removed, all adjudicated, none unadjudicable. 1 TP, 34 FP —
+2.9% marginal precision against ≈41%.
+
+The true positive is this item's own thesis confirmed on a second sink:
+mitmproxy binds os.path.expanduser to `p`, passes it to write_magisk_module,
+and magisk.py:100 is `ZipFile(path, "w")`. Invisible before the fix for exactly
+the subprocess.Popen reason.
+
+The false positives are one dominant mechanism: 24 of 34 land on 10 call sites
+that are ALL constructors taking no arguments, a keyword literal, a generated
+temp path, or the temp-file object — checked exhaustively across every
+constructor call site in all five pretix files, not only the reported ones. A
+zero-argument call cannot carry taint by argument and its receiver is a module,
+so that is a proof rather than a heuristic. Filed as INV-fubag (P1), with an
+explicit requirement that any fix preserve the mitmproxy true positive, since
+killing both would read as success on FP count alone.
+
+Not a new defect. content-not-argument and co-location-function were already 29
+of 0001's 57 false positives; this change fed a large new class of sinks into an
+existing, documented weakness. The fix stays: backing out `instantiates` would
+re-hide subprocess.Popen(tainted).
+
+Honest limit, recorded in the document: single adjudication pass by the author
+of the change measured, where 0001 used blind second passes. The bias runs
+against the reported result, and 24 of the 34 verdicts are mechanical.
+
+Claude-Session: a manatee building a stratovolcano shaped like top hat made of pumpernickel crumbs in a stegosaurus-sized soda fountain
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
