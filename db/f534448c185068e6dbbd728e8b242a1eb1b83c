@@ -1,0 +1,56 @@
+Original commit body from c62a6952ab61abf4268873dbcefaa7694f75a9f5:
+
+The trailer loop split each trailer into key / whitespace / value, tested ONLY
+$val against brand_re, and reassembled ${key}${ws}${val}. The scrub removed the
+half that IMPLIES a vendor -- a hostname in the value -- and preserved the half
+that NAMES one:
+
+    ^^^^^^ untouched               ^^^^^^ replaced with an absurd phrase
+
+Exactly one distinct trailer key in the whole history matches brand_re, on 13
+commits. It was ACCRUING, not historical: the harness appends that trailer to
+every agent commit, and two more landed during the read-only session that first
+measured it at 11.
+
+OWNER RULING. A branded key becomes `Racial-Capitalism-Is-Bad:` AND forces the
+value through the rewriter even when the value carries no brand of its own. A
+vendor-named key means the whole trailer is vendor provenance, and a scrubbed
+key over an intact value would still publish the session id it points at. Three
+git-semantic keys are never renamed -- interpret-trailers, %(trailers:key=...)
+and DCO validation all key off the exact token.
+
+SECOND CHANGE: the body sweep is bounded to the first and last 10 body lines. A
+body hit DELETES THE WHOLE LINE with no marker, and the pattern list contains
+ordinary English words. Not hypothetical: `falcon` is a web framework this
+project SUPPORTS (it ships falcon.yaml, listed beside django/flask/fastapi), so
+an ordinary commit lost both halves --
+
+    BEFORE  feat(routes): detect falcon resource classes
+            The falcon analyzer now maps add_route() to its responder methods.
+    AFTER   feat(routes): detect a meerkat djing in a Bronto-burger grill shack
+                          with a panel of dogs resource classes
+            [body line silently deleted]
+
+Vendor self-attribution clusters at the subject and the trailers, and BOTH are
+still scanned unconditionally by their own passes. The window narrows only the
+body sweep, trading coverage in the middle of a long body for precision. The
+owner chose this over the redaction-marker alternative, so a deletion inside the
+window is still silent.
+
+VERIFIED BY EXECUTING THE SHIPPED HOOK, not by reading it: branded key + branded
+value both replaced; branded key + CLEAN value both replaced; Signed-off-by
+verbatim; capitalised Co-Authored-By keeps its key (the nocasematch case, since
+this history carries both spellings); idempotent across three passes; no brand
+pattern collides with the replacement key; the window spares the middle and
+deletes both ends, with a wide-window control that deletes all three as the
+non-vacuity floor.
+
+Two fixture bugs found on the way, both mine: the first drafts omitted
+Signed-off-by, so they exercised the DCO guard rather than the scrub and read as
+a crash; and a window of 1 scanned only the blank separator at body index 0,
+because the window counts body lines as they are, blanks included.
+
+.githooks/test_hooks.sh: 42 passed, 0 failed.
+
+Racial-Capitalism-Is-Bad: a pumpkin-headed crow driving a subway car with a conclave of bats made of bagel chips
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
