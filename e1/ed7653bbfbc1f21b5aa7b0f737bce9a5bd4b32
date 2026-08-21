@@ -1,0 +1,62 @@
+Original commit body from 2a9033ad83277bb4d7f55d646bb3964723d8886c:
+
+docs/measurements/0003 adjudicated the 35 flows the construction-edge widening
+added: 1 true positive, 34 false, and 24 of the 34 landed on sink calls taking
+NO ARGUMENTS AT ALL — tempfile.TemporaryDirectory(), TemporaryFile(),
+NamedTemporaryFile(delete=True).
+
+Taint models a flow as the tainted value being an argument to the sink call or
+its RECEIVER. A call passing only literal constants, with no value receiver, has
+neither. So the flow is not unlikely, it is impossible under the tool's own
+model — a proof rather than a heuristic, which is why this needs no threshold
+and costs no recall.
+
+STRUCTURE: one home per fact, because this session has been paying for the
+alternative all week.
+  * axis_meta_keys declares `call_arg_shape` on the call family.
+  * py.py stamps ONCE over the slice of edges each call appended, covering all
+    fourteen Edge.create sites and every site added later. Fourteen per-site
+    stamps would have been fourteen copies of one rule.
+  * ir.py merges the marker conservatively across collapsed call sites.
+  * taint.py gates BOTH propagation arms through a single predicate.
+
+ABSENCE IS THE CONSERVATIVE READING, and it is load-bearing. Producers stamp
+only what they can prove; an unstamped call keeps flowing, including every edge
+in every behavior map written before this key existed. A default that silenced
+findings would make this a false-negative generator on a security analysis.
+
+THE DEDUP MERGE IS A SECURITY PROPERTY, not tidiness. deduplicate_edges keeps
+the FIRST edge, so a function holding both TemporaryDirectory() and
+TemporaryDirectory(dir=tainted) collapses to one edge; an arrival-order-decided
+marker would silence a real flow on the strength of a different call site. The
+guard tests both orders — only one was broken.
+
+THE RECEIVER HALF WAS FOUND BY MEASUREMENT, NOT REVIEW. An argument-only first
+cut stamped pretix's `Path(DATA_DIR).mkdir(parents=False, exist_ok=True)` —
+both arguments literal, while DATA_DIR is an environment read and the receiver
+decides WHICH DIRECTORY IS CREATED. It silenced 9 real findings (6 mkdir in
+pretix, f.write and three logger.warn in mitmproxy) before the verification run
+caught it. Only two shapes are now accepted: a bare-name call (no receiver) and
+module.attr() where the receiver is a known imported module.
+
+MEASURED END-TO-END on the same three repositories, same delta design: of the
+35 added flows, 29 removed and 6 survive — marginal precision 2.9% -> 16.7% —
+and the acceptance criterion filed with the item holds, the `expanduser` ->
+`ZipFile(path,"w")` true positive SURVIVES. 5 pre-existing false positives go
+too: readfile.py:56 `logging.error("Flow file corrupted.")` is silenced while
+the f-string call at :67 four lines below still flows.
+
+Schema 0.20.1 -> 0.20.2 (an addition, hence patch). The key is sparse and
+opt-in, so artifacts written before it stay valid and unchanged.
+
+NOT CLAIMED. The producer is Python-only, so the gate is inert on Go and JS
+until their analyzers stamp — sound, but the win does not generalize yet. Five
+false positives survive, from the two mechanisms 0003 named separately
+(co-location-file, and ZipFile taking a real but untainted argument). `-1`
+parses as ast.UnaryOp so TemporaryFile('w', -1) stays unstamped — pinned as a
+deliberate conservative gap, a missed win that can never silence a finding.
+
+19068 passed, 100% coverage, six packages green in isolation, ratchet clean.
+
+Claude-Session: a goat building a spiral staircase shaped like chopping board made of origami cranes in a stegosaurus-sized soda fountain
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
