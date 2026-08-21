@@ -4,8 +4,9 @@
 A function ``F`` that returns one of its own directly-nested functions is a
 *closure factory*. The returned inner closure is reachable whenever ``F`` is
 (``F`` is reached at its call / decoration sites), but the call-graph BFS used
-by ``dead-code-maybe`` only follows ``{calls, dispatches_to, wraps}`` edges, so
-the nested closure has ZERO reachability in-edges and is falsely flagged dead.
+by ``dead-code-maybe`` follows only the call family plus ``dispatches_to`` /
+``wraps`` — a ``return <closure>`` is none of those — so the nested closure has
+ZERO reachability in-edges and is falsely flagged dead.
 
 These tests pin the structural fix: the Python analyzer emits an edge
 ``F -> nested_closure`` of type ``dispatches_to`` with

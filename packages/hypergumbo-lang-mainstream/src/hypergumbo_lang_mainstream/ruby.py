@@ -2260,7 +2260,18 @@ def _try_receiver_call(
                     edges.append(Edge.create(
                         src=current_method.id,
                         dst=callee.id,
-                        edge_type="calls",
+                        # INV-kahig: object creation is ``instantiates`` in every
+                        # other analyzer that emits it (dart/csharp/java/py/js_ts/
+                        # php/cpp/verilog); ruby emitted ``calls`` and NEVER
+                        # ``instantiates``, so a consumer asking for object
+                        # creation by edge_type silently omitted all of ruby.
+                        # The DST is deliberately unchanged -- ruby resolves
+                        # ``Klass.new`` to ``Klass#initialize``, the initializer
+                        # symbol, which is the choice WI-fagit independently
+                        # converged csharp onto (PR #689) because anchoring on the
+                        # class conflates "referenced as a type" with
+                        # "instantiated" and breaks reverse-slice.
+                        edge_type="instantiates",
                         line=line,
                         evidence_type="ast_call",
                         origin=PASS_ID,

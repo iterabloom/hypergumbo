@@ -58,6 +58,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Final,
     Iterable,
     List,
     Mapping,
@@ -78,6 +79,7 @@ from .analyze.base import (
     split_within_file_stable_id_collisions,
     widen_route_stable_ids,
 )
+from .axis_meta_keys import call_family_edge_types
 from .survey_io import (
     CANONICAL_SURVEY_FILENAME,
     SubstrateError,
@@ -7341,6 +7343,42 @@ def cmd_repeat_finder(args: argparse.Namespace) -> int:
     )
 
 
+# The edge types the dead-code BFS treats as conferring reachability.
+#
+# MODULE-LEVEL ON PURPOSE. This was a ``cmd_dead_code_maybe`` local, which made
+# it unimportable — so its closure gate
+# (``test_dispatch_closure_gate``) had to keep a SECOND copy of the literal and
+# pin the two together by scraping the function's source text. That is the same
+# one-fact-two-homes shape INV-lalad found in taint and verify-claims: the test
+# copy silently disagreeing is exactly what the scrape existed to detect, and a
+# detector is strictly weaker than making the drift impossible. Consumers now
+# import THIS object.
+#
+# calls:          direct function/method calls (post-Phase-3, also covers
+#                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
+# dispatches_to:  interface/abstract method → concrete implementation
+#                 (post-Phase-3, also covers HTTP routes via
+#                 meta['dispatch_kind']='route')
+# wraps:          middleware wrapper → inner handler
+# instantiates:   object creation. INV-kahig: constructing an object makes its
+#                 constructor reachable, and every analyzer that emits
+#                 ``instantiates`` (dart/csharp/java/py/js_ts/php/cpp/verilog,
+#                 and now ruby) had its construction edges skipped by this BFS.
+#                 Measured directly against ``_bfs_reachable``: on
+#                 ``main -[instantiates]-> init -[calls]-> polish`` with
+#                 seeds={main}, excluding it reaches ONLY ``main`` — both
+#                 ``init`` and ``polish`` fall out as false dead code.
+#
+# The call-family half DERIVES from the registry (INV-lalad) rather than being
+# restated here, so this set cannot silently disagree with taint's and
+# verify-claims' the way it just did. Local extras are UNIONED, never
+# substituted — ``dispatches_to``/``wraps`` are reachability-conferring but are
+# not call constructs.
+_REACHABILITY_EDGE_TYPES: Final[frozenset[str]] = call_family_edge_types() | frozenset(
+    {"dispatches_to", "wraps"}
+)
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from seeds.
 
@@ -7485,13 +7523,6 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
         seed_ids |= test_symbols
 
     # BFS from seeds through call-flow edges.
-    # calls:          direct function/method calls (post-Phase-3, also covers
-    #                 FFI/IPC/RPC bridges via meta['bridge_kind']/['protocol'])
-    # dispatches_to:  interface/abstract method → concrete implementation
-    #                 (post-Phase-3, also covers HTTP routes via
-    #                 meta['dispatch_kind']='route')
-    # wraps:          middleware wrapper → inner handler
-    _REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "wraps"}
     call_graph: dict[str, list[str]] = {}
     for edge in edges:
         if edge.get("type") in _REACHABILITY_EDGE_TYPES:
