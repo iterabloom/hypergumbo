@@ -230,6 +230,142 @@ Signed-off-by: Developer <dev@example.com>"
 
 run_test "Scenario 7: unstable (Prefix Preserved)" "$INPUT_7" "$EXPECTED_7"
 
+# ------------------------------------------------------------------------------
+# Scenarios 8-12: a brand in a trailer KEY, and the body scan window.
+#
+# The key used to pass through untouched -- only the VALUE was tested, and
+# "${key}${ws}${val}" put the key back verbatim. The scrub removed the half that
+# IMPLIES a vendor (the hostname) and kept the half that NAMES one.
+# ------------------------------------------------------------------------------
+
+INPUT_8="fix: a thing
+
+Body line.
+
+Claude-Session: https://claude.ai/code/session_01ABC
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_8="fix: a thing
+
+Body line.
+
+Racial-Capitalism-Is-Bad: $FERRET_PHRASE
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 8: branded trailer KEY is replaced" "$INPUT_8" "$EXPECTED_8"
+
+# Pins a deliberate policy choice, not an incidental behaviour: a vendor-named
+# key means the WHOLE trailer is vendor provenance, so the value goes too even
+# when it carries no brand of its own. Without this, a scrubbed key over an
+# intact value would still publish the session id the key pointed at.
+INPUT_9="fix: a thing
+
+Body line.
+
+Claude-Session: 12345-plain-identifier
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_9="fix: a thing
+
+Body line.
+
+Racial-Capitalism-Is-Bad: $FERRET_PHRASE
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 9: branded KEY forces a CLEAN value to be replaced too" "$INPUT_9" "$EXPECTED_9"
+
+# git-semantic keys are never renamed: interpret-trailers, %(trailers:key=...)
+# and DCO validation all key off the exact token.
+INPUT_10="fix: a thing
+
+Body line.
+
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_10="fix: a thing
+
+Body line.
+
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 10: Signed-off-by survives verbatim" "$INPUT_10" "$EXPECTED_10"
+
+# The allowlist is matched case-insensitively via nocasematch, set ~100 lines
+# earlier in the hook. This history carries BOTH spellings of the key, so the
+# capitalised one is the discriminating case: with nocasematch off it would fall
+# through to the wildcard arm and be renamed.
+INPUT_11="fix: a thing
+
+Body line.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Signed-off-by: Jane Doe <jane@example.com>"
+EXPECTED_11="fix: a thing
+
+Body line.
+
+Co-Authored-By: $FERRET_PHRASE <$BAD_EMAIL>
+Signed-off-by: Jane Doe <jane@example.com>"
+run_test "Scenario 11: Co-Authored-By key survives, value is scrubbed" "$INPUT_11" "$EXPECTED_11"
+
+# Idempotence. `git commit --amend` re-runs commit-msg over already-scrubbed
+# text, so the rewrite must be a fixed point. The whole design rests on
+# "Racial-Capitalism-Is-Bad" not matching brand_re -- an invariant that spans
+# two files, so a future brand-patterns.txt edit could break it silently.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 12: rewrite is idempotent under --amend"
+IDEM_FILE="$TEST_DIR/COMMIT_EDITMSG_IDEM"
+printf '%s' "$INPUT_8" > "$IDEM_FILE"
+"$COMMIT_MSG_HOOK" "$IDEM_FILE" 2>/dev/null
+IDEM_PASS1="$(cat "$IDEM_FILE")"
+"$COMMIT_MSG_HOOK" "$IDEM_FILE" 2>/dev/null
+IDEM_PASS2="$(cat "$IDEM_FILE")"
+if [[ "$IDEM_PASS1" == "$IDEM_PASS2" ]]; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: second pass changed the message"
+  printf 'pass1:\n%s\npass2:\n%s\n' "$IDEM_PASS1" "$IDEM_PASS2"
+  ((FAIL_COUNT++))
+fi
+
+# The body scan window. A body hit DELETES THE WHOLE LINE with no marker, so a
+# false positive is silent and unrecoverable -- and the pattern list contains
+# ordinary English words. `Stable` stands in here for the real-world case:
+# `falcon` is a web framework this project SUPPORTS (it ships falcon.yaml), so
+# an ordinary commit about the falcon analyzer lost a body line.
+#
+# Vendor self-attribution clusters at the subject and the trailers, both of
+# which are scanned unconditionally by their own passes. The window narrows only
+# the body sweep. Window=1 here so the fixture stays short; the shipped default
+# is 10.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 13: body scan window spares the middle, scans both ends"
+WIN_FILE="$TEST_DIR/COMMIT_EDITMSG_WIN"
+printf 'fix: a thing\n\nStable at the top.\nordinary prose\nStable in the middle.\nordinary prose\nStable at the bottom.\n\nSigned-off-by: J <j@e.com>\n' > "$WIN_FILE"
+HOOK_BODY_SCAN_WINDOW=2 "$COMMIT_MSG_HOOK" "$WIN_FILE" 2>/dev/null
+WIN_OUT="$(cat "$WIN_FILE")"
+if [[ "$WIN_OUT" == *"Stable in the middle."* ]] \
+   && [[ "$WIN_OUT" != *"Stable at the top."* ]] \
+   && [[ "$WIN_OUT" != *"Stable at the bottom."* ]]; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: window did not discriminate"
+  printf '%s\n' "$WIN_OUT"
+  ((FAIL_COUNT++))
+fi
+
+# Non-vacuity floor for the window: with the window wide open the SAME fixture
+# must lose all three lines. Without this, a sweep that deleted nothing at all
+# would satisfy the "middle survives" half above.
+echo "--------------------------------------------------------"
+echo "TEST: Scenario 14: control — a wide window deletes all three"
+printf 'fix: a thing\n\nStable at the top.\nordinary prose\nStable in the middle.\nordinary prose\nStable at the bottom.\n\nSigned-off-by: J <j@e.com>\n' > "$WIN_FILE"
+HOOK_BODY_SCAN_WINDOW=99 "$COMMIT_MSG_HOOK" "$WIN_FILE" 2>/dev/null
+if ! grep -q "Stable" "$WIN_FILE"; then
+  echo "✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "❌ FAIL: wide window left a brand line behind"
+  cat "$WIN_FILE"
+  ((FAIL_COUNT++))
+fi
+
 # 7. Pre-commit branch guard tests
 # ------------------------------------------------------------------------------
 

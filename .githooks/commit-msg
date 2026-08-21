@@ -144,6 +144,10 @@ load_brand_regex() {
 brands_file="${HOOK_BRANDS_FILE:-$hook_dir/brand-patterns.txt}"
 brand_re="$(load_brand_regex "$brands_file")"
 
+# Body lines scanned at each end of the body (see the sweep below). Overridable
+# so the hook's own tests can exercise the window without 20-line fixtures.
+body_scan_window="${HOOK_BODY_SCAN_WINDOW:-10}"
+
 # Case-insensitive replace using perl (fast) or python3 fallback.
 replace_brands_ci() {
   # usage: replace_brands_ci "replacement" "input"
@@ -273,11 +277,34 @@ if [[ "$subject_line" =~ $brand_re ]]; then
   subject_line="$(replace_brands_ci "$replacement_out" "$subject_line")"
 fi
 
-# 1) Remove ONLY body lines containing the brands
+# 1) Remove ONLY body lines containing the brands, and ONLY inside the scan
+#    window: the first and last $body_scan_window lines of the BODY.
+#
+#    WHY A WINDOW. The pattern list contains ordinary English words -- Nova,
+#    Titan, Granite, Arctic, Falcon, Phi, Aya, GLM -- and a body hit DELETES THE
+#    WHOLE LINE with no marker, so a false positive is silent and unrecoverable.
+#    This is not hypothetical here: `falcon` is a web framework this project
+#    SUPPORTS (it ships falcon.yaml and lists it beside django/flask/fastapi),
+#    so an ordinary commit about the falcon analyzer lost a body line.
+#
+#    Vendor self-attribution clusters at the two ends -- the subject (line 1)
+#    and the trailers -- while the middle of a long body is ordinary technical
+#    prose. Both ends are ALWAYS scanned: the subject and the trailers are
+#    handled by their own passes below and above, unconditionally, and are not
+#    subject to this window. It narrows only the body sweep.
+#
+#    A body of <= 2*window lines is fully covered (the two ends overlap), so
+#    this changes nothing for short messages. Only a long body has an unscanned
+#    middle. That is a deliberate coverage-for-precision trade, made because a
+#    silent deletion costs more here than a missed mid-body brand.
 filtered_body=()
-for l in "${body_lines[@]}"; do
-  if [[ "$l" =~ $brand_re ]]; then
-    continue
+nbody=${#body_lines[@]}
+for (( bi = 0; bi < nbody; bi++ )); do
+  l="${body_lines[$bi]}"
+  if (( bi < body_scan_window || bi >= nbody - body_scan_window )); then
+    if [[ "$l" =~ $brand_re ]]; then
+      continue
+    fi
   fi
   filtered_body+=( "$l" )
 done
@@ -325,7 +352,39 @@ for t in "${trailers[@]}"; do
     ws="${BASH_REMATCH[2]}"
     val="${BASH_REMATCH[3]}"
 
-    if [[ "$val" =~ $brand_re ]]; then
+    # A brand in the KEY used to pass through untouched: only $val was tested,
+    # and ${key}${ws}${val} put the key back verbatim. The scrub removed the
+    # half that IMPLIES a vendor (a hostname in the value) and preserved the
+    # half that NAMES one -- e.g. `Claude-Session:`, on 13 commits and growing,
+    # because the harness appends that trailer to every agent commit.
+    #
+    # nocasematch IS LOAD-BEARING BELOW and is set ~100 lines earlier: it makes
+    # `case` match case-insensitively too, not just [[ =~ ]]. This history
+    # carries BOTH `Co-authored-by` and `Co-Authored-By`; with nocasematch off,
+    # the second spelling would fall through to the wildcard arm.
+    key_branded=0
+    case "$key" in
+      # git-semantic keys. `git interpret-trailers`, %(trailers:key=...) and DCO
+      # validation all key off the exact token, so these are never renamed even
+      # if a future brand pattern collides with one.
+      Signed-off-by:|Co-authored-by:|Co-committed-by:) ;;
+      # `if`, NOT `[[ ... ]] && key_branded=1`. The && form returns 1 when the
+      # key is clean, `case` returns its arm's status, and under `set -e` that
+      # is an exit 1 if this block is ever the last command in a function or
+      # script. Inert where it sits today; a landmine if it is ever moved.
+      *) if [[ "$key" =~ $brand_re ]]; then key_branded=1; fi ;;
+    esac
+
+    if (( key_branded )); then
+      key="Racial-Capitalism-Is-Bad:"
+      # The value goes too, UNCONDITIONALLY -- even when it carries no brand of
+      # its own. A vendor-named key means the whole trailer is vendor
+      # provenance, and a scrubbed key over an intact value would still publish
+      # the session id it points at. rewrite_trailer_value_smartass discards the
+      # original either way (identity shape is rebuilt; anything else is
+      # replaced wholesale), so no separate branch is needed.
+      val="$(rewrite_trailer_value_smartass "$val")"
+    elif [[ "$val" =~ $brand_re ]]; then
       val="$(rewrite_trailer_value_smartass "$val")"
     fi
     t="${key}${ws}${val}"
