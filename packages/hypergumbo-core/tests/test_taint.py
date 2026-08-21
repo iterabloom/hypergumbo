@@ -2095,8 +2095,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller"}
 
@@ -2123,9 +2123,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=2, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2159,9 +2159,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=5, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2193,9 +2193,9 @@ class TestPropagateTaintDdg:
                     use_block="bb_0", use_line=3, symbol_id="caller"),
         ]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2229,9 +2229,9 @@ class TestPropagateTaintDdg:
                     use_block="bb_0", use_line=3, symbol_id="caller"),
         ]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2263,9 +2263,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=7, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
         ]
 
@@ -2294,11 +2294,11 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10},
             # Recorded at 3, i.e. BEFORE the source. Real code may call this
             # sink again at 14, where the taint demonstrably arrives.
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
 
@@ -2328,11 +2328,11 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10},
             # Recorded line is 3 — before the source — but the dedup pass now
             # preserves the site at 14, which is where the taint arrives.
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3,
              "meta": {"call_lines": [3, 14]}},
         ]
@@ -2358,10 +2358,10 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1,
              "meta": {"call_lines": [1, 10]}},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 14},
         ]
 
@@ -2385,9 +2385,9 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=14, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 10, "meta": {"call_lines": "nonsense"}},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 14,
              "meta": {"call_lines": [14, None, "x"]}},
         ]
@@ -2412,10 +2412,10 @@ class TestPropagateTaintDdg:
             use_block="bb_0", use_line=9, symbol_id="caller",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
             {"src": "caller", "dst": "other", "type": "calls", "line": 2},
-            {"src": "other", "dst": "python:external:0-0:send:unresolved",
+            {"src": "other", "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 40},
         ]
 
@@ -2434,9 +2434,9 @@ class TestPropagateTaintDdg:
             use_block="src_func", use_line=2,
         )]
         call_edges = [
-            {"src": "src_func", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src_func", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "src_func", "dst": "mid_func", "type": "calls"},
-            {"src": "mid_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "mid_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         # Only source function analyzed
         analyzed = {"src_func"}
@@ -2475,8 +2475,8 @@ class TestPropagateTaintDdg:
             use_block="other_fn", use_line=2, symbol_id="other_fn",
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2510,11 +2510,11 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
-            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller", "sink_func"}
 
@@ -2538,14 +2538,14 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             # Route A: through the sanitizer.
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "type": "calls"},
+            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
             # Route B: straight there.
             {"src": "caller", "dst": "sink_func", "type": "calls"},
-            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2563,8 +2563,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2580,9 +2580,9 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             # Sink is in a disconnected component
-            {"src": "other_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "other_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2597,9 +2597,9 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "mid", "type": "calls"},
-            {"src": "mid", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "mid", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         analyzed = {"caller", "mid"}
 
@@ -2651,12 +2651,12 @@ class TestPropagateTaintDdg:
         # Build adjacency so both mid1 and mid2 can enqueue join_node
         # before it's dequeued, via _build_adjacency's set-based neighbors
         call_edges = [
-            {"src": "src", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "src", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "src", "dst": "mid1", "type": "calls"},
             {"src": "src", "dst": "mid2", "type": "calls"},
             {"src": "mid1", "dst": "join", "type": "calls"},
             {"src": "mid2", "dst": "join", "type": "calls"},
-            {"src": "join", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "join", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_ddg(
             ddg, call_edges, self._make_sources(), self._make_sinks(), [],
@@ -2670,8 +2670,8 @@ class TestPropagateTaintDdg:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "imports"},
-            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "type": "imports"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "imports"},
+            {"src": "caller", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "imports"},
         ]
 
         findings = propagate_taint_ddg(
@@ -2816,10 +2816,10 @@ class TestCrossLanguageTaint:
             module="net", name="send", kind="function",
         )]
         edges = [
-            {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "ts_caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "ts_caller", "dst": "wasm_func", "type": "calls",
              "meta": {"bridge_kind": "wasm"}},
-            {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "wasm_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
         assert len(findings) == 1
@@ -2837,10 +2837,10 @@ class TestCrossLanguageTaint:
             module="fs", name="write", kind="function",
         )]
         edges = [
-            {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "frontend", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "frontend", "dst": "backend", "type": "calls",
              "meta": {"protocol": "ipc"}},
-            {"src": "backend", "dst": "python:external:0-0:write:unresolved", "type": "calls"},
+            {"src": "backend", "dst": "python:external:0-0:write:unresolved", "is_resolved": False, "type": "calls"},
         ]
         findings = propagate_taint_structural(edges, sources, sinks, [])
         assert len(findings) == 1
@@ -2853,10 +2853,10 @@ class TestCrossLanguageTaint:
             use_block="caller", use_line=2,
         )]
         call_edges = [
-            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "type": "calls"},
+            {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "native_func", "type": "calls",
              "meta": {"bridge_kind": "ffi"}},
-            {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "type": "calls"},
+            {"src": "native_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
         sources = [TaintSource(
             taint_label="plaintext", module="crypto", name="decrypt",
@@ -3221,7 +3221,7 @@ class TestAutoImportFromIoPrimitives:
             # cfg_persister writes to the host FS via pathlib.Path.write_text
             {
                 "src": "python:/app/cfg.py:20-25:cfg_persister:function",
-                "dst": "python:external:0-0:pathlib.Path.write_text:unresolved",
+                "dst": "python:external:0-0:pathlib.Path.write_text:unresolved", "is_resolved": False,
                 "type": "calls",
             },
         ]

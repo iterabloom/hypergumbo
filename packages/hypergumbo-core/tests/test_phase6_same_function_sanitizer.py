@@ -64,7 +64,7 @@ def _call(dst_name: str, line: int) -> dict:
     """One call edge out of ``handler``, at a known line."""
     return {
         "src": _FN,
-        "dst": f"python:external:0-0:{dst_name}:unresolved",
+        "dst": f"python:external:0-0:{dst_name}:unresolved", "is_resolved": False,
         "type": "calls",
         "line": line,
     }
@@ -317,11 +317,11 @@ class TestStructuralPassLimit:
         rediscovered.
         """
         edges = [
-            {"src": _FN, "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": _FN, "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
-            {"src": _FN, "dst": "python:external:0-0:encrypt:unresolved",
+            {"src": _FN, "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 2},
-            {"src": _FN, "dst": "python:external:0-0:send:unresolved",
+            {"src": _FN, "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 3},
         ]
         findings = propagate_taint_structural(edges, SOURCES, SINKS, SANITIZERS)
@@ -335,15 +335,15 @@ class TestStructuralPassLimit:
         entirely would satisfy the test above.
         """
         edges = [
-            {"src": _FN, "dst": "python:external:0-0:decrypt:unresolved",
+            {"src": _FN, "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 1},
             {"src": _FN, "dst": "python:a.py:20-29:store:function",
              "type": "calls", "line": 2},
             {"src": "python:a.py:20-29:store:function",
-             "dst": "python:external:0-0:encrypt:unresolved",
+             "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False,
              "type": "calls", "line": 21},
             {"src": "python:a.py:20-29:store:function",
-             "dst": "python:external:0-0:send:unresolved",
+             "dst": "python:external:0-0:send:unresolved", "is_resolved": False,
              "type": "calls", "line": 22},
         ]
         findings = propagate_taint_structural(edges, SOURCES, SINKS, SANITIZERS)

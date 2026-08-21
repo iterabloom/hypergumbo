@@ -1292,7 +1292,7 @@ def test_typescript_alias_io_boundaries_detected(tmp_path: Path, capsys) -> None
         edges=[
             {
                 "src": "typescript:src/io.ts:1-5:writeFile:function",
-                "dst": "javascript:external:0-0:fs.writeFileSync:unresolved",
+                "dst": "javascript:external:0-0:fs.writeFileSync:unresolved", "is_resolved": False,
                 "type": "calls",
                 "confidence": 0.5,
             },
