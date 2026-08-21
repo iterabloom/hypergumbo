@@ -339,10 +339,29 @@ steps:
   # nonzero (a verdict staying green while its credited evidence collapses is
   # the INV-zuhig vacuousness shape this gate exists to catch).
   #
-  # Path-scoped to the claim surface: catalogue/claims/dependency changes can
-  # move a verdict, so they pay the ~10-minute self-analysis per-PR; analyzer
-  # .py changes stay on the cron full-suite cadence (a deliberate scoping
-  # decision — gating every core PR on a self-analysis was judged too heavy).
+  # WIDENED TO THE WHOLE CODE SURFACE (INV-bobor). This step used to be
+  # path-scoped to the claim surface, with analyzer .py changes riding the cron
+  # full-suite cadence — "a deliberate scoping decision — gating every core PR
+  # on a self-analysis was judged too heavy", priced in this comment at "~10
+  # minutes". Two measurements retired that trade:
+  #
+  #   * PRICE. The gate is 3m49s wall-clock on dev 6e290fcdb8, not ~10 minutes,
+  #     and it shares build-grammars with — and runs concurrently with — a
+  #     pytest step that took 935s in the same pipeline. The decision was taken
+  #     against a number 2.6x too high.
+  #   * THE FALLBACK DOES NOT DELIVER. The cron arm this scoping leans on DID
+  #     catch runtime-cli-no-host-fs regressing on 2026-08-19 01:00 and it
+  #     changed nothing for 63 commits, because a cron verdict is one bit of an
+  #     aggregate status that is chronically red from an unrelated flaky test,
+  #     landing on a commit that is not HEAD, which is the only commit
+  #     scripts/ci-debug reads. Detection was never the failure; delivery was.
+  #
+  # A gate inside THIS pipeline needs no delivery mechanism: auto-pr refuses to
+  # merge on it, so detection is bounded at one commit by construction. Scoped
+  # to *code_paths (the pytest/lint trigger) plus the self-catalog, which holds
+  # a README that *code_paths does not match — keeping it explicit so this
+  # trigger cannot narrow by accident again. Pinned by
+  # tests/test_ci_self_claims_gate_scope.py.
   #
   # THIS pipeline is the one that gates merges (auto-pr polls only
   # ci/woodpecker/pr/woodpecker — see the mypy step's history for what
@@ -354,19 +373,10 @@ steps:
     image: python:3.11-bookworm
     depends_on: [build-grammars]
     when:
+      - path: *code_paths
       - path:
           include:
-            - "docs/hypergumbo.claims.yaml"
-            - "docs/hypergumbo.claims.expected.json"
             - "docs/hypergumbo-self-catalog/**"
-            - "docs/io-primitives-overlays/**"
-            - "**/io_primitives/**"
-            - "**/taint_sources/**"
-            - "**/taint_sinks/**"
-            - "**/taint_sanitizers/**"
-            - "**/pyproject.toml"
-            - "scripts/check-self-claims"
-            - "scripts/check-self-claims-drift"
     commands:
       - pip install --upgrade pip && pip install jsonschema
       - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
