@@ -1,0 +1,58 @@
+Original commit body from e02885bb07a6a54781fd15839dfea115a6b69c86:
+
+``py.py`` types ``module.Attr()`` as ``instantiates`` when the attribute is
+PascalCase and ``calls`` otherwise (the WI-jubag heuristic).
+``TAINT_CALL_EDGE_TYPES`` did not contain ``instantiates``, and ``taint.py``
+did not contain the string anywhere, so the taint walk could not traverse a
+construction edge at all. ``subprocess.Popen`` is a catalogued subprocess sink
+whose name is PascalCase; ``subprocess.run`` is not.
+
+MEASURED, two fixtures differing only in the spelling of the sink:
+
+    data = sys.stdin.read()
+    subprocess.run(data)     CONTROL  violated,                 exit 1, 2 ddg
+    subprocess.Popen(data)   SUBJECT  confirmed_with_caveats,   exit 3, 0
+
+The subject arm did not go quiet — it stated "No unsanitized untrusted_input
+data reaches subprocess zone" about a two-line function in which it does, and
+attached an ``opaque_boundary`` caveat naming the WRONG hazard (what the
+launched program does, rather than that attacker-controlled data chose the
+command line), so a reader who checks the caveats was actively reassured.
+Both arms now report violated / exit 1 / 2 ddg findings.
+
+DERIVED, NOT EXTENDED. Appending the literal ``"instantiates"`` would have
+made a FOURTH hand-maintained copy of "what counts as a call", and disagreeing
+copies of one set are the defect this cycle has been chasing (INV-nosoz is
+five copies of the inheritance family). WI-toruz declared the call family once,
+on ``call_construct``'s ``applicable_edge_types``; ``call_family_edge_types()``
+reads it, and both ``TAINT_CALL_EDGE_TYPES`` and
+``verify_claims._CALL_SITE_EDGE_TYPES`` now union that with their own extras
+instead of restating it — so they agree by construction, not coincidence.
+
+THE EXTRAS ARE PINNED ON PURPOSE. Deriving these sets WHOLESALE is the
+obvious-looking cleanup and it is a regression: taint also carries
+``module_attr_ref`` (WI-lokuv — without it, attribute-kind io_primitives like
+``os.environ`` never match in structural propagation) and ``dispatches_to``
+(INV-zuhig — framework dispatch), and neither is a call construct. Three tests
+assert they survive and a fourth asserts they are NOT call-family members, so
+the reason they must be listed is pinned rather than remembered.
+
+AND IT IMMEDIATELY FOUND TWO REAL ONES. With construction edges traversable,
+``runtime-cli-no-host-fs`` and ``install-gitleaks-no-host-fs`` flipped to
+violated: ``gitleaks.py`` and the rust-analyzer probe called
+``tempfile.TemporaryDirectory()`` directly while the claims assert that all
+writes route through the ``safety_zones`` wrappers. INV-zudak enumerated the
+fs-write primitives as write_text / mkdir / unlink / chmod / copy2 / rmtree /
+replace; ``TemporaryDirectory`` is none of those — it is constructor-shaped, so
+nothing could see it and the drain looked complete. A ``tmp_artifact_dir()``
+wrapper joins the tmp_artifact zone and both sites route through it.
+``check-self-claims`` returns to 18 unchanged verdicts — restored by fixing the
+code, NOT by re-recording the snapshot.
+
+Also carries the csharp module-docstring line owed from WI-diruk (it still
+described ``meta.call_construct="method_group"`` after the key moved).
+
+Refs: INV-lalad, INV-zudak, WI-toruz, WI-diruk, INV-zuhig, WI-lokuv
+
+Claude-Session: a ferret building a hydrothermal vent shaped like deli menu board made of stained glass in a neon arcade
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
