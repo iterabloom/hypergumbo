@@ -1,0 +1,25 @@
+- op: create  # d1b2
+  at: '2026-08-21T03:06:42Z'  # d1b2
+  by: agent  # d1b2
+  actor: jgstern_agent  # d1b2
+  clock: 1  # d1b2
+  nonce: d1b2  # d1b2
+  data:  # d1b2
+    kind: invariant  # d1b2
+    title: "Constructor-shaped I/O sinks are flagged without checking the tainted value is among the call's arguments; a zero-argument sink call cannot carry taint at all"  # d1b2
+    status: violated  # d1b2
+    priority: 1  # d1b2
+    parent:  # d1b2
+    tags:  # d1b2
+    - taint  # d1b2
+    - security  # d1b2
+    - precision  # d1b2
+    - io_boundary  # d1b2
+    isbefore: []  # d1b2
+    duplicate_of: []  # d1b2
+    not_duplicate_of: []  # d1b2
+    pr_ref:  # d1b2
+    description: "Measured, not inferred: see\n[`docs/measurements/0003`](../../docs/measurements/0003-instantiates-taint-delta.md).\n\n**The finding.** For constructor-shaped I/O sinks the constructor is not where\ndata crosses the boundary. `ZipFile(path,'w')` *opens*; `zipp.writestr(name,\ndata)` *writes*. Anchoring the sink on the constructor makes any tainted value\nanywhere in the enclosing function produce a flow, because the constructor only\nwitnesses \"an fs resource was created here\".\n\n**The proof-shaped subset.** A sink call with **no arguments at all** cannot\nreceive taint by argument, and its receiver is a module (`tempfile`), which is\nnot tainted either. So such a flow cannot be a true positive under the rubric\ntaint itself models (argument or receiver). This is not a heuristic and needs no\nthreshold.\n\n**Measured cost, on the delta census of 0003:**\n\n    24 of 34 false positives land on 10 distinct call sites, ALL of which are\n\n      tempfile.TemporaryDirectory()                 no arguments\n      tempfile.TemporaryFile()                      no arguments\n      NamedTemporaryFile()                          no arguments\n      tempfile.NamedTemporaryFile(delete=True)      keyword literal only\n      ZipFile(os.path.join(d,'tmp.zip'), 'w')       generated temp path\n      ZipFile(rawfile, 'w')                         the temp-file object\n\n    checked EXHAUSTIVELY: every constructor call site in all five pretix files,\n    not only the reported ones.\n\n**The constructor IS a valid sink when its argument is tainted.** The one true\npositive in that measurement is exactly that shape — mitmproxy's\n`ZipFile(path,\"w\")` where `path` came from `os.path.expanduser` four lines\nearlier, a secret-derived path deciding where a file is created. So the fix is\nargument checking, NOT removing constructor sinks and NOT backing out\n`instantiates` from `TAINT_CALL_EDGE_TYPES` (which would re-hide\n`subprocess.Popen(tainted)`, the INV-lalad defect).\n\n**Scope beyond this delta.** This is the `content-not-argument` mechanism 0001\nalready named (8 of its 57 false positives, including all six pretix\n`no-subprocess` FPs where tainted rows reach the PDF that pdftk *reads* and\nnever its argv). 0003 shows the same mechanism now dominating a second, larger\npopulation. It is not specific to `instantiates`; construction edges merely fed\na large new class of sinks into it.\n\n**Sequencing.** 0001's pre-registered `<50%` band says recall work should stop\nuntil precision is understood. This is understanding: a named mechanism with a\nmeasured share and a fix that costs no recall. It ranks above further recall\nwork by that rule.\n\n**What to measure after fixing.** Re-run the 0003 delta design (it is cheap —\nbaseline clone, PYTHONPATH shadowing, isolated `XDG_CACHE_HOME` per arm) and\nconfirm two things: the 24 no-argument flows are gone, and the mitmproxy\n`magisk` -> `write_magisk_module` -> `ZipFile(path)` true positive SURVIVES. A\nfix that removes both is over-broad and must not ship on the FP count alone."  # d1b2
+    fields:  # d1b2
+      statement: "A reported taint flow must have the tainted value, or a value derived from it, as an ARGUMENT to the sink call or its RECEIVER -- a sink call taking no arguments cannot carry taint and must not produce a flow."  # d1b2
+      root_cause: "The taint walk anchors constructor-shaped I/O sinks on the CONSTRUCTOR (ZipFile/TemporaryDirectory/NamedTemporaryFile), which only witnesses that an fs resource was created in the enclosing function. It does not check whether the tainted value reaches that call's argument list, so any tainted value in scope anywhere in the function yields a flow. The write actually happens later, on a method of the returned object."  # d1b2

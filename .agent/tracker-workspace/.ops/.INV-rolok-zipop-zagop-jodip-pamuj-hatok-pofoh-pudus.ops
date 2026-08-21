@@ -1,0 +1,31 @@
+- op: create  # 3459
+  at: '2026-08-21T02:21:27Z'  # 3459
+  by: agent  # 3459
+  actor: jgstern_agent  # 3459
+  clock: 1  # 3459
+  nonce: '3459'  # 3459
+  data:  # 3459
+    kind: invariant  # 3459
+    title: "Python instantiates edges point at the class, so construction confers no reachability on the initializer or anything it calls"  # 3459
+    status: violated  # 3459
+    priority: 2  # 3459
+    parent:  # 3459
+    tags:  # 3459
+    - analyzer  # 3459
+    - dead_code  # 3459
+    - classification_axes_audit  # 3459
+    isbefore: []  # 3459
+    duplicate_of: []  # 3459
+    not_duplicate_of: []  # 3459
+    pr_ref:  # 3459
+    description: "Found by measuring INV-kahig's own fix rather than assuming it worked\n(2026-08-20, on merged tree d8d415dd0d).\n\nINV-kahig made `instantiates` confer reachability in the dead-code BFS. On a\nRuby fixture that recovers three symbols (the initializer plus two transitively\ndownstream). On hypergumbo's own corpus it recovers **exactly zero**, and the\nreason is structural, not incidental.\n\n**Measured on a fixed 44,842-node survey (157,468 edges) of hypergumbo itself:**\n\n    instantiates edges                     11,260\n      dst kind = class                      8,919\n      dst kind = external_symbol            2,341\n      dst kind = function/method                0     <-- none\n\n    edge types LEAVING the 524 class nodes those edges point at:\n      contains        2,814   NOT traversable\n      extends           190   NOT traversable\n      decorated_by        5   NOT traversable\n\n    python `__init__` symbols in the graph        73\n      incoming edge types                   {contains: 73}\n      incoming `calls` / `instantiates`              0\n    dead candidates that are `__init__`             0 of 2,152\n\nSo a construction edge reaches a *class* node; the class node is not a\nproduction function; and every edge leaving it is non-traversable. Making\n`contains` traversable would be WRONG — containing is not calling, and it would\nmake every method of every instantiated class unconditionally reachable,\ndestroying dead-code's precision wholesale.\n\n**The invariant that fails.** \"Who constructs this object\" is answerable in\nPython (11,260 edges say so), but \"what code runs when it is constructed\" is\nnot: no `__init__` in the entire graph is the dst of any call-family edge.\nRuby answers both — `Klass.new` resolves to `Klass#initialize` — and C# answers\nboth since WI-fagit (PR #689) moved its dst onto the constructor symbol on\nbakeoff evidence.\n\n**Why this is not just \"re-point py.py's dst\".** The class node carries real\nvalue for a dependency consumer (\"this module instantiates that class\"), which\nis why dart/py/js_ts chose it. WI-fagit's C# resolution is the precedent worth\nreading first: it did not simply swap the dst, it found that anchoring on the\nclass conflated \"referenced as a type\" with \"instantiated\" and broke\nreverse-slice. Options, none pre-judged:\n\n  A. Re-point `instantiates` dst at `__init__` when the analyzer can resolve it\n     (the ruby/csharp shape). Loses the class-level dependency signal unless\n     recovered elsewhere.\n  B. Keep the class dst and add a linker minting class -> `__init__` of a\n     traversable type. Costs one edge per instantiated class, not per site.\n  C. Rule that construction reachability is a ruby/csharp-only property and\n     document it. Cheapest; leaves the cross-language asymmetry INV-kahig was\n     filed to remove, one level down.\n\n**Sizing caveat, stated honestly.** The immediate dead-code win on hypergumbo\nitself is ZERO — 0 of 2,152 dead candidates are `__init__`, so Python\nconstructors are not currently mis-flagged. The cost of the gap is therefore\nNOT false dead code today; it is that Python construction confers no\nreachability on anything downstream of it, which is a latent recall hole that\nwould surface on a corpus where constructor bodies call into otherwise-unreached\ncode. Size it on the prospector corpus before picking an option."  # 3459
+    fields:  # 3459
+      statement: "A construction edge must make the code that runs on construction (the initializer) reachable, in every language that emits one -- otherwise reachability is a property of which dst an analyzer happened to choose."  # 3459
+      root_cause: "py.py (and dart/js_ts) point instantiates at the CLASS symbol; the only edges leaving a class node are contains/extends/decorated_by, none of which confer reachability (correctly -- containing is not calling). So the BFS reaches the class and stops. ruby and post-WI-fagit csharp point at the initializer/constructor and do not have this gap."  # 3459
+- op: discuss  # 4896
+  at: '2026-08-21T02:21:42Z'  # 4896
+  by: agent  # 4896
+  actor: jgstern_agent  # 4896
+  clock: 2  # 4896
+  nonce: '4896'  # 4896
+  message: "Filed from INV-kahig closure. Sequencing note for whoever takes this: read WI-fagit (PR #689) FIRST. It is the one place in this repo where the dst choice was already litigated on bakeoff evidence, and it moved csharp OFF the class node because anchoring there conflated \"referenced as a type\" with \"instantiated\" and broke reverse-slice. Option A here is the same move for python, so WI-fagit is either the precedent or the counterexample, and it is cheaper to read than to rediscover."  # 4896
