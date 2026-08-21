@@ -1,0 +1,46 @@
+Original commit body from aad393cb07e6532f2dc26968eaa2c3dee6ee2cfd:
+
+Ruby resolved `Klass.new` to `Klass#initialize` and emitted `calls`, while the
+eight other analyzers that emit construction edges (dart, csharp, java, py,
+js_ts, php, cpp, verilog) emitted `instantiates`. A consumer asking for object
+creation by edge_type therefore omitted all of Ruby silently, and a linker held
+`frozenset({"calls", "instantiates"})` to paper over the split. Ruby now emits
+`instantiates`.
+
+The dst is deliberately UNCHANGED at the initializer symbol. WI-fagit
+independently converged csharp onto that same choice (PR #689): anchoring on
+the class conflates "referenced as a type" with "instantiated" and breaks
+reverse-slice. `evidence_type` likewise stays `ast_call` — evidence_type is the
+inference PATHWAY (ADR-0028), Ruby has no `new` operator, and `ast_new` would
+claim 0.95 confidence for a construct the language does not have.
+
+Making that change safe required first fixing a defect it exposed. The
+dead-code BFS keyed on `{calls, dispatches_to, wraps}`, so construction edges
+carried no reachability at all. Measured directly against `_bfs_reachable`: on
+`main -[instantiates]-> init -[calls]-> polish` with seeds={main}, the walk
+reaches ONLY `main` — the constructor AND everything transitively downstream of
+it were false dead code, for all nine emitting languages. The set now derives
+its call-family half from the registry (INV-lalad), the third consumer to stop
+keeping a private copy that omitted `instantiates` after taint and
+verify-claims. Local extras are unioned, never substituted: `dispatches_to` and
+`wraps` confer reachability but are not call constructs.
+
+There was a fourth copy, in the test written to prevent exactly this. The
+constant was a `cmd_dead_code_maybe` local, hence unimportable, so its closure
+gate kept its own literal at module scope and pinned the two together by
+scraping the function's source text. A drift DETECTOR is strictly weaker than
+making the drift impossible: the constant is hoisted to module scope as
+`Final[frozenset[str]]` and consumers import the object. The gate now asserts
+what the scrape never could — that the set is RIGHT, naming each guarded
+dispatch family's edge type, with `call_family_edge_types()` as a subset rather
+than an equality so a future family can extend it without a spurious failure.
+
+Also corrects the prose the widening falsified: `py.py` and
+`test_closure_factory_edges.py` both stated the BFS "only follows
+`{calls, dispatches_to, wraps}`".
+
+9747 passed, 100% coverage, all six packages green in isolation, mypy ratchet
+clean.
+
+Claude-Session: a pangolin practicing a texturization in a swamp-side Shoney’s patio with a fellowship of moths made of playing cards
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
