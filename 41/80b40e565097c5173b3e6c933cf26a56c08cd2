@@ -1,0 +1,70 @@
+Original commit body from e085b3362f03f4f6f8750568bff95f344c1ffea4:
+
+edge_types.INHERITANCE_EDGE_TYPES existed and two consumers used it.
+Six others each answered "is this an inheritance edge?" their own way and
+disagreed: cli.py kept a complete hand-rolled copy, a second cli.py site
+and _transitive_bases.py read ("extends", "implements"), inherited_calls
+read ("extends", "implements", "includes"), and type_hierarchy branched
+inline on two string literals and consulted no registry at all. ADR-0023
+section 3 has said to resolve the family from the registry the whole
+time. All of them now route through one predicate.
+
+THE RULING THE OWNER DELEGATED, AND IT INVERTS THE ITEM'S PREMISE.
+
+The item asked whether `includes` belongs to the family, describing it as
+the Ruby mixin edge type. It is not one relationship. `includes` is a
+REGISTERED TWO-MEANING VALUE -- its own entry reads "File or class
+includes / sources / mixes-in another unit's ..." -- emitted by nine
+producers of which EIGHT mean file inclusion: latex, make, meson, puppet,
+requirements, rst, scss, twig.
+
+Measured on postal: 41 `includes` edges = 39 class->module Ruby mixins
+plus 2 file->external_symbol edges from an SCSS @include. Enrolling the
+bare string, which is the obvious reading of the item, would have made a
+stylesheet @include and a Makefile include into class is-a edges inside
+slice expansion, ranking centrality and the dead-code ancestor walk --
+the mirror-image mistake the item itself warned about, reached by
+following the item's own framing.
+
+So the family is a PREDICATE OVER THE EDGE, not a set of type strings.
+is_inheritance_edge() discriminates on the already-registered
+evidence_type="ast_includes" ("Edge inferred from a runtime mixin
+declaration"), which exactly one emit site produces. A test pins the SCSS
+case as producing NO dispatch, so a future widening cannot pass quietly.
+
+MEASURED, AND IT IS NOT UNIFORM. postal: type-hierarchy dispatches
+53 -> 58. openzeppelin-contracts: ZERO delta across 516 inherits edges,
+because a second cause on a different axis was waiting behind the first
+-- solidity emits contract members as kind=function (2,025 members of
+type-like containers, none kind=method) while link_type_hierarchy indexes
+with a literal sym.kind != "method". The edge now reaches the dispatch
+map and finds it empty. Filed as INV-lapas, not folded in. A test pins
+the still-broken Solidity shape so this cannot read as a claim it works.
+
+INDEPENDENT CLOSURE EVIDENCE: test_interface_dispatch_parity's ruby cell
+was a STRICT xfail naming this item by ID. It now XPASSes -- a
+pre-existing gate written by someone else flipped green. Retired it; the
+solidity cell stays xfail, re-scoped to INV-lapas.
+
+Also fixed, because widening the family made it reachable: the two
+inheritance maps were unioned with two dict.update() calls, which REPLACE
+a shared key's value, so a type both extended and implemented lost a
+whole child list. Latent by construction, not observed live -- all three
+measured repos emit zero implements edges.
+
+THE GUARD reads == CHAINS as well as literal collections, because the
+site that caused this defect was an if/elif on two literals and a
+literal-only scanner would not have caught the bug it is named for.
+Verified against the real defect BEFORE the fix: it fired on
+build_inheritance_maps() by name. type_hierarchy now also DECLARES
+solidity in depends_on -- it always handled it and never declared it, and
+the guard's exemption logic reads that declaration, so the inaccurate one
+had been keeping the guard quiet for the wrong reason.
+
+AST helpers moved to _literal_scan, shared with the Symbol.kind linter
+rather than copied. Putting the duplicate in the module whose job is
+preventing duplicates would have been a fine joke and a bad decision.
+
+9,412 passed; mypy ratchet clean; all six packages 100% in isolation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
