@@ -1,0 +1,68 @@
+Original commit body from 4ad53ce48c9402df56e76b48683e5a1fec660ce3:
+
+solidity.py emitted kind="function" for every function definition,
+whether declared inside a contract/interface/library body or at file
+scope. Every other OO analyzer distinguishes the two, and consumers key
+on it -- most visibly link_type_hierarchy, which indexes dispatch
+candidates with `if sym.kind != "method": continue`.
+
+Measured on openzeppelin-contracts: 2,025 members of type-like
+containers, 100% kind=function, zero kind=method -- the only 100% cell in
+the corpus (ruby 814/0, kotlin 1140/0, java 1040/0 the other way). 516
+inherits edges over 164 parents, and not one parent had a single
+method-kind member, so the parent-method lookup returned empty for every
+one of them.
+
+Containment now decides the kind, as everywhere else: a function with an
+enclosing contract/interface/library is a method; a file-scope free
+function (legal since Solidity 0.7) stays a function. constructor,
+modifier and event keep their own kinds -- distinct constructs, not
+functions with a receiver.
+
+RESULT, with INV-nosoz: openzeppelin-contracts goes 0 -> 877 solidity
+dispatches_to. Neither fix produces that alone -- INV-nosoz got the edge
+to the dispatch map and moved the repo by ZERO; this supplies the members
+it found waiting there. That is why they were filed and measured
+separately. test_interface_dispatch_parity's solidity cell, a STRICT
+xfail, now XPASSes and is retired -- the second cell that gate has given
+up this cycle.
+
+I NEARLY SHIPPED A REGRESSION AND ONLY THE CORPUS CAUGHT IT. The first
+cut fixed the four `kind == "function"` literals inside solidity.py (the
+span index, the `using X for Y` resolver, both halves of the overrides
+walker) and passed every test, including five edge-survival controls
+written specifically to catch a missed reader. The corpus then showed
+calls down 6,689 (-43%) and 1,249 nodes gone: a FIFTH and SIXTH copy in
+hypergumbo_core.linkers.solidity_abi, a different package, filtering on
+("function", "constructor"). It silently stopped minting ABI call-site
+nodes -- the JS<->Solidity boundary -- and nothing raised. A count just
+dropped. Both packages now read one SOLIDITY_CALLABLE_DECLARATION_KINDS
+in core, pinned from the producer side, since a constant duplicated
+across a package boundary drifts into a terminal rather than into CI.
+
+Re-measured after the repair, the delta is clean: nodes 13332 -> 13332,
+and dispatches_to is the ONLY edge type that changed.
+
+IDENTITY: kind is a slot in both Symbol.id and the typed stable_id, so
+contract-member ids CHANGE. A producer correction, not a scheme change --
+the formula is untouched, the input is now right -- but the values are
+not comparable across the boundary. Disclosed in CHANGELOG.
+
+The G1 runtime_coherence ratchet correctly breached: (method/solidity ->
+method/solidity) began carrying dispatches_to alongside overrides. The
+partition became visible because the fix WORKED, not because anything
+degraded -- before, it carried only overrides. Allow-listed as legitimate
+(overrides runs child->parent, dispatches_to parent->child: opposite
+directions, one endpoint shape), exactly as WI-duguk's rust trait
+partition was. The baseline stays 1; it was not raised.
+
+The 30 analyzer tests that broke were selectors, not kind assertions.
+They are now kind-agnostic; test_solidity_member_kind.py owns the kind
+contract alone, so a future kind change breaks exactly one file on
+purpose. test_callable_kinds_carry_stable_id gained a file-scope function
+so both arms are covered -- its old fixture would have gone silently
+vacuous.
+
+10,877 passed; mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
