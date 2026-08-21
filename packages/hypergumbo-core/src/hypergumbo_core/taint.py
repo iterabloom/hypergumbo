@@ -546,10 +546,39 @@ def _match_propagation_entry(
         # agree, while `log/slog` does not match `logging.go`.
         path_module = _module_from_symbol_path(edge_dst)
         if not path_module:
-            # No path evidence to judge on (synthetic or external-shaped id) —
-            # keep the legacy exact-name behaviour rather than silently
-            # dropping the finding.
-            return hits[0]
+            # INV-fazim. There is no path evidence to judge on — the dst is
+            # external-shaped (`_UNRESOLVED_MODULE_PLACEHOLDERS`) or malformed
+            # enough that `_extract_callee_module` returns falsy. This used to
+            # fall through to `return hits[0]`, "keep the legacy exact-name
+            # behaviour rather than silently dropping the finding" — but that
+            # is the SAME ungated bare-name match the block above exists to
+            # refuse, reached through a different door: not by being a
+            # first-party symbol, but by being flagged resolved while carrying
+            # nothing to verify the receiver against. ADR-0037 ruling 4 makes
+            # the flag authoritative (consumers may not string-check the
+            # `:unresolved` suffix), so a producer that sets it wrongly landed
+            # straight here.
+            #
+            # REFUSING IS MEASURED TO COST NOTHING, not argued to. The branch
+            # was instrumented on dev 09921c57a1 during real verify-claims runs,
+            # recording production's own inputs and classifying them with
+            # production's own `_module_from_symbol_path`: across sops, grype,
+            # act, poetry, winston and knex — 98,422 calls, 48,516 of them with
+            # is_resolved=True — this condition held ZERO times. The counted
+            # condition is a superset of the branch (it ignores the non-empty
+            # `hits` requirement), so it errs toward over-reporting. A positive
+            # control driving the branch deliberately fires it, so the zero is
+            # a property of the inputs and not of a probe that never attached.
+            #
+            # That measurement is what licenses the change, because this index
+            # also backs SANITIZER registration: losing a sanitizer match loses
+            # a barrier, which moves flows in the opposite direction from losing
+            # a sink. A line that never executes cannot do either.
+            #
+            # Pinned by test_taint_pathless_resolved_match_refused.py, which
+            # ships both refusal cases AND two positive controls — refusing
+            # unconditionally would satisfy the refusal tests alone.
+            return None
         from .io_boundary import _module_matches
         for h in hits:
             # An entry that declares no module carries no evidence to

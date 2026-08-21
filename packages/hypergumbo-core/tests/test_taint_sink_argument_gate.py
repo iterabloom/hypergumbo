@@ -186,7 +186,7 @@ _FN = "python:render.py:1-9:render_background:function"
 def _call(dst_name: str, line: int, meta: dict | None = None) -> dict:
     e: dict = {
         "src": _FN,
-        "dst": f"python:external:0-0:{dst_name}:unresolved",
+        "dst": f"python:external:0-0:{dst_name}:unresolved", "is_resolved": False,
         "type": "calls",
         "line": line,
     }
