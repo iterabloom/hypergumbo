@@ -5,7 +5,8 @@ INV-pohik ("the call graph doesn't traverse dispatch-primitive patterns")
 names THREE dispatch families that, before their structural fixes, produced a
 *reachability island*: a dispatched target with zero traversable in-edges, so
 the ``dead-code-maybe`` BFS (which follows only ``{calls, dispatches_to,
-wraps}`` — ``cli._REACHABILITY_EDGE_TYPES``) falsely flagged it dead. The three
+wraps, instantiates}`` — ``cli._REACHABILITY_EDGE_TYPES``) falsely flagged it
+dead. The three
 families are:
 
 1. **route -> handler** (dispatch:F1) — a route symbol now emits a traversable
@@ -28,10 +29,10 @@ bearing assertions; they would catch a REGRESSION in any family's traversal
 regardless of how the self-corpus drifts.
 
 The shared helper :func:`_reachable_over_production_edges` mirrors
-``cli.cmd_dead_code_maybe`` exactly: it builds the call graph from the SAME
-``{calls, dispatches_to, wraps}`` edge-type set and runs the SAME
-``cli._bfs_reachable``. If that constant changes (e.g. a family's edge type is
-dropped from the reachability set), this gate goes red.
+``cli.cmd_dead_code_maybe`` exactly: it builds the call graph from the
+IMPORTED ``cli._REACHABILITY_EDGE_TYPES`` — the production object itself, not a
+restatement of it — and runs the SAME ``cli._bfs_reachable``. If a family's
+edge type is dropped from that set, this gate goes red.
 
 The optional self-analysis ratchet (``test_self_analysis_dispatch_signals``) is
 guarded behind ``HYPERGUMBO_RUN_SELF_ANALYSIS`` (cf. ``test_orphan_node_audit``)
@@ -46,17 +47,14 @@ from typing import Any
 
 import pytest
 
-from hypergumbo_core.cli import _bfs_reachable, run_behavior_map
+from hypergumbo_core.axis_meta_keys import call_family_edge_types
+from hypergumbo_core.cli import (
+    _REACHABILITY_EDGE_TYPES,
+    _bfs_reachable,
+    run_behavior_map,
+)
 from hypergumbo_core.ir import Edge, Span, Symbol
 from hypergumbo_core.linkers.route_handler import link_routes_to_handlers
-
-# The production reachability edge set. Kept in lockstep with
-# ``cli.cmd_dead_code_maybe``'s ``_REACHABILITY_EDGE_TYPES``; the
-# ``test_reachability_edge_set_matches_production`` guard below fails loudly if
-# the two ever drift apart, so the gate can never silently assert reachability
-# over a stale edge set.
-_REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "wraps"}
-
 
 def _repo_root() -> Path:
     """Locate the repository root by walking up to the ``.git`` directory.
@@ -82,8 +80,8 @@ def _reachable_over_production_edges(
 ) -> set[str]:
     """Return ids reachable from *seed_ids*, mirroring ``cmd_dead_code_maybe``.
 
-    Builds the call graph from exactly the ``{calls, dispatches_to, wraps}``
-    edge types the dead-code BFS uses, then delegates to the production
+    Builds the call graph from exactly the ``_REACHABILITY_EDGE_TYPES`` the
+    dead-code BFS uses (imported, not copied), then delegates to the production
     ``_bfs_reachable``. *edges* are plain dicts (``behavior_map["edges"]``
     shape: ``{"src", "dst", "type", ...}``).
     """
@@ -102,25 +100,32 @@ def _edges_to_dicts(edges: list[Edge]) -> list[dict[str, Any]]:
     return [{"src": e.src, "dst": e.dst, "type": e.edge_type} for e in edges]
 
 
-def test_reachability_edge_set_matches_production() -> None:
-    """The gate's edge set must equal ``cmd_dead_code_maybe``'s.
+def test_reachability_edge_set_covers_every_dispatch_family() -> None:
+    """Each family this gate guards must have a reachability-conferring edge.
 
-    The reachability constant lives inside ``cmd_dead_code_maybe`` as a local,
-    so it cannot be imported directly. This guard reads the function source and
-    asserts the literal set used by the dead-code BFS is exactly the one this
-    gate asserts reachability over — pinning the two together structurally so a
-    future edit to one without the other turns this test red.
+    This used to be a *drift detector*: the constant was a ``cmd_dead_code_maybe``
+    local, so it could not be imported, and this test scraped the function's
+    source for the literal ``{"calls", "dispatches_to", "wraps"}`` while the
+    module kept its own second copy. That is the one-fact-two-homes shape
+    INV-lalad found in taint and verify-claims, reproduced inside the very test
+    meant to prevent it — and a detector is strictly weaker than making the
+    drift impossible. The constant is now module-level and imported, so the
+    copies cannot disagree and there is nothing left to detect.
+
+    What remains is the assertion the scrape could never make: that the set is
+    the RIGHT one. A literal match pins the set to whatever it happened to be;
+    these assertions pin it to what each guarded family actually requires, so
+    dropping a family's edge type fails here with the family named.
     """
-    import inspect
-
-    from hypergumbo_core import cli
-
-    src = inspect.getsource(cli.cmd_dead_code_maybe)
-    assert '_REACHABILITY_EDGE_TYPES = {"calls", "dispatches_to", "wraps"}' in src, (
-        "cmd_dead_code_maybe's reachability edge set changed; update this gate's "
-        "_REACHABILITY_EDGE_TYPES (and the per-family assertions) to match."
-    )
-    assert _REACHABILITY_EDGE_TYPES == {"calls", "dispatches_to", "wraps"}
+    # dispatch:F1 (route -> handler) and dispatch:F8 (closure factory) both ride
+    # ``dispatches_to``; middleware rides ``wraps``.
+    assert "dispatches_to" in _REACHABILITY_EDGE_TYPES
+    assert "wraps" in _REACHABILITY_EDGE_TYPES
+    # INV-kahig: construction confers reachability, so the WHOLE call family
+    # must be present — not just ``calls``. Subset, not equality: a future
+    # family may add its own edge type without touching the call family.
+    assert call_family_edge_types() <= _REACHABILITY_EDGE_TYPES
+    assert "instantiates" in _REACHABILITY_EDGE_TYPES
 
 
 class TestRouteHandlerFamilyReachable:
@@ -189,7 +194,8 @@ class TestRouteHandlerFamilyReachable:
         )
         assert handler.id in reachable, (
             "INV-pohik regression: route's handler is not reachable from the "
-            "route over {calls, dispatches_to, wraps} — the route->handler "
+            "route over the production reachability edge set — the "
+            "route->handler "
             "dispatch is an island."
         )
 
@@ -267,7 +273,8 @@ class TestClosureFactoryFamilyReachable:
         reachable = _reachable_over_production_edges({factory_id}, edges)
         assert closure_id in reachable, (
             "INV-pohik regression: returned nested closure is not reachable "
-            "from its factory over {calls, dispatches_to, wraps} — the closure "
+            "from its factory over the production reachability edge set "
+            "— the closure "
             "is an island and dead-code-maybe would falsely flag it dead."
         )
 

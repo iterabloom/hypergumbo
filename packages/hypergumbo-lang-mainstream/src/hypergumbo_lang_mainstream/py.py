@@ -3855,10 +3855,10 @@ def _extract_edges(
 
         The returned inner closure is reachable whenever ``F`` is reached at its
         own call / decoration sites, but the reachability BFS in
-        ``cli._REACHABILITY_EDGE_TYPES`` only traverses
-        ``{calls, dispatches_to, wraps}``. Without this edge the nested closure
-        has zero reachability in-edges and ``dead-code-maybe`` falsely flags it
-        dead. We emit ``F -> nested`` of type ``dispatches_to`` with
+        ``cli._REACHABILITY_EDGE_TYPES`` traverses only the call family plus
+        ``dispatches_to`` / ``wraps`` — a ``return <closure>`` is none of those.
+        Without this edge the nested closure has zero reachability in-edges and
+        ``dead-code-maybe`` falsely flags it dead. We emit ``F -> nested`` of type ``dispatches_to`` with
         ``meta["dispatch_kind"] == "closure_factory"`` so the closure inherits
         F's reachability (dispatch:F8 PR-A).
 
