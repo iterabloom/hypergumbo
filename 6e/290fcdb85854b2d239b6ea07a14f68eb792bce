@@ -1,0 +1,75 @@
+Original commit body from d97217ec8df4f4db60de264c1dde09ed429cd1ed:
+
+PREMISE CORRECTION FIRST. Most of this item was already fixed by two
+items filed AFTER it. INV-zumin built the mechanism -- `simultaneous` as
+a declared per-row marker, `simultaneous_boundaries_for` as the shared
+predicate, and meta["io_boundaries"] carrying every boundary instead of
+losing all but the first to YAML row order -- and INV-kaduh wired
+io_mode into the C/C++ analyzers, covering this item's Shape 1. Verified
+live: scala Process.apply, objc's two NSURLConnection request methods,
+and erlang/elixir filelib.ensure_dir all resolve to both boundaries.
+
+WHAT WAS ACTUALLY LEFT is one sentence of this item's own statement:
+"must DECLARE what discriminates them". A census of all 15 shipped
+catalogues finds 29 multi-boundary primitives -- 17 declaring a reason
+(11 by mode, 6 by simultaneous) and 12 declaring NOTHING. Absence was
+overloaded, meaning both:
+
+  * RULED UNDECIDABLE -- C's unistd.write is fs_write, ipc_send or
+    net_send depending on what the fd IS, established where it was
+    opened. Exactly one is true; the call site cannot know which. The
+    behaviour is correct and the rows say so in prose.
+  * NOBODY DECIDED -- haskell's Control.Concurrent.STM.newTVar is
+    declared [db_read, db_write] and creating a TVar is neither.
+
+No consumer and no reviewer could tell those apart. Same defect shape as
+the two items before it this cycle: one slot, two meanings, reader
+guessing.
+
+boundary_ruling makes the remaining two cases explicit and
+multi_boundary_reason() resolves all four from one place. A
+multi-boundary primitive with NO reason now fails CI rather than reading
+as a deliberate undecidable.
+
+TWO RULINGS, both from the catalogue's own evidence:
+
+  * haskell hPutStr/hPutStrLn/hPrint/hPutChar -> call_site_undecidable.
+    Their `logging` row already said why in prose -- "stderr handle used
+    for logging". Which boundary is true depends on which Handle was
+    passed: the same shape as unistd.write depending on the fd. That
+    sentence is now machine-readable rather than a note nothing can act
+    on.
+  * gen_udp.open (erlang+elixir) and STM.newTVar/newTVarIO -> unruled,
+    DELIBERATELY NOT RESOLVED. Opening a UDP socket ENABLES both
+    directions but transfers nothing at the call, and send/recv are
+    catalogued separately -- so the prior question is whether a socket
+    ACQUISITION is a net_* crossing at all. For STM the prior question
+    is whether db_* fits the whole IORef/STRef/MVar/STM family, which
+    are in-process references, not a database. Both are recall changes
+    in a precision-band cycle and both are larger than the rows they
+    would touch.
+
+`unruled` is a COUNTED value, not an escape hatch -- the
+write_discipline:unaudited precedent, debt a gate reports beating debt
+absence hides. The four are pinned exactly, each with its question
+stated in its own row, so a new one cannot appear quietly and a resolved
+one must be struck from the pin.
+
+An unrecognised boundary_ruling value is refused at load: the row reader
+takes keys with entry.get(), so an unknown key is dropped silently,
+which for this field would mean a row that reads as ruled while
+resolving to nothing. Rows that disagree are refused too, on the
+reasoning `simultaneous` already uses.
+
+cpp merges c.yaml and elixir merges erlang.yaml, so 6 row-groups cover
+all 12 primitives. The ruling binds only multi-boundary primitives, the
+same guard `simultaneous` uses, so a row grouping mixed functions is
+safe.
+
+The mypy ratchet caught +7 errors from this change -- a missing `Final`
+import silently degrading five new constants to Any. Ruff and the tests
+were clean; only the ratchet saw it. Back to baseline 672.
+
+11,000 passed; ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
