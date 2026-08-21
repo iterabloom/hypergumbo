@@ -41,6 +41,11 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from ..edge_types import (
+    DISPATCH_ROLE_CONCRETE,
+    inheritance_dispatch_role,
+    is_inheritance_edge_record,
+)
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..member_names import member_owner, member_short_name
@@ -152,22 +157,30 @@ def build_inheritance_maps(
     interface_to_impls: dict[str, list[str]] = defaultdict(list)
 
     for edge in edges:
-        if edge.edge_type == "extends":
-            # edge: child --extends--> parent
+        # INV-nosoz: the family and its dispatch split come from the registry.
+        # This loop used to branch on two string literals, so Solidity's
+        # ``inherits`` (516 edges on openzeppelin-contracts) and Ruby's mixin
+        # ``includes`` reached neither map and produced zero dispatch.
+        role = inheritance_dispatch_role(
+            edge.edge_type, evidence_type=edge.evidence_type,
+        )
+        if role is None:
+            continue
+        if role == DISPATCH_ROLE_CONCRETE:
+            # edge: child --extends/inherits--> parent. Virtual dispatch
+            # through concrete inheritance is language-dependent.
             child_sym = symbol_by_id.get(edge.src)
             child_lang = child_sym.language if child_sym else None
             child_kind = child_sym.kind if child_sym else None
             child_mods = child_sym.modifiers if child_sym else None
             if not _extends_admits_dispatch(child_lang, child_kind, child_mods):
                 continue
-            parent_id = edge.dst
-            child_id = edge.src
-            parent_to_children[parent_id].append(child_id)
-        elif edge.edge_type == "implements":
-            # edge: impl --implements--> interface
-            interface_id = edge.dst
-            impl_id = edge.src
-            interface_to_impls[interface_id].append(impl_id)
+            parent_to_children[edge.dst].append(edge.src)
+        else:
+            # edge: impl --implements--> interface, or includer --includes-->
+            # mixin module. Interface satisfaction and mixin inclusion are
+            # virtual in every language, so no language gate applies.
+            interface_to_impls[edge.dst].append(edge.src)
 
     return dict(parent_to_children), dict(interface_to_impls)
 
@@ -472,9 +485,21 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # doesn't override), the edge ``Grandparent.foo → Grandchild.foo``
     # is never emitted because ``Grandchild`` is not in
     # ``parent_to_children[Grandparent]``.
+    #
+    # INV-nosoz: MERGE the two maps, do not ``update()`` one over the other.
+    # ``dict.update`` REPLACES the value for a shared key, so a type that is
+    # both extended (``interface Solid extends Shape``) and implemented
+    # (``class Box implements Shape``) lost one whole set of children. Latent
+    # rather than observed — three measured repositories (openzeppelin-
+    # contracts, postal, sherpa-onnx) emit zero ``implements`` edges between
+    # them, so no overlapping key was seen live — but widening the family
+    # here raises the odds of a shared key, so it is closed alongside the
+    # change that makes it reachable.
     one_hop_parents_to_children: dict[str, list[str]] = {}
-    one_hop_parents_to_children.update(parent_to_children)
-    one_hop_parents_to_children.update(interface_to_impls)
+    for source_map in (parent_to_children, interface_to_impls):
+        for key, children in source_map.items():
+            bucket = one_hop_parents_to_children.setdefault(key, [])
+            bucket.extend(c for c in children if c not in bucket)
     all_parents_to_children = close_parent_to_children_transitively(
         one_hop_parents_to_children,
     )
@@ -489,9 +514,26 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # track all candidates and disambiguate methods by file path.
     # Struct and trait are included to match the inheritance linker's
     # broader definition of "type with methods".
+    #
+    # INV-nosoz: an endpoint of an inheritance edge counts as a dispatchable
+    # type even when its ``kind`` is not type-like. Ruby's mixin target is
+    # ``kind="module"``, which is deliberately NOT in ``type_like_kind_names()``
+    # — Python and Go modules carry the same kind and are not types, so
+    # widening the kind registry would silently widen every predicate built on
+    # it. The edge is the better evidence: a producer that emitted
+    # ``Square --includes--> Greet`` with mixin evidence has already asserted
+    # that both ends participate in method resolution, and re-deriving that
+    # from the kind slot is a second opinion that disagreed. Endpoints with no
+    # contained methods contribute nothing downstream, so this widens the
+    # candidate set without widening the output.
+    inheritance_endpoints: set[str] = set()
+    for e in ctx.edges:
+        if is_inheritance_edge_record(e):
+            inheritance_endpoints.add(e.src)
+            inheritance_endpoints.add(e.dst)
     class_symbols = {
         s.id: s for s in ctx.symbols
-        if s.kind in type_like_kind_names()
+        if s.kind in type_like_kind_names() or s.id in inheritance_endpoints
     }
     class_ids_by_name: dict[str, list[str]] = defaultdict(list)
     for cid, csym in class_symbols.items():
@@ -600,7 +642,7 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     # CNF: polymorphic dispatch resolution is meaningful in any OO/trait
     # language with class/method hierarchies — Java, C#, Kotlin, Scala, Python,
     # Ruby, JS/TS, Rust (traits), Swift, Dart, PHP, Elixir (protocols).
-    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
+    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir", "solidity"]],
 )
 def _link_type_hierarchy_entry(ctx: LinkerContext) -> LinkerResult:
     """Entry point for type hierarchy linker."""

@@ -41,10 +41,17 @@ kept as the query API for the day a second axis is declared.
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+from ._literal_scan import (
+    declared_linker_languages,
+    language_guarded_line_spans,
+    string_literal_members,
+)
 
 
 AXIS_RELATIONSHIP: Final[str] = "relationship"
@@ -323,7 +330,165 @@ omitted ``inherits`` — making Solidity / ``inherits``-language inheritance
 invisible to slice forward-BFS structural handling and ranking's
 structural-edge preservation. Method-level ``overrides`` is deliberately NOT
 included: it is a distinct method→parent-method relationship, and neither
-consumer treated it as structural before."""
+consumer treated it as structural before.
+
+``includes`` is deliberately NOT included either, and that exclusion is
+load-bearing — see :func:`is_inheritance_edge`, which is the predicate a
+consumer should call. Membership in *this* set means "an edge of this type is
+an is-a edge no matter what produced it", which is true of these three and
+false of ``includes``."""
+
+
+CONCRETE_INHERITANCE_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "extends",
+    "inherits",
+})
+"""Inheritance spellings where the child is-a *concrete* parent type.
+
+Split out from :data:`INHERITANCE_EDGE_TYPES` because virtual dispatch
+through concrete inheritance is **language-dependent** — Go, C++, Rust and
+C# do not dispatch through it, so ``type_hierarchy`` gates these edges on
+``_extends_admits_dispatch`` before treating a parent method as dispatchable
+to a child's same-named method.
+
+``inherits`` is placed here rather than being split further by the
+destination's kind. Solidity's ``is`` spells both relations — measured on
+openzeppelin-contracts, 412 of 516 ``inherits`` edges point at a ``contract``
+and 104 at an ``interface`` — so a dst-kind refinement is *expressible*. It
+is not implemented because it would buy nothing today: Solidity is not in the
+no-virtual-dispatch set, so both arms reach the same verdict for every
+``inherits``-emitting language currently in the tree. Revisit if an
+``inherits``-emitting language is ever added to that set."""
+
+
+INTERFACE_SATISFACTION_EDGE_TYPES: Final[frozenset[str]] = frozenset({
+    "implements",
+})
+"""Inheritance spellings where dispatch is virtual in **every** language.
+
+Interface satisfaction always dispatches, so ``type_hierarchy`` applies no
+language gate to these. Ruby mixin ``includes`` edges join this role at the
+predicate level (:func:`inheritance_dispatch_role`) without joining the type
+set, for the reason given on :data:`MIXIN_INCLUDE_EVIDENCE_TYPES`."""
+
+
+MIXIN_INCLUDE_EVIDENCE_TYPES: Final[frozenset[str]] = frozenset({
+    "ast_includes",
+})
+"""Evidence types that make an ``includes`` edge a *mixin*, not a file read.
+
+``includes`` is a registered two-meaning value — its own registry entry reads
+"File or class includes / sources / mixes-in another unit's ...". Nine
+producers emit it and eight of them mean file inclusion (latex, make, meson,
+puppet, requirements, rst, scss, twig); exactly one, the inheritance linker's
+``_create_includes_edges``, means the Ruby ``include`` / ``extend`` mixin.
+
+Measured on the Rails app *postal*: 41 ``includes`` edges — 39 ``class ->
+module`` mixins from the inheritance linker, and 2 ``file ->
+external_symbol`` edges from an SCSS ``@include`` of a Sass mixin. Adding the
+bare string ``"includes"`` to :data:`INHERITANCE_EDGE_TYPES` would have
+enrolled a stylesheet ``@include``, a Makefile ``include`` and a LaTeX
+``\\include`` as class is-a edges in slice expansion, ranking centrality and
+the dead-code ancestor walk — the mirror image of the hand-rolled copies this
+registry exists to replace.
+
+The discriminator is ``evidence_type`` (ADR-0028's inference-pathway axis),
+which is the right axis for the question: it distinguishes "I saw a mixin
+declaration in a class body" from "I saw an include directive". Absence is
+read conservatively as *not* a mixin, because eight of nine producers mean
+file inclusion."""
+
+
+def is_inheritance_edge(
+    edge_type: str,
+    *,
+    evidence_type: str | None = None,
+) -> bool:
+    """Is this edge a class is-a edge?
+
+    The one answer every consumer should use. Prefer it over
+    ``edge_type in INHERITANCE_EDGE_TYPES``: the set alone cannot express
+    the Ruby-mixin half of the overloaded ``includes`` value, and six
+    consumers previously each guessed at the family and disagreed
+    (INV-nosoz).
+
+    Args:
+        edge_type: the edge's type. Note that a *serialized* edge carries
+            this under the ``"type"`` key, not ``"edge_type"``.
+        evidence_type: the edge's inference pathway. Only consulted for
+            ``includes``, where it is the discriminator between a mixin and
+            a file read. On a serialized edge this lives in
+            ``meta["evidence_type"]``; see :func:`inheritance_edge_fields`.
+
+    Returns:
+        True for ``extends`` / ``inherits`` / ``implements`` unconditionally,
+        and for ``includes`` only when *evidence_type* names a mixin
+        declaration.
+    """
+    if edge_type in INHERITANCE_EDGE_TYPES:
+        return True
+    if edge_type == "includes":
+        return evidence_type in MIXIN_INCLUDE_EVIDENCE_TYPES
+    return False
+
+
+DISPATCH_ROLE_CONCRETE: Final[str] = "concrete"
+DISPATCH_ROLE_INTERFACE: Final[str] = "interface"
+
+
+def inheritance_dispatch_role(
+    edge_type: str,
+    *,
+    evidence_type: str | None = None,
+) -> str | None:
+    """Which dispatch rule applies to this inheritance edge?
+
+    Returns :data:`DISPATCH_ROLE_INTERFACE` when dispatch is virtual in every
+    language (interface satisfaction, and Ruby mixin inclusion — a module's
+    instance methods enter the includer's method resolution order
+    unconditionally), :data:`DISPATCH_ROLE_CONCRETE` when it depends on the
+    language, and ``None`` when the edge is not an inheritance edge at all.
+
+    The two roles exist only to decide whether the per-language
+    concrete-dispatch gate applies. Consumers that just need "is this an is-a
+    edge?" should call :func:`is_inheritance_edge`.
+    """
+    if not is_inheritance_edge(edge_type, evidence_type=evidence_type):
+        return None
+    if edge_type in CONCRETE_INHERITANCE_EDGE_TYPES:
+        return DISPATCH_ROLE_CONCRETE
+    return DISPATCH_ROLE_INTERFACE
+
+
+def inheritance_edge_fields(edge: object) -> tuple[str, str | None]:
+    """Read ``(edge_type, evidence_type)`` off an ``Edge`` **or** a dict.
+
+    The two shapes diverge in two ways that have each cost a debugging
+    session: a serialized edge names its type ``"type"`` rather than
+    ``"edge_type"``, and its ``evidence_type`` is nested under ``meta``
+    rather than sitting at the top level. Consumers read whichever shape
+    their stage of the pipeline hands them — linkers get ``Edge`` objects,
+    the CLI read views get dicts — so the family predicate has to accept
+    both or it will be silently wrong in half the tree.
+    """
+    if isinstance(edge, Mapping):
+        edge_type = edge.get("edge_type") or edge.get("type") or ""
+        evidence = edge.get("evidence_type")
+        if evidence is None:
+            meta = edge.get("meta") or {}
+            if isinstance(meta, Mapping):
+                evidence = meta.get("evidence_type")
+        return str(edge_type), evidence
+    return (
+        str(getattr(edge, "edge_type", "") or ""),
+        getattr(edge, "evidence_type", None),
+    )
+
+
+def is_inheritance_edge_record(edge: object) -> bool:
+    """:func:`is_inheritance_edge`, reading both edge shapes."""
+    edge_type, evidence = inheritance_edge_fields(edge)
+    return is_inheritance_edge(edge_type, evidence_type=evidence)
 
 
 PROTOCOL_KINDS: Final[frozenset[str]] = frozenset({
@@ -463,3 +628,159 @@ def find_axis_drift(
         allowed_axis_names=allowed_axis_names,
         name_to_axis=name_to_axis,
     )
+
+
+# Languages that can emit each inheritance spelling, measured from the
+# producer sites rather than assumed. Used to decide whether a linker that
+# declares ``depends_on`` is *entitled* to omit a spelling: a Java-only
+# linker omitting ``inherits`` is correct, ``type_hierarchy`` omitting it is
+# the INV-nosoz defect.
+INHERITANCE_EDGE_TYPE_LANGUAGES: Final[dict[str, frozenset[str]]] = {
+    "extends": frozenset({
+        "blade", "java", "javascript", "python", "ruby", "twig", "typescript",
+    }),
+    "inherits": frozenset({"bitbake", "solidity"}),
+    "implements": frozenset({
+        "graphql", "haskell", "java", "javascript", "rust", "typescript",
+        "vhdl",
+    }),
+}
+
+
+def find_partial_inheritance_family_literals(repo_root: Path) -> list[str]:
+    """Find literals that enumerate PART of the inheritance family by hand.
+
+    INV-nosoz measured six consumers each answering "is this an inheritance
+    edge?" with their own literal, four of which omitted ``inherits`` — so
+    Solidity's 516 ``inherits`` edges on openzeppelin-contracts produced zero
+    dispatch. The rule enforced here is the same one audit-findings 0018 set
+    for ``Symbol.kind``: **enumerate all or none**. A complete literal is
+    allowed (the resolver is preferred, but a complete set is not the bug);
+    a partial one is not.
+
+    Three exemptions, each principled rather than an escape hatch:
+
+    * ``packages/hypergumbo-lang-*`` — a per-language analyzer's incomplete
+      set is *correct*: Solidity has no ``implements``, Java no ``inherits``.
+    * an expression guarded by a ``language`` comparison in the same boolean
+      expression, which is a per-language predicate that happens to live in
+      core.
+    * a module whose ``@register_linker(depends_on=...)`` languages cannot
+      produce the missing spelling — see
+      :data:`INHERITANCE_EDGE_TYPE_LANGUAGES`.
+
+    Two structural filters keep the signal honest rather than merely quiet:
+    this module is skipped (the registry that *defines* the family is
+    entitled to enumerate it, and to publish decompositions like
+    :data:`CONCRETE_INHERITANCE_EDGE_TYPES`), and a literal naming only ONE
+    family member is not a partial enumeration. The second filter is what
+    separates a vocabulary from a lookup-table row: ``scip/edges.py`` maps
+    ``("is_implementation", "implements")`` — SCIP's field name to ours —
+    which mentions the family without claiming to enumerate it.
+
+    Not exempted, deliberately: a set that names what the *enclosing function
+    itself emits* rather than the family (``inheritance.py``'s two dedup
+    sets). Those are scoped correctly, and they read as partial family
+    literals, so they carry an inline ``# not-the-family`` marker instead —
+    a marker a reviewer can see, rather than an allow-list entry in a file
+    nobody opens.
+    """
+    full = frozenset(INHERITANCE_EDGE_TYPES)
+    offenders: list[str] = []
+    for pkg_src in sorted((repo_root / "packages").glob("*/src")):
+        if not pkg_src.parent.name.startswith("hypergumbo-core"):
+            continue
+        for path in sorted(pkg_src.rglob("*.py")):
+            if path.name == "edge_types.py":
+                continue
+            source = path.read_text(encoding="utf-8", errors="replace")
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:  # pragma: no cover - core source is valid
+                continue
+            lines = source.splitlines()
+            guarded = language_guarded_line_spans(tree)
+            declared = declared_linker_languages(tree)
+            seen: set[int] = set()
+            for node in ast.walk(tree):
+                names = string_literal_members(node)
+                lineno: int | None = getattr(node, "lineno", None)
+                if names is None or lineno is None or lineno in seen:
+                    continue
+                present = names & full
+                if len(present) < 2 or present == full:
+                    continue
+                if any(lo <= lineno <= hi for lo, hi in guarded):
+                    continue
+                if "not-the-family" in lines[lineno - 1]:
+                    continue
+                missing = sorted(
+                    t for t in full - present
+                    if declared is None
+                    or (
+                        INHERITANCE_EDGE_TYPE_LANGUAGES.get(t, frozenset())
+                        & declared
+                    )
+                )
+                if not missing:
+                    continue
+                seen.add(lineno)
+                offenders.append(
+                    f"{path.relative_to(repo_root)}:{lineno}: "
+                    f"{sorted(names)} omits {missing} — call "
+                    f"is_inheritance_edge() or INHERITANCE_EDGE_TYPES",
+                )
+            offenders.extend(
+                _equality_chain_offenders(tree, full, declared, path, repo_root)
+            )
+    return offenders
+
+
+def _equality_chain_offenders(
+    tree: ast.AST,
+    full: frozenset[str],
+    declared: frozenset[str] | None,
+    path: Path,
+    repo_root: Path,
+) -> list[str]:
+    """Flag a function that branches on family members via ``==`` chains.
+
+    A literal-collection scanner cannot see ``if e.edge_type == "extends":
+    ... elif e.edge_type == "implements":`` — and that shape, in
+    ``type_hierarchy.build_inheritance_maps``, is precisely what cost
+    Solidity its dispatch on all 516 ``inherits`` edges. A guard blind to
+    the site that caused the defect it is named after is not a guard.
+
+    Scoped per enclosing function, since two functions legitimately
+    handling different halves of the family are not one partial
+    enumeration.
+    """
+    offenders: list[str] = []
+    for func in ast.walk(tree):
+        if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        present: set[str] = set()
+        for node in ast.walk(func):
+            if not isinstance(node, ast.Compare):
+                continue
+            if not all(isinstance(op, ast.Eq) for op in node.ops):
+                continue
+            for side in [node.left, *node.comparators]:
+                if isinstance(side, ast.Constant) and side.value in full:
+                    present.add(side.value)
+        if len(present) < 2 or present == full:
+            continue
+        missing = sorted(
+            t for t in full - present
+            if declared is None
+            or (INHERITANCE_EDGE_TYPE_LANGUAGES.get(t, frozenset()) & declared)
+        )
+        if not missing:
+            continue
+        offenders.append(
+            f"{path.relative_to(repo_root)}:{func.lineno}: "
+            f"{func.name}() branches on {sorted(present)} via == and omits "
+            f"{missing} — call is_inheritance_edge() or "
+            f"inheritance_dispatch_role()",
+        )
+    return offenders

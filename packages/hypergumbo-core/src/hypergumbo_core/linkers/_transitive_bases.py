@@ -37,13 +37,17 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterable
 
+from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..symbol_kinds import type_like_kind_names
 
 if TYPE_CHECKING:
     from ..ir import Edge, Symbol
 
 
-_INHERITANCE_EDGE_TYPES = ("extends", "implements")
+# INV-nosoz: the default is the registry family, not a local literal. It
+# read ``("extends", "implements")`` and so omitted ``inherits``, making
+# Solidity base chains invisible to every caller that took the default.
+_INHERITANCE_EDGE_TYPES: tuple[str, ...] = tuple(sorted(INHERITANCE_EDGE_TYPES))
 
 
 def build_short_name_collisions(
@@ -128,11 +132,15 @@ def build_inheritance_index(
     Args:
         edges: All edges to consider.
         edge_types: Tuple of edge_type strings to treat as inheritance.
-            Defaults to ``("extends", "implements")`` for back-compat.
-            Ruby ``include``/``extend`` ancestor walks pass
-            ``("extends", "implements", "includes")`` (WI-hatip / PR-2
-            of INV-nilud) so the new ``includes`` edge participates in
-            transitive base-name collection alongside extends/implements.
+            Defaults to the registry family
+            (:data:`~hypergumbo_core.edge_types.INHERITANCE_EDGE_TYPES`).
+            Ruby ``include``/``extend`` ancestor walks additionally pass
+            ``"includes"`` (WI-hatip / PR-2 of INV-nilud) so the mixin edge
+            participates in transitive base-name collection. Callers pass a
+            type tuple rather than the edge predicate because this index is
+            built from types alone; a caller that needs to tell a Ruby mixin
+            from a Makefile ``include`` should filter with
+            :func:`~hypergumbo_core.edge_types.is_inheritance_edge` first.
     """
     index: dict[str, list[str]] = defaultdict(list)
     for edge in edges:

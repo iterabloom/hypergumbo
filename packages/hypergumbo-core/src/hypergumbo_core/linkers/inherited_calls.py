@@ -118,6 +118,7 @@ import time
 from collections import defaultdict, deque
 from typing import Callable
 
+from ..edge_types import INHERITANCE_EDGE_TYPES
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from .method_call_recovery import parse_unresolved_name
 from .registry import (
@@ -133,9 +134,15 @@ from .type_hierarchy import (
 
 PASS_ID = make_pass_id("inherited-calls-linker")
 
-_INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = (
-    "extends", "implements", "includes",
-)
+# INV-nosoz: the registry family plus ``includes`` for the Ruby mixin walk.
+# This read ``("extends", "implements", "includes")`` — it had the mixin but
+# omitted ``inherits``, so Solidity ancestors were never walked. ``includes``
+# is unioned rather than being registry-resident because eight of its nine
+# producers mean file inclusion; the MRO walkers below only ever see edges
+# whose src is a type, so a Makefile ``include`` cannot reach them.
+_INHERITED_CALL_EDGE_TYPES: tuple[str, ...] = tuple(sorted(
+    INHERITANCE_EDGE_TYPES | frozenset({"includes"})
+))
 
 # Confidence per Site (preserves Java/Ruby precedent; see module docstring).
 _SITE_1_CONFIDENCE = 0.90
@@ -151,7 +158,7 @@ _DEFAULT_DEPTH_CAP = 10
 # / includes are interfaces / mixin contributions consulted after the extends
 # chain is exhausted at the same depth.
 _EDGE_TYPE_PRIORITY: dict[str, int] = {
-    "extends": 0, "implements": 1, "includes": 2,
+    "extends": 0, "inherits": 0, "implements": 1, "includes": 2,
 }
 
 

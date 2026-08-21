@@ -169,6 +169,8 @@ import hypergumbo_core.linkers.rust_trait_dispatch as _rust_trait_dispatch_linke
 import hypergumbo_core.linkers.receiver_type_dispatch as _receiver_type_dispatch_linker  # noqa: F401
 from .entrypoints import EntrypointKind, detect_entrypoints
 from .routes import is_route, method_token, protocol_method_token, route_of
+# INV-nosoz: one registry-backed answer to "is this an inheritance edge?"
+from .edge_types import is_inheritance_edge_record
 from .ir import (
     AnalysisRun, PASS_VERSION,
     Symbol, Edge, ExternalRef, apply_external_id_remap, compute_config_fingerprint,
@@ -4659,12 +4661,13 @@ def cmd_symbols(args: argparse.Namespace) -> int:
             continue
 
         # If excluding tests, skip edges involving test files.
-        # Structural edges (extends, implements) are always preserved
-        # because they reflect architectural importance of the target
-        # (base class / interface), regardless of where the source lives.
+        # Inheritance edges are always preserved because they reflect
+        # architectural importance of the target (base class / interface /
+        # mixin), regardless of where the source lives. INV-nosoz: the family
+        # comes from the registry — this read ``("extends", "implements")``
+        # and so dropped Solidity ``inherits`` and Ruby mixin edges.
         if exclude_tests:
-            edge_type = edge.get("type", "")
-            if edge_type not in ("extends", "implements"):
+            if not is_inheritance_edge_record(edge):
                 src_path = node_paths.get(src, _extract_path_from_symbol_id(src))
                 dst_path = node_paths.get(dst, _extract_path_from_symbol_id(dst))
                 if _is_test_path(src_path) or _is_test_path(dst_path):
@@ -7643,10 +7646,14 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     # ancestor class that IS reachable. The last-segment match is
     # agnostic of the analyzer's qualified-name convention (e.g.
     # ``Cache.delete`` → ``delete``).
-    _INHERITANCE_EDGE_TYPES = frozenset({"extends", "inherits", "implements"})
+    # INV-nosoz: resolved from the registry rather than re-listed here. The
+    # hand-rolled copy this replaces happened to be complete for the three
+    # unambiguous spellings, but could not express the Ruby-mixin half of
+    # ``includes`` — so a method inherited via ``include SomeModule`` was
+    # reported dead.
     extends_graph: dict[str, set[str]] = {}
     for edge in edges:
-        if edge.get("type") in _INHERITANCE_EDGE_TYPES:
+        if is_inheritance_edge_record(edge):
             esrc = edge.get("src", "")
             edst = edge.get("dst", "")
             if esrc and edst:
