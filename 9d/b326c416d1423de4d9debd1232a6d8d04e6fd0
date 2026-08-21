@@ -1,0 +1,53 @@
+Original commit body from d7cbb14df83b1372b9e3b6275dcd4147663fa528:
+
+INV-vakaf split ONE instance of this field's axis-mixing out to
+``call_locality`` (``cross_file``, bash/objc) and left four. An AST inventory
+of all 107 producer sites found them; each is a different axis wearing the
+construct field's name.
+
+RESOLUTION STATUS — ``remote_external`` (erlang) / ``application_external``
+(haskell). Read the emit sites: each is the ``else`` branch of a resolver
+lookup whose ``if`` branch emits the unsuffixed sibling. The AST shape is
+IDENTICAL — ``mod:func(args)``, function application — and the suffix marks
+only whether the callee was found. That is already recoverable from ``dst``:
+the unresolved branch mints a synthetic external node id, the resolved branch
+points at an in-repo symbol id. Redundant, so folded.
+
+RESOLUTION MECHANISM — ``chained_return_type`` (go). Names HOW the receiver's
+type was obtained (through a chained call's return type), not what the call
+looks like. The construct is a method call; the mechanism moves to
+``resolution_quality``, alongside 'recovery' / 'ambiguous' / 'type_inferred'.
+
+STATED TWICE ON TWO AXES — ``interface_dispatch`` (go). The sharpest case. The
+same ``Edge.create`` already passes ``evidence_type="interface_dispatch"``, a
+registered inference pathway meaning "edge inferred from interface-method
+dispatch resolution". Naming it again under ``call_construct`` said one thing
+twice on two different axes rather than saying two things. The construct is
+``method``. Behaviourally free: that evidence type has ``base_confidence=None``,
+so the edge keeps its explicit 0.75 / 0.5, and ``disambiguation_fallback`` is
+untouched.
+
+NOTE this differs from the fold target originally filed on INV-tadup, which
+proposed moving it to ``meta['mechanism']``. That would have relocated the
+duplicate rather than removing it. The item is corrected in its thread.
+
+GUARDED, WITH A POSITIVE CONTROL. A live-tree AST walk asserts no producer
+emits any of the four. It is an AST walk and not a grep because a regex over
+source also matches its own docstrings — and the comments this fold leaves
+behind name every one of the folded values. The guard ships with a second test
+pointing the same walk at ``method``, which the tree emits at dozens of sites:
+an assertion over an empty search passes just as happily when the walk is
+broken, so the control is what makes the guard evidence rather than decoration.
+
+CONSUMERS: none. Every reader of ``call_construct`` tests it against the single
+literal ``"method"``; none of the four folded values had a reader. One test
+asserted ``remote_external`` (updated) and one test DOCSTRING described it in
+prose (updated too — an unupdated docstring is how WI-diruk drifted within the
+hour of being fixed).
+
+docs/schema.json regenerated (description-only, 1 line). No SCHEMA_VERSION bump.
+
+Refs: INV-tadup, INV-vakaf, ADR-0028, WI-toruz
+
+Claude-Session: a toucan riding a surface of ice cream sundaes in a Victorian parlor with a squad of frogs made of shofar horns
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
