@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
 from hypergumbo_core.discovery import find_files
+from hypergumbo_core.symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from hypergumbo_core.ir import Edge, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.base import (
@@ -74,7 +75,29 @@ PASS_ID = make_pass_id("solidity")
 # overloads). Container kinds (contract / interface / library) are NOT here —
 # they get their stable_id from the backstop.
 _CALLABLE_STABLE_ID_KINDS: frozenset[str] = frozenset(
-    {"function", "constructor", "modifier", "event"}
+    {"function", "method", "constructor", "modifier", "event"}
+)
+
+# INV-lapas: the two kinds a Solidity function declaration can carry.
+# Containment decides which: a function declared inside a contract /
+# interface / library body is a ``method``, exactly as in every other OO
+# analyzer in the fleet; a file-scope function (legal since Solidity 0.7)
+# stays a ``function``.
+#
+# This constant exists because the module previously held FOUR separate
+# ``kind == "function"`` literals — the enclosing-symbol span index, the
+# ``using X for Y`` library-call resolver, and both halves of the
+# ``overrides`` walker. Renaming the emitted kind while updating three of
+# the four would have silently dropped edges, and openzeppelin-contracts
+# carries 545 ``overrides`` edges to lose. One name, four readers.
+_FUNCTION_DECLARATION_KINDS: frozenset[str] = (
+    SOLIDITY_CALLABLE_DECLARATION_KINDS - frozenset({"constructor"})
+)
+
+# Callables that own a body a call can be attributed to. Used by the
+# span index that resolves which symbol encloses a call site.
+_BODY_BEARING_CALLABLE_KINDS: frozenset[str] = (
+    _FUNCTION_DECLARATION_KINDS | frozenset({"constructor", "modifier"})
 )
 
 
@@ -430,7 +453,12 @@ def _extract_symbols_from_tree(
                 current_contract = _get_enclosing_contract(node, source) or ""
                 signature = _extract_solidity_signature(node, source)
                 modifiers = _extract_visibility_modifiers(node, source)
-                add_symbol(func_name, "function", node, current_contract, signature=signature, modifiers=modifiers, complexity=True)
+                # INV-lapas: a function with an enclosing contract / interface
+                # / library is a method. Solidity 0.7+ also allows file-scope
+                # free functions, which stay ``function`` — so this reads
+                # containment rather than renaming unconditionally.
+                func_kind = "method" if current_contract else "function"
+                add_symbol(func_name, func_kind, node, current_contract, signature=signature, modifiers=modifiers, complexity=True)
 
         # Constructor definition
         elif node.type == "constructor_definition":
@@ -519,7 +547,7 @@ def _extract_edges_from_tree(
     symbols_by_span: dict[tuple[int, int], Symbol] = {}
     if all_local_symbols:
         for sym in all_local_symbols:
-            if sym.kind in ("function", "constructor", "modifier") and sym.span is not None:
+            if sym.kind in _BODY_BEARING_CALLABLE_KINDS and sym.span is not None:
                 symbols_by_span[(sym.span.start_line, sym.span.end_line)] = sym
 
     # Collect `using Library for Type` directives per contract.
@@ -674,7 +702,7 @@ def _extract_edges_from_tree(
                                 local_symbols.get(qualified)
                                 or global_symbols.get(qualified)
                             )
-                            if candidate and candidate.kind == "function":
+                            if candidate and candidate.kind in _FUNCTION_DECLARATION_KINDS:
                                 member_target = candidate
                                 break
                         if not member_target:
@@ -760,7 +788,8 @@ def _extract_edges_from_tree(
         # Collect functions defined in this contract
         child_functions: dict[str, Symbol] = {}
         for sym in (all_local_symbols or []):
-            if sym.kind == "function" and sym.name.startswith(f"{child_contract}."):
+            if (sym.kind in _FUNCTION_DECLARATION_KINDS
+                    and sym.name.startswith(f"{child_contract}.")):
                 unqualified = sym.name[len(child_contract) + 1:]
                 child_functions[unqualified] = sym
 
@@ -772,7 +801,7 @@ def _extract_edges_from_tree(
                     local_symbols.get(parent_qualified)
                     or global_symbols.get(parent_qualified)
                 )
-                if parent_sym and parent_sym.kind == "function":
+                if parent_sym and parent_sym.kind in _FUNCTION_DECLARATION_KINDS:
                     edge = Edge.create(
                         src=child_sym.id,
                         dst=parent_sym.id,

@@ -106,3 +106,31 @@ allowlist:
       methods of its impls — distinct relationships with distinct destinations
       sharing one endpoint shape.
     adr_reference: "ADR-0023 §3 amendment (INV-fimon, 2026-07-31)"
+
+#   - Solidity inheritance-dispatch variance (INV-lapas, 2026-08-21).
+#     INV-lapas made a Solidity contract member a `method` rather than a
+#     `function`, and INV-nosoz made type_hierarchy see the `inherits` edge.
+#     Together they took openzeppelin-contracts from 0 to 877 Solidity
+#     dispatches_to edges, so the (method/solidity -> method/solidity)
+#     partition began carrying dispatches_to alongside the overrides edges
+#     the analyzer already emitted there. Before the change the same two
+#     relationships lived in the (function/solidity -> function/solidity)
+#     partition, which carried ONLY overrides and so was never an offender —
+#     the partition became visible because the dispatch fix worked, not
+#     because anything degraded.
+#     The variance is legitimate and the directions are opposite: `overrides`
+#     runs child -> parent (Child.ping overrides Base.ping) while
+#     `dispatches_to` runs parent -> child (Base.ping dispatches to
+#     Child.ping). Two distinct relationships over one endpoint shape, not a
+#     leaked endpoint property.
+  - src_kind: method
+    src_language: solidity
+    dst_kind: method
+    dst_language: solidity
+    permitted_edge_types: [dispatches_to, overrides]
+    rationale: >-
+      A Solidity contract method overrides its parent's method (child ->
+      parent) while type_hierarchy dispatches from the parent's method to the
+      overriding child's (parent -> child) — distinct relationships running in
+      opposite directions over one endpoint shape.
+    adr_reference: "ADR-0023 §3 amendment (INV-lapas, 2026-08-21)"

@@ -720,6 +720,28 @@ def find_symbol_kind(name: str) -> SymbolKindSpec | None:
     return None
 
 
+SOLIDITY_CALLABLE_DECLARATION_KINDS: Final[frozenset[str]] = frozenset({
+    "function",
+    "method",
+    "constructor",
+})
+"""Kinds a Solidity ``function``/``constructor`` declaration can carry.
+
+Lives here, in core, because it has **two readers in different packages**:
+the producer (``hypergumbo_lang_extended1.solidity``) and the Solidity ABI
+linker (``hypergumbo_core.linkers.solidity_abi``). INV-lapas changed the
+producer to emit ``method`` for contract members while the ABI linker still
+read ``("function", "constructor")``, and the linker silently stopped
+minting call-site nodes — **1,250 of them on openzeppelin-contracts, taking
+6,689 resolved call edges with them**. Nothing failed; the count just
+dropped, and it was caught by re-running the corpus rather than by reading
+the diff.
+
+A constant duplicated across a package boundary drifts into a terminal
+rather than into CI, so the two readers share this one instead.
+"""
+
+
 def type_like_kind_names() -> frozenset[str]:
     """Every kind that declares a nominal type (abstract or concrete).
 
