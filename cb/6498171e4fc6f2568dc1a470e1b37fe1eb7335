@@ -1,0 +1,54 @@
+Original commit body from 7a05f3a99e9fa0ac44f87feac3159ed02f50b70a:
+
+INV-bobor's filed root cause is false. It says the gate is path-triggered only;
+an unconditional arm has lived in .woodpecker/full-suite.yml since 097ab4e05a,
+forty-two minutes before the 63-commit window opened, and the fetched log for
+the 2026-08-19 01:00 cron firing names the regression exactly:
+
+    check-self-claims-drift: SELF-CLAIM DRIFT
+      REGRESSED: runtime-cli-no-host-fs [verdict]:
+        "confirmed_with_caveats" -> "violated"
+
+The remedy the item proposes -- a scheduled arm alongside the path trigger --
+was already shipped four days before the item was filed. Detection was never
+the failure. Delivery was, three ways a second scheduled arm cannot fix:
+
+  MASKING     the cron publishes ONE aggregate status for four unrelated gates.
+              At the 2026-08-20 firing that status was failure while this gate
+              PASSED in the same run; the red came from one intermittent tracker
+              TUI assertion inside test-all-packages (filed WI-ruhul).
+  ADDRESSING  a cron status attaches to whichever commit was tip at firing time,
+              while scripts/ci-debug renders only HEAD. The instrument that
+              answers "is dev green?" cannot see a cron verdict at all.
+  ERROR       the run the item calls the gate's last is truncated mid-analysis
+              with no verdict line, matching its `error` status. A pipeline that
+              dies inside a gate is indistinguishable from one that passed it.
+
+So the gate moves to where the merge path already reads it. auto-pr polls
+exactly one context, so a gate in the per-PR pipeline bounds detection at ONE
+commit by construction and needs no delivery mechanism.
+
+The trade this reverses was deliberate and is re-priced, not overruled. The
+comment justified claim-surface scoping at "~10 minutes" per PR; measured on dev
+6e290fcdb8 the gate is 3m49s, and in CI it shares build-grammars with -- and
+runs concurrently with -- a pytest step that took 935s in the same pipeline.
+The decision was taken against a number 2.6x too high.
+
+The trigger becomes *code_paths plus docs/hypergumbo-self-catalog/**, which
+holds a README that *code_paths does not match; kept explicit so a security
+gate's trigger cannot narrow by accident again.
+
+tests/test_ci_self_claims_gate_scope.py pins the widened trigger, keeps the
+cron arm unconditional, and asserts both arms run the SAME command block --
+woodpecker.yml claimed in prose that they "cannot disagree on identical trees"
+and nothing enforced it. It imports yaml HARD rather than via importorskip:
+pyyaml is a declared hypergumbo-core dependency present in every test container,
+so importorskip could only ever produce a silent skip. Positive control run
+before committing: reverting the trigger to the narrow list fails the guard.
+
+Masking and addressing are filed as their own invariant (INV-bozid) -- they
+apply to self-tree-validation, test-agent-infra and all four nightly matrix
+legs, not just this gate.
+
+Racial-Capitalism-Is-Bad: a kiwi building a subduction accretionary wedge shaped like shofar horn curl made of mushrooms in a prehistoric root beer stand
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
