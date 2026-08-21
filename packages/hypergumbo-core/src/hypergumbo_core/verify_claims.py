@@ -78,7 +78,7 @@ Caveats
 -------
 A ``confirmed_with_caveats`` verdict carries a structured ``caveats`` list,
 built through one shared constructor so the text and JSON renderers disclose
-identically. Three kinds exist:
+identically. Four kinds exist:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
   sanitizer declared by the analysed repository rather than the shipped
@@ -91,6 +91,13 @@ identically. Three kinds exist:
 - ``CAVEAT_DISPLACED_SHIPPED_ENTRY`` — a repo-supplied catalogue row
   replaced a shipped row, so the analysis ran against a catalogue the
   repository itself controls.
+- ``CAVEAT_UNTYPED_RECEIVER`` — named call sites reaching a method the
+  catalogue declares for *this* boundary, through a receiver whose type the
+  analysis could not determine (INV-fibis). Boundary-scoped, and it does NOT
+  make coverage incomplete: it qualifies a verdict that is otherwise clean.
+  **Boundary claims only.** The taint arm has its own coverage gate and does
+  not consume this signal; whether a taint verdict should disclose the same
+  population is a separate question and is not answered here.
 
 A verdict may carry more than one kind at once.
 
@@ -191,6 +198,19 @@ from .paths import classify_test_file, is_migration_file
 # the point rather than a side effect — remedy (a1) put the repo-supplied
 # sanitizer in the verdict PROSE, and a CI gate reads neither prose nor JSON
 # details, so the fact stayed invisible to the only consumer that matters.
+#
+# A NEW CAVEAT *KIND* DOES NOT BUMP THIS, and the rule is worth stating because
+# two have arrived since 2.0 without one (``displaced_shipped_entry``,
+# INV-faput; ``untyped_receiver``, INV-fibis). The shape a consumer parses is
+# unchanged — a list of objects each carrying AT LEAST ``kind`` / ``entries`` /
+# ``detail``, which a consumer already had to tolerate unknown members of, since
+# the kinds present depend on the repo analysed and not on the version. A kind
+# may carry an extra key beside those three (``untyped_receiver`` carries the
+# ``boundary`` it was scoped to, so a merge can re-render its prose); that is
+# additive within the object and invisible to a consumer reading the three.
+# What DOES change is which claims are caveated at all, and that is a
+# BEHAVIOURAL change disclosed in the changelog rather than a schema one. The
+# version moves when the ENVELOPE moves.
 VERIFY_CLAIMS_SCHEMA_VERSION = "2.0"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
@@ -294,6 +314,67 @@ CAVEAT_OPAQUE_BOUNDARY = "opaque_boundary"
 #: surface a consumer branches on — was byte-identical to an honest confirm.
 CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
 
+#: Caveat kind: the claim held everywhere the analysis could see, and one or
+#: more NAMED call sites reach a method the catalogue declares for THIS
+#: boundary through a receiver whose type the analysis could not determine.
+#:
+#: INV-fibis. Reproduced on the shipped CLI with a two-arm control, stdlib
+#: only, no overlay and no opaque launch::
+#:
+#:     def send_unannotated(sock, payload):          # ARM 1
+#:         return sock.sendall(payload)
+#:     def send_annotated(sock: socket.socket, ...): # ARM 2
+#:         return sock.sendall(payload)
+#:
+#: ARM 2 reports ``violated``; ARM 1 reported **confirmed** — "This service
+#: never sends data over the network" — about a function whose entire body is a
+#: network send, while the ``fs_read`` control fired ``violated`` in BOTH arms,
+#: so the null was not a broken run.
+#:
+#: WHY THIS IS NOT A COVERAGE FAILURE. ``_uncatalogued_external_modules``
+#: counts only a dst that NAMES a module; ARM 1's edge is the bare placeholder
+#: ``python:external:0-0:sendall:external_symbol``, which names none. That skip
+#: is deliberate and is UNCHANGED — the placeholder is the largest edge
+#: population in a Python repo and identifies no library to report, so counting
+#: it as an uncatalogued module downgrades nearly every repo to
+#: ``inconclusive`` while telling the reader nothing, which is the outcome
+#: PR #251 already rejected. ``compute_boundary_coverage`` still returns
+#: ``complete=True`` here.
+#:
+#: SO THE FIX IS AT THE VERDICT, AND IT IS THE SIBLING ARGUMENT ONE STEP OVER.
+#: :data:`CAVEAT_OPAQUE_BOUNDARY`'s own note draws the auditor distinction — a
+#: DISCLAIMER ("a whole language here has no catalogue, I am blind") versus a
+#: QUALIFIED OPINION ("I examined every call and understood them all; three
+#: hand control to git and no static tool can see inside"). "I saw this call, I
+#: know ``sendall`` is a catalogued ``net_send`` method, and I could not
+#: determine the receiver's type" is a qualified opinion by the same test.
+#:
+#: BOUNDARY-SCOPED, AND THAT IS WHAT MAKES IT SHIPPABLE. A DOWNGRADE on this
+#: signal was measured on 2026-08-11 and recorded DO NOT BUILD IT: on poetry
+#: every boundary would have downgraded (db_read 234, ipc_recv 160, fs_read 93,
+#: fs_write 67, db_write 40, net_send 37, net_recv 35, ipc_send 1), because the
+#: catalogued method names include ``close`` / ``get`` / ``read`` / ``write`` /
+#: ``send`` — the most common method names in Python. Two things answer that
+#: measurement rather than ignore it: the verdict is QUALIFIED rather than
+#: WITHHELD, and a name is matched only against primitives catalogued for the
+#: CLAIMED boundary, so that measurement's own example — an unrelated dict
+#: ``.get`` — cannot touch a ``net_send`` verdict at all.
+#:
+#: THE OTHER HALF OF THAT REFUTATION IS NOT CITED HERE BECAUSE IT DOES NOT
+#: SURVIVE. It also called the signal "anti-correlated with the truth", arguing
+#: from ``session.post`` — a primitive absent from the catalogue entirely
+#: (INV-fotav's third-party gap), not one reached through an untyped receiver.
+#:
+#: METHOD-KIND ONLY. A bare ``open()`` has no receiver, so "I could not type the
+#: receiver" is not a true sentence about it; matching function-kind rows would
+#: make the disclosure false on its own evidence.
+#:
+#: WHAT IT DOES NOT DO: make the flow VISIBLE. Typing the receiver
+#: interprocedurally is the sound recall fix (INV-linub L3) and stays sequenced
+#: behind precision by measurement 0001's ``<50%`` band. This makes the VERDICT
+#: honest; it does not make the analysis see further.
+CAVEAT_UNTYPED_RECEIVER = "untyped_receiver"
+
 
 def _merge_caveat(
     existing: list[dict[str, Any]], new: dict[str, Any],
@@ -328,11 +409,19 @@ def _merge_caveat(
             return existing
         rebuilt = dict(cav)
         rebuilt["entries"] = merged_entries
+        # Re-render so the prose agrees with the widened entry list rather
+        # than quoting a stale count — a disclosure whose sentence and whose
+        # data disagree is worse than either alone. Only the kinds whose
+        # SENTENCE quotes their entries appear here; the sanitizer and
+        # displaced-entry kinds do not, so their merged prose is already true.
+        # A fifth kind that quotes its entries must be added below or it will
+        # silently keep a stale sentence.
         if new.get("kind") == CAVEAT_OPAQUE_BOUNDARY:
-            # Re-render so the prose agrees with the widened entry list rather
-            # than quoting a stale count — a disclosure whose sentence and
-            # whose data disagree is worse than either alone.
             rebuilt = _opaque_boundary_caveat(merged_entries)
+        elif new.get("kind") == CAVEAT_UNTYPED_RECEIVER:
+            rebuilt = _untyped_receiver_caveat(
+                cav.get("boundary", ""), merged_entries,
+            )
         return [*existing[:i], rebuilt, *existing[i + 1:]]
     return [*existing, new]
 
@@ -354,6 +443,67 @@ def _opaque_boundary_caveat(sites: list[str]) -> dict[str, Any]:
             f"leaves this process at {len(sites)} call site(s) — {shown} — "
             f"and hypergumbo cannot see inside a launched program, so what "
             f"those programs do is not covered by this verdict."
+        ),
+    }
+
+
+#: How many call sites to spell out in the untyped-receiver caveat before the
+#: sentence switches to naming the distinct METHODS instead. Same value and same
+#: reasoning as :data:`_MAX_REPORTED_UNCATALOGUED_MODULES` — a disclosure is read
+#: by a human deciding whether to trust a verdict, and a wall is not read at all.
+_MAX_REPORTED_UNTYPED_SITES = 5
+
+
+def _untyped_receiver_caveat(boundary: str, sites: list[str]) -> dict[str, Any]:
+    """The one place the untyped-receiver disclosure is built.
+
+    Same rule as :func:`_opaque_boundary_caveat` and for the same reason: two
+    spellings of one disclosure drift the first time either is edited, which is
+    the failure this module has paid for repeatedly (L53). The boundary is in
+    the prose because the caveat is boundary-SCOPED — a reader seeing
+    ``sendall`` under a ``net_send`` claim needs to know that is why it was
+    raised, and that an unrelated ``.get`` was deliberately not.
+
+    THE SENTENCE SAYS WHAT IS UNKNOWN AND WHAT IS NOT. The receiver's TYPE is
+    the unknown; the call site is known exactly, which is why the entries are
+    checkable locations rather than a count.
+    """
+    if len(sites) <= _MAX_REPORTED_UNTYPED_SITES:
+        where = ", ".join(sites)
+    else:
+        # AT SCALE THE SITES ARE NOT THE FACT; THE METHOD NAMES ARE. Measured on
+        # poetry: 306 fs_read sites are 16 distinct names (``read`` 95,
+        # ``exists`` 86, ``open`` 34, ``group`` 19, ``read_text`` 16, ...) and
+        # 103 ipc_recv sites are a SINGLE name, ``get``. A reader deciding
+        # whether to trust the verdict acts on "which methods" — ``group`` is
+        # almost all ``re.Match``, ``read_text`` is almost all ``pathlib`` —
+        # and cannot act on five arbitrary line numbers out of three hundred.
+        # The full site list is still in ``entries``, which is the machine
+        # surface; this only bounds the sentence a human reads, the same trade
+        # ``_MAX_REPORTED_UNCATALOGUED_MODULES`` and ``_MAX_EVIDENCE_ROWS``
+        # already make.
+        names = sorted({_site_method(s) for s in sites})
+        more = len(names) - _MAX_REPORTED_UNTYPED_SITES
+        suffix = f" (+{more} more)" if more > 0 else ""
+        shown = ", ".join(names[:_MAX_REPORTED_UNTYPED_SITES])
+        where = (
+            f"{len(names)} distinct method(s): {shown}{suffix}; "
+            f"the full site list is in this caveat's `entries`"
+        )
+    return {
+        "kind": CAVEAT_UNTYPED_RECEIVER,
+        # CARRIED, NOT RE-DERIVED. ``_merge_caveat`` re-renders a widened entry
+        # list so the prose cannot quote a stale count, and it can only do that
+        # for a caveat that says what it is about. The opaque kind needs no such
+        # field because its sentence names no scope.
+        "boundary": boundary,
+        "entries": list(sites),
+        "detail": (
+            f"The claim holds everywhere the analysis could see. At "
+            f"{len(sites)} call site(s) — {where} — a method the {boundary} "
+            f"catalogue declares is called on a receiver whose type could not "
+            f"be determined, so whether those calls perform this I/O was "
+            f"never decided."
         ),
     }
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
@@ -585,6 +735,16 @@ class BoundaryCoverage:
     #: blindness: the reader cannot tell which gap the silence came from, so
     #: the qualification is withheld.
     qualifying_only: bool = False
+    #: Boundary -> call sites reaching a catalogued METHOD for that boundary
+    #: through a receiver of unknown type (INV-fibis). Populated on EVERY
+    #: coverage result, including a complete one, and that is the difference
+    #: from :attr:`opaque_sites`: an untyped receiver does NOT make coverage
+    #: incomplete — the residual in :func:`_uncatalogued_external_modules`
+    #: stands unchanged, deliberately — it QUALIFIES a verdict that is
+    #: otherwise clean. Keyed by boundary so a caller cannot widen the scope by
+    #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
+    #: unscoped version of this signal was measured and refused.
+    untyped_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1590,9 +1750,18 @@ def _uncatalogued_external_modules(
     identifies no library to report, and counting it would downgrade nearly every
     repo to ``inconclusive`` while telling the reader nothing about what went
     unexamined. That population is the receiver-typing gap (INV-linub L3) and is
-    tracked there, not laundered through this gate. The honest consequence — a
-    repo reaching its I/O ONLY through untyped receivers still confirms — is
-    pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``.
+    tracked there, not laundered through this gate; ``complete`` stays ``True``
+    over it, pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``.
+
+    THE CONSEQUENCE THAT USED TO FOLLOW NO LONGER DOES, and this paragraph said
+    it did for eleven days: "a repo reaching its I/O ONLY through untyped
+    receivers still confirms". Reproduced, then closed at a different layer
+    (INV-fibis). :func:`untyped_receiver_sites` takes the same population this
+    skip drops and asks the narrower question this one cannot — is the CALLEE a
+    method the catalogue declares for the boundary under claim — and the answer
+    QUALIFIES a clean verdict (``CAVEAT_UNTYPED_RECEIVER``) rather than
+    withholding it. So the skip here is still right, and the silence it used to
+    produce is gone.
 
     SECOND RESIDUAL, AND IT IS THE LARGER ONE. A language with no I/O catalogue
     is skipped here, and NOTHING downstream catches it for a boundary claim.
@@ -1675,6 +1844,125 @@ def _uncatalogued_external_modules(
             continue
         unknown.add(module)
     return sorted(unknown)
+
+
+def untyped_receiver_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> dict[str, list[str]]:
+    """Call sites reaching a catalogued METHOD through a receiver of unknown type,
+    grouped by the boundary that method is catalogued for (INV-fibis).
+
+    THE RESIDUAL :func:`_uncatalogued_external_modules` DOCUMENTS, ANSWERED AT A
+    DIFFERENT LAYER. That function counts only a dst that NAMES a module, so the
+    bare placeholder ``python:external:0-0:sendall:external_symbol`` is skipped —
+    correctly, because it identifies no library to report and is the largest edge
+    population in a Python repo, so counting it as an uncatalogued module sends
+    nearly every repo to ``inconclusive`` while saying nothing. Nothing here
+    changes that: coverage stays ``complete``. What this adds is the ability to
+    QUALIFY a clean verdict instead of leaving it silent.
+
+    KEYED BY BOUNDARY BECAUSE THE SCOPING IS THE WHOLE DESIGN. A downgrade on the
+    unscoped version of this signal was measured on 2026-08-11 and recorded DO
+    NOT BUILD IT — on poetry every boundary downgraded, because the catalogued
+    method names include ``close`` / ``get`` / ``read`` / ``write`` / ``send``.
+    Returning a MAP rather than a flat list is what makes the scope structural: a
+    caller that forgets to scope gets a dict, not a wrong answer. That
+    measurement's own example — an unrelated dict ``.get``, catalogued under
+    ``db_read`` — cannot reach a ``net_send`` claim through this shape.
+
+    THREE FILTERS, EACH LOAD-BEARING:
+
+    * **the placeholder**, asked through ``_module_from_symbol_path`` — the same
+      predicate :func:`_uncatalogued_external_modules` uses for the complementary
+      half of the same population, so the two cannot come to disagree about which
+      edges name a module (WI-ribuz's drift, and the reason there is no seventh
+      home for module extraction here).
+    * **``call_construct == "method"``**, the producer's own statement that a
+      RECEIVER was there. Without it the disclosure would claim a receiver on
+      evidence that never mentioned one, and a bare ``open()`` would be reported
+      as an untyped receiver.
+    * **method-KIND catalogue rows**. A function-kind primitive is not reached
+      through a receiver at all, so matching one would make the sentence false.
+
+    Every boundary a name is catalogued under is reported, not the first: an
+    unknown-typed receiver is unknown for all of them, and reporting one is the
+    row-order masking INV-zumin already paid for once.
+    """
+    from .taint import _module_from_symbol_path
+
+    grouped: dict[str, set[str]] = {}
+    for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
+        if _module_from_symbol_path(dst):
+            continue  # a named module — adjudicated by the coverage gate
+        meta = edge.get("meta") or {}
+        if meta.get("call_construct") != "method":
+            continue
+        # A LAUNCH IS AN EXAMINED CALL (INV-vokog), reported by NAME through
+        # CAVEAT_OPAQUE_BOUNDARY. Saying "and its receiver was untyped" about the
+        # same edge is a second, contradictory statement about one call — the
+        # exact disagreement that made rc 3 unreachable when these two consumers
+        # last walked the same population with different rules. Asked in the same
+        # position as the other consumer asks it.
+        if _is_producer_stamped_launch(edge):
+            continue
+        name = dst.split(":")[3]
+        boundaries = {
+            p.boundary for p in catalog.lookup_all(name)
+            if p.kind == "method" and p.name == name
+        }
+        if not boundaries:
+            continue
+        site = _call_site_label(edge)
+        for boundary in boundaries:
+            grouped.setdefault(boundary, set()).add(site)
+    return {b: sorted(sites) for b, sites in sorted(grouped.items())}
+
+
+def _call_site_label(edge: dict[str, Any]) -> str:
+    """``path:line name()`` — where the reader looks, not what the analysis knew.
+
+    The RECEIVER's type is the unknown; the call site is known exactly, so the
+    disclosure names a location a reader can open. The opaque caveat can name a
+    qualified primitive (``subprocess.run``) because it resolved one; here there
+    is no module to qualify with, which is the whole point, so a count or a bare
+    method name would be an unactionable disclosure.
+
+    The line is omitted rather than faked when the producer did not stamp one —
+    ``svc.py sendall()`` still points at a file.
+
+    THE ``src`` IS NORMALLY AN IN-REPO SYMBOL AND SO NORMALLY A REAL PATH, but
+    not always: an external symbol's path slot reads ``<external>``, producing a
+    label like ``<external>:75 count()`` that a reader cannot open. Measured, so
+    the decision is sized rather than guessed — **1 of 6,195** distinct labels on
+    sqlalchemy, **0 of 713** on poetry. It is disclosed rather than dropped: at
+    that rate special-casing buys nothing, and dropping sites is the
+    under-disclosure direction this whole caveat exists to close.
+
+    READ BACK BY :func:`_site_method`, WHICH IS WHY THE NAME IS LAST. The two are
+    a pair and live together deliberately: ``_merge_caveat`` re-renders a widened
+    caveat from the merged ENTRY STRINGS alone, so the label format has to be
+    invertible far enough to recover the method, and a format whose writer and
+    reader sat in different places would drift on the first edit to either.
+    """
+    path = _symbol_path_slot(edge.get("src", ""))
+    name = edge.get("dst", "").split(":")[3]
+    line = edge.get("line")
+    where = f"{path}:{line}" if line else path
+    return f"{where} {name}()"
+
+
+def _site_method(label: str) -> str:
+    """``sendall()`` out of ``svc.py:10 sendall()`` — the inverse of
+    :func:`_call_site_label`, to the extent the caveat prose needs one.
+
+    RIGHT-ANCHORED, and that is the whole correctness argument: a METHOD name
+    contains no space, so the last space-separated token is always the method
+    however odd the path is — including a path with a space in it, and including
+    the colon-bearing path slot ADR-0036 (D1a) permits (``dart:io``). Splitting
+    on the FIRST space would break on the first file name with a space.
+    """
+    return label.rsplit(" ", 1)[-1]
 
 
 #: Edge types that count as a repo genuinely CALLING into a module, for the
@@ -1762,8 +2050,35 @@ def method_starved_modules(
 
 
 def compute_boundary_coverage(
-    raw_edges: list,
-    supported_languages: set,
+    raw_edges: list[dict[str, Any]],
+    supported_languages: set[str],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> BoundaryCoverage:
+    """Decide whether the boundary analysis can support a clean verdict, and what
+    such a verdict must disclose.
+
+    TWO SIGNALS, ONE RESULT, AND THEY ARE NOT THE SAME KIND OF THING.
+    :func:`_call_production_coverage` answers "could the analysis have seen this
+    I/O at all" — a NO withholds the verdict. :func:`untyped_receiver_sites`
+    answers "which calls did it see but not adjudicate" — a non-empty answer
+    QUALIFIES a verdict it does not withhold, so it is stamped onto every result
+    including a complete one (INV-fibis).
+
+    Stamped HERE rather than at the call sites for the reason the ``catalogs``
+    parameter is required rather than defaulted: a disclosure a caller can forget
+    to attach fails open, and this one has exactly one caller in the CLI plus a
+    growing number in tests.
+    """
+    coverage = _call_production_coverage(
+        raw_edges, supported_languages, catalogs,
+    )
+    coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
+    return coverage
+
+
+def _call_production_coverage(
+    raw_edges: list[dict[str, Any]],
+    supported_languages: set[str],
     catalogs: dict[str, IoBoundaryCatalog],
 ) -> BoundaryCoverage:
     """Decide whether the I/O boundary analysis can support a clean verdict.
@@ -2014,6 +2329,16 @@ def verify_claim(
     entry = boundary_map.entries.get(claim.constraint_boundary)
     chain_count = len(entry.chains) if entry else 0
 
+    # INV-fibis. Read ONCE, here, and consumed only on the clean paths below. A
+    # ``violated`` verdict must not acquire it: finding evidence is trustworthy
+    # regardless of what else went unadjudicated, and the whole discipline of
+    # this module is that coverage gates the ALL-CLEAR and nothing else.
+    #
+    # SCOPED BY THE CLAIM'S OWN BOUNDARY, which is what keeps an unrelated dict
+    # ``.get`` out of a ``net_send`` verdict — the mis-fire the 2026-08-11
+    # measurement caught, and the reason the unscoped DOWNGRADE was refused.
+    untyped = coverage.untyped_receiver_sites.get(claim.constraint_boundary) or []
+
     # Check must_not_exist constraint
     if claim.constraint_must_not_exist:
         if chain_count == 0:
@@ -2023,6 +2348,18 @@ def verify_claim(
             # ``inconclusive``, because a reader cannot tell which gap the
             # silence came from.
             if not coverage.complete and coverage.qualifying_only:
+                # BOTH KINDS RIDE ONE VERDICT. A repo can launch a program AND
+                # call through an untyped receiver, and _merge_caveat is the
+                # constructor that exists because a second writer overwriting
+                # the first is this module's documented failure (INV-virat).
+                caveats = [_opaque_boundary_caveat(coverage.opaque_sites)]
+                if untyped:
+                    caveats = _merge_caveat(
+                        caveats,
+                        _untyped_receiver_caveat(
+                            claim.constraint_boundary, untyped,
+                        ),
+                    )
                 return ClaimVerdict(
                     claim_id=claim.id,
                     claim_text=claim.text,
@@ -2031,7 +2368,7 @@ def verify_claim(
                         f"No {claim.constraint_boundary} chains found in code "
                         f"the analysis could see."
                     ),
-                    caveats=[_opaque_boundary_caveat(coverage.opaque_sites)],
+                    caveats=caveats,
                 )
             if not coverage.complete:
                 return ClaimVerdict(
@@ -2043,6 +2380,21 @@ def verify_claim(
                         f"{coverage.reason}; cannot confirm the boundary is "
                         f"unused."
                     ),
+                )
+            if untyped:
+                return ClaimVerdict(
+                    claim_id=claim.id,
+                    claim_text=claim.text,
+                    verdict="confirmed_with_caveats",
+                    details=(
+                        f"No {claim.constraint_boundary} chains found in code "
+                        f"the analysis could adjudicate."
+                    ),
+                    caveats=[
+                        _untyped_receiver_caveat(
+                            claim.constraint_boundary, untyped,
+                        )
+                    ],
                 )
             return ClaimVerdict(
                 claim_id=claim.id,
@@ -2075,14 +2427,33 @@ def verify_claim(
                         f"but {coverage.reason}; cannot confirm the limit holds."
                     ),
                 )
+            details = (
+                f"{chain_count} {claim.constraint_boundary} chain(s) found, "
+                f"within limit of {claim.constraint_max_chains}."
+            )
+            # THE SAME ASSERTION ABOUT ABSENCE, one chain-count over: "within
+            # limit" says no FURTHER chains exist, which rests on exactly the
+            # completeness ``must_not_exist`` rests on. ``BoundaryCoverage``'s
+            # docstring already treats the two together, and gating one while
+            # leaving the other silent is the two-homes-for-one-fact defect
+            # (L8) written into a single function.
+            if untyped:
+                return ClaimVerdict(
+                    claim_id=claim.id,
+                    claim_text=claim.text,
+                    verdict="confirmed_with_caveats",
+                    details=details,
+                    caveats=[
+                        _untyped_receiver_caveat(
+                            claim.constraint_boundary, untyped,
+                        )
+                    ],
+                )
             return ClaimVerdict(
                 claim_id=claim.id,
                 claim_text=claim.text,
                 verdict="confirmed",
-                details=(
-                    f"{chain_count} {claim.constraint_boundary} chain(s) found, "
-                    f"within limit of {claim.constraint_max_chains}."
-                ),
+                details=details,
             )
         return ClaimVerdict(
             claim_id=claim.id,
