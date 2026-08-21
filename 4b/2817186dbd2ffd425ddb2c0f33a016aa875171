@@ -1,0 +1,43 @@
+Original commit body from d3aaf1ab754ad52e0467ea3bcd3034e255bb2336:
+
+The user-facing release notes went three major versions stale. README
+pointed at docs/RELEASE-NOTES-6.X.md as the current line while 6.1.0,
+7.0.0 and 8.0.0 had all shipped.
+
+The cause is structural, not neglect. prepare-release promotes
+CHANGELOG.md's [Unreleased] section on every release BECAUSE THE SCRIPT
+DOES IT. Nothing did the same for docs/RELEASE-NOTES-<MAJOR>.X.md, so:
+6.1.0 shipped with its notes stranded under "## Unreleased", 7.0.0
+shipped with none written, and 8.0.0 shipped with no notes file at all.
+One fact -- what shipped -- kept two homes, and only the home with a
+script attached stayed current.
+
+Writes RELEASE-NOTES-7.X.md and RELEASE-NOTES-8.X.md, promotes 6.1.0's
+stranded section, and repoints README / CHANGELOG / 5.x. The 7.x file is
+backfilled from its CHANGELOG section and says so in a banner: what it
+cannot recover is anything known only at release time and never written
+down.
+
+Each file now opens with a TL;DR naming the breaking changes and what to
+do about them, per owner request -- the 6.x file had grown to 427 lines
+with its upgrade-blocking items distributed through it, and a reader
+deciding whether to upgrade should not have to assemble that.
+
+The gate: prepare-release gains a release-notes step that promotes
+"## Unreleased" and REFUSES to release when the file for the major line
+is missing or has no section for the version being cut. A hard stop, not
+a warning -- a warning is what the absence of this step already amounted
+to.
+
+tests/test_prepare_release_notes_promotion.py EXECUTES the shipped block
+against fixtures rather than grepping the script for strings; the two
+sibling prepare-release tests do the latter, which passes against a block
+that is dead, misspelled or unreachable. Positive control on every case:
+the promotion case asserts the file's bytes changed, the refusal cases
+assert non-zero exit AND that the file was left untouched. Verified the
+extracted block against the real tree under --dry-run: it finds 8.X's
+Unreleased section and leaves the file alone.
+
+mypy ratchet clean; smart-test 12 passed (3 files).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
