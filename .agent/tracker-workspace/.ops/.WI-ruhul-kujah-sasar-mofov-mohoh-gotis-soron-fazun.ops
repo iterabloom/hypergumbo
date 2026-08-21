@@ -1,0 +1,31 @@
+- op: create  # a8ef
+  at: '2026-08-21T18:55:29Z'  # a8ef
+  by: agent  # a8ef
+  actor: jgstern_agent  # a8ef
+  clock: 1  # a8ef
+  nonce: a8ef  # a8ef
+  data:  # a8ef
+    kind: work_item  # a8ef
+    title: "tracker TUI test_cancel_returns_none fails intermittently only under the loaded full-suite run (_result stays at the 'NOT_SET' sentinel); it is what reddens the cron aggregate"  # a8ef
+    status: todo_hard  # a8ef
+    priority: 2  # a8ef
+    parent:  # a8ef
+    tags:  # a8ef
+    - testing  # a8ef
+    - flaky_isolation  # a8ef
+    - ci_infrastructure  # a8ef
+    isbefore: []  # a8ef
+    duplicate_of: []  # a8ef
+    not_duplicate_of: []  # a8ef
+    pr_ref:  # a8ef
+    description: "FOUND WHILE REFUTING INV-bobor'S ROOT CAUSE, 2026-08-21. This is the live cause of\nINV-bozid's masking half: one intermittent assertion here turned the whole twice-daily\nwhole-codebase signal red, which is why a correctly-detected security-claim regression\nsat unread.\n\nOBSERVED IN CI, fetched log, cron firing 2026-08-20 13:00 UTC, tip f7d88b98e7, step\ntest-all-packages:\n\n    FAILED packages/hypergumbo-tracker/tests/test_tui.py::TestLockScreenUnit::\n      test_cancel_returns_none - AssertionError: assert 'NOT_SET' is None\n      +  where 'NOT_SET' = _ModalTestApp(title='_ModalTestApp',\n         classes={'-dark-mode'}, pseudo_classes={'dark', 'focus'})._result\n    = 1 failed, 23210 passed, 31 skipped, 17 xfailed, 428 warnings in 935.34s\n\nDOES NOT REPRODUCE IN ISOLATION. Run alone on dev 6e290fcdb8, 3 of 3 PASS:\n    python3 -m pytest \"packages/hypergumbo-tracker/tests/test_tui.py::\\\n      TestLockScreenUnit::test_cancel_returns_none\" -q --no-cov\n    -> 1 passed (x3)\nSo it is order- or co-residency-dependent, not a deterministic break. The sentinel\nvalue is telling: _result holds the string 'NOT_SET' rather than None, i.e. the\nscreen's dismiss callback never fired within the test's wait, which is the classic\nTextual async-timing shape (a message pump that has not drained before the assert).\nUnder a loaded 935-second whole-suite run, timing-sensitive TUI tests are exactly\nthe population that flips.\n\nINTERMITTENT, MEASURED ACROSS FIRINGS, not assumed: the 2026-08-21 13:00 cron firing\n(tip 4180b40e56) was GREEN, so the aggregate flickers between firings. That is the\nworst case for INV-bozid -- a steadily-red aggregate at least reads as broken, while\na flickering one reads as noise and trains readers to ignore it.\n\nRELATED BUT DISTINCT FROM WI-kogop. Same CLASS (a test-isolation / ordering leak that\nCI's own distribution happens to expose or hide) and it should carry the same\nflaky_isolation tag, but a different instance with a different mechanism: WI-kogop is\ntest_taint_recall_corpus.py reading javascript dataflow_capable=False under -n 5, with\na DDG-registry-pollution hypothesis that a targeted probe already failed to reproduce.\nNothing links the two beyond the shared class; folding them would merge two unproven\nmechanisms into one item.\n\nNOT ESTABLISHED, said plainly: how long this has been intermittent, how many cron\nfirings it has reddened, and whether it fails under a local whole-suite run at all\n(only the single-test isolation run was performed here -- a full local -n auto run\nwas not, because the point of this item is that the failure is a property of the\nloaded run rather than of the test). The mechanism is a hypothesis from the sentinel\nvalue, not a diagnosis; do not fix on it without reproducing first."  # a8ef
+    fields: {}  # a8ef
+- op: update  # 02b4
+  at: '2026-08-21T18:55:47Z'  # 02b4
+  by: agent  # 02b4
+  actor: jgstern_agent  # 02b4
+  clock: 2  # 02b4
+  nonce: 02b4  # 02b4
+  set: {}  # 02b4
+  add:  # 02b4
+    not_duplicate_of: [WI-kogop-poguh-nanig-gikuf-linup-sibuj-tojum-jidom]  # 02b4
