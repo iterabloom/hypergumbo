@@ -1,0 +1,25 @@
+- op: create  # d8bf
+  at: '2026-08-21T08:04:28Z'  # d8bf
+  by: agent  # d8bf
+  actor: jgstern_agent  # d8bf
+  clock: 1  # d8bf
+  nonce: d8bf  # d8bf
+  data:  # d8bf
+    kind: invariant  # d8bf
+    title: "Solidity emits contract members as kind=function, so 2,025 members per repo are invisible to every consumer keyed on kind==method"  # d8bf
+    status: violated  # d8bf
+    priority: 1  # d8bf
+    parent:  # d8bf
+    tags:  # d8bf
+    - linker  # d8bf
+    - dogfood  # d8bf
+    - solidity  # d8bf
+    - symbol_kind  # d8bf
+    isbefore: []  # d8bf
+    duplicate_of: []  # d8bf
+    not_duplicate_of: []  # d8bf
+    pr_ref:  # d8bf
+    description: "**Found while fixing INV-nosoz, and it is the reason that fix is inert on Solidity.**\n\nINV-nosoz made `type_hierarchy` resolve the inheritance family from the\nregistry, so Solidity's `inherits` edges now reach the dispatch map. Measured\non openzeppelin-contracts, the dispatch delta was nevertheless **zero**.\n\nThe reason is a second, independent cause on a different axis. `link_type_hierarchy`\nindexes dispatch candidates with a hard literal:\n\n    for sym in ctx.symbols:\n        if sym.kind != \"method\":\n            continue\n\nSolidity never emits that kind. Measured on openzeppelin-contracts:\n\n* **2,025 members of type-like containers, 100% `kind=\"function\"`, zero `kind=\"method\"`.**\n* solidity node kinds overall: contract 346, interface 72, **function 3056**,\n  library 59, event 154, field 523, constructor 126, modifier 22.\n* 516 `inherits` edges over 164 distinct parents; **0 of those parents have a\n  single `method`-kind member**, so the parent-method lookup returns empty for\n  every one of them.\n\nComparison cohort, same measurement, members of type-like containers:\n\n| language | method | function |\n|---|---|---|\n| solidity | **0** | **2025** |\n| ruby | 814 | 0 |\n| cpp | 2177 | 352 |\n| kotlin | 1140 | 0 |\n| java | 1040 | 0 |\n| python | 634 | 0 |\n| javascript | 68 | 38 |\n\nSolidity is the only 100% cell. A Solidity `function` declared inside a\n`contract` body is a method by every consumer's definition — it has a\nreceiver, it is virtually dispatchable (the repo emits 545 `overrides`\nedges for exactly that reason), and it is what a caller resolves against.\n\n**Two candidate fixes, deliberately not chosen here.**\n\n1. Producer-side: `solidity.py` emits `kind=\"method\"` for contract/interface/\n   library members, leaving free functions as `function`. Matches every other\n   OO analyzer. Changes `stable_id` for 2,025 symbols per repo, since kind is\n   in the id grammar — so it is a scheme-affecting change and wants its own\n   decision.\n2. Consumer-side: `type_hierarchy` indexes any callable contained by a\n   type-like symbol rather than keying on `kind == \"method\"`. Narrower blast\n   radius, but the literal is one of several across the tree, so fixing it\n   here leaves the same gap in every other consumer keyed the same way.\n\nOption 1 is the structural fix and option 2 is the workaround; the reason to\npause is that option 1 moves identity values and that decision is not this\nitem's to make unilaterally.\n\n**Do not fold into INV-nosoz.** That item is the `Edge.edge_type` vocabulary\ncause and it is now fixed and measured (+5 Ruby mixin dispatches on postal).\nThis is the `Symbol.kind` producer cause behind the same symptom, and it\ncloses on its own evidence: a non-zero Solidity dispatch delta on\nopenzeppelin-contracts."  # d8bf
+    fields:  # d8bf
+      statement: "A member declared inside a type-like container carries a Symbol.kind that the dispatch consumers recognize, so a Solidity contract function participates in type-hierarchy dispatch exactly as a Java or Ruby method does."  # d8bf
+      root_cause: "solidity.py emits kind=function for contract, interface and library members, and link_type_hierarchy indexes dispatch candidates with the literal sym.kind != method. The two disagree, so 516 inherits edges over 164 parents find zero candidate members. Measured on openzeppelin-contracts: 2025 members of type-like containers, none of kind method."  # d8bf
