@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "9a6a32b9a20cb5fe190bcb5a64bfc7ab1dbe8712",
-  "last_audit_iso_date": "2026-08-12T21:26:55.010760-04:00",
-  "suspect_domain": "io-primitives-status",
-  "audits_run": 11
+  "last_audit_sha": "d1a4ed6131df1e19ed395482fce417b20b221572",
+  "last_audit_iso_date": "2026-08-20T17:13:46.475918-04:00",
+  "suspect_domain": "call_construct",
+  "audits_run": 12
 }
