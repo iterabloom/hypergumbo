@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.1"
+      "const": "0.20.2"
     },
     "confidence_model": {
       "type": "string",
@@ -1205,6 +1205,9 @@
             },
             "bridge_kind": {
               "description": "FFI / native-bridge mechanism on ``calls`` edges that absorb the bridge family (e.g. 'cgo', 'napi', 'wasm', 'ffi'). Value vocabulary tracked at ``edge_types.BRIDGE_KINDS``."
+            },
+            "call_arg_shape": {
+              "description": "What the arguments at this call site CAN carry. One value today: 'literal_only' -- every positional and keyword argument is a literal constant, or there are no arguments at all. INV-fubag, and it exists to be a PROOF rather than a heuristic: taint models a flow as the tainted value being an argument to the sink call or its receiver, so a call passing only literals has nothing that could be the tainted value. Measured cost of not having it (docs/measurements/0003): 24 of 34 adjudicated false positives were sink calls with no arguments at all -- tempfile.TemporaryDirectory(), TemporaryFile(), NamedTemporaryFile(delete=True). ABSENCE IS THE CONSERVATIVE READING and is load-bearing: producers stamp this ONLY when they can prove the argument list is all-literal, so every un-stamped call -- including every edge in every behavior map written before this key existed -- keeps flowing. A default that silenced findings would make this a false-negative generator on a security analysis. Sparse by convention for the same reason: stamping 'dynamic' on every call edge would say nothing absence does not already say, at the cost of a key on every edge of every map. Scoped to the CALL FAMILY -- the question does not arise for an edge that is not an invocation."
             },
             "call_construct": {
               "description": "Source-language call construct collapsed under ``ast_call`` apex (e.g. 'method', 'function', 'pipe', 'application'). Fold residue per audit-findings 0012 / WI-nibis Wave 4. Scoped to the CALL FAMILY -- ``calls`` and ``instantiates`` -- declared on ``applicable_edge_types`` below rather than asserted in this sentence, because a scope that lives only in prose cannot be checked and this one drifted (WI-toruz). ``instantiates`` is in scope deliberately: ``edge_type`` is NOT a function of the construct, since ruby emits ``calls`` for the same source construct that dart/csharp emit ``instantiates`` for (INV-kahig), so 'constructor' is the only cross-language invariant for object creation and is NOT redundant with ``edge_type``."

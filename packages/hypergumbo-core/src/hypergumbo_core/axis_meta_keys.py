@@ -306,6 +306,30 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "invariant for object creation and is NOT redundant with "
                 "``edge_type``.",
                 applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
+    MetaKeySpec("call_arg_shape", AXIS_EDGE_META,
+                "What the arguments at this call site CAN carry. One value "
+                "today: 'literal_only' -- every positional and keyword "
+                "argument is a literal constant, or there are no arguments at "
+                "all. INV-fubag, and it exists to be a PROOF rather than a "
+                "heuristic: taint models a flow as the tainted value being an "
+                "argument to the sink call or its receiver, so a call passing "
+                "only literals has nothing that could be the tainted value. "
+                "Measured cost of not having it (docs/measurements/0003): 24 "
+                "of 34 adjudicated false positives were sink calls with no "
+                "arguments at all -- tempfile.TemporaryDirectory(), "
+                "TemporaryFile(), NamedTemporaryFile(delete=True). "
+                "ABSENCE IS THE CONSERVATIVE READING and is load-bearing: "
+                "producers stamp this ONLY when they can prove the argument "
+                "list is all-literal, so every un-stamped call -- including "
+                "every edge in every behavior map written before this key "
+                "existed -- keeps flowing. A default that silenced findings "
+                "would make this a false-negative generator on a security "
+                "analysis. Sparse by convention for the same reason: stamping "
+                "'dynamic' on every call edge would say nothing absence does "
+                "not already say, at the cost of a key on every edge of every "
+                "map. Scoped to the CALL FAMILY -- the question does not "
+                "arise for an edge that is not an invocation.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
     MetaKeySpec("call_locality", AXIS_EDGE_META,
                 "File-locality of a call edge — whether caller and "
                 "callee live in the same source file ('same_file') or "
