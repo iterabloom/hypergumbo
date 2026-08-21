@@ -537,7 +537,12 @@ def _extract_edges_from_file(
                                     origin=PASS_ID,
                                     origin_run_id=run_id,
                                     evidence_type="ast_call",
-                                    meta={"call_construct": "remote_external"},
+                                    # INV-tadup: NOT "remote_external". The suffix encoded
+                                    # whether the resolver found the callee, which is
+                                    # already recoverable from ``dst`` (a synthetic
+                                    # external node id vs an in-repo symbol id). The
+                                    # construct is the same either way: ``mod:func(args)``.
+                                    meta={"call_construct": "remote"},
                                 )
                                 edges.append(edge)
                 else:
