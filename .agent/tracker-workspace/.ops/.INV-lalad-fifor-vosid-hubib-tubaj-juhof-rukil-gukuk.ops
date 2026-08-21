@@ -71,3 +71,12 @@
   clock: 7  # 3531
   nonce: '3531'  # 3531
   message: "SATISFIED with behavioral evidence. Merged a134baac5c (auto-pr rebased; verified by content on origin/dev). THE ITEM'S OWN FILED REPRO, re-run on the merged tree -- subject arm subprocess.Popen(sys.stdin.read()) moved from confirmed_with_caveats / exit 3 / evidence_count=0 to VIOLATED / exit 1 / evidence_count=2 with analysis_methods={'ddg': 2}, and the control arm subprocess.run(...) is UNCHANGED at violated / exit 1 / 2. Both arms now agree, which was the stated acceptance criterion rather than merely 'instantiates produces some finding'. FIX SHAPE, per the design recorded above: NOT an appended literal. call_family_edge_types() was added to axis_meta_keys reading call_construct's applicable_edge_types (declared by WI-toruz), and both TAINT_CALL_EDGE_TYPES and verify_claims._CALL_SITE_EDGE_TYPES now UNION that with their own extras. The derive-wholesale trap the design flagged is pinned by four tests: three assert module_attr_ref and dispatches_to survive, and a fourth asserts neither is a call-family member, so the REASON they must be listed explicitly is recorded rather than remembered. VERIFICATION, three independent layers: unit 12963 passed / 100% coverage / mypy ratchet clean; behavioral the A/B above; whole-repo check-self-claims exit 0 with 18 claims unchanged. TAGGED awaits_bakeoff_validation: the fix widens the taint walk corpus-wide and its real-world effect -- recall gained AND any false-positive cost -- is unmeasured on real repositories. The 18 Python PascalCase catalogue candidates enumerated above are now covered BY THE MECHANISM (instantiates is traversable), but none of them individually has a live repro, so do not read this closure as 19 measured fixes: it is 1 measured plus a mechanism that necessarily covers the rest."  # 3531
+- op: update  # 5c03
+  at: '2026-08-21T03:06:49Z'  # 5c03
+  by: agent  # 5c03
+  actor: jgstern_agent  # 5c03
+  clock: 8  # 5c03
+  nonce: 5c03  # 5c03
+  set: {}  # 5c03
+  remove:  # 5c03
+    tags: [awaits_bakeoff_validation]  # 5c03
