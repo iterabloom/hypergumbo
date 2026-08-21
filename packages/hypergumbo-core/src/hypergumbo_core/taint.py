@@ -58,6 +58,7 @@ from typing import (
 
 import yaml
 
+from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
 from .ir import symbol_name_slot, symbol_path_slot
 
@@ -1601,8 +1602,18 @@ def _module_from_symbol_path(symbol_id: str) -> str:
 # bridges folding into ``calls`` + ``meta["bridge_kind"]`` continue to
 # match; bridge entries become dead-but-harmless and get pruned in
 # Phase 4.
-TAINT_CALL_EDGE_TYPES = frozenset({
-    "calls",
+# INV-lalad: the call-family half is DERIVED, not listed. It was
+# ``frozenset({"calls", ...})`` — a private copy that silently disagreed with
+# the registry once ``instantiates`` joined the family, and the disagreement
+# was measurable: ``subprocess.Popen(tainted)`` verified CLEAN while
+# ``subprocess.run(tainted)`` verified VIOLATED, because py.py types a
+# PascalCase ``module.Attr()`` as ``instantiates`` and this set could not
+# traverse it. Reading ``call_family_edge_types()`` means a future addition to
+# the call family reaches taint automatically.
+#
+# UNION, never replace. The two entries below are taint-specific and are NOT
+# call constructs; deriving this whole set from the registry would delete them.
+TAINT_CALL_EDGE_TYPES = call_family_edge_types() | frozenset({
     # WI-lokuv: attribute-read edges for IO primitives declared under
     # ``attributes:`` in io_primitives YAML (os.environ, sys.argv, ...).
     # Emitted by the Python analyzer per WI-guhok; extending to the
