@@ -55,6 +55,14 @@ fs_write:
     functions: [writeFile, appendFile]
   - module: System.IO
     functions: [hPutStr, hPutStrLn, hPutChar, hPrint, hPutBuf, hPutBufNonBlocking, hSetFileSize, hSetBuffering, hFlush, hClose]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Handle-based output. INV-vaduk: EXACTLY ONE of fs_write / logging is
+      true per call and the call site cannot know which, because the answer
+      is which Handle was passed -- stderr reads as logging, a file handle
+      as fs_write. Same shape as C unistd.write depending on the fd. The
+      `logging` row already said so in prose ("stderr handle used for
+      logging"); this is that sentence made machine-readable.
   - module: System.Directory
     functions: [createDirectory, createDirectoryIfMissing, removeFile, removeDirectory, removeDirectoryRecursive, removePathForcibly, renameFile, renameDirectory, copyFile, copyFileWithMetadata, setPermissions, setCurrentDirectory]
   - module: Data.ByteString
@@ -109,7 +117,14 @@ logging:
     functions: [putStr, putStrLn, print, putChar]
   - module: System.IO
     functions: [hPutStr, hPutStrLn, hPrint, hPutChar]
-    notes: "Handle-based output; stderr handle used for logging"
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Handle-based output. INV-vaduk: EXACTLY ONE of fs_write / logging is
+      true per call and the call site cannot know which, because the answer
+      is which Handle was passed -- stderr reads as logging, a file handle
+      as fs_write. Same shape as C unistd.write depending on the fd. The
+      `logging` row already said so in prose ("stderr handle used for
+      logging"); this is that sentence made machine-readable.
   - module: Debug.Trace
     functions: [trace, traceShow, traceShowId, traceIO, traceM, traceShowM, traceStack]
 
@@ -122,7 +137,15 @@ db_read:
     functions: [readMVar, takeMVar, tryTakeMVar, tryReadMVar, newMVar, newEmptyMVar, isEmptyMVar]
   - module: Control.Concurrent.STM
     functions: [readTVar, readTVarIO, newTVar, newTVarIO, atomically]
-    notes: "Software Transactional Memory"
+    boundary_ruling: unruled
+    notes: >-
+      Software Transactional Memory. INV-vaduk OPEN QUESTION, declared
+      rather than left blank: newTVar / newTVarIO appear under BOTH
+      db_read and db_write, and creating a TVar is neither. The prior
+      question is whether the db_* classification of the whole
+      Data.IORef / STRef / MVar / STM family is right at all -- these are
+      in-process mutable references, not a database -- which is a
+      vocabulary decision beyond this row.
 
 db_write:
   - module: Data.IORef
@@ -133,6 +156,15 @@ db_write:
     functions: [putMVar, tryPutMVar, modifyMVar, modifyMVar_, swapMVar]
   - module: Control.Concurrent.STM
     functions: [writeTVar, modifyTVar, modifyTVar', newTVar, newTVarIO]
+    boundary_ruling: unruled
+    notes: >-
+      Software Transactional Memory. INV-vaduk OPEN QUESTION, declared
+      rather than left blank: newTVar / newTVarIO appear under BOTH
+      db_read and db_write, and creating a TVar is neither. The prior
+      question is whether the db_* classification of the whole
+      Data.IORef / STRef / MVar / STM family is right at all -- these are
+      in-process mutable references, not a database -- which is a
+      vocabulary decision beyond this row.
 
 process_send:
   - module: Control.Concurrent

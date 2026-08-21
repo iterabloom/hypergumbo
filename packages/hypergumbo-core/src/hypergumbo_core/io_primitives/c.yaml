@@ -39,6 +39,15 @@ fs_read:
     functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf, fseek, rewind, ungetc, ftell]
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      INV-vaduk: EXACTLY ONE of this primitive's boundaries is true per call
+      and the call site cannot know which -- an fd's nature is established
+      where it was opened, not where it is read or written. Declared rather
+      than left blank because absence used to mean both "ruled undecidable"
+      and "nobody looked". The fs_* row is never wrong; the ipc_*/net_* rows
+      are the speculative ones, so today's behaviour over-reports rather than
+      under-reports.
   - module: dirent
     functions: [opendir, readdir, scandir]
   - module: sys/stat
@@ -53,6 +62,15 @@ fs_write:
     notes: "POSIX temp file/dir creation"
   - module: unistd
     functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      INV-vaduk: EXACTLY ONE of this primitive's boundaries is true per call
+      and the call site cannot know which -- an fd's nature is established
+      where it was opened, not where it is read or written. Declared rather
+      than left blank because absence used to mean both "ruled undecidable"
+      and "nobody looked". The fs_* row is never wrong; the ipc_*/net_* rows
+      are the speculative ones, so today's behaviour over-reports rather than
+      under-reports.
   - module: sys/stat
     functions: [mkdir, chmod]
 
@@ -61,6 +79,8 @@ net_send:
     functions: [connect, send, sendto, sendmsg]
   - module: unistd
     functions: [write]
+    boundary_ruling: call_site_undecidable
+    notes: "INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong."
     notes: "write() on a socket fd"
 
 net_recv:
@@ -68,6 +88,8 @@ net_recv:
     functions: [socket, bind, listen, accept, recv, recvfrom, recvmsg]
   - module: unistd
     functions: [read]
+    boundary_ruling: call_site_undecidable
+    notes: "INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong."
     notes: "read() on a socket fd"
 
 subprocess:
@@ -89,14 +111,16 @@ env_read:
 ipc_send:
   - module: unistd
     functions: [write]
-    notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...)"
+    boundary_ruling: call_site_undecidable
+    notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...). INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call and the fd's nature is established where it was opened."
 
 ipc_recv:
   - module: stdio
     attributes: [stdin]
   - module: unistd
     functions: [read]
-    notes: "read(STDIN_FILENO, ...)"
+    boundary_ruling: call_site_undecidable
+    notes: "read(STDIN_FILENO, ...). INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call and the fd's nature is established where it was opened."
 
 logging:
   # WI-dutah: stdio.{stdout,stderr} are terminal output, not IPC. Same

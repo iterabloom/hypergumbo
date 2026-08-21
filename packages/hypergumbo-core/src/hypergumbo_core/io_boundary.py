@@ -61,7 +61,7 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Final, Iterable, Mapping, Optional, Sequence
 
 import yaml
 
@@ -518,6 +518,18 @@ def gate_named_entry(hits, name, module_hint, ambiguous_names,
 # Data model
 # ---------------------------------------------------------------------------
 
+BOUNDARY_RULING_UNDECIDABLE: Final[str] = "call_site_undecidable"
+BOUNDARY_RULING_UNRULED: Final[str] = "unruled"
+
+VALID_BOUNDARY_RULINGS: Final[frozenset[str]] = frozenset({
+    BOUNDARY_RULING_UNDECIDABLE,
+    BOUNDARY_RULING_UNRULED,
+})
+
+MULTI_BOUNDARY_REASON_MODE: Final[str] = "mode"
+MULTI_BOUNDARY_REASON_SIMULTANEOUS: Final[str] = "simultaneous"
+
+
 @dataclass(frozen=True)
 class IoPrimitive:
     """A single I/O primitive function or method.
@@ -565,6 +577,32 @@ class IoPrimitive:
     kind: str  # "function" or "method"
     notes: str = ""
     simultaneous: bool = False
+    boundary_ruling: Optional[str] = None
+    """Why this primitive is catalogued under several boundaries (INV-vaduk).
+
+    ``None`` for a single-boundary primitive, and for the two shapes whose
+    reason is already recoverable from elsewhere — mode-discrimination (read
+    from the mode-argument table) and :attr:`simultaneous`. Ask
+    :func:`multi_boundary_reason`, which is the one predicate that consults
+    all three; this attribute alone answers only part of the question.
+
+    The two values it does carry:
+
+    * ``call_site_undecidable`` — EXACTLY ONE boundary is true and the call
+      site cannot know which, because the answer was established elsewhere.
+      C's ``unistd.write`` is fs_write, ipc_send or net_send depending on
+      what the fd IS; haskell's ``hPutStrLn`` is fs_write or logging
+      depending on which Handle it is given, which its own ``logging`` row
+      already says in prose ("stderr handle used for logging").
+    * ``unruled`` — an open question, deliberately visible rather than
+      absent. Following the ``write_discipline: unaudited`` precedent: debt a
+      gate counts beats debt that absence hides.
+
+    BEFORE THIS FIELD, ABSENCE MEANT BOTH. A census of the 15 shipped
+    catalogues found 29 multi-boundary primitives, 17 declaring a
+    discriminator and 12 declaring nothing — and no consumer or reviewer
+    could tell C's deliberately-undecidable ``unistd.write`` from haskell's
+    ``newTVar``, which is declared ``[db_read, db_write]`` and is neither."""
 
     @property
     def qualified_name(self) -> str:
@@ -1155,6 +1193,21 @@ class IoBoundaryCatalog:
                 # beside the rows it qualifies; the cross-section agreement
                 # check lives in ``simultaneous_boundaries_for``.
                 simultaneous = bool(entry.get("simultaneous", False))
+                # INV-vaduk. Same row-level placement and same
+                # rows-must-agree discipline as ``simultaneous`` above; the
+                # cross-section check lives in ``multi_boundary_reason``.
+                boundary_ruling = entry.get("boundary_ruling")
+                if boundary_ruling is not None:
+                    boundary_ruling = str(boundary_ruling)
+                    if boundary_ruling not in VALID_BOUNDARY_RULINGS:
+                        raise ValueError(
+                            f"{language}: {module}.{entry.get('functions') or entry.get('methods')}"
+                            f" declares boundary_ruling={boundary_ruling!r}; "
+                            f"expected one of {sorted(VALID_BOUNDARY_RULINGS)}. "
+                            f"An unrecognised value would be dropped by the "
+                            f"row reader and the row would read as ruled "
+                            f"while resolving to nothing."
+                        )
 
                 for func_name in entry.get("functions", []):
                     primitives.append(IoPrimitive(
@@ -1164,6 +1217,7 @@ class IoBoundaryCatalog:
                         kind="function",
                         notes=notes,
                         simultaneous=simultaneous,
+                        boundary_ruling=boundary_ruling,
                     ))
                 for method_name in entry.get("methods", []):
                     primitives.append(IoPrimitive(
@@ -1173,6 +1227,7 @@ class IoBoundaryCatalog:
                         kind="method",
                         notes=notes,
                         simultaneous=simultaneous,
+                        boundary_ruling=boundary_ruling,
                     ))
                 for attr_name in entry.get("attributes", []):
                     primitives.append(IoPrimitive(
@@ -1182,6 +1237,7 @@ class IoBoundaryCatalog:
                         kind="attribute",
                         notes=notes,
                         simultaneous=simultaneous,
+                        boundary_ruling=boundary_ruling,
                     ))
 
         ambiguous = frozenset(data.get("ambiguous_names", []))
@@ -1713,6 +1769,92 @@ def mode_discriminated_primitives(
     docstring enumerates from collapsing into one.
     """
     return _mode_discriminated_keys(catalog.primitives)
+
+
+def multi_boundary_reason(
+    catalog: IoBoundaryCatalog,
+    qualified_name: str,
+) -> Optional[str]:
+    """WHY is this primitive catalogued under several boundaries? (INV-vaduk)
+
+    The one predicate every consumer should ask. Returns ``None`` for a
+    single-boundary primitive and for one the catalogue does not carry;
+    otherwise exactly one of:
+
+    * :data:`MULTI_BOUNDARY_REASON_MODE` — an argument settles it per call
+      (``builtins.open``'s mode string). Checked FIRST, because a
+      mode-discriminated primitive is fully resolved at match time and the
+      other reasons would be answering a question that no longer exists.
+    * :data:`MULTI_BOUNDARY_REASON_SIMULTANEOUS` — every boundary is true at
+      once (``scala.sys.process.Process.apply`` launches AND writes).
+    * :data:`BOUNDARY_RULING_UNDECIDABLE` — exactly one is true; the call
+      site cannot know which.
+    * :data:`BOUNDARY_RULING_UNRULED` — an open question.
+
+    Before this existed the four were not distinguishable: mode and
+    simultaneous were each recoverable from their own source and the other
+    two were both spelled "nothing declared". Consumers that need to know
+    whether a boundary set is trustworthy could not ask.
+
+    Raises:
+        ValueError: if the primitive's rows disagree about
+            ``boundary_ruling``. The ruling is a property of the PRIMITIVE
+            while its rows live in different YAML sections by construction —
+            one per boundary — so a half-declared pair would be live or inert
+            depending on which section a later editor happened to update.
+            That is the row-order dependence this whole mechanism removes,
+            wearing a new hat, so it fails loudly exactly as
+            ``simultaneous_boundaries_for`` does.
+    """
+    rows = [p for p in catalog.primitives if p.qualified_name == qualified_name]
+    if len(rows) < 2:
+        return None
+    if len({p.boundary for p in rows}) < 2:
+        return None
+
+    short = qualified_name.rsplit(".", 1)[-1]
+    discriminated = mode_discriminated_names(catalog)
+    if qualified_name in discriminated or short in discriminated:
+        return MULTI_BOUNDARY_REASON_MODE
+
+    if catalog.simultaneous_boundaries_for(qualified_name):
+        return MULTI_BOUNDARY_REASON_SIMULTANEOUS
+
+    rulings = {p.boundary_ruling for p in rows}
+    if len(rulings) > 1:
+        declared = sorted(
+            f"{p.boundary}={p.boundary_ruling!r}" for p in rows
+        )
+        raise ValueError(
+            f"{qualified_name}: rows disagree about `boundary_ruling` "
+            f"({declared}). It is a property of the primitive, so every row "
+            f"for it must agree — a half-declared pair silently reintroduces "
+            f"the row-order dependence (INV-zumin/INV-vaduk) it exists to "
+            f"remove."
+        )
+    return rulings.pop()
+
+
+def unruled_multi_boundary_primitives(
+    catalogs: "Mapping[str, IoBoundaryCatalog]",
+) -> list[str]:
+    """``lang:qualified_name`` for every primitive with an unruled boundary set.
+
+    Visible debt, reported rather than hidden — the
+    ``write_discipline: unaudited`` pattern. A gate pins this list exactly, so
+    a new open question cannot be added quietly and a resolved one must be
+    struck from the pin.
+    """
+    out: list[str] = []
+    for lang, catalog in catalogs.items():
+        names = {p.qualified_name for p in catalog.primitives}
+        for qualified_name in sorted(names):
+            if (
+                multi_boundary_reason(catalog, qualified_name)
+                == BOUNDARY_RULING_UNRULED
+            ):
+                out.append(f"{lang}:{qualified_name}")
+    return sorted(out)
 
 
 def mode_discriminated_names(catalog: IoBoundaryCatalog) -> frozenset[str]:
