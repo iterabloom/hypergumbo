@@ -133,17 +133,6 @@ KNOWN_HOLES: dict[str, str] = {
         "for `class Square implements Shape` — so type_hierarchy has nothing to "
         "build its maps from."
     ),
-    "solidity": (
-        "PRODUCER (INV-lapas). The consumer-vocabulary half of this cell is "
-        "FIXED: INV-nosoz routed type_hierarchy through the registry, so the "
-        "`inherits` edge now reaches the dispatch map. What remains is the "
-        "second cause this reason already named — solidity emits contract "
-        "members as kind='function', and link_type_hierarchy indexes "
-        "candidates with `sym.kind != \'method\'`, so the edge arrives and "
-        "finds no members. Measured on openzeppelin-contracts: 2,025 members "
-        "of type-like containers, 100% kind='function', and a dispatch delta "
-        "of ZERO across 516 `inherits` edges."
-    ),
     "elixir": (
         "PRODUCER (WI-vitas). `@callback area() :: integer` produces no symbol at all, so "
         "the behaviour's required function does not exist, and `@behaviour "

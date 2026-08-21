@@ -185,24 +185,17 @@ def _edge(src: str, dst: str, edge_type: str, evidence_type: str) -> Edge:
 class TestSolidityInheritsGetsDispatch:
     """openzeppelin-contracts: 516 ``inherits`` edges, 0 dispatches.
 
-    Scope warning, stated because the corpus contradicts the obvious reading
-    of these tests: fixing the edge-type vocabulary does **not**, on its own,
-    give Solidity dispatch on a real repository. Re-measured on
-    openzeppelin-contracts after this change, the delta is **zero**.
+    Solidity needed TWO fixes, on two different axes, and this file pins the
+    first. INV-nosoz routed ``type_hierarchy`` through the registry so the
+    ``inherits`` edge reaches the dispatch map; measured alone, that moved
+    openzeppelin-contracts by **zero**, because the map it now reached was
+    empty. INV-lapas supplied the members: Solidity emitted contract members
+    as ``kind="function"`` (2,025 of them, none ``kind="method"``) while
+    ``link_type_hierarchy`` indexes with a literal ``sym.kind != "method"``.
 
-    The reason is a second, independent cause on a different axis. Solidity
-    emits contract members as ``kind="function"`` — 2,025 members of
-    type-like containers, none of them ``kind="method"`` — and
-    ``link_type_hierarchy`` indexes candidates with a literal
-    ``if sym.kind != "method": continue``. So the ``inherits`` edge now
-    reaches the dispatch map and finds no members waiting there. That cause
-    is filed separately; it is a ``Symbol.kind`` producer gap, not an
-    ``Edge.edge_type`` vocabulary gap, and it closes on its own evidence.
-
-    What these tests therefore pin is exactly what was fixed: the edge
-    reaches the map. ``test_solidity_members_are_functions_not_methods``
-    below pins the part that is still broken, so this file cannot be read as
-    claiming Solidity works.
+    With both fixed, openzeppelin-contracts goes **0 -> 877** Solidity
+    dispatches. Neither fix produces that alone, which is why they were
+    filed and measured separately rather than folded together.
     """
 
     def test_solidity_inherits_reaches_the_dispatch_map(self) -> None:
@@ -235,12 +228,15 @@ class TestSolidityInheritsGetsDispatch:
         )
         assert dispatches[0].dst == child_m.id
 
-    def test_solidity_members_are_functions_not_methods(self) -> None:
-        """The REMAINING Solidity gap, pinned so it cannot be forgotten.
+    def test_file_scope_functions_still_do_not_dispatch(self) -> None:
+        """A file-scope ``function`` is not a member, and must not dispatch.
 
-        Identical fixture to the test above except the members carry the kind
-        Solidity actually emits. It produces no dispatch, and that is the
-        honest current state — not a regression introduced here.
+        Identical fixture to the test above except the members carry
+        ``kind="function"``. Solidity 0.7+ allows free functions at file
+        scope and INV-lapas deliberately leaves those as ``function``, so
+        this is the discriminating control on that fix: if it starts
+        dispatching, the producer has begun renaming unconditionally rather
+        than reading containment.
         """
         base = _sym("solidity:/a.sol:1-10:Shape:contract", "Shape", "contract",
                     "solidity")
@@ -263,9 +259,9 @@ class TestSolidityInheritsGetsDispatch:
             )
         )
         assert not [e for e in result.edges if e.edge_type == "dispatches_to"], (
-            "Solidity function-kind members now dispatch. If that is "
-            "deliberate, delete this test and re-measure openzeppelin-"
-            "contracts (it was 0 dispatches across 516 inherits edges)."
+            "A file-scope Solidity function produced a dispatch edge. "
+            "INV-lapas keys the member kind on containment; this suggests it "
+            "has become an unconditional rename."
         )
 
 

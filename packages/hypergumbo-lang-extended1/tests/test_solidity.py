@@ -11,6 +11,16 @@ from hypergumbo_lang_extended1.solidity import (
 )
 
 
+# INV-lapas: these tests select the callable they care about; they do not
+# assert its kind. A Solidity function inside a contract is now a ``method``
+# and a file-scope one stays a ``function``, so a selector pinned to either
+# literal would silently find nothing and the test would fail for a reason
+# unrelated to its subject. The kind contract itself is owned by
+# ``test_solidity_member_kind.py`` — one test file owns it, the rest are
+# agnostic, so a future kind change breaks exactly one file on purpose.
+_CALLABLE_DECL_KINDS = frozenset({"function", "method"})
+
+
 @pytest.fixture
 def temp_repo(tmp_path: Path) -> Path:
     """Create a temporary repository with Solidity files."""
@@ -120,7 +130,7 @@ contract Token {
 
         result = analyze_solidity(temp_repo)
 
-        functions = [s for s in result.symbols if s.kind == "function"]
+        functions = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS]
         assert any("transfer" in s.name for s in functions)
 
     def test_body_bearing_symbols_carry_shape_id(self, temp_repo: Path) -> None:
@@ -145,7 +155,7 @@ contract C {
 """)
         result = analyze_solidity(temp_repo)
 
-        functions = [s for s in result.symbols if s.kind == "function"]
+        functions = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS]
         assert functions
         for s in functions:
             assert s.shape_id, f"solidity function {s.name} has no shape_id"
@@ -435,7 +445,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "transfer" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "transfer" in s.name]
         assert len(funcs) == 1
         assert "public" in funcs[0].modifiers
 
@@ -453,7 +463,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "externalFn" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "externalFn" in s.name]
         assert len(funcs) == 1
         assert "external" in funcs[0].modifiers
 
@@ -471,7 +481,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "_internal" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "_internal" in s.name]
         assert len(funcs) == 1
         assert "internal" in funcs[0].modifiers
 
@@ -489,7 +499,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "_secret" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "_secret" in s.name]
         assert len(funcs) == 1
         assert "private" in funcs[0].modifiers
 
@@ -510,8 +520,8 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        view_fn = next(s for s in result.symbols if s.kind == "function" and "getValue" in s.name)
-        pure_fn = next(s for s in result.symbols if s.kind == "function" and "compute" in s.name)
+        view_fn = next(s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "getValue" in s.name)
+        pure_fn = next(s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "compute" in s.name)
 
         assert "view" in view_fn.modifiers
         assert "public" in view_fn.modifiers
@@ -532,7 +542,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "noVisibility" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "noVisibility" in s.name]
         assert len(funcs) == 1
         # No visibility keyword → empty modifiers
         assert funcs[0].modifiers == []
@@ -551,7 +561,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "externalView" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "externalView" in s.name]
         assert len(funcs) == 1
         assert "external" in funcs[0].modifiers
         assert "view" in funcs[0].modifiers
@@ -671,7 +681,7 @@ contract AccessControl {
         result = analyze_solidity(temp_repo)
 
         # Both _checkRole overloads should exist as symbols
-        check_role_syms = [s for s in result.symbols if "._checkRole" in s.name and s.kind == "function"]
+        check_role_syms = [s for s in result.symbols if "._checkRole" in s.name and s.kind in _CALLABLE_DECL_KINDS]
         assert len(check_role_syms) == 2, f"Expected 2 _checkRole symbols, got {len(check_role_syms)}"
 
         # Both should be connected (not orphaned)
@@ -706,7 +716,7 @@ contract Token {
 
         # Get both transfer symbols
         transfer_syms = sorted(
-            [s for s in result.symbols if "transfer" in s.name and s.kind == "function"],
+            [s for s in result.symbols if "transfer" in s.name and s.kind in _CALLABLE_DECL_KINDS],
             key=lambda s: s.span.start_line,
         )
         assert len(transfer_syms) == 2
@@ -760,7 +770,7 @@ contract Token {
             f"got {[e.evidence_type for e in emit_edges]}"
         )
 
-        transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind == "function")
+        transfer_func = next(s for s in result.symbols if "transfer" in s.name and s.kind in _CALLABLE_DECL_KINDS)
         transfer_event = next(s for s in result.symbols if "Transfer" in s.name and s.kind == "event")
         assert any(e.src == transfer_func.id and e.dst == transfer_event.id for e in emit_edges)
 
@@ -879,11 +889,11 @@ contract Token {
 
         # Find the edge from safeTransfer → transfer
         safe_transfer = next(
-            (s for s in result.symbols if "safeTransfer" in s.name and s.kind == "function"),
+            (s for s in result.symbols if "safeTransfer" in s.name and s.kind in _CALLABLE_DECL_KINDS),
             None,
         )
         transfer = next(
-            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind == "function"),
+            (s for s in result.symbols if s.name.endswith("transfer") and "safe" not in s.name.lower() and s.kind in _CALLABLE_DECL_KINDS),
             None,
         )
         assert safe_transfer is not None
@@ -917,11 +927,11 @@ contract Token {
         edges = result.edges
 
         delegate = next(
-            (s for s in result.symbols if "delegateTransfer" in s.name and s.kind == "function"),
+            (s for s in result.symbols if "delegateTransfer" in s.name and s.kind in _CALLABLE_DECL_KINDS),
             None,
         )
         transfer = next(
-            (s for s in result.symbols if s.name.endswith("transfer") and "delegate" not in s.name.lower() and s.kind == "function"),
+            (s for s in result.symbols if s.name.endswith("transfer") and "delegate" not in s.name.lower() and s.kind in _CALLABLE_DECL_KINDS),
             None,
         )
         assert delegate is not None
@@ -962,7 +972,7 @@ contract Vault {
         edges = result.edges
 
         withdraw = next(
-            (s for s in result.symbols if "withdraw" in s.name and s.kind == "function"),
+            (s for s in result.symbols if "withdraw" in s.name and s.kind in _CALLABLE_DECL_KINDS),
             None,
         )
         assert withdraw is not None
@@ -1025,11 +1035,11 @@ contract Token is ERC165 {
         # Token.supportsInterface overrides ERC165.supportsInterface
         token_fn = next(
             s for s in result.symbols
-            if s.name == "Token.supportsInterface" and s.kind == "function"
+            if s.name == "Token.supportsInterface" and s.kind in _CALLABLE_DECL_KINDS
         )
         parent_fn = next(
             s for s in result.symbols
-            if s.name == "ERC165.supportsInterface" and s.kind == "function"
+            if s.name == "ERC165.supportsInterface" and s.kind in _CALLABLE_DECL_KINDS
         )
         assert any(
             e.src == token_fn.id and e.dst == parent_fn.id
@@ -1063,7 +1073,7 @@ contract Token is IERC20, ERC20Base {
         # Token.totalSupply should override both IERC20.totalSupply and ERC20Base.totalSupply
         token_ts = next(
             s for s in result.symbols
-            if s.name == "Token.totalSupply" and s.kind == "function"
+            if s.name == "Token.totalSupply" and s.kind in _CALLABLE_DECL_KINDS
         )
         overridden_ids = {e.dst for e in override_edges if e.src == token_ts.id}
         assert len(overridden_ids) >= 2, (
@@ -1091,7 +1101,7 @@ contract Child is Base {
         override_edges = [e for e in result.edges if e.edge_type == "overrides"]
         child_only = next(
             s for s in result.symbols
-            if s.name == "Child.childOnly" and s.kind == "function"
+            if s.name == "Child.childOnly" and s.kind in _CALLABLE_DECL_KINDS
         )
         # childOnly should not have any override edges
         assert not any(e.src == child_only.id for e in override_edges), (
@@ -1132,10 +1142,10 @@ contract Token {
         result = analyze_solidity(temp_repo)
 
         mint_fn = next(
-            s for s in result.symbols if "mint" in s.name and s.kind == "function"
+            s for s in result.symbols if "mint" in s.name and s.kind in _CALLABLE_DECL_KINDS
         )
         add_fn = next(
-            s for s in result.symbols if s.name == "SafeMath.add" and s.kind == "function"
+            s for s in result.symbols if s.name == "SafeMath.add" and s.kind in _CALLABLE_DECL_KINDS
         )
 
         call_edges = [
@@ -1176,10 +1186,10 @@ contract Token {
         result = analyze_solidity(temp_repo)
 
         compute_fn = next(
-            s for s in result.symbols if "compute" in s.name and s.kind == "function"
+            s for s in result.symbols if "compute" in s.name and s.kind in _CALLABLE_DECL_KINDS
         )
         math_a_add = next(
-            s for s in result.symbols if s.name == "MathA.add" and s.kind == "function"
+            s for s in result.symbols if s.name == "MathA.add" and s.kind in _CALLABLE_DECL_KINDS
         )
 
         call_edges = [
@@ -1227,11 +1237,11 @@ contract Reader {
 
         fetch_fn = next(
             s for s in result.symbols
-            if "fetch" in s.name and s.kind == "function"
+            if "fetch" in s.name and s.kind in _CALLABLE_DECL_KINDS
         )
         load_fn = next(
             s for s in result.symbols
-            if s.name == "Memory.load" and s.kind == "function"
+            if s.name == "Memory.load" and s.kind in _CALLABLE_DECL_KINDS
         )
 
         call_edges = [
@@ -1269,6 +1279,7 @@ pragma solidity ^0.8.0;
 
 import "./Memory.sol";
 
+
 using Memory for Slice;
 
 contract Reader {
@@ -1282,11 +1293,11 @@ contract Reader {
 
         fetch_fn = next(
             s for s in result.symbols
-            if "fetch" in s.name and s.kind == "function"
+            if "fetch" in s.name and s.kind in _CALLABLE_DECL_KINDS
         )
         load_fn = next(
             s for s in result.symbols
-            if s.name == "Memory.load" and s.kind == "function"
+            if s.name == "Memory.load" and s.kind in _CALLABLE_DECL_KINDS
         )
 
         call_edges = [
@@ -1317,7 +1328,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "transfer" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "transfer" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature is not None
         assert "address to" in funcs[0].signature
@@ -1337,7 +1348,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "getBalance" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "getBalance" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature is not None
         assert "returns" in funcs[0].signature
@@ -1354,7 +1365,7 @@ contract Token {
 """)
 
         result = analyze_solidity(temp_repo)
-        funcs = [s for s in result.symbols if s.kind == "function" and "empty" in s.name]
+        funcs = [s for s in result.symbols if s.kind in _CALLABLE_DECL_KINDS and "empty" in s.name]
         assert len(funcs) == 1
         assert funcs[0].signature == "()"
 
@@ -1461,7 +1472,7 @@ contract C {
 """)
         result = analyze_solidity(temp_repo)
         fn = next(s for s in result.symbols
-                  if s.kind == "function" and "classify" in s.name)
+                  if s.kind in _CALLABLE_DECL_KINDS and "classify" in s.name)
         # base 1 + 3 if + 1 for + 1 short-circuit (&&) = 6
         assert fn.cyclomatic_complexity is not None
         assert fn.cyclomatic_complexity >= 5
@@ -1481,7 +1492,7 @@ contract C {
 """)
         result = analyze_solidity(temp_repo)
         fn = next(s for s in result.symbols
-                  if s.kind == "function" and "noop" in s.name)
+                  if s.kind in _CALLABLE_DECL_KINDS and "noop" in s.name)
         assert fn.cyclomatic_complexity == 1
         assert fn.line_span is not None
 
@@ -1660,6 +1671,11 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
     (tmp_path / "Token.sol").write_text(
         "// SPDX-License-Identifier: MIT\n"
         "pragma solidity ^0.8.0;\n"
+        # INV-lapas: a file-scope free function AND a contract member, so this
+        # covers both callable kinds. Before the fixture carried only the
+        # member, and when contract members became ``method`` the ``function``
+        # arm silently had nothing to check.
+        "function freeHelper(uint256 x) pure returns (uint256) { return x; }\n"
         "contract Token {\n"
         "    event Transfer(address indexed from, address indexed to, uint256 value);\n"
         "    constructor(uint256 supply) {}\n"
@@ -1668,7 +1684,7 @@ def test_callable_kinds_carry_stable_id(tmp_path: Path) -> None:
         "}\n"
     )
     result = analyze_solidity(tmp_path)
-    for kind in ("function", "constructor", "modifier", "event"):
+    for kind in ("function", "method", "constructor", "modifier", "event"):
         syms = [s for s in result.symbols if s.kind == kind]
         assert syms, f"no {kind} symbols emitted"
         for s in syms:
@@ -1689,7 +1705,7 @@ def test_function_overloads_get_distinct_stable_ids(tmp_path: Path) -> None:
     result = analyze_solidity(tmp_path)
     mints = [
         s for s in result.symbols
-        if s.kind == "function" and s.name.endswith("mint")
+        if s.kind in _CALLABLE_DECL_KINDS and s.name.endswith("mint")
     ]
     assert len(mints) == 2
     assert mints[0].stable_id is not None

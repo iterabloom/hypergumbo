@@ -46,6 +46,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -85,7 +86,7 @@ def _collect_solidity_functions(
     for sym in symbols:
         if sym.language != "solidity":
             continue
-        if sym.kind not in ("function", "constructor"):
+        if sym.kind not in SOLIDITY_CALLABLE_DECLARATION_KINDS:
             continue
         result[sym.name].append(sym)
         # Also index by unqualified name for cross-language matching.
@@ -264,7 +265,8 @@ def _count_solidity_functions(ctx: LinkerContext) -> int:
     """Count Solidity function symbols."""
     return sum(
         1 for sym in ctx.symbols
-        if sym.language == "solidity" and sym.kind in ("function", "constructor")
+        if sym.language == "solidity"
+        and sym.kind in SOLIDITY_CALLABLE_DECLARATION_KINDS
     )
 
 
