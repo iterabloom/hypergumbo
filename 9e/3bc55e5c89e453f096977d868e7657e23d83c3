@@ -1,0 +1,83 @@
+Original commit body from f4a751f96d8a401c35a1103c6b397dd84d60f4e7:
+
+INV-fazim's consumer clause. `_match_propagation_entry`'s is_resolved arm
+compares a catalogue entry's declared module against the dst symbol's own path.
+When the dst carried no path evidence -- external-shaped, or malformed enough
+that `_extract_callee_module` returns falsy -- it fell through to
+`return hits[0]`: an ungated bare-name match with no receiver verification at
+all. That is the same escape WI-damir measured 30 of 30 FALSE on a nine-repo
+cohort (caddy's `func Log()` as a logging sink 18 times; d3's `log()`, the
+LOGARITHM, as console.log), reached through a different door -- not by being a
+first-party symbol, but by being flagged resolved while carrying nothing to
+verify. ADR-0037 ruling 4 makes the flag authoritative, so a producer that set
+it wrongly landed straight here. It now refuses.
+
+THE LICENCE IS A MEASUREMENT, AND THE ITEM REQUIRED A NON-TAUTOLOGICAL ONE.
+Both obvious measurements are tautologies: finalize's edge-resolution sub-step
+sets is_resolved=True IFF the dst is an in-repo node -- whose path slot is a
+real path -- so counting "edges resolved at an external path slot" returns zero
+whether or not the branch is reachable. It measures finalize's definition, not
+the branch. The thread warned twice against filing a third such zero.
+
+So the branch was OBSERVED during real verify-claims runs, recording
+production's own inputs and classifying them with production's own
+`_module_from_symbol_path`:
+
+    repo      calls    is_resolved=True    escape condition
+    sops       7,738            2,592            0
+    grype     25,178            9,380            0
+    act       10,696            3,222            0
+    poetry    24,660            9,666            0
+    winston    1,936            1,190            0
+    knex      28,214           22,466            0
+    TOTAL     98,422           48,516            0
+
+Five languages. The counted condition is a SUPERSET of the branch (it ignores
+the non-empty `hits` requirement), so it errs toward over-reporting. A positive
+control driving the branch deliberately fires it, so the zero is a property of
+the inputs and not of a probe that never attached.
+
+That is what licenses the change, because this index also backs SANITIZER
+registration: losing a sanitizer match loses a barrier, which moves flows the
+opposite way from losing a sink. A line that never executes can do neither.
+
+86 FIXTURES WERE THE ESCAPE'S ONLY CONSUMERS. Correcting the branch reddened 22
+tests, none a real regression: their edge dicts pair an external-shaped dst with
+NO is_resolved key, so they took the resolved arm through
+`edge.get('is_resolved', True)` -- a fail-open default. Declaring
+is_resolved=False, which is what production stamps for an external dst
+post-finalize, restores every assertion and routes them through
+`_lookup_named_entry`, the arm that owns unresolved callees along with the F3
+untyped-method gate.
+
+The 2026-08-17 note asked for that default to be "confirmed against the finalize
+stage before the consumer gate is designed". Confirmed, and it is DEAD in
+production: all 158,116 edges of a full self-survey carry is_resolved explicitly
+(114,456 true / 43,660 false), none omit it. The default was reachable only from
+hand-built fixtures.
+
+THE SWEEP'S OWN FIRST PASS HAD THE BLIND SPOT ITS PLAYBOOK NAMES. An AST pass
+over edge-dict literals corrected 83 and left 12 red -- all reached through
+helpers building the dst with an f-string, which matches no literal and which
+the fundamental-concept audit lists as producer-emit shape 4, "literal-substring
+grep misses these entirely". Ten of the twelve were in the sanitizer suite, the
+direction this item warns about by name. They were fixture declarations, not
+lost barriers: annotating the two helpers restored all twelve.
+
+AND THE FINDINGS A/B WAS RUN ANYWAY, because the item asks for it in those
+terms rather than for an entailment. Arms differ only in the one hunk; per-arm
+XDG_CACHE_HOME so neither can read the other's behaviour map; sops / poetry /
+winston against the six generic taint claims:
+
+    TOTAL findings  A=52  B=52  delta=0
+
+Every verdict and every count identical, including violated/14, violated/19 and
+violated/6 — so this is not a zero-against-zero comparison. Arm A asserted the
+escape was actually back before measuring.
+
+tests/test_taint_pathless_resolved_match_refused.py pins both refusal cases AND
+two positive controls -- refusing unconditionally would satisfy the refusal
+tests alone.
+
+Racial-Capitalism-Is-Bad: a crab djing in a dinosaur topiary garden café with a class of turtles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
