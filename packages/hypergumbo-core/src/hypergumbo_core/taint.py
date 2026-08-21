@@ -49,6 +49,7 @@ from collections.abc import Set as AbstractSet
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Iterator,
     NamedTuple,
     Optional,
@@ -1662,6 +1663,42 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     )
 
 
+LITERAL_ONLY_ARG_SHAPE: Final[str] = "literal_only"
+
+
+def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
+    """False when this call site provably cannot pass the tainted value.
+
+    INV-fubag. Taint models a flow as the tainted value being an ARGUMENT to
+    the sink call or its RECEIVER. When a producer can prove every argument at
+    a call site is a literal constant -- or that there are no arguments at all
+    -- neither can be the tainted value, and the receiver of a call like
+    ``tempfile.TemporaryDirectory()`` is a module. So the flow is not merely
+    unlikely, it is impossible under the model the tool itself uses. This is a
+    proof, which is why it needs no threshold and costs no recall.
+
+    Measured (docs/measurements/0003): of the 34 adjudicated false positives
+    the construction-edge widening added, 24 were sink calls with no arguments
+    at all. The constructor is the wrong anchor for a constructor-shaped I/O
+    sink -- ``ZipFile(path,'w')`` opens and ``zipp.writestr(...)`` writes -- so
+    anchored there the sink witnesses only "an fs resource was created in this
+    function" and any tainted value in scope produces a flow.
+
+    IT STAYS A SINK WHEN ITS ARGUMENT IS TAINTED. 0003's single true positive
+    is exactly that: mitmproxy's ``ZipFile(path, "w")`` where ``path`` came
+    from ``os.path.expanduser``. This gate must never remove it, which is what
+    the test of that name pins.
+
+    DEFAULT-DENY ON THE SILENCING DIRECTION. Only the one value we can prove
+    safe suppresses; an absent key, an unrelated key, or an unrecognised value
+    all keep the finding. Absence is the state of every edge in every behavior
+    map written before this key existed, and a gate whose default silenced
+    findings would be a false-negative generator on a security analysis.
+    """
+    meta = edge.get("meta") or {}
+    return meta.get("call_arg_shape") != LITERAL_ONLY_ARG_SHAPE
+
+
 def _build_adjacency(
     edges: list[dict[str, Any]],
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -1999,7 +2036,7 @@ def propagate_taint_structural(
             language=language,
             io_mode=edge.get("meta", {}).get("io_mode"),
         )
-        if matched:
+        if matched and _sink_call_can_carry_taint(edge):
             site = (edge["dst"], matched)
             if site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(site)
@@ -2934,6 +2971,11 @@ def propagate_taint_ddg(
             # — i.e. as dead — when it is the deduplication this loop rests
             # on. The structural propagator's identical block keeps ``site``,
             # because there the name is not already taken.
+            if not _sink_call_can_carry_taint(edge):
+                # INV-fubag, through the SHARED predicate: the structural arm
+                # applies the identical gate. Two copies of this question is
+                # how the call-family set drifted across three consumers.
+                continue
             sink_site = (edge["dst"], matched)
             if sink_site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(sink_site)

@@ -109,6 +109,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterator
 
+from hypergumbo_core.axis_meta_keys import call_family_edge_types
 from hypergumbo_core.dataflow import annotate_dataflow_ast, get_dataflow_config
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext, make_pass_id
@@ -5621,6 +5622,111 @@ def _stamp_io_mode(
         edge.meta["io_mode"] = mode
 
 
+LITERAL_ONLY_ARG_SHAPE = "literal_only"
+
+
+def _receiver_cannot_carry_taint(
+    call_node: ast.Call, module_imports: dict[str, str]
+) -> bool:
+    """True when this call has no receiver, or a receiver that is a MODULE.
+
+    THE RECEIVER IS HALF THE QUESTION, and leaving it out produced a false
+    negative that only a measurement caught. Taint models a flow as the tainted
+    value being an argument to the sink call OR THE RECEIVER OF IT. An
+    argument-only rule stamped pretix's::
+
+        Path(DATA_DIR).mkdir(parents=False, exist_ok=True)
+
+    -- both arguments literal, so "cannot carry taint" -- while ``DATA_DIR`` is
+    an environment read and the receiver decides WHICH DIRECTORY IS CREATED.
+    Stamping it silenced six real findings in pretix and three in mitmproxy
+    (``f.write(literal)``, ``logger.warn(literal)``).
+
+    Two shapes are provably safe, and nothing else is:
+
+    * a bare ``Name`` call -- ``open(...)``, ``ZipFile(...)`` -- has no receiver;
+    * ``module.attr(...)`` where the receiver name is a known imported module.
+      A module is not a value the taint walk can reach.
+
+    Every other receiver is a value, and a value may be tainted. That includes
+    ones that look inert (``logger.warn``): proving a module-level logger is
+    untainted needs analysis this producer does not do, and the cost of being
+    wrong is a silenced security finding.
+    """
+    func = call_node.func
+    if isinstance(func, ast.Name):
+        return True
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return func.value.id in module_imports
+    return False
+
+
+def _call_arg_shape(call_node: ast.Call) -> str | None:
+    """``'literal_only'`` when every argument here is provably a literal.
+
+    ARGUMENTS ONLY -- the receiver is a separate question, answered by
+    :func:`_receiver_cannot_carry_taint`, and BOTH must hold before stamping.
+
+    INV-fubag. Returns None -- "cannot prove it" -- for everything else, and
+    that asymmetry is the whole safety argument. The consumer is taint's
+    ``_sink_call_can_carry_taint`` gate, which SILENCES a finding when this is
+    stamped, so an over-stamp is a false negative on a security analysis while
+    an under-stamp is only a missed precision win. Every construct we do not
+    positively recognise as constant must therefore fall through to None:
+
+    * ``f(*args)`` / ``f(**kw)`` hide the argument list entirely.
+    * ``f(x)`` / ``f(dir=x)`` pass a name that may be bound to tainted data.
+    * ``f(x + '/s')`` and ``f(f'{x}')`` LOOK constant and are not — an f-string
+      is ``ast.JoinedStr``, not ``ast.Constant``, and interpolates.
+
+    A call with NO arguments is the vacuous case and is stamped: ``all([])`` is
+    True, and a call passing nothing cannot pass the tainted value. That is the
+    case that dominates the measured false positives (docs/measurements/0003:
+    ``tempfile.TemporaryDirectory()``, ``TemporaryFile()``).
+    """
+    if any(isinstance(arg, ast.Starred) for arg in call_node.args):
+        return None
+    if any(kw.arg is None for kw in call_node.keywords):
+        return None
+    values: list[ast.expr] = list(call_node.args)
+    values.extend(kw.value for kw in call_node.keywords)
+    if all(isinstance(v, ast.Constant) for v in values):
+        return LITERAL_ONLY_ARG_SHAPE
+    return None
+
+
+def _stamp_call_arg_shape(
+    edges: list[Edge],
+    first_new: int,
+    call_node: ast.Call,
+    module_imports: dict[str, str],
+) -> None:
+    """Stamp ``call_arg_shape`` on the call-family edges *call_node* just emitted.
+
+    STAMPED IN ONE PLACE ON PURPOSE. ``_process_call`` emits call edges from
+    fourteen separate ``Edge.create`` sites, and a per-site stamp would be
+    fourteen copies of one rule — the defect shape this repo keeps paying for
+    (three consumers of the call family each kept a private copy that omitted
+    ``instantiates``). Stamping the slice of ``edges`` that this call appended
+    covers every existing site and every site added later, for free.
+
+    Scoped to the CALL FAMILY because that is the key's declared
+    ``applicable_edge_types``: the question "what can these arguments carry"
+    does not arise for an edge that is not an invocation.
+    """
+    if not _receiver_cannot_carry_taint(call_node, module_imports):
+        return
+    shape = _call_arg_shape(call_node)
+    if shape is None:
+        return
+    for edge in edges[first_new:]:
+        if edge.edge_type not in call_family_edge_types():
+            continue
+        meta = dict(edge.meta or {})
+        meta["call_arg_shape"] = shape
+        edge.meta = meta
+
+
 def _process_call(
     call_node: ast.Call,
     caller_symbol: Symbol,
@@ -5661,6 +5767,7 @@ def _process_call(
     module-qualified dst (carrying the inferred module in both the dst id's
     module slot and a structured ``dst_ref``) so io-boundary can classify it.
     """
+    _edges_before_this_call = len(edges)
     if external_var_types is None:  # pragma: no cover - defensive default
         external_var_types = {}
     if method_to_enclosing_class_id is None:  # pragma: no cover - defensive default
@@ -6408,6 +6515,10 @@ def _process_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
+
+    _stamp_call_arg_shape(
+        edges, _edges_before_this_call, call_node, module_imports
+    )
 
 
 def extract_nodes(py_file: Path, global_symbols: dict[str, Symbol] | None = None) -> AnalysisResult:

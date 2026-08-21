@@ -98,7 +98,12 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.1"  # 0.20.1: Symbol.span nullable in the schema (WI-hafap
+SCHEMA_VERSION = "0.20.2"  # 0.20.2: Edge.meta gains ``call_arg_shape``
+# (INV-fubag) — an ADDITION, hence a patch bump. Sparse and opt-in: a producer
+# stamps it only where it can prove the call passes no tainted value, so its
+# ABSENCE is the conservative reading and every artifact written before this
+# version is valid and unchanged under it.
+# 0.20.1: Symbol.span nullable in the schema (WI-hafap
 # Optional[Span] flip). Relaxation only — no producer emits a span-less symbol
 # today, so emitted artifacts are unchanged; consumers that assumed presence
 # should treat span as optional going forward.

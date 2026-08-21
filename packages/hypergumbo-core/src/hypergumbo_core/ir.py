@@ -1083,10 +1083,28 @@ def _absorb_call_lines(kept: Edge, absorbed: Edge) -> None:
     Copy-on-write on ``meta`` (matching the ``referring_paths`` collapse in
     :func:`apply_external_id_remap`) so an edge whose meta dict is shared with
     another record does not gain call sites by aliasing.
+
+    ``call_arg_shape`` MERGES CONSERVATIVELY, and it is a security property
+    rather than a tidiness one (INV-fubag). The survivor of a collapse is the
+    FIRST edge encountered, so without this a function containing both::
+
+        tempfile.TemporaryDirectory()             # literal_only
+        tempfile.TemporaryDirectory(dir=tainted)  # dynamic
+
+    would keep whichever marker happened to arrive first, and taint's
+    ``_sink_call_can_carry_taint`` gate would silence a REAL flow on the
+    strength of a different call site. A false negative on a security analysis
+    is strictly worse than the false positives that gate removes, so the claim
+    "every argument here is a literal" may only survive if it holds of EVERY
+    collapsed site. Any absorbed site that does not assert it clears it.
     """
     lines = set(_edge_call_lines(kept)) | set(_edge_call_lines(absorbed))
     meta = dict(kept.meta or {})
     meta["call_lines"] = sorted(lines)[:_CALL_LINES_CAP]
+    kept_shape = meta.get("call_arg_shape")
+    if kept_shape is not None:
+        if (absorbed.meta or {}).get("call_arg_shape") != kept_shape:
+            del meta["call_arg_shape"]
     kept.meta = meta
 
 
