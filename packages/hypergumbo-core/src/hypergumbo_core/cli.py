@@ -9703,17 +9703,30 @@ Exit codes: 0 = all confirmed; 1 = at least one violated; 2 = at least one
 inconclusive, or the claims file failed validation; 3 = at least one
 `confirmed_with_caveats` (and none of the above).
 
-Exit 3 means every claim held, but at least one held because of an entry the
-ANALYSED REPOSITORY supplied about itself -- a sanitizer declared through
-`extra_catalogs:` or `--taint-sanitizers` that the tool credited with removing
-a flow it would otherwise have reported. hypergumbo cannot check such an
-assertion; it takes the repository's word that the named function neutralises
-the taint. The verdict names the entries, and the JSON envelope carries them
-under each verdict's `caveats` (INV-pojib).
+Exit 3 means every claim held, but at least one held on something you have to
+see for yourself. FOUR things raise it, in two families.
+
+The claim rested on the ANALYSED REPOSITORY's own word:
+  - a sanitizer it declared through `extra_catalogs:` or `--taint-sanitizers`
+    was credited with removing a flow the tool would otherwise have reported
+    (INV-pojib);
+  - a row it supplied DISPLACED a shipped catalogue row that could have
+    produced evidence for this very claim (INV-faput).
+
+Or the analysis looked and could not adjudicate what it saw:
+  - control leaves this process at named call sites, and hypergumbo cannot see
+    inside a launched program (ADR-0016 s4);
+  - a method the catalogue declares FOR THE CLAIMED BOUNDARY is called on a
+    receiver whose type could not be determined -- `sock.sendall(payload)`
+    where `sock` is an unannotated parameter -- so those calls were never
+    decided either way (INV-fibis).
+
+In every case the verdict names the entries or the sites, and the JSON envelope
+carries them under each verdict's `caveats`.
 
 A gate written `verify-claims ... || exit 1` therefore FAILS on exit 3 where it
-used to pass. That is deliberate and fail-closed. Treat 3 as "passed, on the
-repository's own word" and decide per repository whether that is acceptable.
+used to pass. That is deliberate and fail-closed. Read 3 as "held, but here is
+what I could not check" -- and decide per repository whether that is acceptable.
 """
     p_vc = sub.add_parser(
         "verify-claims",

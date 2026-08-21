@@ -50,9 +50,17 @@ are counted. An edge carrying the bare ``external`` placeholder -- an untyped re
 than an oversight: those carry no module to adjudicate, they are the single largest edge
 population in a Python repo, and counting them would downgrade essentially every repo to
 ``inconclusive`` while adding no information about which library went unexamined. That
-population is the receiver-typing gap (INV-linub L3), tracked separately.  The honest
-consequence is pinned by ``test_untyped_receiver_population_is_the_disclosed_residual``:
-a repo whose I/O is reached ONLY through untyped receivers still confirms today.
+population is the receiver-typing gap (INV-linub L3), tracked separately.
+``test_untyped_receiver_population_is_the_disclosed_residual`` pins that this gate stays
+``complete`` over it.
+
+WHAT THAT SCOPE NOTE USED TO CONCLUDE IS NO LONGER TRUE. It read "a repo whose I/O is
+reached ONLY through untyped receivers still confirms today" -- reproduced live, then
+closed at the VERDICT layer rather than here (INV-fibis): ``untyped_receiver_sites`` asks
+the narrower question this gate cannot -- is the CALLEE a method catalogued for the
+boundary under claim -- and QUALIFIES the clean verdict with ``CAVEAT_UNTYPED_RECEIVER``.
+See ``test_verify_claims_untyped_receiver_caveat.py``. The scoping decision here is
+unchanged and still correct; only its consequence moved.
 """
 
 from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
@@ -417,8 +425,15 @@ class TestDisclosedResiduals:
 
     def test_untyped_receiver_population_is_the_disclosed_residual(self) -> None:
         """The bare ``external`` placeholder names no module, so it cannot be
-        adjudicated and is NOT counted. A repo reaching its I/O only this way
-        still confirms -- the honest limit of this fix, not a claim about safety."""
+        counted as an uncatalogued one and COVERAGE STAYS COMPLETE.
+
+        THE SENTENCE THAT USED TO END THIS DOCSTRING IS GONE, not reworded: "a
+        repo reaching its I/O only this way still confirms". It did, it was
+        reproduced, and INV-fibis closed it -- at the verdict layer, where such
+        a repo now returns ``confirmed_with_caveats`` naming the call sites.
+        This assertion is unchanged and still load-bearing: reversing it here is
+        the blanket-``inconclusive`` outcome PR #251 rejected, which is exactly
+        what a later reader tempted by INV-fibis might reach for."""
         coverage = compute_boundary_coverage(
             [_call("python:external:0-0:get:unresolved")],
             {"python"},
