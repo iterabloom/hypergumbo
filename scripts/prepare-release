@@ -18,6 +18,13 @@
 #   1. Bumps version via bump-version (main + optional tracker)
 #   2. Updates CHANGELOG.md (Unreleased → new version)
 #   3. Optionally updates tracker CHANGELOG.md
+#   3b. Promotes docs/RELEASE-NOTES-<MAJOR>.X.md (Unreleased → new version),
+#       creating the file for a new major line. This step exists because it
+#       did NOT before: 6.1.0 and 7.0.0 both shipped with their notes stranded
+#       under "## Unreleased", and 8.0.0 shipped with no notes file at all,
+#       while README kept pointing at the 6.x file. The changelog was promoted
+#       every time because THIS script did it; the release notes were not
+#       because nothing did.
 #   4. Commits the changes
 #   5. Runs release-check validations
 #   6. Creates PR from dev → main
@@ -254,6 +261,38 @@ if [[ -n "$TRACKER_VERSION" && -f "$TRACKER_CHANGELOG" ]]; then
     else
         echo -e "${YELLOW}!${NC} Tracker CHANGELOG.md has no [Unreleased] section"
     fi
+fi
+
+# User-facing release notes, one file per major version line.
+#
+# Promotion is only half the job: when VERSION opens a NEW major line the file
+# does not exist yet, and a release that silently skips it is exactly how the
+# 6.x file ended up being the newest one on disk three major versions later.
+# So a missing file is a hard stop, not a warning — the notes are a writing
+# task a human or agent must do, and the script refuses to let the release
+# proceed pretending otherwise.
+MAJOR="${VERSION%%.*}"
+RELEASE_NOTES="docs/RELEASE-NOTES-${MAJOR}.X.md"
+if [[ ! -f "$RELEASE_NOTES" ]]; then
+    echo -e "${RED}✗${NC} $RELEASE_NOTES does not exist."
+    echo "  v$VERSION opens the ${MAJOR}.x line, which needs its own release-notes file."
+    echo "  Copy the newest docs/RELEASE-NOTES-*.X.md as a template, keep the TL;DR"
+    echo "  section at the top, write the notes, then re-run prepare-release."
+    exit 1
+elif grep -q "^## Unreleased$" "$RELEASE_NOTES"; then
+    if ! $DRY_RUN; then
+        sed -i "s/^## Unreleased$/## $VERSION — $TODAY/" "$RELEASE_NOTES"
+        echo -e "${GREEN}✓${NC} Promoted $RELEASE_NOTES: Unreleased → $VERSION — $TODAY"
+    else
+        echo -e "${BLUE}[dry-run]${NC} Would promote $RELEASE_NOTES: Unreleased → $VERSION — $TODAY"
+    fi
+elif grep -q "^## $VERSION " "$RELEASE_NOTES"; then
+    echo -e "${GREEN}✓${NC} $RELEASE_NOTES already has a $VERSION section"
+else
+    echo -e "${RED}✗${NC} $RELEASE_NOTES has no '## Unreleased' section and no '## $VERSION' section."
+    echo "  Write the user-facing notes for v$VERSION under a '## Unreleased' heading,"
+    echo "  then re-run prepare-release."
+    exit 1
 fi
 
 # ─────────────────────────────────────────────────────────────

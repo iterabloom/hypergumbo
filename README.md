@@ -233,7 +233,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for PR workflow (including fork-based wor
 ## Links
 
 - [docs/USE-CASES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/USE-CASES.md) — Practical workflows and examples
-- [docs/RELEASE-NOTES-6.X.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-6.X.md) — User-facing release notes for the 6.x line
+- [docs/RELEASE-NOTES-8.X.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-8.X.md) — User-facing release notes for the current (8.x) line; earlier lines are [7.x](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-7.X.md), [6.x](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-6.X.md), [5.x](https://github.com/iterabloom/hypergumbo/blob/dev/docs/RELEASE-NOTES-5.X.md)
 - [CHANGELOG.md](https://github.com/iterabloom/hypergumbo/blob/dev/CHANGELOG.md) — Implementation history
 - [docs/LANGUAGES.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LANGUAGES.md) — Supported languages
 - [docs/LINKERS.md](https://github.com/iterabloom/hypergumbo/blob/dev/docs/LINKERS.md) — Linkers catalogue (Protocol / Bridge / Framework / Infrastructure)
