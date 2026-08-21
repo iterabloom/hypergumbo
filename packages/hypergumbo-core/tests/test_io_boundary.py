@@ -5405,7 +5405,8 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
     the analyzer can never match is a ceiling rather than a payoff (INV-linub's
     L2-only fix measured as a win at the analyzer and produced zero findings).
     The Erlang analyzer emits ``erlang:os:0-0:cmd:external_symbol`` with
-    ``call_construct='remote_external'`` — module slot ``os``, name slot
+    ``call_construct='remote'`` (INV-tadup folded the ``_external`` suffix,
+    whose information already lives in the dst) — module slot ``os``, name slot
     ``cmd`` — and the POSITIVE CONTROL is that the existing (wrong) row already
     matches it end to end, producing an ``env_read`` chain. The key resolves;
     only the boundary was wrong.

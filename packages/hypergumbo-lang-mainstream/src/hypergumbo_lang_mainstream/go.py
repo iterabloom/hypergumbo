@@ -2699,7 +2699,14 @@ def _extract_edges_from_file(
                                                     evidence_type="ast_call",
                                                     origin=PASS_ID,
                                                     origin_run_id=run.execution_id,
-                                                    meta={"call_construct": "chained_return_type"},
+                                                    # INV-tadup: the CONSTRUCT is a method call;
+                                                    # "chained_return_type" names HOW the receiver
+                                                    # type was resolved, which is the
+                                                    # ``resolution_quality`` axis.
+                                                    meta={
+                                                        "call_construct": "method",
+                                                        "resolution_quality": "chained_return_type",
+                                                    },
                                                 ))
                                                 callee_name = None
 
@@ -2852,9 +2859,14 @@ def _extract_edges_from_file(
                                 # the slice to concrete implementations.
                                 _iface_confidence = 0.5 if _is_iface_fallback else 0.75
                                 _iface_meta = (
-                                    {"call_construct": "interface_dispatch", "disambiguation_fallback": True}
+                                    # INV-tadup: the construct is a method call. The
+                                    # interface-dispatch PATHWAY is already carried by
+                                    # ``evidence_type="interface_dispatch"`` on this same
+                                    # edge, so naming it again here duplicated one value
+                                    # across two axes.
+                                    {"call_construct": "method", "disambiguation_fallback": True}
                                     if _is_iface_fallback
-                                    else {"call_construct": "interface_dispatch"}
+                                    else {"call_construct": "method"}
                                 )
                                 edges.append(Edge.create(
                                     src=current_function.id,

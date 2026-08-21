@@ -408,7 +408,11 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "certainty proper lives in ``confidence`` / ``evidence_type`` "
                 "(ADR-0028). A recovery edge to a real in-repo method is "
                 "correctly ``is_resolved=True`` with "
-                "``resolution_quality='recovery'``."),
+                "``resolution_quality='recovery'``. INV-tadup added "
+                "'chained_return_type' (Go: the receiver's type came from a "
+                "chained call's return type) — it named a resolution MECHANISM "
+                "and was being smuggled through ``call_construct``, which is "
+                "the syntactic-construct axis."),
     # ------------------------------------------------------------------
     # Edge.meta — protocol / bridge / dispatch vocabularies (predates
     # the axis-registry pattern; PROTOCOL_KINDS and BRIDGE_KINDS in

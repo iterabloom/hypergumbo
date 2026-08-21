@@ -548,7 +548,9 @@ def _extract_edges_from_file(
                                 # not flagged is_resolved=False, so derivation
                                 # would over-score it as a resolved call.
                                 confidence=0.50,
-                                meta={"call_construct": "application_external"},
+                                # INV-tadup: NOT "application_external" — same AST shape
+                                # as the resolved branch; the externality is in ``dst``.
+                                meta={"call_construct": "application"},
                             )
                             edges.append(edge)
 
