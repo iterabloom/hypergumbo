@@ -22,3 +22,25 @@
     fields:  # cc3f
       statement: "A boundary that auto-derives a taint label must mean the same thing the label means."  # cc3f
       root_cause: "AUTO_SOURCE_LABEL_MAP maps the io_primitives boundary env_read to the taint label host_secret, but the env_read catalogue rows include host-description primitives that are not secrets in any ordinary sense."  # cc3f
+- op: discuss  # 0ddb
+  at: '2026-08-21T18:19:08Z'  # 0ddb
+  by: agent  # 0ddb
+  actor: jgstern_agent  # 0ddb
+  clock: 2  # 0ddb
+  nonce: 0ddb  # 0ddb
+  message: "RANK PROVENANCE: THIS ITEM'S EVIDENCE IS CURRENTLY CITED ON ANOTHER ITEM. Found while closing INV-vaduk 2026-08-21.\n\nINV-vaduk was promoted P2 -> P1 on 2026-08-17, and its promotion note justifies the rank with the 48-of-85-flows-at-22.9%-precision finding from docs/measurements/0001 consequence 4 -- the env_read -> host_secret vocabulary problem, which is THIS item's subject, not INV-vaduk's. INV-vaduk is about primitives catalogued under MORE THAN ONE boundary; env_read rows are under exactly one. LIVE.md's P1 line carries the same attribution ('INV-vaduk (48 of 85 at 22.9%)').\n\nINV-vaduk is now satisfied, and what it actually fixed was a declaration gap in the multi-boundary catalogue -- real, but not the 48-of-85 lever. So that lever is currently unowned at P1: it lives here, at P2.\n\nNOT RE-RANKING THIS UNILATERALLY -- the 2026-08-17 promotion was made on explicit owner authorisation and recorded as such. Flagging for the owner: if the 0001 band ruling still governs ('precision is the headline problem and recall work should stop until it is understood'), this item is the largest named lever and is two priority levels below where its own evidence would put it.\n\nNOT VERIFIED BY ME: I have not re-run 0001's adjudication or re-derived the 48/85 or 22.9% figures against the current tree. 0001's census is known to have drifted (60 -> 298 flows in nine days, per docs/measurements/0003), so those numbers should be re-measured before they are leaned on again."  # 0ddb
+- op: update  # 8269
+  at: '2026-08-21T18:26:37Z'  # 8269
+  by: agent  # 8269
+  actor: jgstern_agent  # 8269
+  clock: 3  # 8269
+  nonce: '8269'  # 8269
+  set:  # 8269
+    priority: 1  # 8269
+- op: discuss  # cd71
+  at: '2026-08-21T18:26:37Z'  # cd71
+  by: agent  # cd71
+  actor: jgstern_agent  # cd71
+  clock: 4  # cd71
+  nonce: cd71  # cd71
+  message: "PROMOTED P2 -> P1 on 2026-08-21, on explicit owner authorisation, recorded here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nWHY: this item's own evidence was being cited on a different item. INV-vaduk was promoted P2 -> P1 on 2026-08-17 with a note justifying the rank by the 48-of-85-flows-at-22.9%-precision finding from docs/measurements/0001 consequence 4 -- the env_read -> host_secret vocabulary problem, which is THIS item's subject. INV-vaduk's statement is about primitives catalogued under MORE THAN ONE boundary; env_read rows are under exactly one. LIVE.md carried the same misattribution in its P1 line.\n\nINV-vaduk closed satisfied on 2026-08-21 (PR #463). What it actually fixed was a declaration gap in the multi-boundary catalogue -- real work, but not this lever. So on its closure the 48-of-85 lever became unowned at P1, and this promotion puts the rank on the item that holds the evidence.\n\nTHE GOVERNING RULE IS UNCHANGED: WI-sivuz's PRE-REGISTERED bands, named before any interval was computed. 0001 put taint precision at ~41%, which is the <50% band -- 'precision is the headline problem and recall work should stop until it is understood'. Under that band this is the largest single lever the measurement identifies.\n\nWHAT IS NOT ESTABLISHED, and must be re-derived before anyone leans on it: I have NOT re-run 0001's adjudication or re-verified the 48/85 or 22.9% figures against the current tree. 0001's headline is known STALE -- its census drifted 60 -> 298 flows in nine days (docs/measurements/0003), which is why 0003 used a delta A/B instead of a re-run. So the RANK rests on the band ruling plus the qualitative finding (a boundary whose members are GOOS / Getwd / Executable / navigator.platform auto-deriving a label that means 'secret'), which is durable; the specific NUMBERS want re-measurement. Whoever takes this should measure first and treat 48/85 and 22.9% as provisional."  # cd71
