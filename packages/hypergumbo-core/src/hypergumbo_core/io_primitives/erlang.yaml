@@ -104,6 +104,15 @@ net_send:
     functions: [send, connect]
   - module: gen_udp
     functions: [send, open]
+    boundary_ruling: unruled
+    notes: >-
+      INV-vaduk OPEN QUESTION, declared rather than left blank: `open`
+      appears under BOTH net_send and net_recv. Opening a UDP socket
+      ENABLES both directions but transfers nothing at the call itself,
+      and gen_udp send/recv are catalogued separately in these same
+      sections. So the question is whether a socket-ACQUISITION call is
+      a net_* crossing at all. Left as declared rows because removing
+      them is a recall change and this is a precision-band cycle.
   - module: gen_sctp
     functions: [send, connect]
   - module: ssl
@@ -119,6 +128,15 @@ net_recv:
     functions: [recv, listen, accept]
   - module: gen_udp
     functions: [recv, open]
+    boundary_ruling: unruled
+    notes: >-
+      INV-vaduk OPEN QUESTION, declared rather than left blank: `open`
+      appears under BOTH net_send and net_recv. Opening a UDP socket
+      ENABLES both directions but transfers nothing at the call itself,
+      and gen_udp send/recv are catalogued separately in these same
+      sections. So the question is whether a socket-ACQUISITION call is
+      a net_* crossing at all. Left as declared rows because removing
+      them is a recall change and this is a precision-band cycle.
   - module: gen_sctp
     functions: [recv, listen]
   - module: ssl
