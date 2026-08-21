@@ -109,3 +109,10 @@
   nonce: '57e7'  # 57e7
   set:  # 57e7
     title: "verify-claims returns confirmed for a boundary reachable only through untyped 'external' receivers the catalogue cannot adjudicate (the filed poetry repro NO LONGER REPRODUCES -- it now trips the opaque-launch gate instead; an isolating repro is owed)"  # 57e7
+- op: discuss  # a888
+  at: '2026-08-21T01:05:12Z'  # a888
+  by: agent  # a888
+  actor: jgstern_agent  # a888
+  clock: 13  # a888
+  nonce: a888  # a888
+  message: "HUMAN INSTRUCTION (2026-08-20 interview), recorded for whoever picks this up. The owner authorises the repro SEARCH this item needs, with three conditions. (1) CHECK THE ASSUMPTIONS BEFORE BEGINNING -- do not start hunting on the strength of the item's own framing. This item is currently described as a LIVE DEFECT WITH NO LIVE REPRO (the poetry repro trips the OPAQUE-LAUNCH gate), and that description is itself an assumption with a date on it: whether the defect is still live, whether the gate is still what blocks the repro, and whether the original observation was correctly attributed are all premises to re-derive rather than inherit. LIVE.md rule 1 applies with force here -- an item can be wrong about its own fix, size or mechanism. (2) TIMEBOX IT, at a duration that seems appropriate once the assumptions are checked, and NOTE THE START TIME so the box is measurable rather than felt. (3) IF IT BECOMES P0, investigate thoroughly in the hypergumbo spirit and FIX it -- the promotion is not a reason to stop and report, it is a reason to go deeper. Standing context from LIVE.md: this is the one open item flagged as able to become P0, and the standing rule is do NOT close it on non-reproduction -- absence of a repro is not evidence the defect is absent, which is exactly why the search is worth running rather than the item being downgraded."  # a888
