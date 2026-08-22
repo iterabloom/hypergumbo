@@ -211,7 +211,22 @@ from .paths import classify_test_file, is_migration_file
 # What DOES change is which claims are caveated at all, and that is a
 # BEHAVIOURAL change disclosed in the changelog rather than a schema one. The
 # version moves when the ENVELOPE moves.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.0"
+#
+# 2.1 makes a violated verdict's evidence row a SITUATION rather than a
+# source->sink pair wherever the pair was not adjudicated (INV-karud), and adds
+# ``source_primitives`` / ``sink_primitives`` / ``sink_symbols`` /
+# ``collapsed_flow_count`` to every row. NOT purely additive, and like 1.5 that
+# is the point: ``evidence_count`` and the ``details`` count now report
+# situations, so a 2.0 consumer tracking a row total sees it fall (measured
+# 359 -> 80 across six repositories) WITHOUT any verdict moving and without any
+# (source symbol, source primitive, sink primitive, sink symbol) tuple being
+# dropped. The old quantity is still available: ``details`` carries a
+# ``spanning N source->sink pair(s)`` clause and every row carries
+# ``collapsed_flow_count``. The witness scalars keep their names and stay
+# valid — each is a member of its own set — so a consumer reading
+# ``sink_primitive`` reads one of the primitives the row names rather than a
+# field that vanished.
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.1"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -2488,24 +2503,56 @@ def _flow_identity(v: "TaintFlowFinding") -> tuple[Any, ...]:
     names, and call-graph path all match — so verbatim-duplicate findings
     collapse while flows that merely share a primitive NAME (distinct symbols)
     stay distinct.
+
+    Keyed on the SET fields rather than the witness scalars (INV-karud): after
+    the propagator's situation collapse a finding's claim is its primitive
+    sets, and two situations can share a witness scalar while claiming
+    different sets. The scalars would make those one row.
     """
     return (
-        v.source_primitive,
+        v.source_primitives,
         v.source_symbol,
-        v.sink_primitive,
-        v.sink_symbol,
+        v.sink_primitives,
+        v.sink_symbols,
         tuple(v.path),
     )
 
 
+#: How many primitive names one rendered row spells out before switching to a
+#: count. A situation on a large symbol can name dozens (caddy's ``cmdRun``
+#: alone spans 32 pairs on one claim), and a prose row that long is not read.
+#: The full sets are always in the structured ``evidence`` row.
+_MAX_RENDERED_PRIMITIVES = 3
+
+
+def _render_primitives(names: "tuple[str, ...]") -> str:
+    """Comma-joined primitive names, capped with an explicit remainder."""
+    if len(names) <= _MAX_RENDERED_PRIMITIVES:
+        return ", ".join(names)
+    shown = ", ".join(names[:_MAX_RENDERED_PRIMITIVES])
+    return f"{shown} (+{len(names) - _MAX_RENDERED_PRIMITIVES} more)"
+
+
 def _render_flow(v: "TaintFlowFinding") -> str:
     """Render one violating flow with its drill-down identity (WI-kikis):
-    ``<source_primitive> [<source_symbol>] -> <sink_primitive> [<sink_symbol>]``
-    plus a hop count when the path routes through intermediate nodes."""
+    ``<source_primitives> [<source_symbol>] -> <sink_primitives> [<sink>]``
+    plus a hop count when the path routes through intermediate nodes.
+
+    Renders the SETS, not the witness scalars (INV-karud). An unadjudicated
+    finding stands for every pair between them, and printing one pair would
+    name a data dependence the analysis never established while hiding the
+    others. Names are module-qualified for the same reason the record carries
+    them that way: ``Do`` is not checkable against a catalogue,
+    ``net/http.Client.Do`` is.
+    """
     row = (
-        f"{v.source_primitive} [{v.source_symbol}] -> "
-        f"{v.sink_primitive} [{v.sink_symbol}]"
+        f"{_render_primitives(v.source_primitives)} [{v.source_symbol}] -> "
+        f"{_render_primitives(v.sink_primitives)}"
     )
+    if len(v.sink_symbols) == 1:
+        row += f" [{v.sink_symbols[0]}]"
+    else:
+        row += f" [{len(v.sink_symbols)} sink symbol(s)]"
     # path = [source, ...intermediate..., sink]; hops are the interior nodes.
     if len(v.path) > 2:
         row += f" via {len(v.path) - 2} hop(s)"
@@ -2542,6 +2589,16 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # this very record.
         "confidence": v.confidence,
         "analysis_method": v.analysis_method,
+        # INV-karud: what this record actually claims. The scalars above are
+        # the witness the `path` belongs to; these are the sets the finding
+        # stands for, module-qualified so each is checkable by catalogue
+        # lookup (clause a1). `collapsed_flow_count` keeps the pair count
+        # reachable — the situation count replaces it in the prose, and a
+        # consumer that wants the old quantity must not have to re-derive it.
+        "source_primitives": list(v.source_primitives),
+        "sink_primitives": list(v.sink_primitives),
+        "sink_symbols": list(v.sink_symbols),
+        "collapsed_flow_count": v.collapsed_flow_count,
     }
 
 
@@ -2950,6 +3007,16 @@ def verify_taint_claim(
         _seen_flows.add(identity)
         distinct_violations.append(v)
 
+    # INV-karud: the situation count REPLACED the pair count as the headline
+    # number, so the pair count is disclosed rather than dropped. A reader who
+    # wants "how many source->sink pairs" would otherwise have to sum
+    # `collapsed_flow_count` across the evidence rows — and the evidence list
+    # is capped, so that sum would be wrong above _MAX_EVIDENCE_ROWS.
+    pair_total = sum(v.collapsed_flow_count for v in violations)
+    pair_clause = ""
+    if pair_total > len(violations):
+        pair_clause = f" spanning {pair_total} source->sink pair(s)"
+
     paths_desc = "; ".join(_render_flow(v) for v in distinct_violations[:5])
     suffix = ""
     if len(distinct_violations) > 5:
@@ -3037,7 +3104,7 @@ def verify_taint_claim(
         ],
         details=(
             f"{len(violations)} unsanitized {tf.source_taint} flow(s)"
-            f"{distinct_clause} "
+            f"{distinct_clause}{pair_clause} "
             f"to {tf.prohibited_sink_zone} zone "
             f"[{tf.source_taint} confidence: {confidence_clause}] "
             f"[origins: {origins_clause}]: "

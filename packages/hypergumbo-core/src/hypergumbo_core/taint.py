@@ -219,6 +219,16 @@ TaintEntry = Union[TaintSource, TaintSink]
 TEntry = TypeVar("TEntry", bound=TaintEntry)
 
 
+def _qualify(module: str, name: str) -> str:
+    """``module.name``, or the bare name when the entry declares no module.
+
+    A YAML-declared source may have no module at all, and ``".remove"`` is a
+    lookup key that matches nothing — worse than the bare name, because it
+    looks qualified.
+    """
+    return f"{module}.{name}" if module else name
+
+
 @dataclass
 class TaintFlowFinding:
     """A reported taint-flow violation or confirmed path.
@@ -302,6 +312,58 @@ class TaintFlowFinding:
     # "a row read from the database reached the database" without either
     # flow's taint_label changing — so no published claim changes meaning.
     source_boundary: str = ""
+    #: INV-karud: THE AUTHORITATIVE STATEMENT OF WHAT THIS FINDING CLAIMS.
+    #:
+    #: The scalar ``source_primitive`` / ``sink_primitive`` / ``sink_symbol``
+    #: fields above assert that ONE named primitive reached ONE other named
+    #: primitive. For a flow the ADR-0017 §3a walk adjudicated
+    #: (``analysis_method == "ddg"``) that claim is earned. For every other
+    #: flow inclusion rests on call-graph reachability alone, and emitting one
+    #: such finding per (source call site, sink call site) pair asserts n x m
+    #: data dependences from a walk that established none of them. Measured on
+    #: six repos: 359 reported flows describing 78 situations (4.60x), 78% of
+    #: rows restating a situation already reported.
+    #:
+    #: So an unadjudicated finding is collapsed to one per situation —
+    #: (taint_label, source_symbol, sink_zone, sanitized, source_boundary,
+    #: analysis_method) — and these tuples carry the full sets it stands for:
+    #: "symbol S reads {source_primitives} and reaches zone Z via
+    #: {sink_primitives}". Names are MODULE-QUALIFIED (clause a1: a reader must
+    #: be able to confirm the match by catalogue lookup, and the emitted symbol
+    #: frequently does not carry the module the entry declared — WI-joruv).
+    #:
+    #: They are NEVER empty: ``__post_init__`` derives singletons from the
+    #: scalars, so a hand-built finding is not silently primitive-less to the
+    #: consumers that read the tuple. The scalars survive as the witness the
+    #: ``path`` belongs to, and are always members of their tuple.
+    source_primitives: tuple[str, ...] = ()
+    sink_primitives: tuple[str, ...] = ()
+    sink_symbols: tuple[str, ...] = ()
+    #: How many (source call site, sink call site) pairs this finding stands
+    #: for. 1 for an uncollapsed or adjudicated finding. Kept so the pair count
+    #: stays available to a consumer that wants it rather than being traded
+    #: away for the situation count.
+    collapsed_flow_count: int = 1
+
+    def __post_init__(self) -> None:
+        """Derive the tuples from the scalars when a caller did not set them.
+
+        A ``()`` default reads as "this finding names no primitives", which is
+        never true — so the derivation lives here rather than at the call
+        sites, where the two propagators, the collapse pass and every test
+        fixture would each have to remember it (L53: a second home for one
+        fact drifts immediately).
+        """
+        if not self.source_primitives:
+            self.source_primitives = (
+                _qualify(self.source_module, self.source_primitive),
+            )
+        if not self.sink_primitives:
+            self.sink_primitives = (
+                _qualify(self.sink_module, self.sink_primitive),
+            )
+        if not self.sink_symbols:
+            self.sink_symbols = (self.sink_symbol,)
 
     @property
     def verdict(self) -> str:
@@ -345,7 +407,130 @@ class TaintFlowFinding:
             # declared field to serialize, which is what caught them missing.
             "sanitized_by": list(self.sanitized_by),
             "sanitized_by_user_supplied": list(self.sanitized_by_user_supplied),
+            # INV-karud: the sets are what the finding actually claims.
+            # Serializing only the witness scalars would put the n x m
+            # over-claim back for every consumer that reads JSON.
+            "source_primitives": list(self.source_primitives),
+            "sink_primitives": list(self.sink_primitives),
+            "sink_symbols": list(self.sink_symbols),
+            "collapsed_flow_count": self.collapsed_flow_count,
         }
+
+
+#: The two ``analysis_method`` values that mean "inclusion rests on call-graph
+#: reachability, not on a confirmed data dependence". ``structural`` = no
+#: reaching-def data existed for the source function so no walk was possible;
+#: ``ddg_mixed`` = the walk ran and did not confirm one. Different facts, same
+#: consequence for what the finding is entitled to claim.
+UNADJUDICATED_METHODS = frozenset({"structural", "ddg_mixed"})
+
+
+def collapse_unadjudicated_flows(
+    findings: list[TaintFlowFinding],
+) -> list[TaintFlowFinding]:
+    """Collapse unadjudicated pair findings into one finding per situation.
+
+    INV-karud. A finding whose ``analysis_method`` is in
+    :data:`UNADJUDICATED_METHODS` was included because a call path exists, not
+    because a data dependence was shown — so "primitive P1 reached primitive
+    P2" is more than the analysis established. What it did establish is "symbol
+    S reads {P1..Pn} and reaches zone Z via {Q1..Qm}", which is one fact rather
+    than n x m of them.
+
+    TWO MULTIPLIERS DIE HERE, and the second had not been named before it was
+    measured (censused over six repos, 359 flows -> 78 situations, 4.60x):
+
+    * **2.87x** the |sources| x |sinks| product inside one symbol. It scales
+      with the CATALOGUE rather than the code — adding a seventh browser global
+      adds rows to a repo whose source did not change.
+    * **1.60x** distinct call-graph ROUTES to the same primitive pair, which
+      are distinct rows because the consumer's flow identity keys on ``path``.
+      ``path`` is documented as one witness route, not the route set, so a
+      second witness was never a second fact.
+
+    Grouping on neither primitive is what addresses both at once; a key built
+    from the pair would leave the route multiplier standing.
+
+    WHAT IS IN THE KEY, AND WHY EACH:
+
+    ``taint_label``, ``source_symbol``, ``sink_zone``
+        the situation itself — the unit a reader acts on ("is this function a
+        problem?"), and the granularity a claim is written at.
+    ``sanitized``
+        a sanitized flow is excluded from the violation set. A group that mixed
+        them would have to be counted both ways.
+    ``source_boundary``
+        WI-vazal split net_recv / ipc_recv / db_read inside the single
+        ``untrusted_input`` label precisely so "a request body reached the
+        database" and "a row read from the database reached the database" stay
+        separable. Merging across it would undo that.
+    ``analysis_method``
+        ``ddg_mixed`` and ``structural`` are different facts about how hard the
+        analysis looked, and INV-karud clause (a3) requires a reader to be able
+        to tell them apart from the record.
+
+    ADJUDICATED FLOWS PASS THROUGH UNTOUCHED. ``ddg`` means the walk confirmed
+    a reaching-def chain from the variable the source defines to a use at the
+    sink call site; that IS a pair claim, and it is 6 of 359 census flows.
+    Collapsing it would trade earned precision for 1.7% of the noise.
+
+    ORDER is first-appearance: each group is emitted where its first member
+    was, adjudicated findings in place. Deterministic, and it keeps the
+    consumer's "first five rows" rendering stable.
+
+    THIS DOES NOT CHANGE ANY VERDICT. A claim verdict is a disjunction over its
+    flows, and every filter the consumer applies — label, zone, ``sanitized``,
+    and the production-scope test, which reads ``source_symbol`` and nothing
+    else — tests a field that is in this key. So no group can be half-included,
+    and existence is preserved exactly.
+    """
+    slots: list[TaintFlowFinding | None] = []
+    at: dict[tuple[Any, ...], int] = {}
+    members: dict[tuple[Any, ...], list[TaintFlowFinding]] = {}
+    for f in findings:
+        if f.analysis_method not in UNADJUDICATED_METHODS:
+            slots.append(f)
+            continue
+        key = (
+            f.taint_label, f.source_symbol, f.sink_zone,
+            f.sanitized, f.source_boundary, f.analysis_method,
+        )
+        if key not in at:
+            at[key] = len(slots)
+            members[key] = [f]
+            slots.append(None)
+        else:
+            members[key].append(f)
+
+    for key, idx in at.items():
+        grp = members[key]
+        # ``replace`` rather than in-place assignment: this is a public
+        # function and mutating findings the caller still holds is a side
+        # effect the signature does not announce. ``__post_init__`` re-runs
+        # and leaves the explicit tuples alone (it only fills EMPTY ones).
+        slots[idx] = replace(
+            grp[0],
+            collapsed_flow_count=len(grp),
+            source_primitives=tuple(sorted(
+                {p for m in grp for p in m.source_primitives}
+            )),
+            sink_primitives=tuple(sorted(
+                {p for m in grp for p in m.sink_primitives}
+            )),
+            sink_symbols=tuple(sorted(
+                {sym for m in grp for sym in m.sink_symbols}
+            )),
+            # A route through a different barrier is a different sanitizer
+            # credit, and INV-pojib requires the user-supplied ones to stay
+            # individually nameable. Union, not the representative's tuple.
+            sanitized_by=tuple(sorted(
+                {b for m in grp for b in m.sanitized_by}
+            )),
+            sanitized_by_user_supplied=tuple(sorted(
+                {b for m in grp for b in m.sanitized_by_user_supplied}
+            )),
+        )
+    return [s for s in slots if s is not None]
 
 
 # ---------------------------------------------------------------------------
@@ -2145,7 +2330,11 @@ def propagate_taint_structural(
                 path=path,
             ))
 
-    return findings
+    # INV-karud: every finding this arm emits is call-reachability-only, so
+    # none of them is entitled to a pair claim. Collapsing HERE rather than in
+    # the consumer keeps one home for the rule — a second consumer of
+    # ``propagate_taint_*`` would otherwise get the raw n x m product back.
+    return collapse_unadjudicated_flows(findings)
 
 
 def _reachability_past_sanitizers(
@@ -3282,4 +3471,7 @@ def propagate_taint_ddg(
                 path=path,
             ))
 
-    return findings
+    # INV-karud. This arm emits all three methods, and the collapse is
+    # method-aware: ``ddg`` findings pass through with their pair claim intact
+    # because the walk actually confirmed a dependence for them.
+    return collapse_unadjudicated_flows(findings)
