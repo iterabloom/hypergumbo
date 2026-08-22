@@ -6546,6 +6546,26 @@ def _process_call(
             # make_conn()`` that var_types misses). An own field is never
             # inherited, so this blocks the shadow FP where the child re-declares
             # a parent field name with a different type.
+            #
+            # INV-jujoh: that own-field exclusion is correct for the STAMP and
+            # was wrong for the EMIT. Both sites declined the own field -- Case
+            # 2f resolves one only when ``class_field_types`` carries its type,
+            # and that map is Symbol-valued, so by construction it can hold only
+            # an IN-REPO class -- and the call therefore produced NO EDGE AT
+            # ALL. Silence is upstream of every honesty mechanism: nothing for
+            # the ``untyped_receiver`` caveat to name, nothing for the
+            # uncovered-module gate to disclose, nothing for taint to walk. A
+            # ``net_send`` claim over ``self.sock.sendall(payload)`` -- a
+            # CATALOGUED stdlib primitive whose type the receiver-constructor
+            # table KNOWS -- returned a bare ``confirmed`` at exit 0, and the
+            # identical call with the field assigned OUTSIDE __init__ was
+            # disclosed. So the guards below now gate the STAMP, not the EMIT:
+            # an own field takes the same placeholder edge WITHOUT
+            # ``inherited_field_receiver``. Withholding the stamp is the whole
+            # safety argument -- the stamp routes to ``inherited_calls``, whose
+            # walk is over PARENT classes, a premise that is false for an own
+            # field. Stamping it (the item's rejected route (a)) would ship
+            # exactly the shadow FP the exclusion was added to prevent.
             field_name = func.value.attr
             method_name = func.attr
             if (
@@ -6554,22 +6574,20 @@ def _process_call(
                 and "self" in _caller_locals
                 and "staticmethod" not in _caller_decos
                 and field_name not in var_types
-                and field_name not in own_field_names
             ):
-                _site3_meta: dict[str, str] = {
-                    "call_construct": "method",
-                    "inherited_field_receiver": field_name,
-                    "enclosing_class": (
+                _site3_meta: dict[str, str] = {"call_construct": "method"}
+                if field_name not in own_field_names:
+                    _site3_meta["inherited_field_receiver"] = field_name
+                    _site3_meta["enclosing_class"] = (
                         caller_symbol.qualified_name.split(".")[-2]
-                    ),
-                }
-                # WI-supat (D3): the authoritative enclosing-class id (same
-                # contract as Site-1) lets the linker start the parent-field walk
-                # from exactly the caller's lexical class, skipping the enclosing
-                # ambiguity guard on a same-short-name collision.
-                _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
-                if _encl_id is not None:
-                    _site3_meta["enclosing_class_id"] = _encl_id
+                    )
+                    # WI-supat (D3): the authoritative enclosing-class id (same
+                    # contract as Site-1) lets the linker start the parent-field
+                    # walk from exactly the caller's lexical class, skipping the
+                    # enclosing ambiguity guard on a same-short-name collision.
+                    _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
+                    if _encl_id is not None:
+                        _site3_meta["enclosing_class_id"] = _encl_id
                 edges.append(Edge.create(
                     src=caller_symbol.id,
                     dst=f"python:external:0-0:{method_name}:unresolved",
