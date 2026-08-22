@@ -1,0 +1,30 @@
+- op: create  # 5504
+  at: '2026-08-22T05:02:00Z'  # 5504
+  by: agent  # 5504
+  actor: jgstern_agent  # 5504
+  clock: 1  # 5504
+  nonce: '5504'  # 5504
+  data:  # 5504
+    kind: invariant  # 5504
+    title: "verify-claims crashes with RecursionError on keda, producing zero output and exit 1"  # 5504
+    status: violated  # 5504
+    priority: 1  # 5504
+    parent:  # 5504
+    tags:  # 5504
+    - crash  # 5504
+    - go  # 5504
+    isbefore: []  # 5504
+    duplicate_of: []  # 5504
+    not_duplicate_of: []  # 5504
+    pr_ref:  # 5504
+    description: ""  # 5504
+    fields:  # 5504
+      statement: "hypergumbo must not abort with an internal error on a real repository. A RecursionError is indistinguishable to a caller from an analysis that ran and found nothing: the process exits non-zero with an empty stdout, which for verify-claims is the same shape as a clean run that wrote no JSON."  # 5504
+      root_cause: "Not yet diagnosed. Observed as 'hypergumbo: internal error: RecursionError: maximum recursion depth exceeded' with no traceback (the handler suppresses it without --debug). Repo is Go-dominant with 192 generated .pb.go files, so a deep or cyclic structure in a Go-side walk is the first place to look."  # 5504
+- op: discuss  # 8155
+  at: '2026-08-22T05:02:16Z'  # 8155
+  by: agent  # 8155
+  actor: jgstern_agent  # 8155
+  clock: 2  # 8155
+  nonce: '8155'  # 8155
+  message: "REPRO, observed 2026-08-22 on dev 200e151682 (and on 26276a8430 -- present in both,\nso not introduced by this cycle's changes):\n\n    hypergumbo verify-claims ~/ALL_REPOS/whole_bunch_of_repos/keda \\\n        --claims docs/example-claims/generic-taint-claims.yaml --format json\n\n    stderr: hypergumbo: internal error: RecursionError: maximum recursion depth\n            exceeded\n            This is a bug; re-run with --debug for a full traceback.\n    stdout: 0 bytes\n    exit:   1\n\nFOUND IN PASSING while screening 13 repos for INV-rozob, so the surrounding\ncohort is a useful control: caddy, sops, poetry, mitmproxy, knex, express,\napollo-server, pretix, microservices-demo, containerd, kserve, grafana and\ndash.js all completed. keda is the only crash.\n\nWHY exit 1 + empty stdout IS THE DANGEROUS PART, and why this is filed as an\ninvariant rather than a bug report: verify-claims exits 1 for VIOLATED. A\ncaller running it as a gate (`verify-claims ... || exit 1`) cannot distinguish\n\"claims violated\" from \"the analysis crashed and examined nothing\" -- both are\nexit 1 -- and the JSON consumer gets a zero-byte file rather than a verdict\nlist. That is the same certifying-what-it-did-not-establish failure mode\nINV-javam and INV-fibis were filed for, arriving through the error path instead\nof the verdict path.\n\nNOT YET CAPTURED: the traceback. The handler suppresses it without --debug and\nthe run is expensive (270MB repo, Go-dominant, 192 generated .pb.go files), so\nthe next step is a single `--debug` run to name the recursive frame before\nguessing at a fix."  # 8155
