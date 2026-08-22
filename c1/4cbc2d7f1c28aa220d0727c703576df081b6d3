@@ -1,0 +1,80 @@
+Original commit body from 5c5c6e05d0dde6a1d697c47748d5c0ae6c8ea2f5:
+
+Both propagators emitted one TaintFlowFinding per (source call site, sink call
+site) pair reachable in the call graph, and each such record asserts "primitive
+P1 reached primitive P2". For a flow the ADR-0017 3a walk adjudicated
+(analysis_method == "ddg") that claim is earned. For every other flow inclusion
+rested on call-graph reachability alone, so n x m records assert n x m data
+dependences the walk established none of.
+
+Censused over six repos first: 359 reported flows describing 78 situations
+(4.60x), 78% of rows restating a situation already reported, caddy's cmdRun
+alone emitting 76. TWO multipliers where the item named one -- 2.87x the
+source/sink product inside a symbol, and 1.60x distinct call-graph ROUTES to
+the same primitive pair, which are distinct rows only because the consumer's
+flow identity keys on `path`, a field documented as one witness route rather
+than the route set. So the grouping key names NEITHER primitive; a pair-keyed
+fix would have left the second standing.
+
+An unadjudicated finding is now collapsed to one per (taint_label,
+source_symbol, sink_zone, sanitized, source_boundary, analysis_method),
+carrying source_primitives / sink_primitives / sink_symbols as
+module-qualified sets: "symbol S reads {P..Pn} and reaches zone Z via
+{Q..Qm}". Qualified because `Do` is not checkable against a catalogue and
+`net/http.Client.Do` is (clause a1).
+
+Two departures from the item's own proposal, both priced before taking them:
+
+* ADJUDICATED FLOWS PASS THROUGH. `ddg` confirmed a reaching-def chain from
+  the variable the source defines to a use at the sink call site -- that IS a
+  pair claim, and it is 6 of the 359 census flows (1.7%).
+* `sanitized` and `source_boundary` are IN the key. A sanitized flow is
+  excluded from the violation set, so a mixed group would have to be counted
+  both ways; and WI-vazal split net_recv / ipc_recv / db_read inside the one
+  untrusted_input label precisely so "a request body reached the database"
+  stays separable from "a row read from the database reached the database".
+  Their presence is what makes collapsing BEFORE the consumer's filters sound:
+  every filter verify_taint_claim applies -- label, zone, sanitized, and
+  _source_scope's production test, which reads source_symbol and nothing else
+  -- tests a field in this key, so no group can be half-included. Asserted by
+  a test rather than left as reasoning.
+
+A/B on findings in BOTH signs before shipping, per the INV-nizom precedent.
+Arms differing only in this change, same six repos, same claims file, per-arm
+XDG_CACHE_HOME, arm A a detached worktree at the parent commit asserted to
+LACK the collapse before any measurement. Evidence completeness asserted first
+(evidence_count == len(evidence) on every verdict in both arms), so the
+coverage check ran over the whole population.
+
+    caddy 219->23  sops 39->11  poetry 13->5
+    mitmproxy 60->26  knex 25->12  express 3->3
+    TOTAL 359 -> 80 (4.49x)
+    VERDICT MOVES: 0.  ARM-A PAIRS MISSING FROM ARM B: 0.
+
+80 rather than the census's 78 because this key is FINER than the census's
+(source_symbol, claim); the extra two are boundary/method splits, so 4.49x is
+conservative against 4.60x rather than in conflict with it.
+
+The pair count is disclosed, not traded away: `details` gains a "spanning N
+source->sink pair(s)" clause (silent when it equals the situation count, so a
+single-pair verdict stays byte-identical) and every evidence row carries
+collapsed_flow_count. The total is computed over all violations rather than
+summed across the capped evidence list, where the sum would be wrong.
+
+Envelope 2.0 -> 2.1: not purely additive, on the 1.5 precedent. The witness
+scalars keep their names and stay valid (each is a member of its own set).
+
+One stale reader found. test_cfg.py's _MockTaintFinding hand-restated nine of
+the dataclass's fields and raised AttributeError the moment it gained
+sink_symbols; it now constructs the real dataclass. cfg.select_ddg_targets
+read the witness sink_symbol and now reads the set -- honest scope: that
+function has NO production caller today, so this is a latent reader corrected,
+not an observed regression.
+
+This makes the CLAIM honest; it does not make the analysis precise. Clause
+(a2) remains unmet for every unadjudicated flow, and removal is unsound on
+this substrate -- the call graph emits one edge per (caller, callee), so an
+edge's `line` is *a* line and not every line.
+
+Racial-Capitalism-Is-Bad: a platypus teaching aeration to a class of turtles in a swamp-side Shoney’s patio shaped like recipe book
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
