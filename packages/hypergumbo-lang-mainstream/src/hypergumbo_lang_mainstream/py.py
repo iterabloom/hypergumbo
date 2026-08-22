@@ -3565,6 +3565,7 @@ def _extract_edges(
     method_to_enclosing_class_id: dict[str, str] | None = None,
     module_to_file_id: dict[str, str] | None = None,
     property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
+    interprocedural_param_types: dict[tuple[str, int], str] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -3582,6 +3583,11 @@ def _extract_edges(
     2. Return type annotations: stub = get_client() where get_client() -> Client
        → var_types['stub'] = Client (requires annotation on the function)
     3. Parameter type annotations: def f(session: Session) → param maps to Session
+    4. CALL-SITE argument types for UNANNOTATED parameters (INV-fibis):
+       ``(callee id, position) -> external type``, precomputed across the whole
+       repository by :func:`_collect_call_site_param_types` and admitted only
+       where every observed call site agreed. Ranked last deliberately — an
+       annotation and an in-repo class are both better evidence and both win.
 
     Field type inference tracks self.field assignments in __init__ from typed params
     and constructor calls.
@@ -3611,6 +3617,8 @@ def _extract_edges(
         local_names_by_func_id = {}
     if method_to_enclosing_class_id is None:  # pragma: no cover
         method_to_enclosing_class_id = {}
+    if interprocedural_param_types is None:
+        interprocedural_param_types = {}
 
     # WI-luhah residual: the per-function STATEMENT-bound shadow set that
     # `_enclosing_shadow` unions alongside the LEGB `local_names_by_func_id`.
@@ -4459,19 +4467,12 @@ def _extract_edges(
           reference strings, generics — returns ``None``. They cannot be pinned to one
           module, which is the same line ``taint_refine``'s WI-dozon pinning draws.
         """
-        if isinstance(annotation, ast.Name):
-            return _import_binding_for(annotation.id, imports, module_imports)
-        if isinstance(annotation, ast.Attribute) and isinstance(
-            annotation.value, ast.Name,
-        ):
-            root = module_imports.get(annotation.value.id)
-            if root:
-                return f"{root}.{annotation.attr}"
-        return None
+        return _binding_checked_type_hint(annotation, imports, module_imports)
 
     def _extract_external_param_types(
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
         param_types: dict[str, Symbol],
+        owner: Symbol | None = None,
     ) -> dict[str, str]:
         """WI-zilag: parameters whose annotation names an external catalogued type.
 
@@ -4493,6 +4494,29 @@ def _extract_edges(
             hint = _annotation_module_hint(arg.annotation)
             if hint is not None:
                 external[arg.arg] = hint
+        # INV-fibis residual: a receiver that arrives as a BARE parameter names
+        # no module, so `sock.sendall(x)` emitted the `external` placeholder and
+        # every consumer refused it as an untyped method call. The type is not
+        # inferable from the body — that is what makes this interprocedural —
+        # but the repository's own call sites carry it, and
+        # ``interprocedural_param_types`` holds the positions where every
+        # observed call site agreed. THE ANNOTATION WINS: the declaration is
+        # better evidence and it is binding-checked, so this only fills
+        # parameters the loop above left empty, and never overrides an in-repo
+        # class (``param_types``), which is first-party and carries no
+        # catalogue meaning.
+        if owner is not None and interprocedural_param_types:
+            positional = list(func_node.args.posonlyargs) + list(
+                func_node.args.args
+            )
+            for pos, arg in enumerate(positional):
+                if arg.arg in external or arg.arg in param_types:
+                    continue
+                if arg.annotation is not None:
+                    continue
+                hint = interprocedural_param_types.get((owner.id, pos))
+                if hint is not None:
+                    external[arg.arg] = hint
         return external
 
     def _resolve_decorator_target(
@@ -4866,7 +4890,7 @@ def _extract_edges(
                 process_code_block(
                     node.body, caller_symbol, param_types, stack=stack,
                     external_var_types=_extract_external_param_types(
-                        node, param_types,
+                        node, param_types, caller_symbol,
                     ),
                 )
                 _emit_variable_refs(
@@ -5445,6 +5469,196 @@ def _preserved_receiver_type(
     if hint is None:
         return None
     return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
+
+
+def _binding_checked_type_hint(
+    node: ast.expr,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> str | None:
+    """The external dotted type an expression NAMES, resolved through this
+    file's import bindings, or ``None``.
+
+    ONE HOME for a question two callers ask: WI-zilag's parameter-annotation
+    route (``p: pathlib.Path``) and INV-fibis's call-site route
+    (``socket.socket()`` as an argument). They are the same resolution over
+    different syntax, and the annotation route had it as a closure — so the
+    second caller would have grown a copy, which is how the two bare-name
+    inferences drifted apart before (INV-kipor).
+
+    * ``ast.Name`` → whatever an import binds that name to, via
+      :func:`_import_binding_for`. An UNBOUND name is a builtin or a
+      first-party class and returns ``None``, which is what keeps an in-repo
+      ``class Session`` out of the module slot.
+    * ``ast.Attribute`` → resolved only when the ROOT is a real module import,
+      so an alias expands (``import pathlib as pl`` → ``pl.Path`` becomes
+      ``pathlib.Path``) and an unimported root is refused.
+    * Everything else — ``Optional[X]``, ``X | None``, forward-reference
+      strings, generics, subscripts — returns ``None``. They cannot be pinned
+      to one module.
+
+    NOT CATALOGUE-GATED, and that is deliberate rather than an oversight:
+    ``requests.Session`` has zero rows in python.yaml (INV-fotav), and
+    refusing to name it would keep exactly the case INV-fibis was filed for
+    invisible to the uncovered-module disclosure.
+    """
+    if isinstance(node, ast.Name):
+        return _import_binding_for(node.id, imports, module_imports)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        root = module_imports.get(node.value.id)
+        if root:
+            return f"{root}.{node.attr}"
+    return None
+
+
+def _call_site_argument_type(
+    call: ast.Call,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> str | None:
+    """The external TYPE a constructor-shaped argument expression denotes.
+
+    THE ANNOTATION ROUTE AND THIS ROUTE ARE NOT SYMMETRIC, and the first cut of
+    this pass assumed they were. ``p: pathlib.Path`` names a type BY
+    CONSTRUCTION — that is what an annotation is. ``x = json.dumps(y)`` has the
+    identical AST shape (``module.attr(...)``) and names a FUNCTION, so
+    resolving it through import bindings alone asserts ``json.dumps`` is a
+    type. Measured on poetry: of 19 agreed call-site hints, **7 (37%) were
+    function results** — ``json.dumps``, ``typing.cast``,
+    ``tomlkit.inline_table``, ``parse_constraint``, two ``get_*`` helpers.
+
+    That is not merely useless. A minted hint lands in the dst's module slot,
+    and ``io_boundary._module_matches`` does BIDIRECTIONAL SUBSTRING matching,
+    so ``json.dumps`` can match a catalogue module ``json`` — a confident false
+    boundary AND a false taint sink, which is the exact failure class WI-zilag
+    documents for the raw-annotation-text shortcut it refused. So the argument
+    must be shown to name a type, by one of two routes:
+
+    1. **The receiver-type catalogue already knows this constructor.**
+       ``_external_constructor_type`` is what WI-fuvuj built for ``f =
+       open(p)`` / ``s = socket.socket()``, and it is binding-checked
+       (INV-kipor). Lowercase type names like ``socket.socket`` come through
+       here, which is why route 2 alone would not do.
+    2. **The resolved path's final segment is PascalCase.** PEP 8's class
+       convention, and about as strong as naming conventions get in Python.
+       This is the route that admits ``requests.Session``, which route 1
+       CANNOT: requests has zero rows in python.yaml (INV-fotav), and refusing
+       it would keep the precise case INV-fibis was filed for invisible.
+
+    A convention is a heuristic and this says so rather than dressing it up.
+    What makes it acceptable here is the direction of its errors: a
+    lowercase-named class is refused (a false negative, silence), while the
+    thing it prevents is a false boundary asserted with confidence.
+    """
+    catalogued = _external_constructor_type(call, imports, module_imports)
+    if catalogued is not None:
+        return catalogued
+    hint = _binding_checked_type_hint(call.func, imports, module_imports)
+    if hint is None:
+        return None
+    final = hint.rsplit(".", 1)[-1]
+    return hint if final[:1].isupper() else None
+
+
+def _scope_local_external_types(
+    body: list[ast.stmt],
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> dict[str, str]:
+    """``{local name: external dotted type}`` for ``x = SomeExternalType(...)``
+    inside one scope.
+
+    A miniature of what ``process_code_block`` tracks, needed BEFORE edge
+    extraction runs because the call-site pass has to know what
+    ``send(s, ...)`` is passing. Deliberately small: constructor assignments
+    only, no derivation chains and no ``with`` binding, because the measured
+    residual shape is ``s = socket.socket(); send(s, ...)`` and every widening
+    here mints a hint that is TRUSTED downstream.
+
+    A name assigned two different external types in one scope is DROPPED
+    rather than resolved by source order. The walk is order-insensitive (it
+    uses ``ast.walk``), so "last assignment wins" would be a claim this pass
+    cannot actually support.
+    """
+    seen: dict[str, set[str]] = {}
+    for node in body:
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Assign) or not isinstance(
+                sub.value, ast.Call,
+            ):
+                continue
+            hint = _call_site_argument_type(
+                sub.value, imports, module_imports,
+            )
+            if hint is None:
+                continue
+            for target in sub.targets:
+                if isinstance(target, ast.Name):
+                    seen.setdefault(target.id, set()).add(hint)
+    return {k: next(iter(v)) for k, v in seen.items() if len(v) == 1}
+
+
+def _collect_call_site_param_types(
+    tree: ast.Module,
+    symbol_by_name: dict[str, "Symbol"],
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+    global_symbols: dict[tuple[str, str], "Symbol"],
+) -> dict[tuple[str, int], set[str]]:
+    """``{(callee symbol id, positional index): {external types passed}}``.
+
+    INV-fibis residual, collection half. Run per file BEFORE edge extraction,
+    then merged across files in :func:`analyze_python` — the call site is
+    frequently not in the callee's file, so a per-file map would miss the
+    shape entirely.
+
+    SCOPE, and each exclusion is load-bearing rather than a stub:
+
+    * **Bare-name callees only** (``send(...)``). A call through a receiver
+      (``obj.send(...)``) needs receiver typing to resolve its callee, which is
+      the thing being computed; using it would be circular.
+    * **Positional arguments only.** A keyword argument could be bound by
+      parameter name, but no measured payload justified the extra surface.
+    * **Callee kind ``function``.** A bare-name call cannot target a bound
+      method, so positions would be off by one against ``self``.
+    * The set is returned UNRESOLVED (one entry per observed type) so the
+      merge can apply the agreement rule across files; collapsing per file
+      would let two files disagree silently.
+    """
+    hints: dict[tuple[str, int], set[str]] = {}
+    scopes: list[list[ast.stmt]] = [tree.body]
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scopes.append(node.body)
+    for body in scopes:
+        locals_ = _scope_local_external_types(body, imports, module_imports)
+        for stmt in body:
+            for sub in ast.walk(stmt):
+                if not isinstance(sub, ast.Call) or not isinstance(
+                    sub.func, ast.Name,
+                ):
+                    continue
+                callee = symbol_by_name.get(sub.func.id)
+                if callee is None and sub.func.id in imports:
+                    module_name, original = imports[sub.func.id]
+                    callee = _lookup_symbol_by_module(
+                        global_symbols, module_name, original,
+                    )
+                if callee is None or callee.kind != "function":
+                    continue
+                for pos, arg in enumerate(sub.args):
+                    if isinstance(arg, ast.Starred):
+                        break
+                    hint = None
+                    if isinstance(arg, ast.Name):
+                        hint = locals_.get(arg.id)
+                    elif isinstance(arg, ast.Call):
+                        hint = _call_site_argument_type(
+                            arg, imports, module_imports,
+                        )
+                    if hint is not None:
+                        hints.setdefault((callee.id, pos), set()).add(hint)
+    return hints
 
 
 def _import_binding_for(
@@ -6722,6 +6936,35 @@ def analyze_python(
         [s for a in file_analyses.values() for s in a.symbols]
     )
 
+    # INV-fibis residual: type UNANNOTATED receiver parameters from the call
+    # sites that pass them. Runs BETWEEN the symbol pass and the edge pass
+    # because it needs `global_symbols` (a callee is frequently imported) and
+    # its result is an INPUT to edge extraction.
+    #
+    # THE AGREEMENT RULE IS APPLIED HERE, ACROSS FILES, and that placement is
+    # the point: a per-file collapse would let two files disagree silently,
+    # each confidently typing the same parameter differently. A minted hint is
+    # TRUSTED downstream — it bypasses both `gate_named_entry` and the
+    # `ambiguous_names` net by design — so a position with two observed types
+    # is dropped rather than resolved by any tie-break.
+    _call_site_types: dict[tuple[str, int], set[str]] = {}
+    for _cs_file, _cs_analysis in file_analyses.items():
+        # ``FileAnalysis.tree`` is typed ``ast.AST | None``; every entry in
+        # ``file_analyses`` came from a successful parse, so the narrowing is
+        # a type-level statement of an invariant the loop above establishes.
+        if not isinstance(_cs_analysis.tree, ast.Module):  # pragma: no cover
+            continue
+        for _cs_key, _cs_seen in _collect_call_site_param_types(
+            _cs_analysis.tree, _cs_analysis.symbol_by_name,
+            _cs_analysis.imports, _cs_analysis.module_imports, global_symbols,
+        ).items():
+            _call_site_types.setdefault(_cs_key, set()).update(_cs_seen)
+    interprocedural_param_types: dict[tuple[str, int], str] = {
+        _k: next(iter(_v))
+        for _k, _v in _call_site_types.items()
+        if len(_v) == 1
+    }
+
     # Second pass: extract edges with cross-file resolution
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
@@ -6751,6 +6994,7 @@ def analyze_python(
             local_names_by_func_id=analysis.local_names_by_func_id,
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
             module_to_file_id=module_to_file_id,
+            interprocedural_param_types=interprocedural_param_types,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
