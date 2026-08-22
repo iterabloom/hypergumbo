@@ -17,6 +17,7 @@ import pytest
 import tree_sitter
 from tree_sitter_language_pack import get_language
 
+from hypergumbo_core.taint import TaintFlowFinding
 from hypergumbo_core.cfg import (
     uncovered_call_lines,
     BasicBlock,
@@ -2159,22 +2160,34 @@ class _MockIoChain:
         self.primitive = "open"
 
 
-class _MockTaintFinding:
-    """Minimal TaintFlowFinding mock for testing."""
+def _MockTaintFinding(
+    source: str, sink: str, sanitized: bool = False,
+    path: list[str] | None = None,
+) -> TaintFlowFinding:
+    """Build a real ``TaintFlowFinding`` for the DDG-target selector tests.
 
-    def __init__(
-        self, source: str, sink: str, sanitized: bool = False, path: list[str] | None = None,
-    ) -> None:
-        self.source_symbol = source
-        self.sink_symbol = sink
-        self.sanitized = sanitized
-        self.path = path or []
-        self.taint_label = "plaintext"
-        self.source_primitive = "decrypt"
-        self.sink_primitive = "send"
-        self.sink_zone = "relay"
-        self.confidence = "approximate"
-        self.analysis_method = "structural"
+    THIS WAS A HAND-WRITTEN MOCK CLASS that re-declared nine of the dataclass's
+    fields, and it drifted the moment the dataclass gained a field the selector
+    reads: INV-karud added ``sink_symbols`` (a finding now stands for every
+    sink symbol it reached, not just the witness one) and every test here
+    raised ``AttributeError`` on a mock that could not have been wrong about
+    anything else. A stand-in that restates a type's shape is a second home for
+    it; constructing the real dataclass costs nothing here — it is a plain
+    dataclass with no I/O — and ``__post_init__`` keeps the derived tuples
+    correct without this file knowing they exist.
+    """
+    return TaintFlowFinding(
+        taint_label="plaintext",
+        source_symbol=source,
+        source_primitive="decrypt",
+        sink_symbol=sink,
+        sink_primitive="send",
+        sink_zone="relay",
+        sanitized=sanitized,
+        confidence="approximate",
+        analysis_method="structural",
+        path=path or [],
+    )
 
 
 class TestSelectDdgTargets:

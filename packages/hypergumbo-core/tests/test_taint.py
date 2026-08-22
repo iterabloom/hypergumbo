@@ -4353,6 +4353,14 @@ class TestSinkCallersDoesNotOverwrite:
     ``sink_callers`` was a dict keyed on the CALLING symbol, so each sink
     overwrote the previous one and only the last edge encountered survived.
     Present in both passes; under-reports real findings.
+
+    THE CONTRACT IS UNCHANGED AND THE CARRIER MOVED (INV-karud). Both sinks
+    are still reported; they are now reported as the ``sink_primitives`` set of
+    ONE situation-level finding rather than as two findings, because an
+    unadjudicated flow may not claim which source value reached which sink.
+    Asserting ``len(found) == 2`` would pin the pair shape rather than the
+    property this class exists for, so the assertion reads the set — which
+    still fails outright if a sink is overwritten.
     """
 
     def _edges(self) -> list[dict]:
@@ -4372,7 +4380,10 @@ class TestSinkCallersDoesNotOverwrite:
         found = propagate_taint_structural(
             self._edges(), [_plaintext_source()], self._sinks(), [],
         )
-        assert {f.sink_primitive for f in found} == {"open", "remove"}
+        assert len(found) == 1
+        assert set(found[0].sink_primitives) == {
+            "builtins.open", "os.remove",
+        }
 
     def test_ddg_reports_both_sinks(self) -> None:
         ddg = [DdgEdge(variable="v", def_block="bb_0", def_line=2,
@@ -4381,7 +4392,9 @@ class TestSinkCallersDoesNotOverwrite:
             ddg, self._edges(), [_plaintext_source()], self._sinks(), [],
             ddg_symbols={_SRC},
         )
-        assert {f.sink_primitive for f in found} == {"open", "remove"}
+        assert {p for f in found for p in f.sink_primitives} == {
+            "builtins.open", "os.remove",
+        }
 
 
 # ---------------------------------------------------------------------------

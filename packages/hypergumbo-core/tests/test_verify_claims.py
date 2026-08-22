@@ -1045,6 +1045,15 @@ class TestViolatedFlowEvidence:
                 # and the ADR-0017 §3a walk is unobservable from the record.
                 "confidence": "approximate",
                 "analysis_method": "structural",
+                # INV-karud: the sets are what the row CLAIMS; the scalars
+                # above are the witness the `path` belongs to. Singletons here
+                # because the fixture is one pair, and module-qualified — bare
+                # `replace` is not checkable against a catalogue, and the
+                # fixture declares no module, so it stays bare.
+                "source_primitives": ["cmd_run"],
+                "sink_primitives": ["replace"],
+                "sink_symbols": ["d"],
+                "collapsed_flow_count": 1,
             }
         ]
 

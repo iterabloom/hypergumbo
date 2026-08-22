@@ -1938,8 +1938,13 @@ def select_ddg_targets(
                 continue
             if _tier_ok(finding.source_symbol):
                 result.taint_relevant.add(finding.source_symbol)
-            if _tier_ok(finding.sink_symbol):
-                result.taint_relevant.add(finding.sink_symbol)
+            # INV-karud: read the SET. An unadjudicated finding now stands
+            # for every sink symbol it reached, and ``sink_symbol`` is only
+            # the witness the ``path`` belongs to — selecting on it would
+            # silently drop the rest of the group from DDG coverage.
+            for _sink in finding.sink_symbols:
+                if _tier_ok(_sink):
+                    result.taint_relevant.add(_sink)
             # Also include intermediate path nodes
             for sym_id in finding.path:
                 if _tier_ok(sym_id):
