@@ -1,0 +1,57 @@
+Original commit body from 97e65879f837caa8cd74b9366393956f0559ca7c:
+
+INV-karud's collapse raised a question it could not answer from where it
+stood -- which way per-situation precision moves -- because it depends on
+whether the large groups adjudicate true or false, and 0001's 21
+co-location-function false positives are exactly the rows most likely to be
+grouped.
+
+Measured on 0001's own CENSUS cohort (caddy, mitmproxy, poetry, express,
+apollo-server), one adjudication over one commit, two units:
+
+    unit                                   TP   population   precision
+    row (source->sink pair, pre-collapse)  33          297      11.1%
+    situation (post-collapse)              19           59      32.2%
+
+IT MOVES UP, 2.9x, and the mechanism is that false positives concentrate in
+the LARGEST groups. caddy's cmd/commandfuncs.go cmdRun emits 76 rows across
+three claims and every one is false -- its os.Getenv reads are all compared
+to "" and runtime.GOOS is a switch subject, which 0001's rubric calls control
+dependence and therefore FP -- and it collapses to 3 situations. Meanwhile 12
+of the 19 true situations stand for a single pair each.
+
+METHOD LIMIT, STATED FIRST. 0001's census used a blind second pass by a fresh
+agent plus a third on disagreement, specifically to control the bias it named
+("the census author wrote much of the code being measured"). That control is
+NOT reproduced here: single-pass, non-blind, by the author of the change being
+measured. Ties were pre-committed to FALSE POSITIVE, so both rates are FLOORS.
+Admissible as evidence about the direction and size of the row-vs-situation
+difference; not a replacement for 0001's headline.
+
+It does NOT move WI-sivuz's <50% band. Those bands were named before any
+interval was computed; this changes what the number MEASURES, not the ranking
+rule -- which is what INV-karud's entry said in advance and still holds now
+that the direction is known rather than guessed.
+
+11.1% is not comparable to 0001's 26.2% census rate: that measurement records
+its own population drifting 60 -> 298 flows in nine days, and 0003 measured a
+recall widening landing at 2.9% marginal precision. The comparable pair is the
+two rows above.
+
+Secondary findings:
+* ZERO unadjudicable, against 19 of 104 in 0001 -- every situation named a
+  file a reader could open. NOT offered as INV-rozob closure evidence: those
+  file nodes are in-repo anchors the collapse never touched.
+* ddg 80.0% (4/5), structural 33.3% (10/30), ddg_mixed 20.8% (5/24).
+  ddg_mixed BELOW structural is 0001's reversal in a second population, so the
+  label is not a calibrated confidence; and ddg is still too small to filter on
+  -- a ddg-only view discards 15 of 19 real findings.
+* 17 of the 40 false situations are control-dependence-only, the single
+  largest class, and that is a stated rubric convention rather than a defect.
+* 51 of 59 situations are host-secret-*, with sources including runtime.GOOS,
+  platform.system, sys.argv and shutil.get_terminal_size. That is INV-tutar's
+  vocabulary question, and it is the biggest lever on this table that is not a
+  precision fix at all.
+
+Racial-Capitalism-Is-Bad: a mongoose teaching chromatography to a class of turtles in a clockwork workshop made of newspapers
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
