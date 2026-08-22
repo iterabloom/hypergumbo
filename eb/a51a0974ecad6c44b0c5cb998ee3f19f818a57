@@ -1,0 +1,69 @@
+Original commit body from b16fb2b5d77e92bbf1790e16b30b8472cc6bffe0:
+
+verify-claims aborted with RecursionError on keda and exited 1 with an EMPTY
+STDOUT -- and exit 1 is also what VIOLATED returns. A CI gate written
+`verify-claims ... || exit 1` could not tell "claims violated" from "the
+analysis crashed and examined nothing", and a JSON consumer got a zero-byte
+file instead of a verdict list. That is the certifying-what-it-did-not-establish
+failure INV-javam and INV-fibis were filed for, arriving through the error path
+instead of the verdict path, which is why this is an invariant and not a bug
+report.
+
+CAUSE. ddg_build._walk_functions was a pure pre-order traversal that recursed
+once per child, so Python stack depth WAS tree-sitter AST depth -- one frame per
+level, against CPython's default limit of 1000. Machine-generated code exceeds
+that without being pathological: keda's vendor/go.temporal.io/api/
+workflowservice/v1/request_response.pb.go (725,832 bytes of generated protobuf)
+measures an AST DEPTH OF 1171, because one const is a string built as
+"..." + "..." + "..." 1,165 TIMES and + is left-associative, giving a 1,165-deep
+left spine. Deepest path:
+    source_file / const_declaration / const_spec / expression_list
+      / binary_expression x1165 / interpreted_string_literal
+
+FIX: an explicit stack. EXACTLY EQUIVALENT, and both halves are checked rather
+than asserted -- there is no work after the child loop, so the recursion carried
+no state a worklist cannot hold and no post-order step; children are pushed
+REVERSED so pop() yields them left to right and visit order (which `out`
+accumulates in) is preserved.
+
+sys.setrecursionlimit was rejected: it trades a catchable RecursionError for a
+C-stack segfault, strictly worse for a failure already indistinguishable from a
+verdict.
+
+MEASURED, on the repo that produced the crash:
+    before   rc=1    0 bytes    RecursionError at ddg_build.py:206
+    after    rc=1    9,700 bytes    6 verdicts (2 violated, 4 inconclusive)
+The exit code is UNCHANGED in both, which is precisely why the fix was needed.
+
+NON-DESTRUCTION asserted, not assumed: an A/B on poetry (Python, DDG-active)
+with arms differing only in this hunk is BYTE-IDENTICAL.
+
+IT IS A CLASS, AND THE CLASS IS SIZED. An AST sweep finds 72 self-recursive
+child-loop walks across core and all three language packages. A corpus
+AST-depth census (files >= 60KB, measured ITERATIVELY so the instrument cannot
+hit the bug it measures) puts the realized exposure narrowly:
+
+    repo        scanned   depth>=500   depth>=900   worst
+    keda            390            8            7    1171
+    dash.js          20            0            0      74
+    caddy             2            0            0      37
+    mitmproxy         5            0            0      79
+
+All seven keda offenders are generated Go under vendor/; six are
+golang.org/x/text/unicode/norm/tables*.go at 947-948 -- WITHIN 5% OF THE LIMIT,
+so this is not one pathological file. `survey` over the same input does not
+crash and the Go analyzer parses the offending file fine (3,551 symbols), so the
+DDG walk was the single live offender. The remaining 71 are filed on the item
+rather than rewritten wholesale, since none has a measured failure.
+
+Note _SKIP_DIRS excludes node_modules and .venv but NOT vendor/, which is why
+the vendored Go tree is walked at all. Filed as scope, not changed here.
+
+TEST NOTE for whoever extends this: _DDG_LANGUAGES holds only python until the
+force-imports inside _build_ddg_for_verify_claims run, and the def/use extractor
+registers on IMPORT from a language package. A test that skips either walks
+nothing and passes vacuously; the new file guards both, the same way
+test_ddg_build.py::test_python_still_produces_edges does.
+
+Racial-Capitalism-Is-Bad: a static-laced owl teaching powderization to a class of turtles in a fossil-etched dessert bar
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
