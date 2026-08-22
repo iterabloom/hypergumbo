@@ -1,0 +1,41 @@
+- op: create  # 2df0
+  at: '2026-08-22T20:04:19Z'  # 2df0
+  by: agent  # 2df0
+  actor: jgstern_agent  # 2df0
+  clock: 1  # 2df0
+  nonce: 2df0  # 2df0
+  data:  # 2df0
+    kind: invariant  # 2df0
+    title: "A method call on an own instance field of external or unknown type emits NO EDGE, so every honesty mechanism is blind to it and the claim returns bare confirmed at exit 0"  # 2df0
+    status: violated  # 2df0
+    priority: 0  # 2df0
+    parent:  # 2df0
+    tags:  # 2df0
+    - io_boundary  # 2df0
+    - verify_claims  # 2df0
+    - false_confirm  # 2df0
+    - rct_blocker  # 2df0
+    isbefore: []  # 2df0
+    duplicate_of: []  # 2df0
+    not_duplicate_of: []  # 2df0
+    pr_ref:  # 2df0
+    description: ""  # 2df0
+    fields:  # 2df0
+      statement: "A method call must produce a call edge whenever the analysis cannot establish that no I/O occurs. A call whose receiver is an own instance field of externally-derived or unknown type -- self.field.method() where the field was assigned in __init__ from anything other than an in-repo class -- currently produces NO EDGE AT ALL, so every downstream honesty mechanism (the untyped_receiver caveat, the uncovered-module gate, taint) is structurally unable to see it and a boundary claim returns a bare confirmed at exit 0."  # 2df0
+      root_cause: "class_field_types is typed dict[str, dict[str, Symbol]] -- Symbol-valued, so it can only represent an IN-REPO class type. There is no external counterpart (no external_field_types), unlike the local-variable path which has both var_types and external_var_types.\n\nA self.<field> whose type is external or unknown therefore falls between two sites:\n  * py.py Site-3 (the inherited-field placeholder emit) excludes it by design, via the guard \"field_name not in own_field_names\". That exclusion is CORRECT for Site-3's own purpose: Site-3 routes to the inherited_calls linker, which walks PARENT classes, and an own field is never inherited -- including it would create the shadow FP where a child re-declares a parent field name with a different type.\n  * Case 2f resolves own fields only when class_field_types / var_types carries the type, which by construction it cannot for an external one.\n\nSo neither site emits, and no edge exists. Verified by A/B in one file: self.h = Helper() (in-repo) emits a fully resolved edge to Helper.sendall; self.sock = socket.socket() (external constructor, type known to the receiver-constructor table) emits nothing."  # 2df0
+- op: discuss  # 8d95
+  at: '2026-08-22T20:04:49Z'  # 8d95
+  by: agent  # 8d95
+  actor: jgstern_agent  # 8d95
+  clock: 2  # 8d95
+  nonce: 8d95  # 8d95
+  message: "FOUND BY A 3-JUDGE PANEL convened on INV-fibis (2026-08-22). Two judges reached\nthis defect INDEPENDENTLY, neither seeing the other's work, from different\nstarting charges (a security-audit lens and an adversarial refutation of a\nmeasurement). That convergence is why it is filed at P0 on first sighting.\n\nEVERY NUMBER BELOW WAS RE-VERIFIED BY THE FILER before this item was written;\nwhere a judge's figure differed from mine, mine is the one recorded and the\njudge's is named.\n\n*** THE DEMONSTRATION. *** Two classes in one file, identical call, differing\nONLY in where the field is assigned:\n\n    class A:\n        def __init__(self, sock): self.sock = sock\n        def send(self, payload):  return self.sock.sendall(payload)\n\n    class B:\n        def attach(self, sock):   self.sock = sock\n        def send(self, payload):  return self.sock.sendall(payload)\n\n  B alone -> confirmed_with_caveats, caveat NAMES the sendall site.\n  A alone -> confirmed. \"No net_send chains found.\" rc 0.\n\nsendall is a CATALOGUED stdlib primitive. No third-party module, no overlay\nneeded, nothing exotic. The tool certifies absence of network egress for code\nthat calls socket.sendall.\n\n*** THE ROOT-CAUSE A/B, one file, two fields. ***\n    self.h    = Helper()          # in-repo class  -> edge, FULLY RESOLVED to Helper.sendall\n    self.sock = socket.socket()   # external ctor  -> NO CALLS EDGE\nThe external constructor's type is KNOWN to the receiver-constructor table --\nthe identical local, s = socket.socket(); s.sendall(b), emits\npython:socket.socket:0-0:sendall:unresolved and is reported. So this is not a\ntype-inference gap. It is an emit gap specific to own fields.\n\n*** ON REAL CODE. *** django/db/backends/utils.py: 9 of 10 self.<attr>.<method>()\nsites have no edge naming that method -- including self.cursor.execute() (105),\nexecutemany() (114), callproc() (71, 73). Django's SQL execution path. (A judge\nreported 10 of 10; my stricter re-check says 9. The one hit does not change the\nfinding, and my index was a union across files, which biases TOWARD finding a\nmatch -- so 9 is if anything conservative.)\n\n*** WHY THIS IS WORSE THAN THE ITEM THAT UNCOVERED IT. *** INV-fibis's residual\nneeds an UNCATALOGUED method on an untyped receiver. This one fires on a\nCATALOGUED stdlib method with the type known, and it is upstream of every\nmechanism: there is no edge, so there is nothing for a caveat to name, nothing\nfor the uncovered-module gate to disclose, and nothing for taint to walk.\nSilence is the one answer a tool that certifies absence may never give.\n\n*** URGENCY IS STRUCTURAL, and this is the panel's sharpest point. *** A bare\nconfirmed is currently RARE on real repos -- honesty is being carried by the\nuncovered-module gate, not by the caveats. As catalogue and overlay coverage\nimprove, which is a stated goal, inconclusive converts to confirmed and this\nblind spot is exposed at scale. The safety property is ANTI-CORRELATED with the\ntool getting better. Fix it before the coverage lands, not after.\n\n*** FIX SHAPE, NOT PRESCRIBED. *** An edge carrying the external placeholder is\nsufficient -- the shipped untyped_receiver caveat then fires for free, with no\nnew vocabulary and no new exit code. Two candidate routes, and the second is\nsafer:\n  (a) relax Site-3's own-field exclusion. CAUTION: Site-3 stamps\n      inherited_field_receiver and routes to the inherited_calls linker, which\n      walks PARENT classes. An untypable OWN field sent down that path invites\n      exactly the shadow FP the guard was added to prevent.\n  (b) a separate emit for own fields that are in own_field_names but NOT in\n      var_types / class_field_types, WITHOUT the inherited_field_receiver stamp.\n      This adds the placeholder without borrowing the parent-walk semantics.\nAn external counterpart to class_field_types (mirroring external_var_types for\nlocals) would additionally let these resolve rather than merely be disclosed.\n\nACCEPTANCE: the class-A fixture must stop returning bare confirmed, and\ndjango/db/backends/utils.py must emit edges for its self.cursor.execute() sites.\nA/B in BOTH signs before shipping -- this ADDS edges to a low-precision layer,\nso measure the marginal precision (rule 17, and 0003's 2.9% precedent)."  # 8d95
+- op: update  # 87e8
+  at: '2026-08-22T20:04:49Z'  # 87e8
+  by: agent  # 87e8
+  actor: jgstern_agent  # 87e8
+  clock: 3  # 87e8
+  nonce: '87e8'  # 87e8
+  set: {}  # 87e8
+  add:  # 87e8
+    isbefore: [INV-fibis-zonok-jotus-mipar-zibos-jisol-tukit-hajag]  # 87e8
