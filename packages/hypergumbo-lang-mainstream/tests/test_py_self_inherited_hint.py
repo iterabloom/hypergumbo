@@ -812,6 +812,154 @@ class TestSelfFieldMethodHint:
         assert _unresolved_method_edges(res, "process") == []
 
 
+class TestOwnFieldExternalReceiverEmit:
+    """INV-jujoh: ``self.<own field>.method()`` where the field's type is
+    EXTERNAL or UNKNOWN must still emit the bare external placeholder edge.
+
+    Before this class, that call emitted **no edge at all**: the field is in
+    ``own_field_names`` (so the Site-3 inherited emit correctly excludes it --
+    an own field is never inherited) and absent from ``var_types`` (so Case 2f
+    cannot resolve it, because ``class_field_types`` is Symbol-valued and can
+    only hold an IN-REPO class). Falling between the two sites meant silence,
+    and silence is upstream of every honesty mechanism: no edge for the
+    ``untyped_receiver`` caveat to name, none for the uncovered-module gate to
+    disclose, none for taint to walk. A ``net_send`` claim over
+    ``self.sock.sendall(payload)`` -- a CATALOGUED stdlib primitive -- returned
+    a bare ``confirmed`` at exit 0.
+
+    The fix emits the placeholder WITHOUT the ``inherited_field_receiver``
+    stamp. That distinction is the whole safety argument and is pinned below:
+    the stamp routes to ``inherited_calls``, which walks PARENT classes, so
+    stamping an own field would invite exactly the shadow FP the Site-3
+    exclusion exists to prevent (see
+    ``test_own_field_shadowing_parent_field_no_wrong_edge``).
+    """
+
+    def test_untyped_param_field_emits_placeholder(self, tmp_path: Path) -> None:
+        # THE ITEM'S OWN FIXTURE. ``sock`` is an UNANNOTATED __init__ param, so
+        # class_field_types never captures it; own_field_names does.
+        src = (
+            "class A:\n"
+            "    def __init__(self, sock):\n"
+            "        self.sock = sock\n"
+            "    def send(self, payload):\n"
+            "        return self.sock.sendall(payload)\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _unresolved_method_edges(res, "sendall") != [], (
+            "own field of unknown type emitted NO edge: the untyped_receiver "
+            "caveat, the uncovered-module gate and taint are all blind to it"
+        )
+
+    def test_external_ctor_field_emits_placeholder(self, tmp_path: Path) -> None:
+        # The type IS known to the receiver-constructor table (socket.socket),
+        # which is why this is an EMIT gap and not a type-inference gap: the
+        # identical LOCAL, ``s = socket.socket(); s.sendall(b)``, already emits.
+        src = (
+            "import socket\n"
+            "class A:\n"
+            "    def __init__(self):\n"
+            "        self.sock = socket.socket()\n"
+            "    def send(self, payload):\n"
+            "        return self.sock.sendall(payload)\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _unresolved_method_edges(res, "sendall") != []
+
+    def test_factory_field_emits_placeholder(self, tmp_path: Path) -> None:
+        # The factory shape from test_self_field_untyped_own_field_no_hint,
+        # which asserted only the ABSENCE of the stamp and so passed VACUOUSLY
+        # (there was no edge at all). This asserts the edge exists; that test
+        # keeps asserting the stamp is absent, and is now non-vacuous.
+        src = (
+            "class C:\n"
+            "    def __init__(self):\n"
+            "        self.conn = make_conn()\n"
+            "    def run(self):\n"
+            "        return self.conn.query()\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _unresolved_method_edges(res, "query") != []
+
+    def test_placeholder_carries_no_inherited_field_stamp(
+        self, tmp_path: Path
+    ) -> None:
+        # THE SAFETY HALF. With the stamp, inherited_calls walks the enclosing
+        # class's PARENTS for a field of this name -- a walk whose premise is
+        # false for an own field. Route (a) of the item (relaxing the Site-3
+        # guard) would have shipped exactly that.
+        src = (
+            "class A:\n"
+            "    def __init__(self, sock):\n"
+            "        self.sock = sock\n"
+            "    def send(self, payload):\n"
+            "        return self.sock.sendall(payload)\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "sendall")
+        assert edges, "guard is vacuous unless the edge exists"
+        assert all(
+            "inherited_field_receiver" not in (e.meta or {}) for e in edges
+        )
+        assert all("enclosing_class" not in (e.meta or {}) for e in edges)
+
+    def test_placeholder_stays_unresolved(self, tmp_path: Path) -> None:
+        # Taint-safety by construction, the same contract Site-3 keeps: the
+        # analyzer never mints a RESOLVED edge here. is_resolved False + an
+        # unchanged ``:unresolved`` dst.
+        src = (
+            "class A:\n"
+            "    def __init__(self, sock):\n"
+            "        self.sock = sock\n"
+            "    def send(self, payload):\n"
+            "        return self.sock.sendall(payload)\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "sendall")
+        assert edges
+        assert all(e.is_resolved is False for e in edges)
+
+    def test_inherited_field_still_stamped(self, tmp_path: Path) -> None:
+        # NON-DESTRUCTION POSITIVE CONTROL, and the discriminating arm of the
+        # item's demonstration: the SAME call, with the field assigned OUTSIDE
+        # __init__, is not an own field -- it keeps the Site-3 stamp and its
+        # parent walk. If this ever goes quiet, the new branch has swallowed
+        # the inherited population.
+        src = (
+            "class B:\n"
+            "    def attach(self, sock):\n"
+            "        self.sock = sock\n"
+            "    def send(self, payload):\n"
+            "        return self.sock.sendall(payload)\n"
+        )
+        res = _analyze(tmp_path, src)
+        edges = _unresolved_method_edges(res, "sendall")
+        assert edges
+        assert any(
+            (e.meta or {}).get("inherited_field_receiver") == "sock"
+            for e in edges
+        )
+
+    def test_typed_own_field_still_resolves_via_case_2f(
+        self, tmp_path: Path
+    ) -> None:
+        # The new branch must not steal a Case-2f hit: an own field with an
+        # IN-REPO type resolves to the real method and emits NO placeholder.
+        src = (
+            "class Dep:\n"
+            "    def process(self):\n"
+            "        return 1\n"
+            "class C:\n"
+            "    def __init__(self, dep: Dep):\n"
+            "        self.dep = dep\n"
+            "    def run(self):\n"
+            "        return self.dep.process()\n"
+        )
+        res = _analyze(tmp_path, src)
+        assert _unresolved_method_edges(res, "process") == []
+
+
+
 def _class_id(res, class_name: str, *, prefer: str = "first") -> str:
     """Concrete Symbol id of a named class. ``prefer`` selects among same-name
     classes: 'first' = smallest start_line (top-level / earliest), 'last' =
