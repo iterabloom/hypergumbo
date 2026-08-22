@@ -1285,8 +1285,16 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
 # Cap for ``Edge.meta.referring_paths`` — the per-reference-site path
 # slots preserved when src-side dedupe collapses N edges into one. 50 is
 # arbitrary but large enough to retain attribution on virtually any
-# real-world repo (the largest hypergumbo collapse target was 732 file
-# externals → 1 boundary, but per-edge collapse depth is much lower).
+# real-world repo.
+#
+# THE NUMBER THIS COMMENT USED TO QUOTE IS STALE AND IS REMOVED RATHER THAN
+# LEFT TO MISLEAD: "the largest hypergumbo collapse target was 732 file
+# externals → 1 boundary". That measured a tree in which every Python file's
+# import-edge src dangled. WI-ramuv's file-Symbol synthesizer closed that, and
+# INV-rozob stopped ``_dedupe_key`` discarding the path for the remainder, so
+# no file-kind collapse target exists at all now. Measured after both: the
+# surviving per-language file population is 3 files on sqlalchemy, 2 on knex,
+# 2 on sops, 1 on poetry, 0 on httpx — and each keeps its own node.
 _REFERRING_PATHS_CAP = 50
 
 
@@ -1301,9 +1309,11 @@ def _canonical_external_id(language: str, path: str, name: str) -> str:
     ``Symbol.meta['reference_syntax']`` by the caller.
 
     Format mirrors :func:`make_symbol_id` so downstream tooling parses it
-    consistently. The path slot carries semantic identity (module name for
-    imports, qualified path for unresolved calls); the file-pseudo case has its
-    path collapsed to ``<external>`` upstream in :func:`_dedupe_key`.
+    consistently. The path slot carries semantic identity for every kind —
+    module name for imports, qualified path for unresolved calls, and the
+    importing file for a ``make_file_id`` pseudo-id. It used to be collapsed to
+    ``<external>`` for that last case; see :func:`_dedupe_key` for why that was
+    wrong (INV-rozob).
     """
     return f"{language}:{path}:0-0:{name}:external_symbol"
 
@@ -1518,14 +1528,39 @@ def _dedupe_key(
 ) -> tuple[str, str, str]:
     """Compute the dedupe key for an external boundary group.
 
-    For ``kind="file"`` pseudo-IDs (produced by ``make_file_id`` in
-    every Python file's import-edge src), the path slot is a
-    per-reference filesystem path with no semantic identity — collapse
-    all such ids per language into one canonical "file" boundary by
-    using ``"<external>"`` in place of the path. For every other kind,
-    the path slot is meaningful (module name for imports, qualified
-    submodule for unresolved calls, etc.) and is kept in the key so
+    The path slot is meaningful for EVERY kind — module name for imports,
+    qualified submodule for unresolved calls, and (INV-rozob) the importing
+    FILE for a ``make_file_id`` pseudo-id — so it is kept in the key and
     distinct logical externals stay distinct.
+
+    THIS FUNCTION USED TO SPECIAL-CASE ``kind="file"``, collapsing every such
+    id in a language to ``(language, "<external>", name)`` on the stated
+    grounds that its path is "a per-reference filesystem path with no semantic
+    identity". THAT SENTENCE WAS THE DEFECT. The path IS the identity: it names
+    the file that did the importing, and it is the only thing a reader can
+    open. Discarding it produced ``{lang}:<external>:0-0:file:external_symbol``
+    — no path, span ``0-0`` — and because ``make_file_id`` puts the literal
+    ``"file"`` in the name slot, EVERY such file in a language landed on that
+    one id. A consumer could neither confirm nor refute an edge anchored there,
+    and a taint flow seeded from one named no place: 19 of 104 adjudicated
+    flows in measurement 0001, every one labelled UNADJUDICABLE by two
+    independent readers.
+
+    WHICH FILES REACH HERE, since the answer is no longer "every Python file"
+    as the old text assumed. WI-ramuv's ``synthesize_file_symbols_for_dangling_
+    edges`` mints a real ``kind="file"`` Symbol for analyzer-emitted file ids,
+    so the surviving population is the files whose Symbol something REMOVED —
+    in practice tier-4 (DERIVED) files dropped by ``cli.py``'s tier filter,
+    whose edges are deliberately kept (WI-pozur / ADR-0043 C2, pinned by
+    ``test_pb2_import_srcs_resolved``). Measured on unmodified upstream repos:
+    3 files on sqlalchemy, 2 on knex, 2 on sops, 1 on poetry, 0 on httpx —
+    not the 732-to-1 collapse the ``_REFERRING_PATHS_CAP`` note still quotes
+    from before that synthesizer existed.
+
+    SO THE FIX IS TO NAME THE FILE, NOT TO DROP THE EDGE. Dropping it was tried
+    and is wrong: it deletes the dependency fact WI-pozur deliberately kept, and
+    ``test_pb2_import_srcs_resolved`` fails loudly on it, which is that test
+    working as designed.
 
     ``kind`` decides the file-collapse but is **not** part of the returned
     key — ADR-0036 Ruling 2 makes the boundary id kind-slot uniformly
@@ -1534,8 +1569,6 @@ def _dedupe_key(
     therefore collapse to one node (measured lossless: no external is reached
     via more than one syntax on any corpus).
     """
-    if kind == "file":
-        return (language, "<external>", name)
     return (language, path, name)
 
 
