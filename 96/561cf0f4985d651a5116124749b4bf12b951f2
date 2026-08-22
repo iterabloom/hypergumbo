@@ -1,0 +1,55 @@
+Original commit body from 4709c7d25040057788543a983cd5b3c7c8df6d18:
+
+A method call whose receiver is an OWN instance field of external or unknown
+type emitted NO EDGE AT ALL. Two classes in one file, calls character-identical,
+differing only in where the field is assigned:
+
+    self.sock = sock  in __init__      -> confirmed, "No net_send chains
+                                          found.", rc 0
+    self.sock = sock  in attach()      -> confirmed_with_caveats, caveat NAMES
+                                          the sendall site
+
+sendall is a CATALOGUED stdlib primitive. The tool certified absence of network
+egress for code that calls socket.sendall.
+
+This is an EMIT gap, not a type-inference gap. class_field_types is Symbol-
+valued, so by construction it holds only an IN-REPO class, and there is no
+external counterpart the way locals have external_var_types. So Case 2f could
+not resolve the field, and Site-3's placeholder emit excluded it via
+`field_name not in own_field_names`. Neither site emitted, and silence is
+upstream of EVERY honesty mechanism: nothing for the untyped_receiver caveat to
+name, nothing for the uncovered-module gate to disclose, nothing for taint to
+walk.
+
+The guards now gate the STAMP, not the EMIT: an own field takes the same
+placeholder edge WITHOUT inherited_field_receiver. Withholding the stamp is the
+whole safety argument -- the stamp routes to inherited_calls, whose walk is over
+PARENT classes, a premise false for an own field. Stamping it (route (a)) would
+ship exactly the shadow FP the exclusion was added to prevent. Every
+pre-existing shadow-FP lock passes unchanged, because each asserts the absence
+of the STAMP, never of an EDGE.
+
+MEASURED, both signs, arms differing in exactly this hunk:
+  django db/backends/utils.py   0 of 10 -> 10 of 10 sites carry an edge naming
+                                the method, incl. self.cursor.execute() 103,105
+  django/db + mitmproxy +       +1,370 call edges, 0 relationships lost,
+  meson + httpx                 0 new edges stamped, 0 minted resolved
+  resolved_total                +8, all method-call-recovery-linker @0.40;
+                                two spot-checked against source are TPs
+  ast_call_inherited_field      UNCHANGED 0/7/11/0 in both arms
+
+THE ONE LOSS, stated not netted out: 5 stamped edges vanish across django/db and
+meson. edge_key is (src,dst,edge_type) and deliberately line-insensitive, so a
+new own-field edge at an earlier line collapses with a stamped edge to the same
+target and wins on encounter order. It costs no resolved output (the number
+above is unchanged) and the collapsed site survives in meta["call_lines"].
+
+WHAT THIS DID NOT MOVE, with the denominator: 11 real scopes x 4 boundary claims
+= 44 verdict pairs (poetry x9 sub-packages, httpx, django/db), ZERO verdicts
+moved -- because arm A produced NO bare `confirmed` anywhere in that population.
+Every verdict was inconclusive (uncovered-module gate) or violated. That is this
+item's anti-correlation argument visible in data, and it means the verdict-level
+movement is demonstrated on the isolating fixture, NOT on real code.
+
+Refs: INV-jujoh
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
