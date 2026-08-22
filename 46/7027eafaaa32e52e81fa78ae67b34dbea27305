@@ -1,0 +1,78 @@
+Original commit body from ed934ca6afb995d768bc44d2ffab56ec80e419cb:
+
+WI-zilag routed an ANNOTATED parameter's type into the module slot, so
+`def h(p: pathlib.Path, x): p.write_text(x)` reaches the catalogue. The
+residual INV-fibis pinned is the same shape without the annotation:
+
+    def send(sock, payload):        # no annotation
+        return sock.sendall(payload)
+    def main():
+        s = socket.socket()
+        send(s, b"hi")              # <- the type is RIGHT HERE
+
+`sock` names no module, the edge carries the `external` placeholder, and every
+consumer refuses it as an untyped method call. A parameter's type is not
+inferable from its body -- that is what makes this interprocedural -- but every
+argument the repository passes at that position is available. Collected across
+all files before edge extraction, admitted only where EVERY observed call site
+agrees, because a minted hint is TRUSTED downstream (it bypasses both
+gate_named_entry and the ambiguous_names net by design), so a wrong hint is a
+confident false boundary AND a false taint sink, never silence.
+
+THE FILED REPRO MOVES AS THE ITEM REQUIRED. Three arms, differing only in the
+annotation and in whether a call site exists:
+    unannotated + call site   inconclusive -> VIOLATED, 1 net_send chain
+    annotated                 violated, 1 net_send chain   (unchanged)
+    unannotated, no call site confirmed_with_caveats       (unchanged)
+The third is the control: with nothing to infer from, the untyped_receiver
+caveat correctly still fires.
+
+*** THE CORPUS MEASURED THE EFFECT AT ZERO, AND THAT IS THE HEADLINE. *** A/B on
+poetry, mitmproxy and pretix -- arms differing only in this pass, two claim
+files each (ten boundary claims plus the six generic taint claims) -- produced
+BYTE-IDENTICAL output in all twelve runs. Not "no regressions": no change.
+
+The pass is not inert, which is a separate measurement: mitmproxy's unresolved
+method-call edges go external 6541 -> 6526, typed 2237 -> 2252, +15 strictly
+better typed with the total unchanged at 8778. But NOT ONE newly-typed module is
+in the io_primitives catalogue (mitmproxy.http.Headers, argparse.ArgumentParser,
+django.core.mail.SafeMIMEMultipart, collections.Counter,
+rest_framework.test.APIClient), so no boundary and no verdict moves. For a
+recall widening landing into the pre-registered <50% precision band that is the
+strongest available answer to the band's concern -- it adds ZERO reported
+findings, so it cannot have added a false one -- and equally a statement that
+the payoff is latent rather than demonstrated on these three repos.
+
+WHY THE REACH IS SMALL, measured rather than guessed. Of the agreed hints:
+poetry 18, of which 18 are on parameters that ALREADY carry an annotation;
+mitmproxy 13 (8 annotated); pretix 51 (22 annotated, 17 on a parameter that is
+never a method receiver). The annotation always wins, so a well-typed repo
+leaves this pass nothing to do -- correct behaviour, and why the corpus zero is
+not evidence of a defect.
+
+THE CORPUS ALSO CAUGHT A DEFECT REVIEW DID NOT, and the first cut shipped it
+wrong. Resolving an argument through import bindings alone asserts that
+`x = json.dumps(y)` names a TYPE -- identical AST shape to `s = socket.socket()`.
+Measured on poetry: 7 of 19 agreed hints (37%) were FUNCTION RESULTS
+(json.dumps, typing.cast, tomlkit.inline_table, parse_constraint, two get_*
+helpers). Not merely useless: io_boundary._module_matches does bidirectional
+SUBSTRING matching, so `json.dumps` in a module slot can match a catalogue
+module `json` -- a confident false boundary and a false taint sink, the exact
+class WI-zilag documents for the raw-annotation-text shortcut it refused. An
+argument must now be shown to name a type by one of two routes: the
+receiver-type catalogue already knows the constructor (WI-fuvuj's
+binding-checked _external_constructor_type, which admits lowercase
+socket.socket), or the resolved path's final segment is PascalCase (PEP 8's
+class convention, which admits requests.Session -- requests has zero catalogue
+rows per INV-fotav, so route one cannot). A convention is a heuristic and the
+code says so; what makes it acceptable is the direction of its errors.
+
+SCOPE, stated as scope: bare-name callees only (a receiver call would need
+receiver typing to resolve its callee -- circular); positional arguments only;
+callee kind `function` (a bare-name call cannot target a bound method, so
+positions would be off by one against self); ONE HOP. An annotation the resolver
+CANNOT turn into a module still blocks the call-site route -- the author wrote a
+type there, and a resolver limitation is not permission to substitute a guess.
+
+Racial-Capitalism-Is-Bad: a toucan building a paper bridge shaped like challah crown made of clouds
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
