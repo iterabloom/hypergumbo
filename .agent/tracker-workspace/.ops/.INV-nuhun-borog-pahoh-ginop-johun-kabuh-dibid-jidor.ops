@@ -1,0 +1,26 @@
+- op: create  # 2b93
+  at: '2026-08-21T20:55:21Z'  # 2b93
+  by: agent  # 2b93
+  actor: jgstern_agent  # 2b93
+  clock: 1  # 2b93
+  nonce: 2b93  # 2b93
+  data:  # 2b93
+    kind: invariant  # 2b93
+    title: "verify-claims returns confirmed for a TAINT claim whose sink is reached only through an untyped receiver (INV-fibis's defect in the other arm)"  # 2b93
+    status: violated  # 2b93
+    priority: 1  # 2b93
+    parent:  # 2b93
+    tags:  # 2b93
+    - verify_claims  # 2b93
+    - taint  # 2b93
+    - adr_0017  # 2b93
+    - false_confirm  # 2b93
+    - rct_blocker  # 2b93
+    isbefore: []  # 2b93
+    duplicate_of: []  # 2b93
+    not_duplicate_of: []  # 2b93
+    pr_ref:  # 2b93
+    description: "REPRODUCED LIVE at dev 9e3bc55e5c, two arms, stdlib only, no overlay, with a control\nfiring in the SAME run. This is INV-fibis's defect in the TAINT arm, found while\nscoping INV-fibis's fix and NOT closed by it.\n\n  ARM 1 -- UNANNOTATED receiver:\n\n      import os\n\n      def control_fswrite(p):\n          secret = os.environ[\"API_KEY\"]\n          with open(p, \"w\") as fh:\n              fh.write(secret)\n\n      def leak_unannotated(sock):\n          secret = os.environ[\"API_KEY\"]\n          return sock.sendall(secret.encode())\n\n    $ hypergumbo verify-claims . --claims docs/example-claims/generic-taint-claims.yaml\n      x [host-secret-no-host-fs]  Verdict: violated                    <- the run WORKED\n      v [host-secret-no-network]  Verdict: confirmed\n          \"No unsanitized host_secret data reaches network zone.\"      <- FALSE\n\n  ARM 2 -- ANNOTATED receiver (`def leak_annotated(sock: socket.socket)`), otherwise\n  identical: host-secret-no-network is **violated**.\n\nSo exactly one of the two spellings is visible, the fs_write control fires violated in\nBOTH arms, and the tool states that no environment-read value reaches the network about\na three-line function that reads API_KEY and sends it over a socket.\n\nWHY INV-fibis DOES NOT COVER THIS. That item's statement is scoped to BOUNDARY verdicts\n(\"Every clean (zero-chain) boundary verdict reported as confirmed ...\"), and its fix is\na caveat consumed in `verify_claim`. The taint arm reaches its verdict through\n`verify_taint_claim` and is gated by `_require_coverage_to_confirm`, neither of which\nreads `BoundaryCoverage.untyped_receiver_sites`. That scoping is deliberate and is\nrecorded in verify_claims.py's module docstring; this item is the other half, filed\nrather than implied.\n\nMECHANISM, not yet read in code beyond the sink-matching layer. The sink lookup for an\nunresolved callee runs through `_lookup_named_entry`, whose `non_method` arm drops\nmethod-kind catalogue entries carrying no module hint. `socket.socket.sendall` is a\nmethod-kind row and the untyped receiver supplies no module, so the sink never matches\nand no flow is constructed. That is a RECALL gap, and this item is NOT asking for it to\nbe closed by widening recall -- measurement 0001's <50% band sequences recall work\nbehind precision. It asks the INV-fibis question: the verdict should not assert absence\nit could not establish.\n\nWHAT IS NOT MEASURED: any language other than python; how many real repos' taint\nverdicts would acquire a caveat (the boundary arm's equivalent number is 1,099 sites\nacross 9 boundaries on poetry, which is the population's SIZE and not a verdict count);\nwhether the sink-side mechanism above is the whole story or whether the source side has\nan independent hole; and whether the same shape reproduces for `untrusted_input`\nsources rather than `host_secret`."  # 2b93
+    fields:  # 2b93
+      statement: "A taint-flow claim reported as confirmed must be backed by an analysis that could have constructed the flow it denies -- including flows whose sink is reached through a receiver the analysis could not type."  # 2b93
+      root_cause: "verify_taint_claim / _require_coverage_to_confirm consume no signal about untyped-receiver call sites. The sink lookup for an unresolved callee (_lookup_named_entry, non_method arm) drops method-kind catalogue rows that carry no module hint, so socket.socket.sendall never matches an untyped receiver, no flow is constructed, and the absence is reported as safety. INV-fibis closed the same class for BOUNDARY verdicts only."  # 2b93
