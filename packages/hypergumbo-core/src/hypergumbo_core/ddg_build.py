@@ -188,24 +188,57 @@ def _walk_functions(
     mapping: Any,
     refine_ctx: dict[str, Any],
 ) -> None:
-    """Recurse an AST collecting per-function DDG edges and refinement hints."""
-    if node.type in spec.function_node_types:
-        name = _function_name(node, source, spec)
-        body_node = node.child_by_field_name("body")
-        if name is not None and body_node is not None:
-            kind = spec.kind_for(node) if spec.kind_for else "function"
-            sym_id = make_symbol_id(
-                spec.language, rel_path,
-                node.start_point[0] + 1, node.end_point[0] + 1,
-                name, kind,
-            )
-            _solve_one_function(
-                node, body_node, source, spec, sym_id, out, deps, mapping, refine_ctx,
-            )
-    for child in node.children:
-        _walk_functions(
-            child, source, spec, rel_path, out, deps, mapping, refine_ctx,
-        )
+    """Walk an AST collecting per-function DDG edges and refinement hints.
+
+    ITERATIVE, NOT RECURSIVE, AND THAT IS THE WHOLE POINT (INV-gotir). This was
+    a per-child recursion, so the Python stack depth WAS the tree-sitter AST
+    depth — one frame per level — and CPython's default limit is 1000. Machine
+    generated code exceeds that without being pathological: keda's
+    ``vendor/go.temporal.io/api/workflowservice/v1/request_response.pb.go``
+    (725,832 bytes of generated protobuf) measures an **AST depth of 1171**,
+    because one ``const`` is a string built as ``"..." + "..." + "..."`` 1,165
+    times and ``+`` is left-associative. ``verify-claims`` aborted with
+    ``RecursionError`` and exited 1 with an empty stdout — and exit 1 is also
+    what VIOLATED returns, so a CI gate could not tell a crash from a finding.
+
+    THE TRANSFORMATION IS EXACTLY EQUIVALENT, and it is worth saying why rather
+    than asserting it: there is no work after the child loop. The recursion
+    carried no state a worklist cannot hold, no accumulator unwound on the way
+    back up, and no post-order step. Children are pushed REVERSED so ``pop()``
+    yields them left to right, preserving pre-order visit order — which matters
+    because ``out`` accumulates in visit order and a consumer diffing two runs
+    would otherwise see a spurious reordering.
+
+    ``sys.setrecursionlimit`` was rejected: it trades a catchable
+    ``RecursionError`` for a C-stack segfault, which is strictly worse for a
+    failure mode already indistinguishable from a verdict.
+
+    SCOPE. An AST sweep finds 72 self-recursive child-loop walks in this tree,
+    so the shape is a class rather than one bug. A corpus depth census sizes
+    the realized exposure narrowly — keda has 7 files at depth >= 900, all
+    generated Go under ``vendor/``, while dash.js, caddy and mitmproxy top out
+    at 74/37/79 — and ``survey`` over the same input does not crash. So the
+    class is filed (INV-gotir) rather than rewritten wholesale, and this is the
+    one walk with a measured failure.
+    """
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in spec.function_node_types:
+            name = _function_name(current, source, spec)
+            body_node = current.child_by_field_name("body")
+            if name is not None and body_node is not None:
+                kind = spec.kind_for(current) if spec.kind_for else "function"
+                sym_id = make_symbol_id(
+                    spec.language, rel_path,
+                    current.start_point[0] + 1, current.end_point[0] + 1,
+                    name, kind,
+                )
+                _solve_one_function(
+                    current, body_node, source, spec, sym_id, out, deps,
+                    mapping, refine_ctx,
+                )
+        stack.extend(reversed(current.children))
 
 
 def _solve_one_function(
