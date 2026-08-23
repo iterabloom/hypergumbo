@@ -226,6 +226,7 @@ from .backend_selection import (
     RUST_ANALYZER_ENV_VAR,
     resolve_rust_analyzer_optin,
 )
+from .user_config import LayeredConfig
 from .rust_analyzer_install import (
     install_rust_analyzer,
     is_rust_analyzer_available,
@@ -4940,9 +4941,28 @@ def cmd_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_config_or_exit(repo_root: Path) -> "LayeredConfig":
+    """Load both config tiers, or exit with the reason.
+
+    A rejected setting must not surface as a traceback: the two cases that
+    reach here are a user's typo and a repository trying to grant itself the
+    right to execute its own build scripts, and both deserve a sentence the
+    reader can act on. Matches the ``_ensure_*_or_exit`` shape already used
+    for the parse-time backend gates.
+    """
+    from .user_config import ConfigError, load_layered_config
+
+    try:
+        return load_layered_config(repo_root=repo_root)
+    except ConfigError as exc:
+        print(f"hypergumbo: error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
 def _resolve_io_overlays(
     args: argparse.Namespace,
     claims_paths: "list[Path] | None" = None,
+    repo_root: "Path | None" = None,
 ) -> "list[Path]":
     """Project-local I/O primitive overlay paths, in ASCENDING precedence.
 
@@ -4951,8 +4971,19 @@ def _resolve_io_overlays(
     entries sit BELOW CLI ``--io-primitives`` flags, and ``load_catalog``
     treats a later path as the winner on qualified-name collision, so the
     concatenation order below IS the precedence order.
+
+    ADR-0045 ruling 4 adds the two config tiers BENEATH those, in the order
+    the ruling fixes — user config, then project config, then the claims
+    file, then the flag. A setting named closer to this specific invocation
+    wins. ``repo_root`` is optional so a caller that has not resolved one
+    simply gets no config tiers rather than a crash; that is a real case
+    (analysis from a cached map with no repository in hand) and not a
+    defensive branch.
     """
-    paths = list(claims_paths or [])
+    paths: "list[Path]" = []
+    if repo_root is not None:
+        paths += _load_config_or_exit(repo_root).io_primitives
+    paths += list(claims_paths or [])
     paths += [Path(p) for p in (getattr(args, "io_primitives", None) or [])]
     return paths
 
@@ -5029,7 +5060,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # supported-but-zero-matches languages. The former must be surfaced
     # to callers so "zero I/O detected" isn't silently indistinguishable
     # from "language has no catalog at all".
-    io_overlays = _resolve_io_overlays(args)
+    io_overlays = _resolve_io_overlays(args, repo_root=repo_root)
     _disclose_io_overlays(io_overlays)
 
     catalogs = {}
@@ -5859,7 +5890,9 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # the same layering the taint arm uses (INV-hukug).
     from .verify_claims import load_extra_catalog_paths as _load_extras
     _, _, _, _claims_io_overlays = _load_extras(claims_path)
-    io_overlays = _resolve_io_overlays(args, _claims_io_overlays)
+    io_overlays = _resolve_io_overlays(
+        args, _claims_io_overlays, repo_root=repo_root,
+    )
     _disclose_io_overlays(io_overlays)
 
     # Walks ``census_nodes``, not the raw map: under a declared artifact

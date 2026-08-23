@@ -97,6 +97,13 @@ The second is load-bearing here and is generalised by ruling 6.
 
 **A5 — Do nothing; document the environment variable.** Rejected. Documenting it would be documenting the footgun: the scope mismatch in §Context is a property of the mechanism, not of its documentation.
 
+## Implementation status (2026-08-23)
+
+- **Ruling 4 — landed** (`hypergumbo_core.backend_selection`). Fixing it uncovered a live defect rather than the tidy-up this ADR anticipated: `--backend tree-sitter` did not disable a backend enabled via the environment, so the opt-out the tool advertises in its own security warning was inert and the analysed repository's `build.rs` ran anyway. Filed and closed as INV-funam.
+- **Rulings 1 (config half), 2, 3 — landed** (`hypergumbo_core.user_config`). Two tiers (`$XDG_CONFIG_HOME/hypergumbo/config.toml`, `<repo>/.hypergumbo.toml`), the trust-key deny-list, and `io_primitives` overlay paths as the first real setting.
+- **Ruling 4's config tiers inside `resolve_optin` — DEFERRED, with a trigger.** Those tiers are reachable only by a backend whose opt-in is *allowed* in config, i.e. one that does not execute analysed-repo code (ruling 5). No such backend exists yet. Wiring them now would add a layer with no consumer and no way to test it except hypothetically — the same reasoning ADR-0022 used to defer its own runtime-aggregation half. **Trigger: the first non-executing backend** (pyright, WI-nanom). `resolve_optin` is shaped for it and its docstring names where the tiers go.
+- **Rulings 1 (trust half), 5, 6, 7, 8 — not yet built.** The trust store, `executes_analysed_code` as a consulted bit rather than a deny-list input, human-owned file permissions, path+hash keying, and nudge dismissal.
+
 ## Open Questions
 
 - **OQ1 — Keying and hash strictness (ruling 7) is the weakest ruling here.** The advisory-hash choice trades a real safety property for friction avoidance, on a judgement about human behaviour rather than a measurement. If a `--strict-trust` mode is added, this ruling should be revisited rather than extended.
