@@ -36,3 +36,10 @@
   clock: 3  # bf1a
   nonce: bf1a  # bf1a
   message: "SQLAlchemy facet split out to WI-jojuv-zanag-zovob-nutut-murip-zakad-lijaj-suliz (P3, NOT wave5 — it doesn't land on the current Django cohort). This item retitled + rescoped to the two Django-cohort-completing facets (instance return-typing + transitive Model bases); stays wave5. Owner direction 2026-07-16."  # bf1a
+- op: discuss  # a81b
+  at: '2026-08-23T05:57:34Z'  # a81b
+  by: agent  # a81b
+  actor: jgstern_agent  # a81b
+  clock: 4  # a81b
+  nonce: a81b  # a81b
+  message: "CANDIDATE FOR CLOSURE BY WI-nanom (Python pyright/SCIP multi-fidelity backend,\nfiled 2026-08-23 under owner direction). This item is scoped explicitly as I/O\nvisibility via type-verified receiver typing, which is what a pyright-backed\nSCIP index supplies without hypergumbo inferring anything.\n\nUNVERIFIED DEPENDENCY, flagged rather than assumed: pyright resolves ORM\ninstance types well only when the ANALYSED repository has the relevant stubs\ninstalled (django-stubs / sqlalchemy stubs). That is a property of the target\nrepo's environment, not of hypergumbo, so the reach of this route must be\nMEASURED on real repos before this item is treated as closable by it."  # a81b
