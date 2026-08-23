@@ -1,21 +1,25 @@
 {
   "add-extras-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "add-extras-no-host-fs": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "build-grammars-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
@@ -23,6 +27,8 @@
   "build-grammars-no-host-fs": {
     "caveats": [
       "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver",
       "user_supplied_sanitizer"
     ],
     "credited_flows": "nonzero",
@@ -30,35 +36,41 @@
   },
   "build-grammars-no-install-artifact": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-embeddings-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-embeddings-no-host-fs": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-embeddings-no-install-artifact": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-gitleaks-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
@@ -66,6 +78,8 @@
   "install-gitleaks-no-host-fs": {
     "caveats": [
       "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver",
       "user_supplied_sanitizer"
     ],
     "credited_flows": "nonzero",
@@ -73,28 +87,33 @@
   },
   "install-rust-analyzer-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-rust-analyzer-no-host-fs": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "install-rust-analyzer-no-install-artifact": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "runtime-cli-no-dev-zone": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
@@ -102,6 +121,8 @@
   "runtime-cli-no-host-fs": {
     "caveats": [
       "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver",
       "user_supplied_sanitizer"
     ],
     "credited_flows": "nonzero",
@@ -109,14 +130,17 @@
   },
   "runtime-cli-no-install-artifact": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
   },
   "runtime-cli-no-network": {
     "caveats": [
-      "opaque_boundary"
+      "opaque_boundary",
+      "unknown_receiver_scope",
+      "untyped_receiver"
     ],
     "credited_flows": "zero",
     "verdict": "confirmed_with_caveats"
@@ -124,6 +148,7 @@
   "runtime-cli-no-subprocess": {
     "caveats": [
       "opaque_boundary",
+      "unknown_receiver_scope",
       "user_supplied_sanitizer"
     ],
     "credited_flows": "nonzero",
