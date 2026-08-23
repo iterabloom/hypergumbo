@@ -4473,6 +4473,8 @@ def _extract_edges(
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
         param_types: dict[str, Symbol],
         owner: Symbol | None = None,
+        *,
+        position_offset: int = 0,
     ) -> dict[str, str]:
         """WI-zilag: parameters whose annotation names an external catalogued type.
 
@@ -4505,6 +4507,16 @@ def _extract_edges(
         # parameters the loop above left empty, and never overrides an in-repo
         # class (``param_types``), which is first-party and carries no
         # catalogue meaning.
+        # ``position_offset`` is how many of ``func_node``'s leading positional
+        # parameters the CALL SITE does not write. It is 0 for a plain function
+        # -- argument i is parameter i -- and 1 for an ``__init__`` reached
+        # through its class, where ``Client(sock)`` writes one argument and the
+        # parameter list is ``(self, sock)``. Subtracting it here, in the one
+        # place the index is consumed, is what keeps the hazard from spreading:
+        # a minted hint bypasses both ``gate_named_entry`` and the
+        # ``ambiguous_names`` net by design, so an off-by-one does not fail
+        # loudly -- it types the WRONG parameter, confidently. The negative
+        # positions this skips are exactly the unwritten ones (``self``).
         if owner is not None and interprocedural_param_types:
             positional = list(func_node.args.posonlyargs) + list(
                 func_node.args.args
@@ -4514,7 +4526,12 @@ def _extract_edges(
                     continue
                 if arg.annotation is not None:
                     continue
-                hint = interprocedural_param_types.get((owner.id, pos))
+                call_site_pos = pos - position_offset
+                if call_site_pos < 0:
+                    continue
+                hint = interprocedural_param_types.get(
+                    (owner.id, call_site_pos),
+                )
                 if hint is not None:
                     external[arg.arg] = hint
         return external
@@ -4736,14 +4753,22 @@ def _extract_edges(
         if init_method is None:
             continue
         init_param_types = _extract_param_types(init_method)
-        # ``owner=None``: the interprocedural (call-site) half is deliberately
-        # NOT wired here yet. A constructor's callers write ``Client(sock)``, so
-        # the call-site index is keyed on the CLASS symbol and its positions are
-        # offset by one against ``__init__``'s (which start at ``self``). Getting
-        # that wrong would mint a confident hint onto the wrong parameter, so it
-        # is left to its own change rather than folded in on the way past.
+        # THE OWNER IS THE CLASS, NOT ``__init__``, because that is the symbol
+        # a caller names: ``Client(sock)`` resolves to the class, so that is the
+        # id the call-site index is keyed on. ``position_offset=1`` is the
+        # matching correction -- the argument the caller writes at 0 is the
+        # parameter ``__init__`` declares at 1, after ``self``.
+        #
+        # The class symbol is validated the same way it is before the
+        # ``meta["fields"]`` attachment below: ``local_symbols`` is last-write-
+        # wins, so a same-named method or function can shadow the class, and
+        # asking the index with a non-class id would silently read another
+        # symbol's argument types.
+        _init_owner = local_symbols.get(node.name)
+        if _init_owner is not None and _init_owner.kind != "class":
+            _init_owner = None
         init_external_types = _extract_external_param_types(
-            init_method, init_param_types,
+            init_method, init_param_types, _init_owner, position_offset=1,
         )
         field_types: dict[str, Symbol] = {}
         external_field_types: dict[str, str] = {}
@@ -5699,8 +5724,17 @@ def _collect_call_site_param_types(
       the thing being computed; using it would be circular.
     * **Positional arguments only.** A keyword argument could be bound by
       parameter name, but no measured payload justified the extra surface.
-    * **Callee kind ``function``.** A bare-name call cannot target a bound
-      method, so positions would be off by one against ``self``.
+    * **Callee kind ``function`` OR ``class``.** A bare-name call cannot target
+      a bound METHOD, so a method callee's positions would be off by one against
+      ``self`` with nothing to tell us so. A ``class`` callee is a CONSTRUCTOR
+      call and is admitted (INV-fibis interprocedural half): its argument
+      positions are recorded as written, 0-based from the first argument, which
+      is what a caller sees. The off-by-one against ``__init__``'s own parameter
+      list -- where the same argument is at index 1, after ``self`` -- is
+      applied by the CONSUMER via ``position_offset``, once, in
+      :func:`_extract_external_param_types`. Normalising here instead would
+      require resolving the class to its ``__init__`` symbol, which for a
+      cross-file class means a symbol table this function does not have.
     * The set is returned UNRESOLVED (one entry per observed type) so the
       merge can apply the agreement rule across files; collapsing per file
       would let two files disagree silently.
@@ -5724,7 +5758,7 @@ def _collect_call_site_param_types(
                     callee = _lookup_symbol_by_module(
                         global_symbols, module_name, original,
                     )
-                if callee is None or callee.kind != "function":
+                if callee is None or callee.kind not in ("function", "class"):
                     continue
                 for pos, arg in enumerate(sub.args):
                     if isinstance(arg, ast.Starred):
