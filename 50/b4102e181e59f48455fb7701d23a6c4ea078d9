@@ -1,0 +1,59 @@
+Original commit body from cdcafb20403ff9f5f3fc8fa33fc3efef23004a36:
+
+The tool's own warning says "Disable per run: --backend tree-sitter", in the
+same message that discloses that indexing EXECUTES the analysed repository's
+build.rs and proc macros as the invoking user. That flag did not disable
+anything.
+
+cli.py's argv preprocessing translated --backend into the
+HYPERGUMBO_RUST_ANALYZER env var but implemented only the POSITIVE arm; the
+tree-sitter arm stripped the flag and set nothing. And because the flag was
+stripped from argv, should_use_rust_analyzer_backend never received
+backend_flag in production at all — it read only the env var, which the
+opt-out never cleared. The gate was not at fault: it takes flag and environ as
+separate injectable parameters and would have honoured a flag that reached it.
+
+The failure direction is arbitrary code execution, and it bit exactly the
+users who followed the only durable opt-in hypergumbo offers: export
+HYPERGUMBO_RUST_ANALYZER=1 (WI-sobig), then deliberately opt out for one repo
+you do not trust, and run its build scripts anyway.
+
+VERIFIED END-TO-END on an authored fixture (no build.rs, no deps, so arm B
+never executes untrusted code):
+  pre-fix   env=1 + --backend tree-sitter -> "backend ACTIVE", 10 scip nodes/26
+  post-fix  env=1 + --backend tree-sitter -> "NOT enabled",     0 scip nodes/16
+  control   --backend rust-analyzer       -> "backend ACTIVE", 10 scip nodes/26
+Arm D's 16 nodes match the pure tree-sitter baseline exactly.
+
+Fixed as a precedence rule with ONE owner. hypergumbo_core.backend_selection
+.resolve_optin holds the ADR-0045 order (flag > env > project config > user
+config > default) and is consulted by both the CLI and the gate, so the two
+cannot come to disagree about what --backend tree-sitter means. Its return is
+THREE-VALUED — None (no tier has an opinion) vs False (a tier said no). Both
+behave identically today, so a two-valued version would pass the same tests;
+it would also be a latent bug, because once a config tier lands an explicit
+HYPERGUMBO_RUST_ANALYZER=0 collapsed into "no opinion" starts LOSING to a
+config file that says on, silently re-enabling execution the user turned off.
+Unobservable through any current caller, hence pinned by tests here.
+
+Two homes closed rather than one added: the rust-analyzer selection
+vocabulary moved to core (the CLI cannot import the optional lang package),
+gate.py imports it instead of redeclaring it, gate._is_env_enabled /
+_is_flag_enabled now DELEGATE so truthiness has one definition, and the two
+duplicated --backend arms merged into one helper. The env var survives as the
+TRANSPORT to a gate deep in the analyzer registry, under a documented rule:
+only ever write it with a decision from a tier that OUTRANKS it, never from a
+config tier it is supposed to lose to.
+
+Two tests that pinned the old behaviour were updated, not deleted —
+premise kept (flag consumed, rc == 0), conclusion inverted. Separately
+recorded on INV-funam and NOT fixed here: preprocessing strips
+--backend <anything> before argparse runs, so choices= never sees the global
+flag and an unrecognised value is silently swallowed. One of my own new tests
+asserted argparse would reject it; the test was wrong, not the code.
+
+smart-test: 4434 passed, 2 skipped, 14 xfailed; all changed sources at 100%.
+mypy strict ratchet 670, delta +0.
+
+Racial-Capitalism-Is-Bad: a spectral hare practicing karate a curing in a shimmering pool of milk in a canyon overlook with a cabal of hedgehogs made of clockwork gears
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
