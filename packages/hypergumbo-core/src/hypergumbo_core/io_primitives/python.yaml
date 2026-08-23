@@ -1097,6 +1097,30 @@ module_completeness:
     retrieved: "2026-08-15"
 
   # ---------------------------------------------------------------------
+  # 2026-08-23. Added because hypergumbo itself began reading TOML
+  # (user_config.py, ADR-0045) and the coverage gate correctly refused to
+  # treat silence about an unenumerated module as evidence: every one of
+  # the 18 self-claims dropped from confirmed_with_caveats to inconclusive,
+  # since `qualifying_only` is `not unknown` and tomllib made `unknown`
+  # non-empty. That is INV-buzab's distinction working as designed —
+  # `is_stdlib_module` recognises the name, `module_io_is_enumerated` is
+  # the one that vouches for the silence — so the fix is a POSITIVE dated
+  # declaration, not a widening of the gate.
+  # ---------------------------------------------------------------------
+  - module: tomllib
+    completeness: complete
+    retrieved: "2026-08-23"
+    notes: >-
+      load(fp) reads from a binary file OBJECT the caller opened and loads(s)
+      is pure string parsing, so the open is the caller's I/O and is rowed
+      where it happens - the same shape as json, declared above. Probe
+      (docs/surveys/python-stdlib-module-io-enumeration.md) run on 2026-08-23:
+      the public API is load/loads/TOMLDecodeError, and the single `open(`
+      match in tomllib._parser is inside the TypeError text "File must be
+      opened in binary mode, e.g. use `open('foo.toml', 'rb')`" - the
+      docstring/message false-positive class the survey documents, not a call.
+
+  # ---------------------------------------------------------------------
   # 2026-08-15b - the stdlib climb's completeness pass. Each entry was
   # audited with the survey probe (docs/surveys/python-stdlib-module-io-
   # enumeration.md) AFTER its I/O rows landed above: the bar is that every
