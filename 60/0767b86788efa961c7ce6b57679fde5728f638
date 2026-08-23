@@ -1,0 +1,49 @@
+Original commit body from 4b2d84ceb64ed4e40704edbd64205e46d2d40093:
+
+CI caught this on the config-store PR: every hypergumbo self-claim dropped from
+confirmed_with_caveats to inconclusive, three of them flagged REGRESSED on
+credited_flows. A/B on a clean dev tree confirmed the cause was mine, not
+pre-existing (dev: "OK - 18 claims unchanged").
+
+MECHANISM, traced rather than guessed. BoundaryCoverage.qualifying_only is
+`not unknown`, so the uncatalogued-module list must be EXACTLY EMPTY for an
+opaque launch to QUALIFY a verdict rather than withhold it. The new config
+loader imports tomllib; _uncatalogued_external_modules reported it; `unknown`
+became non-empty; qualifying_only flipped False; and the taint qualifier's
+`if opaque_sites:` branch fell through to inconclusive for all 18. The verdict
+TEXT still named only the opaque launches, which is why the drift looked
+unrelated to the change that caused it.
+
+THE GATE IS RIGHT AND WAS NOT WIDENED. This is INV-buzab's distinction working
+as designed: is_stdlib_module recognises the NAME (tomllib was already in
+stdlib_modules) while module_io_is_enumerated is the predicate that vouches for
+the silence, and 283 of Python's 300 enumerated stdlib modules carry no rows.
+Treating recognition as examination is exactly what confirmed "never sends data
+over the network" for a program writing a secret into telnetlib.Telnet. So the
+fix is a POSITIVE DATED DECLARATION, per the standing rule.
+
+VERDICT AND EVIDENCE for the declaration. tomllib.load(fp) reads from a binary
+file OBJECT the caller opened and loads(s) is pure string parsing, so the open
+is the caller's I/O and is rowed where it happens — the same shape as json,
+declared beside it. The survey probe (docs/surveys/python-stdlib-module-io-
+enumeration.md) was re-run on 2026-08-23: public API is load/loads/
+TOMLDecodeError, and the sole `open(` match anywhere in tomllib._parser is
+inside the TypeError text "File must be opened in binary mode, e.g. use
+`open('foo.toml', 'rb')`" — the docstring/message false-positive class that
+survey already documents, not a call.
+
+THE LEVERAGE IS THE POINT, not an accident: the self-proof sits on a knife edge
+by construction, and one unaudited import takes it off. The honest response is
+to audit the module. Recorded as a dated addendum on the survey, which also
+flags its own 2026-08-15 line "the 18 claims remain inconclusive" as historical
+— later work drove the count to zero, which is why one call could move
+everything.
+
+Verified: check-self-claims returns "OK - 18 claims unchanged
+(18 confirmed_with_caveats)" on the merged working tree.
+
+smart-test: 4288 passed, 2 skipped, 14 xfailed; all changed sources at 100%.
+mypy strict ratchet 670, delta +0.
+
+Racial-Capitalism-Is-Bad: a dolphin riding a unicycle in a glass greenhouse with a union of flamingos made of gingerbread
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
