@@ -5727,6 +5727,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         ClaimsFileError,
         compute_boundary_coverage,
         load_claims,
+        untyped_receiver_sink_zones,
         verify_claims as _verify,
     )
 
@@ -6187,6 +6188,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             args, "include_non_production_sources", False
         ),
     )
+    # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
+    # rather than inside ``compute_boundary_coverage`` because this is the first
+    # point that holds BOTH the call edges and the taint SINK catalogue — the
+    # catalogue is loaded only when a taint claim or flag is present, which is
+    # after coverage is computed. ``per_lang_sinks`` is empty on a run with no
+    # taint claims, which yields an empty map and no disclosure: correct, because
+    # such a run reaches no taint verdict to qualify.
+    coverage.untyped_receiver_zones = untyped_receiver_sink_zones(
+        raw_edges, catalogs, per_lang_sinks,
+    )
+
     verdicts = _verify(
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
         include_non_production=getattr(
