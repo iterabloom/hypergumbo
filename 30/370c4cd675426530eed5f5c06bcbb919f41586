@@ -1,0 +1,32 @@
+Original commit body from a6dc8f0a303da183c6e2034a78b8bd00456a69b3:
+
+The `check-self-claims` gate caught this PR's first push, which is the gate
+working: every claim in docs/hypergumbo.claims.yaml is a TAINT claim, so the
+boundary-arm half of this work (#481) left the self-proof untouched and this
+half moved all 18.
+
+REVIEWED BEFORE RE-RECORDING, against exactly what the gate warns it is
+ratifying: 0 verdicts moved, 0 credited_flows moved, 18 caveat-only
+additions, 0 caveat removals. Re-recording the snapshot alone would have
+recreated the drift the gate exists to catch, so SECURITY.md's GENERATOR is
+updated too (the file itself is generated).
+
+THE NOISE IS NAMED RATHER THAN HIDDEN. Of the 119 sites raised against each
+host_fs claim, 63 are `.replace()` -- overwhelmingly str.replace, the literal
+INV-maluk collision, which the gate cannot match but can and now does
+disclose. The remainder is not noise: mkdir 19, write_text 12, write 11,
+unlink 9, rename/truncate/touch; the network claim raises write 11, close 6,
+send_json 1. This is what _MAX_REPORTED_UNTYPED_SITES was for -- above five
+sites the sentence names distinct METHODS instead of locations, so a reader
+discounts `replace` and acts on `mkdir`.
+
+SECURITY.md's "Known limitations" said receiver typing is incomplete and left
+it unquantified. It now states the measured bound on hypergumbo's own tree:
+6,541 of 9,267 method call sites (70.6%) have a receiver the analysis could
+not type. That figure bounds every verdict in its table.
+
+Gate green and stable across two independent runs (no nondeterminism in the
+pinned caveat kinds). 4616 passed, 100% coverage, ratchet 670.
+
+Racial-Capitalism-Is-Bad: a beaver riding a bed of neon moss on the moon with a choir of penguins made of candy canes
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
