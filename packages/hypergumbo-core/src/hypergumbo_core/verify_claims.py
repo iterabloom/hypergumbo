@@ -390,6 +390,45 @@ CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
 #: honest; it does not make the analysis see further.
 CAVEAT_UNTYPED_RECEIVER = "untyped_receiver"
 
+#: A clean boundary verdict is CLOSED-WORLD over the receivers the analysis could
+#: type, and this says so with a count and a denominator (INV-fibis, unscoped half).
+#:
+#: WHY ``CAVEAT_UNTYPED_RECEIVER`` DOES NOT COVER THIS, measured rather than
+#: argued. That caveat matches the called method's NAME against primitives
+#: catalogued for the claimed boundary — and a name lookup is exactly what an
+#: untyped receiver makes meaningless. A corpus hunt over 32,593 non-test files
+#: found 90 real scopes whose untyped receiver calls a genuine I/O verb outside
+#: the 120 catalogued method-kind names (``post`` 56, ``upload_file`` 6,
+#: ``upload`` 6, ``put_item``/``get_item`` 6, ``download_file`` 5,
+#: ``execute_command`` 3). The boundary-scoped caveat fired on ZERO of them. All
+#: 90 were protected by a COVERAGE GAP instead (68 uncatalogued-module, 13
+#: opaque-launch, 5 unsupported-language) — every one of which the project
+#: intends to close, so the protection SHRINKS as the tool improves.
+#:
+#: Demonstrated end-to-end on unmodified real code: polis
+#: ``deploy-static-assets.py`` uploads to S3 through
+#: ``s3_client.upload_file(...)`` where ``s3_client`` is an unannotated
+#: parameter. With a realistic project overlay auditing ``boto3`` but omitting
+#: ``upload_file`` from its rows, the shipped CLI returned rc 0 and "never sends
+#: data over the network: confirmed".
+#:
+#: WHY THIS IS NOT THE DOWNGRADE REFUSED ON 2026-08-11. That proposal WITHHELD
+#: the verdict (``inconclusive`` on every boundary of every repo). This one
+#: QUALIFIES it: the verdict still reads clean, the exit code moves 0 -> 3, and
+#: the sentence carries a COUNT AND A DENOMINATOR so a reader can size the
+#: unknown rather than only be told one exists. It is capable of NOT firing —
+#: an analysis whose receivers are all typed keeps a bare ``confirmed``, which
+#: ``test_all_typed_receivers_stays_bare_confirmed`` pins, because a caveat that
+#: is always there is discounted by its reader (the lesson
+#: :func:`_repo_supplied_sanitizer_caveat` already records).
+#:
+#: NOT MERGEABLE, and that is why it is absent from :func:`_merge_caveat`'s
+#: re-render branch: its counts are computed ONCE over the whole analysis in
+#: :func:`unknown_receiver_scope`, so a second writer with a different slice of
+#: the same population cannot exist. The kinds in that branch are the ones a
+#: second writer CAN widen.
+CAVEAT_UNKNOWN_RECEIVER_SCOPE = "unknown_receiver_scope"
+
 
 def _merge_caveat(
     existing: list[dict[str, Any]], new: dict[str, Any],
@@ -519,6 +558,42 @@ def _untyped_receiver_caveat(boundary: str, sites: list[str]) -> dict[str, Any]:
             f"catalogue declares is called on a receiver whose type could not "
             f"be determined, so whether those calls perform this I/O was "
             f"never decided."
+        ),
+    }
+
+
+def _unknown_receiver_scope_caveat(
+    sites: int, method_calls: int, names: list[str],
+) -> dict[str, Any]:
+    """The one place the closed-world disclosure is built.
+
+    THE SENTENCE IS ABOUT THE VERDICT'S SCOPE, NOT ABOUT A SITE. Its sibling
+    names checkable locations because it knows something about them — the
+    catalogue declares that method for this boundary. Here the whole point is
+    that nothing is known about them, so what a reader can act on is the SIZE of
+    the unknown and WHICH METHODS it covers: 1-of-3 and 1-of-3000 are different
+    verdicts, and ``append``/``items`` reads very differently from
+    ``upload_file``/``post``. Measured on the corpus: 34.7% of untyped-receiver
+    sites are builtin container/string method names, which is exactly the
+    calibration a bare "some receivers were unknown" would deny the reader.
+    """
+    more = len(names) - _MAX_REPORTED_UNTYPED_SITES
+    suffix = f" (+{more} more)" if more > 0 else ""
+    shown = ", ".join(names[:_MAX_REPORTED_UNTYPED_SITES])
+    return {
+        "kind": CAVEAT_UNKNOWN_RECEIVER_SCOPE,
+        # The distinct METHOD NAMES, not the sites: see the docstring. The
+        # machine surface and the sentence agree on the same list, so a
+        # consumer and a human cannot come to different readings.
+        "entries": list(names),
+        "sites": sites,
+        "method_calls": method_calls,
+        "detail": (
+            f"This verdict is closed-world over the receivers the analysis "
+            f"could type. At {sites} of {method_calls} method call site(s) the "
+            f"receiver's type could not be determined, so the catalogue could "
+            f"not be asked what those calls do — distinct method(s): "
+            f"{shown}{suffix}."
         ),
     }
 # WI-kikis: cap on the per-verdict structured drill-down evidence list. A
@@ -760,6 +835,16 @@ class BoundaryCoverage:
     #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
     #: unscoped version of this signal was measured and refused.
     untyped_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: ``(untyped sites, method call sites, distinct method names)`` over the
+    #: WHOLE analysis, unscoped by boundary (INV-fibis). Its sibling above
+    #: answers "which calls did it see but not adjudicate FOR THIS BOUNDARY";
+    #: this answers "how much of the analysis was closed-world at all", which is
+    #: the question a name-keyed signal structurally cannot answer about a
+    #: receiver whose type is unknown. Populated on EVERY coverage result for
+    #: the same fail-closed reason as its sibling.
+    unknown_receiver_scope: tuple[int, int, list[str]] = field(
+        default_factory=lambda: (0, 0, []),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1934,6 +2019,55 @@ def untyped_receiver_sites(
     return {b: sorted(sites) for b, sites in sorted(grouped.items())}
 
 
+def unknown_receiver_scope(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> tuple[int, int, list[str]]:
+    """``(untyped sites, method call sites, distinct method names)`` for the whole
+    analysis — the population :func:`untyped_receiver_sites` scopes down from.
+
+    SAME NUMERATOR PREDICATES, DELIBERATELY, MINUS THE CATALOGUE-NAME FILTER.
+    The bare placeholder (``_module_from_symbol_path`` finds no module), the
+    producer's own ``call_construct == "method"`` statement that a receiver was
+    there, and the launch exclusion (a launch is an EXAMINED call, reported by
+    name through ``CAVEAT_OPAQUE_BOUNDARY``; saying "and its receiver was
+    untyped" about the same edge is the contradictory second statement that made
+    rc 3 unreachable once already). Dropping only the method-KIND row match is
+    the whole difference, and it is the difference the corpus measured as
+    90-scopes-to-zero.
+
+    THE DENOMINATOR IS COMMENSURABLE WITH THE NUMERATOR BY CONSTRUCTION: both
+    count method-construct call sites in a language that HAS a catalogue, so a
+    polyglot repo cannot dilute the ratio with calls nothing could have
+    adjudicated anyway. A resolved in-repo callee counts in the denominator and
+    not the numerator, which is correct — resolving it IS typing its receiver.
+    """
+    from .taint import _module_from_symbol_path
+
+    total = 0
+    sites = 0
+    names: set[str] = set()
+    for edge in raw_edges:
+        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
+            continue
+        if (edge.get("meta") or {}).get("call_construct") != "method":
+            continue
+        dst = edge.get("dst", "")
+        parts = dst.split(":")
+        if len(parts) < 5 or catalogs.get(parts[0]) is None:
+            continue
+        total += 1
+        if parts[-1] not in _EXTERNAL_DST_TERMINAL_SLOTS:
+            continue
+        if _module_from_symbol_path(dst):
+            continue
+        if _is_producer_stamped_launch(edge):
+            continue
+        sites += 1
+        names.add(parts[3])
+    return sites, total, sorted(names)
+
+
 def _call_site_label(edge: dict[str, Any]) -> str:
     """``path:line name()`` — where the reader looks, not what the analysis knew.
 
@@ -2088,6 +2222,7 @@ def compute_boundary_coverage(
         raw_edges, supported_languages, catalogs,
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
+    coverage.unknown_receiver_scope = unknown_receiver_scope(raw_edges, catalogs)
     return coverage
 
 
@@ -2353,6 +2488,34 @@ def verify_claim(
     # ``.get`` out of a ``net_send`` verdict — the mis-fire the 2026-08-11
     # measurement caught, and the reason the unscoped DOWNGRADE was refused.
     untyped = coverage.untyped_receiver_sites.get(claim.constraint_boundary) or []
+    _scope_sites, _scope_total, _scope_names = coverage.unknown_receiver_scope
+
+    def _clean_caveats(
+        base: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Every disclosure a CLEAN verdict on this claim owes its reader.
+
+        ONE BUILDER, FOUR CLEAN PATHS. ``must_not_exist`` reaches a clean
+        verdict twice (opaque-qualified and fully clean) and ``max_chains``
+        twice more, and each used to construct its own caveat list. That is the
+        two-homes-for-one-fact shape this module has paid for repeatedly: the
+        INV-fibis scope disclosure would have had to be added in four places,
+        and the one that RUNS is not always the one a later reader edits.
+        """
+        out = list(base or [])
+        if untyped:
+            out = _merge_caveat(
+                out,
+                _untyped_receiver_caveat(claim.constraint_boundary, untyped),
+            )
+        if _scope_sites:
+            out = _merge_caveat(
+                out,
+                _unknown_receiver_scope_caveat(
+                    _scope_sites, _scope_total, _scope_names,
+                ),
+            )
+        return out
 
     # Check must_not_exist constraint
     if claim.constraint_must_not_exist:
@@ -2367,14 +2530,9 @@ def verify_claim(
                 # call through an untyped receiver, and _merge_caveat is the
                 # constructor that exists because a second writer overwriting
                 # the first is this module's documented failure (INV-virat).
-                caveats = [_opaque_boundary_caveat(coverage.opaque_sites)]
-                if untyped:
-                    caveats = _merge_caveat(
-                        caveats,
-                        _untyped_receiver_caveat(
-                            claim.constraint_boundary, untyped,
-                        ),
-                    )
+                caveats = _clean_caveats(
+                    [_opaque_boundary_caveat(coverage.opaque_sites)],
+                )
                 return ClaimVerdict(
                     claim_id=claim.id,
                     claim_text=claim.text,
@@ -2396,7 +2554,8 @@ def verify_claim(
                         f"unused."
                     ),
                 )
-            if untyped:
+            caveats = _clean_caveats()
+            if caveats:
                 return ClaimVerdict(
                     claim_id=claim.id,
                     claim_text=claim.text,
@@ -2405,11 +2564,7 @@ def verify_claim(
                         f"No {claim.constraint_boundary} chains found in code "
                         f"the analysis could adjudicate."
                     ),
-                    caveats=[
-                        _untyped_receiver_caveat(
-                            claim.constraint_boundary, untyped,
-                        )
-                    ],
+                    caveats=caveats,
                 )
             return ClaimVerdict(
                 claim_id=claim.id,
@@ -2452,17 +2607,14 @@ def verify_claim(
             # docstring already treats the two together, and gating one while
             # leaving the other silent is the two-homes-for-one-fact defect
             # (L8) written into a single function.
-            if untyped:
+            caveats = _clean_caveats()
+            if caveats:
                 return ClaimVerdict(
                     claim_id=claim.id,
                     claim_text=claim.text,
                     verdict="confirmed_with_caveats",
                     details=details,
-                    caveats=[
-                        _untyped_receiver_caveat(
-                            claim.constraint_boundary, untyped,
-                        )
-                    ],
+                    caveats=caveats,
                 )
             return ClaimVerdict(
                 claim_id=claim.id,
