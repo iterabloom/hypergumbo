@@ -78,6 +78,25 @@ least-recently-used and zipped rather than deleted) — it was measured at
   positives were sinks taking *no arguments at all*
   (`tempfile.TemporaryDirectory()`). This is a proof, not a heuristic, and it
   costs no recall.
+- **More clean verdicts now come back caveated at exit 3, on both claim
+  kinds.** Two disclosures were added this cycle and they widen the exit-3
+  population. First, a clean *boundary* verdict now states that it is
+  **closed-world over the receivers the analysis could type**, with a count, a
+  denominator and the distinct method names — a corpus hunt over 32,593
+  non-test files found 90 real scopes reaching a genuine I/O verb through an
+  untyped receiver where the existing site-naming caveat fired on **zero**, and
+  the thing protecting those verdicts was a coverage gap the project intends to
+  close, so the protection was shrinking as the tool improved. Second, a clean
+  *taint* verdict now carries the same two disclosures, scoped by the claim's
+  prohibited sink zone. Before that, one invocation could name
+  `sock.sendall(payload)` as unadjudicable on a `net_send` boundary claim and,
+  two verdicts later, certify that no environment secret reaches the network
+  zone — with a tick on the silent verdict and a warning on the disclosing one.
+  Both **qualify** a verdict rather than withholding it, and both are capable
+  of not firing: a repository whose receivers are all typed still gets bare
+  `confirmed` at exit 0. If your gate branches on exit codes rather than
+  truthiness (see 8.0.0's breaking-change note), nothing further is required;
+  if it does not, more runs will now reach 3.
 - **Two of hypergumbo's own filesystem writes were outside the safety-zone
   discipline its claims assert** — `gitleaks.py` and the rust-analyzer probe
   called `tempfile.TemporaryDirectory()` directly. They were invisible for the

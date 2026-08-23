@@ -475,6 +475,7 @@ def _merge_caveat(
         elif new.get("kind") == CAVEAT_UNTYPED_RECEIVER:
             rebuilt = _untyped_receiver_caveat(
                 cav.get("boundary", ""), merged_entries,
+                arm=cav.get("arm", _ARM_BOUNDARY),
             )
         return [*existing[:i], rebuilt, *existing[i + 1:]]
     return [*existing, new]
@@ -508,7 +509,46 @@ def _opaque_boundary_caveat(sites: list[str]) -> dict[str, Any]:
 _MAX_REPORTED_UNTYPED_SITES = 5
 
 
-def _untyped_receiver_caveat(boundary: str, sites: list[str]) -> dict[str, Any]:
+#: Which verdict arm an ``untyped_receiver`` caveat was raised for. ONE caveat
+#: KIND, TWO ARMS, because the fact is one fact — a catalogued method was called
+#: on a receiver whose type the analysis could not determine — and a consumer
+#: filtering on ``kind`` wants both. What differs is only WHICH catalogue
+#: declares the method and WHAT the reader consequently does not know, so those
+#: two clauses are selected here rather than by a second builder. Two spellings
+#: of one disclosure drift the first time either is edited (L53), and this
+#: module has paid for that repeatedly.
+_ARM_BOUNDARY = "boundary"
+_ARM_TAINT = "taint"
+
+#: The noun for the catalogue that declares the method, per arm. A boundary
+#: claim is adjudicated against the I/O primitive catalogue; a taint claim
+#: against the SINK catalogue, which is a different document with a different
+#: vocabulary (zones, not boundaries) and which a repository can extend with
+#: ``--taint-sinks``.
+_UNTYPED_SCOPE_NOUN = {
+    _ARM_BOUNDARY: "catalogue",
+    _ARM_TAINT: "sink catalogue",
+}
+
+#: What the reader does not know, per arm — the clause that makes the sentence
+#: worth reading. The boundary question is whether the call performs the I/O at
+#: all; the taint question presupposes that and asks whether tainted data
+#: REACHES it, so a taint reader who was told only "we could not decide whether
+#: this is I/O" would not learn that the FLOW is what went unbuilt.
+_UNTYPED_CONSEQUENCE = {
+    _ARM_BOUNDARY: (
+        "so whether those calls perform this I/O was never decided"
+    ),
+    _ARM_TAINT: (
+        "so a flow reaching that sink could neither be constructed nor "
+        "ruled out"
+    ),
+}
+
+
+def _untyped_receiver_caveat(
+    boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
+) -> dict[str, Any]:
     """The one place the untyped-receiver disclosure is built.
 
     Same rule as :func:`_opaque_boundary_caveat` and for the same reason: two
@@ -551,13 +591,17 @@ def _untyped_receiver_caveat(boundary: str, sites: list[str]) -> dict[str, Any]:
         # for a caveat that says what it is about. The opaque kind needs no such
         # field because its sentence names no scope.
         "boundary": boundary,
+        # CARRIED FOR THE SAME REASON AS ``boundary``: ``_merge_caveat``
+        # re-renders a widened entry list, and it can only reproduce the
+        # sentence it started from if the caveat says which arm raised it.
+        "arm": arm,
         "entries": list(sites),
         "detail": (
             f"The claim holds everywhere the analysis could see. At "
             f"{len(sites)} call site(s) — {where} — a method the {boundary} "
-            f"catalogue declares is called on a receiver whose type could not "
-            f"be determined, so whether those calls perform this I/O was "
-            f"never decided."
+            f"{_UNTYPED_SCOPE_NOUN[arm]} declares is called on a receiver "
+            f"whose type could not be determined, "
+            f"{_UNTYPED_CONSEQUENCE[arm]}."
         ),
     }
 
@@ -845,6 +889,20 @@ class BoundaryCoverage:
     unknown_receiver_scope: tuple[int, int, list[str]] = field(
         default_factory=lambda: (0, 0, []),
     )
+    #: Taint sink ZONE -> call sites reaching a catalogued sink for that zone
+    #: through a receiver of unknown type (INV-nuhun). The taint arm's
+    #: counterpart to :attr:`untyped_receiver_sites`, and carried on the same
+    #: object so one run cannot disclose on the boundary arm and stay silent on
+    #: the taint arm about the SAME call — the asymmetry that item names.
+    #:
+    #: Stamped by the CLI rather than by :func:`compute_boundary_coverage`,
+    #: which is the one place in this dataclass where that is true and is a
+    #: sequencing fact, not a design preference: the taint sink catalogue is
+    #: loaded only when a taint claim or flag is present, which happens AFTER
+    #: coverage is computed. The default is empty, so a run with no taint
+    #: claims carries no taint disclosure — correct, because it reaches no
+    #: taint verdict to qualify.
+    untyped_receiver_zones: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -1989,9 +2047,58 @@ def untyped_receiver_sites(
     unknown-typed receiver is unknown for all of them, and reporting one is the
     row-order masking INV-zumin already paid for once.
     """
+    grouped: dict[str, set[str]] = {}
+    for _lang, name, site, catalog in _untyped_receiver_call_sites(
+        raw_edges, catalogs,
+    ):
+        for boundary in {
+            p.boundary for p in catalog.lookup_all(name)
+            if p.kind == "method" and p.name == name
+        }:
+            grouped.setdefault(boundary, set()).add(site)
+    return {b: sorted(sites) for b, sites in sorted(grouped.items())}
+
+
+def _untyped_receiver_call_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> Iterator[tuple[str, str, str, IoBoundaryCatalog]]:
+    """Every call through a receiver the analysis could not type, as
+    ``(language, method name, site label, that language's I/O catalog)``.
+
+    THE ONE DEFINITION OF "UNTYPED RECEIVER", shared by the boundary arm
+    (:func:`untyped_receiver_sites`) and the taint arm
+    (:func:`untyped_receiver_sink_zones`). Extracted when the second consumer
+    appeared rather than after the two drifted, for the reason
+    :func:`_external_call_sites` gives one layer down and INV-motos paid for:
+    sharing a PREDICATE is not enough when the two callers can still walk
+    different populations. INV-nuhun is itself an arm-disagreement item, so two
+    hand-maintained copies of this walk would be the defect reappearing inside
+    its own fix.
+
+    THREE FILTERS, EACH LOAD-BEARING (unchanged, and documented at length on
+    :func:`untyped_receiver_sites`):
+
+    * **the placeholder**, asked through ``_module_from_symbol_path`` — the same
+      predicate :func:`_uncatalogued_external_modules` uses for the complementary
+      half of the same population, so the two cannot come to disagree about which
+      edges name a module.
+    * **``call_construct == "method"``**, the producer's own statement that a
+      RECEIVER was there. Without it a bare ``open()`` would be reported as an
+      untyped receiver.
+    * **the launch exclusion** — a launch is an EXAMINED call, reported by NAME
+      through ``CAVEAT_OPAQUE_BOUNDARY``; saying "and its receiver was untyped"
+      about the same edge is a second, contradictory statement about one call.
+
+    What each caller then does with ``name`` differs, and that difference is the
+    point: the boundary arm asks its I/O catalog which BOUNDARIES declare that
+    method, the taint arm asks the SINK catalog which ZONES do. Neither question
+    can be answered from the other's vocabulary without assuming every taint sink
+    is an I/O primitive — true of the shipped catalogue by construction, enforced
+    nowhere, and false the moment a repository passes ``--taint-sinks``.
+    """
     from .taint import _module_from_symbol_path
 
-    grouped: dict[str, set[str]] = {}
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         if _module_from_symbol_path(dst):
             continue  # a named module — adjudicated by the coverage gate
@@ -2006,17 +2113,54 @@ def untyped_receiver_sites(
         # position as the other consumer asks it.
         if _is_producer_stamped_launch(edge):
             continue
-        name = dst.split(":")[3]
-        boundaries = {
-            p.boundary for p in catalog.lookup_all(name)
-            if p.kind == "method" and p.name == name
-        }
-        if not boundaries:
-            continue
-        site = _call_site_label(edge)
-        for boundary in boundaries:
-            grouped.setdefault(boundary, set()).add(site)
-    return {b: sorted(sites) for b, sites in sorted(grouped.items())}
+        yield dst.split(":")[0], dst.split(":")[3], _call_site_label(edge), catalog
+
+
+def untyped_receiver_sink_zones(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+    sinks_by_language: Mapping[str, Sequence[Any]],
+) -> dict[str, list[str]]:
+    """Call sites reaching a catalogued taint SINK through a receiver of unknown
+    type, grouped by the sink's ZONE (INV-nuhun).
+
+    The taint arm's counterpart to :func:`untyped_receiver_sites`, and keyed by
+    zone for the identical reason that one is keyed by boundary: the scoping is
+    the whole design. The 2026-08-11 measurement that recorded DO NOT BUILD IT
+    for an unscoped downgrade applies here unchanged — the catalogued method
+    names include ``close`` / ``get`` / ``read`` / ``write`` / ``send``, so an
+    unrelated dict ``.get`` must not be able to qualify a ``network`` verdict.
+    Returning a MAP rather than a flat list is what makes that structural.
+
+    ASKED OF THE SINK CATALOGUE, NOT MAPPED FROM BOUNDARIES. Every sink hypergumbo
+    ships today is auto-derived from an I/O primitive through
+    ``AUTO_SINK_ZONE_MAP`` (measured: all 214 python sinks, and every zone present
+    is reachable from that map), so inverting the boundary map would return an
+    IDENTICAL answer on the shipped catalogue and would have been less code. It is
+    not what this does, because the equality holds by construction and is enforced
+    nowhere: a repository that declares its own sink via ``--taint-sinks`` names a
+    method the I/O catalogue has never heard of, and inverting the map would
+    silently disclose nothing about it. Under-reporting a caveat is a quieter
+    failure than a false ``confirmed``, but it is the same species — asserting a
+    completeness that was never established — and this item exists because that
+    species went undetected in the other arm.
+
+    ``sinks_by_language`` is the same per-language sink list the propagation ran
+    with, so a language whose sinks were never loaded cannot acquire a disclosure
+    about sinks that played no part in its verdict.
+    """
+    grouped: dict[str, set[str]] = {}
+    for lang, name, site, _catalog in _untyped_receiver_call_sites(
+        raw_edges, catalogs,
+    ):
+        for sink in sinks_by_language.get(lang) or ():
+            # METHOD-KIND ONLY, asked of the SINK's own ``kind``. A function-kind
+            # sink is not reached through a receiver at all, so claiming its
+            # receiver was untyped would make the sentence false on its own
+            # evidence — the same rule the boundary arm applies to ``IoPrimitive``.
+            if sink.kind == "method" and sink.name == name:
+                grouped.setdefault(sink.zone, set()).add(site)
+    return {z: sorted(sites) for z, sites in sorted(grouped.items())}
 
 
 def unknown_receiver_scope(
@@ -2959,6 +3103,7 @@ def verify_taint_claim(
     *,
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
+    coverage: Optional[BoundaryCoverage] = None,
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -2974,6 +3119,15 @@ def verify_taint_claim(
             flows are excluded from the verdict and disclosed in the verdict's
             ``excluded_flows`` bucket instead. Set True to restore the previous
             behavior of treating every source as in scope.
+        coverage: Boundary-analysis coverage, read ONLY on the clean path and
+            ONLY for its untyped-receiver disclosures (INV-nuhun). This
+            parameter is why the docstring on :func:`verify_claims` no longer
+            says taint claims are unaffected by coverage: they were, and the
+            consequence was that one invocation disclosed ``sendall`` on a
+            ``net_send`` boundary claim and certified "no unsanitized
+            host_secret data reaches network zone" two lines later, about the
+            same call. Optional, and its absence adds no disclosure — a
+            verdict must never invent one.
 
     Returns:
         ClaimVerdict with the result. ``excluded_flows`` reports what the
@@ -3121,6 +3275,38 @@ def verify_taint_claim(
                     f"taint; it takes the repository's word for it."
                 ),
             })
+        # INV-nuhun. LAST, and only on this path. A ``violated`` verdict never
+        # reaches here, which is the whole discipline of this module: finding
+        # evidence is trustworthy regardless of what went unadjudicated, and
+        # coverage gates the ALL-CLEAR and nothing else.
+        #
+        # SCOPED BY THE CLAIM'S OWN SINK ZONE, the taint vocabulary's equivalent
+        # of the boundary scoping that made this shippable in the other arm: an
+        # unrelated dict ``.get``, catalogued as a ``database`` sink, cannot
+        # touch a ``network`` verdict.
+        if coverage is not None:
+            zone_sites = coverage.untyped_receiver_zones.get(
+                tf.prohibited_sink_zone,
+            ) or []
+            if zone_sites:
+                caveats = _merge_caveat(caveats, _untyped_receiver_caveat(
+                    tf.prohibited_sink_zone, zone_sites, arm=_ARM_TAINT,
+                ))
+            # The UNSCOPED half, unchanged from the boundary arm and reusing its
+            # already-computed numbers rather than recounting. Reuse is the
+            # point: one invocation printing two different "N of M method call
+            # sites" figures for one repository would be a new asymmetry
+            # introduced by the fix for an asymmetry.
+            _scope_sites, _scope_total, _scope_names = (
+                coverage.unknown_receiver_scope
+            )
+            if _scope_sites:
+                caveats = _merge_caveat(
+                    caveats,
+                    _unknown_receiver_scope_caveat(
+                        _scope_sites, _scope_total, _scope_names,
+                    ),
+                )
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
@@ -3365,10 +3551,14 @@ def verify_claims(
         claims: List of claims to verify.
         boundary_map: The I/O boundary map to check against.
         taint_findings: Optional list of TaintFlowFinding objects.
-        coverage: Boundary-analysis coverage signal, passed through to
-            :func:`verify_claim` for boundary claims (WI-kajil). Taint claims
-            have their own unsupported-language signal (INV-javam) and are
-            unaffected.
+        coverage: Boundary-analysis coverage signal, passed to BOTH arms.
+            Boundary claims consume it as WI-kajil intended; taint claims read
+            only its untyped-receiver disclosures (INV-nuhun) and keep their own
+            unsupported-language signal (INV-javam) for the blindness question.
+            This said "taint claims ... are unaffected" until INV-nuhun measured
+            what that cost: the same untyped receiver was disclosed by name on a
+            boundary verdict and passed over in silence on a taint verdict in
+            ONE invocation, and the silent one carried the tick.
         include_non_production: Count test/fixture/migration-sourced taint
             flows against taint claims (WI-bifob). Default False; excluded
             flows are disclosed per-verdict in ``excluded_flows``. Boundary
@@ -3385,6 +3575,7 @@ def verify_claims(
                 include_non_production=include_non_production,
                 displaced_sinks=displaced_sinks,
                 displaced_sources=displaced_sources,
+                coverage=coverage,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)
