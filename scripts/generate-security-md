@@ -134,9 +134,27 @@ def _render_measured_status(verdicts: dict[str, str]) -> list[str]:
             "A ``confirmed_with_caveats`` verdict is the qualified form of "
             "confirmed: the claim held everywhere the analysis could see, "
             "and every caveat names something it could NOT see — control "
-            "leaving the process at a subprocess launch, or a sanitizer "
+            "leaving the process at a subprocess launch, a sanitizer "
             "this repository declared about itself and the tool takes on "
-            "trust.",
+            "trust, a method the sink catalogue declares reached through a "
+            "receiver whose type could not be determined, or the verdict's "
+            "own closed-world SCOPE over the receivers that could be typed.",
+            "",
+            "**The last two are new, and on this repository they are the "
+            "loudest.** Every claim above is a taint claim, and until "
+            "INV-nuhun a clean taint verdict said nothing about receivers it "
+            "could not type — while a boundary verdict over the same call "
+            "did. The disclosure is not free of noise and the noise is "
+            "nameable: of the 119 sites raised against each ``host_fs`` "
+            "claim, 63 are ``.replace()``, which is overwhelmingly "
+            "``str.replace`` rather than ``pathlib.Path.replace`` (the "
+            "literal INV-maluk collision). The rest are not noise — "
+            "``mkdir`` 19, ``write_text`` 12, ``write`` 11, ``unlink`` 9, "
+            "``rename``/``truncate``/``touch`` — and the ``network`` claim "
+            "raises ``write`` 11, ``close`` 6, ``send_json`` 1. Read the "
+            "caveat's METHOD list, not its site count: that is what the "
+            "sentence names once a claim exceeds five sites, and it is what "
+            "lets a reader discount ``replace`` and act on ``mkdir``.",
             "",
         ]
     lines += [
@@ -395,7 +413,14 @@ def _render_claims_section(
         "capture) may miss the catalogue even when the method itself is "
         "catalogued. (``pathlib.Path``, the former worked example here, is "
         "no longer one: its methods are catalogued and constructor-result "
-        "chains like ``Path(p).write_text(x)`` emit edges.) And a language "
+        "chains like ``Path(p).write_text(x)`` emit edges.) **This "
+        "limitation is no longer silent** \u2014 INV-fibis and INV-nuhun made "
+        "both verdict arms disclose it, with a count, a denominator and the "
+        "distinct method names, so a reader can size it rather than merely "
+        "be told it exists. On this repository the measured size is stark "
+        "and is reported rather than softened: **6,541 of 9,267 method call "
+        "sites (70.6%) have a receiver the analysis could not type**. That "
+        "figure bounds every verdict in the table above. And a language "
         "that emits even ONE call edge passes the coverage check while the "
         "rest of its call structure may be unanalysable: Kotlin emits one "
         "and misses roughly 95% of its catalogued sinks."
