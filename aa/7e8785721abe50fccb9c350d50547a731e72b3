@@ -1,0 +1,63 @@
+Original commit body from 4ba8679c840f46b5a6c2a178bfc10be747afbf67:
+
+The shipped untyped_receiver caveat matches the called method's NAME against
+primitives catalogued for the claimed boundary. A name lookup is exactly what an
+untyped receiver makes meaningless, and the consequence was measured rather than
+argued: a hunt across 32,593 non-test files found 90 real scopes whose untyped
+receiver calls a genuine I/O verb outside the 120 catalogued method-kind names
+(post 56, upload_file 6, upload 6, put_item/get_item 6, download_file 5,
+execute_command 3). The existing caveat fired on ZERO of them.
+
+Not one was protected by anything this module owns. All 90 were held back by a
+COVERAGE GAP -- 68 uncatalogued-module, 13 opaque-launch, 5 unsupported-language
+-- every one of which the project intends to close. The safety property was
+anti-correlated with the tool improving.
+
+REPRODUCED END-TO-END ON UNMODIFIED REAL CODE, not a fixture. polis
+deploy/deploy-static-assets.py is a CLI whose purpose is uploading static assets
+to S3:
+
+    def upload_file(s3_client, file_path, bucket, base_path):   # UNANNOTATED
+        s3_client.upload_file(str(file_path), bucket, relative_path, ...)
+    s3_client = boto3.client("s3")
+
+With a realistic project overlay that audits boto3 but omits upload_file from its
+rows, the shipped CLI returned rc 0 and "never sends data over the network:
+confirmed". The documented remedy for the OTHER half of INV-fibis -- project
+overlays (INV-fotav) -- is exactly what removes the accidental protection for
+this half. It now returns rc 3, naming upload_file among the methods it could
+not adjudicate.
+
+WHAT THIS ADDS: caveat kind `unknown_receiver_scope`, carrying a count, a
+denominator and the distinct method names. A bare "some receivers were unknown"
+is unactionable; 1-of-3 and 1-of-3000 are different verdicts, and append/items
+reads very differently from upload_file/post (34.7% of untyped-receiver sites
+across the corpus are builtin container/string names).
+
+WHY THIS IS NOT THE DOWNGRADE REFUSED ON 2026-08-11. That proposal WITHHELD the
+verdict -- inconclusive on every boundary of every repo. This QUALIFIES it: the
+verdict still reads clean, rc moves 0 -> 3 (documented fail-closed), and it is
+CAPABLE OF NOT FIRING -- an analysis whose receivers are all typed keeps a bare
+confirmed at rc 0, pinned by test_all_typed_receivers_stays_bare_confirmed,
+because a caveat that is always present is one its reader learns to discount.
+
+TESTS THAT PINNED THE OLD DECISION WERE INVERTED, NOT DELETED.
+TestTheResidualThisDoesNotClose asserted that session.post(...) "still confirms"
+and carried the note "a PR that changes it should be closing INV-fibis, not
+passing by". It is now TestTheResidualNowClosed and records the old argument in
+full: its premise (there is no signal distinguishing session.post from
+items.append) survives and is the finding; its conclusion (therefore stay
+silent) does not, because a call on an object of unknown type is not evidence of
+ABSENCE either, and must_not_exist is an assertion about absence. Three
+boundary-scoping tests were NARROWED to the guarantee that actually survives --
+no boundary-SPECIFIC claim is made about an unrelated .get -- rather than
+weakened.
+
+Consumer impact, plainly: claims that exited 0 may now exit 3. No envelope bump
+(a new caveat kind is additive), but a gate written `verify-claims || exit 1`
+fails where it passed. The four clean-verdict paths now build their caveat list
+through ONE builder, so a future disclosure cannot be attached to three of them
+and forgotten on the fourth.
+
+Refs: INV-fibis
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
