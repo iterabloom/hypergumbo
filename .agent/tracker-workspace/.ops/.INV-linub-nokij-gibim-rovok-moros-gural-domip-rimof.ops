@@ -259,3 +259,10 @@
   clock: 33  # 51af
   nonce: 51af  # 51af
   message: "FOLLOW-UP to my 2026-08-20 note on the call_construct audit candidate. WITHDRAWN as a candidate at this class's L3/L4 link, on structural grounds, before any measurement was spent -- honouring this item's own directive that a claim here must be measured on findings rather than asserted on edges. The F3 refusal (taint.py:1891) is reached only when the dst yields no derivable module (taint.py:1888). Go's interface_dispatch (go.py:2859) and chained_return_type (go.py:2702) are stamped only on edges whose dst is an in-repo resolved symbol from global_symbols, which does yield a module, so those edges take the qualified branch and never reach the refusal. The 'fails open' shape I flagged cannot arise for them by construction. Residual and falsifiable: it would require an in-repo Go symbol id with an empty module slot, which would be an id-construction defect (ADR-0034/0036), not a call_construct one. No A/B run and none needed for this candidate."  # 51af
+- op: discuss  # f7b9
+  at: '2026-08-23T06:05:32Z'  # f7b9
+  by: agent  # f7b9
+  actor: jgstern_agent  # f7b9
+  clock: 34  # f7b9
+  nonce: f7b9  # f7b9
+  message: "PARTIALLY ADDRESSED, NOT CLOSED, BY WI-nanom (Python pyright/SCIP backend,\nfiled 2026-08-23). This item's statement is quantified over EVERY language, and\npython is 1 of 13. A python-only type-resolution backend closes the L3/L4\nreceiver-evidence half for python and leaves the rest untouched -- in\nparticular kotlin and javascript fail at the EARLIER L2 link (they emit no call\nedge at all for an external instance-method call, WI-nasuf), so there is no\nedge for any amount of type resolution to enrich. Record python's share\nseparately when WI-nanom lands rather than letting a python win read as\nmovement on the class."  # f7b9

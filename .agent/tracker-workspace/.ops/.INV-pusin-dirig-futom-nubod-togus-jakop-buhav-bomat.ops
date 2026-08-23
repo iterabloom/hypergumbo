@@ -1,0 +1,25 @@
+- op: create  # 53dc
+  at: '2026-08-23T17:46:59Z'  # 53dc
+  by: agent  # 53dc
+  actor: jgstern_agent  # 53dc
+  clock: 1  # 53dc
+  nonce: 53dc  # 53dc
+  data:  # 53dc
+    kind: invariant  # 53dc
+    title: "module_attr_ref in _CALL_SITE_EDGE_TYPES makes use-statements and return-type annotations count as call sites, so a zero-dependency crate is withheld as inconclusive naming its own stdlib"  # 53dc
+    status: violated  # 53dc
+    priority: 1  # 53dc
+    parent:  # 53dc
+    tags:  # 53dc
+    - io_boundary  # 53dc
+    - verify_claims  # 53dc
+    - rust  # 53dc
+    - false_inconclusive  # 53dc
+    isbefore: []  # 53dc
+    duplicate_of: []  # 53dc
+    not_duplicate_of: []  # 53dc
+    pr_ref:  # 53dc
+    description: "MEASURED 2026-08-23 on an authored two-arm Rust fixture (no build.rs, no\ndependencies, so arm B never executes untrusted code):\n~/hypergumbo_lab_notebook/rust_fidelity_probe_08232026/.\n\nSYMPTOM. verify-claims returns inconclusive for net_send and fs_write on a\ncrate with ZERO dependencies, reporting that \"the analysis makes calls into 3\nmodule(s) that the I/O catalog could not classify (std, std.io, std.net)\".\nThose are the Rust standard library, and rust.yaml catalogues them explicitly\n(std::net::UdpSocket, std::io::Write, std::fs).\n\nMECHANISM, read from the emitted edge set. _CALL_SITE_EDGE_TYPES\n(verify_claims.py) is call_family_edge_types() UNION {\"module_attr_ref\"}. In\nthis fixture ALL EIGHT module_attr_ref edges are non-calls:\n  * 5 originate at the FILE node (rust:src/lib.rs:1-1:file:file) and are the\n    attribute-chain decomposition of three `use` statements;\n  * 3 originate at function nodes and are the `std::io::Result<...>` RETURN\n    TYPE annotations.\nZero are call sites. The docstring on _external_call_sites, one screen below\nthe constant, states the set \"deliberately exclud[es] imports (see that\nconstant)\" because an import performs no I/O and the catalog classifies CALL\nSITES.\n\nTHIS IS A RECURRENCE, NOT A NEW BUG. INV-fibis's own 2026-08-09 entry records\nthe identical error being found and fixed once already: the first draft of the\nuncatalogued-module gate \"counted imports edges -- 231 of the 258 modules it\nreported on poetry\". The exclusion was implemented against the `imports` edge\nTYPE, so the same fact re-entered through a different edge type.\n\nCONSEQUENCE. The gate cannot distinguish \"this repo calls into a third-party\nmodule I cannot classify\" from \"this repo has a use statement\". On a fixture\nwith no dependencies at all, the second alone is enough to withhold a verdict.\nThe direction is fail-safe (inconclusive, not confirmed), so this is a\nPRECISION defect in the gate, not a false-confirm -- but it makes the\ninconclusive verdict unreadable, and the reported module list actively\nmisleading.\n\nNOT MEASURED: how many modules on a real repo's inconclusive list are\nimport-derived rather than call-derived, in any language. The poetry figure\nabove (231/258) is for the ALREADY-FIXED imports path, not for this one."  # 53dc
+    fields:  # 53dc
+      statement: "The uncatalogued-module coverage gate must adjudicate CALL SITES only: a module named solely by an import or a type annotation performs no I/O and must not withhold a boundary verdict."  # 53dc
+      root_cause: "_CALL_SITE_EDGE_TYPES (packages/hypergumbo-core/src/hypergumbo_core/verify_claims.py:1618) unions module_attr_ref onto the call family. module_attr_ref is emitted for use-statement attribute chains and for return-type annotations, neither of which is a call. The imports exclusion the adjacent docstring describes is implemented against the imports edge TYPE, so the same fact re-enters through module_attr_ref."  # 53dc
