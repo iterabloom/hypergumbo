@@ -248,3 +248,206 @@ class Client:
         return self.sock.sendall(payload)
 """)
         assert _dst_module(res, "sendall") == "socket.socket"
+
+
+class TestTheInterproceduralInitHalf:
+    """An UNANNOTATED ``__init__`` parameter typed from the repository's own
+    constructor call sites (INV-fibis, interprocedural half).
+
+    The local half above needs ``__init__`` itself to carry the evidence -- an
+    annotation, an external constructor, an annotated declaration. This half
+    covers the shape none of those reach: ``def __init__(self, sock)`` with the
+    type living only at ``Client(socket.socket())``, in some other file.
+
+    THE OFF-BY-ONE IS THE WHOLE HAZARD, and it is why this was split out of
+    #486 rather than folded in. Callers write ``Client(sock)``, so the
+    call-site index is keyed on the CLASS symbol with the first ARGUMENT at
+    position 0 -- while ``__init__``'s positional list starts at ``self``, so
+    the same parameter is at position 1. Off by one here does not fail loudly:
+    it mints a CONFIDENT hint onto the WRONG parameter, and a minted hint is
+    trusted downstream (it bypasses both ``gate_named_entry`` and the
+    ``ambiguous_names`` net by design). ``test_two_params_of_different_types``
+    is the discriminating case -- with the offset wrong it passes ``path``'s
+    type to ``sock`` and every other test here still passes.
+    """
+
+    def _pkg(self, tmp_path: Path, svc: str, caller: str):
+        (tmp_path / "svc.py").write_text(svc)
+        (tmp_path / "caller.py").write_text(caller)
+        return analyze_python(tmp_path)
+
+    def test_unannotated_init_param_typed_from_a_call_site(
+        self, tmp_path: Path,
+    ) -> None:
+        res = self._pkg(
+            tmp_path,
+            """
+class Client:
+    def __init__(self, sock):
+        self.sock = sock
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+""",
+            """
+import socket
+
+from svc import Client
+
+
+def main():
+    return Client(socket.socket())
+""",
+        )
+        assert _dst_module(res, "sendall") == "socket.socket"
+
+    def test_two_params_of_different_types(self, tmp_path: Path) -> None:
+        """THE OFF-BY-ONE DISCRIMINATOR. ``sock`` is ``__init__`` position 1 and
+        constructor-argument position 0; ``path`` is position 2 / argument 1. A
+        fix that forgets the ``self`` offset gives ``sock`` the ``pathlib.Path``
+        intended for ``path`` -- confidently, and with no error anywhere."""
+        res = self._pkg(
+            tmp_path,
+            """
+class Client:
+    def __init__(self, sock, path):
+        self.sock = sock
+        self.path = path
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+
+    def save(self, data):
+        return self.path.write_text(data)
+""",
+            """
+import pathlib
+import socket
+
+from svc import Client
+
+
+def main():
+    return Client(socket.socket(), pathlib.Path("/tmp/x"))
+""",
+        )
+        assert _dst_module(res, "sendall") == "socket.socket"
+        assert _dst_module(res, "write_text") == "pathlib.Path"
+
+    def test_disagreeing_call_sites_mint_nothing(self, tmp_path: Path) -> None:
+        """The agreement rule, inherited unchanged. A minted hint is TRUSTED
+        downstream, so a position two call sites disagree about is dropped
+        rather than resolved by any tie-break."""
+        res = self._pkg(
+            tmp_path,
+            """
+class Client:
+    def __init__(self, sock):
+        self.sock = sock
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+""",
+            """
+import pathlib
+import socket
+
+from svc import Client
+
+
+def one():
+    return Client(socket.socket())
+
+
+def two():
+    return Client(pathlib.Path("/tmp/x"))
+""",
+        )
+        assert _dst_module(res, "sendall") == "external"
+
+    def test_an_annotation_still_wins(self, tmp_path: Path) -> None:
+        """The declaration is better evidence than an inference about it, and it
+        is binding-checked. Same precedence WI-zilag set for a plain parameter."""
+        res = self._pkg(
+            tmp_path,
+            """
+import socket
+
+
+class Client:
+    def __init__(self, sock: socket.socket):
+        self.sock = sock
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+""",
+            """
+import pathlib
+
+from svc import Client
+
+
+def main():
+    return Client(pathlib.Path("/tmp/x"))
+""",
+        )
+        assert _dst_module(res, "sendall") == "socket.socket"
+
+    def test_no_call_site_leaves_it_untyped(self, tmp_path: Path) -> None:
+        """Nothing to infer from is not a failure -- it is the honest answer,
+        and it must stay the anonymous placeholder rather than a guess."""
+        res = self._pkg(
+            tmp_path,
+            """
+class Client:
+    def __init__(self, sock):
+        self.sock = sock
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+""",
+            """
+def main():
+    return None
+""",
+        )
+        assert _dst_module(res, "sendall") == "external"
+
+    def test_a_function_shadowing_the_class_name_mints_nothing(
+        self, tmp_path: Path,
+    ) -> None:
+        """The class symbol is looked up by SHORT NAME in a last-write-wins
+        table, so a same-named function defined after the class replaces it
+        there. Asking the call-site index with that function's id would read the
+        FUNCTION's argument types and attribute them to the CLASS's __init__
+        parameter -- a wrong hint, minted confidently, of exactly the kind the
+        off-by-one guard above exists to prevent.
+
+        Without the ``kind != "class"`` guard this fixture types ``self.sock``
+        as ``pathlib.Path`` from ``Client(pathlib.Path(...))``, and
+        ``sendall`` is then attributed to a filesystem type."""
+        res = self._pkg(
+            tmp_path,
+            """
+class Client:
+    def __init__(self, sock):
+        self.sock = sock
+
+    def send(self, payload):
+        return self.sock.sendall(payload)
+
+
+def Client(conn):
+    return conn
+""",
+            """
+import pathlib
+
+from svc import Client
+
+
+def main():
+    return Client(pathlib.Path("/tmp/x"))
+""",
+        )
+        assert _dst_module(res, "sendall") == "external"
