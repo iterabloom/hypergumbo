@@ -222,6 +222,10 @@ from .gitleaks import (
     format_secret_warning,
     get_install_nag,
 )
+from .backend_selection import (
+    RUST_ANALYZER_ENV_VAR,
+    resolve_rust_analyzer_optin,
+)
 from .rust_analyzer_install import (
     install_rust_analyzer,
     is_rust_analyzer_available,
@@ -3193,6 +3197,41 @@ def cmd_uninstall_gitleaks(args: argparse.Namespace) -> int:
     """Uninstall gitleaks secret scanner."""
     success = uninstall_gitleaks(quiet=args.quiet)
     return 0 if success else 1
+
+
+def _apply_backend_choice(choice: str) -> None:
+    """Resolve ``--backend <choice>`` and record it for the backend gate.
+
+    ADR-0045 ruling 4. Two things this function is careful about, both of
+    which the code it replaced got wrong:
+
+    * **The negative arm exists.** Previously only ``rust-analyzer`` was
+      handled and ``tree-sitter`` fell through as a silent no-op, so the
+      opt-out the tool advertises in its own warning ("Disable per run:
+      --backend tree-sitter") could not turn off a backend that
+      ``HYPERGUMBO_RUST_ANALYZER=1`` had turned on. For this backend that is a
+      security failure, not an ergonomic one: indexing executes the analysed
+      repository's ``build.rs`` and proc macros as the invoking user, so a
+      user who exported the variable -- the only durable opt-in hypergumbo
+      offers today -- and then deliberately opted out for one untrusted repo
+      executed its build scripts anyway.
+
+    * **The environment variable is a TRANSPORT, not a second decision.**
+      The gate runs deep inside the analyzer registry, so the resolved answer
+      travels to it through the variable. That is only sound while the value
+      written here comes from a tier that OUTRANKS the variable -- the flag.
+      Never write a config-sourced decision here: it would shadow the
+      environment it is supposed to lose to.
+
+    An unrecognised choice writes nothing and is left for argparse to reject.
+    """
+    decision = resolve_rust_analyzer_optin(flag_choice=choice, environ={})
+    if decision is True:
+        _ensure_rust_analyzer_integration_or_exit()
+        _ensure_rust_analyzer_binary_or_exit()
+        os.environ[RUST_ANALYZER_ENV_VAR] = "1"
+    elif decision is False:
+        os.environ[RUST_ANALYZER_ENV_VAR] = "0"
 
 
 def _ensure_rust_analyzer_integration_or_exit() -> None:
@@ -11304,19 +11343,11 @@ def main(argv=None) -> int:
     # ran") is corrected immediately at parse time.
     for idx in range(len(argv) - 1):
         if argv[idx] == "--backend":
-            choice = argv[idx + 1]
-            if choice == "rust-analyzer":
-                _ensure_rust_analyzer_integration_or_exit()
-                _ensure_rust_analyzer_binary_or_exit()
-                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            _apply_backend_choice(argv[idx + 1])
             argv = argv[:idx] + argv[idx + 2:]
             break
         if argv[idx].startswith("--backend="):
-            choice = argv[idx].split("=", 1)[1]
-            if choice == "rust-analyzer":
-                _ensure_rust_analyzer_integration_or_exit()
-                _ensure_rust_analyzer_binary_or_exit()
-                os.environ["HYPERGUMBO_RUST_ANALYZER"] = "1"
+            _apply_backend_choice(argv[idx].split("=", 1)[1])
             argv = argv[:idx] + argv[idx + 1:]
             break
 
