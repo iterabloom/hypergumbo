@@ -1,0 +1,68 @@
+Original commit body from 63da746981fc5cba4a48f52459a472179bfa242d:
+
+INV-fibis's RECALL half, and the next link after INV-jujoh (#480) made these
+calls emit at all. `class_field_types` is dict[str, dict[str, Symbol]] --
+Symbol-valued, so BY CONSTRUCTION it can only ever hold an in-repo class.
+Locals have had both halves since WI-fuvuj (`var_types` /
+`external_var_types`); fields had only the first:
+
+    s = socket.socket();          s.sendall(x)        -> socket.socket   SEEN
+    self.sock = socket.socket();  self.sock.sendall(x) -> external       BLIND
+
+Two spellings of one fact, one of them visible. `class_external_field_types`
+is the missing counterpart, populated from the three shapes an __init__ can
+establish a field type from -- annotated parameter, external constructor,
+annotated field declaration -- each reusing that shape's EXISTING resolver so
+the INV-kipor binding check is inherited rather than re-decided.
+
+THIS SUPPLIES EVIDENCE; IT DOES NOT WIDEN A MATCHER. INV-nuhun established
+that the sink/boundary lookup refuses an untyped method receiver TWICE, and
+that both refusals ARE the deliberate closure of INV-tapat and INV-maluk
+(both satisfied; INV-maluk reopened over precisely this consumer). Nothing
+here touches that gate -- it hands the gate the module hint it has always
+asked for, which is the only sound way past it.
+
+NAMESPACED `self.<field>`, unlike the in-repo merge which uses the bare field
+name. `external_var_types` is MUTATED as the body is walked, so a bare-keyed
+field type would be silently overwritten by a same-named local assigned later
+and would thereafter answer for the field. Namespacing makes that collision
+structurally impossible rather than relying on an ordering that holds today.
+
+MEASURED AT THREE LAYERS, AND THEY DISAGREE -- THE CORPUS NUMBER IS THE
+HEADLINE, NOT A FOOTNOTE.
+- Fixture, arms differing in exactly this hunk: a Client whose __init__ takes
+  `sock: socket.socket` and whose send() reads API_KEY and calls
+  self.sock.sendall(...) moves BOTH the boundary and taint claims from
+  confirmed_with_caveats rc 3 (each naming svc.py:17 sendall()) to VIOLATED
+  rc 1. INV-nuhun's disclosure converts into a finding -- the thesis exactly.
+- Corpus, four repos, one hunk, per-arm XDG_CACHE_HOME, restore sha256-
+  asserted: django/db 0 retyped, httpx 0, mitmproxy 6, poetry 42. 48 call
+  sites newly named, 0 LOST, 0 other module changes. But only 2 of 48 reach a
+  CATALOGUED primitive (pathlib.Path.exists, fs_read); the rest name
+  cleo.io.io.IO (31), poetry-core packages and typing.BinaryIO, none of which
+  the catalogue knows (INV-fotav). Poetry's verify-claims output is
+  BYTE-IDENTICAL across arms.
+- And that null is WEAKER THAN IT LOOKS: poetry has no clean verdict to
+  improve (2 inconclusive, 2 violated), so it is ZERO-AGAINST-ZERO -- the
+  pre-arm screening failure L15 records, not a demonstration of inertness.
+  The verdict win is shown on the fixture and NOT on real code, and no claim
+  is made that it was. What the corpus does establish is the precision side:
+  zero new findings means this cannot have added a false one, the strongest
+  available answer for recall work inside measurement 0001's <50% band.
+
+A TEST THAT PINNED THE OLD BEHAVIOUR WAS UPDATED, NOT DELETED OR WEAKENED.
+test_external_ctor_field_emits_placeholder asserted the bare placeholder and
+its own comment said why that was unsatisfying. Its PREMISE (INV-jujoh's
+guarantee that an edge exists at all) is kept and asserted first; only its
+conclusion moves.
+
+NOT DONE HERE, deliberately: the interprocedural half. A constructor's callers
+write Client(sock), so the call-site index is keyed on the CLASS symbol and
+its positions are offset by one against __init__'s (which start at self).
+Getting that wrong mints a confident hint onto the wrong parameter, so it is
+left to its own change rather than folded in on the way past.
+
+3150 passed, 2 xfailed, 100% coverage, mypy ratchet 670 (delta +0).
+
+Racial-Capitalism-Is-Bad: a vole reading a newspaper in a parachute with a conclave of bats made of brass samovars
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
