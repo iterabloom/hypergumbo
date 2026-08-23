@@ -1,0 +1,23 @@
+- op: create  # 5806
+  at: '2026-08-23T17:56:41Z'  # 5806
+  by: agent  # 5806
+  actor: jgstern_agent  # 5806
+  clock: 1  # 5806
+  nonce: '5806'  # 5806
+  data:  # 5806
+    kind: work_item  # 5806
+    title: "No persistent way to enable a fidelity backend: the only durable mechanism (a global env var) has the wrong scope for a per-repository trust decision, and the opt-in nudge cannot be dismissed"  # 5806
+    status: todo_hard  # 5806
+    priority: 2  # 5806
+    parent:  # 5806
+    tags:  # 5806
+    - multi_fidelity  # 5806
+    - rust  # 5806
+    - usability  # 5806
+    - security  # 5806
+    isbefore: []  # 5806
+    duplicate_of: []  # 5806
+    not_duplicate_of: []  # 5806
+    pr_ref:  # 5806
+    description: "RAISED BY THE OWNER 2026-08-23, in their words: \"is there a way for the user to\npermanently enable rust-analyzer? if not, there should be\".\n\nANSWER, read in code: THERE IS NO PERSISTENT ENABLE. The gate\n(hypergumbo_lang_rust_analyzer/gate.py) accepts exactly two inputs -- the\nHYPERGUMBO_RUST_ANALYZER env var, and --backend rust-analyzer, which cli.py\nnormalises INTO that same env var at 11311/11319. hypergumbo has NO user\nconfiguration file of any kind: there is no ~/.config/hypergumbo, no\nhypergumbo.toml, no per-repo config reader. (`.hypergumbo` in discovery.py is an\nOUTPUT-artifact name in the ignore list, not config.) `install-rust-analyzer`\ninstalls the binary via rustup and stops; it enables nothing.\n\nSo the only durable mechanism available today is exporting\nHYPERGUMBO_RUST_ANALYZER=1 from a shell profile.\n\nWHY THAT WORKAROUND IS THE WRONG SHAPE, WHICH IS THE POINT OF THIS ITEM. The\nthing being gated is not a preference, it is a TRUST decision: enabling the\nbackend causes rust-analyzer to execute the analysed workspace's build.rs and\nproc macros AS THE INVOKING USER. The tool says so in its own warning text, and\nAGENTS.md carries the standing rule \"rust-analyzer EXECUTES build.rs -- never on\nuntrusted repos\".\n\nA trust decision is PER-REPOSITORY. The env var is GLOBAL. Exporting it from a\nprofile silently opts every Rust repository the user ever analyses -- including\nones cloned to look at, audit, or triage -- into arbitrary code execution. So\nthe only persistence hypergumbo offers today has exactly the wrong scope for the\nsecurity property it gates, and the tool never mentions the workaround, probably\nfor that reason. That is a missing FEATURE, not a missing docs line.\n\nSECOND, SMALLER PROBLEM: THE NUDGE IS UNDISMISSABLE. check_rust_analyzer_\ndisclosure fires the \"installed but NOT enabled\" arm on EVERY run against EVERY\nRust repo whenever the binary is on PATH, and a user who has deliberately\ndecided to stay on tree-sitter has no way to say so. The project has already\nwritten down why that matters, in TestRustAnalyzerDisclosureRespectsTheGate:\n\"A nudge that fires when it is already moot trains people to skim past the one\nsentence that must land.\" That reasoning was applied to the backend-active case\nand fixed there; it applies equally to a user who has answered the question and\nkeeps being asked.\n\nDESIGN CONSTRAINT FOR WHOEVER SCOPES THIS -- the trust record MUST NOT live\ninside the analysed repository. A repo that ships its own \"trust me\" marker is\nprecisely the attack this gate exists to prevent. The established shape is\ndirenv's: the opt-in is recorded in the USER's own state directory, keyed by\nabsolute path (and ideally a content hash, so the grant does not survive the\nmanifest changing under it). VS Code workspace trust and mise/asdf trust\nprompts are the same pattern.\n\nSUGGESTED SHAPE, not a decision:\n  * `hypergumbo trust-backend rust-analyzer <path>` (and a `--forget`), writing\n    to a user-level store outside every repo;\n  * gate.py consults it as a THIRD input after env and flag;\n  * the existing nudge gains a \"make this permanent for this repo: <command>\"\n    line and goes quiet for paths already decided either way;\n  * a global always-on remains possible but should require naming itself as\n    such, not be reachable by exporting an env var whose scope the user has not\n    thought about.\n\nBROADER THAN RUST, and this is why it is filed as its own item rather than on\nWI-gojum: hypergumbo has no user-config mechanism at all, so this is the first\none, and every later fidelity backend (WI-nanom's pyright, tsserver, gopls,\nJDT) will want the same switch. pyright executes nothing, so its opt-in is a\npreference and not a trust grant -- the store should not assume every backend\ncarries build.rs's hazard.\n\nNOT MEASURED: whether any user has actually hit this (no telemetry, and the\nfinding came from an authored fixture, not a report)."  # 5806
+    fields: {}  # 5806

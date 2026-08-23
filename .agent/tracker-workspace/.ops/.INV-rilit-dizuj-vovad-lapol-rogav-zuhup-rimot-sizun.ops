@@ -1,0 +1,25 @@
+- op: create  # 9deb
+  at: '2026-08-23T17:47:42Z'  # 9deb
+  by: agent  # 9deb
+  actor: jgstern_agent  # 9deb
+  clock: 1  # 9deb
+  nonce: 9deb  # 9deb
+  data:  # 9deb
+    kind: invariant  # 9deb
+    title: "Rust module paths are emitted in two normalizations in one run (imports use '::', module_attr_ref uses '.'), so the catalogued stdlib reads as uncatalogued"  # 9deb
+    status: violated  # 9deb
+    priority: 1  # 9deb
+    parent:  # 9deb
+    tags:  # 9deb
+    - io_boundary  # 9deb
+    - verify_claims  # 9deb
+    - rust  # 9deb
+    - identifier_format  # 9deb
+    isbefore: []  # 9deb
+    duplicate_of: []  # 9deb
+    not_duplicate_of: []  # 9deb
+    pr_ref:  # 9deb
+    description: "MEASURED 2026-08-23, same fixture and run as the sibling item:\n~/hypergumbo_lab_notebook/rust_fidelity_probe_08232026/.\n\nTWO NORMALIZATIONS OF ONE FACT, VISIBLE IN A SINGLE RUN'S EDGE SET:\n\n  imports          rust:std::net::UdpSocket:0-0:module:external_symbol\n  module_attr_ref  rust:std.net:0-0:std.net.UdpSocket:external_symbol\n\nrust.yaml declares modules in the `::` spelling (std::net::UdpSocket,\nstd::io::Write, std::fs). The colon form MATCHES -- std::fs is absent from the\ngate's uncatalogued list and the fs_read control fires correctly (violated, 1\nchain). The dotted form matches nothing, and std / std.io / std.net are\nreported as modules \"the I/O catalog could not classify\".\n\nSo the Rust STANDARD LIBRARY reads as an uncatalogued third-party dependency,\non a crate that has no dependencies.\n\nRELATION TO THE SIBLING. That item is about module_attr_ref being counted at\nall; this one is about the id it carries. They are independent: fixing the\nedge-type set would stop these particular rows reaching the gate, and would\nleave the dual normalization in place for any other consumer that reads a\nmodule_attr_ref dst. Fixing the normalization would leave imports being counted\nas calls. Both are needed, and neither is a workaround for the other.\n\nWHERE TO LOOK, not yet read in code: whichever producer mints module_attr_ref\ndsts is applying a dotted (python-shaped) module convention to a language whose\nseparator is `::`. LIVE.md already records \"Rust '::' by-design\" in the\nINV-dulah id-grammar context, so the colon form is the intended one.\n\nNOT MEASURED: whether any language other than rust carries a separator the\ndotted convention corrupts; whether consumers other than the coverage gate read\nmodule_attr_ref dsts and are equally affected; whether is_stdlib_module has an\nindependent rust gap underneath this one."  # 9deb
+    fields:  # 9deb
+      statement: "A module name must have ONE spelling across every edge in a run, and it must be the spelling the language's I/O catalog declares."  # 9deb
+      root_cause: "module_attr_ref dsts apply a dotted module convention to Rust, whose separator is '::' and whose io_primitives/rust.yaml rows are declared with '::'. imports edges in the same run use '::' and match correctly, so the two spellings coexist and the dotted one silently fails every catalogue lookup."  # 9deb
