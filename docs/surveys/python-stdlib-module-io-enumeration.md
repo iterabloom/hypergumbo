@@ -153,6 +153,36 @@ than the audit stopping early.
 | `resource`, `signal` | 3 | process-level surfaces, low volume, not audited |
 | `typing`, `contextlib`, `base64`, `shlex`, `pathlib` | 277 | overturned by the probe — see above |
 
+## Addendum 2026-08-23 — `tomllib`, and why one call flipped eighteen verdicts
+
+`tomllib` was declared `completeness: complete` on 2026-08-23. It was added
+because hypergumbo itself began reading TOML (`user_config.py`, ADR-0045), and
+a single call into one unenumerated stdlib module moved **all 18 self-claims**
+from `confirmed_with_caveats` to `inconclusive`.
+
+That leverage is not a bug and is worth stating plainly, because it is the
+property this audit exists to produce: `BoundaryCoverage.qualifying_only` is
+`not unknown`, so the uncatalogued-module list must be **exactly empty** for an
+opaque launch to be a qualifying caveat rather than a withheld verdict. The
+self-proof therefore sits on a knife edge by design — one unaudited import is
+enough to take it off, and the honest response is to audit the module, not to
+soften the gate.
+
+**Verdict and evidence.** `tomllib.load(fp)` reads from a binary file *object*
+the caller opened; `tomllib.loads(s)` is pure string parsing. The open is the
+caller's I/O and is rowed where it happens — the same shape as `json`. The
+probe above was re-run on 2026-08-23: the public API is
+`load` / `loads` / `TOMLDecodeError`, and the sole `open(` match anywhere in
+`tomllib._parser` is inside the `TypeError` message *"File must be opened in
+binary mode, e.g. use `open('foo.toml', 'rb')`"* — the docstring/message
+false-positive class this survey already documents, not a call.
+
+**Note on the section below.** Its closing claim that "the 18 claims remain
+`inconclusive`" was true when written on 2026-08-15 and is no longer: later
+work drove the uncatalogued count to zero, which is exactly why the `tomllib`
+call was able to move every verdict. The paragraph is kept as the record of
+what was measured then.
+
 ## What this audit does NOT do
 
 **It does not make hypergumbo's self-proof confirmable.** Measured end to end,
