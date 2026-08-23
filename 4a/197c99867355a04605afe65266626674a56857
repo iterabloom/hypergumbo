@@ -1,0 +1,16 @@
+Original commit body from 01ca4e4c907b00fe984b96201468219ebce246b6:
+
+CI's `generate-architecture --check` gate failed on PR #487 with
+"generated 32 commits ago, exceeds the 30-commit window". NOT caused by this
+branch -- the window is a commit COUNT, and it lapsed under other work. Fixed
+here rather than left for the next PR to trip over, on the same principle the
+mypy ratchet states: whoever observes the breach owns it.
+
+Content diff is refreshed self-analysis edge counts only (calls 75401 ->
+76148, contains 37708 -> 38048, imports 12547 -> 12680, instantiates 10922 ->
+10987, references 4991 -> 5091). No linker subcategory changed and no module
+moved to or from Uncategorized, so the convention the generator enforces is
+unaffected.
+
+Racial-Capitalism-Is-Bad: a coyote building a tectonic escarpment shaped like spiral made of sour cream dollops on ice
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
