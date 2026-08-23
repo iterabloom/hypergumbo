@@ -226,10 +226,26 @@ Disable tier-based weighting in Key Symbols ranking (use raw centrality instead)
 | `HYPERGUMBO_CACHE_MAX_GB` | `5.0` | Results-cache **eviction** cap (GiB), on by default. After a run that wrote to the cache, least-recently-used whole entries are **soft-deleted** — zipped into `soft-deleted-surveys/` and `soft-deleted-sketches/`, then removed from the live cache — until the total is under the cap. What moved, and where, is reported on stderr. Set to `0` / `off` / `none` / `false` to disable eviction entirely; disabling it does **not** silence the warning above. Never touches a repo's newest entry (a repo is never left with nothing, even if it alone exceeds the cap), anything used within the last hour, or anything that does not match the cache's own layout (WI-sidin). |
 | `HYPERGUMBO_SOFT_DELETE_SURVEYS_GB` | `2.0` | Cap on the `soft-deleted-surveys/` archive folder. Oldest archives are hard-deleted first once the folder exceeds it. `0` disables the cap (the folder then grows without bound). |
 | `HYPERGUMBO_SOFT_DELETE_SKETCHES_GB` | `0.5` | Cap on the `soft-deleted-sketches/` folder. Small by absolute size but generous in practice: sketch-class artifacts are ~0.4% of an entry, so this holds far more history than the surveys cap does. |
+| `XDG_CONFIG_HOME` | `~/.config` | Root of the user configuration directory. hypergumbo reads `$XDG_CONFIG_HOME/hypergumbo/config.toml` (user tier) and `<repo>/.hypergumbo.toml` (project tier); see [Configuration files](#configuration-files). |
 | `HYPERGUMBO_RUST_ANALYZER` | unset | Set to `1` to opt into the SCIP-backed rust-analyzer backend, or `0` to opt out; falls through to the tree-sitter `rust.py` analyzer when unavailable. **`--backend` outranks this variable in both directions** (ADR-0045 ruling 4): `--backend tree-sitter` disables the backend even where the variable says `1`, and `--backend rust-analyzer` enables it even where the variable says `0`. **`rust-analyzer` executes `build.rs`** — opting in runs the analyzed crate's build script as arbitrary code; never enable it on an untrusted repo (see [§4](#4-supported-stacks)). |
 | `HYPERGUMBO_MIN_MEMORY_MB` | `512` | Minimum available system memory (MB) below which an in-progress analysis aborts *between files* with `MemoryPressureError` rather than risking the OOM killer or swap thrash (Linux `/proc/meminfo`; no-op on other platforms). Set to `0` to disable the check entirely. |
 | `HYPERGUMBO_VERBOSE` | unset | Set (to any value) to emit `[embed] …` progress logging to stderr during embedding-based config extraction. |
 | `HF_HUB_OFFLINE` | managed | hypergumbo sets this to `1` automatically while loading a *cached* embedding model, so runtime CLI subcommands make no outbound HuggingFace Hub requests (the `runtime-cli-no-network` claim). `local_files_only=True` alone does not stop HF Hub's metadata API, the xet cache-freshness ping, or the `transformers` safetensors background thread — only `HF_HUB_OFFLINE=1` does. The one-time first-install model download restores your prior setting so it can fetch. You may also export `HF_HUB_OFFLINE=1` yourself to force offline mode globally. |
+
+### Configuration files
+
+Two optional TOML tiers, both absent by default (ADR-0045):
+
+| Tier | Path | Purpose |
+|---|---|---|
+| User | `$XDG_CONFIG_HOME/hypergumbo/config.toml` | Your preferences, across projects |
+| Project | `<repo>/.hypergumbo.toml` | Preferences this repository needs |
+
+Recognised settings: `io_primitives` (list of I/O primitive overlay paths; relative entries resolve against **their own config file**, not the working directory).
+
+Precedence is ascending — user config < project config < claims-file `extra_catalogs:` < `--io-primitives` — matching `load_catalog`'s rule that a later path wins on qualified-name collision.
+
+**A backend that executes analysed-repo code cannot be enabled from either tier.** `backends.rust_analyzer` is refused with an error, in both directions, because enabling it runs the analysed crate's `build.rs` as you — a per-repository *trust* decision, and a config file is designed to be copied between machines. Unknown settings and wrong types are refused rather than ignored, naming the file and the setting.
 
 ## 4) Supported stacks
 
