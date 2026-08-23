@@ -125,3 +125,54 @@ class TestShouldUseBackend:
         monkeypatch.setenv(ENV_VAR_NAME, "1")
         monkeypatch.setattr("shutil.which", lambda _name: None)
         assert should_use_rust_analyzer_backend() is False
+
+
+class TestTheFlagOutranksTheEnvironment:
+    """ADR-0045 ruling 4, at the gate — the consumption half of the fix.
+
+    The CLI half writes a resolved decision into the environment variable;
+    this half is what reads it. Both are needed: before the fix the gate
+    would have honoured a ``backend_flag`` if one had reached it, but the CLI
+    stripped the flag from argv and never passed it, so the gate saw only the
+    variable and the opt-out could not be expressed at all.
+    """
+
+    def test_tree_sitter_flag_beats_env_opt_in(self) -> None:
+        assert should_use_rust_analyzer_backend(
+            backend_flag="tree-sitter",
+            environ={ENV_VAR_NAME: "1"},
+            is_available=lambda: True,
+        ) is False
+
+    def test_explicit_env_off_disables(self) -> None:
+        assert should_use_rust_analyzer_backend(
+            environ={ENV_VAR_NAME: "0"},
+            is_available=lambda: True,
+        ) is False
+
+    def test_rust_analyzer_flag_beats_env_opt_out(self) -> None:
+        assert should_use_rust_analyzer_backend(
+            backend_flag="rust-analyzer",
+            environ={ENV_VAR_NAME: "0"},
+            is_available=lambda: True,
+        ) is True
+
+    def test_availability_still_gates_an_opted_in_run(self) -> None:
+        """The opt-in half moved; the binary-presence half must not have.
+
+        Named explicitly because this fix rewrote the condition the two
+        halves shared, and a regression here would silently turn a missing
+        binary into an attempted spawn.
+        """
+        assert should_use_rust_analyzer_backend(
+            backend_flag="rust-analyzer",
+            environ={},
+            is_available=lambda: False,
+        ) is False
+
+    def test_an_unrecognised_flag_falls_through_to_the_environment(self) -> None:
+        assert should_use_rust_analyzer_backend(
+            backend_flag="nonsense",
+            environ={ENV_VAR_NAME: "1"},
+            is_available=lambda: True,
+        ) is True

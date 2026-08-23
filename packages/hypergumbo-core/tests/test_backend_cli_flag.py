@@ -79,11 +79,19 @@ class TestMainStripping:
         assert rc == 0
         assert os.environ.get(ENV_VAR) == "1"
 
-    def test_backend_tree_sitter_does_not_set_env(self) -> None:
+    def test_backend_tree_sitter_records_an_explicit_off(self) -> None:
+        """Was: asserted tree-sitter set NOTHING. Premise kept, conclusion inverted.
+
+        Setting nothing is what made the advertised opt-out inert -- with
+        HYPERGUMBO_RUST_ANALYZER=1 already exported, a no-op leaves the
+        backend on and the analysed repo's build.rs runs. ADR-0045 ruling 4
+        makes the flag outrank the variable in BOTH directions, so the
+        negative arm has to write something the gate can read as a refusal.
+        """
         with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
             rc = main(["--backend", "tree-sitter", "cache-status", "--quiet"])
         assert rc == 0
-        assert ENV_VAR not in os.environ
+        assert os.environ.get(ENV_VAR) == "0"
 
     def test_backend_flag_in_post_subcommand_position(self) -> None:
         """`hypergumbo cache-status --backend rust-analyzer --quiet` works too."""
@@ -117,11 +125,12 @@ class TestMainStripping:
         assert rc == 0
         assert os.environ.get(ENV_VAR) == "1"
 
-    def test_backend_equals_tree_sitter_does_not_set_env(self) -> None:
+    def test_backend_equals_tree_sitter_records_an_explicit_off(self) -> None:
+        """The ``=``-form must not diverge from the space-form (see above)."""
         with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
             rc = main(["--backend=tree-sitter", "cache-status", "--quiet"])
         assert rc == 0
-        assert ENV_VAR not in os.environ
+        assert os.environ.get(ENV_VAR) == "0"
 
     def test_no_backend_leaves_env_unchanged(self) -> None:
         with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
@@ -265,3 +274,80 @@ class TestBackendBinaryGate:
                 ])
         assert rc == 0
         assert os.environ.get(ENV_VAR) == "1"
+
+
+class TestTheAdvertisedOptOutActuallyOptsOut:
+    """The live defect, at the layer a user meets it.
+
+    Reproduced end-to-end before the fix on an authored Rust fixture: with
+    ``HYPERGUMBO_RUST_ANALYZER=1`` exported, ``--backend tree-sitter``
+    produced 10 nodes carrying ``origin=['scip']`` and the run printed
+    "rust-analyzer backend ACTIVE" -- i.e. the SCIP backend ran, having
+    indexed (and therefore executed) the workspace's build scripts, after the
+    tool's own warning told the user this flag would prevent that.
+
+    These assert on the ENV TRANSPORT rather than on a real analysis because
+    the end-to-end repro needs a Rust toolchain; the gate's own tests cover
+    the consumption side, so between them the path is closed. The gap is
+    named rather than papered over: nothing here proves the two halves are
+    wired to each other, which is what the fixture run does by hand.
+    """
+
+    def test_tree_sitter_flag_overrides_an_exported_opt_in(self) -> None:
+        os.environ[ENV_VAR] = "1"
+        try:
+            with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+                rc = main(["--backend", "tree-sitter", "cache-status", "--quiet"])
+            assert rc == 0
+            assert os.environ.get(ENV_VAR) == "0"
+        finally:
+            os.environ.pop(ENV_VAR, None)
+
+    def test_rust_analyzer_flag_overrides_an_exported_opt_out(self) -> None:
+        """The symmetric direction, so the fix is a precedence rule and not a
+        special case that only ever turns things off."""
+        os.environ[ENV_VAR] = "0"
+        try:
+            with patch(
+                "hypergumbo_core.cli.cmd_cache_status", return_value=0,
+            ), patch(
+                "hypergumbo_core.rust_analyzer_install."
+                "is_rust_analyzer_integration_installed",
+                return_value=True,
+            ), patch(
+                "hypergumbo_core.rust_analyzer_install."
+                "is_rust_analyzer_available",
+                return_value=True,
+            ):
+                rc = main([
+                    "--backend", "rust-analyzer", "cache-status", "--quiet",
+                ])
+            assert rc == 0
+            assert os.environ.get(ENV_VAR) == "1"
+        finally:
+            os.environ.pop(ENV_VAR, None)
+
+    def test_an_unrecognised_backend_leaves_the_opt_in_alone(self) -> None:
+        """`--backend nonsense` must not be read as a refusal.
+
+        My first version of this test asserted argparse would reject the
+        unknown choice. It does not, and the code is right rather than the
+        test: the preprocessing loop strips ``--backend <anything>`` from
+        argv before argparse runs, so the parser's ``choices=`` constraint
+        never sees the global flag and an unrecognised value is silently
+        swallowed. That swallowing is a real (separate, smaller) usability
+        defect and is recorded on the tracker item rather than widened into
+        this fix.
+
+        What matters HERE is the precedence property: an unrecognised choice
+        is no-opinion at the flag tier, so it must leave a lower tier's
+        decision standing rather than clobbering it in either direction.
+        """
+        os.environ[ENV_VAR] = "1"
+        try:
+            with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+                rc = main(["--backend", "nonsense", "cache-status", "--quiet"])
+            assert rc == 0
+            assert os.environ.get(ENV_VAR) == "1"
+        finally:
+            os.environ.pop(ENV_VAR, None)
