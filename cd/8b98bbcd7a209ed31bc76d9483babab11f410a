@@ -1,0 +1,36 @@
+Original commit body from 3f16899bac782721f5483036f03fadd63682bef5:
+
+hypergumbo has no user-level configuration of any kind: the rust-analyzer
+gate accepts only HYPERGUMBO_RUST_ANALYZER and --backend (which cli.py
+normalises into that same env var), and there is no $XDG_CONFIG_HOME reader
+anywhere. The only way to make the choice durable is exporting the env var
+from a shell profile — which is GLOBAL, so it opts every Rust repo the user
+ever analyses into build.rs execution, contradicting the standing "never on
+untrusted repos" rule the gate exists to enforce.
+
+Eight rulings. The load-bearing ones: two stores (preferences in
+$XDG_CONFIG_HOME, trust grants in $XDG_STATE_HOME, because ~/.config is
+designed to be synced and a synced trust grant is the footgun again);
+a trust grant is never a config key; project-local config may not set
+security-gated keys (inverting ADR-0016 §35 / ADR-0017 §370's
+"project-local outranks built-in", which is right for catalogs and exactly
+wrong for trust); and backend opt-in is two concepts with two homes, keyed
+off a per-backend executes_analysed_code bit so the next backend cannot land
+in the wrong store by omission.
+
+Reuses two ADR-0013 patterns: out-of-tree $XDG_* state, and a human-owned
+agent-unwritable file — which matters more here than it does for the
+tracker, since a trust store an autonomous agent can write is not a trust
+store. Departs from ADR-0013 on keying: repo-fingerprint deliberately shares
+across checkouts, which is right for a cache and wrong for trust.
+
+OQ1 labels the weakest ruling (advisory rather than revoking content hash —
+a behavioural judgement, not a measurement). OQ5 records that no user
+reported this; the trigger was an authored fixture and a code read.
+
+Trigger: WI-sobig. Related: ADR-0012, ADR-0016, ADR-0017, ADR-0022 (a
+different sense of "configuration surface" — disambiguated in the text),
+WI-nanom, WI-jivim, WI-gojum.
+
+Racial-Capitalism-Is-Bad: a porcupine playing chess against a sword swallower in a Bronto-burger grill shack
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
