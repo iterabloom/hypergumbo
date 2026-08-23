@@ -1,0 +1,22 @@
+- op: create  # 7bba
+  at: '2026-08-22T20:06:19Z'  # 7bba
+  by: agent  # 7bba
+  actor: jgstern_agent  # 7bba
+  clock: 1  # 7bba
+  nonce: 7bba  # 7bba
+  data:  # 7bba
+    kind: work_item  # 7bba
+    title: "Publish the untyped-receiver and stdlib-scoped-catalogue limitations in verify-claims' USER-FACING scope docs (documented 5x in code, 0x for users)"  # 7bba
+    status: todo_hard  # 7bba
+    priority: 2  # 7bba
+    parent:  # 7bba
+    tags:  # 7bba
+    - docs  # 7bba
+    - verify_claims  # 7bba
+    - io_boundary  # 7bba
+    isbefore: []  # 7bba
+    duplicate_of: []  # 7bba
+    not_duplicate_of: []  # 7bba
+    pr_ref:  # 7bba
+    description: "The untyped-receiver limitation is documented FIVE times inside\nverify_claims.py and ZERO times in any user-facing document. A reader of\nSECURITY.md, README.md or docs/ cannot learn that a \"confirmed\" boundary\nverdict may rest on a call the analysis could not see. docs/hypergumbo-spec.md\ndoes not mention the untyped_receiver caveat kind at all.\n\nWHY THIS IS THE ACTIONABLE HALF. A per-verdict caveat can only disclose what\nthe analysis has a subject to name; the panel measured that a wider caveat\nwould fire on almost nothing, and INV-jujoh shows the worst shape emits no edge\nto attach a caveat to at all. A defect that cannot be pointed at PER VERDICT\nshould be disclosed ONCE, GLOBALLY, in the published scope -- which reaches\n100% of readers at zero false-positive cost. That is AGENTS.md's own \"explicit\ngaps over implicit completeness\" rule applied to the tool's documentation\ninstead of its output.\n\nWHAT TO WRITE, at minimum:\n  * a \"confirmed\" boundary verdict means no chain was found in code the\n    analysis could adjudicate -- not that none exists;\n  * the receiver shapes it cannot type today, naming them: an unannotated\n    parameter with no agreeing in-repo call site, and (INV-jujoh) an own\n    instance field of external or unknown type, which emits no edge at all;\n  * that the built-in io_primitives catalogue is deliberately STDLIB-SCOPED,\n    so third-party egress (requests / httpx / urllib3 have zero rows) needs a\n    project-local overlay -- and point at\n    docs/io-primitives-overlays/python-http-clients.yaml, which measurably\n    converts one such silent confirm into confirmed_with_caveats;\n  * the exit-code contract for a consumer: 3 is fail-closed and must not be\n    treated as success.\n\nSCOPE: documentation only. No code, no verdict change, no new vocabulary. The\nuntyped_receiver caveat kind should also reach docs/hypergumbo-spec.md, whose\nverdict table currently documents the other three caveat kinds' family but not\nthis one by name.\n\nFOUND BY: the 3-judge panel on INV-fibis, 2026-08-22 (maintainer-lens judge).\nVerified by the filer: 5 mentions in verify_claims.py; 0 across docs/,\nSECURITY.md and README.md; 0 in the spec."  # 7bba
+    fields: {}  # 7bba
