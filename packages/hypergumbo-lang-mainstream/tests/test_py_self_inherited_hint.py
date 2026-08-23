@@ -851,10 +851,25 @@ class TestOwnFieldExternalReceiverEmit:
             "caveat, the uncovered-module gate and taint are all blind to it"
         )
 
-    def test_external_ctor_field_emits_placeholder(self, tmp_path: Path) -> None:
-        # The type IS known to the receiver-constructor table (socket.socket),
-        # which is why this is an EMIT gap and not a type-inference gap: the
-        # identical LOCAL, ``s = socket.socket(); s.sendall(b)``, already emits.
+    def test_external_ctor_field_now_carries_its_module(
+        self, tmp_path: Path,
+    ) -> None:
+        """UPDATED, NOT DELETED, and the distinction is the point (L13: a test
+        that pins a defect is a contract).
+
+        As written for INV-jujoh this asserted a BARE PLACEHOLDER edge, and its
+        own comment said why that was unsatisfying: "the type IS known to the
+        receiver-constructor table (socket.socket), which is why this is an EMIT
+        gap and not a type-inference gap -- the identical LOCAL,
+        ``s = socket.socket(); s.sendall(b)``, already emits." The placeholder
+        was the best available answer then, not the desired one.
+
+        INV-fibis's recall half closes that asymmetry, so the PREMISE is kept
+        verbatim -- an edge MUST exist, which is INV-jujoh's whole guarantee and
+        is asserted first below -- and only the CONCLUSION moves: the edge now
+        names ``socket.socket`` instead of ``external``. Weakening this to "some
+        edge exists" would have discarded a real contract; deleting it would
+        have discarded INV-jujoh's."""
         src = (
             "import socket\n"
             "class A:\n"
@@ -864,7 +879,15 @@ class TestOwnFieldExternalReceiverEmit:
             "        return self.sock.sendall(payload)\n"
         )
         res = _analyze(tmp_path, src)
-        assert _unresolved_method_edges(res, "sendall") != []
+        emitted = [
+            e for e in res.edges
+            if e.edge_type == "calls" and e.dst.endswith(":sendall:unresolved")
+        ]
+        assert emitted != [], "INV-jujoh: the call must still EMIT an edge"
+        assert emitted[0].dst == "python:socket.socket:0-0:sendall:unresolved"
+        assert _unresolved_method_edges(res, "sendall") == [], (
+            "and it is no longer the anonymous placeholder"
+        )
 
     def test_factory_field_emits_placeholder(self, tmp_path: Path) -> None:
         # The factory shape from test_self_field_untyped_own_field_no_hint,

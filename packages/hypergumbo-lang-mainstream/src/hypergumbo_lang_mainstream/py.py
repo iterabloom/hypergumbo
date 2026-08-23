@@ -4710,6 +4710,21 @@ def _extract_edges(
     # inherited, so excluding it prevents a confidently-wrong Site-3 resolution
     # to a same-named PARENT field of a different type.
     class_own_field_names: dict[str, frozenset[str]] = {}
+    #: INV-fibis recall half: the EXTERNAL counterpart to ``class_field_types``,
+    #: mapping class -> field -> catalogued module path. It exists because
+    #: ``class_field_types`` is ``Symbol``-valued and therefore, BY CONSTRUCTION,
+    #: can only ever hold an in-repo class. Locals have had both halves since
+    #: WI-fuvuj (``var_types`` / ``external_var_types``); fields had only the
+    #: first, so ``s = socket.socket(); s.sendall(x)`` reached the catalogue and
+    #: ``self.sock = socket.socket(); self.sock.sendall(x)`` did not -- two
+    #: spellings of one fact with only one of them visible.
+    #:
+    #: THIS SUPPLIES EVIDENCE; IT DOES NOT WIDEN A MATCHER. INV-nuhun established
+    #: that the sink/boundary lookup refuses an untyped method receiver twice
+    #: over, and that both refusals ARE the deliberate closure of INV-tapat and
+    #: INV-maluk. Nothing here touches that gate: it hands the gate the module
+    #: hint it has always asked for, which is the only sound way past it.
+    class_external_field_types: dict[str, dict[str, str]] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
@@ -4721,7 +4736,17 @@ def _extract_edges(
         if init_method is None:
             continue
         init_param_types = _extract_param_types(init_method)
+        # ``owner=None``: the interprocedural (call-site) half is deliberately
+        # NOT wired here yet. A constructor's callers write ``Client(sock)``, so
+        # the call-site index is keyed on the CLASS symbol and its positions are
+        # offset by one against ``__init__``'s (which start at ``self``). Getting
+        # that wrong would mint a confident hint onto the wrong parameter, so it
+        # is left to its own change rather than folded in on the way past.
+        init_external_types = _extract_external_param_types(
+            init_method, init_param_types,
+        )
         field_types: dict[str, Symbol] = {}
+        external_field_types: dict[str, str] = {}
         own_field_names: set[str] = set()
         for stmt in ast.walk(init_method):
             # WI-sajub: scan both ``self.x = v`` (Assign) and ``self.x: T = v`` /
@@ -4738,6 +4763,14 @@ def _extract_edges(
                 assign_value = stmt.value  # None for a bare ``self.x: T``
             else:
                 continue
+            # The declared annotation of ``self.x: T = v``. Read here rather
+            # than inside the target loop because AnnAssign has exactly one
+            # target, and because the ANNOTATION IS THE BEST EVIDENCE available
+            # for the field -- the same precedence WI-zilag gives a parameter's
+            # annotation over any inference about it.
+            ann_expr = (
+                stmt.annotation if isinstance(stmt, ast.AnnAssign) else None
+            )
             for target in assign_targets:
                 if (
                     isinstance(target, ast.Attribute)
@@ -4746,6 +4779,24 @@ def _extract_edges(
                 ):
                     field_name = target.attr
                     own_field_names.add(field_name)
+                    # Three shapes carry an external type, in precedence order.
+                    # Each mirrors a shape already trusted for a LOCAL, and each
+                    # reuses that shape's existing resolver rather than
+                    # re-deciding trust here -- ``_annotation_module_hint`` and
+                    # ``_external_constructor_type`` both carry the INV-kipor
+                    # binding check, so an in-file ``class Path`` is refused for
+                    # a field exactly as it is for a local.
+                    _ext_hint: str | None = None
+                    if ann_expr is not None:
+                        _ext_hint = _annotation_module_hint(ann_expr)
+                    if _ext_hint is None and isinstance(assign_value, ast.Name):
+                        _ext_hint = init_external_types.get(assign_value.id)
+                    if _ext_hint is None and isinstance(assign_value, ast.Call):
+                        _ext_hint = _external_constructor_type(
+                            assign_value, imports, module_imports,
+                        )
+                    if _ext_hint is not None:
+                        external_field_types[field_name] = _ext_hint
                     # self.field = param where param has a type annotation
                     if isinstance(assign_value, ast.Name) and assign_value.id in init_param_types:
                         field_types[field_name] = init_param_types[assign_value.id]
@@ -4759,6 +4810,17 @@ def _extract_edges(
                             field_types[field_name] = assigned_class
         if own_field_names:
             class_own_field_names[node.name] = frozenset(own_field_names)
+        # THE IN-REPO TYPE WINS, applied after the scan rather than during it so
+        # a later ``self.x = InRepoClass()`` still beats an earlier external
+        # guess about the same field. A first-party class is resolvable to a real
+        # symbol and carries no catalogue meaning, so letting an external hint
+        # stand beside it would only offer a worse answer to the same question.
+        external_field_types = {
+            _k: _v for _k, _v in external_field_types.items()
+            if _k not in field_types
+        }
+        if external_field_types:
+            class_external_field_types[node.name] = external_field_types
         if field_types:
             class_field_types[node.name] = field_types
             # WI-hiziz PR-3 (Site 3): mirror java.py — attach
@@ -4887,11 +4949,29 @@ def _extract_edges(
                         node, include_import_aliases=False
                     ) | _enclosing,
                 )
+                _ext_var_types = _extract_external_param_types(
+                    node, param_types, caller_symbol,
+                )
+                # INV-fibis recall half, mirroring the ``class_field_types`` ->
+                # ``param_types`` merge a few lines above -- with one deliberate
+                # difference: the key is NAMESPACED ``self.<field>`` rather than
+                # the bare field name. The in-repo merge uses the bare name and
+                # guards with ``if fname not in param_types``, which resolves the
+                # collision at merge time but cannot survive a LOCAL of the same
+                # name assigned later in the body: ``external_var_types`` is
+                # mutated as the body is walked, so a bare-keyed field type would
+                # be overwritten by that local's type, and thereafter answer for
+                # the field. A field and a local of the same name are different
+                # variables; namespacing makes them structurally unable to
+                # collide instead of relying on an ordering that holds today.
+                if caller_symbol.kind == "method":
+                    for _fld, _mod in class_external_field_types.get(
+                        caller_symbol.name.split(".")[0], {},
+                    ).items():
+                        _ext_var_types.setdefault(f"self.{_fld}", _mod)
                 process_code_block(
                     node.body, caller_symbol, param_types, stack=stack,
-                    external_var_types=_extract_external_param_types(
-                        node, param_types, caller_symbol,
-                    ),
+                    external_var_types=_ext_var_types,
                 )
                 _emit_variable_refs(
                     node.body, caller_symbol,
@@ -6588,14 +6668,42 @@ def _process_call(
                     _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
                     if _encl_id is not None:
                         _site3_meta["enclosing_class_id"] = _encl_id
+                # INV-fibis recall half. INV-jujoh made this call EMIT at all;
+                # this is where it stops being anonymous. The module is carried
+                # in BOTH the dst id's module slot AND ``dst_ref`` for the reason
+                # WI-fuvuj gives at the local-variable branch above: the
+                # io-boundary CLI consumer drops ``dst_ref`` on serialize/reload
+                # and falls back to parsing the dst id, so one of the two alone
+                # is invisible to half the consumers.
+                #
+                # ``resolution_quality`` is stamped ONLY on the typed branch,
+                # honestly, per WI-javus -- the give-up branch below keeps saying
+                # nothing was inferred, because that is what happened.
+                _field_module = (external_var_types or {}).get(
+                    f"self.{field_name}",
+                )
+                _site3_ref = None
+                if _field_module is not None:
+                    _site3_meta["resolution_quality"] = "type_inferred"
+                    _site3_dst = (
+                        f"python:{_field_module}:0-0:{method_name}:unresolved"
+                    )
+                    _site3_ref = ExternalRef(
+                        lang="python",
+                        module_path=_field_module,
+                        name=method_name,
+                    )
+                else:
+                    _site3_dst = f"python:external:0-0:{method_name}:unresolved"
                 edges.append(Edge.create(
                     src=caller_symbol.id,
-                    dst=f"python:external:0-0:{method_name}:unresolved",
+                    dst=_site3_dst,
                     edge_type="calls",
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
                     meta=_site3_meta,
+                    dst_ref=_site3_ref,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
