@@ -23,3 +23,10 @@
     fields:  # ddf8
       statement: "The uncatalogued-module gate must report only modules whose I/O the analysis genuinely could not examine. A callee the language itself marks as first-party -- rust's crate::/super::/self:: keywords or its own package name, a javascript specifier beginning with . or / -- is source this analysis read, and reporting it as an unexamined third-party module both withholds the verdict for a false reason and buries the entries that are real."  # ddf8
       root_cause: "_analyzed_modules derives first-party names from SRC-SIDE FILE PATHS (bellman yields groth16.src.generator, groth16.src.lib) while the callee slot carries an IMPORT name (bellman::...), a SELF-REFERENCE KEYWORD (crate::, super::) or a RELATIVE PATH (../post). _is_analyzed_module's component-bounded infix rule cannot bridge any of the three: a crate name lives in Cargo.toml not in the directory layout, a keyword is not a name, and a relative specifier is meaningless until resolved against the importing file. The path-derived rule was written for python (INV-fibis 2026-08-09, INV-liloh) and does not generalise."  # ddf8
+- op: discuss  # 42f1
+  at: '2026-08-24T18:40:21Z'  # 42f1
+  by: agent  # 42f1
+  actor: jgstern_agent  # 42f1
+  clock: 2  # 42f1
+  nonce: 42f1  # 42f1
+  message: "OWNER RULING 2026-08-24 (full text on WI-lutuh): \"yes — WI-lutuh is the long pole and needs scoping now; items 1-3 are prerequisites that make its output readable but don't substitute for it.\" This item is one of those three prerequisites, and the order the owner set is INV-juvul -> INV-rilit -> WI-nakut -> WI-lutuh scoping. The ruling also settles a scope question the project had never made explicitly: verify-claims IS meant to be usable on non-python repositories, which is what promotes WI-lutuh (14 of 15 catalogued languages declare ZERO module_completeness) from a rust footnote to the long pole."  # 42f1
