@@ -128,6 +128,8 @@ from .io_boundary import (
     BoundaryMap,
     IoBoundaryCatalog,
     classify_call,
+    is_definitionally_first_party,
+    normalize_module_separators,
 )
 from .ir import symbol_path_slot
 from .paths import classify_test_file, is_migration_file
@@ -1826,6 +1828,15 @@ def _analyzed_modules(raw_edges: list[dict[str, Any]]) -> set[str]:
     ``app.config``. Nodes are not consulted — every analyzed file that
     participates in any edge appears here, and the function's callers already
     hold the edges.
+
+    THAT NORMALISATION WAS ONE-SIDED FOR AS LONG AS IT EXISTED, and the
+    docstring above described the intent while the code did half of it
+    (INV-juvul, L50 again). Only this side was folded; the callee side reached
+    :func:`_is_analyzed_module` raw, so express's own ``lib/utils`` could not
+    match its own analyzed ``lib.utils`` and the repo's own module was reported
+    as an unexamined third-party one. Both sides now route through
+    :func:`io_boundary.normalize_module_separators`, which is the single home
+    for the fold.
     """
     analyzed: set[str] = set()
     from .taint import _module_from_symbol_path
@@ -1833,7 +1844,7 @@ def _analyzed_modules(raw_edges: list[dict[str, Any]]) -> set[str]:
     for edge in raw_edges:
         module = _module_from_symbol_path(edge.get("src", ""))
         if module:
-            analyzed.add(module.replace("/", "."))
+            analyzed.add(normalize_module_separators(module))
     return analyzed
 
 
@@ -1861,14 +1872,70 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     ends with ``core`` while sharing no component, and a bare string
     containment is the rule that was measured wrong in three languages at
     once.
+
+    BOTH SIDES ARE NOW SEPARATOR-NORMALISED (INV-juvul). ``analyzed`` was
+    folded and the argument was not, which made the comparison unable to see a
+    match in any language that spells a module with ``/`` or ``::`` — the
+    express case above, and every Go import path.
+
+    WHAT THAT WIDENS, stated precisely because a first draft of this paragraph
+    overstated it and the overstatement was refuted by running it: the folded
+    spelling is tested WHOLE, so the only new suppression is a module whose
+    ENTIRE path is a component-bounded infix of a path this analysis read.
+    ``github.com/other/modules/caddyhttp`` is NOT suppressed by a repo owning
+    ``modules/caddyhttp`` — the folded module is longer than the analyzed entry
+    and the infix runs the other way. Measured on caddy (19,650 edges), the
+    widening is exactly TWO entries, ``modules/caddyhttp`` and
+    ``caddyconfig/httpcaddyfile``, both of which are caddy's own packages.
+    Pinned in both directions by
+    ``test_a_repos_own_slash_spelled_package_IS_suppressed`` and
+    ``test_normalisation_alone_does_not_vouch_for_an_unread_module``.
+
+    WHAT THIS FUNCTION STILL CANNOT ANSWER, and why it is no longer the only
+    test: a callee slot carrying a RESERVED KEYWORD (``crate::``, ``super::``)
+    or a RELATIVE PATH (``../post``) names first-party code under no
+    normalisation at all, because a keyword is not a name and a relative
+    specifier is meaningless until resolved against the importing file. That
+    question belongs to the language, and
+    :func:`io_boundary.is_definitionally_first_party` answers it.
     """
     parts = module.split(".")
     for i in range(len(parts), 0, -1):
         prefix = ".".join(parts[:i])
-        needle = "." + prefix + "."
-        for a in analyzed:
-            if a == prefix or needle in "." + a + ".":
-                return True
+        if _component_infix_of_any(prefix, analyzed):
+            return True
+    # THE SEPARATOR FOLD IS TESTED WHOLE, NEVER SHORTENED, and the asymmetry is
+    # the whole point (INV-juvul). Folding first and then running the loop above
+    # is what the first cut did, and CADDY REFUTED IT IN THE CONTROL RUN: with
+    # ``/`` folded, ``os/exec`` becomes two components, the loop shortens it to
+    # ``os``, and caddy's own ``internal/filesystems/os.go`` matches — so the
+    # SUBPROCESS module was suppressed from the disclosure, along with
+    # ``crypto/tls``, ``crypto/x509`` and seven more of Go's stdlib, because the
+    # repo happens to own a file called ``crypto.go``. Thirteen suppressions,
+    # ten of them wrong, all in the false-clean direction.
+    #
+    # Shortening is for stripping a trailing TYPE off a dotted callee slot
+    # (``app.config.Loader`` → ``app.config``); it is not licensed by a change
+    # of separator. So the folded spelling gets exactly one question — does the
+    # WHOLE module name a path this analysis read — which is what express's
+    # ``lib/utils`` vs ``lib.utils`` needed and all it needed.
+    folded = normalize_module_separators(module)
+    if folded != module and _component_infix_of_any(folded, analyzed):
+        return True
+    return False
+
+
+def _component_infix_of_any(name: str, analyzed: set[str]) -> bool:
+    """Whether ``name`` sits inside any analyzed path, bounded at components.
+
+    Bounding is load-bearing and was measured wrong in three languages at once:
+    ``hypergumbo_core`` ends with ``core`` while sharing no component, so bare
+    string containment matches paths that name unrelated code.
+    """
+    needle = "." + name + "."
+    for a in analyzed:
+        if a == name or needle in "." + a + ".":
+            return True
     return False
 
 
@@ -2281,6 +2348,22 @@ def _uncatalogued_external_modules(
         # unresolved internal call. Measured on poetry: 120 of 171 call-site
         # modules were poetry's own.
         if _is_analyzed_module(module, analyzed):
+            continue
+        # A MODULE THE LANGUAGE ITSELF MARKS AS FIRST-PARTY IS NOT A CATALOGUE
+        # GAP EITHER, and the path-derived test above cannot see it (INV-juvul).
+        # ``analyzed`` is built from SRC FILE PATHS — bellman yields
+        # ``src.gadgets.boolean`` — while the callee slot carries a RESERVED
+        # KEYWORD (``crate::``, ``super::``) or a RELATIVE PATH (``../post``).
+        # A keyword is not a name and a relative specifier is meaningless until
+        # resolved against the importing file, so no amount of suffix matching
+        # bridges either one; the rule has to come from the language.
+        #
+        # ASKED LAST, after the path-derived test, so the cheap and general
+        # answer runs first and this one only sees what it could not explain.
+        # Measured 2026-08-24: 5 of bellman's 23 reported modules and 6 of
+        # express's 17 are exactly this, and because ``qualifying_only`` is
+        # ``not unknown``, those alone withheld every claim on both repos.
+        if is_definitionally_first_party(dst.split(":", 1)[0], module):
             continue
         unknown.add(module)
     return sorted(unknown)
