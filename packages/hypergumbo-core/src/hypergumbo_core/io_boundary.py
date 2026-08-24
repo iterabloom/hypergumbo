@@ -3042,8 +3042,11 @@ def is_first_party_callable_dst(edge_dst: str) -> bool:
     # to paper over here.) So the module slot must also name a filesystem location, which
     # is what a resolved in-repo symbol carries and what neither a module path (``os``,
     # ``std::fs``) nor the ``external`` placeholder ever does.
-    module_slot = parts[1]
-    return module_slot.startswith(("/", "\\"))
+    # PATH SLOT VIA THE CHOKEPOINT (INV-divuf) rather than ``parts[1]``, which
+    # is a truncation on any colon-bearing path. Harmless for the leading-slash
+    # test it feeds today, and that is exactly why it survived five conversions
+    # of this defect class — a wrong parse whose current caller cannot notice.
+    return symbol_path_slot(edge_dst).startswith(("/", "\\"))
 
 
 def _extract_module_hint(edge_dst: str) -> str | None:

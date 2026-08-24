@@ -1357,6 +1357,15 @@ def validate_symbol_id_format(symbol_id: str) -> Optional[str]:
     parts = symbol_id.split(":")
     if len(parts) < 5:
         return None
+    # ``parts[-3]`` IS CORRECT HERE, and a change to span-anchoring was tried
+    # and REVERTED (INV-divuf). Per ADR-0036 Ruling 1 the NAME slot is
+    # colon-free by rule — ``sanitize_id_name_segment`` folds ``:`` to ``.``
+    # and ``make_symbol_id`` applies it to every name slot — so on a WELL-FORMED
+    # id ``parts[-3]`` is the span. On a MALFORMED one it is not, and that is
+    # the signal: ``_classify_id_format_problem`` reports ``colon_in_name_slot``
+    # precisely because the right-anchored slots shifted. Locating the span
+    # "correctly" on a malformed id makes it parse clean and silences the
+    # diagnosis INV-dulah paid an investigation to get right.
     span = parts[-3]
     if span != _SYNTHETIC_SPAN:
         return None
@@ -1389,6 +1398,31 @@ def _canonical_external_stable_id(
     """
     payload = f"external:{language}:{path}:{name}"
     return f"sha256:{hashlib.sha256(payload.encode()).hexdigest()[:16]}"
+
+
+def _span_token_index(parts: list[str]) -> Optional[int]:
+    """Index of the ``N-M`` span token in a colon-split symbol id, or ``None``.
+
+    THE ONE SPAN ANCHOR (INV-divuf). The span is the only slot that can be
+    located without assuming any OTHER slot is colon-free, which is why every
+    correct parse in this module is anchored on it. It had THREE homes: the
+    loop below was copy-pasted into :func:`symbol_path_slot` and
+    :func:`symbol_name_slot`, and :func:`validate_symbol_id_format` carried a
+    third, WRONG version that took ``parts[-3]`` — so the validator located the
+    span correctly only for ids whose name and path happened to be colon-free,
+    and silently returned "clean" for every Objective-C selector and every Rust
+    qualified callee. A validator that cannot parse the ids it validates is the
+    failure mode this extraction exists to end.
+
+    Returns ``None`` when no span token is present, which is a real shape
+    (``just:examples/screenshot.just:6:build:recipe`` carries a bare line
+    number) and is the caller's cue to fall back to the right-anchored parse.
+    """
+    for idx in range(1, len(parts) - 1):
+        token = parts[idx]
+        if "-" in token and token.replace("-", "").isdigit():
+            return idx
+    return None
 
 
 def symbol_path_slot(symbol_id: str) -> str:
@@ -1444,10 +1478,9 @@ def symbol_path_slot(symbol_id: str) -> str:
     parts = symbol_id.split(":") if symbol_id else []
     if len(parts) < 5:
         return ""
-    for idx in range(1, len(parts) - 1):
-        token = parts[idx]
-        if "-" in token and token.replace("-", "").isdigit():
-            return ":".join(parts[1:idx])
+    idx = _span_token_index(parts)
+    if idx is not None:
+        return ":".join(parts[1:idx])
     return ":".join(parts[1:-3])
 
 
@@ -1479,10 +1512,9 @@ def symbol_name_slot(symbol_id: str) -> str:
     parts = symbol_id.split(":") if symbol_id else []
     if len(parts) < 5:
         return ""
-    for idx in range(1, len(parts) - 1):
-        token = parts[idx]
-        if "-" in token and token.replace("-", "").isdigit():
-            return ":".join(parts[idx + 1:-1])
+    idx = _span_token_index(parts)
+    if idx is not None:
+        return ":".join(parts[idx + 1:-1])
     return parts[-2]
 
 
