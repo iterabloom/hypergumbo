@@ -2623,6 +2623,219 @@ def _module_hint_candidates(module_hint: str) -> list[str]:
     return out
 
 
+def normalize_module_separators(name: str) -> str:
+    """Fold ``::`` and ``/`` into ``.`` so two spellings of one module compare equal.
+
+    ONE HOME FOR A NORMALISATION THAT HAD THREE (WI-ribuz, LIVE.md rule 7).
+    :func:`_module_matches` folded both separators, ``verify_claims._analyzed_modules``
+    folded only ``/`` and only on the SRC side, and the callee side was compared raw.
+    That asymmetry was not cosmetic: express's own ``lib/utils`` could never match its
+    own analyzed ``lib.utils``, so the repo's own module was reported as a third-party
+    one whose I/O had never been examined (INV-juvul).
+
+    ``::`` is folded before ``/`` deliberately — folding ``/`` first would turn a Rust
+    path that somehow carried both into a different component split. Neither separator
+    is legal INSIDE a module component in any catalogued language, so the fold cannot
+    merge two components that were distinct.
+    """
+    return name.replace("::", ".").replace("/", ".")
+
+
+@dataclass(frozen=True)
+class FirstPartyModuleGrammar:
+    """How one language spells a module reference that is FIRST-PARTY BY DEFINITION.
+
+    Not a heuristic and not a measurement — a fact about the language's own
+    resolution rules, which is what lets the boundary gate suppress an entry
+    without any risk of hiding a real dependency.
+
+    Attributes:
+        self_reference_components: leading path components that resolve inside the
+            current compilation unit. Matched as a whole FIRST COMPONENT, never as a
+            string prefix — ``cratedb``, ``superstruct`` and ``selfie`` are real crate
+            names, and a ``startswith`` rule would swallow all three.
+        relative_specifiers: whether a module beginning ``.``/``..`` names a path
+            relative to the importing file. RELATIVE ONLY — an ABSOLUTE path is
+            excluded on purpose, because ``/usr/include/openssl/ssl.h`` is a system
+            header this analysis did not read, and suppressing it would be exactly the
+            false clean verdict this gate exists to prevent.
+        basis: the language rule the entry rests on, so a reader can check it. An
+            EMPTY grammar needs this more than a populated one, because "this language
+            has no self-reference spelling" is the claim that fails open.
+    """
+
+    language: str
+    basis: str
+    self_reference_components: frozenset[str] = frozenset()
+    relative_specifiers: bool = False
+
+
+#: Every language the boundary gate can reach, pinned by
+#: ``test_first_party_module_grammar.py::TestEveryCataloguedLanguageDeclaresItsGrammar``.
+#: An EMPTY grammar is an answer, not an omission — but it has to be written down,
+#: because the defect this registry closes is a python-shaped rule silently applied to
+#: two languages nobody had asked the question about.
+#:
+#: MEASURED entries say which repository the rule was observed firing on. DECLARED
+#: entries rest on the language definition alone and were not observed in the measured
+#: corpus; both are exact, and the distinction is recorded rather than smoothed over.
+FIRST_PARTY_MODULE_GRAMMARS: dict[str, FirstPartyModuleGrammar] = {
+    "rust": FirstPartyModuleGrammar(
+        language="rust",
+        self_reference_components=frozenset({"crate", "super", "self"}),
+        basis="Rust reference, Paths: `crate`, `self` and `super` are path "
+              "qualifiers that resolve within the current crate. All three are "
+              "reserved words, so Cargo cannot publish a package under any of "
+              "them and no dependency set can contain one. MEASURED on bellman, "
+              "where 5 of 23 reported modules were `crate.*` / `super.*`.",
+    ),
+    "javascript": FirstPartyModuleGrammar(
+        language="javascript",
+        relative_specifiers=True,
+        basis="CommonJS `require()` and ESM resolution: a specifier beginning "
+              "`./` or `../` is resolved as a path relative to the importing "
+              "file and is never looked up in `node_modules`, so it cannot name "
+              "a registry package. MEASURED on express, where 6 of 17 reported "
+              "modules were relative specifiers.",
+    ),
+    "typescript": FirstPartyModuleGrammar(
+        language="typescript",
+        relative_specifiers=True,
+        basis="Shares JavaScript's module resolution (TypeScript handbook, "
+              "Module Resolution); a relative specifier is a path. DECLARED "
+              "from the language definition — typescript resolves to the "
+              "javascript catalogue by alias and was not separately measured.",
+    ),
+    "python": FirstPartyModuleGrammar(
+        language="python",
+        relative_specifiers=True,
+        basis="Python reference 7.11: a leading dot in `from . import x` / "
+              "`from ..pkg import y` is an explicit relative import, resolved "
+              "against the current package. PyPI forbids a distribution name "
+              "beginning with a dot, so the spelling is unambiguous. DECLARED "
+              "from the language definition — not observed firing in the "
+              "measured corpus.",
+    ),
+    "c": FirstPartyModuleGrammar(
+        language="c",
+        relative_specifiers=True,
+        basis="A quoted `#include \"../util.h\"` is resolved against the "
+              "including file's directory before any system path. Only the "
+              "relative form qualifies: an ABSOLUTE include names a system "
+              "header this analysis did not read. DECLARED from the language "
+              "definition — not observed firing in the measured corpus.",
+    ),
+    "cpp": FirstPartyModuleGrammar(
+        language="cpp",
+        relative_specifiers=True,
+        basis="Same quoted-include rule as C. DECLARED from the language "
+              "definition — not observed firing in the measured corpus.",
+    ),
+    "objc": FirstPartyModuleGrammar(
+        language="objc",
+        relative_specifiers=True,
+        basis="Same quoted-include rule as C; `#import` differs only in "
+              "idempotence, not in resolution. DECLARED from the language "
+              "definition — not observed firing in the measured corpus.",
+    ),
+    "go": FirstPartyModuleGrammar(
+        language="go",
+        basis="EMPTY, and not for lack of looking. Go modules FORBID relative "
+              "import paths (`go help importpath`), and a file refers to its "
+              "own package by unqualified identifier with no module prefix at "
+              "all, so there is no spelling to suppress. Declaring the empty "
+              "grammar is the noisier direction and therefore the safe one.",
+    ),
+    "java": FirstPartyModuleGrammar(
+        language="java",
+        basis="EMPTY. JLS 7.1: package names in a declaration or import are "
+              "fully qualified; Java has no relative import form and no "
+              "self-reference package keyword.",
+    ),
+    "kotlin": FirstPartyModuleGrammar(
+        language="kotlin",
+        basis="EMPTY. Kotlin imports are fully qualified like Java's; there is "
+              "no relative import form.",
+    ),
+    "scala": FirstPartyModuleGrammar(
+        language="scala",
+        basis="EMPTY for this gate. Scala DOES have relative imports and a "
+              "`_root_` qualifier, but both are spelled as ordinary "
+              "identifiers rather than with a reserved leading separator, so "
+              "no exact rule over the module slot exists. Suppressing on a "
+              "guess here would hide real dependencies; left noisy on purpose.",
+    ),
+    "groovy": FirstPartyModuleGrammar(
+        language="groovy",
+        basis="EMPTY. Shares Java's fully-qualified import grammar (it "
+              "resolves to the java catalogue by alias).",
+    ),
+    "haskell": FirstPartyModuleGrammar(
+        language="haskell",
+        basis="EMPTY. Haskell module names are absolute, hierarchical and "
+              "capitalised (Haskell 2010 report 5.1); there is no relative "
+              "form and no self-reference keyword.",
+    ),
+    "elixir": FirstPartyModuleGrammar(
+        language="elixir",
+        basis="EMPTY. Aliases are absolute atoms (`MyApp.Repo`); `__MODULE__` "
+              "is a macro that expands to the absolute name rather than a "
+              "path component that could appear in a module slot.",
+    ),
+    "erlang": FirstPartyModuleGrammar(
+        language="erlang",
+        basis="EMPTY. Module names are flat atoms with no hierarchy, so there "
+              "is no relative or self-referential spelling to detect.",
+    ),
+    "swift": FirstPartyModuleGrammar(
+        language="swift",
+        basis="EMPTY. Swift imports name a MODULE, not a path; the `Self` "
+              "keyword is a type reference and never appears in a module slot.",
+    ),
+    "bash": FirstPartyModuleGrammar(
+        language="bash",
+        basis="EMPTY for this gate, and this one is a deliberate refusal. "
+              "`source ./lib.sh` IS relative, but bash resolves it against the "
+              "CALLER'S WORKING DIRECTORY rather than the script's own "
+              "location, so a relative path is not evidence about which file "
+              "was read. The premise the other entries rest on does not hold "
+              "here.",
+    ),
+}
+
+
+def is_definitionally_first_party(language: str, module: str) -> bool:
+    """Whether ``language``'s own rules make ``module`` a reference into this repo.
+
+    FAILS OPEN, and that is the opposite of :mod:`analyzer_disclosure`'s direction
+    because the two defaults are unsafe in opposite ways. A missing method-call
+    declaration means "I could not see it" and must fail CLOSED. A missing first-party
+    grammar means "I know of no reason to suppress this", and suppressing on a rule
+    nobody wrote down is what would hide a real dependency. So an unknown language
+    suppresses nothing; the parity gate over
+    :data:`FIRST_PARTY_MODULE_GRAMMARS` is what keeps that from being silent.
+
+    ``module`` is the RAW module slot, not a normalised one — ``../`` must be read as a
+    relative specifier before ``/`` is folded into ``.``, which would otherwise spell it
+    ``...``.
+    """
+    grammar = FIRST_PARTY_MODULE_GRAMMARS.get(language)
+    if grammar is None:
+        return False
+    if grammar.relative_specifiers:
+        # A LEADING `.`, never a leading `/`. The absolute case names a path on the
+        # analysing machine's filesystem — a system header, a vendored checkout
+        # outside the repo — which this analysis did not read.
+        head = module.split("/", 1)[0]
+        if head in (".", ".."):
+            return True
+    if grammar.self_reference_components:
+        first = normalize_module_separators(module).split(".", 1)[0]
+        if first in grammar.self_reference_components:
+            return True
+    return False
+
+
 def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
@@ -2683,8 +2896,8 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     # Normalize separators, but keep the raw (unfolded) components too: the
     # strict-prefix rule needs original capitalisation to tell a type from a
     # sub-package.
-    cm_parts_raw = catalog_module.replace("::", ".").replace("/", ".").split(".")
-    em_parts_raw = edge_module_hint.replace("::", ".").replace("/", ".").split(".")
+    cm_parts_raw = normalize_module_separators(catalog_module).split(".")
+    em_parts_raw = normalize_module_separators(edge_module_hint).split(".")
     cm_parts = [p.casefold() for p in cm_parts_raw]
     em_parts = [p.casefold() for p in em_parts_raw]
 
