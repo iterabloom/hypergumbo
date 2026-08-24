@@ -429,6 +429,36 @@ CAVEAT_UNTYPED_RECEIVER = "untyped_receiver"
 #: second writer CAN widen.
 CAVEAT_UNKNOWN_RECEIVER_SCOPE = "unknown_receiver_scope"
 
+#: A clean verdict rests on a language whose analyzer CANNOT SEE external
+#: instance-method calls at all, declared rather than inferred
+#: (:mod:`hypergumbo_core.analyzer_disclosure`; owner ruling 2026-08-23,
+#: "declare the blindness").
+#:
+#: WHY ITS SIBLINGS DO NOT COVER THIS, and the distinction is the whole reason
+#: it exists. ``CAVEAT_UNTYPED_RECEIVER`` and ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``
+#: both disclose an EDGE THE ANALYSIS EMITTED and could not adjudicate. kotlin
+#: and javascript emit NO external instance-method call edge at all (WI-nasuf),
+#: so both are silent by construction and the verdict came out a bare
+#: ``confirmed`` over 232 catalogued method-kind sinks — kotlin 181 of its 186
+#: primitives, javascript 51 of 187.
+#:
+#: THE EDGE SET CANNOT DISTINGUISH THE TWO CASES. "this repository contains no
+#: external method calls" and "this analyzer never emits them" produce the same
+#: empty set and opposite verdicts, so the fact is DECLARED with a date and a
+#: measurement instead of being read off the data.
+#:
+#: A CAVEAT, NOT A WITHHOLD. Those languages do emit call edges, just not this
+#: shape, so "I examined everything I could see, except this whole construct"
+#: is the true sentence and is a QUALIFIED OPINION (ADR-0016 §4);
+#: ``inconclusive`` would claim the analysis formed no view at all. The verdict
+#: still reads clean and the exit code moves 0 -> 3.
+#:
+#: IT DISAPPEARS ON ITS OWN when WI-nasuf teaches those analyzers to emit the
+#: edges: the declaration flips and no invariant changes colour. Under a
+#: CAPABILITY-phrased bar the same commit would have read as a mass NEW
+#: violation, which is LIVE.md rule 19 and the reason the bar was rewritten.
+CAVEAT_ANALYZER_METHOD_CALL_BLIND = "analyzer_method_call_blind"
+
 
 def _merge_caveat(
     existing: list[dict[str, Any]], new: dict[str, Any],
@@ -602,6 +632,45 @@ def _untyped_receiver_caveat(
             f"{_UNTYPED_SCOPE_NOUN[arm]} declares is called on a receiver "
             f"whose type could not be determined, "
             f"{_UNTYPED_CONSEQUENCE[arm]}."
+        ),
+    }
+
+
+def _analyzer_method_call_blind_caveat(
+    languages: list[str],
+) -> dict[str, Any]:
+    """The one place the declared-blindness disclosure is built.
+
+    NAMES THE LANGUAGE AND THE SCALE, because "some calls were not seen" is
+    unactionable while "kotlin: 181 of 186 catalogued primitives are
+    method-kind" tells a reader whether this verdict is worth anything for
+    their repository. The count comes from the shipped catalogue rather than
+    from a literal here, so it cannot go stale against the catalogue it
+    describes.
+    """
+    from .analyzer_disclosure import DECLARATIONS
+    from .io_boundary import load_catalog
+
+    parts = []
+    for lang in languages:
+        prims = load_catalog(lang).primitives
+        methods = sum(1 for p in prims if getattr(p, "kind", None) == "method")
+        parts.append(f"{lang} ({methods} of {len(prims)} catalogued primitives "
+                     f"are method-kind)")
+    measured = sorted({
+        DECLARATIONS[lang].measured for lang in languages
+        if lang in DECLARATIONS
+    })
+    when = f" Declared {'/'.join(measured)}." if measured else ""
+    return {
+        "kind": CAVEAT_ANALYZER_METHOD_CALL_BLIND,
+        "entries": list(languages),
+        "detail": (
+            f"This verdict rests on {'a language' if len(languages) == 1 else 'languages'} "
+            f"whose analyzer emits no call edge for an external "
+            f"instance-method call, so calls of that shape were never seen and "
+            f"could be neither adjudicated nor disclosed individually: "
+            f"{', '.join(parts)}.{when}"
         ),
     }
 
@@ -903,6 +972,19 @@ class BoundaryCoverage:
     #: claims carries no taint disclosure — correct, because it reaches no
     #: taint verdict to qualify.
     untyped_receiver_zones: dict[str, list[str]] = field(default_factory=dict)
+    #: Languages PRESENT in this analysis whose analyzer is declared not to
+    #: emit an external instance-method call edge, and whose catalogue declares
+    #: method-kind sinks that blindness therefore hides
+    #: (:mod:`hypergumbo_core.analyzer_disclosure`).
+    #:
+    #: Carried here rather than recomputed per claim for the reason every other
+    #: field on this object is: :func:`compute_boundary_coverage` is the one
+    #: place a disclosure can be attached where no caller can forget it. Unlike
+    #: its neighbours this one is NOT derived from the edge set — it cannot be,
+    #: which is the whole point — so it is the only field on this dataclass
+    #: whose value comes from a declaration rather than a measurement of the
+    #: run.
+    method_call_blind_languages: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -2367,6 +2449,21 @@ def compute_boundary_coverage(
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
     coverage.unknown_receiver_scope = unknown_receiver_scope(raw_edges, catalogs)
+    # THE THIRD SIGNAL, and the only one not read off the edge set. A language
+    # whose analyzer never emits an external instance-method call edge produces
+    # the same empty set as a repository that simply makes no such call, so the
+    # answer has to come from a dated declaration (analyzer_disclosure). Scoped
+    # to languages whose catalogue actually declares method-kind sinks, because
+    # a language that catalogues none cannot be hurt by not seeing them.
+    from .analyzer_disclosure import method_call_blind_languages
+    coverage.method_call_blind_languages = method_call_blind_languages(
+        supported_languages,
+        {
+            lang for lang, catalog in catalogs.items()
+            if any(getattr(p, "kind", None) == "method"
+                   for p in catalog.primitives)
+        },
+    )
     return coverage
 
 
@@ -2657,6 +2754,13 @@ def verify_claim(
                 out,
                 _unknown_receiver_scope_caveat(
                     _scope_sites, _scope_total, _scope_names,
+                ),
+            )
+        if coverage.method_call_blind_languages:
+            out = _merge_caveat(
+                out,
+                _analyzer_method_call_blind_caveat(
+                    coverage.method_call_blind_languages,
                 ),
             )
         return out
@@ -3305,6 +3409,17 @@ def verify_taint_claim(
                     caveats,
                     _unknown_receiver_scope_caveat(
                         _scope_sites, _scope_total, _scope_names,
+                    ),
+                )
+            # The declared-blindness disclosure rides BOTH arms for the reason
+            # INV-nuhun exists: a run that discloses on the boundary arm and
+            # stays silent on the taint arm about the same unseen call is the
+            # asymmetry that item names.
+            if coverage.method_call_blind_languages:
+                caveats = _merge_caveat(
+                    caveats,
+                    _analyzer_method_call_blind_caveat(
+                        coverage.method_call_blind_languages,
                     ),
                 )
         return ClaimVerdict(

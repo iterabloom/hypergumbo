@@ -1629,18 +1629,34 @@ def test_verify_claims_blind_supported_language_inconclusive(
 
 def test_verify_claims_covered_languages_confirm(tmp_path: Path, capsys) -> None:
     """Control: when every supported language produced call edges, a clean
-    net_send claim still CONFIRMS (rc=0) — the coverage gate is not blanket."""
+    net_send claim still CONFIRMS (rc=0) — the coverage gate is not blanket.
+
+    THE FIXTURE'S SECOND LANGUAGE WAS ``javascript`` AND IS NOW ``go``, and the
+    swap is the point rather than a workaround. javascript is declared
+    method-call blind (``analyzer_disclosure``: it emits no call edge for an
+    external instance-method call, WI-nasuf), so a clean verdict on a
+    repository containing it is deliberately no longer BARE — it carries
+    ``analyzer_method_call_blind`` and exits 3. Leaving javascript here and
+    relaxing the assertion to accept rc 3 would have destroyed this test's
+    contract, which is that a clean verdict over SIGHTED languages stays bare.
+    go is declared sighted and measured so.
+
+    The behaviour this test used to cover for javascript is not lost: it is
+    pinned from the other side in
+    ``test_declared_analyzer_blindness.py::TestTheVerdict``, where a blind
+    language must NOT produce a bare confirmed and a sighted one must.
+    """
     bmap = _make_behavior_map(
         nodes=[
             _node("python:a.py:1:f:function", "python", "a.py"),
-            _node("javascript:b.js:1:g:function", "javascript", "b.js"),
+            _node("go:b.go:1:g:function", "go", "b.go"),
         ],
         edges=[
             {"src": "python:a.py:1:f:function",
              "dst": "python:helpers.py:1:helper:function",
              "type": "calls", "confidence": 0.9},
-            {"src": "javascript:b.js:1:g:function",
-             "dst": "javascript:util.js:1:util:function",
+            {"src": "go:b.go:1:g:function",
+             "dst": "go:util.go:1:util:function",
              "type": "calls", "confidence": 0.9},
         ],
     )
