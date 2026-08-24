@@ -79,16 +79,18 @@ class TestWhatItRefuses:
         assert "configuration file" in err
 
 
-class TestTheAdvisoryChangeNotice:
-    def test_a_changed_build_script_is_reported_on_show(
+class TestWhatShowSaysAfterAChange:
+    """Owner ruling 2026-08-23 (ADR-0045 OQ1), at the surface a person meets.
+
+    This class previously pinned "changed but still GRANTED". The ruling
+    inverted that for build.rs and kept it for Cargo.toml, so both directions
+    are asserted — a one-sided test here would let "revoke on any change"
+    pass while quietly over-implementing the ruling.
+    """
+
+    def test_a_changed_build_script_shows_as_revoked_with_the_reason(
         self, tmp_path: Path, monkeypatch, capsys,
     ) -> None:
-        """ADR-0045 ruling 7 / OQ1 — surfaced, not revoked.
-
-        If OQ1 is ever resolved toward strict revocation, this test and the
-        one beside it in test_backend_trust.py are the two that must change,
-        and they say so.
-        """
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -98,6 +100,30 @@ class TestTheAdvisoryChangeNotice:
         (repo / "build.rs").write_text("fn main(){ something_else(); }\n")
         main(["trust-backend", "rust_analyzer", str(repo), "--show"])
         out = capsys.readouterr().out
+        assert "REVOKED" in out
+        # Not a bare DECLINED: the user DID say yes, and conflating the two
+        # would misreport what actually happened.
+        assert "DECLINED" not in out
+        assert "build.rs has changed" in out
+        # It must say what to do next, or the user is stuck.
+        assert "re-run this command" in out
+
+    def test_a_changed_cargo_toml_still_shows_as_granted(
+        self, tmp_path: Path, monkeypatch, capsys,
+    ) -> None:
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "build.rs").write_text("fn main(){}\n")
+        (repo / "Cargo.toml").write_text("[package]\nname='x'\nversion='1'\n")
+        main(["trust-backend", "rust_analyzer", str(repo)])
+        capsys.readouterr()
+        (repo / "Cargo.toml").write_text("[package]\nname='x'\nversion='2'\n")
+        main(["trust-backend", "rust_analyzer", str(repo), "--show"])
+        out = capsys.readouterr().out
         assert "GRANTED" in out
-        assert "have changed" in out
-        assert "--revoke" in out
+        assert "REVOKED" not in out
+        # Surfaced rather than silent — the change is visible without being
+        # made into an interruption.
+        assert "Cargo.toml has changed" in out
+        assert "does not revoke" in out
