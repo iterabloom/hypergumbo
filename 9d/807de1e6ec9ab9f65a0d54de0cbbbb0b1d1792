@@ -1,0 +1,78 @@
+Original commit body from aac8bbcb8535bb2b07489ee3c6a7601d7fedebb9:
+
+Enabling the SCIP Rust backend makes indexing execute the analysed crate's
+build.rs and proc macros as the invoking user. Until now the only way to make
+that choice STICK was exporting HYPERGUMBO_RUST_ANALYZER=1 from a shell
+profile — which is GLOBAL, so it opted in every Rust repository the user would
+ever analyse, including ones cloned specifically to audit (WI-sobig). The
+decision is per-repository; the only persistence available had the wrong scope
+for it.
+
+Grants now live in $XDG_STATE_HOME/hypergumbo/trust.d, mode 0600, OUTSIDE
+$XDG_CONFIG_HOME. That separation is the point and a test asserts the two do
+not nest: a config directory is designed to be synced between machines and
+committed to dotfiles repos, and a synced grant of code execution is the same
+footgun by a nicer route.
+
+KEYED BY RESOLVED ABSOLUTE PATH, deliberately NOT by ADR-0013's
+repo-fingerprint. That key (remote URL + first commit SHA) exists so multiple
+checkouts SHARE a cache — right for a cache, exactly wrong here: two clones of
+one remote can have different working trees, and it is the tree whose build.rs
+runs. Paths resolve through symlinks so one tree cannot acquire two divergent
+decisions.
+
+A DECLINE IS A DECISION, so the nudge stops asking. read_decision returns None
+for "never asked" and granted=False for "asked and said no" — the same
+three-valued discipline the opt-in resolver uses.
+
+MEASURED END TO END on an authored fixture:
+  grant on file, no flag, no env  -> backend runs, 10 origin=scip nodes / 26
+  --revoke                        -> 0 scip nodes / 16
+  granted + --backend tree-sitter -> 0 scip nodes  (flag still outranks)
+  granted                         -> "backend ACTIVE" + "Indexing IS RUNNING
+                                      this project's build scripts"
+  declined                        -> 0 nudge lines
+  undecided rust repo             -> still nudged
+
+A DEFECT FOUND WHILE WIRING RULING 8, AND IT INVERTED THE DISCLOSURE.
+rust_analyzer_backend_enabled read the env var ALONE. Once a grant could
+enable the backend, a granted run had no var set, so it reported not-enabled,
+took the nudge branch, and was then suppressed by its own recorded decision —
+a run that WAS executing the repository's build scripts printed nothing at all
+about it. Fixed by resolving "enabled" through the whole precedence chain;
+pinned by test_a_recorded_grant_still_discloses_that_scripts_are_running.
+
+THAT FIX ALSO KILLED A DUPLICATED FACT. This module parsed the env var itself
+because core cannot import the optional rust-analyzer package; the truthy set
+therefore existed twice and a test pinned the copies together. ADR-0045 moved
+the vocabulary down into backend_selection, which both sides import, so the
+duplication is GONE rather than merely pinned. The test now asserts the
+stronger property — one home, and the copy actually absent — and says why it
+changed shape. Ruff caught the now-dead `import os`; the two dead constants
+beside it went too.
+
+executes_analysed_code now gates from BOTH sides (ruling 5): config refuses an
+executing backend, the trust store refuses a non-executing one
+(`trust-backend pyright` exits 2 pointing at the config file).
+
+RULING 6 IS PARTIALLY LANDED AND THE GAP IS STATED, not papered over. The
+store is 0600 and unsynced, but "the human owns it and an automated agent
+cannot write it" is enforceable only by the OS and only when the agent runs as
+a different user — hypergumbo cannot tell an agent from a person sharing a
+uid. An operator wanting that property must chown the store, exactly as
+`tracker init` does for its config. Said in the command's own docstring, the
+ADR, the spec and the changelog.
+
+The advisory-hash decision (ruling 7 / OQ1) is pinned, and both tests holding
+it name themselves as the ones to change if OQ1 resolves toward strictness.
+
+Two docs gates fired and were fixed rather than routed around: the spec
+subcommand-mention gate, and the CLI flag matrix (regenerated; README needed
+no change — it documents no rust-analyzer subcommands).
+
+smart-test: 4519 passed, 2 skipped, 14 xfailed; all changed sources at 100%.
+mypy strict ratchet 670, delta +0 (a bare `dict` return in the new module
+tripped type-arg at +1 and was typed before going further).
+
+Racial-Capitalism-Is-Bad: a spectral opossum building a spiral staircase shaped like recipe book made of old recipe cards in a Jurassic pancake house
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
