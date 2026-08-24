@@ -65,6 +65,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
+from hypergumbo_core.analyzer_disclosure import SUPPRESSED_METHOD_NAMES
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     Edge, ExternalRef, Span, Symbol, UsageContext, make_pass_id,
@@ -2676,49 +2677,15 @@ _BUILTIN_RUST_ATTRIBUTES: frozenset[str] = frozenset({
 # `StatusRow::into` absorbing 817 `.into()` edges in penumbra).  These method
 # names are blocked from short-name resolution; fully-scoped calls like
 # `StatusRow::into()` still resolve via Strategy 1.
-_RUST_GENERIC_TRAIT_METHODS: frozenset[str] = frozenset({
-    # core::convert
-    "into", "from", "try_into", "try_from",
-    # core::fmt / Display / ToString
-    "fmt", "to_string",
-    # core::default
-    "default",
-    # core::clone
-    "clone", "clone_from",
-    # core::cmp / core::hash
-    "eq", "ne", "partial_cmp", "cmp", "hash",
-    # core::ops
-    "deref", "deref_mut", "drop",
-    # core::iter — combinators are on Iterator, Option, Result
-    "next", "into_iter", "map", "filter", "fold", "collect", "flat_map",
-    "find", "any", "all", "for_each",
-    # core::convert (ref)
-    "as_ref", "as_mut",
-    # std collection methods (ambiguous without receiver type)
-    "len", "is_empty", "push", "pop", "get", "insert", "remove", "contains",
-    "iter", "iter_mut", "extend",
-    # Option / Result combinators
-    "and_then", "or_else", "map_err", "unwrap_or", "unwrap_or_else",
-    "ok", "err", "expect", "ok_or", "ok_or_else",
-    # serde
-    "serialize", "deserialize",
-    # core::str / parsing
-    "from_str", "parse", "unwrap",
-    # std::sync::atomic — .load()/.store() on AtomicU64, AtomicU8, etc.
-    # Without receiver type info, x.load() conflates AtomicU64.load()
-    # with domain-specific load() methods (WI-bakak: 22 false positives).
-    "load", "store", "fetch_add", "fetch_sub", "compare_exchange", "swap",
-    # std::io — Read/Write trait methods
-    "read", "write", "flush",
-    # Constructor / builder — ubiquitous across types
-    "new", "build",
-    # Channel / async
-    "send", "recv",
-    # Command — .output() conflates with test utilities (ripgrep bakeoff)
-    "output", "status", "spawn",
-    # Logging — ubiquitous across log/tracing crates
-    "warn", "error", "info", "debug", "trace",
-})
+#
+# INV-polad: THE SET NOW LIVES IN ``hypergumbo_core.analyzer_disclosure`` and is
+# imported here rather than declared here.  It is not only a resolution policy:
+# ten of these names are methods ``io_primitives/rust.yaml`` declares as I/O
+# SINKS (``UdpSocket.send``, ``io::Write.write``, ``TcpStream.read`` ...), so
+# the same set decides what ``verify-claims`` must DISCLOSE it did not look at.
+# A restated copy in core would be a second home for one fact, and the second
+# home is the one that silently goes stale (LIVE.md rule 7).
+_RUST_GENERIC_TRAIT_METHODS: frozenset[str] = SUPPRESSED_METHOD_NAMES["rust"]
 
 
 # Traits that are normally blocklisted but should be allowed through when the
