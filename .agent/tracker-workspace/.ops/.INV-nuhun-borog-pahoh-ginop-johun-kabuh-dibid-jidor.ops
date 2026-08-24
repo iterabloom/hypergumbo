@@ -78,3 +78,18 @@
   clock: 8  # 12bb
   nonce: 12bb  # 12bb
   message: "OWNER RULING 2026-08-23 (full text on INV-polad): \"declare the blindness, do those 4 PRs.\" Kotlin and JavaScript get a DATED DECLARED-BLINDNESS residual now rather than waiting on WI-nasuf, so a later WI-nasuf fix flips a declaration instead of turning this invariant red. Closure path is PR1 call_construct parity -> PR2 declared blindness -> PR3 denylist disclosure -> PR4 fidelity provenance, then close on behavioral evidence. Measured basis: 786 of 954 method-kind sinks (82%) are in languages where the untyped-receiver disclosure cannot fire today (~/hypergumbo_lab_notebook/disclosure_parity_08232026/)."  # 12bb
+- op: update  # 5a84
+  at: '2026-08-24T09:54:30Z'  # 5a84
+  by: agent  # 5a84
+  actor: jgstern_agent  # 5a84
+  clock: 9  # 5a84
+  nonce: 5a84  # 5a84
+  set:  # 5a84
+    status: satisfied  # 5a84
+- op: discuss  # cbed
+  at: '2026-08-24T09:54:30Z'  # cbed
+  by: agent  # cbed
+  actor: jgstern_agent  # cbed
+  clock: 10  # cbed
+  nonce: cbed  # cbed
+  message: "SATISFIED, on THIS ITEM'S OWN FILED REPRO re-run unmodified on the MERGED tree\n(dev 899b55ab1c), both arms, with the fs_write control firing in the same runs.\n\n  ARM 1, unannotated receiver (`def leak_unannotated(sock)`):\n    ! [host-secret-no-network]  confirmed_with_caveats\n        analysis_fidelity: {\"python\": [\"python\"]}\n        CAVEAT untyped_receiver: \"At 1 call site(s) -- leak.py:12 sendall() --\n          a method the network sink catalogue declares is called on a receiver\n          whose type could not be determined\"\n        CAVEAT unknown_receiver_scope: \"At 2 of 3 method call site(s) ...\"\n    x [host-secret-no-host-fs]  violated              <- control, same run\n\n  ARM 2, annotated receiver (`sock: socket.socket`), otherwise identical:\n    x [host-secret-no-network]  violated              <- a TYPED receiver is\n                                                         SEEN, not caveated\n    x [host-secret-no-host-fs]  violated\n\nThat is the asymmetry this item filed -- one of two spellings visible, the\nother silently clean -- now closed in the direction the bar requires: the\ninvisible spelling is DISCLOSED rather than made visible.\n\nBOTH HALVES OF THE BAR ARE PRESENT ON ARM 1. The site is named (what it could\nnot examine) and `analysis_fidelity` is reported (at what fidelity it looked,\nenvelope 2.2, PR #501). The full evidence chain is on sibling INV-fibis; both\nitems were ruled on together and close against the same four PRs.\n\nWHY THE FIX WAS NOT THE ONE THIS ITEM'S ORIGINAL WORDING INVITED, recorded so\nnobody reopens it that way. Constructing the denied flow means matching a sink\nthrough an untyped receiver, and BOTH refusals that prevent it --\nio_boundary.gate_named_entry returning None on call_construct == \"method\", and\nthe non_method filter -- ARE the deliberate closures of INV-tapat and\nINV-maluk, the latter REOPENED in June 2026 precisely because taint.py was a\nthird consumer ignoring them. The capability phrasing pointed straight at\nregressing two satisfied invariants. Disclosure-at-achieved-fidelity does not.\n\nMEASURED CONFIRMATION THAT THE STAMP COSTS NO RECALL: with no module hint\n`gate_named_entry` refuses a method-kind hit EITHER WAY -- through the\n`call_construct == \"method\"` arm with the stamp, and through the `non_method`\nfilter without it. Nothing that used to match stopped matching.\n\nWHAT IS NOT CLAIMED: the 70.6% untypable-receiver figure is unchanged, and the\nARM 1 flow is still not constructed -- it is disclosed. Residuals are listed on\nINV-fibis (WI-nakut, WI-kodig, WI-lutuh, WI-nasuf)."  # cbed
