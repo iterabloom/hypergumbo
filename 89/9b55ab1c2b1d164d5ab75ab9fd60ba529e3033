@@ -1,0 +1,58 @@
+Original commit body from 56df4cbc64c8821f120cbabf283994e9eece6c3b:
+
+PR4 of the four-PR closure sequence for INV-fibis / INV-nuhun, and the second
+half of the owner's 2026-08-23 bar: "name what it could not examine, AND AT
+WHAT ANALYSIS FIDELITY".
+
+Verdict carried eleven fields and NONE named the analyzer behind its edges,
+while BoundaryCoverage's blind spots are every one a property of the EDGE SET.
+Measured: two runs over one Rust crate differing ONLY in backend produced a
+BYTE-IDENTICAL verdict block while one carried 10 origin=scip nodes and the
+other zero. The raw material was always there and unread -- Edge.origin is a
+list of pass IDs and Edge.__post_init__ HARD-RAISES on an empty one.
+
+TWO DIFFERENT FACTS, KEPT APART:
+  analysis_fidelity           WHAT RAN. Per verdict, language -> pass IDs,
+                              scoped to CALL edges, because a `contains` edge
+                              from the containment linker says nothing about
+                              the fidelity of the call structure.
+  higher_fidelity_available   WHAT COULD HAVE RUN. A statement about the
+                              MACHINE, and the one that makes "rust-analyzer
+                              installed but not enabled" distinguishable from
+                              "no such backend exists".
+
+NOT analysis_methods, which already exists and records how the taint walk
+REASONED (ddg / ddg_mixed / structural). A structural verdict and a
+tree-sitter verdict are different facts.
+
+A FALSE SENTENCE IN THE FIRST CUT WAS CAUGHT BY MEASURING THE SECOND ARM.
+Keyed on the call-edge fidelity map, the caveat fired in a run where
+rust-analyzer WAS enabled and had printed its own "backend ACTIVE" banner --
+because on that crate the SCIP pass emitted `references` and `contains` and no
+external `calls`. It told the reader to enable something already on. "Did it
+run" is now answered from a different population (passes_that_ran, every edge)
+than "what produced the calls", with a test pinning the case.
+
+ONE HOME FOR THE STAMP, because the count is the argument: this module builds
+a ClaimVerdict at FIFTEEN return sites, and a field set at each is a field the
+sixteenth will not set -- which is the omission WI-lagod exists to fix. Both
+public entry points are thin wrappers that stamp once.
+
+Availability is derived at the CLI and passed in: "is the binary on this
+machine" is a fact about the machine, and putting a shutil.which inside a pure
+function of the graph would make it depend on the host. Gated on the language
+being present first, because probing RUNS the binary.
+
+Measured end to end, and the arms now differ where they were identical:
+  installed but OFF -> analysis_fidelity {"rust": ["rust"]} + the caveat
+  ENABLED           -> same fidelity map, caveat GONE
+The map is unchanged between them and that is correct -- on that crate SCIP
+contributed no call edges, and the map reports what produced the call
+structure, not what was switched on.
+
+The mypy strict ratchet moved DOWN, not up: a duplicated bare `findings: list`
+in the new wrapper tripped the shrink-only gate at 671; both occurrences (the
+new one and the pre-existing one it copied) are now list[Any] and the baseline
+is re-locked at 669.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
