@@ -728,21 +728,51 @@ class IoBoundaryCatalog:
             if p.qualified_name not in self._by_qualified:
                 self._by_qualified[p.qualified_name] = p
             self._by_qualified_all.setdefault(p.qualified_name, []).append(p)
-            # WI-vipur: also register a dot-normalized alias so edges
-            # emitted in scoped-path mode (``::`` replaced with ``.`` to
-            # avoid colliding with the ``:``-delimited edge ID format)
-            # still hit the qualified index.  Only relevant for languages
-            # whose catalog module names contain ``::`` (Rust, C++).
-            dot_form = p.qualified_name.replace("::", ".")
-            if dot_form != p.qualified_name:
-                self._by_qualified.setdefault(dot_form, p)
+            # SEPARATOR-INSENSITIVE ALIAS (WI-vipur, widened by INV-rilit).
+            # A caller may spell one primitive three ways and mean the same
+            # row. ``qualified_name`` joins with a DOT unconditionally, so a
+            # ``::`` module yields the MIXED ``std::env.consts``; the producer
+            # emits the language's own ``std::env::consts``; and the old
+            # scoped-path normalisation emitted ``std.env.consts``.
+            #
+            # REGISTERING ONLY THE DOT FORM WAS NOT ENOUGH, and the gap was
+            # invisible until something emitted the third spelling. The alias
+            # was ``qualified_name.replace("::", ".")``, which covers the mixed
+            # and dotted forms and MISSES the fully-colon one — so
+            # ``rust:std::env:0-0:std::env::consts:attribute`` classified as
+            # NOTHING while the dotted twin matched ``env_read``. Measured as a
+            # positive control before the producer changed, which is the only
+            # reason the change did not ship a silent classification loss.
+            #
+            # Folding through the one shared normaliser covers all three by
+            # construction rather than by enumerating spellings.
+            folded = normalize_module_separators(p.qualified_name)
+            if folded != p.qualified_name:
+                self._by_qualified.setdefault(folded, p)
                 # The alias goes in BOTH indices or the lookups disagree.
                 # It was added to only the single-row index once, and every
                 # Rust/C++ `::` primitive silently stopped matching — the
                 # regression `test_rust.py` caught on `std::env.consts`.
-                self._by_qualified_all.setdefault(dot_form, []).append(p)
+                self._by_qualified_all.setdefault(folded, []).append(p)
             # Short name: may have multiple (e.g. open → fs_read + fs_write)
             self._by_short.setdefault(p.name, []).append(p)
+
+    def _qualified_rows(self, name: str) -> list[IoPrimitive]:
+        """Every row indexed under ``name``, SPELLING-INSENSITIVELY.
+
+        ONE HOME FOR THE FOLD (LIVE.md rule 7). Three methods ask the
+        qualified index the same question — :meth:`lookup`,
+        :meth:`lookup_all` and :meth:`lookup_with_module` — and folding at two
+        of them is how this defect survived its first fix in THIS session:
+        ``lookup`` matched ``std::env::consts`` while ``classify_call``, which
+        routes through ``lookup_with_module``, still returned ``None``. The
+        raw spelling is tried first so an exact hit costs nothing.
+        """
+        hits = self._by_qualified_all.get(name)
+        if hits:
+            return list(hits)
+        return list(self._by_qualified_all.get(
+            normalize_module_separators(name), []))
 
     def lookup(self, name: str) -> Optional[IoPrimitive]:
         """Look up a primitive by qualified or short name.
@@ -750,9 +780,9 @@ class IoBoundaryCatalog:
         Returns the first match, or None if not found. For names that
         map to multiple boundaries (like ``open``), use ``lookup_all()``.
         """
-        hit = self._by_qualified.get(name)
-        if hit is not None:
-            return hit
+        rows = self._qualified_rows(name)
+        if rows:
+            return rows[0]
         hits = self._by_short.get(name)
         return hits[0] if hits else None
 
@@ -765,9 +795,9 @@ class IoBoundaryCatalog:
         # A qualified name can still carry several rows — ``builtins.open``
         # is both ``fs_read`` and ``fs_write``. Returning only the first
         # (which this did) is what hid the write row from every caller.
-        hits = self._by_qualified_all.get(name)
-        if hits:
-            return list(hits)
+        rows = self._qualified_rows(name)
+        if rows:
+            return rows
         return list(self._by_short.get(name, []))
 
     def all_boundaries_for(self, qualified_name: str) -> set[str]:
@@ -873,7 +903,7 @@ class IoBoundaryCatalog:
         """
         # Qualified-name match always wins (exact). It can still be several
         # rows when the primitive is dual-classified, so the mode decides.
-        qualified_hits = self._by_qualified_all.get(name)
+        qualified_hits = self._qualified_rows(name)
         if qualified_hits:
             return select_by_mode(qualified_hits, io_mode)
 
