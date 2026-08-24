@@ -2822,17 +2822,35 @@ def emit_module_attribute_refs(
             leftmost_text = node_text(leftmost, source)
             if leftmost_text not in imports:
                 continue
-            # Replace the leftmost alias with its real module, then
-            # dot-normalize ``::`` to ``.`` so the resulting edge ID
-            # survives ``:``-split parsing in io_boundary.
+            # Replace the leftmost alias with its real module, KEEPING the
+            # language's own separator (INV-rilit).
+            #
+            # THIS USED TO DOT-NORMALISE ``::`` TO ``.`` "so the resulting edge
+            # ID survives ``:``-split parsing in io_boundary" — a workaround
+            # that outlived its defect. ADR-0036 (D1a) made the path slot the
+            # one colon-TOLERANT slot in the grammar, and ``symbol_path_slot``
+            # carries ``rust:std::fs:0-0:write:external_symbol`` as a worked
+            # example; ``symbol_name_slot`` is span-anchored for the same
+            # reason. Meanwhile the normalisation split one module into TWO
+            # NODES — ``imports`` and ``calls`` emitted ``std::io`` while this
+            # emitted ``std.io`` — so every per-dependency question was
+            # answered over half a population. Measured on bellman: TEN
+            # entities under two spellings in a single run.
+            #
+            # It was also only HALF applied, which is the tell: only the path
+            # taken from the imports map was rewritten, so C++ emitted
+            # ``cpp:std:0-0:std.numbers::pi:attribute`` — one id carrying BOTH
+            # separators.
             real_leftmost = imports[leftmost_text]
-            real_module_raw = real_leftmost + base_text[len(leftmost_text):]
-            real_module = real_module_raw.replace("::", ".")
+            real_module = real_leftmost + base_text[len(leftmost_text):]
         else:
             if base_text not in imports:
                 continue
             real_module = imports[base_text]
-        qname = f"{real_module}.{attr_name}"
+        # The qualified name joins with the SAME separator the module uses, or
+        # the id mixes conventions the way the C++ case above did.
+        sep = "::" if scoped_path else "."
+        qname = f"{real_module}{sep}{attr_name}"
         line_no = node.start_point[0] + 1
         owner = _innermost_callable_at(line_no, enclosing_symbols)
         edges_out.append(Edge.create(

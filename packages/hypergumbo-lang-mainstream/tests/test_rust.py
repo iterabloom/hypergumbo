@@ -5765,10 +5765,10 @@ class TestRustModuleAttrRefsScoped:
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
         # The middle-level scoped_identifier ``std::env::consts`` emits
-        # an edge with dst ``rust:std.env:0-0:std.env.consts:attribute``.
+        # an edge with dst ``rust:std::env:0-0:std::env::consts:attribute``.
         # Outer / inner levels also emit but their dsts carry different
         # qnames ("std.env.consts.OS" and "std.env" respectively).
-        MIDDLE_DST = "rust:std.env:0-0:std.env.consts:attribute"
+        MIDDLE_DST = "rust:std::env:0-0:std::env::consts:attribute"
         middles = [e for e in attr_edges if e.dst == MIDDLE_DST]
         assert middles, (
             f"expected a module_attr_ref edge with dst {MIDDLE_DST!r}; "
@@ -5793,7 +5793,7 @@ class TestRustModuleAttrRefsScoped:
         """``use std::env;`` then ``env::consts::OS`` — the alias
         ``env`` maps to ``std::env`` and the helper rewrites the
         leftmost segment so the emitted edge still carries
-        ``std.env.consts`` for io_boundary matching."""
+        ``std::env::consts`` for io_boundary matching."""
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
         (tmp_path / "lib.rs").write_text("""use std::env;
@@ -5808,8 +5808,8 @@ pub fn os_name() -> &'static str {
             e for e in result.edges if e.edge_type == "module_attr_ref"
         ]
         dsts = [e.dst for e in attr_edges]
-        assert any("std.env.consts" in d for d in dsts), (
-            f"expected alias-rewritten dst containing 'std.env.consts'; "
+        assert any("std::env::consts" in d for d in dsts), (
+            f"expected alias-rewritten dst containing 'std::env::consts'; "
             f"got: {dsts}"
         )
 
@@ -6173,6 +6173,6 @@ pub fn os_name() -> &'static str {
         attr_dsts = [
             e.dst for e in result.edges if e.edge_type == "module_attr_ref"
         ]
-        assert "rust:std.env:0-0:std.env.consts:attribute" in attr_dsts, (
+        assert "rust:std::env:0-0:std::env::consts:attribute" in attr_dsts, (
             attr_dsts
         )

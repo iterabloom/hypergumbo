@@ -740,7 +740,9 @@ double get_pi() {
     def test_std_cout_cerr_cin_emit_module_attr_ref(self, tmp_path: Path) -> None:
         """Each of ``std::cout`` / ``std::cerr`` / ``std::cin`` should
         produce a ``module_attr_ref`` edge whose dst lands on the cpp
-        catalog's ``std.cout`` / ``std.cerr`` / ``std.cin`` attributes."""
+        catalog's ``cout`` / ``cerr`` / ``cin`` attributes (declared under
+        module ``std``, and reached through the catalogue's separator-folding
+        qualified index)."""
         repo = self._write_iostream_repo(tmp_path)
         result = analyze_cpp(repo)
         assert not result.skipped
@@ -748,11 +750,11 @@ double get_pi() {
         attr_edges = [e for e in result.edges if e.edge_type == "module_attr_ref"]
         dsts = {e.dst for e in attr_edges}
 
-        assert "cpp:std:0-0:std.cout:attribute" in dsts, (
+        assert "cpp:std:0-0:std::cout:attribute" in dsts, (
             f"std::cout missing — emitted dsts: {sorted(dsts)}"
         )
-        assert "cpp:std:0-0:std.cerr:attribute" in dsts
-        assert "cpp:std:0-0:std.cin:attribute" in dsts
+        assert "cpp:std:0-0:std::cerr:attribute" in dsts
+        assert "cpp:std:0-0:std::cin:attribute" in dsts
 
     def test_nested_qualified_identifier_resolves_to_leftmost_std(
         self, tmp_path: Path
@@ -777,16 +779,17 @@ double get_pi() {
         # qualified_identifier is correctly skipped.  The leftmost-
         # alias replacement dot-normalises the *module* path (``std::``
         # → ``std.``) but the attribute-name slot keeps its original
-        # ``::`` separators because emit_module_attribute_refs only
-        # rewrites the path that came from the imports map; the inner
-        # qualified_identifier text passes through verbatim. Catalog
-        # matching for the iostream entries (``std.cout``/``std.cerr``/
-        # ``std.cin``) is unaffected — those are flat ``module.attr``
-        # forms — and a future ``std::numbers::*`` catalog entry can
-        # rely on the ``_by_qualified`` map's automatic ``::``↔``.``
-        # double-registration.
+        # ``::`` separators throughout. This id USED TO MIX THEM —
+        # ``cpp:std:0-0:std.numbers::pi:attribute`` — because
+        # emit_module_attribute_refs rewrote only the path that came from
+        # the imports map while the inner qualified_identifier text passed
+        # through verbatim. That half-applied normalisation was the tell
+        # that led to INV-rilit; one id now carries one convention.
+        # Catalogue matching is unaffected in either spelling: the
+        # qualified index folds separators through
+        # ``normalize_module_separators``.
         assert len(attr_edges) == 1
-        assert attr_edges[0].dst == "cpp:std:0-0:std.numbers::pi:attribute"
+        assert attr_edges[0].dst == "cpp:std:0-0:std::numbers::pi:attribute"
 
     def test_call_site_qualified_identifier_does_not_double_emit(
         self, tmp_path: Path
@@ -841,11 +844,12 @@ void use_alias() {
         # The path alias should resolve through namespace_aliases. We
         # only assert that an attr edge naming the real module landed
         # — exact qname depends on grammar parse depth but the leftmost
-        # alias must have been replaced with std.filesystem.
+        # alias must have been replaced with std::filesystem (INV-rilit:
+        # the module keeps C++'s own separator rather than being dotted).
         edges = [
             e for e in result.edges
             if e.edge_type == "module_attr_ref"
-            and e.dst.startswith("cpp:std.filesystem:0-0:")
+            and e.dst.startswith("cpp:std::filesystem:0-0:")
         ]
         assert edges, (
             "namespace fs = std::filesystem alias did not resolve attribute dst — "
@@ -2682,4 +2686,4 @@ void g() { std::cout << "x"; }
         attr_dsts = [
             e.dst for e in result.edges if e.edge_type == "module_attr_ref"
         ]
-        assert "cpp:std:0-0:std.cout:attribute" in attr_dsts, attr_dsts
+        assert "cpp:std:0-0:std::cout:attribute" in attr_dsts, attr_dsts

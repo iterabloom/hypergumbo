@@ -1471,12 +1471,19 @@ class TestEmitModuleAttributeRefsScopedPath:
     by languages whose scoped access is not a binary object+property
     pair.  Exercised with tree-sitter-rust's ``scoped_identifier``."""
 
-    def test_basic_scoped_path_emits_dot_normalized_edge(self) -> None:
+    def test_basic_scoped_path_emits_edge_in_the_language_separator(self) -> None:
         """``std::env::consts::OS`` emits edges for each scoped_identifier
         level.  The middle level is the interesting one: base walks
-        left to ``std`` (in imports), so an edge with dst containing
-        ``std.env.consts`` fires — dot-normalized to survive downstream
-        ``:``-split parsing."""
+        left to ``std`` (in imports), so an edge whose dst names
+        ``std::env::consts`` fires.
+
+        THIS TEST WAS THE CONTRACT FOR THE DOTTED SPELLING and named itself so
+        (``..._emits_dot_normalized_edge``), with the justification "to survive
+        downstream ``:``-split parsing". That justification was stale: ADR-0036
+        (D1a) made the path slot colon-TOLERANT and ``symbol_path_slot`` uses a
+        colon-bearing rust id as its own worked example. The normalisation was
+        splitting one module into two nodes (INV-rilit), so it is gone and this
+        test now pins the language's own separator."""
         source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
         root = _parse_rust(source)
         caller = _fake_caller("rust:lib.rs:0-0:file:file")
@@ -1500,7 +1507,7 @@ class TestEmitModuleAttributeRefsScopedPath:
         )
         dsts = [e.dst for e in edges]
         assert any(
-            d == "rust:std.env.consts:0-0:std.env.consts.OS:attribute"
+            d == "rust:std::env::consts:0-0:std::env::consts::OS:attribute"
             for d in dsts
         ), dsts
 
@@ -1530,7 +1537,7 @@ class TestEmitModuleAttributeRefsScopedPath:
             run_id="test-run",
         )
         dsts = [e.dst for e in edges]
-        assert not any("std.env.var" in d for d in dsts), dsts
+        assert not any("std::env::var" in d for d in dsts), dsts
 
     def test_unknown_leftmost_skipped(self) -> None:
         """A scoped path whose leftmost identifier is not in the
@@ -1559,7 +1566,7 @@ class TestEmitModuleAttributeRefsScopedPath:
     def test_aliased_leftmost_rewrites_to_real_module(self) -> None:
         """Imports map ``env -> std::env`` — the helper rewrites the
         leftmost segment so ``env::consts::OS`` emits edges carrying
-        ``std.env.consts`` in the dst (for catalog matching)."""
+        ``std::env::consts`` in the dst (for catalog matching)."""
         source = "pub fn f() -> &'static str { env::consts::OS }\n"
         root = _parse_rust(source)
         caller = _fake_caller("rust:lib.rs:0-0:file:file")
@@ -1580,7 +1587,7 @@ class TestEmitModuleAttributeRefsScopedPath:
             run_id="test-run",
         )
         dsts = [e.dst for e in edges]
-        assert any("std.env.consts" in d for d in dsts), dsts
+        assert any("std::env::consts" in d for d in dsts), dsts
 
     def test_missing_path_field_skips_node(self) -> None:
         """If ``object_field_names`` resolves to no child (the path
@@ -2961,7 +2968,7 @@ class TestScopedPathSkipsImportAndTypePositions:
         middle depth is the one io_primitives/rust.yaml declares."""
         source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
         edges = self._emit_rust(source, self.RUST_SKIP)
-        assert "rust:std.env:0-0:std.env.consts:attribute" in [
+        assert "rust:std::env:0-0:std::env::consts:attribute" in [
             e.dst for e in edges
         ], [e.dst for e in edges]
 
@@ -2976,7 +2983,7 @@ class TestScopedPathSkipsImportAndTypePositions:
             "}\n"
         )
         dsts = [e.dst for e in self._emit_rust(source, self.RUST_SKIP)]
-        assert "rust:std.env:0-0:std.env.consts:attribute" in dsts, dsts
+        assert "rust:std::env:0-0:std::env::consts:attribute" in dsts, dsts
         assert not any("std.io" in d for d in dsts), dsts
 
     def test_cpp_using_declaration_emits_no_attribute_read(self) -> None:
@@ -2994,7 +3001,7 @@ class TestScopedPathSkipsImportAndTypePositions:
         """POSITIVE CONTROL. ``std::cout`` is a catalogued C++ I/O attribute."""
         source = "void g() { std::cout << \"x\"; }\n"
         dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
-        assert "cpp:std:0-0:std.cout:attribute" in dsts, dsts
+        assert "cpp:std:0-0:std::cout:attribute" in dsts, dsts
 
     def test_omitting_the_tuple_changes_nothing_for_other_languages(self) -> None:
         """NON-DESTRUCTION. Languages that pass no ``skip_context_kinds``
