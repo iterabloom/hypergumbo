@@ -1,0 +1,23 @@
+- op: create  # 6265
+  at: '2026-08-24T03:24:54Z'  # 6265
+  by: agent  # 6265
+  actor: jgstern_agent  # 6265
+  clock: 1  # 6265
+  nonce: '6265'  # 6265
+  data:  # 6265
+    kind: work_item  # 6265
+    title: "rust.yaml declares zero module_completeness entries, so no Rust module can ever be an examined negative and every clean Rust boundary verdict is withheld"  # 6265
+    status: todo_soft  # 6265
+    priority: 2  # 6265
+    parent:  # 6265
+    tags:  # 6265
+    - io_boundary  # 6265
+    - verify_claims  # 6265
+    - rust  # 6265
+    - false_inconclusive  # 6265
+    isbefore: []  # 6265
+    duplicate_of: []  # 6265
+    not_duplicate_of: []  # 6265
+    pr_ref:  # 6265
+    description: "FOUND while correcting INV-pusin's mechanism; filed separately rather than\nfolded in, because it is an independent cause of the same symptom and closing\nINV-pusin does not close it.\n\nMEASURED against the shipped catalogue:\n\n  IoBoundaryCatalog('rust').module_io_is_enumerated(m)\n    'std'      False    'std::io'  False    'std.io'   False\n    'std::net' False    'std.net'  False    'std::fs'  False\n    'std.fs'   False    'std::env' False    'std.env'  False\n\n  rust.yaml module_completeness keys: []   (empty list)\n  rust.yaml declared modules (12): std::env, std::fs, std::fs::File,\n    std::fs::OpenOptions, std::io, std::io::Write, std::net::TcpListener,\n    std::net::TcpStream, std::net::UdpSocket, std::path::Path, std::process,\n    std::process::Command\n\nCONSEQUENCE. _uncatalogued_external_modules step (2) -- \"an unmatched call is\nan examined negative ONLY over an enumerated module\" -- can never pass for\nRust. Any Rust call the catalogue has no ROW for is therefore reported as a\nmodule whose I/O \"was never examined\", and every clean boundary verdict on a\nRust repo is withheld as inconclusive. The 12 rows above cover a hand-picked\nslice of the stdlib; everything else in std is unenumerated by declaration.\n\nTHIS IS NOT A BUG IN THE GATE. The gate is doing exactly what INV-buzab and\nINV-zubuh established it must: name RECOGNITION (is_stdlib_module) and row\nPRESENCE both failed open and were removed in favour of a dated per-module\naudit. Rust simply has not had that audit. The standing owner ruling is\nexplicit -- stdlib no-I/O is asserted through POSITIVE DATED DECLARATIONS,\nnever through a wider gate.\n\nWHAT IS OWED: dated module_completeness entries for the Rust stdlib modules a\nreal crate touches, each recording an actual audit of that module's I/O\nsurface, in the same shape python.yaml uses. The tomllib episode is the\nprecedent for both the mechanism and the discipline: one unaudited stdlib\nimport moved all 18 of hypergumbo's self-claims, and the fix was a positive\ndated entry, not a relaxed predicate.\n\nSEQUENCING. INV-pusin's producer fix empties the uncatalogued list on the\nfiled zero-dependency fixture (measured: ['std','std.io','std.net'] -> []),\nbecause every module_attr_ref edge there is an artifact and the two real calls\nboth classify. So the filed repro closes without this item. The CLASS does\nnot: the first Rust crate calling a std function with no catalogue row\nreproduces the same withheld verdict, and no producer fix can help it.\n\nNOT MEASURED: how many distinct std modules a representative Rust corpus\nactually reaches (the size of the audit); whether any other language's\ncatalogue has the same empty module_completeness (checked for rust only);\nwhether go/kotlin/java are in the same position."  # 6265
+    fields: {}  # 6265
