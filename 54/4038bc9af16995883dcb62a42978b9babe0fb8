@@ -1,0 +1,53 @@
+Original commit body from 81a032c1f2624d110d66a7443198a4e8db5d02e1:
+
+verify_claims.untyped_receiver_sites -- the channel that makes a clean
+boundary or taint verdict NAME the sink call sites whose receiver it could
+not type -- selects on meta.call_construct == "method". java, objc and rust
+emit the external call edge and never stamped that key, so each reached a
+BARE `confirmed` and disclosed nothing.
+
+Measured across the nine catalogued languages that declare method-kind
+sinks, one fixture apiece calling a sink from that language's OWN catalogue
+on an untypable receiver:
+
+  inert but stampable  java 139, objc 122, rust 34   = 295 sinks
+  no edge to stamp     kotlin 181, javascript 51     = 232 sinks (WI-nasuf)
+  already firing       scala 162, python 143,
+                       swift 97, go 25               = 427 sinks
+
+java's stamp moved OUT of the branch that made the key mean something
+narrower than its name: it was set only where the receiver's type resolved
+AND was imported, so `call_construct` silently meant "a method call whose
+receiver I typed". It is now set once, for every receiver-bearing call. The
+phantom-barrier reasoning already recorded there is unchanged and still
+load-bearing. objc stamps unconditionally -- a message send IS a method call
+by construction. rust stamps on its existing is_method_call.
+
+RECALL COST NONE, and gate_named_entry is where that is visible: with no
+module hint it refuses a method-kind hit EITHER WAY, through the
+call_construct arm with the stamp and through the non_method filter without
+it. The stamp only buys the ability to say so.
+
+Measured at three layers. Published output: a java file whose only fs_write
+reach is `u.mkdirs()` on an untypable receiver moved from bare `confirmed`
+(rc 0) to `confirmed_with_caveats` (rc 3) naming the sites, while the
+CONTROL ARM -- same claim, a typed java.io.File receiver -- stays `violated`
+(rc 1). objc moved likewise.
+
+The parity gate is the durable part, not the three stamps.
+test_disclosure_parity.py is driven from the shipped io_primitives
+catalogues rather than a hand-written list, so a language arriving LATER
+with method-kind sinks and no fixture fails there instead of reaching a
+silent clean verdict while every existing test stays green. The two no-edge
+languages are a bounded exemption pinned by its own test.
+
+A first draft of the measurement was wrong and the correction is recorded
+rather than quietly fixed: written with a CAST receiver, scala and swift
+both read as inert and the headline came out at 82% rather than 55%. A cast
+takes a different bare-call branch in both; the plain receiver.method()
+shape was already stamped correctly.
+
+PR1 of the four-PR closure sequence for INV-fibis / INV-nuhun (owner ruling
+2026-08-23). Refs WI-sajis, INV-polad.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
