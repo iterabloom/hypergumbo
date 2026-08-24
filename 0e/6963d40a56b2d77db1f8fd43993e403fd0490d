@@ -1,0 +1,42 @@
+Original commit body from 8c90f4c5809a4a8ab92ca423a5030fed0ee04a7a:
+
+An AUDIT, not code, answering the three things the owner asked for.
+
+METHOD. 475 corpus repos classified by top-level manifest; a language-
+stratified sample of 55 run through the shipped verify-claims on merged dev;
+each repo's uncatalogued list recomputed from its own survey using the gate's
+OWN functions rather than a reimplementation. 42 of 55 produced a survey --
+the 13 excluded are the LARGEST repos, which reach MORE modules, so every
+count is a LOWER BOUND and says so.
+
+(1) DENOMINATOR: tens of modules per language, not thousands. Rust -- the
+language this item was filed about -- reaches 33.
+
+(2) EVIDENCE BAR: five rules from python.yaml's 76 entries. THE BAR IS NOT MET
+BY READING: the python audit's first draft got 5 of 32 verdicts wrong, every
+error on the false-all-clear side, caught only by a mechanical probe that is
+python-specific and does not port. That turns "which language first" into a
+question about locally available toolchains.
+
+(3) THE FINDING THAT REFRAMES THE ITEM. qualifying_only is `not unknown`
+(verified in code at verify_claims.py:2960, not from a docstring), so a repo's
+list must reach EXACTLY zero; and io_primitives stays stdlib-scoped by standing
+ruling, so any third-party entry needs a per-project overlay too. Of 42 repos,
+2 are flippable by this work alone and 28 need an overlay as well. Python is
+the control that proves it: the one language whose audit is DONE still
+contributes 243 uncatalogued entries across 16 repos -- 75 stdlib, 168
+third-party.
+
+Files two things it found and dedupes against what was already filed:
+INV-zimud (new, P1) is the COVERAGE-GATE residual of INV-funuf, which is
+correctly satisfied for its own CLASSIFICATION statement; swift's
+variable-name-in-module-slot half is already INV-kotob and is cited, not
+refiled.
+
+Corrects two of its own numbers before publishing: a Go classifier that split
+on "." before "/" reported every third-party Go module as stdlib (151/0 ->
+53/97), and a module reached by two languages was credited to whichever wrote
+last, putting python's already-enumerated `math` on python's list.
+
+Racial-Capitalism-Is-Bad: a kangaroo teaching curing to a class of turtles in an opera house
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
