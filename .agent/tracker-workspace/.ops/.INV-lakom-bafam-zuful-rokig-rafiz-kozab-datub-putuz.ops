@@ -1,0 +1,25 @@
+- op: create  # 04e6
+  at: '2026-08-24T19:05:36Z'  # 04e6
+  by: agent  # 04e6
+  actor: jgstern_agent  # 04e6
+  clock: 1  # 04e6
+  nonce: '04e6'  # 04e6
+  data:  # 04e6
+    kind: invariant  # 04e6
+    title: "Coverage gate suppresses a stdlib module when the repo owns a directory matching the callee's first component (os.path vouched for by myapp/os/)"  # 04e6
+    status: violated  # 04e6
+    priority: 1  # 04e6
+    parent:  # 04e6
+    tags:  # 04e6
+    - io_boundary  # 04e6
+    - verify_claims  # 04e6
+    - false_confirm  # 04e6
+    - analysis_quality  # 04e6
+    isbefore: []  # 04e6
+    duplicate_of: []  # 04e6
+    not_duplicate_of: []  # 04e6
+    pr_ref:  # 04e6
+    description: "MEASURED 2026-08-24 while A/B-ing INV-juvul's fix on caddy. The defect is\nPRE-EXISTING and independent of that change; the Go control merely made it\nvisible at scale.\n\nREPRO on the shipped predicate, no fixture files needed:\n\n    cat = IoBoundaryCatalog(language=\"python\", primitives=[],\n                            stdlib_modules=frozenset({\"os\"}),\n                            module_completeness={})\n    edges = [{\"src\": \"python:myapp/os/helpers.py:1-5:f:function\",\n              \"dst\": \"python:os.path:0-0:join:external_symbol\",\n              \"type\": \"calls\"}]\n    compute_boundary_coverage(edges, {\"python\"}, {\"python\": cat})\n      -> complete=True, reason=\"\"\n\nA repo that owns myapp/os/helpers.py and calls os.path.join reports coverage\nCOMPLETE over the standard library os. Nothing about os.path was examined; the\nmodule simply vanished from the disclosure because the repo happens to own a\ndirectory whose name collides with the callee's FIRST component.\n\nMECHANISM. _is_analyzed_module tests EVERY dotted prefix of the callee module\nfrom longest to shortest, and accepts a match at ANY length -- including a\nSINGLE component. Shortening exists for a real reason (a callee slot may carry\na trailing TYPE name: app.config.Loader for app/config.py), but it is\nunbounded, so os.path -> os and crypto.tls -> crypto are equally licensed.\n\nSCALE, measured on caddy (19,650 edges) with / folded so slash-spelled Go\npaths reach the same loop: 13 modules suppressed, TEN of them Go standard\nlibrary -- crypto/ecdsa, crypto/elliptic, crypto/hmac, crypto/md5, crypto/rand,\ncrypto/sha256, crypto/subtle, crypto/tls, crypto/x509, os/exec, os/signal --\nbecause caddy owns internal/filesystems/os.go and modules/caddypki/crypto.go.\nos/exec IS the subprocess boundary and crypto/tls is a network one.\n\nINV-juvul's shipped fix does NOT close this. It deliberately declines to fold\nthe separator before the loop precisely so it does not WIDEN this hole to\nslash-spelled languages, and pins that refusal with\ntest_folding_a_separator_does_not_license_SHORTENING_the_module. The dotted\npath above is untouched and still reproduces.\n\nWHY IT IS NOT OBVIOUSLY FIXABLE BY BOUNDING THE LOOP. A minimum component\ncount would break the case shortening exists for whenever a first-party module\nis a single component (utils, db). The discriminating question is whether the\nextra components name a TYPE or a SUBMODULE, which is what\nio_boundary._module_matches already decides by CAPITALISATION for Go. Reusing\nthat rule here is the obvious candidate and is NOT yet measured.\n\nNOT MEASURED: how many repos in the corpus own a directory colliding with a\nstdlib module's first component; whether any currently-confirmed verdict in\nthe corpus rests on this suppression."  # 04e6
+    fields:  # 04e6
+      statement: "The uncatalogued-module gate must not treat a callee module as examined merely because the repo owns a directory whose name equals the callee's FIRST component. Suppressing stdlib os.path because a repo contains myapp/os/helpers.py removes a real, unexamined I/O module from the disclosure, in the direction that produces a false clean verdict."  # 04e6
+      root_cause: "_is_analyzed_module accepts a component-bounded infix match at ANY prefix length, down to a single component. Prefix shortening exists to strip a trailing TYPE name from a dotted callee slot (app.config.Loader -> app/config.py), but it is unbounded, so os.path shortens to os and crypto.tls to crypto, and any same-named first-party directory then vouches for the whole stdlib package."  # 04e6
