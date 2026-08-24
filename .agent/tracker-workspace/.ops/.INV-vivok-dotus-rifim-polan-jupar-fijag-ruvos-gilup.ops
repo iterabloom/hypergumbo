@@ -1,0 +1,34 @@
+- op: create  # 5235
+  at: '2026-08-24T19:06:11Z'  # 5235
+  by: agent  # 5235
+  actor: jgstern_agent  # 5235
+  clock: 1  # 5235
+  nonce: '5235'  # 5235
+  data:  # 5235
+    kind: invariant  # 5235
+    title: "A repo referring to itself by its published package name (Cargo.toml/go.mod) is still reported as an unexamined third-party module"  # 5235
+    status: violated  # 5235
+    priority: 3  # 5235
+    parent:  # 5235
+    tags:  # 5235
+    - io_boundary  # 5235
+    - verify_claims  # 5235
+    - false_inconclusive  # 5235
+    - analysis_quality  # 5235
+    isbefore: []  # 5235
+    duplicate_of: []  # 5235
+    not_duplicate_of: []  # 5235
+    pr_ref:  # 5235
+    description: "MEASURED 2026-08-24 on bellman and caddy, recomputing the gate over each run's\nown cached survey.\n\nA repository that refers to itself by its PUBLISHED PACKAGE NAME -- rather than\nby a relative path or a self-reference keyword -- is still reported as an\nunexamined third-party module.\n\n  bellman  'bellman.VerificationError'  <- bellman's own crate name, from\n           edges like\n           rust:bellman.VerificationError:0-0:bellman.VerificationError.InvalidProof:external_symbol\n           This is the LAST first-party entry surviving INV-juvul's fix\n           (23 reported -> 18 after; 5 of the 6 first-party entries closed).\n\n  caddy    'github.com/caddyserver/caddy/v2'\n           'github.com/caddyserver/caddy/v2/caddyconfig/caddyfile'\n           'github.com/caddyserver/caddy/v2/internal/metrics'\n           'github.com/caddyserver/caddy/v2/modules/caddyhttp'\n           -- caddy's own go.mod module path. Its RELATIVE spellings\n           (modules/caddyhttp, caddyconfig/httpcaddyfile) ARE now suppressed,\n           so the same package is judged differently depending on how the\n           importing file happened to spell it.\n\nWHY INV-juvul DID NOT CLOSE IT. _analyzed_modules derives first-party names\nfrom SRC FILE PATHS, and a package's published name lives in a MANIFEST, not\nin the directory layout. No amount of separator normalisation or suffix\nmatching bridges Cargo.toml's [package] name to src/lib.rs.\n\nTHE SIGNAL EXISTS IN THE GRAPH ALREADY, which is why this is filed rather than\ndeferred indefinitely:\n\n    toml:Cargo.toml:7-22:bellman:package        kind=package  name=bellman\n    toml:groth16/Cargo.toml:1-16:groth16:package\n    json:package.json:1-99:express:package\n\nWHY IT WAS NOT USED. Dependency packages carry the SAME kind:\n\n    javascript:npm:0-0:morgan:package\n    javascript:npm:0-0:proxy-addr:package\n\nTelling the two apart currently requires reading the id's path slot and span\nshape (a real manifest path with a real span, versus the synthetic `npm` slot\nat 0-0). That is a shape heuristic over an id grammar, and this is a gate whose\nfailure direction is a false clean verdict, so it was not guessed at.\nsupply_chain_tier would be the principled discriminator and is None on EVERY\npackage node in both repos -- possibly a defect of its own, NOT investigated.\n\nALSO NOT MEASURED: whether _uncatalogued_external_modules can reach node data\nat all (it takes raw_edges only, so a first-party-package-name set would have\nto be threaded from the CLI, as higher_fidelity_available already is).\n\nSIZE: 1 of bellman's 18 remaining entries, 4 of caddy's 158. Noise reduction,\nNOT a safety hole -- over-reporting is the safe direction. Fixing it flips no\nverdict."  # 5235
+    fields:  # 5235
+      statement: "A module reference that resolves to a package THIS repository declares in its own manifest is first-party, and must not be reported as a third-party module whose I/O went unexamined -- regardless of whether the importing file spelled it as a relative path or as the published package name."  # 5235
+      root_cause: "_analyzed_modules derives first-party names from SRC FILE PATHS only, while a published package name lives in a manifest (Cargo.toml [package] name, go.mod module, package.json name). The graph already carries the fact as package-kind nodes, but dependency packages carry the same kind, and the only available discriminator today is the id's path-slot/span shape, which is a heuristic over an id grammar rather than a fact."  # 5235
+- op: update  # d4fc
+  at: '2026-08-24T20:00:15Z'  # d4fc
+  by: agent  # d4fc
+  actor: jgstern_agent  # d4fc
+  clock: 2  # d4fc
+  nonce: d4fc  # d4fc
+  set: {}  # d4fc
+  add:  # d4fc
+    isbefore: [INV-juvul-risuf-dojud-logoj-supur-kuvun-fogos-dojod]  # d4fc
