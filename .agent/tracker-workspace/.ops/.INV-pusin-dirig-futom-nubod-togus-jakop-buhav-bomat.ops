@@ -53,3 +53,10 @@
   clock: 5  # 9a2c
   nonce: 9a2c  # 9a2c
   message: "STATUS STAYS violated (an invariant cannot take todo_hard). The blocking relationship is carried structurally by INV-polad's isbefore edge to this item, not by a status word."  # 9a2c
+- op: discuss  # 2f78
+  at: '2026-08-24T09:57:18Z'  # 2f78
+  by: agent  # 2f78
+  actor: jgstern_agent  # 2f78
+  clock: 6  # 2f78
+  nonce: 2f78  # 2f78
+  message: "UNBLOCKED AND MEASURED. INV-polad is satisfied, and the held branch jgstern-agent/fix/scoped-attr-ref-import-and-type-positions has been rebased onto all four disclosure PRs and re-run on this item's fixture: NET-SEND and FS-WRITE now return confirmed_with_caveats carrying untyped_receiver + unknown_receiver_scope + analyzer_suppressed_methods + higher_fidelity_available, with analysis_fidelity reported and CONTROL-FSREAD still violated. The false confirm that blocked this item is converted into a disclosed confirm. The branch is green and ready to merge; not merged yet because the owner asked for four PRs and this is a fifth."  # 2f78
