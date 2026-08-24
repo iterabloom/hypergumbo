@@ -1,0 +1,25 @@
+- op: create  # e83e
+  at: '2026-08-24T03:51:54Z'  # e83e
+  by: agent  # e83e
+  actor: jgstern_agent  # e83e
+  clock: 1  # e83e
+  nonce: e83e  # e83e
+  data:  # e83e
+    kind: work_item  # e83e
+    title: "PR1: stamp call_construct on the unresolved-external method path in java/scala/swift/objc/rust, plus a registry-driven parity gate so a new language cannot go silently blind"  # e83e
+    status: todo_hard  # e83e
+    priority: 1  # e83e
+    parent:  # e83e
+    tags:  # e83e
+    - verify_claims  # e83e
+    - io_boundary  # e83e
+    - analysis_quality  # e83e
+    - rct_blocker  # e83e
+    isbefore:  # e83e
+    - INV-fibis-zonok-jotus-mipar-zibos-jisol-tukit-hajag  # e83e
+    - INV-nuhun-borog-pahoh-ginop-johun-kabuh-dibid-jidor  # e83e
+    duplicate_of: []  # e83e
+    not_duplicate_of: []  # e83e
+    pr_ref:  # e83e
+    description: "PR1 of the four-PR closure sequence authorised by the owner 2026-08-23\n(\"declare the blindness, do those 4 PRs\" -- full ruling on INV-polad).\n\nTHE GAP, measured, not inferred. INV-fibis's untyped-receiver disclosure is\ngated on `meta.call_construct == \"method\"` (verify_claims.untyped_receiver_sites).\nOne fixture per language, each calling a sink from that language's OWN\nio_primitives catalogue on a receiver the analyzer cannot type\n(~/hypergumbo_lab_notebook/disclosure_parity_08232026/):\n\n  lang        call edges  external  construct=method   verdict\n  python               1         1                 1   disclosure CAN fire\n  go                   1         1                 1   disclosure CAN fire\n  java                 2         2                 0   edge, NO stamp -> INERT\n  scala                1         1                 0   edge, NO stamp -> INERT\n  swift                1         1                 0   edge, NO stamp -> INERT\n  objc                 1         1                 0   edge, NO stamp -> INERT\n  rust                 2         2                 0   edge, NO stamp -> INERT\n  kotlin               0         0                 0   NO EDGE (PR2's problem)\n  javascript           0         0                 0   NO EDGE (PR2's problem)\n\nFIVE LANGUAGES ALREADY EMIT THE EDGE AND ONLY LACK THE META KEY. That is 554\nof the 954 method-kind sinks across the nine catalogued languages, recoverable\nby stamping a key the consumer already reads. java/scala/swift/objc/rust each\nstamp `call_construct` on their RESOLVED paths (rust does it in three places)\nand omit it on the UNRESOLVED-EXTERNAL path -- which is precisely the\npopulation the disclosure exists for.\n\nSCOPE OF THIS PR:\n  1. Stamp `call_construct: \"method\"` on the unresolved-external\n     instance-method call path in java, scala, swift, objc, rust.\n  2. A REGISTRY-DRIVEN PARITY GATE. For every language whose io_primitives\n     catalogue declares any method-kind sink, a fixture with an untypable\n     receiver must produce a caveat rather than a bare `confirmed`. A language\n     with method-kind sinks and no fixture FAILS the gate.\n\nTHE GATE IS THE POINT, not the five stamps. Without it, language number ten\narrives with method sinks, no stamp, and reaches a silent clean verdict while\nevery test stays green -- which is how this became an 82% blind spot without\nanyone noticing. LIVE.md rule 7: a predicate is inert until its call sites\npass it, and the site that RUNS may not be the one that READS it.\n\nDONE WHEN: the parity table above shows \"disclosure CAN fire\" for all seven\nedge-emitting languages, the two no-edge languages are the only exceptions and\nare handed to PR2, and the gate fails on a deliberately un-fixtured language.\n\nNOT IN SCOPE: kotlin / javascript (no edge to stamp -- PR2); the rust denylist\nthat removes the call site before any stamp could apply (PR3); which analyzer\nproduced the edge set (PR4/WI-lagod)."  # e83e
+    fields: {}  # e83e
