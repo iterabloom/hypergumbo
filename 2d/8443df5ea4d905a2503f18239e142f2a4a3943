@@ -1,0 +1,63 @@
+Original commit body from 63c4b9d94a0d0060e37c7ef1203ebe4fdc20021e:
+
+Measured on two unmodified upstream repos by recomputing the gate over each
+run's own cached survey: express reported 17 modules "the I/O catalog could
+not classify" of which 7 were first-party and only 4 genuine; bellman reported
+23 of which 6 were first-party. `qualifying_only` is `not unknown`, so ONE
+noise entry withholds a verdict -- on both repos the first-party entries ALONE
+were sufficient to withhold every claim, and the real dependencies were buried:
+the rendered `details` truncates at five and express's opened with `..`, `../`,
+`../../db`, making all four genuine ones invisible.
+
+Now 17 -> 10 and 23 -> 18, opening on `assert, body-parser, document,
+mime-types, node:http`.
+
+THREE MECHANISMS, each rule exact rather than heuristic:
+
+  1. rust `crate::` / `super::` / `self::` are path qualifiers resolving within
+     the current crate, and all three are reserved words Cargo cannot publish
+     under, so no dependency set can contain one.
+  2. a javascript specifier beginning `./` or `../` is resolved against the
+     importing file and never looked up in node_modules. RELATIVE only -- an
+     ABSOLUTE path names a system header this analysis did not read.
+  3. language-independent, and not named on the item: `_analyzed_modules`
+     folded `/` into `.` on the SRC side while the callee side was compared
+     RAW, so express's own `lib/utils` could never match its own analyzed
+     `lib.utils`. The fold now has ONE home instead of three.
+
+A REGISTRY PLUS A GATE, not a better literal. Every language the boundary gate
+can reach declares a `FirstPartyModuleGrammar` WITH ITS BASIS -- an empty one
+being a valid answer that has to be written down -- and a parity test drives
+the denominator from the shipped catalogues. It FAILS OPEN, the opposite of
+`analyzer_disclosure`'s direction, because suppressing on a rule nobody wrote
+down is what would hide a real dependency.
+
+THE FIRST CUT WAS REFUTED BY ITS OWN CONTROL RUN, ON CADDY, BEFORE SHIPPING.
+Folding the separator and then running the existing prefix loop lets `os/exec`
+shorten to `os` and match caddy's own `internal/filesystems/os.go`: 13 modules
+suppressed, TEN of them Go standard library -- crypto/tls, crypto/x509,
+os/exec and seven more -- because the repo owns a file called `crypto.go`.
+`os/exec` IS the subprocess boundary. express and bellman looked clean under
+that cut; only the Go repo showed it. The shipped rule tests the folded
+spelling WHOLE and never shortens it.
+
+NON-DESTRUCTION ASSERTED in the same runs: caddy unchanged (55/76/3 chains,
+all violated), httpx unchanged (0 modules moved), NEWLY REPORTED 0 on all four.
+
+NO VERDICT FLIPPED, and that is the point rather than a shortfall: what remains
+is stdlib enumeration, and only python.yaml declares any `module_completeness`
+while 14 of 15 catalogued languages declare zero (WI-lutuh). This makes that
+work's output readable; it does not substitute for it.
+
+RESIDUALS FILED RATHER THAN GLOSSED:
+  INV-lakom (P1) the prefix-shortening hole is PRE-EXISTING for dotted
+      languages and still reproduces -- a repo owning `myapp/os/helpers.py` and
+      calling `os.path.join` reports coverage COMPLETE over stdlib `os`. This
+      change declines to widen it; it does not close it.
+  INV-vivok (P3) a repo referring to itself by its published package name is
+      still reported; the graph carries the fact as `package`-kind nodes that
+      dependency packages share, and `supply_chain_tier` is None on every one.
+
+Evidence, caches and both probes: ~/hypergumbo_lab_notebook/juvul_08242026/
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
