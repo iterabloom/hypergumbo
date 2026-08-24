@@ -1,0 +1,22 @@
+- op: create  # a3d5
+  at: '2026-08-24T09:53:06Z'  # a3d5
+  by: agent  # a3d5
+  actor: jgstern_agent  # a3d5
+  clock: 1  # a3d5
+  nonce: a3d5  # a3d5
+  data:  # a3d5
+    kind: work_item  # a3d5
+    title: "The untyped-receiver caveat names the wrong thing in two languages: objc renders an empty method name, java carries the receiver prefix so the boundary-scoped caveat cannot match the catalogue"  # a3d5
+    status: todo_soft  # a3d5
+    priority: 2  # a3d5
+    parent:  # a3d5
+    tags:  # a3d5
+    - verify_claims  # a3d5
+    - io_boundary  # a3d5
+    - analysis_quality  # a3d5
+    isbefore: []  # a3d5
+    duplicate_of: []  # a3d5
+    not_duplicate_of: []  # a3d5
+    pr_ref:  # a3d5
+    description: "FOUND at the published-output layer while shipping PR1 of the INV-fibis /\nINV-nuhun closure sequence, and filed rather than folded in because it degrades\nthe QUALITY of a disclosure that now correctly fires.\n\nOBSERVED, shipped CLI, an objc file whose only fs_write reach is an untypable\nreceiver:\n\n  ! [NO-FSWRITE] Verdict: confirmed_with_caveats\n    CAVEAT (unknown_receiver_scope): ... At 1 of 1 method call site(s) the\n    receiver's type could not be determined ... distinct method(s): .\n\nTHE COUNT IS RIGHT AND THE NAME IS EMPTY. The caveat discloses that something\nwent unexamined and cannot say WHAT, which is most of the value: a reader who\nsees `createFileAtPath` can check their own code, a reader who sees \".\" cannot.\n\nNOT YET LOCATED, and this item does not pretend otherwise. The obvious\nexplanation -- objc selectors contain `:` so a five-slot id split goes wrong --\ndoes NOT survive checking: for\n`objc:external:0-0:createFileAtPath:contents:attributes::unresolved`,\n`dst.split(\":\")[3]` is `createFileAtPath`, not empty. So the name is being lost\nsomewhere else on the path from edge to caveat prose. The run also emitted\n`[warn] 1 id_format validation violation(s)`, which is a lead and not a\ndiagnosis.\n\nRELATED BUT DISTINCT, filed together as one item because they are the same\ndefect class (the caveat fires but names the wrong thing or nothing): java's\nunresolved callee name carries the RECEIVER PREFIX (`u.mkdirs` rather than\n`mkdirs`), so the BOUNDARY-SCOPED `untyped_receiver` caveat -- which matches\nthe callee name against the catalogue's method names -- cannot match\n`java.io.File.mkdirs`, and only the UNSCOPED `unknown_receiver_scope` caveat\nfires. Observed in the same session: java's caveat named `u.mkdirs, xs.size`,\nwhich is readable but is not the catalogue's spelling.\n\nWHY THIS DOES NOT BLOCK THE PARENT ITEMS. The disclosure fires and names the\nsites and the count in both languages, so a clean verdict is no longer silent\nabout what it could not examine. What is degraded is precision of the naming,\nnot the existence of the disclosure.\n\nNOT MEASURED: whether any language other than objc renders an empty method\nname; how many real repos' caveats are affected; whether fixing java's prefix\nwould let the scoped caveat fire and thereby ATTRIBUTE the site to a boundary\n(the more useful disclosure) rather than only counting it."  # a3d5
+    fields: {}  # a3d5
