@@ -246,7 +246,7 @@ Grants live in `$XDG_STATE_HOME/hypergumbo/trust.d` (default `~/.local/state/...
 
 Full opt-in precedence: `--backend` flag > `HYPERGUMBO_RUST_ANALYZER` > recorded grant > off.
 
-A grant records a digest of `build.rs` / `Cargo.toml`. A later change is **reported** by `--show`, not acted on — the grant stands until you `--revoke` it.
+A grant records digests of `build.rs` and `Cargo.toml`. **A changed `build.rs` revokes the grant** — the backend stops running for that repository until you grant it again, because `build.rs` is the file that actually executes during indexing. A changed `Cargo.toml` is reported by `--show` and does **not** revoke, since routine dependency bumps would otherwise re-prompt constantly. Only top-level manifests are hashed, so this does not protect against a *dependency's* build script.
 
 **Limit, stated plainly:** the store is `0600` and unsynced, but "the human owns it and an automated agent cannot write it" is enforceable only by the OS, and only when the agent runs as a different user. To get that property, `chown` the store to the human account.
 

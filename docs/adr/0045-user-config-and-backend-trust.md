@@ -61,7 +61,7 @@ The second is load-bearing here and is generalised by ruling 6.
 
 6. **The trust store is human-owned, agent-readable, agent-unwritable.** ADR-0013's config-ownership pattern (`chown <human>`, `chmod 644`) applies with more force here than it does to the tracker: in a repository whose agents invoke hypergumbo autonomously, **a trust store the agent can write is not a trust store**. The command that writes it is human-invoked.
 
-7. **Grants are keyed by absolute resolved path and record an advisory content hash.** Not by ADR-0013's repo-fingerprint: that key deliberately *shares across checkouts*, which is right for a cache and wrong for trust — two clones of one remote can have different working trees. The recorded hash covers `build.rs` and `Cargo.toml`; a change since the grant surfaces a one-line notice on the next run but does **not** silently revoke. See Alternative A2 for why revocation is not the default, and OQ1 for the residual doubt.
+7. **Grants are keyed by absolute resolved path; a changed `build.rs` revokes, a changed `Cargo.toml` does not.** *(Amended 2026-08-23, resolving OQ1 — the original wording made the whole hash advisory.)* Keying is not by ADR-0013's repo-fingerprint: that key deliberately *shares across checkouts*, which is right for a cache and wrong for trust — two clones of one remote can have different working trees. The split is the substance: `build.rs` is the file that actually **executes** and it changes rarely, so a prompt about it carries information, while `Cargo.toml` churns with routine dependency bumps and re-prompting on that is how a person learns to click through the prompt that matters. **What this does not buy, and this was on the table when it was decided:** neither form protects against a *dependency's* build script, because only the top-level manifests are hashed. It catches tampering with this project's own build script, and nothing else.
 
 8. **A decision, either way, silences the nudge.** The store records declines as well as grants, so "I have chosen tree-sitter for this repo" is expressible. The nudge goes quiet for any path with a recorded decision and keeps its security disclosure for paths without one.
 
@@ -89,7 +89,7 @@ The second is load-bearing here and is generalised by ruling 6.
 
 **A1 — One config file with a `backends.rust_analyzer = true` key.** Simplest, and the shape the trigger question naturally suggests. Rejected: it reproduces the global-environment-variable hazard with better ergonomics, and `~/.config` is *more* likely to be synced across machines than a shell profile, not less. The convenience and the hazard are the same feature.
 
-**A2 — Hash-strict revocation: re-prompt whenever `build.rs` changes.** Strictly safer, and rejected as the *default* on the project's own reasoning: an ordinary dependency bump would re-prompt, and per `TestRustAnalyzerDisclosureRespectsTheGate` an alarm that fires when it is moot trains people to skim the one that isn't. Recorded as OQ1 — a `--strict-trust` mode may well be right, and this ADR does not foreclose it.
+**A2 — Hash-strict revocation on ANY manifest change.** Rejected 2026-08-23 in favour of the `build.rs`-only split now in ruling 7. Full strictness re-prompts on every ordinary dependency bump, and per `TestRustAnalyzerDisclosureRespectsTheGate` an alarm that fires when it is moot trains people to skim the one that isn't — so it buys the same protection as the split while spending the attention that makes any prompt work.
 
 **A3 — Key grants by repo-fingerprint (remote URL + first commit SHA), per ADR-0013.** Rejected for trust, endorsed for cache. Fingerprint keying exists so multiple checkouts *share*; trusting one clone must not trust another clone at a different path with a different working tree.
 
@@ -108,7 +108,7 @@ The second is load-bearing here and is generalised by ruling 6.
 
 ## Open Questions
 
-- **OQ1 — Keying and hash strictness (ruling 7) is the weakest ruling here.** The advisory-hash choice trades a real safety property for friction avoidance, on a judgement about human behaviour rather than a measurement. If a `--strict-trust` mode is added, this ruling should be revisited rather than extended.
+- **OQ1 — RESOLVED 2026-08-23 by the owner: revoke on `build.rs`, ignore `Cargo.toml`.** Ruling 7 is amended above. The original advisory-for-everything form traded a real safety property for friction avoidance on a judgement about human behaviour rather than a measurement; the split keeps most of the protection at close to none of the noise. The residual limit (transitive build scripts are not covered) is stated in ruling 7 rather than left as doubt.
 - **OQ2 — TOML vs YAML.** The repo is YAML-heavy, but every existing YAML is *data the tool carries* (ADR-0022's catalog surface), not a hand-edited user preference file. TOML is recommended for the config file on those grounds. Not load-bearing; settle at implementation.
 - **OQ3 — Does the project-config tier justify itself on day one**, or should the user tier ship alone with project config deferred until an overlay-carrying project asks? Rulings 3 and 4 are written to hold either way.
 - **OQ4 — Schema versioning strategy is not settled here.** Whatever is chosen should be decided before the first release that reads the file, since the migration cost is asymmetric.

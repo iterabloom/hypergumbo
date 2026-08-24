@@ -3327,13 +3327,25 @@ def cmd_trust_backend(args: argparse.Namespace) -> int:
         if decision is None:
             print(f"{backend}: no decision recorded for {repo_root}")
             return 0
+        if decision.recorded_grant and decision.build_changed:
+            # The one case worth spelling out: they DID say yes, and the file
+            # that executes has changed since. Reporting a bare "DECLINED"
+            # here would be true of the effective answer and misleading about
+            # what happened.
+            print(f"{backend}: REVOKED for {decision.repo_path}")
+            print(
+                "  build.rs has changed since you granted this. The grant no "
+                "longer applies (ADR-0045 ruling 7) — review the new build "
+                "script, then re-run this command to grant it again.",
+            )
+            return 0
         state = "GRANTED" if decision.granted else "DECLINED"
         print(f"{backend}: {state} for {decision.repo_path}")
-        if decision.manifest_changed:
+        if decision.advisory_changed:
             print(
-                "  NOTE: the build manifests have changed since this decision "
-                "was recorded. The grant still stands (ADR-0045 ruling 7); "
-                "re-run with --revoke if you no longer trust this tree.",
+                "  NOTE: Cargo.toml has changed since this decision was "
+                "recorded. That does not revoke the grant — only build.rs "
+                "does. Mentioned so the change is not invisible.",
             )
         return 0
 

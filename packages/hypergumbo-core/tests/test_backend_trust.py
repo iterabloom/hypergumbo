@@ -123,10 +123,19 @@ class TestADeclineIsADecision:
         assert read_decision(repo, "rust_analyzer", environ=environ) is None
 
 
-class TestTheAdvisoryHash:
-    def test_a_grant_records_the_build_manifest_hash(
-        self, tmp_path: Path,
-    ) -> None:
+class TestAChangedBuildScriptRevokes:
+    """Owner ruling 2026-08-23, resolving ADR-0045 OQ1.
+
+    These tests previously pinned the OPPOSITE behaviour — a changed build
+    script warned and the grant stood — and their docstrings named themselves
+    as the ones to change if OQ1 resolved toward strictness. It did, in a
+    split form: ``build.rs`` revokes, ``Cargo.toml`` does not. The
+    discriminating test is the Cargo.toml one; without it, "revoke on any
+    change" would pass everything here and the ruling would be silently
+    over-implemented.
+    """
+
+    def test_a_grant_records_both_digests(self, tmp_path: Path) -> None:
         state = tmp_path / "state"
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -135,43 +144,87 @@ class TestTheAdvisoryHash:
         environ = {"XDG_STATE_HOME": str(state)}
         record_decision(repo, "rust_analyzer", True, environ=environ)
         got = read_decision(repo, "rust_analyzer", environ=environ)
-        assert got.manifest_digest
-        assert got.manifest_changed is False
+        assert got.build_digest and got.advisory_digest
+        assert got.build_digest != got.advisory_digest
+        assert got.granted is True
+        assert got.build_changed is False
 
-    def test_a_changed_build_script_is_flagged_but_does_not_revoke(
-        self, tmp_path: Path,
-    ) -> None:
-        """ADR-0045 ruling 7 and OQ1 — the weakest ruling, pinned so a later
-        change to it is deliberate.
-
-        Revoking on every change would re-prompt on an ordinary dependency
-        bump, and by this project's own reasoning an alarm that fires when it
-        is moot trains people to skim the one that is not. The grant stands
-        and the change is surfaced. If OQ1 is resolved toward strictness,
-        THIS test is the one that must change.
-        """
+    def test_a_changed_build_script_revokes(self, tmp_path: Path) -> None:
         state = tmp_path / "state"
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "build.rs").write_text("fn main(){}\n")
         environ = {"XDG_STATE_HOME": str(state)}
         record_decision(repo, "rust_analyzer", True, environ=environ)
-        (repo / "build.rs").write_text("fn main(){ evil(); }\n")
+        (repo / "build.rs").write_text("fn main(){ exfiltrate(); }\n")
         got = read_decision(repo, "rust_analyzer", environ=environ)
-        assert got.granted is True
-        assert got.manifest_changed is True
+        assert got.build_changed is True
+        assert got.granted is False, "a changed build.rs must not stay granted"
+        # What was written down is still legible, so a caller can tell
+        # "you said no" from "you said yes and then the script changed".
+        assert got.recorded_grant is True
 
-    def test_a_repo_with_no_build_manifest_has_no_digest(
+    def test_a_changed_cargo_toml_does_NOT_revoke(self, tmp_path: Path) -> None:
+        """THE DISCRIMINATING TEST for the split.
+
+        Cargo.toml churns with routine dependency bumps. Revoking on it would
+        re-prompt constantly, which is how a person learns to click through
+        the prompt that matters — the reasoning this project already wrote
+        down in TestRustAnalyzerDisclosureRespectsTheGate.
+        """
+        state = tmp_path / "state"
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "build.rs").write_text("fn main(){}\n")
+        (repo / "Cargo.toml").write_text("[package]\nname='x'\nversion='1'\n")
+        environ = {"XDG_STATE_HOME": str(state)}
+        record_decision(repo, "rust_analyzer", True, environ=environ)
+        (repo / "Cargo.toml").write_text("[package]\nname='x'\nversion='2'\n")
+        got = read_decision(repo, "rust_analyzer", environ=environ)
+        assert got.advisory_changed is True
+        assert got.build_changed is False
+        assert got.granted is True, "a dependency bump must not revoke"
+
+    def test_revocation_is_applied_at_the_single_read_point(
         self, tmp_path: Path,
     ) -> None:
+        """The gate must not have to remember to check ``build_changed``.
+
+        A consumer that had to apply the revocation itself is one that can
+        forget, and forgetting fails OPEN — executing a build script the user
+        never approved. So it is asserted through the RESOLVER, which is what
+        the backend gate actually calls.
+        """
+        from hypergumbo_core.backend_selection import resolve_rust_analyzer_optin
+
+        state = tmp_path / "state"
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "build.rs").write_text("fn main(){}\n")
+        environ = {"XDG_STATE_HOME": str(state)}
+        record_decision(repo, "rust_analyzer", True, environ=environ)
+        assert resolve_rust_analyzer_optin(
+            environ=environ, repo_root=repo,
+        ) is True
+        (repo / "build.rs").write_text("fn main(){ other(); }\n")
+        assert resolve_rust_analyzer_optin(
+            environ=environ, repo_root=repo,
+        ) is False
+
+    def test_a_repo_with_no_build_script_has_no_digest_and_never_revokes(
+        self, tmp_path: Path,
+    ) -> None:
+        """An empty digest is a meaningful value, not a missing one: nothing
+        to protect means a later "changed" report would be pure noise."""
         state = tmp_path / "state"
         repo = tmp_path / "repo"
         repo.mkdir()
         environ = {"XDG_STATE_HOME": str(state)}
         record_decision(repo, "rust_analyzer", True, environ=environ)
         got = read_decision(repo, "rust_analyzer", environ=environ)
-        assert got.manifest_digest == ""
-        assert got.manifest_changed is False
+        assert got.build_digest == ""
+        assert got.build_changed is False
+        assert got.granted is True
 
 
 class TestOnlyExecutingBackendsNeedAGrant:

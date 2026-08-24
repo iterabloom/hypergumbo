@@ -32,12 +32,18 @@ asking someone who has already answered, and this project has already written
 down (``TestRustAnalyzerDisclosureRespectsTheGate``) that a prompt firing when
 it is moot trains people to skim the one that matters.
 
-THE HASH IS ADVISORY, AND THAT IS THE WEAKEST DECISION HERE. A grant records a
-digest of the repository's build manifests; a later change surfaces
-``manifest_changed`` but does NOT revoke. Revoking would re-prompt on an
-ordinary dependency bump, and by the reasoning above that trains skimming. This
-is ADR-0045 OQ1, still open — if it resolves toward strictness, the behaviour
-changes here and the test that pins it says so.
+A CHANGED ``build.rs`` REVOKES; A CHANGED ``Cargo.toml`` DOES NOT. Owner
+ruling 2026-08-23, resolving ADR-0045 OQ1. The split is the substance:
+``build.rs`` is the file that actually EXECUTES during indexing and it changes
+rarely, so a prompt about it carries information, while ``Cargo.toml`` churns
+with routine dependency bumps and re-prompting on that is how a person learns
+to click through the prompt that matters. Revocation is applied inside
+:func:`read_decision` rather than at each call site, because a consumer that
+had to remember the check would eventually forget, and forgetting fails OPEN.
+
+HONEST LIMIT, on the table when the ruling was made: only TOP-LEVEL manifests
+are hashed, so no form of this protects against a *dependency's* build script.
+It catches tampering with this project's own build script, and nothing else.
 """
 
 from __future__ import annotations
@@ -51,11 +57,22 @@ from typing import Any, Dict, Mapping, Optional
 
 from .user_config import BACKENDS_EXECUTING_ANALYSED_CODE
 
-#: Files whose contents are hashed into a grant's advisory digest — the ones
-#: that decide what indexing will EXECUTE. Cargo.lock is deliberately absent:
-#: it changes on every dependency bump without changing what runs at index
-#: time, and a digest that churns is a digest nobody reads.
-_BUILD_MANIFESTS = ("build.rs", "Cargo.toml")
+#: Files whose change REVOKES a grant. Owner ruling 2026-08-23 resolving
+#: ADR-0045 OQ1: ``build.rs`` is the file that actually EXECUTES during
+#: indexing and it changes rarely, so a prompt about it carries information.
+#: ``Cargo.toml`` is deliberately NOT here — it churns with routine dependency
+#: bumps, and re-prompting on that is how a person learns to click through the
+#: prompt that matters (the reasoning this project already wrote down in
+#: ``TestRustAnalyzerDisclosureRespectsTheGate``).
+#:
+#: HONEST LIMIT, decided with this on the table: only TOP-LEVEL manifests are
+#: hashed, so no form of this protects against a *dependency's* build script.
+#: It catches tampering with this project's own build script, and nothing else.
+_REVOKING_MANIFESTS = ("build.rs",)
+
+#: Hashed and reported, but never revoking — a changed ``Cargo.toml`` is worth
+#: seeing on ``--show`` and is not worth interrupting a run for.
+_ADVISORY_MANIFESTS = ("Cargo.toml",)
 
 _STORE_DIRNAME = "trust.d"
 
@@ -65,12 +82,22 @@ class TrustDecision:
     """One recorded answer about one backend on one repository path."""
 
     backend: str
+    #: The EFFECTIVE answer: a grant whose ``build.rs`` has changed reports
+    #: ``False`` here, because the owner's 2026-08-23 ruling makes that change
+    #: revoking. ``recorded_grant`` keeps what was actually written down, so a
+    #: caller can tell "you said no" from "you said yes and the build script
+    #: then changed" — two very different things to show a person.
     granted: bool
     repo_path: str
-    manifest_digest: str
-    #: True when the build manifests differ from those present when the grant
-    #: was recorded. Advisory — see the module docstring and ADR-0045 OQ1.
-    manifest_changed: bool = False
+    build_digest: str
+    advisory_digest: str
+    #: ``build.rs`` differs from the grant. REVOKING (ADR-0045 ruling 7 as
+    #: amended).
+    build_changed: bool = False
+    #: ``Cargo.toml`` differs. Reported, never revoking.
+    advisory_changed: bool = False
+    #: What was written down, before revocation is applied.
+    recorded_grant: bool = False
 
 
 def trust_store_root(
@@ -101,16 +128,16 @@ def _repo_key(repo_root: Path) -> str:
     return hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
 
 
-def _manifest_digest(repo_root: Path) -> str:
-    """Digest of the files that decide what indexing will execute.
+def _digest_of(repo_root: Path, names: "tuple[str, ...]") -> str:
+    """Digest of ``names`` under ``repo_root``, or ``""`` if none are present.
 
-    Returns ``""`` when none are present, which is a meaningful value rather
-    than a missing one: a repository with no build script has nothing for the
-    hash to protect, so a later "changed" report would be noise.
+    The empty string is a meaningful value rather than a missing one: a
+    repository with no build script has nothing for the hash to protect, so a
+    later "changed" report about it would be pure noise.
     """
     hasher = hashlib.sha256()
     found = False
-    for name in _BUILD_MANIFESTS:
+    for name in names:
         candidate = Path(repo_root) / name
         if not candidate.is_file():
             continue
@@ -147,16 +174,19 @@ def record_decision(
     decision = TrustDecision(
         backend=backend,
         granted=granted,
+        recorded_grant=granted,
         repo_path=str(resolved),
-        manifest_digest=_manifest_digest(resolved),
+        build_digest=_digest_of(resolved, _REVOKING_MANIFESTS),
+        advisory_digest=_digest_of(resolved, _ADVISORY_MANIFESTS),
     )
     path = _record_path(resolved, environ)
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = _load_record(path)
     existing[backend] = {
-        "granted": decision.granted,
+        "granted": decision.recorded_grant,
         "repo_path": decision.repo_path,
-        "manifest_digest": decision.manifest_digest,
+        "build_digest": decision.build_digest,
+        "advisory_digest": decision.advisory_digest,
     }
     # 0o600: the grant is the user's own, and nothing else on the machine has
     # business reading which repositories they have agreed to execute.
@@ -193,12 +223,26 @@ def read_decision(
     entry = _load_record(_record_path(resolved, environ)).get(backend)
     if entry is None:
         return None
-    recorded = str(entry.get("manifest_digest", ""))
-    current = _manifest_digest(resolved)
+    recorded_build = str(entry.get("build_digest", ""))
+    recorded_adv = str(entry.get("advisory_digest", ""))
+    build_changed = bool(recorded_build) and recorded_build != _digest_of(
+        resolved, _REVOKING_MANIFESTS,
+    )
+    recorded_grant = bool(entry.get("granted", False))
     return TrustDecision(
         backend=backend,
-        granted=bool(entry.get("granted", False)),
+        # The revocation is applied HERE, at the one place every consumer
+        # reads through, rather than at each caller. A gate that had to
+        # remember to check build_changed itself is a gate that eventually
+        # forgets — and forgetting fails OPEN, executing a build script the
+        # user never approved.
+        granted=recorded_grant and not build_changed,
+        recorded_grant=recorded_grant,
         repo_path=str(entry.get("repo_path", str(resolved))),
-        manifest_digest=recorded,
-        manifest_changed=bool(recorded) and recorded != current,
+        build_digest=recorded_build,
+        advisory_digest=recorded_adv,
+        build_changed=build_changed,
+        advisory_changed=bool(recorded_adv) and recorded_adv != _digest_of(
+            resolved, _ADVISORY_MANIFESTS,
+        ),
     )
