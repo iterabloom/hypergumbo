@@ -1,0 +1,49 @@
+Original commit body from 46d26507995d28a1f94f93d4335a42235fa86239:
+
+Owner ruling 2026-08-23, resolving the open question the trust store shipped
+with. The previous behaviour was advisory for everything: a change was
+reported, the grant stood, and the next run executed the new build script.
+
+THE SPLIT IS THE SUBSTANCE. build.rs is the file that actually EXECUTES during
+indexing and it changes rarely, so a prompt about it carries information.
+Cargo.toml churns with routine dependency bumps, and re-prompting on that is
+how a person learns to click through the prompt that matters — the reasoning
+this project already wrote down in TestRustAnalyzerDisclosureRespectsTheGate.
+
+MEASURED END TO END on an authored fixture (harmless build script, authored
+here — arm never points at untrusted code):
+  granted, unchanged        -> 12 origin=scip nodes
+  Cargo.toml bumped         -> still granted, still 12, surfaced on --show
+  build.rs edited           -> 0 scip nodes; the modified script never ran
+
+REVOCATION IS APPLIED AT THE SINGLE READ POINT, not at each caller.
+read_decision returns the EFFECTIVE answer, so a consumer cannot forget the
+check — and forgetting would fail OPEN, executing a build script the user
+never approved. recorded_grant keeps what was written down, so --show can
+distinguish "you declined" from "you granted and the build script then
+changed"; conflating those would misreport what happened. The gate's behaviour
+is asserted through the RESOLVER it actually calls, not through the store
+alone.
+
+THE LIMIT IS STATED, and was on the table when the ruling was made: only
+TOP-LEVEL manifests are hashed, so no form of this protects against a
+DEPENDENCY's build script. It catches tampering with this project's own build
+script and nothing else — which is part of why full strictness, at its
+habituation cost, was not worth it.
+
+THE FOUR TESTS THAT PINNED THE OLD BEHAVIOUR NAMED THEMSELVES as the ones to
+change if OQ1 resolved, and were changed rather than deleted. The rewrite adds
+the DISCRIMINATING case the split needs — a Cargo.toml change that must NOT
+revoke. Without it, "revoke on any change" passes every other assertion and
+the ruling is silently over-implemented.
+
+ADR-0045 amended in place: ruling 7 rewritten, OQ1 marked RESOLVED,
+alternative A2 re-scoped to record why full strictness lost. Ruling recorded
+on WI-sobig in the owner's words.
+
+smart-test: 4485 passed, 2 skipped, 14 xfailed; all changed sources at 100%.
+mypy strict ratchet 670, delta +0 (an attr-defined breach from the renamed
+fields was fixed before going further).
+
+Racial-Capitalism-Is-Bad: a penguin djing in a clockwork workshop with a guild of hamsters
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
