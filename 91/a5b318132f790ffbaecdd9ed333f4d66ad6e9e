@@ -1,0 +1,50 @@
+Original commit body from 80348b6cf31b942c025d421df81cb2c8a75f1266:
+
+PR3 of the four-PR closure sequence for INV-fibis / INV-nuhun.
+
+rust.py carries a 77-name denylist so a name-only resolution cannot bind
+`x.load()` to a project `JoltDevice::load` -- WI-bakak measured 22 of 29 false
+callers -- and that policy is CORRECT and untouched. But NINE of those names
+are methods rust.yaml itself declares as I/O sinks (send, write, read, flush,
+recv, new, spawn, status, output; ten rows, `write` twice), so
+`sock.send(payload)` emitted NO EDGE AT ALL and a clean net_send verdict had
+nothing to disclose. Measured: a crate whose exfiltrate() does exactly that
+returned a BARE confirmed.
+
+THE DENYLIST WAS DOING TWO JOBS AND ONLY ONE WAS EVER JUSTIFIED. It skips
+RESOLUTION (WI-bakak's fix) and it also skipped emitting the honest
+unresolved-external edge -- which points at `external` and could never have
+produced one of those false callers.
+
+THE SET MOVED RATHER THAN BEING COPIED. It lives in analyzer_disclosure and
+rust.py imports it, so there is ONE object; a test asserts identity, not
+equality. The two readers want OPPOSITE things from it -- the analyzer asks
+"may I resolve this name?", verify_claims asks "what did I therefore never
+look at?" -- which is exactly when two homes diverge unnoticed. The overlap
+with the catalogue is computed at render time, so adding a row for a
+denylisted name extends the disclosure with nobody remembering to.
+
+EMITTING THE SUPPRESSED CALLS WAS MEASURED AND REJECTED, not assumed away: as
+ordinary unresolved-external edges they take TOTAL edges +33% (bellman
+2867->3819) and +67% (tiktoken-rs 375->627), and the EXTERNAL population +115%
+and +207%, because the same denylist holds clone/unwrap/map.
+
+A FIRST READING OF THE OVERLAP CLAIMED ALL FOUR Command ROWS WERE UNREACHABLE
+AND A LIVE CONTROL REFUTED IT: `Command::new("sh").status()` returns violated
+with the launch site named, because the denylist governs the INSTANCE-METHOD
+path and `Command::new` is an associated-function call that catches the chain
+first. The helper is method-kind-only for that reason.
+
+Measured end to end with two controls:
+  rust, denylisted sink name  -> confirmed_with_caveats rc 3, names all nine
+  go                          -> BARE confirmed rc 0   (not a blanket downgrade)
+  rust, non-denylisted sink   -> BARE confirmed        (not just reprinting
+                                 the denylist)
+  taint arm                   -> carries the same caveat (INV-nuhun asymmetry)
+
+The remaining imprecision is stated rather than hidden: the caveat is
+language-level, so a Rust crate calling none of the nine still receives it.
+Scoping it needs an analyzer->verdict channel and therefore schema surface --
+filed as WI-kodig rather than bolted on here.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
