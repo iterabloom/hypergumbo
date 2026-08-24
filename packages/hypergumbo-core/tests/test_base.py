@@ -2860,3 +2860,161 @@ class TestSynthesizeFileAnchorsForPaths:
         new = synthesize_file_anchors_for_paths(
             [outside], {"index.html": "html"}, repo_root=tmp_path)
         assert [a.path for a in new] == ["index.html"]
+
+
+def _parse_cpp(source: str):
+    """Parse C++ source with tree-sitter-cpp and return the root node."""
+    import tree_sitter
+    import tree_sitter_cpp
+    lang = tree_sitter.Language(tree_sitter_cpp.language())
+    parser = tree_sitter.Parser(lang)
+    tree = parser.parse(source.encode("utf-8"))
+    return tree.root_node
+
+
+class TestScopedPathSkipsImportAndTypePositions:
+    """INV-pusin: a ``use`` path and a return-type path are scoped_identifiers,
+    and the ``scoped_path`` walk emitted BOTH as attribute reads.
+
+    The ``use`` case is a duplicate home — the analyzer already emits the same
+    statement as an ``imports`` edge — so the fact the uncatalogued-module gate
+    deliberately excludes as an import re-entered as a ``module_attr_ref`` and
+    withheld a boundary verdict on a zero-dependency crate. The return-type
+    case has no second home and is simply not a read.
+
+    ``skip_context_kinds`` names the per-language ancestor kinds that mean
+    "this scoped name is a declaration or a type, not a value being read".
+    Each test carries a POSITIVE CONTROL in the same class: a genuine read
+    under the SAME tuple must still be emitted, or the fix is just a mute
+    button.
+    """
+
+    RUST_SKIP = ("use_declaration", "scoped_type_identifier", "generic_type")
+    CPP_SKIP = (
+        "using_declaration", "function_definition", "declaration",
+        "parameter_declaration", "field_declaration",
+    )
+
+    def _emit_rust(self, source: str, skip: tuple[str, ...]) -> list[Edge]:
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_rust(source),
+            source.encode("utf-8"),
+            {"std": "std"},
+            _fake_caller("rust:lib.rs:0-0:file:file"),
+            "rust",
+            edges,
+            node_kinds=("scoped_identifier",),
+            object_field_names=("path",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+            skip_context_kinds=skip,
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        return edges
+
+    def _emit_cpp(self, source: str, skip: tuple[str, ...]) -> list[Edge]:
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_cpp(source),
+            source.encode("utf-8"),
+            {"std": "std"},
+            _fake_caller("cpp:main.cpp:0-0:file:file"),
+            "cpp",
+            edges,
+            node_kinds=("qualified_identifier",),
+            object_field_names=("scope",),
+            property_field_names=("name",),
+            call_node_kinds=("call_expression",),
+            call_function_field_names=("function",),
+            scoped_path=True,
+            skip_context_kinds=skip,
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        return edges
+
+    def test_rust_use_declaration_emits_no_attribute_read(self) -> None:
+        """``use std::net::UdpSocket;`` is an import, already carried by an
+        ``imports`` edge. It emitted TWO module_attr_ref edges (the nested
+        walk fires at each depth), which is what put ``std`` and ``std.net``
+        on the uncatalogued-module list for a crate with no dependencies."""
+        edges = self._emit_rust("use std::net::UdpSocket;\n", self.RUST_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_rust_return_type_annotation_emits_no_attribute_read(self) -> None:
+        """``-> std::io::Result<String>`` names a type. Nothing is read."""
+        source = (
+            "pub fn f(p: &str) -> std::io::Result<String> {\n"
+            "    Ok(String::new())\n"
+            "}\n"
+        )
+        edges = self._emit_rust(source, self.RUST_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_rust_genuine_read_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL. ``std::env::consts::OS`` is a real attribute read
+        and must still reach the catalogue's ``attributes:`` matcher — the
+        middle depth is the one io_primitives/rust.yaml declares."""
+        source = "pub fn f() -> &'static str { std::env::consts::OS }\n"
+        edges = self._emit_rust(source, self.RUST_SKIP)
+        assert "rust:std.env:0-0:std.env.consts:attribute" in [
+            e.dst for e in edges
+        ], [e.dst for e in edges]
+
+    def test_rust_read_inside_a_typed_function_is_not_swallowed(self) -> None:
+        """POSITIVE CONTROL against over-skipping: the return type is skipped
+        but a genuine read in the BODY of that same function is not. Without
+        this a tuple containing ``generic_type`` could mute the whole
+        function and every test above would still pass."""
+        source = (
+            "pub fn f() -> std::io::Result<&'static str> {\n"
+            "    Ok(std::env::consts::OS)\n"
+            "}\n"
+        )
+        dsts = [e.dst for e in self._emit_rust(source, self.RUST_SKIP)]
+        assert "rust:std.env:0-0:std.env.consts:attribute" in dsts, dsts
+        assert not any("std.io" in d for d in dsts), dsts
+
+    def test_cpp_using_declaration_emits_no_attribute_read(self) -> None:
+        """The C++ half of the same defect: ``using std::string;``."""
+        edges = self._emit_cpp("using std::string;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_return_type_emits_no_attribute_read(self) -> None:
+        """``std::string f(int x) { ... }`` — the return type is not a read."""
+        source = "std::string f(int x) { return \"hi\"; }\n"
+        edges = self._emit_cpp(source, self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_genuine_read_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL. ``std::cout`` is a catalogued C++ I/O attribute."""
+        source = "void g() { std::cout << \"x\"; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert "cpp:std:0-0:std.cout:attribute" in dsts, dsts
+
+    def test_omitting_the_tuple_changes_nothing_for_other_languages(self) -> None:
+        """NON-DESTRUCTION. Languages that pass no ``skip_context_kinds``
+        (javascript, java, go, python) must emit exactly what they did
+        before — the default is empty and the walk is unchanged."""
+        source = "const p = process.env;\n"
+        edges: list[Edge] = []
+        emit_module_attribute_refs(
+            _parse_javascript(source),
+            source.encode("utf-8"),
+            {"process": "process"},
+            _fake_caller(),
+            "javascript",
+            edges,
+            node_kinds=("member_expression",),
+            object_field_names=("object",),
+            property_field_names=("property",),
+            pass_id="test-pass",
+            run_id="test-run",
+        )
+        assert [e.dst for e in edges] == [
+            "javascript:process:0-0:process.env:attribute",
+        ]

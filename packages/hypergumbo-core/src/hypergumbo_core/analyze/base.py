@@ -2632,6 +2632,27 @@ def _innermost_callable_at(
     return best
 
 
+def _scoped_context_kind(
+    node: "tree_sitter.Node",
+    node_kinds: tuple[str, ...],
+) -> str:
+    """The syntactic position a scoped-name node occupies, as a node type.
+
+    Walks past any ancestor that is ITSELF a scoped node, because those are
+    the outer levels of the same path rather than its context:
+    ``std::net`` inside ``use std::net::UdpSocket;`` has a
+    ``scoped_identifier`` parent and a ``use_declaration`` grandparent, and
+    only the latter answers "what is this path doing here".
+
+    Returns ``""`` at the root, which no caller's ``skip_context_kinds``
+    contains — a path with no context outside itself is not a declaration.
+    """
+    parent = node.parent
+    while parent is not None and parent.type in node_kinds:
+        parent = parent.parent
+    return parent.type if parent is not None else ""
+
+
 def emit_module_attribute_refs(
     root: "tree_sitter.Node",
     source: bytes,
@@ -2648,6 +2669,7 @@ def emit_module_attribute_refs(
     call_node_kinds: tuple[str, ...] = ("call_expression", "call",),
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
+    skip_context_kinds: tuple[str, ...] = (),
     enclosing_symbols: "Sequence[Symbol] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
@@ -2699,6 +2721,31 @@ def emit_module_attribute_refs(
             duplicated.
         call_function_field_names: Child-field names to try for the
             callee of a call node.
+        skip_context_kinds: Ancestor node types that mean "this scoped
+            name is a DECLARATION or a TYPE, not a value being read" —
+            ``use_declaration`` / ``using_declaration`` for imports,
+            ``scoped_type_identifier`` / ``generic_type`` /
+            ``function_definition`` / ``declaration`` for type
+            positions.  Empty by default, so the languages that pass
+            nothing (javascript, java, go) are unaffected.
+
+            INV-pusin: the walk below treats every scoped node outside
+            callee position as an attribute read, and in a ``scoped_path``
+            language a ``use`` path and a return-type path are both
+            scoped nodes.  The ``use`` case is a DUPLICATE HOME — the
+            analyzer already emits that statement as an ``imports``
+            edge — so the fact ``verify_claims`` deliberately excludes as
+            an import re-entered as a ``module_attr_ref`` and withheld
+            the boundary verdict on a crate with no dependencies at all
+            (measured: ``use std::fs;`` alone put ``std`` and ``std.fs``
+            on the uncatalogued-module list).  A return type has no
+            second home and is simply not a read.
+
+            THE ANCESTOR IS RESOLVED PAST THE NESTED-PREFIX LEVELS, not
+            from the immediate parent: ``std::net`` inside
+            ``use std::net::UdpSocket;`` has a ``scoped_identifier``
+            parent, and only the first ancestor OUTSIDE ``node_kinds``
+            says what syntactic position the whole path occupies.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -2735,6 +2782,9 @@ def emit_module_attribute_refs(
         if node.type not in node_kinds:
             continue
         if node.id in callee_attr_ids:
+            continue
+        if skip_context_kinds and _scoped_context_kind(
+                node, node_kinds) in skip_context_kinds:
             continue
         base = None
         for fname in object_field_names:

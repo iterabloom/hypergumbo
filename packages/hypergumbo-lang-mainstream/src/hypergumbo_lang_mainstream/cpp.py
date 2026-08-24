@@ -1722,6 +1722,17 @@ def _extract_edges_from_tree(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
+        # INV-pusin, the C++ half of the same defect: `using std::string;`
+        # is an import and `std::string f(int)` is a type, and the walk
+        # emitted both as attribute reads. A declaration's type sits
+        # DIRECTLY under the declaring node here (no `scoped_type_identifier`
+        # wrapper as in rust), so the declaration kinds themselves are the
+        # skip context -- a genuine read resolves to `binary_expression` /
+        # `init_declarator` instead and is unaffected.
+        skip_context_kinds=(
+            "using_declaration", "function_definition", "declaration",
+            "parameter_declaration", "field_declaration",
+        ),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         enclosing_symbols=list(local_symbols.values()),

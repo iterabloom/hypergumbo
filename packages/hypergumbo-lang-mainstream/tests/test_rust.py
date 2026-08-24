@@ -6108,3 +6108,71 @@ class TestRustBareMethodMagnetGate:
         assert len(resolved) == 1, (
             f"bare compute() to a free function should still bind; got {calls}"
         )
+
+
+class TestRustUseAndTypePositionsAreNotAttributeReads:
+    """INV-pusin: the scoped-path walk emitted ``use`` paths and return-type
+    paths as attribute reads.
+
+    The ``use`` case is a DUPLICATE HOME. The analyzer already emits each
+    ``use`` statement as an ``imports`` edge; the uncatalogued-module gate in
+    ``verify_claims`` deliberately excludes imports because an import performs
+    no I/O — and the same fact re-entered through ``module_attr_ref``, putting
+    ``std`` / ``std.net`` / ``std.io`` on the "could not classify" list for a
+    crate with no dependencies at all.
+    """
+
+    def test_use_statements_produce_imports_edges_and_no_attribute_reads(
+        self, tmp_path: Path,
+    ) -> None:
+        """Each ``use`` keeps exactly ONE home — the ``imports`` edge."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""use std::fs;
+use std::net::UdpSocket;
+use std::io::Write;
+
+pub fn load(p: &str) -> std::io::Result<String> {
+    fs::read_to_string(p)
+}
+""")
+        result = analyze_rust(tmp_path)
+
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_dsts == [], attr_dsts
+
+        import_dsts = {
+            e.dst for e in result.edges if e.edge_type == "imports"
+        }
+        # Raw analyzer ids; the boundary-node synthesis in ir.py rewrites
+        # the terminal slot to ``external_symbol`` later in the pipeline.
+        for expected in (
+            "rust:std::fs:0-0:module:module",
+            "rust:std::net::UdpSocket:0-0:module:module",
+            "rust:std::io::Write:0-0:module:module",
+        ):
+            assert expected in import_dsts, (expected, sorted(import_dsts))
+
+    def test_a_genuine_read_beside_the_use_statements_still_emits(
+        self, tmp_path: Path,
+    ) -> None:
+        """POSITIVE CONTROL, in a file that also carries the suppressed
+        shapes — otherwise the test above is satisfied by an analyzer that
+        stopped emitting attribute reads altogether."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text("""use std::env;
+
+pub fn os_name() -> &'static str {
+    std::env::consts::OS
+}
+""")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert "rust:std.env:0-0:std.env.consts:attribute" in attr_dsts, (
+            attr_dsts
+        )

@@ -2645,3 +2645,41 @@ class TestCppPureVirtualEmission:
         assert is_abstract_type(by_name["Shape"].kind, by_name["Shape"].modifiers)
         assert "abstract" not in by_name["Square"].modifiers
         assert not is_abstract_type(by_name["Square"].kind, by_name["Square"].modifiers)
+
+
+class TestCppUsingAndTypePositionsAreNotAttributeReads:
+    """INV-pusin, C++ half: ``using std::string;`` is an import and
+    ``std::string f(int)`` is a type. Neither is an attribute read, and
+    counting them withheld boundary verdicts on files with no dependency
+    on anything outside the standard library."""
+
+    def test_using_declaration_and_return_type_emit_no_attribute_reads(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text("""#include <string>
+using std::string;
+
+std::string only_a_type(int x) { return "hi"; }
+""")
+        result = analyze_cpp(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_dsts == [], attr_dsts
+
+    def test_a_genuine_read_still_emits(self, tmp_path: Path) -> None:
+        """POSITIVE CONTROL. ``std::cout`` is catalogued C++ I/O."""
+        from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+        (tmp_path / "main.cpp").write_text("""#include <iostream>
+using std::string;
+
+void g() { std::cout << "x"; }
+""")
+        result = analyze_cpp(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert "cpp:std:0-0:std.cout:attribute" in attr_dsts, attr_dsts
