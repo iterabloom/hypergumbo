@@ -298,6 +298,12 @@
     "--top",
     "-h"
   ],
+  "trust-backend": [
+    "--help",
+    "--revoke",
+    "--show",
+    "-h"
+  ],
   "uninstall-embeddings": [
     "--all",
     "--help",

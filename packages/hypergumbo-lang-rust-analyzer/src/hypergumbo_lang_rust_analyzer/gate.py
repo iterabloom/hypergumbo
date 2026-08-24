@@ -30,11 +30,14 @@ from __future__ import annotations
 import os
 from typing import Callable, Mapping, Optional
 
+from pathlib import Path
+
 from hypergumbo_core.backend_selection import (
     RUST_ANALYZER_ENV_VAR,
     RUST_ANALYZER_OFF_FLAGS,
     RUST_ANALYZER_ON_FLAGS,
     resolve_optin,
+    resolve_rust_analyzer_optin,
 )
 
 #: Re-exported from :mod:`hypergumbo_core.backend_selection`, which owns the
@@ -96,6 +99,7 @@ def should_use_rust_analyzer_backend(
     backend_flag: Optional[str] = None,
     environ: Optional[Mapping[str, str]] = None,
     is_available: Optional[Callable[[], bool]] = None,
+    repo_root: Optional["Path"] = None,
 ) -> bool:
     """Return True iff the rust-analyzer backend should run.
 
@@ -105,8 +109,12 @@ def should_use_rust_analyzer_backend(
       ``HYPERGUMBO_RUST_ANALYZER`` env var are TIERS, not alternatives:
       the flag outranks the variable in both directions, so
       ``--backend tree-sitter`` turns the backend off even when the variable
-      says on (ADR-0045 ruling 4). Ordering lives in
-      :func:`hypergumbo_core.backend_selection.resolve_optin`, not here.
+      says on (ADR-0045 ruling 4). With ``repo_root`` given, a recorded
+      per-repository TRUST decision is consulted below both (ruling 7) —
+      the durable opt-in a global environment variable could never express.
+      Ordering lives in
+      :func:`hypergumbo_core.backend_selection.resolve_rust_analyzer_optin`,
+      not here.
     - The ``rust-analyzer`` binary is resolvable on ``PATH`` (so
       activating the backend cannot fail at spawn-time for a configuration
       error the user can fix with ``hypergumbo install-rust-analyzer``).
@@ -118,12 +126,8 @@ def should_use_rust_analyzer_backend(
     mismatch should check the two conditions separately.
     """
     env = environ if environ is not None else os.environ
-    decision = resolve_optin(
-        flag_choice=backend_flag,
-        environ=env,
-        env_var=ENV_VAR_NAME,
-        on_flag_values=_RUST_ANALYZER_FLAG_VALUES,
-        off_flag_values=_TREE_SITTER_FLAG_VALUES,
+    decision = resolve_rust_analyzer_optin(
+        flag_choice=backend_flag, environ=env, repo_root=repo_root,
     )
     if decision is not True:
         return False

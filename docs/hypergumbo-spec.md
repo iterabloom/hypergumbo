@@ -232,6 +232,24 @@ Disable tier-based weighting in Key Symbols ranking (use raw centrality instead)
 | `HYPERGUMBO_VERBOSE` | unset | Set (to any value) to emit `[embed] …` progress logging to stderr during embedding-based config extraction. |
 | `HF_HUB_OFFLINE` | managed | hypergumbo sets this to `1` automatically while loading a *cached* embedding model, so runtime CLI subcommands make no outbound HuggingFace Hub requests (the `runtime-cli-no-network` claim). `local_files_only=True` alone does not stop HF Hub's metadata API, the xet cache-freshness ping, or the `transformers` safetensors background thread — only `HF_HUB_OFFLINE=1` does. The one-time first-install model download restores your prior setting so it can fetch. You may also export `HF_HUB_OFFLINE=1` yourself to force offline mode globally. |
 
+### Backend trust grants
+
+A backend that executes the analysed repository's code cannot be enabled from a config file (see above). It is enabled per repository with `hypergumbo trust-backend`, which records the grant outside every synced directory:
+
+```
+hypergumbo trust-backend rust_analyzer [PATH]     # grant
+hypergumbo trust-backend rust_analyzer --revoke   # decline (also silences the nudge)
+hypergumbo trust-backend rust_analyzer --show     # what is on file
+```
+
+Grants live in `$XDG_STATE_HOME/hypergumbo/trust.d` (default `~/.local/state/...`), mode `0600`, keyed by **resolved absolute path** — two checkouts of one repository are two decisions, because it is the working tree whose `build.rs` runs.
+
+Full opt-in precedence: `--backend` flag > `HYPERGUMBO_RUST_ANALYZER` > recorded grant > off.
+
+A grant records a digest of `build.rs` / `Cargo.toml`. A later change is **reported** by `--show`, not acted on — the grant stands until you `--revoke` it.
+
+**Limit, stated plainly:** the store is `0600` and unsynced, but "the human owns it and an automated agent cannot write it" is enforceable only by the OS, and only when the agent runs as a different user. To get that property, `chown` the store to the human account.
+
 ### Configuration files
 
 Two optional TOML tiers, both absent by default (ADR-0045):

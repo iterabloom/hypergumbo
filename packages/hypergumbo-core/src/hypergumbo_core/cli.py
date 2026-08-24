@@ -3299,6 +3299,61 @@ def _ensure_rust_analyzer_binary_or_exit() -> None:
     sys.exit(2)
 
 
+def cmd_trust_backend(args: argparse.Namespace) -> int:
+    """Record, revoke, or show a per-repository backend trust decision.
+
+    ADR-0045 rulings 6-8. This is the durable per-repository opt-in that
+    ``HYPERGUMBO_RUST_ANALYZER=1`` in a shell profile could only fake at the
+    wrong scope: the variable is global, so it opts in every Rust repository
+    the user ever analyses, including ones cloned to audit (WI-sobig).
+
+    HONEST LIMIT ON RULING 6. The ADR asks for a store the human owns and an
+    automated agent cannot write, generalising ADR-0013's ``config.yaml``
+    ownership pattern. That separation is enforceable only by the OPERATING
+    SYSTEM, and only when the agent runs as a different user: hypergumbo
+    cannot tell an agent from a person when both share a uid. What this
+    command does is write ``0600`` and keep the store out of any synced
+    directory; an operator who wants the stronger property must ``chown`` the
+    store to the human account, exactly as ``tracker init`` does for its
+    config. Documented rather than pretended.
+    """
+    from .backend_trust import read_decision, record_decision, trust_store_root
+
+    repo_root = Path(args.path).resolve()
+    backend = args.backend_name
+
+    if args.show:
+        decision = read_decision(repo_root, backend)
+        if decision is None:
+            print(f"{backend}: no decision recorded for {repo_root}")
+            return 0
+        state = "GRANTED" if decision.granted else "DECLINED"
+        print(f"{backend}: {state} for {decision.repo_path}")
+        if decision.manifest_changed:
+            print(
+                "  NOTE: the build manifests have changed since this decision "
+                "was recorded. The grant still stands (ADR-0045 ruling 7); "
+                "re-run with --revoke if you no longer trust this tree.",
+            )
+        return 0
+
+    granted = not args.revoke
+    try:
+        record_decision(repo_root, backend, granted, environ=None)
+    except ValueError as exc:
+        print(f"hypergumbo: error: {exc}", file=sys.stderr)
+        return 2
+    verb = "Granted" if granted else "Declined"
+    print(f"{verb} {backend} for {repo_root}")
+    print(f"  recorded in {trust_store_root()}")
+    if granted:
+        print(
+            "  Indexing this repository will run its build scripts (build.rs) "
+            "and proc macros as you.",
+        )
+    return 0
+
+
 def cmd_install_rust_analyzer(args: argparse.Namespace) -> int:
     """Install rust-analyzer (WI-dotud) or report availability via ``--check``.
 
@@ -9106,6 +9161,30 @@ The output begins with passes suggested for your current directory."""
     )
     p_install_ra.set_defaults(func=cmd_install_rust_analyzer)
 
+    # hypergumbo trust-backend (ADR-0045)
+    p_trust = sub.add_parser(
+        "trust-backend",
+        help=(
+            "Record a per-repository decision to allow (or refuse) a backend "
+            "that executes the analysed repository's code"
+        ),
+    )
+    p_trust.add_argument(
+        "backend_name",
+        metavar="BACKEND",
+        help="Backend to decide about (currently: rust_analyzer)",
+    )
+    p_trust.add_argument(
+        "path", nargs="?", default=".", help="Repository root (default: .)",
+    )
+    p_trust.add_argument(
+        "--revoke", action="store_true", help="Record a refusal instead of a grant",
+    )
+    p_trust.add_argument(
+        "--show", action="store_true", help="Print the recorded decision and exit",
+    )
+    p_trust.set_defaults(func=cmd_trust_backend)
+
     # hypergumbo uninstall-rust-analyzer
     p_uninstall_ra = sub.add_parser(
         "uninstall-rust-analyzer",
@@ -10799,7 +10878,9 @@ def run_survey(
 
     # Check for partial installation issues (ADR-0010 Item 8)
     # Emit warnings for: unanalyzed files, partial linker requirements
-    check_partial_install_warnings(profile, linker_ctx, emit_warnings=True)
+    check_partial_install_warnings(
+        profile, linker_ctx, emit_warnings=True, repo_root=repo_root,
+    )
 
     del linker_ctx, captured_symbols  # Free linker data structures
 
@@ -11347,7 +11428,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "repeat-finder", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "trust-backend", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "repeat-finder", "symbols", "compact", "io-boundaries", "verify-claims"}
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both

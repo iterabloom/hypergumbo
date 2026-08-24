@@ -46,6 +46,7 @@ which is the same class of bug as the one above, pointed the other way.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import FrozenSet, Mapping, Optional
 
 #: The rust-analyzer/SCIP backend's selection vocabulary, owned here rather
@@ -133,19 +134,40 @@ def resolve_rust_analyzer_optin(
     *,
     flag_choice: Optional[str] = None,
     environ: Optional[Mapping[str, str]] = None,
+    repo_root: Optional["Path"] = None,
 ) -> Optional[bool]:
     """:func:`resolve_optin` bound to the rust-analyzer backend's vocabulary.
 
     The one entry point both the CLI (which resolves the flag before argparse
     sees it) and the backend's own gate should use, so the two cannot come to
     disagree about what ``--backend tree-sitter`` means.
+
+    ``repo_root`` adds the TRUST-STORE tier, consulted only when the flag and
+    the environment are both silent (ADR-0045 rulings 4 and 7). It is below
+    them and above the built-in default, and it is the tier that makes the
+    opt-in durable per repository — the thing the global environment variable
+    could never express (WI-sobig). Config tiers are deliberately absent for
+    THIS backend: enabling something that executes the analysed repository's
+    build scripts is a trust grant, and ruling 2 keeps it out of config
+    entirely.
+
+    Passing no ``repo_root`` skips the tier rather than guessing a path, so a
+    caller analysing a cached map with no repository in hand simply gets the
+    higher tiers.
     """
     import os
 
-    return resolve_optin(
+    decision = resolve_optin(
         flag_choice=flag_choice,
         environ=os.environ if environ is None else environ,
         env_var=RUST_ANALYZER_ENV_VAR,
         on_flag_values=RUST_ANALYZER_ON_FLAGS,
         off_flag_values=RUST_ANALYZER_OFF_FLAGS,
     )
+    if decision is not None or repo_root is None:
+        return decision
+
+    from .backend_trust import read_decision
+
+    recorded = read_decision(repo_root, "rust_analyzer", environ=environ)
+    return None if recorded is None else recorded.granted
