@@ -131,7 +131,7 @@ from .io_boundary import (
     is_definitionally_first_party,
     normalize_module_separators,
 )
-from .ir import symbol_path_slot
+from .ir import symbol_name_slot, symbol_path_slot
 from .paths import classify_test_file, is_migration_file
 
 
@@ -1366,10 +1366,12 @@ def edge_in_artifact(edge: dict[str, Any], roots: list[str]) -> bool:
     all-clear.
     """
     src = str(edge.get("src", ""))
-    parts = src.split(":")
-    if len(parts) < 5:
+    if len(src.split(":")) < 5:
         return False
-    path = parts[1]
+    # PATH SLOT VIA THE CHOKEPOINT (INV-divuf). ``parts[1]`` truncates any
+    # colon-bearing path — ``dart:io`` became ``dart`` — so a shipped-artifact
+    # scope could silently exclude a file it was meant to include.
+    path = symbol_path_slot(src)
     # A root of "." means a flat single-package repo whose package dir IS the
     # repo root; every repo-relative path is inside it.
     return any(
@@ -2015,8 +2017,12 @@ def _launch_site_name(edge: dict[str, Any], dst: str) -> str:
     ref = _edge_dst_ref(edge)
     if ref is not None:
         return ".".join(part for part in (ref.module_path, ref.name) if part)
-    parts = dst.split(":")
-    return ".".join(part for part in (parts[1], parts[3]) if part)
+    # SLOTS VIA THE CHOKEPOINTS (INV-divuf): ``parts[1]``/``parts[3]`` assume
+    # a colon-free path AND name, and neither holds — an objc selector makes
+    # ``parts[3]`` a truncation and a rust ``std::io`` makes ``parts[1]`` one.
+    return ".".join(
+        part for part in (symbol_path_slot(dst), symbol_name_slot(dst)) if part
+    )
 
 
 def _is_producer_stamped_launch(edge: dict[str, Any]) -> bool:
@@ -2478,7 +2484,8 @@ def _untyped_receiver_call_sites(
         # position as the other consumer asks it.
         if _is_producer_stamped_launch(edge):
             continue
-        yield dst.split(":")[0], dst.split(":")[3], _call_site_label(edge), catalog
+        yield (dst.split(":")[0], symbol_name_slot(dst),
+               _call_site_label(edge), catalog)
 
 
 def untyped_receiver_sink_zones(
@@ -2573,7 +2580,11 @@ def unknown_receiver_scope(
         if _is_producer_stamped_launch(edge):
             continue
         sites += 1
-        names.add(parts[3])
+        # THE NAME THE READER IS SHOWN (WI-nakut, root-caused as INV-divuf).
+        # ``parts[3]`` truncates an Objective-C selector at its first colon, so
+        # the caveat named ``writeToFile`` for ``writeToFile:atomically:`` —
+        # not a method that exists. The span-anchored slot returns it whole.
+        names.add(symbol_name_slot(dst))
     return sites, total, sorted(names)
 
 
@@ -2604,7 +2615,9 @@ def _call_site_label(edge: dict[str, Any]) -> str:
     reader sat in different places would drift on the first edit to either.
     """
     path = _symbol_path_slot(edge.get("src", ""))
-    name = edge.get("dst", "").split(":")[3]
+    # Same truncation as ``unknown_receiver_scope``'s, and these two are a pair
+    # (``_site_method`` reads this label back), so they must agree (INV-divuf).
+    name = symbol_name_slot(str(edge.get("dst", "")))
     line = edge.get("line")
     where = f"{path}:{line}" if line else path
     return f"{where} {name}()"
