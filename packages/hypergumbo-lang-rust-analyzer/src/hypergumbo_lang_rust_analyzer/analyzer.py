@@ -173,7 +173,7 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     root, which is exactly what ``cargo metadata`` + ``rust-analyzer
     scip`` expect.
     """
-    if not should_use_rust_analyzer_backend():
+    if not should_use_rust_analyzer_backend(repo_root=repo_root):
         # Opt-in SCIP backend disabled (the default). Self-declare the skip so
         # the orchestrator records an honest ``skipped_passes`` entry with this
         # reason rather than the generic "no files matched" (which would be

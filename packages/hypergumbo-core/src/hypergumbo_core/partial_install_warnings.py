@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import warnings as python_warnings
 from dataclasses import dataclass
-import os
+from pathlib import Path
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -282,28 +282,36 @@ def check_unanalyzed_files(
 #: installed. Because a duplicate can drift, the two are pinned together by
 #: ``test_enabled_truthiness_matches_the_gates_own_vocabulary``.
 #: Mirror of ``gate.ENV_VAR_NAME`` for the same optional-dependency reason.
-ENV_VAR_NAME_RUST_ANALYZER = "HYPERGUMBO_RUST_ANALYZER"
-_RUST_ANALYZER_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-
-def rust_analyzer_backend_enabled(environ: Mapping[str, str] | None = None) -> bool:
+def rust_analyzer_backend_enabled(
+    environ: Mapping[str, str] | None = None,
+    repo_root: "Path | None" = None,
+) -> bool:
     """True when this run has the SCIP backend switched on.
 
     ``--backend rust-analyzer`` is normalised into ``HYPERGUMBO_RUST_ANALYZER=1``
-    during argv pre-parse (``cli.py``), so by the time warnings are assembled the
-    env var is the single signal for both opt-in routes.
+    during argv pre-parse (``cli.py``), so the env var carries both flag routes.
+
+    IT IS NO LONGER THE ONLY SIGNAL, and reading it as such was briefly a real
+    defect: once a per-repository TRUST GRANT could enable the backend
+    (ADR-0045 ruling 7), a granted run had no env var set, so this returned
+    False, the caller took the "not enabled" branch, and the recorded decision
+    then suppressed the nudge entirely — a run that WAS executing the
+    repository's build scripts printed nothing at all about it. The
+    present-tense disclosure is the one message that must never be lost, so
+    this asks the resolver that owns the whole precedence chain instead.
     """
-    if environ is None:
-        environ = os.environ
-    return environ.get(ENV_VAR_NAME_RUST_ANALYZER, "").strip().lower() in (
-        _RUST_ANALYZER_TRUTHY
-    )
+    from .backend_selection import resolve_rust_analyzer_optin
+
+    return resolve_rust_analyzer_optin(
+        environ=environ, repo_root=repo_root,
+    ) is True
 
 
 def check_rust_analyzer_disclosure(
     profile: "RepoProfile",
     available: bool,
     enabled: bool = False,
+    repo_root: "Path | None" = None,
 ) -> list[PartialInstallWarning]:
     """Tell the user the Rust backend exists — and what enabling it costs.
 
@@ -335,6 +343,26 @@ def check_rust_analyzer_disclosure(
         LANGUAGE_ALIASES.get(lang, lang) == "rust" for lang in profile.languages
     ):
         return []
+
+    # ADR-0045 ruling 8. A user who has ANSWERED — either way — for this
+    # repository is not asked again. Before the trust store there was no way
+    # to answer durably, so the nudge fired on every run against every Rust
+    # repo with the binary installed, and a person who had deliberately
+    # chosen tree-sitter had no way to say so. That matters more here than
+    # for an ordinary nag because the text carries a SECURITY disclosure, and
+    # this module already records why (see TestRustAnalyzerDisclosure
+    # RespectsTheGate): a prompt that fires when it is moot trains people to
+    # skim past the one sentence that must land.
+    #
+    # The ENABLED arm is deliberately still emitted below even with a grant
+    # on file: that message is not a nudge, it is a statement that build
+    # scripts ARE RUNNING right now, and a standing grant does not make the
+    # present tense less true.
+    if not enabled and repo_root is not None:
+        from .backend_trust import read_decision
+
+        if read_decision(repo_root, "rust_analyzer") is not None:
+            return []
 
     caveat = (
         "  Indexing runs this project's build scripts (build.rs) and proc "
@@ -512,6 +540,7 @@ def check_partial_install_warnings(
     profile: "RepoProfile",
     linker_ctx: "LinkerContext",
     emit_warnings: bool = True,
+    repo_root: "Path | None" = None,
 ) -> list[PartialInstallWarning]:
     """Check for all partial installation issues and optionally emit warnings.
 
@@ -540,7 +569,8 @@ def check_partial_install_warnings(
         check_rust_analyzer_disclosure(
             profile,
             available=is_rust_analyzer_available(),
-            enabled=rust_analyzer_backend_enabled(),
+            enabled=rust_analyzer_backend_enabled(repo_root=repo_root),
+            repo_root=repo_root,
         ),
     )
 
