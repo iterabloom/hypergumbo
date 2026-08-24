@@ -55,9 +55,11 @@ from dataclasses import dataclass
 
 __all__ = [
     "DECLARATIONS",
+    "SUPPRESSED_METHOD_NAMES",
     "MethodCallEdgeDeclaration",
     "emits_external_method_call_edges",
     "method_call_blind_languages",
+    "suppressed_catalogued_sinks",
 ]
 
 
@@ -145,3 +147,103 @@ def method_call_blind_languages(
         if lang in languages_with_method_sinks
         and not emits_external_method_call_edges(lang)
     )
+
+
+#: Method names an analyzer DELIBERATELY declines to model, per language.
+#:
+#: THIS IS THE ANALYZER'S OWN DENYLIST, MOVED HERE RATHER THAN COPIED. rust.py
+#: imports ``SUPPRESSED_METHOD_NAMES["rust"]`` as its
+#: ``_RUST_GENERIC_TRAIT_METHODS``; there is one object, not two. A restated
+#: copy would be a second home for one fact and the copy is what goes stale
+#: (LIVE.md rule 7) — and here the two readers want OPPOSITE things from it,
+#: which is exactly the condition under which two homes diverge unnoticed: the
+#: analyzer asks "may I resolve this name?" and ``verify_claims`` asks "what did
+#: I therefore never look at?".
+#:
+#: WHY THE DENYLIST IS RIGHT AND STAYS. Without receiver types, resolving
+#: ``x.load()`` by name binds it to an arbitrary concrete ``load`` — WI-bakak
+#: measured 22 of 29 false callers on ``JoltDevice::load`` from
+#: ``AtomicU64.load(Ordering::Relaxed)``. Name-only resolution with conservative
+#: guards is the intended design, and receiver-type discrimination is a
+#: fidelity question (WI-nanom / rust-analyzer), not a denylist question.
+#:
+#: WHY IT NONETHELESS COSTS A DISCLOSURE. Ten of these names are methods
+#: ``io_primitives/rust.yaml`` declares as I/O SINKS, so a call to one of them
+#: on an untypable receiver produced no edge and a clean boundary verdict had
+#: nothing to disclose — INV-polad. The overlap is computed from the shipped
+#: catalogue by :func:`suppressed_catalogued_sinks` rather than listed here, so
+#: adding a catalogue row for a denylisted name extends the disclosure without
+#: anyone remembering to.
+#:
+#: WHY NOT SIMPLY EMIT THE SUPPRESSED CALLS, measured before being rejected:
+#: emitting them as ordinary unresolved-external edges took total edges +33% /
+#: +67% and the external-edge population +115% / +207% on two real crates
+#: (bellman, tiktoken-rs), because the same set contains ``clone`` / ``unwrap``
+#: / ``map``. Paying that in centrality, dead-code, slice and supply-chain
+#: output on every Rust repository to make ten names disclosable is the wrong
+#: trade; declaring the gap costs nothing and says the same true thing.
+SUPPRESSED_METHOD_NAMES: dict[str, frozenset[str]] = {
+    "rust": frozenset({
+    # core::convert
+    "into", "from", "try_into", "try_from",
+    # core::fmt / Display / ToString
+    "fmt", "to_string",
+    # core::default
+    "default",
+    # core::clone
+    "clone", "clone_from",
+    # core::cmp / core::hash
+    "eq", "ne", "partial_cmp", "cmp", "hash",
+    # core::ops
+    "deref", "deref_mut", "drop",
+    # core::iter — combinators are on Iterator, Option, Result
+    "next", "into_iter", "map", "filter", "fold", "collect", "flat_map",
+    "find", "any", "all", "for_each",
+    # core::convert (ref)
+    "as_ref", "as_mut",
+    # std collection methods (ambiguous without receiver type)
+    "len", "is_empty", "push", "pop", "get", "insert", "remove", "contains",
+    "iter", "iter_mut", "extend",
+    # Option / Result combinators
+    "and_then", "or_else", "map_err", "unwrap_or", "unwrap_or_else",
+    "ok", "err", "expect", "ok_or", "ok_or_else",
+    # serde
+    "serialize", "deserialize",
+    # core::str / parsing
+    "from_str", "parse", "unwrap",
+    # std::sync::atomic — .load()/.store() on AtomicU64, AtomicU8, etc.
+    # Without receiver type info, x.load() conflates AtomicU64.load()
+    # with domain-specific load() methods (WI-bakak: 22 false positives).
+    "load", "store", "fetch_add", "fetch_sub", "compare_exchange", "swap",
+    # std::io — Read/Write trait methods
+    "read", "write", "flush",
+    # Constructor / builder — ubiquitous across types
+    "new", "build",
+    # Channel / async
+    "send", "recv",
+    # Command — .output() conflates with test utilities (ripgrep bakeoff)
+    "output", "status", "spawn",
+    # Logging — ubiquitous across log/tracing crates
+    "warn", "error", "info", "debug", "trace",
+}),
+}
+
+
+def suppressed_catalogued_sinks(language: str, catalog: object) -> set[str]:
+    """Names this language's analyzer declines to model that its I/O catalogue
+    declares as METHOD-kind sinks.
+
+    METHOD-KIND ONLY, and the restriction is load-bearing rather than tidy: the
+    denylist governs the instance-method call path, so an associated-function
+    call of the same name is unaffected. ``std::process::Command.new`` is the
+    worked example — ``new`` is on the denylist, yet a crate calling
+    ``Command::new("sh").status()`` still returns ``violated`` with the launch
+    site named, because that is a ``Type::method`` call on a different path. A
+    first reading of this overlap claimed all four subprocess rows were
+    unreachable; a live control refuted it.
+    """
+    names = {
+        p.name for p in getattr(catalog, "primitives", ())
+        if getattr(p, "kind", None) == "method"
+    }
+    return names & SUPPRESSED_METHOD_NAMES.get(language, frozenset())

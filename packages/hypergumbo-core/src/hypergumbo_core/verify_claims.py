@@ -459,6 +459,32 @@ CAVEAT_UNKNOWN_RECEIVER_SCOPE = "unknown_receiver_scope"
 #: violation, which is LIVE.md rule 19 and the reason the bar was rewritten.
 CAVEAT_ANALYZER_METHOD_CALL_BLIND = "analyzer_method_call_blind"
 
+#: A clean verdict rests on a language whose analyzer DELIBERATELY declines to
+#: model some method names, and the catalogue declares some of those names as
+#: I/O sinks (INV-polad).
+#:
+#: THE SIBLING ABOVE IS ABOUT A WHOLE CONSTRUCT; THIS IS ABOUT NAMED METHODS,
+#: and they are kept apart because the remedies differ. kotlin cannot see
+#: external instance-method calls AT ALL and the fix is to build the edges
+#: (WI-nasuf). rust sees them and drops a listed 77 by name to stop a name-only
+#: resolution binding ``x.load()`` to a project ``JoltDevice::load`` (WI-bakak,
+#: 22 of 29 false callers) — a policy that is CORRECT and stays. Collapsing the
+#: two would suggest one fix for two different problems.
+#:
+#: NINE NAMES, TEN CATALOGUE ROWS, DERIVED NOT LISTED. ``send`` / ``write`` /
+#: ``read`` / ``flush`` / ``recv`` / ``new`` / ``spawn`` / ``status`` /
+#: ``output`` are each declared a method-kind sink by ``rust.yaml``
+#: (``write`` twice, for ``io::Write`` and ``TcpStream``). The overlap is
+#: computed from the shipped catalogue at render time, so adding a row for a
+#: denylisted name extends the disclosure with nobody remembering to.
+#:
+#: WHY NOT JUST EMIT THE CALLS — measured, then rejected: as ordinary
+#: unresolved-external edges they took total edges +33% / +67% and the external
+#: population +115% / +207% on two real crates, because the same set holds
+#: ``clone`` / ``unwrap`` / ``map``. Declaring the gap says the same true thing
+#: for nothing.
+CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
+
 
 def _merge_caveat(
     existing: list[dict[str, Any]], new: dict[str, Any],
@@ -671,6 +697,34 @@ def _analyzer_method_call_blind_caveat(
             f"instance-method call, so calls of that shape were never seen and "
             f"could be neither adjudicated nor disclosed individually: "
             f"{', '.join(parts)}.{when}"
+        ),
+    }
+
+
+def _analyzer_suppressed_methods_caveat(
+    entries: dict[str, list[str]],
+) -> dict[str, Any]:
+    """The one place the suppressed-sink-name disclosure is built.
+
+    NAMES THE METHODS, not just the count, because the reader's question is
+    "does my code call one of these?" and only the list answers it. A reader
+    who sees ``send`` can check their sockets; a reader who sees "9 methods"
+    cannot check anything.
+    """
+    parts = [
+        f"{lang} ({', '.join(sorted(names))})"
+        for lang, names in sorted(entries.items())
+    ]
+    return {
+        "kind": CAVEAT_ANALYZER_SUPPRESSED_METHODS,
+        "entries": sorted(entries),
+        "detail": (
+            "This verdict is closed-world over the method names the analysis "
+            "models. Some methods the I/O catalogue declares as sinks are "
+            "deliberately not resolved by name, because without a receiver "
+            "type a name-only match binds unrelated calls together — so a "
+            "call to one of them on an untypable receiver was neither "
+            "adjudicated nor individually disclosed: " + "; ".join(parts) + "."
         ),
     }
 
@@ -985,6 +1039,15 @@ class BoundaryCoverage:
     #: whose value comes from a declaration rather than a measurement of the
     #: run.
     method_call_blind_languages: list[str] = field(default_factory=list)
+    #: Language -> the method names its analyzer declines to model that the
+    #: language's own I/O catalogue declares as METHOD-kind sinks (INV-polad).
+    #:
+    #: Like :attr:`method_call_blind_languages` and unlike every other field
+    #: here, this is not read off the edge set: the suppressed calls left no
+    #: edge to read. It is the intersection of a DECLARATION (the analyzer's
+    #: own denylist, which now lives in ``analyzer_disclosure`` so there is one
+    #: copy) with the shipped catalogue.
+    suppressed_sink_methods: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -2455,7 +2518,19 @@ def compute_boundary_coverage(
     # answer has to come from a dated declaration (analyzer_disclosure). Scoped
     # to languages whose catalogue actually declares method-kind sinks, because
     # a language that catalogues none cannot be hurt by not seeing them.
-    from .analyzer_disclosure import method_call_blind_languages
+    from .analyzer_disclosure import (
+        method_call_blind_languages,
+        suppressed_catalogued_sinks,
+    )
+    # Scoped to languages PRESENT in this analysis, for the same reason its
+    # sibling is: a disclosure about a language the repository does not contain
+    # is noise, and a caveat that is always there is discounted by its reader.
+    coverage.suppressed_sink_methods = {
+        lang: sorted(hidden)
+        for lang, catalog in catalogs.items()
+        if lang in supported_languages
+        and (hidden := suppressed_catalogued_sinks(lang, catalog))
+    }
     coverage.method_call_blind_languages = method_call_blind_languages(
         supported_languages,
         {
@@ -2761,6 +2836,13 @@ def verify_claim(
                 out,
                 _analyzer_method_call_blind_caveat(
                     coverage.method_call_blind_languages,
+                ),
+            )
+        if coverage.suppressed_sink_methods:
+            out = _merge_caveat(
+                out,
+                _analyzer_suppressed_methods_caveat(
+                    coverage.suppressed_sink_methods,
                 ),
             )
         return out
@@ -3420,6 +3502,13 @@ def verify_taint_claim(
                     caveats,
                     _analyzer_method_call_blind_caveat(
                         coverage.method_call_blind_languages,
+                    ),
+                )
+            if coverage.suppressed_sink_methods:
+                caveats = _merge_caveat(
+                    caveats,
+                    _analyzer_suppressed_methods_caveat(
+                        coverage.suppressed_sink_methods,
                     ),
                 )
         return ClaimVerdict(
