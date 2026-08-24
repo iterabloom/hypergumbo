@@ -212,6 +212,21 @@ from .paths import classify_test_file, is_migration_file
 # BEHAVIOURAL change disclosed in the changelog rather than a schema one. The
 # version moves when the ENVELOPE moves.
 #
+# 2.2 adds the per-verdict ``analysis_fidelity`` map — language -> the pass IDs
+# that produced the CALL edges this verdict rests on (WI-lagod). Additive: a 2.1
+# consumer ignoring it still reads a correct verdict. It is a version change and
+# not a silent field addition because without it a verdict cannot be compared
+# across runs at all: two runs over one Rust crate differing ONLY in backend
+# produced a BYTE-IDENTICAL verdict block while one carried 10 ``origin=scip``
+# nodes and the other zero, so a reader holding the output could not tell which
+# analyzer had spoken. This is the second half of the owner's 2026-08-23 bar —
+# "name what it could not examine, AND AT WHAT ANALYSIS FIDELITY".
+#
+# NOT ``analysis_methods``, which already exists and records how the taint walk
+# REASONED (``ddg`` / ``ddg_mixed`` / ``structural``). A ``structural`` verdict
+# and a tree-sitter verdict are different facts; widening that key into this one
+# would put two concepts under one name.
+#
 # 2.1 makes a violated verdict's evidence row a SITUATION rather than a
 # source->sink pair wherever the pair was not adjudicated (INV-karud), and adds
 # ``source_primitives`` / ``sink_primitives`` / ``sink_symbols`` /
@@ -226,7 +241,7 @@ from .paths import classify_test_file, is_migration_file
 # valid — each is a member of its own set — so a consumer reading
 # ``sink_primitive`` reads one of the primitives the row names rather than a
 # field that vanished.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.1"
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.2"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -484,6 +499,29 @@ CAVEAT_ANALYZER_METHOD_CALL_BLIND = "analyzer_method_call_blind"
 #: ``clone`` / ``unwrap`` / ``map``. Declaring the gap says the same true thing
 #: for nothing.
 CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
+
+#: A higher-fidelity analyzer for a language in this repository is INSTALLED on
+#: this machine and was not used (WI-lagod).
+#:
+#: THE REQUIREMENT THIS ANSWERS, in the ruling's own terms: a rust repository
+#: analysed with rust-analyzer installed but NOT enabled produced a verdict
+#: indistinguishable from one on a machine where no such backend exists, and a
+#: reader would act differently on those two. ``analysis_fidelity`` says what
+#: RAN; this says what COULD HAVE. They are separate because the first is a
+#: statement about the run and the second about the machine, and only the
+#: second can be acted on by turning something on.
+#:
+#: SCOPED TO UNUSED, NOT TO EXISTENCE. When the backend actually ran, its pass
+#: ID appears in ``analysis_fidelity`` and this caveat does not fire — if it
+#: fired either way, enabling the backend would leave the verdict looking just
+#: as qualified and nobody would enable it.
+CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
+
+#: Backend name (as a person types it at ``--backend``) -> the pass ID its
+#: edges actually carry. Without this the "did it run?" check compares a
+#: human-facing label against a producer stamp and answers no every time, so a
+#: run WITH the backend on would still be told to turn it on.
+_BACKEND_PASS_IDS: dict[str, str] = {"rust-analyzer": "scip"}
 
 
 def _merge_caveat(
@@ -924,6 +962,10 @@ class ClaimVerdict:
     analysis_methods: dict[str, int] = field(default_factory=dict)
     sanitized_flows: int = 0
     caveats: list[dict[str, Any]] = field(default_factory=list)
+    #: Language -> the pass IDs that produced the call edges this verdict rests
+    #: on (WI-lagod). The second half of the owner's 2026-08-23 bar: a clean
+    #: verdict must name what it could not examine AND AT WHAT FIDELITY.
+    analysis_fidelity: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize to JSON-friendly dict."""
@@ -939,6 +981,7 @@ class ClaimVerdict:
             "analysis_methods": self.analysis_methods,
             "sanitized_flows": self.sanitized_flows,
             "caveats": self.caveats,
+            "analysis_fidelity": self.analysis_fidelity,
         }
 
 
@@ -1048,6 +1091,15 @@ class BoundaryCoverage:
     #: own denylist, which now lives in ``analyzer_disclosure`` so there is one
     #: copy) with the shipped catalogue.
     suppressed_sink_methods: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> pass IDs behind its call edges (WI-lagod). Carried here for
+    #: the reason every field on this object is: one computation site the
+    #: verdict paths share, so a caller cannot forget it.
+    analysis_fidelity: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> the name of a higher-fidelity backend INSTALLED on this
+    #: machine that did NOT run. Passed in rather than derived, because
+    #: "installed" is a fact about the machine and this module reasons about an
+    #: edge set; deriving it here would mean this module shelling out.
+    higher_fidelity_available: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -2005,6 +2057,91 @@ def _opaque_launch_sites(
     return sorted(sites)
 
 
+def analysis_fidelity(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> dict[str, list[str]]:
+    """Language -> the pass IDs that produced the CALL edges, sorted.
+
+    THE RAW MATERIAL WAS ALWAYS THERE AND UNREAD. ``Edge.origin`` is a list of
+    pass IDs and ``Edge.__post_init__`` HARD-RAISES on an empty one, so every
+    edge in a well-formed map can say which pass made it; this module read
+    ``src`` / ``dst`` / ``type`` and never ``origin``.
+
+    CALL EDGES ONLY. A ``contains`` edge from the containment linker says
+    nothing about the fidelity of the call structure a boundary verdict rests
+    on, and including it would let an infrastructure pass dilute the answer.
+
+    AN EDGE WITH NO ORIGIN IS REPORTED AS ``unattributed`` RATHER THAN DROPPED.
+    Dropping it would let a verdict claim a fidelity for edges that never
+    declared one — the failure mode this whole field exists to remove.
+
+    Two entries for one language is the NORMAL case, not an anomaly: ADR-0012's
+    multi-fidelity design is COEXISTENCE, so a Rust run with the SCIP backend
+    on carries tree-sitter and scip edges side by side.
+    """
+    by_language: dict[str, set[str]] = {}
+    for edge in raw_edges:
+        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
+            continue
+        language = str(edge.get("dst", "")).split(":")[0]
+        if language not in catalogs:
+            continue
+        origin = edge.get("origin") or []
+        if isinstance(origin, str):
+            origin = [origin] if origin else []
+        by_language.setdefault(language, set()).update(
+            origin or ["unattributed"],
+        )
+    return {lang: sorted(ids) for lang, ids in sorted(by_language.items())}
+
+
+def passes_that_ran(raw_edges: list[dict[str, Any]]) -> set[str]:
+    """Every pass ID that stamped ANY edge in this run.
+
+    DELIBERATELY NOT :func:`analysis_fidelity`, and the difference was found by
+    measuring rather than reasoning. A backend can RUN and contribute no CALL
+    edges: with rust-analyzer enabled on an authored crate, the SCIP pass
+    emitted ``references`` and ``contains`` edges and no external ``calls``, so
+    the call-edge fidelity map correctly read ``{"rust": ["rust"]}`` — and a
+    "was NOT used" caveat keyed on that map told the reader to enable a backend
+    that was already on. That sentence was false, which is the one thing this
+    whole disclosure exists to prevent.
+
+    So the two questions are answered from two populations: what produced the
+    CALL STRUCTURE the verdict rests on (call edges only), and whether a pass
+    ran at all (every edge).
+    """
+    seen: set[str] = set()
+    for edge in raw_edges:
+        origin = edge.get("origin") or []
+        if isinstance(origin, str):
+            origin = [origin] if origin else []
+        seen.update(origin)
+    return seen
+
+
+def _higher_fidelity_caveat(entries: dict[str, str]) -> dict[str, Any]:
+    """The one place the unused-backend disclosure is built.
+
+    NAMES THE BACKEND, because the action the reader can take is to turn that
+    specific thing on, and a caveat that does not say what to enable is a
+    complaint rather than a disclosure.
+    """
+    parts = [f"{lang} ({backend})" for lang, backend in sorted(entries.items())]
+    return {
+        "kind": CAVEAT_HIGHER_FIDELITY_AVAILABLE,
+        "entries": sorted(entries),
+        "detail": (
+            "A higher-fidelity analyzer for this repository is installed on "
+            "this machine and was NOT used, so the verdict rests on the "
+            "built-in parser's view of call structure rather than on resolved "
+            "types: " + ", ".join(parts) + ". Enabling it resolves receivers "
+            "this verdict had to disclose it could not type."
+        ),
+    }
+
+
 def _uncatalogued_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -2491,6 +2628,8 @@ def compute_boundary_coverage(
     raw_edges: list[dict[str, Any]],
     supported_languages: set[str],
     catalogs: dict[str, IoBoundaryCatalog],
+    *,
+    higher_fidelity_available: Optional[dict[str, str]] = None,
 ) -> BoundaryCoverage:
     """Decide whether the boundary analysis can support a clean verdict, and what
     such a verdict must disclose.
@@ -2525,6 +2664,21 @@ def compute_boundary_coverage(
     # Scoped to languages PRESENT in this analysis, for the same reason its
     # sibling is: a disclosure about a language the repository does not contain
     # is noise, and a caveat that is always there is discounted by its reader.
+    coverage.analysis_fidelity = analysis_fidelity(raw_edges, catalogs)
+    # UNUSED, not merely available, and "unused" is decided from the pass IDs
+    # that stamped ANY edge — not from the call-edge fidelity map. Measured:
+    # with rust-analyzer ON, the SCIP pass emitted `references` and `contains`
+    # and no external `calls`, so a check against the fidelity map said "not
+    # used" about a backend that was demonstrably running and printed its own
+    # "backend ACTIVE" banner in the same run. Caveating that would tell the
+    # reader to enable something already enabled.
+    _ran = passes_that_ran(raw_edges)
+    coverage.higher_fidelity_available = {
+        lang: backend
+        for lang, backend in (higher_fidelity_available or {}).items()
+        if lang in supported_languages
+        and _BACKEND_PASS_IDS.get(backend, backend) not in _ran
+    }
     coverage.suppressed_sink_methods = {
         lang: sorted(hidden)
         for lang, catalog in catalogs.items()
@@ -2771,6 +2925,27 @@ def verify_claim(
     boundary_map: BoundaryMap,
     coverage: Optional[BoundaryCoverage] = None,
 ) -> ClaimVerdict:
+    """Verify a boundary claim and stamp the fidelity behind the answer.
+
+    ONE HOME FOR THE STAMP, and the count is the argument: this module builds a
+    ``ClaimVerdict`` at fifteen separate return sites, and a field set at each
+    of them is a field the sixteenth will not set. WI-lagod exists because a
+    verdict could not say which analyzer produced its edges; a fix that
+    reintroduces the same omission one branch at a time would be no fix. The
+    wrapper is deliberately thin — all the reasoning stays in
+    :func:`_verify_claim_uncredited`.
+    """
+    verdict = _verify_claim_uncredited(claim, boundary_map, coverage)
+    if coverage is not None:
+        verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
+    return verdict
+
+
+def _verify_claim_uncredited(
+    claim: Claim,
+    boundary_map: BoundaryMap,
+    coverage: Optional[BoundaryCoverage] = None,
+) -> ClaimVerdict:
     """Verify a single boundary-constraint claim against a boundary map.
 
     Args:
@@ -2844,6 +3019,11 @@ def verify_claim(
                 _analyzer_suppressed_methods_caveat(
                     coverage.suppressed_sink_methods,
                 ),
+            )
+        if coverage.higher_fidelity_available:
+            out = _merge_caveat(
+                out,
+                _higher_fidelity_caveat(coverage.higher_fidelity_available),
             )
         return out
 
@@ -3284,7 +3464,33 @@ def _displaced_shipped_entries(
 
 def verify_taint_claim(
     claim: Claim,
-    findings: list,
+    findings: list[Any],
+    include_non_production: bool = False,
+    *,
+    displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
+    displaced_sources: Mapping[str, Sequence[Any]] | None = None,
+    coverage: Optional[BoundaryCoverage] = None,
+) -> ClaimVerdict:
+    """Verify a taint claim and stamp the fidelity behind the answer.
+
+    The taint arm gets the same wrapper as the boundary arm for the reason
+    INV-nuhun exists: a run that credits its fidelity on one arm and stays
+    silent on the other is the asymmetry that item names.
+    """
+    verdict = _verify_taint_claim_uncredited(
+        claim, findings, include_non_production,
+        displaced_sinks=displaced_sinks,
+        displaced_sources=displaced_sources,
+        coverage=coverage,
+    )
+    if coverage is not None:
+        verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
+    return verdict
+
+
+def _verify_taint_claim_uncredited(
+    claim: Claim,
+    findings: list[Any],
     include_non_production: bool = False,
     *,
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
@@ -3509,6 +3715,13 @@ def verify_taint_claim(
                     caveats,
                     _analyzer_suppressed_methods_caveat(
                         coverage.suppressed_sink_methods,
+                    ),
+                )
+            if coverage.higher_fidelity_available:
+                caveats = _merge_caveat(
+                    caveats,
+                    _higher_fidelity_caveat(
+                        coverage.higher_fidelity_available,
                     ),
                 )
         return ClaimVerdict(

@@ -5026,6 +5026,31 @@ def _load_config_or_exit(repo_root: Path) -> "LayeredConfig":
         raise SystemExit(2) from exc
 
 
+def _higher_fidelity_backends_available(
+    languages: set[str],
+    repo_root: "Path | None" = None,
+) -> dict[str, str]:
+    """Languages present here for which a higher-fidelity analyzer is INSTALLED.
+
+    WI-lagod: a rust repository analysed with rust-analyzer installed but not
+    enabled produced a verdict indistinguishable from one on a machine where no
+    such backend exists, and a reader would act differently on those two. This
+    is the "what could have run" half; ``analysis_fidelity`` is the "what ran"
+    half, and ``compute_boundary_coverage`` subtracts the second from the first
+    so a run that USED the backend is not told to enable it.
+
+    Derived HERE rather than inside ``verify_claims`` on purpose: "is the binary
+    on this machine" is a fact about the machine, and that module reasons about
+    an edge set. Putting a ``shutil.which`` inside it would make a pure function
+    of the graph depend on the host.
+    """
+    if "rust" not in languages:
+        return {}
+    if not is_rust_analyzer_available():
+        return {}
+    return {"rust": "rust-analyzer"}
+
+
 def _resolve_io_overlays(
     args: argparse.Namespace,
     claims_paths: "list[Path] | None" = None,
@@ -5806,6 +5831,9 @@ def _taint_blind_reason(
         ), []
     coverage = compute_boundary_coverage(
         scoped_edges, taint_supported_languages, catalogs,
+        higher_fidelity_available=_higher_fidelity_backends_available(
+            taint_supported_languages,
+        ),
     )
     if not coverage.complete:
         # ADR-0016 §4: opaque launches QUALIFY rather than blind, but only when
@@ -6007,7 +6035,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # edges (analyzer blind — F69.A1) downgrades a would-be "confirmed"
     # must_not_exist / max_chains verdict to "inconclusive".
     supported_present = languages & set(catalogs)
-    coverage = compute_boundary_coverage(raw_edges, supported_present, catalogs)
+    coverage = compute_boundary_coverage(
+        raw_edges, supported_present, catalogs,
+        higher_fidelity_available=_higher_fidelity_backends_available(
+            supported_present,
+        ),
+    )
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
