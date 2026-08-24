@@ -1,0 +1,31 @@
+Original commit body from 7d8641a0f594e3634a69639563a82fe27d45ffba:
+
+Follow-up to the INV-pusin fix in this branch, plus one INHERITED red test.
+
+check-schema-coverage failed on the parent commit with two NEW uncovered
+values -- Edge.type=module_attr_ref and
+Edge.evidence_type=module_attribute_reference. The cause is the fix working:
+the schema-coverage corpus is one Rust file whose ONLY module_attr_ref edges
+came from `use std::collections::HashMap;`, which the analyzer emitted as an
+attribute read by mistake. The coverage was real and the thing it covered was
+a producer artifact.
+
+FIXED IN THE CORPUS, NOT IN THE BASELINE. Running with --update-baseline would
+have accepted a permanent loss of coverage for a live edge type in exchange for
+nothing. The fixture now carries a GENUINE module-attribute read
+(`std::env::consts::OS`) -- the shape those two enum values are supposed to
+describe, and one the I/O catalogue can actually classify
+(`module: std::env, attributes: [consts]` -> env_read). Coverage returns to
+parity: no new uncovered values, no new schema violations.
+
+SEPARATELY, AN INHERITED FAILURE THIS BRANCH DID NOT CAUSE, fixed because
+observing it makes it mine: tests/test_top_level_test_map.py's
+`test_no_new_unreachable_top_level_tests` has been red on `dev` since
+cb6498171e added tests/test_ci_self_claims_gate_scope.py without wiring it into
+the map. A/B'd against a clean origin/dev checkout to confirm it is not this
+branch's doing. Its subjects are the two WOODPECKER PIPELINE FILES, which are
+not top-level sources and cannot be name-mapped, so it is allowlisted -- with
+the per-PR gap stated rather than implied, exactly as the neighbouring entries
+do.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
