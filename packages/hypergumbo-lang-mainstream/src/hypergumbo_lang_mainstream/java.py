@@ -1943,7 +1943,29 @@ def _extract_edges(
                         # an unresolved edge with structured dst_ref so
                         # consumers can match on (module_path, name).
                         ext_ref: ExternalRef | None = None
-                        pr4_call_construct: str | None = None
+                        # INV-fibis disclosure parity: a call WITH A RECEIVER is
+                        # a method call whether or not the receiver's type
+                        # resolved, and this stamp is what
+                        # ``verify_claims.untyped_receiver_sites`` selects on.
+                        # Setting it only in the typed branch below made the
+                        # key mean "a method call whose receiver I typed", so
+                        # java reached a clean boundary verdict over 139
+                        # catalogued method sinks and disclosed nothing.
+                        # python and go already stamp it unconditionally; this
+                        # is parity with them, not a new convention.
+                        #
+                        # IT COSTS NOTHING ON THE RECALL SIDE, and
+                        # ``gate_named_entry`` is where you can see why: with
+                        # no module hint it refuses a method-kind hit EITHER
+                        # WAY — through the ``call_construct == "method"`` arm
+                        # with the stamp, and through the ``non_method`` filter
+                        # without it. What the stamp buys is that the verdict
+                        # can SAY SO.
+                        pr4_call_construct: str | None = (
+                            "method"
+                            if receiver_name and receiver_name != "this"
+                            else None
+                        )
                         if (
                             (receiver_name is None or receiver_name == "this")
                             and static_imports is not None
@@ -2036,7 +2058,12 @@ def _extract_edges(
                             ):
                                 module = imports[pr4_receiver_type_hint]
                                 unresolved_name = method_name
-                                pr4_call_construct = "method"
+                                # ``call_construct="method"`` is set once, above,
+                                # for every receiver-bearing call; this branch's
+                                # own assignment was removed as a second home for
+                                # one fact. The reasoning above about the PHANTOM
+                                # BARRIER still applies and is why it must not be
+                                # dropped from EITHER place.
                                 ext_ref = ExternalRef(
                                     lang="java",
                                     module_path=module,
