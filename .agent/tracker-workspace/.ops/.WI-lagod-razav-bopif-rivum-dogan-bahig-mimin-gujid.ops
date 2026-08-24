@@ -32,3 +32,18 @@
   clock: 2  # 321b
   nonce: 321b  # 321b
   message: "OWNER RULING 2026-08-23 (full text on INV-polad): \"declare the blindness, do those 4 PRs.\" Kotlin and JavaScript get a DATED DECLARED-BLINDNESS residual now rather than waiting on WI-nasuf, so a later WI-nasuf fix flips a declaration instead of turning this invariant red. Closure path is PR1 call_construct parity -> PR2 declared blindness -> PR3 denylist disclosure -> PR4 fidelity provenance, then close on behavioral evidence. Measured basis: 786 of 954 method-kind sinks (82%) are in languages where the untyped-receiver disclosure cannot fire today (~/hypergumbo_lab_notebook/disclosure_parity_08232026/)."  # 321b
+- op: update  # 8679
+  at: '2026-08-24T09:50:05Z'  # 8679
+  by: agent  # 8679
+  actor: jgstern_agent  # 8679
+  clock: 3  # 8679
+  nonce: '8679'  # 8679
+  set:  # 8679
+    status: done  # 8679
+- op: discuss  # f849
+  at: '2026-08-24T09:50:05Z'  # f849
+  by: agent  # f849
+  actor: jgstern_agent  # f849
+  clock: 4  # f849
+  nonce: f849  # f849
+  message: "SHIPPED as PR #501 (envelope 2.2). Verdict carries analysis_fidelity (language -> pass IDs behind its CALL edges) and a higher_fidelity_available caveat for a backend installed-but-not-run. Measured: same rust crate, backend OFF -> fidelity {rust:[rust]} + caveat; backend ON -> caveat gone. The two arms are no longer byte-identical, which was this item's filed defect. A first cut keyed 'did it run' on the call-edge map and told a reader to enable a backend that was already running (SCIP emitted references/contains, no external calls); passes_that_ran now answers that from every edge, pinned by a test."  # f849
