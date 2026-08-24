@@ -381,6 +381,20 @@ KNOWN_UNREACHABLE = {
     # runs on any `scripts/**` change — so editing the forge library, merge-pr
     # or auto-pr does execute it before merge, just via a dedicated job instead
     # of the smart-test manifest.
+    # INV-bobor. Its subjects are the two WOODPECKER PIPELINE FILES
+    # (.woodpecker/woodpecker.yml and .woodpecker/full-suite.yml): it pins that
+    # the per-PR self-claim gate is conditioned on any python source change,
+    # that the cron arm stays unconditional, and that both arms run the same
+    # commands. A pipeline YAML is not a top-level SOURCE file, so no
+    # source-file name can map it — the same shape as the scripts/lib/*
+    # exemptions below, for a different directory.
+    #
+    # THE PER-PR GAP IS REAL AND IS NOT CLOSED BY THIS ENTRY: editing
+    # .woodpecker/*.yml does not select this test through the smart-test
+    # manifest. That is tolerable only because the file it guards is the CI
+    # config itself, so a change that breaks the claim is visible in the very
+    # run that applies it.
+    "test_ci_self_claims_gate_scope.py",
     "test_ci_verdict_default_deny.py",
     "test_resolve_forge_token_github.py",
     "test_ci_status_endpoints_failover_aware.py",
