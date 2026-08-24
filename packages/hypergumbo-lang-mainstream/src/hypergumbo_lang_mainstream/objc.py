@@ -624,6 +624,15 @@ def _extract_edges_from_file(
                         # ``module_path`` for the structured ``dst_ref``.
                         # ``self`` / ``super`` / local-var receivers
                         # (lowercase) get no dst_ref — no module signal.
+                        #
+                        # INV-fibis disclosure parity: BOTH branches stamp
+                        # ``call_construct="method"``. An objc message send IS a
+                        # method call by construction — there is no free-function
+                        # message — so the stamp is unconditional here, unlike
+                        # java/rust where a receiver has to be present. Without
+                        # it, objc reached a clean boundary verdict over 122
+                        # catalogued method sinks (95% of its catalogue) and
+                        # named none of them.
                         receiver_name = _extract_message_receiver(node, source)
                         if receiver_name and receiver_name[0].isupper():
                             edges.append(make_unresolved_edge(
@@ -636,12 +645,14 @@ def _extract_edges_from_file(
                                     name=selector,
                                 ),
                                 enclosing_class=_enclosing_type,
+                                call_construct="method",
                             ))
                         else:
                             edges.append(make_unresolved_edge(
                                 "objc", current_method.id, selector,
                                 line, PASS_ID, run.execution_id,
                                 enclosing_class=_enclosing_type,
+                                call_construct="method",
                             ))
 
     return edges

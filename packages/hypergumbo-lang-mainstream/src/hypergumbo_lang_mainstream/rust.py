@@ -2527,6 +2527,20 @@ def _extract_edges_from_file(
                                             node.start_point[0] + 1, PASS_ID, run_id,
                                             module_hint=module_hint,
                                             dst_ref=ext_ref,
+                                            # INV-fibis disclosure parity: stamp the
+                                            # construct so
+                                            # ``verify_claims.untyped_receiver_sites``
+                                            # can name this site. rust stamps
+                                            # ``call_construct`` on its RESOLVED
+                                            # paths in three places and omitted it
+                                            # here — on the unresolved-external
+                                            # path, which is the population the
+                                            # disclosure exists for — so rust
+                                            # reached a clean verdict over 34
+                                            # catalogued method sinks in silence.
+                                            call_construct=(
+                                                "method" if is_method_call else None
+                                            ),
                                             # INV-fahub: carry the enclosing impl
                                             # type on the deferred magnet so the
                                             # Site-1 inherited_calls walker can
