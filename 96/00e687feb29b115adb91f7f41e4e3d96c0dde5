@@ -1,0 +1,50 @@
+Original commit body from aba4fb3af94b954a92717f5045ecb12c9fce724a:
+
+PR2 of the four-PR closure sequence for INV-fibis / INV-nuhun.
+
+kotlin and javascript emit NO call edge for an external instance-method call
+(WI-nasuf), so the untyped-receiver disclosure PR1 made reachable has nothing
+to hang on for them: it discloses an edge the analysis EMITTED and could not
+adjudicate, and here no edge exists. A clean verdict came out a bare
+`confirmed` over 232 catalogued method-kind sinks -- kotlin 181 of its 186
+primitives (97%), javascript 51 of 187.
+
+THE FACT IS DECLARED, NOT INFERRED, because the edge set cannot express it.
+"this repository contains no external method calls" and "this analyzer never
+emits them" produce the SAME EMPTY SET and opposite verdicts. So
+analyzer_disclosure.py carries a dated per-language declaration with the
+measurement behind it, and emits_external_method_call_edges FAILS CLOSED --
+an undeclared language answers False and is treated as blind until somebody
+measures it. A test turns that default into a hard gate.
+
+NOT IN io_primitives/*.yaml, deliberately: those catalogue what a LIBRARY
+does; this records what an ANALYZER can see.
+
+A CAVEAT, NOT A WITHHOLD. Those analyzers do emit call edges, just not this
+shape, so "I examined everything I could see, except this whole construct" is
+the true sentence and is a qualified opinion (ADR-0016 section 4);
+`inconclusive` would claim the analysis formed no view at all. It rides BOTH
+the boundary and taint arms, because a run that discloses on one and stays
+silent on the other about the same unseen call is the asymmetry INV-nuhun
+names.
+
+Measured at the published-output layer, with a falsifiability control:
+  kotlin, clean  -> confirmed_with_caveats rc 3, "kotlin (181 of 186
+                    catalogued primitives are method-kind). Declared
+                    2026-08-23."
+  go, clean      -> BARE confirmed rc 0        <- not a blanket downgrade
+  kotlin, taint  -> the same caveat on every taint verdict
+
+ONE EXISTING TEST PINNED THE OLD SILENCE and was changed rather than relaxed:
+test_verify_claims_covered_languages_confirm asserted a clean bare confirm
+over a python+javascript map. Its CONTRACT -- a clean verdict over SIGHTED
+languages stays bare -- is still right and is preserved by swapping javascript
+for go; relaxing it to accept rc 3 would have destroyed exactly what it
+tests. The javascript side is pinned from the other direction in
+test_declared_analyzer_blindness.py.
+
+The declaration flips to True when WI-nasuf builds the missing edges, and the
+caveat stops firing with no invariant changing colour -- which is the reason
+the owner rewrote the bar (LIVE.md rule 19).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
