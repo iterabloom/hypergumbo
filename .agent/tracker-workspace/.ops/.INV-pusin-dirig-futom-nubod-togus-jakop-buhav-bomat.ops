@@ -60,3 +60,19 @@
   clock: 6  # 2f78
   nonce: 2f78  # 2f78
   message: "UNBLOCKED AND MEASURED. INV-polad is satisfied, and the held branch jgstern-agent/fix/scoped-attr-ref-import-and-type-positions has been rebased onto all four disclosure PRs and re-run on this item's fixture: NET-SEND and FS-WRITE now return confirmed_with_caveats carrying untyped_receiver + unknown_receiver_scope + analyzer_suppressed_methods + higher_fidelity_available, with analysis_fidelity reported and CONTROL-FSREAD still violated. The false confirm that blocked this item is converted into a disclosed confirm. The branch is green and ready to merge; not merged yet because the owner asked for four PRs and this is a fifth."  # 2f78
+- op: update  # acc2
+  at: '2026-08-24T11:19:55Z'  # acc2
+  by: agent  # acc2
+  actor: jgstern_agent  # acc2
+  clock: 7  # acc2
+  nonce: acc2  # acc2
+  set:  # acc2
+    status: satisfied  # acc2
+    pr_ref: '504'  # acc2
+- op: discuss  # a634
+  at: '2026-08-24T11:19:56Z'  # a634
+  by: agent  # a634
+  actor: jgstern_agent  # a634
+  clock: 8  # a634
+  nonce: a634  # a634
+  message: "SATISFIED. Merged as PR #504 (dev f6b0947fad) and re-verified on THIS ITEM'S\nOWN FILED FIXTURE on the merged tree:\n\n  ~/hypergumbo_lab_notebook/rust_fidelity_probe_08232026/repo (zero deps)\n    CONTROL-FSREAD  violated                  <- fires, so not blindness\n    NET-SEND        confirmed_with_caveats\n    FS-WRITE        confirmed_with_caveats\n  The uncatalogued-module list that named `std, std.io, std.net` on a crate\n  with NO dependencies is gone: the analyzer emits ZERO module_attr_ref edges\n  for that crate now, and its three `use` statements keep exactly one home as\n  `imports` edges.\n\nTHE FIX WAS NOT THE ONE THIS ITEM ORIGINALLY PROPOSED, and the difference was\nmeasured rather than argued. Removing module_attr_ref from\n_CALL_SITE_EDGE_TYPES would have deleted six GENUINE third-party attribute-read\ndisclosures on hypergumbo's own tree (google, mypy, navigator,\nsentence_transformers, tokenizers, builtins) to remove two artifacts. The\nproducer fix removes the artifacts and costs none of the six: a per-language\n`skip_context_kinds` tuple in the shared emitter, so a `use` path and a\nreturn-type path are no longer read as attribute reads, in BOTH scoped_path\nlanguages (rust and cpp).\n\nWHY IT SHIPPED SIX DAYS AFTER IT WAS WRITTEN, which is the part worth keeping.\nMerging it when it was green would have converted a right-for-the-wrong-reason\n`inconclusive` into a FALSE `confirmed` about a function named `exfiltrate` --\nthis item's own description asserted \"the direction is fail-safe ... a\nPRECISION defect, not a false-confirm\", and that was wrong. The `inconclusive`\nwas load-bearing safety arrived at BY ACCIDENT. It was held until the four\ndisclosure PRs (#498-#501) made the residual visible, and the same crate now\nreturns confirmed_with_caveats carrying untyped_receiver +\nunknown_receiver_scope + analyzer_suppressed_methods +\nhigher_fidelity_available, with analysis_fidelity reported.\n\nONE CI FAILURE, FIXED IN THE CORPUS RATHER THAN THE BASELINE:\ncheck-schema-coverage reported Edge.type=module_attr_ref and\nEdge.evidence_type=module_attribute_reference as newly UNCOVERED, because the\ncorpus's only module_attr_ref edges came from `use std::collections::HashMap;`\n-- the coverage was real and the thing it covered was this bug. The fixture\ngained a genuine `std::env::consts::OS` read instead; --update-baseline would\nhave bought a permanent coverage loss for nothing.\n\nNOT MEASURED: whether any real repository's verdict moves as a result (only\nauthored fixtures were run); the cpp side end-to-end, which the same change\ntouches and which has unit coverage only."  # a634
