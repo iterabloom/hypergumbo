@@ -1,0 +1,70 @@
+Original commit body from 2d0c8f35f35e412e45e61be0f72c0867db24c0cd:
+
+`imports` and `calls` spelled a module `std::io`; `module_attr_ref` spelled it
+`std.io`. Measured on bellman (2,467 edges) by folding every rust node's path
+slot: TEN entities existed under two spellings in a single run --
+
+    bellman.VerificationError / bellman::VerificationError
+    bls12_381.Scalar          / bls12_381::Scalar
+    crate.SynthesisError      / crate::SynthesisError
+    crate.gadgets.boolean.Boolean / crate::gadgets::boolean::Boolean
+    ff.Field                  / ff::Field
+    std.cmp.Ordering          / std::cmp::Ordering
+    std.io                    / std::io
+    super.SynthesisError      / super::SynthesisError
+    super.boolean.Boolean     / super::boolean::Boolean
+    super.uint32.UInt32       / super::uint32::UInt32
+
+so every per-dependency question -- who imports it, its centrality, its
+supply-chain tier, whether it is dead -- was answered over a split population.
+Now ZERO, and the coverage gate's own count drops 18 -> 16 with no duplicate
+spellings left.
+
+THE ITEM'S COST FIGURE WAS TOO HIGH, AND SO WAS AN EARLIER CORRECTION TO IT.
+It filed "4 of 23 withhold entries are one module under two spellings" and a
+later note repeated the 4. Measured directly, TWO of the gate's entries are a
+second spelling of one already listed. The other two counted pairs --
+std.cmp.Ordering/std::cmp and std.sync/std::sync::Arc -- are a TYPE path beside
+a MODULE path, a different fact. The node-level cost (ten) is the real one.
+
+THE NORMALISATION WAS A WORKAROUND THAT OUTLIVED ITS DEFECT. It was documented
+as dot-normalising "so the resulting edge ID survives downstream `:`-split
+parsing", but ADR-0036 (D1a) made the path slot the one colon-TOLERANT slot and
+`symbol_path_slot` carries `rust:std::fs:0-0:write:external_symbol` as a worked
+example in its own docstring. It was also only HALF applied: C++ emitted
+`cpp:std:0-0:std.numbers::pi:attribute`, one id carrying BOTH separators.
+
+CONFORMANCE, NOT A NEW SHAPE -- the risk argument in one line. A colon-bearing
+rust path slot has always been in production for ordinary `calls` edges
+(`rust:std::cmp:0-0:min:external_symbol`), as has a colon-bearing name slot
+(`Error::new`). `module_attr_ref` was the outlier.
+
+A POSITIVE CONTROL CAUGHT A FALSE PREMISE BEFORE THE PRODUCER CHANGED. The code
+said the catalogue "registers both `::` and `.` forms", so re-spelling looked
+free. It is not: `IoPrimitive.qualified_name` joins module and name with a DOT
+unconditionally, so a `module: std::env` row is indexed as the MIXED
+`std::env.consts` plus a dotted alias and NEVER as `std::env::consts`.
+Emitting the language's own spelling would have silently lost every rust and
+C++ attribute classification. The qualified index now folds separators on the
+read side -- through ONE shared helper, because the same gap reappeared inside
+the fix: folding in `lookup` but not in `lookup_with_module` left
+`classify_call` still returning None.
+
+NON-DESTRUCTION ASSERTED AT THE POPULATION LEVEL, not just the verdict:
+  caddy   158 uncatalogued modules, IDENTICAL to pre-fix; 55/76/3 chains
+          violated. Go matters here beyond being a control -- the fold covers
+          `/` as well as `::`, so it genuinely widens Go matching.
+  httpx   unchanged.
+  bellman validator reports 119 cross_field + 1 id_format violations BEFORE
+          and AFTER -- no id was made malformed.
+
+NO VERDICT FLIPPED. bellman stays inconclusive, for the same reason as
+INV-juvul: what remains is stdlib enumeration (WI-lutuh).
+
+Nine tests that pinned the dotted spelling were REWRITTEN, not deleted --
+including one that named itself `test_basic_scoped_path_emits_dot_normalized_edge`
+and repeated the stale justification in its docstring.
+
+Evidence and probe: ~/hypergumbo_lab_notebook/rilit_08242026/
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
