@@ -2627,6 +2627,18 @@ def _extract_edges_from_file(
         call_node_kinds=("call_expression",),
         call_function_field_names=("function",),
         scoped_path=True,
+        # INV-pusin: a `use` path and a return-type path are both
+        # scoped_identifiers, so the walk emitted them as attribute reads.
+        # The `use` case duplicated a fact that already has an `imports`
+        # edge, and re-entered the uncatalogued-module gate that
+        # deliberately excludes imports -- `use std::fs;` alone put `std`
+        # and `std.fs` on a zero-dependency crate's "could not classify"
+        # list. `generic_type` catches a scoped path directly under a
+        # generic; `scoped_type_identifier` catches the common
+        # `std::io::Result<_>` shape.
+        skip_context_kinds=(
+            "use_declaration", "scoped_type_identifier", "generic_type",
+        ),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         enclosing_symbols=list(local_symbols.values()),
