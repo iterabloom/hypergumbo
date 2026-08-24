@@ -1,0 +1,25 @@
+- op: create  # 4f40
+  at: '2026-08-24T03:25:23Z'  # 4f40
+  by: agent  # 4f40
+  actor: jgstern_agent  # 4f40
+  clock: 1  # 4f40
+  nonce: 4f40  # 4f40
+  data:  # 4f40
+    kind: invariant  # 4f40
+    title: "One scoped attribute read emits an edge per nesting depth, so every genuine N-deep read contributes N-1 false entries to the uncatalogued-module list"  # 4f40
+    status: violated  # 4f40
+    priority: 2  # 4f40
+    parent:  # 4f40
+    tags:  # 4f40
+    - io_boundary  # 4f40
+    - verify_claims  # 4f40
+    - rust  # 4f40
+    - false_inconclusive  # 4f40
+    isbefore: []  # 4f40
+    duplicate_of: []  # 4f40
+    not_duplicate_of: []  # 4f40
+    pr_ref:  # 4f40
+    description: "FOUND while correcting INV-pusin's mechanism. Filed separately because it\nsurvives that item's producer fix and reproduces on GENUINE attribute reads,\nnot on artifacts.\n\nMECHANISM, read in analyze/base.py emit_module_attribute_refs. With\nscoped_path=True the helper walks LEFT-RECURSIVELY through a scoped path and\nemits one module_attr_ref edge PER NESTING DEPTH, because it cannot know where\nthe module ends and the attribute begins. `std::env::consts::OS` is\nambiguous -- module std::env with attribute consts::OS, or module\nstd::env::consts with attribute OS -- so the emitter proposes every split and\nlets the catalogue pick:\n\n  rust:std.env.consts:0-0:std.env.consts.OS:attribute    classify -> no\n  rust:std.env:0-0:std.env.consts:attribute              classify -> MATCH env_read\n  rust:std:0-0:std.env:attribute                         classify -> no\n\nThat is a legitimate design FOR MATCHING. It is a category error for COVERAGE\nACCOUNTING: the two unmatched rows are not two modules the analysis called\ninto and could not classify, they are two alternative PARSES of one reference\nthe analysis did classify. At most one proposal per read can ever match, so\nevery genuine N-deep scoped read is guaranteed to contribute N-1 false entries\nto the uncatalogued-module list.\n\nREPRODUCED ON THE SHIPPED CLI, authored zero-dependency crate whose only\nscoped read is the genuine one above:\n\n  ? [NET-SEND]  Verdict: inconclusive\n      \"... calls into 3 module(s) that the I/O catalog could not classify\n       (std, std.env.consts, std.net) ...\"\n\n`std.env` is correctly ABSENT -- it matched. `std` and `std.env.consts` are\nthe collateral proposals from the same three-edge read.\n\nCANDIDATE FIX, consumer-side and needing no new producer meta: a read is\nidentified by (edge src, edge line), and if ANY edge from that read\nclassifies, the READ was examined -- so none of its sibling proposals may be\ncounted as an unexamined module. That is the semantically correct unit: the\ngate should count REFERENCES, not PARSE CANDIDATES. Alternative considered and\nrejected as a layering violation: having the emitter emit only the depth the\ncatalogue wants, which would make an analyzer read io_primitives.\n\nSCOPE. Affects both scoped_path=True languages (rust, cpp). Python is\nunaffected for annotations and imports but has the adjacent shape at callee\nprefixes: `os.path.join(p, \"x\")` emits a module_attr_ref for the base\n`os.path` while the call itself is excluded as a callee.\n\nNOT MEASURED: how many entries on a real repo's uncatalogued list are sibling\nproposals rather than distinct references, in any language; whether the\n(src, line) key is unique per read when two scoped reads share a line."  # 4f40
+    fields:  # 4f40
+      statement: "The uncatalogued-module coverage gate must count REFERENCES, not PARSE CANDIDATES: when a producer emits several speculative splits of ONE syntactic reference and the catalogue classifies any of them, the reference was examined and none of its sibling proposals may be reported as a module whose I/O went unexamined."  # 4f40
+      root_cause: "analyze/base.py emit_module_attribute_refs with scoped_path=True walks a scoped path left-recursively and emits one module_attr_ref edge per nesting depth, because the module/attribute split is syntactically ambiguous and the emitter cannot consult the catalogue. At most one proposal per read can match a catalogue row; _uncatalogued_external_modules then counts each unmatched sibling as a separate uncatalogued module, having no way to tell that they are alternative parses of one reference rather than distinct references."  # 4f40
