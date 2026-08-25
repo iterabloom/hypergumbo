@@ -1982,20 +1982,56 @@ def _extract_edges(
                         # ``sanitized``, which DROPS the flow from the claim's
                         # violation set. The missing stamp deletes findings.
                         #
-                        # ``this`` STAYS EXCLUDED, deliberately and narrowly:
-                        # its receiver type IS known (the enclosing class), so
-                        # there is no want of receiver evidence to record. The
-                        # residual -- ``this.m()`` resolving to nothing because
-                        # ``m`` is inherited from an EXTERNAL supertype -- is
-                        # filed separately rather than folded in here, because
-                        # stamping it also refuses function-kind catalogue hits
-                        # in ``gate_named_entry`` and that is a recall change
-                        # needing its own measurement.
+                        # ``this`` IS INCLUDED, and the reasoning that once
+                        # excluded it was wrong on its own terms. It read: the
+                        # receiver type IS known (the enclosing class), so there
+                        # is no want of receiver evidence. But an edge only
+                        # reaches this emit BECAUSE the call did not resolve --
+                        # and a ``this.m()`` that does not resolve is one whose
+                        # ``m`` is NOT on the enclosing class. The analyzer
+                        # knows which object; it does not know which type
+                        # declares the method, which is exactly the want of
+                        # receiver evidence the two taint gates read this key
+                        # for. (The supertype may still be first-party -- Site 1
+                        # of the ``inherited_calls`` linker exists to recover
+                        # those later from ``enclosing_class`` -- so the honest
+                        # statement is "not established HERE", not "external".
+                        # The linker reads ``enclosing_class`` and
+                        # ``inherited_field_receiver``, never this key, so the
+                        # stamp does not disturb that recovery.) Measured harm,
+                        # with a control in the same run:
+                        # ``this.doFinal(plain)`` registered the shipped
+                        # ``javax.crypto.Cipher.doFinal`` as a barrier on its
+                        # caller, and since PR #214 a barrier earns
+                        # ``sanitized``, which DROPS the flow from the claim's
+                        # violation set.
+                        #
+                        # PARITY, NOT A NEW CONVENTION. Measured 2026-08-25 over
+                        # every language with a disclosure-parity fixture:
+                        # python, go, objc, rust, scala and swift all stamp an
+                        # explicit ``this`` / ``self`` receiver. java was the
+                        # only one that did not.
+                        #
+                        # THE RECALL COST IS ZERO HERE, measured rather than
+                        # assumed. ``gate_named_entry`` returns ``None``
+                        # immediately for ``call_construct == "method"``, so the
+                        # stamp can only refuse a FUNCTION-kind catalogue hit --
+                        # and ``io_primitives/java.yaml`` declares 139
+                        # method-kind primitives, 3 attribute-kind and no
+                        # function-kind entry at all.
+                        #
+                        # AN IMPLICIT ``this`` -- a bare ``m(p)`` with no
+                        # receiver token -- STAYS UNSTAMPED, and that is not the
+                        # same omission. ``call_construct`` names the SYNTACTIC
+                        # construct (ADR-0024, audit-findings 0012), a bare call
+                        # is not syntactically a method call, and stamping it
+                        # would file a resolution fact under a construct name --
+                        # the leak the concept audits exist to prevent. java has
+                        # no free functions, so that shape IS a live
+                        # phantom-barrier surface; it needs a signal of its own,
+                        # not this one, and is filed on its own terms.
                         pr4_call_construct: str | None = (
-                            "method"
-                            if object_node is not None
-                            and object_node.type != "this"
-                            else None
+                            "method" if object_node is not None else None
                         )
                         if (
                             (receiver_name is None or receiver_name == "this")

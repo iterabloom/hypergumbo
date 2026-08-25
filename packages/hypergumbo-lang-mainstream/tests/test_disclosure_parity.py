@@ -339,3 +339,115 @@ def test_complex_receiver_method_call_carries_call_construct(
         f"can bind a catalogued barrier (INV-pirot). "
         f"metas: {[e.meta for e in external]}"
     )
+
+
+#: The THIRD shape, and the one where java stands alone: an EXPLICIT ``this`` /
+#: ``self`` receiver on a call the analyzer cannot resolve, because the method
+#: is inherited from a supertype outside the repository. The receiver is named
+#: but the DECLARING TYPE is not, so the catalogue cannot be asked what the call
+#: does — which is precisely what ``call_construct`` exists to record.
+#:
+#: Measured 2026-08-25 across every language with a plain-receiver fixture:
+#: python, objc, rust and go stamp it; scala and swift stamp it; java alone
+#: leaves it bare. This arm is parity with the other six, not a new convention
+#: — the same argument WI-sajis used for the plain shape.
+#:
+#: THE IMPLICIT form (a bare ``doFinal(p)`` with no receiver token) is
+#: DELIBERATELY NOT ASSERTED here and is not a bug in this key. A bare call is
+#: not syntactically a method call, and ``call_construct`` names the syntactic
+#: construct (ADR-0024 / audit-findings 0012); stamping it "method" would put a
+#: resolution fact under a construct name, which is the leak the concept audits
+#: exist to prevent. It IS a live phantom-barrier surface in java, which has no
+#: free functions, and it is filed on its own terms.
+THIS_RECEIVER_FIXTURES: dict[str, tuple[str, str, str, str]] = {
+    "java": (
+        "hypergumbo_lang_mainstream.java", "analyze_java", "Main.java",
+        "public class Main extends Base "
+        "{ void run(byte[] p) { this.doFinal(p); } }\n",
+    ),
+    "scala": (
+        "hypergumbo_lang_mainstream.scala", "analyze_scala", "Main.scala",
+        "class Main extends Base "
+        "{ def run(p: Array[Byte]): Unit = { this.doFinal(p) } }\n",
+    ),
+    "swift": (
+        "hypergumbo_lang_mainstream.swift", "analyze_swift", "main.swift",
+        "class Main: Base { func run(p: [UInt8]) { self.doFinal(p) } }\n",
+    ),
+    "python": (
+        "hypergumbo_lang_mainstream.py", "analyze_python", "m.py",
+        "class Main(Base):\n    def run(self, p):\n        self.encrypt(p)\n",
+    ),
+    "objc": (
+        "hypergumbo_lang_mainstream.objc", "analyze_objc", "main.m",
+        "@implementation Main\n- (void)run:(NSData *)p { [self doFinal:p]; }\n"
+        "@end\n",
+    ),
+    "rust": (
+        "hypergumbo_lang_mainstream.rust", "analyze_rust", "src/lib.rs",
+        "struct Main;\nimpl Main "
+        "{ fn run(&self, p: &[u8]) { self.do_final(p); } }\n",
+    ),
+    "go": (
+        "hypergumbo_lang_mainstream.go", "analyze_go", "main.go",
+        "package main\n\ntype Main struct{}\n\n"
+        "func (m *Main) run(p []byte) { m.doFinal(p) }\n",
+    ),
+}
+
+
+def test_every_parity_language_has_a_this_receiver_fixture() -> None:
+    """No exemption set for this arm, and that is the finding: every language
+    with a plain-receiver fixture emits an edge for an explicit ``this``."""
+    assert set(THIS_RECEIVER_FIXTURES) == set(FIXTURES)
+
+
+@pytest.mark.parametrize("lang", sorted(THIS_RECEIVER_FIXTURES))
+def test_explicit_this_receiver_carries_call_construct(
+    lang: str, tmp_path: Path,
+) -> None:
+    """``this.m()`` that does not resolve names an EXTERNAL declaring type.
+
+    The receiver is spelled, so the analyzer knows *which object*; it does not
+    know *which type declares the method*, because the method is not on the
+    enclosing class and the supertype is outside the repository. That is a want
+    of receiver evidence in exactly the sense the two taint gates read the key
+    for, and leaving it bare is what lets a bare short name bind a catalogued
+    sanitizer as a phantom barrier — measured, with a control, in
+    ``test_this_receiver_phantom_barrier.py`` in hypergumbo-core.
+
+    THE RECALL COST IS ZERO WHERE IT MATTERS AND SMALL ELSEWHERE, measured
+    rather than assumed: ``gate_named_entry`` returns ``None`` immediately for
+    ``call_construct == "method"``, so the stamp can only refuse a
+    FUNCTION-kind catalogue hit — and java's catalogue declares 139 method-kind
+    primitives, 3 attribute-kind and **no function-kind entry at all**, so
+    nothing it could refuse exists. scala has 17 function-kind entries and
+    swift 7; both already stamp this shape and are here as controls.
+    """
+    module, entry, filename, source = THIS_RECEIVER_FIXTURES[lang]
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source)
+    if lang == "rust":
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "p"\nversion = "0.1.0"\nedition = "2021"\n'
+        )
+
+    analyze = getattr(importlib.import_module(module), entry)
+    result = analyze(tmp_path)
+
+    external = [
+        e for e in result.edges
+        if e.edge_type in ("calls", "instantiates")
+        and e.dst.split(":")[-1] in ("external_symbol", "unresolved")
+    ]
+    assert external, f"{lang}: no external call edge for an explicit this/self"
+    stamped = [
+        e for e in external if (e.meta or {}).get("call_construct") == "method"
+    ]
+    assert stamped, (
+        f"{lang}: emitted {len(external)} external call edge(s) for an EXPLICIT "
+        f"this/self receiver and none carries call_construct='method'. The "
+        f"declaring type is external and unknown, so the sanitizer guard has "
+        f"nothing to refuse on (INV-pirot). metas: {[e.meta for e in external]}"
+    )
