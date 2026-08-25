@@ -28,3 +28,18 @@
   clock: 2  # 9bdd
   nonce: 9bdd  # 9bdd
   message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. STILL UNMET.\n\ncatalog_provenance / render_catalog_provenance_text (verify_claims.py) now\ndisclose WHICH catalogue files a verdict was computed against and WHO supplied\nthem (CLI flag vs claims-file extra_catalogs) -- that is INV-zosun's fix, and\nit landed. Neither names the VOUCHED MODULES. The disclosure still reads as a\npath plus a layer label, so the six-line overlay whose single\nmodule_completeness entry flipped the INV-buzab fixture from inconclusive to\nconfirmed would today be disclosed as a filename and nothing more.\n\nThe third bound this item asks for -- SAY WHAT WAS VOUCHED FOR -- has no code\npath at tip. Confirmed Phase 1 member."  # 9bdd
+- op: update  # b37e
+  at: '2026-08-25T09:53:06Z'  # b37e
+  by: agent  # b37e
+  actor: jgstern_agent  # b37e
+  clock: 3  # b37e
+  nonce: b37e  # b37e
+  set:  # b37e
+    status: satisfied  # b37e
+- op: discuss  # 8a33
+  at: '2026-08-25T09:53:06Z'  # 8a33
+  by: agent  # 8a33
+  actor: jgstern_agent  # 8a33
+  clock: 4  # 8a33
+  nonce: 8a33  # 8a33
+  message: "SATISFIED 2026-08-25, PR #529. The third bound this item asked for -- SAY WHAT\nWAS VOUCHED FOR -- now exists, in both the JSON envelope and the text output.\n\nWHAT SHIPPED. catalog_provenance emits a `completeness_grants` list keyed by\nMODULE, and render_catalog_provenance_text prints it as its OWN block rather\nthan folding it into the INV-zosun path list. \"This file was used\" and \"this\nfile closed the world over telnetlib\" are not the same size of fact, and the\nold output could not tell them apart: a reader holding\n\"io_primitives: overlays/deps.yaml [claims-file extra_catalogs]\" could not say\nwhether that file added a requests.post row or vouched for a whole module.\n\nLive output on an overlay carrying one grant plus one ordinary row:\n\n    NOTE: these verdicts were computed against USER-SUPPLIED catalogue input.\n      io_primitives: .../deps.yaml  [claims-file extra_catalogs]\n      ...\n      COMPLETENESS GRANTS -- these modules were vouched for as fully enumerated,\n      so an unmatched call into one counts as an EXAMINED negative (closed-world):\n        python: telnetlib\n          from .../deps.yaml  [claims-file extra_catalogs]\n\nTHE POPULATION IS EXACTLY THE ENTRIES THAT CAN DO THE DAMAGE. Only\n`completeness: complete` entries count -- an entry without it records no\nclosed-world claim and _from_dict does not even keep it, so disclosing it would\nname a grant nobody made. Pinned by its own discriminating fixture, alongside\ncontrols that an overlay with rows and no grant produces the path line and NO\ngrant block, that a run with no overlays renders nothing at all, and that a\ntaint catalogue is not scanned for a key its schema does not have.\n\nEVERY NAME IS PRINTED, deliberately NOT capped at five the way the third-party\nname list is -- WI-fosir found that cap evicting the name a reader needed. A\ncompleteness grant is a small, deliberate, hand-written list; if it is long\nenough to want summarising, that IS the thing the reader should see.\n\nThe overlay is loaded a SECOND time purely to describe it, and a failure there\nis logged at debug and skipped rather than raised: the real load has already\nhappened by the time a verdict exists, so a describe-step that can fail the run\nit is reporting on would turn a disclosure into an outage. The INV-zosun path\nline still names the file either way.\n\nThe two bounds this item recorded as already holding -- `retrieved:` mandatory,\nand no promotion into stdlib_modules -- are untouched."  # 8a33

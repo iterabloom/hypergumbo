@@ -1,0 +1,25 @@
+- op: create  # 6bfb
+  at: '2026-08-25T20:13:07Z'  # 6bfb
+  by: agent  # 6bfb
+  actor: jgstern_agent  # 6bfb
+  clock: 1  # 6bfb
+  nonce: 6bfb  # 6bfb
+  data:  # 6bfb
+    kind: invariant  # 6bfb
+    title: "One environment read matches two io_primitives rows and becomes two taint flows (os.environ + os.environ.get), inflating the pre-collapse row denominator by 5.3% on a 5-repo census"  # 6bfb
+    status: violated  # 6bfb
+    priority: 3  # 6bfb
+    parent:  # 6bfb
+    tags:  # 6bfb
+    - taint  # 6bfb
+    - io_boundary  # 6bfb
+    - analysis_quality  # 6bfb
+    - measurement  # 6bfb
+    isbefore: []  # 6bfb
+    duplicate_of: []  # 6bfb
+    not_duplicate_of: []  # 6bfb
+    pr_ref:  # 6bfb
+    description: "MEASURED IN 0005 (docs/measurements/0005-taint-precision-after-vocabulary-split.md), on the pre-collapse pair population of a 5-repo census.\n\nWHAT HAPPENS. A single Python source expression `os.environ.get(\"X\")` matches TWO io_primitives rows in python.yaml, and each match becomes its own taint flow:\n\n  env_read:\n    - module: os.environ                  # the INV-ponad \"slot family\" row\n      functions: [get, keys, items, values, copy]\n    - module: os\n      functions: [getenv, get_exec_path]\n      attributes: [environ]               # the attribute row\n\nThe first reports source primitive `os.environ.get`; the second reports `os.environ`. Both name the SAME read of the SAME expression at different granularities, and the flow record ends up carrying both in source_primitives with a pre-collapse row for each.\n\nTHIS IS NOT SUBSTRING MATCHING AND THE ROWS ARE NOT REDUNDANT IN GENERAL. The INV-ponad row exists deliberately, and its own note says why: \"a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach.\" The two rows were intended to be COMPLEMENTARY -- attribute row for a bare `os.environ` read, slot-family row for `os.environ.get(...)`. The defect is that on the `.get` form BOTH reach, so a read that exactly one row was supposed to cover is counted twice.\n\nMEASURED SIZE, on 0005's population (170 pre-collapse rows, 37 situations, 5 repos): 7 of 37 situations carry both primitives. In FIVE of them the bare `os.environ[...]` form does not occur anywhere in the file -- verified by grep on mitmproxy's release/release.py, mitmproxy/log.py, docs/scripts/api-render.py and mitmproxy/tools/console/master.py, and poetry's src/poetry/utils/env/env_manager.py -- so both primitives describe one read. That accounts for 9 OF THE 170 ROWS (5.3%), one of which sits inside a true positive, so it inflates the row denominator by 9 and the numerator by 1. In the remaining two situations (mitmproxy's release/deploy-microsoft-store.py) both forms genuinely occur in the file and the two primitives are legitimate.\n\nWHY IT IS ROW-UNIT-ONLY, AND WHY THAT STILL MATTERS. INV-karud's situation collapse groups on (taint_label, source_symbol, sink_zone, sanitized, source_boundary, analysis_method), so both rows land in the same group and the situation count is unaffected -- 0005's 21.6% per-situation figure does not move. The per-ROW figure does: 10.0% is computed over a denominator inflated by these rows. Any future row-denominated precision number on Python code carries the same inflation, and it scales with how many attribute-plus-slot-family pairs the catalogue grows.\n\nSCOPE NOT MEASURED. Only Python was in 0005's population for this shape. Other catalogues carry the same slot-family pattern (the python.yaml notes mention `sys.stdout.*` as a sibling), and whether they double-match has NOT been checked. Do not assume the count above is the whole of it.\n\nNOT A CLAIM ABOUT VERDICTS. Every doubled row describes a read that really happened, so no verdict changes and no user is told something false -- they are shown one fact twice. This is a denominator-integrity defect, filed so a row-unit measurement can subtract it rather than a future reader re-deriving it."  # 6bfb
+    fields:  # 6bfb
+      statement: "A single source expression must produce at most one taint flow row per (sink primitive, sink symbol, route): two catalogue rows that describe the SAME read at different granularities must not each yield a row."  # 6bfb
+      root_cause: "python.yaml's env_read carries a deliberate INV-ponad slot-family row (module: os.environ, functions: [get, keys, items, values, copy]) alongside an attribute row (module: os, attributes: [environ]). They were intended to be complementary -- attribute row for a bare os.environ read, slot-family row for the method form -- but on os.environ.get(...) BOTH match, so one read is reported as two primitives and two pre-collapse rows."  # 6bfb
