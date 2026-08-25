@@ -1961,9 +1961,40 @@ def _extract_edges(
                         # with the stamp, and through the ``non_method`` filter
                         # without it. What the stamp buys is that the verdict
                         # can SAY SO.
+                        # INV-pirot: A RECEIVER THE ANALYZER CANNOT NAME IS
+                        # STILL A RECEIVER. ``receiver_name`` answers a
+                        # different question -- "what identifier can I look
+                        # this receiver's type up under" -- and it is ``None``
+                        # for every receiver EXPRESSION: ``new File(x).mkdirs()``,
+                        # ``get().mkdirs()``, ``((File) o).mkdirs()``,
+                        # ``f.getParentFile().mkdirs()``. Deriving the construct
+                        # from it asked one variable two questions (LIVE.md
+                        # rule 7), and the four shapes above reached the
+                        # unresolved emit with a BARE short callee name and no
+                        # stamp.
+                        #
+                        # THAT IS THE FAIL-OPEN DIRECTION, not a disclosure
+                        # nicety. ``taint._register_sanitizer_callers`` refuses
+                        # an unresolved bare-name sanitizer match ONLY on
+                        # ``call_construct == "method"``; without the key the
+                        # edge reaches the permit branch and registers a
+                        # PHANTOM BARRIER, and since PR #214 a barrier earns
+                        # ``sanitized``, which DROPS the flow from the claim's
+                        # violation set. The missing stamp deletes findings.
+                        #
+                        # ``this`` STAYS EXCLUDED, deliberately and narrowly:
+                        # its receiver type IS known (the enclosing class), so
+                        # there is no want of receiver evidence to record. The
+                        # residual -- ``this.m()`` resolving to nothing because
+                        # ``m`` is inherited from an EXTERNAL supertype -- is
+                        # filed separately rather than folded in here, because
+                        # stamping it also refuses function-kind catalogue hits
+                        # in ``gate_named_entry`` and that is a recall change
+                        # needing its own measurement.
                         pr4_call_construct: str | None = (
                             "method"
-                            if receiver_name and receiver_name != "this"
+                            if object_node is not None
+                            and object_node.type != "this"
                             else None
                         )
                         if (

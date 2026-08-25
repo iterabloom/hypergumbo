@@ -978,28 +978,37 @@ def _extract_symbols_from_file(
 def _extract_call_target(
     call_node: "tree_sitter.Node",
     source: bytes,
-) -> tuple[str, str | None]:
-    """Extract the method name and receiver hint from a call_expression.
+) -> tuple[str, str | None, bool]:
+    """Extract the method name, receiver hint and receiver PRESENCE.
 
-    For bare function calls like ``print("x")``, returns ``("print", None)``.
-    For navigation calls like ``session.request(url)``, returns
-    ``("request", "session")``.  For chained calls like
-    ``URLSession.shared.dataTask(with: url)``, returns
-    ``("dataTask", "URLSession")``.
+    For bare function calls like ``print("x")``, returns
+    ``("print", None, False)``. For navigation calls like
+    ``session.request(url)``, returns ``("request", "session", True)``. For
+    chained calls like ``URLSession.shared.dataTask(with: url)``, returns
+    ``("dataTask", "URLSession", True)``.
+
+    THE THIRD ELEMENT IS NOT REDUNDANT WITH THE SECOND (INV-pirot). The hint is
+    the first *simple_identifier* in the navigation chain, and a receiver that
+    is an EXPRESSION contributes none: ``(o as! T).createFile(...)``,
+    ``make().createFile(...)``, ``T(x).createFile(...)`` all walk to
+    ``("createFile", None, True)``. Reading a ``None`` hint as "no receiver"
+    made every one of those a bare call, which is the shape that reaches the
+    unresolved emit with no ``call_construct`` and lets a bare short name bind
+    a catalogued sanitizer as a phantom barrier.
 
     Returns:
-        (callee_name, receiver_hint) — callee_name is empty string if
-        no identifier could be extracted.
+        (callee_name, receiver_hint, has_receiver) — callee_name is empty
+        string if no identifier could be extracted.
     """
     # Case 1: Direct call — call_expression has a simple_identifier child
     id_node = find_child_by_type(call_node, "simple_identifier")
     if id_node:
-        return (node_text(id_node, source), None)
+        return (node_text(id_node, source), None, False)
 
     # Case 2: Navigation call — call_expression has a navigation_expression child
     nav_node = find_child_by_type(call_node, "navigation_expression")
     if not nav_node:  # pragma: no cover - well-formed Swift always has one of the above
-        return ("", None)
+        return ("", None, False)
 
     # Walk the navigation chain to find the last navigation_suffix's identifier
     # (that's the method being called) and the first identifier (the receiver).
@@ -1026,13 +1035,15 @@ def _extract_call_target(
         # receiver_hint is the first identifier in the chain
         # (e.g. "URLSession" from URLSession.shared.dataTask)
         receiver_hint = receiver_parts[0] if receiver_parts else None
-        return (method_name, receiver_hint)
+        # ``nav_node`` exists, so there IS a receiver expression -- whether or
+        # not it contributed an identifier we can name.
+        return (method_name, receiver_hint, True)
 
     # Fallback: if no navigation_suffix found, use the first simple_identifier
     if receiver_parts:  # pragma: no cover - navigation_expression always has suffix
-        return (receiver_parts[0], None)
+        return (receiver_parts[0], None, False)
 
-    return ("", None)  # pragma: no cover
+    return ("", None, False)  # pragma: no cover
 
 
 def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
@@ -1128,7 +1139,7 @@ def _extract_edges_from_file(
                 # recovered by the inherited_calls MRO walker (inherited) or left
                 # external (cross-class magnet).
                 _enclosing_type = _get_enclosing_type(node, source)
-                callee_name, receiver_hint = _extract_call_target(
+                callee_name, receiver_hint, has_receiver = _extract_call_target(
                     node, source,
                 )
                 if callee_name:
@@ -1165,7 +1176,7 @@ def _extract_edges_from_file(
                             ))
                             resolved = True
 
-                    if not resolved and receiver_hint is not None:
+                    if not resolved and has_receiver:
                         # INV-fahub (WI-votar): a method call `recv.m()` whose
                         # receiver type could not be resolved MUST NOT fall
                         # through to the bare short-name binds below and bind to
@@ -1180,20 +1191,40 @@ def _extract_edges_from_file(
                         # can recover it (Site-2 Step-1); an untyped/duck
                         # receiver gets no hint (bias to unresolved). The linker
                         # is the sole minter of the resolved edge (INV-nilud).
+                        # INV-pirot widened the guard from "the receiver has
+                        # a NAME" to "there is a receiver", so a nameless
+                        # receiver expression reaches this branch too -- which
+                        # is the branch's own purpose, and more true of a
+                        # nameless receiver rather than less: ``make().m()``
+                        # cannot be a call on the enclosing type.
                         gate_meta: dict = {"call_construct": "method"}
-                        receiver_type = var_types.get(receiver_hint)
+                        receiver_type = (
+                            var_types.get(receiver_hint) if receiver_hint else None
+                        )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
                         # Preserve the WI-huzuv external dst_ref (module_path from
                         # the receiver's known type / import alias / receiver name,
                         # matching make_unresolved_edge) so a module-qualified
                         # external call (`HelpersModule.doWork()`) keeps its
-                        # structured reference even while suppressed. `receiver_hint`
-                        # is non-None here, so the fallback is always a real value.
+                        # structured reference even while suppressed.
+                        #
+                        # THE OLD LAST CLAUSE HERE READ "`receiver_hint` is
+                        # non-None here, so the fallback is always a real
+                        # value". That stopped being true when INV-pirot
+                        # widened the guard above: a receiver EXPRESSION has no
+                        # spelling, so the chain can now exhaust. ``"external"``
+                        # is what ``make_unresolved_edge`` already writes for an
+                        # absent module hint, it matches the ``dst`` minted
+                        # three lines below, and ``_module_from_symbol_path``
+                        # returns "" for it -- so an untyped receiver keeps
+                        # yielding no module candidate and INV-finoh's refusal
+                        # is preserved rather than widened.
                         gate_path_hint = (
                             receiver_type
                             or import_aliases.get(callee_name)
                             or receiver_hint
+                            or "external"
                         )
                         edges.append(Edge.create(
                             src=current_function.id,

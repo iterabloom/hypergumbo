@@ -997,14 +997,32 @@ def _extract_edges_from_file(
                 )
                 callee_node = find_child_by_type(node, "identifier")
                 receiver_name = None
+                # INV-pirot: DOES THIS CALL HAVE A RECEIVER, separately from
+                # whether the receiver can be NAMED. A ``field_expression``
+                # callee is ``<something>.<name>`` -- a method call by
+                # construction -- but only a bare-identifier receiver yields a
+                # ``receiver_name``. ``new File(x).createNewFile()``,
+                # ``get().createNewFile()`` and
+                # ``o.asInstanceOf[File].createNewFile()`` all land in the
+                # one-identifier arm below, where the receiver is real and
+                # nameless. Asking ``receiver_name`` "was there a receiver"
+                # answered "no" for all three (LIVE.md rule 7: one variable,
+                # two questions).
+                has_receiver = False
                 if not callee_node:
                     field_node = find_child_by_type(node, "field_expression")
                     if field_node:
+                        has_receiver = True
                         ids = [c for c in field_node.children if c.type == "identifier"]
                         if len(ids) >= 2:
                             receiver_name = node_text(ids[0], source)
                             callee_node = ids[-1]
-                        elif ids:  # pragma: no cover - defensive
+                        elif ids:
+                            # The receiver is an EXPRESSION, so it contributed
+                            # no identifier of its own and the single id is the
+                            # method. Marked ``defensive`` and no-cover until
+                            # 2026-08-25; it is in fact the production path for
+                            # every complex-receiver call in Scala.
                             callee_node = ids[0]
 
                 if callee_node:
@@ -1037,7 +1055,7 @@ def _extract_edges_from_file(
                             ))
                             edge_added = True
 
-                    if not edge_added and receiver_name is not None:
+                    if not edge_added and has_receiver:
                         # INV-fahub (WI-bihit): a method call `recv.m()` whose
                         # receiver type could not be resolved in-file MUST NOT
                         # fall through to the bare short-name binds below and
@@ -1053,8 +1071,19 @@ def _extract_edges_from_file(
                         # Step-1); an untyped/duck receiver gets no hint (bias to
                         # unresolved). The linker is the sole minter of the
                         # resolved edge (INV-nilud; taint-safe by construction).
+                        # INV-pirot widened the guard above from "the
+                        # receiver has a NAME" to "there is a receiver", so a
+                        # nameless receiver now reaches this branch too. That is
+                        # the branch's own stated purpose -- an unresolvable
+                        # receiver MUST NOT fall through to the bare short-name
+                        # binds below and bind an arbitrary same-named internal
+                        # def -- and it is MORE true of a nameless receiver, not
+                        # less: ``new Untyped(x).createNewFile()`` cannot be a
+                        # call on the enclosing class under any reading.
                         gate_meta: dict = {"call_construct": "method"}
-                        receiver_type = var_types.get(receiver_name)
+                        receiver_type = (
+                            var_types.get(receiver_name) if receiver_name else None
+                        )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
                         edges.append(Edge.create(
