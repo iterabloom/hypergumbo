@@ -1502,10 +1502,23 @@ def catalog_provenance(
             Every key in :data:`_PROVENANCE_KINDS` is emitted whether or not
             it appears here.
 
+    NAMING THE FILE IS NOT ENOUGH FOR ONE KIND OF LINE (INV-tabaf). Everything
+    a user can write ADDS knowledge except ``module_completeness``, which
+    converts the ABSENCE of knowledge into evidence: it is a CLOSED-WORLD claim
+    that an unmatched call into that module is an EXAMINED negative. Measured
+    hazard: a six-line overlay with zero primitive rows and one entry for
+    ``telnetlib`` turned the INV-buzab exfiltration fixture from
+    ``inconclusive`` rc 2 to ``confirmed`` rc 0. A reader holding
+    ``io_primitives: overlays/deps.yaml [claims-file extra_catalogs]`` cannot
+    tell whether that file added a ``requests.post`` row or vouched for the
+    whole of ``telnetlib``, and those are not comparable claims. So the grants
+    are enumerated separately, by MODULE.
+
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
-        "claims_file": [...]}}}`` — paths as strings, exactly as the user
-        wrote them, so a reader can find the file.
+        "claims_file": [...]}}, "completeness_grants": [...]}`` — paths as
+        strings, exactly as the user wrote them, so a reader can find the file;
+        one grant record per overlay that vouched for at least one module.
     """
     out: dict[str, dict[str, list[str]]] = {}
     any_user = False
@@ -1515,7 +1528,62 @@ def catalog_provenance(
         claims_list = [str(p) for p in claims_paths]
         any_user = any_user or bool(cli_list) or bool(claims_list)
         out[kind] = {"cli": cli_list, "claims_file": claims_list}
-    return {"user_supplied": any_user, "layers": out}
+    io_cli, io_claims = layers.get("io_primitives", ((), ()))
+    grants = [
+        *_completeness_grants(io_cli, "cli"),
+        *_completeness_grants(io_claims, "claims_file"),
+    ]
+    return {
+        "user_supplied": any_user,
+        "layers": out,
+        "completeness_grants": grants,
+    }
+
+
+def _completeness_grants(
+    paths: "Sequence[Path]", origin: str,
+) -> list[dict[str, Any]]:
+    """One record per overlay that vouches for at least one module.
+
+    THE OVERLAY IS LOADED A SECOND TIME HERE, PURELY TO DESCRIBE IT, and that
+    is why every failure is swallowed. The real load has already happened by
+    the time a verdict exists — if the overlay was malformed the run ended with
+    an error, and if it was fine this one will be too. A describe-step that can
+    fail a run it is only reporting on turns a disclosure into an outage, so
+    the exception arm returns nothing and the INV-zosun path line still names
+    the file.
+
+    ``module_completeness`` is an ``io_primitives`` concept, so only that layer
+    is scanned; looking for the key in a taint catalogue would be looking for
+    it in a schema that has none.
+    """
+    import logging
+
+    from .io_boundary import load_overlay_catalog
+
+    grants: list[dict[str, Any]] = []
+    for path in paths:
+        try:
+            overlay = load_overlay_catalog(Path(path))
+        except Exception as exc:
+            # Logged rather than swallowed silently, but still not raised: see
+            # the docstring. Debug level because on the only path that reaches
+            # here the user has already been told, loudly, by the real load.
+            logging.getLogger(__name__).debug(
+                "completeness-grant disclosure could not re-read %s: %s",
+                path, exc,
+            )
+            continue
+        modules = sorted(overlay.module_completeness)
+        if not modules:
+            continue
+        grants.append({
+            "path": str(path),
+            "origin": origin,
+            "language": overlay.language,
+            "modules": modules,
+        })
+    return grants
 
 
 def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
@@ -1552,6 +1620,36 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         "analysed repo,",
     )
     lines.append("  the repository is supplying its own criteria (INV-zosun).")
+
+    # INV-tabaf: the ONE line that needs naming by MODULE. Everything else a
+    # user writes ADDS knowledge; a completeness grant converts the ABSENCE of
+    # knowledge into evidence, so a reader who cannot see what was vouched for
+    # cannot weigh the verdict. Rendered as its own block rather than folded
+    # into the path list above, because "this file was used" and "this file
+    # closed the world over telnetlib" are not the same size of fact.
+    grants = provenance.get("completeness_grants") or []
+    if grants:
+        lines.append("")
+        lines.append(
+            "  COMPLETENESS GRANTS — these modules were vouched for as fully "
+            "enumerated,",
+        )
+        lines.append(
+            "  so an unmatched call into one counts as an EXAMINED negative "
+            "(closed-world):",
+        )
+        for grant in grants:
+            label = (
+                "CLI flag" if grant.get("origin") == "cli"
+                else "claims-file extra_catalogs"
+            )
+            modules = ", ".join(grant.get("modules") or ())
+            lines.append(
+                f"    {grant.get('language')}: {modules}",
+            )
+            lines.append(
+                f"      from {grant.get('path')}  [{label}]",
+            )
     return lines
 
 
