@@ -102,7 +102,15 @@ subprocess:
 
 env_read:
   - module: System.Environment
-    functions: [getArgs, getProgName, getEnvironment, lookupEnv, getEnv, getExecutablePath]
+    functions: [getArgs, getEnvironment, lookupEnv, getEnv]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: System.Environment
+    functions: [getProgName, getExecutablePath]
   - module: System.Info
     functions: [os, arch, compilerName, compilerVersion]
 

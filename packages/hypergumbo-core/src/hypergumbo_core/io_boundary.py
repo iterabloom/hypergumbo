@@ -4,7 +4,8 @@
 Provides a per-language catalog of I/O primitive functions/methods, each
 classified by boundary type. The closed set of catalog-declarable boundary
 tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
-ipc_recv/ipc_send, env_read/env_write, subprocess, db_read/db_write,
+ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
+db_read/db_write,
 process_send, logging, browser_storage_read/browser_storage_write); the
 synthesized ``external_potential`` and disclosed ``command_launch`` complete
 ``KNOWN_IO_BOUNDARIES``. Catalogs are YAML files in the ``io_primitives/``
@@ -129,7 +130,7 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.1"  # WI-javoh: command_launch_edges adde
 # model).
 CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
     "fs_read", "fs_write", "net_send", "net_recv",
-    "ipc_recv", "ipc_send", "env_read", "env_write",
+    "ipc_recv", "ipc_send", "env_read", "host_info_read", "env_write",
     "subprocess", "db_read", "db_write",
     "process_send", "logging",
     "browser_storage_write",

@@ -5102,9 +5102,14 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
 
     Identifies call edges that reach I/O primitives and groups them by
     boundary type: ``fs_read``, ``fs_write``, ``net_send``, ``net_recv``,
-    ``subprocess``, ``env_read``, ``env_write``, ``ipc_send``, ``ipc_recv``,
-    ``browser_storage_write``, ``browser_storage_read``, ``db_read``,
-    ``db_write``, ``process_send``, ``logging``. Attribute-style primitives
+    ``subprocess``, ``env_read``, ``host_info_read``, ``env_write``,
+    ``ipc_send``, ``ipc_recv``, ``browser_storage_write``,
+    ``browser_storage_read``, ``db_read``, ``db_write``, ``process_send``,
+    ``logging``. ``env_read`` is an ambient CONFIGURATION read (environment
+    variables, system properties, argv) and ``host_info_read`` is a host
+    DESCRIPTION read (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
+    ``pwd.getpwnam``); they were one boundary until INV-tutar, and the split
+    exists because each derives a different taint label. Attribute-style primitives
     (``os.environ``, ``sys.argv``) are included via ``module_attr_ref``
     edges. Loads a cached behavior map or auto-runs analysis if needed.
     """
@@ -5857,11 +5862,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     Trust zones checked: ``host_fs``, ``network``, ``host_env``, ``ipc``,
     ``browser_storage``, ``relay``. Built-in taint labels: ``host_secret``,
-    ``untrusted_input``, ``plaintext``, ``key_material``, ``ciphertext``,
-    ``derived_key``. The source and sink catalogs are derived automatically
-    from ``io_primitives/*.yaml`` (every write-side primitive is a sink at
-    ``trust_level=untrusted``; ``env_read``, ``net_recv``, and ``ipc_recv``
-    primitives are sources). YAML files under ``taint_sources/`` and
+    ``host_description``, ``untrusted_input``, ``plaintext``, ``key_material``,
+    ``ciphertext``, ``derived_key``. The source and sink catalogs are derived
+    automatically from ``io_primitives/*.yaml`` (every write-side primitive is
+    a sink at ``trust_level=untrusted``; ``env_read``, ``host_info_read``,
+    ``net_recv``, and ``ipc_recv`` primitives are sources). ``host_description``
+    is NOT a weaker ``host_secret``: it is a different fact, and a claim naming
+    one does not match flows carrying the other (INV-tutar). YAML files under ``taint_sources/`` and
     ``taint_sanitizers/`` contribute cryptographic labels and sanitizer
     transforms that the auto-layer cannot express.  (Built-in sinks come
     only from the auto-layer above; ``taint_sinks/`` as a shipped
@@ -9889,11 +9896,12 @@ Claims file format (YAML):
       text: No network sends      # required: human-readable description
       constraint:                 # one of two constraint shapes:
         # (a) boundary constraint (ADR-0016):
-        boundary: net_send        #   one of: env_read, external_potential,
-        must_not_exist: true      #   fs_read, fs_write, ipc_recv, ipc_send,
-        # max_chains: 5           #   logging, net_recv, net_send, subprocess,
-                                  #   db_read, db_write, env_write,
-                                  #   process_send, browser_storage_read/write
+        boundary: net_send        #   one of: env_read, host_info_read,
+        must_not_exist: true      #   external_potential, fs_read, fs_write,
+        # max_chains: 5           #   ipc_recv, ipc_send, logging, net_recv,
+                                  #   net_send, subprocess, db_read, db_write,
+                                  #   env_write, process_send,
+                                  #   browser_storage_read/write
         # (b) taint-flow constraint (ADR-0017):
         # taint_flow:
         #   source_taint: untrusted_input

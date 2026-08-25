@@ -61,17 +61,33 @@ class TestTheInvZubuhPairIsClosed:
         assert _boundary("os", name) == "fs_read", name
 
     @pytest.mark.parametrize("name", ["getuid", "getgid", "geteuid", "getcwd",
-                                      "uname", "getlogin", "getrandom"])
-    def test_host_identifying_reads_are_env_read(self, name: str) -> None:
-        """Deliberately NOT getpid/cpu_count/times: env_read rows auto-derive
-        host_secret TAINT SOURCES (AUTO_SOURCE_LABEL_MAP), and a pid is not a
-        secret — rowing it would manufacture false taint sources. Inert
-        process-state reads are vouched for by the completeness entry
-        instead. NOT urandom either: it has a hand-written shipped taint
-        source, and an auto-derived twin DISPLACES it — measured tripping
-        the INV-faput caveat on every python repo (rc 0 fixtures went
-        rc 3)."""
-        assert _boundary("os", name) == "env_read", name
+                                      "uname", "getlogin"])
+    def test_host_identifying_reads_are_catalogued(self, name: str) -> None:
+        """THE BOUNDARY MOVED, THE POINT DID NOT (INV-tutar). These are host and
+        user IDENTIFYING reads, so they belong to ``host_info_read``; what this
+        test exists to assert is that ``os``'s read surface is ENUMERATED, which
+        is INV-zubuh's question and is unchanged.
+
+        The docstring here used to explain why ``getpid`` / ``cpu_count`` /
+        ``times`` were held OUT: "env_read rows auto-derive host_secret TAINT
+        SOURCES and a pid is not a secret". That reasoning is what INV-tutar was
+        filed about — the catalogue distorting its own membership to protect a
+        downstream label — and it no longer applies, because these rows now
+        derive ``host_description``. Adding those three is an ADDITION and was
+        deliberately not folded into the split; the test below still pins their
+        current absence rather than blessing it."""
+        assert _boundary("os", name) == "host_info_read", name
+
+    def test_a_csprng_read_is_not_an_environment_read_at_all(self) -> None:
+        """``os.getrandom`` was in the list above and was REMOVED by INV-tutar's
+        split rather than moved. It is not an environment read under any
+        reading, and the same file already keeps ``os.urandom`` out because
+        hypergumbo ships a HAND-WRITTEN taint source for it and an auto-derived
+        twin DISPLACES that — measured tripping the INV-faput caveat on every
+        python repo (rc 0 fixtures went rc 3)."""
+        assert _boundary("os", "getrandom") is None
+        assert _boundary("os", "urandom") is None
+        assert CATALOGS["python"].module_io_is_enumerated("os")
 
     @pytest.mark.parametrize("name", ["getpid", "cpu_count"])
     def test_inert_process_state_is_not_a_taint_source(self, name: str) -> None:
@@ -141,7 +157,11 @@ class TestPathlibPathSurface:
 
     @pytest.mark.parametrize("name", ["cwd", "home", "expanduser"])
     def test_process_and_user_state_reads(self, name: str) -> None:
-        assert _boundary("pathlib.Path", name) == "env_read", name
+        """``host_info_read`` since INV-tutar: ``Path.cwd`` / ``Path.home`` /
+        ``expanduser`` describe the host, they do not read configuration that
+        could hold a credential. The assertion this test exists for — that the
+        rows are CATALOGUED at all — is unchanged."""
+        assert _boundary("pathlib.Path", name) == "host_info_read", name
 
 
 class TestThePrinters:
@@ -193,8 +213,12 @@ class TestArchivesAndImports:
         ("pwd", "getpwuid"), ("pwd", "getpwnam"), ("grp", "getgrgid"),
         ("platform", "platform"),
     ])
-    def test_host_databases_are_env_read(self, module, name) -> None:
-        assert _boundary(module, name) == "env_read", (module, name)
+    def test_host_databases_are_catalogued_as_host_info(self, module, name) -> None:
+        """``pwd`` / ``grp`` / ``platform`` read the host's user and platform
+        databases. INV-tutar moved them to ``host_info_read``: a username is
+        identifying, which is a privacy question, and it is not the credential
+        question ``host_secret`` names."""
+        assert _boundary(module, name) == "host_info_read", (module, name)
 
     def test_fcntl_locks_and_fd_control(self) -> None:
         assert _boundary("fcntl", "flock") == "fs_write"

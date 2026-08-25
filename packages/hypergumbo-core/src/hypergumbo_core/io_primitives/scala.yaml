@@ -157,4 +157,13 @@ env_read:
   - module: scala.sys.SystemProperties
     methods: [apply, get, getOrElse]
   - module: scala.util.Properties
-    methods: [envOrElse, envOrNone, propOrElse, propOrNone, propIsSet, javaHome, tmpDir, userDir, userHome, userName, scalaHome]
+    methods: [envOrElse, envOrNone, propOrElse, propOrNone, propIsSet]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: scala.util.Properties
+    methods: [javaHome, tmpDir, userDir, userHome, userName, scalaHome]
+

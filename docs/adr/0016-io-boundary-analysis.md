@@ -145,14 +145,17 @@ Define a controlled vocabulary for system boundary types:
 | `net_send` | outbound | Send data to network | `socket.send()`, `TcpStream::write()`, HTTP request body |
 | `ipc_recv` | inbound | Receive data from another process | `stdin.read()`, pipe read, shared memory read |
 | `ipc_send` | outbound | Send data to another process | `stdout.write()`, pipe write, shared memory write |
-| `env_read` | inbound | Read from process environment | `os.environ`, `std::env::var()`, command-line args |
+| `env_read` | inbound | Read ambient CONFIGURATION — values that may carry a credential | `os.environ`, `std::env::var()`, command-line args |
+| `host_info_read` | inbound | Read host DESCRIPTION or user identity — not a secret (split from `env_read` by INV-tutar) | `runtime.GOOS`, `os.uname()`, `navigator.platform`, `pwd.getpwnam()` |
+
+The census and the concept audit behind that split — 134 of the 195 shipped `env_read` rows were host description or identity, and the catalogue was already withholding rows in `python.yaml` to protect the derived label — are in [`docs/surveys/env-read-boundary-census.md`](../surveys/env-read-boundary-census.md).
 | `subprocess` | outbound | Launch or communicate with child process | `subprocess.run()`, `Command::new()` |
 
 The first four are the primary trust-question buckets. The latter four capture additional system boundary interactions relevant to security reasoning.
 
 **Risk classification.** These boundary types are *not* ranked by a single severity scale. Risk is expressed by two distinct, complementary models:
 
-- The **taint source/sink model** ([ADR-0017](0017-taint-zone-dataflow.md) §2b) is the canonical risk taxonomy. Every write-side/outbound boundary (`fs_write`, `net_send`, `subprocess`, `env_write`, `ipc_send`, …) is an untrusted taint **sink** (where tainted data lands or escapes); every read-side *sensitive* boundary (`env_read`, `net_recv`, `ipc_recv`, `db_read`) is an untrusted **source**; `fs_read` and `browser_storage_read` are deliberately quiet (sensitivity depends on what is stored). This is the model `verify-claims` consumes, and network-egress risk is additionally graded by supply-chain `dst_tier`.
+- The **taint source/sink model** ([ADR-0017](0017-taint-zone-dataflow.md) §2b) is the canonical risk taxonomy. Every write-side/outbound boundary (`fs_write`, `net_send`, `subprocess`, `env_write`, `ipc_send`, …) is an untrusted taint **sink** (where tainted data lands or escapes); every read-side *sensitive* boundary (`env_read`, `host_info_read`, `net_recv`, `ipc_recv`, `db_read`) is an untrusted **source** — carrying its own label, since `env_read → host_secret` and `host_info_read → host_description` are different facts (INV-tutar); `fs_read` and `browser_storage_read` are deliberately quiet (sensitivity depends on what is stored). This is the model `verify-claims` consumes, and network-egress risk is additionally graded by supply-chain `dst_tier`.
 - The `io-boundaries` output additionally carries a narrow, **display-only** `high_risk` marker, scoped to `subprocess` — launching an external program is arbitrary code execution, the one boundary with a clean "always risky" invariant (completeness-ratcheted per language). `high_risk` is **not** a net/fs risk taxonomy and must not be extended into one: destructive-filesystem and network-egress risk are the taint model's concern, not a second hand-curated set (`io_boundary.HIGH_RISK_PRIMITIVES` is subprocess-only for exactly this reason).
 
 ### 2. I/O primitive catalogs (per-language, YAML-driven)

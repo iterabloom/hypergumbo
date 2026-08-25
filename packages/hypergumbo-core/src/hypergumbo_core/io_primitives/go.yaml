@@ -136,10 +136,18 @@ subprocess:
 
 env_read:
   - module: os
-    functions: [Getenv, LookupEnv, Environ, Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
+    functions: [Getenv, LookupEnv, Environ]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: os
+    functions: [Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
   - module: runtime
     functions: [GOOS, GOARCH]
-    notes: "Constants, not functions, but captured as env_read"
+    notes: "Constants, not functions, but captured as host_info_read"
 
 ipc_send:
   - module: os

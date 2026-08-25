@@ -18,6 +18,15 @@
 #   label `untrusted_input`  <- io_primitives boundaries net_recv, ipc_recv,
 #                               db_read   (AUTO_SOURCE_LABEL_MAP)
 #   label `host_secret`      <- io_primitives boundary   env_read
+#   label `host_description` <- io_primitives boundary   host_info_read
+#
+# `env_read` and `host_info_read` were ONE boundary until INV-tutar. `env_read`
+# is an ambient CONFIGURATION read — environment variables, system properties,
+# argv — where a credential can live. `host_info_read` is a host DESCRIPTION or
+# identity read — runtime.GOOS, os.uname, navigator.platform, pwd.getpwnam —
+# where one cannot. They derive DIFFERENT labels, so a `host_secret` claim no
+# longer matches a flow that only carries the OS name, and the two questions
+# below are asked separately rather than answered by one number.
 #
 #   zone `subprocess` <- fs boundary subprocess       zone `network`  <- net_send
 #   zone `host_fs`    <- fs boundary fs_write         zone `database` <- db_write
@@ -108,3 +117,22 @@ claims:
       taint_flow:
         source_taint: host_secret
         prohibited_sink_zone: host_fs
+
+  # =======================================================================
+  # HOST DESCRIPTION — a different question from the three above, and worth
+  # asking on its own terms rather than as a weaker version of them. Reading
+  # the OS name or the machine's hostname is not a credential leak; SENDING it
+  # somewhere is a fingerprinting and telemetry question, which a reader may
+  # care about a great deal or not at all. Keeping it separate is the whole
+  # point of INV-tutar's split: a claim that conflates them cannot be answered
+  # truthfully in either direction.
+  # =======================================================================
+  - id: host-description-no-network
+    text: |
+      Host and platform description — OS name, architecture, hostname, user
+      name, home directory, locale — is never sent over the network. This is
+      the telemetry and fingerprinting question, not the credential question.
+    constraint:
+      taint_flow:
+        source_taint: host_description
+        prohibited_sink_zone: network

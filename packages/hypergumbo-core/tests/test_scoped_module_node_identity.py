@@ -183,8 +183,13 @@ class TestTheCatalogueStillMatches:
         # plus a dotted alias, and never as ``std::env::consts``. Shipping the
         # producer change without this control would have silently lost every
         # Rust and C++ attribute classification.
-        ("rust:std::env:0-0:std::env::consts:attribute", "env_read"),
-        ("rust:std.env:0-0:std.env.consts:attribute", "env_read"),
+        # ``host_info_read`` since INV-tutar split the boundary --
+        # ``std::env::consts::OS`` is the target platform's NAME, not
+        # configuration that could hold a credential. The subject of this
+        # parametrisation is the SEPARATOR fold, not the boundary value, and
+        # the fold is unaffected.
+        ("rust:std::env:0-0:std::env::consts:attribute", "host_info_read"),
+        ("rust:std.env:0-0:std.env.consts:attribute", "host_info_read"),
         ("rust:std::fs:0-0:read_to_string:external_symbol", "fs_read"),
         ("rust:std.fs:0-0:read_to_string:external_symbol", "fs_read"),
         # C++ IS THE OTHER ``scoped_path`` LANGUAGE, so it gets its own row: a

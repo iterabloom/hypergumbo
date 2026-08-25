@@ -223,18 +223,17 @@ subprocess:
 
 env_read:
   - module: NSProcessInfo
-    methods:
-      - environment
-      - processName
-      - hostName
-      - operatingSystemVersionString
-      - physicalMemory
-      - processorCount
+    methods: [environment]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: NSProcessInfo
+    methods: [processName, hostName, operatingSystemVersionString, physicalMemory, processorCount]
   - module: NSBundle
-    methods:
-      - bundleIdentifier
-      - infoDictionary
-      - "objectForInfoDictionaryKey:"
+    methods: [bundleIdentifier, infoDictionary, "objectForInfoDictionaryKey:"]
     notes: "App bundle metadata access"
 
 logging:

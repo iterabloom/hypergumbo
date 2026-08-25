@@ -225,18 +225,25 @@ subprocess:
 
 env_read:
   - module: os
-    functions: [getenv, type, version, system_time, perf_counter]
-    notes: >-
-      WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM
-      shell-out, not an environment read — it was swept in with the rest of the
-      os module and now lives under `subprocess:` below. It is removed rather
-      than ALSO declared there, because a multi-boundary primitive is resolved
-      by YAML row order (INV-zumin), which would make the correct declaration
-      live or inert depending on where it was pasted.
+    functions: [getenv]
+    notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."
   - module: application
-    functions: [get_env, get_all_env, get_key, get_all_key, get_application, loaded_applications, which_applications, info]
+    functions: [get_env, get_all_env, get_key, get_all_key]
   - module: init
-    functions: [get_argument, get_arguments, get_plain_arguments, get_status, script_id]
+    functions: [get_argument, get_arguments, get_plain_arguments]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: os
+    functions: [type, version, system_time, perf_counter]
+    notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."
+  - module: application
+    functions: [get_application, loaded_applications, which_applications, info]
+  - module: init
+    functions: [get_status, script_id]
 
 env_write:
   - module: os
