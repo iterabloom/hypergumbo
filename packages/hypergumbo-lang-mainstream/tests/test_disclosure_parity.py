@@ -30,6 +30,31 @@ the one real code uses — is already stamped correctly in both. Fixtures here
 use the plain shape deliberately. The cast-receiver gap is real but separate
 and much narrower; it is recorded on the PR1 work item, not fixed here.
 
+THE CAST-RECEIVER RESIDUAL IS NOW CLOSED HERE, AND IT WAS BIGGER THAN "CASTS".
+Re-measured 2026-08-25 (INV-tutar/INV-pirot Phase 0, dev e41a655d6d): the gap
+is not casts, it is EVERY receiver that is not a bare identifier -- object
+creation, a call result, a cast, a chain -- and it is in THREE languages, not
+two:
+
+    java   f.mkdirs()                  method   <- control
+           new File("x").mkdirs()      ABSENT
+           get().mkdirs()              ABSENT
+           ((File) o).mkdirs()         ABSENT
+           f.getParentFile().mkdirs()  ABSENT
+    scala  f.createNewFile()           method   <- control
+           new File(..) / get() / asInstanceOf   ABSENT
+    swift  fm.createFile(...)          method   <- control
+           get() / (o as! FileManager)           ABSENT
+    objc / rust / go                   method   (all shapes, already clean)
+    python                             NO EDGE AT ALL for a call-result
+                                       receiver -- WI-makij, not a stamp gap
+
+The cause is one predicate per analyzer: ``call_construct`` was derived from
+the receiver's NAME, and the name is ``None`` for a receiver EXPRESSION -- so
+a variable that answers "what type can I look this receiver up under" was
+asked "is there a receiver at all". Two questions, one variable (LIVE.md rule
+7). :data:`COMPLEX_RECEIVER_FIXTURES` below is the arm that keeps them apart.
+
 THE GATE, not the five stamps, is the point. It is driven from the io_primitives
 catalogues rather than a hand-written list, so a language that ARRIVES LATER
 with method-kind sinks and no fixture fails here instead of going silently
@@ -185,5 +210,132 @@ def test_untyped_receiver_method_call_carries_call_construct(
         f"{lang}: emitted {len(external)} external call edge(s) but none "
         f"carries call_construct='method', so INV-fibis's untyped-receiver "
         f"disclosure is inert for this language. "
+        f"metas: {[e.meta for e in external]}"
+    )
+
+
+#: The SECOND arm of the same rule: the receiver is an EXPRESSION rather than a
+#: bare identifier. Same languages, same catalogued sinks, same assertion — the
+#: only thing that changes is the shape of the receiver, which is exactly the
+#: variable the defect turned on (INV-pirot).
+#:
+#: Shapes are deliberately varied across languages (object creation, cast, call
+#: result) rather than uniform, because a uniform fixture set is how the FIRST
+#: draft of this file concluded "scala and swift are inert" from one arm and
+#: was wrong (LIVE.md rule 12).
+COMPLEX_RECEIVER_FIXTURES: dict[str, tuple[str, str, str, str]] = {
+    "java": (
+        "hypergumbo_lang_mainstream.java", "analyze_java", "Main.java",
+        'public class Main { void leak() { new Untyped("x").mkdirs(); } }\n',
+    ),
+    "scala": (
+        "hypergumbo_lang_mainstream.scala", "analyze_scala", "Main.scala",
+        'object Main { def leak(): Unit = '
+        '{ new Untyped("x").createNewFile() } }\n',
+    ),
+    "swift": (
+        "hypergumbo_lang_mainstream.swift", "analyze_swift", "main.swift",
+        'func leak(o: Any) '
+        '{ (o as! Untyped).createFile(atPath: "x", contents: nil) }\n',
+    ),
+    "objc": (
+        "hypergumbo_lang_mainstream.objc", "analyze_objc", "main.m",
+        "@implementation Foo\n"
+        "- (void)leak { [[Untyped alloc] createFileAtPath:@\"x\" "
+        "contents:nil attributes:nil]; }\n"
+        "@end\n",
+    ),
+    "rust": (
+        "hypergumbo_lang_mainstream.rust", "analyze_rust", "src/lib.rs",
+        "use std::io::Write;\n"
+        "fn make() -> Box<dyn Write> { unimplemented!() }\n"
+        "pub fn leak(x: &[u8]) { let _ = make().write_all(x); }\n",
+    ),
+    "go": (
+        "hypergumbo_lang_mainstream.go", "analyze_go", "main.go",
+        "package main\n\nfunc make2() Conn { panic(\"x\") }\n\n"
+        "func leak() { make2().Write([]byte(\"x\")) }\n",
+    ),
+}
+
+#: Languages that emit NO external call edge for a COMPLEX-receiver method call,
+#: so there is nothing to stamp. Measured 2026-08-25: python emits an edge for
+#: the ``make()`` call and none for the ``.open("w")`` on its result. That is an
+#: EMISSION gap, not a stamp gap, and it is already filed as WI-makij (chained
+#: method calls emit no call edge) — cited rather than re-filed.
+COMPLEX_RECEIVER_NO_EDGE: frozenset[str] = frozenset({"python"})
+
+
+def test_every_parity_language_has_a_complex_receiver_fixture() -> None:
+    """The two arms cover the same languages, or the difference is DECLARED.
+
+    Without this the complex-receiver arm could quietly cover three languages
+    while the plain arm covers seven, and the gap would read as "clean".
+    """
+    missing = (
+        set(FIXTURES)
+        - set(COMPLEX_RECEIVER_FIXTURES)
+        - COMPLEX_RECEIVER_NO_EDGE
+    )
+    assert not missing, (
+        f"languages with a plain-receiver fixture and no complex-receiver "
+        f"fixture: {sorted(missing)}. Add one with an object-creation, cast or "
+        f"call-result receiver, or — if the analyzer emits no external call "
+        f"edge for that shape at all — add it to COMPLEX_RECEIVER_NO_EDGE with "
+        f"the work item that tracks the emission gap."
+    )
+
+
+def test_the_complex_receiver_no_edge_set_is_exactly_the_measured_one() -> None:
+    """Same discipline as :data:`NO_EXTERNAL_CALL_EDGE`: the exemption is a
+    MEASUREMENT, not a place to put inconvenient languages."""
+    assert COMPLEX_RECEIVER_NO_EDGE == frozenset({"python"})
+
+
+@pytest.mark.parametrize("lang", sorted(COMPLEX_RECEIVER_FIXTURES))
+def test_complex_receiver_method_call_carries_call_construct(
+    lang: str, tmp_path: Path,
+) -> None:
+    """A receiver the analyzer cannot NAME is still a receiver (INV-pirot).
+
+    THE FAIL-OPEN DIRECTION, which is why this arm is not merely a disclosure
+    nicety. ``taint._register_sanitizer_callers`` refuses to bind an unresolved
+    bare-name sanitizer match ONLY when ``call_construct == "method"``. With the
+    key absent the edge reaches the permit branch and registers a PHANTOM
+    BARRIER — and since PR #214 a barrier earns ``sanitized``, which DROPS the
+    flow from the claim's violation set. A missing stamp therefore DELETES
+    findings, so the shape that misses it is a security defect and not a
+    cosmetic one.
+    """
+    module, entry, filename, source = COMPLEX_RECEIVER_FIXTURES[lang]
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source)
+    if lang == "rust":
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "p"\nversion = "0.1.0"\nedition = "2021"\n'
+        )
+
+    analyze = getattr(importlib.import_module(module), entry)
+    result = analyze(tmp_path)
+
+    external = [
+        e for e in result.edges
+        if e.edge_type in ("calls", "instantiates")
+        and e.dst.split(":")[-1] in ("external_symbol", "unresolved")
+    ]
+    assert external, (
+        f"{lang}: no external call edge for a complex-receiver method call — "
+        f"this language belongs in COMPLEX_RECEIVER_NO_EDGE, not in "
+        f"COMPLEX_RECEIVER_FIXTURES"
+    )
+    stamped = [
+        e for e in external if (e.meta or {}).get("call_construct") == "method"
+    ]
+    assert stamped, (
+        f"{lang}: emitted {len(external)} external call edge(s) for a receiver "
+        f"EXPRESSION and none carries call_construct='method'. The sanitizer "
+        f"method-guard is therefore inert for this shape and a bare short name "
+        f"can bind a catalogued barrier (INV-pirot). "
         f"metas: {[e.meta for e in external]}"
     )
