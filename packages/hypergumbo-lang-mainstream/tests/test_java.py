@@ -5259,9 +5259,20 @@ public class Sub extends Base {
             f"Got {len(fmt_unresolved)}: "
             f"{[(e.dst, e.meta) for e in fmt_unresolved]}"
         )
-        assert fmt_unresolved[0].meta == {
+        # ASSERTED KEY BY KEY, not as a whole-dict equality. This test's
+        # subject is the Site-1 hint -- ONE unresolved edge carrying
+        # ``enclosing_class`` so the inherited_calls linker can recover it --
+        # and a dict equality made it also assert the ABSENCE of every key
+        # anyone might add later. INV-pirot added one: ``this.format(null)``
+        # did not resolve, so the declaring type is not established here, and
+        # the two taint gates read ``call_construct`` to know that. The linker
+        # reads ``enclosing_class``, never that key, so the recovery this test
+        # protects is unchanged.
+        meta = fmt_unresolved[0].meta or {}
+        assert {k: meta.get(k) for k in ("callee_name", "enclosing_class")} == {
             "callee_name": "format", "enclosing_class": "Sub",
         }
+        assert meta["call_construct"] == "method"
 
     def test_site2_unresolved_carries_receiver_type_hint(
         self, tmp_path: Path,
