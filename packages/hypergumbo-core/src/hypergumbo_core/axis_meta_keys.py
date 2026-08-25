@@ -306,6 +306,32 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "invariant for object creation and is NOT redundant with "
                 "``edge_type``.",
                 applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
+    MetaKeySpec("callee_name", AXIS_EDGE_META,
+                "The callee's name at FULL FIDELITY, as the producer saw it "
+                "at the call site -- the lossless home ADR-0036 Ruling 1 "
+                "designates. The id's name slot is deliberately LOSSY (names "
+                "containing ':' fold to '.') because the id is a "
+                "location-addressed key, not a fidelity surface, and Ruling 1 "
+                "says in as many words that consumers needing the exact name "
+                "MUST read it from elsewhere and never re-derive it from the "
+                "id. Until this key existed there was no elsewhere for an "
+                "unresolved external: an Objective-C selector "
+                "(writeToFile:atomically:) ENDS in a colon, so the id's "
+                "second-to-last token was the EMPTY STRING, the boundary node "
+                "synthesised from that id had name='', and the selector "
+                "existed nowhere in the output (INV-divuf / WI-nakut). "
+                "Stamped on EVERY edge make_unresolved_edge builds, including "
+                "the cell where WI-huzuv correctly withholds dst_ref because "
+                "the module is unknown -- carrying the name in dst_ref "
+                "sometimes and here otherwise would give one fact two homes.",
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: analyze.base.make_unresolved_edge, the "
+                    "factory all 57 unresolved-external call sites route "
+                    "through. Nothing refines or displaces it -- it records "
+                    "what the producer saw, so a later pass 'improving' it "
+                    "would be recording a different fact under one name.")),
     MetaKeySpec("call_arg_shape", AXIS_EDGE_META,
                 "What the arguments at this call site CAN carry. One value "
                 "today: 'literal_only' -- every positional and keyword "

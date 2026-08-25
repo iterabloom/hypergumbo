@@ -2581,11 +2581,41 @@ def unknown_receiver_scope(
             continue
         sites += 1
         # THE NAME THE READER IS SHOWN (WI-nakut, root-caused as INV-divuf).
-        # ``parts[3]`` truncates an Objective-C selector at its first colon, so
-        # the caveat named ``writeToFile`` for ``writeToFile:atomically:`` —
-        # not a method that exists. The span-anchored slot returns it whole.
-        names.add(symbol_name_slot(dst))
+        # Read from the LOSSLESS home, never re-derived from the id — the id's
+        # name slot is lossy by ADR-0036 Ruling 1, and for an objc selector it
+        # is the empty string, which is how this caveat came to render
+        # "distinct method(s): ." on the shipped CLI.
+        names.add(_callee_name(edge))
     return sites, total, sorted(names)
+
+
+def _callee_name(edge: dict[str, Any]) -> str:
+    """The callee's name at FULL FIDELITY — the one home, read once.
+
+    ADR-0036 Ruling 1 makes the id's name slot deliberately lossy and says in
+    as many words that "Consumers that need the exact name MUST read
+    ``Symbol.name``, never re-derive it from the ID." Both disclosure sites
+    below used to re-derive it, and neither could have worked: an Objective-C
+    selector ENDS in a colon, so the id's second-to-last token is the EMPTY
+    STRING and the caveat rendered "distinct method(s): ." on the shipped CLI
+    (WI-nakut, root-caused as INV-divuf).
+
+    ``meta['callee_name']`` is the lossless home ``make_unresolved_edge``
+    stamps on every unresolved-external edge. The id remains the FALLBACK,
+    deliberately: not every producer routes through that factory, and a
+    disclosure path is the wrong place to raise. It is read through
+    :func:`ir.symbol_name_slot` rather than positionally so the fallback is at
+    least span-anchored.
+
+    ONE FUNCTION because the two call sites are a PAIR — ``_site_method``
+    parses ``_call_site_label``'s output back out — and two homes for one read
+    is how they drift apart (LIVE.md rule 7).
+    """
+    meta = edge.get("meta") or {}
+    name = meta.get("callee_name")
+    if isinstance(name, str) and name:
+        return name
+    return symbol_name_slot(str(edge.get("dst", "")))
 
 
 def _call_site_label(edge: dict[str, Any]) -> str:
@@ -2615,9 +2645,9 @@ def _call_site_label(edge: dict[str, Any]) -> str:
     reader sat in different places would drift on the first edit to either.
     """
     path = _symbol_path_slot(edge.get("src", ""))
-    # Same truncation as ``unknown_receiver_scope``'s, and these two are a pair
+    # Same source as ``unknown_receiver_scope``'s, and these two are a pair
     # (``_site_method`` reads this label back), so they must agree (INV-divuf).
-    name = symbol_name_slot(str(edge.get("dst", "")))
+    name = _callee_name(edge)
     line = edge.get("line")
     where = f"{path}:{line}" if line else path
     return f"{where} {name}()"

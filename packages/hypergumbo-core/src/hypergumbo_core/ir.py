@@ -1298,6 +1298,33 @@ def is_external_boundary(symbol_or_dict: Any) -> bool:
 _REFERRING_PATHS_CAP = 50
 
 
+def sanitize_id_name_segment(name: str) -> str:
+    """Colon-free ``{name}`` slot for a canonical symbol id (ADR-0036 Ruling 1).
+
+    A literal ``':'`` in the name slot would push the id past its five anchored
+    segments and defeat the from-both-ends round-trip parser, so colons are
+    sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
+    lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
+    folds a protocol address — message-queue ``kafka:publish:topic`` →
+    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
+    producers whose name folds an ecosystem coordinate,
+    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
+
+    :func:`analyze.base.make_symbol_id` applies this to every name slot
+    (WI-sikar), so calling it explicitly is no longer required for correctness.
+    Producers keep doing so where it documents intent, and the substitution is
+    idempotent.
+
+    LIVES HERE, not in ``analyze.base``, since INV-divuf: ``ir`` mints boundary
+    ids too (:func:`_canonical_external_id`) and ``analyze.base`` imports from
+    ``ir``, so a copy on the ``ir`` side would be a second home for one rule —
+    the arrangement LIVE.md rule 7 and this project's id-format history both
+    name as the failure. ``analyze.base`` re-exports it, so every existing
+    importer is unaffected.
+    """
+    return name.replace(":", ".")
+
+
 def _canonical_external_id(language: str, path: str, name: str) -> str:
     """Canonical id for a deduplicated boundary Symbol (WI-fozoh; ADR-0036 Ruling 2).
 
@@ -1314,8 +1341,23 @@ def _canonical_external_id(language: str, path: str, name: str) -> str:
     importing file for a ``make_file_id`` pseudo-id. It used to be collapsed to
     ``<external>`` for that last case; see :func:`_dedupe_key` for why that was
     wrong (INV-rozob).
+
+    THE NAME SLOT IS SANITIZED, the id's half of ADR-0036 Ruling 1: names
+    containing ``:`` fold to ``.`` because the id is a location-addressed KEY
+    and the slot is colon-free by rule. The caller now passes the FULL-FIDELITY
+    name (``meta['callee_name']``, INV-divuf) so that two objc selectors which
+    both parse to '' stay distinct in the dedupe key — but handing that name
+    to the id unsanitized mints ``rust:external:0-0:Vec::with_capacity:...``
+    and ``objc:external:0-0:writeToFile:atomically::...``, which the
+    ``id_format`` validator correctly rejects (``double_colon_separator``,
+    INV-sadiv; measured: bellman's id_format violations went 1 -> 16 before
+    this fold was added). Full fidelity lives on ``Symbol.name``, which is
+    exactly the split Ruling 1 prescribes — lossy key, lossless field.
     """
-    return f"{language}:{path}:0-0:{name}:external_symbol"
+    return (
+        f"{language}:{path}:0-0:"
+        f"{sanitize_id_name_segment(name)}:external_symbol"
+    )
 
 
 _SYNTHETIC_SPAN = "0-0"
@@ -1684,6 +1726,15 @@ def create_boundary_nodes(
     # ``0-0`` slot).
     dangling_ids: set[str] = set()
     dangling_refs: Dict[str, ExternalRef] = {}
+    # ADR-0036 Ruling 1: the id's name slot is LOSSY BY DESIGN, so when no
+    # structured ref is available the parse below cannot recover the real name.
+    # ``meta['callee_name']`` is the lossless home the ruling designates; it is
+    # read here so a synthesised boundary node is not left nameless. Without it
+    # an objc selector — which ENDS in a colon, making the id's second-to-last
+    # token the EMPTY STRING — produced ``objc:external:0-0::external_symbol``
+    # with ``name=''``, and every such selector in the run collapsed onto that
+    # one node (80 distinct selectors → 17 on Mantle; INV-divuf / WI-nakut).
+    dangling_callee_names: Dict[str, str] = {}
     for edge in edges:
         if edge.src not in symbol_ids:
             dangling_ids.add(edge.src)
@@ -1693,6 +1744,9 @@ def create_boundary_nodes(
                 # First writer wins — multiple edges can share a dst id
                 # but the ref is identity, so any consistent ref is fine.
                 dangling_refs.setdefault(edge.dst, edge.dst_ref)
+            callee = (edge.meta or {}).get("callee_name")
+            if isinstance(callee, str) and callee:
+                dangling_callee_names.setdefault(edge.dst, callee)
 
     if not dangling_ids:
         return [], {}
@@ -1712,6 +1766,12 @@ def create_boundary_nodes(
             )
         else:
             language, path, name, kind = _parse_dangling_id(dangling_id)
+            # Prefer the lossless home over the lossy slot (ADR-0036 R1). This
+            # feeds ``_dedupe_key`` as well as the node's ``name``, so it is
+            # what keeps two selectors that both parse to '' distinct.
+            lossless = dangling_callee_names.get(dangling_id)
+            if lossless:
+                name = lossless
         key = _dedupe_key(language, path, name, kind)
         groups.setdefault(key, []).append(dangling_id)
         # ADR-0036 Ruling 2: retain the use-site reference syntax so it can be

@@ -5224,7 +5224,9 @@ public class Sub extends Base {
             f"Got {len(helper_unresolved)}: "
             f"{[(e.dst, e.meta) for e in helper_unresolved]}"
         )
-        assert helper_unresolved[0].meta == {"enclosing_class": "Sub"}
+        assert helper_unresolved[0].meta == {
+            "callee_name": "helper", "enclosing_class": "Sub",
+        }
 
     def test_this_else_emits_single_unresolved_edge(
         self, tmp_path: Path,
@@ -5257,7 +5259,9 @@ public class Sub extends Base {
             f"Got {len(fmt_unresolved)}: "
             f"{[(e.dst, e.meta) for e in fmt_unresolved]}"
         )
-        assert fmt_unresolved[0].meta == {"enclosing_class": "Sub"}
+        assert fmt_unresolved[0].meta == {
+            "callee_name": "format", "enclosing_class": "Sub",
+        }
 
     def test_site2_unresolved_carries_receiver_type_hint(
         self, tmp_path: Path,
