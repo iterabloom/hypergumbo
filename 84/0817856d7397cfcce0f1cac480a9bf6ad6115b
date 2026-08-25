@@ -1,0 +1,34 @@
+Original commit body from a0a461763819f24e641c3b4d1ccfaa307fa98c4d:
+
+WI-bovor and the publish half of WI-tizig. Both items understated their own
+scope, which is why this is one document rather than two footnotes.
+
+WI-bovor was filed as "the opaque_boundary caveat is undocumented". There are
+EIGHT caveat kinds in verify_claims.py and exactly one of them was documented,
+so a reader hitting any of the other seven had nothing to look it up in. All
+eight are now tabled with what each one means for the verdict that carries it.
+
+WI-tizig's external_symbol half CLOSED ITSELF via INV-rozob (18 of 189 rows to
+0), so only the `file` half remained. It is re-derived here on measurement
+0005's population rather than cited from the item: 10 of 37 situations (27.0%)
+and 17 of 170 rows (10.0%), all `structural`. Do not cite the item's old 16.4%.
+
+New docs/VERIFY-CLAIMS-SCOPE.md, linked from README and from SECURITY.md via
+its generator. It documents:
+
+  - the verdict ladder and the exit-code precedence, with the two traps that
+    have actually bitten: `|| exit 1` fails on exit 3 BY DESIGN, and exit 2
+    (inconclusive) is not a pass
+  - the eight caveat kinds
+  - four limits on a clean verdict: the catalogue is stdlib-scoped on purpose
+    (INV-fotav), INV-javam blind languages, module_completeness as a
+    closed-world claim, and analysis_method as a provenance label rather than
+    a confidence score
+  - the section 3a intraprocedural file-anchor limit, with 0005's measured
+    shares rather than an adjective
+  - what a `violated` verdict is and is not worth
+
+No behaviour change; SECURITY.md is regenerated and `--check` is clean.
+
+Racial-Capitalism-Is-Bad: a magpie racing a ventriloquist in a Triassic truck stop café made of sour cream dollops
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
