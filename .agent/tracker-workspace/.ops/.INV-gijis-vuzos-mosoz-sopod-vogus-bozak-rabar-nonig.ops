@@ -51,3 +51,10 @@
   clock: 5  # c1b2
   nonce: c1b2  # c1b2
   message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GOVERNING MEASUREMENT. docs/measurements/0001-taint-flow-precision.md puts taint-flow precision at ~41% population-weighted across six real repositories. Per WI-sivuz's PRE-REGISTERED decision bands -- named before any interval was computed, so the interval cannot be used to move them -- that is the <50% band: \"precision is the headline problem and recall work should stop until it is understood.\"\n\nP1 -> P2. Named in the measurement's consequence 1 alongside INV-suril as a recall fix landing into a ~41%-precision reporting layer. Was at rank 11.\n\nTHE DEFECT IS UNCHANGED and re-reproduced at tip 2026-08-17: 4 JS/TS call edges emitted, 0 carrying meta.call_construct, while go stamped 3 of 3 in the same probe run."  # c1b2
+- op: discuss  # c770
+  at: '2026-08-25T04:14:00Z'  # c770
+  by: agent  # c770
+  actor: jgstern_agent  # c770
+  clock: 6  # c770
+  nonce: c770  # c770
+  message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. REPRODUCES,\nunchanged. js_ts.py contains ZERO occurrences of call_construct at tip\n(grep), and a live fixture confirms it at the edge:\n\n    fs.readFileSync(p)  -> javascript:fs:0-0:readFileSync:unresolved  cc=ABSENT\n    obj.writeThing(p)   -> NO EDGE     (WI-nasuf's emission gap, not this item)\n    plainCall(p)        -> NO EDGE\n    obj.a.b.deep(p)     -> NO EDGE\n\nNote the two defects compound: the edges that DO exist carry no construct, and\nthe instance-method edges that would need one are not emitted at all. Phase 6\n(recall), owner-gated. Status unchanged: violated."  # c770

@@ -21,3 +21,10 @@
     fields:  # 9399
       statement: "When a project-local overlay declares module_completeness, the run must disclose WHICH modules the user vouched for, not merely that an overlay was loaded. VIOLATED: _disclose_io_overlays prints 'Loaded N project-local I/O primitive overlay(s): <paths>' and nothing about completeness, so a six-line overlay that turns a real exfiltration from inconclusive rc 2 into confirmed rc 0 is disclosed identically to one that adds a harmless row."  # 9399
       root_cause: "The disclosure runs in cmd_verify_claims BEFORE the per-language load_catalog loop that actually parses overlays, so at the point of printing nothing has been parsed and only the paths are in hand. Naming the vouched modules needs the disclosure to move after the loop (or to read the merged catalogue's module_completeness against the shipped catalogue's own), which is a restructure rather than a message edit."  # 9399
+- op: discuss  # 9bdd
+  at: '2026-08-25T04:14:00Z'  # 9bdd
+  by: agent  # 9bdd
+  actor: jgstern_agent  # 9bdd
+  clock: 2  # 9bdd
+  nonce: 9bdd  # 9bdd
+  message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. STILL UNMET.\n\ncatalog_provenance / render_catalog_provenance_text (verify_claims.py) now\ndisclose WHICH catalogue files a verdict was computed against and WHO supplied\nthem (CLI flag vs claims-file extra_catalogs) -- that is INV-zosun's fix, and\nit landed. Neither names the VOUCHED MODULES. The disclosure still reads as a\npath plus a layer label, so the six-line overlay whose single\nmodule_completeness entry flipped the INV-buzab fixture from inconclusive to\nconfirmed would today be disclosed as a filename and nothing more.\n\nThe third bound this item asks for -- SAY WHAT WAS VOUCHED FOR -- has no code\npath at tip. Confirmed Phase 1 member."  # 9bdd

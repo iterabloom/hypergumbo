@@ -147,3 +147,10 @@
   clock: 18  # d7ae
   nonce: d7ae  # d7ae
   message: "CANDIDATE FOR CLOSURE BY WI-nanom (Python pyright/SCIP multi-fidelity backend,\nfiled 2026-08-23 under owner direction). This item's LIVE gap -- attribute-chain\nreceivers carrying no module hint, so obj.deep.method() leaves the module slot\nas the \"external\" sentinel and catalogued method-kind sinks stay unmatchable --\nis precisely what a pyright-backed SCIP index resolves.\n\nNOT AN INSTRUCTION TO CLOSE ON THAT BASIS. Two things to check first, both\nraised here so a future reader does not skip them:\n(1) This item's own STATEMENT is about whether a calls edge is EMITTED at all,\n    and the title already records that the emission clause is REFUTED (the gap\n    moved L2 -> L3, receiver evidence). So the statement and the live defect\n    are about different links. Re-read and if necessary rewrite the statement\n    BEFORE closing; closing on the title would be closing on the wrong claim.\n(2) Behavioural evidence, per closure-evidence discipline: re-run this item's\n    own repro, not a proxy metric."  # d7ae
+- op: discuss  # 343c
+  at: '2026-08-25T04:14:00Z'  # 343c
+  by: agent  # 343c
+  actor: jgstern_agent  # 343c
+  clock: 19  # 343c
+  nonce: 343c  # 343c
+  message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. The re-titled item\nis ACCURATE at tip -- L2 (emission) stays refuted, L3 (module hint) is live.\n\n    obj.write(p)             -> python:external:0-0:write:unresolved  cc=method\n    obj.deep.chain.write(p)  -> python:external:0-0:write:unresolved  cc=method\n    os.remove(p)             -> python:os:0-0:remove:unresolved       cc=method  <- CONTROL\n    print(p)                 -> NO EDGE\n\nAttribute chains DO emit; the module slot is the 'external' placeholder, so a\ncatalogued method-kind sink reached that way is still unmatchable, and the\nbuiltin bare Name still emits nothing. Status unchanged: violated, on the L3\nclause. Phase 6 (recall), owner-gated on measurement 0005."  # 343c
