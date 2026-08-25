@@ -23,3 +23,10 @@
     fields:  # 3ce7
       statement: "call_construct must record the CONSTRUCT of a call (package-qualified function vs receiver method), not merely that the callee was written as a selector expression."  # 3ce7
       root_cause: "go.py emits meta={'call_construct': 'method'} at the selector-expression emit sites without distinguishing a package qualifier from a value receiver. Verified live: http.Get(u) and c.Get(u) on a *http.Client produce byte-identical (name, module_hint, call_construct)."  # 3ce7
+- op: discuss  # 338a
+  at: '2026-08-25T04:14:40Z'  # 338a
+  by: agent  # 338a
+  actor: jgstern_agent  # 338a
+  clock: 2  # 338a
+  nonce: 338a  # 338a
+  message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. REPRODUCES,\nunchanged, on this item's own filed pair:\n\n    http.Get(u)   [package-qualified FREE FUNCTION] -> cc=method\n    c.Get(u)      [value-receiver METHOD]           -> cc=method\n    os.Getwd()    [package-qualified free function] -> cc=method\n    f.Close()     [method on typed local]           -> cc=method\n\ngo.py does now emit call_construct='function' at three sites (~2998, ~3044,\n~3105), but none of them fires for a call into an UNRESOLVED external package\n-- which is the population the io-boundary F3 gate reads. The field is still\nconstant across the construct distinction it exists to record.\n\nPhase 6 (recall), owner-gated. Status unchanged: violated."  # 338a

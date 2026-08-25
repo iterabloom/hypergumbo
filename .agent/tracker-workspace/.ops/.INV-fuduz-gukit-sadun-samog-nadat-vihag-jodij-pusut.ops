@@ -1,0 +1,24 @@
+- op: create  # 6d1d
+  at: '2026-08-25T05:45:37Z'  # 6d1d
+  by: agent  # 6d1d
+  actor: jgstern_agent  # 6d1d
+  clock: 1  # 6d1d
+  nonce: 6d1d  # 6d1d
+  data:  # 6d1d
+    kind: invariant  # 6d1d
+    title: "java bare unresolved calls register a phantom sanitizer barrier by short name: java has no free functions, but call_construct (a syntactic label) cannot say so"  # 6d1d
+    status: violated  # 6d1d
+    priority: 2  # 6d1d
+    parent:  # 6d1d
+    tags:  # 6d1d
+    - taint  # 6d1d
+    - io_boundary  # 6d1d
+    - adr_0017  # 6d1d
+    isbefore: []  # 6d1d
+    duplicate_of: []  # 6d1d
+    not_duplicate_of: []  # 6d1d
+    pr_ref:  # 6d1d
+    description: "FOUND while closing INV-pirot, 2026-08-25, dev bfcf212804. Deliberately filed\nrather than folded into that fix: it is a different statement, and the obvious\nfix for it is the wrong one.\n\nMEASURED, with a control in the same run (the shipped java sanitizer\njavax.crypto.Cipher.doFinal, indexed under its bare last component by\n_build_sanitizer_index_multi):\n\n    java:  void run(byte[] p) { doFinal(p); }        <- bare, implicit this\n      emits  java:external:0-0:doFinal:unresolved   meta has NO call_construct\n      _register_sanitizer_callers  ->  {'plaintext': ['javax.crypto.Cipher.doFinal']}\n                                       A PHANTOM BARRIER\n\n    control, same registrar, stamped edge  ->  NO BARRIER REGISTERED\n\nSince PR #214 a barrier earns `sanitized` and a sanitized flow is DROPPED from\na claim's violation set, so this deletes findings. Same direction as INV-pirot,\ndifferent population.\n\nWHY NOT JUST STAMP IT. `call_construct` names the syntactic construct. A bare\ncall is not syntactically a method call. Stamping it \"method\" would put a\nRESOLUTION fact (\"the declaring type was not established\") under a CONSTRUCT\nname -- the conceptual leak ADR-0024 and the audit-findings series exist to\nprevent, and the same shape INV-tutar is open for on the boundary vocabulary.\nDoing it would also make the key mean different things in different languages,\nsince a bare call in go, python or rust CAN be a free function.\n\nWHAT THE SIGNAL PROBABLY IS, unbuilt and unmeasured. Two candidates, neither\nchosen here:\n  (a) the guard consults meta['enclosing_class'] -- already stamped on exactly\n      this population by java.py for the inherited_calls Site-1 walker, and its\n      presence on an UNRESOLVED edge means \"not on the enclosing class, so the\n      declaring type is not established\". Cheap; reuses an existing key at the\n      consumer rather than minting one.\n  (b) a per-language declaration that the language has no free functions, in\n      the analyzer_disclosure positive-declaration shape, so the guard can\n      treat a bare unresolved call as receiver-evidence-absent for java/scala\n      and not for go/python/rust.\n(a) is one predicate at one consumer and reuses a key the producer already\nsets; (b) is a new vocabulary. Whoever picks this up should price both.\n\nSCOPE NOT MEASURED. The population -- bare unresolved java calls whose short\nname collides with a catalogued sanitizer -- has not been counted on a corpus.\nThe shipped sanitizer catalogue is small (one java entry), so the blast radius\ntoday may be narrow; it grows with every sanitizer added. Count it before\nbuilding."  # 6d1d
+    fields:  # 6d1d
+      statement: "A sanitizer barrier is registered for an unresolved call only where the analysis holds receiver evidence that the callee IS the catalogued sanitizer -- for every call shape, including one with no receiver token."  # 6d1d
+      root_cause: "_register_sanitizer_callers has exactly one refusal signal for an unresolved bare-name match: meta[\"call_construct\"] == \"method\". That key names the SYNTACTIC call construct (ADR-0024, audit-findings 0012), so a bare java call cannot be stamped with it -- a bare call is not syntactically a method call, and stamping it would file a resolution fact under a construct name. But java has NO FREE FUNCTIONS: a bare call is necessarily an instance or static method, and one that did not resolve is one whose declaring type was not established. The guard therefore has no signal at all for this population and falls through to its permit branch."  # 6d1d
