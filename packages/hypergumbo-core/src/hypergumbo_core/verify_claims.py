@@ -1853,8 +1853,13 @@ def _analyzed_modules(raw_edges: list[dict[str, Any]]) -> set[str]:
 def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     """Whether ``module`` names source this analysis read.
 
-    Tests every dotted prefix because the module slot may carry a trailing class
-    name — ``app.config.Loader`` for a callee defined in ``app/config.py``.
+    Tests the WHOLE spelling, then ONE shortening step, because the module slot
+    may carry a trailing class name — ``app.config.Loader`` for a callee defined
+    in ``app/config.py``. It used to test EVERY dotted prefix down to a single
+    component, which is INV-lakom: that also licensed ``os.path`` → ``os``, so a
+    repo owning ``myapp/os/helpers.py`` vouched for the standard library ``os``
+    and the disclosure went silent over an unexamined module. The bounds and the
+    reasoning for each are at the call site below.
 
     EACH PREFIX IS MATCHED AS A COMPONENT-BOUNDED SUFFIX of an analyzed path,
     not by set membership (INV-liloh). ``analyzed`` derives from SRC file paths
@@ -1902,10 +1907,38 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     :func:`io_boundary.is_definitionally_first_party` answers it.
     """
     parts = module.split(".")
-    for i in range(len(parts), 0, -1):
-        prefix = ".".join(parts[:i])
-        if _component_infix_of_any(prefix, analyzed):
-            return True
+    if _component_infix_of_any(module, analyzed):
+        return True
+    # SHORTENING IS BOUNDED BY ITS OWN PURPOSE (INV-lakom). It exists to strip
+    # a trailing TYPE name off a callee slot -- ``app.config.Loader`` for a
+    # callee defined in ``app/config.py`` -- and that is ONE component. It was
+    # unbounded, walking every prefix down to a single component, so it equally
+    # licensed ``os.path`` -> ``os`` and ``crypto.tls`` -> ``crypto``. Measured:
+    # a repo owning ``myapp/os/helpers.py`` and calling ``os.path.join``
+    # reported coverage COMPLETE over the standard library ``os`` -- a clean
+    # verdict over a module nothing examined, produced by a directory-name
+    # collision.
+    #
+    # TWO BOUNDS, EACH FOR ITS OWN REASON.
+    #   ONE STEP, because that is the length of a type name. A nested class
+    #     (``app.config.Loader.Inner``) would need two and is NOT licensed;
+    #     it reports a gap, which is the safe direction.
+    #   NEVER TO A SINGLE COMPONENT, because a bare ``os`` / ``crypto`` /
+    #     ``json`` / ``time`` is precisely the spelling that collides with an
+    #     ordinary directory name -- and the analyzed set is matched as a
+    #     component-bounded INFIX (it has to be, to tolerate packaging
+    #     prefixes), which makes a one-component needle match almost anywhere.
+    #
+    # NOT "match the shortened form as a SUFFIX instead", which was the first
+    # design and is refuted by INV-liloh's own fixture: the src-layout callee
+    # ``hypergumbo_core.scip._generated`` shortens to ``hypergumbo_core.scip``,
+    # which sits INSIDE
+    # ``packages.hypergumbo-core.src.hypergumbo_core.scip.loader`` and is not a
+    # suffix of it. A suffix rule would have re-broken that.
+    if len(parts) >= 3 and _component_infix_of_any(
+        ".".join(parts[:-1]), analyzed,
+    ):
+        return True
     # THE SEPARATOR FOLD IS TESTED WHOLE, NEVER SHORTENED, and the asymmetry is
     # the whole point (INV-juvul). Folding first and then running the loop above
     # is what the first cut did, and CADDY REFUTED IT IN THE CONTROL RUN: with
