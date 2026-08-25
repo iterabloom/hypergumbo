@@ -1,0 +1,25 @@
+- op: create  # be44
+  at: '2026-08-25T20:14:53Z'  # be44
+  by: agent  # be44
+  actor: jgstern_agent  # be44
+  clock: 1  # be44
+  nonce: be44  # be44
+  data:  # be44
+    kind: invariant  # be44
+    title: "A taint sink primitive that names a stream OBJECT can match a non-call use, making the record uncheckable against its own claim (sys.stderr as a print(file=) keyword)"  # be44
+    status: violated  # be44
+    priority: 4  # be44
+    parent:  # be44
+    tags:  # be44
+    - taint  # be44
+    - io_boundary  # be44
+    - analysis_quality  # be44
+    - adr_0017  # be44
+    isbefore: []  # be44
+    duplicate_of: []  # be44
+    not_duplicate_of: []  # be44
+    pr_ref:  # be44
+    description: "FOUND DURING 0005's ADJUDICATION (docs/measurements/0005-taint-precision-after-vocabulary-split.md) by an adversarial reviewer, who could not use the record to check the record's own claim.\n\nTHE INSTANCE. The flow mitmproxy:host-secret-no-logging:1 declares sink primitives {logging.info, sys.stderr, sys.stdout}. The line that actually carries the flow is mitmproxy/tools/main.py:107:\n\n    print(f\"{sys.argv[0]}: {e}\", file=sys.stderr)\n\n`sys.stderr` here is not a call. It is the VALUE of a keyword argument. The call is `print`, which is not among the declared sink primitives. So the adjudication rubric's test -- \"the tainted value is an ARGUMENT to the sink call, or the RECEIVER of the sink call\" -- is literally unsatisfiable against the primitive the record names, even though the flow is real and was labelled TRUE POSITIVE by three independent readers.\n\nWHY THIS IS NOT PEDANTRY. INV-karud's clause (a1) asks that a finding be \"realizable by lookup\" -- a reader should be able to take the record's own fields and check them against the source. Here they cannot: the named sink appears at the cited line but not in the syntactic position the record's semantics require. Every reader resolves it by knowing that print(file=sys.stderr) IS the stderr write, which is knowledge from outside the record.\n\nTHE UNDERLYING SHAPE, stated generally: an io_primitives row may name a STREAM OBJECT (sys.stdout, sys.stderr, and their equivalents in other catalogues) rather than a call, and a taint sink match on such a row can land on a use of that object that is not a call at all -- a keyword argument, an assignment target, a comparison. The record then names a sink whose \"arguments\" and \"receiver\" do not exist.\n\nNOT MEASURED, AND DELIBERATELY NOT GUESSED: how many rows in how many catalogues name stream objects rather than calls, how often such a match lands on a non-call use, and whether any of them changes a verdict rather than only the checkability of one. 0005 found one instance in 37 situations and it changed no label. Do not size this from that.\n\nTWO SHAPES OF REMEDY, neither costed: (a) the record names the CALL it matched (`print`) in addition to the primitive that matched (`sys.stderr`), so the reader can check the argument position -- purely additive to the finding; or (b) a stream-object row records that its sink form is \"written through\" rather than \"called\", so a consumer can apply the right test. (a) is cheaper and does not touch the catalogues."  # be44
+    fields:  # be44
+      statement: "A taint finding must be checkable from its own fields: the sink primitive it names must appear at the cited line in the syntactic position the finding's semantics require -- as the call, or as the receiver of the call, whose argument carries the value."  # be44
+      root_cause: "io_primitives rows may name a stream object (sys.stdout, sys.stderr and their cross-language equivalents) rather than a callable. A sink match on such a row lands wherever the object is USED, including positions that are not calls at all -- a keyword argument, an assignment target -- so the finding names a sink that has no arguments and no receiver, and the reader must supply from outside the record the knowledge that print(file=sys.stderr) is the stderr write."  # be44

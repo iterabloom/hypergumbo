@@ -1,0 +1,38 @@
+- op: create  # 816b
+  at: '2026-08-25T20:14:57Z'  # 816b
+  by: agent  # 816b
+  actor: jgstern_agent  # 816b
+  clock: 1  # 816b
+  nonce: 816b  # 816b
+  data:  # 816b
+    kind: work_item  # 816b
+    title: "DECISION: the taint model and every precision rubric to date cannot separate a value that LEAKS from one a config-driven program was TOLD to act on -- every configured path is a true positive"  # 816b
+    status: todo_hard  # 816b
+    priority: 2  # 816b
+    parent:  # 816b
+    tags:  # 816b
+    - taint  # 816b
+    - adr_0017  # 816b
+    - analysis_quality  # 816b
+    - measurement  # 816b
+    isbefore: []  # 816b
+    duplicate_of: []  # 816b
+    not_duplicate_of: []  # 816b
+    pr_ref:  # 816b
+    description: "Measurement 0005's adjudication surfaced a limit that is not a bug in any producer and not a precision miss: the taint model, and the rubric every precision measurement of it has used, cannot distinguish a value that LEAKS from a value that a config-driven program was TOLD to act on.\n\nTHE CONCRETE CASE. caddy reads its config from stdin (`caddy run --config -`). That config names a log file. The bytes therefore flow: cmd/main.go:164 io.ReadAll(os.Stdin) -> caddy.Load -> changeConfig -> unsyncedDecodeAndRun -> StrictUnmarshalJSON -> BaseLog.WriterRaw -> ctx.LoadModule(cl,\"WriterRaw\") -> FileWriter.Filename -> filewriter.go:239 os.Chmod(fw.Filename, configuredMode). Every hop is citable in caddy's own source; the module constructor is pinned by RegisterModule + a literal module ID, and the field write by a json struct tag. Under the 0001 rubric -- TP is data flow into a sink argument, and \"exploitability is not the question\" -- this is a TRUE POSITIVE, and an independent adjudication commissioned for this exact question said so and accepted the consequence in terms: under this rubric EVERY filesystem, network and subprocess operation whose argument comes from a configured value is a true positive from the config source, for any config-driven server.\n\nWHY THAT MATTERS RATHER THAN BEING A CURIOSITY. It is TRUE and UNINFORMATIVE at the same time. caddy's config IS a program for the filesystem, so \"untrusted input reached os.MkdirAll\" is a correct sentence that tells a reader nothing they did not already know from running the program. Uninformativeness is an actionability/severity axis; precision is a correctness axis; the rubric deliberately admits only the second. So the metric cannot see this class at all, and the class is not small -- it is every config field of every module in a plugin-registry architecture.\n\nCONSEQUENCE FOR MEASUREMENT. 0005's row rate is 10.6%; without these five rows it is 7.9%. A future measurement on a config-heavy repo could be dominated by them, and would report a precision IMPROVEMENT that is entirely an artefact of how much config the repo has.\n\nTWO CANDIDATE REMEDIES, neither costed yet:\n(a) A FOURTH ADJUDICATION CATEGORY -- e.g. \"config-intended effect\" -- reported beside TP/FP/UNADJ the way UNADJ already is, never folded into precision. Cheap, honest, and confined to the measurement instrument; it changes no producer and no verdict a user sees.\n(b) A BARRIER AT THE CONFIG-DESERIALIZATION BOUNDARY in the taint model itself -- treat a value that has passed through a declared configuration decode as no longer carrying its original boundary label, or as carrying a distinct one. Far more invasive, changes what users are shown, and needs its own precision measurement in both directions before anyone believes it.\n\nFILED, NOT CHASED. This is not a defect to fix under the current campaign; it is a named limit on what the precision metric can mean, and the owner should choose (a), (b) or neither before the next measurement is designed. Evidence: docs/measurements/0005, the adjudication record in the run directory (blind/adjudication-unadj.json)."  # 816b
+    fields: {}  # 816b
+- op: update  # cdf7
+  at: '2026-08-25T20:15:25Z'  # cdf7
+  by: agent  # cdf7
+  actor: jgstern_agent  # cdf7
+  clock: 2  # cdf7
+  nonce: cdf7  # cdf7
+  set:  # cdf7
+    status: needs_human_review  # cdf7
+- op: discuss  # c2fc
+  at: '2026-08-25T20:15:25Z'  # c2fc
+  by: agent  # c2fc
+  actor: jgstern_agent  # c2fc
+  clock: 3  # c2fc
+  nonce: c2fc  # c2fc
+  message: "Routed to the owner rather than worked: the two remedies (a fourth adjudication category confined to the measurement instrument, versus a barrier at the config-deserialization boundary in the taint model itself) differ by an order of magnitude in blast radius, and the second changes what users are shown. Neither should be picked by the agent. Not gating anything in the current campaign -- P4 and P5 proceed regardless -- but it should be settled BEFORE the next precision measurement is designed, because a config-heavy repo could make that measurement mostly a statement about this class."  # c2fc
