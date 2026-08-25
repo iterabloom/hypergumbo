@@ -23,3 +23,10 @@
     fields:  # 04e6
       statement: "The uncatalogued-module gate must not treat a callee module as examined merely because the repo owns a directory whose name equals the callee's FIRST component. Suppressing stdlib os.path because a repo contains myapp/os/helpers.py removes a real, unexamined I/O module from the disclosure, in the direction that produces a false clean verdict."  # 04e6
       root_cause: "_is_analyzed_module accepts a component-bounded infix match at ANY prefix length, down to a single component. Prefix shortening exists to strip a trailing TYPE name from a dotted callee slot (app.config.Loader -> app/config.py), but it is unbounded, so os.path shortens to os and crypto.tls to crypto, and any same-named first-party directory then vouches for the whole stdlib package."  # 04e6
+- op: discuss  # fd58
+  at: '2026-08-25T04:13:59Z'  # fd58
+  by: agent  # fd58
+  actor: jgstern_agent  # fd58
+  clock: 2  # fd58
+  nonce: fd58  # fd58
+  message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. REPRODUCES\nVERBATIM, with a control in the same run:\n\n  REPRO   src=python:myapp/os/helpers.py, dst=python:os.path:0-0:join\n          -> complete=True,  reason=''\n  CONTROL src=python:myapp/helpers.py,    same dst\n          -> complete=False, reason='the analysis makes calls into 1 module(s)\n             that the I/O catalog could not classify (os.path), so whether\n             those calls perform this I/O was never examined'\n\n  _is_analyzed_module('os.path',   {'os'})     -> True\n  _is_analyzed_module('crypto.tls',{'crypto'}) -> True\n  _is_analyzed_module('os.path',   {'myapp'})  -> False\n\nThe control is what makes the repro readable: the disclosure the repo is\nentitled to exists and is suppressed purely by owning a directory whose name\ncollides with the callee's first component. Confirmed Phase 1 member."  # fd58
