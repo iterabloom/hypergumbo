@@ -1,0 +1,49 @@
+Original commit body from dd22f31e6bbdb337de5a993cb79911ca5ffd5ff9:
+
+The instrument predated INV-karud's situation collapse, so it reported one unit
+while calling it the other: an evidence record has been a SITUATION since the
+collapse, standing for `collapsed_flow_count` source->sink PAIRS, and the
+script kept only the witness scalars. Three changes:
+
+* `collapsed_flow_count` / `source_primitives` / `sink_primitives` /
+  `sink_symbols` reach every flow row. Absent -> 1, so 0001 and 0003 flow files
+  still score correctly: there, one record WAS one pair.
+* `score` prints a per-situation and a per-row rate side by side in every
+  table, and REFUSES (exit 1, offending ids named) to print a row rate for a
+  multi-pair TP carrying no `tp_pairs`. A situation is TP iff AT LEAST ONE of
+  its pairs is, so "all" inflates and "one" deflates. `unadj_pairs` exists so a
+  situation-unit run reconciles with a pair-unit run instead of folding those
+  rows into FP.
+* `collect --no-collapse` rebinds `taint.collapse_unadjudicated_flows` to the
+  identity for that process only, so the row unit is ADJUDICATED on its own
+  records rather than apportioned. 0004 had to hand-block that. Production is
+  untouched and `collect` prints which arm it ran.
+
+Measurement 0005 (census of 0004's five-repo cohort at ba01153095):
+21.6% per situation (8 TP of 37), 10.0% per row (17 TP of 170), a 2.16x gap.
+Positive control first: 0 CONFIRMED verdicts anywhere -- 13 violated, 22
+inconclusive.
+
+The two collect arms reconcile exactly -- 37 situations summing to 170 pairs
+against 170 pair records, every member set recovered (37/37), both ledgers
+agreeing on TP=17, FP=153.
+
+WI-sivuz's pre-registered adversarial control was run on the owner's explicit
+authorisation. Four blind adjudicators over disjoint chunks: 0.0% disagreement
+over all 37. And then the two passes that followed changed the headline TWICE,
+in opposite directions -- an adjudication overturned the one contested label
+(row 7.9% -> 10.6%) and an adversarial refuter broke 1 of the 9 true positives
+(situation 24.3% -> 21.6%, row -> 10.0%). 0001's caveat is not a formality: a
+zero disagreement rate shows the rubric was applied consistently, not that it
+is right.
+
+The 297 -> 170 row drop is one scope decision, not a precision fix. Re-running
+the identical census with two scope-probe claims added restores 0004's
+population repo for repo (caddy 219, mitmproxy 60, poetry 13, express 3,
+apollo-server 2), and the 170 rows are a strict subset by flow identity.
+
+No band movement is claimed. WI-sivuz's bands were named before any interval
+was computed; this is input to the owner's re-rank, which gates INV-linub.
+
+Racial-Capitalism-Is-Bad: a crow djing on ice with a caravan of donkeys
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
