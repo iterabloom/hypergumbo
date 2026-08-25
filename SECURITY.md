@@ -203,6 +203,8 @@ Each claim verifies that no unsanitized data from the source entry-point categor
 
 ### Known limitations
 
+**These bound hypergumbo's audit of itself. For the same question about YOUR repository — what a ``confirmed`` verdict does and does not assert, the full caveat vocabulary, the exit-code contract, and the measured precision of a ``violated`` verdict — see [docs/VERIFY-CLAIMS-SCOPE.md](docs/VERIFY-CLAIMS-SCOPE.md).**
+
 Short-name sink matching is necessarily over-approximate at receivers the DDG cannot resolve — call-RHS bindings (``x = requests.Session(); x.get(...)``), parameter receivers, and closure captures. At those sites verify-claims may report findings on common method names (``.get`` / ``.run`` / ``.replace`` / ``.write``) that reach generic primitives the wrappers don't cover. Treat these as documented overapproximation rather than genuine safety regressions.
 
 **This paragraph used to end “the load-bearing claims (dev-zone unreachability from runtime CLI, install zones not reached from runtime CLI) verify cleanly”. That phrasing is retired** — the measured verdicts for those two claims are ``confirmed_with_caveats`` and ``confirmed_with_caveats``, and the honest reading is the verdict table above, with its caveats, not an adjective.
