@@ -1,0 +1,47 @@
+Original commit body from ff325ac4bd6145f4ab30c8f4dd35d929239e04cc:
+
+AND THE CHANGE THAT SHIPPED IS NOT THE ONE THE ITEM ASKED FOR, because its
+expected consequence does not exist. WI-gofah proposed flipping load_catalog's
+missing-file default from provenance_declared to in_progress and named the
+consequence: "the flip would newly mark every catalogue-less language's
+external_potential chains unreliable". Measured at tip, it cannot, and the flip
+would make the output WORSE:
+
+  1. THERE ARE NO SUCH CHAINS. _external_potential_chains skips any source
+     language whose catalogue is `not is_supported` (io_boundary.py:2309), and
+     cmd_io_boundaries never puts a catalogue-less language into `catalogs` at
+     all (cli.py:5173). Such a language produces no chains of any kind.
+
+  2. THE USER ALREADY GETS THE HONEST DISCLOSURE, better worded than the one the
+     flip would add. Verified end to end on a lua+ruby fixture:
+       "Note: no I/O primitive catalog for language(s): lua, ruby. Zero
+        boundaries reported for these languages does NOT mean the code is
+        I/O-free -- it means hypergumbo cannot detect I/O for this language
+        yet. (INV-javam)"
+     Flipping the status would ALSO make in_progress_languages warn
+     "io_primitives catalog for 'lua' is in_progress" -- a second disclosure
+     saying something false: there is no catalogue, partial or otherwise.
+
+WHAT WAS ACTUALLY WRONG. The field lies to whoever reads it. `status` is a claim
+about a catalogue's provenance, and on the missing-file fallback it answered
+provenance_declared for a catalogue that does not exist. Nothing reads it that
+way today ONLY because both readers ask `== "in_progress"` -- a property of
+today's two call sites, not of the field. The next consumer to ask
+`== "provenance_declared"` gets a citation-backed answer for a language nobody
+catalogued, and it fails OPEN.
+
+The fallback now carries CATALOG_STATUS_UNSUPPORTED, a third value A CATALOGUE
+FILE MAY NOT DECLARE -- the YAML validator's existing two-value check refuses it
+-- because it describes the ABSENCE of the file rather than anything the file
+says. Behaviour-preserving by construction, and each of the two readers is
+asserted directly rather than inferred, along with a control that a real
+catalogue's status is untouched (python provenance_declared, go in_progress).
+
+The pin the item named as the RED (test_missing_catalog_default_pinned_as_is) is
+flipped, and its comment -- which asserted the consequence refuted above -- is
+rewritten rather than left behind a banner.
+
+11322 passed, 100% coverage on changed sources, mypy strict ratchet clean at 669.
+
+Racial-Capitalism-Is-Bad: a starling racing a professional hopscotch player in a Shoney’s gift shop with dino plushies made of braided challah
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
