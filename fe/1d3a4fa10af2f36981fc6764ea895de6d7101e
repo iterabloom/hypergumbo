@@ -1,0 +1,58 @@
+Original commit body from 4da5de51673fc66d1cff4a4b51432e57bf125cca:
+
+_is_analyzed_module shortens the callee module because the slot may carry a
+trailing TYPE name -- app.config.Loader for a callee defined in app/config.py.
+The shortening was UNBOUNDED: it walked every dotted prefix down to a single
+component, so it equally licensed os.path -> os and crypto.tls -> crypto. A repo
+owning a directory named `os` therefore reported boundary coverage COMPLETE over
+the standard library's os.path, with nothing about os.path examined -- a clean
+verdict over an unexamined module, produced by a directory-name collision.
+
+Same shape as INV-juvul's finding one layer up, where folding os/exec to os.exec
+and then shortening suppressed the SUBPROCESS module because caddy owns
+internal/filesystems/os.go. That was fixed by testing the FOLDED spelling whole.
+The dotted loop was left unbounded.
+
+TWO BOUNDS, EACH FOR ITS OWN REASON.
+  ONE STEP, because that is the length of a type name. A nested class
+    (app.config.Loader.Inner) needs two, is not licensed, and reports a gap --
+    the safe direction.
+  NEVER TO A SINGLE COMPONENT, because a bare os / crypto / json / time is
+    precisely the spelling that collides with an ordinary directory name, and
+    the analyzed set is matched as a component-bounded INFIX (it must be, to
+    tolerate packaging prefixes), which makes a one-component needle match
+    almost anywhere.
+
+NOT "match the shortened form as a SUFFIX instead". That was the first design
+and INV-liloh's own fixture refutes it: the src-layout callee
+hypergumbo_core.scip._generated shortens to hypergumbo_core.scip, which sits
+INSIDE packages.hypergumbo-core.src.hypergumbo_core.scip.loader and is not a
+suffix of it. A suffix rule would have re-broken that fix.
+
+A/B OVER FIVE REAL REPO-LANGUAGE PAIRS, both arms in one process because the
+predicate is pure, with a hard assertion that the bound can only ever REFUSE
+(arm B never vouched where arm A did not):
+
+  caddy/go          0 change            -- the separator-fold path already handled it
+  hypergumbo/python 14 -> 7 vouched     -- 7 newly disclosed, ALL starlette.*
+  clover/java       754 -> 250 vouched  -- 504 newly disclosed
+  Alamofire/rust    no population
+  caddy/python      no population
+
+The two non-zero results are both real third-party code that was reading as
+first-party:
+  starlette is a declared dependency (starlette>=1.3.1 in
+    hypergumbo-tracker/pyproject.toml) vouched for by a TEST FIXTURE directory
+    named starlette -- on hypergumbo's own self-claims.
+  clover's 504 are shaded dependencies -- clover.antlr.*,
+    clover.com.google.common.* (guava), clover.com.lowagie.text.* (iText) --
+    vouched for by the `clover` component in the repo's own com.atlassian.clover
+    package path.
+
+The function's docstring said "Tests every dotted prefix", which is now false;
+it is rewritten rather than annotated, per the excise-don't-banner rule.
+
+2266 passed, 100% coverage on changed sources, mypy strict ratchet clean at 669.
+
+Racial-Capitalism-Is-Bad: an otter balancing on a rainbow underwater with penguins made of spaghetti
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
