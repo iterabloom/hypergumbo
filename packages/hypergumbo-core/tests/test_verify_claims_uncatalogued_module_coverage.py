@@ -550,3 +550,98 @@ class TestDisclosedResiduals:
         coverage = compute_boundary_coverage([], {"python"}, {"python": _py_catalog()})
         assert coverage.complete is False
         assert "no call edges at all" in coverage.reason
+
+
+class TestShorteningIsBoundedByItsOwnPurpose:
+    """INV-lakom. ``_is_analyzed_module`` shortens the callee module because the
+    slot may carry a trailing TYPE name (``app.config.Loader`` for a callee
+    defined in ``app/config.py``). The shortening was UNBOUNDED, so it also
+    licensed ``os.path`` → ``os`` and ``crypto.tls`` → ``crypto`` — and a repo
+    that happens to own a directory named ``os`` then vouches for the standard
+    library's ``os.path``, silently, in the direction that produces a clean
+    verdict over an unexamined module.
+
+    MEASURED 2026-08-24 while A/B-ing INV-juvul's fix on caddy; the defect is
+    pre-existing and independent of that change. Same shape as INV-juvul's own
+    finding one layer up — there, folding ``os/exec`` to ``os.exec`` and then
+    shortening suppressed the SUBPROCESS module because the repo owned
+    ``internal/filesystems/os.go``. That was fixed by testing the folded
+    spelling WHOLE. This is the dotted loop, which was left unbounded.
+
+    THE BOUND IS THE STATED PURPOSE, not a new heuristic: strip at most the ONE
+    trailing component a type name occupies, and never shorten to a single
+    component — a bare ``os`` / ``crypto`` / ``json`` / ``time`` is exactly the
+    spelling that collides with an ordinary directory name, and the whole
+    reason the analyzed set is matched as a component-bounded INFIX is that it
+    must tolerate packaging prefixes, which makes a one-component needle match
+    almost anywhere.
+    """
+
+    def test_a_stdlib_submodule_is_not_vouched_for_by_a_colliding_directory(
+        self,
+    ) -> None:
+        """THE FILED REPRO. A repo owning ``myapp/os/helpers.py`` and calling
+        ``os.path.join`` reported coverage COMPLETE over the standard library
+        ``os`` — nothing about ``os.path`` was examined."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:os.path:0-0:join:external_symbol",
+                      src="python:myapp/os/helpers.py:1-5:f:function"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False, (
+            "os.path was vouched for by a directory named os; nothing about "
+            "os.path was examined"
+        )
+        assert "os.path" in coverage.reason
+
+    def test_the_control_the_repro_is_read_against(self) -> None:
+        """The same call from a repo that owns NO colliding directory. Without
+        this the repro above cannot be read: it would pass just as well if the
+        gate reported everything."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:os.path:0-0:join:external_symbol",
+                      src="python:myapp/helpers.py:1-5:f:function"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is False
+        assert "os.path" in coverage.reason
+
+    def test_the_licensed_shortening_still_works(self) -> None:
+        """The behaviour the bound must not break: one trailing TYPE name
+        stripped off a first-party callee slot. Duplicated deliberately from
+        ``test_a_class_qualified_first_party_module_is_also_recognised`` so this
+        class can be read on its own as the bound's contract."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:app/config.py:3-9:load:function"),
+                _call("python:app.config.Loader:0-0:load:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, coverage.reason
+
+    def test_shortening_across_a_packaging_prefix_still_works(self) -> None:
+        """The other licensed case, and the reason the bound is on LENGTH
+        rather than on switching the shortened form to a suffix match: the
+        src-layout callee ``hypergumbo_core.scip._generated`` shortens to
+        ``hypergumbo_core.scip``, which sits INSIDE
+        ``packages.hypergumbo-core.src.hypergumbo_core.scip.loader`` and is not
+        a suffix of it. A suffix rule would have broken INV-liloh's fix."""
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:pathlib.Path:0-0:read_text:external_symbol",
+                      src="python:packages/hypergumbo-core/src/hypergumbo_core/scip/loader.py:3-9:load:function"),
+                _call("python:hypergumbo_core.scip._generated:0-0:parse:unresolved"),
+            ],
+            {"python"},
+            {"python": _py_catalog()},
+        )
+        assert coverage.complete is True, coverage.reason
