@@ -1,0 +1,47 @@
+Original commit body from 0ecb2c0fc28840cce534f74f12efb95da160d0ef:
+
+WI-nukut. measure-call-escape-cause.py filtered escape sites down to call
+nodes with a bare string comparison against the PYTHON node type:
+
+    if cache[sym].get(line) != "call":
+        continue
+
+Go's call nodes are call_expression / deferred_call / go_statement, so for a
+Go repository the filter discarded every site. caddy printed
+
+    === CALL-node escape sites: 0 ===
+
+while the instrument's own positive control in the same run reported 78,600
+edges offered and 236 escape events captured. A zero under a live control is
+the shape a reader trusts; read literally it says Go produces no call-node
+escape sites, which is a claim about a LANGUAGE from an instrument that never
+looked at that language.
+
+MIXED-LANGUAGE REPOS ARE WHERE IT WAS LEAST VISIBLE, and that is why the first
+blast-radius estimate was wrong. kserve is 34 python sites and 14 go; pretix is
+15 python and 5 javascript. The dropped sites hide behind the python ones that
+still come through, so the arm looks like it worked.
+
+THE FIX IS NOT "ADD GO'S SPELLING" — that repeats the mistake one language
+later. _CALL_NODE_TYPES is a declared per-language map whose every entry is
+grounded in CFG output actually observed across pretix / kserve / caddy /
+alertmanager, and a language with NO entry now REFUSES THE TABLE (exit 2),
+naming the language and how many sites went unclassified. That is the contract
+measure-escape-closing-ceiling.py already holds for its own monkeypatch: a
+number from an instrument that could not see part of its population is worse
+than no number, because it reads as a finding. javascript is deliberately
+absent rather than guessed — the corpus produced no call-shaped node for it.
+
+BEHAVIOURAL EVIDENCE, live repro on the merged tree:
+
+    caddy, before: === CALL-node escape sites: 0 ===
+    caddy, after : === CALL-node escape sites: 8 ===
+                     1-NO EDGE EMITTED (INV-mumov)          4  50.0%
+                     4a-KEY PRESENT, NO SUMMARY             3  37.5%
+                     3a-NO RECEIVER TYPE (INV-linub)        1  12.5%
+
+The Go cause distribution inverts Python's, where INV-linub carries 76.5% on
+pretix — a per-language difference the blindness was hiding entirely.
+
+Racial-Capitalism-Is-Bad: a penguin djing in a clockwork workshop with a guild of hamsters
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
