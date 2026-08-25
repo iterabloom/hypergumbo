@@ -21,10 +21,17 @@ because `verify_claims` never downgrades a `violated` verdict, only a would-be
 the population has to come from elsewhere. That revision is recorded on the
 item; this docstring is the other half of the record.
 
-WHAT COUNTS AS ONE FLOW. `verify_claims._flow_identity` — source primitive,
-source symbol, sink primitive, sink symbol, and the full call-graph path.
-Findings that agree on all five collapse. This is production's own notion of
-distinctness and the instrument does not mint a second one.
+WHAT COUNTS AS ONE RECORD, AND WHY THAT IS TWO QUESTIONS. Distinctness is
+`verify_claims._flow_identity` — source primitives, source symbol, sink
+primitives, sink symbol, call-graph path — which is production's own notion
+and the instrument does not mint a second one. But since INV-karud's collapse
+a record is a SITUATION ("S reads {P...} and reaches zone Z via {Q...}"),
+standing for `collapsed_flow_count` source->sink PAIRS. Measurement 0004 found
+the two units differ by 2.9x on one population, in a direction the item could
+not predict in advance, so this instrument reports BOTH and labels every rate
+with its unit. A situation is TRUE POSITIVE iff AT LEAST ONE of its pairs
+satisfies the rubric; how many of them do is a separate fact the ledger has to
+carry (`tp_pairs`), because it cannot be derived from the situation label.
 
 WHY THE EVIDENCE CAP IS LIFTED HERE AND ONLY HERE. `_MAX_EVIDENCE_ROWS = 100`
 head-truncates the deduplicated list for DISPLAY. Head-truncation is not
@@ -67,7 +74,12 @@ Usage:
 The label ledger consumed by ``score`` is written by hand — adjudication is
 reading source code, and no part of it is automated here. Its shape is
 ``{"labels": {flow_id: {"label": "TP"|"FP"|"UNADJ", "mechanism": str,
-"signal": str}}}``, with an optional ``block`` for a large uniform verdict.
+"signal": str, "tp_pairs": int, "unadj_pairs": int}}}``, with an optional
+``block`` for a large uniform verdict. ``tp_pairs`` is REQUIRED on a ``TP``
+whose record collapses more than one pair and is meaningless on the others;
+``score`` refuses to print a row rate rather than guess one. ``unadj_pairs``
+is optional and exists so a situation-unit run reconciles with a pair-unit
+run of the same population instead of folding those rows into FP.
 """
 from __future__ import annotations
 
@@ -144,7 +156,9 @@ def _is_external(parsed: dict[str, Any]) -> bool:
 # --------------------------------------------------------------------------
 # collect
 # --------------------------------------------------------------------------
-def run_verify_claims(repo: Path, claims: Path) -> dict[str, Any]:
+def run_verify_claims(
+    repo: Path, claims: Path, no_collapse: bool = False,
+) -> dict[str, Any]:
     """Drive production's own `verify-claims` in-process, cap lifted.
 
     In-process rather than by subprocess because the cap lives in a module
@@ -153,10 +167,24 @@ def run_verify_claims(repo: Path, claims: Path) -> dict[str, Any]:
     so a flag this instrument forgets to pass gets production's default rather
     than a second answer invented here.
     """
+    from hypergumbo_core import taint as taint_mod
     from hypergumbo_core import verify_claims as vc_mod
     from hypergumbo_core.cli import build_parser, cmd_verify_claims
 
     vc_mod._MAX_EVIDENCE_ROWS = EVIDENCE_LIMIT
+    if no_collapse:
+        # THE ROW UNIT, MEASURED RATHER THAN APPORTIONED. INV-karud's collapse
+        # groups pair findings into situations and reports only how many it
+        # swallowed (`collapsed_flow_count`), which is enough to count rows
+        # but not to ADJUDICATE them — a reader cannot tell which primitive
+        # pair each swallowed row named. 0004 had to hand-block that; here the
+        # same run is repeated with the collapse turned off, so both units are
+        # adjudicated on their own records. Production is untouched: this
+        # rebinds a module global inside this process only, and `collect`
+        # prints which arm it ran.
+        taint_mod.collapse_unadjudicated_flows = (  # type: ignore[assignment]
+            lambda findings: list(findings)
+        )
 
     parser = build_parser()
     args = parser.parse_args(
@@ -213,6 +241,21 @@ def flows_from_payload(
                     "sink_name": snk["name"],
                     "source_is_external": _is_external(src),
                     "sink_is_external": _is_external(snk),
+                    # INV-karud's collapse fields. An evidence record is a
+                    # SITUATION -- "S reads {P...} and reaches zone Z via
+                    # {Q...}" -- and `collapsed_flow_count` is how many
+                    # source->sink PAIRS it stands for. The scalars above are
+                    # the witness pair the `path` belongs to, not the whole
+                    # claim, so a scorer that reads only them silently
+                    # measures one unit while calling it the other. Default 1
+                    # so a flow file written before the collapse (0001, 0003)
+                    # still scores: there, one record WAS one pair.
+                    "source_primitives": list(ev.get("source_primitives", [])),
+                    "sink_primitives": list(ev.get("sink_primitives", [])),
+                    "sink_symbols": list(ev.get("sink_symbols", [])),
+                    "collapsed_flow_count": int(
+                        ev.get("collapsed_flow_count", 1) or 1
+                    ),
                 }
             )
     return rows
@@ -229,7 +272,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
     print(f"[collect] claims={claims}")
     print(f"[collect] evidence limit raised to {EVIDENCE_LIMIT:,} for this run")
 
-    payload = run_verify_claims(repo, claims)
+    print(f"[collect] collapse={'OFF (pair unit)' if args.no_collapse else 'ON (situation unit)'}")
+    payload = run_verify_claims(repo, claims, no_collapse=args.no_collapse)
 
     verdict_map = {
         v.get("claim_id"): v.get("verdict") for v in payload.get("verdicts", [])
@@ -428,6 +472,83 @@ def _rate(rows: list[dict], labels: dict[str, dict]) -> tuple[int, int, int, str
     return tp, fp, un, (f"{100 * tp / denom:.1f}%" if denom else "n/a")
 
 
+# --------------------------------------------------------------------------
+# THE SECOND UNIT. `_rate` above counts RECORDS, and post-INV-karud a record
+# is a SITUATION, not a source->sink pair. Measurement 0004 established that
+# the two units differ by 2.9x on one population and that WHICH WAY they
+# differ is not predictable, so reporting either alone is reporting a number
+# whose denominator the reader will guess wrong. Both are printed, always,
+# and neither is called "precision" without its unit.
+# --------------------------------------------------------------------------
+def _pairs(row: dict[str, Any]) -> int:
+    """Pre-collapse pair count for one record. 1 for pre-collapse files."""
+    return max(1, int(row.get("collapsed_flow_count", 1) or 1))
+
+
+def _tp_pairs(row: dict[str, Any], entry: dict[str, Any]) -> int | None:
+    """How many of a situation's pairs are real — NEVER guessed.
+
+    A situation is TP iff AT LEAST ONE of its pairs satisfies the rubric
+    (0004's existential reading), so a TP situation label does not say how
+    many pairs are real: caddy's `cmdRun` collapses 76 pairs into 3 records.
+    Assuming "all of them" inflates the row rate and assuming "one" deflates
+    it, so a multi-pair TP without an explicit ``tp_pairs`` returns ``None``
+    and the scorer refuses to report a row rate at all. FP needs no annotation
+    — if no pair is real, none is — and a single-pair record is unambiguous.
+    """
+    label = entry.get("label")
+    if label == "FP":
+        return 0
+    if label != "TP":
+        return None
+    if "tp_pairs" in entry:
+        return max(0, min(_pairs(row), int(entry["tp_pairs"])))
+    return 1 if _pairs(row) == 1 else None
+
+
+def _unresolved_pair_counts(
+    rows: list[dict], labels: dict[str, dict],
+) -> list[str]:
+    """TP situations holding >1 pair with no ``tp_pairs`` recorded."""
+    out = []
+    for row in rows:
+        entry = labels.get(row["flow_id"])
+        if entry is None:
+            continue
+        if entry.get("label") == "TP" and _tp_pairs(row, entry) is None:
+            out.append(f'{row["flow_id"]} ({_pairs(row)} pairs)')
+    return sorted(out)
+
+
+def _row_rate(
+    rows: list[dict], labels: dict[str, dict],
+) -> tuple[int, int, int, str]:
+    """Precision at the PAIR unit — 0001's and 0004's row denominator."""
+    tp = fp = un = 0
+    for row in rows:
+        entry = labels.get(row["flow_id"])
+        if entry is None:
+            continue
+        label = entry.get("label")
+        if label == "UNADJ":
+            un += _pairs(row)
+            continue
+        real = _tp_pairs(row, entry)
+        if real is None:
+            continue
+        # A situation can hold pairs that are individually UNADJUDICABLE even
+        # when the situation itself is decided (caddy's config-field sinks
+        # sit behind a json.Unmarshal-into-a-registered-module hop). Without
+        # somewhere to record them the situation arm would fold them into FP
+        # and stop reconciling with a pair-unit run of the same population.
+        unadj = max(0, min(_pairs(row) - real, int(entry.get("unadj_pairs", 0))))
+        un += unadj
+        tp += real
+        fp += _pairs(row) - real - unadj
+    denom = tp + fp
+    return tp, fp, un, (f"{100 * tp / denom:.1f}%" if denom else "n/a")
+
+
 def _is_unanchored(row: dict[str, Any]) -> bool:
     """The source names no readable place — nothing to open, nothing to judge."""
     return row.get("source_file", "") in ("", "external", "<external>")
@@ -436,10 +557,13 @@ def _is_unanchored(row: dict[str, Any]) -> bool:
 def _table(title: str, groups: list[tuple[str, list[dict]]],
            labels: dict[str, dict]) -> None:
     print(f"\n{title}")
-    print(f"  {'group':<36} {'n':>5} {'TP':>4} {'FP':>4} {'UNADJ':>6} {'prec':>8}")
+    print(f"  {'group':<34} {'sit':>4} {'TP':>4} {'UN':>3} {'prec/sit':>9}"
+          f"   {'rows':>5} {'TP':>4} {'prec/row':>9}")
     for name, rows in groups:
         tp, fp, un, pct = _rate(rows, labels)
-        print(f"  {name:<36} {len(rows):>5} {tp:>4} {fp:>4} {un:>6} {pct:>8}")
+        r_tp, r_fp, _, r_pct = _row_rate(rows, labels)
+        print(f"  {name:<34} {len(rows):>4} {tp:>4} {un:>3} {pct:>9}"
+              f"   {sum(_pairs(r) for r in rows):>5} {r_tp:>4} {r_pct:>9}")
 
 
 def cmd_score(args: argparse.Namespace) -> int:
@@ -451,7 +575,8 @@ def cmd_score(args: argparse.Namespace) -> int:
 
     scored = [r for r in rows if r["flow_id"] in labels]
     unlabelled = [r for r in rows if r["flow_id"] not in labels]
-    print(f"[score] population {len(rows)} flows; "
+    print(f"[score] population {len(rows)} situations "
+          f"({sum(_pairs(r) for r in rows)} pre-collapse rows); "
           f"{len(scored)} labelled, {len(unlabelled)} UNLABELLED")
     if unlabelled:
         # Silence here would let a partial adjudication read as a complete one.
@@ -465,9 +590,28 @@ def cmd_score(args: argparse.Namespace) -> int:
         print(f"[score] unknown label(s) {bad}", file=sys.stderr)
         return 1
 
+    # REFUSE BEFORE REPORTING. A multi-pair situation labelled TP does not
+    # say how many of its pairs are real, and the row rate is meaningless
+    # without that. This is the same refusal `collect` makes about a zero it
+    # cannot distinguish from "the analysis never ran".
+    unresolved = _unresolved_pair_counts(scored, labels)
+    if unresolved:
+        print("[score] *** REFUSING TO SCORE: these TP situations hold more "
+              "than one pair and carry no `tp_pairs`. A row rate cannot be "
+              "computed from a situation label alone (0004). ***",
+              file=sys.stderr)
+        for item in unresolved:
+            print(f"           {item}", file=sys.stderr)
+        return 1
+
     tp, fp, un, pct = _rate(scored, labels)
-    print(f"\n[score] POOLED (labelled set): TP={tp} FP={fp} precision={pct} "
+    r_tp, r_fp, r_un, r_pct = _row_rate(scored, labels)
+    print(f"\n[score] POOLED, per SITUATION: TP={tp} FP={fp} precision={pct} "
           f"(UNADJUDICABLE={un}, reported beside, never folded in)")
+    print(f"[score] POOLED, per ROW:       TP={r_tp} FP={r_fp} "
+          f"precision={r_pct} (UNADJUDICABLE={r_un})")
+    print("[score] the two units are NOT comparable to each other; 0004 "
+          "measured 2.9x between them on one population.")
 
     # WHEN THE LABELLED SET IS A SAMPLE, THE UNWEIGHTED RATE IS THE WRONG
     # NUMBER. Allocation is deliberately disproportionate — a per-cell floor
@@ -492,8 +636,8 @@ def cmd_score(args: argparse.Namespace) -> int:
             covered_pop += len(members)
             weighted += len(members) * (c_tp / (c_tp + c_fp))
         est = f"{100 * weighted / covered_pop:.1f}%" if covered_pop else "n/a"
-        print(f"[score] POPULATION-WEIGHTED estimate: {est} "
-              f"over {covered_pop} of {len(rows)} flows "
+        print(f"[score] POPULATION-WEIGHTED estimate (per SITUATION): {est} "
+              f"over {covered_pop} of {len(rows)} situations "
               f"({uncovered_pop} in strata with no adjudicable label)")
 
     def group(key) -> list[tuple[str, list[dict]]]:
@@ -578,6 +722,12 @@ def main(argv: list[str] | None = None) -> int:
     p_collect.add_argument("--claims", default=str(DEFAULT_CLAIMS))
     p_collect.add_argument("--out", required=True)
     p_collect.add_argument("--label", default="")
+    p_collect.add_argument(
+        "--no-collapse", action="store_true",
+        help="disable INV-karud's situation collapse so each record is one "
+             "source->sink PAIR — the 0001/0004 row unit, adjudicable on its "
+             "own terms instead of apportioned from a situation label",
+    )
     p_collect.set_defaults(func=cmd_collect)
 
     p_sample = sub.add_parser("sample", help="stratified sample of collected flows")
