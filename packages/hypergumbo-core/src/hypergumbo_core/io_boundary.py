@@ -128,6 +128,13 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.1"  # WI-javoh: command_launch_edges adde
 # sensitivity of a browser storage read depends on what's stored
 # (project-local catalogs can add taint_sources entries for their threat
 # model).
+#: The status of a catalogue that DOES NOT EXIST (WI-gofah). Not one of the two
+#: values a catalogue file may declare about itself — ``_validate_catalog_dict``
+#: refuses it in a YAML — because it describes the absence of the file rather
+#: than anything the file says. Set only on ``load_catalog``'s missing-file
+#: fallback, whose companion signal is ``is_supported=False`` (INV-javam).
+CATALOG_STATUS_UNSUPPORTED: str = "unsupported"
+
 CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
     "fs_read", "fs_write", "net_send", "net_recv",
     "ipc_recv", "ipc_send", "env_read", "host_info_read", "env_write",
@@ -643,12 +650,19 @@ class IoBoundaryCatalog:
     # unreliable for in-progress languages so absence-of-catalog-hit
     # isn't conflated with "definitely third-party".
     #
-    # KNOWN DEFECT, deliberate: this default means an uncatalogued
-    # language reads as provenance_declared (was: complete) via
-    # ``load_catalog``'s missing-file path. Pinned by
-    # test_missing_catalog_default_pinned_as_is; changing it flips
-    # ``dst_classification_unreliable`` for catalogue-less languages and
-    # needs its own measured change (tracked separately).
+    # THREE VALUES, AND THE THIRD IS NOT DECLARABLE BY A FILE.
+    # ``provenance_declared`` and ``in_progress`` are what a catalogue YAML may
+    # say about itself, and ``_validate_catalog_dict`` refuses anything else.
+    # :data:`CATALOG_STATUS_UNSUPPORTED` describes the ABSENCE of a catalogue
+    # and is set only on ``load_catalog``'s missing-file fallback, where a
+    # file's self-description cannot exist (WI-gofah).
+    #
+    # WHY THAT THIRD VALUE RATHER THAN THE DEFAULT. The default answered
+    # "provenance_declared" for a catalogue that does not exist. Nothing read it
+    # that way, but only because both readers ask ``== "in_progress"`` -- a
+    # property of today's two call sites, not of the field. The next consumer to
+    # ask ``== "provenance_declared"`` would get a citation-backed answer for a
+    # language nobody catalogued, and it would fail OPEN.
     status: str = "provenance_declared"
     # Plan C, PR B: provenance of the stdlib symbol list. ``None`` for
     # ``status: in_progress``; required (and validated) for
@@ -1607,7 +1621,14 @@ def load_catalog(
         # INV-javam: no catalog file (and no alias resolving to one) —
         # callers use is_supported to emit explicit "language
         # unsupported" output instead of silently returning zero I/O.
-        return IoBoundaryCatalog(language=language, is_supported=False)
+        #
+        # WI-gofah: and the STATUS says so too. A catalogue that does not exist
+        # has no provenance to declare, and the dataclass default said it had.
+        return IoBoundaryCatalog(
+            language=language,
+            is_supported=False,
+            status=CATALOG_STATUS_UNSUPPORTED,
+        )
     catalog = IoBoundaryCatalog.from_yaml(path)
 
     # Merge parent catalog if defined (e.g. scala inherits java entries)

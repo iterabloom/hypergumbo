@@ -89,11 +89,14 @@ class TestLiveTree:
                 f"{lang}: unexpected status {catalog.status!r}"
             )
 
-    def test_missing_catalog_default_pinned_as_is(self) -> None:
-        # KNOWN DEFECT, documented not endorsed: an uncatalogued language
-        # gets the dataclass default rather than an honest "in_progress".
-        # Pinned so a future change to it is deliberate (it flips
-        # dst_classification_unreliable for catalogue-less languages).
-        assert load_catalog("no-such-language").status == (
-            "provenance_declared"
-        )
+    def test_missing_catalog_reports_its_own_status(self) -> None:
+        # WI-gofah, resolved. This used to pin the dataclass default
+        # ("provenance_declared") as a KNOWN DEFECT, documented not endorsed,
+        # with the note that changing it "flips dst_classification_unreliable
+        # for catalogue-less languages". Measured at tip, it cannot: a
+        # catalogue-less language produces NO chains at all
+        # (``_external_potential_chains`` skips ``not is_supported``), so there
+        # is nothing to flip. What was real is that the FIELD claimed declared
+        # provenance for a catalogue that does not exist. It now says so.
+        assert load_catalog("no-such-language").status == "unsupported"
+        assert load_catalog("no-such-language").is_supported is False
