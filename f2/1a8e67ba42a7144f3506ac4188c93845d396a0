@@ -1,0 +1,59 @@
+Original commit body from 4735a97e6f83eb85cd09ef3e5b1375dea28e69f4:
+
+The shipped CLI rendered `distinct method(s): .` on an Objective-C file whose
+only fs_write reach was an untypable receiver: the disclosure fired, counted
+the site correctly, and could not say WHICH method -- most of its value.
+
+NOT A NEW DESIGN. ADR-0036 Ruling 1 already made the id's name slot
+deliberately lossy and said why -- "the ID is a location-addressed key, not a
+fidelity surface -- full-fidelity names live in Symbol.name ... Consumers that
+need the exact name MUST read Symbol.name, never re-derive it from the ID" --
+and the ADR's own amendment lists the producer-side sanitisation as a deferred
+follow-up. This is that follow-up coming due.
+
+THE DEFECT WAS THE UNFILLED HOME, NOT THE COLON. Measured on a 14-line repro:
+node.name '', qualified_name None, dst_ref None -- writeToFile:atomically:
+existed NOWHERE in the output. The boundary node is synthesised FROM the id,
+which made the id the name's only home, the one arrangement Ruling 1 forbids.
+An objc selector ENDS in a colon, so parts[-2] is the EMPTY STRING and every
+such selector collapsed onto one node.
+
+  1. meta['callee_name'] registered on the edge-meta axis (ADR-0024),
+     single_writer, stamped UNCONDITIONALLY by make_unresolved_edge -- the one
+     factory all 57 unresolved-external sites across 36 analyzers use.
+     Unconditional because WI-huzuv correctly withholds dst_ref when the module
+     is unknown (precisely the objc cell), and a name living in dst_ref
+     sometimes and meta otherwise is one fact with two homes.
+  2. create_boundary_nodes prefers that home over the lossy slot.
+  3. Both disclosure sites read it through ONE helper; they are a pair
+     (_site_method parses _call_site_label back out).
+  4. _canonical_external_id folds ':' -> '.' for the ID while Symbol.name keeps
+     full fidelity.
+
+ITEM 4 IS A REGRESSION I INTRODUCED AND THE VALIDATOR CAUGHT. The first cut fed
+the lossless name into the minted id -- rust:external:0-0:Vec::with_capacity:...
+-- which id_format rejects (double_colon_separator, INV-sadiv); bellman went
+1 -> 16 violations. Getting the lossless half right by breaking the lossy half
+is not getting Ruling 1 right. Shipped state: bellman at 0, clearing the one
+violation that pre-dated this work.
+
+A SECOND LANGUAGE, found on a repo meant only as a non-destruction control:
+parts[-2] discarded the receiver type on every Rust Type::method call, so
+bellman's 13 truncated boundary nodes become 16 qualified ones --
+batch_normalize splits back into E::G1::batch_normalize and
+E::G2::batch_normalize. objc is where the same defect produced an EMPTY name
+rather than a truncated one.
+
+MEASURED AT THREE LAYERS. Mantle, one survey scored both ways: distinct callee
+names 19 -> 82, dsts with an empty name 179/229 -> 0, nameless boundary nodes 0.
+Published CLI: "distinct method(s): ." -> "distinct method(s):
+writeToFile:atomically:". NO VERDICT FLIPPED on either repo -- this is identity
+and disclosure quality, not coverage. Mantle's figures are close to but not an
+exact reproduction of the item's filed 80/17.
+
+Schema 0.20.2 -> 0.20.3 (an addition). Suite 19,470 passed, 100% coverage,
+ratchet 669 (+0). Evidence:
+~/hypergumbo_lab_notebook/divuf_fix_08242026/README.md
+
+Racial-Capitalism-Is-Bad: a yak teaching flash-freezing to a class of turtles in a prehistoric root beer stand
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
