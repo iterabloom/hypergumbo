@@ -98,7 +98,16 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.2"  # 0.20.2: Edge.meta gains ``call_arg_shape``
+SCHEMA_VERSION = "0.20.3"  # 0.20.3: Edge.meta gains ``callee_name``
+# (INV-divuf) — an ADDITION, hence a patch bump, same shape as 0.20.2 below.
+# The full-fidelity callee name, stamped unconditionally by
+# ``make_unresolved_edge``. Every artifact written before this version stays
+# valid: consumers fall back to the id's (lossy) name slot when the key is
+# absent, which is exactly what they did before it existed. NOT sparse and NOT
+# opt-in, unlike ``call_arg_shape`` — ADR-0036 Ruling 1 tells consumers never to
+# re-derive the exact name from the id, so a key present only sometimes would
+# leave them re-deriving it the rest of the time.
+# 0.20.2: Edge.meta gains ``call_arg_shape``
 # (INV-fubag) — an ADDITION, hence a patch bump. Sparse and opt-in: a producer
 # stamps it only where it can prove the call passes no tainted value, so its
 # ABSENCE is the conservative reading and every artifact written before this

@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.2"
+      "const": "0.20.3"
     },
     "confidence_model": {
       "type": "string",
@@ -1220,6 +1220,9 @@
             },
             "call_locality": {
               "description": "File-locality of a call edge \u2014 whether caller and callee live in the same source file ('same_file') or different files ('cross_file'). A SEPARATE axis from ``call_construct`` (which names the syntactic call shape): INV-vakaf split this out after bash/objc were found smuggling 'cross_file' through ``call_construct``. Sparse by convention: set to 'cross_file' on boundary-crossing calls; ABSENT means same-file (the common case)."
+            },
+            "callee_name": {
+              "description": "The callee's name at FULL FIDELITY, as the producer saw it at the call site -- the lossless home ADR-0036 Ruling 1 designates. The id's name slot is deliberately LOSSY (names containing ':' fold to '.') because the id is a location-addressed key, not a fidelity surface, and Ruling 1 says in as many words that consumers needing the exact name MUST read it from elsewhere and never re-derive it from the id. Until this key existed there was no elsewhere for an unresolved external: an Objective-C selector (writeToFile:atomically:) ENDS in a colon, so the id's second-to-last token was the EMPTY STRING, the boundary node synthesised from that id had name='', and the selector existed nowhere in the output (INV-divuf / WI-nakut). Stamped on EVERY edge make_unresolved_edge builds, including the cell where WI-huzuv correctly withholds dst_ref because the module is unknown -- carrying the name in dst_ref sometimes and here otherwise would give one fact two homes."
             },
             "channel": {
               "description": "Logical dataflow channel / conduit the data flows through on a dataflow-family edge \u2014 a message topic (``event_publishes``), IPC channel, CRDT document, crypto primitive, etc. The CONDUIT referent ONLY (WI-pozom): a WebSocket route path uses ``url_path`` and a dispatch target is the edge ``dst`` \u2014 never ``channel``. The transport family is on the co-occurring ``channel_kind`` key."

@@ -63,6 +63,13 @@ from ..ir import (
     PASS_VERSION, AnalysisRun, Edge, ExternalRef, Span, Symbol, UsageContext,
     compute_config_fingerprint, compute_pass_version, make_pass_id,
 )
+
+# EXPLICIT re-export (the ``X as X`` form), not a plain import: ``--strict``
+# forbids implicit re-export, and six linkers import this name from here. The
+# sanitizer's home moved to ``ir`` (INV-divuf) because ``ir`` mints boundary ids
+# too (``_canonical_external_id``) and importing the other way round would be a
+# cycle; ``analyze.base`` stays the producer-facing surface it has always been.
+from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
 from ..symbol_resolution import NameResolver
 
@@ -500,25 +507,6 @@ def make_symbol_id(
     )
 
 
-def sanitize_id_name_segment(name: str) -> str:
-    """Colon-free ``{name}`` slot for a canonical symbol id (ADR-0036 Ruling 1).
-
-    A literal ``':'`` in the name slot would push the id past its five anchored
-    segments and defeat the from-both-ends round-trip parser, so colons are
-    sanitized ``':' -> '.'`` (the round-trip is documented-lossy — full fidelity
-    lives in ``Symbol.name``), e.g. the synthetic linker stand-ins whose name
-    folds a protocol address — message-queue ``kafka:publish:topic`` →
-    ``kafka.publish.topic`` (WI-vuzaf Pattern A) — and the Maven manifest
-    producers whose name folds an ecosystem coordinate,
-    ``org.springframework.boot:spring-boot-starter-web`` (INV-dulah).
-
-    :func:`make_symbol_id` applies this to every name slot (WI-sikar), so
-    calling it explicitly is no longer required for correctness. Producers keep
-    doing so where it documents intent, and the substitution is idempotent.
-    """
-    return name.replace(":", ".")
-
-
 def make_file_id(lang: str, path: str) -> str:
     """Generate an ID for a file node (used as import edge source).
 
@@ -887,7 +875,21 @@ def make_unresolved_edge(
     # false precision. The finalize edge-resolution sub-step backstops bypassing producers.
     if dst_ref is None and module_hint != "external":
         dst_ref = ExternalRef(lang=lang, module_path=module_hint, name=callee_name)
-    hint_meta: Dict[str, Any] = {}
+    # ADR-0036 Ruling 1: THE LOSSLESS HOME FOR THE NAME, and it is not the id.
+    # The id's name slot is deliberately lossy ("names containing ``:`` are
+    # sanitized ``:`` -> ``.`` ... the ID is a location-addressed key, not a
+    # fidelity surface"), and the same ruling instructs consumers needing the
+    # exact name to read it from elsewhere and NEVER re-derive it from the id.
+    # There was no elsewhere: an Objective-C selector ENDS in a colon, so the
+    # id's second-to-last token is the EMPTY STRING, the boundary node
+    # synthesised from that id got ``name=''``, and ``writeToFile:atomically:``
+    # appeared NOWHERE in the output (INV-divuf / WI-nakut, measured on a
+    # 14-line repro). Stamped UNCONDITIONALLY -- including the WI-huzuv cell
+    # above where ``dst_ref`` is correctly withheld because the module is
+    # unknown, which is precisely the objc cell. Carrying the name in
+    # ``dst_ref`` sometimes and here otherwise would give one fact two homes
+    # and leave every consumer asking which cell it is in first.
+    hint_meta: Dict[str, Any] = {"callee_name": callee_name}
     if enclosing_class is not None:
         hint_meta["enclosing_class"] = enclosing_class
     if receiver_type_hint is not None:

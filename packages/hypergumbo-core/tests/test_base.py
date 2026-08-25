@@ -1990,22 +1990,28 @@ class TestMakeUnresolvedEdge:
         assert edge.dst == "java:external:0-0:baz:unresolved"
         assert edge.line == 12
 
-    def test_no_hints_yields_no_meta(self) -> None:
-        """Backward compat: omitting the new kwargs leaves Edge.meta as None."""
+    def test_no_hints_yields_only_the_unconditional_callee_name(self) -> None:
+        """Was ``assert edge.meta is None``. Meta is no longer ever None here:
+        ADR-0036 Ruling 1 makes the id's name slot LOSSY, so the full-fidelity
+        callee name needs a home that is not the id, and ``callee_name`` is
+        stamped unconditionally (INV-divuf). The point this test actually makes
+        — that omitting the hint kwargs adds no HINT keys — is preserved."""
         edge = self._call()
-        assert edge.meta is None
+        assert edge.meta == {"callee_name": "baz"}
 
     def test_enclosing_class_hint_lands_in_meta(self) -> None:
         edge = self._call(enclosing_class="Foo")
-        assert edge.meta == {"enclosing_class": "Foo"}
+        assert edge.meta == {"callee_name": "baz", "enclosing_class": "Foo"}
 
     def test_receiver_type_hint_lands_in_meta(self) -> None:
         edge = self._call(receiver_type_hint="Bar")
-        assert edge.meta == {"receiver_type_hint": "Bar"}
+        assert edge.meta == {"callee_name": "baz", "receiver_type_hint": "Bar"}
 
     def test_inherited_field_receiver_lands_in_meta(self) -> None:
         edge = self._call(inherited_field_receiver="self.helper")
-        assert edge.meta == {"inherited_field_receiver": "self.helper"}
+        assert edge.meta == {
+            "callee_name": "baz", "inherited_field_receiver": "self.helper",
+        }
 
     def test_call_construct_lands_in_meta(self) -> None:
         """``call_construct`` reaches meta, where BOTH taint gates read it.
@@ -2018,11 +2024,16 @@ class TestMakeUnresolvedEdge:
         improvement from registering a phantom barrier (INV-linub).
         """
         edge = self._call(call_construct="method")
-        assert edge.meta == {"call_construct": "method"}
+        assert edge.meta == {"callee_name": "baz", "call_construct": "method"}
 
     def test_call_construct_omitted_stays_out_of_meta(self) -> None:
-        """A receiverless call must not claim to be a method call."""
-        assert self._call().meta is None
+        """A receiverless call must not claim to be a method call.
+
+        Asserted on the KEY rather than on ``meta is None``, which is what this
+        test always meant: ``callee_name`` now rides every such edge
+        (INV-divuf), and a whole-dict assertion would let a future unconditional
+        key silently re-open the question this test exists to close."""
+        assert "call_construct" not in (self._call().meta or {})
 
     def test_all_four_hints_combined(self) -> None:
         edge = self._call(
@@ -2032,6 +2043,7 @@ class TestMakeUnresolvedEdge:
             call_construct="method",
         )
         assert edge.meta == {
+            "callee_name": "baz",
             "enclosing_class": "Foo",
             "receiver_type_hint": "Bar",
             "inherited_field_receiver": "self.helper",
@@ -2042,7 +2054,7 @@ class TestMakeUnresolvedEdge:
         """module_hint must remain reachable alongside the new kwargs."""
         edge = self._call(module_hint="java.util", enclosing_class="Foo")
         assert edge.dst == "java:java.util:0-0:baz:unresolved"
-        assert edge.meta == {"enclosing_class": "Foo"}
+        assert edge.meta == {"callee_name": "baz", "enclosing_class": "Foo"}
 
     def test_derives_dst_ref_when_omitted(self) -> None:
         """ADR-0037 ruling 2: dst_ref is derived unconditionally from the
