@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **309** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 77 core, 4 CLI, 33 tracker)
-- **41272** symbols (functions, classes, methods)
-- **145727** edges by type:
-  - calls: 76148
-  - contains: 38048
-  - imports: 12680
-  - instantiates: 10987
-  - references: 5091
-  - module_attr_ref: 1368
-  - other: 1405
+- **313** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 81 core, 4 CLI, 33 tracker)
+- **41633** symbols (functions, classes, methods)
+- **146909** edges by type:
+  - calls: 76672
+  - contains: 38392
+  - imports: 12858
+  - instantiates: 11045
+  - references: 5153
+  - module_attr_ref: 1382
+  - other: 1407
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 41272 Symbols + 145727 Edges + UsageContexts           │
+│  Output: 41633 Symbols + 146909 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,16 +273,16 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
 | `Span` | class | 6416.2 | ir.py |
-| `write_text` | external_symbol | 6256.0 | <external> |
+| `write_text` | external_symbol | 6270.0 | <external> |
 | `LinkerContext` | class | 3352.4 | registry.py |
 | `Edge.create` | method | 2140.7 | ir.py |
-| `get` | external_symbol | 1962.0 | <external> |
+| `get` | external_symbol | 1973.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
-| `Path` | external_symbol | 1768.0 | <external> |
+| `Path` | external_symbol | 1794.0 | <external> |
 | `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1427.0 | <external> |
-| `load_catalog` | function | 1371.9 | io_boundary.py |
+| `load_catalog` | function | 1430.1 | io_boundary.py |
+| `append` | external_symbol | 1430.0 | <external> |
 | `clear_pattern_cache` | function | 1341.0 | framework_patterns.py |
 | `Edge` | class | 1321.4 | ir.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
@@ -560,10 +560,13 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 ### Core
 
+- **`hypergumbo_core.analyzer_disclosure`**: Dated per-language declarations of whether an analyzer emits the ex...
 - **`hypergumbo_core.analyzer_identity`**: Compute a hash representing the analyzer's identity (WI-panih).
 - **`hypergumbo_core.audit_findings`**: Parser and validator for the audit-findings document format.
 - **`hypergumbo_core.axis_drift`**: Field-agnostic AST drift detector for axis-bearing canonical regist...
 - **`hypergumbo_core.axis_meta_keys`**: Canonical registry of ``Symbol.meta`` and ``Edge.meta`` key names.
+- **`hypergumbo_core.backend_selection`**: Precedence resolution for per-backend opt-in decisions (ADR-0045 ru...
+- **`hypergumbo_core.backend_trust`**: Per-repository backend trust grants (ADR-0045 rulings 5-8).
 - **`hypergumbo_core.behavior_map_io`**: Deprecation shim: ``behavior_map_io`` was renamed to ``survey_io`` ...
 - **`hypergumbo_core.block_hash`**: AST-block hashing: the change unit for coverage-directed test selec...
 - **`hypergumbo_core.build_grammars`**: Build tree-sitter grammars from source for languages not available ...
@@ -633,6 +636,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.taint_refine`**: Post-DDG IR refinement pass: resolve unresolved-external method-cal...
 - **`hypergumbo_core.taxonomy`**: File taxonomy classification (ADR-0004).
 - **`hypergumbo_core.test_masking`**: Slow test masking for smart-test.
+- **`hypergumbo_core.user_config`**: User and project configuration files (ADR-0045 rulings 1, 2, 3).
 - **`hypergumbo_core.validation_ratchet`**: Shrink-only ratchet comparison for validation-report violation matr...
 - **`hypergumbo_core.verify_claims`**: Security claim verification against I/O boundary and taint-flow ana...
 - **`hypergumbo_core.visibility`**: Canonical visibility axis (INV-jusot).
@@ -886,8 +890,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: a0af4a4001c9
-  commit_count: 6789
+  commit: 2373a931b1bc
+  commit_count: 6821
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
