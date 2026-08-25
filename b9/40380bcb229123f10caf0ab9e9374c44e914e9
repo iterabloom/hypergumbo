@@ -1,0 +1,66 @@
+Original commit body from 01f96948b98b0ad56680a56ecc156ea1c937e7c1:
+
+A BOUNDARY THAT AUTO-DERIVES A TAINT LABEL MUST MEAN WHAT THE LABEL MEANS.
+AUTO_SOURCE_LABEL_MAP derived host_secret from env_read, and env_read catalogued
+two different things: ambient CONFIGURATION reads whose values may carry a
+credential (os.getenv, System.getProperty, std::env::var, process.env), and host
+DESCRIPTION or identity reads that are not secrets in any ordinary sense
+(runtime.GOOS, os.uname, navigator.platform, platform.system, pwd.getpwnam).
+
+Census over the shipped catalogues: 134 of 195 rows were the second kind -- 114
+pure platform description, 16 user/process identity. Every host-secret-* claim
+therefore counted description reads as secret flows: 48 of 85 adjudicated flows
+at 22.9% precision, the weakest family in measurement 0001, and 51 of 59
+situations in 0004.
+
+THE CATALOGUE WAS ALREADY DISTORTING ITSELF TO COPE, which is what makes this a
+vocabulary defect rather than an imprecision. python.yaml deliberately withheld
+getpid / cpu_count / times -- "env_read rows auto-derive host_secret TAINT
+SOURCES ... and a pid is not a secret" -- while go.yaml rowed GOOS, Getwd and
+Executable. One boundary value, two membership rules, two shipped files: the
+apex/peer hit in the fundamental-concept audit, which alone is grounds to
+deprecate. All four leakage tests fired.
+
+THE SPLIT IS OF THE BOUNDARY, NOT THE LABEL, AND NOT A PER-ROW OVERRIDE.
+A rename leaves one boundary meaning both things and breaks three shipped
+example claims for nothing; a per-row taint_label would let the row AND the
+boundary each decide, which is one fact in two homes. CATALOG_BOUNDARY_TYPES is
+the registry-backed thing, so it is where the distinction belongs.
+host_info_read -> host_description. host_description is NOT a weaker
+host_secret: a claim naming one does not match flows carrying the other, and
+generic-taint-claims.yaml now ships host-description-no-network as its own
+question -- telemetry and fingerprinting, not credential exfiltration.
+
+130 rows moved across 13 catalogues; ONE was removed rather than moved.
+os.getrandom was filed under env_read and derived a host_secret source. It is a
+CSPRNG read, not an environment read under any reading, and the same file
+already keeps os.urandom out for its own still-live reason. After the split the
+auto-derived source population is 87 host_secret / 183 host_description / 579
+untrusted_input across 17 languages.
+
+Family D (user and process identity, 16 rows) FOLDS INTO host_info_read rather
+than getting a third boundary -- owner's call. "This app sends the username to a
+third party" is a genuinely distinct claim, but 16 rows with no measured
+consumer demand is a speculative vocabulary entry; declaring it later is cheap.
+
+THE TWO VOCABULARIES ARE NOW PINNED TO EACH OTHER, so a boundary cannot be added
+without deciding what it derives, and a catalogue cannot use a boundary nobody
+declared -- which would otherwise be silently inert (no auto-source, no
+auto-sink, no display grouping, no error). Both arms are asserted at the
+derived-source layer with a control population, because "everything is
+host_description now" would pass a one-arm test.
+
+17 tests pinned the old placement and are rewritten to preserve their own
+subject rather than deleted: the python-climb rows assert enumeration
+(INV-zubuh's question, unchanged) at the new boundary, and the scoped-path rows
+were always about the SEPARATOR fold, not the boundary value.
+
+Owner-ratified 2026-08-25. Census and concept audit:
+docs/surveys/env-read-boundary-census.md. Decision: ADR-0016's boundary table.
+NO precision target is promised -- the band ruling stands until the owner
+re-ranks on measurement 0005, which is what prices this.
+
+12031 passed, 100% coverage on changed sources, mypy strict ratchet clean at 669.
+
+Racial-Capitalism-Is-Bad: a walrus competing with a potato sack racer in a space station made of gummy bears
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
