@@ -1,0 +1,29 @@
+- op: create  # 5799
+  at: '2026-08-25T21:44:02Z'  # 5799
+  by: agent  # 5799
+  actor: jgstern_agent  # 5799
+  clock: 1  # 5799
+  nonce: '5799'  # 5799
+  data:  # 5799
+    kind: work_item  # 5799
+    title: "measure-call-escape-cause filters call sites on the Python node type only, so every Go repo reports zero call-node escapes under a live positive control"  # 5799
+    status: todo_hard  # 5799
+    priority: 2  # 5799
+    parent:  # 5799
+    tags:  # 5799
+    - taint  # 5799
+    - instrument  # 5799
+    - adr_0017  # 5799
+    isbefore: []  # 5799
+    duplicate_of: []  # 5799
+    not_duplicate_of: []  # 5799
+    pr_ref:  # 5799
+    description: "FOUND 2026-08-25 while re-deriving INV-busis's escape-cause breakdown on the\np4_busis_08252026 corpus (pretix, caddy, alertmanager, kserve).\n\nTHE DEFECT, one line. scripts/measure-call-escape-cause.py:227 filters escape\nsites down to call nodes with a bare string equality against the PYTHON node\ntype:\n\n    if cache[sym].get(line) != \"call\":\n        continue\n\n_node_types() returns tree-sitter node types verbatim, and Go's call nodes are\ncall_expression and deferred_call, never \"call\". So for a Go repository the\nfilter discards every site and the instrument reports zero call-node escapes\nhowever many there are.\n\nBEHAVIOURAL EVIDENCE, both arms of the same corpus run, same tree, same\ninvocation:\n\n  caddy, cause arm    : \"=== CALL-node escape sites: 0 ===\"\n  caddy, shapes arm   : 97 blocked sites including call_expression 2 and\n                        deferred_call 2 (plus go_statement 3 in production)\n\nThe shapes arm is unaffected because it emits node_type as DATA and lets the\nconsumer classify, rather than hardcoding one language's spelling in a filter.\n\nWHY THE ZERO IS DANGEROUS RATHER THAN MERELY WRONG. The cause arm's positive\ncontrol FIRED on that same caddy run -- 78,600 edges offered, 9,737 callees_at\nentries, 236 escape events captured -- so the harness was demonstrably alive\nand only the call-node filter was blind. A zero under a live positive control\nis exactly the shape a reader trusts. Read literally it says \"Go produces no\ncall-node escape sites\", i.e. the INV-linub / INV-mumov causes do not affect\nGo, which is a claim about a LANGUAGE drawn from an instrument that never\nlooked at that language.\n\nBLAST RADIUS IN THE CURRENT RUN: caddy and alertmanager (both Go) are affected;\npretix and kserve (both Python) are not. alertmanager's cause arm was still\nrunning when this was found and will carry the same false zero.\n\nFIX: replace the equality with a membership test over a named set of call node\ntypes, with each member justified in a comment -- including an explicit ruling\non whether go_statement / deferred_call count as call SITES or as wrappers\naround one, since the shapes arm currently reports them separately and the two\ninstruments must agree or their numbers cannot be reconciled. Then re-run the\ncause arm for the Go repos only; the Python arms need no re-run.\n\nNOT FIXED IMMEDIATELY AND THIS IS DELIBERATE: run-corpus.sh invokes the script\nas a fresh subprocess per arm, so editing it mid-run would leave the arms\ndiffering in more than one hunk (LIVE.md rule 14). Fix after the run exits."  # 5799
+    fields: {}  # 5799
+- op: discuss  # aa1c
+  at: '2026-08-25T22:07:20Z'  # aa1c
+  by: agent  # aa1c
+  actor: jgstern_agent  # aa1c
+  clock: 2  # aa1c
+  nonce: aa1c  # aa1c
+  message: "CORRECTION TO THE FILING, same day, and it WIDENS the item.\n\nThe filing says the defect affects \"caddy and alertmanager (both Go); pretix\nand kserve (both Python) are not\". That rested on an assumption I did not\ncheck: one language per repository. It is false for this corpus. Measured by\nfile extension over production blocked-escape sites:\n\n    pretix        python 15   javascript 5\n    kserve        python 34   go 14\n    caddy         go 91\n    alertmanager  go 4\n    POOLED        go 109   python 49   javascript 5\n\nkserve carries 14 GO sites and pretix carries 5 JAVASCRIPT ones. The\n`!= \"call\"` filter drops those silently too, so EVERY repo in the corpus is\naffected, not two -- and the affected share is invisible in a repo that also\ncontains Python, because the Python sites still come through and the arm looks\nlike it worked.\n\nCONSEQUENCE: the cause arm must be re-run for ALL FOUR repos after the fix, not\nfor the Go pair. The prior claim that the Python arms \"need no re-run\" is\nwithdrawn.\n\nTHIS ALSO SHARPENS THE FIX. Adding Go's spellings to the comparison would\nrepeat the original mistake one language later, and a mixed-language repo is\nexactly the case where the resulting silence is least visible. The fix should\nbe a per-language map plus a LOUD REFUSAL when a language present in the data\nhas no entry -- the same fail-closed-and-say-so shape analyzer_disclosure.py\nuses for method-call emission, and the same shape\nmeasure-escape-closing-ceiling.py already uses when its own monkeypatch does\nnot take (\"the run says so and refuses the corpus table rather than printing\nzeros that look like findings\")."  # aa1c

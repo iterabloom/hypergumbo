@@ -1,0 +1,47 @@
+- op: create  # dd23
+  at: '2026-08-25T22:21:58Z'  # dd23
+  by: agent  # dd23
+  actor: jgstern_agent  # dd23
+  clock: 1  # dd23
+  nonce: dd23  # dd23
+  data:  # dd23
+    kind: invariant  # dd23
+    title: "consecutive taint-precision measurements are not comparable — undeclared estimator, uncontrolled repo concentration, so the series cannot show whether the tool is improving"  # dd23
+    status: violated  # dd23
+    priority: 1  # dd23
+    parent:  # dd23
+    tags:  # dd23
+    - taint  # dd23
+    - measurement  # dd23
+    - methodology  # dd23
+    isbefore: []  # dd23
+    duplicate_of: []  # dd23
+    not_duplicate_of: []  # dd23
+    pr_ref:  # dd23
+    description: "RAISED BY THE OWNER 2026-08-25, on reading 0005's disclosure that caddy supplies\n128 of 170 rows. Quantified here rather than left as a caveat.\n\nTHE POOLED HEADLINE IS AN ESTIMATOR CHOICE, AND THE CHOICE IS WORTH MORE THAN\nTHE MEASUREMENT. Same adjudications, same 0005 data, different pooling:\n\n  estimator                              per situation   per row\n  pooled census (the 0005 headline)          21.6%        10.0%\n  unweighted mean over all 5 repos           10.7%         5.9%\n  unweighted mean, 2 substantive repos       26.8%        14.8%\n  caddy excluded entirely                    19.0%        16.7%\n\nThe per-row figure spans 5.9-16.7% -- a 2.8x range -- on a pooling decision\nthat was never declared. No adjudication changed.\n\nIT IS A TWO-REPO COHORT WEARING A FIVE-REPO LABEL.\n\n  repo            sit  %coh   rows  %coh   p/sit   p/row\n  mitmproxy        14  37.8%    32  18.8%  28.6%   21.9%\n  caddy            16  43.2%   128  75.3%  25.0%    7.8%\n  apollo-server     2   5.4%     2   1.2%   0.0%    0.0%\n  express           3   8.1%     3   1.8%   0.0%    0.0%\n  poetry            2   5.4%     5   2.9%   0.0%    0.0%\n\napollo-server + express + poetry supply 10 of 170 rows (5.9%) and ZERO true\npositives. At n=2 a 0% cannot be distinguished from no signal. They raise the\napparent repo count from 2 to 5 without adding weight, which makes the cohort\nlook more diverse than it measures.\n\nTHE CONCENTRATION WAS DIAGNOSED ONCE AND THEN RECREATED, which is what makes\nthis structural rather than bad luck. 0004 dropped pretix precisely because it\nwas 77% of that measurement's population and one framework dominated its true\npositives. caddy is now 75% of 0005's rows. Same failure mode, new repo. The\ncohort-selection method does not control for concentration.\n\nTHE ESTIMATOR ALSO CHANGED BETWEEN MEASUREMENTS, UNDECLARED. 0001 is\nPOPULATION-WEIGHTED (approx 41%, pretix's strata re-weighted to their share of\nits 205 flows). 0005 is a RAW POOLED CENSUS. Neither headline says which\nestimator it uses or that it differs from the last one.\n\nTHE CONSEQUENCE, AND IT IS THE ONE THAT MATTERS. 0001, 0004 and 0005 each\nexplicitly disclaim comparability with the previous one -- different\npopulations, different claim sets, different adjudications, and now different\nestimators. Three consecutive measurements that cannot be compared to each\nother mean the question \"is precision improving?\" is STRUCTURALLY UNANSWERABLE,\nand that is the question the taint-root campaign exists to answer. Every\nindividual measurement is sound; the SERIES carries no signal.\n\nThis also weakens a claim I made to the owner. \"P0-P2 did not raise precision\"\nis only defensible where it was traced MECHANICALLY -- P2 moving a true\npositive out of host_secret, P1's fail-open fixes removing nothing on this\ncohort. The stronger reading, that overall precision did not improve, is not\nsupported by a series that cannot be compared.\n\nWHAT IT DOES NOT CHANGE: the P3 re-rank's mechanical answer. Every estimator\nabove lands well under WI-sivuz's 50% band, so the band ruling holds whichever\nis chosen.\n\nWHAT IT ARGUES FOR, offered as proposals and NOT decided here:\n  1. FIX THE UNIT. The situation unit is materially less concentration-\n     sensitive (caddy 43% of situations vs 75% of rows) and the two substantive\n     repos agree closely there (28.6% vs 25.0%) while diverging 2.8x on rows.\n     If one unit governs the band, situation is the defensible one.\n  2. DECLARE THE ESTIMATOR IN THE HEADLINE, and keep it fixed across\n     measurements, the way WI-sivuz's bands were fixed in advance.\n  3. EITHER DROP THE SUB-10-ROW REPOS OR REPLACE THEM. Carrying them implies a\n     diversity the numbers do not have.\n  4. A FIXED BENCHMARK COHORT + FIXED CLAIM SET + FIXED ESTIMATOR, declared\n     once, so consecutive measurements are comparable BY CONSTRUCTION. Without\n     it the campaign cannot demonstrate its own effect, whatever it builds.\n\nNOT MEASURED HERE: whether a concentration-controlled cohort exists in the\ncorpus, and what it would cost to adjudicate. Both are prerequisites for (4)."  # dd23
+    fields:  # dd23
+      statement: "A precision measurement series intended to show change over time must fix its cohort, claim set, adjudication rubric and ESTIMATOR in advance, and declare the estimator in the headline. VIOLATED: 0001 is population-weighted, 0005 is a raw pooled census, neither says so; each of 0001/0004/0005 disclaims comparability with its predecessor; and repo concentration is uncontrolled (pretix 77% in 0004, caddy 75% in 0005), so the pooled per-row figure spans 5.9-16.7% on pooling choice alone."  # dd23
+      root_cause: "Cohort selection and pooling are decided per-measurement rather than fixed once as a benchmark. WI-sivuz pre-registered the decision BANDS but not the ESTIMATOR or the COHORT, so each measurement re-chooses both, and a dominant repo (77% then 75%) is re-introduced each time without a control."  # dd23
+- op: update  # b203
+  at: '2026-08-25T22:22:33Z'  # b203
+  by: agent  # b203
+  actor: jgstern_agent  # b203
+  clock: 2  # b203
+  nonce: b203  # b203
+  set: {}  # b203
+  add:  # b203
+    not_duplicate_of: [INV-zumin-hukog-bofob-pamos-jubig-jabav-jigok-dirab]  # b203
+- op: discuss  # 965a
+  at: '2026-08-25T22:22:36Z'  # 965a
+  by: agent  # 965a
+  actor: jgstern_agent  # 965a
+  clock: 3  # 965a
+  nonce: 965a  # 965a
+  message: "Not a duplicate. INV-zumin is about a multi-boundary PRIMITIVE losing all but one boundary to YAML row order (a catalogue-lookup defect). This item is about a measurement SERIES being incomparable to itself (an estimator/cohort-design defect). The SimHash collision is on shared measurement vocabulary — 'measured', 'population', 'VIOLATED', percentages — not on subject. Suppressing so the next reader is not sent to the wrong item."  # 965a
+- op: discuss  # 7e89
+  at: '2026-08-25T22:25:12Z'  # 7e89
+  by: agent  # 7e89
+  actor: jgstern_agent  # 7e89
+  clock: 4  # 7e89
+  nonce: '7e89'  # 7e89
+  message: "OWNER RULING 2026-08-25, verbatim: \"Fix the measurement frame first\".\n\nChosen from three options put to the owner after they spotted the caddy\nconcentration themselves. The two NOT chosen, recorded so the choice keeps its\nmeaning: (1) keep recall stopped and continue precision work anyway, accepting\nthat the campaign cannot demonstrate its own effect; (2) lift the stop on the\ngrounds that the band's own condition -- \"until it is understood\" -- is\nsatisfied now that 0005 names the FP mechanisms.\n\nWHAT THIS RULING DOES:\n  * The P3 RE-RANK IS DEFERRED. It happens on a number produced under a fixed\n    frame, not on 0005.\n  * RECALL STAYS STOPPED meanwhile. WI-sivuz's band ruling stands until the\n    re-rank, and the re-rank has moved later, not away.\n  * The two questions put to the owner -- does recall stay stopped, and which\n    unit governs the band -- are NOT answered by this ruling. The unit question\n    becomes part of the frame deliverable rather than a standalone decision.\n\nA CONTAMINATION DISCLOSURE THAT CONSTRAINS HOW THE FRAME MAY BE BUILT, and it\napplies to me specifically. WI-sivuz's bands were pre-registered precisely so a\nlater interval could not argue them down. I have ALREADY COMPUTED how each\ncandidate estimator scores on 0005 (pooled 21.6%/10.0%, unweighted-5 10.7%/\n5.9%, unweighted-2 26.8%/14.8%, caddy-excluded 19.0%/16.7%). So an estimator I\nnow pick is chosen WITH KNOWLEDGE OF ITS RESULT, which is the exact failure\npre-registration exists to prevent. I therefore cannot ratify the frame myself.\nI can propose it with the sensitivity table attached and the reasoning visible;\nthe owner ratifies, the way WI-sivuz's bands were owner-ratified before any\ninterval existed.\n\nTHE ONE COMPONENT THAT ESCAPES THAT PROBLEM is the adjudication rubric: 0001's\nrubric already exists, was written before these populations, and is reused\nverbatim rather than re-chosen. It should be cited into the frame, not rewritten.\n\nNEXT, AND THE FIRST STEP IS THE GAP THIS ITEM ALREADY NAMED AS UNMEASURED:\nwhether a concentration-controlled cohort exists in the corpus at all, and what\nit would cost to adjudicate. A frame that names a cohort nobody can afford to\nadjudicate is not a frame. That survey is evidence-gathering, not a decision,\nso it proceeds without waiting on ratification."  # 7e89
