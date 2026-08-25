@@ -379,6 +379,18 @@ def _render_claims_section(
 
     lines.append("### Known limitations")
     lines.append("")
+    # WI-bovor: the limitations below bound hypergumbo's audit of ITSELF, and a
+    # reader arriving here is usually asking the same question about their own
+    # repository. That answer is a document, not a paragraph, so point at it
+    # rather than paraphrasing it into drift.
+    lines.append(
+        "**These bound hypergumbo's audit of itself. For the same question "
+        "about YOUR repository — what a ``confirmed`` verdict does and does "
+        "not assert, the full caveat vocabulary, the exit-code contract, and "
+        "the measured precision of a ``violated`` verdict — see "
+        "[docs/VERIFY-CLAIMS-SCOPE.md](docs/VERIFY-CLAIMS-SCOPE.md).**"
+    )
+    lines.append("")
     lines.append(
         "Short-name sink matching is necessarily over-approximate at "
         "receivers the DDG cannot resolve — call-RHS bindings "
