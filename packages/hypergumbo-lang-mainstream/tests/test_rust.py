@@ -5732,8 +5732,10 @@ fn main() { helper(); }
 # ``scoped_identifier`` nodes; walking left finds the ``std`` alias
 # (injected as an implicit import because Rust stdlib is in scope
 # without a ``use``), and the middle-level match ``std::env::consts``
-# emits a ``module_attr_ref`` edge that io_boundary tags as ``env_read``
-# against rust.yaml's ``module: std::env, attributes: [consts]``.
+# emits a ``module_attr_ref`` edge that io_boundary tags as
+# ``host_info_read`` against rust.yaml's ``module: std::env,
+# attributes: [consts]`` (``env_read`` until INV-tutar split the boundary --
+# ``consts::OS`` is the platform's NAME, not configuration).
 #
 # Note: the ``rust-analyzer`` optional backend
 # (``hypergumbo-lang-rust-analyzer``) has its own semantic resolver
@@ -5748,9 +5750,10 @@ class TestRustModuleAttrRefsScoped:
         self, tmp_path: Path,
     ) -> None:
         """``std::env::consts::OS`` emits a ``module_attr_ref`` edge
-        for the ``std::env::consts`` middle level, tagged as env_read
-        by io_boundary against ``rust.yaml``'s
-        ``module: std::env, attributes: [consts]`` entry."""
+        for the ``std::env::consts`` middle level, tagged as
+        ``host_info_read`` by io_boundary against ``rust.yaml``'s
+        ``module: std::env, attributes: [consts]`` entry. The subject here is
+        the EDGE and its tagging, not which boundary value the row carries."""
         from hypergumbo_core.io_boundary import load_catalog, tag_io_boundaries
         from hypergumbo_lang_mainstream.rust import analyze_rust
 
@@ -5779,12 +5782,12 @@ class TestRustModuleAttrRefsScoped:
         assert middle.evidence_type == "module_attribute_reference"
 
         # Now tag and confirm io_boundary recognises the middle edge
-        # as env_read against rust.yaml's std::env.consts entry.
+        # as host_info_read against rust.yaml's std::env.consts entry.
         catalogs = {"rust": load_catalog("rust")}
         tagged = tag_io_boundaries(result.edges, catalogs)
         assert tagged > 0
         assert middle.meta is not None
-        assert middle.meta.get("io_boundary") == "env_read"
+        assert middle.meta.get("io_boundary") == "host_info_read"
         assert middle.meta.get("io_primitive") == "std::env.consts"
 
     def test_use_aliased_scoped_path_emits(

@@ -175,19 +175,26 @@ subprocess:
 
 env_read:
   - module: process
-    attributes: [env, argv, platform, arch, version, cwd]
+    attributes: [env, argv]
+  - module: document
+    attributes: [cookie, location, referrer]
+    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: process
+    attributes: [platform, arch, version, cwd]
   - module: os
     functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
-  # Browser environment introspection (WI-banaf)
   - module: navigator
     attributes: [userAgent, language, languages, platform, geolocation, cookieEnabled, onLine]
     notes: "Browser environment / capability detection"
   - module: window
     attributes: [location, navigator, screen, document]
     notes: "Browser window globals"
-  - module: document
-    attributes: [cookie, location, referrer]
-    notes: "Browser document globals (cookie/referrer leak fingerprintable data)"
 
 ipc_send:
   - module: process

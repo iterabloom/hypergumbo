@@ -112,7 +112,15 @@ subprocess:
 
 env_read:
   - module: std::env
-    functions: [var, var_os, vars, args, args_os, current_exe]
+    functions: [var, var_os, vars, args, args_os]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: std::env
+    functions: [current_exe]
   - module: std::env
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."

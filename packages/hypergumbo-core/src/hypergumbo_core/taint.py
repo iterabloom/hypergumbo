@@ -1267,7 +1267,26 @@ AUTO_SINK_ZONE_MAP: dict[str, tuple[str, str]] = {
 
 AUTO_SOURCE_LABEL_MAP: dict[str, str] = {
     # io_primitives boundary -> taint_label for auto-derived source
+    #
+    # A BOUNDARY THAT AUTO-DERIVES A LABEL MUST MEAN WHAT THE LABEL MEANS
+    # (INV-tutar). ``env_read`` used to carry BOTH readings and this map read
+    # the wrong one: 134 of the 195 shipped ``env_read`` rows were host
+    # DESCRIPTION (``runtime.GOOS``, ``os.uname``, ``navigator.platform``,
+    # ``platform.system``) or user identity (``os.getlogin``, ``pwd.getpwnam``),
+    # and calling those a *secret* is why ``host-secret-*`` claims carried 48 of
+    # 85 adjudicated flows at 22.9% precision -- the weakest family in
+    # measurement 0001. The catalogue was already distorting itself to cope:
+    # ``python.yaml`` deliberately withheld ``getpid`` / ``cpu_count`` because
+    # rowing them here "would manufacture false sources", while ``go.yaml``
+    # rowed ``GOOS`` and ``Getwd`` -- one boundary value, two membership rules,
+    # two shipped files.
+    #
+    # THE SPLIT IS OF THE BOUNDARY, NOT THE LABEL, and not a per-row override.
+    # The boundary vocabulary is the registry-backed thing
+    # (``CATALOG_BOUNDARY_TYPES``); a per-row ``taint_label`` would let the row
+    # and the boundary each decide, which is one fact in two homes.
     "env_read": "host_secret",
+    "host_info_read": "host_description",
     "net_recv": "untrusted_input",
     "ipc_recv": "untrusted_input",
     "db_read": "untrusted_input",

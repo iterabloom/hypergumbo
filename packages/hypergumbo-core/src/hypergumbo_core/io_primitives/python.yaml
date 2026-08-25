@@ -560,30 +560,36 @@ subprocess:
     notes: "Unix only"
 
 env_read:
-  # ---------------------------------------------------------------
-  # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
-  # measured unmatched call target on hypergumbo's own artifact-scoped
-  # self-survey, or a peer required so its module's completeness entry
-  # stays honest. os.open + os.write close INV-zubuh's measured
-  # false-confirm pair. Slot-family rows (os.environ.*, sys.stdout.*)
-  # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
-  # edges, these speak about CALL edges on the attribute object.
-  # ---------------------------------------------------------------
-  - module: os
-    functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, getrandom, sysconf, confstr]
-    notes: "Host- and user-identifying reads plus OS randomness. Deliberately NOT getpid / cpu_count / times: env_read rows auto-derive host_secret TAINT SOURCES (AUTO_SOURCE_LABEL_MAP), and a pid is not a secret - rowing it would manufacture false sources. Inert process state is vouched for by the module_completeness entry instead. And deliberately NOT urandom: hypergumbo ships a HAND-WRITTEN taint source for os.urandom, and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3)."
   - module: os.environ
     functions: [get, keys, items, values, copy]
     notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."
-  - module: pathlib.Path
-    methods: [cwd, home, expanduser, absolute]
   - module: os.path
-    functions: [expanduser, expandvars]
+    functions: [expandvars]
   - module: posixpath
-    functions: [expanduser, expandvars]
+    functions: [expandvars]
   - module: argparse.ArgumentParser
     methods: [parse_args, parse_known_args]
     notes: "Reads sys.argv, consistent with the sys attribute row in this section."
+  - module: os
+    functions: [getenv, get_exec_path]
+    attributes: [environ]
+  - module: sys
+    attributes: [argv]
+
+# INV-tutar: host DESCRIPTION reads. Split out of env_read because
+# AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
+# calling runtime.GOOS or platform.system a host SECRET made every
+# host-secret-* claim count description reads as secret flows.
+host_info_read:
+  - module: os
+    functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, sysconf, confstr]
+    notes: "Host- and user-identifying reads. THE REASON getpid / cpu_count / times WERE HELD OUT IS GONE (INV-tutar): they were excluded because env_read auto-derived the host_secret label and a pid is not a secret, which is the catalogue distorting itself to protect a consumer. Under host_info_read they would be ordinary rows; adding them is an ADDITION and is deliberately not folded into the split. urandom stays out for a different and still-live reason: hypergumbo ships a HAND-WRITTEN taint source for os.urandom and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3). os.getrandom was REMOVED outright by the split -- a CSPRNG read is not an environment read under any reading."
+  - module: pathlib.Path
+    methods: [cwd, home, expanduser, absolute]
+  - module: os.path
+    functions: [expanduser]
+  - module: posixpath
+    functions: [expanduser]
   - module: pwd
     functions: [getpwuid, getpwnam, getpwall]
   - module: grp
@@ -594,11 +600,8 @@ env_read:
     functions: [get_terminal_size]
   - module: tempfile
     functions: [gettempdir, gettempprefix]
-  - module: os
-    attributes: [environ]
-    functions: [getenv, get_exec_path]
   - module: sys
-    attributes: [argv, executable, path, platform, version]
+    attributes: [executable, path, platform, version]
   - module: platform
     functions: [system, node, release, version, machine, processor, python_version]
   - module: locale
