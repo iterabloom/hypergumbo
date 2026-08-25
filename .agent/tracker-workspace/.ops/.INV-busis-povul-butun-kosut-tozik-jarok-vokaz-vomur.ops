@@ -184,3 +184,10 @@
   clock: 23  # 6c08
   nonce: 6c08  # 6c08
   message: "PRIORITY CHANGED 2026-08-17, on owner authorisation, as part of the P0/P1 sweep. Recording the reasoning here because a re-rank that lives only in conversation is indistinguishable next session from drift.\n\nTHE GATE. This item terminates at WI-kabif's removal authority, which is parked TWICE OVER: (1) a standing owner ruling of DO NOT START, and (2) a pre-registered numeric threshold -- measurement 0001 records that the removal-authority question becomes \"arguable on its merits\" near 80% precision, and states that no reading of the data supports a number near 80% (measured ~41%). So this is parked on a NUMBER, not on effort, and no amount of session time moves it.\n\nP1 -> P2. This item is the DIAGNOSIS of the parked chain rather than a fix in it -- its content is the measured account of why section 3a cannot refute. That account is valuable and stays open; it is not work competing for the top of the queue while the thing it explains is parked on a number."  # 6c08
+- op: discuss  # 53f7
+  at: '2026-08-25T04:14:41Z'  # 53f7
+  by: agent  # 53f7
+  actor: jgstern_agent  # 53f7
+  clock: 24  # 53f7
+  nonce: 53f7  # 53f7
+  message: "PHASE 0 NOTE, 2026-08-25, dev e41a655d6d. NOT RE-DERIVED THIS PASS, recorded\nso the omission is explicit rather than implied.\n\nThis item's figures (66.7% of blocked-walk sites unique on pretix, 90.6%\nexcluding source_undefined, 75/127 pooled over 4 repos) need a corpus run over\nits own repos to re-derive, and they were already corrected once in-thread\n(the superseded 40.5% was computed over the wrong population). Nothing in the\ncampaign's Phase 1 or Phase 2 depends on them, and this item is a Phase 4\nmember, so the re-derivation is deferred to Phase 4 rather than done cheaply\nand badly now.\n\nUNTIL THEN: do not cite the figures. The mechanism claim (a use site the\nsection 3a walk cannot adjudicate has no callee recorded at that line) is not\nin doubt; the SHARE is."  # 53f7
