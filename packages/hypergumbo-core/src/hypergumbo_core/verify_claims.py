@@ -2347,6 +2347,95 @@ def _higher_fidelity_caveat(entries: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _read_key(edge: dict[str, Any]) -> tuple[str, int] | None:
+    """The ``(src, line)`` a scoped attribute read is identified by, or None.
+
+    ``module_attr_ref`` ONLY. The multi-proposal emission is specific to
+    ``emit_module_attribute_refs(scoped_path=True)``; a call edge carries one
+    proposal per call, so widening this would suppress genuine siblings for no
+    gain (INV-hukuf's own filing scopes the mechanism the same way).
+    """
+    if edge.get("type") != "module_attr_ref":
+        return None
+    src = edge.get("src")
+    line = edge.get("line")
+    if not isinstance(src, str) or not isinstance(line, int):
+        return None
+    return (src, line)
+
+
+def _same_reference(a: str, b: str) -> bool:
+    """Are two scoped-path MODULE slots alternative splits of ONE reference?
+
+    THE PREFIX TEST, and it is what keeps this from over-suppressing. Two
+    DISTINCT scoped reads can sit on one line — ``f(a::B, c::D)`` — and a rule
+    keyed on ``(src, line)`` alone would let ``a::B`` matching vouch for
+    ``c::D``, silently removing a real uncatalogued module. The proposals of one
+    read are not merely co-located, they are NESTED: the emitter walks the same
+    path left-recursively, so every proposal's module slot is a component-prefix
+    of the deepest one (``std`` / ``std::env`` / ``std::env::consts``). Two
+    unrelated reads are not — ``std::fs`` and ``std::env`` share ``std`` and
+    neither is a prefix of the other, so only the shared shallow proposal is
+    suppressed, and it is a parse candidate of the read that matched.
+
+    THE MODULE SLOT, NOT THE NAME SLOT, and the difference is not cosmetic. On
+    the analyzer's own edges the name slot carries the whole path
+    (``std::env::consts::OS``); by the time the coverage gate runs, WI-pubiv's
+    boundary-id remap has rewritten it to the BARE LEAF (``OS`` / ``consts`` /
+    ``env``) — exactly the shape where a prefix test finds nothing. Measured
+    that way round first: written against the name slot, reproduced against a
+    live survey, and read as inert.
+
+    Separators are folded first because the id slot and the catalogue disagree
+    about them by language (``::`` in rust, ``.`` in python), and comparison is
+    COMPONENT-WISE so ``std.envy`` is not a prefix of ``std.env.consts``.
+    """
+    pa = normalize_module_separators(a).split(".")
+    pb = normalize_module_separators(b).split(".")
+    shorter, longer = (pa, pb) if len(pa) <= len(pb) else (pb, pa)
+    return longer[: len(shorter)] == shorter
+
+
+def _classified_scoped_reads(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> dict[tuple[str, int], list[str]]:
+    """``(src, line)`` → the name slots of the proposals that DID classify.
+
+    One pass, so the per-edge check below is a lookup rather than a rescan of
+    every sibling for every edge.
+    """
+    from .taint import _module_from_symbol_path
+
+    out: dict[tuple[str, int], list[str]] = {}
+    for edge, dst, _catalog in _external_call_sites(raw_edges, catalogs):
+        key = _read_key(edge)
+        if key is None:
+            continue
+        if classify_call(catalogs, dst, edge.get("meta"),
+                         dst_ref=_edge_dst_ref(edge)):
+            out.setdefault(key, []).append(_module_from_symbol_path(dst))
+    return out
+
+
+def _is_sibling_of_examined_read(
+    edge: dict[str, Any],
+    dst: str,
+    examined_reads: dict[tuple[str, int], list[str]],
+) -> bool:
+    """Is this unmatched proposal an alternative parse of a read that matched?"""
+    from .taint import _module_from_symbol_path
+
+    key = _read_key(edge)
+    if key is None:
+        return False
+    module = _module_from_symbol_path(dst)
+    return bool(module) and any(
+        _same_reference(module, matched)
+        for matched in examined_reads.get(key, ())
+    )
+
+
 def _uncatalogued_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -2436,6 +2525,7 @@ def _uncatalogued_external_modules(
     from .taint import _module_from_symbol_path
 
     analyzed = _analyzed_modules(raw_edges)
+    examined_reads = _classified_scoped_reads(raw_edges, catalogs)
     unknown: set[str] = set()
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
@@ -2469,6 +2559,22 @@ def _uncatalogued_external_modules(
         # above "2 fs_write chain(s) found" — through those very modules.
         if classify_call(catalogs, dst, edge.get("meta"),
                          dst_ref=_edge_dst_ref(edge)):
+            continue
+        # (1b) INV-hukuf: A SIBLING PARSE OF A READ THAT DID CLASSIFY IS NOT A
+        # SECOND MODULE. ``analyze/base.py``'s scoped-path emitter cannot know
+        # where the module ends and the attribute begins — ``std::env::consts::OS``
+        # is module ``std::env`` with attribute ``consts::OS`` OR module
+        # ``std::env::consts`` with attribute ``OS`` — so it emits one edge per
+        # nesting depth and lets the catalogue pick. That is right FOR MATCHING
+        # and a category error for COVERAGE ACCOUNTING: at most one proposal per
+        # read can ever match, so every genuine N-deep read was guaranteed to
+        # contribute N-1 entries naming modules nothing ever called into.
+        # Reproduced on a zero-dependency crate whose ONLY scoped read is
+        # ``std::env::consts::OS``: "calls into 3 module(s) that the I/O catalog
+        # could not classify (std, std.env.consts, std.net)" — ``std.env`` is
+        # correctly absent because it matched, and the other two are its own
+        # collateral. THE GATE MUST COUNT REFERENCES, NOT PARSE CANDIDATES.
+        if _is_sibling_of_examined_read(edge, dst, examined_reads):
             continue
         # (2) AN UNMATCHED CALL IS AN EXAMINED NEGATIVE ONLY OVER AN ENUMERATED
         # MODULE. This is the smaller, honest remainder of the question, and it
