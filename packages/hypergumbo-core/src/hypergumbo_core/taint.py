@@ -3279,14 +3279,6 @@ def propagate_taint_ddg(
     # `server`?" unanswered — and the edge set cannot answer it. The statement's
     # own defines/uses can: `keep = str(server)` consumes `server`,
     # `path = name` does not.
-    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
-    for sym_id, statements in (stmt_defuse or {}).items():
-        for line, defines, uses in statements:
-            if not defines:
-                continue
-            for used in uses:
-                inherits[(sym_id, line, used)].update(defines)
-
     # (caller, callee) → every line that call occurs on. A caller may invoke
     # the same callee more than once, and a flow is real if the taint reaches
     # ANY of those call sites, so this is a list rather than a single line.
@@ -3312,6 +3304,52 @@ def propagate_taint_ddg(
                 src_id = edge.get("src", "")
                 for site in sites:
                     callee_names[(src_id, site)].add(qualified)
+
+    # INV-fumod: a definition does NOT inherit taint across an I/O boundary.
+    #
+    # Built AFTER ``callee_names`` because it now asks a question about the
+    # defining line's callee, and the two indexes were previously built in the
+    # opposite order for no reason but history.
+    #
+    # THE RULE, and it is the 0001 rubric's own tie-break made executable:
+    # *taint flows through in-program computation, not through an external
+    # resource selected by the tainted value*. An I/O primitive's return value
+    # comes from the OTHER SIDE of the boundary — a handle on a resource the
+    # argument merely NAMED, or bytes the argument merely ADDRESSED — so it is
+    # not a computation on that argument.
+    #
+    # MEASURED, with a control that discriminates. `out = open(args.outfile,
+    # "w"); out.write("a constant banner")` reported TWO findings, `open` and
+    # `file.write`, where only the first is earned: nothing tainted is written.
+    # The control `out = open("/tmp/fixed.txt", "w"); out.write(args.payload)`
+    # reports `file.write` and MUST keep reporting it — there the tainted value
+    # reaches the write's own argument. The tool was already internally
+    # inconsistent about this, naming `open` correctly and then crediting the
+    # handle as well, which is what INV-fumod's statement calls out.
+    #
+    # DERIVED FROM THE CATALOGUE, NOT CURATED. Every I/O primitive is already
+    # enumerated per language; a hand-written list of "opening" calls would be
+    # the second home for that fact and would be wrong the moment a row is
+    # added. It costs nothing in recall where the far side is itself a source:
+    # `resp = requests.get(url)` stops inheriting `url`'s label and instead
+    # carries `untrusted_input` from the net_recv row, which is the more
+    # accurate statement of what `resp` holds.
+    _io_names: frozenset[str] = frozenset()
+    if language:
+        from .io_boundary import load_catalog
+        _io_names = frozenset(
+            f"{p.module}.{p.name}" if p.module else p.name
+            for p in load_catalog(language).primitives
+        )
+    inherits: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for sym_id, statements in (stmt_defuse or {}).items():
+        for line, defines, uses in statements:
+            if not defines:
+                continue
+            if callee_names[(sym_id, line)] & _io_names:
+                continue
+            for used in uses:
+                inherits[(sym_id, line, used)].update(defines)
 
     # ADR-0017 §4b declared summaries, QUALIFIED KEYS ONLY.
     # ``load_function_summaries`` also indexes every entry under its bare last
