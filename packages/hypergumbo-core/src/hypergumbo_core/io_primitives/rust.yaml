@@ -62,8 +62,19 @@ fs_read:
   - module: std::fs
     functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize]
   - module: std::fs::File
-    methods: [open]
-    notes: "File::open is read-mode by default"
+    functions: [open]
+    notes: >-
+      File::open is read-mode by default. DECLARED AS A FUNCTION, NOT A
+      METHOD, and the distinction is load-bearing rather than pedantic:
+      `File::open(p)` is an ASSOCIATED function with no receiver, so a call
+      site can never produce a method-construct edge. Declared as a method it
+      was unmatchable by construction, AND it made
+      `verify_claims.method_starved_modules` report std::fs::File as a module
+      whose I/O is "structurally invisible" — withholding every verdict on any
+      Rust repo that opens a file. Measured on encrypted-dns-server: the edge
+      resolves correctly to std::fs::File / open and the verdict was withheld
+      anyway (INV-nular: kind asserted by name, never checked against
+      semantics).
   - module: std::path::Path
     methods: [exists, is_file, is_dir, read_dir, metadata, symlink_metadata, canonicalize, read_link]
   - module: std::env
@@ -76,7 +87,10 @@ fs_write:
   - module: std::fs
     functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, copy, hard_link, soft_link]
   - module: std::fs::File
-    methods: [create, create_new]
+    functions: [create, create_new]
+    notes: >-
+      Associated functions, not methods — see the std::fs::File fs_read note.
+      `File::create(p)` takes no receiver.
   - module: std::fs::OpenOptions
     methods: [open]
     notes: "When write/append/create flags are set"
@@ -86,7 +100,14 @@ fs_write:
 
 net_send:
   - module: std::net::TcpStream
-    methods: [connect, write, write_all]
+    functions: [connect]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::net::TcpStream
+    methods: [write, write_all]
   - module: std::net::UdpSocket
     methods: [send, send_to]
   # Plan C, PR A: tokio::net (async networking) and the Hyper /
@@ -96,17 +117,38 @@ net_send:
 
 net_recv:
   - module: std::net::TcpListener
-    methods: [bind, accept, incoming]
+    functions: [bind]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::net::TcpListener
+    methods: [accept, incoming]
   - module: std::net::TcpStream
     methods: [read, read_to_end, read_to_string]
   - module: std::net::UdpSocket
-    methods: [recv, recv_from, bind]
+    functions: [bind]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::net::UdpSocket
+    methods: [recv, recv_from]
   # Plan C, PR A: tokio::net, hyper::Server, axum::Router, and
   # actix_web::HttpServer removed (third-party crates).
 
 subprocess:
   - module: std::process::Command
-    methods: [new, spawn, output, status]
+    functions: [new]
+    notes: >-
+      Associated functions take no receiver, so a call site can never
+      produce a method-construct edge. Declared as methods they were
+      unmatchable by construction AND marked the module method-starved,
+      withholding every verdict on the repo (INV-nular).
+  - module: std::process::Command
+    methods: [spawn, output, status]
   - module: std::process
     functions: [exit, abort]
 
