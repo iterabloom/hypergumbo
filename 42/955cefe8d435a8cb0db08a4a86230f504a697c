@@ -1,0 +1,54 @@
+Original commit body from f6ad398f8278d946fde259b76f586d9c5efe4742:
+
+rust.yaml declared seven ASSOCIATED FUNCTIONS as methods — File.open /
+create / create_new, TcpStream.connect, TcpListener.bind, UdpSocket.bind,
+Command.new. `File::open(path)` takes no receiver, so its call site can
+only produce a function-construct edge, and the cost was not a
+mislabelled finding:
+
+  (a) io_boundary's method-kind gate could never match it, so the whole
+      std::fs::File half of the fs catalogue was unreachable BY
+      CONSTRUCTION; and
+  (b) method_starved_modules saw a resolved call into a method-keyed
+      module with no method-construct edge, concluded the analysis "did
+      not look", and withheld the verdict.
+
+Measured on encrypted-dns-server (rust+toml only): the edge resolves
+perfectly — rust:std::fs::File:0-0:open:external_symbol, module and name
+both correct — and all 7 generic claims returned inconclusive naming
+std::fs::File structurally invisible. Re-kinding std::fs::File alone
+dropped the starved list from two modules to one on the same binary.
+
+The correction is a SPLIT, not a move: TcpStream::connect is an
+associated function while TcpStream::write_all is a method under the same
+module, and OpenOptions legitimately carries both, so it is untouched.
+Controls for the method half ship beside the subjects.
+
+python.yaml carried the same error twice: pathlib.Path.cwd and .home are
+classmethods, verified with inspect.getattr_static rather than recall.
+
+Partially addresses INV-linub, which STAYS VIOLATED. It is a CLASS item
+over nine languages whose closure criterion is a full L2->L4 table with
+the three unmeasured cells filled and the declining branch READ in each
+failing analyzer. This fills the rust cell only, and only partly: rust
+PASSES L2 (219 method edges, call_construct populated) and FAILS L3
+(92.7% of those carry module slot `external`, ZERO carry a stdlib
+module). The typed-receiver strategies resolve Type::method against
+first-party symbols only, so an external receiver type missed and the
+unresolved path rebuilt the module slot from use_aliases alone — where a
+method name never appears — discarding the type computed moments earlier.
+Carrying it through moves `external` 203 -> 194 of 219 and stdlib 0 -> 2.
+Deliberately narrow: the module slot only, never which edges are emitted.
+Measured through L4 on findings as INV-linub requires, and the result is
+a NULL — zero findings and zero verdicts move, because the File/Path call
+sites take associated-fn and call-expression receiver shapes the
+identifier-only branch misses. The analyzer's declining branch for std
+receiver typing is still unread.
+
+Sweep over all 947 method-kind entries in 9 catalogues filed as
+docs/surveys/io-primitive-kind-conformance-sweep.md. 726 of them, across
+kotlin/scala/java/objc/swift/go, are REFUSED for lack of a toolchain —
+unexamined, not clean. INV-suril already records the same shape in java.
+
+Racial-Capitalism-Is-Bad: an octopus teaching rotovapping to a class of turtles in a Jurassic jukebox booth
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
