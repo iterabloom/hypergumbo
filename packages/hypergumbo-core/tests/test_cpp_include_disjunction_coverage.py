@@ -168,3 +168,74 @@ def test_one_unenumerated_include_still_withholds(tmp_path: Path):
     unknown = _uncatalogued_external_modules([_edge(_JOINED)], {"cpp": catalog})
     assert "sys/socket" not in unknown
     assert set(unknown) == {"string", "ws2tcpip"}
+
+
+# ---------------------------------------------------------------------------
+# THE THIRD CONSUMER, AND WHY IT IS A TRIPWIRE RATHER THAN A FIX
+#
+# This item's statement says the disjunction must be expanded on EVERY consumer
+# path, and the filed repro exercises two. Enumerating every caller of
+# ``module_io_is_enumerated`` turns up a THIRD — the ``external_potential``
+# suppression gate in ``_compute_external_potential`` (io_boundary.py), which
+# hands the RAW slot to the predicate with no expansion:
+#
+#     if module_hint and catalog.module_io_is_enumerated(module_hint):
+#         continue
+#
+# THE FIRST READING WAS THAT THIS IS A LATENT BUG THAT ACTIVATES WHEN WI-lutuh
+# GIVES cpp ``module_completeness`` ENTRIES. THAT READING IS WRONG, and it is
+# recorded here because the correction is the useful part.
+#
+# A disjunctive slot exists ONLY on an UNRESOLVED edge. cpp.py builds it in the
+# ``else`` branch of the resolved/unresolved test and emits it through
+# ``make_unresolved_edge``; a resolved call carries its real module. And
+# ``_compute_external_potential`` drops unresolved edges at F3 Filter 1 (ADR-0028)
+# BEFORE reaching the enumeration gate. So the gate never sees a comma-joined
+# hint, and its non-expansion cannot be observed.
+#
+# Verified on a real run rather than by reading: a two-include C++ fixture
+# produces exactly two comma-joined dsts and BOTH are ``is_resolved: False``
+# (~/hypergumbo_lab_notebook/zimud_check_08262026/).
+#
+# So the correct artifact is a TRIPWIRE on the assumption that makes the gate
+# safe, not a fix to the gate. If a future change lets a RESOLVED edge carry a
+# disjunctive hint, this test fails and points at the gate that would then be
+# wrong.
+# ---------------------------------------------------------------------------
+
+
+def test_a_disjunctive_slot_only_ever_rides_an_unresolved_edge(tmp_path: Path):
+    """The assumption that makes the third consumer unreachable.
+
+    If this fails, ``_compute_external_potential``'s enumeration gate
+    (io_boundary.py, ``module_io_is_enumerated(module_hint)``) becomes
+    reachable with a comma-joined argument that can never match — and it
+    needs the same ALL-over-disjuncts expansion the coverage gate got.
+    """
+    from hypergumbo_lang_mainstream.cpp import analyze_cpp
+
+    src = tmp_path / "net.cpp"
+    src.write_text(
+        "#include <string>\n"
+        "#include <sys/socket.h>\n"
+        "#include <ws2tcpip.h>\n"
+        "std::string f(int fd) {\n"
+        "    getpeername(fd, nullptr, nullptr);\n"
+        "    return std::string();\n"
+        "}\n"
+    )
+    result = analyze_cpp(tmp_path)
+
+    disjunctive = [
+        e for e in result.edges
+        if "," in str(e.dst).split(":")[1] if str(e.dst).startswith("cpp:")
+    ]
+    assert disjunctive, "fixture produced no disjunctive slot; it tests nothing"
+    resolved = [e for e in disjunctive if getattr(e, "is_resolved", True)]
+    assert resolved == [], (
+        "a RESOLVED edge now carries a comma-joined module slot. The "
+        "external_potential suppression gate compares that raw string against "
+        "module_io_is_enumerated, which no entry can ever match, so the "
+        "suppression would silently never fire. Expand it over "
+        "module_hint_disjuncts with ALL semantics, as the coverage gate does."
+    )
