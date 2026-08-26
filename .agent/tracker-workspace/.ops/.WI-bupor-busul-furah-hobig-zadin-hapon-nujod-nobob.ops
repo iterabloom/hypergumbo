@@ -1,0 +1,23 @@
+- op: create  # 7de1
+  at: '2026-08-26T20:11:02Z'  # 7de1
+  by: agent  # 7de1
+  actor: jgstern_agent  # 7de1
+  clock: 1  # 7de1
+  nonce: 7de1  # 7de1
+  data:  # 7de1
+    kind: work_item  # 7de1
+    title: "Enumerate the full I/O surface of rust's filesystem modules (std::fs, std::path, Path, PathBuf, os::windows::fs) so they can carry module_completeness"  # 7de1
+    status: todo_hard  # 7de1
+    priority: 2  # 7de1
+    parent:  # 7de1
+    tags:  # 7de1
+    - io_boundary  # 7de1
+    - verify_claims  # 7de1
+    - rust  # 7de1
+    - catalogue  # 7de1
+    isbefore: []  # 7de1
+    duplicate_of: []  # 7de1
+    not_duplicate_of: []  # 7de1
+    pr_ref:  # 7de1
+    description: "WI-lutuh's rust audit (2026-08-26) mechanically probed all 33 stdlib modules the\ncorpus reaches and could grant `module_completeness: complete` to 16. This item\nis the filesystem share of the 17 it could not.\n\nMODULES: std::fs, std::path, std::path::Path, std::path::PathBuf,\nstd::os::windows::fs.\n\nWHY THEY REFUSE, and it is not a probe limitation: each genuinely exposes I/O.\n`std::path::Path` is the sharpest and is the exact analogue of the `pathlib`\nverdict the python audit's first draft got WRONG -- Path::exists / metadata /\nread_dir / canonicalize / symlink_metadata / read_link all touch the filesystem,\nso a Path is not a string type.\n\nWHAT `complete` ASSERTS, and why this is real work rather than a flag flip:\n`module_io_is_enumerated` means EVERY I/O primitive the module exposes is in the\ncatalogue. rust.yaml today carries a hand-picked slice -- std::fs has\n[read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize] for\nfs_read and [write, create_dir, create_dir_all, remove_file, remove_dir,\nremove_dir_all, rename, copy, hard_link, soft_link] for fs_write. Whether that\nis the WHOLE surface is exactly what is unaudited. Off the top: read_link,\nset_permissions, symlink_metadata on DirEntry, DirBuilder, ReadDir's iterator\nitems, File's own trait impls. The audit is to enumerate the module's public\nsurface from rust-src and add every I/O-bearing name, not to confirm the\nexisting rows.\n\nEVIDENCE BAR, inherited from the python stdlib audit and NOT negotiable: total\nsurface (every surface the module exposes, not the ones this repo calls); EXACT\nmatching (std::fs does not vouch for std::fs::File); refuse-by-default, because\nthe wrong answer is a false all-clear. The python audit's first draft, written\nfrom expert knowledge unaided, got 5 of 32 verdicts wrong (16%) and EVERY error\nwas on the false-all-clear side. Use the probe, not recall.\n\nINSTRUMENT: ~/hypergumbo_lab_notebook/lutuh_rust_08262026/probe.py, which\nresolves a module or type to its rust-src definition and scans for syscall\nreach, I/O-trait delegation and I/O-bearing surface names. It REFUSES and never\ngrants; a candidate still needs adjudication.\n\nPAY EXPECTATION, stated so nobody is surprised: measured 2026-08-26, completing\nrust's stdlib audit changes NO verdict on either testable rust repo, because\n`boundary_coverage` is a ladder of early returns and the uncatalogued-module\ncheck is its LAST rung. See the note on WI-lutuh. This is necessary work whose\npayoff is gated behind rungs 1-4.\n\nTHE SAME DECOMPOSITION APPLIES PER LANGUAGE. WI-lutuh's scoping counted the\ndistinct stdlib modules each language's corpus reaches: go 53, python 53 still\nunenumerated after its 76-entry audit, erlang 38+, java 38+, elixir 32+, cpp 29,\njavascript 13. Only rust is decomposed here."  # 7de1
+    fields: {}  # 7de1
