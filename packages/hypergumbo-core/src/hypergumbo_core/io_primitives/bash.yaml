@@ -57,6 +57,24 @@ env_read:
     attributes: [environ]
     notes: "A parameter expansion of a name not assigned in the file"
 
+# INV-nular / INV-tutar. The host-DESCRIPTION half of the expansion surface.
+# `$HOSTNAME`, `$OSTYPE`, `$PWD` and `$UID` are assigned by BASH from syscalls,
+# not inherited from the caller, so they are not environment reads at all —
+# and routing them through env_read auto-derived the `host_secret` taint label,
+# which made reading the OS name count as a credential flow. Python's catalogue
+# already files the syscall equivalents of every one of these (`getcwd`,
+# `getuid`, `uname`) under host_info_read, so this is the shipped
+# classification reached through bash's syntax rather than a new judgement.
+#
+# ONE ROW for the same reason env_read has one: the variable that was read is
+# carried on the edge's meta for the reader, not used for matching. The
+# analyzer holds the name list (bash.py's _HOST_DESCRIPTION_NAMES) because it
+# is a fact about the SHELL, not about a module surface a catalogue describes.
+host_info_read:
+  - module: shell
+    attributes: [hostinfo]
+    notes: "A parameter expansion of a bash-assigned host/user description"
+
 fs_write:
   # `>` and `>>` are ONE primitive at two modes, not two primitives. The
   # truncate/append distinction rides on io_mode (the builtins.open pattern)

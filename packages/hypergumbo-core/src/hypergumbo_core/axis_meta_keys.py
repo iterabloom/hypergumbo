@@ -546,6 +546,30 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # of them were emitted by bash.py while unregistered, so nothing could
     # have known to union them on collapse.
     # ------------------------------------------------------------------
+    MetaKeySpec("io_target_kind", AXIS_EDGE_META,
+                "What KIND of thing a call site's I/O target is, where the "
+                "catalogue row cannot tell: 'host_path' (a place in a "
+                "filesystem), 'null_device' (a kernel sink that discards), "
+                "'std_stream' (/dev/stdout, /dev/stderr, /dev/fd/N — a real "
+                "crossing, but a logging one rather than a filesystem one), or "
+                "'unresolved' (a variable target; a real write to a place the "
+                "analyzer cannot name). INV-nular: `redirect.>` is ONE "
+                "catalogue row whose boundary depends on the target at the "
+                "call site, exactly as `builtins.open`'s depends on the mode, "
+                "so the discriminator is stamped by the analyzer and read by "
+                "`io_boundary.classify_call`. Measured: without it, "
+                "`echo \"$API_KEY\" > /dev/null` returned `violated` against "
+                "a fs_write must-not-exist claim. PER CALL SITE for the same "
+                "reason `redirect_target` is.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge, stamped in the "
+                    "same dict literal as redirect_target. A second language "
+                    "adding the key (python's os.devnull is the same fact) "
+                    "would be a second writer over DISJOINT edges, as "
+                    "io_mode's two analyzer families already are."
+                )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "
                 "or reads from — the `/etc/cron.d/pwned` in "

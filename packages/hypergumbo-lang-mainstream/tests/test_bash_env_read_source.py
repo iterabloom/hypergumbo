@@ -115,8 +115,17 @@ class TestTheCatalogueHalfDerives:
         cat = load_builtin_taint_catalog()
         sources = cat.sources_for_language("bash")
         assert sources, "bash still derives no taint sources"
-        assert [(s.module, s.name, s.taint_label) for s in sources] == [
+        # Two rows, two LABELS, and the second is not a widening: INV-nular
+        # moved the bash-assigned host descriptions ($HOSTNAME, $OSTYPE, $PWD,
+        # $UID) OUT of env.environ, so what was one row deriving host_secret
+        # for every expansion is now a credential read and a host-description
+        # read that a claim can tell apart. Same split INV-tutar made for
+        # elixir, reached through bash's syntax.
+        assert sorted(
+            (s.module, s.name, s.taint_label) for s in sources
+        ) == [
             ("env", "environ", "host_secret"),
+            ("shell", "hostinfo", "host_description"),
         ]
         assert cat.sinks_for_language("bash")
 

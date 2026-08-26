@@ -184,6 +184,47 @@ def _extract_alias_info(node: "tree_sitter.Node", source: bytes) -> str | None:
     return None  # pragma: no cover
 
 
+# INV-nular. Variables BASH ITSELF assigns, from the shell manual's "Shell
+# Variables" section. A parameter expansion of one of these is not a read of
+# anything the caller supplied, so it is not an environment read — the same
+# reason INV-jurif already excludes a name the SCRIPT assigns. Splitting them
+# by SETTER rather than by apparent sensitivity is deliberate: a
+# "which names are secrets" list is exactly the curated enumeration the
+# env_read row refuses, wrong the moment a repo invents a name and wrong
+# silently.
+#
+# NOT AN EXHAUSTIVE MODEL OF BASH. It is the documented shell-variable set;
+# a name bash gains in a future release reads as an environment variable until
+# it is added here, which is the same fail-open direction the rest of this
+# analyzer takes for sources.
+_SHELL_STATE_NAMES: frozenset[str] = frozenset({
+    "_", "BASH", "BASHOPTS", "BASHPID", "BASH_ALIASES", "BASH_ARGC",
+    "BASH_ARGV", "BASH_ARGV0", "BASH_CMDS", "BASH_COMMAND",
+    "BASH_EXECUTION_STRING", "BASH_LINENO", "BASH_LOADABLES_PATH",
+    "BASH_MONOSECONDS", "BASH_REMATCH", "BASH_SOURCE", "BASH_SUBSHELL",
+    "BASH_TRAPSIG", "BASH_VERSINFO", "BASH_VERSION", "COMP_CWORD", "COMP_KEY",
+    "COMP_LINE", "COMP_POINT", "COMP_TYPE", "COMP_WORDBREAKS", "COMP_WORDS",
+    "COPROC", "DIRSTACK", "EPOCHREALTIME", "EPOCHSECONDS", "FUNCNAME",
+    "GROUPS", "HISTCMD", "LINENO", "MAPFILE", "OPTARG", "OPTIND",
+    "PIPESTATUS", "PPID", "RANDOM", "READLINE_ARGUMENT", "READLINE_LINE",
+    "READLINE_MARK", "READLINE_POINT", "REPLY", "SECONDS", "SHELLOPTS",
+    "SHLVL", "SRANDOM",
+})
+
+# The bash-assigned names that describe the HOST or the USER rather than the
+# shell's own bookkeeping. INV-tutar split `host_info_read` out of `env_read`
+# in exactly this situation one language over: env_read auto-derives the
+# `host_secret` taint label, so a host DESCRIPTION read counted as a credential
+# flow and made every host-secret-* claim fire on it. Python's catalogue puts
+# the syscall equivalents of every one of these under host_info_read already
+# (`getcwd`, `getuid`, `uname`), so this is the shipped classification reached
+# through bash's syntax rather than a new judgement.
+_HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
+    "EUID", "HOSTNAME", "HOSTTYPE", "MACHTYPE", "OLDPWD", "OSTYPE", "PWD",
+    "UID",
+})
+
+
 class BashAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based Bash/shell script analyzer.
 
@@ -465,16 +506,39 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 if not var_name or var_name in assigned_names:
                     continue
                 # Positional/special params ($1, $?, $$) are shell state, not
-                # environment, and $PWD-style shell-maintained names are not
-                # secrets the caller supplied.
+                # environment.
                 if not var_name[0].isalpha() and var_name[0] != "_":
                     continue
+                # INV-nular. The comment here used to claim that "$PWD-style
+                # shell-maintained names" were excluded while the code filtered
+                # only the non-alphabetic first character, so $BASH_SOURCE,
+                # $RANDOM and $LINENO each derived a host_secret taint SOURCE.
+                #
+                # THE RULE IS WHO SET THE VARIABLE, not whether the name looks
+                # sensitive — a sensitivity list is the curated name list the
+                # env_read row exists to refuse (it is wrong the moment a repo
+                # invents a name, and wrong in the SILENT direction). It is
+                # INV-jurif's own discriminator one level out: a name the
+                # SCRIPT assigns is not an environment read, and neither is a
+                # name BASH assigns. $HOME stays an env read because bash does
+                # not set it, it inherits it.
+                if var_name in _SHELL_STATE_NAMES:
+                    continue
+                if var_name in _HOST_DESCRIPTION_NAMES:
+                    # INV-tutar, one language over: env_read auto-derives the
+                    # host_secret label, so routing OSTYPE through it made a
+                    # host DESCRIPTION read count as a credential flow. The
+                    # read is real and stays reported — reclassified, not
+                    # suppressed.
+                    dst = "bash:shell:0-0:shell.hostinfo:attribute"
+                else:
+                    dst = "bash:env:0-0:env.environ:attribute"
                 owner = _get_enclosing_function(node) or module_symbol
                 if owner is None:  # pragma: no cover - defensive
                     continue
                 edges.append(Edge.create(
                     src=owner.id,
-                    dst="bash:env:0-0:env.environ:attribute",
+                    dst=dst,
                     edge_type="module_attr_ref",
                     line=node.start_point[0] + 1,
                     origin=PASS_ID,
@@ -632,6 +696,46 @@ class BashAnalyzer(TreeSitterAnalyzer):
         ">": "w", ">|": "w", ">>": "a", "<": "r",
     }
 
+    #: Targets that name a KERNEL DEVICE rather than a place in a filesystem.
+    #: INV-nular: `echo "$API_KEY" > /dev/null` was measured returning
+    #: `violated` (rc 1) against `{boundary: fs_write, must_not_exist: true}`,
+    #: and nothing is written to any filesystem — the kernel discards the
+    #: bytes, so no observation anywhere differs because the redirect ran. That
+    #: is what makes the finding VACUOUS rather than merely imprecise.
+    #:
+    #: `/dev/null` is separated from the STANDARD STREAMS because they are not
+    #: the same fact. A write to `/dev/stderr` really does leave the process
+    #: and really can publish a secret — it is a `logging` crossing, not a
+    #: filesystem one — so it is MARKED here and deliberately not reclassified;
+    #: doing that needs the `logging`-vs-`fs_write` decision the haskell
+    #: hPutStrLn rows are already waiting on (INV-vaduk shape 4).
+    _NULL_DEVICE_TARGETS: ClassVar[frozenset[str]] = frozenset({
+        "/dev/null",
+    })
+    _STD_STREAM_TARGETS: ClassVar[frozenset[str]] = frozenset({
+        "/dev/stdout", "/dev/stderr", "/dev/stdin", "/dev/tty", "/dev/console",
+    })
+
+    @classmethod
+    def _target_kind(cls, target: str, resolved: bool) -> str:
+        """Classify a redirect target for the boundary pipeline.
+
+        The catalogue cannot answer this: `redirect.>` is ONE row, and whether
+        it crosses a filesystem boundary depends on the target at the CALL
+        SITE. That is exactly the shape `io_mode` already has — `open(p)` and
+        `open(p, 'w')` are one row and two boundaries — so the analyzer stamps
+        the discriminator and `io_boundary.classify_call` reads it, which is
+        the one place both the boundary tagger and the coverage gate inherit.
+        """
+        if not resolved:
+            return "unresolved"
+        if target in cls._NULL_DEVICE_TARGETS:
+            return "null_device"
+        if (target in cls._STD_STREAM_TARGETS
+                or target.startswith("/dev/fd/")):
+            return "std_stream"
+        return "host_path"
+
     def _redirect_edge(
         self,
         node: "tree_sitter.Node",
@@ -686,6 +790,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 "io_mode": mode,
                 "redirect_target": target or "<unresolved>",
                 "redirect_target_resolved": resolved,
+                "io_target_kind": self._target_kind(target, resolved),
             },
         )
 
