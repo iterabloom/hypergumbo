@@ -1,0 +1,24 @@
+- op: create  # 1141
+  at: '2026-08-26T20:12:56Z'  # 1141
+  by: agent  # 1141
+  actor: jgstern_agent  # 1141
+  clock: 1  # 1141
+  nonce: '1141'  # 1141
+  data:  # 1141
+    kind: invariant  # 1141
+    title: "cpp: a scoped path in a TYPE ALIAS (using S = std::string) is reported as an attribute read — INV-pusin's statement, violated in the second scoped_path language"  # 1141
+    status: violated  # 1141
+    priority: 2  # 1141
+    parent:  # 1141
+    tags:  # 1141
+    - io_boundary  # 1141
+    - verify_claims  # 1141
+    - cpp  # 1141
+    isbefore: []  # 1141
+    duplicate_of: []  # 1141
+    not_duplicate_of: []  # 1141
+    pr_ref:  # 1141
+    description: "FOUND 2026-08-26 by running the cross-language analogue check while completing\nINV-pusin's rust half. Filed separately because the blast radius differs.\n\nINV-pusin's ratified statement -- \"a module named solely by an import or a TYPE\nANNOTATION performs no I/O and must not withhold a boundary verdict\" -- is\nviolated in cpp by a form its skip tuple does not cover.\n\nMEASURED by parsing each form with tree-sitter-cpp and calling the production\n`_scoped_context_kind` directly. cpp's tuple is (\"using_declaration\",\n\"function_definition\", \"declaration\", \"parameter_declaration\",\n\"field_declaration\"):\n\n  using std::cout;                       ctx=using_declaration   SKIPPED\n  using namespace std;                   (no qualified_identifier emitted)\n  using S = std::string;                 ctx=type_descriptor     LEAKS\n  std::string g(){ return std::string(); }  ctx=call_expression  LEAKS\n  void f(){ std::cout << 1; }            ctx=binary_expression   LEAKS -- CORRECT\n\nTHE LAST ROW IS THE REASON THIS IS NOT A ONE-TOKEN FIX. `std::cout << 1` is a\nGENUINE attribute read of a stream object and is precisely what module_attr_ref\nexists to emit; suppressing it would be a silent recall loss. So the cpp fix\nmust separate a TYPE MENTION from a VALUE READ, which the rust fix did not have\nto do -- rust's leaking forms are all `use` declarations.\n\nWHY `type_descriptor` NEEDS ITS OWN MEASUREMENT rather than being appended to\nthe tuple alongside rust's: in the cpp grammar `type_descriptor` also covers\ncasts and template arguments (`static_cast<std::string>(x)`,\n`std::vector<std::string>`), so adding it suppresses a wider population than the\nalias declaration this was found through. Whether every member of that\npopulation is genuinely a type annotation -- and therefore genuinely no-I/O\nunder INV-pusin's statement -- is NOT established here. Enumerate the cpp forms\nthe way the rust half was enumerated, and only then decide the tuple.\n\nDIRECTION OF RISK: removing module_attr_ref edges removes WITHHOLDING and\ntherefore produces MORE clean verdicts. Safe for a pure type mention; NOT safe\nif the suppressed population includes value reads.\n\nBLAST-RADIUS NOTE: cpp is 0% method-kind in its io catalogue, so the\nmethod-starvation rung cannot fire for it -- meaning the uncatalogued-module rung\nIS reachable for cpp repos, unlike the rust repos measured. A cpp fix here may\ntherefore move a verdict where the rust one measured a null. Unmeasured claim;\nworth checking first."  # 1141
+    fields:  # 1141
+      statement: "A module named solely by an import or a type annotation performs no I/O and must not withhold a boundary verdict. In cpp this holds for using_declaration and fails for a type alias, whose scoped path reports context type_descriptor and is emitted as a module_attr_ref."  # 1141
+      root_cause: "cpp's skip_context_kinds omits the contexts a TYPE MENTION occupies. Unlike rust, cpp cannot simply add the node kind: type_descriptor also covers casts and template arguments, and a sibling context (binary_expression, e.g. std::cout << 1) is a GENUINE value read that must keep emitting."  # 1141
