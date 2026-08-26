@@ -1,0 +1,37 @@
+- op: create  # eb66
+  at: '2026-08-26T00:51:05Z'  # eb66
+  by: agent  # eb66
+  actor: jgstern_agent  # eb66
+  clock: 1  # eb66
+  nonce: eb66  # eb66
+  data:  # eb66
+    kind: work_item  # eb66
+    title: "File-anchored spans end at count(newlines)+1; symbol spans exact except a 4-line shift in one C file"  # eb66
+    status: todo_hard  # eb66
+    priority: 3  # eb66
+    parent:  # eb66
+    tags:  # eb66
+    - measurement_0006  # eb66
+    isbefore: []  # eb66
+    duplicate_of: []  # eb66
+    not_duplicate_of: []  # eb66
+    pr_ref:  # eb66
+    description: "Found by the 0006 adversarial refutation pass; reported independently by 5 of 14 refuters.\n\nA file-anchored symbol span ends one line past the last real line whenever the file is newline-terminated: span_end = count(newlines) + 1. Confirmed on four repositories -- session-desktop babel.config.js 510 lines spanned 1-511; kamaraflow train_script.py 391 lines spanned 1-392; spacedrive gradlew 251 lines spanned 1-252; ArkLib revert_nav.py 93 lines spanned 1-94 and inject_nav.py 78 lines spanned 1-79. The diagnosis is exact rather than approximate: ArkLib lint-style.py has 471 lines and NO trailing newline, and its span 1-471 is correct.\n\nSYMBOL-anchored spans are exact and inclusive by contrast -- EXCEPT server-fn.c, where server_destroy_pane (309-383) is recorded 313-387, a uniform 4-line shift at both ends. That second case is NOT explained by the newline rule, was seen once, and was not characterised.\n\nLow severity for output correctness (it moved no label in 0006) but load-bearing for any consumer that uses the span to bound a search -- which includes every human or agent reading a flow record to check it."  # eb66
+    fields: {}  # eb66
+- op: update  # 5913
+  at: '2026-08-26T00:52:27Z'  # 5913
+  by: agent  # 5913
+  actor: jgstern_agent  # 5913
+  clock: 2  # 5913
+  nonce: '5913'  # 5913
+  set:  # 5913
+    status: wont_do  # 5913
+  add:  # 5913
+    duplicate_of: [WI-nabaz-hajad-nanag-fuzun-bapap-tizib-riram-bofum]  # 5913
+- op: discuss  # 0d29
+  at: '2026-08-26T00:52:28Z'  # 0d29
+  by: agent  # 0d29
+  actor: jgstern_agent  # 0d29
+  clock: 3  # 0d29
+  nonce: 0d29  # 0d29
+  message: "TRUE DUPLICATE of WI-nabaz, and the fault is mine, not the SimHash warning being wrong. WI-nabaz was created successfully on the first valid filing run; its ID was cut off by a `tail -3` on the command output, so I read the run as having failed and filed the same item again. The SimHash near-duplicate warning fired on the second filing and was correct. Closing this one as wont_do rather than deleting: tracker delete requires human authority (it refused me), and leaving the duplicate visible with its cause recorded is the honest resolution. Work the item on WI-nabaz."  # 0d29

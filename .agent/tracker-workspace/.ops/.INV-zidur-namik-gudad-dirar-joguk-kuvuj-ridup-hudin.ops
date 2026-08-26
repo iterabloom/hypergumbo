@@ -1,0 +1,24 @@
+- op: create  # bf82
+  at: '2026-08-26T01:07:03Z'  # bf82
+  by: agent  # bf82
+  actor: jgstern_agent  # bf82
+  clock: 1  # bf82
+  nonce: bf82  # bf82
+  data:  # bf82
+    kind: invariant  # bf82
+    title: "analysis_method conflates \"walk proved no dependence\" with \"walk escaped\": ddg_mixed keys on fn_has_ddg, not on the walk result"  # bf82
+    status: violated  # bf82
+    priority: 1  # bf82
+    parent:  # bf82
+    tags:  # bf82
+    - taint  # bf82
+    - adr_0017  # bf82
+    - measurement_0006  # bf82
+    isbefore: []  # bf82
+    duplicate_of: []  # bf82
+    not_duplicate_of: []  # bf82
+    pr_ref:  # bf82
+    description: "Found while performing the P3 re-rank on measurement 0006 (p3_rerank_08262026.md).\n\nTHE MEASUREMENT THAT EXPOSED IT. On 0006 the walk's non-confirmation is a real false-positive predictor: precision is 16.7% where the walk ran and did not confirm (ddg_mixed, n=30) against 40.0% where no walk was possible (structural, n=80) -- a 2.4x enrichment. Pricing section 7a as \"drop every ddg_mixed situation\" gives 33.9% -> 40.2% measured, 25.0% -> 28.0% useful, costing 30 situations (26.8% of findings, 34.8% of rows) and 5 true positives.\n\nWHY THAT NUMBER IS NOT BANKABLE. WI-kabif carries a pre-registered tripwire: \"roughly 13 percent fewer evidence rows ... Addressable domain is therefore about 18 percent of flows. If a future measurement reports a much larger number, suspect the measurement.\" 26.8% is much larger. Suspecting the measurement found this defect: the drop set includes findings the walk knows NOTHING about. INV-busis measures escapes as common (86.5% of production escape sites are not a call statement node), so the None share is large and the true section 7a domain is materially smaller than 30. +6.3 points is an UPPER BOUND, not an estimate.\n\nWHY THIS IS THE SAME ARGUMENT ALREADY WON ONE LEVEL UP. The comment at taint.py:3432-3445 makes precisely this case for splitting ddg_mixed from structural, citing INV-sadah and INV-karud clause (a3): \"the walk ran and did not confirm\" and \"no reaching-def data existed\" are DIFFERENT FACTS and a reader cannot be left unable to tell them apart. Inside ddg_mixed the same two-facts-one-label problem remains, one level down.\n\nBLOCKS: WI-kabif. Its design call cannot be decided -- build section 7a or retire it -- until the addressable domain can be measured rather than upper-bounded.\n\nNOT DONE HERE: the False/None split has not been measured on any corpus; that is what this item exists to make possible. No fix shape is proposed (a fourth method value, a separate field, or a walk_result enum are all open)."  # bf82
+    fields:  # bf82
+      statement: "TaintFlowFinding.analysis_method cannot express the walk's three-valued result. `ddg_mixed` is assigned on `fn_has_ddg` (taint.py:3450) -- \"the DDG covered the source function\" -- not on what `_ddg_taint_reaches` returned, so it conflates the walk COMPLETING AND ESTABLISHING NO DEPENDENCE (False) with the walk ESCAPING AND KNOWING NOTHING (None). A consumer cannot tell removal-on-knowledge from removal-on-ignorance, which makes ADR-0017 section 7a removal authority impossible to price honestly."  # bf82
+      root_cause: "The label is assigned from whether the DDG covered the source function, not from the three-valued return of _ddg_taint_reaches, so False and None collapse into one value."  # bf82
