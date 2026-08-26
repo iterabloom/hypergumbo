@@ -2522,6 +2522,59 @@ def _extract_edges_from_file(
                                                 name=name,
                                             )
                                             has_explicit_binding = True
+                                    # INV-linub L3: a TYPED receiver whose type
+                                    # is EXTERNAL must keep its type. The typed
+                                    # strategies above (1.5 / 1.8 / 1.9)
+                                    # resolve ``Type::method`` against
+                                    # first-party symbols only, so an external
+                                    # receiver type misses, ``resolved`` stays
+                                    # False, and control arrives here — where
+                                    # the module slot is rebuilt from
+                                    # ``use_aliases`` alone and a METHOD name is
+                                    # never in ``use_aliases``. The receiver
+                                    # type computed moments earlier was simply
+                                    # dropped. Measured on encrypted-dns-server:
+                                    # 203 of 219 method-construct edges carried
+                                    # the bare ``external`` placeholder and NOT
+                                    # ONE carried a stdlib module, so
+                                    # ``_lookup_named_entry`` refused every one
+                                    # (correctly — an untyped method call must
+                                    # not match a method-kind entry) and the
+                                    # method half of rust.yaml was unreachable.
+                                    #
+                                    # DELIBERATELY NARROW. This changes the
+                                    # module SLOT only; it does NOT set
+                                    # ``has_explicit_binding``, so which edges
+                                    # get emitted — including the
+                                    # generic-trait-method suppression below —
+                                    # is byte-identical. Widening emission is a
+                                    # separate question with a separate
+                                    # measurement.
+                                    if (
+                                        not has_explicit_binding
+                                        and is_method_call
+                                        and _var_types
+                                    ):
+                                        _recv = inner.child_by_field_name("value")
+                                        if (
+                                            _recv is not None
+                                            and _recv.type == "identifier"
+                                        ):
+                                            _rt = _var_types.get(
+                                                node_text(_recv, source)
+                                            )
+                                            _full = use_aliases.get(_rt) if _rt else None
+                                            # The alias must be a PATH. A
+                                            # single-segment alias carries no
+                                            # module and would put a bare type
+                                            # name in the module slot.
+                                            if _full and "::" in _full:
+                                                module_hint = _full
+                                                ext_ref = ExternalRef(
+                                                    lang="rust",
+                                                    module_path=_full,
+                                                    name=callee_name,
+                                                )
                                     if has_explicit_binding or callee_name not in _RUST_GENERIC_TRAIT_METHODS:
                                         edges.append(make_unresolved_edge(
                                             "rust", current_function.id, unresolved_name,

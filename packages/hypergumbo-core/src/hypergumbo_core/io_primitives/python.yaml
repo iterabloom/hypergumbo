@@ -585,7 +585,15 @@ host_info_read:
     functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, sysconf, confstr]
     notes: "Host- and user-identifying reads. THE REASON getpid / cpu_count / times WERE HELD OUT IS GONE (INV-tutar): they were excluded because env_read auto-derived the host_secret label and a pid is not a secret, which is the catalogue distorting itself to protect a consumer. Under host_info_read they would be ordinary rows; adding them is an ADDITION and is deliberately not folded into the split. urandom stays out for a different and still-live reason: hypergumbo ships a HAND-WRITTEN taint source for os.urandom and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3). os.getrandom was REMOVED outright by the split -- a CSPRNG read is not an environment read under any reading."
   - module: pathlib.Path
-    methods: [cwd, home, expanduser, absolute]
+    functions: [cwd, home]
+    notes: >-
+      CLASSMETHODS, not instance methods — `Path.cwd()` and `Path.home()` are
+      called on the class with no receiver, so a method-kind entry can never
+      match the call site (INV-nular). Verified mechanically with
+      inspect.getattr_static, not from recall. `expanduser` and `absolute`
+      below DO take a receiver and stay method-kind; the split is the point.
+  - module: pathlib.Path
+    methods: [expanduser, absolute]
   - module: os.path
     functions: [expanduser]
   - module: posixpath
