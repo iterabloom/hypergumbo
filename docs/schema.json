@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.5"
+      "const": "0.20.6"
     },
     "confidence_model": {
       "type": "string",

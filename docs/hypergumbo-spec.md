@@ -857,7 +857,7 @@ Single file: `survey.json`
 ### Top-level structure
 ```json
 {
-  "schema_version": "0.20.5",
+  "schema_version": "0.20.6",
   "confidence_model": "hypergumbo-evidence-v2.0",
   "stable_id_scheme": "hypergumbo-stableid-v8",
   "shape_id_scheme": "hypergumbo-shapeid-v3",
@@ -2199,7 +2199,7 @@ This appendix defines the **technical contract** for output consumers: which fie
 
 Output carries version numbers along **three deliberately independent axes** (WI-bobog / WI-romup). Consumers must not conflate them, and producers must not consolidate them onto one number or rename the wire fields (each has consumers, so a rename is a breaking change):
 
-1. **Top-level format version** — `schema_version` (currently `0.20.5`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
+1. **Top-level format version** — `schema_version` (currently `0.20.6`, the `SCHEMA_VERSION` constant). The version of the survey (`view: "behavior_map"`) JSON format. Breaking output changes bump minor.
 2. **Tool/package version** — `__version__`, surfaced under **three** names that are **not** schema versions: `reproducibility_context.hypergumbo_version` (bare, e.g. `7.0.0`), `analysis_runs[].version` (bare, e.g. `7.0.0`), and `limits.analyzer_version` (prefixed, `hypergumbo-<__version__>`). Increments every release; says nothing about output format. **Only `limits.analyzer_version` carries the `hypergumbo-` prefix**, and that is deliberate — it is the one surface that names the *producing tool* rather than reporting the version of a record the tool is already the author of. Consumers joining these for an equality check must strip the prefix from `analyzer_version`; they are the same underlying `__version__` (WI-tinul, which recorded the three-way disagreement and the failed join).
 3. **Per-view / per-sub-schema versions** — several JSON surfaces version their own wire shape independently of axes 1–2:
    - The CLI **read-view** envelopes (`routes`, `test-coverage`, `config`, `catalog`, `cache-status`, `repeat-finder`) share `READ_VIEW_SCHEMA_VERSION` (currently `0.1.0`), a single placeholder for the views that have not needed to evolve independently. A view that does need to promotes to its own named constant, and `dead-code-maybe` already has: it carries `DEAD_CODE_MAYBE_SCHEMA_VERSION` (currently `0.2.0`), not the shared placeholder.
