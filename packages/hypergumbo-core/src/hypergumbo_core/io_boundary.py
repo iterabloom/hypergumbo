@@ -1812,6 +1812,63 @@ def call_site_modes(
     return (single,) if isinstance(single, str) else ()
 
 
+#: Target kinds naming a KERNEL DEVICE that discards, rather than a place in a
+#: filesystem. INV-nular. Kept as a set rather than a single string because the
+#: question ("does this call site cross a boundary at all") is one a second
+#: language will ask — python's ``open(os.devnull, 'w')`` is the same fact — and
+#: because a set makes the NON-members visible: ``std_stream`` is deliberately
+#: absent (a write to /dev/stderr really does leave the process and can publish
+#: a secret; it is a ``logging`` crossing, not a filesystem one) and so is
+#: ``unresolved`` (``> "$OUT"`` is a real write to a place we cannot name).
+_DISCARDING_TARGET_KINDS: Final[frozenset[str]] = frozenset({"null_device"})
+
+
+def call_site_target_kinds(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    """Every ``io_target_kind`` among an edge's collapsed call sites.
+
+    The ``io_target_kind`` sibling of :func:`call_site_modes`, and it exists for
+    the same reason: INV-vukiv's collapse turns the singular key into
+    ``io_target_kind_values`` the moment two sites disagree, and a consumer that
+    only knew the singular spelling would read one site's answer as the
+    relationship's. One reader, so no consumer has to know that.
+    """
+    meta = edge_meta or {}
+    values = meta.get("io_target_kind_values")
+    if isinstance(values, list):
+        return tuple(v for v in values if isinstance(v, str))
+    single = meta.get("io_target_kind")
+    return (single,) if isinstance(single, str) else ()
+
+
+def target_kinds_cross_no_boundary(target_kinds: Sequence[str]) -> bool:
+    """True when EVERY collapsed call site discards what it is handed.
+
+    INV-nular, and the direction needs defending because refusing to classify
+    is normally the wrong answer in this module. Measured before the fix on the
+    shipped CLI, a script whose only redirect is ``echo "$API_KEY" >
+    /dev/null`` returned ``violated`` (rc 1) against ``{boundary: fs_write,
+    must_not_exist: true}``. Nothing is written to any filesystem: the kernel
+    discards the bytes and no observation anywhere differs because the redirect
+    ran. The claim being refused is FALSE, not merely unproven — which is what
+    separates this from ``> "$OUT"``, where "wrote somewhere I cannot name" is
+    a real write and stays classified.
+
+    EVERY site, not any. One real target among the collapsed sites and the edge
+    classifies exactly as before: silencing a real write on the strength of a
+    DIFFERENT call site is the false-negative trade INV-fubag's conservative
+    merge and INV-vukiv's collapse rule both exist to refuse.
+
+    An edge with no ``io_target_kind`` at all — every non-bash edge, and every
+    bash edge in every map written before the key existed — returns False and
+    is classified as it always was.
+    """
+    return bool(target_kinds) and all(
+        kind in _DISCARDING_TARGET_KINDS for kind in target_kinds
+    )
+
+
 def _mode_discriminated_keys(
     primitives: Iterable[IoPrimitive],
 ) -> frozenset[tuple[str, str, str]]:
@@ -3435,6 +3492,29 @@ def tag_io_boundaries(
             dst_ref=getattr(edge, "dst_ref", None),
         )
         if match is None or matched_catalog is None:
+            continue
+
+        # INV-nular: a call site whose TARGET discards crosses no boundary.
+        # `redirect.>` is ONE catalogue row and the target is a per-call-site
+        # fact, so the catalogue cannot say this and the analyzer's
+        # `io_target_kind` stamp has to.
+        #
+        # HERE AND NOT IN ``classify_call_in_catalog``, and the difference is
+        # not tidiness — it was measured. The gate and this loop ask DIFFERENT
+        # questions of the same match: the gate asks "did the catalogue EXAMINE
+        # this call", and the answer is emphatically yes (we know exactly what
+        # `> /dev/null` is, which is why we can say it crosses nothing); this
+        # loop asks "does the call cross a boundary", and the answer is no.
+        # Refusing the match upstream answered both with "no" and turned the
+        # false `violated` into an `inconclusive` — "calls into 1 module(s)
+        # that the I/O catalog could not classify (redirect)" — trading a wrong
+        # finding for a withheld verdict, which is the INV-tabaf family this
+        # project keeps paying down. Measured on the shipped CLI: rc 1 -> rc 2
+        # upstream, rc 1 -> rc 0 here, with the real-path control at rc 1 in
+        # every arm.
+        if target_kinds_cross_no_boundary(
+            call_site_target_kinds(getattr(edge, "meta", None)),
+        ):
             continue
 
         if edge.meta is None:
