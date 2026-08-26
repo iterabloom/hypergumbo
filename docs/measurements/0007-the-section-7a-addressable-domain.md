@@ -103,6 +103,17 @@ removal rule. `sink_before_source` at 6.5% is a floor rather than a real bound �
 WI-pohib already records that the test is lexical, so a sink in a closure that
 executes later reads as sink-first.
 
+**A third line of work terminates in the same place.** INV-fumod's
+resource-selection barrier — an I/O primitive's return does not inherit its
+argument's taint — was implemented and run over this same cohort as a fourth
+arm. It is **byte-identical to arm C on all 11 repositories**: correct on a
+fixture with a discriminating control, and inert here. The reason is the same
+§4 gap. Take jaeger's refuted situation: `with open(args.output, 'w') as f:
+f.write(summary)`, where `summary` came from `parse_diff_file(args.diff)` — the
+external read happens *inside a first-party callee*, so no catalogue rule can
+see the crossing. `cross_function` is not only why the walk does not run; it is
+also why a correct intraprocedural precision rule has nothing to bite on.
+
 **Does not settle:** anything about *recall*, which this does not measure.
 Anything about the 131 `unavailable` rows, where no DDG existed at all. Whether
 the 14 `escaped` rows would refute if INV-busis's escape sites were closed —
