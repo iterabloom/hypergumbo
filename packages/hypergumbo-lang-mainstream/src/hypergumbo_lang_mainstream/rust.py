@@ -2689,9 +2689,23 @@ def _extract_edges_from_file(
         # list. `generic_type` catches a scoped path directly under a
         # generic; `scoped_type_identifier` catches the common
         # `std::io::Result<_>` shape.
-        skip_context_kinds=(
-            "use_declaration", "scoped_type_identifier", "generic_type",
-        ),
+        skip_context_kinds=("scoped_type_identifier", "generic_type"),
+        # INV-pusin, SECOND CLOSURE. `use_declaration` USED TO LIVE IN THE
+        # TUPLE ABOVE and it only ever suppressed the one spelling whose
+        # path sits directly beneath it (`use std::fs;`). The grammar wraps
+        # every other form -- `use std::io::{self, Write};` in
+        # `scoped_use_list`, `use std::io::*;` in `use_wildcard`,
+        # `use std::fs as f;` in `use_as_clause` -- so six of the fourteen
+        # spellings in `_USE_FORMS` (tests/test_rust.py) still emitted
+        # reads, and `use std::io::*;` alone put a BARE `std` on the
+        # uncatalogued list, which no `module_completeness` entry can ever
+        # clear because nobody can audit the whole standard library.
+        #
+        # It is matched by ANCESTRY here rather than added to the proximate
+        # tuple as three more strings: the three wrappers are not the
+        # invariant, they are today's spelling of it. The invariant is that
+        # a path anywhere inside a `use` is an import.
+        skip_ancestor_kinds=("use_declaration",),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
         enclosing_symbols=list(local_symbols.values()),

@@ -2655,6 +2655,41 @@ def _scoped_context_kind(
     return parent.type if parent is not None else ""
 
 
+def _has_ancestor_of_kind(
+    node: "tree_sitter.Node",
+    kinds: tuple[str, ...],
+) -> bool:
+    """Whether ANY ancestor of ``node`` is one of ``kinds``.
+
+    ``skip_context_kinds`` (via :func:`_scoped_context_kind`) names the
+    PROXIMATE context — the nearest ancestor that is not itself another level
+    of the same scoped path. That is the right question for a TYPE position,
+    where the annotation node sits directly above the path. It is the wrong
+    question for an IMPORT, because a grammar is free to wrap the path in
+    intermediate nodes, and tree-sitter-rust does exactly that: the braced,
+    wildcard and aliased ``use`` forms sit under ``scoped_use_list`` /
+    ``use_wildcard`` / ``use_as_clause``, so the proximate context of
+    ``std::io`` in ``use std::io::{self, Write};`` is the WRAPPER rather than
+    the ``use_declaration`` a caller would naturally name.
+
+    INV-pusin was closed once against the proximate test, on a repro using the
+    single spelling that test happens to handle (``use a::b::c;``), while
+    every braced / wildcard / aliased spelling kept leaking into the
+    uncatalogued-module gate as a fake attribute read. Asking about ANCESTRY
+    states the invariant the item actually ratified — *a path anywhere inside
+    an import declaration is an import* — and is closed over grammar shapes
+    nobody has enumerated. That is what stops the defect recurring a third
+    time through a fourth node kind, instead of growing the skip tuple until
+    the emitter is dead.
+    """
+    parent = node.parent
+    while parent is not None:
+        if parent.type in kinds:
+            return True
+        parent = parent.parent
+    return False
+
+
 def emit_module_attribute_refs(
     root: "tree_sitter.Node",
     source: bytes,
@@ -2672,6 +2707,7 @@ def emit_module_attribute_refs(
     call_function_field_names: tuple[str, ...] = ("function", "callee",),
     scoped_path: bool = False,
     skip_context_kinds: tuple[str, ...] = (),
+    skip_ancestor_kinds: tuple[str, ...] = (),
     enclosing_symbols: "Sequence[Symbol] | None" = None,
 ) -> None:
     """Emit ``module_attr_ref`` edges for attribute reads on imported modules.
@@ -2748,6 +2784,29 @@ def emit_module_attribute_refs(
             ``use std::net::UdpSocket;`` has a ``scoped_identifier``
             parent, and only the first ancestor OUTSIDE ``node_kinds``
             says what syntactic position the whole path occupies.
+
+            USE THIS FOR TYPE POSITIONS, NOT FOR IMPORTS.  It matches one
+            PROXIMATE context, so it sees only the shapes whose grammar
+            puts the path directly under the named node.  Imports want
+            ``skip_ancestor_kinds`` below.
+        skip_ancestor_kinds: Node types that mean "this scoped name is
+            inside an IMPORT declaration", matched against EVERY ancestor
+            rather than only the proximate one.  Empty by default.
+
+            INV-pusin, SECOND CLOSURE.  ``skip_context_kinds`` alone was
+            not enough: tree-sitter-rust wraps the braced, wildcard and
+            aliased ``use`` forms in ``scoped_use_list`` / ``use_wildcard``
+            / ``use_as_clause``, so the proximate context of ``std::io``
+            in ``use std::io::{self, Write};`` is the wrapper and the path
+            leaked as a read.  The item was marked satisfied against a
+            repro spelled ``use a::b::c;`` — the one form the proximate
+            test handles — so a closure satisfied the repro and not the
+            statement.  Enumerating the wrappers would fix those three and
+            leave the next grammar shape to leak; asking about ancestry
+            states the ratified invariant directly (*a path anywhere
+            inside an import declaration is an import*) and is closed over
+            shapes nobody has enumerated.  See
+            :func:`_has_ancestor_of_kind`.
         scoped_path: When True, switches the helper to a left-recursive
             path-walk model used by languages whose scoped access is
             not a binary ``object`` / ``property`` pair.  Rust's
@@ -2787,6 +2846,9 @@ def emit_module_attribute_refs(
             continue
         if skip_context_kinds and _scoped_context_kind(
                 node, node_kinds) in skip_context_kinds:
+            continue
+        if skip_ancestor_kinds and _has_ancestor_of_kind(
+                node, skip_ancestor_kinds):
             continue
         base = None
         for fname in object_field_names:

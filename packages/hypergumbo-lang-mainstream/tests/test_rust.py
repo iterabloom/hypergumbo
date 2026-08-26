@@ -6179,3 +6179,139 @@ pub fn os_name() -> &'static str {
         assert "rust:std::env:0-0:std::env::consts:attribute" in attr_dsts, (
             attr_dsts
         )
+
+
+# INV-pusin, SECOND CLOSURE. The first closure's repro used exactly one
+# spelling — ``use a::b::c;`` — and the item was marked satisfied on it. Five
+# other ``use`` spellings still leaked, because the tree-sitter-rust grammar
+# does not put every ``use`` path directly under ``use_declaration``: it wraps
+# the braced, wildcard and aliased forms in ``scoped_use_list`` /
+# ``use_wildcard`` / ``use_as_clause``, and ``_scoped_context_kind`` reports
+# the WRAPPER, which the skip tuple did not name. So a closure satisfied the
+# repro and not the statement.
+#
+# This table is the remedy the item's ruling asked for: a FORM ENUMERATION, so
+# that a ``use`` spelling nobody has thought of fails CI instead of silently
+# re-opening the defect a third time. It is paired with
+# ``test_every_use_node_kind_in_the_grammar_is_exercised`` below, which fails
+# if the grammar grows a ``use_*`` shape this table does not cover.
+_USE_FORMS: tuple[tuple[str, str], ...] = (
+    ("plain", "use std::fs;"),
+    ("plain_deep", "use std::net::UdpSocket;"),
+    ("pub_use", "pub use std::fs;"),
+    ("braced_single", "use std::{fs};"),
+    ("braced_multi", "use std::{fs, net};"),
+    ("braced_scoped_prefix", "use std::io::{Read, Write};"),
+    ("braced_self", "use std::io::{self, Write};"),
+    ("braced_nested", "use std::{io::{Read, Write}, fs};"),
+    ("wildcard", "use std::io::*;"),
+    ("wildcard_braced", "use std::{io::*, fs};"),
+    ("as_alias", "use std::fs as f;"),
+    ("as_alias_deep", "use std::net::UdpSocket as Sock;"),
+    ("braced_as", "use std::{fs as f, net};"),
+    ("as_self", "use std::io::{self as io2, Write};"),
+    # NOT an import: `use<..>` is the Rust 1.82 precise-capture bound, which
+    # merely shares the keyword. It is carried in this table anyway so the
+    # grammar guard below needs no hand-maintained exclusion list -- and the
+    # assertion is correct on its own terms, since a capture list names type
+    # and lifetime parameters and can never be an I/O read.
+    ("precise_capture_bound",
+     "pub fn f<T>(t: T) -> impl Sized + use<T> { t }"),
+)
+
+# NEGATIVE CONTROLS. Every one of these is a GENUINE value read or call and
+# MUST keep emitting: the direction of this fix is to REMOVE withholding, so
+# an over-broad suppression would buy clean verdicts by going blind, which is
+# the false-all-clear direction. Without these the enumeration above is
+# satisfied by an analyzer that stopped emitting attribute reads at all.
+_VALUE_READS: tuple[tuple[str, str, str], ...] = (
+    (
+        "const_read",
+        "pub fn f() -> &'static str { std::env::consts::OS }",
+        "rust:std::env:0-0:std::env::consts:attribute",
+    ),
+    (
+        "const_read_after_use",
+        "use std::env::*;\npub fn f() -> &'static str { std::env::consts::OS }",
+        "rust:std::env:0-0:std::env::consts:attribute",
+    ),
+)
+
+
+class TestRustEveryUseFormIsAnImportNotAnAttributeRead:
+    """INV-pusin: NO ``use`` spelling may reach the coverage gate as a read."""
+
+    @pytest.mark.parametrize(
+        "form_id,src", _USE_FORMS, ids=[f[0] for f in _USE_FORMS]
+    )
+    def test_use_form_emits_no_attribute_read(
+        self, tmp_path: Path, form_id: str, src: str,
+    ) -> None:
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(src + "\n")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert attr_dsts == [], (
+            f"{form_id}: {src!r} emitted module_attr_ref {attr_dsts}. A "
+            f"``use`` path is an import, already emitted as an imports edge; "
+            f"re-entering the uncatalogued-module gate as a read withholds "
+            f"the boundary verdict for a crate that called nothing."
+        )
+
+    @pytest.mark.parametrize(
+        "form_id,src,expected_dst",
+        _VALUE_READS,
+        ids=[f[0] for f in _VALUE_READS],
+    )
+    def test_genuine_value_read_still_emits(
+        self, tmp_path: Path, form_id: str, src: str, expected_dst: str,
+    ) -> None:
+        """NEGATIVE CONTROL — suppression must not reach a real read."""
+        from hypergumbo_lang_mainstream.rust import analyze_rust
+
+        (tmp_path / "lib.rs").write_text(src + "\n")
+        result = analyze_rust(tmp_path)
+        attr_dsts = [
+            e.dst for e in result.edges if e.edge_type == "module_attr_ref"
+        ]
+        assert expected_dst in attr_dsts, (
+            f"{form_id}: suppression reached a GENUINE read; {attr_dsts}"
+        )
+
+    def test_every_use_node_kind_in_the_grammar_is_exercised(self) -> None:
+        """A ``use_*`` shape the grammar declares but this table never parses
+        is exactly how the first closure missed five forms. Fail on it here,
+        at the enumeration, rather than in a withheld verdict months later.
+        """
+        import tree_sitter
+        import tree_sitter_rust
+
+        lang = tree_sitter.Language(tree_sitter_rust.language())
+        declared = {
+            lang.node_kind_for_id(i)
+            for i in range(lang.node_kind_count)
+            if lang.node_kind_for_id(i)
+            and lang.node_kind_for_id(i).startswith("use_")
+            and lang.node_kind_is_named(i)
+        }
+
+        parser = tree_sitter.Parser(lang)
+        exercised: set[str] = set()
+
+        def walk(node: "tree_sitter.Node") -> None:
+            if node.type.startswith("use_"):
+                exercised.add(node.type)
+            for child in node.children:
+                walk(child)
+
+        for _form_id, src in _USE_FORMS:
+            walk(parser.parse(src.encode()).root_node)
+
+        missing = declared - exercised
+        assert not missing, (
+            f"the grammar declares {sorted(missing)} but no row of _USE_FORMS "
+            f"produces it; add a row before this shape leaks as a read"
+        )
