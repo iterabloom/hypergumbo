@@ -1,0 +1,46 @@
+Original commit body from ec254900448835820d950c46463d375678acd124:
+
+`emit_module_attribute_refs(scoped_path=True)` walks a scoped path
+LEFT-RECURSIVELY and emits one `module_attr_ref` edge per nesting depth, because
+the module/attribute split is syntactically ambiguous and the emitter cannot
+consult the catalogue. `std::env::consts::OS` is module `std::env` with
+attribute `consts::OS` OR module `std::env::consts` with attribute `OS`, so it
+proposes every split and lets the catalogue pick.
+
+That is right FOR MATCHING and a category error for COVERAGE ACCOUNTING. The
+unmatched rows are not modules the analysis called into and could not classify,
+they are alternative PARSES of one reference it DID classify. At most one
+proposal per read can ever match, so every genuine N-deep scoped read was
+guaranteed to contribute N-1 entries naming modules nothing ever called into.
+
+MEASURED ON THE SHIPPED CLI, a zero-dependency crate whose only scoped read is
+`let os = std::env::consts::OS;`:
+
+  before: Verdict: inconclusive  rc 2
+          "calls into 2 module(s) that the I/O catalog could not classify
+           (std, std::env::consts)"
+  after:  Verdict: confirmed_with_caveats  rc 3
+
+`std::env` was correctly absent in both -- it matched. The other two were its
+own collateral.
+
+A PREFIX TEST, NOT A LINE KEY, and that is what keeps this from over-suppressing.
+Two DISTINCT scoped reads can share a line -- `f(std::env::consts::OS,
+std::fs::File::open)` -- and a rule keyed on `(src, line)` alone would let one
+matching vouch for the other, silently removing a real uncatalogued module. The
+proposals of ONE read are not merely co-located, they are NESTED, so the sibling
+test is a component-wise prefix over MODULE slots: `std::envy` is not a prefix of
+`std::env::consts`, and `std::fs` does not vouch for `std::env`.
+
+THE MODULE SLOT, NOT THE NAME SLOT, and it was measured the wrong way round
+first. On the analyzer's own edges the name slot carries the whole path
+(`std::env::consts::OS`); by the time the coverage gate runs, WI-pubiv's
+boundary-id remap has rewritten it to the BARE LEAF (`OS` / `consts` / `env`) --
+exactly the shape where a prefix test finds nothing. Written against the name
+slot, reproduced against a live survey, read as inert, corrected.
+
+Scoped to `module_attr_ref`: a call edge carries one proposal per call, so
+widening this would suppress genuine siblings for no gain.
+
+Racial-Capitalism-Is-Bad: a porcupine building a tephra cone shaped like prayer shawl fold made of caraway seeds
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
