@@ -1,0 +1,21 @@
+- op: create  # f4e9
+  at: '2026-08-26T19:52:51Z'  # f4e9
+  by: agent  # f4e9
+  actor: jgstern_agent  # f4e9
+  clock: 1  # f4e9
+  nonce: f4e9  # f4e9
+  data:  # f4e9
+    kind: work_item  # f4e9
+    title: "WI-bunag closure guard: the rejection must warn against narrating it in the corrected message, and give a pre-push check [human APPROVED; see discussion]"  # f4e9
+    status: done  # f4e9
+    priority: 3  # f4e9
+    parent:  # f4e9
+    tags:  # f4e9
+    - ci_infrastructure  # f4e9
+    - agent_infrastructure  # f4e9
+    isbefore: []  # f4e9
+    duplicate_of: []  # f4e9
+    not_duplicate_of: []  # f4e9
+    pr_ref:  # f4e9
+    description: "OWNER DIRECTIVE, VERBATIM, 2026-08-26: \"re the mechanical gate that rejects\nsomething you wrote in a commit or pr message, that same gate in its rejection\nmessage should remind you to NOT make a diary entry about the whole affair in\nyour corrected message.\"\n\nAPPROVAL, VERBATIM: \"you WILL self-merge because i approve it\" / \"i approve\nusing auto-pr without --gov\". scripts/lib/forgejo-api.sh is a governance file.\n\nTHE FAILURE THIS ENCODES, WHICH I COMMITTED TWICE IN ONE SITTING:\n  1. PR #550's commit body said \"Also fixes INV-linub L3 for rust\". `fixes` is a\n     closure keyword; INV-linub is a CLASS item over nine languages and stays\n     violated. The WI-bunag guard correctly refused the merge. CI had already\n     passed -- the cycle was spent.\n  2. The corrected PR #551 contained: `Supersedes PR #550, whose message said\n     \"fixes INV-linub\" and tripped the WI-bunag closure guard.` THE QUOTED\n     EXAMPLE RE-MATCHED THE REGEX VERBATIM. `\\b(?:closes|fixes|resolves)\\b\n     [\\s:]+<ID>` has no notion of quotation marks or of the surrounding\n     sentence calling it a mistake. Second CI cycle burned.\nBoth PRs were closed via `merge-pr close` with reasons on the forge; the tree\nwas byte-identical across all three attempts. Only wording changed.\n\nWHAT THE GUARD NOW SAYS, appended to the existing two remedies:\n  WHEN YOU REWRITE THE MESSAGE: describe the CHANGE. Do NOT narrate this\n  rejection in it. The scan is a REGEX over the whole message and does not care\n  that you are quoting the offending phrase disapprovingly -- writing\n  \"...said 'Fixes <ID>' and tripped the guard\" RE-TRIPS IT, verbatim, and costs\n  another CI cycle. If the supersession needs recording, it belongs in the PR\n  comment or the tracker item, not the commit body. Verify before pushing:\n    git log -1 --format=%B | grep -inE '(closes|fixes|resolves)[[:space:]:]+(WI|INV|META)-'\n\nThe verify-before-pushing line is the load-bearing half. The guard fires at\nMERGE time, after CI has already run, so a message defect costs a full cycle\nevery time; the grep costs nothing and runs before the push.\n\nPinned by test_rejection_tells_you_not_to_narrate_it_in_the_rewrite."  # f4e9
+    fields: {}  # f4e9

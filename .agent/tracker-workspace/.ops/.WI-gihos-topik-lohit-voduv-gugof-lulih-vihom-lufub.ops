@@ -1,0 +1,23 @@
+- op: create  # d4ab
+  at: '2026-08-26T20:11:06Z'  # d4ab
+  by: agent  # d4ab
+  actor: jgstern_agent  # d4ab
+  clock: 1  # d4ab
+  nonce: d4ab  # d4ab
+  data:  # d4ab
+    kind: work_item  # d4ab
+    title: "Enumerate std::io and std::io::BufReader: a TRAIT surface, not a function list — decide what a wrapper inherits from the reader it wraps"  # d4ab
+    status: todo_hard  # d4ab
+    priority: 2  # d4ab
+    parent:  # d4ab
+    tags:  # d4ab
+    - io_boundary  # d4ab
+    - verify_claims  # d4ab
+    - rust  # d4ab
+    - catalogue  # d4ab
+    isbefore: []  # d4ab
+    duplicate_of: []  # d4ab
+    not_duplicate_of: []  # d4ab
+    pr_ref:  # d4ab
+    description: "The std::io share of WI-lutuh's 17 unenumerated rust modules.\n\nMODULES: std::io, std::io::BufReader.\n\nWHY THEY REFUSE. std::io is the stdio boundary itself -- stdout, stderr, stdin,\nand the Read / Write / Seek / BufRead traits every other reader and writer\ndelegates to. Note the VOCABULARY TRAP the python audit recorded and that\napplies here unchanged: the `logging` boundary covers stdout/stderr, so a module\nthat PRINTS does I/O. std::io prints.\n\nBufReader IS THE INTERESTING CASE AND IT NEARLY ESCAPED. It performs every read\nthrough a generic `R: Read`, so `std/src/io/buffered/bufreader.rs` contains no\nsyscall text at all -- the first version of the probe reported NO SIGNAL for a\ntype whose entire purpose is reading. It was caught by adding a delegation\nsignal (a type that implements or requires an I/O trait IS an I/O surface no\nmatter where the syscall physically lives), not by reading the source.\n\nCONSEQUENCE FOR THE AUDIT: the same delegation applies to BufWriter, LineWriter,\nCursor, Take, Chain, Empty, Repeat, Sink, and to std::io::copy / read_to_string\n/ stdin().lock() and friends. Enumerating std::io means enumerating the trait\nsurface, not a function list, and deciding what a wrapper type inherits from its\nwrapped reader. That decision is the substance of this item.\n\nEVIDENCE BAR: total surface, EXACT matching, refuse-by-default. The python\naudit's unaided first draft scored 16% wrong, every error a false all-clear.\nInstrument: ~/hypergumbo_lab_notebook/lutuh_rust_08262026/probe.py.\n\nPAY EXPECTATION: completing rust's stdlib audit changes no verdict on either\ntestable rust repo today -- the uncatalogued-module check is the LAST rung of\n`boundary_coverage`'s early-return ladder. See the note on WI-lutuh."  # d4ab
+    fields: {}  # d4ab

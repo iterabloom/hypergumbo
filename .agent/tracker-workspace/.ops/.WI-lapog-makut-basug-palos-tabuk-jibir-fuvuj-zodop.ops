@@ -1,0 +1,21 @@
+- op: create  # 271e
+  at: '2026-08-26T19:52:47Z'  # 271e
+  by: agent  # 271e
+  actor: jgstern_agent  # 271e
+  clock: 1  # 271e
+  nonce: 271e  # 271e
+  data:  # 271e
+    kind: work_item  # 271e
+    title: "merge-pr printed a hardcoded codeberg.org PR link on a GitHub remote — wrong in host AND path; pr_web_url moved to the shared lib [human APPROVED; see discussion]"  # 271e
+    status: done  # 271e
+    priority: 3  # 271e
+    parent:  # 271e
+    tags:  # 271e
+    - ci_infrastructure  # 271e
+    - developer_experience  # 271e
+    isbefore: []  # 271e
+    duplicate_of: []  # 271e
+    not_duplicate_of: []  # 271e
+    pr_ref:  # 271e
+    description: "OWNER APPROVAL, VERBATIM, 2026-08-26 -- recorded here because a governance\napproval that lives only in conversation is indistinguishable from drift next\nsession:\n  \"you WILL self-merge because i approve it\"\n  \"i approve using auto-pr without --gov\"\nBoth files touched are governance files (scripts/merge-pr,\nscripts/lib/forgejo-api.sh, scripts/auto-pr).\n\nOWNER'S OBSERVATION, VERBATIM: \"that url to codeberg is presumably just a stale\nstring interpolation that should be just cut from whatever script produced it.\"\n\nIT IS WORSE THAN STALE, AND THE SHAPE IS ONE FACT / TWO HOMES WITH THE WRONG\nHOME WINNING. `origin` is git@github.com:iterabloom/hypergumbo.git and the API\nlayer ALREADY routes correctly -- detect_forge_backend() sets FORGE_BACKEND and\ndetect_api_base() sends calls to api.github.com. Only the DISPLAY strings were\nnever told:\n\n  scripts/auto-pr          had a CORRECT private helper `_autopr_pr_web_url`,\n                           branching on FORGE_BACKEND, /pull/N for github.\n  scripts/merge-pr:156     hardcoded https://codeberg.org/$REPO_SLUG/pulls/$n\n  scripts/merge-pr:397     hardcoded the same\n\nSo `merge-pr close` on a GitHub remote printed a codeberg.org link that is wrong\nin BOTH the host AND the path segment -- GitHub's web path is /pull/N SINGULAR,\nForgejo's is /pulls/N. Observed live: closing PR #550 and #551 emitted\n\"https://codeberg.org/iterabloom/hypergumbo/pulls/550\".\n\nFIX: `pr_web_url()` moved into scripts/lib/forgejo-api.sh, which merge-pr and\nauto-pr both already source. auto-pr's private copy DELETED and its 3 call\nsites repointed; merge-pr's 2 literals replaced. The non-GitHub branch now\nDERIVES its host from API_BASE instead of naming codeberg.org -- previously a\nself-hosted Forgejo user was handed a link to somebody else's server. Verified\nlive: github -> /pull/552, codeberg -> /pulls/552, git.example.org ->\n/pulls/552.\n\nWHY THE SILENCE LASTED: nothing checks a printed link. The API worked, CI was\ngreen, and the only symptom was a human clicking through to a 404 on the wrong\nforge. Pinned executably now by\ntest_no_script_hardcodes_a_forge_host_in_a_pr_link, which fails if either\nscript reintroduces a literal host.\n\nNOT DONE: scripts/auto-pr lines 509/512 still show codeberg URLs in COMMENT\nexamples. Left alone deliberately -- they are illustrative prose, not emitted\noutput, and editing them would widen a governance diff for no behavioural gain."  # 271e
+    fields: {}  # 271e
