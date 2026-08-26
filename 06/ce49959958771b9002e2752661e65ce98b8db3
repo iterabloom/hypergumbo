@@ -1,0 +1,33 @@
+Original commit body from e7fa4b7fabf0f168053afbb30f4509eca02fa1ea:
+
+First measurement under the frame ratified after INV-duvup. NOT comparable to
+0001/0004/0005; the series restarts here.
+
+112 situations, 16 repositories, 10 languages, seed 20260825.
+Situation 38/112 = 33.9%; row 106/336 = 31.5%; UNADJ 0.
+
+The frame worked: largest single repository contributes 14.6% of rows, against
+77% / 75% / 50% in earlier cohorts. A per-repository precision spread of
+0%-85.7% that concentration had hidden is now visible.
+
+Protocol (F7, four passes). Both labelling passes were independent agent
+panels and the orchestrator held none -- a deviation from 0005, recorded in
+PANEL-DESIGN-NOTE.md rather than glossed, because panel A was launched before
+the orchestrator's pass existed and agents return labels into its context.
+Agreement 94.6%; pass 3 adjudicated the 6 splits; pass 4 refuted 7 of 44 TPs
+(15.9%) against 0005's 1 of 9.
+
+Two sensitivities were pre-registered with their arithmetic and withheld from
+the refuters. The larger fired exactly as priced (39.3% -> 36.6%); three
+further refutations landed outside both.
+
+One refutation (tmux#6) is reported separately and NOT folded in: it rests on
+an anchor criterion absent from 0001's rubric that the adjudicator introduced
+in the refutation brief. F6 forbids rewriting the cited rubric mid-measurement.
+
+Dominant incidental defect family: a primitive classified by NAME rather than
+by what it does, across five languages. A finding can be true value-flow and
+vacuous as a claim, which makes 33.9% an upper bound on useful precision.
+
+Racial-Capitalism-Is-Bad: a mongoose teaching deconstruction to a class of turtles in a rooftop garden
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
