@@ -106,6 +106,35 @@ detect_api_base() {
 }
 
 # ------------------------------------------------------------------
+# pr_web_url PR_NUM
+#   The PR's HUMAN-FACING web URL, derived from the DETECTED forge rather
+#   than hardcoded. GitHub's web path is /pull/N (singular); Forgejo/Gitea
+#   use /pulls/N.
+#
+#   ONE HOME, because it already had two and the wrong one won. auto-pr
+#   carried a correct private `_autopr_pr_web_url`, while merge-pr printed a
+#   literal `https://codeberg.org/$REPO_SLUG/pulls/$n` in two places — so
+#   `merge-pr close` on a GitHub remote emitted a codeberg.org link that is
+#   wrong in BOTH host and path segment, for a repo whose API calls were
+#   already routing correctly to api.github.com. detect_api_base() has known
+#   the answer the whole time; only the display strings had not been told.
+#
+#   The non-GitHub branch derives the host from API_BASE instead of naming
+#   codeberg.org, so a self-hosted Forgejo/Gitea gets its own URL rather than
+#   a link to someone else's server.
+# ------------------------------------------------------------------
+pr_web_url() {
+	local pr_num="$1"
+	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
+		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
+	else
+		local host="${API_BASE%%/api/v1/*}"
+		[[ "$host" == "$API_BASE" || -z "$host" ]] && host="https://codeberg.org"
+		echo "$host/$REPO_SLUG/pulls/$pr_num"
+	fi
+}
+
+# ------------------------------------------------------------------
 # api_call METHOD URL [DATA]
 #   Safe HTTP wrapper. Sets $API_RESPONSE and $API_HTTP_CODE.
 #   Returns: 0 = 2xx, 1 = non-2xx, 2 = curl failure or non-JSON response
@@ -1740,6 +1769,15 @@ _closure_guard_pre_merge() {
 		echo "          scripts/tracker update <ID> --status done --note \"…repro/PR…\"" >&2
 		echo "     2. or use the auto-close opt-in line in the commit/PR body:" >&2
 		echo "          Closes-with-evidence: <ID> (PR #N; repro: <cmd> -> <result>)" >&2
+		echo "" >&2
+		echo "   WHEN YOU REWRITE THE MESSAGE: describe the CHANGE. Do NOT narrate" >&2
+		echo "   this rejection in it. The scan is a REGEX over the whole message" >&2
+		echo "   and does not care that you are quoting the offending phrase" >&2
+		echo "   disapprovingly — writing \"...said 'Fixes <ID>' and tripped the" >&2
+		echo "   guard\" RE-TRIPS IT, verbatim, and costs another CI cycle. If the" >&2
+		echo "   supersession needs recording, it belongs in the PR comment or the" >&2
+		echo "   tracker item, not the commit body. Verify before pushing:" >&2
+		echo "     git log -1 --format=%B | grep -inE '(closes|fixes|resolves)[[:space:]:]+(WI|INV|META)-'" >&2
 		return 1
 	fi
 	return 0
