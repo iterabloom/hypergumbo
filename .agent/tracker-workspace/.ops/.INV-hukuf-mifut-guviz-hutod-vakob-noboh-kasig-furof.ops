@@ -23,3 +23,19 @@
     fields:  # 4f40
       statement: "The uncatalogued-module coverage gate must count REFERENCES, not PARSE CANDIDATES: when a producer emits several speculative splits of ONE syntactic reference and the catalogue classifies any of them, the reference was examined and none of its sibling proposals may be reported as a module whose I/O went unexamined."  # 4f40
       root_cause: "analyze/base.py emit_module_attribute_refs with scoped_path=True walks a scoped path left-recursively and emits one module_attr_ref edge per nesting depth, because the module/attribute split is syntactically ambiguous and the emitter cannot consult the catalogue. At most one proposal per read can match a catalogue row; _uncatalogued_external_modules then counts each unmatched sibling as a separate uncatalogued module, having no way to tell that they are alternative parses of one reference rather than distinct references."  # 4f40
+- op: update  # 1e96
+  at: '2026-08-26T09:01:22Z'  # 1e96
+  by: agent  # 1e96
+  actor: jgstern_agent  # 1e96
+  clock: 2  # 1e96
+  nonce: '1e96'  # 1e96
+  set:  # 1e96
+    status: satisfied  # 1e96
+    pr_ref: https://github.com/iterabloom/hypergumbo/pull/546  # 1e96
+- op: discuss  # 5b5b
+  at: '2026-08-26T09:01:22Z'  # 5b5b
+  by: agent  # 5b5b
+  actor: jgstern_agent  # 5b5b
+  clock: 3  # 5b5b
+  nonce: 5b5b  # 5b5b
+  message: "SATISFIED by PR #546. The candidate fix this item proposed is what shipped, with\none correction and one addition.\n\nBEHAVIORAL EVIDENCE, shipped CLI, the item's own repro (zero-dependency crate\nwhose only scoped read is `let os = std::env::consts::OS;`):\n  before: Verdict inconclusive rc 2 -- \"calls into 2 module(s) that the I/O\n          catalog could not classify (std, std::env::consts)\"\n  after:  Verdict confirmed_with_caveats rc 3\n`std::env` was correctly absent in both -- it matched. The other two were its own\ncollateral. (rc 3 rather than rc 0 because a separate caveat applies to the rust\ncatalogue; that is a different channel and unchanged here.)\n\nCORRECTION TO THE PROPOSED FIX: `(edge src, edge line)` ALONE IS NOT SAFE. Two\nDISTINCT scoped reads can share a line -- f(std::env::consts::OS,\nstd::fs::File::open) -- and a line-keyed rule lets one matching vouch for the\nother, silently removing a REAL uncatalogued module. That is a false-suppression\nthe filing did not consider. The proposals of one read are not merely\nco-located, they are NESTED, so the sibling test is a component-wise PREFIX over\nmodule slots: std::envy is not a prefix of std::env::consts, and std::fs does not\nvouch for std::env. Only the shared shallow proposal (std) is suppressed, and it\nis a genuine parse candidate of the read that matched.\n\nMEASURED THE WRONG WAY ROUND FIRST, recorded so nobody repeats it: the rule was\nwritten against the NAME slot, because on the analyzer's own edges the name slot\ncarries the whole path (std::env::consts::OS). By the time the coverage gate\nruns, WI-pubiv's boundary-id remap has rewritten it to the BARE LEAF\n(OS / consts / env) -- exactly the shape where a prefix test finds nothing. Ran\nit against a live survey, read as inert, moved the comparison to the MODULE slot.\n\nScoped to module_attr_ref: a call edge carries one proposal per call, so\nwidening would suppress genuine siblings for no gain."  # 5b5b
