@@ -22,3 +22,12 @@
     fields:  # bf82
       statement: "TaintFlowFinding.analysis_method cannot express the walk's three-valued result. `ddg_mixed` is assigned on `fn_has_ddg` (taint.py:3450) -- \"the DDG covered the source function\" -- not on what `_ddg_taint_reaches` returned, so it conflates the walk COMPLETING AND ESTABLISHING NO DEPENDENCE (False) with the walk ESCAPING AND KNOWING NOTHING (None). A consumer cannot tell removal-on-knowledge from removal-on-ignorance, which makes ADR-0017 section 7a removal authority impossible to price honestly."  # bf82
       root_cause: "The label is assigned from whether the DDG covered the source function, not from the three-valued return of _ddg_taint_reaches, so False and None collapse into one value."  # bf82
+- op: update  # e252
+  at: '2026-08-26T06:28:15Z'  # e252
+  by: agent  # e252
+  actor: jgstern_agent  # e252
+  clock: 2  # e252
+  nonce: e252  # e252
+  set:  # e252
+    status: satisfied  # e252
+    pr_ref: https://github.com/iterabloom/hypergumbo/pull/542  # e252

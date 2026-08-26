@@ -1,0 +1,46 @@
+- op: create  # be16
+  at: '2026-08-26T01:36:05Z'  # be16
+  by: agent  # be16
+  actor: jgstern_agent  # be16
+  clock: 1  # be16
+  nonce: be16  # be16
+  data:  # be16
+    kind: invariant  # be16
+    title: "Edge dedup preserves only 'line' per call site, so every other per-site meta key on the survivor reports one arbitrary site's value as the relationship's"  # be16
+    status: violated  # be16
+    priority: 1  # be16
+    parent:  # be16
+    tags:  # be16
+    - taint  # be16
+    - catalogue  # be16
+    - measurement_0006  # be16
+    isbefore: []  # be16
+    duplicate_of: []  # be16
+    not_duplicate_of: []  # be16
+    pr_ref:  # be16
+    description: "Found while implementing INV-nular's bash half (measurement 0006). MEASURED on the\nshipped analyzer + ir.deduplicate_edges, two keys, two shapes:\n\n  redirect_target -- fixture:\n      f() {\n        echo a > /dev/null\n        echo \"$API_KEY\" > /etc/cron.d/pwned\n      }\n    RAW edges: line 3 redirect_target=/dev/null, line 4 redirect_target=/etc/cron.d/pwned\n    AFTER deduplicate_edges: ONE edge, redirect_target='/dev/null', call_lines=[3,4].\n    The cron-dropper write is reported as a write to the bit bucket.\n\n  env_var -- fixture:\n      f() { echo \"$HOME\"; echo \"$API_KEY\"; }\n    RAW: line 3 env_var=HOME, line 4 env_var=API_KEY\n    AFTER dedup: ONE edge, env_var='HOME', call_lines=[3,4]. The secret read\n    disappears and the map names the harmless one.\n\nWHY IT IS NOT MERELY INCOMPLETE: the survivor's value is not a truncation, it is a\nDIFFERENT SITE'S FACT presented without qualification. A consumer cannot tell the\nvalue apart from a single-site edge's value, so there is no signal to distrust. The\n`call_lines` contract already establishes the right shape for this (\"absence means\nexactly one site\") -- it is simply not applied to any key but `line`.\n\nWHY IT BLOCKS INV-nular: the intended INV-nular fix gates a taint sink on the\nredirect TARGET (a write to /dev/null is not a host_fs sink). Applied to a deduped\nedge that gate would SUPPRESS THE REAL WRITE in the fixture above -- turning a\nprecision fix into a false-negative machine. The per-site fact has to survive\ndedup before anything may branch on it.\n\nRELATED BUT DISTINCT, cite do not fold: INV-hazov is multi-WRITER erasure (two\nproducers, one slot); this is multi-SITE erasure (one producer, N call sites).\nWI-gudak is the same one-id-many-per-site-facts shape on ExternalRef.module_path\nrather than on meta. WI-hohig questions the _CALL_LINES_CAP truncation of the one\nkey that IS unioned.\n\nNOT YET DONE: no census of which other emitted meta keys are per-call-site. The two\nabove are the ones this investigation touched."  # be16
+    fields:  # be16
+      statement: "A per-call-site fact stamped into Edge.meta must not survive edge deduplication as an unqualified single value; deduplicate_edges unions only 'line' (into call_lines) and keeps the first edge's meta verbatim, so bash redirect_target and env_var each report one arbitrary call site's value as though it described the whole relationship."  # be16
+      root_cause: "ir.deduplicate_edges/_absorb_call_lines treats 'line' as the only site-varying fact, and MetaKeySpec has no way to declare a meta key per-call-site, so no mechanism can know which keys need unioning on collapse."  # be16
+- op: discuss  # 5cd9
+  at: '2026-08-26T01:47:32Z'  # 5cd9
+  by: agent  # 5cd9
+  actor: jgstern_agent  # 5cd9
+  clock: 2  # 5cd9
+  nonce: 5cd9  # 5cd9
+  message: "BEHAVIORAL EVIDENCE, shipped CLI, control in the same run. The io_mode instance\nis the serious one -- it is not a map-cosmetics defect, it deletes a real write:\n\n  /tmp/iom_c/m.py                    /tmp/iom_d/m.py   (control)\n  def truncate_logs(p):              def truncate_logs(p):\n      fh = open(p, 'r')                  open(p, 'w').close()\n      fh.close()\n      open(p, 'w').close()\n\n  $ hypergumbo io-boundaries /tmp/iom_c   ->  fs_read  builtins.open\n  $ hypergumbo io-boundaries /tmp/iom_d   ->  fs_write builtins.open\n\nSame truncating write in both. Adding a READ above it removed fs_write from the\nboundary map ENTIRELY, so a `must_not_exist: fs_write` claim CONFIRMS on iom_c.\nThat is the INV-nufob / ADR-0033 false-confirm class, reached through the edge\ncollapse rather than through a catalogue hole, and it is live in python -- the\nbest-covered language -- not in a corner grammar.\n\nMechanism: deduplicate_edges collapses the two builtins.open call sites into one\nedge carrying the FIRST site's io_mode='r'; _narrow_by_mode / select_by_mode then\neliminate the fs_write row."  # 5cd9
+- op: update  # 3cc5
+  at: '2026-08-26T02:57:31Z'  # 3cc5
+  by: agent  # 3cc5
+  actor: jgstern_agent  # 3cc5
+  clock: 3  # 3cc5
+  nonce: 3cc5  # 3cc5
+  set:  # 3cc5
+    status: satisfied  # 3cc5
+- op: discuss  # 12b2
+  at: '2026-08-26T02:57:31Z'  # 12b2
+  by: agent  # 12b2
+  actor: jgstern_agent  # 12b2
+  clock: 4  # 12b2
+  nonce: 12b2  # 12b2
+  message: "SATISFIED by PR #540 (dev bf48544887). Behavioral evidence re-run on the MERGED\ntree, with the item's own filed repro and its control in the same run.\n\n1. The io_mode instance, shipped CLI, control beside it:\n     $ hypergumbo io-boundaries /tmp/iom_c   (read, then truncating write)\n         fs_read  builtins.open\n         fs_write builtins.open          <- was ABSENT before the fix\n     $ hypergumbo io-boundaries /tmp/iom_d   (control: write only)\n         fs_write builtins.open          <- unchanged\n   The truncating write is no longer deleted by a read above it, and the read is\n   not traded away for it -- both crossings are reported, via the plural\n   io_boundaries key INV-zumin already minted.\n\n2. redirect_target, on the filed fixture:\n     before: {'redirect_target': '/dev/null', 'call_lines': [3, 4]}\n     after:  {'redirect_target_values': ['/dev/null', '/etc/cron.d/pwned'],\n              'call_lines': [3, 4]}\n   The singular key is GONE (no consumer can read one site's value as the\n   relationship's) and the cron-dropper is visible.\n\n3. env_var, on the filed fixture:\n     before: {'env_var': 'HOME', 'call_lines': [7, 8]}\n     after:  {'env_var_values': ['API_KEY', 'HOME'], 'call_lines': [7, 8]}\n\nUniform sites are unaffected: redirect_target_resolved stayed singular in (2)\nbecause both sites agreed, which is the contract.\n\nFull affected suite 19869 passed / 0 failed; mypy strict ratchet 669 (+0);\nschema 0.20.3 -> 0.20.4.\n\nCARRIED FORWARD, not closed by this: the item's own \"NOT YET DONE\" note stands\n-- there is no census of which OTHER emitted meta keys are per-call-site. Five\nare declared today (io_mode, call_arg_shape, redirect_target,\nredirect_target_resolved, env_var); those are the ones this investigation\ntouched, not the ones a sweep found. The mechanism now makes declaring a sixth\na one-line change, which is the part that was missing."  # 12b2
