@@ -1045,6 +1045,16 @@ class TestViolatedFlowEvidence:
                 # and the ADR-0017 §3a walk is unobservable from the record.
                 "confidence": "approximate",
                 "analysis_method": "structural",
+                # INV-zidur: the FINER axis beside the coarse one. Three
+                # different walk outcomes share ``ddg_mixed`` -- the walk
+                # refuted, the walk escaped, or the walk never ran because a
+                # guard above it was not met -- and a consumer that cannot tell
+                # them apart cannot tell removal-on-knowledge from
+                # removal-on-ignorance. Empty here for the same reason
+                # ``source_module`` is: the fixture builds the finding directly
+                # rather than through a propagator, so nothing stamped them.
+                "walk_verdict": "",
+                "walk_blocked_by": "",
                 # INV-karud: the sets are what the row CLAIMS; the scalars
                 # above are the witness the `path` belongs to. Singletons here
                 # because the fixture is one pair, and module-qualified — bare

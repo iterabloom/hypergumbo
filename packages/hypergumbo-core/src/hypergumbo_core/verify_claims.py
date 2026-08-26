@@ -3508,6 +3508,19 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # this very record.
         "confidence": v.confidence,
         "analysis_method": v.analysis_method,
+        # INV-zidur: WHAT THE WALK RETURNED, beside which analysis ran.
+        # ``analysis_method == "ddg_mixed"`` is three different outcomes —
+        # the walk refuted, the walk escaped, or the walk never ran because a
+        # guard above it was not met — and a consumer cannot tell
+        # removal-on-knowledge from removal-on-ignorance without this. It is
+        # the field ADR-0017 §7a's addressable domain has to be priced on;
+        # pricing it on ``analysis_method`` is what made WI-kabif's own
+        # tripwire fire.
+        "walk_verdict": v.walk_verdict,
+        # INV-zidur: for ``not_attempted``, the FIRST guard that stopped the
+        # walk. Reported because "the walk never ran" is not actionable on its
+        # own and "which guard" is exactly what prices a remedy.
+        "walk_blocked_by": v.walk_blocked_by,
         # INV-karud: what this record actually claims. The scalars above are
         # the witness the `path` belongs to; these are the sets the finding
         # stands for, module-qualified so each is checkable by catalogue

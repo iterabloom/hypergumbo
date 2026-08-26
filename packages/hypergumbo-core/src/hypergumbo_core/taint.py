@@ -230,6 +230,122 @@ def _qualify(module: str, name: str) -> str:
     return f"{module}.{name}" if module else name
 
 
+# ---------------------------------------------------------------------------
+# INV-zidur: what the ADR-0017 §3a walk RETURNED, as its own fact.
+# ---------------------------------------------------------------------------
+# ``analysis_method`` answers "which analysis produced this finding". It was
+# also being asked "and what did the walk conclude", and it cannot: the call
+# site collapses the walk's three-valued result with ``is True``, and the label
+# is then chosen on ``fn_has_ddg`` — *did the DDG cover the source function* —
+# so everything that is not a confirmation lands on ``ddg_mixed``.
+#
+# BIGGER THAN THE FILING. INV-zidur names two facts under that label (the walk
+# returned False vs the walk returned None). Re-derived at the call site there
+# are THREE, and the third is the one that matters most for pricing: every
+# guard above the walk (same-function, recorded sink call lines, a tracked
+# source def, sink lexically after source) can fail with ``fn_has_ddg`` still
+# true, and the finding is stamped ``ddg_mixed`` anyway. So ``ddg_mixed`` today
+# means "the DDG covered the function", and inside it live *refuted*, *escaped*
+# AND *never ran*. Pricing §7a as "drop every ddg_mixed" therefore proposes to
+# remove findings on the authority of a walk that did not execute — which is
+# what WI-kabif's pre-registered tripwire caught (26.8% measured against 18%
+# predicted).
+#
+# A SEPARATE FIELD, NOT A FOURTH METHOD VALUE. The precedent INV-zidur cites —
+# splitting ``structural`` out of ``ddg_mixed`` — separated two different
+# ANALYSES. This separates one analysis's RESULTS, a different axis; folding a
+# verdict into a method name would repeat the one-name-two-facts shape being
+# fixed, and would silently invalidate every published use of ``ddg_mixed``
+# (docs/measurements/0006, docs/VERIFY-CLAIMS-SCOPE.md).
+#
+# NOTHING IS ACTED ON. §3a stays confirm-only: these are recorded so the
+# addressable domain can be MEASURED rather than upper-bounded. No verdict
+# moves because of this field.
+#: Why the §3a walk did not run, when the DDG DID cover the source function.
+#: The measurement that made this necessary: across the 11 cohort repositories
+#: that carry a ``ddg_mixed`` finding, 153 such rows split 0 ``unconfirmed`` /
+#: 14 ``escaped`` / 139 ``not_attempted``. Nothing rests on a walk that ran and
+#: refuted, so "which guard stopped it" is the only question left that can
+#: price a remedy, and answering it from outside the code would mean a second
+#: copy of the guard conditions — the disagreeing-copies shape this module has
+#: paid for repeatedly.
+WALK_BLOCKED_CROSS_FUNCTION: str = "cross_function"
+WALK_BLOCKED_NO_SOURCE_CALL_LINE: str = "no_source_call_line"
+WALK_BLOCKED_NO_SINK_CALL_LINE: str = "no_sink_call_line"
+WALK_BLOCKED_SOURCE_NOT_TRACKED: str = "source_not_tracked"
+WALK_BLOCKED_SINK_BEFORE_SOURCE: str = "sink_before_source"
+
+WALK_BLOCKERS: frozenset[str] = frozenset({
+    WALK_BLOCKED_CROSS_FUNCTION,
+    WALK_BLOCKED_NO_SOURCE_CALL_LINE,
+    WALK_BLOCKED_NO_SINK_CALL_LINE,
+    WALK_BLOCKED_SOURCE_NOT_TRACKED,
+    WALK_BLOCKED_SINK_BEFORE_SOURCE,
+})
+
+WALK_VERDICT_CONFIRMED: str = "confirmed"
+WALK_VERDICT_UNCONFIRMED: str = "unconfirmed"
+WALK_VERDICT_ESCAPED: str = "escaped"
+WALK_VERDICT_NOT_ATTEMPTED: str = "not_attempted"
+WALK_VERDICT_UNAVAILABLE: str = "unavailable"
+
+WALK_VERDICTS: frozenset[str] = frozenset({
+    WALK_VERDICT_CONFIRMED,
+    WALK_VERDICT_UNCONFIRMED,
+    WALK_VERDICT_ESCAPED,
+    WALK_VERDICT_NOT_ATTEMPTED,
+    WALK_VERDICT_UNAVAILABLE,
+})
+
+
+def walk_verdict_for(
+    reached: bool | None, *, ran: bool, covered: bool,
+) -> str:
+    """Name what the §3a walk did, from its result and whether it ran at all.
+
+    ``reached`` is :func:`_ddg_taint_reaches`'s three-valued return, whose
+    discipline is already documented there: ``True`` found a dependence,
+    ``False`` exhausted every route with nothing unexplained, ``None`` means
+    the value escaped tracked ground on some route. The two negatives are NOT
+    interchangeable — "I looked everywhere and it is not there" and "I lost
+    track of it" license opposite actions, and INV-busis measures escapes as
+    common (86.5% of production escape sites are not a call statement node).
+
+    ``ran`` and ``covered`` carry what ``reached`` cannot say, because the walk
+    is guarded: ``covered`` is ``fn_has_ddg`` (the DDG held reaching-def data
+    for this flow's source function at all) and ``ran`` is whether the
+    preconditions above the call were met. ``ran`` implies ``covered``; the
+    remaining pairing is not a state the caller can produce, and is resolved in
+    the informative direction rather than by an assertion that would turn a
+    labelling question into a crash.
+    """
+    if ran:
+        if reached is True:
+            return WALK_VERDICT_CONFIRMED
+        if reached is False:
+            return WALK_VERDICT_UNCONFIRMED
+        return WALK_VERDICT_ESCAPED
+    return (
+        WALK_VERDICT_NOT_ATTEMPTED if covered else WALK_VERDICT_UNAVAILABLE
+    )
+
+
+def method_for_walk_verdict(verdict: str) -> str:
+    """The PUBLISHED ``analysis_method`` name for a walk verdict.
+
+    One function so the two vocabularies cannot drift: the verdict is the finer
+    axis and the method is the coarse one every published document already
+    reads. Deliberately many-to-one — three verdicts share ``ddg_mixed``, which
+    is precisely the collapse INV-zidur exists to make visible WITHOUT changing
+    what the coarse name means to an existing consumer.
+    """
+    if verdict == WALK_VERDICT_CONFIRMED:
+        return "ddg"
+    if verdict == WALK_VERDICT_UNAVAILABLE:
+        return "structural"
+    return "ddg_mixed"
+
+
 @dataclass
 class TaintFlowFinding:
     """A reported taint-flow violation or confirmed path.
@@ -313,6 +429,32 @@ class TaintFlowFinding:
     # "a row read from the database reached the database" without either
     # flow's taint_label changing — so no published claim changes meaning.
     source_boundary: str = ""
+    #: INV-zidur: WHAT THE §3a WALK RETURNED, which is a different fact from
+    #: WHICH analysis ran (``analysis_method``). One of :data:`WALK_VERDICTS`,
+    #: or ``""`` for a finding deserialized from a map written before the field
+    #: existed. ``ddg_mixed`` covers THREE of these — ``unconfirmed`` (the walk
+    #: exhausted every route and found no dependence), ``escaped`` (the value
+    #: left tracked ground, so the walk knows nothing) and ``not_attempted``
+    #: (the DDG covered the function but a guard above the call was not met, so
+    #: the walk never executed) — and treating them alike is what made ADR-0017
+    #: §7a's removal authority impossible to price: dropping every ``ddg_mixed``
+    #: removes findings on the authority of a walk that did not run.
+    #:
+    #: RECORDED, NOT ACTED ON. §3a stays confirm-only and no verdict moves
+    #: because of this field; what it buys is that the addressable domain can
+    #: be measured instead of upper-bounded.
+    walk_verdict: str = ""
+    #: INV-zidur: the FIRST guard that stopped the §3a walk, for a finding whose
+    #: ``walk_verdict`` is ``not_attempted``. One of :data:`WALK_BLOCKERS`;
+    #: ``""`` for every other verdict, where the question does not arise.
+    #:
+    #: FIRST, not all: the guards are evaluated in a fixed order and reported in
+    #: that order, so the counts partition the population rather than
+    #: double-counting a flow that fails several. A remedy for the top blocker
+    #: therefore promotes flows to the NEXT one rather than to the walk, and a
+    #: reader must not add the categories up as if each were independently
+    #: addressable.
+    walk_blocked_by: str = ""
     #: INV-karud: THE AUTHORITATIVE STATEMENT OF WHAT THIS FINDING CLAIMS.
     #:
     #: The scalar ``source_primitive`` / ``sink_primitive`` / ``sink_symbol``
@@ -400,6 +542,13 @@ class TaintFlowFinding:
             "sanitized": self.sanitized,
             "confidence": self.confidence,
             "analysis_method": self.analysis_method,
+            # INV-zidur. The finer axis beside the coarse one: three different
+            # walk outcomes share ``ddg_mixed``, and a JSON consumer that
+            # cannot tell them apart cannot tell removal-on-knowledge from
+            # removal-on-ignorance. Measured on the 0007 census, ``ddg_mixed``
+            # is 0 unconfirmed / 14 escaped / 139 not_attempted.
+            "walk_verdict": self.walk_verdict,
+            "walk_blocked_by": self.walk_blocked_by,
             "path": self.path,
             # INV-pojib. Emitted because a JSON consumer asking "is this clean
             # verdict resting on something the analysed repo said about itself"
@@ -2353,6 +2502,14 @@ def propagate_taint_structural(
                 sanitized_by_user_supplied=sanitized_by_user,
                 confidence="approximate",
                 analysis_method="structural",
+                # INV-zidur. This is the STRUCTURAL propagator: it is selected
+                # when the repo produced no DDG edges at all, so no walk was
+                # possible for any flow here. Stamped rather than left blank
+                # because "" is reserved for a finding deserialized from a map
+                # written before the field existed, and conflating "no walk was
+                # possible" with "this record predates the question" is the
+                # absence-means-two-things shape the field exists to remove.
+                walk_verdict=WALK_VERDICT_UNAVAILABLE,
                 path=path,
             ))
 
@@ -3330,6 +3487,24 @@ def propagate_taint_ddg(
             #     cannot see may well receive the taint, so the absence of a
             #     dependence to the one line we can see licenses nothing.
             adjudicated = False
+            # INV-zidur. ``adjudicated`` is the CONFIRM-ONLY question and stays
+            # a bool because every consumer of it below asks exactly that. The
+            # walk's raw three-valued answer, and whether it ran at all, are
+            # kept alongside so the label can say which of the three
+            # non-confirming outcomes this was.
+            walk_result: bool | None = None
+            walk_ran = False
+            blocked_by = ""
+            if not fn_has_ddg:
+                pass
+            elif sink_node != source_fn:
+                # §3a is intraprocedural by construction. WI-kabif's own
+                # filing predicted this would dominate ("69 percent of flows
+                # have source and sink in different functions"), and it is the
+                # blocker §4 function summaries exist to lift.
+                blocked_by = WALK_BLOCKED_CROSS_FUNCTION
+            elif not source_call_lines:
+                blocked_by = WALK_BLOCKED_NO_SOURCE_CALL_LINE
             if fn_has_ddg and sink_node == source_fn and source_call_lines:
                 sink_call_lines = call_lines.get(
                     (sink_node, sink_callee_id), [],
@@ -3342,6 +3517,12 @@ def propagate_taint_ddg(
                     for sink_line in sink_call_lines
                     for source_line in source_call_lines
                 )
+                if not sink_call_lines:
+                    blocked_by = WALK_BLOCKED_NO_SINK_CALL_LINE
+                elif not source_tracked:
+                    blocked_by = WALK_BLOCKED_SOURCE_NOT_TRACKED
+                elif not sink_after_source:
+                    blocked_by = WALK_BLOCKED_SINK_BEFORE_SOURCE
                 if sink_call_lines and source_tracked and sink_after_source:
                     # CONFIRM-ONLY. The walk raises confidence when it finds a
                     # data dependence and never removes a flow, because a sound
@@ -3349,11 +3530,13 @@ def propagate_taint_ddg(
                     # note on §4 below. ``None`` (escaped) and ``False``
                     # (exhausted) are therefore treated alike: neither is
                     # evidence the flow is absent.
-                    adjudicated = _ddg_taint_reaches(
+                    walk_ran = True
+                    walk_result = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
                         ddg_uses, callee_names, summaries,
                         defs_at=defs_at, inherits=inherits,
-                    ) is True
+                    )
+                    adjudicated = walk_result is True
 
                     # WI-fasub: a sanitizer in the SAME function as the source.
                     #
@@ -3450,15 +3633,20 @@ def propagate_taint_ddg(
             # unrelated language's presence, which is exactly what (a3)
             # forbids. Deciding it here, on whether the DDG actually covered
             # the source function, makes the label a property of the flow.
-            if adjudicated:
-                confidence = "precise"
-                method = "ddg"
-            elif fn_has_ddg:
-                confidence = "approximate"
-                method = "ddg_mixed"
-            else:
-                confidence = "approximate"
-                method = "structural"
+            #
+            # INV-zidur: the WALK'S OWN RESULT is carried beside the method now.
+            # ``method`` is derived from the verdict rather than recomputed, so
+            # the coarse name and the fine one cannot disagree — and the coarse
+            # name's published meaning is unchanged, which is why every
+            # ``ddg_mixed`` in docs/measurements/0006 still says what it said.
+            verdict = walk_verdict_for(
+                walk_result, ran=walk_ran, covered=fn_has_ddg,
+            )
+            method = method_for_walk_verdict(verdict)
+            confidence = (
+                "precise" if verdict == WALK_VERDICT_CONFIRMED
+                else "approximate"
+            )
 
             path = _reconstruct_path(
                 {**parent, **sanitized_parent} if is_sanitized else parent,
@@ -3494,6 +3682,11 @@ def propagate_taint_ddg(
                 sanitized_by_user_supplied=sanitized_by_user,
                 confidence=confidence,
                 analysis_method=method,
+                walk_verdict=verdict,
+                walk_blocked_by=(
+                    blocked_by
+                    if verdict == WALK_VERDICT_NOT_ATTEMPTED else ""
+                ),
                 path=path,
             ))
 
