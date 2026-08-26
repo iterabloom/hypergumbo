@@ -3531,10 +3531,30 @@ def propagate_taint_ddg(
                     # (exhausted) are therefore treated alike: neither is
                     # evidence the flow is absent.
                     walk_ran = True
+                    # INV-lupav L2, AND IT IS NO LONGER A NO-OP HERE. The rule
+                    # is that a site which CONSUMES the walk's ``False`` must
+                    # pass the forfeit gate; a site that COLLAPSES it with
+                    # ``is True`` need not, because ``False`` is then
+                    # indistinguishable from ``None``. This site used to
+                    # collapse and now consumes: ``walk_verdict`` distinguishes
+                    # ``unconfirmed`` from ``escaped``, so an UNEARNED ``False``
+                    # — the walk exhausted only because a later use sits in a
+                    # construct the extractor does not model — would be
+                    # published as "the walk looked everywhere and found
+                    # nothing", which is exactly the claim INV-lupav says is not
+                    # earned. Forfeiting downgrades it to ``None`` and the
+                    # finding reads ``escaped``, which is the true statement.
+                    #
+                    # ``test_taint_refutation_gate_contract`` asserts this
+                    # pairing structurally, and it FIRED on the first cut of
+                    # this change — the guard doing the job it was built for.
                     walk_result = _ddg_taint_reaches(
                         source_fn, source_call_lines, sink_call_lines,
                         ddg_uses, callee_names, summaries,
                         defs_at=defs_at, inherits=inherits,
+                        forfeit_refutation=(
+                            source_fn in (forfeit_refutation or set())
+                        ),
                     )
                     adjudicated = walk_result is True
 

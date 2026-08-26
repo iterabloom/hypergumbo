@@ -40,9 +40,18 @@ Census, not a sample. `verify-claims --format json` with the six generic claims
 (`docs/example-claims/generic-taint-claims.yaml`), on the 11 of measurement
 0006's 16 repositories that carry at least one `ddg_mixed` situation. Unit is the
 **evidence row**; no verdict reached the 100-row evidence cap, so no count is
-truncated. The `walk_blocked_by` instrument was added after a first pass and the
-whole cohort re-run: the verdict table is byte-identical across the two runs,
-which is the control on the instrument.
+truncated.
+
+**Three arms, and the last two are controls on the instrument rather than on the
+tool.** Arm A established the verdict split. Arm B added `walk_blocked_by` and
+re-ran the whole cohort: the verdict table is byte-identical to A, so the
+instrument does not perturb what it measures. Arm C wired INV-lupav's
+`forfeit_refutation` gate to the §3a walk — which the refutation-gate contract
+test *required* once this change started consuming the walk's `False` rather
+than collapsing it — and re-ran again: byte-identical to B, per repository as
+well as in total. That is the expected result and worth stating as one, since a
+gate that downgrades an unearned `False` to `None` can only move rows from
+`unconfirmed` to `escaped`, and `unconfirmed` was already zero.
 
 ## Result
 

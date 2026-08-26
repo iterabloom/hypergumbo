@@ -177,3 +177,60 @@ def test_the_blocker_field_is_empty_unless_the_walk_was_not_attempted():
         walk_verdict=WALK_VERDICT_CONFIRMED,
     )
     assert finding.walk_blocked_by == ""
+
+
+def test_a_sink_edge_with_no_recorded_line_blocks_the_walk():
+    """``no_sink_call_line`` is REACHABLE, and the corpus is why that needs saying.
+
+    Measurement 0007 counted it ZERO times over 11 repositories, which is the
+    kind of zero that invites a ``pragma: no cover`` and a wrong claim of
+    unreachability. It is reachable: ``call_lines`` is populated only
+    ``if sites:``, and ``_edge_call_sites`` yields nothing for an edge carrying
+    neither an int ``line`` nor ``meta['call_lines']``. A sink caller can
+    therefore exist with no line recorded for the call — the source edge below
+    has a line and the sink edge does not — and the walk cannot ask "does the
+    value reach the sink call" without one.
+    """
+    from hypergumbo_core.cfg import DdgEdge
+    from hypergumbo_core.taint import (
+        WALK_BLOCKED_NO_SINK_CALL_LINE,
+        TaintSink,
+        TaintSource,
+        propagate_taint_ddg,
+    )
+
+    caller = "python:app.py:1-20:handler:function"
+    source_call = "python:sys.stdin:0-0:read:unresolved"
+    sink_call = "python:os:0-0:remove:unresolved"
+
+    findings = propagate_taint_ddg(
+        ddg_edges=[DdgEdge(
+            symbol_id=caller, variable="data",
+            def_block="bb_0", def_line=3, use_block="bb_0", use_line=7,
+        )],
+        call_edges=[
+            {"src": caller, "dst": source_call, "type": "calls",
+             "is_resolved": False, "line": 3},
+            # No ``line``, and no ``meta['call_lines']``: the call is known to
+            # happen, the line it happens on is not.
+            {"src": caller, "dst": sink_call, "type": "calls",
+             "is_resolved": False},
+        ],
+        sources=[TaintSource(
+            taint_label="untrusted_input", module="sys.stdin",
+            name="read", kind="function",
+        )],
+        sinks=[TaintSink(
+            zone="host_fs", trust_level="untrusted", module="os",
+            name="remove", kind="function",
+        )],
+        sanitizers=[],
+        ddg_symbols={caller},
+        language="python",
+    )
+
+    assert findings, "the flow must still be REPORTED — §3a is confirm-only"
+    assert [f.walk_verdict for f in findings] == [WALK_VERDICT_NOT_ATTEMPTED]
+    assert [f.walk_blocked_by for f in findings] == [
+        WALK_BLOCKED_NO_SINK_CALL_LINE,
+    ]
