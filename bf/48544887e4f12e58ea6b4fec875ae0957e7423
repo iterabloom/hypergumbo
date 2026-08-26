@@ -1,0 +1,51 @@
+Original commit body from 840c98220873b44bc32162f6894bb5d214d5c07d:
+
+deduplicate_edges keeps one edge per (src, dst, edge_type) and unioned only
+`line` into `call_lines`. Every other site-varying key on the survivor was the
+FIRST edge's value, presented with nothing to mark it partial — so the map did
+not merely under-report, it reported a DIFFERENT SITE'S FACT as the
+relationship's.
+
+The case that makes it urgent is a real filesystem write disappearing.
+Measured end to end on the shipped CLI with a control in the same run:
+
+    def truncate_logs(p):          def truncate_logs(p):
+        fh = open(p, 'r')              open(p, 'w').close()
+        fh.close()
+        open(p, 'w').close()
+
+    io-boundaries: fs_read         io-boundaries: fs_write
+
+Same truncating write. Adding a READ above it deleted fs_write from the
+boundary map outright, because the two builtins.open sites collapsed to one
+edge carrying io_mode='r' and the mode gate then eliminated the fs_write row.
+A `must_not_exist: fs_write` claim confirms on the left — the INV-nufob /
+ADR-0033 false-confirm class, reached through the edge collapse rather than
+through a catalogue hole, live in Python.
+
+Two more per-site erasures close with it: bash `redirect_target` reported
+`echo a > /dev/null` then `echo "$API_KEY" > /etc/cron.d/pwned` as a write to
+/dev/null, and `env_var` reported `$HOME` then `$API_KEY` as HOME.
+
+THE RULE IS A GENERALIZATION, NOT AN INVENTION. call_arg_shape has carried
+exactly this discipline since INV-fubag — a proof asserted from one site
+silences real flows at another — hardcoded for that one key. What was missing
+was a way to declare a second, so MetaKeySpec gains `per_call_site` and ir.py
+reads the list from the registry rather than owning a copy.
+
+Contract mirrors call_lines: the singular key survives only while every
+collapsed site agrees; on disagreement it is REMOVED and the distinct values
+move to <key>_values. A site that OMITS the key is itself a disagreement.
+
+Both fs boundaries are reported when the sites span both, rather than trading
+the lost write for a lost read: resolve_mode_boundary_across_sites picks
+fs_write if ANY site writes (the reverse of the absence direction, and
+deliberately — disagreeing sites are evidence, not ignorance), and
+mode_spanned_boundaries stamps the plural io_boundaries INV-zumin already
+minted for several-facts-one-call. Uniform edges gain no key.
+
+Both collapse sites (deduplicate_edges and apply_external_id_remap) route
+through the same function so the rule cannot hold at one and not the other.
+
+Racial-Capitalism-Is-Bad: a yak playing the violin in a layer of bubble wrap in a Jurassic jukebox diner with a convoy of ducks made of gummy bears
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
