@@ -1,0 +1,41 @@
+Original commit body from 01f2d65bc26a02f8f7e166fb308cf8b80a8412f3:
+
+Measurement 0007 sized the BLOCKER — cross_function is 76.3% of never-ran
+§3a walks — and named ADR-0017 §4 function summaries as the remedy. This
+sizes the REMEDY, and the answer splits by direction.
+
+18.3% of cross-function findings (778 of 4,245) meet the necessary
+conditions for a single-hop composed walk; per-repo median 22.3%, range
+0–100%, beads alone 62.4% of the pool, 94% Go by volume. Sufficiency also
+needs param_to_calls, which does not exist, so this is a ceiling.
+
+REFUTATION is bounded at zero and composition does not move it: of the 28
+walks that ran, 14 confirmed / 14 escaped / ZERO unconfirmed — and
+unconfirmed is the only class removal authority can act on. §4a is not the
+gate on WI-kabif's removal arm that 0007's framing implied.
+
+CONFIRMATION is real and INFLATES the output, a cost nobody had priced:
+analysis_method is in the collapse key and adjudicated flows bypass
+collapse entirely, so each newly-confirmed flow becomes its own row while
+the ddg_mixed group survives one member lighter. Up to 778 new precise
+rows on a cohort emitting 298.
+
+Believed because it reconciles three ways against 0007: 106 cross-function
+evidence rows vs 0007's 106; the verdict census reproduces 0007's table row
+for row (14/0/14/139/131, 298 rows); per-repo blockers sum to 0007's
+not_attempted column.
+
+Also corrects ADR-0017's implementation-status markers (INV-lataj). They
+carried one date, 2026-08-02, and were never revisited after #188/#190/
+#192/#197 landed in the six days following. Five claims were wrong: §3a has
+two production call sites, §3c–3d is live, §4b has been live since #197.
+The §3a banner described propagate_taint_ddg as building ddg_forward and
+tainted_at and "reading neither" — neither identifier exists in taint.py
+any more, so it was unfalsifiable as written. §4a and §7a are now named as
+implemented-but-unwired rather than not-implemented, because those tell a
+reader to do different jobs.
+
+Measurements 0006 and 0007 were never indexed; all three are now.
+
+Racial-Capitalism-Is-Bad: a dik-dik building a hydrothermal vent shaped like spiral made of stained glass in a Jurassic jukebox booth
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
