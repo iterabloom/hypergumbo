@@ -98,7 +98,7 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.3"  # 0.20.3: Edge.meta gains ``callee_name``
+SCHEMA_VERSION = "0.20.4"  # 0.20.4: Edge.meta gains the bash per-call-site keys (``redirect_target``, ``redirect_target_resolved``, ``env_var``) and the ``<key>_values`` collapse companions (INV-vukiv). 0.20.3: Edge.meta gains ``callee_name``
 # (INV-divuf) — an ADDITION, hence a patch bump, same shape as 0.20.2 below.
 # The full-fidelity callee name, stamped unconditionally by
 # ``make_unresolved_edge``. Every artifact written before this version stays

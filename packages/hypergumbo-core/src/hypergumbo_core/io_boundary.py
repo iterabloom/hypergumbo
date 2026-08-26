@@ -36,7 +36,8 @@ How It Works
    entries plus O(1) lookup by qualified name.
 2. ``classify_call_in_catalog(...)`` is the production matcher: it resolves a
    call edge against the catalog via ``lookup_with_module``, applying
-   module-hint filtering, FFI redirection, ``io_mode`` discrimination, and a
+   module-hint filtering, FFI redirection, ``io_mode`` discrimination
+   (across every collapsed call site — INV-vukiv), and a
    short-name fallback gated on the destination not being a first-party
    callable. (``match_edge_to_primitive`` is a bare name-only lookup with no
    production caller — it exists for tests and ad-hoc probing. Do not reach
@@ -892,7 +893,7 @@ class IoBoundaryCatalog:
         self, name: str, module_hint: str | None = None,
         *, call_construct: str | None = None,
         allow_short_name_fallback: bool = True,
-        io_mode: str | None = None,
+        io_modes: Sequence[str] | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -911,7 +912,9 @@ class IoBoundaryCatalog:
         ``something.replace(...)`` cannot be verified against the catalogued
         receiver type (INV-tapat/INV-maluk).
 
-        ``io_mode`` (also threaded from the edge's ``meta``) settles a
+        ``io_modes`` (also threaded from the edge's ``meta``, via
+        :func:`call_site_modes` so a collapsed edge contributes EVERY site's
+        mode rather than the first one's — INV-vukiv) settles a
         DUAL-CLASSIFIED primitive. Without it this returned whichever row the
         catalogue happened to declare first, which made every ``open(p, "w")``
         an ``fs_read`` — a false negative on real writes.
@@ -920,7 +923,7 @@ class IoBoundaryCatalog:
         # rows when the primitive is dual-classified, so the mode decides.
         qualified_hits = self._qualified_rows(name)
         if qualified_hits:
-            return select_by_mode(qualified_hits, io_mode)
+            return select_by_mode(qualified_hits, io_modes)
 
         hits = self._by_short.get(name)
         if not hits:
@@ -957,7 +960,7 @@ class IoBoundaryCatalog:
             if call_construct == "method" and len(candidates) > 1:
                 filtered = [p for p in filtered if p.kind != "function"]
             if filtered:
-                return select_by_mode(filtered, io_mode)
+                return select_by_mode(filtered, io_modes)
             # No match with module filtering — this is likely NOT an IO
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
@@ -991,7 +994,7 @@ class IoBoundaryCatalog:
         # candidate LIST to apply its kind and ambiguity rules — collapsing to
         # one row first would decide what the gate exists to decide.
         return gate_named_entry(
-            _narrow_by_mode(hits, io_mode), name, module_hint,
+            _narrow_by_mode(hits, io_modes), name, module_hint,
             self.ambiguous_names, call_construct=call_construct,
         )
 
@@ -1750,6 +1753,65 @@ def resolve_mode_boundary(io_mode: Optional[str]) -> str:
     )
 
 
+def resolve_mode_boundary_across_sites(
+    io_modes: Optional[Sequence[str]],
+) -> str:
+    """:func:`resolve_mode_boundary`, asked of EVERY collapsed call site.
+
+    INV-vukiv. ``deduplicate_edges`` keeps one edge per
+    ``(src, dst, edge_type)``, so a function that calls ``open(p, 'r')`` at one
+    line and ``open(p, 'w')`` at another arrives here as a single edge. Reading
+    the singular ``io_mode`` off that edge answered for whichever site happened
+    to be encountered first, and measured end-to-end on the shipped CLI that
+    DELETED a real truncating write: ``open(p, 'w').close()`` alone in a
+    function reports ``fs_write``; add ``open(p, 'r')`` above it and the map
+    reports ``fs_read`` only.
+
+    ANY WRITING SITE MAKES THE RELATIONSHIP A WRITE, and that is the reverse of
+    the direction :func:`resolve_mode_boundary` argues for ABSENCE — on purpose.
+    That docstring is right that guessing ``fs_write`` from ignorance (an absent
+    or computed mode) would re-create the false-positive population the mode
+    gate exists to remove. Sites that DISAGREE are not ignorance: ``'w'`` was
+    read off the source at one of them. With positive evidence that a write
+    happens somewhere in the collapsed relationship, ``fs_write`` is
+    evidence-backed, while ``fs_read`` would discard a write the analyzer
+    actually saw — a false negative on a security question, which is the
+    trade this subsystem consistently refuses.
+    """
+    if not io_modes:
+        return resolve_mode_boundary(None)
+    return (
+        "fs_write"
+        if any(resolve_mode_boundary(m) == "fs_write" for m in io_modes)
+        else "fs_read"
+    )
+
+
+def call_site_modes(
+    edge_meta: Optional[Mapping[str, Any]],
+) -> tuple[str, ...]:
+    """Every statically-known open-mode among an edge's collapsed call sites.
+
+    ONE READER for a two-shaped fact, so no consumer has to know that
+    ``io_mode`` becomes ``io_mode_values`` the moment two collapsed sites
+    disagree (``ir._absorb_call_site``, INV-vukiv). Both the boundary tagger
+    and taint's sink matcher call this rather than reaching into ``meta``
+    themselves — a second copy of the plural/singular fallback is exactly the
+    shape that leaves one consumer reading the old key forever.
+
+    Validated rather than trusted: ``meta`` is an open dict deserialized from
+    an artifact that may predate either key or have been hand-edited, so a
+    non-list ``_values`` falls back to the singular and a non-string member is
+    dropped rather than carried into ``set()`` arithmetic downstream.
+    """
+    meta = edge_meta or {}
+    values = meta.get("io_mode_values")
+    if isinstance(values, list):
+        return tuple(v for v in values if isinstance(v, str))
+    single = meta.get("io_mode")
+    return (single,) if isinstance(single, str) else ()
+
+
 def _mode_discriminated_keys(
     primitives: Iterable[IoPrimitive],
 ) -> frozenset[tuple[str, str, str]]:
@@ -1778,7 +1840,7 @@ def _mode_discriminated_keys(
 
 
 def _narrow_by_mode(
-    hits: Sequence[IoPrimitive], io_mode: Optional[str],
+    hits: Sequence[IoPrimitive], io_modes: Optional[Sequence[str]],
 ) -> list[IoPrimitive]:
     """Drop the losing row of every mode-discriminated primitive in ``hits``.
 
@@ -1791,11 +1853,47 @@ def _narrow_by_mode(
     gated = _mode_discriminated_keys(hits)
     if not gated:
         return list(hits)
-    wanted = resolve_mode_boundary(io_mode)
+    wanted = resolve_mode_boundary_across_sites(io_modes)
     return [
         h for h in hits
         if (h.module, h.name, h.kind) not in gated or h.boundary == wanted
     ]
+
+
+def mode_spanned_boundaries(
+    catalog: "IoBoundaryCatalog",
+    match: IoPrimitive,
+    io_modes: Sequence[str],
+) -> frozenset[str]:
+    """Both fs boundaries when ONE edge's collapsed sites span read AND write.
+
+    INV-vukiv's honest ending. :func:`resolve_mode_boundary_across_sites` picks
+    ``fs_write`` for a relationship that writes at some site, which stops a real
+    truncating ``open(p, 'w')`` from being deleted by a read above it — but on
+    its own that just trades the lost write for a lost READ, and "we fixed a
+    false negative by making a different one" is not a fix.
+
+    Both crossings are TRUE, so both are reported. That is what
+    ``io_boundaries`` (plural) is for and what ``compute_boundary_map`` already
+    fans out over: INV-zumin minted it because several facts about one call can
+    hold at once and a single slot resolved last-writer-wins loses all but one.
+    A collapsed multi-site edge is the same shape arriving by a different road —
+    there, the several facts belong to several CALL SITES rather than to several
+    catalogue rows.
+
+    Narrow on purpose. Only a primitive its own catalogue declares under BOTH fs
+    boundaries can be spanned (``unistd.read`` is fs_read, ipc_recv and net_recv
+    because the fd's kind is unknowable, and no mode settles that), and only when
+    the sites actually reach different boundaries — two ``'w'`` sites span
+    nothing.
+    """
+    if len(io_modes) < 2:
+        return frozenset()
+    key = (match.module, match.name, match.kind)
+    if key not in mode_discriminated_primitives(catalog):
+        return frozenset()
+    reached = {resolve_mode_boundary(m) for m in io_modes}
+    return frozenset(reached) if len(reached) > 1 else frozenset()
 
 
 def mode_discriminated_primitives(
@@ -1987,7 +2085,7 @@ def mode_argument_for(language: str, short_name: str) -> Optional[ModeArgument]:
 
 def select_by_mode(
     candidates: Sequence[IoPrimitive],
-    io_mode: Optional[str],
+    io_modes: Optional[Sequence[str]],
 ) -> Optional[IoPrimitive]:
     """Pick the row matching ``io_mode`` from a dual-classified candidate set.
 
@@ -1999,7 +2097,7 @@ def select_by_mode(
         return None
     if len(candidates) == 1:
         return candidates[0]
-    wanted = resolve_mode_boundary(io_mode)
+    wanted = resolve_mode_boundary_across_sites(io_modes)
     for cand in candidates:
         if cand.boundary == wanted:
             return cand
@@ -3240,7 +3338,7 @@ def classify_call_in_catalog(
     return catalog.lookup_with_module(
         callee, adjusted_hint,
         call_construct=edge_meta.get("call_construct"),
-        io_mode=edge_meta.get("io_mode"),
+        io_modes=call_site_modes(edge_meta),
         allow_short_name_fallback=not is_first_party_callable_dst(dst),
     ), catalog
 
@@ -3391,6 +3489,11 @@ def tag_io_boundaries(
         # before. (This is why the call is conditional rather than
         # unconditional-with-an-empty-list.)
         extra = set(simultaneous)
+        # INV-vukiv: a collapsed edge whose call sites span BOTH fs boundaries
+        # reports both, rather than trading the write for the read.
+        extra |= mode_spanned_boundaries(
+            matched_catalog, match, call_site_modes(getattr(edge, "meta", None)),
+        )
         if producer_stamp is not None:
             extra |= {producer_stamp, match.boundary}
         if extra:

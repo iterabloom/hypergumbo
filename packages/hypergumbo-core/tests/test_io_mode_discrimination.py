@@ -425,7 +425,7 @@ class TestTheSinkSideOfTheSameDefect:
         )
         assert _match_propagation_entry(
             {"open": [gated]}, "python:builtins:0-0:open:external_symbol",
-            frozenset(), is_resolved=False, language="python", io_mode=None,
+            frozenset(), is_resolved=False, language="python", io_modes=None,
         ) is None
 
     def test_write_mode_call_still_matches(self) -> None:
@@ -437,14 +437,21 @@ class TestTheSinkSideOfTheSameDefect:
         )
         assert _match_propagation_entry(
             {"open": [gated]}, "python:builtins:0-0:open:external_symbol",
-            frozenset(), is_resolved=False, language="python", io_mode="w",
+            frozenset(), is_resolved=False, language="python", io_modes=("w",),
         ) is gated
 
     def test_every_matcher_call_site_actually_threads_io_mode(self) -> None:
         """The gate is worthless if no caller supplies the evidence.
 
+THE ARGUMENT IS NOW ``io_modes`` (plural, INV-vukiv): a collapsed edge
+        carries EVERY site's mode, and asking the survivor's singular
+        ``io_mode`` answered for whichever site arrived first — measured, that
+        deleted a real ``open(p,'w')`` when an ``open(p,'r')`` sat above it.
+        This probe follows the rename because an unwired call site is the same
+        failure under either spelling.
+
         THIS IS THE TEST THAT WAS MISSING. The unit tests above pass
-        ``io_mode`` explicitly and went green while all four production call
+        the mode explicitly and went green while all four production call
         sites still omitted it — so ``io_mode`` was always ``None``, always
         resolved to ``fs_read``, and the ``builtins.open`` sink matched
         NOTHING rather than matching writes only. The corpus number was
@@ -472,10 +479,10 @@ class TestTheSinkSideOfTheSameDefect:
         assert calls, "no call sites found — the probe itself is broken"
         unwired = [
             node.lineno for node in calls
-            if "io_mode" not in {kw.arg for kw in node.keywords}
+            if "io_modes" not in {kw.arg for kw in node.keywords}
         ]
         assert not unwired, (
-            f"_match_propagation_entry called without io_mode at lines "
+            f"_match_propagation_entry called without io_modes at lines "
             f"{unwired}: the mode gate degrades to blanket suppression there"
         )
 
@@ -489,7 +496,7 @@ class TestTheSinkSideOfTheSameDefect:
         )
         assert _match_propagation_entry(
             {"remove": [plain]}, "python:os:0-0:remove:external_symbol",
-            frozenset(), is_resolved=False, language="python", io_mode=None,
+            frozenset(), is_resolved=False, language="python", io_modes=None,
         ) is plain
 
 

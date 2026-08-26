@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Literal, Optional
 
 from . import __version__
+from .axis_meta_keys import per_call_site_keys
 
 VALID_ACCESS_MODES: frozenset[str] = frozenset({"read", "write", "mutate", "delete"})
 """ADR-0015 access mode vocabulary for dataflow edges.
@@ -1077,34 +1078,107 @@ def _edge_call_lines(edge: Edge) -> list[int]:
     return [edge.line]
 
 
-def _absorb_call_lines(kept: Edge, absorbed: Edge) -> None:
-    """Union *absorbed*'s call sites into *kept*'s ``meta["call_lines"]``.
+_MISSING = object()
+
+
+def _absorb_per_call_site_key(
+    meta: dict[str, Any], absorbed_meta: dict[str, Any], key: str,
+) -> None:
+    """Fold one site's value for *key* into the survivor's ``meta``.
+
+    THE CONTRACT, and it mirrors ``call_lines`` exactly: the singular key
+    survives only while every collapsed site agrees on it, so its presence
+    means "true of the whole relationship". The moment two sites disagree the
+    singular key is REMOVED — there is no honest single value to put there —
+    and the distinct values move to ``<key>_values``. Absence of ``_values``
+    therefore means "every site agreed", the way absence of ``call_lines``
+    means "exactly one site".
+
+    A SITE THAT OMITS THE KEY IS A DISAGREEMENT, not a site to skip. Adopting
+    the one site that HAS a value would state it of sites that never claimed
+    it, which is precisely what INV-fubag's ``call_arg_shape`` rule refuses:
+    a "every argument here is a literal" proof is worthless if it was proved
+    at a different line.
+
+    ``_values`` is ABSORBING. Once written it is never collapsed back to a
+    singular, even if a third site happens to repeat an earlier value — the
+    relationship has already been shown to be non-uniform, and un-saying that
+    would restore the falsehood.
+
+    CAPPED at ``_CALL_LINES_CAP`` distinct values, and said out loud because a
+    silent cap reads as completeness: a function with more than 50 distinct
+    redirect targets keeps the first 50 by sort order. The cap cannot make a
+    non-uniform relationship look uniform — the singular key is already gone by
+    then — so what a truncation costs is enumeration, never the warning.
+    """
+    known = meta.get(f"{key}_values")
+    if isinstance(known, list):
+        values: list[object] = list(known)
+        agreed = False
+    else:
+        values = []
+        kept_val = meta.get(key, _MISSING)
+        if kept_val is not _MISSING:
+            values.append(kept_val)
+        agreed = True
+
+    absorbed_val = absorbed_meta.get(key, _MISSING)
+    if absorbed_val is not _MISSING and absorbed_val not in values:
+        values.append(absorbed_val)
+
+    # Uniform iff nothing was ever dropped AND both sites carried the same
+    # single value. ``_MISSING`` on either side breaks uniformity by itself.
+    uniform = (
+        agreed
+        and len(values) == 1
+        and meta.get(key, _MISSING) is not _MISSING
+        and absorbed_val is not _MISSING
+    )
+    if uniform:
+        return
+    meta.pop(key, None)
+    if values:
+        meta[f"{key}_values"] = sorted(values, key=repr)[:_CALL_LINES_CAP]
+
+
+def _absorb_call_site(kept: Edge, absorbed: Edge) -> None:
+    """Union *absorbed*'s call site into *kept* — lines and per-site meta.
 
     Copy-on-write on ``meta`` (matching the ``referring_paths`` collapse in
     :func:`apply_external_id_remap`) so an edge whose meta dict is shared with
     another record does not gain call sites by aliasing.
 
-    ``call_arg_shape`` MERGES CONSERVATIVELY, and it is a security property
-    rather than a tidiness one (INV-fubag). The survivor of a collapse is the
-    FIRST edge encountered, so without this a function containing both::
+    ``line`` USED TO BE THE ONLY per-site fact this merged, and INV-vukiv is
+    what that cost. The survivor of a collapse is the FIRST edge encountered,
+    so every other site-varying key on it reported one arbitrary site's value
+    with nothing to mark it partial. Measured, three keys:
 
-        tempfile.TemporaryDirectory()             # literal_only
-        tempfile.TemporaryDirectory(dir=tainted)  # dynamic
+      bash ``redirect_target`` — ``echo a > /dev/null`` then
+      ``echo "$API_KEY" > /etc/cron.d/pwned`` survived as ``'/dev/null'``, so
+      the cron-dropper read as a write to the bit bucket.
 
-    would keep whichever marker happened to arrive first, and taint's
-    ``_sink_call_can_carry_taint`` gate would silence a REAL flow on the
-    strength of a different call site. A false negative on a security analysis
-    is strictly worse than the false positives that gate removes, so the claim
-    "every argument here is a literal" may only survive if it holds of EVERY
-    collapsed site. Any absorbed site that does not assert it clears it.
+      bash ``env_var`` — ``$HOME`` then ``$API_KEY`` survived as ``'HOME'``,
+      naming the harmless read and losing the secret one.
+
+      python ``io_mode`` — ``open(p,'r')`` then ``open(p,'w')`` survived as
+      ``'r'``, and the mode gate then eliminated the ``fs_write`` row. End to
+      end on the shipped CLI with a control in the same run, a truncating
+      ``open(p,'w')`` reported ``fs_write`` alone in its own function and
+      DISAPPEARED once a read was added above it.
+
+    ``call_arg_shape`` already had this discipline hardcoded here for
+    INV-fubag's security reason — a false negative on a security analysis is
+    strictly worse than the false positives that gate removes — and the fix is
+    to generalize the rule rather than to hand-write a second copy of it. The
+    key list is the registry's (``per_call_site_keys``), not this function's,
+    so the next per-site key someone declares is merged without editing ir.py.
     """
     lines = set(_edge_call_lines(kept)) | set(_edge_call_lines(absorbed))
     meta = dict(kept.meta or {})
     meta["call_lines"] = sorted(lines)[:_CALL_LINES_CAP]
-    kept_shape = meta.get("call_arg_shape")
-    if kept_shape is not None:
-        if (absorbed.meta or {}).get("call_arg_shape") != kept_shape:
-            del meta["call_arg_shape"]
+    absorbed_meta = absorbed.meta or {}
+    for key in sorted(per_call_site_keys()):
+        _absorb_per_call_site_key(meta, absorbed_meta, key)
     kept.meta = meta
 
 
@@ -1155,7 +1229,7 @@ def deduplicate_edges(
             key = _compute_edge_key(edge.src, edge.dst, edge.edge_type)
         kept = seen.get(key)
         if kept is not None:
-            _absorb_call_lines(kept, edge)
+            _absorb_call_site(kept, edge)
             continue
         if remove_self_loops and edge.src == edge.dst:
             continue
@@ -1928,11 +2002,15 @@ def apply_external_id_remap(
             out.append(edge)
             continue
 
-        # Collapse case — union call_lines and referring_paths into the kept
-        # edge. call_lines is unconditional: unlike referring_paths it does
-        # not depend on the src having been remapped (a dst-only remap
-        # collapses edges just as effectively).
-        _absorb_call_lines(kept, edge)
+        # Collapse case — union the call site and referring_paths into the
+        # kept edge. The call-site union is unconditional: unlike
+        # referring_paths it does not depend on the src having been remapped
+        # (a dst-only remap collapses edges just as effectively). Routed
+        # through the SAME function as ``deduplicate_edges`` so INV-vukiv's
+        # per-site rule cannot hold at one collapse site and not the other —
+        # this remap runs on the final graph, where a boundary-id rewrite
+        # merges edges the analyzers kept apart.
+        _absorb_call_site(kept, edge)
         if orig_src_path:
             kept.meta = dict(kept.meta or {})
             existing = list(kept.meta.get("referring_paths") or [])
