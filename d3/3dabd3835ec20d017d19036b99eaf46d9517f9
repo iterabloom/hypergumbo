@@ -1,0 +1,9 @@
+Original commit body from be26619caf8d1e999234cc9339e8e32033c16fff:
+
+The gate is a staleness window, not a content check: CI refused PR #544 with
+"generated 31 commits ago, exceeds the 30-commit window". Nothing in this
+regeneration relates to INV-fumod; it is the accumulated drift of the last
+thirty-one commits.
+
+Racial-Capitalism-Is-Bad: a bison teaching yoga to a class of turtles in a foggy harbor shaped like brass candlestick
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
