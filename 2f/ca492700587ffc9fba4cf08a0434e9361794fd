@@ -1,0 +1,32 @@
+Original commit body from ff7903be9b14daa9dc9c00b8960d4ed3f17f7458:
+
+Two CI-caught gaps in the INV-zidur change, both of them a guard doing its job.
+
+1. `test_taint_refutation_gate_contract` FIRED. Its rule: a site that CONSUMES
+   `_ddg_taint_reaches`'s `False` must pass `forfeit_refutation`; a site that
+   COLLAPSES it with `is True` need not, because `False` is then
+   indistinguishable from `None`. This site used to collapse and now consumes --
+   `walk_verdict` distinguishes `unconfirmed` from `escaped` -- so an UNEARNED
+   `False` (the walk exhausted only because a later use sits in a construct the
+   extractor does not model) would be published as "the walk looked everywhere
+   and found nothing", which is exactly the claim INV-lupav says is not earned.
+   Gate wired.
+
+   Measured as a third corpus arm: byte-identical to the ungated run, per
+   repository and in total. That is the expected result -- a gate that downgrades
+   an unearned `False` to `None` can only move rows from `unconfirmed` to
+   `escaped`, and `unconfirmed` was already zero -- and it is stated as a result
+   rather than assumed.
+
+2. Coverage: `no_sink_call_line` was unreached. Measurement 0007 counts it ZERO
+   times over 11 repositories, which is the kind of zero that invites a
+   `pragma: no cover` and a false claim of unreachability. It IS reachable:
+   `call_lines` is populated only `if sites:`, and `_edge_call_sites` yields
+   nothing for an edge carrying neither an int `line` nor `meta['call_lines']`,
+   so a sink caller can exist with no line recorded for the call. Tested
+   directly through `propagate_taint_ddg` with a source edge that has a line and
+   a sink edge that does not, asserting the flow is still REPORTED (section 3a is
+   confirm-only) and reads `not_attempted` / `no_sink_call_line`.
+
+Racial-Capitalism-Is-Bad: a toucan building a graben basin shaped like sandwich stack made of sesame seeds in the desert
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
