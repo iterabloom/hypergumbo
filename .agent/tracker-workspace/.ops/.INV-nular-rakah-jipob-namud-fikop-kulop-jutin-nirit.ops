@@ -1,0 +1,24 @@
+- op: create  # 6ea3
+  at: '2026-08-26T00:50:06Z'  # 6ea3
+  by: agent  # 6ea3
+  actor: jgstern_agent  # 6ea3
+  clock: 1  # 6ea3
+  nonce: 6ea3  # 6ea3
+  data:  # 6ea3
+    kind: invariant  # 6ea3
+    title: "Taint primitive kind is asserted by name and never checked against semantics (5 languages measured)"  # 6ea3
+    status: violated  # 6ea3
+    priority: 1  # 6ea3
+    parent:  # 6ea3
+    tags:  # 6ea3
+    - taint  # 6ea3
+    - catalogue  # 6ea3
+    - measurement_0006  # 6ea3
+    isbefore: []  # 6ea3
+    duplicate_of: []  # 6ea3
+    not_duplicate_of: []  # 6ea3
+    pr_ref:  # 6ea3
+    description: "Found by the 0006 adversarial refutation pass (docs/measurements/0006-taint-precision-under-the-ratified-frame.md), reported independently by 6 of 14 refuters over 5 languages.\n\nWHY IT MATTERS MORE THAN A NAMING NIT: a finding can be TRUE VALUE-FLOW and VACUOUS AS A CLAIM. All five shellcheck true positives in 0006 are real dataflow filed under untrusted-input-no-database against Haskell in-process refs. The rubric scores the value chain, so these count as TP -- which makes 0006 headline precision (33.9%/situation) an UPPER BOUND on useful precision rather than a measure of it. Any precision number computed without a semantic check on the primitive kind inherits this.\n\nRELATED BUT DISTINCT, cite do not fold: INV-fodar (io_boundary and taint evaluate qualified-exact vs module-filter in OPPOSITE directions) is about HOW a name is matched to a catalogue row; this item is about the row asserting a boundary KIND that the primitive does not have. INV-sukoh (one env read matches two rows) is about multiplicity. WI-sutuk / WI-bahid (third-party rows shipping in catalogues) is about ROW PROVENANCE.\n\nNOT YET DONE: no fix is proposed here and the per-language row counts are not enumerated. The five instances above are the ones 0006 happened to sample; the catalogue has not been swept for others."  # 6ea3
+    fields:  # 6ea3
+      statement: "A taint source/sink primitive is credited by NAME alone; its declared boundary KIND is never checked against what the primitive actually does. Measured on 0006 across five languages: haskell IORef/STRef declared db_read (in-process mutable cells, and newIORef is a CONSTRUCTOR that writes and reads nothing); c socket declared net_recv (returns a descriptor, receives nothing -- the receive is recvmsg); python parse_args declared env_read (reads argv, not environ); elixir Application.get_env declared env_read (application config, not the process environment); bash > declared fs_write with no redirect-TARGET check, so >&2 and >/dev/null both count, and >> is reported as >, losing append/truncate; bash BASH_SOURCE declared env_read (bash-internal, never exported)."  # 6ea3
+      root_cause: "io_primitives rows bind a name to a boundary kind with no verification that the named primitive performs that boundary operation; the matcher then credits any name hit."  # 6ea3
