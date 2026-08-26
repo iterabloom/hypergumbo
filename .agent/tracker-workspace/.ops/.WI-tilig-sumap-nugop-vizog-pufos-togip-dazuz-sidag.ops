@@ -1,0 +1,22 @@
+- op: create  # 230b
+  at: '2026-08-26T22:30:16Z'  # 230b
+  by: agent  # 230b
+  actor: jgstern_agent  # 230b
+  clock: 1  # 230b
+  nonce: 230b  # 230b
+  data:  # 230b
+    kind: work_item  # 230b
+    title: "A boundary claim cannot say 'host info but not the ubiquitous clock reads': no per-claim exception exists, and the real distinction may be read-vs-transmit rather than an exclusion list"  # 230b
+    status: todo_soft  # 230b
+    priority: 3  # 230b
+    parent:  # 230b
+    tags:  # 230b
+    - verify_claims  # 230b
+    - usability  # 230b
+    - io_boundary  # 230b
+    isbefore: []  # 230b
+    duplicate_of: []  # 230b
+    not_duplicate_of: []  # 230b
+    pr_ref:  # 230b
+    description: "RAISED BY THE OWNER 2026-08-26, immediately after ruling that a clock read is\nhost_info_read (WI-pavob): \"so we could make 'never reads host information\nexcept for clock' or something\".\n\nTHE MOTIVATING PROBLEM, and it is a direct and accepted consequence of that\nruling rather than a defect. Nearly every program reads a clock, so once the\nclock rows land (WI-tubij, cross-language) host_info_read will fire almost\nuniversally. \"Never reads host information\" becomes false for anything that\ntimestamps a log line, and the category's discriminating power drops sharply\neven though every individual verdict is correct. A user who cares about\nhostname / uid / OS / arch disclosure has no way left to ask about it.\n\nWHAT THE CLAIMS SCHEMA SUPPORTS TODAY, read from the source rather than assumed.\nThe permitted constraint keys are exactly:\n\n    {\"boundary\", \"must_not_exist\", \"max_chains\", \"taint_flow\"}\n    (verify_claims.py:1151)\n\nThere is NO exception or exclusion mechanism at the claim level.\n\nTHE TENSION ANY FIX HAS TO RESOLVE, stated because the obvious fix walks into\nit. The clock was ruled IN specifically on fingerprinting grounds -- clock skew\nidentifies a physical device, timezone discloses location. So a claim spelled\n\"except for clock\" excepts out precisely the vector that justified including it.\nThe instinct is still right; the framing is what needs work.\n\nTHE RESOLUTION DIRECTION THE AGENT RECOMMENDS, not decided here. READING a clock\nis not the fingerprinting -- TRANSMITTING it is. SystemTime::now() to timestamp\na log is benign; the same call whose value reaches a network sink is skew\nexfiltration. Those are the same boundary read and completely different acts,\nand a BOUNDARY claim structurally cannot separate them, because it only asks\nwhat the program touches and never what it does with the value. That separation\nis exactly what taint_flow expresses, and taint_flow ALREADY EXISTS. So the\nclaim the owner actually wants may be closer to \"no clock value reaches the\nnetwork\" than to \"never reads host information except clock\".\n\nTHREE OPTIONS, in increasing cost:\n  1. taint_flow, already supported. Costs nothing to try. FIRST TASK: write that\n     clock-to-network claim and run it against a real corpus repo. If it covers\n     the case, this item closes with no feature at all.\n  2. max_chains, already supported. Tolerate N host-info reads instead of zero.\n     Blunt -- it cannot say WHICH reads are tolerated -- but no new machinery.\n  3. A genuine per-claim exception field. New schema surface.\n\nGOVERNANCE NOTE ON OPTION 3, flagged before anyone builds it: an exception field\nis a gate-LOOSENING mechanism. The standing owner rule is that loosening needs\nits own cross-language measurement and never rides along with a fix pointing the\nother way. It is also the shape where a user excepts away the thing that\nmattered, and the tool would have no way to tell an honest carve-out from a\nconvenient one. If option 3 is pursued it should be argued from EVIDENCE that\noptions 1 and 2 failed on a real repo, which is a far stronger position than\n\"the category got noisy\".\n\nRELATIONSHIP TO OTHER ITEMS, deliberately NOT an isbefore because it is\npreferred ordering rather than a real dependency: the dilution this item\naddresses only becomes acute once WI-tubij lands the cross-language clock rows,\nbut option 1 can be evaluated today against the existing catalogue."  # 230b
+    fields: {}  # 230b
