@@ -1,0 +1,22 @@
+- op: create  # f37b
+  at: '2026-08-26T20:12:45Z'  # f37b
+  by: agent  # f37b
+  actor: jgstern_agent  # f37b
+  clock: 1  # f37b
+  nonce: f37b  # f37b
+  data:  # f37b
+    kind: work_item  # f37b
+    title: "Re-adjudicate four rust modules the WI-lutuh probe refused on a RESOLUTION ARTIFACT (SocketAddr resolved to the unix-domain type of the same name), and fix the probe's type resolution"  # f37b
+    status: todo_soft  # f37b
+    priority: 3  # f37b
+    parent:  # f37b
+    tags:  # f37b
+    - io_boundary  # f37b
+    - rust  # f37b
+    - measurement  # f37b
+    isbefore: []  # f37b
+    duplicate_of: []  # f37b
+    not_duplicate_of: []  # f37b
+    pr_ref:  # f37b
+    description: "FOUND BY CHECKING THE PROBE RATHER THAN TRUSTING IT. Four of the 17 rust modules\nWI-lutuh's audit refused were refused on a RESOLUTION ARTIFACT, not on evidence\nabout the module. Refusing is the safe direction so nothing is broken, but it is\nnot an adjudication and it silently costs coverage the audit exists to produce.\n\n  std::net::SocketAddr   Resolved to `std/src/os/unix/net/addr.rs` -- the UNIX\n                         DOMAIN SOCKET address type, a DIFFERENT type that\n                         happens to share the name. The real one is\n                         `core/src/net/socket_addr.rs`. The probe greps for\n                         `pub struct <Name>` and takes the first hit in sort\n                         order; a `/sys/` exclusion was added after SystemTime\n                         resolved to a HermitOS internal, and `/os/unix/` is the\n                         same bug with a different prefix.\n  std::io::ErrorKind     Resolved correctly to `std/src/io/error.rs`, but the\n                         only signal is `pub type RawOsError = sys::io::RawOsError;`\n                         -- a SIBLING declaration in the same file. ErrorKind\n                         itself is a plain enum with no I/O surface.\n  std::ptr, std::slice   Refused on a bare `metadata` regex match that is\n                         `ptr::metadata` -- POINTER metadata (DynMetadata), not\n                         filesystem metadata. Cited lines:\n                         `from_raw_parts::<U>(self as *const (), metadata(meta))`\n                         and `ptr::metadata(self)`.\n\nWHAT TO DO: re-adjudicate these four with the resolution corrected. ptr and slice\nare already judged grantable on the cited false-positive evidence and were\ncounted in the audit's 16; SocketAddr and ErrorKind are genuinely unadjudicated.\n\nAND FIX THE PROBE, because the artifact will recur: type resolution must exclude\nplatform- and target-specific paths generally (`/sys/`, `/os/<platform>/`), not\none prefix at a time, and should prefer a definition whose module path MATCHES\nthe requested path rather than taking the first grep hit. Instrument:\n~/hypergumbo_lab_notebook/lutuh_rust_08262026/probe.py.\n\nTHE GENERAL LESSON, worth keeping because it cost three rounds in one sitting:\nevery probe bug found in this audit produced a FALSE ALL-CLEAR or a false\nrefusal, and every one was caught by disbelieving an implausible intermediate\n(a 1-file count for std::collections, a CANDIDATE verdict for bare `std`, a\nCANDIDATE for BufReader), never by the probe reporting an error."  # f37b
+    fields: {}  # f37b

@@ -1,0 +1,22 @@
+- op: create  # 3515
+  at: '2026-08-26T20:12:37Z'  # 3515
+  by: agent  # 3515
+  actor: jgstern_agent  # 3515
+  clock: 1  # 3515
+  nonce: '3515'  # 3515
+  data:  # 3515
+    kind: work_item  # 3515
+    title: "DECISION: does a futex (std::sync) or a clock read (std::time) cross an I/O boundary? Four rust modules are unmarkable until this is ruled, and the mpsc-is-not-ipc_recv precedent needs re-examining"  # 3515
+    status: needs_human_review  # 3515
+    priority: 2  # 3515
+    parent:  # 3515
+    tags:  # 3515
+    - io_boundary  # 3515
+    - rust  # 3515
+    - vocabulary  # 3515
+    isbefore: []  # 3515
+    duplicate_of: []  # 3515
+    not_duplicate_of: []  # 3515
+    pr_ref:  # 3515
+    description: "DECISION ITEM, not enumeration work. Four of WI-lutuh's 17 unenumerated rust\nmodules refuse for a reason no amount of cataloguing resolves: what they reach\nis a real syscall that maps to NONE of the nine boundary kinds.\n\nMODULES: std::sync, std::sync::Mutex, std::time, std::time::SystemTime.\n\nTHE EVIDENCE, cited rather than argued:\n  std::sync, std::sync::Mutex   `use crate::sys::sync as sys;` (condvar.rs,\n                                nonpoison/mutex.rs) -- futex / condvar. A real\n                                kernel call.\n  std::time, SystemTime         `use crate::sys::{FromInner, IntoInner, time};`\n                                (std/src/time.rs) -- the wall clock. Also a real\n                                kernel call.\n\nTHE NINE BOUNDARY KINDS are fs_read, fs_write, net_send, net_recv, subprocess,\nenv_read, host_info_read, ipc_recv, logging. A futex is none of them. A clock\nread is arguably `host_info_read` -- the boundary INV-tutar split out of env_read\nprecisely to hold host DESCRIPTION reads (hostname, uid, OS, arch) -- but nobody\nhas ruled on whether time is host description.\n\nWHY IT CANNOT BE LEFT IMPLICIT. `module_completeness: complete` asserts that\nevery I/O primitive the module exposes is enumerated. For these four that\nresolves to \"zero, and they are all enumerated\" IF the ruling is that futexes and\nclocks are not boundaries -- which would make all four grantable immediately at\nno cataloguing cost. If the ruling goes the other way, `std::time` needs\nhost_info_read rows and the boundary vocabulary needs a term for synchronisation.\nThe two answers differ by four modules and a vocabulary entry, and refusing by\ndefault costs coverage in an audit whose whole purpose is coverage.\n\nRELATED PRECEDENT the ruling should be consistent with: std::sync::mpsc was\nGRANTED in the same audit on the reasoning that Rust's mpsc is INTRA-process, so\nit is not `ipc_recv` (which names a cross-process boundary). That was a\nvocabulary call made in passing and it should be re-examined alongside this one\nrather than left as an unexamined precedent.\n\nDO NOT GUESS. The standing owner ruling is that stdlib no-I/O is asserted through\nPOSITIVE DATED DECLARATIONS, never through a wider gate, so a silent \"probably\nfine\" here is exactly the shape that ruling forbids."  # 3515
+    fields: {}  # 3515

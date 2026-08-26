@@ -1,0 +1,23 @@
+- op: create  # 9624
+  at: '2026-08-26T20:12:26Z'  # 9624
+  by: agent  # 9624
+  actor: jgstern_agent  # 9624
+  clock: 1  # 9624
+  nonce: '9624'  # 9624
+  data:  # 9624
+    kind: work_item  # 9624
+    title: "Enumerate std::process, std::env and std::thread — including whether thread's RUST_MIN_STACK read is an env_read boundary for a caller who never names a var"  # 9624
+    status: todo_hard  # 9624
+    priority: 2  # 9624
+    parent:  # 9624
+    tags:  # 9624
+    - io_boundary  # 9624
+    - verify_claims  # 9624
+    - rust  # 9624
+    - catalogue  # 9624
+    isbefore: []  # 9624
+    duplicate_of: []  # 9624
+    not_duplicate_of: []  # 9624
+    pr_ref:  # 9624
+    description: "The process / environment / thread share of WI-lutuh's 17 unenumerated rust\nmodules.\n\nMODULES: std::process, std::env, std::thread.\n\nWHY THEY REFUSE:\n  std::process  subprocess boundary. rust.yaml carries Command [new, spawn,\n                output, status] and process [exit, abort]; the full surface adds\n                Child (kill, wait, wait_with_output, stdin/stdout/stderr handles),\n                Stdio, ExitStatus, and Command's builder methods that set the\n                environment (env, env_clear, env_remove) -- which are ENV writes\n                reached through a subprocess type.\n  std::env      env_read boundary. Carries [var, var_os, vars, args, args_os]\n                plus current_dir (fs_read) and current_exe / consts\n                (host_info_read). Missing at least set_var, remove_var, temp_dir,\n                home_dir, join_paths, split_paths, vars_os, args_os.\n  std::thread   probe signal is `libc::` AND `env::var` -- thread reads the\n                environment (RUST_MIN_STACK) at spawn. Whether that constitutes\n                an env_read BOUNDARY for a caller who never names an env var is\n                a judgment this item must make and record, not assume.\n\nNOTE THE VOCABULARY TRAP that decided several python verdicts and applies here:\n`env_read` covers os.environ, so a module that reads configuration from the\nenvironment does I/O even when the caller never mentions an env var. std::thread\nis exactly that shape.\n\nEVIDENCE BAR: total surface, EXACT matching, refuse-by-default -- the python\naudit's unaided first draft scored 16% wrong, every error on the false-all-clear\nside. Instrument: ~/hypergumbo_lab_notebook/lutuh_rust_08262026/probe.py.\n\nPAY EXPECTATION: no verdict moves on either testable rust repo today; the\nuncatalogued-module check is the LAST rung of `boundary_coverage`'s ladder."  # 9624
+    fields: {}  # 9624
