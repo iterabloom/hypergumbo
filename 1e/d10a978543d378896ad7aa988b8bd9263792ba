@@ -1,0 +1,36 @@
+Original commit body from 807c68a4626c550451ce665b06facdd239b930e9:
+
+## What
+
+A regression tripwire for INV-zimud's third consumer. **No production code changes.**
+
+## Why a tripwire and not a fix
+
+INV-zimud's statement says a disjunctive module hint must be expanded on **every** consumer path, and its filed repro exercises two. Enumerating every caller of `module_io_is_enumerated` turns up a third — the `external_potential` suppression gate in `_compute_external_potential`:
+
+```
+if module_hint and catalog.module_io_is_enumerated(module_hint):
+    continue
+```
+
+It hands the raw comma-joined slot to the predicate with no expansion, so for a multi-include C++ file the test can never be true.
+
+**My first reading was that this activates the moment `cpp` gets `module_completeness` entries — the very next stage of the arc — and had to be fixed now. That reading was wrong.**
+
+A disjunctive slot rides **only an unresolved edge**. `cpp.py` builds it in the `else` branch of the resolved/unresolved test and emits it via `make_unresolved_edge`; a resolved call carries its real module. And `_compute_external_potential` drops unresolved edges at F3 Filter 1 (ADR-0028) *before* the gate. Measured on a two-include fixture: exactly two comma-joined `cpp` dsts, **both `is_resolved: False`**.
+
+So the gate is unreachable with a disjunction. Fixing it would be dead code; asserting the assumption that *makes* it unreachable is not.
+
+## The tripwire
+
+`test_a_disjunctive_slot_only_ever_rides_an_unresolved_edge` parses a three-include fixture through the production analyzer and fails if any **resolved** edge ever carries a comma-bearing module slot. Its failure message names the gate and prescribes the ALL-over-disjuncts expansion the coverage gate already uses. It first asserts the fixture *did* produce disjunctive slots, so it cannot pass vacuously.
+
+## How the error was caught
+
+Not by an error — by a **disagreement**. The RED test returned `[]` for both arms, so the "suppression fires" arm *passed*. That looked like confirmation. In fact neither arm reached the gate: the mock edge carried `is_resolved=False` and Filter 1 dropped it. An empty result was evidence of a *different* blocker, not of the behaviour being asserted. Had both arms agreed, a fix for dead code would have shipped.
+
+## Item status
+
+INV-zimud is now `satisfied`, verified behaviourally on merged dev with its own repro shape — the reason string names `string, sys/socket, ws2tcpip` rather than the pseudo-module `string,sys/socket.h,ws2tcpip.h`. That is the item's distinction: *permanently unexaminable* became *merely unexamined*.
+
+**Not a claim that C++ repos are clean.** `cpp.yaml` declares zero `module_completeness`, so those three headers have never been audited — a different blocker, owned by WI-lutuh.
