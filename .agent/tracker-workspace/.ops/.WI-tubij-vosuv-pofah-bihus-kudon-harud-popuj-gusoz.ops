@@ -1,0 +1,23 @@
+- op: create  # b979
+  at: '2026-08-26T22:27:45Z'  # b979
+  by: agent  # b979
+  actor: jgstern_agent  # b979
+  clock: 1  # b979
+  nonce: b979  # b979
+  data:  # b979
+    kind: work_item  # b979
+    title: "A clock read is host_info_read in EVERY language, not just rust: fifteen catalogues need clock rows or the vocabulary means different things per language"  # b979
+    status: todo_hard  # b979
+    priority: 2  # b979
+    parent:  # b979
+    tags:  # b979
+    - io_boundary  # b979
+    - verify_claims  # b979
+    - catalogue  # b979
+    - vocabulary  # b979
+    isbefore: []  # b979
+    duplicate_of: []  # b979
+    not_duplicate_of: []  # b979
+    pr_ref:  # b979
+    description: "FOLLOWS FROM THE WI-pavob RULING 2026-08-26: \"yes in\" -- a clock read is\nhost_info_read. That is a statement about the VOCABULARY, not about Rust, so it\nbinds every language the tool catalogues.\n\nWHY THIS IS FILED SEPARATELY rather than folded into WI-lutuh's rust half: the\nrust half is an ENUMERATION of one language's stdlib. This is a vocabulary\nchange that lands rows in fifteen catalogues. Folding it in would hide a\ncross-language change inside a per-language audit, and would let host_info_read\nmean different things per language for however long the other fourteen lag --\nwhich is precisely the drift the axis discipline exists to prevent.\n\nWHAT IS OWED. host_info_read rows for the clock surface of every catalogued\nlanguage. Non-exhaustive, from memory rather than measured, so the first task is\nto MEASURE the real surface per language rather than trust this list:\n  rust        std::time::SystemTime::now, std::time::Instant::now (already\n              scoped on WI-pavob; measured against the installed toolchain)\n  python      time.time, time.monotonic, time.perf_counter, time.time_ns,\n              datetime.datetime.now / utcnow\n  go          time.Now, time.Since\n  java        System.currentTimeMillis, System.nanoTime, Instant.now\n  javascript  Date.now, new Date(), performance.now\n  and the remaining catalogued languages.\n\nTHE EVIDENCE BAR IS THE SAME as the stdlib audit's: total surface (every clock\nthe module exposes, not the ones a sample repo calls), EXACT matching, and\nrefuse-by-default. A monotonic clock counts: on Linux CLOCK_MONOTONIC runs from\nboot, so an early read leaks approximate uptime, which distinguishes machines.\n\nTWO THINGS THE IMPLEMENTER SHOULD EXPECT:\n  1. host_info_read WILL FIRE ALMOST UNIVERSALLY after this. Nearly every\n     program reads a clock, so \"never reads host information\" becomes false for\n     anything that timestamps a log line. That is the honest answer and was\n     accepted on the record when the ruling was made -- but it means this\n     category's discriminating power drops sharply, and a bakeoff will show it.\n     Do not read that as a regression.\n  2. IT IS A RECALL-INCREASING CHANGE, so it points the OPPOSITE way from the\n     usual false-inconclusive work: it makes MORE claims fail, not fewer. It\n     therefore does NOT need the cross-language measurement that the standing\n     rule demands of gate-LOOSENING changes -- but its effect on existing\n     verdicts should still be measured before it lands, because it will move\n     them."  # b979
+    fields: {}  # b979
