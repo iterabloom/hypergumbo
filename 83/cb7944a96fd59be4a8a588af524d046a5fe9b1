@@ -1,0 +1,56 @@
+Original commit body from 368eedfcfd671ba46832c5ccdc74938fcd58b0a7:
+
+TWO GOVERNANCE-FILE FIXES, both approved by the owner in writing (approval
+recorded verbatim on the tracker items).
+
+1. `merge-pr` printed a codeberg.org link on a GitHub remote.
+
+`origin` is git@github.com:iterabloom/hypergumbo.git and the API layer already
+routed correctly — detect_forge_backend() sets FORGE_BACKEND and
+detect_api_base() sends calls to api.github.com. Only the DISPLAY strings were
+never told. This was one fact in two homes with the wrong home winning:
+auto-pr carried a correct private `_autopr_pr_web_url`, while merge-pr
+hardcoded `https://codeberg.org/$REPO_SLUG/pulls/$n` in two places. GitHub's
+web path is /pull/N SINGULAR, so the emitted links were wrong in host AND path.
+
+pr_web_url() moves into scripts/lib/forgejo-api.sh, which both scripts already
+source; the private copy is deleted and all five call sites repointed. The
+non-GitHub branch derives its host from API_BASE instead of naming
+codeberg.org — previously a self-hosted Forgejo user got a link to somebody
+else's server. Verified live: github -> /pull/552, codeberg -> /pulls/552,
+git.example.org -> /pulls/552.
+
+Nothing checks a printed link, which is why this survived: the API worked and
+CI was green. Now pinned by
+test_no_script_hardcodes_a_forge_host_in_a_pr_link.
+
+Left alone deliberately: auto-pr's comment examples at lines 509/512 still
+show codeberg URLs. They are illustrative prose, not emitted output, and
+editing them widens a governance diff for no behavioural gain.
+
+2. The WI-bunag closure guard's rejection now warns against quoting itself.
+
+The guard refuses a merge when a bare Closes|Fixes|Resolves names a still-open
+item. Its two documented remedies are to close the item or use the
+Closes-with-evidence form. Neither covers the case where the reference was
+simply wrong wording, so the reader rewrites the message — and the obvious
+rewrite explains what happened, quoting the phrase that caused it. The scan is
+a regex over the whole message with no notion of quotation or disapproval, so
+that rewrite re-trips the same guard verbatim.
+
+The rejection now says to describe the change rather than the rejection, and
+ends with a pre-push check:
+
+    git log -1 --format=%B | grep -inE '(closes|fixes|resolves)[[:space:]:]+(WI|INV|META)-'
+
+That check is the load-bearing half. The guard fires at MERGE time, after CI
+has already run, so a message defect costs a full cycle every time; the grep
+runs before the push and costs nothing. Pinned by
+test_rejection_tells_you_not_to_narrate_it_in_the_rewrite.
+
+The merge-pr stub in tests/test_merge_pr_close.py gains pr_web_url —
+TestStubMirrorsTheRealLibrary caught the omission, which would otherwise have
+surfaced as a bash 127 inside an unrelated-looking assertion.
+
+Racial-Capitalism-Is-Bad: a vine-wrapped boar teaching flash-freezing to a class of turtles in a prehistoric buffet hall shaped like braided challah
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
