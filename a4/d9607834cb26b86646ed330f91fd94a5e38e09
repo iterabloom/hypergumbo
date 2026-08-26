@@ -1,0 +1,45 @@
+Original commit body from 10fe14ba05103b8dae6fea854c5328fc35fe1523:
+
+`cpp.py` sets an unresolved call's module slot to the comma-joined list of every
+`#include` in the calling file and documents the contract in its own comment:
+"the semantics is 'this call could be from any of the included headers';
+downstream consumers may split the module_hint on commas if they need per-header
+resolution."
+
+EXACTLY ONE OF THE TWO CONSUMERS HONOURED IT. io_boundary splits the slot to
+CLASSIFY (_module_hint_candidates). The coverage gate handed the whole joined
+string to module_io_is_enumerated, where it is a synthetic pseudo-module no
+module_completeness entry can EVER match -- so a C++ call site with more than one
+system include was PERMANENTLY unexaminable rather than merely unexamined. A
+contract stated in a producer comment is not enforced (LIVE.md rule 7: one fact,
+two homes, and the second silently wins).
+
+MEASURED over the WI-lutuh sweep on unmodified upstream repos: 19,273 of 81,711
+C/C++ external dsts carry a comma -- libzmq 21.7%, plasma-desktop 40.3%,
+shaka-packager 29.5%; all three C repos 0.0%.
+
+ALL, NOT ANY, AND THE TWO PATHS DIFFER ON PURPOSE. Classification asks "does any
+spelling name a primitive", where an ANY answer is a positive claim. This gate
+asks "was the surface this call could have come from enumerated", where a
+non-match is informative only if EVERY possible home was enumerated -- one
+unenumerated disjunct leaves the call genuinely unexamined, and ANY would let a
+single enumerated header vouch for a file that also includes twenty that are not.
+That is the fail-open direction this gate exists to refuse.
+
+Both callers derive from one `module_hint_disjuncts`, so the two questions cannot
+drift about what a disjunct IS -- which is the failure this very contract already
+suffered once.
+
+The unknown is reported PER DISJUNCT: `string,sys/socket.h,ws2tcpip.h` names
+nothing a reader can act on; `sys/socket` does.
+
+WHAT IT DOES NOT DO, stated because the number is zero. No C or C++ module is
+enumerated today -- both catalogues mention module_completeness only in a comment
+-- so on the shipped catalogues this changes no verdict. What changes is that C++
+coverage stops being IMPOSSIBLE and becomes merely UNMET, which is the state
+WI-lutuh's enumeration campaign can act on. The overlay tests demonstrate both
+directions: enumerate all three includes and the call is covered; enumerate two
+and it is still withheld, naming the third.
+
+Racial-Capitalism-Is-Bad: a puffin building a rift valley shaped like knish pocket made of pickling jars
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
