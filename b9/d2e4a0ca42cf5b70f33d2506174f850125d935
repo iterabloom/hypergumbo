@@ -1,0 +1,44 @@
+Original commit body from 8b308b5d5d20feb9f20b97068952da86872250f3:
+
+## What
+
+INV-pusin, second closure. A `use` statement stopped counting as an attribute read for **every** spelling, not just the one its first repro used.
+
+## Why it reopened
+
+The item was marked `satisfied` in PR #504 against a fixture spelled `use a::b::c;` — precisely the one form that fix handled. `skip_context_kinds` matches the **proximate** syntactic context, but tree-sitter-rust wraps the braced, wildcard and aliased forms in `scoped_use_list` / `use_wildcard` / `use_as_clause`. The context reported for `std::io` in `use std::io::{self, Write};` is the *wrapper*, never `use_declaration`.
+
+Six of fourteen `use` spellings still emitted `module_attr_ref` edges, which the coverage gate counts as calls into a module whose I/O "was never examined". **A closure satisfied the repro and not the statement.**
+
+`use std::io::*;` alone put a **bare `std`** on that list, and that entry is unclearable by construction — `module_completeness: complete` asserts every I/O primitive a module exposes is catalogued, and nobody can audit the whole Rust standard library. So every Rust repository carried a withholding blocker no amount of enumeration could remove. That is why this lands **before** the stdlib enumeration campaign (WI-lutuh) rather than beside it.
+
+## Measured
+
+Zero-dependency crate using only the leaking spellings; same fixture, fresh cache per arm, one hunk between arms.
+
+| | verdict | reason |
+|---|---|---|
+| before | 1 VIOLATED, **2 INCONCLUSIVE** | `calls into 1 module(s) that the I/O catalog could not classify (std)` |
+| after | 1 VIOLATED, **2 CONFIRMED WITH CAVEATS** | — |
+
+The `VIOLATED` claim is the fs_read **positive control** and is present in *both* arms, so the change did not buy clean verdicts by going blind. The item's own filed repro (`rust_fidelity_probe_08232026`) also re-runs clean.
+
+## Approach
+
+Matched by **ancestry** rather than by adding three strings to the tuple. The three wrappers are today's spelling of the invariant, not the invariant; the invariant the item ratified is *a path anywhere inside an import declaration is an import*.
+
+New `skip_ancestor_kinds` on `emit_module_attribute_refs` tests every ancestor instead of the proximate one. Rust passes `("use_declaration",)`, and `use_declaration` leaves `skip_context_kinds` so the fact keeps one home. The parameter is opt-in and empty by default — cpp, javascript, java and go are byte-unchanged, and 13,389 tests pass.
+
+This is a deliberate deviation from the letter of the recorded ruling ("fix in the language files"), taken because the defect **already recurred once** through a node kind nobody had listed. Reasoning is recorded on the item.
+
+## Tests
+
+A form enumeration, as the ruling required: fourteen spellings, two negative controls asserting a genuine read (`std::env::consts::OS`) still emits — including in a file that also carries the suppressed shapes — and a guard that fails CI when the grammar declares a `use_*` kind no row exercises.
+
+That guard immediately earned its keep: it caught `use_bounds`, the Rust 1.82 precise-capture bound (`impl Sized + use<T>`), which shares the keyword and is not an import.
+
+## Not in scope
+
+cpp has the same defect in a harder form, filed as INV-sibij: `std::cout << 1` also leaks there and **that one is correct**, so cpp needs a type-mention-versus-value-read distinction this change does not provide.
+
+https://claude.ai/code/session_01AjN216ATXcbTPVWuS5r9bS
