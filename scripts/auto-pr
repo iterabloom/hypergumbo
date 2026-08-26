@@ -480,7 +480,7 @@ _autopr_handle_already_merged() {
 	if [[ -n "$pr_num" ]]; then
 		echo "📍 Already merged as PR #$pr_num — local cleanup only"
 		_autopr_state_pr_num="$pr_num"
-		_autopr_state_pr_url="$(_autopr_pr_web_url "$pr_num")"
+		_autopr_state_pr_url="$(pr_web_url "$pr_num")"
 	else
 		echo "📍 Already merged (PR # not found via API) — local cleanup only"
 	fi
@@ -594,21 +594,6 @@ _autopr_branch_push_fallback() {
 
 	echo "   ❌ API PR-create failed"
 	return 1
-}
-
-# ------------------------------------------------------------------
-# _autopr_pr_web_url PR_NUM
-#   The PR's web URL for the WI-miriz sentinel/output, branched by backend +
-#   failover. Centralizes the three previously-inline constructions (do_pr,
-#   flush, already-merged). GitHub uses /pull/N; Forgejo/failover use /pulls/N.
-# ------------------------------------------------------------------
-_autopr_pr_web_url() {
-	local pr_num="$1"
-	if [[ "${FORGE_BACKEND:-forgejo}" == "github" ]]; then
-		echo "https://github.com/$REPO_SLUG/pull/$pr_num"
-	else
-		echo "https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
-	fi
 }
 
 # ------------------------------------------------------------------
@@ -1362,7 +1347,7 @@ Individual commits are preserved in the history."
 
 	# WI-miriz: record PR identity for the sentinel.
 	_autopr_state_pr_num="$PR_NUM"
-	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
+	_autopr_state_pr_url="$(pr_web_url "$PR_NUM")"
 
 	echo "✅ Created PR #$PR_NUM (contains $count vPRs)"
 	echo "🔗 $_autopr_state_pr_url"
@@ -1897,7 +1882,7 @@ do_pr() {
 	# this run is responsible for, even if a later step (CI poll, merge)
 	# fails partway through.
 	_autopr_state_pr_num="$PR_NUM"
-	_autopr_state_pr_url="$(_autopr_pr_web_url "$PR_NUM")"
+	_autopr_state_pr_url="$(pr_web_url "$PR_NUM")"
 
 	echo "✅ Found PR #$PR_NUM"
 	echo "🔗 $_autopr_state_pr_url"

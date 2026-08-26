@@ -163,6 +163,15 @@ api_get() {{
     [[ "$API_HTTP_CODE" == "200" ]]
 }}
 
+pr_web_url() {{
+    # Mirrors the real lib helper (scripts/lib/forgejo-api.sh). merge-pr prints
+    # the PR link through it instead of hardcoding a forge host, so the stub
+    # must define it or the call surfaces as a bash 127 inside an
+    # unrelated-looking assertion -- which is exactly what
+    # TestStubMirrorsTheRealLibrary exists to catch, and did.
+    echo "https://forge.example/${{REPO_SLUG:-o/r}}/pulls/$1"
+}}
+
 api_patch() {{
     local url="$1"
     local body="${{2:-}}"

@@ -153,7 +153,7 @@ print(json.dumps({'body': f'Closed by merge-pr: {sys.argv[1]}'}))
 
 	echo ""
 	echo "✅ PR #$pr_num closed"
-		echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$pr_num"
+		echo "🔗 $(pr_web_url "$pr_num")"
 	return 0
 }
 
@@ -394,4 +394,4 @@ fi
 
 echo ""
 echo "✅ PR #$PR_NUM merged successfully!"
-	echo "🔗 https://codeberg.org/$REPO_SLUG/pulls/$PR_NUM"
+	echo "🔗 $(pr_web_url "$PR_NUM")"

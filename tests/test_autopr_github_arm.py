@@ -103,19 +103,25 @@ class TestFlushQueueGitHubPush:
         assert "flush identified PR #55" in r.stdout
 
 
-def _extract_func(name: str) -> str:
-    text = AUTO_PR.read_text()
+def _extract_func(name: str, path=None) -> str:
+    text = (path or AUTO_PR).read_text()
     m = re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.M | re.S)
-    assert m, f"function {name} not found"
+    assert m, f"function {name} not found in {path or AUTO_PR}"
     return m.group(0)
 
 
 def _pr_web_url(*, backend="forgejo") -> str:
-    fn = _extract_func("_autopr_pr_web_url")
+    # Extracted from the LIB, not from auto-pr: the helper moved to
+    # scripts/lib/forgejo-api.sh so merge-pr stops printing a hardcoded
+    # codeberg.org link on a GitHub remote (one fact, two homes — the wrong
+    # home won). API_BASE is supplied because the non-GitHub branch now
+    # derives its host from it instead of naming codeberg.org.
+    fn = _extract_func("pr_web_url", path=REPO_ROOT / "scripts/lib/forgejo-api.sh")
     pre = "REPO_SLUG=o/r\n"
     pre += f"FORGE_BACKEND={backend}\n"
+    pre += "API_BASE=https://codeberg.org/api/v1/repos/o/r\n"
     r = subprocess.run(
-        ["bash", "-c", fn + "\n" + pre + '_autopr_pr_web_url 5\n'],
+        ["bash", "-c", fn + "\n" + pre + 'pr_web_url 5\n'],
         capture_output=True, text=True,
     )
     return r.stdout.strip()
@@ -136,7 +142,31 @@ class TestStructuralGates:
     def test_helpers_present(self):
         text = AUTO_PR.read_text()
         assert "_autopr_github_push_create() {" in text
-        assert "_autopr_pr_web_url() {" in text
+        # ``pr_web_url`` now lives in the SHARED lib, not here. It had two
+        # homes — a correct private copy in auto-pr and a hardcoded
+        # ``codeberg.org/.../pulls/N`` string in merge-pr — and the wrong one
+        # won for anyone running ``merge-pr`` against a GitHub remote.
+        assert "_autopr_pr_web_url" not in text, (
+            "the private copy is back; it belongs in scripts/lib/forgejo-api.sh"
+        )
+        lib = (REPO_ROOT / "scripts" / "lib" / "forgejo-api.sh").read_text()
+        assert "pr_web_url() {" in lib
+
+    def test_no_script_hardcodes_a_forge_host_in_a_pr_link(self):
+        """The defect this move exists to prevent, pinned executably.
+
+        A display URL must be DERIVED from the detected backend. Hardcoding a
+        host produces a link that is wrong in both host and path segment
+        (GitHub is /pull/N, Forgejo /pulls/N) on a repo whose API calls were
+        already routing correctly — the failure is silent because nothing
+        checks a printed link.
+        """
+        for name in ("auto-pr", "merge-pr"):
+            text = (REPO_ROOT / "scripts" / name).read_text()
+            assert "codeberg.org/$REPO_SLUG" not in text, (
+                f"scripts/{name} hardcodes a forge host in a PR link; "
+                f"call pr_web_url instead"
+            )
 
     def test_do_pr_and_flush_gate_github_push(self):
         text = AUTO_PR.read_text()
