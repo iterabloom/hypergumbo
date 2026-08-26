@@ -1,0 +1,67 @@
+Original commit body from 66a4f26a713cd047220d0dff2f643b45be5e8110:
+
+INV-nular's bash half. A catalogue row binds a NAME to a boundary kind and
+nothing checks that the named primitive performs that operation. Two of the six
+reported bash instances reproduce; two do not, and both are recorded rather
+than quietly fixed or quietly dropped.
+
+REPRODUCED (1): `> /dev/null` counted as a host filesystem write. Behavioral,
+shipped CLI, {boundary: fs_write, must_not_exist: true}, control in the run:
+
+    /tmp/nul2  echo "$API_KEY" > /dev/null           violated rc 1 -> confirmed rc 0
+    /tmp/nul3  echo "$API_KEY" > /etc/cron.d/pwned   violated rc 1 -> violated  rc 1
+
+Nothing is written to any filesystem; the kernel discards the bytes and no
+observation anywhere differs because the redirect ran. That is what makes the
+finding VACUOUS rather than imprecise -- the mechanism behind 0006's headline
+being an upper bound on useful precision.
+
+The discriminator cannot live in the catalogue: `redirect.>` is ONE row whose
+boundary depends on the TARGET at the call site, exactly as `builtins.open`'s
+depends on the mode. So bash.py stamps io_target_kind (host_path / null_device
+/ std_stream / unresolved) and io_boundary reads it. `> "$OUT"` stays
+classified -- "wrote somewhere I cannot name" is a real write -- and the
+refusal requires EVERY collapsed site to discard (INV-vukiv's _values), because
+silencing a real write for a sibling call site is the false-negative trade this
+subsystem refuses.
+
+/dev/stderr is MARKED and deliberately NOT reclassified: that write leaves the
+process and can publish a secret, so it is a logging crossing, and settling
+logging-vs-fs_write is the decision the haskell hPutStrLn rows already wait on
+(INV-vaduk shape 4).
+
+REPRODUCED (2): bash-maintained variables counted as environment reads and so
+derived host_secret. Both arms measured on $HOSTNAME / $BASH_SOURCE:
+
+    ARM A (pre-fix):  bash:env:0-0:env.environ:attribute      -> host_secret
+    ARM B (post-fix): bash:shell:0-0:shell.hostinfo:attribute -> host_description
+                      ($BASH_SOURCE emits nothing)
+
+End to end, $HOSTNAME -> /tmp/out.txt now CONFIRMS host-secret-no-host-fs while
+$API_KEY -> /tmp/out.txt still VIOLATES it.
+
+THE RULE IS WHO SET THE VARIABLE, not whether the name looks sensitive -- a
+sensitivity list is the curated enumeration the env_read row exists to refuse,
+wrong the moment a repo invents a name and wrong silently. It is INV-jurif's
+own discriminator one level out: a name the SCRIPT assigns is not an env read
+(shipped), and neither is a name BASH assigns. $HOME stays an env read; bash
+inherits it. Among bash-assigned names the 8 describing host or user go to
+host_info_read on INV-tutar's precedent (python files getcwd/getuid/uname there
+already); the other 50 cross no boundary.
+
+DID NOT REPRODUCE, pinned by tests so they cannot start to:
+  - ">&2 counts": it emits NO edge (fd duplication returns None). That is a
+    RECALL gap in the opposite direction from the over-report filed.
+  - ">> reported as >": distinct dst ids and distinct io_mode end to end;
+    test_bash_redirection.py has pinned it since INV-vavup.
+
+A WRONG FIRST CUT, RECORDED IN THE CODE: refusing the match in
+classify_call_in_catalog -- where the coverage gate also reads it -- turned the
+false `violated` into `inconclusive` rc 2 ("calls into 1 module(s) that the I/O
+catalog could not classify (redirect)"), trading a wrong finding for a withheld
+verdict. EXAMINED and CROSSES are different questions of the same match. Moved
+to the tagger; a regression test pins that a discarding call is still
+classified.
+
+Racial-Capitalism-Is-Bad: a porcupine playing chess against a sword swallower in a Bronto-burger grill shack
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
