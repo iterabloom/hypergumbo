@@ -129,6 +129,7 @@ from .io_boundary import (
     IoBoundaryCatalog,
     classify_call,
     is_definitionally_first_party,
+    module_hint_disjuncts,
     normalize_module_separators,
 )
 from .ir import symbol_name_slot, symbol_path_slot
@@ -2476,7 +2477,45 @@ def _uncatalogued_external_modules(
         # and row PRESENCE (did I catalogue ANY primitive here — INV-zubuh).
         # Each permitted a real exfiltration into a ``confirmed`` verdict.
         # Restoring either as a fallback restores the defect; there is none.
-        if catalog.module_io_is_enumerated(module):
+        # INV-zimud: A DISJUNCTIVE SLOT IS EXPANDED HERE TOO, AND THE
+        # DIRECTION IS THE OPPOSITE OF THE CLASSIFICATION PATH'S.
+        #
+        # ``cpp.py`` sets an unresolved call's module slot to the comma-joined
+        # list of every ``#include`` in the file, and says so in its own
+        # comment: "downstream consumers may split the module_hint on commas".
+        # ONE of the two consumers did. ``io_boundary`` splits it to
+        # CLASSIFY; this gate handed the whole joined string to
+        # ``module_io_is_enumerated``, where it is a synthetic pseudo-module no
+        # ``module_completeness`` entry can ever match — so every C++ call site
+        # with more than one system include was PERMANENTLY unexaminable, not
+        # merely unexamined. Measured over the WI-lutuh sweep: 19,273 of 81,711
+        # C/C++ external dsts carry a comma (libzmq 21.7%, plasma-desktop
+        # 40.3%, shaka-packager 29.5%; the three C repos 0.0%).
+        #
+        # ALL, NOT ANY. Classification asks "does any spelling name a
+        # primitive" and an ANY answer is a positive claim. This gate asks "was
+        # the surface this call could have come from enumerated", and a
+        # non-match is informative ONLY if every possible home was enumerated —
+        # one unenumerated disjunct leaves the call genuinely unexamined. ANY
+        # here would let a single enumerated header vouch for a file that also
+        # includes twenty that are not, which is the fail-open direction this
+        # gate exists to refuse.
+        #
+        # AND THE UNKNOWN IS REPORTED PER DISJUNCT, not as the joined string.
+        # ``string,sys/socket.h,ws2tcpip.h`` names nothing a reader can act on;
+        # ``sys/socket`` does.
+        disjuncts = module_hint_disjuncts(module)
+        unenumerated = [
+            spellings for spellings in disjuncts
+            if not any(
+                catalog.module_io_is_enumerated(s) for s in spellings
+            )
+        ]
+        if disjuncts and not unenumerated:
+            continue
+        if len(disjuncts) > 1:
+            for spellings in unenumerated:
+                unknown.add(spellings[-1])
             continue
         # AN UNRESOLVED FIRST-PARTY CALLEE IS NOT A CATALOG GAP. Its source was
         # read, so whatever I/O it performs was examined on its own edges — it

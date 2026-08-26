@@ -2818,16 +2818,45 @@ def _module_hint_candidates(module_hint: str) -> list[str]:
             out.append(value)
 
     add(module_hint)
+    for spellings in module_hint_disjuncts(module_hint):
+        for spelling in spellings:
+            add(spelling)
+    return out
+
+
+def module_hint_disjuncts(module_hint: str) -> list[list[str]]:
+    """The slot's disjuncts, each with the spellings it may legitimately take.
+
+    THE SAME EXPANSION AS :func:`_module_hint_candidates`, GROUPED. That function
+    flattens every disjunct's spellings into one list because CLASSIFICATION asks
+    an ANY question — does any spelling of any disjunct name a primitive. The
+    COVERAGE gate asks the opposite-direction question and needs the grouping to
+    ask it: a non-match is informative only if EVERY module the call could have
+    come from was enumerated, so one unenumerated disjunct is enough to leave the
+    call unexamined.
+
+    INV-zimud, and it is why the flattened form could not simply be reused. Both
+    callers derive from this one function so the two questions cannot drift about
+    what a disjunct IS — the "one fact, two homes" failure the whole disjunction
+    contract already suffered once, when ``cpp.py`` documented the split in a
+    comment and exactly one of two consumers honoured it.
+
+    ``[["stdio.h", "stdio"]]`` for a single-module slot, so a language emitting
+    one module per slot collapses to a single disjunct and the ALL question
+    becomes the same question the gate asked before.
+    """
+    groups: list[list[str]] = []
     for raw in module_hint.split(","):
         part = raw.strip()
         if not part:
             continue
-        add(part)
+        spellings = [part]
         for suffix in _HEADER_SUFFIXES:
             if part.endswith(suffix):
-                add(part[: -len(suffix)])
+                spellings.append(part[: -len(suffix)])
                 break
-    return out
+        groups.append(spellings)
+    return groups
 
 
 def normalize_module_separators(name: str) -> str:
