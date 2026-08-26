@@ -61,6 +61,7 @@ import yaml
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
+from .io_boundary import call_site_modes
 from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
@@ -637,7 +638,7 @@ def _match_propagation_entry(
     *,
     is_resolved: bool = True,
     language: str = "",
-    io_mode: str | None = None,
+    io_modes: "Sequence[str] | None" = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -698,8 +699,14 @@ def _match_propagation_entry(
     # ``getattr`` for BOTH reads, not just the guard: the index is typed
     # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode``, so
     # a direct attribute read is a strict-mode union-attr error.
-    from .io_boundary import resolve_mode_boundary
-    _needed = resolve_mode_boundary(io_mode)
+    from .io_boundary import resolve_mode_boundary_across_sites
+    # INV-vukiv: EVERY collapsed site's mode, not the first one's. A function
+    # that opens a path 'r' at one line and 'w' at another arrives here as one
+    # edge, and asking only the survivor's singular ``io_mode`` dropped the
+    # ``fs_write``-gated sink on the strength of a different call site — the
+    # same false-negative shape ``call_arg_shape``'s conservative merge exists
+    # to prevent, one key over.
+    _needed = resolve_mode_boundary_across_sites(io_modes)
     hits = [
         h for h in hits
         if getattr(h, "requires_mode", "") in ("", _needed)
@@ -2251,7 +2258,7 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -2267,7 +2274,7 @@ def propagate_taint_structural(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
         if matched and _sink_call_can_carry_taint(edge):
             site = (edge["dst"], matched)
@@ -3183,7 +3190,7 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -3198,7 +3205,7 @@ def propagate_taint_ddg(
             call_construct=edge.get("meta", {}).get("call_construct"),
             is_resolved=edge.get("is_resolved", True),
             language=language,
-            io_mode=edge.get("meta", {}).get("io_mode"),
+            io_modes=call_site_modes(edge.get("meta")),
         )
         if matched:
             # ``sink_site``, not ``site``: the call-line loop above binds

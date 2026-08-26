@@ -191,6 +191,16 @@ class MetaKeySpec:
     # and say which one is authoritative. A discipline nobody can audit is a
     # pinky-swear with a field name.
     discipline_note: str = ""
+    # INV-vukiv: does this key's value VARY BY CALL SITE? ``deduplicate_edges``
+    # keeps one edge per ``(src, dst, edge_type)``; a per-site key on the
+    # survivor would otherwise report one arbitrary site's value as the whole
+    # relationship's. Declared keys collapse under the ``call_arg_shape`` rule
+    # generalized: the singular key survives ONLY if every collapsed site
+    # agreed, and the distinct values move to ``<name>_values`` when they did
+    # not. ``write_discipline`` answers a DIFFERENT question — how many
+    # PRODUCERS write the key — and the two are orthogonal: ``io_mode`` has one
+    # producer and many sites.
+    per_call_site: bool = False
 
 
 # WI-toruz / INV-lalad: the CALL FAMILY — the edge types on which a call
@@ -257,7 +267,7 @@ _ACCESS_MODE_NA_EDGE_TYPES: Final[frozenset[str]] = frozenset({
 })
 
 
-META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
+_BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     # ------------------------------------------------------------------
     # Edge.meta — Wave 5 framework-dispatch fold residues (ADR-0028).
     # Per audit-findings 0014, the framework-specific evidence types
@@ -355,7 +365,8 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "not already say, at the cost of a key on every edge of every "
                 "map. Scoped to the CALL FAMILY -- the question does not "
                 "arise for an edge that is not an invocation.",
-                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES),
+                applicable_edge_types=_CALL_FAMILY_EDGE_TYPES,
+                per_call_site=True),
     MetaKeySpec("call_locality", AXIS_EDGE_META,
                 "File-locality of a call edge — whether caller and "
                 "callee live in the same source file ('same_file') or "
@@ -529,6 +540,54 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "consumer ever branches on io_primitive to decide "
                     "whether a crossing is opaque."
                 )),
+    # ------------------------------------------------------------------
+    # Edge.meta — bash's synthesized redirection / expansion edges.
+    # Registered as part of INV-vukiv: all three vary PER CALL SITE, and two
+    # of them were emitted by bash.py while unregistered, so nothing could
+    # have known to union them on collapse.
+    # ------------------------------------------------------------------
+    MetaKeySpec("redirect_target", AXIS_EDGE_META,
+                "The path (or `<unresolved>`) a shell redirection writes to "
+                "or reads from — the `/etc/cron.d/pwned` in "
+                "`echo x > /etc/cron.d/pwned`. Written by bash.py's "
+                "file_redirect branch. PER CALL SITE, and the measurement "
+                "that filed INV-vukiv: one function redirecting to /dev/null "
+                "on one line and to /etc/cron.d/pwned on the next collapsed "
+                "to a single edge reading '/dev/null', so the cron-dropper "
+                "was reported as a write to the bit bucket.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge. No later pass "
+                    "refines it — the DDG is where a `> \"$OUT\"` target "
+                    "would be resolved, and that answer would be a different "
+                    "fact under a different name."
+                )),
+    MetaKeySpec("redirect_target_resolved", AXIS_EDGE_META,
+                "Whether ``redirect_target`` names a literal path rather than "
+                "an unexpanded variable. Companion boolean so a consumer can "
+                "tell 'wrote /tmp/x' from 'wrote somewhere I cannot name' "
+                "without re-parsing the target. PER CALL SITE for the same "
+                "reason ``redirect_target`` is.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge, stamped in the "
+                    "same dict literal as ``redirect_target``."
+                )),
+    MetaKeySpec("env_var", AXIS_EDGE_META,
+                "The variable name behind a synthesized environment read — "
+                "the `API_KEY` in `$API_KEY`. Carried for the READER rather "
+                "than for matching: bash's env_read catalogue is ONE row on "
+                "the os.environ precedent, so the name never participates in "
+                "the lookup. PER CALL SITE (INV-vukiv): `$HOME` then "
+                "`$API_KEY` in one function collapsed to `env_var='HOME'`, "
+                "which named the harmless read and dropped the secret one.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's simple_expansion/expansion branch."
+                )),
     MetaKeySpec("io_boundary", AXIS_EDGE_META,
                 "Boundary classification on edges that cross an IO "
                 "primitive (e.g. 'net_send', 'fs_read', "
@@ -581,7 +640,14 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
     MetaKeySpec("io_mode", AXIS_EDGE_META,
                 "Read/write disambiguation for a mode-parameterised IO "
                 "primitive — the ``'w'`` in ``fopen(path, 'w')`` — resolving "
-                "one catalogue row to a directional boundary.",
+                "one catalogue row to a directional boundary. PER CALL SITE "
+                "(INV-vukiv): one function may open the same path 'r' at one "
+                "line and 'w' at another, and those two calls collapse to ONE "
+                "edge. Measured before the flag existed: adding a preceding "
+                "open(p,'r') deleted a real truncating open(p,'w') from the "
+                "boundary map outright, because the survivor carried the "
+                "first site's mode and the gate eliminated the fs_write row.",
+                per_call_site=True,
                 write_discipline=DISCIPLINE_SINGLE_WRITER,
                 discipline_note=(
                     "Two writers tree-wide, one per analyzer family and "
@@ -1083,9 +1149,73 @@ META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
 )
 
 
+def _per_call_site_values_specs() -> tuple[MetaKeySpec, ...]:
+    """The ``<key>_values`` companion each per-call-site key gains on collapse.
+
+    DERIVED rather than hand-listed, so a key declared ``per_call_site`` tomorrow
+    is documented in ``docs/schema.json`` the same day. Hand-listing them would
+    be the second home for one fact that this module exists to prevent — and the
+    failure mode is quiet: an undeclared companion is simply missing from the
+    schema, so a consumer reading it out of a behavior map cannot learn it
+    exists (the WI-zisig defect, one convention over).
+
+    They are NOT themselves ``per_call_site``: the companion is already the
+    site-wise answer, and flagging it would ask ``ir._absorb_call_site`` to
+    collapse the collapse.
+    """
+    return tuple(
+        MetaKeySpec(
+            f"{spec.name}_values",
+            spec.axis,
+            f"Every distinct ``{spec.name}`` among the call sites that "
+            f"collapsed into this edge, sorted, capped at "
+            f"``ir._CALL_LINES_CAP``. Written by ``ir._absorb_call_site`` "
+            f"ONLY when the sites disagreed, in which case the singular "
+            f"``{spec.name}`` is removed — its presence would state one "
+            f"site's value of the whole relationship (INV-vukiv). Absence of "
+            f"this key therefore means every collapsed site agreed, exactly "
+            f"as absence of ``call_lines`` means there was one site.",
+            write_discipline=DISCIPLINE_SINGLE_WRITER,
+            discipline_note=(
+                "Sole writer: ir._absorb_call_site, at both collapse sites "
+                "(deduplicate_edges and apply_external_id_remap, which route "
+                "through the same function)."
+            ),
+        )
+        for spec in _BASE_META_KEYS
+        if spec.per_call_site
+    )
+
+
+META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
+    _BASE_META_KEYS + _per_call_site_values_specs()
+)
+
+
 def all_meta_key_names() -> frozenset[str]:
     """Return every canonical meta-key name."""
     return frozenset(spec.name for spec in META_KEYS)
+
+
+def per_call_site_keys() -> frozenset[str]:
+    """Meta keys whose value varies BY CALL SITE (INV-vukiv).
+
+    ``ir.deduplicate_edges`` keeps one edge per ``(src, dst, edge_type)``. For
+    every key named here the survivor may carry the value only if EVERY
+    collapsed site agreed on it; otherwise the singular key is dropped and the
+    distinct values move to ``<name>_values``. The rule is not new — INV-fubag
+    gave ``call_arg_shape`` exactly this treatment, hardcoded, because a
+    "every argument here is a literal" proof asserted from one of several sites
+    silences real flows. What was missing was any way to DECLARE a second key,
+    which is why ``io_mode`` (one producer, many sites) quietly deleted real
+    ``fs_write`` boundaries for as long as it did.
+
+    Read by ir.py rather than owned by it: the registry is where a key's
+    contract lives, and putting the list in the dedup function would make the
+    next per-site key someone adds invisible to it — the same "second home for
+    one fact" shape this module exists to prevent.
+    """
+    return frozenset(spec.name for spec in META_KEYS if spec.per_call_site)
 
 
 def meta_keys_on_axis(axis: str) -> tuple[MetaKeySpec, ...]:
