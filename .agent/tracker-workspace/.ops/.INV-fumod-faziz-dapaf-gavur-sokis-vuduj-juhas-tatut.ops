@@ -1,0 +1,23 @@
+- op: create  # a326
+  at: '2026-08-26T00:50:10Z'  # a326
+  by: agent  # a326
+  actor: jgstern_agent  # a326
+  clock: 1  # a326
+  nonce: a326  # a326
+  data:  # a326
+    kind: invariant  # a326
+    title: "Taint credited across an external-resource boundary (open handle, fetched bytes, socket fd, out-of-repo callee)"  # a326
+    status: violated  # a326
+    priority: 1  # a326
+    parent:  # a326
+    tags:  # a326
+    - taint  # a326
+    - measurement_0006  # a326
+    isbefore: []  # a326
+    duplicate_of: []  # a326
+    not_duplicate_of: []  # a326
+    pr_ref:  # a326
+    description: "Found by the 0006 adversarial refutation pass. This family produced 5 of the 6 uncontested refutations (jaeger#0, ArkLib#0, ArkLib#1, guacamole-client#4, tmux#3) out of 44 TPs attacked.\n\nThe refuters drew the correct line, which is narrower than \"receivers never count\": a receiver built by IN-PROGRAM computation is a genuine true positive (ArkLib#4, path.with_name(path.name + \".bak\"), SURVIVED), while a handle returned by open() is not, because no line in the repository carries the path into it. Measurement 0001 rubric already names this: \"taint flows through in-program computation, not through an external resource selected by the tainted value.\"\n\nMEASURED CONSEQUENCE: removing this family moves 0006 from 39.3% to 33.9% per situation. It was PRE-REGISTERED before the refutation pass with predicted arithmetic (39.3 -> 36.6 for shape (a) alone) and withheld from the refuters, who then found it independently.\n\nShape (d) additionally means a hop can be attributed to source the analyzer never read."  # a326
+    fields:  # a326
+      statement: "Taint is credited across an external-resource boundary in four distinct shapes, each of which makes the tainted value a SELECTOR of the resource rather than a value computed into the sink argument: (a) the handle returned by open(<tainted path>) is treated as a taint propagator and its .write reported as the sink; (b) bytes fetched by a command whose ARGUMENT is tainted (curl \"$URL\" > file) are credited to the redirect; (c) a socket fd is credited to a sink fed by recvmsg bytes read through it; (d) an out-of-repo callee (Erlang ct:pal) is summarized as the in-repo sink it resembles. Shape (a) is inconsistent with the tool itself: for structurally near-identical statements it elsewhere names open @ builtins as the sink with the tainted path as ARGUMENT, which is correct."  # a326
+      root_cause: "The propagator treats a call whose ARGUMENT is tainted as producing a tainted RETURN, with no notion of a resource-selection barrier, and summarizes callees it cannot see as their nearest in-repo analogue."  # a326

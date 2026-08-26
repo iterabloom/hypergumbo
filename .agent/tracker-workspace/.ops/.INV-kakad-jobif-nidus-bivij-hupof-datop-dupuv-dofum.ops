@@ -1,0 +1,23 @@
+- op: create  # bae0
+  at: '2026-08-26T00:50:13Z'  # bae0
+  by: agent  # bae0
+  actor: jgstern_agent  # bae0
+  clock: 1  # bae0
+  nonce: bae0  # bae0
+  data:  # bae0
+    kind: invariant  # bae0
+    title: "collapsed_flow_count is not reconcilable against the call sites in the repository (3 repos, 3 independent reports)"  # bae0
+    status: violated  # bae0
+    priority: 1  # bae0
+    parent:  # bae0
+    tags:  # bae0
+    - taint  # bae0
+    - measurement_0006  # bae0
+    isbefore: []  # bae0
+    duplicate_of: []  # bae0
+    not_duplicate_of: []  # bae0
+    pr_ref:  # bae0
+    description: "Found by the 0006 adversarial refutation pass.\n\nWHY IT MATTERS: collapsed_flow_count IS the row-level denominator. Every per-row precision figure the project has published is computed through it. 0006 reports row precision (31.5%) beside situation precision (33.9%) because the ratified frame makes SITUATION canonical; this item is a second, independent reason that was the right call, and it means the row figure is the less trustworthy of the two.\n\nNOT ESTABLISHED: the direction and magnitude of the bias. Two refuters found totals too HIGH and one found totals both high and low against a single rule, so this is not yet demonstrated to be uniform inflation. The intended collapse key is not documented anywhere the refuters could find, so none of them could state the rule they were checking against -- that is itself part of the defect."  # bae0
+    fields:  # bae0
+      statement: "collapsed_flow_count (the situation -> raw-pair multiplier, INV-karud) cannot be reconciled against the source/sink call sites that exist in the repository, and is inflated in at least one direction. Three independent refuters on three repositories: kamaraflow#4 reports 8 where the repo holds exactly ONE os.makedirs site and TWO argv read sites; shellcheck#3 reports 4 where at most 2 (newIORef site x modifyIORef site) exist in the anchoring module, the extra 2 matching a cross-module product whose pairs act on refs created by their own modules and therefore carry no value; ArkLib totals fit no single counting rule within one repository (#4=2 for 2 sources x 1 sink, but #0 and #6 report 1 for the same 2x1 shape, while #1 reports 1 against EIGHT write sites and #3 reports 6 against 4 open sites)."  # bae0
+      root_cause: "The situation->pair collapse key is undocumented and appears to form a cross product over source and sink sites without checking that a given pair carries a value."  # bae0
