@@ -2908,10 +2908,22 @@ class TestScopedPathSkipsImportAndTypePositions:
     button.
     """
 
-    RUST_SKIP = ("use_declaration", "scoped_type_identifier", "generic_type")
+    # MIRRORS OF WHAT THE ANALYZERS SHIP, bound by
+    # test_the_skip_tuples_mirror_what_the_analyzers_actually_ship below.
+    # `use_declaration` is deliberately ABSENT from RUST_SKIP: INV-pusin's
+    # second closure moved it out of the proximate tuple and into
+    # `skip_ancestor_kinds`, because the grammar wraps every `use` form except
+    # the bare one (`scoped_use_list`, `use_wildcard`, `use_as_clause`), so a
+    # proximate match suppressed one spelling of fourteen. This constant went
+    # on carrying it for both, which meant every rust test here passed through
+    # the mechanism production had ABANDONED — the right answer for the wrong
+    # reason, and blind to a regression in the real one.
+    RUST_SKIP = ("scoped_type_identifier", "generic_type")
+    RUST_SKIP_ANCESTORS = ("use_declaration",)
     CPP_SKIP = (
         "using_declaration", "function_definition", "declaration",
-        "parameter_declaration", "field_declaration",
+        "parameter_declaration", "field_declaration", "type_descriptor",
+        "base_class_clause",
     )
 
     def _emit_rust(self, source: str, skip: tuple[str, ...]) -> list[Edge]:
@@ -2930,6 +2942,7 @@ class TestScopedPathSkipsImportAndTypePositions:
             call_function_field_names=("function",),
             scoped_path=True,
             skip_context_kinds=skip,
+            skip_ancestor_kinds=self.RUST_SKIP_ANCESTORS,
             pass_id="test-pass",
             run_id="test-run",
         )
@@ -3008,6 +3021,106 @@ class TestScopedPathSkipsImportAndTypePositions:
         source = "std::string f(int x) { return \"hi\"; }\n"
         edges = self._emit_cpp(source, self.CPP_SKIP)
         assert edges == [], [e.dst for e in edges]
+
+    def test_the_skip_tuples_mirror_what_the_analyzers_actually_ship(
+        self,
+    ) -> None:
+        """ONE FACT, TWO HOMES — and the second one silently wins.
+
+        ``RUST_SKIP`` / ``CPP_SKIP`` above are hand-copies of tuples that live
+        in the analyzers. Every test in this class is written against the COPY,
+        so a change to the shipped tuple leaves these tests passing against a
+        stale mirror and asserting nothing about the code that runs. This is
+        the only test here that reads the real thing.
+        """
+        import pathlib
+        import re
+
+        from hypergumbo_lang_mainstream import cpp as cpp_mod
+        from hypergumbo_lang_mainstream import rust as rust_mod
+
+        def shipped(module) -> tuple[str, ...]:
+            src = pathlib.Path(module.__file__).read_text()
+            m = re.search(
+                r"skip_context_kinds=\(\s*(.*?)\s*\),", src, re.S
+            )
+            assert m, f"no skip_context_kinds= literal found in {module.__file__}"
+            return tuple(re.findall(r'"([^"]+)"', m.group(1)))
+
+        assert shipped(cpp_mod) == self.CPP_SKIP, (
+            "cpp.py's skip_context_kinds and this file's CPP_SKIP have "
+            "diverged; the tests above are asserting against the copy"
+        )
+        assert shipped(rust_mod) == self.RUST_SKIP, (
+            "rust.py's skip_context_kinds and this file's RUST_SKIP have "
+            "diverged"
+        )
+
+    def test_cpp_type_alias_emits_no_attribute_read(self) -> None:
+        """THE FILED DEFECT (INV-sibij). ``using S = std::string;`` names a
+        type — INV-pusin's statement in its C++ spelling — but its scoped path
+        sits under ``type_descriptor``, which the tuple did not carry, so a
+        type alias re-entered as a module_attr_ref and withheld verdicts."""
+        edges = self._emit_cpp("using S = std::string;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_cast_emits_no_attribute_read(self) -> None:
+        """COLLATERAL OF THE SAME CONTEXT, enumerated rather than assumed.
+        ``type_descriptor`` also covers a cast, and the item declined to append
+        it to the tuple until every member of that population was shown to be
+        a type mention. A cast NAMES a type and reads no value."""
+        source = "void f(){ auto x = static_cast<std::string>(y); }\n"
+        edges = self._emit_cpp(source, self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_template_argument_emits_no_attribute_read(self) -> None:
+        """The third and by far the LARGEST member of ``type_descriptor``: a
+        template argument. Counted on real repositories, these outnumber type
+        aliases 10-25x (rocksdb 2359 vs 126), so this is where the population
+        actually is — and it too names a type and reads nothing."""
+        edges = self._emit_cpp("std::vector<std::string> v;\n", self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_base_class_clause_emits_no_attribute_read(self) -> None:
+        """SECOND LEAK, found by enumerating past the filed repro.
+        ``class A : public std::exception {}`` names a base TYPE."""
+        edges = self._emit_cpp("class A : public std::exception { };\n",
+                               self.CPP_SKIP)
+        assert edges == [], [e.dst for e in edges]
+
+    def test_cpp_range_for_range_expression_still_emits(self) -> None:
+        """THE RESIDUAL, pinned as a DELIBERATE non-fix.
+
+        ``for_range_loop`` covers both halves of a range-for: the loop
+        variable's TYPE (``for (std::string x : v)``) and the RANGE
+        EXPRESSION (``for (auto& l : std::cin)``). ``std::cin`` is a genuine
+        stream read, so adding that context to the tuple would suppress it —
+        the false-all-clear direction. This test exists so that anyone who
+        later adds ``for_range_loop`` to make the type half stop leaking sees
+        immediately what it costs.
+        """
+        source = "void f(){ for (auto& l : std::cin) {} }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "the range expression is a value read and must emit"
+
+    def test_cpp_stream_write_survives_the_same_skip_tuple(self) -> None:
+        """POSITIVE CONTROL, and the reason this fix is one token and not two.
+        ``std::cout << 1`` is a GENUINE attribute read of a stream object —
+        exactly what module_attr_ref exists to emit — and it sits under
+        ``binary_expression``. If a wider tuple ever swallows it, the fix has
+        become a mute button, and removing withholding is the false-all-clear
+        direction."""
+        source = "void f(){ std::cout << 1; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "std::cout << 1 is a value read and must keep emitting"
+
+    def test_cpp_static_constant_read_survives(self) -> None:
+        """POSITIVE CONTROL 2. ``std::string::npos`` is a VALUE read under
+        ``init_declarator``, not a type mention, so the same tuple must leave
+        it alone."""
+        source = "void f(){ auto p = std::string::npos; }\n"
+        dsts = [e.dst for e in self._emit_cpp(source, self.CPP_SKIP)]
+        assert dsts, "a static constant read is not a type mention"
 
     def test_cpp_genuine_read_survives_the_same_skip_tuple(self) -> None:
         """POSITIVE CONTROL. ``std::cout`` is a catalogued C++ I/O attribute."""
