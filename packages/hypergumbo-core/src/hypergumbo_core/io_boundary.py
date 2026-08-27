@@ -1105,8 +1105,10 @@ class IoBoundaryCatalog:
 
         An empty ``module_completeness`` therefore means "nothing has
         been enumerated", and every module blocks. That is the correct starting
-        state for a catalogue nobody has audited, and it is what 13 of the 14
-        shipped catalogues are in today.
+        state for a catalogue nobody has audited, and it is the state MOST
+        shipped catalogues are in. A HARDCODED COUNT DECAYS: this sentence read
+        "13 of the 14 shipped catalogues" while fifteen shipped, and rust's
+        WI-lutuh audit then moved the numerator too. Ask the catalogues.
 
         BOTH CONSUMERS OF THE CLOSED-WORLD CLAIM COME THROUGH HERE, because
         they are asking one question and a second home for it would drift. This
