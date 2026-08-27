@@ -4,15 +4,39 @@
 # Maps std library functions to I/O boundary types. Covers Rust stable std.
 # Third-party crates (tokio, reqwest, etc.) trace through these primitives.
 language: rust
-# WI-tukif (Plan C, PR B): catalog audited against doc.rust-lang.org/std/
-# 2026-05-24 for Rust 1.78 stable. Coverage is complete for the strict-stdlib
-# IO surface: std::fs (file ops), std::io (stdin/stdout/stderr + Read/Write
-# traits handled via ambiguous_names), std::net (TcpStream/TcpListener/
-# UdpSocket), std::process::Command (subprocess), std::env (env_read), and
-# std::path::Path (path queries that touch the filesystem). std::os::*
-# raw-fd extensions, std::ffi (FFI types are meta-IO, not IO), and
-# std::sync/std::thread (concurrency primitives) are intentionally absent —
-# they are out of scope for the strict-stdlib IO catalog.
+# WI-tukif (Plan C, PR B) audited this catalog against doc.rust-lang.org/std/
+# on 2026-05-24 for Rust 1.78 and recorded that "coverage is complete for the
+# strict-stdlib IO surface", naming std::fs and std::path::Path among the
+# modules it covered.
+#
+# THAT COMPLETENESS CLAIM WAS FALSE AND IS WITHDRAWN (WI-bupor, 2026-08-27).
+# A total-surface audit against the installed toolchain found TWENTY missing
+# stable I/O primitives in exactly those modules: std::fs::File carried three
+# associated functions and NOT ONE of its eleven stable methods, and
+# std::fs::DirBuilder / std::fs::DirEntry / std::path were absent outright.
+# The module was IN the catalog, so it never appeared on any "unexamined
+# module" list while half its I/O surface was missing. CATALOGUE PRESENCE IS
+# NOT CATALOGUE COVERAGE, and a claim of completeness written from a doc index
+# is not the same evidence as an enumeration of the module's surface.
+#
+# AUDITED BY ENUMERATION (rustc 1.94.0, library/std/src, 2026-08-27):
+#   std::fs, std::fs::File, std::fs::DirBuilder, std::fs::DirEntry,
+#   std::path, std::path::Path.
+# NOT YET AUDITED, and therefore NOT complete however full they look:
+#   std::io, std::net, std::process, std::env, std::path::PathBuf.
+#
+# std::ffi (FFI types are meta-IO, not IO) and std::sync / std::thread
+# (concurrency primitives — and a mutex changes no state outside the process)
+# are intentionally absent.
+#
+# std::os::* IS AN OPEN CONFLICT, NOT A SETTLED EXCLUSION. This header
+# previously excluded "std::os::* raw-fd extensions", whose noun is the raw-fd
+# extension traits — meta-IO, correctly out. But WI-bupor names
+# std::os::windows::fs as IN scope, and its symlink_file / symlink_dir are
+# plain filesystem mutation, not raw-fd anything, while the cross-platform
+# equivalent std::fs::soft_link IS catalogued below. Excluding one and
+# cataloguing the other is an inconsistency rather than a decision, and it is
+# recorded here rather than resolved silently in passing.
 status: provenance_declared
 stdlib_provenance:
   source_url: https://doc.rust-lang.org/std/
@@ -60,9 +84,11 @@ ambiguous_names:
 
 fs_read:
   - module: std::fs
-    functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize]
+    functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize,
+                exists, read_link]
   - module: std::fs::File
     functions: [open]
+    methods: [metadata]
     notes: >-
       File::open is read-mode by default. DECLARED AS A FUNCTION, NOT A
       METHOD, and the distinction is load-bearing rather than pedantic:
@@ -76,21 +102,58 @@ fs_read:
       anyway (INV-nular: kind asserted by name, never checked against
       semantics).
   - module: std::path::Path
-    methods: [exists, is_file, is_dir, read_dir, metadata, symlink_metadata, canonicalize, read_link]
+    methods: [exists, is_file, is_dir, read_dir, metadata, symlink_metadata, canonicalize,
+              read_link, try_exists, is_symlink]
+  - module: std::fs::DirEntry
+    methods: [metadata, file_type]
+    notes: >-
+      `path` and `file_name` are in-memory and are deliberately absent.
+      `file_type` is platform-dependent — it returns a cached type where
+      readdir supplies d_type and stats otherwise — and is included on
+      refuse-by-default grounds: the wrong answer here is a false
+      all-clear.
   - module: std::env
     functions: [current_dir]
+  - module: std::path
+    functions: [absolute]
+    notes: >-
+      `std::path::absolute` delegates to `env::current_dir()` for a
+      relative path, which is getcwd(2). Catalogued as fs_read to match
+      the boundary already assigned to `std::env::current_dir` directly
+      above — one fact, one kind. `is_separator` performs no I/O and is
+      absent.
   # Plan C, PR A: tokio::fs (async filesystem) removed under
   # strict-stdlib rule. tokio is ubiquitous but a third-party crate;
   # first-party calls into it surface in external_potential (Plan C, PR C).
 
 fs_write:
   - module: std::fs
-    functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all, rename, copy, hard_link, soft_link]
+    functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all,
+                rename, copy, hard_link, soft_link, set_permissions]
   - module: std::fs::File
     functions: [create, create_new]
+    methods: [set_len, set_permissions, set_times, sync_all, sync_data,
+              lock, lock_shared, try_lock, try_lock_shared, unlock]
     notes: >-
       Associated functions, not methods — see the std::fs::File fs_read note.
       `File::create(p)` takes no receiver.
+      THE LOCK FAMILY IS fs_write, AND THE CHOICE IS DELIBERATE. flock /
+      LockFileEx changes no byte of the file, so `fs_write` overstates it —
+      but a lock is observable to another PROCESS, which is the boundary
+      test that ruled std::sync::Mutex out, and it is the one case in that
+      discussion which passes. Omitting it is a false all-clear; fs_write
+      is the only one of the nine kinds that carries it without a new
+      heavyweight axis, and the residual over-claim is narrow — it can only
+      mislead a program that opens read-only and locks. Reversible: a
+      dedicated kind would be the alternative if this proves noisy.
+      `try_clone` is dup(2) and is ABSENT: a syscall, but nothing crosses
+      and nothing outside the process changes.
+  - module: std::fs::DirBuilder
+    methods: [create]
+    notes: >-
+      `create` takes &self and is a METHOD — `DirBuilder::new()` is the
+      associated function and performs no I/O, so it is absent.
+      `recursive` is a builder setter.
   - module: std::fs::OpenOptions
     methods: [open]
     notes: "When write/append/create flags are set"
