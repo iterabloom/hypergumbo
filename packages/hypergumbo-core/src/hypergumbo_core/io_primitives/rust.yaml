@@ -29,14 +29,34 @@ language: rust
 # (concurrency primitives — and a mutex changes no state outside the process)
 # are intentionally absent.
 #
-# std::os::* IS AN OPEN CONFLICT, NOT A SETTLED EXCLUSION. This header
-# previously excluded "std::os::* raw-fd extensions", whose noun is the raw-fd
-# extension traits — meta-IO, correctly out. But WI-bupor names
-# std::os::windows::fs as IN scope, and its symlink_file / symlink_dir are
-# plain filesystem mutation, not raw-fd anything, while the cross-platform
-# equivalent std::fs::soft_link IS catalogued below. Excluding one and
-# cataloguing the other is an inconsistency rather than a decision, and it is
-# recorded here rather than resolved silently in passing.
+# std::os::*::fs IS IN SCOPE. OWNER RULING 2026-08-27, on WI-bupor.
+#
+# This header previously excluded "std::os::* raw-fd extensions". That noun is
+# correct for what it names and THAT PART STANDS: AsRawFd / FromRawFd /
+# IntoRawFd hand over a descriptor number and reach no syscall. But the
+# exclusion was being read as covering the whole of std::os::*, and those
+# modules also carry plain filesystem mutation. The cross-platform
+# std::fs::soft_link was catalogued while std::os::unix::fs::symlink was not,
+# so the tool flagged one way of creating a symlink and ignored the other —
+# and a Linux program calling chroot or chown through this module read as doing
+# nothing at all there, which is a false all-clear.
+#
+# IN: names that reach a syscall. unix — symlink, chown, fchown, lchown,
+#     chroot, and FileExt's read_at / read_exact_at / write_at / write_all_at.
+#     windows — symlink_file, symlink_dir, FileExt::seek_read / seek_write.
+# OUT: the raw-fd extension traits (the exclusion's real target); the
+#     MetadataExt / PermissionsExt / FileTypeExt / FileTimesExt / DirEntryExt
+#     accessors, which read an already-fetched struct and are MOST of
+#     std::os::unix::fs by method count; OpenOptionsExt and DirBuilderExt
+#     builder setters; and everything unstable in the audited toolchain
+#     (mkfifo, junction_point, seek_read_buf, read_buf_at, the vectored family).
+#
+# EVERY BOUNDARY HERE IS FIXED BY CROSS-LANGUAGE PRECEDENT RATHER THAN CHOSEN:
+# python.yaml already rules os.chroot, os.chown / lchown / fchown, os.symlink /
+# os.link and os.pwrite as fs_write, and os.chdir as env_write. A catalogue that
+# disagrees with itself across languages is the defect INV-nular's sweep exists
+# to find, so the rust rows follow python rather than re-litigating each name.
+#
 status: provenance_declared
 stdlib_provenance:
   source_url: https://doc.rust-lang.org/std/
@@ -112,6 +132,16 @@ fs_read:
       readdir supplies d_type and stats otherwise — and is included on
       refuse-by-default grounds: the wrong answer here is a false
       all-clear.
+  - module: std::os::unix::fs::FileExt
+    methods: [read_at, read_exact_at]
+    notes: >-
+      Positional reads (pread). Catalogued under the TRAIT, following the
+      std::io::Write precedent. Not added to ambiguous_names: the names are
+      distinctive enough to match without a module hint, and rust method
+      edges mostly carry an unresolved receiver slot (INV-linub), so
+      requiring a hint would make them unmatchable in practice.
+  - module: std::os::windows::fs::FileExt
+    methods: [seek_read]
   - module: std::env
     functions: [current_dir]
   - module: std::path
@@ -148,6 +178,21 @@ fs_write:
       dedicated kind would be the alternative if this proves noisy.
       `try_clone` is dup(2) and is ABSENT: a syscall, but nothing crosses
       and nothing outside the process changes.
+  - module: std::os::unix::fs
+    functions: [symlink, chown, fchown, lchown, chroot]
+    notes: >-
+      chroot is fs_write by python.yaml's precedent for os.chroot, not by
+      taste. Its primary effect is on the calling process, but the
+      cross-language answer is already recorded and a catalogue that
+      disagrees with itself across languages is itself a defect.
+      chdir has no row here: python rules it env_write, and rust's
+      std::env::set_current_dir is not yet audited.
+  - module: std::os::unix::fs::FileExt
+    methods: [write_at, write_all_at]
+  - module: std::os::windows::fs
+    functions: [symlink_file, symlink_dir]
+  - module: std::os::windows::fs::FileExt
+    methods: [seek_write]
   - module: std::fs::DirBuilder
     methods: [create]
     notes: >-

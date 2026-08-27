@@ -218,3 +218,126 @@ class TestAddingMethodsDidNotStarveTheModule:
         assert method_starved_modules(
             edges, {"rust": load_catalog("rust")},
         ) == []
+
+
+#: ``std::os::{unix,windows}::fs``, admitted by owner ruling 2026-08-27 ("in").
+#:
+#: The catalogue header had excluded ``std::os::*`` as "raw-fd extensions". That
+#: noun is correct for what it names — ``AsRawFd`` and friends hand over a
+#: descriptor number and reach no syscall — but these modules also carry plain
+#: filesystem mutation, and ``std::fs::soft_link`` (the cross-platform way to
+#: make a symlink) was already catalogued. So the tool flagged one way of
+#: creating a symlink and ignored the other, and a Linux program calling
+#: ``chroot`` or ``chown`` through this module read as doing nothing at all.
+#:
+#: EVERY BOUNDARY BELOW IS FIXED BY CROSS-LANGUAGE PRECEDENT, NOT CHOSEN HERE.
+#: python.yaml already rules ``os.chroot``, ``os.chown`` / ``lchown`` /
+#: ``fchown``, ``os.symlink`` / ``os.link`` and ``os.pwrite`` as ``fs_write``,
+#: and ``os.chdir`` as ``env_write``. A catalogue that disagrees with itself
+#: across languages is the defect INV-nular's sweep was built to find.
+_OS_AUDITED = [
+    ("std::os::unix::fs::FileExt", "read_at", "fs_read", "method"),
+    ("std::os::unix::fs::FileExt", "read_exact_at", "fs_read", "method"),
+    ("std::os::unix::fs::FileExt", "write_at", "fs_write", "method"),
+    ("std::os::unix::fs::FileExt", "write_all_at", "fs_write", "method"),
+    ("std::os::unix::fs", "symlink", "fs_write", "function"),
+    ("std::os::unix::fs", "chown", "fs_write", "function"),
+    ("std::os::unix::fs", "fchown", "fs_write", "function"),
+    ("std::os::unix::fs", "lchown", "fs_write", "function"),
+    ("std::os::unix::fs", "chroot", "fs_write", "function"),
+    ("std::os::windows::fs::FileExt", "seek_read", "fs_read", "method"),
+    ("std::os::windows::fs::FileExt", "seek_write", "fs_write", "method"),
+    ("std::os::windows::fs", "symlink_file", "fs_write", "function"),
+    ("std::os::windows::fs", "symlink_dir", "fs_write", "function"),
+]
+
+
+class TestThePlatformExtensionSurface:
+    @pytest.mark.parametrize(
+        "module,name,boundary,kind",
+        _OS_AUDITED,
+        ids=[f"{m}::{n}" for m, n, _, _ in _OS_AUDITED],
+    )
+    def test_row_present_with_audited_boundary_and_kind(
+        self, module: str, name: str, boundary: str, kind: str
+    ) -> None:
+        rows = _rows(module)
+        assert name in rows, f"{module}::{name} reaches a syscall and is uncatalogued"
+        assert rows[name] == (boundary, kind), (
+            f"{module}::{name} is catalogued as {rows[name]}, audited as "
+            f"({boundary}, {kind})"
+        )
+
+    @pytest.mark.parametrize(
+        "module,name,why",
+        [
+            # The exclusion's real target: descriptor plumbing, no syscall.
+            ("std::os::unix::io::AsRawFd", "as_raw_fd", "hands over a descriptor number"),
+            ("std::os::unix::io::FromRawFd", "from_raw_fd", "wraps a descriptor number"),
+            # Accessors on an already-fetched stat struct. This is MOST of
+            # std::os::unix::fs by method count, which is why the module looks
+            # far larger than its I/O surface.
+            ("std::os::unix::fs::MetadataExt", "uid", "reads a fetched stat struct"),
+            ("std::os::unix::fs::MetadataExt", "size", "reads a fetched stat struct"),
+            ("std::os::unix::fs::MetadataExt", "mtime", "reads a fetched stat struct"),
+            ("std::os::unix::fs::PermissionsExt", "mode", "in-memory"),
+            ("std::os::unix::fs::PermissionsExt", "set_mode", "in-memory setter"),
+            ("std::os::unix::fs::FileTypeExt", "is_fifo", "in-memory"),
+            ("std::os::unix::fs::DirEntryExt", "ino", "in-memory, readdir already ran"),
+            ("std::os::unix::fs::DirBuilderExt", "mode", "builder setter"),
+            ("std::os::unix::fs::OpenOptionsExt", "custom_flags", "builder setter"),
+            ("std::os::windows::fs::MetadataExt", "file_size", "reads a fetched struct"),
+            ("std::os::windows::fs::FileTypeExt", "is_symlink_dir", "in-memory"),
+            ("std::os::windows::fs::FileTimesExt", "set_created", "in-memory setter"),
+            ("std::os::windows::fs::OpenOptionsExt", "access_mode", "builder setter"),
+            # Unstable in the audited toolchain.
+            ("std::os::unix::fs", "mkfifo", "UNSTABLE"),
+            ("std::os::windows::fs", "junction_point", "UNSTABLE"),
+            ("std::os::windows::fs::FileExt", "seek_read_buf", "UNSTABLE"),
+            ("std::os::unix::fs::FileExt", "read_buf_at", "UNSTABLE"),
+            ("std::os::unix::fs::FileExt", "write_vectored_at", "UNSTABLE"),
+        ],
+    )
+    def test_name_is_not_catalogued(self, module: str, name: str, why: str) -> None:
+        assert name not in _rows(module), (
+            f"{module}::{name} was catalogued; the audit refused it because {why}"
+        )
+
+    def test_the_symlink_asymmetry_that_motivated_the_ruling_is_gone(self) -> None:
+        """Three ways to create a symlink; all three must now be visible.
+
+        `std::fs::soft_link` was catalogued while the platform spellings were
+        excluded, so a program creating a symlink was flagged or not depending
+        purely on which API it reached for.
+        """
+        assert "soft_link" in _rows("std::fs")
+        assert "symlink" in _rows("std::os::unix::fs")
+        assert "symlink_file" in _rows("std::os::windows::fs")
+
+    def test_the_free_function_modules_carry_no_methods_so_cannot_starve(self) -> None:
+        """``std::os::*::fs`` gets only free functions, so it never enters the
+        method-keyed population and cannot withhold a verdict."""
+        for module in ("std::os::unix::fs", "std::os::windows::fs"):
+            kinds = {k for _, k in _rows(module).values()}
+            assert kinds == {"function"}, f"{module} declares {kinds}"
+
+    @pytest.mark.parametrize(
+        "module,name",
+        [("std::os::unix::fs::FileExt", "read_at"),
+         ("std::os::windows::fs::FileExt", "seek_read")],
+    )
+    def test_a_method_call_into_a_trait_module_satisfies_it(
+        self, module: str, name: str
+    ) -> None:
+        """The trait modules ARE method-only, so they enter the starvation
+        population. Every name they carry is a method, so any real call into
+        them is a method call and satisfies them."""
+        edges = [
+            {"src": "rust:src/lib.rs:1-9:f:function",
+             "dst": "rust:std::collections::HashMap:0-0:insert:external_symbol",
+             "type": "calls", "meta": {"call_construct": "method"}},
+            {"src": "rust:src/lib.rs:1-9:f:function",
+             "dst": f"rust:{module}:0-0:{name}:external_symbol",
+             "type": "calls", "meta": {"call_construct": "method"}},
+        ]
+        assert method_starved_modules(edges, {"rust": load_catalog("rust")}) == []
