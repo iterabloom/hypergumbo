@@ -1,0 +1,21 @@
+- op: create  # d2fa
+  at: '2026-08-27T15:58:04Z'  # d2fa
+  by: agent  # d2fa
+  actor: jgstern_agent  # d2fa
+  clock: 1  # d2fa
+  nonce: d2fa  # d2fa
+  data:  # d2fa
+    kind: work_item  # d2fa
+    title: "IoPrimitive.kind is an undeclared bounded enum and its field comment omits the third value: says 'function or method', also takes 'attribute' (io_boundary.py:1287)"  # d2fa
+    status: todo_soft  # d2fa
+    priority: 4  # d2fa
+    parent:  # d2fa
+    tags:  # d2fa
+    - axis  # d2fa
+    - io_boundary  # d2fa
+    isbefore: []  # d2fa
+    duplicate_of: []  # d2fa
+    not_duplicate_of: []  # d2fa
+    pr_ref:  # d2fa
+    description: "FOUND 2026-08-27 by the fundamental concept audit of call_construct. Full\nwrite-up: ~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md\n\nIoPrimitive.kind (io_boundary.py:586) is declared as:\n\n    kind: str  # \"function\" or \"method\"\n\nThe comment is WRONG BY OMISSION. The field takes THREE values, all three\nconstructed in the same YAML-reading block:\n\n    io_boundary.py:1267   kind=\"function\"    <- from the `functions:` section\n    io_boundary.py:1277   kind=\"method\"      <- from the `methods:` section\n    io_boundary.py:1287   kind=\"attribute\"   <- from the `attributes:` section\n\nTWO THINGS FOLLOW.\n\n1. THE VOCABULARY IS UNDECLARED. It is a bare `str` with a prose comment, no\n   registry, no axis. The repo's `# axis:` declaration gate\n   (scripts/check-multi-value-field-axis-declaration) is scoped to @dataclass\n   fields in ir.py and datamodels.py, so IoPrimitive -- which lives in\n   io_boundary.py -- is outside it and nothing checks this field at all.\n   Note the value is not free text: it is derived from the YAML SECTION NAME,\n   so it is a genuine bounded enum that simply never got declared as one.\n\n2. `attribute` IS UNREACHABLE BY THE ONE CONSUMER THAT COMPARES AGAINST IT.\n   verify_claims.py:3059 tests `call_construct in module_kinds[...]`, and\n   call_construct's 8-value vocabulary contains no `attribute`. So an\n   attribute-kind row can never satisfy that test no matter what calls into\n   its module. Filed as INV-pimir on the join side; recorded here because the\n   RHS half of that mismatch is this undeclared vocabulary.\n\nSUGGESTED SHAPE. Smallest honest fix is to correct the comment and declare\nthe enum in the dataclass docstring (the `bounded-enum` form the axis\nplaybook already defines). Whether to extend the axis-declaration gate beyond\nir.py/datamodels.py is a larger question and should not ride along with this."  # d2fa
+    fields: {}  # d2fa
