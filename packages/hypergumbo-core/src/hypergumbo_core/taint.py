@@ -2374,6 +2374,94 @@ def _register_sanitizer_callers(
                 ).extend(_edge_call_sites(edge))
 
 
+def subsume_slot_family_parents(
+    callers: Sequence[tuple[str, str, TEntry]],
+) -> list[tuple[str, str, TEntry]]:
+    """Drop a parent ATTRIBUTE match when its own slot family matched too.
+
+    INV-sukoh. ``python.yaml`` deliberately carries a parent attribute row
+    beside a child slot-family row — ``os`` / ``environ`` beside
+    ``os.environ`` / ``get`` — and the child's note says why: *"a method call
+    on the mapping carries os.environ as its module slot, where the parent's
+    attribute row cannot reach."* They were meant to be COMPLEMENTARY: parent
+    for a bare ``os.environ[...]`` read, child for ``os.environ.get(...)``.
+
+    On the ``.get`` form both reach, because the analyzer emits TWO edges for
+    the one expression — a ``module_attribute_reference`` to ``os.environ`` and
+    an ``ast_call_direct`` to ``os.environ.get``. So one read became two flows,
+    inflating the row denominator of every measurement taken over them.
+
+    THE RELATION IS COMPUTED FROM THE CATALOGUE, NOT LISTED HERE. An entry is a
+    slot-family PARENT when its qualified name is the MODULE SLOT of another
+    entry matched AT THE SAME CALLER. That is the catalogue's own structure, so
+    a user-supplied catalogue with the shape is covered without a table anyone
+    has to remember to extend. Four shipped rows have it today, all Python:
+    ``os.environ`` (env_read), ``sys.stdin`` (ipc_recv), ``sys.stdout`` and
+    ``sys.stderr`` (logging) — so it is SYMMETRIC, and this runs on the sink
+    side as well as the source side.
+
+    CONDITIONAL ON THE CHILD, which is what makes it safe. A bare
+    ``os.environ["X"]`` emits only the attribute edge; nothing subsumes it and
+    the read is still reported. Dropping the parent unconditionally would
+    delete the read outright.
+
+    A ``callee``-seeded source is never subsumed and never subsumes. Its BFS
+    seeds at the source callee rather than the caller, so parent and child
+    search DIFFERENT subgraphs; folding them would silently change which
+    subgraph was searched, which is not the duplicate-report this fixes.
+
+    WHAT IS DEDUCTED IS A NAME, NOT A FLOW. Where both forms genuinely occur in
+    one symbol, the two edges are indistinguishable from the single-form case:
+    edges are deduplicated on ``(src, dst, edge_type)`` (INV-vukiv), so the
+    multiplicity is already gone before this sees it. The coarser NAME is
+    dropped and the finding is still reported — no verdict moves, and the name
+    retained is the strictly more specific description of the same crossing.
+    """
+    children_by_caller: dict[str, set[str]] = defaultdict(set)
+    for caller_id, _callee_id, entry in callers:
+        if _seeds_at_caller(entry):
+            children_by_caller[caller_id].add(entry.module)
+
+    kept: list[tuple[str, str, TEntry]] = []
+    for caller_id, callee_id, entry in callers:
+        qualified = _qualify(entry.module, entry.name)
+        if (
+            _seeds_at_caller(entry)
+            and qualified != entry.module
+            and qualified in children_by_caller[caller_id]
+        ):
+            continue
+        kept.append((caller_id, callee_id, entry))
+    return kept
+
+
+def _subsume_sink_sites(
+    sink_callers: dict[str, list[tuple[str, TaintSink]]],
+) -> None:
+    """Apply :func:`subsume_slot_family_parents` to the sink index, in place.
+
+    The sink index is keyed by caller and holds ``(callee_id, sink)`` pairs
+    rather than the flat triples the source arm carries, so this adapts the
+    shape instead of duplicating the relation (L9: one fact, one home).
+    """
+    for caller_id, sites in list(sink_callers.items()):
+        kept = subsume_slot_family_parents(
+            [(caller_id, callee_id, sink) for callee_id, sink in sites],
+        )
+        sink_callers[caller_id] = [
+            (callee_id, sink) for _caller, callee_id, sink in kept
+        ]
+
+
+def _seeds_at_caller(entry: TaintEntry) -> bool:
+    """Whether this entry's BFS seeds at the CALL SITE rather than the callee.
+
+    Only :class:`TaintSource` carries ``start_at``; a sink has no seed of its
+    own, so it always answers True.
+    """
+    return not isinstance(entry, TaintSource) or entry.start_at == "caller"
+
+
 def propagate_taint_structural(
     edges: list[dict[str, Any]],
     sources: list[TaintSource],
@@ -2438,6 +2526,11 @@ def propagate_taint_structural(
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
 
+    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
+    # attribute-reference edge AND a call edge, so the parent row and its own
+    # slot-family row both match the single read.
+    source_callers = subsume_slot_family_parents(source_callers)
+
     # Step 2: Find sink call sites — which symbol IDs call taint sinks?
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
     # Maps caller_symbol_id → (sink_callee_symbol_id, TaintSink)
@@ -2455,6 +2548,10 @@ def propagate_taint_structural(
             site = (edge["dst"], matched)
             if site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(site)
+
+    # INV-sukoh on the sink side: two of the four shipped parent rows are
+    # sinks, so ``sys.stdout.write(x)`` doubles exactly as the env read does.
+    _subsume_sink_sites(sink_callers)
 
     # Step 3: Find sanitizer call sites — multi-label-aware so one
     # caller of a barrier function picks up every input_taint label it
@@ -3421,6 +3518,11 @@ def propagate_taint_ddg(
         if matched:
             source_callers.append((edge["src"], edge["dst"], matched))
 
+    # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
+    # attribute-reference edge AND a call edge, so the parent row and its own
+    # slot-family row both match the single read.
+    source_callers = subsume_slot_family_parents(source_callers)
+
     # Step 2: Find sink call sites (module + ambiguous_names aware — WI-razol)
     sink_callers: dict[str, list[tuple[str, TaintSink]]] = defaultdict(list)
     for edge in call_edges:
@@ -3449,6 +3551,10 @@ def propagate_taint_ddg(
             sink_site = (edge["dst"], matched)
             if sink_site not in sink_callers[edge["src"]]:
                 sink_callers[edge["src"]].append(sink_site)
+
+    # INV-sukoh, same as the structural arm: the parent attribute row and its
+    # own slot family both match one ``sys.stdout.write(x)``.
+    _subsume_sink_sites(sink_callers)
 
     # Step 3: Find sanitizer call sites — through the SHARED helper, so the
     # INV-finoh resolution-/kind-aware gate applies here too.
