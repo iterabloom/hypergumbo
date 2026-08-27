@@ -205,6 +205,19 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: Date
+    methods: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Date.now samples
+      the clock.
+  - module: ProcessInfo
+    methods: [systemUptime]
+  - module: DispatchTime
+    methods: [now]
   - module: Bundle
     methods: [bundleIdentifier, infoDictionary]
     notes: "App bundle metadata"

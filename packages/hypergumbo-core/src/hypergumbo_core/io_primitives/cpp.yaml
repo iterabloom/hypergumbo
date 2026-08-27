@@ -38,3 +38,20 @@ ipc_recv:
   - module: std
     attributes: [cin]
     notes: "iostream stdin — the C++-idiomatic counterpart of c.yaml's stdio.stdin"
+
+host_info_read:
+  - module: std::chrono::system_clock
+    functions: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Static member
+      functions, hence function-kind. The C surface (time, clock,
+      clock_gettime, clock_getres, gettimeofday, times) is INHERITED from
+      c.yaml via _CATALOG_PARENTS and is deliberately not duplicated here.
+  - module: std::chrono::steady_clock
+    functions: [now]
+  - module: std::chrono::high_resolution_clock
+    functions: [now]

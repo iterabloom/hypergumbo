@@ -143,6 +143,17 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: time
+    functions: [Now, Since, Until]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. golang/go
+      src/time/time.go: Since and Until are documented as shorthand for
+      Now()-based expressions and sample the clock internally, so they are
+      reads, not arithmetic.
   - module: os
     functions: [Hostname, UserHomeDir, UserCacheDir, UserConfigDir, Executable, Getwd]
   - module: runtime

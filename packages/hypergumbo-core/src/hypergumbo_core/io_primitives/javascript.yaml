@@ -185,6 +185,28 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: Date
+    functions: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Date.now(). `new
+      Date()` with no argument also samples the clock, but a constructor
+      call is not a named-function call here and gets no row rather than a
+      row that cannot match.
+  - module: performance
+    functions: [now]
+  - module: performance
+    attributes: [timeOrigin]
+  - module: process
+    functions: [hrtime, uptime]
+  - module: os
+    functions: [uptime]
+    notes: >-
+      Machine uptime is host information by the same argument that puts a
+      monotonic clock in scope.
   - module: process
     attributes: [platform, arch, version, cwd]
   - module: os
