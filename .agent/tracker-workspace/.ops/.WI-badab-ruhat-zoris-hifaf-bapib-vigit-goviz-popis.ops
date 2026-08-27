@@ -1,0 +1,23 @@
+- op: create  # b121
+  at: '2026-08-27T22:35:28Z'  # b121
+  by: agent  # b121
+  actor: jgstern_agent  # b121
+  clock: 1  # b121
+  nonce: b121  # b121
+  data:  # b121
+    kind: work_item  # b121
+    title: "The row-level precision denominator counts call-graph REACHABILITY pairs, not value-flow claims (structural arm)"  # b121
+    status: todo_hard  # b121
+    priority: 2  # b121
+    parent:  # b121
+    tags:  # b121
+    - taint  # b121
+    - measurement  # b121
+    - methodology  # b121
+    - adr_0017  # b121
+    isbefore: []  # b121
+    duplicate_of: []  # b121
+    not_duplicate_of: []  # b121
+    pr_ref:  # b121
+    description: "SPLIT OUT OF INV-kakad, which closed the RECONCILABILITY half (PR #584: the\ncount is now checkable against the graph, 18/18 exact on its three repos). This\nitem carries the half that closure deliberately did not touch, because it is a\nquestion about what the number MEANS rather than a defect in how it is computed.\n\nTHE FACT. For analysis_method=structural the pair test is\n`sink_node in reachable` (taint.py) -- PURE CALL-GRAPH REACHABILITY, with no\ncheck that a value crosses from the source to the sink argument. That is exactly\nwhat ADR-0017 defines `structural` to be (confidence=\"approximate\"), so it is\nNOT a defect in the propagator and must not be \"fixed\" there.\n\nWHY IT MATTERS ANYWAY. collapsed_flow_count is the ROW-LEVEL PRECISION\nDENOMINATOR -- every per-row precision figure the project has published is\ncomputed through it. So a per-row rate is a rate over REACHABILITY PAIRS, not\nover claims that a value flowed. The two are different populations, and the\ndenominator scales with how much a function reaches rather than with anything\nabout taint.\n\nMEASURED ILLUSTRATION (kamaraflow, live): the source_symbol is a FILE node,\n`train_script.py:1-1:file:file`. A file node reaches everything the file calls,\nso ONE argv read multiplied against FOUR distinct sinks (open, file.write,\nos.makedirs, shutil.copyfile) for a collapsed count of 8 -- while the repository\ncontains exactly ONE os.makedirs call site. Nothing is miscounted; the count is\nsimply of a different thing than a reader assumes.\n\nTHIS IS AN INDEPENDENT, MECHANICAL ARGUMENT FOR 0006's RATIFIED FRAME. 0006\nalready reports situation precision (33.9%) beside row precision (31.5%) and\nmakes SITUATION canonical. This item strengthens the reason: it is not that the\nrow figure is \"less trustworthy\", it is that the row figure is a rate over a\npopulation the claim is not about.\n\nWHAT A RESOLUTION LOOKS LIKE -- none of these is chosen, and the choice is the\nwork:\n  (a) State it in the record and in docs/measurements/README.md: name what the\n      row denominator counts, so no future measurement republishes a per-row\n      rate without the caveat. Cheapest, changes no number.\n  (b) Stop publishing per-row precision entirely and report situation only,\n      making the ratified frame's canonicality operative rather than advisory.\n  (c) Restrict the row denominator to pairs with a value-flow claim -- i.e.\n      count only ddg / ddg_mixed pairs in the row denominator and report the\n      structural population separately. Changes every published per-row figure.\n\nBLOCKS INV-duvup only if (b) or (c) is chosen; under (a) it is documentation\nthat should still land before the baseline series fixes its estimator, since\nINV-duvup requires the estimator DECLARED in the headline and \"per row\" is\nambiguous between these readings."  # b121
+    fields: {}  # b121
