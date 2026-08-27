@@ -129,7 +129,15 @@ does to the headline.
 - **The number gets worse, and that is the point.** 0006's useful-precision
   bound was attributed to INV-nular alone; the CONFIGURED-ACTION deduction was
   never applied. Useful precision under this ADR will be **lower** than 0006's
-  bound on the same population.
+  headline correctness figure on the same population.
+  **Measured (WI-gibom): 33.9% → 24.1%, and the reason is not the one predicted
+  here.** CONFIGURED-ACTION contributed **zero** to 0006's population — the
+  whole fall is KIND-MISDECLARED. The prediction that this ADR's new class
+  would push 0006 below its own ≤25.0% bound is **refuted for that cohort**,
+  structurally rather than by luck: 0006's claim set admits only `env_read` and
+  `host_info_read` sources, and clause 2 (schema deserialization) has no
+  candidate to match. The class is real; it is concentrated in config-file-
+  driven servers like caddy, which 0006 did not sample.
 - **Adjudication cost rises** by one labelled bit per TP, gated behind three
   citations. Only TPs need the label; FPs and UNADJUDICABLEs are unaffected.
 - **Two numbers can move in opposite directions.** Fixing INV-nular raises
@@ -156,3 +164,10 @@ restated, before it anchors the baseline series.** It is not carried forward on
 authority. Tracked separately; naming it here rather than asserting it away is
 the point, because a band anchored to an underived number is the shape of
 defect this ADR exists to correct.
+
+**CLOSED by WI-gibom.** Re-derived at **24.1%** (27/112): 11 KIND-MISDECLARED,
+0 CONFIGURED-ACTION. The derivation, the eleven citations, and three declared
+sensitivities reaching 10.7% are in
+[0006 § "Useful precision, re-derived"](../measurements/0006-taint-precision-under-the-ratified-frame.md).
+The ≤25.0% held as a bound and failed as a derivation — its stated basis
+supports 29.5% — and the index now carries the derived figure instead.

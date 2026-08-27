@@ -113,14 +113,24 @@ measurement's own packet builder, not hypergumbo.
 | c | `socket` | `net_recv` | returns a descriptor; receives nothing |
 | elixir | `Application.get_env` | `env_read` | application config, not process environment |
 | python | `parse_args` | `env_read` | argv, not environ |
-| bash | `>` | `fs_write` | no redirect-target check: `>&2` and `>/dev/null` count |
-| bash | `>>` | reported as `>` | loses append/truncate distinction |
+| bash | `>` | `fs_write` | no redirect-target check: `>/dev/null` counts |
 | bash | `BASH_SOURCE` | `env_read` | bash-internal, never exported |
+
+**Two rows printed here originally did not reproduce, and are struck rather
+than carried.** INV-nular re-ran both against the shipped analyzer: `>&2` does
+*not* count (`_redirect_edge` returns `None` for fd duplication, so `echo hi
+>&2` emits no edge at all — a recall gap, the opposite of the over-report
+filed), and `>>` is *not* reported as `>` (the operators carry distinct `dst`
+ids and distinct `io_mode`, pinned by `test_bash_redirection.py` since
+INV-vavup). A refuter's report is a lead, not a finding; these two were
+published without being reproduced.
 
 Consequence: findings can be **true value-flow and vacuous as claims**. All
 five shellcheck TPs are real dataflow filed under
 `untrusted-input-no-database` against Haskell in-process refs. This makes
-33.9% an **upper bound on useful precision**, not a measure of it.
+33.9% an **upper bound on useful precision**, not a measure of it. The bound
+is now derived rather than asserted — see "Useful precision, re-derived"
+below.
 
 **B. Taint credited across an external-resource boundary** (engine). Produced
 5 of the 6 uncontested refutations: an `open()` handle treated as a taint
@@ -155,6 +165,145 @@ listing structurally empty for every multi-hop situation. Fix before reuse.
 **G. Scope** — vendored third-party code counted as first-party (kamaraflow's
 two largest blocks are an upstream HuggingFace training script the application
 never invokes).
+
+## Useful precision, re-derived under ADR-0046 (WI-gibom)
+
+**This record originally published no useful-precision figure.** The
+measurements index carried one — *"33.9% is an upper bound on useful
+precision (≤25.0%)"* — added a day later, in the commit that published 0008,
+and **≤25.0% was not derivable from anything written here**: the body names
+exactly five vacuous TPs (shellcheck's), and five removals from 38 of 112
+gives 29.5%, not 25.0%. WI-gibom was filed to derive it or restate it. This
+section derives it.
+
+| | |
+|---|---|
+| correctness precision | **33.9%** (38/112) — unchanged, and not relitigated |
+| VACUOUS: KIND-MISDECLARED | **11** |
+| VACUOUS: CONFIGURED-ACTION | **0** |
+| **useful precision** | **24.1%** (27/112) |
+| band `≤25% useful ⇒ recall stays stopped` | **tripped** |
+
+Reproduce with `derive.py` in `gibom_08272026/`: it reads this measurement's
+own `ledger-final.json` and `pass4-summary.json`, asserts the population it
+was handed matches the headline set, and computes every figure above. No
+count in this section is hand-copied.
+
+**The published ≤25.0% survives as an upper bound and fails as a derivation.**
+24.1% ≤ 25.0%, so nothing that was decided on the strength of that bound needs
+revisiting. What was missing was never the answer — it was the working. The
+basis this record states supports 29.5%, and the deduction that actually pays
+for the difference, a bash redirect defect, is named only in part in section A
+above. Whatever reasoning produced 25.0% was not written down, so a reader had
+no way to check it and no way to disbelieve it.
+
+### The eleven deductions
+
+Every one is KIND-MISDECLARED (ADR-0046's INV-nular class: a *defect*, which
+disappears when fixed). Each is citable in the repository's own source.
+
+| situation | why the claim is vacuous |
+|---|---|
+| shellcheck#0, #1, #2 | `readSTRef`/`writeSTRef` under `db_read`/`db_write`. `haskell.yaml`'s own `boundary_ruling: unruled` note says these "are in-process mutable references, not a database". The claim is `untrusted-input-no-database`. |
+| shellcheck#3, #5 | `newIORef` — a *constructor* — under `db_read`, into `modifyIORef`. |
+| cert-manager#0 | `make/cluster.sh`: every `>` targets `/dev/null` (L103, L147, L168). |
+| cert-manager#1 | `make/config/lib.sh`: both `>` target `/dev/null` (L50, L69). |
+| cert-manager#2 | `make/_shared/tools/util/checkhash.sh`: the only `>` is L21 `>/dev/null`. L53 is `>>` to `$LEARN_FILE` — a distinct `dst` id, so not this finding's sink. |
+| cert-manager#3 | `make/e2e.sh`: the only `>` is L159 `>/dev/null`. |
+| spacedrive#6 | `apps/mobile/android/gradlew`: L89, L136, L220 all `/dev/null`; L96/L103 are `} >&2` fd duplications, which emit no edge. |
+| guacamole-client#3 | `700-configure-features.sh`: the only `>` is L63 `> /dev/null`. |
+
+The six bash deductions were live when this measurement ran and were fixed the
+next day by PR #541, which refuses the boundary when *every* collapsed call
+site discards. What that does to a *future* measurement is a re-measurement
+question, not a restatement of this one.
+
+**One reversal, recorded because only the second check caught it.** gocryptfs#2
+was first labelled discard-only on the same evidence shape — four `>` sites,
+all `/dev/null`. A second pass over the raw file found a fifth: L42
+`exec 200> "$LOCKFILE"`, a numbered-fd redirect to a real path, and the path is
+env-derived (`TMPDIR` → `TESTDIR` → `LOCKFILE`). It is a genuine environment →
+host-filesystem write. The first cut would have published 23.2%.
+
+### CONFIGURED-ACTION contributes zero, and that refutes the expectation
+
+ADR-0046 predicted this number would fall *because* the CONFIGURED-ACTION
+deduction had never been applied to this population. **It does not apply at
+all here.** No TP in the set passes ADR-0046's clause 2 — a deserialization
+call into a type whose fields are *declared* as a configuration schema. The
+reason is structural rather than lucky: this cohort's claim set admits only
+`env_read` and `host_info_read` sources (`env_read` is the source in 88 of 112
+situations), and an environment variable reaches its sink through ordinary
+string handling, not through a schema. ADR-0046's motivating case — caddy's
+JSON-into-tag-declared-struct — is a shape this cohort does not contain, caddy
+having been 0005's repository.
+
+The number *did* get worse, 33.9% → 24.1%. It got worse for the other reason.
+
+**Nearest miss, disclosed because the test is strict:** cilium#6 reads
+`os.Getenv(defaults.SockPathEnv)` and dials the socket it names. Clauses 1 and
+3 are citable; clause 2 is not, so it counts useful. ADR-0046 says the test
+"can only *understate* the damage this class does", and here that is visible
+rather than theoretical.
+
+### Declared sensitivities: three unruled vocabulary questions
+
+Section A named five languages of kind-misdeclaration. Only two are settled
+defects. The rest turn on a **vocabulary ruling that does not exist**, and
+INV-nular says so in terms: python `parse_args`/`sys.argv` and elixir
+`Application.get_env` under `env_read` are *"DOCUMENTED deliberate choices in
+their rows, not oversights"* that *"need a vocabulary ruling, not a row edit"*.
+Deducting them here would be this record inventing the ruling. ADR-0046's
+default — uncitable ⇒ useful — governs, so they are declared instead, with
+their arithmetic:
+
+| | question | members | useful precision if resolved against |
+|---|---|---|---|
+| **S1** | `argv` under `env_read` — is a CLI argument a *host secret*? | 10 | **15.2%** |
+| **S2** | application config under `env_read` — is `Application.get_env`/`application:get_env` a *process environment* read? | 5 | **19.6%** |
+| **S3** | `io_lib:format` as a `logging` sink (⊂ S2) | 3 | **21.4%** |
+| | all of the above resolved against | 15 | **10.7%** |
+
+S1 is jaeger#2/#3/#5/#6, ArkLib#2/#3/#4/#6, kamaraflow#3/#4. S2 is
+plausible#0/#5 and rabbitmq#0/#4/#6 — plausible#3 is *excluded* because
+`numeric_ids.ex` reads `System.get_env("NUMERIC_IDS_*")`, a genuine process
+environment read, alongside its one `Application.get_env`.
+
+**So the band is tripped at 24.1% and would be tripped far harder — to 10.7% —
+if the pending vocabulary ruling goes against the current rows.** No reading of
+the evidence puts useful precision above 25%.
+
+### Two sink-side defects found by this pass, neither deducted
+
+Both are new — section A looked only at sources — and both are filed onto
+INV-nular rather than acted on here.
+
+- **`io_lib:format` declared `logging`.** `erlang.yaml`'s own note concedes it:
+  *"Returns iolist, not direct I/O, but typically written immediately."* The
+  formatted value is returned in-process; whether it reaches output is a hop
+  this tool did not establish. All three rabbitmq TPs land on it, at 7, 12 and
+  7 hops. Not deducted: the landing site could not be traced from this
+  measurement's packets (family F below), so the conservative default holds.
+  Declared as S3.
+- **`urllib.request.Request` declared `net_send`,** rowed beside `urlopen`.
+  `Request` is a constructor and sends nothing — the same shape as `newIORef`.
+  Not deducted: in jaeger's `scripts/release/notes.py` every `Request(...)` is
+  consumed by `urlopen(req)` on the next line, so the network boundary really
+  is crossed. An attribution defect, not a vacuous claim.
+
+### What this section is not
+
+**One adjudicator, not a panel.** The headline 33.9% carries two independent
+16-agent panels, an adjudication pass and an adversarial refutation pass. This
+vacuity labelling has none of that; it is the orchestrator's own pass, and its
+protection is that every verdict is a citation a reader can check, not a
+judgement a reader must trust. The three-citation test was built to make that
+possible. Treat 24.1% as derived-and-checkable, not as panel-validated.
+
+**A snapshot, not a trend.** This is the tool as of 2026-08-25. Six of the
+eleven deductions were fixed the following day. A baseline series may anchor to
+this number, but the first datum after it will not be comparable on the
+KIND-MISDECLARED axis until INV-nular closes.
 
 ## Disclosed limitations
 
