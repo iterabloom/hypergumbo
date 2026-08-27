@@ -1,0 +1,3 @@
+Original commit body from 1639ff821694a48a485cba57bb2fe08188891876:
+
+Governance change, human-approved. The 2026-08-20 concept-audit record advanced the cadence for suspect domain call_construct with no findings document and no Examples entry; the 2026-08-27 re-run of the same domain had to re-derive the inventory and found five off-axis values the earlier pass left behind. The recorder now refuses unless a write-up for the domain exists AND postdates the previous record — the first cut matched on name alone and would have passed 2026-08-20, since an April-era audit-findings file for that domain already existed. Also lands the audit's own Examples entry and the cadence-section documentation.
