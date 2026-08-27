@@ -87,6 +87,36 @@ def _body(path: Path) -> list[str]:
     return [l for l in lines if l and not l.startswith("#")]
 
 
+def _run_count(cwd: Path, manifest: Path) -> str:
+    r = subprocess.run(
+        ["bash", "-c",
+         f"source '{FORGEJO_LIB}' >/dev/null 2>&1; "
+         f"_manifest_test_count '{manifest}'"],
+        cwd=cwd, env={"PATH": "/usr/bin:/bin"},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+def test_the_count_sees_root_level_tests_paths(tmp_path: Path) -> None:
+    """The REPORTING half of the same prefix bug. auto-pr's first cut counted
+    with ``grep -c '^packages/'``, which is 0 for a manifest of root-level
+    ``tests/...`` entries — the common shape — so the "kept N entries" line
+    that makes a silent narrowing VISIBLE never printed. A diagnostic that
+    cannot fire is worse than none: it reads as "nothing was preserved"."""
+    m = tmp_path / "m.txt"
+    m.write_text(_HEADER + "tests/test_a.py\ntests/test_b.py\n"
+                 "packages/p/tests/test_c.py\n")
+    assert _run_count(tmp_path, m) == "3"
+
+
+def test_the_count_is_zero_for_an_empty_selection(tmp_path: Path) -> None:
+    m = tmp_path / "m.txt"
+    m.write_text(_HEADER)
+    assert _run_count(tmp_path, m) == "0"
+
+
 def test_root_level_tests_paths_survive(tmp_path: Path) -> None:
     """THE BUG THIS HELPER ITSELF SHIPPED WITH, caught before merge. An
     earlier cut selected entries with ``grep '^packages/'``. The manifest
