@@ -2059,6 +2059,50 @@ def _is_analyzed_module(module: str, analyzed: set[str]) -> bool:
     return False
 
 
+def _is_first_party_package(module: str, packages: frozenset[str]) -> bool:
+    """Whether ``module`` is a name THIS REPOSITORY PUBLISHES ITSELF UNDER, or a
+    subpackage of one (INV-vivok).
+
+    THE THIRD FIRST-PARTY MECHANISM, asked last because it is the only one that
+    needs a fact from outside the edge set. ``_is_analyzed_module`` derives
+    first-party-ness from SRC FILE PATHS and ``is_definitionally_first_party``
+    from the language's own path grammar; neither can bridge a manifest name to
+    a directory layout. caddy is the case that shows the gap is real rather
+    than theoretical: its RELATIVE spellings (``modules/caddyhttp``) were
+    already suppressed by the path test while
+    ``github.com/caddyserver/caddy/v2/modules/caddyhttp`` was reported, so ONE
+    package was judged two ways by how the importing file happened to spell it.
+
+    A SUBPACKAGE IS FIRST-PARTY TOO. That is what a Go module path means — every
+    import under ``github.com/caddyserver/caddy/v2/`` is code in this
+    repository — and it is what a Rust crate name means when the callee slot
+    carries a trailing type (``bellman.VerificationError``).
+
+    COMPONENT-BOUNDED, and this is the load-bearing half. Suppression here can
+    only ever HIDE a genuine third-party module, so ``caddy`` must not swallow
+    a dependency named ``caddyserver`` and ``bellman`` must not swallow
+    ``bellmanx``. The bound is the same one ``_is_analyzed_module`` uses and for
+    the same reason: a bare ``startswith`` is the rule that was measured wrong
+    in three languages at once.
+
+    Both sides route through :func:`io_boundary.normalize_module_separators` —
+    the single home for the fold (WI-ribuz) — so a Go path's ``/`` and a Rust
+    path's ``::`` compare against the dotted callee spelling. Unlike
+    ``_is_analyzed_module`` the fold is safe to apply WHOLE here without a
+    shortening step, because nothing is shortened: the comparison is against a
+    declared name, not against a set of file paths that might collide with a
+    stdlib module after truncation.
+    """
+    if not packages:
+        return False
+    folded = normalize_module_separators(module)
+    for package in packages:
+        own = normalize_module_separators(package)
+        if folded == own or folded.startswith(own + "."):
+            return True
+    return False
+
+
 def _component_infix_of_any(name: str, analyzed: set[str]) -> bool:
     """Whether ``name`` sits inside any analyzed path, bounded at components.
 
@@ -2439,6 +2483,7 @@ def _is_sibling_of_examined_read(
 def _uncatalogued_external_modules(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
+    first_party_packages: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Return the external modules this analysis called into and cannot adjudicate.
 
@@ -2646,6 +2691,15 @@ def _uncatalogued_external_modules(
         # express's 17 are exactly this, and because ``qualifying_only`` is
         # ``not unknown``, those alone withheld every claim on both repos.
         if is_definitionally_first_party(dst.split(":", 1)[0], module):
+            continue
+        # A MODULE THIS REPOSITORY PUBLISHES UNDER ITS OWN NAME IS NOT A
+        # CATALOGUE GAP EITHER (INV-vivok). Asked last of the three because it
+        # is the only one needing a fact from outside the edge set — the name
+        # comes from a manifest, threaded in by the caller — so the two free
+        # answers run first and this one sees only what they could not explain.
+        # Empty by default, which leaves every caller that does not supply it
+        # behaving exactly as before.
+        if _is_first_party_package(module, first_party_packages):
             continue
         unknown.add(module)
     return sorted(unknown)
@@ -3091,6 +3145,7 @@ def compute_boundary_coverage(
     catalogs: dict[str, IoBoundaryCatalog],
     *,
     higher_fidelity_available: Optional[dict[str, str]] = None,
+    first_party_packages: Optional[set[str]] = None,
 ) -> BoundaryCoverage:
     """Decide whether the boundary analysis can support a clean verdict, and what
     such a verdict must disclose.
@@ -3109,6 +3164,7 @@ def compute_boundary_coverage(
     """
     coverage = _call_production_coverage(
         raw_edges, supported_languages, catalogs,
+        frozenset(first_party_packages or ()),
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
     coverage.unknown_receiver_scope = unknown_receiver_scope(raw_edges, catalogs)
@@ -3161,6 +3217,7 @@ def _call_production_coverage(
     raw_edges: list[dict[str, Any]],
     supported_languages: set[str],
     catalogs: dict[str, IoBoundaryCatalog],
+    first_party_packages: frozenset[str] = frozenset(),
 ) -> BoundaryCoverage:
     """Decide whether the I/O boundary analysis can support a clean verdict.
 
@@ -3298,7 +3355,9 @@ def _call_production_coverage(
     # program visible. Reporting the fixable blocker first would send a reader
     # on an errand that cannot succeed, then move the goalpost on them.
     opaque = _opaque_launch_sites(raw_edges, catalogs)
-    unknown = _uncatalogued_external_modules(raw_edges, catalogs)
+    unknown = _uncatalogued_external_modules(
+        raw_edges, catalogs, first_party_packages,
+    )
     if opaque:
         shown = ", ".join(opaque[:_MAX_REPORTED_UNCATALOGUED_MODULES])
         more = len(opaque) - _MAX_REPORTED_UNCATALOGUED_MODULES

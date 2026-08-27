@@ -53,7 +53,7 @@ import re
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 class Tier(IntEnum):
@@ -1144,6 +1144,157 @@ def collect_workspace_package_names(repo_root: Path) -> set[str]:
                 own = _own_distribution_name(data)
                 if own:
                     names.add(_normalize_pep503(own))
+            elif entry.is_dir():
+                if entry.name in skip or entry.name.startswith("."):
+                    continue
+                stack.append(entry)
+    return names
+
+
+def _own_cargo_package_name(content: str) -> Optional[str]:
+    """Read a crate's OWN name from ``Cargo.toml`` — ``[package].name`` and
+    nothing else.
+
+    DELIBERATELY NOT A REGEX over ``name = "..."``. Cargo.toml carries a
+    ``name`` key in ``[dependencies.<x>]``, ``[[bin]]``, ``[[example]]`` and
+    ``[lib]`` as well, and ``sketch._detect_project_binary_names`` scrapes all
+    of them on purpose because "what is this repo's executable called" is a
+    different question with a different failure direction. Here a dependency's
+    name admitted as the repo's own would SUPPRESS a genuine third-party module
+    from :func:`verify_claims._uncatalogued_external_modules`, which is the one
+    direction that gate exists to prevent.
+    """
+    from .profile import _load_toml
+
+    data = _load_toml(content)
+    if not isinstance(data, dict):
+        return None
+    package = data.get("package")
+    if isinstance(package, dict):
+        name = package.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return None
+
+
+#: ``module`` is a go.mod directive, so it is anchored at line start. A ``//``
+#: comment can never match. The quoted form is legal though rare.
+_GO_MODULE_DIRECTIVE = re.compile(
+    r'^[ \t]*module[ \t]+(?:"([^"]+)"|(\S+))', re.MULTILINE
+)
+
+
+def _own_go_module_path(content: str) -> Optional[str]:
+    """The WHOLE module path from go.mod's ``module`` directive.
+
+    NOT the last component. ``sketch._detect_project_binary_names`` keeps only
+    ``caddy`` out of ``github.com/caddyserver/caddy/v2`` because a binary is
+    named by its last component; the callee slots this feeds carry the full
+    path, so the truncated form would match none of them.
+    """
+    match = _GO_MODULE_DIRECTIVE.search(content)
+    if not match:
+        return None
+    return (match.group(1) or match.group(2)).strip() or None
+
+
+def _own_npm_package_name(content: str) -> Optional[str]:
+    """The ``name`` field of a ``package.json``. ``json.JSONDecodeError``
+    subclasses ``ValueError``, so a malformed manifest is skipped, not fatal."""
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    if isinstance(data, dict):
+        name = data.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return None
+
+
+#: Manifest basename → the reader that extracts THAT manifest's own published
+#: name. Python is absent deliberately: a pyproject DISTRIBUTION name
+#: (``hypergumbo-core``) is not the module spelling (``hypergumbo_core``), and
+#: Python's self-reference is already covered by the path-derived test in
+#: ``verify_claims._analyzed_modules``.
+_FIRST_PARTY_MANIFESTS: dict[str, Callable[[str], Optional[str]]] = {
+    "Cargo.toml": _own_cargo_package_name,
+    "go.mod": _own_go_module_path,
+    "package.json": _own_npm_package_name,
+}
+
+
+def collect_first_party_package_names(repo_root: Path) -> set[str]:
+    """The names this repository PUBLISHES ITSELF UNDER, read from its manifests.
+
+    THE THIRD FIRST-PARTY MECHANISM (INV-vivok).
+    ``verify_claims._uncatalogued_external_modules`` already excludes a module
+    whose FILE this analysis read (``_analyzed_modules``, path-derived) and one
+    the language marks as internal (``is_definitionally_first_party`` —
+    ``crate::``, ``./``). Neither can see a repo that refers to itself by the
+    name it publishes, because that name lives in a manifest and not in the
+    directory layout: bellman's ``bellman.VerificationError`` and caddy's
+    ``github.com/caddyserver/caddy/v2/modules/caddyhttp`` were both reported as
+    unexamined third-party modules, the latter while caddy's RELATIVE spellings
+    of the same package were correctly suppressed.
+
+    WHY NOT ``supply_chain_tier``, which INV-vivok proposed. Measured over 42
+    cached surveys the tier is populated on all 796 package nodes (187 tier 1,
+    609 tier 3) — the item's "None on every package node" was a top-level read
+    of a field that serialises nested under ``supply_chain.tier``. It is still
+    the wrong instrument: a package node's tier comes from its DECLARING FILE'S
+    path, so a third-party package declared in an in-repo manifest reads
+    first_party (``cmake:CMakeLists.txt:204-204:"GnuTLS":package`` at tier 1).
+    Reading the manifest is a fact; the tier is a proxy that fails open.
+
+    Scoped to the three manifests that publish a name a callee slot can carry
+    (see :data:`_FIRST_PARTY_MANIFESTS`). Skips ``DEFAULT_EXCLUDES`` and
+    dot-prefixed directories, so a vendored ``node_modules/<dep>/package.json``
+    — which names a THIRD-PARTY package — cannot leak in. Returns names in
+    their published spelling; the separator fold belongs to the consumer.
+
+    Returns an empty set for a repo with none of these manifests, which leaves
+    every caller's behaviour exactly unchanged.
+
+    MEASURED RESIDUAL, disclosed rather than asserted away. Over the 42-survey
+    corpus this suppresses 154 module reports and adds none. Of those 154, 150
+    are unambiguous — the name is declared by an in-repo manifest and either
+    unconsumed or consumed through a ``workspace:``/``path``/``file:`` spec,
+    which is the workspace-sibling shape INV-nuzas already rules first-party.
+    The remaining 4 (``@y-sweet/{client,react,sdk}``, ``@simplex-chat/types``)
+    are a monorepo pattern where the repo PUBLISHES a package to a registry and
+    one of its own sub-projects then depends on it BY VERSION (``^0.1.0``)
+    rather than by link. The name is still the repo's own and the source is in
+    the tree, so the suppression matches the invariant; what is not established
+    is whether that sub-project resolves to the in-repo copy or to an installed
+    one. This is a disclosure gate rather than a supply-chain integrity gate,
+    so the difference does not change the verdict — but it is the one case here
+    where "this repo publishes it" and "this reference resolves to it" can come
+    apart, and a later reader should know that before widening the rule.
+    """
+    from .discovery import DEFAULT_EXCLUDES
+
+    skip = set(DEFAULT_EXCLUDES)
+    names: set[str] = set()
+    stack = [repo_root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (PermissionError, OSError):  # pragma: no cover - unreadable dir
+            continue
+        for entry in entries:
+            if entry.is_file():
+                reader = _FIRST_PARTY_MANIFESTS.get(entry.name)
+                if reader is None:
+                    continue
+                try:
+                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                except OSError:  # pragma: no cover - unreadable file
+                    continue
+                own = reader(content)
+                if own:
+                    names.add(own)
             elif entry.is_dir():
                 if entry.name in skip or entry.name.startswith("."):
                     continue
