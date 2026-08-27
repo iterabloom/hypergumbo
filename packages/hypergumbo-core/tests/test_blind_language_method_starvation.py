@@ -266,3 +266,255 @@ class TestTheCoverageGateConsumesIt:
     @pytest.mark.parametrize("edges", [_PY_PURE_EDGES, _PY_HEALTHY_EDGES])
     def test_python_is_never_reported_blind_by_this_check(self, edges) -> None:
         assert method_starved_modules(edges, _catalogs("python")) == []
+
+
+class TestAModuleCarryingBothCallKinds:
+    """INV-soval: the predicate is MODULE-granular but tests a PER-KIND property.
+
+    A catalogue entry declares its own call shape, and a MODULE can legitimately
+    declare both — ``std::fs::File`` has associated functions (``open``,
+    ``create``) and methods (``metadata``, ``sync_all``, the ``lock`` family).
+    ``method_modules`` collects every module carrying ANY method-kind primitive
+    and marks a module satisfied ONLY on a ``call_construct == "method"`` edge,
+    so a mixed module can never be satisfied by a function-construct call — even
+    when the catalogue matched that call exactly.
+
+    THE CONSEQUENCE IS THAT CORRECT CATALOGUING CAUSES WITHHOLDING, which is the
+    opposite of what the stdlib audit campaign is for. Measured on the shipped
+    catalogue: ``std::fs::File`` is function-only today and starves nothing;
+    adding ONE correct method row makes a repo that merely opens a file starve.
+    The incentive that creates is to UNDER-catalogue.
+
+    The predicate's own docstring states the intent the code does not implement:
+    *"the catalogue was never given anything it could match"*. For a mixed
+    module it WAS given something it could match.
+    """
+
+    @staticmethod
+    def _mixed_catalog():
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
+
+        return IoBoundaryCatalog(
+            language="toy",
+            primitives=[
+                # An ASSOCIATED function: no receiver exists at the call site.
+                IoPrimitive(boundary="fs_read", module="toy.File",
+                            name="open", kind="function"),
+                # A genuine METHOD on the value that function returns.
+                IoPrimitive(boundary="fs_read", module="toy.File",
+                            name="metadata", kind="method"),
+            ],
+        )
+
+    @staticmethod
+    def _method_only_catalog():
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
+
+        return IoBoundaryCatalog(
+            language="toy",
+            primitives=[
+                IoPrimitive(boundary="fs_read", module="toy.File",
+                            name="metadata", kind="method"),
+            ],
+        )
+
+    @staticmethod
+    def _call(construct: str, name: str = "open"):
+        return [{
+            "src": "toy:src/a.toy:1-9:load:function",
+            "dst": f"toy:toy.File:0-0:{name}:external_symbol",
+            "type": "calls",
+            "meta": {"call_construct": construct},
+        }]
+
+    def test_function_call_into_a_mixed_module_does_not_starve(self) -> None:
+        """THE DEFECT. The catalogue declares ``open`` as a function and the
+        analyzer produced a function-construct edge, so the catalogue was handed
+        exactly what it needs. Reporting the module as structurally invisible is
+        false."""
+        assert method_starved_modules(
+            self._call("function"), {"toy": self._mixed_catalog()},
+        ) == []
+
+    def test_method_call_into_a_mixed_module_does_not_starve(self) -> None:
+        assert method_starved_modules(
+            self._call("method", name="metadata"),
+            {"toy": self._mixed_catalog()},
+        ) == []
+
+    def test_function_call_into_a_METHOD_ONLY_module_still_starves(self) -> None:
+        """THE CONTROL, AND THE POINT OF THE WHOLE PREDICATE.
+
+        This is the INV-nular / blind-Kotlin shape: every catalogued name needs a
+        receiver, and the analyzer produced none. The fix must NOT blunt it —
+        loosening this gate is the false-all-clear direction, so the signal it
+        was built for has to survive intact.
+        """
+        assert method_starved_modules(
+            self._call("function"), {"toy": self._method_only_catalog()},
+        ) == ["toy.File"]
+
+    def test_shipped_rust_modules_split_by_pr_552_no_longer_starve(self) -> None:
+        """The three real instances, created by the INV-nular fix itself.
+
+        Splitting the miskinded associated functions out of ``methods:`` fixed
+        the MATCH and left the COVERAGE broken: the modules became mixed, so a
+        repo calling ``TcpStream::connect`` and nothing else still starved.
+        """
+        catalogs = _catalogs("rust")
+        for module, fn in (
+            ("std::net::TcpStream", "connect"),
+            ("std::net::UdpSocket", "bind"),
+            ("std::process::Command", "new"),
+        ):
+            edges = [{
+                "src": "rust:src/lib.rs:1-9:f:function",
+                "dst": f"rust:{module}:0-0:{fn}:external_symbol",
+                "type": "calls",
+                "meta": {"call_construct": "function"},
+            }]
+            assert method_starved_modules(edges, catalogs) == [], (
+                f"{module}::{fn} is catalogued as a function and was called as "
+                f"one; the module must not be reported structurally invisible"
+            )
+
+    def test_kotlin_blind_signal_is_untouched_by_the_loosening(self) -> None:
+        """The gate this fix loosens must still catch what it was built for.
+
+        Neither the kotlin nor the java catalogue declares a single mixed-kind
+        module, so the blind-language population is entirely method-only and
+        this change cannot reach it. Asserted rather than assumed, because the
+        fix would be unsafe if that ever stopped being true.
+        """
+        from collections import defaultdict
+
+        for lang in ("kotlin", "java"):
+            kinds: dict[str, set[str]] = defaultdict(set)
+            for prim in load_catalog(lang).primitives:
+                kinds[prim.module].add(prim.kind)
+            mixed = [m for m, k in kinds.items() if {"method", "function"} <= k]
+            assert mixed == [], (
+                f"{lang} now has mixed-kind module(s) {mixed}; the blind-language "
+                f"signal may no longer be method-only and this loosening needs "
+                f"re-measuring against it"
+            )
+        assert method_starved_modules(_KT_BLIND_EDGES, _catalogs("kotlin")) == [
+            "java.io.File", "java.net.Socket",
+        ]
+
+
+class TestAnUnstampedAssociatedFunctionCall:
+    """INV-soval's SECOND route, and the shape that forced it to exist.
+
+    The construct test above cannot see the case the whole fix was measured on.
+    ``call_construct`` IS NOT STAMPED ON AN ASSOCIATED-FUNCTION CALL TO AN
+    EXTERNAL TYPE: across three real Rust repos every edge into
+    ``std::fs::File`` / ``std::process::Command`` / ``std::path::Path`` carries
+    ``call_construct: None``, while the same repos stamp it on thousands of
+    other edges (ripgrep: 917 ``method`` and 12 ``function`` among 1,156
+    external call edges). So the language clears the abstention check on its
+    OTHER edges and then arrives here with nothing to test.
+
+    THE CLASS ABOVE STAMPS EVERY EDGE, so it never executes this route at all —
+    the coverage gate is what surfaced that, not the assertions. What follows
+    exercises the name route AND BOUNDS IT: loosening a withholding gate is the
+    false-all-clear direction, so each satisfying case is paired with a case
+    that must still starve.
+    """
+
+    #: One stamped edge, into a module nobody catalogues, purely so the language
+    #: clears the ``languages_with_construct_evidence`` abstention. This mirrors
+    #: reality — Rust stamps thousands of edges and merely misses these.
+    _EVIDENCE: ClassVar[dict] = {
+        "src": "rust:src/lib.rs:1-9:f:function",
+        "dst": "rust:std::collections::HashMap:0-0:insert:external_symbol",
+        "type": "calls",
+        "meta": {"call_construct": "method"},
+    }
+
+    @staticmethod
+    def _unstamped(module: str, name: str) -> dict:
+        """An external call edge with NO ``call_construct`` at all.
+
+        Written with no ``meta`` key whatsoever rather than ``{"meta": {}}``,
+        because that is what the analyzer really emits for this shape.
+        """
+        return {
+            "src": "rust:src/lib.rs:1-9:f:function",
+            "dst": f"rust:{module}:0-0:{name}:external_symbol",
+            "type": "calls",
+        }
+
+    def _starved(self, module: str, name: str) -> list:
+        return method_starved_modules(
+            [self._EVIDENCE, self._unstamped(module, name)], _catalogs("rust"),
+        )
+
+    def test_unstamped_call_to_a_catalogued_associated_function_does_not_starve(
+        self,
+    ) -> None:
+        """THE ROUTE. ``Command::new`` is catalogued as a function-kind
+        primitive and the repo called it by that exact name. The catalogue can
+        match it, so naming the module structurally invisible is false — even
+        though not one method-construct edge landed in it.
+        """
+        assert self._starved("std::process::Command", "new") == []
+
+    def test_the_name_route_covers_every_mixed_module_pr_552_created(self) -> None:
+        """All four, not just the one convenient example."""
+        for module, fn in (
+            ("std::net::TcpStream", "connect"),
+            ("std::net::UdpSocket", "bind"),
+            ("std::net::TcpListener", "bind"),
+            ("std::process::Command", "new"),
+        ):
+            assert self._starved(module, fn) == [], (
+                f"{module}::{fn} is a catalogued associated function called by "
+                f"name on an unstamped edge; it must not be reported invisible"
+            )
+
+    def test_an_unstamped_call_to_an_UNCATALOGUED_name_still_starves(self) -> None:
+        """THE BOUND. ``Command::arg`` is not in the catalogue in any kind, so
+        an unstamped edge into it is exactly what starvation means: the module
+        is called, the catalogue covers it with methods, and nothing arrived
+        that the catalogue could match. The loosening must not reach here.
+        """
+        assert self._starved("std::process::Command", "arg") == [
+            "std::process::Command"
+        ]
+
+    def test_a_METHOD_name_on_an_unstamped_edge_still_starves(self) -> None:
+        """THE ASYMMETRY, ASSERTED RATHER THAN ASSUMED.
+
+        ``spawn`` IS catalogued on this module — as a METHOD. The name index is
+        built from function-kind rows ONLY, so it cannot rescue this edge, and
+        that is deliberate: an unstamped edge naming a method is precisely the
+        blind-analyzer shape (a receiver existed and the analyzer could not see
+        it). Were the index built from all kinds, this case would go silently
+        clean.
+        """
+        assert self._starved("std::process::Command", "spawn") == [
+            "std::process::Command"
+        ]
+
+    def test_the_real_Path_defect_is_NOT_papered_over_by_this_fix(self) -> None:
+        """``std::path::Path`` starves in 3 of 3 real Rust repos and MUST STILL.
+
+        It is method-only in the shipped catalogue, so it has no function-kind
+        names for the second route to match — ``Path::new`` performs no I/O and
+        is correctly absent. Its starvation is a genuine, separate defect
+        (INV-linub: 92.7% of Rust method edges carry slot ``external``, so the
+        receiver type is unresolved). INV-soval must not make it disappear by
+        accident, because that would convert a filed L3 defect into silence.
+        """
+        assert self._starved("std::path::Path", "new") == ["std::path::Path"]
+        assert self._starved("std::path::Path", "metadata") == ["std::path::Path"]
+
+    def test_an_unstamped_edge_alone_cannot_wake_an_abstaining_language(self) -> None:
+        """The abstention outranks both routes. With no stamped edge anywhere,
+        the language carries no construct evidence and is skipped entirely — so
+        this fix cannot start reporting JavaScript or TypeScript repos.
+        """
+        assert method_starved_modules(
+            [self._unstamped("std::process::Command", "arg")], _catalogs("rust"),
+        ) == []

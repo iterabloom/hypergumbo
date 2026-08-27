@@ -2986,9 +2986,30 @@ def method_starved_modules(
     Returns the sorted module names, so the caller can name them in a reason a
     human can act on rather than reporting a bare "coverage incomplete".
     """
+    # INV-soval: THE DECLARED KINDS PER MODULE, not just "is it method-keyed".
+    # A module can legitimately declare BOTH — ``std::fs::File`` carries the
+    # associated functions ``open`` / ``create`` and the methods ``metadata`` /
+    # ``sync_all`` / the ``lock`` family. The question below is whether the
+    # catalogue was handed a call shape it could match, and that is answered
+    # per KIND; keying satisfaction on ``method`` alone made a mixed module
+    # unsatisfiable by a function-construct call the catalogue matched exactly.
+    module_kinds: dict[str, dict[str, set[str]]] = {}
+    # The FUNCTION-kind names per module. A call to one of these is matchable by
+    # the catalogue whatever the construct stamp says — see the satisfaction
+    # test below for why that second route is needed at all.
+    module_function_names: dict[str, dict[str, set[str]]] = {}
+    for language, catalog in catalogs.items():
+        kinds: dict[str, set[str]] = {}
+        fnames: dict[str, set[str]] = {}
+        for prim in catalog.primitives:
+            kinds.setdefault(prim.module, set()).add(prim.kind)
+            if prim.kind == "function":
+                fnames.setdefault(prim.module, set()).add(prim.name)
+        module_kinds[language] = kinds
+        module_function_names[language] = fnames
     method_modules: dict[str, set[str]] = {
-        language: {p.module for p in catalog.primitives if p.kind == "method"}
-        for language, catalog in catalogs.items()
+        language: {m for m, k in kinds.items() if "method" in k}
+        for language, kinds in module_kinds.items()
     }
     # ABSTAIN FOR ANY LANGUAGE THAT NEVER POPULATES ``call_construct``. Measured
     # on two real repos: Go stamps it 7,741 times (6,012 of them ``method``),
@@ -3021,7 +3042,45 @@ def method_starved_modules(
         if not module or module not in modules:
             continue
         called.add(module)
-        if (edge.get("meta") or {}).get("call_construct") == "method":
+        # SATISFIED WHEN THE CONSTRUCT MATCHES ANY KIND THE MODULE DECLARES.
+        #
+        # Was `== "method"`, which asked a different question than the docstring
+        # above states. A function-construct call into a module that declares
+        # function-kind primitives IS something the catalogue can match, so the
+        # analysis DID look — whether it then matched a specific NAME is the
+        # uncatalogued-module gate's job, one rung further down, not this one's.
+        #
+        # THE ORIGINAL SIGNAL IS UNCHANGED for the population it was built on: a
+        # module declaring ONLY methods still cannot be satisfied by a
+        # function-construct call, because "function" is not among its kinds.
+        # That is the blind-Kotlin case (java.io.File, java.net.Socket) and the
+        # INV-nular miskinding case, and both still starve.
+        construct = (edge.get("meta") or {}).get("call_construct")
+        if construct and construct in module_kinds[language].get(module, set()):
+            satisfied.add(module)
+            continue
+        # SECOND ROUTE: THE CALLED NAME MATCHES A FUNCTION-KIND PRIMITIVE.
+        #
+        # Needed because ``call_construct`` IS NOT STAMPED ON AN ASSOCIATED-
+        # FUNCTION CALL TO AN EXTERNAL TYPE. Measured on three real Rust repos:
+        # every edge into ``std::fs::File`` / ``std::process::Command`` /
+        # ``std::path::Path`` carries ``call_construct: None``, while the same
+        # repos stamp it on thousands of other edges (ripgrep: 917 ``method``
+        # and 12 ``function`` among 1,156 external call edges). So a
+        # construct-only test cannot see that ``File::open`` — catalogued, and
+        # matched perfectly by the classification path — was called at all.
+        #
+        # THE NAME IS THE EVIDENCE THAT SURVIVES AN UNSTAMPED EDGE, and it
+        # discriminates exactly where construct cannot. Measured on the same
+        # surveys: ``Command::new`` matches a function-kind row (so the
+        # catalogue could match it, and the module must not be called
+        # invisible), while ``Path::new`` does not — ``Path::new`` performs no
+        # I/O and is correctly absent — and neither does Kotlin/Scala's
+        # ``java.io.File`` CONSTRUCTOR, which is the blind-language signal this
+        # predicate exists for. Both of those still starve.
+        if symbol_name_slot(edge.get("dst", "")) in (
+            module_function_names[language].get(module, frozenset())
+        ):
             satisfied.add(module)
     return sorted(called - satisfied)
 
