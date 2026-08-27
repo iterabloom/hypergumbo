@@ -1,0 +1,46 @@
+Original commit body from 03a8fb34e65628dbd2c54f6a7051e7a02faa2c71:
+
+`_uncatalogued_external_modules` already excluded a module whose file the
+analysis read (`_analyzed_modules`, path-derived) and one the language marks
+internal (`is_definitionally_first_party`). Neither can see a repo that refers
+to itself by the name it PUBLISHES, because that name lives in a manifest and
+not in the directory layout. caddy is the sharp case: its relative spellings
+(`modules/caddyhttp`) were already suppressed while
+`github.com/caddyserver/caddy/v2/modules/caddyhttp` was reported -- the same
+package judged two ways by how the importing file happened to spell it.
+
+A third mechanism, `supply_chain.collect_first_party_package_names`, reads the
+published name from Cargo.toml `[package].name`, go.mod `module`, and
+package.json `name`; the CLI threads it to both coverage call sites the way
+`higher_fidelity_available` already is.
+
+THE ITEM'S PREMISE WAS REFUTED IN THE CODE FIRST. INV-vivok proposed keying on
+`supply_chain_tier` and rejected it because the tier "is None on every package
+node". It is not: ir.py declares `supply_chain_tier: int = 1` and serialises it
+NESTED under `supply_chain.tier`, so only a top-level read returns None.
+Measured over 42 cached surveys, 796 package nodes: 187 tier 1, 609 tier 3,
+none None. The conclusion survives for a better reason -- a package node's tier
+comes from its DECLARING FILE'S path, so a third-party package declared in an
+in-repo manifest reads first_party (`cmake:CMakeLists.txt:204:"GnuTLS":package`
+at tier 1). The manifest is read directly instead.
+
+MEASURED on each repo's own cached survey, the instrument the item was filed
+with: bellman 15 -> 14 (exactly `bellman.VerificationError`), caddy 158 -> 151
+(the four entries the item named plus three it had not). Nothing added in
+either arm. Corpus-wide over 42 surveys: 154 suppressed, 0 added, 10/42 repos
+affected. Since suppression is the false-clean direction, each entry was
+re-checked against its repo's declared dependencies: 90 collide and all 90 are
+the workspace-sibling shape INV-nuzas already rules first-party; narrowing to
+names declared only as a registry version leaves 4, in 2 repos, a monorepo that
+publishes to npm and depends on itself by version -- disclosed in the
+collector's docstring rather than asserted away.
+
+Controls hold: bellman still reports blake2s_simd, rand, rayon, ff.Field;
+caddy still reports all of Go's stdlib. The match is component-bounded so
+`caddy` cannot swallow `caddyserver`, pinned by tests. As the item predicted,
+no verdict moves -- 14 and 151 entries still withhold both repos.
+
+Also corrects the same false `supply_chain_tier` claim where it had been
+copied into test_first_party_module_grammar.py's docstring.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
