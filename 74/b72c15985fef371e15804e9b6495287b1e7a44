@@ -1,0 +1,69 @@
+Original commit body from 13a5966abf5a7180c3301d16274f352185302a8b:
+
+WI-gihos was filed to decide what a wrapper like BufReader inherits from the
+reader it wraps. Enumerating std::io in total -- 556 items across 15 files of
+the installed rustc 1.94.0 library/std/src -- answered a structural question
+first: WHERE MAY A ROW BE KEYED AT ALL. A row's module must be a type that
+receiver inference can produce, and three kinds cannot be.
+
+A TRAIT cannot. No rust value has type `Read`; values have type File,
+TcpStream, BufReader<R>. gate_named_entry drops method-kind hits when there is
+no module hint, and a trait can never BE that hint. Measured across the 42-repo
+cohort: every edge whose slot is std::io::Read / ::Write / ::BufRead carries
+the name `module` -- a `use` import, never a call.
+
+A WRAPPER cannot, and this is the item's own question answered by measurement
+rather than by taste. A wrapper's boundary is the boundary of what it wraps,
+which the catalogue cannot know. In `rage`, 8 of ~10 BufReader::new sites wrap
+an IN-MEMORY BYTE SLICE, so an fs_read row would be majority-wrong on the first
+real repository to exercise it. This lands OPPOSITE to refuse-by-default
+intuition, which would have added it.
+
+A GENERIC HELPER cannot. io::copy's measured call site is
+`fn write_output<R: io::Read, W: io::Write>(input: R, output: W)` -- generic by
+construction, so its boundary is unknowable rather than merely unknown.
+
+So the trait methods go on the CONCRETE TYPES. Not a new invention: it is what
+std::net::TcpStream already did, and what python.yaml does with WI-fuvuj's
+synthetic `file` module rather than putting read/write on io.IOBase.
+std::fs::File was the inconsistency -- it implements Read, Write and Seek and
+carried NONE of their methods while TcpStream carried its equivalents.
+
+49 rows added: File's read and write families; the four concrete stdio handles
+and their Lock variants (Stdin/StdinLock ipc_recv, Stdout/Stderr and locks
+logging), because .lock() moves no data and without them a read through
+stdin().lock() is the same gap one level down; and PipeReader/PipeWriter
+(ipc_recv/ipc_send) while pipe() itself stays absent as descriptor plumbing.
+
+THE ROWS ARE CORRECT AND INERT, AND BOTH HALVES ARE STATED HERE RATHER THAN
+FOUND LATER. Measured across 11,691 rust call edges in 42 repositories, the
+rust catalogue matches ZERO method-kind primitives -- every match is
+function-kind. The 78 genuine trait-method call edges (46 write_all, 15
+read_to_end, 10 read_to_string, 6 read_line) all arrive as
+rust:external:0-0:<name>:external_symbol with a null dst_ref, which
+gate_named_entry rightly refuses. That is INV-linub L3/L4, and it makes EVERY
+method row in rust.yaml dead today, TcpStream's included: a file read and a
+socket read are equally invisible. Adding correct rows does not change that and
+is not claimed to. Measured both ways -- starvation delta across 42 surveys
+frees nothing and strands nothing; classification delta reclassifies 0 edges.
+What this buys is a catalogue that is true and self-consistent, live the moment
+receiver evidence is. The rust arm of INV-linub's exposure table is recorded on
+that item at findings level rather than edge level.
+
+Every refusal is pinned as a test, not as prose: the traits, the wrappers,
+copy/read_to_string, empty/repeat/sink, pipe, .lock(), Error/ErrorKind (70 of
+the 102 measured bare-std::io edges are error handling and none of it is I/O),
+seek/rewind/stream_position (a syscall, but nothing crosses -- the try_clone
+rule), flush (python.yaml excludes it deliberately: it commits writes already
+counted), the read adapters, and everything unstable in rustc 1.94.0.
+
+is_terminal is genuinely borderline and is recorded as such: isatty(2) moves no
+data, but python.yaml rows os.isatty as fs_read and points the other way. Both
+sides are written into the catalogue header so it can be overturned without
+re-deriving it.
+
+.ci/affected-tests.txt is extended by hand with the 20 catalogue-exercising
+test files (INV-bigaz: the slicer has no YAML->Python edge, so a catalogue
+change selects ~1 file). Full suite green: 24,095 passed, 100% coverage.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
