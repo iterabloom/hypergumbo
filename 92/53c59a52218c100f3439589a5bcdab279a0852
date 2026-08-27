@@ -1,0 +1,54 @@
+Original commit body from 08978162468af40b1594e12007586e7fb2fd86e0:
+
+Three independent refuters on three repositories reported the row-level
+precision denominator as uncheckable against the source. They were right, and
+the cause is DISCLOSURE, not arithmetic.
+
+THE RULE, established by live repro on all three named repositories. The count
+is the number of (SOURCE CALL SITE, SINK CALL SITE) pairs where the sink site is
+reachable from the source site's caller. The record emitted it beside
+source_primitives / sink_primitives -- DISTINCT NAMES -- and nothing about site
+multiplicity, so two rows with identical primitives legitimately carried
+different counts with nothing to explain the difference: shellcheck showed three
+rows at 1x1 -> 1 and a fourth at 1x1 -> 2. The 2 is correct -- `striptests`
+reads env ONCE and reaches `redirect.>` at TWO sites, the file node and
+`sponge`, which it reaches.
+
+Findings now carry sink_call_sites as (caller, callee) PAIRS, unioned across a
+collapsed group, so the multiplier is bounded by
+len(source_primitives) * len(sink_call_sites).
+
+THE FIRST CUT OF THIS FIX WAS WRONG AND THE LIVE RE-RUN CAUGHT IT. Recording
+the sink CALLER alone collapsed kamaraflow's four sinks -- open, file.write,
+os.makedirs, shutil.copyfile, all called from one function -- to a single site,
+leaving collapsed_flow_count=8 against a bound of 2. Both sides multiply, and
+every unit test written for the shellcheck shape passed either way. That case is
+now pinned as its own test. MEASURED AFTER THE CORRECTION: 18 of 18 evidence
+rows across the three repositories reconcile, ALL EXACTLY (kamaraflow 8 = 2x4,
+ArkLib 6 = 1x6, shellcheck 2 = 1x2).
+
+NO DOUBLE-COUNTING FOUND, and the item's "inflated in at least one direction" is
+not carried forward. source_callers is built one entry per EDGE and edges are
+deduplicated on (src, dst, edge_type) (INV-vukiv), so a site cannot enter twice.
+The refuters' counts were low because they counted primitive OCCURRENCES in
+source text while the tool counts reachable SITE PAIRS.
+
+NOT FIXED HERE, and it is the larger point. For analysis_method=structural the
+pair test is pure call-graph reachability with no check that a value crosses --
+which is what ADR-0017 defines structural to be. A rate computed over this count
+is therefore a rate over REACHABILITY PAIRS, not over value-flow claims, and it
+grows with how much a file reaches rather than with anything about taint
+(kamaraflow's source is a FILE node). That is an independent, mechanical reason
+0006 was right to make SITUATION canonical.
+
+ALSO FIXES A WI-TUBIJ REGRESSION ALREADY ON dev.
+test_bash_env_read_source.py::test_bash_now_carries_both_halves froze the exact
+list of bash taint-source rows; WI-tubij's clock additions ($EPOCHREALTIME,
+$EPOCHSECONDS, $SECONDS) broke it while changing nothing the test is about, and
+it went red on dev because that PR's hand-extended manifest did not select this
+file. The assertion now tests the SPLIT its own docstring claims -- both labels
+derive, env.environ is the host_secret half, every host_description source stays
+in the shell module -- instead of an inventory that decays on the next correct
+catalogue edit.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
