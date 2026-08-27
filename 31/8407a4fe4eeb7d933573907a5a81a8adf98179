@@ -1,0 +1,58 @@
+Original commit body from 59fa627c0da1eecdd4414a228f26f3d92e4d41a3:
+
+## What
+
+`std::fs` was **already in the catalogue** and therefore never appeared on any "unexamined module" list, while about half its I/O surface was absent. The total-surface audit this item requires — every name the module exposes, not the ones a repository happens to call — found **20 missing stable primitives** across six modules.
+
+| module | added |
+|---|---|
+| `std::fs` | `exists`, `read_link`, `set_permissions` |
+| `std::fs::File` | `metadata`, `set_len`, `set_permissions`, `set_times`, `sync_all`, `sync_data`, `lock`, `lock_shared`, `try_lock`, `try_lock_shared`, `unlock` — **eleven methods, not one previously catalogued** |
+| `std::fs::DirBuilder` | `create` |
+| `std::fs::DirEntry` | `metadata`, `file_type` |
+| `std::path::Path` | `try_exists`, `is_symlink` |
+| `std::path` | `absolute` |
+
+## The header claimed a completeness this audit falsified
+
+WI-tukif wrote *"coverage is complete for the strict-stdlib IO surface"* in May, from a doc index, **naming `std::fs` and `std::path::Path` among the modules it covered**. Twenty stable primitives were missing from exactly those modules. The header now withdraws the claim and names what **is** audited (by enumeration, rustc 1.94.0) and what is **not** (`std::io`, `std::net`, `std::process`, `std::env`, `std::path::PathBuf`).
+
+**A completeness claim written from a doc index is not the same evidence as an enumeration of the surface** — and catalogue presence is not catalogue coverage.
+
+## Method
+
+Every name read out of the installed toolchain with **stability and receiver shape checked per entry, not recalled** — the python stdlib audit's unaided first draft got 5 of 32 verdicts wrong and every error was on the false-all-clear side. Seven nightly-only APIs excluded.
+
+The receiver check **corrected a filed entry**: `DirBuilder::create` takes `&self` and is a METHOD, not the associated function it had been recorded as. A kind is not cosmetic — a receiverless callee declared a method is unmatchable by construction (INV-nular).
+
+**Two probe bugs, both returning a plausible wrong answer rather than an error.** An impl-tracking regex attributed sixteen module-level functions to `impl DirEntry`, re-derived using indentation. A signature regex required `(` immediately after the name, so every generic `pub fn exists<P: AsRef<Path>>(..)` was silently skipped — which is why `DirBuilder::create` first appeared **absent from the toolchain altogether**. A probe that under-reports looks exactly like a module with no surface.
+
+## The refusals are pinned by tests
+
+`Path::is_absolute` resolves to `path.has_root()` and is purely lexical — an I/O-reach false positive caught by disbelieving it. `Metadata` / `Permissions` / `FileType` accessors and `OpenOptions` builder setters are in-memory. **`File::try_clone` is `dup(2)`: a syscall, but nothing crosses and nothing outside the process changes**, so it fails the same boundary test that ruled `std::sync::Mutex` out. A test fails if a later auditor "fixes" any of them.
+
+## Two judgment calls, decided rather than defaulted
+
+**The `lock` family is `fs_write`.** `flock`/`LockFileEx` changes no byte, so `fs_write` overstates it — but a lock is observable to another **process**, which is the test the mutex failed and the one case in that discussion that passes. Omitting it is a false all-clear; `fs_write` is the only one of the nine kinds that carries it without a new heavyweight axis, and the residual over-claim can only mislead a program that opens read-only and locks. Recorded in the catalogue as reversible.
+
+**`std::path::absolute` is `fs_read`** because it delegates to `env::current_dir()` — `getcwd(2)` — matching the boundary already assigned to `std::env::current_dir`. Precedent, not taste.
+
+## Measured
+
+On this predicate a *correct* row is exactly what used to regress a verdict, so the rows were measured before shipping. 42 reusable surveys, both arms driving the **production loader and the production predicate** (old arm = HEAD's `rust.yaml` bytes):
+
+**20 rows added; the starved-module set is unchanged in every repository — nothing freed, nothing newly starved.**
+
+The instrument is shown live rather than assumed: **9 of 42** surveys carry a non-empty starved set, and `std::path::Path` starves in exactly **3 of 3** Rust repositories, reproducing the independently recorded figure. `std::fs::File` becomes mixed-kind here and it is INV-soval that keeps a `File::open` call satisfying it — a test fails if that fix is reverted underneath these rows.
+
+## Not in scope, deliberately
+
+`std::os::windows::fs` is **not** included. The item names it in scope while the header excludes *"`std::os::*` raw-fd extensions"* — and `symlink_file` / `symlink_dir` are plain filesystem mutation, not raw-fd anything, while the cross-platform `std::fs::soft_link` is already catalogued. That reads as an inconsistency rather than a decision, and overriding another item's recorded scope silently is not how to settle it. Recorded in the header; needs a ruling. `std::path::PathBuf` and its Deref-to-`Path` question are also still open.
+
+## CI manifest is manually extended, and why
+
+The slicer walks Python imports, so a YAML catalogue has no edge to its loader: this change reported *"changed source files: 0"* and selected **one** test file — for a data file that 19 test files (1,648 tests) read in 27 seconds. CI runs the manifest, and its force-full-suite escape names seven `.py` files and no data directory. Extended manually with a comment saying why, and **filed as INV-bigaz** — a manual extension is not a fix, it depended on my noticing that "1 test file" was implausible.
+
+## Verification
+
+Full suite **23,989 passed**, 7 skipped, 15 xfailed. mypy strict ratchet clean.
