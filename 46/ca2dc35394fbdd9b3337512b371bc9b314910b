@@ -1,0 +1,56 @@
+Original commit body from 5a1ece1083bd3ced6662ed372664d5d1dd7b1de8:
+
+## What
+
+`method_starved_modules` is MODULE-granular but tests a PER-KIND property, so a module that legitimately declares both call shapes could never be satisfied by a function-construct call the catalogue matched exactly. **The gate penalised correct cataloguing.**
+
+## Why it matters now
+
+`std::fs::File` carries the associated functions `open` / `create` alongside the methods `metadata` / `sync_all` / the `lock` family. The predicate collected every module carrying *any* `method`-kind primitive and marked one satisfied only on a `call_construct == "method"` edge.
+
+Measured on the shipped catalogue: **adding ONE correct `std::fs::File` method row flips a repo that merely opens a file from a clean verdict to a withheld one.** The incentive that creates is to under-catalogue — which is the opposite of what the stdlib enumeration campaign is for, and it lands directly in front of WI-bupor.
+
+PR #552 created three instances of this itself. Splitting rust's miskinded associated functions out of `methods:` repaired the MATCH and left the COVERAGE broken: a repo calling `TcpStream::connect` and nothing else still starved.
+
+The predicate's own docstring states the intent the code did not implement — *"the catalogue was never given anything it could match"*. For a mixed module it **was** given something it could match.
+
+## Two routes, and why the second is not optional
+
+1. The construct matches any kind the module declares.
+2. **The called NAME matches a function-kind row.**
+
+The second exists because **`call_construct` is not stamped on an associated-function call to an external type.** Across three real Rust repositories, every edge into `std::fs::File`, `std::process::Command` and `std::path::Path` carries a null construct, while the same repositories stamp it on thousands of others — ripgrep stamps 917 `method` and 12 `function` among 1,156 external call edges. The language therefore clears the abstention check on its *other* edges and arrives here with nothing to test.
+
+The name is the evidence that survives an unstamped edge, and it discriminates exactly where construct cannot: `Command::new` matches a function-kind row, `Path::new` does not — `Path::new` performs no I/O and is correctly absent.
+
+## Measured
+
+Loosening a withholding gate is the false-all-clear direction, so this was measured across the corpus before it shipped rather than argued. 42 real repositories, production `method_starved_modules` called directly for both arms:
+
+| | result |
+|---|---|
+| modules freed today | **6** |
+| modules freed once WI-bupor lands | **7** |
+| newly starved anywhere | **none** |
+| freed modules that are method-only | **0 of 6** |
+
+Every freed module is mixed-kind, so no method-only module moved. Neither the kotlin nor the java catalogue declares a single mixed-kind module — **asserted by a test rather than assumed**, so the change is unsafe the moment that stops being true — which means this cannot reach the blind-language population the gate exists for.
+
+`std::path::Path` still starves in 3 of 3 rust repos and `java.io.File`'s Kotlin constructor still starves. Both correctly. Path's starvation is INV-linub's slot-`external` L3 defect surfacing at this gate (92.7% of rust method edges carry slot `external`), not something this change addresses, and making it disappear here would convert a filed defect into silence.
+
+## Tests
+
+The name route is bounded by cases that must **still** starve:
+
+- an uncatalogued name on an unstamped edge;
+- a **method** name on an unstamped edge — the name index is built from function-kind rows only, deliberately, because an unstamped edge naming a method is precisely the blind-analyzer shape (a receiver existed and the analyzer could not see it). Were the index built from all kinds, that case would go silently clean;
+- `std::path::Path` in both spellings;
+- the per-language abstention still outranking both routes, so no JavaScript or TypeScript repo starts being reported.
+
+Plus the positive controls: all four mixed modules PR #552 created, by name, on unstamped edges.
+
+**Those tests exist because the coverage gate caught that no existing test executed the route at all.** Every test in the mixed-kind class stamps `call_construct`, so the route whose entire justification is *unstamped* edges had never run — the assertions were green and the branch was dead. A passing suite is not an exercised branch.
+
+## Verification
+
+2308 passed, changed sources at 100%, mypy strict ratchet clean.
