@@ -482,6 +482,25 @@ class TaintFlowFinding:
     source_primitives: tuple[str, ...] = ()
     sink_primitives: tuple[str, ...] = ()
     sink_symbols: tuple[str, ...] = ()
+    #: Every sink CALL SITE this finding stands for, as ``(caller, callee)``
+    #: pairs. NOT the callers alone and NOT the callees alone — INV-kakad was
+    #: reopened once by recording only the caller, and the corrected shape is
+    #: the pair because BOTH sides multiply:
+    #:
+    #: * shellcheck ``striptests`` — ONE callee (``redirect.>``) reached from
+    #:   TWO callers (the file node, and ``sponge`` which it reaches). One
+    #:   sink name, two sites.
+    #: * kamaraflow ``train_script`` — FOUR callees (``open``, ``file.write``,
+    #:   ``os.makedirs``, ``shutil.copyfile``) all called from ONE caller.
+    #:   One caller, four sites.
+    #:
+    #: The record used to carry ``sink_symbols`` (callees) and nothing else, so
+    #: neither multiplicity was visible and three independent refuters read
+    #: ``collapsed_flow_count`` as unreconcilable against the repository. With
+    #: the pairs emitted the multiplier is bounded by
+    #: ``len(source_primitives) * len(sink_call_sites)``, and any shortfall is
+    #: reachability having excluded a pair.
+    sink_call_sites: tuple[tuple[str, str], ...] = ()
     #: How many (source call site, sink call site) pairs this finding stands
     #: for. 1 for an uncollapsed or adjudicated finding. Kept so the pair count
     #: stays available to a consumer that wants it rather than being traded
@@ -563,6 +582,7 @@ class TaintFlowFinding:
             "source_primitives": list(self.source_primitives),
             "sink_primitives": list(self.sink_primitives),
             "sink_symbols": list(self.sink_symbols),
+            "sink_call_sites": [list(site) for site in self.sink_call_sites],
             "collapsed_flow_count": self.collapsed_flow_count,
         }
 
@@ -669,6 +689,12 @@ def collapse_unadjudicated_flows(
             )),
             sink_symbols=tuple(sorted(
                 {sym for m in grp for sym in m.sink_symbols}
+            )),
+            # INV-kakad: unioned like its siblings, so the group names every
+            # site it stands for and ``collapsed_flow_count`` can be checked
+            # against |source_primitives| x |sink_call_sites|.
+            sink_call_sites=tuple(sorted(
+                {site for m in grp for site in m.sink_call_sites}
             )),
             # A route through a different barrier is a different sanitizer
             # credit, and INV-pojib requires the user-supplied ones to stay
@@ -2497,6 +2523,11 @@ def propagate_taint_structural(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                # INV-kakad: the SITE is the (caller, callee) pair. Recording
+                # the caller alone under-counts a function that calls four
+                # different sinks; recording the callee alone under-counts one
+                # sink reached from two callers. Both shapes are live.
+                sink_call_sites=((sink_node, sink_callee_id),),
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,
@@ -3735,6 +3766,7 @@ def propagate_taint_ddg(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,
                 sanitized_by_user_supplied=sanitized_by_user,

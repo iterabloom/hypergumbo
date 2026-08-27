@@ -115,18 +115,28 @@ class TestTheCatalogueHalfDerives:
         cat = load_builtin_taint_catalog()
         sources = cat.sources_for_language("bash")
         assert sources, "bash still derives no taint sources"
-        # Two rows, two LABELS, and the second is not a widening: INV-nular
-        # moved the bash-assigned host descriptions ($HOSTNAME, $OSTYPE, $PWD,
-        # $UID) OUT of env.environ, so what was one row deriving host_secret
-        # for every expansion is now a credential read and a host-description
-        # read that a claim can tell apart. Same split INV-tutar made for
-        # elixir, reached through bash's syntax.
-        assert sorted(
-            (s.module, s.name, s.taint_label) for s in sources
-        ) == [
-            ("env", "environ", "host_secret"),
-            ("shell", "hostinfo", "host_description"),
-        ]
+        # TWO LABELS, and the second is not a widening: INV-nular moved the
+        # bash-assigned host descriptions ($HOSTNAME, $OSTYPE, $PWD, $UID) OUT
+        # of env.environ, so what was one row deriving host_secret for every
+        # expansion is now a credential read and a host-description read that a
+        # claim can tell apart. Same split INV-tutar made for elixir, reached
+        # through bash's syntax.
+        #
+        # ASSERTED AS THE SPLIT, NOT AS AN INVENTORY. This used to freeze the
+        # exact row list, and WI-tubij's clock rows ($EPOCHREALTIME,
+        # $EPOCHSECONDS, $SECONDS — host_info_read in every catalogue) broke it
+        # while changing nothing this test is about. A hardcoded inventory
+        # decays on the next correct catalogue edit; the invariant is that both
+        # labels derive and that they stay separable by module.
+        by_label = {}
+        for s in sources:
+            by_label.setdefault(s.taint_label, set()).add((s.module, s.name))
+        assert set(by_label) == {"host_secret", "host_description"}
+        assert ("env", "environ") in by_label["host_secret"]
+        assert by_label["host_description"], "the split's second half vanished"
+        assert all(
+            module == "shell" for module, _ in by_label["host_description"]
+        ), f"host_description leaked outside the shell module: {by_label}"
         assert cat.sinks_for_language("bash")
 
     def test_the_label_is_derived_not_hand_written(self) -> None:

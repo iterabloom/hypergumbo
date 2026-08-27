@@ -1063,6 +1063,11 @@ class TestViolatedFlowEvidence:
                 "source_primitives": ["cmd_run"],
                 "sink_primitives": ["replace"],
                 "sink_symbols": ["d"],
+                # INV-kakad: the sink CALL SITES, which make
+                # `collapsed_flow_count` checkable. Empty here for the same
+                # reason the modules are bare — this fixture builds a finding
+                # directly, so no propagator stamped a site.
+                "sink_call_sites": [],
                 "collapsed_flow_count": 1,
             }
         ]
