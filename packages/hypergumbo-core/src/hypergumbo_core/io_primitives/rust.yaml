@@ -350,7 +350,23 @@ subprocess:
 
 env_read:
   - module: std::env
-    functions: [var, var_os, vars, args, args_os]
+    functions: [var, var_os, vars, vars_os, args, args_os]
+    notes: >-
+      `vars_os` is the OsString peer of `vars` and was simply missing.
+
+env_write:
+  - module: std::env
+    functions: [set_var, remove_var, set_current_dir]
+    notes: >-
+      BY PYTHON PRECEDENT, not by taste: python.yaml rules `os.putenv` /
+      `os.unsetenv` and `os.chdir` as env_write, and a catalogue that
+      disagrees with itself across languages is the defect INV-nular's
+      sweep exists to find. THIS ROW WAS PROMISED IN ADVANCE — the
+      std::os::unix::fs note below still reads "chdir has no row here:
+      python rules it env_write, and rust's std::env::set_current_dir is
+      not yet audited." It is audited now (WI-dadog).
+      `join_paths` / `split_paths` are ABSENT: pure OsString manipulation
+      that touches no environment.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
@@ -358,12 +374,35 @@ env_read:
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
   - module: std::env
-    functions: [current_exe]
+    functions: [current_exe, temp_dir, home_dir]
+    notes: >-
+      `temp_dir` follows python's `tempfile.gettempdir`, which is rowed
+      host_info_read; `home_dir` is the same shape — it reads HOME (or the
+      platform equivalent) and identifies the user. Both are reads of host
+      DESCRIPTION, which is exactly what INV-tutar split out of env_read so
+      the auto-derived taint label stops calling them secrets.
+      NOTE FOR A LATER SWEEP: python.yaml's own completeness entry for
+      tempfile says "gettempdir rowed under env_read" while the row sits
+      under host_info_read — the note predates the INV-tutar split and is
+      stale. Recorded here rather than chased.
   - module: std::env
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."
 
 ipc_send:
+  - module: std::process::Child
+    methods: [kill]
+    notes: >-
+      Signalling another process — python.yaml's kind for `os.kill` /
+      `os.killpg`, in its words "Signalling another process".
+  - module: std::process::ChildStdin
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the concrete pipe type, per WI-gihos's
+      rule: a TRAIT is never a receiver type, so the rows go on the type
+      that implements it. Bytes written here leave this process and enter
+      the child. `flush` is absent for the reason it is absent everywhere
+      else in this file (python: it commits writes already counted).
   - module: std::io::PipeWriter
     methods: [write, write_vectored, write_all, write_fmt]
     notes: >-
@@ -371,6 +410,25 @@ ipc_send:
       ipc_recv for why the constructor is absent and the methods are not.
 
 ipc_recv:
+  - module: std::process::Child
+    methods: [wait, try_wait, wait_with_output]
+    notes: >-
+      python.yaml's kind for `os.wait` / `waitpid`, in its words:
+      "Reaping a child collects its exit status - data received from
+      another process." `wait_with_output` takes `mut self` — a BY-VALUE
+      receiver is still a receiver, so it is a METHOD. An earlier cut of
+      the enumerating probe required a leading `&` and reported it, plus 46
+      other consuming methods in process.rs, as associated FUNCTIONS; that
+      would have shipped a row no call site could ever match (INV-nular).
+      `Child::id` is absent with `std::process::id`: python deliberately
+      holds `os.getpid` out of its rows.
+  - module: std::process::ChildStdout
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+  - module: std::process::ChildStderr
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      The Read trait's methods on the two concrete pipe types; see the
+      ChildStdin note under ipc_send.
   - module: std::io
     functions: [stdin]
   - module: std::io::Stdin
