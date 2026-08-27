@@ -16,12 +16,32 @@ to the human who ran the audit (each entry is a unique narrative of
 what was found, classified, deprecated, kept, etc.). Edit the playbook
 by hand to record the outcome; this script's job is purely the
 machine-readable bookkeeping that powers cadence detection.
+
+REFUSES TO RECORD WHEN THE AUDIT LEFT NO FINDINGS DOCUMENT, because
+bookkeeping that can advance without a trail does exactly that. The
+2026-08-20 record named suspect domain "call_construct" and left no
+write-up and no Examples entry; the 2026-08-27 re-run of the same
+domain had to re-derive the inventory from scratch, and found five
+off-axis values the earlier pass had folded past. The playbook already
+says a silent audit is no audit — this makes the recorder agree.
+
+A findings document is any Markdown file under ``docs/audits/`` or the
+lab notebook that satisfies BOTH halves: its name contains the suspect
+domain with separators and case stripped (so ``identity vocabulary``
+matches ``concept-audit-identity-vocabulary_07152026.md``), AND its
+mtime postdates the previous recorded audit. The second half is not
+decoration — a name-only check would have passed 2026-08-20, because
+the April-era ``docs/audits/0012-evidence-type-cluster-d-call-construct.md``
+already named that domain. Pass ``--force`` when the write-up genuinely
+lives somewhere this script cannot see; it records and says on stderr
+that it did.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +49,89 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATE_FILE = REPO_ROOT / ".agent" / ".last_concept_audit.json"
+# Sibling-of-$HOME convention shared with the lab-notebook playbooks:
+# ``~/<repo-name>_lab_notebook``. Patched wholesale in tests.
+NOTEBOOK_ROOT = Path.home() / f"{REPO_ROOT.name}_lab_notebook"
+
+
+def slug(text: str) -> str:
+    """Collapse a name to comparable form: lowercase alphanumerics only.
+
+    Suspect domains are written by hand and spelled inconsistently across
+    the three places they appear — ``call_construct`` in the state file,
+    ``identity vocabulary`` in prose, ``identity-vocabulary`` in a
+    filename. Stripping every separator makes those the same string
+    instead of three near-misses.
+    """
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def prior_audit_time(state_path: Path) -> datetime.datetime | None:
+    """Return the timestamp of the last recorded audit, or ``None``.
+
+    ``None`` covers every way the answer can be unknown — no state file,
+    unreadable, not JSON, no date key, unparseable date — because all of
+    them mean the same thing to the caller: there is no earlier audit to
+    measure recency against, so do not filter on it.
+    """
+    try:
+        prior = json.loads(state_path.read_text()) or {}
+    except (OSError, json.JSONDecodeError):
+        return None
+    raw = prior.get("last_audit_iso_date")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def findings_documents(
+    suspect: str,
+    *,
+    repo_root: Path | None = None,
+    notebook_root: Path | None = None,
+    newer_than: datetime.datetime | None = None,
+) -> list[Path]:
+    """Return the write-ups that look like they belong to ``suspect``.
+
+    Searches ``<repo>/docs/audits`` (the in-repo audit-findings home) and
+    the lab notebook (where free-form audit prose lands). A missing root
+    is the fresh-clone case, not an error.
+
+    ``newer_than`` is what makes this a witness rather than a formality.
+    Without it the gate is satisfied by ANY historical document naming
+    the domain, and would have passed the 2026-08-20 record: the
+    April-era ``docs/audits/0012-evidence-type-cluster-d-call-construct.md``
+    already existed. A write-up only evidences THIS audit if it postdates
+    the previous one. mtime is the signal, which is imperfect on a fresh
+    clone — but a fresh clone's files read as RECENT, so the failure
+    direction is permissive, never a false refusal.
+    """
+    if repo_root is None:
+        repo_root = REPO_ROOT
+    if notebook_root is None:
+        notebook_root = NOTEBOOK_ROOT
+    needle = slug(suspect)
+    found: list[Path] = []
+    for root in (repo_root / "docs" / "audits", notebook_root):
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*.md")):
+            if not needle or needle not in slug(path.name):
+                continue
+            if newer_than is not None:
+                mtime = datetime.datetime.fromtimestamp(
+                    path.stat().st_mtime, tz=datetime.timezone.utc,
+                )
+                cutoff = newer_than
+                if cutoff.tzinfo is None:
+                    cutoff = cutoff.replace(tzinfo=datetime.timezone.utc)
+                if mtime <= cutoff:
+                    continue
+            found.append(path)
+    return found
 
 
 def head_sha(repo_root: Path = REPO_ROOT) -> str:
@@ -92,13 +195,18 @@ def record(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
+    args = argv[1:]
+    force = False
+    if "--force" in args:
+        force = True
+        args = [a for a in args if a != "--force"]
+    if len(args) != 1 or args[0].startswith("-"):
         print(
-            f"usage: {argv[0]} <suspect-domain>",
+            f"usage: {argv[0]} [--force] <suspect-domain>",
             file=sys.stderr,
         )
         return 2
-    suspect = argv[1].strip()
+    suspect = args[0].strip()
     if not suspect:
         print(
             "error: suspect-domain must be non-empty",
@@ -106,10 +214,36 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
+    docs = findings_documents(
+        suspect, newer_than=prior_audit_time(STATE_FILE),
+    )
+    if not docs and not force:
+        print(
+            f"error: no findings document for {suspect!r} — refusing to "
+            f"advance the audit cadence.\n"
+            f"  searched: {REPO_ROOT / 'docs' / 'audits'}\n"
+            f"            {NOTEBOOK_ROOT}\n"
+            "  for a *.md whose name contains the suspect domain "
+            "(separators and case ignored)\n"
+            "  and modified since the previous recorded audit.\n"
+            "  A silent audit is no audit: write the findings up first, "
+            "or pass --force if the\n"
+            "  write-up lives somewhere this script cannot see.",
+            file=sys.stderr,
+        )
+        return 2
+    if not docs:
+        print(
+            f"warning: recording {suspect!r} with --force — no findings "
+            "document was found.",
+            file=sys.stderr,
+        )
+
     state = record(suspect)
     sha_short = state["last_audit_sha"][:8]
+    witness = f"\n  write-up: {docs[0]}" if docs else ""
     print(
-        f"Recorded audit of {suspect!r} at {sha_short}.\n"
+        f"Recorded audit of {suspect!r} at {sha_short}.{witness}\n"
         "Append the outcome to the playbook's Examples section by hand "
         "(prose is per-audit and lives there)."
     )

@@ -810,6 +810,61 @@ runs can find prior work:
   Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-io-primitives-status_08122026.md`.
 
+- **2026-08-27 — `Edge.meta["call_construct"]` × `Symbol.kind` ×
+  `IoPrimitive.kind`.** Trigger: cadence (80 commits vs. threshold 72); suspect
+  nominated by the agent from the day's INV-vivok reading and chosen by the
+  human. Hypothesis: `call_construct` and `Symbol.kind` both answer "what
+  syntactic form is this?", so one of them is really answering "what did the
+  resolver figure out?". **Outcome: partially confirmed — the predicted leak
+  was REFUTED and a sharper one found underneath.** Test 1 kills the
+  redundancy leg outright: across 261,277 resolved call edges `call_construct`
+  and the callee's `Symbol.kind` disagree **85.8%** of the time, so they are
+  not one fact in two homes (and `external_symbol` was already ruled CANONICAL
+  by audit-findings 0007). **But the disagreement structure names the real
+  leak:** `call_construct` describes the CALL SITE's syntax while `Symbol.kind`
+  and `IoPrimitive.kind` describe the DEFINITION's construct — two questions
+  whose vocabularies overlap lexically in exactly `{function, method}` — and
+  `verify_claims.py:3059` joins them with bare `in` (`construct in
+  module_kinds[...]`). 8 registered `edge_meta` values against
+  `IoPrimitive.kind`'s undeclared `{function, method, attribute}`; 6 of 8 can
+  never be members, and `attribute` can never be matched at all. Measured
+  where the join actually runs (external callees matching a catalogue row) it
+  disagrees **71.8%** (3,355/4,672). **Harm today is ZERO and the zero is
+  defended**: only 3,176 of 261,365 stamped edges reach a method-keyed module,
+  0 with a non-overlapping construct, because erlang and haskell — which
+  contribute all 56,251 unmatchable stamps — have zero method-keyed modules and
+  `continue` before the test. Positive control proves it is nonetheless live:
+  the identical synthetic edge reports `[]` with `method` and
+  `['std::fs::DirBuilder']` with `macro_body`/`remote`/`application`. Five
+  values are off-axis (`application`/`pipe` are synonyms for `function`,
+  `remote`/`local` are `call_locality` at 89.7% endpoint-derivability,
+  `macro_body` is a CONTEXT that destroys a recoverable construct on 533 edges
+  that target a `method` symbol); `constructor` is CANONICAL and explicitly
+  defended by INV-kahig. Adjacent sweep found the **root cause, and it is
+  general**: `MetaKeySpec` has no value-vocabulary field at all — it governs
+  where a key may appear, who writes it and how often, but never what values it
+  may take, so `Symbol.kind`/`Edge.edge_type`/`Edge.evidence_type` each have a
+  value registry plus drift linter while `Edge.meta[*]` has key governance
+  only. Also 34 emitted meta keys are unregistered, two of them written by
+  `make_unresolved_edge` itself on 158,375 edges (a first pass reported 36 —
+  `evidence_type`/`evidence_lang` are typed fields `ir.py:993` folds into the
+  serialised meta, and had to be excluded). Four items filed: INV-pimir (the
+  join), WI-kohig (the five folds), WI-lijaz (unregistered keys), WI-fazad
+  (`IoPrimitive.kind` undeclared, comment omits `attribute`); corpus-wide
+  evidence added to INV-tanom and a shipped/unshipped split reported on
+  WI-vusot rather than re-filing either. **Process finding: this domain was
+  audited on 2026-08-20 and left no findings document and no Examples entry**,
+  so the cadence advanced while the trail did not; that pass folded exactly one
+  off-axis value (`method_group`, WI-diruk) and stopped, and this run found
+  five more — the playbook's own "enumerate past the fixture" lesson recurring
+  inside the audit procedure. `scripts/concept-audit-record` now REFUSES to
+  advance the state unless a findings document for the suspect domain exists
+  AND postdates the previous record (`--force` overrides, loudly): the first
+  cut of that gate matched only on name and would have passed 2026-08-20,
+  since the April-era `docs/audits/0012-evidence-type-cluster-d-call-construct.md`
+  already existed. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
@@ -881,6 +936,18 @@ the Examples section above by hand — each entry is a unique
 narrative of what was found, classified, deprecated, kept, etc.,
 and that prose belongs to the human who ran the audit, not to the
 bookkeeping script.
+
+**The recorder refuses to advance the state unless the audit left a
+findings document** — a `*.md` under `docs/audits/` or in the lab
+notebook whose name contains the suspect domain (separators and case
+ignored) *and* whose mtime postdates the previous record. Both halves
+are load-bearing: the 2026-08-20 record advanced the cadence for
+`call_construct` with no write-up at all, and a name-only check would
+still have passed it because an April-era audit-findings file for that
+domain already existed. Pass `--force` when the write-up genuinely
+lives somewhere the script cannot see; it records and says so on
+stderr. This is the "a silent audit is no audit" anti-pattern made
+mechanical.
 
 The cadence mechanism is complementary to the static drift detection
 described in Step 4: the property test catches drift in *known*
