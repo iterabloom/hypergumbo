@@ -1729,9 +1729,49 @@ def _extract_edges_from_tree(
         # wrapper as in rust), so the declaration kinds themselves are the
         # skip context -- a genuine read resolves to `binary_expression` /
         # `init_declarator` instead and is unaffected.
+        # INV-sibij: `using S = std::string;` is a TYPE ALIAS and its scoped
+        # path sits under `type_descriptor`, which this tuple did not carry —
+        # so INV-pusin's statement held for cpp's `using_declaration` and
+        # failed for its alias. `type_descriptor` was NOT appended when the
+        # defect was filed, because in the cpp grammar it also covers casts
+        # and template arguments and "whether every member of that population
+        # is genuinely a type annotation" was not established. It is now,
+        # by parsing each form and calling the production `_scoped_context_kind`
+        # (docs + instrument: ~/hypergumbo_lab_notebook/sibij_cpp_08272026):
+        #
+        #   using S = std::string;              type_descriptor   type alias
+        #   static_cast<std::string>(y)         type_descriptor   cast
+        #   std::vector<std::string> v;         type_descriptor   template arg
+        #
+        # All three NAME a type and read no value. Template arguments are by
+        # far the largest member (rocksdb 2359 vs 126 aliases), so that is
+        # where the population actually is.
+        #
+        # `call_expression` is the OTHER context measured as leaking and is
+        # deliberately NOT added: it is where genuine calls live, an I/O call
+        # (`std::ofstream("f")`) is one, and suppressing it would be the silent
+        # recall loss this item warns about. Likewise `binary_expression`
+        # (`std::cout << 1`) and `init_declarator` (`std::string::npos`) are
+        # VALUE reads and keep emitting — pinned by positive controls in
+        # test_base.py, because removing withholding is the false-all-clear
+        # direction.
+        # A CLOSURE CAN SATISFY THE REPRO AND NOT THE STATEMENT, so twelve
+        # further forms were enumerated past the filed one. `base_class_clause`
+        # was the second leak found: `class A : public std::exception {}` NAMES
+        # a type. `for_range_loop` is the third and is deliberately ABSENT --
+        # that context covers BOTH halves of the loop:
+        #     for (std::string x : v)   -> std::string  TYPE
+        #     for (auto& l : std::cin)  -> std::cin     VALUE, a real stream
+        # so skipping it would suppress a genuine read, the same hazard as
+        # `std::cout << 1`. Separating the loop variable's TYPE from the RANGE
+        # EXPRESSION needs FIELD-level granularity, which this parameter does
+        # not have -- it matches ancestor KIND only. The residual over-
+        # withholds, which is the safe direction, and is recorded rather than
+        # forced.
         skip_context_kinds=(
             "using_declaration", "function_definition", "declaration",
-            "parameter_declaration", "field_declaration",
+            "parameter_declaration", "field_declaration", "type_descriptor",
+            "base_class_clause",
         ),
         # INV-fafol: anchor each read to the callable that performs it, not to
         # the file. A source and a sink must share a caller to propagate.
