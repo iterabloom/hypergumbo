@@ -21,9 +21,54 @@ language: rust
 #
 # AUDITED BY ENUMERATION (rustc 1.94.0, library/std/src, 2026-08-27):
 #   std::fs, std::fs::File, std::fs::DirBuilder, std::fs::DirEntry,
-#   std::path, std::path::Path.
+#   std::path, std::path::Path, std::io (WI-gihos: the whole module, 556
+#   items across 15 files, traits and wrapper types included).
 # NOT YET AUDITED, and therefore NOT complete however full they look:
-#   std::io, std::net, std::process, std::env, std::path::PathBuf.
+#   std::net, std::process, std::env, std::path::PathBuf.
+#
+# WI-gihos, 2026-08-27: WHERE A ROW MAY BE KEYED. A row's module must be a
+# type RECEIVER INFERENCE CAN PRODUCE. Three kinds of module cannot be:
+#   * A TRAIT. No rust value has type `Read`; values have type `File`,
+#     `TcpStream`, `BufReader<R>`. `gate_named_entry` drops method-kind hits
+#     with no module hint, and a trait can never BE that hint. Measured: every
+#     edge whose slot is std::io::Read / ::Write / ::BufRead in the 42-repo
+#     cohort carries the name `module` — a `use` import, never a call. So
+#     std::io::Read / ::Seek / ::BufRead get NO ROWS; the four pre-existing
+#     std::io::Write rows are kept only because a `Box<dyn Write>` receiver
+#     could in principle resolve to the trait, and they are inert otherwise.
+#   * A WRAPPER. BufReader/BufWriter/Cursor/Take/Chain take their boundary
+#     from what they wrap, which the catalogue cannot know. MEASURED, not
+#     reasoned: in `rage`, 8 of ~10 `BufReader::new` sites wrap an in-memory
+#     byte slice, so an fs_read row would be MAJORITY-WRONG on the first real
+#     repository to exercise it. The boundary belongs at the wrapped thing's
+#     own constructor, and `File::open` is already rowed.
+#   * A GENERIC HELPER. `io::copy`'s measured call site in `rage` is
+#     `fn write_output<R: io::Read, W: io::Write>(input: R, output: W)` —
+#     generic by construction, so its boundary is unknowable rather than
+#     merely unknown. Same for `io::read_to_string`. Both ABSENT.
+# The trait methods therefore go on the CONCRETE types, which is what
+# std::net::TcpStream already did and what python.yaml does with WI-fuvuj's
+# synthetic `file` module. std::fs::File was missing all of them.
+# `is_terminal` (the IsTerminal trait, implemented on File and the four stdio
+# handles) IS ABSENT, and this one is genuinely borderline rather than clear.
+# FOR the refusal, and it is the rule already load-bearing in this file: it is
+# isatty(2) — a syscall that moves no data and changes nothing outside the
+# process, which is exactly why `try_clone` is absent. AGAINST it, stated so a
+# later reader can overturn this without re-deriving it: python.yaml rows
+# `os.isatty` and `os.ttyname` under fs_read, so the cross-language answer
+# points the other way, and a catalogue that disagrees with itself across
+# languages is the INV-nular defect. The refusal wins here only because the
+# rust spelling is a TRAIT (unmatchable per the rule above) and the
+# concrete-type spelling would have to assert fs_read on Stdout, whose
+# catalogued boundary is `logging`. REVERSIBLE, and narrow.
+#
+# ALSO ABSENT, each for a stated reason: empty/repeat/sink (null devices,
+# no data crosses); pipe (descriptor plumbing — python.yaml's precedent);
+# seek/rewind/seek_relative/stream_position (a syscall, but nothing crosses —
+# the rule that already excludes try_clone); flush (python.yaml excludes it
+# deliberately: it commits writes already counted); .lock() (takes a mutex,
+# moves no data); Error/ErrorKind (70 of the 102 measured bare-std::io edges
+# are error handling and none of it is I/O).
 #
 # std::ffi (FFI types are meta-IO, not IO) and std::sync / std::thread
 # (concurrency primitives — and a mutex changes no state outside the process)
@@ -107,6 +152,40 @@ fs_read:
     functions: [read, read_to_string, read_dir, metadata, symlink_metadata, canonicalize,
                 exists, read_link]
   - module: std::fs::File
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      THE Read TRAIT'S METHODS, ROWED ON THE CONCRETE TYPE THAT IMPLEMENTS IT.
+      A trait is not a receiver type — no rust value has type `Read` — so a row
+      on `std::io::Read` can never match: `gate_named_entry` drops method-kind
+      hits when there is no module hint, and a module hint comes only from
+      receiver-type inference. Measured across the six rust-bearing surveys of
+      the 42-repo cohort: every edge whose module slot is `std::io::Read` or
+      `std::io::Write` carries the name `module` — a `use` IMPORT, never a
+      call. This is the pattern `std::net::TcpStream` already uses below, and
+      the one python.yaml uses for WI-fuvuj's synthetic `file` module.
+      THESE ROWS ARE CORRECT AND CURRENTLY INERT, and both halves of that
+      matter. Measured across 11,691 rust call edges in the 42-repo cohort,
+      the rust catalogue matches ZERO method-kind primitives — every match it
+      makes is function-kind. The 78 real trait-method call edges in that
+      cohort (46 write_all, 15 read_to_end, 10 read_to_string, 6 read_line)
+      all arrive as `rust:external:0-0:<name>:external_symbol` with a null
+      dst_ref, and `gate_named_entry` correctly refuses a method-kind hit that
+      carries no module hint. That is INV-linub L3/L4, and it makes EVERY
+      method row in this file dead today — TcpStream's read/write included, so
+      a file read and a socket read are equally invisible. The rows are still
+      right: the catalogue must describe the surface it claims to cover, the
+      omission was also an internal inconsistency with TcpStream, and these
+      become live the moment receiver evidence does. `File::open` alone is not
+      enough either:
+      the handle is where the flow STARTS and `read_to_end` is where the bytes
+      arrive — python recorded the same lesson when `f = open(p);
+      f.write(secret)` classified the open and lost the write.
+      seek / rewind / seek_relative / stream_position are ABSENT: a syscall,
+      but nothing crosses and nothing outside the process changes — the rule
+      that already excludes `try_clone`. by_ref / bytes / chain / take build an
+      adapter and perform no I/O. read_buf / read_buf_exact / read_array /
+      is_read_vectored are unstable in rustc 1.94.0.
+  - module: std::fs::File
     functions: [open]
     methods: [metadata]
     notes: >-
@@ -160,6 +239,15 @@ fs_write:
   - module: std::fs
     functions: [write, create_dir, create_dir_all, remove_file, remove_dir, remove_dir_all,
                 rename, copy, hard_link, soft_link, set_permissions]
+  - module: std::fs::File
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the concrete type — see the std::fs::File
+      fs_read note for why the trait itself cannot carry them.
+      `flush` IS DELIBERATELY ABSENT, by python.yaml's precedent for the same
+      name: it commits writes already counted, and a flush row there made every
+      bare `.flush()` in runtime code read as a direct unwrapped fs-write.
+      write_all_vectored / is_write_vectored are unstable in rustc 1.94.0.
   - module: std::fs::File
     functions: [create, create_new]
     methods: [set_len, set_permissions, set_times, sync_all, sync_data,
@@ -275,9 +363,38 @@ host_info_read:
     attributes: [consts]
     notes: "std::env::consts::OS, ARCH, etc."
 
+ipc_send:
+  - module: std::io::PipeWriter
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The write end of `std::io::pipe()`; see the PipeReader note under
+      ipc_recv for why the constructor is absent and the methods are not.
+
 ipc_recv:
   - module: std::io
     functions: [stdin]
+  - module: std::io::Stdin
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
+              read_line, lines]
+  - module: std::io::StdinLock
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
+              read_line, read_until, fill_buf]
+  - module: std::io::PipeReader
+    methods: [read, read_vectored, read_to_end, read_to_string, read_exact]
+    notes: >-
+      `std::io::pipe()` is stable since 1.87. The CONSTRUCTOR itself is absent
+      — descriptor plumbing moves no data, which is python.yaml's precedent for
+      os.pipe — but the read end is a concrete type and the bytes genuinely
+      cross a process boundary here, so the Read methods are rowed exactly as
+      Stdin's are. python rows the matching `os.read` rather than leaving a
+      pipe read invisible.
+    notes: >-
+      `stdin()` is already rowed above, but the handle is where the flow starts
+      and these are where the bytes arrive. StdinLock is rowed for the same
+      reason: `lock` itself is ABSENT — it acquires a mutex on the handle's
+      buffer and moves no data — so without these rows a read performed through
+      `stdin().lock()` would be invisible, which is the exact gap this item
+      found on std::fs::File.
 
 logging:
   # WI-dutah: std::io.{stdout,stderr} are terminal output, not IPC.
@@ -285,3 +402,15 @@ logging:
   - module: std::io
     functions: [stdout, stderr]
     notes: "Terminal / log output; redirectable but not an IPC channel"
+  - module: std::io::Stdout
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::StdoutLock
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::Stderr
+    methods: [write, write_vectored, write_all, write_fmt]
+  - module: std::io::StderrLock
+    methods: [write, write_vectored, write_all, write_fmt]
+    notes: >-
+      The Write trait's methods on the four concrete stdio handle types.
+      `flush` is absent for the same reason it is absent from std::fs::File.
+      `lock` is absent: it takes a mutex and moves no data.
