@@ -197,6 +197,7 @@ from .supply_chain import (
     DERIVED_PATH_PATTERNS,
     _normalize_pep503,
     classify_file,
+    collect_first_party_package_names,
     collect_workspace_package_names,
     detect_package_roots,
 )
@@ -5716,6 +5717,7 @@ def _taint_blind_reason(
     taint_supported_languages: set[str],
     catalogs: dict[str, Any],
     include_non_production: bool = False,
+    first_party_packages: Optional[set[str]] = None,
 ) -> tuple[str | None, list[str]]:
     """Why a taint claim cannot be confirmed, and any opaque launch sites.
 
@@ -5839,6 +5841,7 @@ def _taint_blind_reason(
         higher_fidelity_available=_higher_fidelity_backends_available(
             taint_supported_languages,
         ),
+        first_party_packages=first_party_packages,
     )
     if not coverage.complete:
         # ADR-0016 §4: opaque launches QUALIFY rather than blind, but only when
@@ -5887,6 +5890,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     a domain-specific taint source label.
     """
     repo_root = Path(args.path).resolve()
+    # INV-vivok: the names this repo publishes itself under, read from its own
+    # manifests. Computed once here — the only layer holding ``repo_root`` —
+    # and threaded to both coverage call sites, the way
+    # ``higher_fidelity_available`` already is.
+    first_party_packages = collect_first_party_package_names(repo_root)
     claims_path = Path(args.claims)
 
     if not claims_path.exists():
@@ -6047,6 +6055,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         higher_fidelity_available=_higher_fidelity_backends_available(
             supported_present,
         ),
+        first_party_packages=first_party_packages,
     )
 
     # Run taint-flow analysis if any claims have taint_flow constraints
@@ -6366,6 +6375,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         include_non_production=getattr(
             args, "include_non_production_sources", False
         ),
+        first_party_packages=first_party_packages,
     )
     # INV-nuhun: the taint arm's half of INV-fibis's disclosure. Stamped HERE
     # rather than inside ``compute_boundary_coverage`` because this is the first

@@ -37,15 +37,23 @@ raw, so express's own ``lib/utils`` could never match its own analyzed
 ``.`` and compares whole components"); it is fixed by giving the normalisation
 ONE home rather than by widening a gate.
 
-WHAT THIS DELIBERATELY DOES **NOT** FIX, stated because the count invites the
-wrong conclusion. ``bellman.VerificationError`` — a crate referring to itself
-by its own published name — is still reported. The crate name is available in
-the graph (``toml:Cargo.toml:7-22:bellman:package``), but telling that node
-from a DEPENDENCY package node (``javascript:npm:0-0:morgan:package``, same
-``package`` kind) currently requires reading the id's path slot and span
-shape, and ``supply_chain_tier`` is ``None`` on every package node in both
-repos. That is a shape heuristic, and this is a safety gate, so it is filed
-rather than guessed at.
+WHAT THIS FILE DOES NOT FIX, AND WHERE IT WENT (INV-vivok, closed 2026-08-27).
+``bellman.VerificationError`` — a crate referring to itself by its own
+published name — is not reached by either mechanism here, because that name
+lives in a MANIFEST rather than in the directory layout. It is now handled by a
+THIRD mechanism, ``supply_chain.collect_first_party_package_names``, tested in
+``test_first_party_package_names.py``.
+
+The paragraph this replaces proposed reading the crate name off the graph's
+package node and rejected it because ``supply_chain_tier`` was "None on every
+package node in both repos". THAT PREMISE WAS FALSE — a top-level read of a
+field ``ir.py`` serialises NESTED under ``supply_chain.tier``. Measured over 42
+cached surveys the tier is populated on all 796 package nodes (187 tier 1, 609
+tier 3), and 10 of 19 repos carry both. The conclusion survives anyway for a
+BETTER reason: a package node's tier comes from its DECLARING FILE'S path, so a
+third-party package declared in an in-repo manifest reads first_party
+(``cmake:CMakeLists.txt:204-204:"GnuTLS":package`` at tier 1). The manifest is
+read directly instead, which is a fact rather than a shape heuristic.
 
 AND THE HONEST HEADLINE: fixing all of this FLIPS NO VERDICT. express still
 reports 10 modules and bellman still reports stdlib, because what remains is
