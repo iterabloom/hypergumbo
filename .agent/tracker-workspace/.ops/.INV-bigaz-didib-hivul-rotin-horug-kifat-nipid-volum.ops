@@ -1,0 +1,24 @@
+- op: create  # 9c6b
+  at: '2026-08-27T01:16:40Z'  # 9c6b
+  by: agent  # 9c6b
+  actor: jgstern_agent  # 9c6b
+  clock: 1  # 9c6b
+  nonce: 9c6b  # 9c6b
+  data:  # 9c6b
+    kind: invariant  # 9c6b
+    title: "the test slicer has no data-file edge, so changing an io_primitives catalogue selects ~1 test file for a change ~1,600 tests depend on"  # 9c6b
+    status: violated  # 9c6b
+    priority: 2  # 9c6b
+    parent:  # 9c6b
+    tags:  # 9c6b
+    - testing  # 9c6b
+    - ci  # 9c6b
+    - io_boundary  # 9c6b
+    isbefore: []  # 9c6b
+    duplicate_of: []  # 9c6b
+    not_duplicate_of: []  # 9c6b
+    pr_ref:  # 9c6b
+    description: "FOUND 2026-08-27 while shipping WI-bupor's rust.yaml rows.\n\nTHE MEASUREMENT. Changing\npackages/hypergumbo-core/src/hypergumbo_core/io_primitives/rust.yaml -- the\nRust I/O primitive catalogue -- produced this manifest:\n\n    # Changed files: 6\n    # Changed source files: 0\n    # Selected tests: 1\n\nONE test file, and only because a NEW test file was added in the same commit.\nHad the rows been added without a new test, the selection would have been\nZERO. Meanwhile 19 test files (1,648 tests) read that catalogue, and they run\nin 27 seconds -- so this is not a budget tradeoff, it is a missing edge.\n\nTHE MECHANISM. `hypergumbo slice --files` walks Python imports. A YAML data\nfile has no import edge to the modules that read it, so the slicer classifies\nit as \"not a source file\" and the whole dependency fan-out is invisible. The\nsame shape applies to every non-Python input the production code loads at\nruntime: io_primitives/*.yaml, taint catalogues, overlays, and any future\ndata-driven registry.\n\nWHY IT IS A SAFETY-NET DEFECT RATHER THAN A NUISANCE. The manifest is what CI\nruns for a PR (ci.yml extracts it with `grep \"^packages/\"`). CI's CORE_CHANGED\nescape hatch force-runs the full suite for seven named .py files -- sketch.py,\nslice.py, cli.py, ir.py, all_analyzers.py, base.py, registry.py -- and a\ncatalogue is not among them. So a PR that changes what the tool CLASSIFIES AS\nI/O gets a one-file gate. Full-suite.yml catches it after merge, twice daily,\nwhich means dev can be red for up to twelve hours from a change whose blast\nradius was knowable at selection time.\n\nWORKED AROUND, NOT FIXED, in the WI-bupor PR: the manifest was manually\nextended to the 19 catalogue-exercising files, with a comment saying why. A\nmanual extension is not a fix -- it depends on the author noticing, and the\nauthor only noticed here because the \"1 test file\" line looked implausible for\nthe change that had just been made.\n\nTWO CANDIDATE REMEDIES, neither adjudicated here:\n  * teach the slicer a data-file edge -- map a non-Python file to the modules\n    that reference its path or directory, which for io_primitives is a single\n    well-known loader (_CATALOG_DIR in io_boundary.py).\n  * extend CI's CORE_CHANGED list to cover data directories, which is cruder\n    but needs no slicer work and fails safe."  # 9c6b
+    fields:  # 9c6b
+      statement: "A change to a non-Python input the production code loads at runtime must select the tests that exercise it. Changing io_primitives/rust.yaml reports 'changed source files: 0' and selects only tests added in the same commit, while 19 test files read that catalogue."  # 9c6b
+      root_cause: "hypergumbo slice --files walks Python imports; a YAML data file has no import edge to its loader, so its dependents are invisible to selection. CI's CORE_CHANGED force-full-suite escape names seven .py files and no data directory."  # 9c6b
