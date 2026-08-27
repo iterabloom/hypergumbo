@@ -237,6 +237,22 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: erlang
+    functions: [monotonic_time, system_time, timestamp, time_offset, localtime, universaltime]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. erlang/otp
+      erts/preloaded/src/erlang.erl. convert_time_unit is pure arithmetic
+      and gets no row. INHERITED BY elixir.
+  - module: os
+    functions: [timestamp]
+    notes: >-
+      os:timestamp/0 was MISSING while its siblings os:system_time and
+      os:perf_counter were already catalogued — found by enumerating
+      lib/kernel/src/os.erl rather than trusting the existing rows.
   - module: os
     functions: [type, version, system_time, perf_counter]
     notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."

@@ -581,6 +581,29 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: time
+    functions: [time, time_ns, monotonic, monotonic_ns, perf_counter, perf_counter_ns, process_time, process_time_ns, thread_time, thread_time_ns, clock_gettime, clock_gettime_ns, clock_getres, get_clock_info]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Enumerated
+      against the Python 3.12.3 stdlib. REFUSED, with reasons:
+      sleep/mktime/strptime/tzset (no clock sampled);
+      clock_settime/clock_settime_ns (a host WRITE, a different boundary
+      question); localtime/gmtime/ctime/asctime/strftime (an argument
+      REPLACES the read, and the catalogue matches on name not arity, so a
+      row would mark pure conversions too).
+  - module: datetime.datetime
+    methods: [now, utcnow, today]
+    notes: >-
+      Classmethods that always sample the clock; the optional tz argument
+      shapes the result, it does not replace the read.
+      fromtimestamp/utcfromtimestamp convert a supplied value and get no
+      row.
+  - module: datetime.date
+    methods: [today]
   - module: os
     functions: [getuid, getgid, geteuid, getegid, getgroups, getcwd, getcwdb, uname, getlogin, sysconf, confstr]
     notes: "Host- and user-identifying reads. THE REASON getpid / cpu_count / times WERE HELD OUT IS GONE (INV-tutar): they were excluded because env_read auto-derived the host_secret label and a pid is not a secret, which is the catalogue distorting itself to protect a consumer. Under host_info_read they would be ordinary rows; adding them is an ADDITION and is deliberately not folded into the split. urandom stays out for a different and still-live reason: hypergumbo ships a HAND-WRITTEN taint source for os.urandom and an auto-derived twin DISPLACES it, tripping the INV-faput caveat on every python repo (measured: rc 0 fixtures went rc 3). os.getrandom was REMOVED outright by the split -- a CSPRNG read is not an environment read under any reading."

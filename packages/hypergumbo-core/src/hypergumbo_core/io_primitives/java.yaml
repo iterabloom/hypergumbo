@@ -119,6 +119,42 @@ env_read:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: java.lang.System
+    methods: [currentTimeMillis, nanoTime]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Static methods,
+      catalogued method-kind on the precedent set by java.nio.file.Files'
+      statics (INV-suril) — java's analyzer stamps call_construct=method on
+      every selector-expression call. INHERITED BY kotlin AND scala via
+      _CATALOG_PARENTS, which is why neither of those catalogues repeats
+      these rows.
+  - module: java.time.Instant
+    methods: [now]
+    notes: >-
+      now() and now(Clock) both query a clock; ofEpochMilli / ofEpochSecond
+      / from / parse convert a supplied value and get no row.
+  - module: java.time.LocalDateTime
+    methods: [now]
+  - module: java.time.LocalDate
+    methods: [now]
+    notes: >-
+      MEASURED, not assumed: across the corpus surveys java.time.LocalDate.now
+      is the MOST-CALLED clock in java code (10 edges, ahead of
+      java.time.Instant.now at 5), and the first cut of these rows omitted it
+      along with ZonedDateTime. Every java.time type exposes a static now();
+      the four below are the ones the corpus actually calls.
+  - module: java.time.LocalTime
+    methods: [now]
+  - module: java.time.ZonedDateTime
+    methods: [now]
+  - module: java.time.OffsetDateTime
+    methods: [now]
+  - module: java.time.Clock
+    methods: [systemUTC]
   - module: java.lang.Runtime
     methods: [availableProcessors, totalMemory, freeMemory, maxMemory]
 

@@ -373,6 +373,31 @@ env_write:
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
 host_info_read:
+  - module: std::time::Instant
+    functions: [now]
+    notes: >-
+      WI-tubij: a clock read is host_info_read in EVERY catalogued language
+      (WI-pavob ruling 2026-08-26, "yes in"). A monotonic clock counts: on
+      Linux CLOCK_MONOTONIC runs from boot, so an early read leaks
+      approximate uptime, which distinguishes machines. Arithmetic on an
+      already-captured value is NOT a read and is refused. Instant::now
+      samples the monotonic clock.
+  - module: std::time::Instant
+    methods: [elapsed]
+    notes: >-
+      elapsed() IS a clock read: rustc 1.94.0 library/std/src/time.rs
+      defines it as `Instant::now() - *self`. duration_since / checked_* /
+      saturating_* are arithmetic on captured values and get NO row.
+      Method-kind is inert in rust today (INV-linub L3/L4: 0 of 11,691 call
+      edges match method-kind) — catalogued as a method because that is what
+      it IS, with the inertness owned by INV-linub rather than papered over
+      by mis-keying it a function.
+  - module: std::time::SystemTime
+    functions: [now]
+  - module: std::time::SystemTime
+    methods: [elapsed]
+    notes: >-
+      Defined as `SystemTime::now().duration_since(*self)`.
   - module: std::env
     functions: [current_exe, temp_dir, home_dir]
     notes: >-
