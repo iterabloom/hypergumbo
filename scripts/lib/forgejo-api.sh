@@ -1291,6 +1291,21 @@ _manifest_selected_tests() {
 }
 
 # ------------------------------------------------------------------
+# _manifest_test_count FILE
+#   How many tests a manifest selects. Exists as its own function because
+#   the caller's first cut counted with `grep -c '^packages/'` — the same
+#   path-prefix mistake _manifest_selected_tests was written to remove,
+#   left behind in the REPORTING path after the merge path was fixed. The
+#   count came out 0 for any manifest of root-level `tests/...` entries,
+#   which is the common shape, so the "kept N entries" line that makes a
+#   silent narrowing VISIBLE never printed. A diagnostic that cannot fire
+#   is worse than none: it reads as "nothing was preserved" either way.
+# ------------------------------------------------------------------
+_manifest_test_count() {
+	_manifest_selected_tests "$1" | grep -c '' || true
+}
+
+# ------------------------------------------------------------------
 # _manifest_union — the test-selection twin of _ops_union_restore_file
 #
 # Arguments: committed_file regen_file out_file

@@ -1609,11 +1609,10 @@ do_pr() {
 			git show "HEAD:.ci/affected-tests.txt" > "$_mf_committed" \
 				2>/dev/null || : > "$_mf_committed"
 			cp .ci/affected-tests.txt "$_mf_regen"
-			_mf_sliced=$(grep -c '^packages/' "$_mf_regen" 2>/dev/null || true)
+			_mf_sliced=$(_manifest_test_count "$_mf_regen")
 			_manifest_union "$_mf_committed" "$_mf_regen" \
 				.ci/affected-tests.txt
-			_mf_final=$(grep -c '^packages/' .ci/affected-tests.txt \
-				2>/dev/null || true)
+			_mf_final=$(_manifest_test_count .ci/affected-tests.txt)
 			rm -f "$_mf_committed" "$_mf_regen"
 			if [[ "${_mf_final:-0}" -gt "${_mf_sliced:-0}" ]]; then
 				echo "   🛡  kept $(( _mf_final - _mf_sliced )) committed manifest entry/entries the slicer did not select (INV-bigaz)"
