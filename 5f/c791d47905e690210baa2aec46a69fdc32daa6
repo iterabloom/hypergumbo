@@ -1,0 +1,56 @@
+Original commit body from 5c2e595df11cf62b5037989c27645f876826a56a:
+
+INV-pusin's ratified statement — a module named solely by an import or a TYPE
+ANNOTATION performs no I/O and must not withhold a boundary verdict — held for
+cpp's `using std::cout;` and failed for `using S = std::string;`, whose scoped
+path sits under `type_descriptor`.
+
+That context was NOT appended when the defect was filed, because in the cpp
+grammar it also covers casts and template arguments and the filing recorded
+that "whether every member of that population is genuinely a type annotation
+... is NOT established". It is now, by parsing each form and calling the
+production `_scoped_context_kind`: the context covers exactly type alias,
+`static_cast<std::string>(y)` and `std::vector<std::string>`, and all three
+NAME a type and read no value. Template arguments are by far the largest
+member — rocksdb 2359 occurrences against 126 aliases — so the filed defect is
+the smallest part of what this fixes.
+
+A CLOSURE CAN SATISFY THE REPRO AND NOT THE STATEMENT, so twelve further forms
+were enumerated. Two more leak:
+
+  class A : public std::exception     base_class_clause   FIXED, added
+  for (std::string x : v)             for_range_loop      DELIBERATELY NOT
+
+`for_range_loop` covers BOTH halves of the loop — the variable's type and the
+RANGE EXPRESSION — and `for (auto& l : std::cin)` puts `std::cin` in the same
+context. Skipping it would suppress a genuine stream read, which is the
+false-all-clear direction and the same hazard this item names for
+`std::cout << 1`. Separating them needs FIELD-level granularity, which
+`skip_context_kinds` does not have. The residual over-withholds, which is safe,
+and a test pins the range expression as still emitting so the cost of "fixing"
+it is visible to whoever tries.
+
+`call_expression` is likewise untouched: it is where genuine calls live and
+`std::ofstream("f")` is one.
+
+Measured A/B over the five cpp repos carrying a survey baseline, both arms,
+fresh cache each, arm-take proven by reading the tuple out of the shipped
+module: 12,556 -> 8,566 module_attr_ref edges (-3,990, -31.8%), and 0 of 15
+verdicts moved. rocksdb -2494 (-59%), powerdns -1219, shaka-packager -251,
+libzmq -15, plasma-desktop -11. The zero verdict movement is the SAFETY result:
+this removes withholding, so a verdict turning clean would be a claim about the
+world needing per-repo defence, and none did. The two surviving inconclusives
+are held by other rungs entirely (glsl has no catalogue; shaka-packager has an
+opaque-launch disclosure).
+
+Also: the test harness was asserting against tuples the analyzers no longer
+ship. test_base.py carried hand-copies of both skip tuples, and RUST_SKIP still
+listed `use_declaration`, which INV-pusin's SECOND closure had moved into
+`skip_ancestor_kinds` because the grammar wraps every `use` form but the bare
+one. So every rust test in that class passed through the mechanism production
+had abandoned — the right answer for the wrong reason, blind to a regression in
+the real path. A parity test now reads both tuples out of the shipped analyzers
+and fails if either copy drifts, and the rust helper passes the ancestor kinds
+so those tests exercise what actually runs.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
