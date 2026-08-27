@@ -1,0 +1,32 @@
+- op: create  # 8ea4
+  at: '2026-08-27T21:10:17Z'  # 8ea4
+  by: agent  # 8ea4
+  actor: jgstern_agent  # 8ea4
+  clock: 1  # 8ea4
+  nonce: 8ea4  # 8ea4
+  data:  # 8ea4
+    kind: work_item  # 8ea4
+    title: "0006's <=25.0% useful precision is published in the index but not derivable from the record (5 vacuous TPs named, 10 required)"  # 8ea4
+    status: todo_hard  # 8ea4
+    priority: 1  # 8ea4
+    parent:  # 8ea4
+    tags:  # 8ea4
+    - taint  # 8ea4
+    - measurement  # 8ea4
+    - methodology  # 8ea4
+    - measurement_0006  # 8ea4
+    isbefore: []  # 8ea4
+    duplicate_of: []  # 8ea4
+    not_duplicate_of: []  # 8ea4
+    pr_ref:  # 8ea4
+    description: "docs/measurements/README.md publishes 0006's useful precision as \"<=25.0%\".\nTHAT FIGURE IS NOT DERIVABLE FROM THE RECORD.\n\nTHE ARITHMETIC. 0006's situation population is 38 TP of 112. <=25.0% requires\nremoving exactly TEN true positives (28/112 = 25.0%). The record's body names\nFIVE: \"All five shellcheck TPs are real dataflow filed under\n`untrusted-input-no-database` against Haskell in-process refs.\" The other five\nremovals are not identified anywhere in 0006.\n\n  remove  5 TPs -> 29.5%      remove  9 TPs -> 25.9%\n  remove 10 TPs -> 25.0%      remove 11 TPs -> 24.1%\n\nWHY THIS MATTERS RATHER THAN BEING A ROUNDING QUIBBLE. This is the number the\nstanding decision band is written against -- \"0006: <=25% useful => RECALL\nSTAYS STOPPED\" -- so it gates a program-level decision about whether recall\nwork continues at all. docs/measurements/README.md states that what belongs in\na record is \"the evidence a reader would need to disbelieve the number\", and\nfor this one figure that evidence is absent.\n\nTHE FIGURE MAY WELL BE RIGHT. 0006 section A tabulates kind-misdeclarations in\nFIVE languages (haskell IORef/STRef, c socket, elixir Application.get_env,\npython parse_args, bash >/>>/BASH_SOURCE), so more than shellcheck's five TPs\nplausibly qualify. This item is filed to make it CHECKABLE, not to dispute it.\n\nWHAT TO DO, under ADR-0046's two named vacuity classes:\n  1. Identify each vacuous TP in 0006's population by repo + finding, and label\n     it KIND-MISDECLARED (INV-nular class) or CONFIGURED-ACTION (WI-gohok\n     class, ADR-0046's three-citation test).\n  2. Recompute useful precision as (TP - VACUOUS) / 112, reporting the two\n     class counts SEPARATELY per ADR-0046.\n  3. Either reproduce <=25.0% with the derivation shown, or restate it.\n\nEXPECT IT TO GET WORSE, NOT BETTER. 0006's bound was attributed to INV-nular\nALONE; the CONFIGURED-ACTION deduction was never applied to it. Applying\nADR-0046 to the same population can only lower the figure further. If the band\nwas already tripped at <=25.0%, it is tripped harder, and that should be stated\nplainly rather than discovered later.\n\nBLOCKS: INV-duvup. A baseline series must not anchor to an underived number --\nADR-0046 says <=25.0% \"is not carried forward on authority\"."  # 8ea4
+    fields: {}  # 8ea4
+- op: update  # f739
+  at: '2026-08-27T21:10:25Z'  # f739
+  by: agent  # f739
+  actor: jgstern_agent  # f739
+  clock: 2  # f739
+  nonce: f739  # f739
+  set: {}  # f739
+  add:  # f739
+    isbefore: [INV-duvup-jonub-mozoz-husof-kazun-luzos-lisoh-vusit]  # f739
