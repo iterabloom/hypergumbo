@@ -1,0 +1,58 @@
+Original commit body from f7e5a69f25d77fde4e1429a5156566b0b876bbd5:
+
+## The ruling
+
+Owner ruling 2026-08-27: **in**.
+
+The catalogue header excluded `std::os::*` as *"raw-fd extensions"*. That noun is correct for what it names, and **that part stands** — `AsRawFd` / `FromRawFd` / `IntoRawFd` hand over a descriptor number and reach no syscall. But the exclusion was being read as covering the whole namespace, and those modules also carry plain filesystem mutation.
+
+## The asymmetry that motivated it
+
+`std::fs::soft_link` — the cross-platform way to create a symlink — **was** catalogued, while `std::os::unix::fs::symlink` was not. So the tool flagged one way of creating a symlink and ignored the other, depending purely on which API the program reached for. And a Linux program calling `chroot` or `chown` through this module read as doing nothing at all there: a false all-clear, the error direction this project treats as worst.
+
+A test now pins all three symlink spellings, so the asymmetry cannot come back quietly.
+
+## Added — 13 rows
+
+| module | added |
+|---|---|
+| `std::os::unix::fs` | `symlink`, `chown`, `fchown`, `lchown`, `chroot` |
+| `std::os::unix::fs::FileExt` | `read_at`, `read_exact_at` (fs_read) · `write_at`, `write_all_at` (fs_write) |
+| `std::os::windows::fs` | `symlink_file`, `symlink_dir` |
+| `std::os::windows::fs::FileExt` | `seek_read` (fs_read) · `seek_write` (fs_write) |
+
+## Every boundary is precedent, not preference
+
+`python.yaml` already rules `os.chroot`, `os.chown` / `lchown` / `fchown`, `os.symlink` / `os.link` and `os.pwrite` as `fs_write`, and `os.chdir` as `env_write`. **The rust rows follow python rather than re-litigating each name**, because a catalogue that disagrees with itself across languages is exactly the defect INV-nular's sweep exists to find.
+
+`chroot` is the one worth naming: its primary effect is on the calling process, not on disk. It is `fs_write` on python's precedent, with that reasoning recorded in the catalogue rather than left implicit.
+
+## Most of this module is not I/O, and that is the finding
+
+`std::os::unix::fs` declares **71 trait methods and yields 9 rows.** `MetadataExt` / `PermissionsExt` / `FileTypeExt` / `DirEntryExt` read an already-fetched `stat` struct; `OpenOptionsExt` / `DirBuilderExt` are builder setters. All refused and pinned by tests, alongside everything unstable in the audited toolchain (`mkfifo`, `junction_point`, `seek_read_buf`, `read_buf_at`, the vectored family).
+
+**A module can look far larger than its I/O surface**, and the refusals are what distinguish the two. Enumerating without recording them would leave the next auditor to redo the same rejections.
+
+## A third probe bug, same shape
+
+Trait methods are declared inside `pub trait X {` as bare `fn name(&self..` — **not** `pub fn`. A probe keyed on `pub fn` reports the traits as empty, which is the same under-reporting that made `DirBuilder::create` look absent from the toolchain in the previous commit. Third instance this campaign of a probe bug returning a plausible wrong answer rather than an error, and a probe that under-reports is indistinguishable from a module with no surface.
+
+## One judgment flagged rather than buried
+
+Trait methods are catalogued **under the trait**, following the `std::io::Write` precedent, and deliberately **not** added to `ambiguous_names`. The names are distinctive enough to match without a module hint, and rust method edges mostly carry an unresolved receiver slot (INV-linub) — so requiring a hint would make them unmatchable in practice.
+
+## Measured
+
+Same instrument and same controls as the previous commit. 42 reusable surveys, both arms driving the production loader and the production predicate:
+
+**13 rows added; the starved-module set is unchanged in every repository — nothing freed, nothing newly starved.**
+
+Instrument shown live rather than assumed: **9 of 42** surveys carry a non-empty starved set, and `std::path::Path` starves in exactly **3 of 3** Rust repositories. The two free-function modules carry no methods, so they cannot enter the starvation population at all; the two trait modules are method-only and every name they carry is a method, so any real call satisfies them.
+
+## Correction to PR #565
+
+That PR said `fs_write` was *"the only one of the **nine** kinds"* that could carry the `lock` family. **There are eighteen.** The decision is unchanged and was re-checked against the full set — `ipc_send` implies a message, which a lock is not, and `env_write` is process-state mutation — but the stated reason was wrong. A number carried in a working note is not a measurement.
+
+## Verification
+
+Full suite **24,026 passed**, 7 skipped, 15 xfailed. mypy strict ratchet clean. CI manifest manually extended again, for the reason filed as INV-bigaz.
