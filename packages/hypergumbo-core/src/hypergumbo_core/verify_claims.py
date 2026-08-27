@@ -3793,6 +3793,11 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         "source_primitives": list(v.source_primitives),
         "sink_primitives": list(v.sink_primitives),
         "sink_symbols": list(v.sink_symbols),
+        # INV-kakad: the sink CALL SITES, so the multiplier below is checkable
+        # from the record. `sink_symbols` names callees, and one callee reached
+        # from two callers is two pairs under one name — the reason three
+        # independent refuters read `collapsed_flow_count` as unreconcilable.
+        "sink_call_sites": [list(site) for site in v.sink_call_sites],
         "collapsed_flow_count": v.collapsed_flow_count,
     }
 
