@@ -1,0 +1,25 @@
+- op: create  # 170b
+  at: '2026-08-27T15:56:07Z'  # 170b
+  by: agent  # 170b
+  actor: jgstern_agent  # 170b
+  clock: 1  # 170b
+  nonce: 170b  # 170b
+  data:  # 170b
+    kind: invariant  # 170b
+    title: "verify_claims tests a call-site-syntax value (call_construct) for membership in a definition-kind vocabulary (IoPrimitive.kind): a homonym join, 71.8% disagreement where it runs"  # 170b
+    status: violated  # 170b
+    priority: 3  # 170b
+    parent:  # 170b
+    tags:  # 170b
+    - axis  # 170b
+    - io_boundary  # 170b
+    - verify_claims  # 170b
+    - analysis_quality  # 170b
+    isbefore: []  # 170b
+    duplicate_of: []  # 170b
+    not_duplicate_of: []  # 170b
+    pr_ref:  # 170b
+    description: "FOUND 2026-08-27 by the fundamental concept audit of call_construct, on a\nclean tree at 5fc791d479. Full write-up:\n~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md\n\nTHE SITE. verify_claims.py:3058-3060, inside method_starved_modules:\n\n    construct = (edge.get(\"meta\") or {}).get(\"call_construct\")\n    if construct and construct in module_kinds[language].get(module, set()):\n        satisfied.add(module)\n\nLHS is Edge.meta[\"call_construct\"] -- 8 registered edge_meta values, a\nCALL-SITE SYNTAX vocabulary: method, function, constructor, application,\nremote, local, macro_body, pipe.\n\nRHS is IoPrimitive.kind (io_boundary.py:586) -- a bare `str` whose real\nvocabulary is {function, method, attribute}, derived from the YAML SECTION\nNAME at io_boundary.py:1263/1273/1283. It is a DEFINITION-KIND vocabulary.\n\nTwo different questions (\"what does the call site look like\" vs \"what is the\ncallee\") joined by bare string `in`, with no shared registry and nothing\nasserting the vocabularies correspond. 6 of the 8 LHS values can never be\nmembers; `attribute` on the RHS can never be matched by any LHS value.\n\nTHAT THE TWO ARE NOT THE SAME AXIS IS MEASURED, not asserted. Over 42 cached\nsurveys (lutuh_scope_08242026), in the population where the join actually\nruns -- external callees whose (module, name) matches a catalogue row --\ncall_construct disagrees with the row's declared kind 71.8% of the time\n(3,355 of 4,672): remote->function 2,434, method->function 867,\napplication->function 54.\n\nINCIDENCE TODAY IS ZERO, AND THE ZERO IS DEFENDED. Of 261,365 stamped edges\nacross 19 languages, only 3,176 reach a method-keyed catalogue module (the\nonly population route 1 can judge), and 0 of those carry one of the 6\nnon-overlapping constructs. The reason is structural: erlang and haskell\ncontribute all 56,251 unmatchable stamps and have ZERO method-keyed modules,\nso the loop `continue`s at `if not modules` before the construct test runs.\n\nPOSITIVE CONTROL -- the defect is live and reachable, not theoretical. The\nidentical synthetic edge into std::fs::DirBuilder:\n\n    construct=method       -> method_starved_modules reports []\n    construct=macro_body   -> reports ['std::fs::DirBuilder']\n    construct=remote       -> reports ['std::fs::DirBuilder']\n    construct=application  -> reports ['std::fs::DirBuilder']\n\nIt fires the moment erlang or haskell gains a method-keyed module, or a rust\nmacro-body call resolves into one.\n\nWHY THIS IS FILED DESPITE ZERO INCIDENCE. io_boundary.py:945-960 already\ndocuments the same confusion at a DIFFERENT consumer -- Go spells os.Open(p)\nwith the same selector syntax as f.Close() and stamps both `method` -- and\nrecords a measured experiment where keying a rule on the construct alone\n\"removed 51 matches -- the 2 target false positives and 49 true ones\". The\nlesson was recorded at one consumer and never generalised to this one, nor to\nthe vocabulary. The failure direction here is a FALSE STARVATION REPORT\n(claiming the analysis could not have looked when it could), which degrades\na verdict rather than falsely clearing one -- hence P3, not P2.\n\nRELATED, NOT DUPLICATE. INV-tanom names the same underlying confusion for\nGo's `method` stamp specifically (\"the field records the SYNTAX, not the\nconstruct its name promises\"); this item is about the JOIN SITE and the\ncross-vocabulary comparison, which no open item names."  # 170b
+    fields:  # 170b
+      statement: "A satisfaction test must compare values drawn from the same vocabulary. call_construct names the syntax of the CALL SITE; IoPrimitive.kind names the construct of the DEFINITION. They overlap lexically in exactly {function, method} and must not be joined by bare string equality."  # 170b
+      root_cause: "MetaKeySpec declares no value vocabulary for a meta key, and IoPrimitive.kind is a bare str outside the ir.py/datamodels.py axis-declaration gate, so neither side of the join has a registry the other could be checked against."  # 170b
