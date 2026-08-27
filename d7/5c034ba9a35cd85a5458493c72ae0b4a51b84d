@@ -1,0 +1,45 @@
+Original commit body from 607a99ea2ef59a4994313f7c9b8e4781b299b5d2:
+
+The measurements index published `<=25.0%` for the one quantity a program-level
+decision band is written against ("<=25% useful => recall stays stopped"). That
+figure was not derivable from the record: it was added a day after 0006, in the
+commit that published 0008, and 0006's body names exactly five vacuous TPs,
+which supports 29.5%.
+
+Re-derived under ADR-0046's two named classes over 0006's own ledger:
+27 useful of 112 adjudicated = 24.1%, with 11 KIND-MISDECLARED and
+0 CONFIGURED-ACTION. Correctness precision is untouched at 33.9%. The bound
+survives; the derivation did not. `gibom_08272026/derive.py` recomputes every
+figure from ledger-final.json and pass4-summary.json, so no count is
+hand-copied.
+
+CONFIGURED-ACTION contributing zero refutes the expectation ADR-0046 itself
+recorded. The reason is structural, not luck: 0006's claim set admits only
+env_read and host_info_read sources, so clause 2 -- deserialization into a type
+whose fields are declared as a configuration schema -- has no candidate. The
+ADR's motivating shape (caddy) belongs to 0005's cohort. Nearest miss
+disclosed: cilium reads os.Getenv(SockPathEnv) and dials the socket it names;
+clauses 1 and 3 cite, clause 2 does not, so it counts useful.
+
+Six of the eleven deductions are a bash defect section A named only in part --
+`>` redirects whose every target is /dev/null, cited to the line, fixed the
+next day by PR #541. The other five are shellcheck's Haskell IORef/STRef under
+db_read, which haskell.yaml's own boundary_ruling: unruled note already calls
+"in-process mutable references, not a database".
+
+One reversal recorded: gocryptfs was first labelled discard-only on four
+/dev/null sites; a raw re-read found a fifth, `exec 200> "$LOCKFILE"`, whose
+path is env-derived (TMPDIR -> TESTDIR -> LOCKFILE). A genuine environment-to-
+filesystem write. The first cut would have published 23.2%.
+
+Two of section A's own rows are struck rather than carried -- INV-nular's
+reproduction refuted ">&2 counts" and ">> reported as >". Conversely, argv and
+application-config under env_read are documented deliberate rows awaiting a
+vocabulary ruling, so they are published as sensitivities with arithmetic
+(15.2% / 19.6% / 21.4%, and 10.7% if all resolve against) rather than deducted.
+Two new sink-side defects found in passing (io_lib:format declared logging;
+urllib.request.Request declared net_send though it is a constructor) go to
+INV-nular.
+
+Racial-Capitalism-Is-Bad: a coyote building a spiral staircase shaped like lighthouse made of soup noodles on ice
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
