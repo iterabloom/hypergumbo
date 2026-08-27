@@ -1,0 +1,60 @@
+Original commit body from e17ebeab86bff62a9cded5520a52744ae7dd6c4c:
+
+Records the owner's ruling of 2026-08-27 on WI-gohok, put as three options and
+answered B.
+
+THE PROBLEM. Measurement 0005 surfaced a limit that is not a bug in any
+producer: the taint model, and every precision rubric to date, cannot separate a
+value that LEAKS from one a config-driven program was TOLD to act on. caddy
+reads its config from stdin; the config names a log file; the bytes reach
+os.Chmod through a chain citable in caddy's own source. Under the 0001 rubric
+that is a TRUE POSITIVE -- an independent adjudication commissioned for this
+exact question agreed and accepted the consequence: every filesystem, network
+and subprocess operation whose argument comes from a configured value is a true
+positive, for any config-driven server. True and uninformative at once, over a
+class that is every config field of every module in a plugin-registry
+architecture.
+
+WHY IT GATED THE BASELINE. The standing decision band is denominated in
+usefulness ("<=25% useful => recall stays stopped") while the instrument
+computes only correctness -- 0006 itself calls 33.9% "an upper bound on useful
+precision, not a measure of it". A series would have tracked correctness for
+months without answering the question the band exists to answer. INV-duvup
+requires the rubric fixed IN ADVANCE, so this had to land before the first
+datum.
+
+THE RULING. Correctness precision is unchanged (TP / adjudicated), so 0001's
+"exploitability is not the question" is not relitigated and comparability with
+0001-0006 is preserved by construction. Useful precision is published alongside
+as (TP - VACUOUS) / adjudicated -- same denominator, numerator-only deduction,
+so useful <= correctness always.
+
+THE AMENDMENT THAT KEEPS IT OBJECTIVE. The exclusion is STRUCTURAL, not a
+severity judgement; adjudication objectivity is what produced 94.6% independent
+panel agreement on 0006. A finding is CONFIGURED-ACTION only when three things
+are each CITABLE: a declared-configuration source, a deserialization into a
+declared configuration schema, and a sink argument read from a field of that
+schema which the sink operation exists to consume. Any clause that cannot be
+cited leaves the finding counted as useful, so the test can only UNDERSTATE the
+damage.
+
+TWO VACUITY CLASSES, REPORTED SEPARATELY because they have opposite lifetimes.
+CONFIGURED-ACTION is a permanent model limit. KIND-MISDECLARED (a Haskell IORef
+filed under untrusted-input-no-database) is a DEFECT -- INV-nular -- that gets
+fixed, not excluded. Conflating them would launder a bug through a rubric
+change.
+
+A PROVENANCE GAP THIS DOES NOT PAPER OVER. The measurements index publishes
+0006's useful precision as <=25.0%, which requires removing TEN of 38 TPs; the
+record names FIVE (all of shellcheck's). The figure may be right -- section A
+tabulates kind-misdeclarations in five languages -- but it is not derivable from
+the record, and it is the number a program-level band is written against. Filed
+as WI-gibom, which now blocks INV-duvup; the ADR states it is not carried
+forward on authority.
+
+Manifest hand-extended (INV-bigaz): smart-test skipped as docs-only and emptied
+the selection to zero, but tests/test_adr_readme_index_sync.py and
+tests/test_adr_supersession_symmetry.py read docs/adr/ and are exactly what the
+index edit touches. All three run green locally (40 passed).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
