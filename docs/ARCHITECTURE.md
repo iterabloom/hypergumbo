@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **313** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 81 core, 4 CLI, 33 tracker)
-- **41881** symbols (functions, classes, methods)
-- **147644** edges by type:
-  - calls: 76976
-  - contains: 38633
-  - imports: 12939
-  - instantiates: 11062
-  - references: 5245
-  - module_attr_ref: 1382
-  - other: 1407
+- **42073** symbols (functions, classes, methods)
+- **148113** edges by type:
+  - calls: 77195
+  - contains: 38811
+  - imports: 12978
+  - instantiates: 11070
+  - references: 5264
+  - module_attr_ref: 1385
+  - other: 1410
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 41881 Symbols + 147644 Edges + UsageContexts           │
+│  Output: 42073 Symbols + 148113 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,16 +273,16 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
 | `Span` | class | 6416.2 | ir.py |
-| `write_text` | external_symbol | 6290.0 | <external> |
+| `write_text` | external_symbol | 6296.0 | <external> |
 | `LinkerContext` | class | 3352.4 | registry.py |
 | `Edge.create` | method | 2150.9 | ir.py |
-| `get` | external_symbol | 1980.0 | <external> |
+| `get` | external_symbol | 1986.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
-| `Path` | external_symbol | 1800.0 | <external> |
+| `Path` | external_symbol | 1804.0 | <external> |
+| `load_catalog` | function | 1631.5 | io_boundary.py |
 | `main` | function | 1587.4 | cli.py |
-| `load_catalog` | function | 1531.4 | io_boundary.py |
-| `append` | external_symbol | 1433.0 | <external> |
+| `append` | external_symbol | 1435.0 | <external> |
 | `clear_pattern_cache` | function | 1341.0 | framework_patterns.py |
 | `Edge` | class | 1333.7 | ir.py |
 | `TreeSitterAnalyzer` | class | 1074.7 | base.py |
@@ -494,6 +494,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-call-construct-census.py` | Per-language census of ``meta.call_construct`` on the call edges of a behavior map. |
 | `measure-call-escape-cause.py` | Why does a §3a escape site whose CFG node is a CALL still escape? |
 | `measure-catalogue-reach.py` | Can each catalogued I/O primitive be REACHED from an idiomatic call site? |
+| `measure-cross-function-reach.py` | How much of the ``cross_function`` blocker could §4a composition actually lift?  (WI-famig) |
 | `measure-ctor-root-typing-ab.py` | A/B the constructor-ROOT receiver typing at the call-emission site. |
 | `measure-ctor-table-derivation-ab.py` | A/B the catalogue-derived constructor table on real repositories. |
 | `measure-dotted-ctor-floor.py` | Real-code floor for WI-lifol: dotted-module constructors that actually feed |
@@ -890,8 +891,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: d863fbda17ef
-  commit_count: 6852
+  commit: e00f98523a0a
+  commit_count: 6885
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
