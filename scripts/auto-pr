@@ -1600,16 +1600,35 @@ do_pr() {
 		if grep -q "^# Mode: full-suite" .ci/affected-tests.txt 2>/dev/null; then
 			echo "   ⚠️  Manifest regenerated as full-suite (slice failed?) — keeping existing"
 			git checkout -- .ci/affected-tests.txt 2>/dev/null || true
-		elif ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
-			echo "   Manifest updated — amending commit"
-			git add .ci/affected-tests.txt
-			_assert_branch_owns_head "$BASE_BRANCH" \
-				"origin/$BASE_BRANCH" || exit 1
-			git commit --amend --no-edit -s
-			LOCAL_SHA="$(git rev-parse HEAD)"
-			echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
 		else
-			echo "   ✅ Manifest up to date"
+			# THE REGEN MAY ADD, IT MUST NEVER DROP. Overwriting here
+			# silently narrowed hand-extended manifests back to the
+			# slicer's output — see _manifest_union in lib/forgejo-api.sh.
+			_mf_committed="$(mktemp)"
+			_mf_regen="$(mktemp)"
+			git show "HEAD:.ci/affected-tests.txt" > "$_mf_committed" \
+				2>/dev/null || : > "$_mf_committed"
+			cp .ci/affected-tests.txt "$_mf_regen"
+			_mf_sliced=$(grep -c '^packages/' "$_mf_regen" 2>/dev/null || true)
+			_manifest_union "$_mf_committed" "$_mf_regen" \
+				.ci/affected-tests.txt
+			_mf_final=$(grep -c '^packages/' .ci/affected-tests.txt \
+				2>/dev/null || true)
+			rm -f "$_mf_committed" "$_mf_regen"
+			if [[ "${_mf_final:-0}" -gt "${_mf_sliced:-0}" ]]; then
+				echo "   🛡  kept $(( _mf_final - _mf_sliced )) committed manifest entry/entries the slicer did not select (INV-bigaz)"
+			fi
+			if ! git diff --quiet -- .ci/affected-tests.txt 2>/dev/null; then
+				echo "   Manifest updated — amending commit"
+				git add .ci/affected-tests.txt
+				_assert_branch_owns_head "$BASE_BRANCH" \
+					"origin/$BASE_BRANCH" || exit 1
+				git commit --amend --no-edit -s
+				LOCAL_SHA="$(git rev-parse HEAD)"
+				echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
+			else
+				echo "   ✅ Manifest up to date"
+			fi
 		fi
 	else
 		echo "   ⚠️  Manifest generation skipped (no stable hypergumbo?)"
