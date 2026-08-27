@@ -1,0 +1,23 @@
+- op: create  # e649
+  at: '2026-08-27T20:46:06Z'  # e649
+  by: agent  # e649
+  actor: jgstern_agent  # e649
+  clock: 1  # e649
+  nonce: e649  # e649
+  data:  # e649
+    kind: work_item  # e649
+    title: "Self-reference by published package name is unmeasured outside Cargo/go.mod/package.json"  # e649
+    status: todo_hard  # e649
+    priority: 4  # e649
+    parent:  # e649
+    tags:  # e649
+    - io_boundary  # e649
+    - verify_claims  # e649
+    - false_inconclusive  # e649
+    - analysis_quality  # e649
+    isbefore: []  # e649
+    duplicate_of: []  # e649
+    not_duplicate_of: []  # e649
+    pr_ref:  # e649
+    description: "INV-vivok closed the self-reference gap for the three manifests it named:\nCargo.toml [package].name, go.mod module, package.json name. Every OTHER\nmanifest ecosystem is UNMEASURED -- not known-absent.\n\nWHAT IS ACTUALLY KNOWN. Over the 42-survey corpus, 22 repos yield NO name at\nall from collect_first_party_package_names because they carry none of those\nthree manifests, and several report large uncatalogued-module counts:\n\n  java__eclipse.jdt.ls   643 modules      objc__ResearchKit      396\n  cpp__plasma-desktop    376              cpp__shaka-packager    367\n  scala__sbt             139              swift__vapor           125\n  cpp__libzmq            125              swift__swift-argument-parser  76\n  python__vmaf            67              erlang__cowboy          65\n  python__h5py            64              haskell__postgrest      63\n  haskell__yesod          58              scala__http4s           36\n  erlang__proper          35              python__servant         33\n  swift__SVProgressHUD    30              objc__ReactiveObjC      24\n  erlang__pobox            7              c__qemu-openbios         3\n  bash__lean-liquid        4              c__fuse-overlayfs        1\n\nWhether ANY of those counts contains a self-reference is not established. The\nmeasurement was not run, so this is filed as a QUESTION, not as a defect.\n\nCANDIDATE MANIFESTS, each publishing a name a callee slot could carry:\n  java    pom.xml <groupId>/<artifactId>, build.gradle group/rootProject.name\n  scala   build.sbt organization / name\n  elixir  mix.exs  app:\n  ruby    *.gemspec  spec.name\n  swift   Package.swift  name:\n  haskell *.cabal  name:\n  objc    *.podspec  s.name\n\nPYTHON IS DELIBERATELY EXCLUDED and should stay excluded unless someone refutes\nthe reason: a pyproject DISTRIBUTION name (hypergumbo-core) is not the module\nspelling (hypergumbo_core), and Python self-reference is already covered by the\npath-derived _analyzed_modules.\n\nHOW TO MEASURE IT CHEAPLY, so this needs no new analysis run: the 42 surveys\nunder lutuh_scope_08242026/out/*/cache/**/survey.json carry full edges.\nRecompute _uncatalogued_external_modules per repo and compare the reported list\nagainst the repo's own name read from its manifest -- the same instrument\nINV-vivok was filed and closed with. Minutes of work, and it answers whether\nthis is worth implementing at all.\n\nFAILURE DIRECTION, unchanged from INV-vivok and it governs any fix: suppression\nhere can only ever HIDE a genuine third-party module. Any new manifest reader\nmust read a DECLARED OWN NAME (not a regex over every name-like key) and match\ncomponent-bounded. sketch._detect_project_binary_names is NOT reusable -- it\nscrapes dependency tables and truncates go module paths.\n\nSIZING EXPECTATION: like INV-vivok, noise reduction that flips no verdict.\nJudge it on whether it makes the disclosure readable, not on verdict movement."  # e649
+    fields: {}  # e649
