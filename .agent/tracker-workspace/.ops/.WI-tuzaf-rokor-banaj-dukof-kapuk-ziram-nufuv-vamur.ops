@@ -1,0 +1,21 @@
+- op: create  # 2b76
+  at: '2026-08-27T08:34:41Z'  # 2b76
+  by: agent  # 2b76
+  actor: jgstern_agent  # 2b76
+  clock: 1  # 2b76
+  nonce: 2b76  # 2b76
+  data:  # 2b76
+    kind: work_item  # 2b76
+    title: "Rust's DNS boundary is keyed on str via ToSocketAddrs and is uncatalogued; the SocketAddr impl is the identity"  # 2b76
+    status: todo_hard  # 2b76
+    priority: 3  # 2b76
+    parent:  # 2b76
+    tags:  # 2b76
+    - io_boundary  # 2b76
+    - rust  # 2b76
+    isbefore: []  # 2b76
+    duplicate_of: []  # 2b76
+    not_duplicate_of: []  # 2b76
+    pr_ref:  # 2b76
+    description: "FOUND while adjudicating std::net::SocketAddr under WI-dukom, and filed rather\nthan chased because the arc is the work.\n\nRust's name-resolution boundary is keyed on `str`, not on any net type:\n\n    std/src/net/socket_addr.rs\n      impl ToSocketAddrs for str          -> lookup_host -> sys::net::lookup_host\n      impl ToSocketAddrs for (&str, u16)  -> lookup_host -> sys::net::lookup_host\n      impl ToSocketAddrs for String       -> (same, via str)\n      impl ToSocketAddrs for SocketAddr   -> Ok(Some(*self).into_iter())   IDENTITY\n\nSo `\"example.com:80\".to_socket_addrs()` and `TcpStream::connect(\"host:80\")`\nperform a DNS lookup -- a read of state well outside the process -- while\n`addr.to_socket_addrs()` on an already-resolved SocketAddr performs none.\nrust.yaml catalogues no row for this, under any module.\n\nWHY IT IS NOT SIMPLY \"ADD A ROW\". The receiver is `str`. Under the split\nmeasured on the 42-survey cohort, a method-kind row matches nothing in rust\ntoday: every trait-method call site arrives as\n`rust:external:0-0:<name>:external_symbol` with dst_ref = null, and\ngate_named_entry refuses a method-kind row with no module hint. A `str` row for\n`to_socket_addrs` would therefore be INERT ON ARRIVAL, exactly like the\nTcpStream method rows already in the catalogue (INV-linub L3/L4). Write it for\ncorrectness if a `str` module key is wanted, but do not expect it to fire, and\ndo not count it as coverage.\n\nWHAT WOULD ACTUALLY PAY: `TcpStream::connect` / `TcpListener::bind` /\n`UdpSocket::bind` are ASSOCIATED FUNCTIONS, which is the kind that DOES match\n(WI-dadog's std::env::temp_dir is the proof). Their DNS is reached through the\nsame ToSocketAddrs argument. Check whether those rows exist and fire before\nspending anything on the `str` receiver."  # 2b76
+    fields: {}  # 2b76
