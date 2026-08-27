@@ -34,6 +34,7 @@ Surveys are **not subject to the audit-findings property test** that enforces st
 | Topic | Date | Status | Informed |
 |---|---|---|---|
 | [Symbol Emit-Site Coherence](symbol-emit-coherence.md) | 2026-05-30 | Mixed — D1 resolved, D2/D3 ongoing | PR #3984 (objc/ansible), PR #3986 (protobuf collapse), ADR-0031 (Symbol.language reshape) |
+| [Rust stdlib module I/O enumeration](rust-stdlib-module-io-enumeration.md) | 2026-08-27 | Complete — 20 granted, 13 refused, of 33 audited | WI-lutuh (grants), WI-dukom (probe fixes), WI-pavob (futex/clock rulings) |
 
 ## Related
 

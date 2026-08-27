@@ -69,9 +69,15 @@ from hypergumbo_core.verify_claims import compute_boundary_coverage
 
 
 def _rust_catalog() -> IoBoundaryCatalog:
-    """A stand-in for rust.yaml. ``module_completeness`` is EMPTY on purpose —
-    that is rust.yaml's real state (WI-lutuh), so a module reaching the gate is
-    reported unless something upstream of enumeration excludes it."""
+    """A stand-in for rust.yaml. ``module_completeness`` is EMPTY on purpose,
+    so a module reaching the gate is reported unless something upstream of
+    enumeration excludes it.
+
+    It no longer mirrors rust.yaml's real state: WI-lutuh's audit landed 20
+    grants. The empty map is now a DELIBERATE FIXTURE CHOICE — this file tests
+    what the gate does with an unenumerated module, and pinning that to
+    whatever the shipped catalogue happens to declare would make an unrelated
+    catalogue edit fail these tests."""
     return IoBoundaryCatalog(
         language="rust",
         primitives=[

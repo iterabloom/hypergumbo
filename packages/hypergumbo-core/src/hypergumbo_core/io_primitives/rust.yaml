@@ -472,3 +472,156 @@ logging:
       The Write trait's methods on the four concrete stdio handle types.
       `flush` is absent for the same reason it is absent from std::fs::File.
       `lock` is absent: it takes a mutex and moves no data.
+
+# ---------------------------------------------------------------------------
+# module_completeness — 2026-08-27 audit (WI-lutuh).
+#
+# Scope, method, the probe, and every REFUSAL with its reason:
+#   docs/surveys/rust-stdlib-module-io-enumeration.md
+#
+# A grant asserts that EVERY I/O primitive the module exposes is catalogued,
+# which is what lets a consumer read silence as an examined negative. Matching
+# is EXACT: `std::collections` does not vouch for `std::collections::HashMap`,
+# so every audited module is declared on its own line. Refuse-by-default — 13
+# of the 33 modules audited are deliberately absent, `std` itself foremost.
+# ---------------------------------------------------------------------------
+module_completeness:
+  - module: std::borrow::Cow
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Clone-on-write value wrapper; borrow/to_mut/into_owned. No syscall reach
+      in its own items or one hop out.
+  - module: std::cmp
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Ordering and comparison only (min/max/Reverse/Ordering).
+  - module: std::collections
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Container re-exports. Its only reach outside itself is OS entropy through
+      `hash::RandomState`; see std::collections::HashMap for why that does not
+      withhold the grant.
+  - module: std::collections::BTreeSet
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Ordered set. No hasher, so not even the RandomState reach.
+  - module: std::collections::HashMap
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      `HashMap::new()` returns `HashMap<K, V, RandomState>` and RandomState's
+      initialiser calls `sys::random::hashmap_random_keys` — an OS entropy read
+      that a text scan of map.rs cannot see, because RandomState is defined in
+      another module. A DEFAULT TYPE PARAMETER CAN CARRY A BOUNDARY. Granted
+      anyway, on the shipped python precedent: python grants `secrets`,
+      `random` AND `uuid` on the reasoning that OS-RNG seeding belongs to the
+      PERFORMING module's row (os.urandom), not the consuming module's
+      surface — and `os.getrandom` was removed from env_read outright with "a
+      CSPRNG read is not an environment read under any reading", so this
+      vocabulary has no kind for entropy at all. Refusing here on a read python
+      grants would make module_completeness mean different things per language.
+  - module: std::collections::HashSet
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Same RandomState reach and same precedent as std::collections::HashMap.
+  - module: std::collections::hash_map::Entry
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      or_insert/or_default/and_modify/key. The entropy is read once when the
+      MAP is constructed, not by Entry; granted on the same precedent.
+  - module: std::ffi::CStr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Borrowed NUL-terminated view: from_ptr/to_bytes/to_str. Reading through a
+      raw pointer is unsafe, not I/O.
+  - module: std::io::ErrorKind
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      A plain enum: ZERO pub fns and one `pub(crate) fn as_str`. It was refused
+      by the probe for `pub type RawOsError = sys::io::RawOsError;` — a SIBLING
+      declaration in the same file belonging to `Error`, not to ErrorKind.
+  - module: std::iter
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Iterator traits and adapters. Adapters are lazy over whatever they wrap;
+      a `BufReader` in the chain is that type's boundary, not iter's.
+  - module: std::mem
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      size_of/align_of/swap/replace/take/forget. Memory shape, not I/O.
+  - module: std::net::IpAddr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Address value type: octets/is_loopback/parse. Naming an address is not
+      contacting it.
+  - module: std::net::SocketAddr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Seven pub fns, all value accessors (new/ip/set_ip/port/set_port/
+      is_ipv4/is_ipv6). Its ONLY std-side impl is the identity
+      `impl ToSocketAddrs for SocketAddr { Ok(Some(*self).into_iter()) }`; the
+      DNS that reaches `sys::net::lookup_host` is on `str` and `(&str, u16)`,
+      a different receiver type. The probe had refused it on
+      `std/src/os/unix/net/addr.rs` — the unix-domain type of the same name.
+  - module: std::ptr
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Pointer arithmetic and volatile access. Refused originally on a bare
+      `metadata` match that was `ptr::metadata` — the non-address half of a fat
+      pointer. NOTE: this module exports `read`, `write`, `copy` and
+      `read_volatile`, names that collide exactly with I/O verbs, so the grant
+      is protective as well as correct — it makes those calls an examined
+      negative instead of leaving the spelling to be guessed at.
+  - module: std::slice
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Slice primitives. Same `ptr::metadata` false refusal; a deliberately
+      over-broad net (sys|libc|fd|open|socket|File|io::) finds nothing.
+  - module: std::sync
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      WI-pavob, owner ruling "ok out": thread contention does not cross an I/O
+      boundary. Uncontended a Mutex is a compare-and-swap in the process's own
+      memory; contended it parks the thread via futex, changing kernel
+      scheduler state while NO DATA CROSSES in either direction.
+  - module: std::sync::Arc
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Atomic reference count over a heap allocation.
+  - module: std::sync::Mutex
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Same WI-pavob ruling as std::sync.
+  - module: std::sync::mpsc
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      A channel is a queue inside one program, so it is not ipc_recv — that
+      kind names a CROSS-PROCESS boundary and a Rust channel never leaves the
+      process. WI-pavob briefly withdrew this grant pending a tenth
+      synchronisation kind; no tenth kind exists, so the grant stands.
+  - module: std::time::Duration
+    completeness: complete
+    retrieved: "2026-08-27"
+    notes: >-
+      Pure arithmetic, defined in core. Distinct from std::time and
+      std::time::SystemTime, which are deliberately NOT granted: WI-pavob ruled
+      a clock read IS host_info_read, so those need rows (WI-tubij), not a
+      no-I/O declaration.
