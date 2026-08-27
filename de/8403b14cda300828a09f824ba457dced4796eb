@@ -1,0 +1,63 @@
+Original commit body from 2b9ed6d184c6d3f1e4f2749288b4a3b53c43b4be:
+
+auto-pr regenerates .ci/affected-tests.txt during the push so a STALE
+manifest -- one missing a test the new diff affects -- cannot reach CI. It did
+that by overwriting the committed manifest with the slicer's output, and an
+overwrite destroys authored intent.
+
+The slicer has no data-file -> test edge (INV-bigaz): a change to
+io_primitives/*.yaml, or any other pure-data input, slices to roughly ONE test
+file. An author who deliberately widens the manifest to the tests that
+actually exercise the changed data had it narrowed back during the push.
+
+THE OVERWRITE IS INVISIBLE FROM THE AUTHOR'S SIDE, which is why it survived:
+the manifest is extended, committed correctly, and replaced afterwards. Found
+by reading a CI log that said "1 selected files" for a commit whose own
+manifest listed twenty. Re-checked across three merged catalogue PRs -- every
+one shipped a 1-file manifest while its notes recorded a working 19-file
+extension. So the documented INV-bigaz workaround has never once worked.
+
+THIS IS WI-buhov'S BUG ONE DIRECTORY OVER, and it takes WI-buhov's remedy.
+auto-pr used to restore backed-up tracker .ops over the working tree
+unconditionally and silently ate concurrent writes; _ops_union_restore_file
+fixed it by making the restore a UNION. The manifest path had the identical
+shape and no such guard. _manifest_union now sits directly beside it in
+scripts/lib/forgejo-api.sh -- pure (no git, no network), so it is testable by
+sourcing the library exactly as its sibling is. The regen MAY still ADD;
+it can never DROP. auto-pr reports how many committed entries it kept that the
+slicer did not select, so a future occurrence is visible rather than silent.
+
+THE FIRST CUT OF THIS FIX CONTAINED THE BUG IT WAS FIXING, and that is worth
+recording. It selected entries with `grep '^packages/'`. The manifest that
+motivated the whole change holds 95 entries, every one a ROOT-LEVEL `tests/...`
+path -- so that cut would have written an EMPTY test list and CI would have run
+nothing while reporting success: strictly worse than the defect being repaired.
+It was caught by checking that the pattern actually matched the real file and
+by reading how CI parses the manifest, not by a failing test. A lab note
+claiming "CI extracts tests via grep ^packages/" was simply wrong.
+
+The manifest is SECTIONED: CI reads everything after "# === SELECTED_TESTS ==="
+as the test list and the region above it as CHANGED_SOURCE_FILES. Entries are
+"tests/..." or "packages/<pkg>/tests/..." depending on what was selected, so a
+path-prefix match is not a valid reader. Selection is now by SECTION, never by
+prefix; everything up to and including the marker is copied VERBATIM from the
+regenerated file, preserving both the "# Mode:" line the pre-commit hook gates
+on and the CHANGED_SOURCE_FILES section. Both failure modes are pinned as
+named tests so the prefix mistake cannot return silently.
+
+A filter that removes EVERYTHING is not believed. The existence check is
+cwd-relative, matching this caller's long-standing assumption that auto-pr runs
+from the repo root. Were that to break, every path would fail -f, the manifest
+would empty, and CI would run nothing while reporting success -- the same
+silent loss one level down. An empty filter result falls back to the unfiltered
+union instead.
+
+Verified end-to-end against the real repository manifest, not only synthetic
+fixtures: 95 committed entries + 1 sliced -> 95 survive, with "# Mode: targeted"
+and both section markers intact. 195 auto-pr/smart-test tests pass; smart-test
+1,622 passed, ratchet clean.
+
+Governance files (scripts/auto-pr, scripts/lib/forgejo-api.sh) -- human
+approval obtained for this change and for merging it without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
