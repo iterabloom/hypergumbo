@@ -1,0 +1,72 @@
+Original commit body from 3a33d2de6a04e118b15eb1708a3a0d50980ecb61:
+
+Third of the rust-rows arc. 24 rows, every refusal pinned as a test, and
+unlike WI-gihos THESE ROWS FIRE.
+
+WHY THEY FIRE, AND WHY THAT IS NOT LUCK. WI-gihos measured that the rust
+catalogue matches ZERO method-kind primitives across 11,691 call edges: rust
+receivers arrive unresolved (rust:external:..., null dst_ref) and
+gate_named_entry correctly refuses a method-kind hit with no module hint
+(INV-linub L3/L4). FUNCTION-kind rows are the ones that match, and std::env is
+almost entirely free functions. Measured A/B on the 42-repo cohort:
+std::env::temp_dir NEWLY CLASSIFIES 3 EDGES as host_info_read in 2
+repositories. Small, and stated as small -- but it is the first row of this arc
+to move an edge at all. The std::process METHOD rows are inert today for
+exactly WI-gihos's reason, and that is said here rather than found later.
+Starvation delta: nothing freed, nothing stranded, despite four new
+method-only modules.
+
+EVERY BOUNDARY IS FIXED BY CROSS-LANGUAGE PRECEDENT RATHER THAN CHOSEN.
+python.yaml already rules os.putenv / os.unsetenv / os.chdir as env_write,
+os.kill as ipc_send ("Signalling another process"), os.wait / waitpid as
+ipc_recv ("Reaping a child collects its exit status - data received from
+another process"), and tempfile.gettempdir as host_info_read. Added: rust's
+first env_write section (set_var, remove_var, set_current_dir); vars_os under
+env_read; temp_dir / home_dir under host_info_read; Child.kill as ipc_send and
+Child.{wait,try_wait,wait_with_output} as ipc_recv; and the ChildStdin /
+ChildStdout / ChildStderr pipe types carrying their trait methods on the
+concrete type, per WI-gihos's keying rule. set_current_dir was PROMISED IN
+ADVANCE by this file's own note: "chdir has no row here: python rules it
+env_write, and rust's std::env::set_current_dir is not yet audited."
+
+std::thread STAYS ABSENT ENTIRELY -- the judgment this item was filed to make,
+recorded with the argument that carries it because no cross-language answer
+exists. std::thread reads RUST_MIN_STACK through env::var when it spawns. That
+does NOT make thread::spawn an env_read boundary for a caller who never names a
+variable. The deciding reason is discrimination, not precedent: the read is
+INTERNAL -- it sizes the new thread's stack and its value never reaches the
+caller -- so if it counted, locale lookups, TZ, RUST_BACKTRACE and a long tail
+of stdlib machinery would all qualify, and env_read would stop distinguishing
+"this code reads configuration" from "this code runs on a stdlib that does".
+A BOUNDARY THAT EVERYTHING SATISFIES CLASSIFIES NOTHING. Supporting: this file
+already declared concurrency primitives absent, and the owner's boundary test
+("is it changing state outside of itself") puts a thread inside the process, as
+WI-pavob applied to locks. PYTHON IS SILENT, NOT SUPPORTIVE -- threading appears
+only in its stdlib_modules name list, with no rows and no completeness entry --
+and that is stated plainly rather than dressed up as agreement.
+
+A FOURTH PROBE BUG, and like the first three it returned a plausible wrong
+answer rather than an error. The receiver regex required a leading `&`, so
+`fn wait_with_output(mut self)` and 46 OTHER BY-VALUE RECEIVERS in process.rs
+read as ASSOCIATED FUNCTIONS. Kind is precisely what decides matchability, so
+that would have shipped wait_with_output as a function-kind row no method call
+could ever match (INV-nular). Re-checked against WI-gihos's 70 already-merged
+rows: none was affected, because the by-value names there (by_ref, bytes,
+chain, take) were all refused as adapters anyway.
+
+REFUSALS, each with its reason and its test: std::process::id and Child::id
+(python deliberately holds os.getpid out); Command's builder setters env /
+env_clear / env_remove / envs / current_dir / arg / stdin / stdout / stderr
+(they mutate a builder in THIS process and spawn is already rowed -- WI-bupor's
+OpenOptionsExt rule); ExitStatus accessors (reading an already-collected
+status); Stdio constructors; join_paths / split_paths (pure OsString
+manipulation); thread::available_parallelism (python holds os.cpu_count out for
+the same reason it holds getpid out).
+
+Noted for a later sweep, not chased: python.yaml's tempfile completeness entry
+says "gettempdir rowed under env_read" while the row sits under host_info_read
+-- a note that predates the INV-tutar split.
+
+Full suite green: 24,140 passed, 100% coverage, ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
