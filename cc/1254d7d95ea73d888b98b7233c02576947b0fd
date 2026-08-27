@@ -1,0 +1,43 @@
+Original commit body from c9e96f2014a83729e982096f9688fbf5c6e7475f:
+
+Rust declared ZERO module_completeness entries, so no rust module could ever be
+an examined negative and every clean rust boundary verdict was withheld. This
+lands 20 grants over 33 audited modules, making rust the second of the fifteen
+shipped catalogues to declare any (python has 76; the other thirteen are still
+at zero).
+
+A grant asserts that EVERY I/O primitive a module exposes is catalogued, so a
+wrong one manufactures a false all-clear. The probe never grants: it left 18
+candidates and each was adjudicated against the installed toolchain's source.
+
+A DEFAULT TYPE PARAMETER CAN CARRY A BOUNDARY. std::collections::HashMap came
+back with no signal, yet HashMap::new() returns HashMap<K, V, RandomState> and
+RandomState's initialiser calls sys::random::hashmap_random_keys — an OS
+entropy read, invisible to a text scan of map.rs because RandomState is defined
+in another module. It keeps the grant on cross-language consistency, not
+judgement: python already grants secrets, random and uuid on the recorded
+reasoning that OS-RNG seeding belongs to the row of the module that PERFORMS it
+(os.urandom), and os.getrandom was removed from env_read outright because "a
+CSPRNG read is not an environment read under any reading" — this vocabulary has
+no kind for entropy at all. A test pins that dependency.
+
+Thirteen modules are deliberately refused, `std` itself foremost: granting the
+whole standard library would turn every unmatched std call into an examined
+negative. The clock modules are refused for the opposite reason to the rest —
+WI-pavob ruled a clock read IS host_info_read, so they need rows (WI-tubij),
+not a no-I/O declaration.
+
+Measured A/B over rust repos, both arms, fresh cache each: no verdict flips,
+because the surviving inconclusives are held by rungs UPSTREAM of the module
+list (method-starvation on std::path::Path; languages with no catalogue at
+all). But the grants are not inert — rage's unadjudicable-module count falls
+33 -> 25, and the residual is third-party crates, which are out of catalogue
+scope by standing ruling. A gate-level positive control pins the mechanism
+directly, because "no verdict moved" cannot by itself tell a working grant
+blocked upstream from a grant that does nothing.
+
+Also corrects two docstrings this falsifies: a test fixture that justified its
+empty completeness map as "rust.yaml's real state", and an io_boundary.py
+sentence counting "13 of the 14 shipped catalogues" when there are fifteen.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
