@@ -1,0 +1,39 @@
+Original commit body from 96eb435c1a60b7e8949ea97fd9edb6f3f2f059c8:
+
+Completes the manifest-union fix. The MERGE path was corrected to select
+entries by section rather than by path prefix; the REPORTING path three lines
+away kept the old predicate:
+
+    _mf_sliced=$(grep -c '^packages/' "$_mf_regen" ...)
+
+A manifest of root-level `tests/...` entries -- the common shape, and the exact
+shape of the 95-entry manifest that motivated the whole fix -- counts 0 under
+that pattern. Both sides came out 0, the guard `final > sliced` was never true,
+and the one line that makes a silent narrowing VISIBLE never printed.
+
+A DIAGNOSTIC THAT CANNOT FIRE IS WORSE THAN NO DIAGNOSTIC, because its silence
+is indistinguishable from "nothing needed preserving" -- which is precisely the
+false all-clear the union exists to end.
+
+This is ONE FACT IN TWO HOMES and the second silently won (LIVE.md rule 9),
+committed on my own diff within one PR of fixing it the first time. The remedy
+is structural rather than a second correction: section-reading now has exactly
+ONE implementation, `_manifest_selected_tests`, and both the merge path and the
+new `_manifest_test_count` call it. There is no second home left to drift.
+
+Neither cut was caught by a failing test. The first was caught by checking the
+pattern against the real manifest, the second by noticing the shield line did
+not appear in a live auto-pr run where it should have. Both wrong answers were
+a plausible ZERO rather than an error.
+
+Verified on the real repository manifest: sliced=1 final=95 now prints
+"kept 94 committed manifest entry/entries the slicer did not select", where it
+previously printed nothing. 11 union tests pass (two new ones pin the count
+against root-level and package-level paths); smart-test 1,624 passed, ratchet
+clean.
+
+Governance files (scripts/auto-pr, scripts/lib/forgejo-api.sh) -- covered by
+the human approval given for the manifest-overwrite fix, including merging
+without --gov.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
