@@ -1268,6 +1268,105 @@ _find_job_from_log_probe() {
 #   Returns: 0 = success, 1 = failure
 # ------------------------------------------------------------------
 # ------------------------------------------------------------------
+# _manifest_selected_tests FILE
+#   Emit the SELECTED_TESTS section of a manifest, one path per line.
+#   The manifest is SECTIONED: CI reads everything after the
+#   "# === SELECTED_TESTS ===" marker as the test list, and the region
+#   between "# === CHANGED_SOURCE_FILES ===" and that marker as the
+#   changed-source list. A path-prefix match is NOT a valid reader here —
+#   entries are "tests/..." for root-level tests and
+#   "packages/<pkg>/tests/..." for package tests, and which of the two a
+#   given manifest holds depends entirely on what was selected.
+# ------------------------------------------------------------------
+_manifest_selected_tests() {
+	local f="$1"
+	[[ -f "$f" ]] || return 0
+	if grep -q '^# === SELECTED_TESTS ===' "$f" 2>/dev/null; then
+		sed -n '/^# === SELECTED_TESTS ===/,$p' "$f" \
+			| grep -v '^#' | grep -v '^$'
+	else
+		grep -v '^#' "$f" 2>/dev/null | grep -v '^$'
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
+# _manifest_union — the test-selection twin of _ops_union_restore_file
+#
+# Arguments: committed_file regen_file out_file
+#
+# WHY THIS EXISTS. auto-pr regenerates .ci/affected-tests.txt during the
+# push so a STALE manifest — one missing a test the new diff affects —
+# cannot reach CI. It did that by overwriting the committed manifest with
+# the slicer's output, and an overwrite destroys authored intent.
+#
+# The slicer has no data-file -> test edge (INV-bigaz): a change to
+# io_primitives/*.yaml, or any other pure-data input, slices to roughly ONE
+# test file. An author who deliberately widens the manifest to the tests
+# that actually exercise the changed data had it silently narrowed back
+# during the push — the commit looked right locally and CI ran one file.
+# Measured across three merged catalogue PRs: every one shipped a 1-file
+# manifest while its notes recorded a working 19-file extension.
+#
+# THIS IS WI-buhov'S BUG ONE DIRECTORY OVER, and it takes WI-buhov's
+# remedy: the regen MAY ADD, and MUST NEVER DROP. Union keeps the regen's
+# real job intact while making the destructive half impossible.
+#
+# STRUCTURE IS PRESERVED, NOT REBUILT. Everything up to and including the
+# SELECTED_TESTS marker is copied VERBATIM from the regenerated file: it
+# carries the "# Mode:" line the pre-commit hook gates on and the
+# CHANGED_SOURCE_FILES section CI parses separately. Only the test list
+# below the marker is merged.
+#
+# Pure: no git, no network, cwd-relative existence checks only — so it is
+# testable directly, exactly like its sibling below.
+# ------------------------------------------------------------------
+_manifest_union() {
+	local committed_file="$1"
+	local regen_file="$2"
+	local out_file="$3"
+	local tmp_body tmp_kept
+	tmp_body="$(mktemp)" || return 1
+	tmp_kept="$(mktemp)" || { rm -f "$tmp_body"; return 1; }
+
+	if grep -q '^# === SELECTED_TESTS ===' "$regen_file" 2>/dev/null; then
+		sed -n '1,/^# === SELECTED_TESTS ===/p' "$regen_file" > "$out_file"
+	else
+		grep '^#' "$regen_file" 2>/dev/null > "$out_file" || : > "$out_file"
+	fi
+
+	{
+		_manifest_selected_tests "$committed_file"
+		_manifest_selected_tests "$regen_file"
+	} | sed '/^$/d' | sort -u > "$tmp_body"
+
+	# Existence filter: a deleted test must not come back from the
+	# committed side of the union. (It also drops any non-path junk a
+	# marker-less manifest may carry.)
+	while IFS= read -r _mu_path; do
+		[[ -n "$_mu_path" && -f "$_mu_path" ]] && printf '%s\n' "$_mu_path"
+	done < "$tmp_body" > "$tmp_kept"
+
+	# FAIL-SAFE. The existence check is cwd-relative, matching this
+	# caller's long-standing assumption that auto-pr runs from the repo
+	# root (the surrounding `grep .ci/affected-tests.txt` and
+	# `git add .ci/affected-tests.txt` already assume it). Should that
+	# assumption ever break, EVERY path would fail -f and the manifest
+	# would empty — turning a guard against silent loss into silent loss,
+	# and CI would run nothing while reporting success. A filter that
+	# removed absolutely everything is not a believable answer, so fall
+	# back to the unfiltered union and let CI complain about a missing
+	# path instead of passing vacuously.
+	if [[ -s "$tmp_body" && ! -s "$tmp_kept" ]]; then
+		cat "$tmp_body" >> "$out_file"
+	else
+		cat "$tmp_kept" >> "$out_file"
+	fi
+	rm -f "$tmp_body" "$tmp_kept"
+	return 0
+}
+
+# ------------------------------------------------------------------
 # _ops_union_restore_file — WI-buhov data-loss fix
 #
 # Arguments: backup_file target_file
