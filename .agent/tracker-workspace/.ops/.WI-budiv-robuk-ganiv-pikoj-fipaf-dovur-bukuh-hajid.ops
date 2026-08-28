@@ -1,0 +1,22 @@
+- op: create  # 677b
+  at: '2026-08-28T11:05:26Z'  # 677b
+  by: agent  # 677b
+  actor: jgstern_agent  # 677b
+  clock: 1  # 677b
+  nonce: 677b  # 677b
+  data:  # 677b
+    kind: work_item  # 677b
+    title: "elixir: six Phoenix/Plug response SENDERS are declared net_recv — they mint untrusted_input at a call that emits AND leave the egress unregistered as a sink"  # 677b
+    status: todo_hard  # 677b
+    priority: 2  # 677b
+    parent:  # 677b
+    tags:  # 677b
+    - taint  # 677b
+    - catalogue  # 677b
+    - elixir  # 677b
+    isbefore: []  # 677b
+    duplicate_of: []  # 677b
+    not_duplicate_of: []  # 677b
+    pr_ref:  # 677b
+    description: "INV-nular. A DIRECTION error family in elixir, and unlike F4's rows these ones\nMATCH LIVE, so the defect is active rather than latent.\n\nFOUND by the F4 A/B (~/hypergumbo_lab_notebook/nular_f4_ab_08282026/), in the\nlist of primitives that actually classified on phoenix-framework.\n\nDECLARED net_recv, BUT THEY SEND A RESPONSE:\n    Phoenix.Controller.render\n    Phoenix.Controller.send_resp\n    Phoenix.Controller.send_download\n    Phoenix.Channel.reply\n    Plug.Conn.send_resp\n    Plug.Conn.put_resp_header\n\nSending an HTTP response is egress. Declaring it net_recv does two wrong things\nat once: it MINTS untrusted_input (net_recv is an auto-derived taint SOURCE) at\na call that emits, and it fails to register the egress as a SINK -- so a secret\nwritten into a response body is not reported as leaving the process. The second\nhalf is the false-all-clear direction, which makes this more serious than F2 or\nF4.\n\nALSO IN THE SAME SECTION, a different shape -- ROUTE DECLARATIONS as receives:\n    Phoenix.Router.resources, Phoenix.Router.scope, and the verb macros\n    (get/post/put/patch/delete/head/options/match)\nThese are compile-time route DSL, not a receive. They are the Django shape from\nWI-hikut: the request arrival has no call site, so removing them relocates the\nread to nothing. DO NOT simply delete them -- decide deliberately whether a\nroute declaration is the right stand-in for \"a request arrives here\", and say\nwhich. Plug.Conn.fetch_cookies / read_body are genuine reads and are the\ncandidates for that role.\n\nWHY THIS IS NOT WI-lunav: that item is about builders on the SINK side needing\nargument-position adjudication. This is a plain direction error -- a send\ndeclared as a receive -- plus a separate route-declaration question. Neither\nneeds argument-position analysis.\n\nSUGGESTED ORDER: fix the six response-senders first (unambiguous, and it closes\na false-all-clear channel), then take the route-declaration question on its own.\nBoth need the WI-dosov discipline: verify a genuine transfer stays rowed for the\nchannel, and check that no removal strands its module."  # 677b
+    fields: {}  # 677b
