@@ -36,12 +36,53 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class CatalogSpec:
-    """One YAML catalog directory under ``hypergumbo_core/``."""
+    """One YAML catalog directory under ``hypergumbo_core/``.
+
+    The last two fields are REQUIRED and carry no default, which is the whole
+    mechanism behind ADR-0047 ruling 7: a new catalogue family cannot be
+    constructed — and therefore cannot land — without someone deciding whether
+    users may extend it. The registry answers extensibility instead of the
+    answer being scattered across loaders, docs and habit.
+
+    The test ruling 10 applies is "does the family describe the USER'S world or
+    the LANGUAGE'S". ``cfg_nodes`` rows are tree-sitter node types, so a user
+    cannot know better than the grammar; ``url_folding`` rows name Python
+    functions inside the shipped package, so a user file could only reference
+    engines already present and the channel would be inert.
+
+    Attributes:
+        directory: The catalog directory name under the package root.
+        purpose: One-line description of what the catalog holds.
+        loader: Dotted module path of the code that consumes it.
+        adr: Governing ADR, when the family has one.
+        user_channel: Per-family overlay directory under
+            ``$XDG_CONFIG_HOME/hypergumbo/`` (repo tier: ``<repo>/.hypergumbo/``),
+            or ``None`` when the family is internal. Always ``f"{directory}.d"``
+            when set — derived, never independently chosen, so the two names
+            cannot drift apart.
+        no_channel_reason: Why an internal family has no channel. Required
+            exactly when ``user_channel`` is ``None``; supplying both is a
+            contradiction and the registry gate refuses it.
+        channel_scope: The YAML section the channel is limited to, when a
+            family is MIXED. ``dataflow_patterns`` is the live case: its
+            grammar rows are internal by the ``cfg_nodes`` reasoning while its
+            ``library_patterns`` rows are regexes over call syntax that a user
+            with an in-house collection type has a legitimate row to add.
+            Granting the file would hand over the grammar rules too.
+        channel_gated: The caveat a user-supplied entry must ride, when
+            accepting one changes what the tool will CLAIM rather than only
+            what it sees. ``function_summaries`` is the live case: a
+            terminating user summary IS a sanitizer declaration.
+    """
 
     directory: str
     purpose: str
     loader: str
     adr: Optional[str]
+    user_channel: Optional[str]
+    no_channel_reason: Optional[str]
+    channel_scope: Optional[str] = None
+    channel_gated: Optional[str] = None
 
 
 YAML_CATALOGS: tuple[CatalogSpec, ...] = (
@@ -51,12 +92,20 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "(decorators, annotations, naming conventions).",
         loader="hypergumbo_core.framework_patterns",
         adr="ADR-3aaa",
+        # Conventions, including in-house ones — the user's world.
+        user_channel="frameworks.d",
+        no_channel_reason=None,
     ),
     CatalogSpec(
         directory="dataflow_patterns",
         purpose="Per-language dataflow access-mode classification rules.",
         loader="hypergumbo_core.dataflow",
         adr="ADR-0015",
+        # MIXED: grammar rows are internal, library_patterns rows are
+        # regexes over call syntax that an in-house collection type needs.
+        user_channel="dataflow_patterns.d",
+        no_channel_reason=None,
+        channel_scope="library_patterns",
     ),
     CatalogSpec(
         directory="io_primitives",
@@ -64,24 +113,37 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "subprocess, env, IPC, browser storage).",
         loader="hypergumbo_core.io_boundary",
         adr="ADR-0016",
+        # Libraries and their I/O. The channel already exists.
+        user_channel="io_primitives.d",
+        no_channel_reason=None,
     ),
     CatalogSpec(
         directory="cfg_nodes",
         purpose="Per-language tree-sitter node mappings for the CFG builder.",
         loader="hypergumbo_core.cfg",
         adr="ADR-0017",
+        user_channel=None,
+        no_channel_reason="Rows are tree-sitter node types and field names "
+        "against a named grammar version. A user cannot know better than the "
+        "grammar, and a wrong row silently breaks the CFG, which silently "
+        "breaks the taint walk.",
     ),
     CatalogSpec(
         directory="taint_sources",
         purpose="Trust-zone source declarations for taint-flow analysis.",
         loader="hypergumbo_core.taint",
         adr="ADR-0017",
+        # The user's trust model. The channel already exists.
+        user_channel="taint_sources.d",
+        no_channel_reason=None,
     ),
     CatalogSpec(
         directory="taint_sanitizers",
         purpose="Sanitizer declarations for taint-flow analysis.",
         loader="hypergumbo_core.taint",
         adr="ADR-0017",
+        user_channel="taint_sanitizers.d",
+        no_channel_reason=None,
     ),
     CatalogSpec(
         directory="function_summaries",
@@ -89,6 +151,12 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "side-effect annotations consumed by language-config).",
         loader="hypergumbo_core.function_summaries",
         adr="ADR-0017",
+        # Dependency behaviour — where a user knows what the tool cannot see.
+        # GATED: a terminating user summary IS a sanitizer declaration, so it
+        # changes what the tool CLAIMS, not only what it sees.
+        user_channel="function_summaries.d",
+        no_channel_reason=None,
+        channel_gated="CAVEAT_USER_SUPPLIED_SANITIZER",
     ),
     CatalogSpec(
         directory="url_folding",
@@ -97,6 +165,11 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "functions in hypergumbo_core.url_folding.",
         loader="hypergumbo_core.url_folding",
         adr=None,
+        user_channel=None,
+        no_channel_reason="Rows name an engine function inside "
+        "url_folding/__init__.py, so a user file could only reference engines "
+        "the package already contains — the channel would be inert without "
+        "also accepting user code.",
     ),
 )
 
@@ -131,22 +204,75 @@ def enumerate_catalogs(
     return rows
 
 
-def validate_registry(pkg_root: Optional[Path] = None) -> list[str]:
+def _validate_user_channels(
+    catalogs: "tuple[CatalogSpec, ...]",
+) -> list[str]:
+    """Return findings where a family's extensibility answer is incoherent.
+
+    ADR-0047 ruling 7: the gate "refuses a family that declares a channel it
+    does not have". Being REQUIRED makes the fields answer the question; these
+    checks make the answer mean something. Each is a shape that would otherwise
+    ship a channel users cannot reach, or a claim of internality contradicted
+    by the spec beside it.
+    """
+    findings: list[str] = []
+    for spec in catalogs:
+        d = spec.directory
+        if spec.user_channel is not None and spec.no_channel_reason:
+            findings.append(
+                f"catalog '{d}' declares both a user channel and a "
+                f"no-channel reason; exactly one is an answer"
+            )
+        if spec.user_channel is None and not spec.no_channel_reason:
+            findings.append(
+                f"catalog '{d}' declares no user channel and gives no reason "
+                f"for not having one (ADR-0047 ruling 7)"
+            )
+        if spec.user_channel is not None and spec.user_channel != f"{d}.d":
+            findings.append(
+                f"catalog '{d}' user_channel is '{spec.user_channel}' but "
+                f"must be '{d}.d' — the channel name is derived from the "
+                f"directory so the two cannot drift"
+            )
+        if spec.user_channel is None:
+            for field, value in (
+                ("channel_scope", spec.channel_scope),
+                ("channel_gated", spec.channel_gated),
+            ):
+                if value is not None:
+                    findings.append(
+                        f"catalog '{d}' sets {field}='{value}' but has no "
+                        f"user channel for it to apply to"
+                    )
+    return findings
+
+
+def validate_registry(
+    pkg_root: Optional[Path] = None,
+    catalogs: "Optional[tuple[CatalogSpec, ...]]" = None,
+) -> list[str]:
     """Return drift findings between ``YAML_CATALOGS`` and the filesystem.
 
-    Two failure modes are reported:
+    Four failure modes are reported:
 
     1. A registered catalog whose directory does not exist on disk.
     2. A directory under the package root that contains one or more
        ``*.yaml`` files but is not in ``YAML_CATALOGS``.
+    3. A family whose extensibility answer is missing or self-contradictory
+       (ADR-0047 ruling 7) — see :func:`_validate_user_channels`.
+    4. A user channel whose name does not derive from its directory.
+
+    ``catalogs`` overrides the registry under test, so the ruling-7 checks can
+    be exercised on synthetic specs without a fixture directory tree.
 
     Returning an empty list means the registry and filesystem agree.
     """
     root = _resolve_root(pkg_root)
-    findings: list[str] = []
-    registered = {spec.directory for spec in YAML_CATALOGS}
+    specs = catalogs if catalogs is not None else YAML_CATALOGS
+    findings: list[str] = _validate_user_channels(specs)
+    registered = {spec.directory for spec in specs}
 
-    for spec in YAML_CATALOGS:
+    for spec in specs:
         if not (root / spec.directory).is_dir():
             findings.append(
                 f"YAML_CATALOGS entry '{spec.directory}' points at a "

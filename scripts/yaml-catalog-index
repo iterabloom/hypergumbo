@@ -33,13 +33,26 @@ from hypergumbo_core.yaml_catalogs import (  # noqa: E402
 )
 
 
+def _channel_cell(spec: object) -> str:
+    """One-cell summary of a family's ADR-0047 ruling-7 extensibility answer."""
+    if spec.user_channel is None:
+        return "internal"
+    cell = spec.user_channel
+    if spec.channel_scope:
+        cell += f" [{spec.channel_scope} only]"
+    if spec.channel_gated:
+        cell += " (gated)"
+    return cell
+
+
 def _format_table(rows: list[tuple[object, int]]) -> str:
     """Render the (spec, count) rows as an aligned plain-text table."""
-    headers = ("Directory", "Files", "ADR", "Loader", "Purpose")
+    headers = ("Directory", "Files", "User channel", "ADR", "Loader", "Purpose")
     body = [
         (
             spec.directory,
             str(count),
+            _channel_cell(spec),
             spec.adr or "—",
             spec.loader,
             spec.purpose,
@@ -98,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
                 "adr": spec.adr,
                 "loader": spec.loader,
                 "purpose": spec.purpose,
+                "user_channel": spec.user_channel,
+                "no_channel_reason": spec.no_channel_reason,
+                "channel_scope": spec.channel_scope,
+                "channel_gated": spec.channel_gated,
             }
             for spec, count in rows
         ]
@@ -106,6 +123,27 @@ def main(argv: list[str] | None = None) -> int:
         print(_format_table(rows))
         total = sum(count for _, count in rows)
         print(f"\nTotal: {total} YAML files across {len(rows)} catalogs.")
+        # Reported per FAMILY, not per file: dataflow_patterns' channel is
+        # scoped to one section, so counting its files as extensible would
+        # overstate what a user may actually contribute.
+        open_families = [s for s, _ in rows if s.user_channel is not None]
+        internal = [s for s, _ in rows if s.user_channel is None]
+        print(
+            f"User channel: {len(open_families)} of {len(rows)} families "
+            f"(ADR-0047 ruling 10); internal: "
+            f"{', '.join(s.directory for s in internal) or 'none'}."
+        )
+        for spec in open_families:
+            if spec.channel_scope:
+                print(
+                    f"  {spec.directory}: limited to the "
+                    f"'{spec.channel_scope}' section."
+                )
+            if spec.channel_gated:
+                print(
+                    f"  {spec.directory}: user entries ride "
+                    f"{spec.channel_gated}."
+                )
 
     if findings:
         print("\nDrift warnings:", file=sys.stderr)

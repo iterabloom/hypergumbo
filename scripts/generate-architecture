@@ -754,14 +754,30 @@ def _render_yaml_catalogs_section() -> list[str]:
         "`scripts/yaml-catalog-index --check` to verify the registry "
         "matches the filesystem.",
         "",
-        "| Directory | Files | ADR | Loader | Purpose |",
-        "|---|---:|---|---|---|",
+        "| Directory | Files | User channel | ADR | Loader | Purpose |",
+        "|---|---:|---|---|---|---|",
     ]
     for spec, count in rows:
+        if spec.user_channel is None:
+            channel = "internal"
+        else:
+            channel = f"`{spec.user_channel}`"
+            if spec.channel_scope:
+                channel += f" (`{spec.channel_scope}` only)"
+            if spec.channel_gated:
+                channel += " (gated)"
         lines.append(
-            f"| `{spec.directory}/` | {count} | "
+            f"| `{spec.directory}/` | {count} | {channel} | "
             f"{spec.adr or '—'} | `{spec.loader}` | {spec.purpose} |"
         )
+    lines.append("")
+    lines.append(
+        "**User channel** (ADR-0047 ruling 7) names where a user's own rows "
+        "for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or "
+        "`internal` when the family describes the *language's* world rather "
+        "than the *user's* and takes no user input. The fields are required "
+        "on `CatalogSpec`, so a new family cannot land without answering."
+    )
     lines.append("")
     lines.append(
         "Adding a new catalog category: create the directory, write the "
