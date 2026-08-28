@@ -66,11 +66,16 @@ rather than a backlog: hypergumbo analyses *your* repository, not
 `site-packages`, so there are no edges into a third-party client's internals to
 follow down to the stdlib call it eventually makes.
 
-If your project's egress goes through a third-party client, a claim about the
-network boundary will be clean because the tool never saw the call. Supply a
-project-local overlay; ready-made ones ship in
-[`docs/io-primitives-overlays/`](io-primitives-overlays/) —
-`python-http-clients.yaml`, `go-web-frameworks.yaml`.
+If your project's egress goes through a third-party client the tool ships no
+rows for, a claim about the network boundary will be clean because the tool
+never saw the call. Two community overlays now ship in the wheel and load by
+default — `python-http-clients.yaml` and `go-web-frameworks.yaml` — and every
+run that uses them says so on stderr, because hypergumbo does **not** vouch for
+those rows (ADR-0047). They make third-party egress *visible*; they never
+license a clean verdict, so a call they classify still counts as unexamined and
+no claim is confirmed on their strength. For anything they do not cover, supply
+your own overlay in `$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/` or via
+`--io-primitives`; `--no-default-overlays` omits the shipped ones.
 
 ### A language with no taint catalogue is not verified
 
@@ -150,4 +155,4 @@ and forty real ones scores 100%.
 - [`docs/hypergumbo-spec.md`](hypergumbo-spec.md) — the `verify-claims` design contract.
 - [`docs/adr/0016-io-boundary-analysis.md`](adr/0016-io-boundary-analysis.md) — the boundary vocabulary and catalogue scope.
 - [`docs/measurements/`](measurements/) — every published precision and coverage measurement.
-- [`docs/io-primitives-overlays/`](io-primitives-overlays/) — ready-made project-local overlays.
+- [`docs/adr/0047-catalogue-scope-and-user-visible-homes.md`](adr/0047-catalogue-scope-and-user-visible-homes.md) — what hypergumbo vouches for, and where a user's own catalogue rows live.

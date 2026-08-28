@@ -1536,6 +1536,48 @@ def _warn_in_progress_catalogs(languages: Iterable[str]) -> List[str]:
     return warned
 
 
+def _warn_default_overlays(languages: Iterable[str]) -> List[str]:
+    """ADR-0047 ruling 6: say LOUDLY that unvouched rows were loaded.
+
+    The owner's ruling that admits these rows is CONDITIONAL — hypergumbo may
+    ship third-party rows it does not vouch for, loaded by default, *provided
+    a run that loads them says so in default human output*. A JSON field alone
+    was explicitly ruled insufficient, so this stderr notice is the thing the
+    permission rests on, not a convenience.
+
+    Shaped after :func:`_warn_in_progress_catalogs` and wired at the same three
+    call sites, so the disclosure fires uniformly across ``io-boundaries``,
+    ``verify-claims`` and ``slice --io-boundary`` rather than in whichever one
+    was edited last.
+
+    Names the FILE and its ``retrieved`` DATE because that is what makes the
+    claim checkable rather than merely asserted: a reader can look at the rows
+    and judge whether the upstream API has moved since anyone checked.
+
+    Returns the warned languages (for testability), one entry per language
+    rather than per file.
+    """
+    from .io_boundary import default_overlays
+
+    warned: List[str] = []
+    for lang in sorted(set(languages)):
+        overlays = default_overlays(lang)
+        if not overlays:
+            continue
+        warned.append(lang)
+        named = ", ".join(
+            f"{o.path.name} (retrieved {o.retrieved})" for o in overlays
+        )
+        print(
+            f"⚠  {lang!r}: loaded community I/O rows hypergumbo does "
+            f"not vouch for — {named}. Override them in "
+            f"$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/, or omit them "
+            f"with --no-default-overlays.",
+            file=sys.stderr,
+        )
+    return warned
+
+
 def _rehydrate_io_boundary_edges(raw_edges: list) -> list:
     """Rebuild lightweight edge objects for the consumer-time io-boundary
     classification, preserving ``is_resolved`` + ``dst_ref`` (WI-kumol).
@@ -1597,6 +1639,7 @@ def _apply_io_boundary_filter(
 
     # WI-najil: same in_progress-catalog disclosure as io-boundaries/verify-claims.
     _warn_in_progress_catalogs({n.language for n in nodes if n.language})
+    _warn_default_overlays({n.language for n in nodes if n.language})
 
     catalogs: Dict[str, Any] = {}
     for node in nodes:
@@ -5152,6 +5195,8 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     # WI-najil: disclose in_progress catalogs so a zero-match result for
     # such a language is not read as a genuine "no I/O in this code".
     _warn_in_progress_catalogs(languages)
+    if not getattr(args, "no_default_overlays", False):
+        _warn_default_overlays(languages)
 
     # Load catalogs for detected languages
     # INV-javam: track unsupported languages (no catalog) separately from
@@ -5165,7 +5210,11 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
     unsupported_languages: list[str] = []
     for lang in sorted(languages):
         try:
-            catalog = load_catalog(lang, overlay_paths=io_overlays)
+            catalog = load_catalog(
+                lang, overlay_paths=io_overlays,
+                include_defaults=not getattr(
+                    args, "no_default_overlays", False),
+            )
         except IoPrimitiveOverlayError as exc:
             # A bad overlay is NOT "no extra primitives" — that would read as a
             # clean repo. Fail loudly, like a bad --taint-sources path does.
@@ -6020,11 +6069,17 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # WI-najil: same in_progress-catalog disclosure as io-boundaries.
     _warn_in_progress_catalogs(languages)
+    if not getattr(args, "no_default_overlays", False):
+        _warn_default_overlays(languages)
 
     catalogs = {}
     for lang in languages:
         try:
-            catalog = load_catalog(lang, overlay_paths=io_overlays)
+            catalog = load_catalog(
+                lang, overlay_paths=io_overlays,
+                include_defaults=not getattr(
+                    args, "no_default_overlays", False),
+            )
         except IoPrimitiveOverlayError as exc:
             # Exit 2 = inconclusive, matching the taint arm's posture: a broken
             # catalog config is never `confirmed` (0) and never `violated` (1).
@@ -6424,7 +6479,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         "taint_sources": (cli_sources, claims_sources),
         "taint_sinks": (cli_sinks, claims_sinks),
         "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
-    })
+    }, () if getattr(args, "no_default_overlays", False) else languages)
 
     # Output
     if _read_view_wants_json(args):
@@ -9858,6 +9913,17 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         ),
     )
     p_io.add_argument(
+        "--no-default-overlays",
+        action="store_true",
+        help=(
+            "Do not load the community I/O overlays that ship with "
+            "hypergumbo. They are third-party rows hypergumbo distributes "
+            "and discloses but does not vouch for (ADR-0047); this omits "
+            "them, leaving only the stdlib-scoped built-in catalog plus any "
+            "overlay you supply."
+        ),
+    )
+    p_io.add_argument(
         "--io-primitives",
         action="append",
         default=None,
@@ -9868,7 +9934,8 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
             "(requests, httpx, ...) are declared here. See "
-            "docs/io-primitives-overlays/ for a worked example. (INV-fotav)"
+            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
+            "overlays, which are loaded by default. (INV-fotav)"
         ),
     )
     _add_minimal_argument(p_io)
@@ -9985,6 +10052,16 @@ what I could not check" -- and decide per repository whether that is acceptable.
         help="Alias for --format json (back-compat)",
     )
     p_vc.add_argument(
+        "--no-default-overlays",
+        action="store_true",
+        help=(
+            "Do not load the community I/O overlays that ship with "
+            "hypergumbo (ADR-0047). They are third-party rows hypergumbo "
+            "distributes and discloses but does not vouch for; a verdict "
+            "reached with them is disclosed as such."
+        ),
+    )
+    p_vc.add_argument(
         "--io-primitives",
         action="append",
         default=None,
@@ -9995,7 +10072,8 @@ what I could not check" -- and decide per repository whether that is acceptable.
             "catalog on qualified-name match. The built-in catalog stays "
             "stdlib-scoped by design (ADR-0016), so third-party libraries "
             "(requests, httpx, ...) are declared here. See "
-            "docs/io-primitives-overlays/ for a worked example. (INV-fotav)"
+            "hypergumbo_core/io_primitives_overlays/ for the shipped community "
+            "overlays, which are loaded by default. (INV-fotav)"
         ),
     )
     p_vc.add_argument(

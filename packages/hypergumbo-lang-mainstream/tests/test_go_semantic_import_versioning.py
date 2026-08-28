@@ -153,7 +153,7 @@ def _call_dsts(analysis, callee: str) -> list[str]:
 class TestFrameworkImportPathsReachTheModuleSlot:
     """The analyzer half of the go-web-frameworks overlay contract (INV-safig).
 
-    The overlay under ``docs/io-primitives-overlays/go-web-frameworks.yaml``
+    The overlay under ``hypergumbo_core/io_primitives_overlays/go-web-frameworks.yaml``
     declares its modules as the LITERAL import path — ``github.com/gin-gonic/gin
     .Context``, ``github.com/labstack/echo/v4.Context`` — because that is what the
     analyzer reports. Its own test pins the catalogue side of that contract, but

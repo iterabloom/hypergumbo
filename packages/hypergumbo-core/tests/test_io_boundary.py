@@ -149,7 +149,12 @@ class TestLoadCatalog:
         # answer is the external_potential bucket (PR C of the same plan):
         # tier-3 boundary calls surface as their own bucket, sub-grouped
         # by is_stdlib, without the catalog having to enumerate them.
-        catalog = load_catalog("python")
+        # ADR-0047 ruling 1 KEEPS this rule and changes only what may ship
+        # ALONGSIDE: "the shipped catalogues stay stdlib-only — ADR-0016 §27
+        # is unchanged for them", while community rows hypergumbo does not
+        # vouch for may ship as disclosed overlays. So the rule is asserted
+        # where it still holds, on the catalogue itself, rather than relaxed.
+        catalog = load_catalog("python", include_defaults=False)
         net_sends = {p.qualified_name for p in catalog.primitives
                      if p.boundary == "net_send"}
         # Originally added in WI-jihuj, reverted in PR3 of stop-stripping.
@@ -162,6 +167,11 @@ class TestLoadCatalog:
         assert not any(p.module == "aiohttp.ClientSession" for p in catalog.primitives)
         assert not any(p.module == "httpx.Client" for p in catalog.primitives)
         assert not any(p.module == "httpx.AsyncClient" for p in catalog.primitives)
+        # ...and the other half of the amendment: they ARE reachable by
+        # default, through the disclosed community channel rather than by
+        # being smuggled into the stdlib-scoped file.
+        with_defaults = load_catalog("python")
+        assert any(p.module == "requests" for p in with_defaults.primitives)
         # Stdlib HTTP clients stay.
         assert any(p.module == "urllib.request" for p in catalog.primitives)
         assert any(p.module == "http.client.HTTPConnection"
@@ -557,7 +567,7 @@ class TestLoadCatalog:
         # framework rows declared a package-identifier module while the
         # analyzer emits the import path, so `gin` is a hint no Go program can
         # produce and the row was unreachable in production. Those rows now
-        # live in docs/io-primitives-overlays/go-web-frameworks.yaml, keyed on
+        # live in io_primitives_overlays/go-web-frameworks.yaml, keyed on
         # the real import path. The stdlib row that shares the name carries the
         # same assertion without depending on a fabricated hint.
         hit = catalog.lookup_with_module("Data", "net/smtp")

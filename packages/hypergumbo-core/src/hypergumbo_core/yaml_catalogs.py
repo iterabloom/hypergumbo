@@ -118,6 +118,19 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         no_channel_reason=None,
     ),
     CatalogSpec(
+        directory="io_primitives_overlays",
+        purpose="Community I/O primitive overlays that ship in the wheel and "
+        "load by default, disclosed as unvouched (ADR-0047).",
+        loader="hypergumbo_core.io_boundary",
+        adr="ADR-0047",
+        user_channel=None,
+        no_channel_reason="These rows describe the user's world, but the "
+        "user's extension point for them is the io_primitives channel, not a "
+        "second one: a user entry in io_primitives.d displaces a community "
+        "row on a qualified-name collision. Giving this family its own "
+        "channel would create two homes for one kind of edit.",
+    ),
+    CatalogSpec(
         directory="cfg_nodes",
         purpose="Per-language tree-sitter node mappings for the CFG builder.",
         loader="hypergumbo_core.cfg",

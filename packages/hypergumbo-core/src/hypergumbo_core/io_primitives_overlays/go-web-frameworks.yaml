@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Go web frameworks and gRPC.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT for Go, and every
+# run that loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind. ADR-0016 §27 still scopes the *stdlib catalogues* to the stdlib;
+# what changed is that unvouched rows may ship ALONGSIDE them, disclosed,
+# rather than being withheld from everyone who would benefit.
+#
+# `retrieved:` is the date these rows were last checked against the
+# upstream APIs they describe — NOT the date this file was packaged. A
+# framework that has changed its response API since then will be described
+# wrongly here, and the date is what lets you judge that for yourself.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+#
+# THESE ROWS USED TO SHIP IN go.yaml AND MATCHED NOTHING. That is why they
+# were separated. They were declared with a PACKAGE-IDENTIFIER module —
+# `gin.Context` — while the Go analyzer emits the MODULE PATH it read from
+# the import, `github.com/gin-gonic/gin`. Those never compare equal, so all
+# twenty entries were unreachable from any real Go program:
+#
+#     lookup_with_module("JSON", "github.com/gin-gonic/gin", cc="method") -> None
+#     lookup_with_module("JSON", "gin",                      cc="method") -> gin.Context.JSON
+#
+# The second line is what a catalogue-reach probe produces when its fixture
+# writes `import ("gin")` — an import no Go program contains. The rows
+# scored reachable against a hint production can never emit. Rewritten with
+# the full import path, they resolve for the first time (INV-safig).
+
+language: go
+status: overlay
+provenance: community
+retrieved: 2026-08-11
+
+net_send:
+  - module: github.com/gin-gonic/gin.Context
+    methods: [JSON, String, HTML, XML, YAML, Data, IndentedJSON]
+    notes: >-
+      Gin response methods. Each serialises the handler's value onto the
+      HTTP response body, so whatever reaches an argument leaves the process.
+  - module: github.com/labstack/echo/v4.Context
+    methods: [JSON, String, HTML, XML, Blob, Stream]
+    notes: >-
+      Echo response methods. Pinned to v4 because the major version is part of
+      the import path and therefore part of what the analyzer reports.
+
+net_recv:
+  - module: github.com/gin-gonic/gin.Engine
+    methods: [Run, RunTLS]
+    notes: Gin server startup — the process begins accepting inbound requests.
+  - module: github.com/labstack/echo/v4.Echo
+    methods: [Start, StartTLS]
+    notes: Echo server startup. Pinned to v4, as above.
+  - module: github.com/gofiber/fiber/v2.App
+    methods: [Listen, ListenTLS]
+    notes: Fiber server startup. Pinned to v2, as above.
+  - module: google.golang.org/grpc.Server
+    methods: [Serve]
+    notes: >-
+      gRPC server startup. Note the module path has no version suffix even at
+      v1.x — google.golang.org/grpc is its own path, not a /vN one.
