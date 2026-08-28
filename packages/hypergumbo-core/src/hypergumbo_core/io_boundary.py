@@ -1204,7 +1204,9 @@ class IoBoundaryCatalog:
     def from_yaml(cls, path: Path) -> IoBoundaryCatalog:
         """Load a catalog from a YAML file."""
         content = path.read_text(encoding="utf-8")
-        data = yaml.safe_load(content) or {}
+        # INV-nular: strict, so a duplicated key is refused rather than
+        # silently resolved to its last occurrence.
+        data = load_yaml_strict(content, origin=str(path)) or {}
         return cls._from_dict(data)
 
     @classmethod
@@ -1486,6 +1488,78 @@ def is_language_supported(language: str) -> bool:
     return load_catalog(language).is_supported
 
 
+class DuplicateYamlKeyError(Exception):
+    """A catalogue or overlay YAML declared the same mapping key twice.
+
+    INV-nular. PyYAML's mapping constructor takes the LAST occurrence of a
+    repeated key and reports nothing, so a duplicate is invisible by
+    construction: the file parses, the catalogue loads, every consumer works,
+    and the only symptom is text present in the repository and absent from the
+    object. ``c.yaml`` carried two ``notes:`` keys on each of two rows and the
+    discarded one was the INV-vaduk ``boundary_ruling`` rationale — the row
+    kept the field asserting its ruling and lost the paragraph justifying it.
+
+    Refused at the LOAD rather than by a linter, because that is the one place
+    both representations are still in hand. A downstream check cannot see a
+    key that no longer exists.
+    """
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """SafeLoader that refuses duplicate mapping keys instead of last-wins."""
+
+
+def _construct_mapping_strict(
+    loader: "_StrictLoader", node: Any, deep: bool = False,
+) -> dict[Any, Any]:
+    mapping: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            mark = key_node.start_mark
+            raise DuplicateYamlKeyError(
+                f"{getattr(loader, 'hg_origin', '<yaml>')}: duplicate key "
+                f"{key!r} at line {mark.line + 1}, column {mark.column + 1}. "
+                "PyYAML would keep the last one silently; declare it once.",
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_mapping_strict,
+)
+
+
+def load_yaml_strict(content: str, *, origin: str) -> Any:
+    """``yaml.safe_load`` that raises :class:`DuplicateYamlKeyError`.
+
+    ``origin`` is carried into the message so a refusal names the file a
+    reader has to open; a duplicate-key error with no path is a refusal they
+    cannot act on. It rides on a per-call SUBCLASS rather than on the loader
+    instance because ``yaml.load`` owns the instance's lifecycle — reaching in
+    to set an attribute would mean also owning ``dispose()``, and a loader
+    leaked on an exception path is a worse trade than one throwaway class.
+    """
+    class _OriginLoader(_StrictLoader):
+        hg_origin = origin
+
+    # Driven directly rather than through ``yaml.load(..., Loader=...)``,
+    # which is what ``safe_load`` does internally anyway. Both bandit (B506)
+    # and ruff (S506) match that call on its SPELLING and cannot see that
+    # ``_StrictLoader`` derives from ``SafeLoader`` and registers no extra
+    # constructor — suppressing two security linters to keep a convenience
+    # wrapper is a worse trade than four lines that need no suppression.
+    loader = _OriginLoader(content)
+    try:
+        return loader.get_single_data()
+    finally:
+        # PyYAML ships no annotation for ``dispose``; a third-party typing
+        # gap, not a call this module can type its way out of.
+        loader.dispose()  # type: ignore[no-untyped-call]
+
+
 class IoPrimitiveOverlayError(Exception):
     """A project-local I/O primitive overlay could not be loaded.
 
@@ -1524,7 +1598,9 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
             f"I/O primitive overlay not found: {path}",
         )
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        ) or {}
     except yaml.YAMLError as exc:
         raise IoPrimitiveOverlayError(
             f"I/O primitive overlay {path} is not valid YAML: {exc}",
