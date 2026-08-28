@@ -1,11 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0016: I/O primitive catalog for Haskell
 #
-# Maps Haskell base/stdlib modules and common libraries to I/O boundary types.
-# Haskell uses qualified module names (Data.Map, System.IO, Network.Socket).
+# Maps `base` and the GHC BOOT LIBRARIES — the packages that ship with every
+# GHC installation (bytestring, text, time, directory, process) — to I/O
+# boundary types. Haskell uses qualified module names (Data.Map, System.IO).
 # Prelude functions are auto-imported so appear without qualification.
-# Third-party web frameworks (Servant, Yesod, Warp) call these primitives
-# transitively, so covering base + common libraries is sufficient.
+#
+# SCOPE (ADR-0016 §27, ADR-0047 ruling 8): what ships with the compiler. This
+# header used to say "and common libraries", which covered 43 rows from
+# Hackage — network, http-client, req, http-conduit, wai, warp and
+# typed-process. Those are now in io_primitives_overlays/haskell-network.yaml,
+# which LOADS BY DEFAULT and discloses itself.
+#
+# CONSEQUENCE WORTH KNOWING: this catalogue therefore has NO net_send or
+# net_recv rows at all, because `base` has no sockets. That is a fact about
+# Haskell rather than a gap in the file — see the comment where those sections
+# used to be.
 language: haskell
 # Plan C, PR B / INV-titih: partial catalog. Promotion to
 # ``status: provenance_declared`` requires adding ``stdlib_provenance``
@@ -70,49 +80,18 @@ fs_write:
   - module: Data.Text.IO
     functions: [writeFile, appendFile, hPutStr, hPutStrLn]
 
-net_send:
-  - module: Network.Socket
-    functions: [send, sendTo, sendAll, sendMany, connect]
-    notes: >-
-      `close` REMOVED (INV-nular): closing a socket transmits no application
-      data. It emits a FIN at the transport layer, which is not a payload any
-      line of the program produced, and net_send is a taint SINK -- so the row
-      accepted a tainted value as "sent" at a call that sends nothing of the
-      program's. send/sendTo/sendAll/sendMany carry the real egress.
-  - module: Network.Socket.ByteString
-    functions: [send, sendAll, sendTo, sendMany, sendManyTo]
-  - module: Network.HTTP.Client
-    functions: [httpLbs, httpNoBody, httpBS, responseOpen, withResponse, newManager]
-  - module: Network.HTTP.Simple
-    functions: [httpBS, httpLBS, httpJSON, httpNoBody, httpSink, httpJSONEither]
-  - module: Network.HTTP.Req
-    functions: [req, runReq]
-
-net_recv:
-  - module: Network.Socket
-    functions: [recv, recvFrom, accept]
-    notes: >-
-      socket/bind/listen REMOVED (INV-nular, WI-dosov): setup calls that
-      transfer nothing, minting untrusted_input via the auto-source map.
-      `gracefulClose` REMOVED for a related but distinct reason: it sends a FIN
-      and then READS AND DISCARDS until EOF or timeout, so bytes do cross the
-      boundary but none reaches the program -- the function returns unit -- and
-      net_recv under the auto-source map means a SOURCE of data the program
-      then uses. recv/recvFrom remain and carry the real receive.
-  - module: Network.Socket.ByteString
-    functions: [recv, recvFrom]
-  - module: Network.Wai
-    functions: [responseLBS, responseFile, responseBuilder, responseStream]
-    notes: "WAI response constructors (used with Warp)"
-  - module: Network.Wai.Handler.Warp
-    functions: [run, runSettings, runTLS, runEnv]
-    notes: "Warp HTTP server"
+# NO net_send / net_recv ROWS, AND THAT IS A FACT ABOUT HASKELL, NOT A GAP
+# (ADR-0047 ruling 8, WI-surun). `base` has no sockets: every networking API
+# in Haskell arrives from Hackage -- the `network` package (Network.Socket),
+# http-client / req / http-conduit, wai and warp. All of those moved to
+# io_primitives_overlays/haskell-network.yaml, which loads by DEFAULT, so a
+# normal run is unchanged; a `--no-default-overlays` run genuinely sees no
+# Haskell network surface, because the standard library does not have one.
+# Adding a row back here would be re-asserting that Hackage is the stdlib.
 
 subprocess:
   - module: System.Process
     functions: [callProcess, callCommand, readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode, createProcess, spawnProcess, spawnCommand, system, rawSystem, waitForProcess, terminateProcess, interruptProcessGroupOf, cleanupProcess]
-  - module: System.Process.Typed
-    functions: [runProcess, readProcess, startProcess, stopProcess, withProcessWait, withProcessTerm]
 
 env_read:
   - module: System.Environment

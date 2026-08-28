@@ -7,11 +7,22 @@
 # `logger`, etc.) is covered for the atom-access path.
 #
 # Elixir idiom uses its own wrappers over Erlang: `File` for filesystem,
-# `IO` for console/streams, `System` for process/env, `Logger` for logs,
-# `Ecto` for databases, Phoenix for web server, and a galaxy of HTTP
-# clients (HTTPoison, Tesla, Req, Finch, Mint). UAT-2026-04-13 BUG-09b
-# reported 0 boundaries on plausible (Phoenix/Ecto) — this catalog fixes
-# that scope gap.
+# `IO` for console/streams, `System` for process/env, `Logger` for logs.
+#
+# SCOPE (ADR-0016 §27, ADR-0047 ruling 8): the Elixir distribution plus OTP
+# through the parent catalogue. This header used to continue "`Ecto` for
+# databases, Phoenix for web server, and a galaxy of HTTP clients (HTTPoison,
+# Tesla, Req, Finch, Mint)", justified by UAT-2026-04-13 BUG-09b, which
+# reported 0 boundaries on plausible (a Phoenix/Ecto repository). That was
+# 144 rows — the largest third-party holding in the tree, and the most
+# openly declared.
+#
+# THE UAT FINDING STILL HOLDS AND IS STILL ANSWERED. Those rows moved to
+# io_primitives_overlays/elixir-web-and-db.yaml, which LOADS BY DEFAULT, so
+# a Phoenix/Ecto repository still gets its boundaries. What changed is that
+# they no longer claim to BE the Elixir standard library — ADR-0047's point
+# being that an openly-declared divergence is still a divergence, and that
+# recall is better bought with a disclosed overlay than with a false claim.
 #
 # Naming convention: Elixir calls render as `Module.function` — the
 # dotted form matches the `module.name` lookup the io_boundary engine
@@ -176,47 +187,6 @@ net_send:
   # "x", secret)` is the point at which the secret enters the response that will
   # be transmitted, and a sink at the point the value enters is what catches it
   # (nothing carries taint from the conn struct to the eventual send).
-  - module: Phoenix.Controller
-    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
-    notes: "Phoenix controller response helpers — the response is egress"
-  - module: Plug.Conn
-    functions:
-      - send_resp
-      - send_file
-      - send_chunked
-      - chunk
-      - resp
-      - put_resp_header
-      - put_resp_content_type
-      - put_resp_cookie
-    notes: "Plug: the RESPONSE side (INV-nular, WI-budiv)"
-  - module: Phoenix.Channel
-    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
-    notes: "Phoenix WebSocket channels — these PUBLISH; the receive is the route/handler"
-  - module: Phoenix.Endpoint
-    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
-    notes: "Phoenix endpoint-level PubSub broadcast — egress"
-  - module: HTTPoison
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
-    notes: "HTTPoison (hackney-based client, very common in Elixir)"
-  - module: HTTPoison.Base
-    functions: [request, request!]
-  - module: Tesla
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, options, request, request!]
-    notes: "Tesla (middleware-based HTTP client)"
-  - module: Req
-    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!, new]
-    notes: "Req (modern Elixir HTTP client, Phoenix team's preferred)"
-  - module: Finch
-    functions: [build, request, stream]
-    notes: "Finch (low-level, pooled HTTP client)"
-  - module: Mint.HTTP
-    functions: [connect, request, stream]
-    notes: "Mint (connection-level HTTP/1+2 client)"
-  - module: Mint.HTTP1
-    functions: [connect, request, stream]
-  - module: Mint.HTTP2
-    functions: [connect, request, stream]
   - module: :httpc
     functions: [request]
     notes: "Erlang stdlib HTTP client (called via atom from Elixir)"
@@ -224,18 +194,11 @@ net_send:
 # ---------------------------------------------------------------------------
 # Net recv — Phoenix and Plug (web server request handling)
 # ---------------------------------------------------------------------------
-net_recv:
-  - module: Phoenix.Router
-    functions: [get, post, put, patch, delete, head, options, match, resources, scope]
-    notes: "Phoenix.Router DSL — declares receiving HTTP routes"
-  - module: Plug.Conn
-    functions: [read_body, fetch_query_params, fetch_cookies]
-    notes: >-
-      Plug: the REQUEST side only. This row used to carry the response side as
-      well and its own note said so — "read request / write response" — with
-      every entry under net_recv (INV-nular, WI-budiv). The senders have moved
-      to net_send below. `halt` was dropped outright: it marks the connection
-      halted and transfers nothing in either direction.
+# NO ELIXIR-OWN net_recv ROWS. Every one belonged to Phoenix or Plug and
+# moved to io_primitives_overlays/elixir-web-and-db.yaml (ADR-0047 ruling 1).
+# Elixir still HAS a net_recv surface: gen_tcp / gen_udp / ssl / inet arrive
+# through the OTP parent catalogue (_CATALOG_PARENTS: elixir -> erlang), which
+# is where a language whose networking IS OTP should get them.
 
 # ---------------------------------------------------------------------------
 # Subprocess — System.cmd, System.shell, Port.open
@@ -299,50 +262,10 @@ logging:
 # ---------------------------------------------------------------------------
 # Database — Ecto + direct driver modules
 # ---------------------------------------------------------------------------
-db_read:
-  - module: Ecto.Repo
-    functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
-    notes: "Ecto.Repo read operations"
-  # Ecto.Query REMOVED (INV-nular, WI-hikut). The nine combinators built a
-  # query struct and ran nothing; the row's own note said so -- "part of
-  # the read path" -- and being on the read path is not performing the
-  # read. db_read is an auto-derived taint SOURCE, so each combinator was
-  # minting untrusted_input at a pure data transformation. Ecto.Repo above
-  # rows the calls that actually execute.
-  - module: Postgrex
-    functions: [query, query!, prepare, prepare_execute]
-    notes: "Postgrex (PostgreSQL driver for Ecto)"
-  - module: MyXQL
-    functions: [query, query!, prepare]
-    notes: "MyXQL (MySQL driver for Ecto)"
-  - module: Redix
-    functions: [command, command!, pipeline, pipeline!]
-    notes: "Redix (Redis client)"
-
-db_write:
-  - module: Ecto.Repo
-    functions:
-      - insert
-      - insert!
-      - insert_or_update
-      - insert_or_update!
-      - insert_all
-      - update
-      - update!
-      - update_all
-      - delete
-      - delete!
-      - delete_all
-      - transaction
-      - rollback
-    notes: "Ecto.Repo write operations"
-  - module: Ecto.Multi
-    functions: [insert, update, delete, insert_all, update_all, delete_all, run]
-    notes: "Ecto.Multi — composed transactional writes"
-  - module: Postgrex
-    functions: [transaction]
-  - module: MyXQL
-    functions: [transaction]
+# NO ELIXIR-OWN db_read / db_write ROWS. Ecto, Postgrex, MyXQL and Redix are
+# all Hex packages and moved to the overlay. The database surface Elixir
+# inherits -- dets, ets and mnesia -- comes from OTP through the erlang
+# parent, and those ARE the standard library.
 
 # ---------------------------------------------------------------------------
 # IPC — GenServer, Process, GenStage, Oban (job queues)
@@ -354,9 +277,6 @@ ipc_send:
   - module: Process
     functions: [send, send_after]
     notes: "Raw process messaging"
-  - module: Oban
-    functions: [insert, insert!, insert_all]
-    notes: "Oban job queue — enqueue background jobs"
   - module: Task
     functions: [async, async_stream, start, start_link, Supervisor.start_child]
     notes: "Task spawns — async execution boundary"

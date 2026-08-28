@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Python web frameworks, Django ORM and ujson.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind.
+#
+# WHERE THESE ROWS CAME FROM. They were shipped inside the stdlib-scoped
+# catalogue until ADR-0047 ruling 1 (WI-surun), which resolved a
+# contradiction rather than a gap: the catalogue asserted stdlib-only in
+# its own header while carrying these, and ~15 user-facing strings
+# repeated that assertion. The rows are not deleted, because the recall
+# they buy is real; they are moved to where an unvouched row belongs, so
+# that the claim and the contents finally agree.
+#
+# `retrieved:` IS A FLOOR, NOT A PACKAGING DATE. It is the OLDEST date on
+# which any row here was last edited against the upstream API it
+# describes. The ADR-0047 relocation did NOT re-check these rows against
+# upstream, so the date deliberately does not move to the relocation --
+# claiming otherwise would launder five months of staleness through a
+# refactor. An API that changed since then is described wrongly here, and
+# this date is what lets you judge that for yourself.
+#
+# THE DJANGO ROWS WERE A DOCUMENTED CARVE-OUT, AND THAT IS WHY THEY
+# MOVED. `django.db.models` shipped with a written admission criterion
+# and a test enforcing it -- the most defensible third-party rows in the
+# tree. The owner ruled they move anyway (ADR-0047 ruling 1), and the
+# reason is worth keeping: a rule with one principled exception is a rule
+# every future contributor can argue their way into. There is now no
+# exception left to cite.
+#
+# The other four -- aiohttp.web, flask.Flask, ujson, uvicorn -- were
+# ungoverned residue, sitting inside a `status: complete` catalogue whose
+# own 300-entry `stdlib_modules` list refutes them.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: python
+status: overlay
+provenance: community
+retrieved: 2026-03-21
+
+fs_write:
+  - module: ujson
+    functions: [dump]
+    notes: >-
+      WI-nibav. Drop-in for stdlib json; flows through it were previously
+      reached only by the retired substring predicate ('json' in 'ujson').
+      SURFACE READ, NOT ASSUMED: ujson exposes dump/dumps/load/loads, so it
+      mirrors the catalogued json.dump file-write. orjson is deliberately NOT
+      listed beside it -- its API is dumps/loads only, with no dump, so it has
+      no file-write surface to catalogue and adding it would match nothing.
+
+net_recv:
+  - module: flask.Flask
+    methods: [run]
+    notes: "Flask development server"
+  # WI-harin: django.core.management.execute_from_command_line was here as
+  # net_recv — a false positive. It is a CLI dispatcher (the manage.py entry
+  # routing to migrate / collectstatic / runserver / …), not itself a
+  # network receive, and it is third-party framework code (out of scope
+  # under the same Plan-C strict-stdlib rule the net_send side enforces).
+  # Removed. A framework's server-start (runserver) surfaces via the
+  # external_potential bucket, not a mislabeled stdlib-catalog entry.
+  - module: uvicorn
+    functions: [run]
+    notes: "ASGI server (used by FastAPI, Starlette)"
+  - module: aiohttp.web
+    functions: [run_app]
+    notes: "aiohttp web server"
+
+db_read:
+  - module: django.db.models
+    methods: [all, filter, exclude, get, count, exists, first, last,
+              values, values_list, annotate, aggregate, order_by, distinct,
+              none, iterator, earliest, latest, in_bulk,
+              select_related, prefetch_related]
+    notes: "Django ORM Manager/QuerySet query surface (type-verified receiver)"
+
+db_write:
+  - module: django.db.models
+    methods: [create, bulk_create, update, bulk_update, delete,
+              get_or_create, update_or_create, save]
+    notes: "Django ORM Manager/instance write surface (type-verified receiver)"

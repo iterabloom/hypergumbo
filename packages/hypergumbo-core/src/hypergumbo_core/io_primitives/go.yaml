@@ -56,9 +56,6 @@ fs_read:
   # Low-level syscall IO (important for kernel/runtime projects like gvisor)
   - module: syscall
     functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents]
-  - module: unix
-    functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Fstatat]
-    notes: "golang.org/x/sys/unix"
 
 fs_write:
   - module: os
@@ -75,9 +72,6 @@ fs_write:
     notes: "Go benchmark stdlib — creates temp dir scoped to benchmark"
   - module: syscall
     functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Rename, Chmod, Fchmod, Chown, Fchown, Truncate, Ftruncate]
-  - module: unix
-    functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Unlinkat, Renameat, Mkdirat]
-    notes: "golang.org/x/sys/unix"
 
 net_send:
   - module: net
@@ -101,12 +95,7 @@ net_send:
   - module: net/http.Transport
     methods: [RoundTrip]
   # gRPC client
-  - module: grpc
-    functions: [Dial, DialContext, NewClient]
-    notes: "gRPC client connection"
   - module: syscall
-    functions: [Connect, Sendto, Sendmsg]
-  - module: unix
     functions: [Connect, Sendto, Sendmsg]
 
 net_recv:
@@ -120,17 +109,12 @@ net_recv:
     functions: [ListenAndServe, ListenAndServeTLS, Serve]
   - module: syscall
     functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
-  - module: unix
-    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
 
 subprocess:
   - module: os/exec
     functions: [Command, CommandContext, LookPath]
   - module: os/exec.Cmd
     methods: [Run, Start, Output, CombinedOutput]
-  - module: golang.org/x/sys/execabs
-    functions: [Command, CommandContext, LookPath]
-    notes: "execabs wraps os/exec with PATH-attack prevention"
   - module: syscall
     functions: [Exec, ForkExec]
 

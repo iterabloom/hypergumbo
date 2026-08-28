@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.io_boundary import (
+    _scan_default_overlays,
     default_overlays,
     load_catalog,
     load_overlay_catalog,
@@ -47,10 +48,22 @@ class TestTheyShipAndLoad:
         Overlays under ``docs/`` were unreachable from any installed copy —
         they shipped to nobody.
         """
+        import hypergumbo_core
+
         assert OVERLAY_DIR.is_dir()
-        assert {p.name for p in OVERLAY_DIR.glob("*.yaml")} == {
-            "go-web-frameworks.yaml", "python-http-clients.yaml",
-        }
+        shipped = {p.name for p in OVERLAY_DIR.glob("*.yaml")}
+        assert shipped, "no shipped overlay — the extension point ships to nobody again"
+        # THE INVARIANT, NOT THE INVENTORY (WI-surun). This used to name the two
+        # files that existed, which made it a hardcoded inventory: it failed the
+        # moment ADR-0047 ruling 1 relocated the third-party rows and added five
+        # more overlays, while testing nothing about the property it is named
+        # for. What matters is that the directory is INSIDE THE PACKAGED TREE —
+        # pyproject declares packages = ["src/hypergumbo_core"], so anything
+        # outside it is unreachable from an installed copy.
+        pkg = Path(hypergumbo_core.__file__).resolve().parent
+        assert OVERLAY_DIR.resolve().is_relative_to(pkg)
+        # ...and every file that ships is actually picked up by the loader.
+        assert {o.path.name for o in _scan_default_overlays()} == shipped
 
     def test_default_overlays_are_selected_per_language(self):
         """INV-lufib: a catalogue applied to EVERY language hard-fails.
@@ -59,12 +72,16 @@ class TestTheyShipAndLoad:
         so a python overlay hard-failed any repo that also contained
         javascript. Defaults must therefore be language-keyed, not global.
         """
-        assert [o.path.name for o in default_overlays("python")] == [
-            "python-http-clients.yaml",
-        ]
-        assert [o.path.name for o in default_overlays("go")] == [
-            "go-web-frameworks.yaml",
-        ]
+        by_lang: dict[str, list[str]] = {}
+        for o in _scan_default_overlays():
+            by_lang.setdefault(o.language, []).append(o.path.name)
+        assert by_lang, "no shipped overlay to check keying against"
+        # Every language that HAS overlays receives exactly its own, and no
+        # other language's. Derived from the shipped tree rather than listed,
+        # so adding an overlay cannot silently stop this from being checked.
+        for lang, names in by_lang.items():
+            assert sorted(o.path.name for o in default_overlays(lang)) == sorted(names)
+        # A language no overlay names receives nothing at all.
         assert default_overlays("rust") == []
         assert default_overlays("javascript") == []
 
@@ -201,7 +218,14 @@ class TestTheDisclosureTheRulingRequires:
     def test_a_language_with_no_default_overlay_says_nothing(self, capsys):
         from hypergumbo_core.cli import _warn_default_overlays
 
-        assert _warn_default_overlays(["rust", "haskell"]) == []
+        # Picked from the tree, not named: `haskell` was hardcoded here and
+        # acquired an overlay under ADR-0047 ruling 1, which turned a test
+        # about silence into a test about one language's inventory.
+        silent = [lang for lang in ("rust", "javascript", "java", "kotlin",
+                                    "scala", "c", "erlang", "objc", "bash")
+                  if not default_overlays(lang)]
+        assert len(silent) >= 2, "no overlay-free languages left to test silence with"
+        assert _warn_default_overlays(silent[:2]) == []
         assert capsys.readouterr().err == ""
 
     def test_it_fires_once_per_language_not_once_per_file(self, capsys):
@@ -304,12 +328,24 @@ class TestAnUnvouchedRowAddsFindingsButNeverLicensesTheAllClear:
     def test_the_rows_are_marked_at_merge_not_trusted_from_the_file(self):
         """A file cannot claim to be vouched-for by omitting a key."""
         cat = load_catalog("python")
-        unvouched = [p for p in cat.primitives if p.unvouched]
+        unvouched = {p.qualified_name for p in cat.primitives if p.unvouched}
         assert unvouched, "no row was marked unvouched"
-        assert all(p.module.startswith(("requests", "httpx", "aiohttp", "urllib3"))
-                   for p in unvouched), sorted(
-                       {p.module for p in unvouched})[:5]
-        # ...and nothing hypergumbo DOES vouch for got swept up.
+        # THE INVARIANT: a row is unvouched IF AND ONLY IF a default overlay
+        # supplied it. Asserting a module-name prefix list instead was a
+        # hardcoded inventory that broke when ADR-0047 ruling 1 moved django,
+        # flask, uvicorn and ujson into an overlay — and it never checked the
+        # direction that matters, which is that nothing ELSE acquired the flag.
+        from_overlays: set[str] = set()
+        for o in default_overlays("python"):
+            from_overlays |= {
+                p.qualified_name for p in load_overlay_catalog(o.path).primitives
+            }
+        assert unvouched <= from_overlays, sorted(unvouched - from_overlays)[:5]
+        # ...and nothing hypergumbo DOES vouch for got swept up: no row that the
+        # stdlib-scoped catalogue supplies may carry the flag.
+        vouched = {p.qualified_name
+                   for p in load_catalog("python", include_defaults=False).primitives}
+        assert not (unvouched & vouched), sorted(unvouched & vouched)[:5]
         assert not any(p.unvouched for p in cat.primitives if p.module == "os")
 
     def test_an_unvouched_classification_does_not_make_a_call_examined(self):
@@ -364,10 +400,12 @@ class TestTheEnvelopeCarriesTheThirdState:
 
         prov = catalog_provenance({}, ["python"])
         assert prov["user_supplied"] is False
-        assert [r["file"] for r in prov["shipped_default"]] == [
-            "python-http-clients.yaml",
-        ]
-        assert prov["shipped_default"][0]["retrieved"] == "2026-08-11"
+        # The envelope must report exactly what the loader loaded, with each
+        # file's own `retrieved:` date — checked against the loader rather than
+        # against a transcribed filename and date, which decayed once already.
+        expected = {(o.path.name, o.retrieved) for o in default_overlays("python")}
+        assert expected, "python has no default overlay to disclose"
+        assert {(r["file"], r["retrieved"]) for r in prov["shipped_default"]} == expected
 
     def test_a_language_with_no_default_contributes_nothing(self):
         from hypergumbo_core.verify_claims import catalog_provenance

@@ -81,7 +81,25 @@ ALL_LANGS = ("bash", "c", "cpp", "elixir", "erlang", "go", "haskell", "java",
 
 
 def _rows(lang):
-    return list(load_catalog(lang, include_defaults=False).primitives)
+    """Every row the TOOL loads, including the shipped community overlays.
+
+    ``include_defaults=False`` here until 2026-08-28, which was wrong for this
+    file's own question and became visibly wrong when ADR-0047 ruling 1
+    (WI-surun) relocated 293 third-party rows into overlays that load BY
+    DEFAULT. What this file asserts is whether a row MINTS A TAINT SOURCE at a
+    call site -- and ``AUTO_SOURCE_LABEL_MAP`` does not consult which file a row
+    came from. A ``net_recv`` row in a default overlay mints ``untrusted_input``
+    exactly as one in the catalogue does.
+
+    So the merged view is both the correct view and the STRICTER one, in both
+    directions: a removal asserted here can no longer be undone by re-adding
+    the row to an overlay, and a "deliberately kept" control now says what it
+    means -- that the crossing is still REPRESENTED, not that it sits in one
+    particular file. Django's lazy QuerySet is the case that makes the
+    difference concrete: its rows moved to an overlay, and the reason they are
+    kept (no executor row exists to carry the read) is untouched by the move.
+    """
+    return list(load_catalog(lang).primitives)
 
 
 def _has(lang, boundary, module, name):
@@ -528,7 +546,7 @@ class TestStandardInputIsNotLogging:
         is about: a boundary asserted by name with nothing checking it. Ruled
         ``call_site_undecidable``, INV-vaduk's vocabulary, the same shape as
         C's ``unistd.write``."""
-        catalog = load_catalog(lang, include_defaults=False)
+        catalog = load_catalog(lang)
         boundaries = {p.boundary for p in catalog.primitives
                       if p.module == "io" and p.name == name}
         assert boundaries == {"ipc_recv", "fs_read"}
@@ -541,8 +559,7 @@ class TestStandardInputIsNotLogging:
         because adding a multi-boundary primitive is exactly when that could
         slip back."""
         from hypergumbo_core.io_boundary import unruled_multi_boundary_primitives
-        catalogs = {l: load_catalog(l, include_defaults=False)
-                    for l in ("erlang", "elixir")}
+        catalogs = {l: load_catalog(l) for l in ("erlang", "elixir")}
         assert list(unruled_multi_boundary_primitives(catalogs)) == []
 
     @pytest.mark.parametrize("lang", ("erlang", "elixir"))
@@ -610,7 +627,7 @@ class TestStandardInputIsNotLogging:
         }
         hits = set()
         for lang in ALL_LANGS:
-            catalog = load_catalog(lang, include_defaults=False)
+            catalog = load_catalog(lang)
             for p in _rows(lang):
                 if multi_boundary_reason(
                         catalog, p.qualified_name) == MULTI_BOUNDARY_REASON_SIMULTANEOUS:

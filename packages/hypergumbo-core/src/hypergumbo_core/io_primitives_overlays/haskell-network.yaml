@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Haskell networking and typed-process.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind.
+#
+# WHERE THESE ROWS CAME FROM. They were shipped inside the stdlib-scoped
+# catalogue until ADR-0047 ruling 1 (WI-surun), which resolved a
+# contradiction rather than a gap: the catalogue asserted stdlib-only in
+# its own header while carrying these, and ~15 user-facing strings
+# repeated that assertion. The rows are not deleted, because the recall
+# they buy is real; they are moved to where an unvouched row belongs, so
+# that the claim and the contents finally agree.
+#
+# `retrieved:` IS A FLOOR, NOT A PACKAGING DATE. It is the OLDEST date on
+# which any row here was last edited against the upstream API it
+# describes. The ADR-0047 relocation did NOT re-check these rows against
+# upstream, so the date deliberately does not move to the relocation --
+# claiming otherwise would launder five months of staleness through a
+# refactor. An API that changed since then is described wrongly here, and
+# this date is what lets you judge that for yourself.
+#
+# THE LINE IS THE GHC BOOT LIBRARIES. bytestring, text, time, directory
+# and process ship with every GHC installation and stay in the catalogue;
+# these come from Hackage and do not. `System.Process.Typed` is the one
+# that shows why haskell is enumerated rather than prefix-matched -- it
+# sits under the same `System.Process` prefix as a boot library while
+# being the separate `typed-process` package.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: haskell
+status: overlay
+provenance: community
+retrieved: 2026-03-23
+
+net_recv:
+  - module: Network.Socket
+    functions: [recv, recvFrom, accept]
+    notes: >-
+      socket/bind/listen REMOVED (INV-nular, WI-dosov): setup calls that
+      transfer nothing, minting untrusted_input via the auto-source map.
+      `gracefulClose` REMOVED for a related but distinct reason: it sends a FIN
+      and then READS AND DISCARDS until EOF or timeout, so bytes do cross the
+      boundary but none reaches the program -- the function returns unit -- and
+      net_recv under the auto-source map means a SOURCE of data the program
+      then uses. recv/recvFrom remain and carry the real receive.
+  - module: Network.Socket.ByteString
+    functions: [recv, recvFrom]
+  - module: Network.Wai
+    functions: [responseLBS, responseFile, responseBuilder, responseStream]
+    notes: "WAI response constructors (used with Warp)"
+  - module: Network.Wai.Handler.Warp
+    functions: [run, runSettings, runTLS, runEnv]
+    notes: "Warp HTTP server"
+
+net_send:
+  - module: Network.Socket
+    functions: [send, sendTo, sendAll, sendMany, connect]
+    notes: >-
+      `close` REMOVED (INV-nular): closing a socket transmits no application
+      data. It emits a FIN at the transport layer, which is not a payload any
+      line of the program produced, and net_send is a taint SINK -- so the row
+      accepted a tainted value as "sent" at a call that sends nothing of the
+      program's. send/sendTo/sendAll/sendMany carry the real egress.
+  - module: Network.Socket.ByteString
+    functions: [send, sendAll, sendTo, sendMany, sendManyTo]
+  - module: Network.HTTP.Client
+    functions: [httpLbs, httpNoBody, httpBS, responseOpen, withResponse, newManager]
+  - module: Network.HTTP.Simple
+    functions: [httpBS, httpLBS, httpJSON, httpNoBody, httpSink, httpJSONEither]
+  - module: Network.HTTP.Req
+    functions: [req, runReq]
+
+subprocess:
+  - module: System.Process.Typed
+    functions: [runProcess, readProcess, startProcess, stopProcess, withProcessWait, withProcessTerm]
