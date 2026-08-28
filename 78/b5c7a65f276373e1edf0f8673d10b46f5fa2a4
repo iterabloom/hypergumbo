@@ -1,0 +1,37 @@
+Original commit body from 7438b7cdd0708f3afe8c4a3106590634d892a818:
+
+RULING 1 ACCEPTED, WITH A CONDITION THAT IS LOAD-BEARING. The question put was
+"Can hypergumbo ship third-party rows it doesn't vouch for, loaded by default?
+That reverses your stdlib-only ruling." The answer: "yes as long as it's loud
+about it." Status moves Proposed -> Accepted.
+
+The condition is now a requirement rather than a nicety. Ruling 6 previously
+said disclosure gains catalog_provenance layer keys -- a JSON field a reader
+must go looking for. That does not satisfy "loud". A run that loads unvouched
+rows now emits a one-line stderr notice naming the overlays and their
+`retrieved:` dates, the shape an `in_progress` catalogue already uses per
+queried language. Silence is the failure mode this ADR exists to remove: the
+tool asserting stdlib-only while shipping 300 third-party rows was silent, and
+that is what made it wrong rather than merely generous.
+
+RULING 9 HAD TWO OFFERS COLLAPSED INTO ONE, which the owner separated:
+
+  ~/.config/hypergumbo   normal user   SUBCOMMAND, not an offer. Nothing is
+                                       proposed unprompted, and the contents
+                                       are that user's actual working
+                                       configuration, not "examples".
+  ~/hypergumbo           developer     THE OFFER. A literal `hypergumbo`
+                                       directory in $HOME is a repository
+                                       checkout; nobody creates one by
+                                       accident, which makes its presence a
+                                       deliberate signal a config directory is
+                                       not. Offered once: examples of REPO-TIER
+                                       overlay files, placed there.
+
+The earlier draft keyed the offer to the config directory, which is the wrong
+signal and the wrong audience. The three constraints are unchanged: nothing is
+ever written into an analysed repository, a decline is recorded as a decision
+(ADR-0045 ruling 8), and it is never raised when stdin is not a TTY.
+
+Racial-Capitalism-Is-Bad: a chameleon riding a velvet-upholstered ambulance in a lighthouse balcony with penguins made of lox roses
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
