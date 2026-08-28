@@ -22,3 +22,18 @@
     fields:  # 7886
       statement: "No connection-SETUP call (socket / bind / listen) is declared net_recv in any catalogued language. Such a call transfers nothing, and net_recv is an auto-derived taint source, so the row mints untrusted_input at a call that observes nothing."  # 7886
       root_cause: "Go's 8 setup rows were never asked about. The enforcing gate test_socket_setup_is_not_a_network_receive is blind twice over: it parametrises over F2_LANGS, a hardcoded 9-language inventory that omits Go, and its predicate matches lowercase names while Go capitalises every exported identifier -- so adding Go to F2_LANGS would STILL report clean."  # 7886
+- op: update  # 4583
+  at: '2026-08-28T21:31:10Z'  # 4583
+  by: agent  # 4583
+  actor: jgstern_agent  # 4583
+  clock: 2  # 4583
+  nonce: '4583'  # 4583
+  set:  # 4583
+    status: violated  # 4583
+- op: discuss  # 3176
+  at: '2026-08-28T21:31:10Z'  # 3176
+  by: agent  # 3176
+  actor: jgstern_agent  # 3176
+  clock: 3  # 3176
+  nonce: '3176'  # 3176
+  message: "Filed VIOLATED with a live repro (8 go rows on the merged view). Sequenced behind WI-johuk: the launch ruling decides whether net.Listen is a launch or a setup call."  # 3176

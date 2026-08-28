@@ -47,3 +47,18 @@
   set: {}  # 1100
   add:  # 1100
     not_duplicate_of: [WI-mital-jusaf-kuzif-lukin-sanat-gotok-biput-mutih]  # 1100
+- op: update  # 6ffe
+  at: '2026-08-28T22:29:37Z'  # 6ffe
+  by: agent  # 6ffe
+  actor: jgstern_agent  # 6ffe
+  clock: 5  # 6ffe
+  nonce: 6ffe  # 6ffe
+  set:  # 6ffe
+    status: done  # 6ffe
+- op: discuss  # bbba
+  at: '2026-08-28T22:29:38Z'  # bbba
+  by: agent  # bbba
+  actor: jgstern_agent  # bbba
+  clock: 6  # bbba
+  nonce: bbba  # bbba
+  message: "DONE in PR #616 (merged, dev at e1d79d7315).\n\nITEM'S OWN REPRO, RE-RUN ON THE MERGED TREE via the production loader:\n  Network.Wai            -> all four net_send (responseLBS, responseFile,\n                            responseBuilder, responseStream)\n  Network.Wai.Handler.Warp -> all four still net_recv (the deliberate control)\n\nMEASURED A/B (~/hypergumbo_lab_notebook/joruz_ab_08282026/RESULT.md), 3 Wai/Warp\nrepos, per-arm cache, arms sequential, canary on the LOADED boundary, against a\nNETWORK claim set -- the standing claims file is host_fs-only and could not have\nseen this change at all:\n    net_recv chains  27 -> 9   (-18)\n    net_send chains  18 -> 36  (+18)\n    ten other boundaries       IDENTICAL\nAccounted chain by chain, not inferred from the symmetry: 18 Wai chains changed\ndirection, the 9 Warp launch chains did not move, the 18 pre-existing\nHTTP.Client sinks did not move.\n    yesod UNTRUSTED-NO-NETWORK  inconclusive(0) -> violated(4)\nTwo of those four sink in production source (Devel.hs:reverseProxy,\nDispatch.hs:toWaiAppYre); two sink inside a test file, so the honest count is\ntwo. servant holds violated(3) on both claims as the in-run control.\n\nTHE ITEM'S \"ADJUDICATE TOGETHER OR NEITHER\" CONSTRAINT WAS HONOURED AS\n\"NEITHER\". Warp's launch rows are kept receives, identically to the\nPhoenix.Router control #609 kept, and the 9 unmoved launch chains above are the\nmeasured proof that the keep is what shipped.\n\nBEYOND THE ITEM. The F6 direction sweep -- the mechanical net that should have\ncaught this -- RAN AND REPORTED CLEAN, because its vocabulary carried the verb\n`respond` and not the noun `response`. A name-based gate with an incomplete\nvocabulary does not fail, it exits 0. The vocabulary now covers the noun form\nand is pinned by its own test. The widening is tight on purpose: a generous one\nwas measured first and returned 43 extra hits, all false alarms.\n\nTWO ITEMS FILED FROM THIS WORK, neither fixed here:\n  WI-johuk  the server-LAUNCH family -- 37 rows, 9 languages, already answered\n            three separate times by the same argument and never once ruled.\n  INV-kanuk (violated, P1) go still ships syscall/unix/net Socket,Bind,Listen\n            as net_recv; the F2 gate is blind to Go twice over -- hardcoded\n            9-language scope AND a case-sensitive predicate against a language\n            that capitalises exported identifiers."  # bbba
