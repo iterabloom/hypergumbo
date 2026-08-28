@@ -39,3 +39,18 @@
   set:  # d22f
     status: todo_hard  # d22f
     priority: 2  # d22f
+- op: update  # 2572
+  at: '2026-08-28T21:01:08Z'  # 2572
+  by: agent  # 2572
+  actor: jgstern_agent  # 2572
+  clock: 4  # 2572
+  nonce: '2572'  # 2572
+  set:  # 2572
+    status: done  # 2572
+- op: discuss  # a71a
+  at: '2026-08-28T21:01:08Z'  # a71a
+  by: agent  # a71a
+  actor: jgstern_agent  # a71a
+  clock: 5  # a71a
+  nonce: a71a  # a71a
+  message: "DONE via WI-surun, PR #613 (branch tip a99b4fae, CI success). Closed as the Go\ncase of the project-wide answer, which is how this item asked to be resolved --\nit said Go's answer should not stand as the project's answer by default, and it\ndoes not: all five catalogues moved together under one rule.\n\nTHE GO ROWS, all 33 as this item counted them:\n    golang.org/x/sys/execabs   3   (Command, CommandContext, LookPath)\n    grpc                       3\n    unix                      27   (the bare-identifier spelling of\n                                    golang.org/x/sys/unix)\n-> io_primitives_overlays/go-x-sys-and-grpc.yaml, which LOADS BY DEFAULT and\ndiscloses itself on stderr. golang.org/x/... is maintained by the Go team, which\nis why it was easy to mistake for stdlib, but it is a separately versioned\nmodule -- that IS the distinction the scope turns on.\n\nTHE COST THIS ITEM ASKED ABOUT WAS THE HIGH_RISK GUARD, AND IT TURNED OUT TO BE\nZERO. WI-surun carried the concern forward as a hard prerequisite (\"the guard\nmust widen first or in the same PR\"). No widening was written and none was\nneeded: the guard calls load_catalog(lang) bare and include_defaults defaults to\nTrue, so its corpus already spanned shipped overlays after #598. Verified the\nstrong way rather than by reading -- after the move, BOTH guard directions pass\nwith all three execabs entries resolving FROM THE OVERLAY.\n\nMEASURED, AND THE NUMBER IS SMALL -- SAID PLAINLY RATHER THAN DRESSED UP. On\nvault (2,089 Go files, gRPC in 30 of them), the default run is UNCHANGED and\n--no-default-overlays costs exactly ONE io edge. That is a real measurement of a\nreal cohort repo, and it is also a WEAK one for Go specifically: the cull's cost\nconcentrates in repos that call these APIs on tainted paths, and vault is not\nthat repo. The strong numbers in the same run belong to other languages (pretix\n-846, plausible -139). Anyone revisiting the Go cost should pick a repo that\nuses x/sys/unix on a data path, not treat -1 as the general figure."  # a71a

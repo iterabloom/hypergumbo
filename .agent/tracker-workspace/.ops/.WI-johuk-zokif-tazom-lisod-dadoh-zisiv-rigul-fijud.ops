@@ -1,0 +1,22 @@
+- op: create  # 2fd9
+  at: '2026-08-28T21:29:20Z'  # 2fd9
+  by: agent  # 2fd9
+  actor: jgstern_agent  # 2fd9
+  clock: 1  # 2fd9
+  nonce: 2fd9  # 2fd9
+  data:  # 2fd9
+    kind: work_item  # 2fd9
+    title: "server-LAUNCH calls are net_recv in 9 languages and get 9 different implicit rulings: adjudicate the family once"  # 2fd9
+    status: todo_hard  # 2fd9
+    priority: 2  # 2fd9
+    parent:  # 2fd9
+    tags:  # 2fd9
+    - taint  # 2fd9
+    - catalogue  # 2fd9
+    - io_boundary  # 2fd9
+    isbefore: []  # 2fd9
+    duplicate_of: []  # 2fd9
+    not_duplicate_of: []  # 2fd9
+    pr_ref:  # 2fd9
+    description: "FOUND 2026-08-28 while fixing WI-joruz (Network.Wai response constructors). Not\nfixed there on purpose: WI-joruz's own description forbids splitting this family,\nand its \"or neither\" branch is what shipped -- Warp's launch rows were KEPT a\nreceive, identically to the Phoenix.Router control INV-nular F5 kept.\n\nTHE FAMILY. A net_recv row on a call that STARTS a server. Enumerated with the\nproduction loader across all 15 catalogues; 37 rows, 9 languages:\n\n  go          net.{Listen,ListenTCP,ListenUDP,ListenUnix,ListenPacket},\n              net/http.{ListenAndServe,ListenAndServeTLS,Serve},\n              syscall.{Socket,Bind,Listen,Accept,Accept4}, unix.Listen,\n              net.Listener.Accept, grpc.Server.Serve,\n              gin.Engine.{Run,RunTLS}, fiber.App.{Listen,ListenTLS}\n  haskell     Network.Wai.Handler.Warp.{run,runSettings,runTLS,runEnv}\n  javascript  {http,https,net}.createServer, Deno.{listen,listenTls,listenDatagram}\n  python      flask.Flask.run, uvicorn.run, aiohttp.web.run_app,\n              {http.server.HTTPServer,socketserver.TCPServer,\n               xmlrpc.server.SimpleXMLRPCServer}.serve_forever,\n              asyncio.{start_server,start_unix_server}\n  elixir      Phoenix.Router.{get,post,put,patch,delete,head,options,match,\n              resources,scope}\n  java/kotlin/scala  java.net.ServerSocket.accept\n  swift       ServerBootstrap.ServerBootstrap\n\nTHE QUESTION IS ONE QUESTION. net_recv is an auto-derived taint source, so each\nof these mints untrusted_input AT THE LAUNCH CALL. The server does genuinely\nreceive -- but the bytes reach the handler the runtime invokes, not the caller\nof run/serve_forever/createServer, so the source is attributed to a scope that\nnever sees a request. Every language has the same shape and there is no reason\nthe answer should differ between them.\n\nIT IS ALREADY BEING ANSWERED INCONSISTENTLY, WHICH IS THE ACTUAL DEFECT.\nThree separate rulings already exist and none cites the others as binding:\nINV-nular F3 keeps Django's lazy QuerySet because the execution has no call\nsite; the JavaScript rows are kept because arrival is a callback; F5 keeps\nPhoenix.Router for the same reason and calls it a control. All three reach the\nsame verdict by the same argument, so the verdict is probably right -- but it\nhas never been RULED, only repeatedly re-derived, and each re-derivation is a\nchance to derive it differently.\n\nWHAT WOULD SETTLE IT. Either (a) a ruling that a launch call is a receive\nbecause the channel it opens is the program's ingress and no other call site\nrepresents it -- in which case say so once, in one place, and make the 37 rows\ncite it; or (b) a ruling that it is not, in which case all 37 move together and\nthe ingress must be re-represented somewhere or it is deleted, not relocated\n(the F2/F3 licence rule). Do not adjudicate a subset.\n\nPINNED MEANWHILE. TestServerLaunchStaysAReceive in\ntest_inv_nular_false_sources.py asserts the family stays net_recv in haskell,\nelixir, javascript, python and go, so it cannot be split silently before this\nis ruled."  # 2fd9
+    fields: {}  # 2fd9

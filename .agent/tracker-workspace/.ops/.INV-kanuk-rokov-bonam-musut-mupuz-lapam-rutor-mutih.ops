@@ -1,0 +1,24 @@
+- op: create  # 7886
+  at: '2026-08-28T21:30:17Z'  # 7886
+  by: agent  # 7886
+  actor: jgstern_agent  # 7886
+  clock: 1  # 7886
+  nonce: '7886'  # 7886
+  data:  # 7886
+    kind: invariant  # 7886
+    title: "Go's connection-lifecycle rows still mint taint sources: the INV-nular F2 gate is blind to them TWICE, by language scope and by case"  # 7886
+    status: violated  # 7886
+    priority: 1  # 7886
+    parent:  # 7886
+    tags:  # 7886
+    - taint  # 7886
+    - catalogue  # 7886
+    - io_boundary  # 7886
+    isbefore: []  # 7886
+    duplicate_of: []  # 7886
+    not_duplicate_of: []  # 7886
+    pr_ref:  # 7886
+    description: "VIOLATED IN GO, 8 rows, on the merged (shipped + default-overlay) view:\n\n    unix.Socket        unix.Bind        unix.Listen\n    syscall.Socket     syscall.Bind     syscall.Listen\n    net.Listen         github.com/gofiber/fiber/v2.App.Listen\n\nREPRO\n    python - <<'PY'\n    from hypergumbo_core.io_boundary import load_catalog\n    print(sorted(f\"{p.module}.{p.name}\" for p in load_catalog(\"go\").primitives\n                 if p.boundary == \"net_recv\" and p.name.lower() in\n                 {\"socket\", \"bind\", \"listen\"}))\n    PY\n  -> the 8 rows above. Go keeps 23 other net_recv rows, so the F2/F3 licence\n     rule (\"remove a setup row only while a real transfer call is still rowed\n     for the same channel\") is satisfiable here: net.Conn.Read and\n     syscall.Recvfrom / syscall.Recvmsg carry the actual receive.\n\nWHY IT SURVIVED WI-dosov, WHICH IS THE PART WORTH KEEPING. The enforcing gate\nis test_inv_nular_false_sources.py::test_socket_setup_is_not_a_network_receive,\nand it is blind to Go for TWO INDEPENDENT reasons, either of which alone would\nhave hidden it:\n\n  (1) SCOPE. It parametrises over F2_LANGS, a hardcoded 9-language inventory\n      (c, cpp, elixir, erlang, haskell, java, kotlin, rust, scala). Go, objc,\n      python, swift and bash are simply not asked. LIVE.md rule 9: a hardcoded\n      inventory decays.\n  (2) CASE. The predicate is a lowercase membership test, and Go capitalises\n      every exported identifier. ADDING GO TO F2_LANGS WOULD STILL REPORT\n      CLEAN -- verified: the case-sensitive predicate flags NONE of the 8 rows.\n      This is the WI-joruz instrument defect in a second form: a name-based\n      gate with an incomplete matcher does not fail, it exits 0.\n\nNOT A DUPLICATE OF WI-dosov (done). That item's statement is about the family;\nthis is about Go specifically PLUS the gate that was supposed to keep the family\nextinguished and cannot see Go at all. Fixing only the rows would leave the gate\nblind, so the fix is BOTH: case-fold the predicate, derive the language list\nfrom the tree rather than from F2_LANGS, then adjudicate what the widened gate\nsurfaces.\n\nDELIBERATELY EXCLUDED. javascript's Deno.listen is a documented, tested KEEP\n(test_javascript_is_deliberately_out_of_scope): JS's entire net_recv surface is\ncallback registration, so removing it would relocate the read to nothing. Any\nwidened gate must keep that exemption EXPLICIT rather than absorb it.\n\nSEQUENCING. Go's Listen / Serve rows are also members of the server-LAUNCH\nfamily filed as WI-johuk. Settle the launch ruling first, since it decides\nwhether net.Listen is a launch or a setup call, and only then strip what\nremains here."  # 7886
+    fields:  # 7886
+      statement: "No connection-SETUP call (socket / bind / listen) is declared net_recv in any catalogued language. Such a call transfers nothing, and net_recv is an auto-derived taint source, so the row mints untrusted_input at a call that observes nothing."  # 7886
+      root_cause: "Go's 8 setup rows were never asked about. The enforcing gate test_socket_setup_is_not_a_network_receive is blind twice over: it parametrises over F2_LANGS, a hardcoded 9-language inventory that omits Go, and its predicate matches lowercase names while Go capitalises every exported identifier -- so adding Go to F2_LANGS would STILL report clean."  # 7886
