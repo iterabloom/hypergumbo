@@ -1,0 +1,39 @@
+- op: create  # f619
+  at: '2026-08-28T03:29:25Z'  # f619
+  by: agent  # f619
+  actor: jgstern_agent  # f619
+  clock: 1  # f619
+  nonce: f619  # f619
+  data:  # f619
+    kind: work_item  # f619
+    title: "rust: a chained receiver and the try-expression form lose their inferred type at the module slot (INV-linub L3 residual)"  # f619
+    status: todo_hard  # f619
+    priority: 2  # f619
+    parent:  # f619
+    tags:  # f619
+    - taint  # f619
+    - rust  # f619
+    - io_boundary  # f619
+    - adr_0017  # f619
+    isbefore: []  # f619
+    duplicate_of: []  # f619
+    not_duplicate_of: []  # f619
+    pr_ref:  # f619
+    description: "INV-linub L3, residual shape 2 of 2. A CHAINED receiver --\n`File::create(p)?.write_all(...)` -- leaves no intermediate variable for the\n_var_types walker to type, so neither PR #595's written-path map nor the\nuse_aliases route can reach it.\n\nStrategy 1.9 already handles this shape for FIRST-PARTY targets: it calls\n_infer_type_from_rust_rhs on the receiver call_expression and resolves\n`Type::method` against the local/global symbol tables. As with the field-\nreceiver case, when the inferred type is external the lookup misses and the\ninferred type is dropped rather than carried into the module slot. The\ninference has already run; only the carry is missing.\n\nSEPARATE FROM the field-receiver shape (filed alongside) because the recovery\npoint is a different strategy and a different helper, and because\n_infer_type_from_rust_rhs returns a BARE name -- so this one additionally\nneeds the qualified-path treatment PR #595 introduced, applied to the RHS\ninference path rather than to let/param annotations. Do not assume one fix\ncovers both; ship a test for each shape.\n\nNOTE ON A DELIBERATE NARROWING IN #595: its shape-3 walker handles\n`let x = Type::assoc_fn()` but NOT `let x = Type::assoc_fn()?` -- the\ntry_expression wrapper. That was left alone on purpose so the walker mirrors\n_infer_type_from_rust_rhs exactly (which also does not unwrap `?`), rather\nthan having the two disagree about which node carries the type. Unwrapping\nbelongs in the shared helper, where both would get it, and that is this item.\nThe `?` form is pervasive in real rust I/O code.\n\nMEASURE THROUGH L4 ON FINDINGS, per INV-linub's standing rule.\nTripwire: 98/1206 catalogued trait-method sites matched post-#595."  # f619
+    fields: {}  # f619
+- op: update  # 2197
+  at: '2026-08-28T03:29:58Z'  # 2197
+  by: agent  # 2197
+  actor: jgstern_agent  # 2197
+  clock: 2  # 2197
+  nonce: '2197'  # 2197
+  set: {}  # 2197
+  add:  # 2197
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 2197
+- op: discuss  # fb0f
+  at: '2026-08-28T03:29:58Z'  # fb0f
+  by: agent  # fb0f
+  actor: jgstern_agent  # fb0f
+  clock: 3  # fb0f
+  nonce: fb0f  # fb0f
+  message: "Instance of the INV-linub class; blocks its closure. Separate from WI-dizag: different strategy, different helper, and additionally needs the qualified-path treatment applied to RHS inference."  # fb0f
