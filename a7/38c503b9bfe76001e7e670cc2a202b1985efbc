@@ -1,0 +1,98 @@
+Original commit body from 71da5fd5e49a02fb4078d6b983c2b3fe92fd5a98:
+
+AUTO_SOURCE_LABEL_MAP turns db_read and net_recv into the label
+untrusted_input. So these rows did not merely mislabel a call -- they MINTED
+TAINT at call sites that observe nothing, and every flow downstream of an
+invented source is a false positive carrying a real-looking value chain. That
+is the mechanism behind measurement 0006's headline being an upper bound on
+useful precision rather than a measure of it.
+
+F1 (WI-rigut) 31 haskell rows declared Data.IORef / Data.STRef /
+   Control.Concurrent.MVar / Control.Concurrent.STM as db_read/db_write.
+   Process memory: no descriptor, no syscall, nothing outside the process can
+   observe them, and newIORef is a CONSTRUCTOR that reads nothing. Haskell rows
+   no real database anywhere, so this removes a claim it never had rows to make.
+
+F2 (WI-dosov) socket / bind / listen declared net_recv in ten languages.
+   socket() creates an endpoint, bind() names it, listen() marks it passive.
+   None receives a byte; recv/recvfrom/recvmsg do and are kept.
+
+F3 (WI-hikut) JPA EntityManager.create*, JDBC Connection.createStatement and
+   all nine Ecto.Query combinators declared db_read while returning a builder
+   that issues no statement.
+
+BOTH OPEN QUESTIONS IN THE DECLARED-DEBT REGISTER ARE ANSWERED, NOT RE-RULED,
+AND THE REGISTER IS NOW EMPTY. haskell's STM rows carried
+`boundary_ruling: unruled` asking whether "the db_* classification of the whole
+Data.IORef / STRef / MVar / STM family is right at all -- a vocabulary decision
+beyond this row". erlang's gen_udp.open asked "is a socket-acquisition call a
+net_* crossing at all?" No, to both. The erlang row had deferred itself on
+INVERTED reasoning -- "removing them is a recall change and this is a
+precision-band cycle" -- but a source row minting taint from an operation that
+transfers nothing is a PRECISION defect, and removing it is what a
+precision-band cycle is for.
+
+THE RULE THAT DECIDES F3 IS "IS THE READ STILL REPRESENTED AFTER THE REMOVAL",
+not "does this call issue SQL". JPA rows TypedQuery.getResultList, Ecto rows
+Ecto.Repo.all, so their builders relocate the read rather than delete it.
+DJANGO IS DELIBERATELY KEPT and fails that test: a QuerySet is lazy, so
+filter() issues nothing, but execution is an implicit __iter__ with NO call site
+to catalogue -- removing it would delete the read, not move it. JAVASCRIPT IS
+EXCLUDED FROM F2 for the same reason: its entire net_recv surface is callback
+registration (http.createServer, Deno.listen, WebSocket.onmessage) with no
+transfer row anywhere. Both are pinned as tests that cost something.
+`accept` is KEPT and ruled, not overlooked: it returns the peer address, which
+is chosen by whoever connected, so it is a real source.
+
+MEASURED A/B, 7 REPOS, per-arm cache, arms strictly sequential, each arm proven
+live by a haskell row-count canary (NEW 181 / OLD 219); per-repo runtimes
+matched within 2s.
+
+  SENSITIVE  UNTRUSTED-NO-HOST-FS evidence rows   27 -> 7   (-74%)
+             simplex-chat  violated(13) -> inconclusive(0)
+             git           violated(5)  -> inconclusive(0)
+             ejabberd      violated(5)  -> violated(3)
+  CONTROL    HOSTSECRET-NO-HOST-FS rows          154 -> 154 (+0)
+             unmoved per-repo too: 7, 100, 8, 32, 4, 1, 2
+  CONTROL    all 11 untouched boundaries identical across arms
+             (fs_read 788, fs_write 1502, env_read 548, logging 1213, ...)
+
+EVERY REMOVED FLOW IS ATTRIBUTED TO A REMOVED ROW BY NAME, read off the old
+arm's own evidence rather than inferred from totals: simplex-chat 13/13 are STM
+cells (readTVarIO x7, atomically x3, readTVar, newTVar, newTVarIO); git 5/5 are
+socket. ejabberd is the load-bearing case -- 2 false sources removed, 3 GENUINE
+ETS reads KEPT (lookup_element, tab2list, table_info), so the claim stays
+violated on real evidence instead of being blanket-cleared.
+
+net_send moved -4 and I had listed it as a control; that classification was
+mine and it was wrong. gen_udp.open was declared under BOTH net_send and
+net_recv and both were removed, so net_send is a TOUCHED boundary. The -4 is
+exactly the two erlang/elixir repos.
+
+TESTS. A new file pins all three families, the two costly controls, and the
+mechanism itself (a test asserting db_read/net_recv really are auto-source
+boundaries, so the rationale cannot quietly stop applying). Three io_boundary
+tests were RE-VEHICLED, not weakened -- they used removed rows as fixtures for
+mechanisms unrelated to this change (cgo resolution, ambiguous-name matching,
+multi-include module slots); each keeps its assertion and gains a row that
+still ships. sendto rather than send for the cgo case, because `send` is in c's
+ambiguous_names and the gate correctly refuses a bare name.
+
+test_multi_boundary_ruling's live-corpus test required all four reasons to
+occur, which fails the moment the last declared debt is paid -- a test that
+punishes success. It now asserts the three SETTLED reasons plus agreement
+between the live unruled count and the register, and the resolver's `unruled`
+branch is exercised on a synthetic catalogue, which is where that invariant
+belongs: the branch must WORK, not the debt must EXIST.
+
+LIMITS. violated -> inconclusive is not a safety result. F3's JAVA arm is
+UNMEASURED -- playframework moved no db_read, so the JPA removal rests on the
+argument, not evidence; F3's elixir arm did move (plausible db_read 55 -> 48).
+One cohort's measurement is not a precision figure and does not update 0006.
+
+Tests: 1635 passed across the 40 hand-widened manifest files (the slicer has no
+data-file -> test edge, INV-bigaz, so it selected 3). Ratchet clean at 669.
+Full write-ups: ~/hypergumbo_lab_notebook/nular_sweep_08282026/ and
+nular_ab_08282026/.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
