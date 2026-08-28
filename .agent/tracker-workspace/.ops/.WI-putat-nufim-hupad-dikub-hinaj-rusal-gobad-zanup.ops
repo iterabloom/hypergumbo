@@ -1,0 +1,21 @@
+- op: create  # d034
+  at: '2026-08-28T02:14:27Z'  # d034
+  by: agent  # d034
+  actor: jgstern_agent  # d034
+  clock: 1  # d034
+  nonce: d034  # d034
+  data:  # d034
+    kind: work_item  # d034
+    title: "ADR-0047 ruling 9: offer repo-tier overlay examples when ~/hypergumbo exists (developer audience), decline recorded, never in a non-TTY"  # d034
+    status: todo_hard  # d034
+    priority: 3  # d034
+    parent:  # d034
+    tags:  # d034
+    - adr_0047  # d034
+    - ux  # d034
+    isbefore: []  # d034
+    duplicate_of: []  # d034
+    not_duplicate_of: []  # d034
+    pr_ref:  # d034
+    description: "Two audiences, two mechanisms -- the owner separated these explicitly. ~/.config/hypergumbo is the NORMAL user and is a subcommand, not an offer (that is WI-talaz). ~/hypergumbo is a repository CHECKOUT: nobody creates one by accident, which makes its presence a deliberate signal a config directory is not. Offer once to place EXAMPLES OF REPO-TIER overlay files there.\n\nTHREE CONSTRAINTS: nothing is ever written into an analysed repository (that is how a tool's output gets committed by accident, and a repo-tier overlay should be a deliberate act by that repo's owner); a decline is RECORDED as a decision, reusing ADR-0045 ruling 8 rather than inventing a second store; never raised when stdin is not a TTY (an offer that blocks CI or an agent run is a defect).\n\nThe repo tier itself does NOT load by default -- a repo shipping an overlay that silences its own boundaries is the INV-zosun shape, arriving on a machine whose owner never opted in."  # d034
+    fields: {}  # d034
