@@ -1,0 +1,66 @@
+Original commit body from 6139e5eeabc3345c24e0981ca4b2270a89a0f121:
+
+INV-duvup: three consecutive precision measurements each disclaim comparability
+with the one before, so the question the taint campaign exists to answer -- is
+precision improving? -- is structurally unanswerable while every individual
+measurement stays sound.
+
+THE FRAME WAS ALREADY RATIFIED. The owner ratified it 2026-08-25 and it has
+governed one measurement (0006). But it lived only in a lab-notebook file, so a
+record could not cite it, it could not be diffed against the code it measures,
+and it could not fail anything. This ADR does not make a new ruling; it moves
+that ruling into the repository and -- for the first time -- enforces it.
+
+EQUAL ALLOCATION REMOVES THE ESTIMATOR QUESTION RATHER THAN ANSWERING IT, which
+is the part worth understanding. On 0005's own adjudications, pooling choice
+alone moved the row rate across a 2.8x range (5.9% - 16.7%) with no adjudication
+changed. Frame rule F2 samples exactly M situations from each of R qualifying
+repos; under equal allocation the pooled rate and the unweighted per-repo mean
+are THE SAME NUMBER BY CONSTRUCTION. No repo can dominate and there is no
+weighting scheme left to argue about. 0006 is the first application: 16 repos x
+7 situations, where both estimators give 44/112.
+
+THREE ADDITIONS BEYOND THE RATIFIED FRAME, each marked as new in the ADR:
+
+  A1  The analyzer SHA is part of the frame. Eighteen commits changed taint
+      between one screen and figures published two days later; attribution
+      across that boundary is not recoverable.
+  A2  The language scope is declared, and an exclusion is not a zero. Five of
+      fifteen catalogued languages produce zero flows structurally (INV-linub),
+      and pooling a structural zero into a headline is the same
+      undeclared-estimator choice this ADR forbids. Declaring it also makes the
+      exclusion REVERSIBLE: when the band lifts and INV-linub closes, those
+      languages enter as a declared scope change with a named before and after.
+  A3  scripts/check-measurement-frame requires a machine-readable `## Frame`
+      block and runs in CI. F8 was ratified with nothing enforcing it, and a
+      rule only a careful author obeys is how the drift happened the first time.
+
+THE GATE REFUSES A PLACEHOLDER, which is what keeps it from being decorative:
+`analyzer_sha: TBD` fails, because a required key is otherwise satisfiable by
+typing a word into it -- letting exactly the failure A1 exists to prevent recur
+while CI reports green.
+
+EXEMPTIONS COST AN EDIT AND NAME A REASON. 0001-0005 are grandfathered whole
+and permanently: they predate the frame, and their mutual incomparability IS
+the defect, so back-filling frame blocks onto them would assert a comparability
+they do not have. 0007-0008 are grandfathered as non-precision records. 0006 is
+NOT grandfathered -- it declares a real frame and is exempt for `analyzer_sha`
+alone, spelled `unrecorded` IN THE RECORD so the gap is visible to a human
+reader and not only to the script. A per-record, per-key exemption is
+deliberately a different mechanism from whole-record grandfathering, because
+"declares nothing" and "declares everything it can and names the one gap" are
+different facts.
+
+0006's ALLOCATION LABELS WERE SWAPPED AND ARE CORRECTED. It read "M=7
+repositories x R=16 situations"; its own ledger holds 16 repositories with
+exactly 7 rows each. Under F2, M is situations-per-repo and R is repositories --
+and since equal allocation across R is precisely what makes the estimator
+unambiguous, which letter means what is not cosmetic. The numbers were right;
+the words were reversed.
+
+The test is named test_check_measurement_frame.py so the WI-jozan mapper selects
+it when the script changes -- a gate whose test is unreachable from its own
+source is a gate that stops running the first time someone edits it.
+
+Tests: 1690 passed across tests/. Ratchet clean at 669.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
