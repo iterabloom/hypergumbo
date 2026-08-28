@@ -1,0 +1,46 @@
+Original commit body from 7f96f4dd226384447914897cd5dc0818f9f7fab8:
+
+The first half of this fix recovered an external receiver's module path
+through use_aliases, which works only when the type was imported BY NAME.
+When the source spells the path instead -- `fn dump(f: &mut std::fs::File)`,
+or `let start = std::time::Instant::now()` with no `use` --
+_normalize_rust_type_to_bare_name reduces it to `File` / `Instant` ("strip
+module paths", per its own docstring, which is right for the first-party
+symbol lookups it feeds) and the bare name is then absent from use_aliases.
+The path was in the text and was dropped anyway.
+
+A second file-scoped map carries the written path beside the bare one and is
+consulted only on the unresolved-external branch, where a bare name is
+useless. It cannot invent a path: a value is returned only when the text
+already contains `::` AND the path's terminal segment equals the bare name
+the normalizer produced. That equality binds the two readings of one type --
+`std::io::Result<std::fs::File>` normalizes to `File` while the text starts
+with `Result`, so it yields nothing rather than stamping the wrong module and
+converting a correct L4 refusal into a confident mismatch.
+
+MEASURED A/B over 11 Rust repositories, per-arm cache, arms strictly
+sequential, each arm proven live before it ran:
+
+  catalogued trait-method sites matched   41/1202 -> 98/1206  (3.4% -> 8.1%)
+  rust call sites given a boundary        303 -> 360          (+18.8%)
+    host_info_read                        68 -> 116
+    fs_read                               50 -> 59
+  CONTROLS, unchanged: env_read 29, env_write 19, fs_write 63,
+    ipc_recv 7, logging 15, subprocess 52
+
+IT MOVES NO TAINT FLOW -- 2 -> 2 -- and the reason is structural, not
+incidental. 48 of the 57 new matches are Instant::elapsed, a host_info_read,
+which IS an auto-derived source but reaches no write-side sink here; the
+other 9 are fs_read rows, which AUTO_SOURCE_LABEL_MAP excludes by design
+because reading a file does not by itself make its contents sensitive. This
+is an io-boundaries improvement and is reported as one.
+
+STILL BLOCKED, named rather than left implicit: write_all did not move (5
+matched, 125 missing) and `lock` is the largest miss at 440. Both are
+dominated by two receiver shapes this does not reach, because they lose the
+type further upstream in the receiver walk rather than in normalization -- a
+struct-field receiver and a chained receiver. Filed separately; each needs
+its own measurement.
+
+Racial-Capitalism-Is-Bad: a lynx playing chess against a jousting knight in a coral reef
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
