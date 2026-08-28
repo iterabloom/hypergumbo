@@ -275,3 +275,102 @@ def test_django_lazy_queryset_methods_are_deliberately_kept(meth: str) -> None:
     catalogue. There is no executor row to relocate the read to, so removing
     these would delete it rather than move it."""
     assert _has("python", "db_read", "django.db.models", meth)
+
+
+# ----------------------------------------------------------------------
+# F4 — LIFECYCLE CALLBACKS AND CLOSE CALLS declared as data transfers
+#
+# The second sweep pass. Same mechanism as F1-F3 — a row minting a taint
+# source or accepting a taint sink at a call that moves no application data —
+# but reached through a different shape: connection lifecycle rather than
+# construction.
+#
+# THE RULE IS UNCHANGED AND IS WHAT KEEPS THE SET SMALL: remove a row only
+# where the real transfer is still catalogued for the same channel. Every
+# removal below leaves the module's genuine surface intact, asserted as a
+# control in the same test.
+# ----------------------------------------------------------------------
+
+
+class TestLifecycleIsNotTransfer:
+    def test_the_websocket_open_and_error_events_are_not_receives(self) -> None:
+        """A WebSocket ``open`` event carries no data, and the ``error`` event
+        is specified to carry none — deliberately, so a cross-origin failure
+        cannot leak why it failed. Both were minting ``untrusted_input``."""
+        assert not _has("javascript", "net_recv", "WebSocket", "onopen")
+        assert not _has("javascript", "net_recv", "WebSocket", "onerror")
+
+    def test_the_websocket_close_event_IS_kept(self) -> None:
+        """THE DISTINCTION THAT MAKES THE OTHER TWO DEFENSIBLE. A CloseEvent
+        carries ``code`` and ``reason``, both chosen by the peer, so it
+        genuinely delivers peer-controlled data into the program. Removing all
+        three "lifecycle" callbacks together would have been the tidy answer
+        and the wrong one."""
+        assert _has("javascript", "net_recv", "WebSocket", "onclose")
+
+    def test_the_websocket_data_path_is_untouched(self) -> None:
+        """CONTROL."""
+        assert _has("javascript", "net_recv", "WebSocket", "onmessage")
+        assert _has("javascript", "net_recv", "WebSocket", "addEventListener")
+        assert _has("javascript", "net_send", "WebSocket", "send")
+
+    def test_the_eventsource_error_event_is_not_a_receive(self) -> None:
+        assert not _has("javascript", "net_recv", "EventSource", "onerror")
+        assert _has("javascript", "net_recv", "EventSource", "onmessage")
+
+    def test_broadcastchannel_send_is_a_send_and_is_not_network(self) -> None:
+        """TWO DEFECTS IN ONE ROW. ``postMessage`` SENDS and was declared
+        ``net_recv`` — a direction error, minting ``untrusted_input`` at a call
+        that emits — and the channel is not network in either direction: it is
+        same-origin messaging between browsing contexts and nothing leaves the
+        browser.
+
+        MOVED, NOT DELETED, which is the whole reason this is safe: deleting
+        the row would leave the send represented nowhere, and losing a sink is
+        the false-all-clear direction. The receive label is unchanged because
+        ``ipc_recv`` and ``net_recv`` both derive ``untrusted_input``."""
+        assert not _has("javascript", "net_recv", "BroadcastChannel", "postMessage")
+        assert _has("javascript", "ipc_send", "BroadcastChannel", "postMessage")
+        assert _has("javascript", "ipc_recv", "BroadcastChannel", "addEventListener")
+
+    def test_closing_a_haskell_socket_is_not_an_egress(self) -> None:
+        """``close`` emits a FIN, which is not a payload any line of the
+        program produced — and net_send is a taint SINK, so the row accepted a
+        tainted value as "sent" at a call that sends nothing of the program's.
+        """
+        assert not _has("haskell", "net_send", "Network.Socket", "close")
+        for name in ("send", "sendTo", "sendAll", "sendMany"):
+            assert _has("haskell", "net_send", "Network.Socket", name), "control"
+
+    def test_graceful_close_reads_but_delivers_nothing(self) -> None:
+        """The subtler one. ``gracefulClose`` genuinely READS — it drains until
+        EOF or timeout — so bytes really do cross the boundary. It still is not
+        a source: the function returns unit, so not one of those bytes reaches
+        the program, and ``net_recv`` under the auto-source map means a source
+        of data the program then USES."""
+        assert not _has("haskell", "net_recv", "Network.Socket", "gracefulClose")
+        for name in ("recv", "recvFrom"):
+            assert _has("haskell", "net_recv", "Network.Socket", name), "control"
+
+    def test_no_removal_stranded_its_module(self) -> None:
+        """THE REGRESSION CHECK, added because this exact thing merged green
+        once. Removing the only function-kind row from a module that also
+        carries method rows leaves it method-starved, which withholds every
+        verdict on the repo — that is what PR #602's `bind` removals did, and
+        CI missed it because a hand-picked manifest did not name the test.
+        Asserted here at the point of removal rather than left to a test in
+        another file that this change might again fail to select."""
+        # (language, module, the kinds the module carried BEFORE this change)
+        for lang, module, kinds_before in (
+            ("javascript", "WebSocket", {"method"}),
+            ("javascript", "EventSource", {"method"}),
+            ("javascript", "BroadcastChannel", {"method"}),
+            ("haskell", "Network.Socket", {"function"}),
+        ):
+            rows = [p for p in _rows(lang) if p.module == module]
+            assert rows, f"{lang}:{module} lost every row"
+            assert {p.kind for p in rows} == kinds_before, (
+                f"{lang}:{module} lost a whole call KIND. A module that keeps "
+                f"method rows while losing its last function row is reported "
+                f"method-starved, which withholds every verdict on the repo"
+            )
