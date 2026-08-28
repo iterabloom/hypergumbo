@@ -1,0 +1,31 @@
+- op: create  # 3f0a
+  at: '2026-08-28T10:03:30Z'  # 3f0a
+  by: agent  # 3f0a
+  actor: jgstern_agent  # 3f0a
+  clock: 1  # 3f0a
+  nonce: 3f0a  # 3f0a
+  data:  # 3f0a
+    kind: work_item  # 3f0a
+    title: "INV-nular second pass: request/command BUILDERS declared as write-side boundaries — needs argument-position adjudication, not row removal (the sink side is not F3's mirror)"  # 3f0a
+    status: todo_hard  # 3f0a
+    priority: 2  # 3f0a
+    parent:  # 3f0a
+    tags:  # 3f0a
+    - taint  # 3f0a
+    - catalogue  # 3f0a
+    - measurement_0006  # 3f0a
+    isbefore: []  # 3f0a
+    duplicate_of: []  # 3f0a
+    not_duplicate_of: []  # 3f0a
+    pr_ref:  # 3f0a
+    description: "INV-nular, second sweep pass (2026-08-28). The first pass looked for\nconstructors declared as READS and found F1/F2/F3 (WI-rigut, WI-dosov,\nWI-hikut). It never looked for constructors declared as WRITES. This is that\npopulation, and it is NOT a straightforward mirror -- the analysis below is why\nit is filed rather than fixed.\n\nTHE POPULATION. Request/command BUILDERS declared under a write-side boundary,\nwhere the executor is separately rowed:\n\n  python      urllib.request.Request          -> urlopen        rowed\n  javascript  XMLHttpRequest.open             -> send           rowed\n  java        java.net.URL.openConnection     -> connect/openStream/getInputStream\n              (inherited by kotlin and scala)\n  elixir      Req.new, Finch.build            -> request/get/post\n  go          crypto/tls.Client               -> Write/Read/Handshake\n  haskell     Network.HTTP.Client.newManager  -> httpBS/httpLbs\n  objc        NSMutableURLRequest.{requestWithURL:, initWithURL:,\n              setHTTPBody:, setHTTPMethod:}   -> NSURLConnection.send*/\n                                                 NSURLSession.dataTaskWithRequest:\n\nMeasurement 0006 independently flagged one of these: \"Request is a constructor\nand sends nothing -- the same shape as newIORef\".\n\nWHY THIS IS NOT SIMPLY F3 ON THE WRITE SIDE, and why I did not ship it.\n\nOn the SOURCE side a builder INVENTS taint. `em.createQuery(s)` returns a Query\nand contacts nothing, so declaring it db_read mints untrusted_input out of\nnothing -- a pure false positive, and removal can only help.\n\nOn the SINK side the builder RECEIVES the tainted value, and that value is\nDESTINED FOR THE NETWORK. `req.setHTTPBody(secret)` is literally the point\nwhere the secret enters the pipeline that will transmit it. Declaring it\nnet_send catches a real exfiltration at an imprecise location. Removing it\nloses the finding entirely UNLESS the analysis can carry taint from the builder\nobject to the executor call -- which is exactly the cross-function / object\nidentity capability INV-fumod records as absent (its shape (a) fix is measured\nINERT for precisely this reason: the crossing happens inside a first-party\ncallee).\n\nSo the F3 rule generalises to \"is the CROSSING still represented after the\nremoval\", and on the sink side the honest answer today is NO. Removing these\nwould trade a mechanism-precision gain for a recall loss on a SINK, which is\nthe false-all-clear direction and needs more evidence than a sweep can give.\n\nTHE TENSION WITH 0006 IS REAL AND IS THE THING TO ADJUDICATE. Both readings can\nbe true of different call sites:\n  Request(tainted_url)   -- the taint SELECTS the resource and is not sent.\n                            INV-fumod's shape. 0006's reading; a false positive.\n  Request(url, tainted)  -- the taint IS the payload. A true positive at a\n                            slightly early location.\nThe catalogue cannot tell these apart because it matches on NAME, not on which\nARGUMENT carries the taint. That is the actual defect here, and it is\nargument-position-sensitivity, not row removal.\n\nRECOMMENDED NEXT STEP, in order:\n  1. Adjudicate a sample of live findings at these rows, splitting them by\n     whether the tainted value is the resource SELECTOR or the PAYLOAD.\n  2. Only then decide per row. A row whose findings are overwhelmingly\n     selector-shaped is a removal candidate; one that is payload-shaped is not.\n  3. If the split is genuine within a single row, the answer is neither keep nor\n     remove -- it is argument-position awareness, which is a taint.py change and\n     a much larger item.\n\nALSO FOUND, SMALLER AND SEPARABLE (S5, lifecycle events declared as transfers):\n  javascript  WebSocket.{onopen, onclose, onerror} declared net_recv -- these\n              are connection lifecycle callbacks and carry no application data;\n              onmessage, which does, is rowed separately.\n  javascript  BroadcastChannel.postMessage declared net_recv -- a SEND declared\n              as a receive, which is a direction error rather than a kind error.\n  haskell     Network.Socket.close declared net_send; gracefulClose declared\n              net_recv.\nThese are the same \"does this call transfer application data\" question as\nWI-dosov and are much less entangled than the builder family; they could be\ndone first.\n\nNOT A CANDIDATE, and recorded so it is not retried: rust\n`std::process::Command::new` is a builder (spawn/output/status execute) but it\nis ALSO the only function-kind row `std::process::Command` carries. Removing it\nwould leave the module method-only and report it method-starved -- exactly the\nregression WI-dosov's `bind` removal caused, repaired in PR #603. Any fix here\nmust check that removing a row does not strand its module."  # 3f0a
+    fields: {}  # 3f0a
+- op: update  # c5f3
+  at: '2026-08-28T10:03:42Z'  # c5f3
+  by: agent  # c5f3
+  actor: jgstern_agent  # c5f3
+  clock: 2  # c5f3
+  nonce: c5f3  # c5f3
+  set: {}  # c5f3
+  add:  # c5f3
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # c5f3
