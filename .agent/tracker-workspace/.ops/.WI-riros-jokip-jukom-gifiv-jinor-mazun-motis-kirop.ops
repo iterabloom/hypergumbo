@@ -1,0 +1,22 @@
+- op: create  # 7d21
+  at: '2026-08-28T02:12:44Z'  # 7d21
+  by: agent  # 7d21
+  actor: jgstern_agent  # 7d21
+  clock: 1  # 7d21
+  nonce: 7d21  # 7d21
+  data:  # 7d21
+    kind: work_item  # 7d21
+    title: "ADR-0047 rulings 1/5/6: ship the community overlays inside the wheel, load them by default, and say so LOUDLY on every run that uses them"  # 7d21
+    status: todo_hard  # 7d21
+    priority: 1  # 7d21
+    parent:  # 7d21
+    tags:  # 7d21
+    - adr_0047  # 7d21
+    - catalogue  # 7d21
+    - ux  # 7d21
+    isbefore: []  # 7d21
+    duplicate_of: []  # 7d21
+    not_duplicate_of: []  # 7d21
+    pr_ref:  # 7d21
+    description: "The user-visible half of ADR-0047, and the leg the owner's ruling is conditioned on: 'yes as long as it's loud about it'.\n\nSCOPE.\n1. Overlays move INTO the package. docs/ is not in the wheel (pyproject: packages = [\"src/hypergumbo_core\"]), so the three overlays in docs/io-primitives-overlays/ cannot be loaded by an installed hypergumbo at all today.\n2. They load by DEFAULT, per language (INV-lufib: a claims-file overlay was once applied to every language and hard-failed any repo containing another).\n3. Each carries provenance: community, a dated retrieved:, so 'hypergumbo does not maintain these rows' is CHECKABLE rather than asserted.\n4. LOUD DISCLOSURE, ruling 6: catalog_provenance gains shipped_default / user_config layer keys AND a one-line stderr notice naming the overlays and their dates. A JSON field alone does NOT satisfy the ruling -- the shape to copy is the in_progress catalogue warning, which fires per queried language on every run.\n\nWHY user_supplied IS NOT ENOUGH: it is a boolean, and this ADR creates a THIRD state -- 'hypergumbo shipped it and does not vouch for it'. Collapsing that into either neighbour re-opens the INV-zosun gap."  # 7d21
+    fields: {}  # 7d21
