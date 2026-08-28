@@ -1,0 +1,22 @@
+- op: create  # 26bc
+  at: '2026-08-28T02:12:30Z'  # 26bc
+  by: agent  # 26bc
+  actor: jgstern_agent  # 26bc
+  clock: 1  # 26bc
+  nonce: 26bc  # 26bc
+  data:  # 26bc
+    kind: work_item  # 26bc
+    title: "ADR-0047 ruling 7: CatalogSpec gains user-channel fields so the extensibility question is answered in the registry, not scattered"  # 26bc
+    status: todo_hard  # 26bc
+    priority: 2  # 26bc
+    parent:  # 26bc
+    tags:  # 26bc
+    - adr_0047  # 26bc
+    - yaml_catalogs  # 26bc
+    - catalogue  # 26bc
+    isbefore: []  # 26bc
+    duplicate_of: []  # 26bc
+    not_duplicate_of: []  # 26bc
+    pr_ref:  # 26bc
+    description: "Per ADR-0047 ruling 7 and the ruling-10 table. CatalogSpec (hypergumbo_core.yaml_catalogs) carries directory/purpose/loader/adr; add the fields naming whether a family is user-extensible and where the user's file goes. Fill in all 8 per ruling 10: io_primitives, taint_sources, taint_sanitizers, frameworks, function_summaries (gated), dataflow_patterns library_patterns section only; NO channel for cfg_nodes, url_folding, dataflow_patterns grammar rules.\n\nWHY FIRST: it is additive, and scripts/yaml-catalog-index --check is ALREADY a gate, so extending it to refuse a family declaring a channel it does not have costs nothing new and makes every later leg legible. It also forces the question onto any future catalogue family.\n\nMEASURED TODAY: 138 of 156 files (89%) have no user channel; frameworks alone is 107 files."  # 26bc
+    fields: {}  # 26bc

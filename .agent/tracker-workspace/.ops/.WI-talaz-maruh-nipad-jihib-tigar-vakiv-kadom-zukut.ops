@@ -1,0 +1,22 @@
+- op: create  # 04a2
+  at: '2026-08-28T02:13:05Z'  # 04a2
+  by: agent  # 04a2
+  actor: jgstern_agent  # 04a2
+  clock: 1  # 04a2
+  nonce: 04a2  # 04a2
+  data:  # 04a2
+    kind: work_item  # 04a2
+    title: "ADR-0047 rulings 3/4: a user's catalogue data gets a home under $XDG_CONFIG_HOME/hypergumbo, created by an explicit subcommand"  # 04a2
+    status: todo_hard  # 04a2
+    priority: 2  # 04a2
+    parent:  # 04a2
+    tags:  # 04a2
+    - adr_0047  # 04a2
+    - ux  # 04a2
+    - cli  # 04a2
+    isbefore: []  # 04a2
+    duplicate_of: []  # 04a2
+    not_duplicate_of: []  # 04a2
+    pr_ref:  # 04a2
+    description: "Nobody edits files inside their site-packages. Per ADR-0047 ruling 3 the user's editable material lives in $XDG_CONFIG_HOME/hypergumbo/<family>.d/ (repo tier at <repo>/.hypergumbo/), and per ruling 4 it is created by an EXPLICIT subcommand, never an implicit first-run write -- ADR-0045's precedent is a human-owned config file the tool may read but not write.\n\nSEED, NEVER COPY (ruling 2). Base catalogues stay in the wheel and are never materialized. Only DELTAS live in the user's directory. A full copy means the next release's rows never reach that user, silently, and the tool degrades for exactly the people who engaged enough to run the command. load_catalog(language, overlay_paths=...) already IS the delta layer, ascending precedence, and already drops stdlib_modules from an overlay so a requests overlay cannot relabel a PyPI package as stdlib.\n\nADR-0045 ALREADY BUILT HALF: two config tiers landed with io_primitives overlay paths as the first real setting. This adds the directories, the subcommand, and seeded_from: for staleness."  # 04a2
+    fields: {}  # 04a2
