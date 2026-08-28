@@ -1928,6 +1928,59 @@ _COVERAGE_CALL_EDGE_TYPES: frozenset[str] = frozenset({
 #: emit an unreadable wall, so the tail is summarised.
 _MAX_REPORTED_UNCATALOGUED_MODULES = 5
 
+
+def _render_capped_names(names: "Sequence[str]") -> str:
+    """``a, b, c (+N more)`` — the one spelling of a capped disclosure list.
+
+    This string was written out three times (method-starved modules, opaque
+    launch sites, uncatalogued modules) with the cap arithmetic repeated each
+    time. Three spellings of one disclosure drift the first time any is edited,
+    which this module has paid for repeatedly; the cap itself is already a
+    single constant, so the rendering should be too.
+    """
+    more = len(names) - _MAX_REPORTED_UNCATALOGUED_MODULES
+    suffix = f" (+{more} more)" if more > 0 else ""
+    return ", ".join(names[:_MAX_REPORTED_UNCATALOGUED_MODULES]) + suffix
+
+
+def _rank_modules_for_disclosure(
+    modules: "Iterable[str]", catalogs: dict[str, IoBoundaryCatalog],
+) -> list[str]:
+    """Third-party names first, alphabetical within each group (WI-fosir).
+
+    THE DEFECT. The list was ``sorted()`` and capped at five, so
+    alphabetically-early stdlib names deterministically evicted third-party
+    ones. Measured on a fixture importing ten stdlib modules plus one
+    ``requests.post``: the disclosure read "(argparse, base64, collections,
+    csv, dataclasses (+7 more))" and ``requests`` — the only module a reader can
+    act on, and the one carrying the actual network risk — was in the "+7 more".
+
+    That is load-bearing for the INV-buzab fix's own honesty argument, which
+    rests on the reason string being ACTIONABLE. It was true that the gap was
+    disclosed; it was not true that the disclosure named what mattered.
+
+    WHY ``is_stdlib_module`` IS THE RIGHT PREDICATE HERE, HAVING BEEN THE WRONG
+    ONE ELSEWHERE. It answers RECOGNITION, not examination, and using it to
+    decide whether a module was EXAMINED is exactly the confusion that let
+    ``verify_claims`` confirm "never sends data over the network" for a program
+    writing a secret into ``telnetlib`` (INV-buzab). Nothing of that kind is
+    happening here: this is a DISPLAY ORDER. No verdict changes, the count is
+    unchanged, and the full list stays in the caveat's machine surface. Its
+    failure mode also points the right way — a stdlib module the recogniser has
+    not enumerated sorts as third-party, and an unfamiliar name is precisely
+    what a reader most needs to see.
+
+    Asked of EVERY catalogue rather than a per-language one because the
+    disclosure list is bare module names with no language attached. A name any
+    catalogue recognises as stdlib is deprioritised, which for a mixed-language
+    repo is the conservative direction: it can only push a name DOWN, and the
+    names pushed down are ones some interpreter ships.
+    """
+    def _is_stdlib(module: str) -> bool:
+        return any(cat.is_stdlib_module(module) for cat in catalogs.values())
+
+    return sorted(modules, key=lambda m: (_is_stdlib(m), m))
+
 #: Terminal id slots that mark a ``dst`` as leaving the repo. An external call is
 #: the only thing that can BE an I/O primitive, so it is the only thing the catalog
 #: is asked to adjudicate; an in-repo callee carries no catalog question.
@@ -2239,13 +2292,38 @@ def _launch_site_name(edge: dict[str, Any], dst: str) -> str:
     """
     ref = _edge_dst_ref(edge)
     if ref is not None:
-        return ".".join(part for part in (ref.module_path, ref.name) if part)
+        return _join_site_name(ref.module_path, ref.name)
     # SLOTS VIA THE CHOKEPOINTS (INV-divuf): ``parts[1]``/``parts[3]`` assume
     # a colon-free path AND name, and neither holds — an objc selector makes
     # ``parts[3]`` a truncation and a rust ``std::io`` makes ``parts[1]`` one.
-    return ".".join(
-        part for part in (symbol_path_slot(dst), symbol_name_slot(dst)) if part
-    )
+    return _join_site_name(symbol_path_slot(dst), symbol_name_slot(dst))
+
+
+def _join_site_name(module_path: str, name: str) -> str:
+    """Join the two slots, collapsing the case where they are the same thing.
+
+    INV-hosul. For a bash launch BOTH SLOTS HOLD THE COMMAND, so a plain dot
+    join renders ``curl.curl`` — and when the command is a path rather than a
+    bare name, ``./scripts/auto-pr../scripts/auto-pr``, which reads as a
+    corrupted string rather than as a repetition. Observed on the self-survey,
+    where the caveat named 81 sites and every one was doubled.
+
+    THIS IS A LEGIBILITY DEFECT WITH A CORRECTNESS CONSEQUENCE. ADR-0016 §4
+    lets an opaque-launch verdict be QUALIFIED rather than withheld precisely
+    because the caveat names the sites a reader can go and check; a name they
+    cannot match against anything in their repo removes the thing that earned
+    the qualification while keeping the qualification.
+
+    Collapsing is done HERE, in the shared spelling helper, rather than in
+    either caller: both branches of :func:`_opaque_launch_sites` feed one
+    disclosure string and must agree, which is the whole reason
+    :func:`_launch_site_name` exists. A fix applied to one branch would
+    reintroduce the disagreement it was written to prevent.
+    """
+    parts = [part for part in (module_path, name) if part]
+    if len(parts) == 2 and parts[0] == parts[1]:
+        return parts[0]
+    return ".".join(parts)
 
 
 def _is_producer_stamped_launch(edge: dict[str, Any]) -> bool:
@@ -3394,14 +3472,16 @@ def _call_production_coverage(
 
     starved = method_starved_modules(raw_edges, catalogs)
     if starved:
-        shown = ", ".join(starved[:_MAX_REPORTED_UNCATALOGUED_MODULES])
-        more = len(starved) - _MAX_REPORTED_UNCATALOGUED_MODULES
-        suffix = f" (+{more} more)" if more > 0 else ""
+        # Ranked for the same reason as the uncatalogued list below: a
+        # third-party module whose methods went unseen is the one a reader can
+        # act on. The COUNT is unranked and unchanged.
+        shown = _render_capped_names(
+            _rank_modules_for_disclosure(starved, catalogs))
         return BoundaryCoverage(
             complete=False,
             reason=(
                 f"the analysis calls into {len(starved)} module(s) whose "
-                f"catalogued I/O is method-shaped ({shown}{suffix}) but produced "
+                f"catalogued I/O is method-shaped ({shown}) but produced "
                 f"no method call edge for any of them, so their I/O is "
                 f"structurally invisible"
             ),
@@ -3419,9 +3499,10 @@ def _call_production_coverage(
         raw_edges, catalogs, first_party_packages,
     )
     if opaque:
-        shown = ", ".join(opaque[:_MAX_REPORTED_UNCATALOGUED_MODULES])
-        more = len(opaque) - _MAX_REPORTED_UNCATALOGUED_MODULES
-        suffix = f" (+{more} more)" if more > 0 else ""
+        # NOT ranked: these are launch SITES (commands and paths), not
+        # modules, so `is_stdlib_module` has nothing to say about them and
+        # asking would invent an order rather than reveal one.
+        shown = _render_capped_names(opaque)
         # DELIBERATELY NOT the "could not classify" wording used below: the
         # catalogue classified these exactly right, and blaming a missing row
         # would send the reader to add one that already exists. State the
@@ -3431,7 +3512,7 @@ def _call_production_coverage(
             complete=False,
             reason=(
                 f"the analysis launches an external program at "
-                f"{len(opaque)} call site(s) ({shown}{suffix}) and cannot see "
+                f"{len(opaque)} call site(s) ({shown}) and cannot see "
                 f"what the launched program does, so whether this I/O happens "
                 f"there was never examined"
             ),
@@ -3445,9 +3526,8 @@ def _call_production_coverage(
         )
 
     if unknown:
-        shown = ", ".join(unknown[:_MAX_REPORTED_UNCATALOGUED_MODULES])
-        more = len(unknown) - _MAX_REPORTED_UNCATALOGUED_MODULES
-        suffix = f" (+{more} more)" if more > 0 else ""
+        shown = _render_capped_names(
+            _rank_modules_for_disclosure(unknown, catalogs))
         # THE WORDING IS LOAD-BEARING AND THE OLD ONE BECAME FALSE. It said
         # "module(s) with no I/O catalog coverage", which was accurate while the
         # gate was blaming whole modules the catalogue had never heard of. The
@@ -3462,7 +3542,7 @@ def _call_production_coverage(
             complete=False,
             reason=(
                 f"the analysis makes calls into {len(unknown)} module(s) that "
-                f"the I/O catalog could not classify ({shown}{suffix}), so "
+                f"the I/O catalog could not classify ({shown}), so "
                 f"whether those calls perform this I/O was never examined"
             ),
         )

@@ -16,7 +16,7 @@ were simultaneously counted as uncatalogued modules.
 THE ONE-EDGE POSITIVE CONTROL, which is what makes this a defect rather than a
 coverage complaint — a single bash ``id`` launch, alone on the substrate::
 
-    unknown = ['id']        opaque = ['id.id']        qualifying_only = False
+    unknown = ['id']        opaque = ['id']           qualifying_only = False
 
 One edge, both sets, self-cancelling. So the verdict added on 2026-08-13 for
 exactly this consumer could never fire on the substrate it was built for, and
@@ -115,7 +115,12 @@ class TestALaunchIsNotABlindSpot:
         """NON-DESTRUCTION. The skip must move which channel reports the door,
         never whether it is reported. A silent skip would be the strictly worse
         defect — it would convert a named opaque door into no finding at all."""
-        assert _opaque_launch_sites([LAUNCH], {"bash": _bash_catalog()}) == ["id.id"]
+        # ``["id"]``, not ``["id.id"]`` (INV-hosul). A bash launch puts the
+        # command in BOTH slots, and the plain dot join spelled it twice — for
+        # a path-form command that rendered
+        # ``./scripts/auto-pr../scripts/auto-pr``, which a reader cannot match
+        # against anything in their repo. This assertion pinned the doubling.
+        assert _opaque_launch_sites([LAUNCH], {"bash": _bash_catalog()}) == ["id"]
 
     def test_qualifying_only_holds_when_a_launch_is_the_sole_blocker(self) -> None:
         """The end-to-end consequence: rc 3 becomes REACHABLE. Language set is
@@ -128,7 +133,7 @@ class TestALaunchIsNotABlindSpot:
         )
         assert coverage.complete is False
         assert coverage.qualifying_only is True, coverage.reason
-        assert coverage.opaque_sites == ["id.id"]
+        assert coverage.opaque_sites == ["id"]   # INV-hosul, see above
 
 
 class TestTheGateStillRefusesRealBlindness:

@@ -860,8 +860,17 @@ class TestAProducerStampedLaunchIsAlsoOpaque:
         catalog = _bash_catalog(tmp_path, _BASH_NET_SEND_ONLY)
         coverage = compute_boundary_coverage([edge], {"bash"}, {"bash": catalog})
         assert coverage.complete is False, coverage.reason
-        assert "curl.curl" in coverage.reason, (
+        # ``curl``, not ``curl.curl`` (INV-hosul): a bash launch puts the
+        # command in BOTH slots and the join spelled it twice. The PROPERTY
+        # this test is about is unchanged and is what the message still says —
+        # the slot fallback must spell a site exactly as the dst_ref branch
+        # does. That is why the collapse lives in the shared helper both
+        # branches call, rather than in either branch.
+        assert "curl" in coverage.reason, (
             f"the slot fallback must spell the site exactly as the dst_ref "
             f"branch does, or one disclosure reads differently from the other; "
             f"got: {coverage.reason!r}"
+        )
+        assert "curl.curl" not in coverage.reason, (
+            f"the site name is doubled again (INV-hosul); got: {coverage.reason!r}"
         )
