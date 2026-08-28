@@ -1,0 +1,30 @@
+Original commit body from 7759b26f55724dd5731aaa70147d6ec1e9318497:
+
+argv and application config under env_read were published as open vocabulary
+questions on INV-nular's word that they 'need a vocabulary ruling, not a row
+edit'. The spec already contains that ruling, in the sentence INV-tutar's
+resolution added: env_read is 'an ambient CONFIGURATION read (environment
+variables, system properties, argv -- values that may carry a credential)'.
+The membership rule is capability to carry a credential, not being one, which
+is exactly why runtime.GOOS was split out into host_info_read and argv was not.
+
+The useful figure does not move -- 24.1% either way -- because neither class was
+ever deducted. What changes is that the record no longer publishes a doubt the
+project had already resolved, on the one figure a decision band reads.
+
+The evidence agrees with the definition rather than merely deferring to it:
+argv is world-readable in ps, and one of the five application-config situations
+is plausible reading Application.get_env(:plausible, :paddle), a payments
+provider's configuration. INV-nular's own text had already reached this without
+noticing -- it calls Application.get_env 'an ambient configuration read', the
+spec's exact phrase, and then files the question as open.
+
+What was genuinely unresolved is not a vocabulary question: the boundary means
+'may carry a credential' while the label it derives says host_secret, and that
+gap is the one ADR-0046 exists to MEASURE rather than close.
+
+One sensitivity stands: io_lib:format declared logging against its own note
+'Returns iolist, not direct I/O'. 21.4% if it resolves against the row.
+
+Racial-Capitalism-Is-Bad: a pumpkin-headed crow reading a newspaper in a bathysphere in a Triassic truck stop café with a council of owls made of menorah wax
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
