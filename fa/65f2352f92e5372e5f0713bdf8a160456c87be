@@ -1,0 +1,61 @@
+Original commit body from 15257c7c108f79a16cf8734e40493919fd89d72e:
+
+_manifest_selected_tests ends both of its branches in a grep chain, and a grep
+that matches nothing exits 1. On a manifest that selects NO tests -- what
+smart-test correctly writes for any docs-only or config-only diff -- sed emits
+only the marker line, the first grep drops it and exits 1, and the second gets
+no input and exits 1 too. Every caller runs under set -euo pipefail
+(scripts/auto-pr:3), so that status killed the shell before the function's own
+`return 0` could mask it.
+
+The failure was total rather than partial: exit 1 at "Regenerating test
+manifest...", no PR, no .git/PR_PENDING gate, no branch on the remote, and a
+log that simply stops.
+
+WHERE IT CAME FROM. _manifest_union landed one day earlier (INV-bigaz) to stop
+the regen DROPPING an author's hand-widened manifest, and it calls
+_manifest_selected_tests twice inside a pipeline group. It destroyed the entire
+run instead of narrowing it, in exactly the population it was written to
+defend. It went unseen because the last docs-only manifest committed before the
+guard predates it, so nothing had exercised the empty case.
+
+`|| true` on BOTH branches makes "this manifest selects nothing" the
+empty-output success it always meant to be. Both, because the marker-less
+branch serves manifests written before the sections existed, and half a fix is
+how a defect survives its own patch.
+
+THE TESTS NOW RUN UNDER THE CALLER'S SHELL OPTIONS, which is why this was
+catchable at all. tests/test_autopr_manifest_union.py sourced the library into
+a plain `bash -c` with errexit and pipefail OFF, so the non-zero status was
+discarded and thirteen tests passed over a function that could not survive its
+own caller. The harness now sets the options before the source, exactly as
+auto-pr does. All thirteen still pass; seven new cases pin the empty selection
+end to end.
+
+SECOND DEFECT, SAME FUNCTION: THE HEADER CONTRADICTED THE BODY. The union
+copies the header verbatim from the regen -- which is what preserves "# Mode:"
+and the CHANGED_SOURCE_FILES section CI parses separately -- and thereby copied
+the regen's own "# Selected tests:" count, describing a body the union had just
+replaced. After a docs-only union the file read "Selected tests: 0" over three
+real paths. Nothing consumes that count today (ci.yml:935 recomputes it from
+the body it is about to run; the pre-commit hook gates only on
+"# Mode: full-suite"), so this was a manifest that lied rather than one that
+broke. It is fixed anyway: "CI runs nothing while reporting success" is the
+precise failure _manifest_union's own FAIL-SAFE comment says it exists to
+prevent, and a header already reading 0 is that failure pre-staged for
+whichever consumer trusts it first. The count is restated from what was
+actually written, after the existence filter, and only ever as a correction --
+a header carrying no count line does not gain one.
+
+LIVE EVIDENCE, real committed manifest (334 paths) against a real
+zero-selection regen, both arms under set -euo pipefail:
+  pre-fix library:  exit 1, no output file written at all
+  post-fix library: exit 0, all 334 paths preserved, header restated 0 -> 334
+
+Tests: 1657 passed across 96 affected files; mypy strict ratchet clean at 669.
+
+GOVERNANCE: scripts/lib/forgejo-api.sh is a governance file. Human approval was
+granted on the tracker item on 2026-08-27 ("approved", "approved for auto-pr
+without --gov").
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
