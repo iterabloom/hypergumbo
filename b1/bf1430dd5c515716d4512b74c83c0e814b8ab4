@@ -1,0 +1,33 @@
+Original commit body from f833c498be0e3c91a19b23459bcfbd160600e60a:
+
+The [Unreleased] section had accumulated eight `### Added`, six `### Fixed`,
+two `### Documentation` and one `### Changed`, interleaved -- so a reader
+scanning for what changed had to know that "Added" appears eight separate times
+and that the eighth is not a continuation of the seventh. The changelog-audit
+playbook's Phase 2 names exactly this ("merge duplicates, harmonize
+granularity"), and today's four entries made it worse.
+
+MECHANICAL AND LOSSLESS BY CONSTRUCTION. Bullets are regrouped under one
+heading per category, order preserved within each category. The edit asserts
+its own preservation before writing: every top-level bullet must survive as a
+multiset, and no non-heading content line may be added or dropped. 386 bullets
+in, 386 out; 386 content lines in, 386 out.
+
+WHAT THIS DELIBERATELY DOES NOT DO. The playbook also invites trimming detail
+toward a birds'-eye view. 386 bullets across 283k characters is a real
+calibration question and it is a judgment call about other people's entries, so
+it is left alone -- this change is only the structural half, which is
+unambiguous.
+
+INCIDENTALLY THE FIELD TEST FOR INV-zamoh. That item's closure recorded one
+thing not yet observed: no real docs-only branch had gone through auto-pr since
+the fix, because #599 itself touched code. This branch touches CHANGELOG.md and
+nothing else, so `smart-test --manifest` writes exactly the manifest that used
+to kill the push --
+
+    # Reason: no test-relevant files changed (docs/config only)
+    # Selected tests: 0
+
+-- and the run that carries this commit is that observation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
