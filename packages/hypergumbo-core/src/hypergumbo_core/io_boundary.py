@@ -61,7 +61,8 @@ add new languages or community-contributed corrections.
 from __future__ import annotations
 
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Iterable, Mapping, Optional, Sequence
 
@@ -586,6 +587,17 @@ class IoPrimitive:
     kind: str  # "function" or "method"
     notes: str = ""
     simultaneous: bool = False
+    #: True when this row came from a SHIPPED COMMUNITY overlay — rows
+    #: hypergumbo distributes and discloses but does NOT vouch for
+    #: (ADR-0047). It is deliberately asymmetric in effect: an unvouched row
+    #: can still produce a DETECTION (that direction only ever adds findings)
+    #: but must never license a CLEAN verdict, because INV-buzab makes "the
+    #: catalogue classified this call" mean "examined", and INV-zubuh already
+    #: established that presence of SOME rows must not vouch for the rest.
+    #: Without this an unvouched ``requests.post`` row would silently turn a
+    #: withheld ``fs_write`` verdict into ``confirmed`` for every repo that
+    #: uses requests — the false-all-clear direction, shipped by default.
+    unvouched: bool = False
     boundary_ruling: Optional[str] = None
     """Why this primitive is catalogued under several boundaries (INV-vaduk).
 
@@ -1673,9 +1685,134 @@ def load_overlay_catalog(path: Path) -> IoBoundaryCatalog:
     return catalog
 
 
+# ---------------------------------------------------------------------------
+# Shipped community overlays (ADR-0047 rulings 1 / 5 / 6)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_OVERLAY_DIR = Path(__file__).parent / "io_primitives_overlays"
+
+
+class DefaultOverlayError(Exception):
+    """A shipped default overlay violates the contract defaults must meet."""
+
+
+@dataclass(frozen=True)
+class DefaultOverlay:
+    """One community overlay that ships in the wheel and loads by default.
+
+    ``provenance`` and ``retrieved`` exist so the disclosure can be CHECKABLE
+    rather than asserted. "hypergumbo does not maintain these rows" is a claim
+    a reader should be able to test, and a date they can judge staleness
+    against — the upstream API a row describes may have changed since anyone
+    looked.
+    """
+
+    path: Path
+    language: str
+    provenance: str
+    retrieved: str
+
+
+def validate_default_overlays(paths: "Sequence[Path]") -> None:
+    """Raise unless every path meets the contract a SHIPPED default must meet.
+
+    Three requirements, and the third is the one that matters:
+
+    1. ``provenance`` is declared — this is the THIRD state ADR-0047 creates,
+       distinct from both "hypergumbo vouches for it" and "the user supplied
+       it", and a default that does not name itself unvouched is indistinguish-
+       able from a stdlib row.
+    2. ``retrieved`` is declared — an undated third-party claim cannot be
+       judged for staleness, which is most of what disclosure is for.
+    3. **No ``module_completeness``.** That entry is the single grant of
+       confirmability: it turns a call the catalogue could not classify from a
+       place the analysis could not look into an EXAMINED NEGATIVE, and so
+       decides whether a ``must_not_exist`` claim over another boundary may be
+       CONFIRMED. Shipping one by default would hand every user a closed-world
+       claim about their own dependencies that they never made. A user may
+       grant completeness for their own tree; hypergumbo may not grant it on
+       their behalf. This is the false-all-clear direction, so it is refused
+       at load rather than reviewed at merge.
+    """
+    for path in paths:
+        data = load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        ) or {}
+        if not isinstance(data, dict):  # pragma: no cover - loader guarantees
+            raise DefaultOverlayError(f"{path}: not a mapping")
+        if not data.get("provenance"):
+            raise DefaultOverlayError(
+                f"{path}: a shipped default overlay must declare "
+                f"'provenance' (e.g. 'community'); without it an unvouched "
+                f"row is indistinguishable from one hypergumbo stands behind"
+            )
+        if not data.get("retrieved"):
+            raise DefaultOverlayError(
+                f"{path}: a shipped default overlay must declare 'retrieved', "
+                f"the date its rows were last checked against upstream; an "
+                f"undated third-party claim cannot be judged for staleness"
+            )
+        if "module_completeness" in data:
+            raise DefaultOverlayError(
+                f"{path}: a shipped default overlay must not declare "
+                f"'module_completeness'. That grant converts unclassified "
+                f"calls into EXAMINED NEGATIVES and can turn a withheld "
+                f"verdict into a confirmed one, in repositories whose authors "
+                f"never opted in. A user may grant it for their own tree; "
+                f"hypergumbo may not grant it on their behalf."
+            )
+
+
+@lru_cache(maxsize=1)
+def _scan_default_overlays() -> "tuple[DefaultOverlay, ...]":
+    """Read and validate the shipped overlay directory exactly once."""
+    if not _DEFAULT_OVERLAY_DIR.is_dir():  # pragma: no cover - always shipped
+        return ()
+    paths = sorted(_DEFAULT_OVERLAY_DIR.glob("*.yaml"))
+    validate_default_overlays(paths)
+    found: list[DefaultOverlay] = []
+    for path in paths:
+        data = load_yaml_strict(
+            path.read_text(encoding="utf-8"), origin=str(path),
+        ) or {}
+        found.append(DefaultOverlay(
+            path=path,
+            language=str(data.get("language", "")),
+            provenance=str(data.get("provenance", "")),
+            retrieved=str(data.get("retrieved", "")),
+        ))
+    return tuple(found)
+
+
+def default_overlays(language: str) -> list[DefaultOverlay]:
+    """Shipped community overlays that apply to ``language``.
+
+    KEYED BY LANGUAGE, NOT GLOBAL, and that is not a detail: INV-lufib records
+    a claims-file overlay being applied to EVERY language in a repository, so a
+    Python overlay hard-failed any repository that also contained JavaScript.
+    A default that loaded everywhere would reproduce that at the widest
+    possible blast radius.
+
+    Aliases resolve the way catalogues do (``typescript`` reads the
+    ``javascript`` entry, ``cpp`` reads ``c``), so a language does not silently
+    lose its defaults by being spelled differently from the overlay's own
+    ``language:`` key.
+    """
+    resolved = {language}
+    alias = _CATALOG_ALIASES.get(language)
+    if alias:
+        resolved.add(alias)
+    parent = _CATALOG_PARENTS.get(language)
+    if parent:
+        resolved.add(parent)
+    return [o for o in _scan_default_overlays() if o.language in resolved]
+
+
 def load_catalog(
     language: str,
     overlay_paths: Optional[Sequence[Path]] = None,
+    *,
+    include_defaults: bool = True,
 ) -> IoBoundaryCatalog:
     """Load the I/O primitive catalog for a language.
 
@@ -1685,6 +1822,15 @@ def load_catalog(
     catalog is loaded first and then merged with the parent so that
     child entries take precedence while parent entries fill in gaps.
     Returns an empty catalog if no catalog is found.
+
+    ``include_defaults`` layers the SHIPPED COMMUNITY overlays for this
+    language underneath any project-local ones (ADR-0047 rulings 1 and 5).
+    They are rows hypergumbo distributes and discloses WITHOUT vouching for —
+    a third state, distinct from both the stdlib rows it stands behind and the
+    user rows the user stands behind. They sit lowest in precedence so a user
+    entry displaces one on a qualified-name collision, and the caller can turn
+    them off entirely. Every run that loads one is required to say so; see
+    ``cli._warn_default_overlays``.
 
     ``overlay_paths`` layers project-local overlays on top (INV-fotav), in
     ASCENDING precedence — the last path wins a qualified-name collision, so a
@@ -1723,7 +1869,28 @@ def load_catalog(
             parent_catalog = IoBoundaryCatalog.from_yaml(parent_path)
             catalog = catalog.merge(parent_catalog)
 
-    for overlay_path in overlay_paths or ():
+    _default_paths: list[Path] = []
+    if include_defaults:
+        # Lowest precedence: shipped defaults first, so a project-local row
+        # for the same qualified name displaces the unvouched one rather than
+        # the other way around.
+        _default_paths = [o.path for o in default_overlays(catalog.language)]
+    _paths: list[Path] = list(_default_paths)
+    _paths.extend(Path(p) for p in overlay_paths or ())
+
+    # A COMMUNITY ROW IS NOT PART OF THE STDLIB ENUMERATION, so a shipped
+    # default must not restate what the catalogue claims about it.
+    # ``status: provenance_declared`` says a language's STDLIB surface was
+    # enumerated against a cited source; ``merge`` is self-over-argument with
+    # the overlay as receiver, so without this python went
+    # provenance_declared -> in_progress the moment defaults loaded, and every
+    # python run would have emitted "io-boundary results may be incomplete"
+    # alongside the true ADR-0047 disclosure. A USER overlay's effect on
+    # status is left exactly as it was — that is a separate question.
+    _base_status = catalog.status
+    _base_provenance = catalog.stdlib_provenance
+
+    for overlay_path in _paths:
         overlay = load_overlay_catalog(Path(overlay_path))
         if overlay.language and overlay.language != catalog.language:
             # NOT MINE vs NOT REAL — and the distinction is the whole fix
@@ -1733,7 +1900,7 @@ def load_catalog(
             # aborted any repo that also contained javascript. Measured on
             # hypergumbo's own tree: its own overlay could not be wired into
             # its own claims file, and the two examples already shipped under
-            # docs/io-primitives-overlays/ (python + go) could never be
+            # io_primitives_overlays/ (python + go) could never be
             # declared together.
             #
             # An overlay for ANOTHER SHIPPED language is simply not applicable
@@ -1754,7 +1921,21 @@ def load_catalog(
             continue
         # ``merge`` is self-over-argument, so the overlay is the receiver: a
         # later overlay outranks an earlier one and both outrank the built-in.
+        if overlay_path in _default_paths:
+            # Mark every row so a later consumer can tell a row hypergumbo
+            # vouches for from one it merely ships. Stamped at merge rather
+            # than in the YAML so a file cannot claim to be vouched-for by
+            # omitting a key.
+            overlay = replace(overlay, primitives=[
+                replace(prim, unvouched=True) for prim in overlay.primitives
+            ])
         catalog = overlay.merge(catalog)
+        if overlay_path in _default_paths:
+            catalog = replace(
+                catalog,
+                status=_base_status,
+                stdlib_provenance=_base_provenance,
+            )
 
     return catalog
 

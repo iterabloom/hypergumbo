@@ -1,40 +1,37 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# EXAMPLE project-local I/O primitive overlay — Python HTTP clients.
+# COMMUNITY I/O primitive overlay — Python HTTP clients.
 #
-# THIS FILE IS NOT LOADED AUTOMATICALLY, AND THAT IS THE POINT. It lives under
-# docs/ rather than beside the shipped catalogues in
-# hypergumbo_core/io_primitives/ because hypergumbo does not own these rows.
-# ADR-0016 scopes the built-in catalogue to the stdlib on purpose — "a curated
-# list of stdlib functions, not an unbounded set of library APIs" (§27) — since
-# tracking every third-party HTTP library's surface is an unbounded maintenance
-# burden. You own this file; copy it into your repo and edit it.
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT for Python, and
+# every run that loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
 #
-# Use it:
-#     hypergumbo io-boundaries . --io-primitives docs/io-primitives-overlays/python-http-clients.yaml
-#     hypergumbo verify-claims . --claims claims.yaml --io-primitives <path>
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind. ADR-0016 §27 still scopes the *stdlib catalogues* to the stdlib;
+# what changed is that unvouched rows may ship ALONGSIDE them, disclosed.
 #
-# or declare it in your claims file, which is the form that travels with the
-# claims it supports:
-#     extra_catalogs:
-#       io_primitives:
-#         - docs/io-primitives-overlays/python-http-clients.yaml
+# `retrieved:` is the date these rows were last checked against the
+# upstream APIs they describe — NOT the date this file was packaged. A
+# client that has changed its API since then will be described wrongly
+# here, and the date is what lets you judge that for yourself.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
 #
 # WHY YOU NEED THIS AT ALL. hypergumbo analyzes YOUR repository, not
-# site-packages. A call to `requests.post(url, data=secret)` therefore produces
-# no edge into requests' internals and no network boundary — the library's own
-# use of `socket` is not in the analyzed tree. Without an overlay,
-# `io-boundaries` reports zero net_send for a file that plainly exfiltrates, and
-# `verify-claims` can only return `inconclusive` (it names requests as an
-# uncovered module rather than confirming a clean boundary).
-#
-# COVERAGE HERE IS BY VERB, NOT EXHAUSTIVE. It covers the call forms that
-# dominate real code. It does NOT cover streaming/adapter internals, `Request`
-# object construction, or third-party wrappers around these clients. Extend it
-# for your codebase rather than assuming it is complete.
+# site-packages. A call to `requests.post(url, data=secret)` therefore
+# produces no edge into requests' internals and no network boundary — the
+# library's own stdlib call is not in your tree to be found.
 
 language: python
 status: overlay
+provenance: community
+retrieved: 2026-08-11
 
 net_send:
   - module: requests

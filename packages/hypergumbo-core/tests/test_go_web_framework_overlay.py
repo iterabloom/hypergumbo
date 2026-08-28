@@ -67,8 +67,9 @@ _CONTRACT = [
 
 def _overlay_path() -> Path:
     return (
-        Path(__file__).resolve().parents[3]
-        / "docs" / "io-primitives-overlays" / "go-web-frameworks.yaml"
+        Path(__file__).resolve().parents[1]
+        / "src" / "hypergumbo_core" / "io_primitives_overlays"
+        / "go-web-frameworks.yaml"
     )
 
 

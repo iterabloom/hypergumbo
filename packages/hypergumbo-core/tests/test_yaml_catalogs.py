@@ -198,6 +198,12 @@ def test_ruling_10_table_is_the_shipped_registry():
     }
     assert verdicts == {
         "frameworks": ("frameworks.d", None, None),
+        # ADR-0047's own community overlays. NO channel of its own: a user's
+        # rows for this content belong in the io_primitives channel, where
+        # they displace a community row on a qualified-name collision. A
+        # second home for one kind of edit is the drift this registry exists
+        # to prevent.
+        "io_primitives_overlays": (None, None, None),
         "dataflow_patterns": (
             "dataflow_patterns.d", "library_patterns", None,
         ),

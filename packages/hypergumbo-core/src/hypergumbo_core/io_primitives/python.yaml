@@ -20,7 +20,8 @@
 # Supply third-party primitives through a PROJECT-LOCAL OVERLAY instead:
 #     hypergumbo io-boundaries . --io-primitives my-overlay.yaml
 # or `extra_catalogs: io_primitives:` in a claims file. Worked example:
-# docs/io-primitives-overlays/python-http-clients.yaml.
+# hypergumbo_core/io_primitives_overlays/python-http-clients.yaml, which
+# ships in the wheel and loads by default (ADR-0047).
 language: python
 
 # Plan C, PR B: this is the worked-example catalog — Python's stdlib

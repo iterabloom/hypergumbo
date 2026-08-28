@@ -110,7 +110,9 @@ How It Works
 """
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence, Set as AbstractSet
+from collections.abc import (
+    Iterable, Iterator, Mapping, Sequence, Set as AbstractSet,
+)
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -1459,6 +1461,7 @@ _PROVENANCE_KINDS: tuple[str, ...] = (
 
 def catalog_provenance(
     layers: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
+    shipped_default_languages: "Optional[Iterable[str]]" = None,
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -1521,6 +1524,8 @@ def catalog_provenance(
         strings, exactly as the user wrote them, so a reader can find the file;
         one grant record per overlay that vouched for at least one module.
     """
+    from .io_boundary import default_overlays
+
     out: dict[str, dict[str, list[str]]] = {}
     any_user = False
     for kind in _PROVENANCE_KINDS:
@@ -1534,10 +1539,27 @@ def catalog_provenance(
         *_completeness_grants(io_cli, "cli"),
         *_completeness_grants(io_claims, "claims_file"),
     ]
+    # THE THIRD STATE (ADR-0047). ``user_supplied`` is a boolean and this is a
+    # value neither of its settings describes: hypergumbo SHIPPED these rows
+    # and does not vouch for them. Collapsing it into "shipped, therefore
+    # vouched" overstates them; collapsing it into "user-supplied" blames the
+    # user for a file they never wrote. Either re-opens the INV-zosun gap the
+    # disclosure exists to close, so it is reported as its own key and
+    # ``user_supplied`` keeps meaning exactly what it meant.
+    shipped: list[dict[str, str]] = []
+    for lang in sorted(shipped_default_languages or ()):
+        for overlay in default_overlays(lang):
+            shipped.append({
+                "language": lang,
+                "file": overlay.path.name,
+                "provenance": overlay.provenance,
+                "retrieved": overlay.retrieved,
+            })
     return {
         "user_supplied": any_user,
         "layers": out,
         "completeness_grants": grants,
+        "shipped_default": shipped,
     }
 
 
@@ -1596,9 +1618,34 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
     nothing when the run used only the shipped catalogue, so ordinary output
     is unchanged.
     """
+    lines: list[str] = []
+    shipped = provenance.get("shipped_default") or []
+    if shipped:
+        # ADR-0047 ruling 6. Rendered even when nothing was user-supplied,
+        # because the disclosure obligation is hypergumbo's own here: these
+        # are rows IT shipped and does not vouch for.
+        lines.append("")
+        lines.append(
+            "NOTE: these verdicts loaded COMMUNITY catalogue rows that "
+            "hypergumbo does not vouch for.",
+        )
+        for row in shipped:
+            lines.append(
+                f"  io_primitives: {row['file']}  "
+                f"[shipped default, {row['language']}, "
+                f"retrieved {row['retrieved']}]"
+            )
+        lines.append(
+            "  They make third-party I/O visible; they never license a clean "
+            "verdict — a call they",
+        )
+        lines.append(
+            "  classify still counts as unexamined, so no claim is confirmed "
+            "on their strength.",
+        )
     if not provenance.get("user_supplied"):
-        return []
-    lines = [
+        return lines
+    lines += [
         "",
         "NOTE: these verdicts were computed against USER-SUPPLIED catalogue "
         "input.",
@@ -2602,9 +2649,22 @@ def _uncatalogued_external_modules(
         # a fixture calling ``json.dump(obj, fh)`` printed "calls into 2
         # module(s) with no I/O catalog coverage (builtins, json)" directly
         # above "2 fs_write chain(s) found" — through those very modules.
-        if classify_call(catalogs, dst, edge.get("meta"),
-                         dst_ref=_edge_dst_ref(edge)):
+        _hit = classify_call(catalogs, dst, edge.get("meta"),
+                             dst_ref=_edge_dst_ref(edge))
+        if _hit is not None and not _hit.unvouched:
             continue
+        # AN UNVOUCHED ROW DOES NOT EXAMINE (ADR-0047). A shipped community
+        # row makes third-party egress VISIBLE — that direction only ever adds
+        # findings — but it must not license the all-clear, because INV-buzab
+        # makes "the catalogue classified this call" mean "this call was
+        # examined", and these rows are neither vouched for nor a complete
+        # enumeration of the module (a default overlay is FORBIDDEN from
+        # declaring module_completeness). Without this the community
+        # ``requests.post`` row would turn "never writes to the host
+        # filesystem" from inconclusive into CONFIRMED for every repository
+        # that uses requests, on the strength of rows describing only its
+        # network surface — INV-zubuh's "presence of SOME rows must not vouch
+        # for the rest", arriving by a new door.
         # (1b) INV-hukuf: A SIBLING PARSE OF A READ THAT DID CLASSIFY IS NOT A
         # SECOND MODULE. ``analyze/base.py``'s scoped-path emitter cannot know
         # where the module ends and the attribute begins — ``std::env::consts::OS``
