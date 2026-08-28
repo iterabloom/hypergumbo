@@ -54,6 +54,8 @@ removal deletes false flows AT THE SOURCE rather than suppressing real ones.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from hypergumbo_core.io_boundary import (
@@ -78,6 +80,27 @@ NON_TRANSFER_SOCKET_CALLS = ("socket", "bind", "listen")
 
 ALL_LANGS = ("bash", "c", "cpp", "elixir", "erlang", "go", "haskell", "java",
              "javascript", "kotlin", "objc", "python", "rust", "scala", "swift")
+
+
+#: THE DIRECTION SWEEP'S VOCABULARY, hoisted to module scope so it is a named
+#: thing a test can interrogate rather than a literal buried in one assertion.
+#:
+#: `response`/`resp`/`render` were ADDED by WI-joruz. The shipped vocabulary
+#: carried the VERB ``respond`` and not the NOUN ``response``, so haskell's
+#: ``Network.Wai.responseLBS`` -- a send declared as a receive, the same defect
+#: F5 fixed for Phoenix -- matched nothing and the sweep reported clean. A
+#: name-based gate with an incomplete vocabulary does not fail; it exits 0.
+#:
+#: The widening is deliberately TIGHT. A generous one (serve/output/request/
+#: accept/...) was measured first and returned 43 extra hits, every one of them
+#: a false alarm: an HTTP client's ``request()`` sends, ``wait_with_output``
+#: reads, and ``ServerBootstrap`` merely contains "Serve". Only the three
+#: response-noun forms survive, and they find exactly the four Wai rows.
+DIRECTION_SENDY = re.compile(
+    r'(?i)(^|[._])(send|write|put|post|publish|emit|broadcast|reply|respond|'
+    r'response|resp|render|upload|push)')
+DIRECTION_RECVY = re.compile(
+    r'(?i)(^|[._])(recv|receive|read|fetch|download|poll|subscribe|consume)')
 
 
 def _rows(lang):
@@ -597,11 +620,7 @@ class TestStandardInputIsNotLogging:
         surviving hits to the ones adjudicated CORRECT above. A new row whose
         name says one direction and whose boundary says the other fails here
         and has to be adjudicated rather than absorbed."""
-        import re
-        sendy = re.compile(r'(?i)(^|[._])(send|write|put|post|publish|emit|'
-                           r'broadcast|reply|respond|upload|push)')
-        recvy = re.compile(r'(?i)(^|[._])(recv|receive|read|fetch|download|'
-                           r'poll|subscribe|consume)')
+        sendy, recvy = DIRECTION_SENDY, DIRECTION_RECVY
         inbound = {"net_recv", "ipc_recv", "db_read", "fs_read", "env_read",
                    "host_info_read", "browser_storage_read"}
         outbound = {"net_send", "ipc_send", "db_write", "fs_write", "env_write",
@@ -641,3 +660,128 @@ class TestStandardInputIsNotLogging:
             "new direction mismatch(es) — a primitive whose NAME says one "
             f"direction under a boundary that says the other: {sorted(hits - allowed)}"
         )
+
+
+# ----------------------------------------------------------------------
+# F7 — F5's HASKELL TWIN: response CONSTRUCTORS declared as receives
+#
+# Network.Wai shipped its response constructors under net_recv:
+#
+#     Network.Wai.{responseLBS, responseFile, responseBuilder, responseStream}
+#
+# Each BUILDS the payload a server is about to send. Building an outbound
+# response receives nothing, and net_recv is an auto-derived taint SOURCE, so
+# every one of them MINTED untrusted_input at a call that observes nothing.
+# That is the F5 mechanism exactly, one language over, and it carries F5's
+# second half too: with no Wai row under net_send, a Warp application had NO
+# EGRESS SURFACE for its own response path, so a secret written into a response
+# body could not be reported as leaving the process at all. The failure
+# direction is REPORTS SAFE.
+#
+# WHY IT SURVIVED THE F5 SWEEP, WHICH IS THE PART WORTH KEEPING. That sweep
+# walked CATALOGUES; this is a MECHANISM that crosses them, and the sweep's
+# traversal order could not see across. The mechanical net -- the F6 direction
+# sweep -- was blind for a SECOND and independent reason: its vocabulary
+# carried the verb ``respond`` and not the noun ``response``, so ``responseLBS``
+# matched nothing and the sweep reported clean. Both holes are closed here: the
+# vocabulary gains the noun form (see DIRECTION_SENDY), and the launch family
+# below is pinned across every language rather than per-catalogue.
+# ----------------------------------------------------------------------
+
+
+WAI_RESPONSE_CONSTRUCTORS = (
+    "responseLBS", "responseFile", "responseBuilder", "responseStream")
+
+
+class TestWaiResponsesAreEgress:
+    @pytest.mark.parametrize("name", WAI_RESPONSE_CONSTRUCTORS)
+    def test_a_response_constructor_is_a_sink_not_a_source(
+        self, name: str,
+    ) -> None:
+        assert _has("haskell", "net_send", "Network.Wai", name)
+        assert not _has("haskell", "net_recv", "Network.Wai", name)
+
+    def test_haskell_now_has_a_web_response_egress_surface_at_all(self) -> None:
+        """THE POINT OF THE CHANGE, as a property rather than a list — the same
+        assertion F5 makes for Phoenix. Before this, zero Wai rows were sinks,
+        so no Warp application could produce a "data left the process" finding
+        through its own response path."""
+        senders = [p for p in _rows("haskell")
+                   if p.boundary == "net_send" and p.module.startswith("Network.Wai")]
+        assert senders, (
+            "Network.Wai has no egress rows; a leak into an HTTP response body "
+            "reads as safe"
+        )
+
+    @pytest.mark.parametrize("mod,name", [
+        ("Network.Socket", "recv"), ("Network.Socket", "recvFrom"),
+        ("Network.Socket.ByteString", "recv"),
+    ])
+    def test_haskells_genuine_receives_are_untouched(
+        self, mod: str, name: str,
+    ) -> None:
+        """CONTROL. This is a direction split on one module, not a
+        reclassification of haskell's network surface."""
+        assert _has("haskell", "net_recv", mod, name)
+
+    def test_the_row_moved_without_stranding_its_module(self) -> None:
+        """A row that MOVES cannot strand its module the way a row that is
+        DELETED can (the method-starved hazard), but the two are easy to
+        confuse, so the property is asserted rather than assumed: Network.Wai
+        is still catalogued, and it is now catalogued as egress."""
+        boundaries = {p.boundary for p in _rows("haskell")
+                      if p.module == "Network.Wai"}
+        assert boundaries == {"net_send"}
+
+
+class TestServerLaunchStaysAReceive:
+    """THE FAMILY WI-joruz REFUSED TO SPLIT.
+
+    ``Network.Wai.Handler.Warp.{run, runSettings, runTLS, runEnv}`` are also
+    net_recv, and the argument cuts both ways: the server genuinely receives,
+    but the bytes reach the ``app`` handler rather than ``run``'s caller, so
+    taint minted at the call site is attributed to a scope that never sees a
+    request.
+
+    THAT IS NOT A NEW QUESTION AND IT IS NOT A HASKELL QUESTION. It is the
+    Django rule (F3), the JavaScript ``createServer`` rule, and the
+    ``Phoenix.Router`` control F5 deliberately kept: arrival has no call site to
+    catalogue, so moving these rows would relocate the receive to NOTHING. The
+    family spans nine languages, is partly adjudicated already, and deserves one
+    ruling rather than nine — so it is KEPT here, identically to Phoenix.Router,
+    which is the "or neither" branch of the item's own constraint. Filed for a
+    single adjudication; pinned here so it cannot be split silently in the
+    meantime."""
+
+    @pytest.mark.parametrize("name", ("run", "runSettings", "runTLS", "runEnv"))
+    def test_warp_launch_is_kept_a_receive(self, name: str) -> None:
+        assert _has("haskell", "net_recv", "Network.Wai.Handler.Warp", name)
+
+    @pytest.mark.parametrize("lang,mod,name", [
+        ("elixir", "Phoenix.Router", "get"),
+        ("javascript", "http", "createServer"),
+        ("javascript", "Deno", "listen"),
+        ("python", "http.server.HTTPServer", "serve_forever"),
+        ("python", "asyncio", "start_server"),
+        ("go", "net/http", "Serve"),
+    ])
+    def test_the_same_ruling_holds_in_every_other_language(
+        self, lang: str, mod: str, name: str,
+    ) -> None:
+        """The cross-language half. Warp is kept because these are kept; if one
+        of them is ever moved, this fails and forces the family to move
+        together."""
+        assert _has(lang, "net_recv", mod, name)
+
+
+def test_the_sweep_vocabulary_covers_the_noun_form() -> None:
+    """A GATE ON THE INSTRUMENT, not on the catalogue.
+
+    WI-joruz's row was missed by a sweep that RAN and reported clean, because
+    its vocabulary was incomplete. Widening it fixes today's blind spot; this
+    pins the widening so it cannot be narrowed back into blindness by someone
+    tidying the regex. The verb was present and the noun was not — assert both.
+    """
+    for spelling in ("respond", "responseLBS", "resp", "render"):
+        assert DIRECTION_SENDY.search(spelling), spelling
+    assert not DIRECTION_SENDY.search("readFile")

@@ -58,12 +58,20 @@ net_recv:
       then uses. recv/recvFrom remain and carry the real receive.
   - module: Network.Socket.ByteString
     functions: [recv, recvFrom]
-  - module: Network.Wai
-    functions: [responseLBS, responseFile, responseBuilder, responseStream]
-    notes: "WAI response constructors (used with Warp)"
   - module: Network.Wai.Handler.Warp
     functions: [run, runSettings, runTLS, runEnv]
-    notes: "Warp HTTP server"
+    notes: >-
+      Warp's server launch, DELIBERATELY KEPT a receive (WI-joruz). The
+      argument cuts both ways -- the server genuinely receives, but the bytes
+      reach the `app` handler rather than run's caller, so a source minted here
+      is attributed to a scope that never sees a request. That is not a new
+      question and not a Haskell one: it is the Django rule, the JavaScript
+      `createServer` rule, and the `Phoenix.Router` control INV-nular F5 kept
+      for exactly this reason -- arrival has no call site to catalogue, so
+      moving these rows would relocate the receive to NOTHING. The family spans
+      nine languages and gets ONE ruling, not nine; until then it is kept
+      identically everywhere. The response CONSTRUCTORS that used to sit in
+      this block have moved to net_send below.
 
 net_send:
   - module: Network.Socket
@@ -76,6 +84,28 @@ net_send:
       program's. send/sendTo/sendAll/sendMany carry the real egress.
   - module: Network.Socket.ByteString
     functions: [send, sendAll, sendTo, sendMany, sendManyTo]
+  - module: Network.Wai
+    functions: [responseLBS, responseFile, responseBuilder, responseStream]
+    notes: >-
+      WAI response constructors (used with Warp). CATALOGUED net_recv UNTIL
+      WI-joruz, which is the Haskell spelling of the Phoenix/Plug defect
+      INV-nular F5 fixed for Elixir. These BUILD the payload a server is about
+      to send; building an outbound response receives nothing. Under net_recv
+      each row MINTED untrusted_input at a call that observes nothing (net_recv
+      is an auto-derived taint source), and -- the more serious half -- no Wai
+      row was a SINK, so a Warp application had NO EGRESS SURFACE for its own
+      response path and a secret written into a response body could not be
+      reported as leaving the process. The failure direction was REPORTS SAFE.
+      `responseLBS(status, headers, secret)` is the point at which a value
+      enters the response that will be transmitted, and nothing carries taint
+      from the Response value to Warp's eventual write, so a sink at the point
+      the value ENTERS is what catches it -- the same asymmetry that put
+      Plug's `put_resp_header` on the send side.
+      `responseFile` is net_send ONLY and deliberately not also fs_read: the
+      caller hands over a PATH, and it is Warp -- not this call -- that opens
+      and reads the file, so a source declared here would mint taint at a call
+      that returns no file contents to the program. That is the same reasoning
+      that keeps the Warp launch rows above a receive rather than moving them.
   - module: Network.HTTP.Client
     functions: [httpLbs, httpNoBody, httpBS, responseOpen, withResponse, newManager]
   - module: Network.HTTP.Simple
