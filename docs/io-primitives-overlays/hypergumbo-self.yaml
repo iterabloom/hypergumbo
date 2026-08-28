@@ -105,6 +105,31 @@ logging:
 net_recv:
   - module: starlette.websockets.WebSocket
     methods: [receive_text, receive_json, receive_bytes, accept]
+  - module: uvicorn
+    functions: [run]
+    notes: >-
+      The ASGI server `htrac serve` starts (hypergumbo_tracker/serve.py).
+      ADDED 2026-08-28 BY ADR-0047 RULING 1, and it belongs here for the
+      same reason starlette does: uvicorn is a third-party dependency of
+      hypergumbo, so hypergumbo declares it in its OWN overlay, by the same
+      mechanism any user would use. Until the ruling it was covered by a row
+      in the shipped python catalogue -- which is exactly the drift the
+      ruling corrects, and the reason this file declared starlette but not
+      the server starlette runs on.
+
+      WHY ITS ABSENCE WAS EXPENSIVE, since that is the part worth keeping.
+      Relocating the row made it UNVOUCHED, and an unvouched row does not
+      EXAMINE (#598). `uvicorn` therefore entered the uncatalogued-module
+      list, and in `_boundary_coverage` an opaque launch earns a QUALIFIED
+      verdict only when that list is empty (`qualifying_only=not unknown`).
+      One entry flipped ALL EIGHTEEN of hypergumbo's own claims from
+      confirmed_with_caveats to inconclusive -- caught by
+      scripts/check-self-claims, which is the gate that exists so a
+      self-proof cannot quietly change what it proves.
+
+      NO `module_completeness` ENTRY, deliberately: this row says what one
+      call does, not that uvicorn has no other I/O. It is a server; it
+      plainly has.
 
 # -------------------------------------------------------------------
 # module_completeness — "and there is nothing else here".
