@@ -103,16 +103,24 @@ net_send:
   - module: gen_tcp
     functions: [send, connect]
   - module: gen_udp
-    functions: [send, open]
-    boundary_ruling: unruled
+    functions: [send]
     notes: >-
-      INV-vaduk OPEN QUESTION, declared rather than left blank: `open`
-      appears under BOTH net_send and net_recv. Opening a UDP socket
-      ENABLES both directions but transfers nothing at the call itself,
-      and gen_udp send/recv are catalogued separately in these same
-      sections. So the question is whether a socket-ACQUISITION call is
-      a net_* crossing at all. Left as declared rows because removing
-      them is a recall change and this is a precision-band cycle.
+      INV-vaduk's open question, now ANSWERED and the row removed
+      (INV-nular, WI-dosov). `open` appeared under BOTH net_send and
+      net_recv, and the row itself recorded why that was incoherent:
+      opening a UDP socket enables both directions but "transfers
+      nothing at the call itself", while gen_udp send/recv are
+      catalogued separately. A socket-ACQUISITION call is not a net_*
+      crossing.
+
+      THE DEFERRAL'S REASONING WAS INVERTED, which is why it stood so
+      long: "removing them is a recall change and this is a
+      precision-band cycle". net_recv is an auto-derived taint SOURCE,
+      so this row MINTED untrusted_input at a call that observes
+      nothing -- removing it deletes false positives, which is what a
+      precision-band cycle is for. The same holds on the net_send side:
+      a sink at a call that emits nothing is a false egress claim. Both
+      real transfers stay rowed, so nothing real was relocated.
   - module: gen_sctp
     functions: [send, connect]
   - module: ssl
@@ -125,22 +133,30 @@ net_send:
 
 net_recv:
   - module: gen_tcp
-    functions: [recv, listen, accept]
+    functions: [recv, accept]
   - module: gen_udp
-    functions: [recv, open]
-    boundary_ruling: unruled
+    functions: [recv]
     notes: >-
-      INV-vaduk OPEN QUESTION, declared rather than left blank: `open`
-      appears under BOTH net_send and net_recv. Opening a UDP socket
-      ENABLES both directions but transfers nothing at the call itself,
-      and gen_udp send/recv are catalogued separately in these same
-      sections. So the question is whether a socket-ACQUISITION call is
-      a net_* crossing at all. Left as declared rows because removing
-      them is a recall change and this is a precision-band cycle.
+      INV-vaduk's open question, now ANSWERED and the row removed
+      (INV-nular, WI-dosov). `open` appeared under BOTH net_send and
+      net_recv, and the row itself recorded why that was incoherent:
+      opening a UDP socket enables both directions but "transfers
+      nothing at the call itself", while gen_udp send/recv are
+      catalogued separately. A socket-ACQUISITION call is not a net_*
+      crossing.
+
+      THE DEFERRAL'S REASONING WAS INVERTED, which is why it stood so
+      long: "removing them is a recall change and this is a
+      precision-band cycle". net_recv is an auto-derived taint SOURCE,
+      so this row MINTED untrusted_input at a call that observes
+      nothing -- removing it deletes false positives, which is what a
+      precision-band cycle is for. The same holds on the net_send side:
+      a sink at a call that emits nothing is a false egress claim. Both
+      real transfers stay rowed, so nothing real was relocated.
   - module: gen_sctp
-    functions: [recv, listen]
+    functions: [recv]
   - module: ssl
-    functions: [recv, listen, transport_accept, handshake]
+    functions: [recv, transport_accept, handshake]
   - module: httpd
     functions: [start, start_service]
     notes: "inets HTTP server"

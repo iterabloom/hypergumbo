@@ -84,7 +84,11 @@ net_send:
 
 net_recv:
   - module: Network.Socket
-    functions: [recv, recvFrom, accept, listen, bind, socket, gracefulClose]
+    functions: [recv, recvFrom, accept, gracefulClose]
+    notes: >-
+      socket/bind/listen REMOVED (INV-nular, WI-dosov): setup calls that
+      transfer nothing, minting untrusted_input via the auto-source map.
+      recv/recvFrom remain and carry the real receive.
   - module: Network.Socket.ByteString
     functions: [recv, recvFrom]
   - module: Network.Wai
@@ -150,43 +154,33 @@ logging:
   - module: Debug.Trace
     functions: [trace, traceShow, traceShowId, traceIO, traceM, traceShowM, traceStack]
 
-db_read:
-  - module: Data.IORef
-    functions: [readIORef, newIORef]
-  - module: Data.STRef
-    functions: [readSTRef, newSTRef]
-  - module: Control.Concurrent.MVar
-    functions: [readMVar, takeMVar, tryTakeMVar, tryReadMVar, newMVar, newEmptyMVar, isEmptyMVar]
-  - module: Control.Concurrent.STM
-    functions: [readTVar, readTVarIO, newTVar, newTVarIO, atomically]
-    boundary_ruling: unruled
-    notes: >-
-      Software Transactional Memory. INV-vaduk OPEN QUESTION, declared
-      rather than left blank: newTVar / newTVarIO appear under BOTH
-      db_read and db_write, and creating a TVar is neither. The prior
-      question is whether the db_* classification of the whole
-      Data.IORef / STRef / MVar / STM family is right at all -- these are
-      in-process mutable references, not a database -- which is a
-      vocabulary decision beyond this row.
-
-db_write:
-  - module: Data.IORef
-    functions: [writeIORef, modifyIORef, modifyIORef', atomicModifyIORef, atomicModifyIORef', atomicWriteIORef]
-  - module: Data.STRef
-    functions: [writeSTRef, modifySTRef, modifySTRef']
-  - module: Control.Concurrent.MVar
-    functions: [putMVar, tryPutMVar, modifyMVar, modifyMVar_, swapMVar]
-  - module: Control.Concurrent.STM
-    functions: [writeTVar, modifyTVar, modifyTVar', newTVar, newTVarIO]
-    boundary_ruling: unruled
-    notes: >-
-      Software Transactional Memory. INV-vaduk OPEN QUESTION, declared
-      rather than left blank: newTVar / newTVarIO appear under BOTH
-      db_read and db_write, and creating a TVar is neither. The prior
-      question is whether the db_* classification of the whole
-      Data.IORef / STRef / MVar / STM family is right at all -- these are
-      in-process mutable references, not a database -- which is a
-      vocabulary decision beyond this row.
+# db_read / db_write: DELETED (INV-nular, WI-rigut).
+#
+# Haskell's ENTIRE db_* surface was Data.IORef, Data.STRef,
+# Control.Concurrent.MVar and Control.Concurrent.STM -- 31 rows, and not one
+# database among them. These are in-process mutable references: no descriptor,
+# no syscall, and nothing outside this process can observe a write to one.
+#
+# THE ROWS DID NOT MERELY MISLABEL, THEY MINTED TAINT. db_read is an
+# auto-derived taint SOURCE (AUTO_SOURCE_LABEL_MAP: db_read -> untrusted_input)
+# and db_write an auto-derived SINK, so `readIORef` invented untrusted input at
+# every call site and `writeIORef` accepted it as a database write. All five
+# shellcheck true positives in measurement 0006 are real dataflow filed under
+# `untrusted-input-no-database` against exactly this family -- genuine value
+# chains making a vacuous claim, which is the mechanism behind that
+# measurement's headline being an upper bound on useful precision.
+#
+# THE QUESTION WAS ALREADY WRITTEN HERE AND DEFERRED, in the STM rows' own
+# `boundary_ruling: unruled` note: "the prior question is whether the db_*
+# classification of the whole Data.IORef / STRef / MVar / STM family is right
+# at all -- these are in-process mutable references, not a database -- which is
+# a vocabulary decision beyond this row." This is that decision.
+#
+# REMOVING THEM NARROWS NO CLAIM. Haskell rows no real database anywhere, so
+# the catalogue loses no ability it had; it stops asserting one it never had
+# the rows to support. Taint PROPAGATION through a ref is a dataflow question
+# and was never what these rows provided -- they fabricated a source, they did
+# not carry one across.
 
 process_send:
   - module: Control.Concurrent

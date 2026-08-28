@@ -2041,12 +2041,25 @@ class TestTagIoBoundaries:
         assert edge.meta["io_boundary"] == "fs_write"
 
     def test_cgo_stdlib_socket_uses_c_catalog(self) -> None:
-        """Go cgo C.socket() is tagged as net_send via C catalog."""
+        """Go cgo C.send() is tagged as net_send via the C catalog.
+
+        Re-vehicled from ``C.socket()`` by INV-nular, which removed the
+        ``socket`` row: socket() creates an endpoint and transfers nothing,
+        while net_recv is an auto-derived taint source, so the row was minting
+        untrusted_input. What this test is ABOUT is unchanged — a cgo call
+        resolving through the C catalogue rather than Go's — so it keeps its
+        name and gains a vehicle that still ships.
+
+        ``sendto`` rather than ``send``: the C catalogue lists ``send`` in
+        ``ambiguous_names`` (socket send vs a project-local send()), so a bare
+        name under the synthetic ``C`` module is correctly refused by the
+        ambiguity gate. ``socket`` was never ambiguous, which is why it worked
+        as a vehicle and why swapping in the obvious neighbour did not."""
         c_catalog = load_catalog("c")
         go_catalog = load_catalog("go")
         edge = self._make_edge(
             src="go:/app/net.go:10-20:Connect:function",
-            dst="go:C:0-0:socket:unresolved",
+            dst="go:C:0-0:sendto:unresolved",
             edge_type="calls",
         )
         count = tag_io_boundaries(
@@ -3963,10 +3976,16 @@ class TestAmbiguousNameFiltering:
         catalog = load_catalog("scala")
         edge = self._make_edge(
             src="scala:Main.scala:10:main:method",
-            dst="scala:java.net.ServerSocket:0-0:bind:unresolved",
+            dst="scala:java.net.ServerSocket:0-0:accept:unresolved",
         )
         count = tag_io_boundaries([edge], {"scala": catalog})
-        assert count == 1, "Ambiguous name 'bind' should match when module context confirms ServerSocket"
+        assert count == 1, (
+            "Ambiguous name 'accept' should match when module context confirms "
+            "ServerSocket. Re-vehicled from 'bind' by INV-nular, which removed "
+            "ServerSocket.bind as a false net_recv source; 'accept' is equally "
+            "ambiguous (java.yaml lists both) and is still rowed, so the "
+            "ambiguity mechanism under test is unchanged."
+        )
 
     def test_scala_mkstring_not_matched_as_source(self) -> None:
         """Scala's collection mkString should NOT match scala.io.Source.mkString."""
@@ -5970,8 +5989,11 @@ class TestCppMultiIncludeModuleSlot:
         highest-count miss in the measured population."""
         catalog = load_catalog("c")
         hint = "algorithm,stdlib.h,vector,cstdio,unistd.h,sys/socket.h"
+        # `recv` replaced `socket` here (INV-nular removed the socket row as a
+        # false net_recv source). Same module slot, same multi-include hint, so
+        # the reachability property under test is untouched.
         for name, module in (("getenv", "stdlib"),
-                             ("socket", "sys/socket"),
+                             ("recv", "sys/socket"),
                              ("fork", "unistd")):
             hit = catalog.lookup_with_module(name, hint)
             assert hit is not None, f"{name} unreachable from {hint!r}"

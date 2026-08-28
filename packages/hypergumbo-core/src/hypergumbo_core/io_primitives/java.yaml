@@ -95,11 +95,16 @@ net_send:
 
 net_recv:
   - module: java.net.ServerSocket
-    methods: [accept, bind]
+    methods: [accept]
   - module: java.net.Socket
     methods: [getInputStream]
   - module: java.net.DatagramSocket
-    methods: [receive, bind]
+    methods: [receive]
+    notes: >-
+      bind REMOVED from ServerSocket and DatagramSocket (INV-nular,
+      WI-dosov): binding names a socket and receives nothing, while
+      net_recv is an auto-derived taint source. accept / receive /
+      getInputStream carry the real receive and are unchanged.
   # Plan C, PR A: Netty (io.netty.*) removed under strict-stdlib rule.
   # First-party calls into Netty surface in external_potential
   # (Plan C, PR C).
@@ -169,8 +174,14 @@ ipc_recv:
 # WI-sakan: database access via JDBC and common JPA/Hibernate/Spring Data APIs.
 db_read:
   - module: java.sql.Connection
-    methods: [prepareStatement, prepareCall, createStatement]
-    notes: "JDBC statement preparation (query path)"
+    methods: [prepareStatement, prepareCall]
+    notes: >-
+      JDBC statement preparation. createStatement REMOVED (INV-nular,
+      WI-hikut): it returns an empty Statement and carries no SQL at all,
+      so it cannot be any kind of read; Statement.executeQuery is rowed
+      and carries it. prepareStatement / prepareCall are KEPT
+      deliberately: most drivers send the SQL to the server for parsing
+      at prepare time, so they may genuinely cross.
   - module: java.sql.Statement
     methods: [executeQuery, getResultSet]
   - module: java.sql.PreparedStatement
@@ -182,11 +193,25 @@ db_read:
     notes: "Row traversal; read-only rowset access"
   # Spring Data JPA / Hibernate query interfaces
   - module: javax.persistence.EntityManager
-    methods: [find, createQuery, createNamedQuery, createNativeQuery, getReference]
-    notes: "JPA EntityManager query path"
+    methods: [find, getReference]
+    notes: >-
+      JPA EntityManager query path. createQuery / createNamedQuery /
+      createNativeQuery REMOVED (INV-nular, WI-hikut): they build a
+      Query and issue nothing. db_read is an auto-derived taint
+      SOURCE, so each was minting untrusted_input at a call that
+      returns a builder. The read is rowed where it happens --
+      TypedQuery.getResultList / getSingleResult, below. find and
+      getReference are KEPT because they do load the entity.
   - module: jakarta.persistence.EntityManager
-    methods: [find, createQuery, createNamedQuery, createNativeQuery, getReference]
-    notes: "Jakarta EE 9+ EntityManager"
+    methods: [find, getReference]
+    notes: >-
+      Jakarta EE 9+ EntityManager. createQuery / createNamedQuery /
+      createNativeQuery REMOVED (INV-nular, WI-hikut): they build a
+      Query and issue nothing. db_read is an auto-derived taint
+      SOURCE, so each was minting untrusted_input at a call that
+      returns a builder. The read is rowed where it happens --
+      TypedQuery.getResultList / getSingleResult, below. find and
+      getReference are KEPT because they do load the entity.
   - module: javax.persistence.TypedQuery
     methods: [getSingleResult, getResultList, getResultStream]
   - module: jakarta.persistence.TypedQuery

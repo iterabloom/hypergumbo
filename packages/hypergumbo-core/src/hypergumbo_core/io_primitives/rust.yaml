@@ -312,24 +312,14 @@ net_send:
   # (Plan C, PR C).
 
 net_recv:
-  - module: std::net::TcpListener
-    functions: [bind]
-    notes: >-
-      Associated functions take no receiver, so a call site can never
-      produce a method-construct edge. Declared as methods they were
-      unmatchable by construction AND marked the module method-starved,
-      withholding every verdict on the repo (INV-nular).
+  # TcpListener::bind and UdpSocket::bind REMOVED (INV-nular, WI-dosov):
+  # binding creates a listener/socket and receives nothing, while net_recv is
+  # an auto-derived taint source. accept / incoming / read / recv / recv_from
+  # below carry the real receive.
   - module: std::net::TcpListener
     methods: [accept, incoming]
   - module: std::net::TcpStream
     methods: [read, read_to_end, read_to_string]
-  - module: std::net::UdpSocket
-    functions: [bind]
-    notes: >-
-      Associated functions take no receiver, so a call site can never
-      produce a method-construct edge. Declared as methods they were
-      unmatchable by construction AND marked the module method-starved,
-      withholding every verdict on the repo (INV-nular).
   - module: std::net::UdpSocket
     methods: [recv, recv_from]
   # Plan C, PR A: tokio::net, hyper::Server, axum::Router, and

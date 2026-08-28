@@ -84,7 +84,14 @@ net_send:
 
 net_recv:
   - module: sys/socket
-    functions: [socket, bind, listen, accept, recv, recvfrom, recvmsg]
+    functions: [accept, recv, recvfrom, recvmsg]
+    notes: >-
+      socket/bind/listen REMOVED (INV-nular, WI-dosov): socket() creates an
+      endpoint, bind() names it, listen() marks it passive. None receives
+      anything, and net_recv is an auto-derived taint SOURCE, so each was
+      minting untrusted_input at a call that observes nothing. accept is
+      KEPT: it returns the peer address, which is chosen by whoever
+      connected, so it is a real source.
   - module: unistd
     functions: [read]
     boundary_ruling: call_site_undecidable
