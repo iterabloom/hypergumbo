@@ -1,0 +1,54 @@
+Original commit body from 3b248260dd2f5a1e7812c5eeda34cee5d68da08b:
+
+ADR-0047 rulings 1/5/6. Two community overlays move from docs/ -- which
+pyproject.toml does not package, so an installed hypergumbo could not read
+them and they shipped to nobody -- into
+hypergumbo_core/io_primitives_overlays/. They declare `provenance: community`
+and a dated `retrieved:`, and are selected PER LANGUAGE (INV-lufib: a
+catalogue applied to every language once hard-failed any repo containing a
+second one).
+
+THE PERMISSION IS CONDITIONAL AND THE CONDITION IS THE STDERR LINE. A run
+that loads community rows prints, per queried language, the file, its
+retrieval date, where to override it and how to switch it off -- shaped after
+the in_progress warning and wired at the same three consumers so it cannot
+fire in one and be silent in another. catalog_provenance gains a
+`shipped_default` key alongside: a THIRD state, because "hypergumbo shipped it
+and does not vouch for it" is a value `user_supplied` cannot express, and
+collapsing it into either neighbour re-opens the INV-zosun gap.
+
+AN UNVOUCHED ROW ADDS FINDINGS AND NEVER LICENSES THE ALL-CLEAR. This is the
+property the feature rests on. INV-buzab makes "the catalogue classified this
+call" mean "this call was examined", and an examined call stops blocking a
+clean verdict -- so shipping these rows unmarked would have turned "never
+writes to the host filesystem" from inconclusive into CONFIRMED for every
+repository using requests, on the strength of rows describing only its NETWORK
+surface. That is INV-zubuh's "presence of SOME rows must not vouch for the
+rest", arriving through a new door. Rows from a shipped default are stamped
+`unvouched` AT MERGE (not read from the file, so a file cannot claim
+otherwise) and a call they classify still counts as unexamined. Detection is
+untouched: the egress is visible, and adding a sink only ever adds a finding.
+
+A SHIPPED DEFAULT MAY NOT DECLARE module_completeness, refused at load rather
+than reviewed at merge. That entry is the single grant of confirmability -- a
+closed-world claim that an unmatched call into a module is an examined
+negative -- and granting one by default hands every user a claim about their
+own dependencies that they never made. hypergumbo-self.yaml therefore stays
+under docs/: it is hypergumbo's own overlay for its own dependency set and
+carries exactly those grants.
+
+A DEFAULT DOES NOT RESTATE THE CATALOGUE'S STDLIB CLAIM. `merge` is
+self-over-argument with the overlay as receiver, so without care python went
+provenance_declared -> in_progress the moment defaults loaded and every python
+run would have emitted "results may be incomplete" beside the true
+disclosure. Community rows are outside the enumeration provenance_declared
+asserts, so a default preserves base status and provenance; a USER overlay's
+effect on status is left exactly as it was.
+
+Also: --no-default-overlays on io-boundaries and verify-claims;
+io_primitives_overlays registered in YAML_CATALOGS with no channel of its own
+(a user's rows for this content belong in the io_primitives channel, and a
+second home for one kind of edit is the drift the registry prevents).
+
+Racial-Capitalism-Is-Bad: a VHS jackrabbit riding a unicycle in an opera house with a troupe of raccoons made of dreidels
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
