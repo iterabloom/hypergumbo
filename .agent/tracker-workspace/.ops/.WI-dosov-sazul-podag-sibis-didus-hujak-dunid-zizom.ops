@@ -1,0 +1,22 @@
+- op: create  # 2921
+  at: '2026-08-28T07:12:42Z'  # 2921
+  by: agent  # 2921
+  actor: jgstern_agent  # 2921
+  clock: 1  # 2921
+  nonce: '2921'  # 2921
+  data:  # 2921
+    kind: work_item  # 2921
+    title: "connection-lifecycle calls are declared net_recv in 10 languages: socket/bind/listen receive nothing, and accept needs a ruling on whether the peer address is a source"  # 2921
+    status: todo_hard  # 2921
+    priority: 2  # 2921
+    parent:  # 2921
+    tags:  # 2921
+    - taint  # 2921
+    - catalogue  # 2921
+    - measurement_0006  # 2921
+    isbefore: []  # 2921
+    duplicate_of: []  # 2921
+    not_duplicate_of: []  # 2921
+    pr_ref:  # 2921
+    description: "INV-nular instance, found by the 2026-08-28 catalogue sweep\n(~/hypergumbo_lab_notebook/nular_sweep_08282026/RESULT.md).\n\nTHE ROWS. c.yaml's net_recv is:\n    [socket, bind, listen, accept, recv, recvfrom, recvmsg]\nThree of those seven receive nothing:\n  socket()  creates an endpoint and returns a descriptor\n  bind()    assigns a local address to it\n  listen()  marks it passive and sizes the backlog\nThe receive is recv / recvfrom / recvmsg, which are correctly rowed alongside.\ncpp inherits c, so one edit clears both.\n\nTHE SHAPE RECURS ACROSS TEN LANGUAGES as `accept`:\n  c, cpp        sys/socket.{socket, accept}\n  haskell       Network.Socket.{socket, accept}\n  elixir,erlang gen_tcp.accept\n  java,kotlin,scala  java.net.ServerSocket.accept\n  python        socket.socket.accept\n  rust          std::net::TcpListener.accept\n\n`accept` IS DELIBERATELY NOT FOLDED IN AND NEEDS ITS OWN RULING. Unlike\nsocket/bind/listen it is genuinely arguable: it returns a descriptor, but it\nALSO returns the peer's address, which is network-controlled data that an\nattacker chooses. If the peer address is a source, accept is a real net_recv\nand the rows are right. If the boundary means \"application bytes arrived\", it\nis not. Settle it once, in the vocabulary, and apply the answer to all ten.\n\nWHY IT MATTERS. A server that binds a socket and never reads from it is\ncredited with a network receive today, and any taint reaching the socket\nsetup path is credited as reaching a net_recv sink.\n\nSCOPE NOTE: socket/bind/listen is unarguable and small (3 rows, 2 languages by\ninheritance). It can ship ahead of the accept ruling."  # 2921
+    fields: {}  # 2921

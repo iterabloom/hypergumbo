@@ -1,0 +1,32 @@
+- op: create  # 65f9
+  at: '2026-08-28T07:12:24Z'  # 65f9
+  by: agent  # 65f9
+  actor: jgstern_agent  # 65f9
+  clock: 1  # 65f9
+  nonce: 65f9  # 65f9
+  data:  # 65f9
+    kind: work_item  # 65f9
+    title: "haskell: 31 rows declare in-process mutable cells (IORef/STRef/MVar/STM) as db_read/db_write, the family behind 0006's vacuous true positives"  # 65f9
+    status: todo_hard  # 65f9
+    priority: 1  # 65f9
+    parent:  # 65f9
+    tags:  # 65f9
+    - taint  # 65f9
+    - catalogue  # 65f9
+    - haskell  # 65f9
+    - measurement_0006  # 65f9
+    isbefore: []  # 65f9
+    duplicate_of: []  # 65f9
+    not_duplicate_of: []  # 65f9
+    pr_ref:  # 65f9
+    description: "INV-nular instance, found by the 2026-08-28 catalogue sweep\n(~/hypergumbo_lab_notebook/nular_sweep_08282026/RESULT.md, instrument census.py).\n\nTHE ROWS (31, all haskell, all single-boundary):\n  db_read   Data.IORef.{newIORef, readIORef}\n            Data.STRef.{newSTRef, readSTRef}\n            Control.Concurrent.MVar.{newMVar, newEmptyMVar, readMVar, takeMVar,\n                                     tryReadMVar, tryTakeMVar, isEmptyMVar}\n            Control.Concurrent.STM.{atomically, readTVar, readTVarIO}\n  db_write  Data.IORef.{writeIORef, modifyIORef, modifyIORef', atomicWriteIORef,\n                        atomicModifyIORef, atomicModifyIORef'}\n            Data.STRef.{writeSTRef, modifySTRef, modifySTRef'}\n            Control.Concurrent.MVar.{putMVar, swapMVar, tryPutMVar,\n                                     modifyMVar, modifyMVar_}\n            Control.Concurrent.STM.{writeTVar, modifyTVar, modifyTVar'}\n\nWHY IT IS A MISDECLARATION. These are process memory. No descriptor, no\nsyscall, no other process can observe them, nothing crosses any boundary. A\ndb_read is a read from a DATABASE; an IORef is a mutable cell in the same heap\nas its reader. newIORef is additionally a CONSTRUCTOR -- it allocates a cell and\nneither reads nor writes one.\n\nIT IS MEASURED, NOT SPECULATIVE. All five shellcheck true positives in\nmeasurement 0006 are real dataflow filed under untrusted-input-no-database\nagainst haskell in-process refs. That is the mechanism behind 0006's headline\nbeing an UPPER BOUND on useful precision rather than a measure of it: the value\nchain is real, so the rubric scores TP, while the claim the finding makes is\nvacuous.\n\nTHE FILE ALREADY RECORDS THE DOUBT AND DOES NOT RESOLVE IT. haskell.yaml, in\nits own notes: \"the prior question is whether the db_* classification of the\nwhole Data.IORef / STRef / MVar / STM family is right at all -- these are\n[in-process cells]\". Written, then left. Debt a gate counts beats debt that a\nnote hides.\n\nTHE DECISION THIS NEEDS, which is why it is filed rather than patched: what\nboundary IS an in-process mutable cell? Three candidates, and the choice is not\nobvious:\n  (a) NONE -- delete the rows. Cleanest, and loses the ability to trace taint\n      THROUGH a ref, which is a real propagation path even if it is not a\n      boundary crossing.\n  (b) A new non-boundary propagation kind, so the flow survives but claims\n      nothing about crossing anything.\n  (c) Keep db_* and accept that 'db' means 'any mutable store'. This is what\n      ships today and it is what produced the vacuous TPs.\n\nDIRECTION: (a) and (b) REMOVE findings. Per LIVE.md, a change that reports less\nneeds more evidence than one that reports more -- so this needs a measured\nbefore/after on a haskell cohort, with a control that must not move."  # 65f9
+    fields: {}  # 65f9
+- op: update  # 64cc
+  at: '2026-08-28T07:13:09Z'  # 64cc
+  by: agent  # 64cc
+  actor: jgstern_agent  # 64cc
+  clock: 2  # 64cc
+  nonce: 64cc  # 64cc
+  set: {}  # 64cc
+  add:  # 64cc
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 64cc

@@ -1,0 +1,22 @@
+- op: create  # 6281
+  at: '2026-08-28T07:13:00Z'  # 6281
+  by: agent  # 6281
+  actor: jgstern_agent  # 6281
+  clock: 1  # 6281
+  nonce: '6281'  # 6281
+  data:  # 6281
+    kind: work_item  # 6281
+    title: "query BUILDERS are declared db_read in 5 languages (JPA/JDBC create*, all 9 Ecto.Query combinators, django order_by/distinct) while the executors are separately rowed, so one read is credited twice"  # 6281
+    status: todo_hard  # 6281
+    priority: 2  # 6281
+    parent:  # 6281
+    tags:  # 6281
+    - taint  # 6281
+    - catalogue  # 6281
+    - measurement_0006  # 6281
+    isbefore: []  # 6281
+    duplicate_of: []  # 6281
+    not_duplicate_of: []  # 6281
+    pr_ref:  # 6281
+    description: "INV-nular instance, found by the 2026-08-28 catalogue sweep\n(~/hypergumbo_lab_notebook/nular_sweep_08282026/RESULT.md). NOT previously\nfiled, and not among the five instances 0006 sampled.\n\nTHE ROWS (~18 clear, 5 languages). Every one declared db_read:\n  java (inherited by kotlin and scala)\n    javax.persistence.EntityManager.{createQuery, createNamedQuery, createNativeQuery}\n    jakarta.persistence.EntityManager.{same three}\n    java.sql.Connection.createStatement\n  elixir\n    Ecto.Query.{from, where, select, join, group_by, order_by, limit, offset, distinct}\n  python\n    django.db.models.{order_by, distinct}\n\nWHY IT IS A MISDECLARATION. None of these issues a statement, contacts a\ndatabase, or returns a row. Each returns a BUILDER: a Query, a Statement, an\nEcto.Query struct, a lazy QuerySet. The read happens later, at\nStatement.executeQuery / TypedQuery.getResultList / Ecto.Repo.all / QuerySet\niteration -- all of which are SEPARATELY ROWED. So one logical database read is\ncredited at two sites, and a taint flow that merely places a value into a\nbuilder is scored as reaching a db_read sink.\n\nTHE CATALOGUE STATES THE DEFECT IN ITS OWN NOTES:\n    java:   \"JDBC statement preparation (query path)\"\n    java:   \"JPA EntityManager query path\"\n    elixir: \"Ecto query construction -- part of the read path\"\nBEING ON THE READ PATH IS NOT PERFORMING THE READ. That is the whole item.\n\nARGUABLE, KEPT SEPARATE, DO NOT FOLD: prepareStatement, prepareCall,\nPostgrex.prepare, MyXQL.prepare. Most drivers send the SQL to the server at\nprepare time, so these may genuinely cross. Needs a per-driver answer.\n\nEXPLICITLY NOT A DEFECT, checked and excluded: ets.select, dets.select,\nmnesia.select genuinely execute a match and return rows.\n\nCATALOGUE INHERITANCE: _CATALOG_PARENTS gives kotlin->java and scala->java, so\nthe 9 java rows are ONE edit that clears three languages.\n\nDIRECTION: this REMOVES findings (a builder call stops being a sink), so per\nLIVE.md it needs more evidence than a change that adds them -- a measured\nbefore/after on a cohort that actually exercises JPA/JDBC, Ecto and Django,\nwith a control that must not move. No such cohort is assembled yet."  # 6281
+    fields: {}  # 6281
