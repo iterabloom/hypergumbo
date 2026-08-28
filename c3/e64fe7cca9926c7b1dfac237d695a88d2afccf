@@ -1,0 +1,77 @@
+Original commit body from a99b4fae101b52d353a4911fb1b658bd01cb4314:
+
+Executes **ADR-0047 rulings 1 and 8** (WI-surun), together because they do not work apart: the cull strands rows without somewhere disclosed to put them, and the gates fail until the cull lands. Closes WI-sutuk (project-wide) and WI-bahid (the Go case) — status changes after merge, per the closure-evidence rule.
+
+## The cull — 293 rows, and the move is lossless
+
+| catalogue | rows | families | destination |
+|---|---|---|---|
+| elixir | 144 | Ecto, Phoenix, Plug, HTTPoison, Req, Tesla, Mint, Postgrex, MyXQL, Redix, Finch, Oban | `elixir-web-and-db.yaml` |
+| haskell | 43 | network, http-client, req, http-conduit, wai, warp, typed-process | `haskell-network.yaml` |
+| swift | 38 | SwiftNIO, swift-log, AsyncHTTPClient, NIOSSL, Tracing | `swift-nio-and-log.yaml` |
+| go | 33 | `golang.org/x/sys` (execabs, unix), gRPC | `go-x-sys-and-grpc.yaml` |
+| python | 33 | `django.db.models` (29) + aiohttp.web, flask, ujson, uvicorn | `python-web-and-orm.yaml` |
+
+**Checked, not asserted:** across all 15 shipped catalogues, catalogue+overlays is row-for-row identical to before — same qualified names, same boundaries, nothing lost and nothing gained — with exactly one intended deletion. Blocks moved as text so every `notes:` travelled with its row.
+
+**The one deletion.** erlang's `http_client.request` names no OTP module; inets' client `httpc` sits one row above it. Deleted rather than relocated, because an overlay row would assert that some package provides `http_client:request/1` and none does. WI-lunav's rule is "is the crossing still represented", not "does this call do the I/O" — and it is, on **positive** evidence: across ejabberd and emqx, `http_client` matched **0** times while `httpc` matched 10 and 9.
+
+## The gates — one, over every catalogue
+
+Replaces coverage of 6 of 14 languages, the asymmetry ADR-0047 names as the mechanical *cause* of the drift.
+
+- **Allowlist, not denylist.** Three of the six original gates named specific third-party modules and asserted their absence — a hardcoded inventory a *new* third-party module sails straight through, which is how `execabs` and `grpc` landed in a catalogue whose header asserted stdlib-only. An allowlist fails closed.
+- **The table is the curated list.** WI-surun's blocker: `is_stdlib_module` cannot select the rows, returning 100% third-party for elixir/haskell/swift/go because only python declares `stdlib_modules` — recognition, not provenance (INV-buzab). The selection had existed only as prose in a tracker item; it is now one artifact with the gate that enforces it, every entry carrying its reasoning.
+- **The language list is derived from the tree.** `CATALOG_LANGUAGES` hardcodes 14 while the tree ships 15, so `bash.yaml` sat outside it *and* outside the WI-sugav subprocess drift guard it feeds. Parametrising over `io_primitives/*.yaml` closes that and gates catalogue 16 on arrival.
+
+## Measurement — and the part the cohort could not see
+
+Sequential arms, fresh per-arm cache, canary read OLD/NEW unanimously. One repo per culled language, each verified to *contain* the culled rows first. Full record: `~/hypergumbo_lab_notebook/surun_ab_08282026/RESULT.md`.
+
+**Control — a default run must not move.** It did not: 517 / 42 / 8 / 1216 / 1375 io edges, identical in both arms.
+
+**Declared risk — `--no-default-overlays` reports less,** as WI-surun predicted: pretix **−846 edges (−70.4%)**, plausible **−139 (−26.9%)**, postgrest −5, vault −1. 29 `django.db.models` rows generate 846 edges in a Django application.
+
+**The cost WI-surun did not anticipate.** Verdicts moved 0 of 20 — **but that zero is under-powered and is not offered as a result.** The cohort holds 12 `violated` and 8 `inconclusive` and *no* `confirmed` verdict, and `confirmed` is the only value that can degrade. Verifying the cohort contained the culled *rows* was necessary and not sufficient.
+
+A positive control shows the degradation is real:
+
+| arm | verdict | exit | details |
+|---|---|---|---|
+| OLD | **confirmed** | 0 | "No fs_write chains found." |
+| NEW | **inconclusive** | 2 | "…calls into 1 module(s) that the I/O catalog could not classify (**django.db.models**)… never examined" |
+
+That is #598's *an unvouched row does not EXAMINE* composing with ruling 1. **WI-surun's risk statement covers only the `--no-default-overlays` path; this fires on a default run.** It is the ruled behaviour (the owner ruled django moves; #598 ruled unvouched rows cannot license an all-clear) and it fails **closed** — but it is a user-visible exit-code change for any repository whose I/O is reached through Django / Phoenix / SwiftNIO / Wai, so it is stated here rather than buried.
+
+**Remedy, checked rather than offered:** passing the same overlay via `--io-primitives` re-vouches the rows and restores `confirmed` rc 0 with `user_supplied: true`. A user may vouch for their own dependencies; hypergumbo may not on their behalf.
+
+## hypergumbo's own self-proof caught this, on hypergumbo
+
+The first CI run failed `check-self-claims` with **all 18** of hypergumbo's own security claims dropping `confirmed_with_caveats` → `inconclusive`. The chain, each link verified:
+
+`hypergumbo_tracker/serve.py` calls `uvicorn.run` → `uvicorn` was one of the four relocated residue rows → relocated means **unvouched** → an unvouched row does not EXAMINE (#598) → `uvicorn` enters the uncatalogued-module list → `_boundary_coverage` grants an opaque launch a *qualified* verdict only when that list is empty (`qualifying_only=not unknown`) → **one entry withheld eighteen verdicts.**
+
+The empty caveat lists and `credited_flows nonzero → zero` the gate also reported are downstream of that single flip, not four separate regressions — the details string still reports 14 sanitized flows while `sanitized_flows` reads 0. Control: the same gate on `dev` reports *"18 claims unchanged"*, so the drift was this branch's.
+
+**The fix obeys the ruling instead of re-recording the snapshot.** hypergumbo's claims file says third-party dependencies are "declared here by the same mechanism any user would use", and its overlay already declares starlette, numpy, tree_sitter, bcrypt and a dozen more. It lacked `uvicorn` only because the shipped catalogue had been carrying it — exactly the drift this ADR corrects, and the reason it declared starlette but not the server starlette runs on.
+
+`check-self-claims --update` was available and would have turned CI green in one command. It was not used: that gate exists because a self-proof once "improved" to all-confirmed while its credited flows collapsed 2,658 → 0, and the downgrade would also have been **false** — hypergumbo's behaviour did not change, only its willingness to vouch for one row. **The snapshot is restored exactly, 18/18 unchanged, with no update.**
+
+This is also the best evidence in the PR that the measured mechanism is real and that the documented remedy works: the tool found the consequence of the ruling in its own tree, and the remedy is the one any user would apply.
+
+## Corrections to the item
+
+- **Its stated prerequisite was already met.** WI-surun requires the HIGH_RISK guard to widen "first or in the same PR". It calls `load_catalog(lang)` bare and `include_defaults` defaults to `True`, so its corpus already spans shipped overlays — verified the strong way: after the move, both guard directions pass with all three `execabs` entries resolving *from the overlay*. #598 delivered it.
+- **elixir is 144, not 155.** The gate first reported 145 because `http_client` is inherited from the erlang parent and counted twice. go 33, swift 38 and python 33 matched exactly.
+
+## Tests
+
+51 failures before the fixes, every one a hardcoded inventory. They now assert the invariant: overlays live inside the packaged tree (not two named filenames), a row is unvouched **iff** a default overlay supplied it (not a module-name prefix list), and INV-nular's rows are checked in the **merged** view — which is that file's own question, since `AUTO_SOURCE_LABEL_MAP` does not consult which file a row came from, and is stricter in both directions. That last change also restores sweep coverage the cull would otherwise have quietly shrunk: the direction sweep sees 5 hits merged vs 2 unmerged, and all 5 were already adjudicated in its `allowed` set.
+
+**Full suite on the final tree: 24,585 passed / 0 failed. mypy ratchet clean.**
+
+## Noted, not fixed here
+
+- **WI-joruz** (filed): `Network.Wai` response constructors are catalogued `net_recv`, so building a response mints untrusted taint — the F5 defect fixed for Phoenix in #609, in its Haskell twin. Not folded in, because WI-surun changes where a row lives, not what it claims, and mixing the two would make this A/B measure two changes at once. The methodological cause — the INV-nular sweep ran per-catalogue rather than per-mechanism — is recorded on INV-nular, since it bears on its own coverage claim.
+- **Thin CI selection.** The manifest selects 3 test files; smart-test slices YAML changes to almost nothing (INV-bigaz, open). Not hand-widened — hand-widening is what let a real regression merge green in #602. The full suite was run locally instead, twice.
+- **Cosmetic, pre-existing:** `.ci/affected-tests.txt` carries a bare `0` line (present on `origin/dev` too). It sits *before* the `# === SELECTED_TESTS ===` marker and the reader is sectioned, so it is never read as a test path.
