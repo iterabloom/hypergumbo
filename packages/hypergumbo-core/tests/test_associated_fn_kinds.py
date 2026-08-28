@@ -47,8 +47,14 @@ def _kinds(module: str, language: str = "rust") -> dict[str, str]:
         ("std::fs::File", "create"),
         ("std::fs::File", "create_new"),
         ("std::net::TcpStream", "connect"),
-        ("std::net::TcpListener", "bind"),
-        ("std::net::UdpSocket", "bind"),
+        # ``TcpListener::bind`` / ``UdpSocket::bind`` were here. INV-nular
+        # removed those ROWS entirely — net_recv is an auto-derived taint
+        # source and binding a socket receives nothing — so there is no longer
+        # a kind for them to declare. The property below is about how a
+        # PRESENT row is keyed; the absence of a row is a different question,
+        # governed by test_blind_language_method_starvation.py, which now pins
+        # that a bind-only repo is correctly told the module's receive surface
+        # was not examined.
         ("std::process::Command", "new"),
     ],
 )

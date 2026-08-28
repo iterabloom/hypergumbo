@@ -362,9 +362,16 @@ class TestAModuleCarryingBothCallKinds:
         repo calling ``TcpStream::connect`` and nothing else still starved.
         """
         catalogs = _catalogs("rust")
+        # ``std::net::UdpSocket::bind`` WAS in this list and is not any more.
+        # INV-nular removed it: net_recv is an auto-derived taint SOURCE and
+        # binding a socket receives nothing, so the row was minting
+        # untrusted_input at a call that transfers no bytes. It has therefore
+        # left the population this test is about — a CATALOGUED associated
+        # function — and joined the one
+        # ``test_an_unstamped_call_to_an_UNCATALOGUED_name_still_starves``
+        # governs, where starvation is the correct answer. Pinned below.
         for module, fn in (
             ("std::net::TcpStream", "connect"),
-            ("std::net::UdpSocket", "bind"),
             ("std::process::Command", "new"),
         ):
             edges = [{
@@ -461,16 +468,46 @@ class TestAnUnstampedAssociatedFunctionCall:
         assert self._starved("std::process::Command", "new") == []
 
     def test_the_name_route_covers_every_mixed_module_pr_552_created(self) -> None:
-        """All four, not just the one convenient example."""
+        """The mixed modules that still HAVE a catalogued associated function.
+
+        ``UdpSocket::bind`` and ``TcpListener::bind`` were here and were removed
+        by INV-nular as false ``net_recv`` sources (binding receives nothing).
+        Both are now uncatalogued names, so the honest answer for them is
+        starvation — asserted directly in
+        :meth:`test_binding_a_socket_no_longer_vouches_for_its_receive_surface`.
+        """
         for module, fn in (
             ("std::net::TcpStream", "connect"),
-            ("std::net::UdpSocket", "bind"),
-            ("std::net::TcpListener", "bind"),
             ("std::process::Command", "new"),
         ):
             assert self._starved(module, fn) == [], (
                 f"{module}::{fn} is a catalogued associated function called by "
                 f"name on an unstamped edge; it must not be reported invisible"
+            )
+
+    def test_binding_a_socket_no_longer_vouches_for_its_receive_surface(
+        self,
+    ) -> None:
+        """INV-nular, and it is INV-zubuh's shape one level down.
+
+        Before the ``bind`` rows were removed, a repo that called only
+        ``UdpSocket::bind`` matched a function-kind row, the module counted as
+        satisfied, and the analysis reported that it had LOOKED at
+        ``std::net::UdpSocket``. Matching ``bind`` said nothing whatever about
+        whether ``recv`` / ``recv_from`` were examined — one row was vouching
+        for the rest of the module's surface, which is exactly what INV-zubuh
+        forbids.
+
+        Now the module starves, and that is the honest answer: the repo called
+        into ``UdpSocket``, the catalogue covers it with methods, and no method
+        edge arrived. The direction is safe — starvation WITHHOLDS a verdict
+        rather than granting one, so this trades a false all-clear for an
+        explicit "not examined".
+        """
+        for module in ("std::net::UdpSocket", "std::net::TcpListener"):
+            assert self._starved(module, "bind") == [module], (
+                f"{module}::bind is uncatalogued after INV-nular, so a bind-only "
+                f"repo must be told the module's receive surface was not examined"
             )
 
     def test_an_unstamped_call_to_an_UNCATALOGUED_name_still_starves(self) -> None:
