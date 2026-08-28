@@ -1,0 +1,50 @@
+Original commit body from 8efd9e8c377d5d99cb99b36534ed2a4a7188b31f:
+
+OWNER RULING, 2026-08-27: "even if adr-16 ultimately conveys the correct message
+on careful reading, readers do not always read carefully! ... the solution is
+NOT to explain the disinfo at length, the solution is to ELIMINATE THOSE WORDS."
+
+AGENTS.md already required this -- "excise-the-superseded-BODY (don't leave
+stale text behind a missable banner)" -- so this is drift from a written rule.
+Git history is the record; the document should carry one claim, not a claim and
+its refutation at equal weight.
+
+THREE EXCISIONS.
+
+ADR-0016 "Why static analysis can answer this" opened with a paragraph
+asserting that all I/O transitively reaches stdlib primitives ("requests.get()
+eventually calls socket.send()"), followed by "#### Amendment (INV-fotav)"
+refuting it. The wrong paragraph was the first thing a reader met. Deleted; the
+section now states the correct argument once -- hypergumbo analyses the target
+repository, not its dependencies, with the measured zero-net_send-chains result
+-- and re-supports "finite and stable" on the responsibility bound rather than
+on the deleted transitivity claim.
+
+ADR-0016 module_completeness carried "*This paragraph originally recorded the
+opposite* ... That reasoning was sound about the POWER of the grant and wrong
+about WHO MAY EXERCISE IT". Deleted; the ruling and its two bounds stand alone.
+
+ADR-0046 Consequences carried MY OWN instance, added earlier the same day: the
+original prediction kept, with "the reason is not the one predicted here"
+underneath. Deleted; the consequence now states the measured result (33.9% ->
+24.1%, all of it KIND-MISDECLARED, CONFIGURED-ACTION zero) and what follows for
+cohort design.
+
+ADR-0047's Context quoted the sentence deleted from ADR-0016 and now cites what
+the document actually says. No other reference to the removed text exists in the
+tree (grep for "transitivity" is clean).
+
+ALSO IN THIS COMMIT: ADR-0047 (Proposed) -- catalogue scope, and where a user's
+catalogue data lives. Ten rulings covering the stdlib-scope amendment, seed-not-
+copy, $XDG_CONFIG_HOME homes, explicit materialization, provenance and
+staleness, three-state disclosure, registry-answers-extensibility, per-language
+scope gates, the repo tier, and which of the eight YAML families get a user
+channel. Its first Negative states what it does NOT buy back: hypergumbo still
+ships and must maintain the third-party rows.
+
+Filed WI-fubom for the sweep: 18 candidate sites across 14 of 49 ADRs, with the
+note that most "**Amendment" markers are legitimate additions and only kept
+superseded text is the defect.
+
+Racial-Capitalism-Is-Bad: an ibex playing a grand piano in a checkerboard made of LEDs in a prehistoric root beer stand with a flock of parrots made of rye flour dust
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
