@@ -1,0 +1,29 @@
+- op: create  # 177d
+  at: '2026-08-28T02:14:30Z'  # 177d
+  by: agent  # 177d
+  actor: jgstern_agent  # 177d
+  clock: 1  # 177d
+  nonce: 177d  # 177d
+  data:  # 177d
+    kind: work_item  # 177d
+    title: "ADR-0047 ruling 10: new user channels for frameworks, function_summaries (gated) and dataflow library_patterns"  # 177d
+    status: todo_hard  # 177d
+    priority: 3  # 177d
+    parent:  # 177d
+    tags:  # 177d
+    - adr_0047  # 177d
+    - catalogue  # 177d
+    isbefore: []  # 177d
+    duplicate_of: []  # 177d
+    not_duplicate_of: []  # 177d
+    pr_ref:  # 177d
+    description: "Three families get a channel they lack today, decided by the ruling-10 test -- does the family describe the USER'S world or the LANGUAGE'S.\n\nframeworks (107 files, the largest family): conventions, including in-house ones. Straightforward channel.\n\ndataflow_patterns: MIXED, and the channel is SECTION-SCOPED. The grammar section (node_type: assignment / write: left) is internal. But 9 of 20 files carry a library_patterns section of regex rows ('\\\\.append\\\\(' -> mutate) matched by method name regardless of receiver type -- a claim about libraries, which a user with an in-house collection type can legitimately extend. Granting the whole file would hand them the grammar rules.\n\nfunction_summaries: the channel it most needs and the gate it least obviously needs. Entries describe callees 'whose source is not analyzed' = dependencies. But the file's own header states the asymmetry: a wrong  verdict closes a branch that is really open and DELETES A REAL SECURITY FINDING. A user-supplied terminating summary IS a sanitizer declaration by another name, and verify_claims discloses NOTHING about function summaries today while CAVEAT_USER_SUPPLIED_SANITIZER already exists for the identical case. So a TERMINATING user summary must ride that caveat and its exit-3 contract; a propagating one need not, since it cannot silence anything."  # 177d
+    fields: {}  # 177d
+- op: update  # 1a17
+  at: '2026-08-28T02:14:53Z'  # 1a17
+  by: agent  # 1a17
+  actor: jgstern_agent  # 1a17
+  clock: 2  # 1a17
+  nonce: 1a17  # 1a17
+  set:  # 1a17
+    description: "Three families get a channel they lack today, decided by the ruling-10 test --\ndoes the family describe the USER'S world or the LANGUAGE'S.\n\nframeworks (107 files, the largest family): conventions, including in-house\nones. Straightforward channel.\n\ndataflow_patterns: MIXED, and the channel is SECTION-SCOPED. The grammar\nsection (node_type: assignment / write: left) is internal by the same reasoning\nas cfg_nodes. But 9 of 20 files carry a library_patterns section of regex rows\n('\\.append\\(' -> access_mode: mutate) matched BY METHOD NAME REGARDLESS OF\nRECEIVER TYPE -- a claim about libraries and idioms, which a user with an\nin-house collection type can legitimately extend. Granting the whole file would\nhand them the grammar rules as well.\n\nfunction_summaries: the channel it most obviously needs, and the gate it least\nobviously needs. Its entries describe callees \"whose source is not analyzed\" =\ndependencies, exactly where a user knows something hypergumbo cannot. But the\nfile's own header states the asymmetry: a wrong \"terminates\" verdict lets the\nwalk close a branch that is really open, which DELETES A REAL SECURITY FINDING,\nwhile a wrong \"propagates\" verdict only leaves an unknown unknown.\n\nA user-supplied TERMINATING summary IS a sanitizer declaration by another name\n-- it removes a flow the tool would otherwise report -- and verify_claims\ndiscloses NOTHING about function summaries today, while\nCAVEAT_USER_SUPPLIED_SANITIZER already exists for the structurally identical\ncase with its exit-3 contract. So a terminating user summary must ride that\ncaveat; a propagating one need not, because it cannot silence anything.\nGranting this channel without that gate would re-open INV-buzab's shape on a\nfresh surface."  # 1a17

@@ -1,0 +1,22 @@
+- op: create  # 343a
+  at: '2026-08-28T02:13:51Z'  # 343a
+  by: agent  # 343a
+  actor: jgstern_agent  # 343a
+  clock: 1  # 343a
+  nonce: 343a  # 343a
+  data:  # 343a
+    kind: work_item  # 343a
+    title: "ADR-0047 rulings 1/8: cull the third-party rows from 5 catalogues into the shipped overlays, and give the 8 ungated languages a scope gate"  # 343a
+    status: todo_hard  # 343a
+    priority: 2  # 343a
+    parent:  # 343a
+    tags:  # 343a
+    - adr_0047  # 343a
+    - catalogue  # 343a
+    - io_boundary  # 343a
+    isbefore: []  # 343a
+    duplicate_of: []  # 343a
+    not_duplicate_of: []  # 343a
+    pr_ref:  # 343a
+    description: "The execution of the scope amendment. elixir 155 rows (29.4%), haskell 68 (31.5%), swift 38 (36.5%), go 33 (17.4%), python's 4 ungoverned plus django.db.models 29 (the owner ruled django moves too).\n\nRULING 8 IS THE PART THAT PREVENTS A REPEAT: scope gates exist for 6 of 14 languages, and the eight without one (go, elixir, erlang, haskell, swift, objc, c, cpp) are exactly where the rows accumulated. That asymmetry is the mechanical cause, not bad luck.\n\nTHE HIGH_RISK GUARD MUST WIDEN FIRST OR IN THE SAME PR. golang.org/x/sys/execabs.Command / .CommandContext sit in HIGH_RISK_PRIMITIVES and .LookPath in HIGH_RISK_EXEMPTIONS_SUBPROCESS; the WI-gitad phantom-detection direction requires every entry to resolve against a catalogue. Widen the corpus to built-ins PLUS shipped default overlays -- intent preserved exactly (no entry resolving to nothing anywhere), and it removes the one genuine cost WI-bahid identified for the Go cull.\n\nDIRECTION OF RISK: this makes the tool report LESS on a run that does not load the overlays. Measure before shipping, not after. Depends on the default-overlay leg landing first, or the cull strands the rows.\n\nCLOSES: WI-sutuk (project-wide), WI-bahid (the Go case)."  # 343a
+    fields: {}  # 343a
