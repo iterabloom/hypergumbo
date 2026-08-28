@@ -72,7 +72,13 @@ fs_write:
 
 net_send:
   - module: Network.Socket
-    functions: [send, sendTo, sendAll, sendMany, connect, close]
+    functions: [send, sendTo, sendAll, sendMany, connect]
+    notes: >-
+      `close` REMOVED (INV-nular): closing a socket transmits no application
+      data. It emits a FIN at the transport layer, which is not a payload any
+      line of the program produced, and net_send is a taint SINK -- so the row
+      accepted a tainted value as "sent" at a call that sends nothing of the
+      program's. send/sendTo/sendAll/sendMany carry the real egress.
   - module: Network.Socket.ByteString
     functions: [send, sendAll, sendTo, sendMany, sendManyTo]
   - module: Network.HTTP.Client
@@ -84,11 +90,15 @@ net_send:
 
 net_recv:
   - module: Network.Socket
-    functions: [recv, recvFrom, accept, gracefulClose]
+    functions: [recv, recvFrom, accept]
     notes: >-
       socket/bind/listen REMOVED (INV-nular, WI-dosov): setup calls that
       transfer nothing, minting untrusted_input via the auto-source map.
-      recv/recvFrom remain and carry the real receive.
+      `gracefulClose` REMOVED for a related but distinct reason: it sends a FIN
+      and then READS AND DISCARDS until EOF or timeout, so bytes do cross the
+      boundary but none reaches the program -- the function returns unit -- and
+      net_recv under the auto-source map means a SOURCE of data the program
+      then uses. recv/recvFrom remain and carry the real receive.
   - module: Network.Socket.ByteString
     functions: [recv, recvFrom]
   - module: Network.Wai

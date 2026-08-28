@@ -160,14 +160,22 @@ net_recv:
   # external_potential (Plan C, PR C).
   # Browser network sources (WI-banaf)
   - module: EventSource
-    methods: [addEventListener, onmessage, onerror]
-    notes: "Browser Server-Sent Events client"
+    methods: [addEventListener, onmessage]
+    notes: >-
+      Browser Server-Sent Events client. `onerror` REMOVED (INV-nular): the
+      error event is specified to carry no information -- deliberately, so a
+      cross-origin failure cannot leak why -- so it receives nothing, while
+      net_recv is an auto-derived taint SOURCE. onmessage and addEventListener
+      carry the real receive.
   - module: WebSocket
-    methods: [addEventListener, onmessage, onopen, onclose, onerror]
-    notes: "Browser WebSocket client receive"
-  - module: BroadcastChannel
-    methods: [postMessage, addEventListener]
-    notes: "Browser cross-tab messaging"
+    methods: [addEventListener, onmessage, onclose]
+    notes: >-
+      Browser WebSocket client receive. `onopen` and `onerror` REMOVED
+      (INV-nular): the open event carries no data and the error event is
+      specified to carry none, so both were minting untrusted_input at a
+      connection-lifecycle callback. `onclose` is KEPT and the distinction is
+      the point -- a CloseEvent carries `code` and `reason`, both chosen by the
+      peer, so it genuinely receives peer-controlled data.
 
 subprocess:
   - module: child_process
@@ -222,8 +230,21 @@ ipc_send:
   - module: process
     methods: [send]
     notes: "IPC to parent process in child_process.fork()"
+  - module: BroadcastChannel
+    methods: [postMessage]
+    notes: >-
+      Browser cross-tab messaging, moved out of net_* entirely (INV-nular).
+      Two defects in one row: `postMessage` SENDS and was declared net_recv --
+      a direction error that minted untrusted_input at a call that emits -- and
+      the channel is not network in either direction. It is same-origin
+      messaging between browsing contexts; nothing leaves the browser. Moving
+      rather than deleting keeps the send REPRESENTED, and the receive label is
+      unchanged because ipc_recv and net_recv both derive `untrusted_input`.
 
 ipc_recv:
+  - module: BroadcastChannel
+    methods: [addEventListener]
+    notes: "Browser cross-tab messaging: the receive side (INV-nular)"
   - module: process
     attributes: [stdin]
   - module: process
