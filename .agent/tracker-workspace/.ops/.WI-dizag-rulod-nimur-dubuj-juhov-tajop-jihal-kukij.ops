@@ -1,0 +1,39 @@
+- op: create  # d302
+  at: '2026-08-28T03:29:07Z'  # d302
+  by: agent  # d302
+  actor: jgstern_agent  # d302
+  clock: 1  # d302
+  nonce: d302  # d302
+  data:  # d302
+    kind: work_item  # d302
+    title: "rust: a struct-field receiver drops its external type before the module slot is built, so fs_write method rows stay unreachable (INV-linub L3 residual)"  # d302
+    status: todo_hard  # d302
+    priority: 1  # d302
+    parent:  # d302
+    tags:  # d302
+    - taint  # d302
+    - rust  # d302
+    - io_boundary  # d302
+    - adr_0017  # d302
+    isbefore: []  # d302
+    duplicate_of: []  # d302
+    not_duplicate_of: []  # d302
+    pr_ref:  # d302
+    description: "INV-linub L3, residual shape 1 of 2. PR #595 recovered an external receiver's\nmodule path for the shapes where the type reaches _var_types as a plain\nidentifier binding. A STRUCT-FIELD receiver does not: `h.f.write_all(...)`\nloses the type upstream of normalization, in the receiver walk, because the\nreceiver node is a field_expression rather than an identifier and\n_var_types is keyed by variable name.\n\nStrategy 1.5 already resolves self.field receivers through\nanalyzer.resolve_receiver_type + field_type_registry -- but only to bind a\nFIRST-PARTY target symbol. When the field's type is external the lookup misses,\n`resolved` stays False, and the same drop happens: the type was computed and\ndiscarded. So the machinery exists and the fix is likely to be a narrow reuse\nof it on the unresolved-external branch, mirroring what PR #595 did for\n_var_types.\n\nMEASURED, 11 rust repos, post-#595 tree: `write_all` matches 5 catalogued\nmethod sites and MISSES 125. `lock` is the single largest miss in the cohort at\n440. Both are dominated by field and chained receivers.\n\nWHY THIS MATTERS MORE THAN #595 DID: #595 moved io-boundaries (303 -> 360\nclassified rust call sites) but moved ZERO taint flows, because the rows it\nunlocked were host_info_read and fs_read -- and fs_read is excluded from\nAUTO_SOURCE_LABEL_MAP by design. `write_all` is fs_write, which IS an\nauto-derived SINK. This shape is on the sink side, so unlike #595 it can\nactually change a verdict.\n\nMEASURE THROUGH L4 ON FINDINGS, per INV-linub's standing rule, not on edges.\nTripwire available: 98/1206 catalogued trait-method sites matched today."  # d302
+    fields: {}  # d302
+- op: update  # a020
+  at: '2026-08-28T03:29:58Z'  # a020
+  by: agent  # a020
+  actor: jgstern_agent  # a020
+  clock: 2  # a020
+  nonce: a020  # a020
+  set: {}  # a020
+  add:  # a020
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # a020
+- op: discuss  # c82a
+  at: '2026-08-28T03:29:58Z'  # c82a
+  by: agent  # c82a
+  actor: jgstern_agent  # c82a
+  clock: 3  # c82a
+  nonce: c82a  # c82a
+  message: "Instance of the INV-linub class; blocks its closure. Sink-side (fs_write), so unlike PR #595 it can move a verdict."  # c82a
