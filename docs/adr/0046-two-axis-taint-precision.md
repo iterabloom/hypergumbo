@@ -166,8 +166,19 @@ the point, because a band anchored to an underived number is the shape of
 defect this ADR exists to correct.
 
 **CLOSED by WI-gibom.** Re-derived at **24.1%** (27/112): 11 KIND-MISDECLARED,
-0 CONFIGURED-ACTION. The derivation, the eleven citations, and three declared
-sensitivities reaching 10.7% are in
+0 CONFIGURED-ACTION. The derivation, the eleven citations, and the one standing
+sensitivity (21.4%) are in
 [0006 § "Useful precision, re-derived"](../measurements/0006-taint-precision-under-the-ratified-frame.md).
 The ≤25.0% held as a bound and failed as a derivation — its stated basis
 supports 29.5% — and the index now carries the derived figure instead.
+
+Two of that pass's three declared sensitivities were subsequently **withdrawn**:
+`argv` and application config under `env_read` were published as awaiting a
+vocabulary ruling that **already existed**, in the `env_read` definition
+INV-tutar's resolution added to the spec — *"an ambient CONFIGURATION read
+(environment variables, system properties, argv — values that may carry a
+credential)"*. The residue is not a vocabulary question but the gap between a
+boundary meaning *may carry a credential* and a label saying `host_secret`,
+which is the gap **this ADR exists to measure rather than close**. Deducting
+those rows would be doing by catalogue membership what the decision above does
+by measurement.
