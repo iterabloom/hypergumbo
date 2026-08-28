@@ -1,0 +1,57 @@
+Original commit body from 9c36bf22561a5c2bd1eec2512c37fcb59e723027:
+
+`io:read`, `io:get_line` and `io:get_chars` were declared `logging` -- an
+OUTBOUND sink -- for functions that read input. Wrong in both directions at
+once: a tainted value "reaching logging" fired at a call that emits nothing, and
+the data actually read was no kind of source. elixir inherits erlang, so one
+edit clears both.
+
+FOUND ON PURPOSE, NOT BY LUCK, WHICH IS THE POINT. F5 turned up while
+attributing an unrelated inert result. This came from a systematic direction
+check across all fifteen catalogues: primitives whose NAME is unambiguous about
+direction sitting under a boundary of the opposite direction. Twelve hits,
+ELEVEN OF THEM CORRECT -- Phoenix's post/put name the HTTP method of a route
+they RECEIVE, send_download sends, haskell's readProcess crosses at the process
+launch, fetch sends the request, and objc's
+NSURLConnection.sendSynchronousRequest: is declared `simultaneous`.
+
+The sweep is now a REGRESSION GUARD in the test file, and it exempts
+simultaneous primitives BY PROPERTY rather than by listing the pair -- so the
+next honestly-both primitive is exempt automatically while a new
+single-direction mistake still fails and has to be adjudicated.
+
+THE FIX IS A RULING, NOT A RE-LABEL. The direction is unambiguous; WHICH inbound
+boundary is not. `io:read/1` reads standard input (ipc_recv, following the C
+precedent where a bare `stdin` classifies that way); `io:read/2` reads a given
+IoDevice, which may be a FILE (fs_read). The catalogue matches on NAME, not
+arity -- the same reason `time.localtime` is refused elsewhere in this item --
+so exactly one is true per call site and the call site cannot tell which.
+Declared under both with `boundary_ruling: call_site_undecidable`, INV-vaduk's
+vocabulary and C's `unistd.write` shape. That is a RULING, so the `unruled`
+register INV-nular emptied stays empty; asserted.
+
+MEASURED, 2 erlang/elixir repos, per-arm cache, arms sequential, canary on
+whether io.read carries an ipc_recv row:
+
+  logging   480 -> 476   (-4)      ejabberd -1, emqx -3
+  fs_read   403 -> 407   (+4)
+  all 12 other boundaries IDENTICAL
+
+A clean move of four chains out of a false outbound sink.
+
+AND THE HALF THAT DID NOT HAPPEN, stated because a test name claimed it.
+`ipc_recv` stayed at ZERO. `classify_call` yields ONE primitive, so an
+undecidable pair reports whichever row the lookup finds first, and `fs_read`
+won (the INV-zumin row-order hazard, benign here). Since `fs_read` is
+deliberately outside AUTO_SOURCE_LABEL_MAP, A STDIN READ STILL DOES NOT BECOME A
+TAINT SOURCE. That is a recall-side question, band-stopped, and is not achieved
+here. The test asserting it was renamed and its claim corrected rather than left
+to imply otherwise.
+
+NOTED, NOT CHANGED: the sibling elixir `IO` module rows read/gets/getn as
+fs_read only -- the other half of the same ambiguity, picked without a ruling.
+Recorded in the erlang row's note rather than changed in passing.
+
+Write-up: ~/hypergumbo_lab_notebook/nular_f6_ab_08282026/RESULT.md
+Tests: 1970 passed across the catalogue/boundary/taint set. Ratchet clean at 669.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
