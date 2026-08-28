@@ -56,7 +56,12 @@ from __future__ import annotations
 
 import pytest
 
-from hypergumbo_core.io_boundary import load_catalog
+from hypergumbo_core.io_boundary import (
+    MULTI_BOUNDARY_REASON_SIMULTANEOUS,
+    IoBoundaryCatalog,
+    load_catalog,
+    multi_boundary_reason,
+)
 from hypergumbo_core.taint import AUTO_SOURCE_LABEL_MAP
 
 #: Modules whose values live in THIS PROCESS'S heap. Nothing they do crosses an
@@ -474,3 +479,148 @@ class TestPhoenixResponsesAreEgress:
         by an elixir-only edit (``_CATALOG_PARENTS``: elixir -> erlang)."""
         assert _has("erlang", "net_recv", "gen_tcp", "recv")
         assert _has("elixir", "net_recv", "gen_tcp", "recv")
+
+
+# ----------------------------------------------------------------------
+# F6 — an INPUT declared as an OUTPUT, found by a systematic direction sweep
+#
+# F5 was found by luck, while attributing an unrelated inert result. This one
+# was found on purpose: a sweep for primitives whose NAME is unambiguous about
+# direction (`send`/`write`/`publish` vs `recv`/`read`/`fetch`) sitting under a
+# boundary of the opposite direction. Across all fifteen catalogues that sweep
+# returned twelve hits and eleven were correct — Phoenix's `post`/`put` name the
+# HTTP METHOD of a route they receive, `send_download` sends, haskell's
+# `readProcess` crosses at the process launch, `fetch` sends a request.
+#
+# The twelfth was real: erlang `io:read`, `io:get_line` and `io:get_chars`
+# declared `logging`. They read STANDARD INPUT, and `logging` is an outbound
+# SINK, so the row was wrong in both directions at once — a tainted value
+# "reaching logging" fired at a call that emits nothing, AND the data actually
+# read from stdin was not a source, so the most ordinary untrusted input a
+# program has was invisible to the analysis.
+#
+# elixir inherits erlang, so one edit clears both.
+# ----------------------------------------------------------------------
+
+
+class TestStandardInputIsNotLogging:
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    @pytest.mark.parametrize("name", ("read", "get_line", "get_chars"))
+    def test_stdin_reads_are_receives_not_logging(
+        self, lang: str, name: str,
+    ) -> None:
+        assert _has(lang, "ipc_recv", "io", name)
+        assert not _has(lang, "logging", "io", name)
+
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    @pytest.mark.parametrize("name", ("read", "get_line", "get_chars"))
+    def test_which_inbound_boundary_is_declared_undecidable(
+        self, lang: str, name: str,
+    ) -> None:
+        """THE DIRECTION IS UNAMBIGUOUS; THE BOUNDARY IS NOT, and the catalogue
+        already has a word for that. ``io:read/1`` reads standard input
+        (ipc_recv); ``io:read/2`` reads a given IoDevice, which may be a FILE
+        (fs_read). The catalogue matches on NAME, not arity — the same reason
+        ``time.localtime`` is refused elsewhere in INV-nular — so exactly one is
+        true per call site and the call site cannot tell which.
+
+        Declaring one and hiding the other would be the mistake this whole item
+        is about: a boundary asserted by name with nothing checking it. Ruled
+        ``call_site_undecidable``, INV-vaduk's vocabulary, the same shape as
+        C's ``unistd.write``."""
+        catalog = load_catalog(lang, include_defaults=False)
+        boundaries = {p.boundary for p in catalog.primitives
+                      if p.module == "io" and p.name == name}
+        assert boundaries == {"ipc_recv", "fs_read"}
+        assert (multi_boundary_reason(catalog, f"io.{name}")
+                == "call_site_undecidable")
+
+    def test_the_ruling_keeps_the_declared_debt_register_empty(self) -> None:
+        """``call_site_undecidable`` is a RULING, not an open question, so this
+        does not re-open the ``unruled`` register INV-nular emptied. Asserted
+        because adding a multi-boundary primitive is exactly when that could
+        slip back."""
+        from hypergumbo_core.io_boundary import unruled_multi_boundary_primitives
+        catalogs = {l: load_catalog(l, include_defaults=False)
+                    for l in ("erlang", "elixir")}
+        assert list(unruled_multi_boundary_primitives(catalogs)) == []
+
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    @pytest.mark.parametrize("name", ("format", "fwrite", "put_chars", "nl", "write"))
+    def test_the_real_writers_stay_logging(self, lang: str, name: str) -> None:
+        """CONTROL. This is a direction split, not a reclassification of the
+        module: `io:format` really does write."""
+        assert _has(lang, "logging", "io", name)
+        assert not _has(lang, "ipc_recv", "io", name)
+
+    def test_the_two_arms_differ_in_whether_they_are_a_taint_source(self) -> None:
+        """WHY THE RULING HAS A CONSEQUENCE, and why this test does NOT claim
+        that stdin became a taint source.
+
+        `ipc_recv` is in ``AUTO_SOURCE_LABEL_MAP`` and `fs_read` is deliberately
+        not — reading a file does not by itself make its contents sensitive. So
+        the two arms of this undecidable primitive disagree about sourcehood,
+        and which one a call site reports decides it.
+
+        MEASURED, and it is the fs_read arm that wins: on ejabberd and emqx the
+        four affected chains moved `logging` -> `fs_read`, and `ipc_recv` stayed
+        at zero. ``classify_call`` yields ONE primitive, so an undecidable pair
+        reports whichever row the lookup finds first (the INV-zumin row-order
+        hazard, here benign). The false OUTBOUND sink is gone, which is the
+        precision fix; making a stdin read an actual taint source is a separate,
+        recall-side question and is NOT achieved here."""
+        assert AUTO_SOURCE_LABEL_MAP.get("ipc_recv") == "untrusted_input"
+        assert "fs_read" not in AUTO_SOURCE_LABEL_MAP
+        assert "logging" not in AUTO_SOURCE_LABEL_MAP
+
+    def test_the_direction_sweep_is_otherwise_clean(self) -> None:
+        """A REGRESSION GUARD ON THE SWEEP ITSELF, not just on its one finding.
+
+        Re-runs the direction check over every shipped catalogue and pins the
+        surviving hits to the ones adjudicated CORRECT above. A new row whose
+        name says one direction and whose boundary says the other fails here
+        and has to be adjudicated rather than absorbed."""
+        import re
+        sendy = re.compile(r'(?i)(^|[._])(send|write|put|post|publish|emit|'
+                           r'broadcast|reply|respond|upload|push)')
+        recvy = re.compile(r'(?i)(^|[._])(recv|receive|read|fetch|download|'
+                           r'poll|subscribe|consume)')
+        inbound = {"net_recv", "ipc_recv", "db_read", "fs_read", "env_read",
+                   "host_info_read", "browser_storage_read"}
+        outbound = {"net_send", "ipc_send", "db_write", "fs_write", "env_write",
+                    "process_send", "browser_storage_write"}
+        #: A primitive that genuinely crosses BOTH ways is not a direction
+        #: error by construction, and the catalogue already has a word for it:
+        #: ``multi_boundary_reason`` returns "simultaneous". Exempting on that
+        #: PROPERTY rather than by listing the pair means the next honestly
+        #: simultaneous primitive is exempt automatically, while a new
+        #: single-direction mistake still fails. objc's
+        #: ``NSURLConnection.sendSynchronousRequest:`` is the live example: it
+        #: sends the request and returns the response.
+        #: Adjudicated and CORRECT despite the name/boundary mismatch.
+        allowed = {
+            # Route macros name the HTTP method of a request they RECEIVE.
+            ("elixir", "net_recv", "Phoenix.Router", "post"),
+            ("elixir", "net_recv", "Phoenix.Router", "put"),
+            # send_download sends; the regex catches "download".
+            ("elixir", "net_send", "Phoenix.Controller", "send_download"),
+            # fetch() sends the request.
+            ("javascript", "net_send", "fetch", "fetch"),
+            ("javascript", "net_send", "window", "fetch"),
+        }
+        hits = set()
+        for lang in ALL_LANGS:
+            catalog = load_catalog(lang, include_defaults=False)
+            for p in _rows(lang):
+                if multi_boundary_reason(
+                        catalog, p.qualified_name) == MULTI_BOUNDARY_REASON_SIMULTANEOUS:
+                    continue
+                key = (lang, p.boundary, p.module, p.name)
+                if sendy.search(p.name) and p.boundary in inbound:
+                    hits.add(key)
+                if recvy.search(p.name) and p.boundary in outbound:
+                    hits.add(key)
+        assert hits <= allowed, (
+            "new direction mismatch(es) — a primitive whose NAME says one "
+            f"direction under a boundary that says the other: {sorted(hits - allowed)}"
+        )

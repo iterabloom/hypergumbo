@@ -61,6 +61,13 @@ ambiguous_names:
   - error         # logger:error vs erlang:error
 
 fs_read:
+  - module: io
+    functions: [read, get_line, get_chars]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      The file-device arm of the same primitives (INV-nular). See the ipc_recv
+      rows for the ruling: `io:read/2` may be handed a file IoDevice, and the
+      catalogue cannot tell that from `io:read/1` on standard input.
   - module: file
     functions: [read_file, read, read_line, pread, open, consult, path_consult, eval, script, list_dir, list_dir_all, read_file_info, read_link_info, read_link]
   - module: filelib
@@ -284,10 +291,40 @@ env_write:
   - module: application
     functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
 
+ipc_recv:
+  - module: io
+    functions: [read, get_line, get_chars]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      Reads an Erlang term / line / chars from an IoDevice (INV-nular). These
+      were declared `logging`, an OUTBOUND sink, which was wrong twice over: a
+      tainted value "reaching logging" fired at a call that emits nothing, and
+      the data actually read was not a taint SOURCE at all, so the most
+      ordinary untrusted input a program has was invisible.
+
+      THE DIRECTION IS UNAMBIGUOUS; WHICH INBOUND BOUNDARY IS NOT, which is why
+      these carry a ruling rather than one boundary. `io:read/1` reads STANDARD
+      INPUT (ipc_recv, following the C precedent where a bare `stdin` classifies
+      that way); `io:read/2` reads from a given IoDevice, which may be a FILE
+      (fs_read). The catalogue matches on NAME, not arity, so exactly one is
+      true per call site and the call site cannot tell which — INV-vaduk's
+      `call_site_undecidable`, the same shape as C's `unistd.write`.
+
+      The sibling elixir `IO` module rows `read`/`gets`/`getn` as fs_read only,
+      which is the other half of this ambiguity picked without a ruling. Left
+      as is here rather than changed in passing.
+
 logging:
   - module: io
-    functions: [format, fwrite, put_chars, nl, write, read, get_line, get_chars]
-    notes: "io:format is Erlang's printf equivalent"
+    functions: [format, fwrite, put_chars, nl, write]
+    notes: >-
+      io:format is Erlang's printf equivalent. `read`, `get_line` and
+      `get_chars` were HERE and have moved to ipc_recv (INV-nular): they read
+      from standard input, and `logging` is an outbound SINK. Declaring an
+      input as an output got it wrong twice — a tainted value "reaching
+      logging" fired at a call that emits nothing, and the data actually read
+      from stdin was not a taint SOURCE at all, so the most ordinary untrusted
+      input a program has was invisible.
   - module: io_lib
     functions: [format, fwrite]
     notes: "Returns iolist, not direct I/O, but typically written immediately"
