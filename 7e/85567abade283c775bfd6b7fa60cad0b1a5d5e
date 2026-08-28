@@ -1,0 +1,22 @@
+Original commit body from 98d8d06d2f57eec3f8ff248542f22725b0e5563e:
+
+The WI-surun entry published **293 relocated rows**. The real figure is **291**, and the CHANGELOG entry contradicted itself — it said 293 while listing a breakdown that sums to 291, so anyone adding up the languages would have caught it.
+
+**Where 293 came from.** It summed the scope gate's per-language stray counts: elixir 145 + erlang 1 + go 33 + haskell 43 + python 33 + swift 38. Two errors in one number — elixir's 145 includes `http_client`, which elixir *inherits* from the erlang parent, so that row was counted twice; and it was **deleted** as a phantom rather than relocated, so it belongs in neither total.
+
+**The exact figures**, counted from the shipped overlays rather than re-derived:
+
+| catalogue | rows |
+|---|---|
+| elixir | 144 |
+| haskell | 43 |
+| swift | 38 |
+| go | 33 |
+| python | 33 |
+| **relocated** | **291** |
+| deleted (erlang `http_client.request`) | 1 |
+| **distinct out-of-scope** | **292** |
+
+**The spec was wrong a second way**, and fixing it improves the argument. It attributed all of them to "the eight ungated languages" — but python is not one of them; it *had* a gate. The eight ungated held **259**; python held the other **33 inside a gate that could not see them**, because its gate was a denylist naming specific modules rather than an allowlist. That is a sharper case for the shape change than the wrong number was, so the spec now makes it.
+
+No behaviour change: documentation only.
