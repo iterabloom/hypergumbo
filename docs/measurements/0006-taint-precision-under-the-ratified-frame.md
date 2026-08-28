@@ -246,32 +246,56 @@ The number *did* get worse, 33.9% → 24.1%. It got worse for the other reason.
 "can only *understate* the damage this class does", and here that is visible
 rather than theoretical.
 
-### Declared sensitivities: three unruled vocabulary questions
+### One declared sensitivity — and two this record withdrew
 
-Section A named five languages of kind-misdeclaration. Only two are settled
-defects. The rest turn on a **vocabulary ruling that does not exist**, and
-INV-nular says so in terms: python `parse_args`/`sys.argv` and elixir
-`Application.get_env` under `env_read` are *"DOCUMENTED deliberate choices in
-their rows, not oversights"* that *"need a vocabulary ruling, not a row edit"*.
-Deducting them here would be this record inventing the ruling. ADR-0046's
-default — uncitable ⇒ useful — governs, so they are declared instead, with
-their arithmetic:
+Section A named five languages of kind-misdeclaration. Two are settled defects
+and are deducted above. Of the remaining three, **this record first published
+two as open vocabulary questions and then withdrew them**, because the ruling
+they were said to await already existed. That is recorded here rather than
+quietly corrected, because a sensitivity is a claim about what a reader should
+still doubt, and publishing a doubt that the project had already resolved
+overstates the uncertainty of the very figure a decision band reads.
+
+**WITHDRAWN — `argv` under `env_read` (10 TPs) and application config under
+`env_read` (5 TPs).** `docs/hypergumbo-spec.md` defines the boundary, in the
+sentence INV-tutar's resolution added: *"`env_read` is an ambient
+CONFIGURATION read (environment variables, system properties, **argv** —
+values that **may carry a credential**)"*. The membership rule is **capability
+to carry a credential, not being one** — which is exactly why `runtime.GOOS`
+was split out into `host_info_read` and argv was not. Both classes sit where
+that definition puts them, so neither is a misdeclaration and neither is
+deducted. `taint.py` carries the same rule in force: *"THE SPLIT IS OF THE
+BOUNDARY, NOT THE LABEL, and not a per-row override."*
+
+The evidence agrees with the definition rather than merely deferring to it.
+argv is world-readable in `ps`, which is why a `--password` flag is a known
+hazard rather than a benign one; and one of the five application-config
+situations is plausible reading `Application.get_env(:plausible, :paddle)` —
+a payments provider's configuration, which is credential-bearing on its face.
+INV-nular's own wording had already reached this conclusion without noticing:
+it calls `Application.get_env` *"an ambient configuration read"*, the spec's
+exact phrase, and then files the question as open.
+
+**What was actually unresolved is not a vocabulary question at all.** The
+boundary means *"may carry a credential"* while the label it derives says
+`host_secret`. That gap is real, and it is the one **ADR-0046 already
+answered** — by publishing two numbers instead of narrowing the rubric.
+Re-deducting these rows would be doing by catalogue membership what that ADR
+decided to do by measurement, and it would push in the false-all-clear
+direction: a change that makes a security tool report *less* needs more
+evidence than one that makes it report more, not less.
+
+**STANDING — S1: `io_lib:format` as a `logging` sink (3 TPs, rabbitmq#0/#4/#6).**
+Unaffected by the above, because it is a kind-vs-semantics question about a
+sink primitive rather than about what `env_read` means. If it resolves against
+the row, useful precision is **21.4%** (24/112).
 
 | | question | members | useful precision if resolved against |
 |---|---|---|---|
-| **S1** | `argv` under `env_read` — is a CLI argument a *host secret*? | 10 | **15.2%** |
-| **S2** | application config under `env_read` — is `Application.get_env`/`application:get_env` a *process environment* read? | 5 | **19.6%** |
-| **S3** | `io_lib:format` as a `logging` sink (⊂ S2) | 3 | **21.4%** |
-| | all of the above resolved against | 15 | **10.7%** |
+| **S1** | `io_lib:format` declared `logging` while its own catalogue note says it *"Returns iolist, not direct I/O"* | 3 | **21.4%** |
 
-S1 is jaeger#2/#3/#5/#6, ArkLib#2/#3/#4/#6, kamaraflow#3/#4. S2 is
-plausible#0/#5 and rabbitmq#0/#4/#6 — plausible#3 is *excluded* because
-`numeric_ids.ex` reads `System.get_env("NUMERIC_IDS_*")`, a genuine process
-environment read, alongside its one `Application.get_env`.
-
-**So the band is tripped at 24.1% and would be tripped far harder — to 10.7% —
-if the pending vocabulary ruling goes against the current rows.** No reading of
-the evidence puts useful precision above 25%.
+**So the band is tripped at 24.1%, and the one live sensitivity can only trip
+it harder.** No reading of the evidence puts useful precision above 25%.
 
 ### Two sink-side defects found by this pass, neither deducted
 
@@ -284,7 +308,7 @@ INV-nular rather than acted on here.
   this tool did not establish. All three rabbitmq TPs land on it, at 7, 12 and
   7 hops. Not deducted: the landing site could not be traced from this
   measurement's packets (family F below), so the conservative default holds.
-  Declared as S3.
+  Declared as S1, the one standing sensitivity above.
 - **`urllib.request.Request` declared `net_send`,** rowed beside `urlopen`.
   `Request` is a constructor and sends nothing — the same shape as `newIORef`.
   Not deducted: in jaeger's `scripts/release/notes.py` every `Request(...)` is
