@@ -1551,13 +1551,16 @@ def load_yaml_strict(content: str, *, origin: str) -> Any:
     # ``_StrictLoader`` derives from ``SafeLoader`` and registers no extra
     # constructor — suppressing two security linters to keep a convenience
     # wrapper is a worse trade than four lines that need no suppression.
-    loader = _OriginLoader(content)
+    loader: Any = _OriginLoader(content)
     try:
         return loader.get_single_data()
     finally:
-        # PyYAML ships no annotation for ``dispose``; a third-party typing
-        # gap, not a call this module can type its way out of.
-        loader.dispose()  # type: ignore[no-untyped-call]
+        # ``loader`` is deliberately ``Any``. PyYAML annotates ``dispose``
+        # on some interpreter/stub combinations and not others, so a
+        # ``type: ignore`` here is USED on 3.12 and UNUSED on 3.11 — which
+        # trips the shrink-only ratchet on whichever one you did not run.
+        # Widening the binding asks mypy nothing on either.
+        loader.dispose()
 
 
 class IoPrimitiveOverlayError(Exception):
