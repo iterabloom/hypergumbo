@@ -1,0 +1,24 @@
+- op: create  # 96ad
+  at: '2026-08-28T12:42:06Z'  # 96ad
+  by: agent  # 96ad
+  actor: jgstern_agent  # 96ad
+  clock: 1  # 96ad
+  nonce: 96ad  # 96ad
+  data:  # 96ad
+    kind: invariant  # 96ad
+    title: "smart-test silently runs NOTHING and exits 0 when given explicit targets (or --full) on a clean tree, so verifying merged work reads as success"  # 96ad
+    status: violated  # 96ad
+    priority: 2  # 96ad
+    parent:  # 96ad
+    tags:  # 96ad
+    - smart_test  # 96ad
+    - ci  # 96ad
+    - false_confidence  # 96ad
+    isbefore: []  # 96ad
+    duplicate_of: []  # 96ad
+    not_duplicate_of: []  # 96ad
+    pr_ref:  # 96ad
+    description: "`smart-test <explicit targets>` SILENTLY RUNS NOTHING when the working tree has\nno test-relevant diff. It prints \"No test-relevant files changed (docs/config\nonly) - skipping tests\", exits 0, and never looks at the paths the caller named.\n\nOBSERVED 2026-08-28 on a CLEAN dev (everything merged), trying to re-verify the\nday's six catalogue changes:\n\n    ./scripts/smart-test tests/                       -> skipped, exit 0\n    ./scripts/smart-test packages/hypergumbo-core/tests/ -> skipped, exit 0\n    ./scripts/smart-test --full                       -> skipped, exit 0\n\nAll eight test directories reported the same. Earlier the same day the identical\ncommand DID run 1690 tests -- the only difference was that the tree was dirty.\n\nWHY IT IS A FALSE-CONFIDENCE CHANNEL RATHER THAN AN INCONVENIENCE. An agent or\na human verifying merged work on a clean tree gets exit 0 and a reassuring line,\nand nothing ran. That is the same shape as the defects this repo keeps finding\nin its own analysis: a gate that cannot fire reads identical to a gate that\npassed. It is worse than an error because it is quiet.\n\n`--full` is affected too, which is the part that makes it a defect rather than a\ndesign choice: --full's whole meaning is \"ignore the selection and run\neverything\", and the docs/config short-circuit fires BEFORE the FULL_RUN branch\nis consulted (scripts/smart-test around line 964-996, the branch whose comment\nbegins \"Nothing test-relevant changed\").\n\nWORKAROUND USED: make the diff non-empty (append a newline to a core source\nfile), run --full, revert. That produced the intended 24,539 passed in 26m54s.\n\nDIRECTIONS, in increasing order of scope:\n  1. `--full` should bypass the change-detection short-circuit entirely. This\n     alone fixes the verification case and is a one-branch reorder.\n  2. Explicit path arguments should also bypass it -- the caller named what to\n     run, and the slicer's opinion about the diff is not relevant to that.\n  3. If either short-circuit is kept, it must not exit 0 silently: say\n     \"0 tests ran\" in a way a script can detect, because the current wording\n     reads as \"checked, nothing to do\".\n\nRELATED, cite do not fold: INV-bigaz is the slicer having no data-file -> test\nedge, so a YAML change selects ~1 test. This is a different failure -- the\nslicer's view of the DIFF overriding the caller's EXPLICIT REQUEST -- but it is\nthe same family: the selection mechanism substituting its judgement for the\ncaller's and reporting success either way."  # 96ad
+    fields:  # 96ad
+      statement: "A test runner given explicit target paths, or --full, must run those tests or fail loudly; it must never report success having run nothing because the working tree has no diff."  # 96ad
+      root_cause: "The 'nothing test-relevant changed' short-circuit in scripts/smart-test is evaluated before both the FULL_RUN branch and the explicit-target arguments, so an empty diff suppresses the run regardless of what the caller asked for."  # 96ad

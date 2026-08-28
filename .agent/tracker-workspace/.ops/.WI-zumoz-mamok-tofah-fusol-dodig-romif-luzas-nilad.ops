@@ -1,0 +1,31 @@
+- op: create  # 5952
+  at: '2026-08-28T11:06:31Z'  # 5952
+  by: agent  # 5952
+  actor: jgstern_agent  # 5952
+  clock: 1  # 5952
+  nonce: '5952'  # 5952
+  data:  # 5952
+    kind: work_item  # 5952
+    title: "javascript: three event-handler PROPERTY rows (WebSocket.onmessage/onclose, EventSource.onmessage) are method-keyed and can never match, because assignment is not a call"  # 5952
+    status: todo_hard  # 5952
+    priority: 3  # 5952
+    parent:  # 5952
+    tags:  # 5952
+    - taint  # 5952
+    - catalogue  # 5952
+    - javascript  # 5952
+    isbefore: []  # 5952
+    duplicate_of: []  # 5952
+    not_duplicate_of: []  # 5952
+    pr_ref:  # 5952
+    description: "INV-nular. A row can be present, correct-looking, and STRUCTURALLY UNMATCHABLE.\n\nFOUND by the F4 A/B (~/hypergumbo_lab_notebook/nular_f4_ab_08282026/RESULT.md),\nwhich came out INERT -- zero delta on four repositories that all contain the\nidentifiers in source -- because NEITHER ARM matched a single one of the rows.\n\nTHE MECHANISM. `WebSocket.onmessage` and friends are METHOD-KEYED rows for\nsomething that is never CALLED as a method: `ws.onmessage = handler` is a\nproperty ASSIGNMENT. No method-construct call edge is ever produced, so a\nmethod-kind row can never match. This is INV-linub's \"capability is not recall\"\none level over -- there the receiver evidence was missing, here the call\nconstruct never exists.\n\nSTILL SHIPPED AND UNREACHABLE (javascript.yaml):\n    net_recv  WebSocket.onmessage\n    net_recv  WebSocket.onclose\n    net_recv  EventSource.onmessage\nNOT affected: `process.on` is a genuine method call (`process.on('message', cb)`)\nand does match.\n\nWHY IT MATTERS MORE THAN THREE DEAD ROWS. These three are the browser\nWebSocket/SSE RECEIVE surface. If they cannot match, the only thing carrying\nthat receive is `addEventListener`, which does match. So the surface is thinner\nthan the catalogue suggests -- CATALOGUE PRESENCE IS NOT COVERAGE -- and any\nclaim that leans on \"WebSocket input is catalogued\" is leaning on\naddEventListener alone.\n\nIT ALSO CORRECTS A JUSTIFICATION I SHIPPED. PR #606 removed WebSocket.onopen /\nonerror arguing \"safe because onmessage still carries the receive\". onmessage is\nan assignment property too, so that reasoning was wrong as stated. The\nconclusion survives on a different basis -- addEventListener is a real method\ncall and is still rowed -- and the correction is recorded in the A/B write-up\nrather than left implicit.\n\nTHREE POSSIBLE ANSWERS, none obviously right, which is why this is filed:\n  (a) delete the three rows as unmatchable, and say the surface is\n      addEventListener-only;\n  (b) make the JS analyzer emit an edge for an event-handler ASSIGNMENT, so the\n      rows become reachable (this is an emission change, and per INV-linub an\n      emission-only fix must be measured through the gate, on findings);\n  (c) key them differently so an assignment can match.\n(b) is the only one that ADDS recall, and recall is band-stopped, so (a) or a\ndeliberate decision to leave them documented-but-inert is the near-term answer."  # 5952
+    fields: {}  # 5952
+- op: update  # 4963
+  at: '2026-08-28T11:06:52Z'  # 4963
+  by: agent  # 4963
+  actor: jgstern_agent  # 4963
+  clock: 2  # 4963
+  nonce: '4963'  # 4963
+  set: {}  # 4963
+  add:  # 4963
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 4963
