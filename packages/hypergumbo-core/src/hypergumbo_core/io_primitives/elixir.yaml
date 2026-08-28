@@ -162,6 +162,40 @@ fs_write:
 # Net send — HTTP clients and TCP
 # ---------------------------------------------------------------------------
 net_send:
+  # PHOENIX / PLUG RESPONSE EGRESS (INV-nular, WI-budiv). Every one of these was
+  # declared net_recv, and the rows' own notes admitted both directions in one
+  # slot — "read request / write response", "receive and publish events". Two
+  # things went wrong at once. net_recv is an auto-derived taint SOURCE, so each
+  # MINTED untrusted_input at a call that emits; and because nothing here was a
+  # SINK, a Phoenix application had NO egress rows for its own response path at
+  # all, so a secret written into a response body or header could not be
+  # reported as leaving the process. That second half is the false-all-clear
+  # direction, which makes this the more serious of the two.
+  #
+  # The header/status builders are included deliberately: `put_resp_header(conn,
+  # "x", secret)` is the point at which the secret enters the response that will
+  # be transmitted, and a sink at the point the value enters is what catches it
+  # (nothing carries taint from the conn struct to the eventual send).
+  - module: Phoenix.Controller
+    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
+    notes: "Phoenix controller response helpers — the response is egress"
+  - module: Plug.Conn
+    functions:
+      - send_resp
+      - send_file
+      - send_chunked
+      - chunk
+      - resp
+      - put_resp_header
+      - put_resp_content_type
+      - put_resp_cookie
+    notes: "Plug: the RESPONSE side (INV-nular, WI-budiv)"
+  - module: Phoenix.Channel
+    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
+    notes: "Phoenix WebSocket channels — these PUBLISH; the receive is the route/handler"
+  - module: Phoenix.Endpoint
+    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
+    notes: "Phoenix endpoint-level PubSub broadcast — egress"
   - module: HTTPoison
     functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
     notes: "HTTPoison (hackney-based client, very common in Elixir)"
@@ -194,30 +228,14 @@ net_recv:
   - module: Phoenix.Router
     functions: [get, post, put, patch, delete, head, options, match, resources, scope]
     notes: "Phoenix.Router DSL — declares receiving HTTP routes"
-  - module: Phoenix.Controller
-    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
-    notes: "Phoenix controller response helpers (read request + write response)"
   - module: Plug.Conn
-    functions:
-      - send_resp
-      - send_file
-      - send_chunked
-      - chunk
-      - put_resp_header
-      - put_resp_content_type
-      - put_resp_cookie
-      - read_body
-      - fetch_query_params
-      - fetch_cookies
-      - resp
-      - halt
-    notes: "Plug: read request / write response"
-  - module: Phoenix.Channel
-    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
-    notes: "Phoenix WebSocket channels — receive and publish events"
-  - module: Phoenix.Endpoint
-    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
-    notes: "Phoenix endpoint-level PubSub broadcast"
+    functions: [read_body, fetch_query_params, fetch_cookies]
+    notes: >-
+      Plug: the REQUEST side only. This row used to carry the response side as
+      well and its own note said so — "read request / write response" — with
+      every entry under net_recv (INV-nular, WI-budiv). The senders have moved
+      to net_send below. `halt` was dropped outright: it marks the connection
+      halted and transfers nothing in either direction.
 
 # ---------------------------------------------------------------------------
 # Subprocess — System.cmd, System.shell, Port.open
