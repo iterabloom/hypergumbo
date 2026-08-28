@@ -1,0 +1,61 @@
+Original commit body from cbd63ac10011953d0ea6ee05f88bd5a77546a5a3:
+
+THE MOST SERIOUS FAMILY IN THIS SWEEP, because its failure direction is REPORTS
+SAFE rather than reports noise.
+
+Every Phoenix/Plug row shipped under net_recv, and the rows' own notes admitted
+both directions in one slot -- "read request / write response", "receive and
+publish events". Two failures at once, and they are not symmetric:
+
+  * net_recv is an auto-derived taint SOURCE, so each sender MINTED
+    untrusted_input at a call that emits.
+  * nothing here was a SINK, so a Phoenix application had NO EGRESS ROWS FOR ITS
+    OWN RESPONSE PATH. A secret written into a response body or header could not
+    be reported as leaving the process at all.
+
+SPLIT BY DIRECTION. 26 rows move to net_send: Controller.{render, json, text,
+html, redirect, send_resp, send_download, put_status}; Plug.Conn.{send_resp,
+send_file, send_chunked, chunk, resp}; and the Channel / Endpoint broadcast
+families. Four stay receives: Plug.Conn.{read_body, fetch_query_params,
+fetch_cookies}.
+
+THE RESPONSE HEADER BUILDERS ARE INCLUDED DELIBERATELY (put_resp_header,
+put_resp_cookie, put_resp_content_type). `put_resp_header(conn, "x", secret)` is
+the point at which the secret enters the response that will be transmitted, and
+nothing carries taint from the conn struct to the eventual send -- so a sink at
+the point the value ENTERS is what catches it. Same asymmetry as WI-lunav.
+
+THE ROUTER DSL IS DELIBERATELY LEFT ALONE. Phoenix.Router.{get, post, resources,
+scope} declare where a request ARRIVES, and arrival has no call site to
+catalogue -- the Django rule from WI-hikut and the JS createServer rule from
+WI-dosov. Moving them would relocate the receive to nothing.
+
+`Plug.Conn.halt` is dropped outright: it marks the connection halted and moves
+no bytes in either direction.
+
+MEASURED A/B, 2 Phoenix repos, per-arm cache, arms sequential, canary on the
+Phoenix/Plug net_send row count (NEW 26 / OLD 0 -- the old arm has no Phoenix
+egress surface whatsoever).
+
+  net_recv chains   53 -> 14   (-39)
+  net_send chains   20 -> 58   (+38)   phoenix-framework alone: 0 -> 18
+  all 10 other boundaries      IDENTICAL
+
+The -39/+38 is accounted for PRIMITIVE BY PRIMITIVE: the four genuine receives
+stay, the nine senders move, and the one-row difference is `halt`.
+
+THE FINDING THAT MATTERS IS ONE THE TOOL COULD NOT PREVIOUSLY MAKE. The standing
+claim file prohibits only host_fs sinks, so it cannot see a network change at
+all; run against a NETWORK claim, plausible's UNTRUSTED-NO-NETWORK goes
+violated(4) -> violated(7), and the three new findings sink at
+Phoenix.Controller.json -- untrusted input reaching an HTTP RESPONSE BODY, which
+is precisely the path that was structurally invisible. HOSTSECRET-NO-NETWORK
+holds at 13 as an in-run control (those reach the network through HTTP clients,
+which were always rowed).
+
+DIRECTION: unlike F1-F4 this change REPORTS MORE. It adds sinks; the removals it
+does perform delete false sources. Both halves move away from the all-clear.
+
+Write-up: ~/hypergumbo_lab_notebook/nular_f5_ab_08282026/RESULT.md
+Tests: 137 in the INV-nular file. Ratchet clean at 669.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
