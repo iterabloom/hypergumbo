@@ -1,0 +1,37 @@
+Original commit body from 52e1826ed6d8a3870a23bdd7ddedd26970ea0b5d:
+
+PR #602 removed `TcpListener::bind` and `UdpSocket::bind` as false net_recv
+sources. Both rows were ALSO the only function-kind rows their modules carried,
+so removing them left each module method-only -- and a repo calling only
+`UdpSocket::bind` is now reported method-starved. Three tests asserted the old
+shape and broke.
+
+CI ON #602 WAS GREEN, AND THAT IS THE PART WORTH RECORDING. The slicer has no
+data-file -> test edge (INV-bigaz), so a YAML-only change selects ~1 test and I
+hand-widened the manifest by grepping test filenames for
+"io_bound|io_prim|taint|catalog|boundary|verify_claims|nular|vaduk|zumin".
+`test_blind_language_method_starvation.py` and `test_associated_fn_kinds.py`
+match none of those words. CI ran the manifest, the manifest did not name them,
+and a real regression merged green. The full suite -- 24,472 passed, these 2
+failed -- is what actually found it. A hand-picked manifest is a hand-picked
+blind spot; both files are now IN the manifest.
+
+THE STARVATION REPORT IS CORRECT AND IS KEPT, which is why this repairs the
+tests rather than restoring the rows. This file's own bound already decides it:
+`test_an_unstamped_call_to_an_UNCATALOGUED_name_still_starves` says a name the
+catalogue does not carry in any kind is "exactly what starvation means". After
+#602 `UdpSocket::bind` IS such a name.
+
+And the OLD behaviour was a false satisfaction of INV-zubuh's shape: matching
+`bind` made the module count as examined while saying nothing whatever about
+whether `recv` / `recv_from` had been. One row was vouching for the rest of the
+module's surface. The direction is also the safe one -- starvation WITHHOLDS a
+verdict rather than granting one, so this trades a false all-clear for an
+explicit "not examined". Measured cost on the one rust repo in the INV-nular
+A/B cohort (aardvark-dns): no verdict moved.
+
+Pinned as its own named property rather than left as an absence:
+test_binding_a_socket_no_longer_vouches_for_its_receive_surface.
+
+Tests: full suite 24,472 passed / 2 failed before this commit; those 2 now pass.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
