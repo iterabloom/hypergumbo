@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **313** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 81 core, 4 CLI, 33 tracker)
-- **42073** symbols (functions, classes, methods)
-- **148113** edges by type:
-  - calls: 77195
-  - contains: 38811
-  - imports: 12978
-  - instantiates: 11070
-  - references: 5264
-  - module_attr_ref: 1385
-  - other: 1410
+- **42244** symbols (functions, classes, methods)
+- **148656** edges by type:
+  - calls: 77391
+  - contains: 38970
+  - imports: 13020
+  - instantiates: 11093
+  - references: 5381
+  - module_attr_ref: 1388
+  - other: 1413
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 42073 Symbols + 148113 Edges + UsageContexts           │
+│  Output: 42244 Symbols + 148656 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -273,19 +273,19 @@ These symbols have the highest bidirectional centrality
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
 | `Span` | class | 6416.2 | ir.py |
-| `write_text` | external_symbol | 6296.0 | <external> |
+| `write_text` | external_symbol | 6307.0 | <external> |
 | `LinkerContext` | class | 3352.4 | registry.py |
 | `Edge.create` | method | 2150.9 | ir.py |
-| `get` | external_symbol | 1986.0 | <external> |
+| `get` | external_symbol | 1989.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `load_framework_patterns` | function | 1889.1 | framework_patterns.py |
-| `Path` | external_symbol | 1804.0 | <external> |
-| `load_catalog` | function | 1631.5 | io_boundary.py |
+| `Path` | external_symbol | 1808.0 | <external> |
+| `load_catalog` | function | 1653.8 | io_boundary.py |
 | `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1435.0 | <external> |
+| `append` | external_symbol | 1439.0 | <external> |
 | `clear_pattern_cache` | function | 1341.0 | framework_patterns.py |
 | `Edge` | class | 1333.7 | ir.py |
-| `TreeSitterAnalyzer` | class | 1074.7 | base.py |
+| `mkdir` | external_symbol | 1076.0 | <external> |
 
 ## Pattern System
 
@@ -355,16 +355,18 @@ patterns:
 
 The `hypergumbo-core` package ships 156 YAML catalog files across 8 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
-| Directory | Files | ADR | Loader | Purpose |
-|---|---:|---|---|---|
-| `frameworks/` | 107 | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
-| `dataflow_patterns/` | 20 | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
-| `io_primitives/` | 15 | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
-| `cfg_nodes/` | 5 | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
-| `taint_sources/` | 2 | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
-| `taint_sanitizers/` | 1 | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
-| `function_summaries/` | 4 | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
-| `url_folding/` | 2 | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
+| Directory | Files | User channel | ADR | Loader | Purpose |
+|---|---:|---|---|---|---|
+| `frameworks/` | 107 | `frameworks.d` | ADR-3aaa | `hypergumbo_core.framework_patterns` | Framework + convention patterns for symbol enrichment (decorators, annotations, naming conventions). |
+| `dataflow_patterns/` | 20 | `dataflow_patterns.d` (`library_patterns` only) | ADR-0015 | `hypergumbo_core.dataflow` | Per-language dataflow access-mode classification rules. |
+| `io_primitives/` | 15 | `io_primitives.d` | ADR-0016 | `hypergumbo_core.io_boundary` | Per-language I/O primitive catalog (filesystem, network, subprocess, env, IPC, browser storage). |
+| `cfg_nodes/` | 5 | internal | ADR-0017 | `hypergumbo_core.cfg` | Per-language tree-sitter node mappings for the CFG builder. |
+| `taint_sources/` | 2 | `taint_sources.d` | ADR-0017 | `hypergumbo_core.taint` | Trust-zone source declarations for taint-flow analysis. |
+| `taint_sanitizers/` | 1 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
+| `function_summaries/` | 4 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
+| `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
+
+**User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
 Adding a new catalog category: create the directory, write the loader (or extend an existing one), and register a `CatalogSpec` in `hypergumbo_core.yaml_catalogs.YAML_CATALOGS`. The drift check fails until the registry entry lands.
 
@@ -891,8 +893,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: e00f98523a0a
-  commit_count: 6885
+  commit: f782bffd0f91
+  commit_count: 6906
   hypergumbo: 8.0.0
   python: 3.12.3
 -->

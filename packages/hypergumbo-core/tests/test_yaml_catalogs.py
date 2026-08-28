@@ -113,9 +113,22 @@ def test_catalog_spec_fields_populated():
 def test_catalog_spec_constructor_accepts_none_adr():
     """The adr field is Optional — verify None is accepted."""
     spec = CatalogSpec(
-        directory="x", purpose="y", loader="z", adr=None
+        directory="x", purpose="y", loader="z", adr=None,
+        user_channel=None, no_channel_reason="internal",
     )
     assert spec.adr is None
+
+
+def test_catalog_spec_cannot_be_built_without_answering_extensibility():
+    """ADR-0047 r7's forcing function, asserted rather than assumed.
+
+    ``adr`` is Optional and defaulted-by-convention; the channel fields are
+    deliberately not. If someone later gives them a default, a new catalogue
+    family silently inherits "no channel, no reason" and the ruling stops
+    binding — so the absence of a default is the thing under test.
+    """
+    with pytest.raises(TypeError):
+        CatalogSpec(directory="x", purpose="y", loader="z", adr=None)
 
 
 def test_each_catalog_loader_module_is_importable():
@@ -139,3 +152,132 @@ def test_each_catalog_loader_module_is_importable():
                 f"CatalogSpec({spec.directory!r}).loader = {spec.loader!r} "
                 f"does not import: {e}"
             ) from e
+
+
+# ---------------------------------------------------------------------------
+# ADR-0047 ruling 7: the registry answers extensibility
+# ---------------------------------------------------------------------------
+
+
+def _spec(**kw):
+    """CatalogSpec with the required fields defaulted, for negative tests."""
+    base = {
+        "directory": "x", "purpose": "y", "loader": "hypergumbo_core.cli",
+        "adr": None, "user_channel": None,
+        "no_channel_reason": "internal, for testing",
+    }
+    base.update(kw)
+    return CatalogSpec(**base)
+
+
+def test_every_family_answers_the_extensibility_question():
+    """ADR-0047 r7: a family cannot land without answering it.
+
+    The fields are REQUIRED — no default — so a new ``CatalogSpec`` cannot be
+    constructed without someone deciding whether users may extend the family.
+    That is the forcing function; ``validate_registry`` then checks the answer
+    is coherent. This test pins the property the required-ness buys.
+    """
+    for spec in YAML_CATALOGS:
+        answered = spec.user_channel is not None or bool(spec.no_channel_reason)
+        assert answered, (
+            f"{spec.directory} answers neither: it declares no user channel "
+            "and gives no reason for not having one"
+        )
+
+
+def test_ruling_10_table_is_the_shipped_registry():
+    """The eight families carry exactly the ADR-0047 ruling-10 verdicts.
+
+    Pinned as a table rather than a count so a future edit that flips one
+    family's channel has to change this test and say so, instead of drifting.
+    """
+    verdicts = {
+        s.directory: (s.user_channel, s.channel_scope, s.channel_gated)
+        for s in YAML_CATALOGS
+    }
+    assert verdicts == {
+        "frameworks": ("frameworks.d", None, None),
+        "dataflow_patterns": (
+            "dataflow_patterns.d", "library_patterns", None,
+        ),
+        "io_primitives": ("io_primitives.d", None, None),
+        "cfg_nodes": (None, None, None),
+        "taint_sources": ("taint_sources.d", None, None),
+        "taint_sanitizers": ("taint_sanitizers.d", None, None),
+        "function_summaries": (
+            "function_summaries.d", None, "CAVEAT_USER_SUPPLIED_SANITIZER",
+        ),
+        "url_folding": (None, None, None),
+    }
+
+
+def test_channel_directory_is_bound_to_the_family_directory():
+    """One fact, one home: the channel name is derived, never independent."""
+    for spec in YAML_CATALOGS:
+        if spec.user_channel is not None:
+            assert spec.user_channel == f"{spec.directory}.d"
+
+
+def test_validate_registry_refuses_a_channel_that_contradicts_itself(
+    tmp_path: Path,
+):
+    """A family declaring both a channel and a reason for having none."""
+    findings = validate_registry(
+        tmp_path,
+        catalogs=(_spec(
+            user_channel="x.d", no_channel_reason="also internal",
+        ),),
+    )
+    assert any("both a user channel and a no-channel reason" in f
+               for f in findings), findings
+
+
+def test_validate_registry_refuses_an_unanswered_family(tmp_path: Path):
+    findings = validate_registry(
+        tmp_path,
+        catalogs=(_spec(user_channel=None, no_channel_reason=""),),
+    )
+    assert any("declares no user channel and gives no reason" in f
+               for f in findings), findings
+
+
+def test_validate_registry_refuses_a_misnamed_channel(tmp_path: Path):
+    findings = validate_registry(
+        tmp_path,
+        catalogs=(_spec(
+            directory="x", user_channel="somewhere_else.d",
+            no_channel_reason=None,
+        ),),
+    )
+    assert any("must be 'x.d'" in f for f in findings), findings
+
+
+def test_validate_registry_refuses_a_scope_without_a_channel(tmp_path: Path):
+    """A section-scoped channel that has no channel to scope."""
+    findings = validate_registry(
+        tmp_path,
+        catalogs=(_spec(
+            user_channel=None, no_channel_reason="internal",
+            channel_scope="library_patterns",
+        ),),
+    )
+    assert any("channel_scope" in f and "no user channel" in f
+               for f in findings), findings
+
+
+def test_validate_registry_refuses_a_gate_without_a_channel(tmp_path: Path):
+    findings = validate_registry(
+        tmp_path,
+        catalogs=(_spec(
+            user_channel=None, no_channel_reason="internal",
+            channel_gated="CAVEAT_USER_SUPPLIED_SANITIZER",
+        ),),
+    )
+    assert any("channel_gated" in f and "no user channel" in f
+               for f in findings), findings
+
+
+def test_live_registry_has_no_channel_findings():
+    """The shipped registry passes the gate it just gained."""
+    assert validate_registry() == []
