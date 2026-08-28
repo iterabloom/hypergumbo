@@ -20,3 +20,27 @@
     pr_ref:  # 677b
     description: "INV-nular. A DIRECTION error family in elixir, and unlike F4's rows these ones\nMATCH LIVE, so the defect is active rather than latent.\n\nFOUND by the F4 A/B (~/hypergumbo_lab_notebook/nular_f4_ab_08282026/), in the\nlist of primitives that actually classified on phoenix-framework.\n\nDECLARED net_recv, BUT THEY SEND A RESPONSE:\n    Phoenix.Controller.render\n    Phoenix.Controller.send_resp\n    Phoenix.Controller.send_download\n    Phoenix.Channel.reply\n    Plug.Conn.send_resp\n    Plug.Conn.put_resp_header\n\nSending an HTTP response is egress. Declaring it net_recv does two wrong things\nat once: it MINTS untrusted_input (net_recv is an auto-derived taint SOURCE) at\na call that emits, and it fails to register the egress as a SINK -- so a secret\nwritten into a response body is not reported as leaving the process. The second\nhalf is the false-all-clear direction, which makes this more serious than F2 or\nF4.\n\nALSO IN THE SAME SECTION, a different shape -- ROUTE DECLARATIONS as receives:\n    Phoenix.Router.resources, Phoenix.Router.scope, and the verb macros\n    (get/post/put/patch/delete/head/options/match)\nThese are compile-time route DSL, not a receive. They are the Django shape from\nWI-hikut: the request arrival has no call site, so removing them relocates the\nread to nothing. DO NOT simply delete them -- decide deliberately whether a\nroute declaration is the right stand-in for \"a request arrives here\", and say\nwhich. Plug.Conn.fetch_cookies / read_body are genuine reads and are the\ncandidates for that role.\n\nWHY THIS IS NOT WI-lunav: that item is about builders on the SINK side needing\nargument-position adjudication. This is a plain direction error -- a send\ndeclared as a receive -- plus a separate route-declaration question. Neither\nneeds argument-position analysis.\n\nSUGGESTED ORDER: fix the six response-senders first (unambiguous, and it closes\na false-all-clear channel), then take the route-declaration question on its own.\nBoth need the WI-dosov discipline: verify a genuine transfer stays rowed for the\nchannel, and check that no removal strands its module."  # 677b
     fields: {}  # 677b
+- op: update  # 71aa
+  at: '2026-08-28T11:06:31Z'  # 71aa
+  by: agent  # 71aa
+  actor: jgstern_agent  # 71aa
+  clock: 2  # 71aa
+  nonce: 71aa  # 71aa
+  set: {}  # 71aa
+  add:  # 71aa
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 71aa
+- op: update  # 1f62
+  at: '2026-08-28T11:32:37Z'  # 1f62
+  by: agent  # 1f62
+  actor: jgstern_agent  # 1f62
+  clock: 3  # 1f62
+  nonce: 1f62  # 1f62
+  set:  # 1f62
+    status: done  # 1f62
+- op: discuss  # 5344
+  at: '2026-08-28T11:32:37Z'  # 5344
+  by: agent  # 5344
+  actor: jgstern_agent  # 5344
+  clock: 4  # 5344
+  nonce: '5344'  # 5344
+  message: "DONE. PR #609, dev e18be75f3c. Measured A/B; write-up at\n~/hypergumbo_lab_notebook/nular_f5_ab_08282026/RESULT.md\n\n26 rows moved net_recv -> net_send: Phoenix.Controller.{render, json, text,\nhtml, redirect, send_resp, send_download, put_status}; Plug.Conn.{send_resp,\nsend_file, send_chunked, chunk, resp, put_resp_header, put_resp_content_type,\nput_resp_cookie}; Phoenix.Channel.{push, broadcast, broadcast!, broadcast_from,\nbroadcast_from!, reply}; Phoenix.Endpoint.{broadcast, broadcast!,\nbroadcast_from, broadcast_from!}. Plug.Conn.halt REMOVED (moves no bytes either\nway). Plug.Conn.{read_body, fetch_query_params, fetch_cookies} KEPT as receives.\n\nTHE ROUTER DSL IS DELIBERATELY UNTOUCHED. Phoenix.Router.{get, post, resources,\nscope, ...} declare where a request ARRIVES and arrival has no call site, so\nthey are the Django shape from WI-hikut and the JS-createServer shape from\nWI-dosov: moving them would relocate the receive to nothing.\n\nBEHAVIOURAL EVIDENCE, canary NEW 26 / OLD 0 Phoenix-Plug net_send rows:\n  net_recv chains  53 -> 14   net_send chains  20 -> 58\n  phoenix-framework alone     0 -> 18 net_send chains\n  all 10 other boundaries     IDENTICAL\nThe -39/+38 is attributed PRIMITIVE BY PRIMITIVE: the four genuine receives\nstay, the nine senders move, and the one-row difference is `halt`.\n\nTHE FINDING THE OLD CATALOGUE COULD NOT PRODUCE. The standing claim file\nprohibits only host_fs sinks and therefore cannot see a network change at all --\nworth remembering, it is why my first extract showed no verdict movement. On a\nNETWORK claim: plausible UNTRUSTED-NO-NETWORK violated(4) -> violated(7), the\nthree new findings sinking at Phoenix.Controller.json -- untrusted input reaching\nan HTTP RESPONSE BODY. HOSTSECRET-NO-NETWORK holds at 13 as an in-run control\n(those reach the network through HTTP clients, always rowed).\nphoenix-framework stays inconclusive, correctly: it is the framework library,\nnot an application, so it has no request handlers of its own.\n\nDIRECTION: unlike the other INV-nular families this REPORTS MORE. It adds sinks;\nthe removals it performs delete false sources. Both halves move away from the\nall-clear, which is why it needed less evidence than F1-F4, not more.\n\nNOT CLAIMED: two repositories is a demonstration, not a rate. Nothing here\nre-measures 0006."  # 5344
