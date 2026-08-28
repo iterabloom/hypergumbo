@@ -1,0 +1,49 @@
+- op: create  # b145
+  at: '2026-08-28T17:08:18Z'  # b145
+  by: agent  # b145
+  actor: jgstern_agent  # b145
+  clock: 1  # b145
+  nonce: b145  # b145
+  data:  # b145
+    kind: work_item  # b145
+    title: "INV-nular F5 has a Haskell twin: Network.Wai response constructors are catalogued net_recv, so building a response MINTS untrusted taint"  # b145
+    status: todo_hard  # b145
+    priority: 2  # b145
+    parent:  # b145
+    tags:  # b145
+    - taint  # b145
+    - catalogue  # b145
+    - io_boundary  # b145
+    isbefore: []  # b145
+    duplicate_of: []  # b145
+    not_duplicate_of: []  # b145
+    pr_ref:  # b145
+    description: ""  # b145
+    fields:  # b145
+      description: "FOUND 2026-08-28 while relocating the haskell third-party rows for WI-surun (ADR-0047 ruling 1). Not fixed there on purpose: WI-surun changes WHERE a row lives, not what it claims, and mixing a boundary correction into a relocation would have made its A/B measure two things at once.\n\nTHE ROWS. haskell's Network.Wai block is catalogued net_recv:\n\n    Network.Wai.responseLBS       net_recv\n    Network.Wai.responseFile      net_recv\n    Network.Wai.responseBuilder   net_recv\n    Network.Wai.responseStream    net_recv\n\nThese are RESPONSE CONSTRUCTORS. They build the payload a server is about to\nsend. Building an outbound response is not receiving anything, and net_recv is\nan AUTO-DERIVED TAINT SOURCE via AUTO_SOURCE_LABEL_MAP -- so each of these\nMINTS untrusted_input at a call that observes nothing, which is the F5\nmechanism exactly.\n\nIT IS THE SAME DEFECT ALREADY FIXED IN ELIXIR, IN ANOTHER LANGUAGE. #609 moved\n26 Phoenix/Plug response helpers from net_recv to net_send for this reason, and\nrecorded the consequence: a Phoenix application had NO EGRESS SURFACE at all --\na false all-clear. The Wai rows are the Haskell spelling of the same thing, and\nthey were missed because that sweep was run per-catalogue rather than per-\nmechanism. LIVE.md rule 4: a named instance is usually the tip of a family;\nhere the family crosses languages.\n\nEXPECTED DIRECTION: net_recv -> net_send, matching #609. That both removes a\nfalse source AND restores an egress sink, so it is the rare correction that is\na pure win on both sides (contrast WI-lunav, where removing a sink deletes a\ncrossing nothing else represents).\n\nSEPARATE AND NOT CLAIMED HERE -- Network.Wai.Handler.Warp.run / runSettings /\nrunTLS / runEnv are also net_recv. Those are server LAUNCH calls, and the\nargument cuts both ways: the server genuinely receives, but the data reaches\nthe  handler rather than run's caller, so taint minted at the call site is\nattributed to a scope that never sees a request. That is the SAME question as\nPhoenix.Router, which #609 deliberately KEPT as a control. Adjudicate the two\ntogether and identically, or neither -- do not silently split them.\n\nMEASUREMENT: the f5_ab_ rig in ~/hypergumbo_lab_notebook/ is directly reusable\nand already carries the NETWORK claims file this needs (the standing claims\nfile is host_fs-ONLY and would show nothing for a net_send change). postgrest\nis a confirmed-content Wai/Warp repo (Network.Wai in 50 files)."  # b145
+- op: update  # aac0
+  at: '2026-08-28T17:09:07Z'  # aac0
+  by: agent  # aac0
+  actor: jgstern_agent  # aac0
+  clock: 2  # aac0
+  nonce: aac0  # aac0
+  set:  # aac0
+    description: "FOUND 2026-08-28 while relocating the haskell third-party rows for WI-surun (ADR-0047 ruling 1). Not fixed there on purpose: WI-surun changes WHERE a row lives, not what it claims, and mixing a boundary correction into a relocation would have made its A/B measure two things at once.\n\nTHE ROWS. haskell's Network.Wai block is catalogued net_recv:\n\n    Network.Wai.responseLBS       net_recv\n    Network.Wai.responseFile      net_recv\n    Network.Wai.responseBuilder   net_recv\n    Network.Wai.responseStream    net_recv\n\nThese are RESPONSE CONSTRUCTORS. They build the payload a server is about to\nsend. Building an outbound response is not receiving anything, and net_recv is\nan AUTO-DERIVED TAINT SOURCE via AUTO_SOURCE_LABEL_MAP -- so each of these\nMINTS untrusted_input at a call that observes nothing, which is the F5\nmechanism exactly.\n\nIT IS THE SAME DEFECT ALREADY FIXED IN ELIXIR, IN ANOTHER LANGUAGE. #609 moved\n26 Phoenix/Plug response helpers from net_recv to net_send for this reason, and\nrecorded the consequence: a Phoenix application had NO EGRESS SURFACE at all --\na false all-clear. The Wai rows are the Haskell spelling of the same thing, and\nthey were missed because that sweep was run per-catalogue rather than per-\nmechanism. LIVE.md rule 4: a named instance is usually the tip of a family;\nhere the family crosses languages.\n\nEXPECTED DIRECTION: net_recv -> net_send, matching #609. That both removes a\nfalse source AND restores an egress sink, so it is the rare correction that is\na pure win on both sides (contrast WI-lunav, where removing a sink deletes a\ncrossing nothing else represents).\n\nSEPARATE AND NOT CLAIMED HERE -- Network.Wai.Handler.Warp.run / runSettings /\nrunTLS / runEnv are also net_recv. Those are server LAUNCH calls, and the\nargument cuts both ways: the server genuinely receives, but the data reaches\nthe `app` handler rather than run's caller, so taint minted at the call site is\nattributed to a scope that never sees a request. That is the SAME question as\nPhoenix.Router, which #609 deliberately KEPT as a control. Adjudicate the two\ntogether and identically, or neither -- do not silently split them.\n\nMEASUREMENT: the f5_ab_ rig in ~/hypergumbo_lab_notebook/ is directly reusable\nand already carries the NETWORK claims file this needs (the standing claims\nfile is host_fs-ONLY and would show nothing for a net_send change). postgrest\nis a confirmed-content Wai/Warp repo (Network.Wai in 50 files)."  # aac0
+- op: update  # 9285
+  at: '2026-08-28T17:09:07Z'  # 9285
+  by: agent  # 9285
+  actor: jgstern_agent  # 9285
+  clock: 3  # 9285
+  nonce: '9285'  # 9285
+  set:  # 9285
+    fields:  # 9285
+      description: ""  # 9285
+- op: update  # 1100
+  at: '2026-08-28T17:09:23Z'  # 1100
+  by: agent  # 1100
+  actor: jgstern_agent  # 1100
+  clock: 4  # 1100
+  nonce: '1100'  # 1100
+  set: {}  # 1100
+  add:  # 1100
+    not_duplicate_of: [WI-mital-jusaf-kuzif-lukin-sanat-gotok-biput-mutih]  # 1100
