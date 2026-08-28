@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Every measurement record must declare the frame it was produced under.
+
+ADR-0048 §A3. Frame rule F8 — "the headline must declare its own frame" — was
+ratified with nothing enforcing it, and a rule only a careful author obeys is
+exactly how measurements 0001 / 0004 / 0005 drifted into mutual
+incomparability: each changed its estimator, its cohort, or both, and none said
+so. A GATE BEATS A GREP.
+
+WHAT IS CHECKED, and why each key is load-bearing rather than ceremonial:
+
+    unit            per-situation and per-row are different numbers; 0005's
+                    diverged 2.8x. A record that does not say which it leads
+                    with is not comparable to one that does.
+    allocation      M situations x R repositories. EQUAL ALLOCATION IS THE
+                    WHOLE DESIGN: under it the pooled rate and the unweighted
+                    per-repo mean coincide, so the estimator question does not
+                    arise. A record that does not state M and R cannot be
+                    checked for it.
+    seed            the draw must not be "the first M", and a seed declared
+                    after the draw is not a seed.
+    cohort          which repositories, and by what qualification rule.
+    claim_set       which claims were adjudicated.
+    rubric          measurement 0001's, cited verbatim (F6).
+    analyzer_sha    18 commits changed taint between one screen and the
+                    figures published two days later; attribution across that
+                    boundary is not recoverable. This is the cheapest possible
+                    discipline and its absence has already cost one attribution.
+    language_scope  languages in scope AND languages excluded by name with a
+                    reason. An excluded language is EXCLUDED, not
+                    measured-at-zero: five of fifteen catalogued languages
+                    produce zero flows for a structural reason (INV-linub), and
+                    pooling a structural zero into a headline is the same
+                    undeclared-estimator choice this gate exists to forbid.
+
+GRANDFATHERING IS BY NUMBER AND COSTS AN EDIT. Records 0006-0008 predate the
+gate. They are listed below individually, each with the reason it cannot
+comply. A new measurement cannot join that list without editing this file and
+writing down why — which is the point of listing them here rather than
+inferring "old enough" from the number.
+
+Exit 0 = every record complies. Exit 1 = at least one does not.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+#: The keys a compliant `## Frame` block must carry, in no particular order.
+REQUIRED_KEYS: tuple[str, ...] = (
+    "unit", "allocation", "seed", "cohort", "claim_set", "rubric",
+    "analyzer_sha", "language_scope",
+)
+
+#: Records that predate the gate, each with the reason it cannot comply.
+#: Adding an entry here is a deliberate, reviewable act — not a default.
+GRANDFATHERED: dict[str, str] = {
+    # 0001-0005 PREDATE THE FRAME ENTIRELY. They are not merely unframed —
+    # their mutual incomparability IS the defect the frame was ratified to fix
+    # (INV-duvup), and back-filling frame blocks onto them would assert a
+    # comparability they do not have. They are exempt permanently, as evidence.
+    "0001": (
+        "predates the frame and fixes the rubric every later record cites "
+        "verbatim; population-weighted estimator, never declared as such"
+    ),
+    "0002": (
+        "predates the frame; a catalogue-reach census across languages, not a "
+        "precision measurement, so allocation and seed do not apply to it"
+    ),
+    "0003": (
+        "predates the frame; a before/after delta on one edge type, with no "
+        "cohort of its own to declare"
+    ),
+    "0004": (
+        "predates the frame; dropped pretix for supplying 77% of the "
+        "population, which is the concentration diagnosis the frame later "
+        "made structural rather than case-by-case"
+    ),
+    "0005": (
+        "predates the frame; the raw pooled census whose 2.8x estimator span "
+        "and 75% caddy share are the measured evidence for INV-duvup"
+    ),
+    # 0007-0008 are after the ratified frame but are not precision
+    # measurements, so allocation / seed / cohort have nothing to describe.
+    "0007": "predates the gate; a domain census, not a precision measurement",
+    "0008": "predates the gate; a ceiling derivation, not a precision measurement",
+}
+
+#: PER-KEY exemptions: a record that declares a real frame but genuinely cannot
+#: establish ONE value. Deliberately separate from whole-record grandfathering,
+#: because "this record declares nothing" and "this record declares everything
+#: it can and names the one gap" are different facts and should not share a
+#: mechanism. A record listed here must still CARRY the key, spelled
+#: ``unrecorded`` — so the gap is visible in the document a human reads, not
+#: only in this script.
+EXEMPT_KEYS: dict[str, dict[str, str]] = {
+    "0006": {
+        "analyzer_sha": (
+            "no artifact of the run records the tree it ran against, and a SHA "
+            "reconstructed from dates would be a guess wearing a fact's "
+            "clothing — which is the failure ADR-0048 A1 exists to prevent. "
+            "Recorded as an explicit gap rather than back-filled."
+        ),
+    },
+}
+
+#: `- key: value` inside the `## Frame` section.
+_ENTRY = re.compile(r"^\s*[-*]\s*([A-Za-z_]+)\s*:\s*(\S.*?)\s*$")
+
+
+def frame_block(text: str) -> dict[str, str]:
+    """Parse the `## Frame` section into a mapping. Empty when absent."""
+    lines = text.splitlines()
+    out: dict[str, str] = {}
+    inside = False
+    for line in lines:
+        if line.strip().lower().startswith("## frame"):
+            inside = True
+            continue
+        if inside and line.startswith("#"):
+            break
+        if inside:
+            m = _ENTRY.match(line)
+            if m:
+                out[m.group(1).strip().lower()] = m.group(2).strip()
+    return out
+
+
+def check_record(path: Path) -> list[str]:
+    """Problems with one record; empty when it complies."""
+    number = path.name.split("-", 1)[0]
+    if number in GRANDFATHERED:
+        return []
+    frame = frame_block(path.read_text(encoding="utf-8"))
+    if not frame:
+        return [f"{path.name}: no `## Frame` block (ADR-0048 §A3)"]
+    exempt = EXEMPT_KEYS.get(number, {})
+    problems = []
+    for key in REQUIRED_KEYS:
+        value = frame.get(key, "")
+        if not value:
+            problems.append(f"{path.name}: frame is missing `{key}`")
+        elif value.lower() in {"unrecorded", "unknown", "tbd", "n/a", "none"}:
+            if key in exempt and value.lower() == "unrecorded":
+                continue
+            problems.append(
+                f"{path.name}: frame declares `{key}: {value}` — a placeholder "
+                f"is not a declaration. If the value genuinely cannot be "
+                f"established, add a reasoned entry to EXEMPT_KEYS and spell "
+                f"it `unrecorded`, so the gap is visible in the record itself."
+            )
+    return problems
+
+
+def main(argv: list[str]) -> int:
+    root = Path(argv[1]) if len(argv) > 1 else Path(__file__).resolve().parent.parent
+    records = sorted((root / "docs" / "measurements").glob("[0-9][0-9][0-9][0-9]-*.md"))
+    if not records:
+        print("check-measurement-frame: no measurement records found", file=sys.stderr)
+        return 1
+    problems: list[str] = []
+    for record in records:
+        problems.extend(check_record(record))
+    if problems:
+        print("check-measurement-frame: FAILED\n", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        print(
+            "\nEvery measurement from 0009 on must carry a `## Frame` block "
+            "(ADR-0048 §A3). Frame rule F8 was ratified with nothing enforcing "
+            "it, which is how 0001/0004/0005 drifted into mutual "
+            "incomparability.",
+            file=sys.stderr,
+        )
+        return 1
+    checked = len(records) - sum(
+        1 for r in records if r.name.split("-", 1)[0] in GRANDFATHERED)
+    print(
+        f"check-measurement-frame: OK — {checked} record(s) declare a full "
+        f"frame, {len(GRANDFATHERED)} grandfathered by number"
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main(sys.argv))

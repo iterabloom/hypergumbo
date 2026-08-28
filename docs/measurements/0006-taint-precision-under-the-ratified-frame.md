@@ -11,10 +11,42 @@ The owner ruled "fix the measurement frame first"; this is the first
 measurement under the fixed frame, and the series restarts here.
 
 Frame definition: `frame_08252026/FRAME-PROPOSAL.md`. Unit = **situation**
-(canonical), row printed beside it. M=7 repositories x R=16 situations = 112
+(canonical), row printed beside it. M=7 situations x R=16 repositories = 112
 adjudicated. 0005's five repositories excluded. Rubric = measurement 0001's,
 **cited verbatim, not rewritten** (F6). Seeded draw, seed 20260825. Language
 cap one third.
+
+## Frame
+
+Machine-readable per ADR-0048 §A3, and consistent with the prose above.
+
+- unit: situation (canonical); row rate reported beside it every time
+- allocation: M=7 situations x R=16 repositories = 112 adjudications
+- seed: 20260825
+- cohort: `frame_08252026/COHORT.json`; 0005's five repositories excluded; language cap one third
+- claim_set: the seven generic claims (frame F5)
+- rubric: measurement 0001's, cited verbatim, not rewritten (frame F6)
+- analyzer_sha: unrecorded
+- language_scope: drawn from the catalogued languages present in the cohort; NO language excluded by declaration in this measurement
+
+**Two of those values carry a caveat, stated here rather than left to be
+noticed.**
+
+`analyzer_sha: unrecorded` is a real gap, not a formality. No artifact of this
+run records the tree it ran against, and eighteen commits changed taint
+behaviour between the 2026-08-25 screen and figures published two days later —
+so attribution across that boundary is not recoverable for this record. A SHA
+reconstructed from dates would be a guess wearing a fact's clothing. ADR-0048
+§A1 makes the SHA mandatory from measurement 0009; this record is exempted for
+that one key, by name, in `scripts/check-measurement-frame`.
+
+`language_scope` records that this measurement excluded no language *by
+declaration*. That is not the same as every language having been able to
+contribute: INV-linub's exposure table predicts that languages at >=87%
+method-kind sinks produce zero taint flows structurally, so any such language
+in the draw could only ever have supplied zero. ADR-0048 §A2 requires future
+measurements to name that exclusion rather than pool a structural zero into the
+headline.
 
 ## Headline
 
