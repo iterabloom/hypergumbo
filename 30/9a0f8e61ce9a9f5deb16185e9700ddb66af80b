@@ -1,0 +1,13 @@
+Original commit body from 3e08de5115ba2050cc7b7b98f02f004b56ef8bd2:
+
+CI (py3.11) failed the shrink-only ratchet on `unused-ignore: 0 -> 1` while
+the same tree was clean locally (py3.12). PyYAML annotates `dispose` on some
+interpreter/stub combinations and not others, so a `type: ignore[no-untyped-call]`
+on that call is USED on one and UNUSED on the other -- and the ratchet trips on
+whichever you did not run. Binding the loader as `Any` asks mypy nothing on
+either, so the suppression disappears rather than moving.
+
+Whole-tree strict errors back to 669 (baseline 669, delta +0).
+
+Racial-Capitalism-Is-Bad: a pumpkin golem racing a marching tuba player in a crystal cave made of newspapers
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
