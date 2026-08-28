@@ -1277,15 +1277,29 @@ _find_job_from_log_probe() {
 #   entries are "tests/..." for root-level tests and
 #   "packages/<pkg>/tests/..." for package tests, and which of the two a
 #   given manifest holds depends entirely on what was selected.
+#
+#   AN EMPTY SELECTION IS A SUCCESS, NOT AN ERROR (INV-zamoh). Both branches
+#   end in `grep`, and a `grep` that matches nothing exits 1. On a manifest
+#   that selects no tests -- what smart-test correctly writes for ANY
+#   docs-only or config-only diff -- the marker line is the only thing `sed`
+#   emits, `grep -v '^#'` drops it and exits 1, and the trailing `grep -v '^$'`
+#   gets no input and exits 1 too. Callers run under `set -euo pipefail`
+#   (scripts/auto-pr:3), so that status killed the shell BEFORE the `return 0`
+#   below could mask it: auto-pr died mid-push with no PR, no PR_PENDING gate
+#   and no branch on the remote. The `|| true` on each branch makes "this
+#   manifest selects nothing" the empty-output success it always meant to be.
+#   It is deliberately on BOTH arms: the else arm is reached by any manifest
+#   written before the sections existed, and half a fix is how a defect
+#   survives its own patch.
 # ------------------------------------------------------------------
 _manifest_selected_tests() {
 	local f="$1"
 	[[ -f "$f" ]] || return 0
 	if grep -q '^# === SELECTED_TESTS ===' "$f" 2>/dev/null; then
 		sed -n '/^# === SELECTED_TESTS ===/,$p' "$f" \
-			| grep -v '^#' | grep -v '^$'
+			| grep -v '^#' | grep -v '^$' || true
 	else
-		grep -v '^#' "$f" 2>/dev/null | grep -v '^$'
+		grep -v '^#' "$f" 2>/dev/null | grep -v '^$' || true
 	fi
 	return 0
 }
@@ -1378,6 +1392,28 @@ _manifest_union() {
 		cat "$tmp_kept" >> "$out_file"
 	fi
 	rm -f "$tmp_body" "$tmp_kept"
+
+	# THE HEADER MUST NOT CONTRADICT THE BODY (INV-zamoh, second defect).
+	# Copying the header verbatim is what preserves "# Mode:" and the
+	# CHANGED_SOURCE_FILES section -- but it also copies the regen's own
+	# "# Selected tests:" count, which describes a body this function just
+	# replaced. After a docs-only union the file reads "Selected tests: 0"
+	# over three real paths. Nothing consumes the count today (ci.yml
+	# recomputes it from the body it is about to run), so this is a manifest
+	# that LIES rather than one that breaks -- but "CI runs nothing while
+	# reporting success" is the precise failure the fail-safe above exists to
+	# prevent, and a header already reading 0 is that failure pre-staged for
+	# whichever consumer trusts it first. Restate it from what was written.
+	#
+	# Only ever a CORRECTION: a header with no count line does not gain one,
+	# because the header is the generator's and this is not a licence to
+	# author lines it did not write.
+	if grep -q '^# Selected tests:' "$out_file"; then
+		local union_count
+		union_count="$(_manifest_test_count "$out_file")"
+		sed -i "s/^# Selected tests:.*/# Selected tests: ${union_count}/" \
+			"$out_file"
+	fi
 	return 0
 }
 
