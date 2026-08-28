@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # ADR-0047: Catalogue Scope, and Where a User's Catalogue Data Lives
 
-- Status: **Proposed**
+- Status: **Accepted**
 - Date: 2026-08-27
 - Supersedes: —
 - Superseded by: —
@@ -13,6 +13,14 @@ one. The prior ruling — *"io_primitives stays STDLIB-SCOPED (ADR-0016 §27);
 third-party is USER-SUPPLIED via overlays"* — was given 2026-08-11 on INV-safig
 and reaffirmed in person on INV-fotav. It is not reversed lightly and §Context
 below records what it was protecting.
+
+The question put to the owner was: *"Can hypergumbo ship third-party rows it
+doesn't vouch for, loaded by default? That reverses your stdlib-only ruling."*
+The answer was **"yes as long as it's loud about it"**, and the conditional is
+load-bearing rather than decorative — it is why ruling 6 requires the
+disclosure in DEFAULT HUMAN OUTPUT and not only in a JSON field. Ruling 9's two
+audiences were separated by the owner in the same exchange. Rulings 2–5, 7, 8
+and 10 are engineering consequences of those two answers.
 
 ## Context
 
@@ -145,11 +153,23 @@ Every shipped-but-unvouched overlay carries `provenance: community`, a dated
 version it was copied from. "hypergumbo does not maintain these rows" is then a
 fact a reader can check rather than a sentence in a header.
 
-**6. Disclosure has three states, not two.** `catalog_provenance` gains layer
-keys for `shipped_default` and `user_config`. The existing boolean
-`user_supplied` cannot express *"hypergumbo shipped it and does not vouch for
-it"*, which is the state this ADR creates; conflating it with either neighbour
-would re-open exactly the INV-zosun gap.
+**6. Disclosure has three states, not two — and it is LOUD.** The owner's
+"yes" to ruling 1 was conditioned on this, so it is a requirement and not a
+nicety.
+
+`catalog_provenance` gains layer keys for `shipped_default` and `user_config`.
+The existing boolean `user_supplied` cannot express *"hypergumbo shipped it and
+does not vouch for it"*, which is the state this ADR creates; conflating it
+with either neighbour would re-open exactly the INV-zosun gap.
+
+**A JSON field alone does not satisfy this.** A reader who never opens the
+envelope must still learn that unvouched rows were loaded, so a run that loads
+them emits a one-line stderr notice naming the overlays and their `retrieved:`
+dates — the shape already used for an `in_progress` catalogue, which warns per
+queried language on every run. Silence is the failure mode this whole ADR
+exists to remove: the tool asserting stdlib-only while shipping 300
+third-party rows was silent, and that is what made it wrong rather than merely
+generous.
 
 **7. The registry answers extensibility.** `CatalogSpec` gains the fields
 naming whether a family is user-extensible and where the user's file goes, so
@@ -167,16 +187,30 @@ boundaries is the shape INV-zosun was filed about, and it arrives on a machine
 whose owner never opted into it — so the repo tier stays opt-in per invocation
 or per user config, not automatic.
 
-What is offered instead is **reference material, in the user's own directory**.
-When hypergumbo finds a directory it owns in the user's home — the one ruling 3
-establishes, created by the subcommand in ruling 4 — it may **offer once** to
-place *examples* of repo-tier overlays there, for the user to copy into a
-repository themselves. Three constraints make that an offer rather than a nudge:
+**Two audiences, two mechanisms — and they are not the same offer.** Collapsing
+them was the error this ruling corrects.
 
-- **The examples land in the user's directory, never in the analysed repo.**
-  Writing a file into someone's working tree is how a tool gets its output
-  committed by accident, and a repo-tier overlay is exactly the file whose
-  presence should be a deliberate act by that repository's owner.
+**The normal user has `$XDG_CONFIG_HOME/hypergumbo/`, and that is a
+SUBCOMMAND, not an offer.** They run the ruling-4 command; it creates their
+config home and populates it with the community overlays. Nothing is proposed
+to them unprompted, and the contents are not "examples" — they are the user's
+actual working configuration, some of which happens to be community-sourced
+third-party rows.
+
+**The hypergumbo developer has `~/hypergumbo`, and THAT is where the offer
+belongs.** A literal `hypergumbo` directory in the home directory is a
+repository checkout; nobody creates one by accident, which makes its presence a
+deliberate signal in a way that a config directory is not. When hypergumbo sees
+it, it may **offer once** to place *examples of repo-tier overlay files* there
+— the material a developer needs to see what a `.hypergumbo/` in an analysed
+repository would contain, without one being written into any repository.
+
+Three constraints keep the offer an offer:
+
+- **Nothing is ever written into an analysed repository.** Writing a file into
+  someone's working tree is how a tool gets its output committed by accident,
+  and a repo-tier overlay is exactly the file whose presence should be a
+  deliberate act by that repository's owner.
 - **A decline is recorded as a decision**, reusing ADR-0045 ruling 8 verbatim:
   *"The store records declines as well as grants… The nudge goes quiet for any
   path with a recorded decision."* An offer that cannot be answered permanently
@@ -186,10 +220,6 @@ repository themselves. Three constraints make that an offer rather than a nudge:
 - **It is never raised in a non-interactive context.** No prompt when stdin is
   not a TTY — the shape `cli.py` already applies to progress output. An offer
   that blocks a CI run or an agent invocation is a defect, not a courtesy.
-
-The existence of that directory is what earns the right to ask: a user who has
-run the ruling-4 subcommand has already said hypergumbo may keep files for them.
-A user who has not is asked nothing.
 
 **10. A family gets a user channel when it describes the USER'S world, not the
 LANGUAGE'S.** That is the whole test, and it decides all eight by inspection:
