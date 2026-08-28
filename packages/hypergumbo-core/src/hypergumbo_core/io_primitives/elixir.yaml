@@ -285,9 +285,12 @@ db_read:
   - module: Ecto.Repo
     functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
     notes: "Ecto.Repo read operations"
-  - module: Ecto.Query
-    functions: [from, where, select, join, group_by, order_by, limit, offset, distinct]
-    notes: "Ecto query construction — part of the read path"
+  # Ecto.Query REMOVED (INV-nular, WI-hikut). The nine combinators built a
+  # query struct and ran nothing; the row's own note said so -- "part of
+  # the read path" -- and being on the read path is not performing the
+  # read. db_read is an auto-derived taint SOURCE, so each combinator was
+  # minting untrusted_input at a pure data transformation. Ecto.Repo above
+  # rows the calls that actually execute.
   - module: Postgrex
     functions: [query, query!, prepare, prepare_execute]
     notes: "Postgrex (PostgreSQL driver for Ecto)"

@@ -91,21 +91,27 @@ def _multi_boundary(cat: IoBoundaryCatalog) -> dict[str, set[str]]:
 # requires deleting from it. Each entry states the question, because an
 # unruled row without a stated question is indistinguishable from an
 # overlooked one.
-EXPECTED_UNRULED: dict[str, str] = {
-    "erlang:gen_udp.open": (
-        "Opening a UDP socket ENABLES both directions but transfers nothing "
-        "at the call itself, and gen_udp send/recv are catalogued separately. "
-        "Is a socket-acquisition call a net_* crossing at all?"
-    ),
-    "elixir:gen_udp.open": "Same question as erlang; same rows.",
-    "haskell:Control.Concurrent.STM.newTVar": (
-        "Creating a TVar is neither a read nor a write, and STM is "
-        "in-process transactional memory rather than a database — so the "
-        "db_* classification of the whole Data.IORef / STRef / MVar / STM "
-        "family is the prior question."
-    ),
-    "haskell:Control.Concurrent.STM.newTVarIO": "Same question as newTVar.",
-}
+#: THE DECLARED-DEBT REGISTER, AND IT IS NOW EMPTY (INV-nular, 2026-08-28).
+#:
+#: It held exactly two questions, and both were answered by removing rows
+#: rather than by ruling the rows correct:
+#:
+#: * ``erlang``/``elixir`` ``gen_udp.open`` — "Is a socket-acquisition call a
+#:   net_* crossing at all?"  **No.** Opening a socket transfers nothing at the
+#:   call itself, as the row's own note said; ``gen_udp.send``/``recv`` carry
+#:   the real transfers. Removed from both boundaries (WI-dosov).
+#: * ``haskell`` ``Control.Concurrent.STM.newTVar``/``newTVarIO`` — "creating a
+#:   TVar is neither a read nor a write ... the db_* classification of the whole
+#:   Data.IORef / STRef / MVar / STM family is the prior question."  Answered by
+#:   deleting that family: in-process mutable references are not a database, and
+#:   because ``db_read`` is an auto-derived taint SOURCE the rows were minting
+#:   ``untrusted_input`` at calls that observe nothing (WI-rigut).
+#:
+#: AN EMPTY REGISTER IS THE SUCCESS STATE, NOT A BROKEN FIXTURE. The gate below
+#: (``test_no_multi_boundary_primitive_lacks_a_reason``) is what keeps it
+#: honest: a new multi-boundary row with no reason still fails CI, and the only
+#: way to pass is to rule it or add it back here WITH ITS QUESTION STATED.
+EXPECTED_UNRULED: dict[str, str] = {}
 
 
 class TestEveryMultiBoundaryPrimitiveDeclaresAReason:
@@ -144,12 +150,19 @@ class TestEveryMultiBoundaryPrimitiveDeclaresAReason:
             f"were not loaded and this whole file would pass vacuously"
         )
 
-    def test_each_reason_is_actually_represented(self) -> None:
-        """All four reasons occur, so no branch is dead.
+    def test_each_settled_reason_is_actually_represented(self) -> None:
+        """Every reason that describes a SETTLED shape occurs live, so no
+        branch is dead. A resolver whose branches never fire on the live corpus
+        is indistinguishable from one that returns a constant.
 
-        A resolver whose branches never fire on the live corpus is
-        indistinguishable from one that returns a constant.
-        """
+        ``unruled`` IS DELIBERATELY NOT ASSERTED HERE. It names an OPEN
+        QUESTION, and the live count of open questions is currently zero
+        (INV-nular answered both). Requiring one to exist would make the suite
+        fail the moment the last piece of declared debt is paid — a test that
+        punishes success, and a hardcoded inventory besides. The resolver's
+        ``unruled`` branch is exercised on a synthetic catalogue instead, in
+        :class:`TestTheResolver`, which is where the invariant actually lives:
+        the branch must WORK, not the debt must EXIST."""
         seen = collections.Counter()
         for cat in _shipped_catalogs().values():
             for qn in _multi_boundary(cat):
@@ -158,9 +171,12 @@ class TestEveryMultiBoundaryPrimitiveDeclaresAReason:
             MULTI_BOUNDARY_REASON_MODE,
             MULTI_BOUNDARY_REASON_SIMULTANEOUS,
             BOUNDARY_RULING_UNDECIDABLE,
-            BOUNDARY_RULING_UNRULED,
         ):
             assert seen[reason] > 0, f"no primitive resolves to {reason!r}: {seen}"
+        assert seen[BOUNDARY_RULING_UNRULED] == len(EXPECTED_UNRULED), (
+            "the live unruled count must equal the register above; they are "
+            "two views of the same debt"
+        )
 
 
 class TestTheResolver:
@@ -199,12 +215,27 @@ class TestTheResolver:
         )
 
     def test_unruled_is_reported(self) -> None:
-        cat = load_catalog("haskell")
-        assert cat is not None
-        assert (
-            multi_boundary_reason(cat, "Control.Concurrent.STM.newTVar")
-            == BOUNDARY_RULING_UNRULED
+        """Built synthetically rather than read off a shipped catalogue.
+
+        This asserted haskell's ``Control.Concurrent.STM.newTVar`` until
+        INV-nular deleted that row as a false taint source. Pinning a RESOLVER
+        branch to a live row makes the branch's test hostage to a catalogue
+        decision it has nothing to do with — and the correct catalogue decision
+        broke it. What must hold is that a row declaring ``unruled`` resolves to
+        ``unruled``, which is true whether or not any shipped row does."""
+        from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
+
+        cat = IoBoundaryCatalog(
+            language="toy",
+            primitives=[
+                IoPrimitive(boundary="db_read", module="toy.cell", name="make",
+                            kind="function", boundary_ruling=BOUNDARY_RULING_UNRULED),
+                IoPrimitive(boundary="db_write", module="toy.cell", name="make",
+                            kind="function", boundary_ruling=BOUNDARY_RULING_UNRULED),
+            ],
         )
+        assert (multi_boundary_reason(cat, "toy.cell.make")
+                == BOUNDARY_RULING_UNRULED)
 
 
 class TestTheDeclarationCannotBeMisspelled:
