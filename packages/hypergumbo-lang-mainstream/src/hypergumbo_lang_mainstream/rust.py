@@ -500,6 +500,129 @@ def _extract_var_types_rust(
     return var_types
 
 
+def _qualified_rust_type_path(type_text: str, bare: str) -> str | None:
+    """Return the WRITTEN module path of a type expression, or None.
+
+    INV-linub L3. ``_normalize_rust_type_to_bare_name`` reduces a type
+    expression to its terminal identifier — "strip module paths", per its own
+    docstring — which is exactly right for the first-party symbol lookups the
+    typed-receiver strategies perform, and exactly wrong for the module slot
+    of an edge whose receiver type is EXTERNAL. When the source spells
+    ``std::fs::File`` the path is present in the text and is simply discarded.
+
+    This recovers that path WITHOUT re-deriving the type. It is deliberately
+    incapable of inventing one: it returns a value only when the written text
+    already carries ``::``, and only when the path's terminal segment is the
+    ``bare`` name the normalizer produced. That equality check is what binds
+    this second reading of the type to the first (LIVE.md's one-fact-two-homes
+    rule) — a generic wrapper, an alias, or any shape where the two disagree
+    yields None rather than a plausible-looking mismatch.
+    """
+    text = type_text.strip()
+    for prefix in ("&mut ", "&mut", "&"):
+        while text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    while text.startswith("'"):  # lifetime, e.g. `'a str`
+        _, _, text = text.partition(" ")
+        text = text.strip()
+    if text.startswith("mut "):
+        text = text[4:].strip()
+    text = text.split("<", 1)[0].strip()
+    if "::" not in text:
+        return None
+    if text.rsplit("::", 1)[-1] != bare:
+        return None
+    return text
+
+
+def _extract_qualified_var_type_paths(
+    root_node: "tree_sitter.Node", source: bytes,
+) -> dict[str, str]:
+    """File-scoped ``var_name -> WRITTEN qualified type path`` (INV-linub L3).
+
+    A companion to ``_extract_var_types_rust``, not a replacement: that map
+    holds BARE names because the typed-receiver strategies look them up in the
+    first-party symbol tables, and widening it would change resolution. This
+    one is consulted only on the unresolved-external path, where a bare name is
+    useless and the module slot would otherwise stay ``external``.
+
+    Covers the three shapes where the source writes the path itself:
+
+      1. ``fn dump(f: &mut std::fs::File)``      — parameter annotation
+      2. ``let f: std::fs::File = ...``           — binding annotation
+      3. ``let s = std::time::Instant::now();``   — scoped construction
+
+    Shape 3 was the largest single miss in the four-repo measurement (52 of 80
+    ``elapsed`` sites). Shapes this does NOT cover — a struct-field receiver
+    and a chained receiver — lose the type further upstream, in the receiver
+    walk rather than in normalization, and are filed separately.
+
+    First-writer-wins and file-scoped, matching ``_extract_var_types_rust``'s
+    documented trade-off exactly, so the two maps never disagree about which
+    binding a name refers to.
+    """
+    paths: dict[str, str] = {}
+
+    def _record(name: str, type_text: str) -> None:
+        if name in paths:
+            return  # first writer wins, as in _extract_var_types_rust
+        bare = _normalize_rust_type_to_bare_name(type_text)
+        if not bare:
+            return
+        qualified = _qualified_rust_type_path(type_text, bare)
+        if qualified:
+            paths[name] = qualified
+
+    for node in iter_tree(root_node):
+        if node.type == "function_item":
+            params_node = _find_child_by_field(node, "parameters")
+            if params_node is None:  # pragma: no cover - grammar invariant
+                continue
+            for child in params_node.children:
+                if child.type != "parameter":
+                    continue
+                pattern_node = _find_child_by_field(child, "pattern")
+                type_node = _find_child_by_field(child, "type")
+                if (  # pragma: no cover - a `parameter` always has both fields
+                    pattern_node is None or type_node is None
+                ):
+                    continue
+                if pattern_node.type != "identifier":
+                    # A tuple destructure or `_` binds no name to key on.
+                    continue
+                _record(
+                    node_text(pattern_node, source),
+                    node_text(type_node, source),
+                )
+        elif node.type == "let_declaration":
+            pattern_node = _find_child_by_field(node, "pattern")
+            if pattern_node is None or pattern_node.type != "identifier":
+                continue
+            var_name = node_text(pattern_node, source)
+            type_node = _find_child_by_field(node, "type")
+            if type_node is not None:
+                _record(var_name, node_text(type_node, source))
+                continue
+            value_node = _find_child_by_field(node, "value")
+            if value_node is None:
+                continue
+            # Shape 3: `Type::assoc_fn()` where Type is written in full. The
+            # constructing call already names the path, so the binding's type
+            # is known with no annotation and no `use`. Mirrors the
+            # scoped_identifier branch of ``_infer_type_from_rust_rhs`` so the
+            # two agree about which node carries the type.
+            if value_node.type != "call_expression":
+                continue
+            func_node = _find_child_by_field(value_node, "function")
+            if func_node is None or func_node.type != "scoped_identifier":
+                continue
+            path_node = _find_child_by_field(func_node, "path")
+            if path_node is None:  # pragma: no cover - grammar invariant
+                continue
+            _record(var_name, node_text(path_node, source))
+    return paths
+
+
 def _infer_type_from_rust_rhs(
     value_node: "tree_sitter.Node",
     source: bytes,
@@ -1847,6 +1970,7 @@ def _extract_edges_from_file(
     analyzer: "RustAnalyzer | None" = None,
     kind_index: dict[str, list[Symbol]] | None = None,
     var_types: dict[str, str] | None = None,
+    var_type_paths: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1882,6 +2006,7 @@ def _extract_edges_from_file(
     edges: list[Edge] = []
     file_id = make_file_id("rust", str(file_path))
     _var_types: dict[str, str] = var_types or {}
+    _var_type_paths: dict[str, str] = var_type_paths or {}
     # WI-milak / BUG-04: hoisted out of the iter_tree loop so the
     # impl_item ``_lookup_trait`` closure doesn't trigger ruff B023
     # (function-definition-does-not-bind-loop-variable). The contents
@@ -2553,21 +2678,32 @@ def _extract_edges_from_file(
                                     if (
                                         not has_explicit_binding
                                         and is_method_call
-                                        and _var_types
+                                        and (_var_types or _var_type_paths)
                                     ):
                                         _recv = inner.child_by_field_name("value")
                                         if (
                                             _recv is not None
                                             and _recv.type == "identifier"
                                         ):
-                                            _rt = _var_types.get(
-                                                node_text(_recv, source)
-                                            )
+                                            _rn = node_text(_recv, source)
+                                            _rt = _var_types.get(_rn)
                                             _full = use_aliases.get(_rt) if _rt else None
                                             # The alias must be a PATH. A
                                             # single-segment alias carries no
                                             # module and would put a bare type
                                             # name in the module slot.
+                                            if not (_full and "::" in _full):
+                                                # ...and when the type was never
+                                                # imported BY NAME there is no
+                                                # alias to find, however plainly
+                                                # the source wrote the path:
+                                                # `f: &mut std::fs::File` is
+                                                # normalized to `File`, and
+                                                # `File` is not in use_aliases
+                                                # because nothing was imported.
+                                                # Fall back to the path the
+                                                # source actually wrote.
+                                                _full = _var_type_paths.get(_rn)
                                             if _full and "::" in _full:
                                                 module_hint = _full
                                                 ext_ref = ExternalRef(
@@ -3037,6 +3173,9 @@ class RustAnalyzer(TreeSitterAnalyzer):
         var_types = _extract_var_types_rust(
             tree.root_node, source, method_return_type_registry,
         )
+        var_type_paths = _extract_qualified_var_type_paths(
+            tree.root_node, source,
+        )
 
         return _extract_edges_from_file(
             tree, source, rel_path,
@@ -3048,6 +3187,7 @@ class RustAnalyzer(TreeSitterAnalyzer):
             analyzer=self,
             kind_index=kind_index,
             var_types=var_types,
+            var_type_paths=var_type_paths,
         )
 
     def extract_usage_contexts_from_file(
