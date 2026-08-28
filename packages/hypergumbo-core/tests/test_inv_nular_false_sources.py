@@ -374,3 +374,103 @@ class TestLifecycleIsNotTransfer:
                 f"method rows while losing its last function row is reported "
                 f"method-starved, which withholds every verdict on the repo"
             )
+
+
+# ----------------------------------------------------------------------
+# F5 — a SEND declared as a RECEIVE, and the more serious half of INV-nular
+#
+# Every Phoenix/Plug row shipped under net_recv, and the rows' own notes
+# admitted both directions in one slot: "read request / write response",
+# "receive and publish events". Two failures at once, and they are not
+# symmetric:
+#
+#   * net_recv is an auto-derived taint SOURCE, so each sender MINTED
+#     untrusted_input at a call that emits. That is the same false-positive
+#     mechanism as F1-F4.
+#   * nothing here was a SINK, so a Phoenix application had NO egress rows for
+#     its own response path. A secret written into a response body or header
+#     could not be reported as leaving the process at all. That is a
+#     FALSE ALL-CLEAR, and it is why this family matters more than the others:
+#     the failure direction is "reports safe", not "reports noise".
+#
+# Unlike F4's rows these MATCH LIVE — `Phoenix.Controller.render`, `send_resp`,
+# `Plug.Conn.put_resp_header` and others were observed classifying on
+# phoenix-framework during the F4 A/B, which is how the family was found.
+# ----------------------------------------------------------------------
+
+
+class TestPhoenixResponsesAreEgress:
+    @pytest.mark.parametrize("name", [
+        "render", "json", "text", "html", "redirect", "send_resp",
+        "send_download", "put_status"])
+    def test_controller_response_helpers_are_sends(self, name: str) -> None:
+        assert _has("elixir", "net_send", "Phoenix.Controller", name)
+        assert not _has("elixir", "net_recv", "Phoenix.Controller", name)
+
+    @pytest.mark.parametrize("name", [
+        "send_resp", "send_file", "send_chunked", "chunk", "resp"])
+    def test_plug_conn_response_writers_are_sends(self, name: str) -> None:
+        assert _has("elixir", "net_send", "Plug.Conn", name)
+        assert not _has("elixir", "net_recv", "Plug.Conn", name)
+
+    @pytest.mark.parametrize("name", [
+        "put_resp_header", "put_resp_content_type", "put_resp_cookie"])
+    def test_response_header_builders_are_sinks_not_sources(self, name: str) -> None:
+        """Included deliberately, on the WI-lunav asymmetry.
+        ``put_resp_header(conn, "x", secret)`` is the point at which the secret
+        enters the response that will be transmitted, and nothing carries taint
+        from the ``conn`` struct to the eventual send — so a sink at the point
+        the value ENTERS is what catches it."""
+        assert _has("elixir", "net_send", "Plug.Conn", name)
+        assert not _has("elixir", "net_recv", "Plug.Conn", name)
+
+    @pytest.mark.parametrize("mod,name", [
+        ("Phoenix.Channel", "push"), ("Phoenix.Channel", "broadcast"),
+        ("Phoenix.Channel", "reply"), ("Phoenix.Endpoint", "broadcast"),
+        ("Phoenix.Endpoint", "broadcast_from")])
+    def test_channel_and_endpoint_broadcasts_are_sends(
+        self, mod: str, name: str,
+    ) -> None:
+        assert _has("elixir", "net_send", mod, name)
+        assert not _has("elixir", "net_recv", mod, name)
+
+    @pytest.mark.parametrize("name", [
+        "read_body", "fetch_query_params", "fetch_cookies"])
+    def test_the_genuine_request_reads_stay_receives(self, name: str) -> None:
+        """CONTROL. The request side is real and must not move with the rest —
+        this is a direction split, not a wholesale reclassification."""
+        assert _has("elixir", "net_recv", "Plug.Conn", name)
+        assert not _has("elixir", "net_send", "Plug.Conn", name)
+
+    @pytest.mark.parametrize("name", [
+        "get", "post", "put", "patch", "delete", "resources", "scope"])
+    def test_the_router_dsl_stays_a_receive(self, name: str) -> None:
+        """CONTROL, and the Django rule again. A route macro declares where a
+        request arrives; the arrival itself has no call site to catalogue, so
+        moving or deleting these would relocate the receive to nothing."""
+        assert _has("elixir", "net_recv", "Phoenix.Router", name)
+
+    def test_halt_transfers_nothing_and_is_gone(self) -> None:
+        """``Plug.Conn.halt`` marks the connection halted. It moves no bytes in
+        either direction, so it is neither a source nor a sink."""
+        assert not _has("elixir", "net_recv", "Plug.Conn", "halt")
+        assert not _has("elixir", "net_send", "Plug.Conn", "halt")
+
+    def test_phoenix_now_has_an_egress_surface_at_all(self) -> None:
+        """THE POINT OF THE WHOLE CHANGE, asserted as a property rather than as
+        a list. Before this, zero Phoenix/Plug rows were sinks, so no Phoenix
+        application could produce a "data left the process" finding through its
+        own response path — the analysis could only ever report safe."""
+        senders = [p for p in _rows("elixir")
+                   if p.boundary == "net_send"
+                   and p.module.startswith(("Phoenix", "Plug"))]
+        assert len(senders) >= 20, (
+            f"Phoenix/Plug egress surface is {len(senders)} rows; the response "
+            f"path must be catalogued as a sink or a leak into it reads as safe"
+        )
+
+    def test_elixir_inherits_erlang_without_disturbing_it(self) -> None:
+        """CONTROL on the parent link: erlang's own network rows are untouched
+        by an elixir-only edit (``_CATALOG_PARENTS``: elixir -> erlang)."""
+        assert _has("erlang", "net_recv", "gen_tcp", "recv")
+        assert _has("elixir", "net_recv", "gen_tcp", "recv")
