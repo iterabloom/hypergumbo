@@ -1,0 +1,22 @@
+- op: create  # e9a8
+  at: '2026-08-28T06:59:08Z'  # e9a8
+  by: agent  # e9a8
+  actor: jgstern_agent  # e9a8
+  clock: 1  # e9a8
+  nonce: e9a8  # e9a8
+  data:  # e9a8
+    kind: work_item  # e9a8
+    title: "ci.yml counts the test manifest by path prefix at three sites, reading 0 for the common root-level-tests shape"  # e9a8
+    status: todo_hard  # e9a8
+    priority: 3  # e9a8
+    parent:  # e9a8
+    tags:  # e9a8
+    - ci  # e9a8
+    - manifest  # e9a8
+    - diagnostics  # e9a8
+    isbefore: []  # e9a8
+    duplicate_of: []  # e9a8
+    not_duplicate_of: []  # e9a8
+    pr_ref:  # e9a8
+    description: "ci.yml counts a test manifest with grep -c \"^packages/\" at three sites, which\nreads 0 for any manifest of root-level tests/... entries.\n\nTHE SAME MISTAKE _manifest_test_count EXISTS TO HAVE FIXED, one file over.\nThat function's own docstring records it: auto-pr's first cut counted the\nmanifest with grep -c '^packages/', which is 0 for a manifest of root-level\ntests/... paths -- the common shape -- so the \"kept N entries\" diagnostic that\nmakes a silent narrowing VISIBLE never printed. The merge path was fixed and\nthe reporting path was left behind. CI's reporting path was never fixed at all.\n\nSITES (.github/workflows/ci.yml):\n  717   TEST_COUNT=$(grep -c \"^packages/\" \"$MANIFEST\" || echo 0)\n  773   TOTAL_TESTS=$(grep -c \"^packages/\" \"$MANIFEST\" 2>/dev/null || echo 0)\n  1116  TEST_COUNT=$(grep -c \"^packages/\" \"$MANIFEST\" || echo 0)   (retry job)\n\nBLAST RADIUS IS DIAGNOSTIC, NOT BEHAVIOURAL -- state it precisely. All three\nvalues are only echoed:\n  \"# (manifest lists $TEST_COUNT test files)\"  and\n  \"Manifest validated ($TOTAL_TESTS test files)\"\nThe tests that actually RUN come from ci.yml:935/1206, which parse the\nSELECTED_TESTS section and count it with wc -w -- correct, and unaffected. The\nSANITY_OK gate uses a per-module grep -c \"packages/$mod/tests/\", also unaffected.\nSo nothing runs the wrong tests; CI reports \"manifest lists 0 test files\" and\nthen runs 96 of them.\n\nWHY IT IS WORTH FIXING ANYWAY: a validation banner that reads 0 for the common\nmanifest shape is a diagnostic that cannot fire, and the reason it exists is to\nmake a silent narrowing visible. \"Manifest validated (0 test files)\" is the\nexact string a human would scan past while CI ran nothing.\n\nFIX: parse by SECTION, not by path prefix -- the same correction\n_manifest_selected_tests already carries. ci.yml already has the correct\none-liner at 935; reuse its shape.\n\nFound while fixing INV-zamoh (PR #599) during the required analogue sweep."  # e9a8
+    fields: {}  # e9a8
