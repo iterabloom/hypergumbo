@@ -1,0 +1,23 @@
+- op: create  # 81e5
+  at: '2026-08-28T01:45:15Z'  # 81e5
+  by: agent  # 81e5
+  actor: jgstern_agent  # 81e5
+  clock: 1  # 81e5
+  nonce: '81e5'  # 81e5
+  data:  # 81e5
+    kind: work_item  # 81e5
+    title: "scripts/yaml-catalog-index is an operator view that ships to nobody: users need an inventory subcommand for the 156 YAML files that define what hypergumbo knows"  # 81e5
+    status: todo_hard  # 81e5
+    priority: 3  # 81e5
+    parent:  # 81e5
+    tags:  # 81e5
+    - cli  # 81e5
+    - catalogue  # 81e5
+    - ux  # 81e5
+    - yaml_catalogs  # 81e5
+    isbefore: []  # 81e5
+    duplicate_of: []  # 81e5
+    not_duplicate_of: []  # 81e5
+    pr_ref:  # 81e5
+    description: "FROM THE OWNER, 2026-08-27: \"scripts/yaml-catalog-index should be made into a\nsubcommand that takes an inventory for the user.\"\n\nWHAT EXISTS. scripts/yaml-catalog-index is an OPERATOR view over the canonical\nregistry hypergumbo_core.yaml_catalogs (CatalogSpec: directory, purpose, loader,\nadr) plus a --check drift mode wired as a gate. It prints:\n\n  Directory           Files  ADR       Loader               Purpose\n  frameworks          107    ADR-3aaa  framework_patterns   ...\n  dataflow_patterns    20    ADR-0015  dataflow             ...\n  io_primitives        15    ADR-0016  io_boundary          ...\n  cfg_nodes             5    ADR-0017  cfg                  ...\n  function_summaries    4    ADR-0017  function_summaries   ...\n  taint_sources         2    ADR-0017  taint                ...\n  url_folding           2    --        url_folding          ...\n  taint_sanitizers      1    ADR-0017  taint                ...\n  Total: 156 YAML files across 8 catalogs.\n\nWHY A USER NEEDS IT AND CANNOT GET IT TODAY. The 156 files are the substance of\nwhat hypergumbo knows -- which I/O primitives it will recognise, which framework\nconventions it will enrich, which taint sources it will trust. A user deciding\nwhether to believe a verdict, or working out why their framework was not\ndetected, has no way to ask \"what does this installation actually carry?\". The\nscript lives in the repo and ships to nobody: packages = [\"src/hypergumbo_core\"]\nin pyproject.toml, so scripts/ is not in the wheel.\n\nTHE INVENTORY A USER NEEDS IS NOT THE OPERATOR ONE. The operator view answers\n\"is the registry in sync with the tree\". A user's questions are different, and\nthis is the design work of the item rather than a port:\n  - what is loaded RIGHT NOW, including any overlay layered on top, per family\n  - which families a user may EXTEND, and where their file goes\n  - per language, whether this installation has a catalogue at all, and its\n    status (provenance_declared vs in_progress) -- today that is disclosed only\n    as a one-line stderr warning during an analysis run\n  - what a given family's rows would change if removed (why should I care)\n\nNAMING. `hypergumbo catalog` is TAKEN -- it lists language analyzers and\nframeworks (\"Shows which languages and frameworks hypergumbo can analyze\"), which\nis adjacent enough to be confusing and arguably the same user question wearing a\ndifferent hat. Deciding whether this is a new subcommand, a --yaml mode of the\nexisting one, or a merge of the two is part of the item; do not assume a new verb.\n\nRELATED, AND WHY THIS IS FILED RATHER THAN DONE NOW: the owner has separately\ndirected that configurable YAML move to a user-visible home under\n$XDG_CONFIG_HOME/hypergumbo/ with a run-once init subcommand, and that the\nshipped third-party overlays load by default with a disclosure. That work will\nadd a per-family \"can a user extend this, and where does their copy live\" fact\nwhich this inventory must report. Sequence this AFTER it, or the inventory ships\nnaming a layout that is about to change.\n\nNOT URGENT, per the owner."  # 81e5
+    fields: {}  # 81e5

@@ -43,3 +43,11 @@
   clock: 6  # dd21
   nonce: dd21  # dd21
   message: "Acknowledged. The owner closed this on 2026-08-26 -- \"this is done in spite of the dangling questions because they are inconsequential and accordingly i am marking it done\" -- and on 2026-08-27 directed: \"forget about INV-kuzug stop asking about it.\"\n\nBOTH DANGLING QUESTIONS ARE HEREBY DEAD, not deferred: marked-replacement vs silent deletion, and editing the published bodies on #548/#552/#553/#556. Neither is to be re-raised.\n\nI had carried this in my session handoff as \"parked on 2 owner rulings\" AFTER the owner had already answered, and re-surfaced it at the next session start. That is the failure: a handoff note outlived the decision it was waiting on. The remedy is on the note, not here -- a parked-on-owner entry must be re-checked against the item before it is repeated.\n\nBranch jgstern-agent/fix/kuzug-scrub-pr-bodies remains local and unmerged; it touches governance files, so it is not self-mergeable and is not being pursued."  # dd21
+- op: update  # 6801
+  at: '2026-08-27T23:55:41Z'  # 6801
+  by: human  # 6801
+  actor: jgstern  # 6801
+  clock: 7  # 6801
+  nonce: '6801'  # 6801
+  set:  # 6801
+    status: satisfied  # 6801

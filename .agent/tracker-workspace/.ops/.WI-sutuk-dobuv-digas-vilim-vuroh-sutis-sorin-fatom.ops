@@ -31,3 +31,11 @@
   nonce: 1cfd  # 1cfd
   set:  # 1cfd
     priority: 1  # 1cfd
+- op: update  # a657
+  at: '2026-08-28T01:35:05Z'  # a657
+  by: human  # a657
+  actor: jgstern  # a657
+  clock: 3  # a657
+  nonce: a657  # a657
+  set:  # a657
+    status: todo_hard  # a657

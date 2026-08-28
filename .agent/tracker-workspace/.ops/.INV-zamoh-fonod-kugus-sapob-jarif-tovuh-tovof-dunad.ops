@@ -38,3 +38,25 @@
   clock: 3  # 63cb
   nonce: 63cb  # 63cb
   message: "GOVERNANCE APPROVAL REQUESTED. The fix touches scripts/lib/forgejo-api.sh, a governance file, so per AGENTS.md no PR has been created and none will be until a human approves. The proposed patch is two lines (one '|| true' per branch of _manifest_selected_tests), verified against a scratch copy of the whole scripts/lib tree under 'set -euo pipefail' with a real 3-test committed manifest and a real 0-test regen: union returned 0 and preserved all three paths. The second defect named in the description (unioned header keeps the regen's 'Selected tests: 0' while the body carries the union) is NOT covered by that patch and needs its own line, rewriting the count from the unioned body. Blast radius today: every docs-only branch must be landed by manual push + merge-pr instead of auto-pr, which is the route AGENTS.md already permits and the route ADR-0046 is taking."  # 63cb
+- op: update  # a41c
+  at: '2026-08-27T23:52:14Z'  # a41c
+  by: human  # a41c
+  actor: jgstern  # a41c
+  clock: 4  # a41c
+  nonce: a41c  # a41c
+  set:  # a41c
+    status: violated  # a41c
+- op: discuss  # 6837
+  at: '2026-08-27T23:52:25Z'  # 6837
+  by: human  # 6837
+  actor: jgstern  # 6837
+  clock: 5  # 6837
+  nonce: '6837'  # 6837
+  message: "approved"  # 6837
+- op: discuss  # 1870
+  at: '2026-08-27T23:52:51Z'  # 1870
+  by: human  # 1870
+  actor: jgstern  # 1870
+  clock: 6  # 1870
+  nonce: '1870'  # 1870
+  message: "approved for auto-pr without --gov"  # 1870
