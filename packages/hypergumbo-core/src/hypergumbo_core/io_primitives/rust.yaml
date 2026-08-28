@@ -459,6 +459,13 @@ ipc_recv:
   - module: std::io::Stdin
     methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
               read_line, lines]
+    notes: >-
+      `stdin()` is already rowed above, but the handle is where the flow starts
+      and these are where the bytes arrive. StdinLock is rowed for the same
+      reason: `lock` itself is ABSENT — it acquires a mutex on the handle's
+      buffer and moves no data — so without these rows a read performed through
+      `stdin().lock()` would be invisible, which is the exact gap this item
+      found on std::fs::File.
   - module: std::io::StdinLock
     methods: [read, read_vectored, read_to_end, read_to_string, read_exact,
               read_line, read_until, fill_buf]
@@ -471,13 +478,6 @@ ipc_recv:
       cross a process boundary here, so the Read methods are rowed exactly as
       Stdin's are. python rows the matching `os.read` rather than leaving a
       pipe read invisible.
-    notes: >-
-      `stdin()` is already rowed above, but the handle is where the flow starts
-      and these are where the bytes arrive. StdinLock is rowed for the same
-      reason: `lock` itself is ABSENT — it acquires a mutex on the handle's
-      buffer and moves no data — so without these rows a read performed through
-      `stdin().lock()` would be invisible, which is the exact gap this item
-      found on std::fs::File.
 
 logging:
   # WI-dutah: std::io.{stdout,stderr} are terminal output, not IPC.

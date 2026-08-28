@@ -80,8 +80,7 @@ net_send:
   - module: unistd
     functions: [write]
     boundary_ruling: call_site_undecidable
-    notes: "INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong."
-    notes: "write() on a socket fd"
+    notes: "write() on a socket fd. INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong. (INV-nular: these were TWO `notes:` keys on one row, so PyYAML kept the second and discarded this rationale at load; the catalogue loader now refuses duplicate keys.)"
 
 net_recv:
   - module: sys/socket
@@ -89,8 +88,7 @@ net_recv:
   - module: unistd
     functions: [read]
     boundary_ruling: call_site_undecidable
-    notes: "INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong."
-    notes: "read() on a socket fd"
+    notes: "read() on a socket fd. INV-vaduk: exactly one of fs_read/ipc_recv/net_recv is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong. (INV-nular: these were TWO `notes:` keys on one row, so PyYAML kept the second and discarded this rationale at load; the catalogue loader now refuses duplicate keys.)"
 
 subprocess:
   - module: unistd
