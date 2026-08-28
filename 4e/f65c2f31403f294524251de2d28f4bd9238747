@@ -1,0 +1,66 @@
+Original commit body from deb64293a265799d8bf2bd1876cd84852d13767b:
+
+Second sweep pass. Same mechanism as F1-F3 -- a row minting a taint SOURCE, or
+accepting a taint SINK, at a call that moves no application data -- reached
+through a different shape: connection lifecycle rather than construction.
+
+REMOVED
+  javascript  WebSocket.onopen, WebSocket.onerror, EventSource.onerror
+              (net_recv). The open event carries no data and the error event is
+              SPECIFIED to carry none -- deliberately, so a cross-origin
+              failure cannot leak why it failed.
+  haskell     Network.Socket.close (net_send). Closing emits a FIN, which is
+              not a payload any line of the program produced, and net_send is a
+              taint SINK -- so the row accepted a tainted value as "sent" at a
+              call that sends nothing of the program's.
+  haskell     Network.Socket.gracefulClose (net_recv). THE SUBTLE ONE: it
+              really does read, draining until EOF or timeout, so bytes do
+              cross the boundary. It still is not a source -- the function
+              returns unit, so not one of those bytes reaches the program, and
+              net_recv under the auto-source map means a source of data the
+              program then USES.
+
+KEPT, AND THE DISTINCTION IS WHAT MAKES THE REMOVALS DEFENSIBLE
+  javascript  WebSocket.onclose. A CloseEvent carries `code` and `reason`, both
+              chosen by the peer, so it genuinely delivers peer-controlled data
+              into the program. Removing all three "lifecycle" callbacks
+              together would have been the tidy answer and the wrong one.
+
+MOVED, NOT DELETED
+  javascript  BroadcastChannel.postMessage carried TWO defects in one row: it
+              SENDS and was declared net_recv -- a direction error, minting
+              untrusted_input at a call that emits -- and the channel is not
+              network in either direction, being same-origin messaging between
+              browsing contexts where nothing leaves the browser. Both sides
+              move to ipc_*. Moving keeps the send REPRESENTED; deleting would
+              lose a sink, which is the false-all-clear direction. The receive
+              label is unchanged because ipc_recv and net_recv both derive
+              untrusted_input.
+
+EVERY REMOVAL PASSES THE SAME RULE AS F1-F3: the channel's real transfer is
+still catalogued. WebSocket keeps onmessage/addEventListener/send, EventSource
+keeps onmessage, Network.Socket keeps recv/recvFrom and send/sendTo/sendAll/
+sendMany. Asserted as controls in the same tests.
+
+A STRANDING CHECK NOW SITS AT THE POINT OF REMOVAL. PR #602 removed the only
+function-kind row from two modules, leaving them method-only and therefore
+reported method-starved -- which withholds every verdict on a repo -- and it
+merged green because a hand-picked manifest did not name the test that would
+have caught it. Each module touched here asserts that its set of call KINDS is
+unchanged, in the same file as the removal, rather than relying on a test
+elsewhere that this change might again fail to select.
+
+THE DUPLICATE-KEY LOAD GATE CAUGHT ME TWICE WHILE WRITING THIS, which is worth
+recording as evidence the gate earns its keep: once for adding a second
+`ipc_send:` section to javascript.yaml when one already existed, and once for a
+second `notes:` on a haskell row. Both would have been silently last-wins under
+plain PyYAML -- the exact failure that gate was built for, and it was INV-nular
+that built it.
+
+Tests: 14,929 passed. (The single collection error in that run is a pre-existing
+basename collision between tests/test_generate_concepts.py and
+packages/hypergumbo-core/tests/test_generate_concepts.py, triggered by running
+both directories in ONE pytest invocation; CI tests packages in isolation, so it
+does not fire there and it is not from this change.) Ratchet clean at 669.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
