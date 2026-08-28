@@ -1,0 +1,69 @@
+Original commit body from 15c3ab769b3a9db0da4345a55f3b50665d9bd715:
+
+F5'S HASKELL TWIN -- and the sweep that should have caught it ran and reported
+clean.
+
+Network.Wai.{responseLBS, responseFile, responseBuilder, responseStream}
+shipped under net_recv. They BUILD the payload a server is about to send, so
+each minted untrusted_input at a call that observes nothing -- and, the more
+serious half, no Wai row was a SINK, so a Warp application had no egress
+surface for its own response path and a secret written into a response body
+could not be reported as leaving the process. The failure direction is REPORTS
+SAFE, not reports noise.
+
+THE INSTRUMENT WAS BLIND, WHICH IS THE STRUCTURAL HALF. The F6 direction sweep
+matches primitive names against a direction vocabulary. That vocabulary carried
+the VERB `respond` and not the NOUN `response`, so responseLBS matched nothing
+in any of the fifteen catalogues. A name-based gate with an incomplete
+vocabulary does not fail; it exits 0. The vocabulary gains response/resp/render
+and is hoisted to module scope so a test can interrogate it rather than trust
+it. The widening is deliberately TIGHT: a generous one was measured first and
+returned 43 extra hits, every single one a false alarm -- an HTTP client's
+request() sends, wait_with_output reads, ServerBootstrap merely contains
+"Serve". The tight one finds exactly these four rows and nothing else.
+
+WARP'S LAUNCH ROWS ARE DELIBERATELY KEPT RECEIVES. Warp.{run, runSettings,
+runTLS, runEnv} pose exactly the question Phoenix.Router poses, which the F5
+change kept as a control: arrival has no call site to catalogue, so moving them
+would relocate the receive to NOTHING. The item forbids adjudicating the two
+apart, and this is its "or neither" branch. Enumerating the family turned up 37
+rows across NINE languages, answered three separate times by the same argument
+and never once actually ruled -- filed as WI-johuk for one adjudication, and
+pinned meanwhile by a cross-language test so it cannot be split silently.
+
+MEASURED A/B on 3 Wai/Warp repos (postgrest, servant, yesod): per-arm cache,
+arms sequential, canary on the LOADED Network.Wai boundary (NEW net_send / OLD
+net_recv), against a NETWORK claim set -- the standing claims file is
+host_fs-only and is structurally incapable of seeing this change at all.
+
+  net_recv chains   27 -> 9    (-18)
+  net_send chains   18 -> 36   (+18)
+  ten other boundaries         IDENTICAL
+
+Accounted CHAIN BY CHAIN rather than inferred from the symmetry: the 18 Wai
+chains changed direction, the 9 Warp launch chains did not move, and the 18
+pre-existing HTTP.Client sinks did not move.
+
+  yesod  UNTRUSTED-NO-NETWORK   inconclusive(0) -> violated(4)
+
+Two of those four sink in production source (Devel.hs:reverseProxy,
+Dispatch.hs:toWaiAppYre); two sink inside a test file, so the honest count is
+two, not four. servant holds at violated(3) on both claims as the in-run
+control, and yesod's HOSTSECRET claim holds at inconclusive as a second.
+
+DIRECTION: this change REPORTS MORE. It adds sinks, and the removals it
+performs delete false sources. Both halves move away from the all-clear.
+
+FOUND WHILE ENUMERATING THE LAUNCH FAMILY AND NOT ADDRESSED HERE: go's
+syscall.{Socket,Bind,Listen}, unix.{Socket,Bind,Listen}, net.Listen and
+fiber.App.Listen are still net_recv -- the INV-nular F2 family that was
+supposed to be extinguished. The gate enforcing F2 is blind to Go twice over:
+it parametrises over a hardcoded nine-language list that omits Go, AND its
+predicate is case-sensitive while Go capitalises every exported identifier, so
+adding Go to that list would still report clean. Verified rather than assumed.
+Filed as INV-kanuk, violated, P1, sequenced behind WI-johuk.
+
+Write-up: ~/hypergumbo_lab_notebook/joruz_ab_08282026/RESULT.md
+Full suite: 24,605 passed, 0 failed (27:03). Ratchet clean at 669.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
