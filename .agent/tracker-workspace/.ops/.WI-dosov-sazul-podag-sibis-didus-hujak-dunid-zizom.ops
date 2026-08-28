@@ -20,3 +20,27 @@
     pr_ref:  # 2921
     description: "INV-nular instance, found by the 2026-08-28 catalogue sweep\n(~/hypergumbo_lab_notebook/nular_sweep_08282026/RESULT.md).\n\nTHE ROWS. c.yaml's net_recv is:\n    [socket, bind, listen, accept, recv, recvfrom, recvmsg]\nThree of those seven receive nothing:\n  socket()  creates an endpoint and returns a descriptor\n  bind()    assigns a local address to it\n  listen()  marks it passive and sizes the backlog\nThe receive is recv / recvfrom / recvmsg, which are correctly rowed alongside.\ncpp inherits c, so one edit clears both.\n\nTHE SHAPE RECURS ACROSS TEN LANGUAGES as `accept`:\n  c, cpp        sys/socket.{socket, accept}\n  haskell       Network.Socket.{socket, accept}\n  elixir,erlang gen_tcp.accept\n  java,kotlin,scala  java.net.ServerSocket.accept\n  python        socket.socket.accept\n  rust          std::net::TcpListener.accept\n\n`accept` IS DELIBERATELY NOT FOLDED IN AND NEEDS ITS OWN RULING. Unlike\nsocket/bind/listen it is genuinely arguable: it returns a descriptor, but it\nALSO returns the peer's address, which is network-controlled data that an\nattacker chooses. If the peer address is a source, accept is a real net_recv\nand the rows are right. If the boundary means \"application bytes arrived\", it\nis not. Settle it once, in the vocabulary, and apply the answer to all ten.\n\nWHY IT MATTERS. A server that binds a socket and never reads from it is\ncredited with a network receive today, and any taint reaching the socket\nsetup path is credited as reaching a net_recv sink.\n\nSCOPE NOTE: socket/bind/listen is unarguable and small (3 rows, 2 languages by\ninheritance). It can ship ahead of the accept ruling."  # 2921
     fields: {}  # 2921
+- op: update  # fcf6
+  at: '2026-08-28T07:13:51Z'  # fcf6
+  by: agent  # fcf6
+  actor: jgstern_agent  # fcf6
+  clock: 2  # fcf6
+  nonce: fcf6  # fcf6
+  set: {}  # fcf6
+  add:  # fcf6
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # fcf6
+- op: update  # bf53
+  at: '2026-08-28T08:29:52Z'  # bf53
+  by: agent  # bf53
+  actor: jgstern_agent  # bf53
+  clock: 3  # bf53
+  nonce: bf53  # bf53
+  set:  # bf53
+    status: done  # bf53
+- op: discuss  # 99b7
+  at: '2026-08-28T08:29:52Z'  # 99b7
+  by: agent  # 99b7
+  actor: jgstern_agent  # 99b7
+  clock: 4  # 99b7
+  nonce: 99b7  # 99b7
+  message: "DONE for socket/bind/listen (PR #602); `accept` RULED AND KEPT.\n\nREMOVED, 10 languages: c/cpp sys/socket {socket,bind,listen}; haskell\nNetwork.Socket {socket,bind,listen}; erlang/elixir gen_tcp/gen_sctp/ssl listen\nAND gen_udp.open; java/kotlin/scala ServerSocket.bind + DatagramSocket.bind;\nrust TcpListener::bind + UdpSocket::bind.\n\nEACH REMOVAL PASSED THE SAME TEST: a genuine transfer call is still rowed for\nthat channel, verified per language before any row was touched. Pinned by\ntest_every_f2_language_keeps_a_real_receive.\n\n`accept` KEPT and ruled, not overlooked: it returns the peer address, which is\nchosen by whoever connected, so it is real network-controlled data.\n\nJAVASCRIPT EXCLUDED, and this is the interesting part: its ENTIRE net_recv\nsurface is callback registration (http.createServer, Deno.listen/listenTls/\nlistenDatagram, WebSocket.onmessage, EventSource.addEventListener). Not one row\nis a transfer call, because in Node and the browser there IS no call site at\nwhich bytes arrive. Removing Deno.listen would be arbitrary beside listenTls and\nwould relocate the read to nothing. Same rule that keeps Django in WI-hikut.\n\nBEHAVIOURAL EVIDENCE: git UNTRUSTED-NO-HOST-FS violated(5) -> inconclusive(0),\nall 5 sourced from `socket`. ejabberd violated(5) -> violated(3): the 2 removed\nare gen_udp.open and gen_tcp.listen, the 3 kept are genuine ETS reads -- the fix\nnarrows on evidence rather than blanket-clearing.\n\nALSO NOTED, NOT FIXED (file separately if it matters): javascript declares\nBroadcastChannel.postMessage under net_recv, and WebSocket.onopen/onclose/\nonerror are lifecycle events rather than data receives."  # 99b7

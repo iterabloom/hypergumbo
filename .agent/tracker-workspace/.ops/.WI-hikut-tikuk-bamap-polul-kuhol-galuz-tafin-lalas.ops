@@ -20,3 +20,27 @@
     pr_ref:  # 6281
     description: "INV-nular instance, found by the 2026-08-28 catalogue sweep\n(~/hypergumbo_lab_notebook/nular_sweep_08282026/RESULT.md). NOT previously\nfiled, and not among the five instances 0006 sampled.\n\nTHE ROWS (~18 clear, 5 languages). Every one declared db_read:\n  java (inherited by kotlin and scala)\n    javax.persistence.EntityManager.{createQuery, createNamedQuery, createNativeQuery}\n    jakarta.persistence.EntityManager.{same three}\n    java.sql.Connection.createStatement\n  elixir\n    Ecto.Query.{from, where, select, join, group_by, order_by, limit, offset, distinct}\n  python\n    django.db.models.{order_by, distinct}\n\nWHY IT IS A MISDECLARATION. None of these issues a statement, contacts a\ndatabase, or returns a row. Each returns a BUILDER: a Query, a Statement, an\nEcto.Query struct, a lazy QuerySet. The read happens later, at\nStatement.executeQuery / TypedQuery.getResultList / Ecto.Repo.all / QuerySet\niteration -- all of which are SEPARATELY ROWED. So one logical database read is\ncredited at two sites, and a taint flow that merely places a value into a\nbuilder is scored as reaching a db_read sink.\n\nTHE CATALOGUE STATES THE DEFECT IN ITS OWN NOTES:\n    java:   \"JDBC statement preparation (query path)\"\n    java:   \"JPA EntityManager query path\"\n    elixir: \"Ecto query construction -- part of the read path\"\nBEING ON THE READ PATH IS NOT PERFORMING THE READ. That is the whole item.\n\nARGUABLE, KEPT SEPARATE, DO NOT FOLD: prepareStatement, prepareCall,\nPostgrex.prepare, MyXQL.prepare. Most drivers send the SQL to the server at\nprepare time, so these may genuinely cross. Needs a per-driver answer.\n\nEXPLICITLY NOT A DEFECT, checked and excluded: ets.select, dets.select,\nmnesia.select genuinely execute a match and return rows.\n\nCATALOGUE INHERITANCE: _CATALOG_PARENTS gives kotlin->java and scala->java, so\nthe 9 java rows are ONE edit that clears three languages.\n\nDIRECTION: this REMOVES findings (a builder call stops being a sink), so per\nLIVE.md it needs more evidence than a change that adds them -- a measured\nbefore/after on a cohort that actually exercises JPA/JDBC, Ecto and Django,\nwith a control that must not move. No such cohort is assembled yet."  # 6281
     fields: {}  # 6281
+- op: update  # 1a0c
+  at: '2026-08-28T07:13:51Z'  # 1a0c
+  by: agent  # 1a0c
+  actor: jgstern_agent  # 1a0c
+  clock: 2  # 1a0c
+  nonce: 1a0c  # 1a0c
+  set: {}  # 1a0c
+  add:  # 1a0c
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 1a0c
+- op: update  # e29a
+  at: '2026-08-28T08:29:52Z'  # e29a
+  by: agent  # e29a
+  actor: jgstern_agent  # e29a
+  clock: 3  # e29a
+  nonce: e29a  # e29a
+  set:  # e29a
+    status: done  # e29a
+- op: discuss  # da31
+  at: '2026-08-28T08:29:53Z'  # da31
+  by: agent  # da31
+  actor: jgstern_agent  # da31
+  clock: 4  # da31
+  nonce: da31  # da31
+  message: "DONE for the clear cases (PR #602), with a rule refinement this item did not have.\n\nTHE RULE IS \"IS THE READ STILL REPRESENTED AFTER THE REMOVAL\", not \"does this\ncall issue SQL\". Remove a builder only when the executor is separately rowed.\n\nREMOVED: javax/jakarta EntityManager {createQuery, createNamedQuery,\ncreateNativeQuery} (executor TypedQuery.getResultList is rowed); JDBC\nConnection.createStatement (executor Statement.executeQuery is rowed); all nine\nEcto.Query combinators (executor Ecto.Repo.all is rowed). java's rows are\ninherited by kotlin and scala, so one edit cleared three languages.\n\nDJANGO IS KEPT, REVERSING THIS ITEM'S OWN FILING. I listed django order_by and\ndistinct as defects. They are builders by the same definition -- a QuerySet is\nlazy and filter() issues nothing -- but Django executes through an IMPLICIT\n__iter__ with NO CALL SITE TO CATALOGUE. There is no executor row to relocate\nthe read to, so removing them would DELETE the read rather than move it. Pinned\nas a test that costs something.\n\nKEPT, ruled separately: prepareStatement, prepareCall, Postgrex.prepare,\nMyXQL.prepare -- most drivers send SQL to the server at prepare time.\nEXCLUDED after checking: ets/dets/mnesia.select genuinely execute.\n\nMEASUREMENT IS PARTIAL AND I AM SAYING SO. The elixir arm moved: plausible\ndb_read 55 -> 48 (7 Ecto.Query chains), though no verdict changed. THE JAVA ARM\nIS UNMEASURED -- playframework carries JPA calls but moved no db_read, so the\nEntityManager module slot was never resolved there. The java rows are removed on\nthe argument, not on evidence."  # da31
