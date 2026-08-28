@@ -30,3 +30,18 @@
   set: {}  # 64cc
   add:  # 64cc
     isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 64cc
+- op: update  # 5d8e
+  at: '2026-08-28T08:29:52Z'  # 5d8e
+  by: agent  # 5d8e
+  actor: jgstern_agent  # 5d8e
+  clock: 3  # 5d8e
+  nonce: 5d8e  # 5d8e
+  set:  # 5d8e
+    status: done  # 5d8e
+- op: discuss  # 6b04
+  at: '2026-08-28T08:29:52Z'  # 6b04
+  by: agent  # 6b04
+  actor: jgstern_agent  # 6b04
+  clock: 4  # 6b04
+  nonce: 6b04  # 6b04
+  message: "SATISFIED-IN-EFFECT for this family (PR #602). All 31 rows removed: haskell's\nentire db_read/db_write surface was Data.IORef / Data.STRef /\nControl.Concurrent.MVar / Control.Concurrent.STM and contained no real database,\nso this removes a claim the catalogue never had rows to support.\n\nBEHAVIOURAL EVIDENCE, simplex-chat (19 files using these APIs):\n  UNTRUSTED-NO-HOST-FS  violated (13 evidence rows) -> inconclusive (0)\n  and the 13 are 13/13 attributable to removed rows by name --\n  readTVarIO x7, atomically x3, readTVar, newTVar, newTVarIO.\n  CONTROL in the same run: HOSTSECRET-NO-HOST-FS unchanged at 7 rows.\n\nTHE ROW'S OWN DEFERRED QUESTION IS ANSWERED. haskell.yaml carried\n`boundary_ruling: unruled` saying \"the db_* classification of the whole\nData.IORef / STRef / MVar / STM family is the prior question ... a vocabulary\ndecision beyond this row\". Decided: an in-process mutable reference is not a\ndatabase. The declared-debt register (EXPECTED_UNRULED) is now EMPTY.\n\nNOT CLAIMED: violated -> inconclusive is not a safety result; it means no such\nflow is found AND completeness is not vouched for."  # 6b04
