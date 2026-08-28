@@ -1,0 +1,43 @@
+Original commit body from 31f042d648be92983e0415dc5ebb3ff57a2c19df:
+
+CatalogSpec gains `user_channel` -- the per-family overlay directory under
+$XDG_CONFIG_HOME/hypergumbo/ -- and `no_channel_reason`. Both are REQUIRED
+with no default, and that absence is the mechanism rather than an oversight:
+a defaulted field would let the next catalogue family silently inherit "no
+channel, no reason" and ruling 7 would stop binding. A test pins the
+required-ness itself, so a later convenience default fails instead of
+quietly disarming the gate.
+
+scripts/yaml-catalog-index --check -- already a CI gate -- now refuses an
+incoherent answer, which is what makes the fields mean something rather than
+merely exist. Refused: declaring both a channel and a reason for having none;
+declaring neither; a channel name that is not <directory>.d (derived, so the
+two cannot drift); and channel_scope / channel_gated set on a family with no
+channel to apply them to. The shipped registry passes the gate it gained.
+
+All eight families carry their ruling-10 verdict, pinned as a TABLE rather
+than a count so a future edit that flips one has to change the test and say
+so. Channel: io_primitives, taint_sources, taint_sanitizers (existing),
+frameworks (new). No channel: cfg_nodes and url_folding, each with a written
+reason -- grammar node types a user cannot know better than, and rows naming
+Python engine functions inside the shipped package, which would make a user
+file inert without also accepting user code.
+
+Two families needed a qualifier rather than a yes/no:
+
+  dataflow_patterns   channel_scope="library_patterns" -- MIXED. Its grammar
+                      rows are internal by the cfg_nodes reasoning; its
+                      library_patterns rows are regexes over call syntax that
+                      an in-house collection type has a legitimate row to add.
+                      Granting the file would hand over the grammar too.
+  function_summaries  channel_gated="CAVEAT_USER_SUPPLIED_SANITIZER" -- a
+                      terminating user summary IS a sanitizer declaration, so
+                      it changes what the tool CLAIMS, not only what it sees.
+
+The CLI and docs/ARCHITECTURE.md both surface the answer, reported PER FAMILY
+and not per file: dataflow_patterns' channel is section-scoped and only 9 of
+its 20 files carry that section, so "149 of 156 files extensible" would
+overstate what a user may actually contribute.
+
+Racial-Capitalism-Is-Bad: a koala riding a chariot pulled by holographic horses in a fossil-flecked diner booth with a union of flamingos made of garlic cloves
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
