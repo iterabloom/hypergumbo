@@ -259,15 +259,6 @@ fs_write:
   - module: json
     functions: [dump]
     notes: "json.dump writes to a file object; json.dumps returns a string (not I/O)"
-  - module: ujson
-    functions: [dump]
-    notes: >-
-      WI-nibav. Drop-in for stdlib json; flows through it were previously
-      reached only by the retired substring predicate ('json' in 'ujson').
-      SURFACE READ, NOT ASSUMED: ujson exposes dump/dumps/load/loads, so it
-      mirrors the catalogued json.dump file-write. orjson is deliberately NOT
-      listed beside it -- its API is dumps/loads only, with no dump, so it has
-      no file-write surface to catalogue and adding it would match nothing.
   - module: pickle
     functions: [dump]
   - module: csv
@@ -344,12 +335,6 @@ db_read:
   # (module-filter path, never the short-name gate). ``get``/``all``/etc. are
   # ambiguous by short name (dict.get, list.count); the ``django.db.models``
   # module hint disambiguates. See the type-verified carve-out note above.
-  - module: django.db.models
-    methods: [all, filter, exclude, get, count, exists, first, last,
-              values, values_list, annotate, aggregate, order_by, distinct,
-              none, iterator, earliest, latest, in_bulk,
-              select_related, prefetch_related]
-    notes: "Django ORM Manager/QuerySet query surface (type-verified receiver)"
 
 db_write:
   # ---------------------------------------------------------------
@@ -376,10 +361,6 @@ db_write:
   # (``Model.objects.create()``/``bulk_create()``/``update()``) and instance
   # writes (``models.Model``-subclass ``self.save()``/``self.delete()``).
   # Latent — same type-verified module-filter path as the read block above.
-  - module: django.db.models
-    methods: [create, bulk_create, update, bulk_update, delete,
-              get_or_create, update_or_create, save]
-    notes: "Django ORM Manager/instance write surface (type-verified receiver)"
 
 net_send:
   - module: socket.socket
@@ -430,22 +411,6 @@ net_recv:
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
   # Popular web frameworks
-  - module: flask.Flask
-    methods: [run]
-    notes: "Flask development server"
-  # WI-harin: django.core.management.execute_from_command_line was here as
-  # net_recv — a false positive. It is a CLI dispatcher (the manage.py entry
-  # routing to migrate / collectstatic / runserver / …), not itself a
-  # network receive, and it is third-party framework code (out of scope
-  # under the same Plan-C strict-stdlib rule the net_send side enforces).
-  # Removed. A framework's server-start (runserver) surfaces via the
-  # external_potential bucket, not a mislabeled stdlib-catalog entry.
-  - module: uvicorn
-    functions: [run]
-    notes: "ASGI server (used by FastAPI, Starlette)"
-  - module: aiohttp.web
-    functions: [run_app]
-    notes: "aiohttp web server"
 
 ipc_send:
   # ---------------------------------------------------------------

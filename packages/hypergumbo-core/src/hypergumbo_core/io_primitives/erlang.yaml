@@ -135,8 +135,17 @@ net_send:
   - module: httpc
     functions: [request]
     notes: "inets HTTP client"
-  - module: http_client
-    functions: [request]
+  # `http_client` REMOVED (ADR-0047 ruling 8, WI-surun). There is no OTP
+  # module by that name -- inets' client is `httpc`, one row above, and
+  # this was a phantom sitting beside it since the catalogue was written.
+  # It is DELETED rather than relocated to a community overlay, because an
+  # overlay row would assert that some package provides `http_client:request/1`
+  # and none does. The rule for removing a net_send row is "is the crossing
+  # still represented", not "does this call do the I/O" (WI-lunav): it is,
+  # by `httpc.request`. Positive evidence, not absence of evidence -- on
+  # ejabberd and emqx, `http_client` matched 0 times while `httpc` matched
+  # 10 and 9. A first-party module a project happens to name `http_client`
+  # was being classified as network egress on the strength of its name.
 
 net_recv:
   - module: gen_tcp

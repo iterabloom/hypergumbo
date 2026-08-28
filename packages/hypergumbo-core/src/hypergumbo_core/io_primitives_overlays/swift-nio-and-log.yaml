@@ -1,0 +1,146 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — SwiftNIO, swift-log, AsyncHTTPClient and swift-distributed-tracing.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind.
+#
+# WHERE THESE ROWS CAME FROM. They were shipped inside the stdlib-scoped
+# catalogue until ADR-0047 ruling 1 (WI-surun), which resolved a
+# contradiction rather than a gap: the catalogue asserted stdlib-only in
+# its own header while carrying these, and ~15 user-facing strings
+# repeated that assertion. The rows are not deleted, because the recall
+# they buy is real; they are moved to where an unvouched row belongs, so
+# that the claim and the contents finally agree.
+#
+# `retrieved:` IS A FLOOR, NOT A PACKAGING DATE. It is the OLDEST date on
+# which any row here was last edited against the upstream API it
+# describes. The ADR-0047 relocation did NOT re-check these rows against
+# upstream, so the date deliberately does not move to the relocation --
+# claiming otherwise would launder five months of staleness through a
+# refactor. An API that changed since then is described wrongly here, and
+# this date is what lets you judge that for yourself.
+#
+# swift.yaml's OWN HEADER NAMED THIS SCOPE OUT LOUD -- "Foundation,
+# UIKit, SwiftNIO, AsyncHTTPClient, NIOSSL, distributed tracing, and
+# WebSocket APIs". ADR-0047's answer is that an openly-declared
+# divergence is still a divergence: it was never ratified, no other
+# catalogue was allowed it, and a reader of the stdlib-only claim
+# elsewhere in the tool had no way to know. Apple's system frameworks
+# (Foundation, Core Data, SwiftData, Network.framework, os) stay in the
+# catalogue -- they ship with the OS rather than through SwiftPM.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: swift
+status: overlay
+provenance: community
+retrieved: 2026-03-24
+
+fs_read:
+  - module: NonBlockingFileIO
+    methods:
+      - readChunked
+      - readChunk
+      - readChunks
+      - readToEnd
+      - openFile
+      - withFileHandle
+    notes: "SwiftNIO non-blocking file I/O read operations"
+
+fs_write:
+  - module: NonBlockingFileIO
+    methods:
+      - writeBuffer
+    notes: "SwiftNIO non-blocking file write"
+
+net_recv:
+  - module: ServerBootstrap
+    methods:
+      - ServerBootstrap
+    notes: "SwiftNIO server bootstrap"
+  - module: ClientBootstrap
+    methods:
+      - ClientBootstrap
+    notes: "SwiftNIO client bootstrap"
+  - module: EventLoopGroup
+    methods:
+      - MultiThreadedEventLoopGroup
+    notes: "SwiftNIO event loop group for server networking"
+  - module: NIOAsyncChannel
+    methods:
+      - NIOAsyncChannel
+    notes: "SwiftNIO async channel for bidirectional IO (Swift Concurrency)"
+  - module: Channel
+    methods:
+      - channelRead
+    notes: "SwiftNIO channel handler inbound data callback"
+  - module: NIOWebSocketServerUpgrader
+    methods:
+      - NIOWebSocketServerUpgrader
+    notes: "SwiftNIO WebSocket server upgrader"
+  - module: WebSocket
+    methods:
+      - onText
+      - onBinary
+      - onClose
+    notes: "WebSocket event handlers for incoming messages"
+
+net_send:
+  - module: AsyncHTTPClient
+    methods:
+      - HTTPClientRequest
+    notes: "AsyncHTTPClient request constructor (server-side Swift)"
+  - module: Channel
+    methods:
+      - writeAndFlush
+      - fireChannelRead
+      - addHandler
+    notes: "SwiftNIO channel write, inbound data forwarding, and pipeline setup"
+  - module: ChannelHandlerContext
+    methods:
+      - writeAndFlush
+      - fireChannelRead
+      - fireChannelInactive
+      - fireErrorCaught
+    notes: "SwiftNIO handler context I/O forwarding methods"
+  - module: NIOSSL
+    methods:
+      - NIOSSLContext
+      - NIOSSLCertificate
+      - NIOSSLPrivateKey
+    notes: "SwiftNIO TLS/SSL context and credential loading"
+
+process_send:
+  - module: EventLoopGroup
+    methods:
+      - syncShutdownGracefully
+    notes: "SwiftNIO event loop graceful shutdown"
+
+logging:
+  - module: Logger
+    methods:
+      - Logger
+      - trace
+      - debug
+      - info
+      - notice
+      - warning
+      - error
+      - critical
+    notes: "swift-log Logger: constructor and level methods (trace/debug/info/notice/warning/error/critical)"
+  - module: Tracing
+    methods:
+      - startSpan
+      - endSpan
+    notes: "Distributed tracing span lifecycle (swift-distributed-tracing)"

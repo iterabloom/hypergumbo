@@ -1,0 +1,160 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Phoenix, Plug, Ecto and the Elixir HTTP-client galaxy.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind.
+#
+# WHERE THESE ROWS CAME FROM. They were shipped inside the stdlib-scoped
+# catalogue until ADR-0047 ruling 1 (WI-surun), which resolved a
+# contradiction rather than a gap: the catalogue asserted stdlib-only in
+# its own header while carrying these, and ~15 user-facing strings
+# repeated that assertion. The rows are not deleted, because the recall
+# they buy is real; they are moved to where an unvouched row belongs, so
+# that the claim and the contents finally agree.
+#
+# `retrieved:` IS A FLOOR, NOT A PACKAGING DATE. It is the OLDEST date on
+# which any row here was last edited against the upstream API it
+# describes. The ADR-0047 relocation did NOT re-check these rows against
+# upstream, so the date deliberately does not move to the relocation --
+# claiming otherwise would launder five months of staleness through a
+# refactor. An API that changed since then is described wrongly here, and
+# this date is what lets you judge that for yourself.
+#
+# THE LARGEST RELOCATION IN THE TREE, AND THE BEST-ARGUED ONE.
+# elixir.yaml justified these rows with a UAT bug report: a real
+# Phoenix/Ecto repository returned ZERO I/O boundaries without them.
+# That recall is real and is NOT given up here -- this file loads by
+# default, so the Phoenix repo still gets its boundaries. What changes is
+# that the rows no longer claim to be the Elixir standard library.
+#
+# THE ROWS CARRY A CORRECTION MADE 2026-08-28 (INV-nular, #609): 26
+# Phoenix/Plug response helpers were catalogued `net_recv` when they are
+# egress. Because `net_recv` is an AUTO-DERIVED TAINT SOURCE, that did
+# not merely mislabel -- it MINTED untrusted taint at a response write
+# and left a Phoenix application with no egress surface at all, which is
+# a false all-clear. The `retrieved:` floor below predates that fix
+# because it is a floor over ALL rows here, not a high-water mark.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: elixir
+status: overlay
+provenance: community
+retrieved: 2026-04-15
+
+net_recv:
+  - module: Phoenix.Router
+    functions: [get, post, put, patch, delete, head, options, match, resources, scope]
+    notes: "Phoenix.Router DSL — declares receiving HTTP routes"
+  - module: Plug.Conn
+    functions: [read_body, fetch_query_params, fetch_cookies]
+    notes: >-
+      Plug: the REQUEST side only. This row used to carry the response side as
+      well and its own note said so — "read request / write response" — with
+      every entry under net_recv (INV-nular, WI-budiv). The senders have moved
+      to net_send below. `halt` was dropped outright: it marks the connection
+      halted and transfers nothing in either direction.
+
+net_send:
+  - module: Phoenix.Controller
+    functions: [render, json, text, html, put_status, redirect, send_resp, send_download]
+    notes: "Phoenix controller response helpers — the response is egress"
+  - module: Plug.Conn
+    functions:
+      - send_resp
+      - send_file
+      - send_chunked
+      - chunk
+      - resp
+      - put_resp_header
+      - put_resp_content_type
+      - put_resp_cookie
+    notes: "Plug: the RESPONSE side (INV-nular, WI-budiv)"
+  - module: Phoenix.Channel
+    functions: [push, broadcast, broadcast!, broadcast_from, broadcast_from!, reply]
+    notes: "Phoenix WebSocket channels — these PUBLISH; the receive is the route/handler"
+  - module: Phoenix.Endpoint
+    functions: [broadcast, broadcast!, broadcast_from, broadcast_from!]
+    notes: "Phoenix endpoint-level PubSub broadcast — egress"
+  - module: HTTPoison
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!]
+    notes: "HTTPoison (hackney-based client, very common in Elixir)"
+  - module: HTTPoison.Base
+    functions: [request, request!]
+  - module: Tesla
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, options, request, request!]
+    notes: "Tesla (middleware-based HTTP client)"
+  - module: Req
+    functions: [get, get!, post, post!, put, put!, delete, delete!, patch, patch!, head, head!, request, request!, new]
+    notes: "Req (modern Elixir HTTP client, Phoenix team's preferred)"
+  - module: Finch
+    functions: [build, request, stream]
+    notes: "Finch (low-level, pooled HTTP client)"
+  - module: Mint.HTTP
+    functions: [connect, request, stream]
+    notes: "Mint (connection-level HTTP/1+2 client)"
+  - module: Mint.HTTP1
+    functions: [connect, request, stream]
+  - module: Mint.HTTP2
+    functions: [connect, request, stream]
+
+db_read:
+  - module: Ecto.Repo
+    functions: [all, one, one!, get, get!, get_by, get_by!, "exists?", aggregate, stream, preload]
+    notes: "Ecto.Repo read operations"
+  # Ecto.Query REMOVED (INV-nular, WI-hikut). The nine combinators built a
+  # query struct and ran nothing; the row's own note said so -- "part of
+  # the read path" -- and being on the read path is not performing the
+  # read. db_read is an auto-derived taint SOURCE, so each combinator was
+  # minting untrusted_input at a pure data transformation. Ecto.Repo above
+  # rows the calls that actually execute.
+  - module: Postgrex
+    functions: [query, query!, prepare, prepare_execute]
+    notes: "Postgrex (PostgreSQL driver for Ecto)"
+  - module: MyXQL
+    functions: [query, query!, prepare]
+    notes: "MyXQL (MySQL driver for Ecto)"
+  - module: Redix
+    functions: [command, command!, pipeline, pipeline!]
+    notes: "Redix (Redis client)"
+
+db_write:
+  - module: Ecto.Repo
+    functions:
+      - insert
+      - insert!
+      - insert_or_update
+      - insert_or_update!
+      - insert_all
+      - update
+      - update!
+      - update_all
+      - delete
+      - delete!
+      - delete_all
+      - transaction
+      - rollback
+    notes: "Ecto.Repo write operations"
+  - module: Ecto.Multi
+    functions: [insert, update, delete, insert_all, update_all, delete_all, run]
+    notes: "Ecto.Multi — composed transactional writes"
+  - module: Postgrex
+    functions: [transaction]
+  - module: MyXQL
+    functions: [transaction]
+
+ipc_send:
+  - module: Oban
+    functions: [insert, insert!, insert_all]
+    notes: "Oban job queue — enqueue background jobs"

@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — golang.org/x/sys and gRPC.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6).
+#
+# HYPERGUMBO DOES NOT VOUCH FOR THESE ROWS. That is the point of the
+# `provenance: community` marker below, and it is a THIRD state, not a
+# softer form of either neighbour: the shipped stdlib catalogues are rows
+# hypergumbo stands behind, a user overlay is rows YOU stand behind, and
+# this is rows hypergumbo distributes and discloses without standing
+# behind.
+#
+# WHERE THESE ROWS CAME FROM. They were shipped inside the stdlib-scoped
+# catalogue until ADR-0047 ruling 1 (WI-surun), which resolved a
+# contradiction rather than a gap: the catalogue asserted stdlib-only in
+# its own header while carrying these, and ~15 user-facing strings
+# repeated that assertion. The rows are not deleted, because the recall
+# they buy is real; they are moved to where an unvouched row belongs, so
+# that the claim and the contents finally agree.
+#
+# `retrieved:` IS A FLOOR, NOT A PACKAGING DATE. It is the OLDEST date on
+# which any row here was last edited against the upstream API it
+# describes. The ADR-0047 relocation did NOT re-check these rows against
+# upstream, so the date deliberately does not move to the relocation --
+# claiming otherwise would launder five months of staleness through a
+# refactor. An API that changed since then is described wrongly here, and
+# this date is what lets you judge that for yourself.
+#
+# WHY THESE ARE NOT THE STANDARD LIBRARY. `golang.org/x/...` is
+# maintained by the Go team, which is exactly why it was easy to mistake
+# for stdlib -- but it is a SEPARATELY VERSIONED MODULE, fetched by the
+# module graph like any other dependency, and that is the distinction the
+# catalogue scope turns on. `unix` is the bare-identifier spelling of
+# `golang.org/x/sys/unix` as Go source refers to it. gRPC is third-party
+# outright.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: go
+status: overlay
+provenance: community
+retrieved: 2026-03-20
+
+fs_read:
+  - module: unix
+    functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Fstatat]
+    notes: "golang.org/x/sys/unix"
+
+fs_write:
+  - module: unix
+    functions: [Write, Pwrite, Mkdir, Rmdir, Unlink, Unlinkat, Renameat, Mkdirat]
+    notes: "golang.org/x/sys/unix"
+
+net_recv:
+  - module: unix
+    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
+
+net_send:
+  - module: grpc
+    functions: [Dial, DialContext, NewClient]
+    notes: "gRPC client connection"
+  - module: unix
+    functions: [Connect, Sendto, Sendmsg]
+
+subprocess:
+  - module: golang.org/x/sys/execabs
+    functions: [Command, CommandContext, LookPath]
+    notes: "execabs wraps os/exec with PATH-attack prevention"

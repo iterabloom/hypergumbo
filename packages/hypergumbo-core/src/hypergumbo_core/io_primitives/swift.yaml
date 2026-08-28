@@ -1,9 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # ADR-0016: I/O primitive catalog for Swift
 #
-# Maps Foundation, UIKit, SwiftNIO, AsyncHTTPClient, NIOSSL, distributed
-# tracing, and WebSocket APIs to I/O boundary types.  Uses Swift method names
-# (not ObjC selectors).
+# Maps the Swift standard library and Apple's SYSTEM frameworks —
+# Foundation, UIKit, Core Data, SwiftData, Network.framework, os — to I/O
+# boundary types.  Uses Swift method names (not ObjC selectors).
+#
+# SCOPE (ADR-0016 §27, ADR-0047 ruling 8): what ships with the OS. This
+# header used to name SwiftNIO, AsyncHTTPClient, NIOSSL, distributed tracing
+# and WebSocket, and the catalogue carried them — 38 rows, 36.5% of the file.
+# They are SwiftPM dependencies, not the standard library, and they now live
+# in io_primitives_overlays/swift-nio-and-log.yaml, which LOADS BY DEFAULT
+# and discloses itself. No recall was given up; the claim and the contents
+# simply agree now.
 #
 # Note: Swift's tree-sitter analyzer extracts bare identifiers from call
 # expressions, so module context is often "external".  Only include methods
@@ -43,15 +51,6 @@ fs_read:
   - module: InputStream
     methods:
       - inputStreamWithFileAtPath
-  - module: NonBlockingFileIO
-    methods:
-      - readChunked
-      - readChunk
-      - readChunks
-      - readToEnd
-      - openFile
-      - withFileHandle
-    notes: "SwiftNIO non-blocking file I/O read operations"
   - module: Bundle
     methods:
       - pathForResource
@@ -77,10 +76,6 @@ fs_write:
       - truncateFile
       - synchronizeFile
       - seekToEnd
-  - module: NonBlockingFileIO
-    methods:
-      - writeBuffer
-    notes: "SwiftNIO non-blocking file write"
 
 net_send:
   - module: URLSession
@@ -92,33 +87,10 @@ net_send:
     methods:
       - URLRequest
     notes: "URLRequest constructor implies HTTP request setup"
-  - module: AsyncHTTPClient
-    methods:
-      - HTTPClientRequest
-    notes: "AsyncHTTPClient request constructor (server-side Swift)"
   - module: NWConnection
     methods:
       - NWConnection
     notes: "Network.framework connection"
-  - module: Channel
-    methods:
-      - writeAndFlush
-      - fireChannelRead
-      - addHandler
-    notes: "SwiftNIO channel write, inbound data forwarding, and pipeline setup"
-  - module: ChannelHandlerContext
-    methods:
-      - writeAndFlush
-      - fireChannelRead
-      - fireChannelInactive
-      - fireErrorCaught
-    notes: "SwiftNIO handler context I/O forwarding methods"
-  - module: NIOSSL
-    methods:
-      - NIOSSLContext
-      - NIOSSLCertificate
-      - NIOSSLPrivateKey
-    notes: "SwiftNIO TLS/SSL context and credential loading"
 
 net_recv:
   - module: URLSession
@@ -129,36 +101,6 @@ net_recv:
     methods:
       - NWListener
     notes: "Network.framework listener"
-  - module: ServerBootstrap
-    methods:
-      - ServerBootstrap
-    notes: "SwiftNIO server bootstrap"
-  - module: ClientBootstrap
-    methods:
-      - ClientBootstrap
-    notes: "SwiftNIO client bootstrap"
-  - module: EventLoopGroup
-    methods:
-      - MultiThreadedEventLoopGroup
-    notes: "SwiftNIO event loop group for server networking"
-  - module: NIOAsyncChannel
-    methods:
-      - NIOAsyncChannel
-    notes: "SwiftNIO async channel for bidirectional IO (Swift Concurrency)"
-  - module: Channel
-    methods:
-      - channelRead
-    notes: "SwiftNIO channel handler inbound data callback"
-  - module: NIOWebSocketServerUpgrader
-    methods:
-      - NIOWebSocketServerUpgrader
-    notes: "SwiftNIO WebSocket server upgrader"
-  - module: WebSocket
-    methods:
-      - onText
-      - onBinary
-      - onClose
-    notes: "WebSocket event handlers for incoming messages"
 
 db_read:
   - module: NSManagedObjectContext
@@ -233,22 +175,6 @@ logging:
     functions:
       - NSLog
     notes: "Foundation logging function"
-  - module: Logger
-    methods:
-      - Logger
-      - trace
-      - debug
-      - info
-      - notice
-      - warning
-      - error
-      - critical
-    notes: "swift-log Logger: constructor and level methods (trace/debug/info/notice/warning/error/critical)"
-  - module: Tracing
-    methods:
-      - startSpan
-      - endSpan
-    notes: "Distributed tracing span lifecycle (swift-distributed-tracing)"
 
 ipc_send:
   - module: NotificationCenter
@@ -274,10 +200,6 @@ process_send:
       - preconditionFailure
       - assertionFailure
     notes: "Swift process termination/assertion functions"
-  - module: EventLoopGroup
-    methods:
-      - syncShutdownGracefully
-    notes: "SwiftNIO event loop graceful shutdown"
 
 # Names too generic to match without module context — these appear in many
 # non-IO contexts (e.g., Data() for empty data, String interpolation,
