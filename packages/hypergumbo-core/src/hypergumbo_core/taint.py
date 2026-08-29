@@ -2921,6 +2921,7 @@ def _ddg_taint_reaches(
     barrier_lines: AbstractSet[int] | None = None,
     forfeit_refutation: bool = False,
     escape_sites: list[EscapeSite] | None = None,
+    credited_user_summaries: set[str] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -3186,6 +3187,7 @@ def _ddg_taint_reaches(
                     continue
                 if _use_site_terminates(
                     symbol_id, use_line, callees_at, summaries,
+                    credited_user_summaries,
                 ):
                     continue
                 escaped = True
@@ -3202,6 +3204,7 @@ def _ddg_taint_reaches(
             # tell us the callee consumed it.
             if _use_site_terminates(
                 symbol_id, use_line, callees_at, summaries,
+                credited_user_summaries,
             ):
                 continue
             escaped = True
@@ -3267,6 +3270,7 @@ def _use_site_terminates(
     # rejects the ``defaultdict(set)`` every production caller builds.
     callees_at: Mapping[tuple[str, int], AbstractSet[str]] | None,
     summaries: Mapping[str, "FunctionSummary"] | None,
+    credited_user_summaries: set[str] | None = None,
 ) -> bool:
     """Does EVERY call at this line consume the tainted value and stop?
 
@@ -3310,6 +3314,21 @@ def _use_site_terminates(
         summary = summaries.get(qualified)
         if summary is None or not _summary_terminates(summary):
             return False
+    # ADR-0047 ruling 10 (WI-sofov). Record WHOSE word this closure rests on,
+    # and only once the line has actually terminated -- an entry consulted on a
+    # line that then escapes was not credited with anything.
+    #
+    # THIS IS COLLECTED HERE BECAUSE THERE IS NOWHERE ELSE TO READ IT FROM. A
+    # sanitized flow still surfaces as a finding carrying
+    # ``sanitized_by_user_supplied``, so the existing caveat reads it off the
+    # finding. A TERMINATED branch produces NO finding -- that is the whole
+    # point of terminating -- so if the walk does not say what it credited,
+    # nothing downstream can.
+    if credited_user_summaries is not None:
+        for qualified in callees:
+            summary = summaries.get(qualified)
+            if summary is not None and getattr(summary, "user_supplied", False):
+                credited_user_summaries.add(qualified)
     return True
 
 
@@ -3327,6 +3346,7 @@ def propagate_taint_ddg(
         str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]
     ] | None = None,
     forfeit_refutation: set[str] | None = None,
+    credited_user_summaries: set[str] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -3730,6 +3750,7 @@ def propagate_taint_ddg(
                         forfeit_refutation=(
                             source_fn in (forfeit_refutation or set())
                         ),
+                        credited_user_summaries=credited_user_summaries,
                     )
                     adjudicated = walk_result is True
 
@@ -3787,6 +3808,7 @@ def propagate_taint_ddg(
                             forfeit_refutation=(
                                 source_fn in (forfeit_refutation or set())
                             ),
+                            credited_user_summaries=credited_user_summaries,
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --

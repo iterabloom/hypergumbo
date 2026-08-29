@@ -77,8 +77,9 @@ _OVERLAY_CHANNEL = "io_primitives.d"
 #: capability the tool does not have.
 WIRED_CHANNELS = frozenset({
     "io_primitives.d",
-    "frameworks.d",        # WI-sofov
-    "dataflow_patterns.d", # WI-sofov, library_patterns section only
+    "frameworks.d",          # WI-sofov
+    "dataflow_patterns.d",   # WI-sofov, library_patterns section only
+    "function_summaries.d",  # WI-sofov, gated by CAVEAT_USER_SUPPLIED_SANITIZER
 })
 
 

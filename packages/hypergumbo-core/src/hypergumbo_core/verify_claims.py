@@ -4148,6 +4148,7 @@ def verify_taint_claim(
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
+    credited_user_summaries: "AbstractSet[str] | None" = None,
 ) -> ClaimVerdict:
     """Verify a taint claim and stamp the fidelity behind the answer.
 
@@ -4160,6 +4161,7 @@ def verify_taint_claim(
         displaced_sinks=displaced_sinks,
         displaced_sources=displaced_sources,
         coverage=coverage,
+        credited_user_summaries=credited_user_summaries,
     )
     if coverage is not None:
         verdict.analysis_fidelity = dict(coverage.analysis_fidelity)
@@ -4174,6 +4176,7 @@ def _verify_taint_claim_uncredited(
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
     coverage: Optional[BoundaryCoverage] = None,
+    credited_user_summaries: "AbstractSet[str] | None" = None,
 ) -> ClaimVerdict:
     """Verify a single taint-flow claim against propagation findings.
 
@@ -4330,6 +4333,43 @@ def _verify_taint_claim_uncredited(
                     f"caught was never constructed and cannot appear as a "
                     f"sanitized or excluded flow. The tool cannot check that "
                     f"the repository's replacement is equivalent."
+                ),
+            })
+        if credited_user_summaries:
+            # ADR-0047 ruling 10 (WI-sofov). A user-supplied TERMINATING
+            # function summary is a sanitizer declaration by another name: it
+            # closes a branch the walk would otherwise have followed, so a flow
+            # that would have been reported was never constructed. That is the
+            # structurally identical case CAVEAT_USER_SUPPLIED_SANITIZER
+            # already exists for, and granting the channel without it would
+            # re-open INV-buzab's shape on a fresh surface -- the tool
+            # answering "clean" on the strength of the user's own word, with
+            # nothing saying so.
+            #
+            # SCOPE, STATED HONESTLY: this is RUN-scoped, not flow-scoped. A
+            # terminated branch produces NO finding, so unlike a sanitized flow
+            # there is nothing to attribute to THIS claim in particular. The
+            # caveat therefore rides every confirming TAINT verdict in a run
+            # where any user summary was credited, which over-discloses. That
+            # is the safe direction -- the failure it prevents is a clean
+            # verdict resting silently on a user's word -- but it is coarser
+            # than the sanitizer caveat beside it and should not be mistaken
+            # for per-flow precision.
+            shown = ", ".join(sorted(credited_user_summaries))
+            caveats.append({
+                "kind": CAVEAT_USER_SUPPLIED_SANITIZER,
+                "entries": sorted(credited_user_summaries),
+                "detail": (
+                    f"A function summary supplied from your own "
+                    f"function_summaries.d/ was credited with CONSUMING a "
+                    f"tainted value during this run, closing a branch the walk "
+                    f"would otherwise have followed: {shown}. A terminating "
+                    f"summary removes flows rather than adding them, so this "
+                    f"clean verdict rests in part on your declaration; the "
+                    f"tool cannot check that the named function really "
+                    f"consumes what it is said to consume. Run-scoped: a "
+                    f"terminated branch leaves no finding to attribute to one "
+                    f"claim."
                 ),
             })
         if repo_supplied:
@@ -4636,6 +4676,7 @@ def verify_claims(
     blind_opaque_sites: list[str] | None = None,
     displaced_sinks: Mapping[str, Sequence[Any]] | None = None,
     displaced_sources: Mapping[str, Sequence[Any]] | None = None,
+    credited_user_summaries: "AbstractSet[str] | None" = None,
 ) -> list[ClaimVerdict]:
     """Verify all claims against boundary map and/or taint-flow findings.
 
@@ -4671,6 +4712,7 @@ def verify_claims(
                 displaced_sinks=displaced_sinks,
                 displaced_sources=displaced_sources,
                 coverage=coverage,
+                credited_user_summaries=credited_user_summaries,
             )
         else:
             verdict = verify_claim(claim, boundary_map, coverage=coverage)
