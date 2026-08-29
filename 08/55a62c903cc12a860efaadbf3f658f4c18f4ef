@@ -1,0 +1,68 @@
+Original commit body from e6f5247d45179d6d1a9cfdb57b57c180f385429c:
+
+Ruling 10's test is whether a family describes the USER'S world or the
+LANGUAGE'S. These two both pass it, and they are wired DIFFERENTLY because they
+answer it differently -- a single shared rule would have been wrong for one of
+them.
+
+FRAMEWORKS: A USER DEFINITION REPLACES THE SHIPPED ONE WHOLE. A
+FrameworkPatternDef is a coherent unit -- its detectors, route extraction and
+usage patterns are written to agree with each other -- so half-merging two of
+them yields a definition neither author wrote. That is NOT an inconsistency
+with io_primitives.d, where rows are keyed by qualified name and "later wins on
+collision" is well defined per row; it is the same reasoning applied to a
+different shape. It is also the only sensible reading for the case this channel
+exists for: an IN-HOUSE framework hypergumbo has never heard of, where there is
+no shipped definition to merge with.
+
+DATAFLOW IS SECTION-SCOPED TO library_patterns, AND THE SCOPING IS THE POINT.
+The grammar rows (node types, field names) are internal by the cfg_nodes
+argument: a user cannot know better than the grammar, and a wrong node type
+silently breaks the CFG, which silently breaks the taint walk. The
+library_patterns rows are regexes over call SYNTAX, matched by method name
+regardless of receiver type -- a claim about libraries and idioms that a user
+with an in-house collection type can legitimately extend. Granting the whole
+file would hand over the grammar as well.
+
+Grammar keys in a user file are IGNORED, NOT REFUSED, so a file that carries
+both cannot break a run -- and a test pins that they take no effect, because
+"ignored" is exactly the kind of claim that rots into "quietly honoured". User
+rows are appended LAST: scan_library_patterns takes rows in order, so a user row
+can only add a match where the shipped rows found none.
+
+BOTH CHANNELS ONLY WIDEN RECOGNITION, which is why they ship ahead of
+function_summaries.d. Neither can silence a finding. A user-supplied TERMINATING
+summary can -- taint.py's own reasoning is that a false "terminates" removes a
+real finding, which is why it already refuses short-name matches and treats a
+shared line as all-or-nothing -- so that channel waits for the
+CAVEAT_USER_SUPPLIED_SANITIZER gate rather than riding along with these.
+
+ONE JOIN, NOT FOUR. user_channel_files(family) is extracted from
+user_overlay_paths and now serves all three loaders. The channel NAME comes from
+the registry, so a family whose channel is renamed cannot leave one loader
+reading the old directory, and a family with no channel answers "no" rather than
+raising -- a caller asking "has the user extended cfg_nodes" is asking a fair
+question.
+
+THE WI-vafit GATE DID ITS JOB, which is worth recording because it was built two
+PRs ago for exactly this. Wiring two channels FAILED
+test_declared_extensible_is_not_reported_as_readable until the inventory was
+told. It is now tightened to pin the still-inert set as well, so the
+function_summaries arm cannot be reported readable before its gate exists.
+
+AND THE README HAD GONE STALE THE MOMENT THESE WERE WIRED -- it told users these
+directories had no effect. Rather than editing the sentence, the "which channels
+are read" fact moved into catalogue_home beside the channel primitives, so the
+init-catalogs README, the catalog-inventory view and the loaders now derive from
+ONE constant. The README also annotates a scoped channel FROM THE REGISTRY
+rather than describing it in prose that could drift from the loader enforcing
+it:
+
+    dataflow_patterns.d/   (only its `library_patterns` section is read)
+    frameworks.d/
+    io_primitives.d/
+
+Full suite 24,699 passed / 0 failed. catalogue_home.py and
+catalogue_inventory.py 100%; every new line in both loader blocks covered.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
