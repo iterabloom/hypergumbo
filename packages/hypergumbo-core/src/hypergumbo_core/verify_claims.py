@@ -645,6 +645,46 @@ _UNTYPED_CONSEQUENCE = {
 }
 
 
+def _deferred_crossing_caveat(
+    boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
+) -> dict[str, Any]:
+    """The one place the deferred-crossing disclosure is built (ADR-0049).
+
+    Same rule as :func:`_opaque_boundary_caveat` and
+    :func:`_untyped_receiver_caveat`: two spellings of one disclosure drift the
+    first time either is edited.
+
+    THE SENTENCE HAS TO SAY WHY THE CALL IS NOT A NEGATIVE. The catalogue
+    classified these calls exactly right — a server launch really is a network
+    primitive — and that correctness is precisely what would otherwise make them
+    examined negatives. So the wording names the ARRIVAL problem (the data
+    reaches a scope this call does not name) rather than suggesting a missing
+    row, which would send the reader to add one that already exists. That is the
+    same mistake ``_opaque_boundary_caveat`` avoids for launches.
+
+    Boundary in the prose because the caveat is boundary-SCOPED: a reader seeing
+    ``ListenAndServe`` under a ``net_recv`` claim needs to know that is why it
+    was raised, and that their ``fs_write`` claim was deliberately untouched.
+    """
+    where = ", ".join(sites[:_MAX_REPORTED_UNTYPED_SITES])
+    more = len(sites) - _MAX_REPORTED_UNTYPED_SITES
+    if more > 0:
+        where = f"{where} (+{more} more)"
+    return {
+        "kind": "deferred_crossing",
+        "arm": arm,
+        "boundary": boundary,
+        "entries": list(sites),
+        "detail": (
+            f"{len(sites)} call site(s) ({where}) open a {boundary} channel "
+            f"whose data arrives in a scope the call does not name — a server "
+            f"launch, registration or subscription. The runtime delivers to a "
+            f"handler, not to the caller, so this analysis cannot examine what "
+            f"arrives; a clean {boundary} result does not cover it."
+        ),
+    }
+
+
 def _untyped_receiver_caveat(
     boundary: str, sites: list[str], *, arm: str = _ARM_BOUNDARY,
 ) -> dict[str, Any]:
@@ -1050,6 +1090,26 @@ class BoundaryCoverage:
     #: forgetting to apply it; see :func:`untyped_receiver_sites` for why the
     #: unscoped version of this signal was measured and refused.
     untyped_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: SHADOWED boundary -> the deferred-crossing call sites that put it in
+    #: shadow (ADR-0049 ruling 2 clause 3). Populated on EVERY coverage result,
+    #: like :attr:`untyped_receiver_sites` and for the same reason.
+    #:
+    #: KEYED BY THE SHADOWED BOUNDARY, AND THAT IS THE WHOLE DESIGN. Opacity
+    #: (:attr:`opaque_sites`) is TOTAL — control left the process, so every
+    #: boundary is unexaminable and coverage goes incomplete for all of them.
+    #: A deferred crossing is the opposite: we know exactly what we cannot see.
+    #: ``ListenAndServe`` means inbound network data arrives somewhere this call
+    #: does not name, and says nothing about whether the program writes files.
+    #: Routing it through ``opaque_sites`` would send every server in every
+    #: language to ``inconclusive`` on ``fs_write`` and ``env_read`` — a change
+    #: that REPORTS LESS, on a gate that already withholds, and one every
+    #: existing opacity test would have stayed green through.
+    #:
+    #: Returning a MAP is what makes the scope structural rather than a rule a
+    #: caller must remember: a caller that forgets to scope gets a dict, not a
+    #: wrong answer. The unscoped version of the sibling signal was measured on
+    #: 2026-08-11 and recorded DO NOT BUILD IT.
+    deferred_crossing_sites: dict[str, list[str]] = field(default_factory=dict)
     #: ``(untyped sites, method call sites, distinct method names)`` over the
     #: WHOLE analysis, unscoped by boundary (INV-fibis). Its sibling above
     #: answers "which calls did it see but not adjudicate FOR THIS BOUNDARY";
@@ -2431,6 +2491,52 @@ def _opaque_launch_sites(
     return sorted(sites)
 
 
+def deferred_crossing_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> dict[str, list[str]]:
+    """Call sites that DEFER a crossing, grouped by the boundary they shadow.
+
+    ADR-0049 ruling 2 clause 3. A deferred crossing opens, registers, subscribes
+    to, schedules or defers a crossing whose data arrives in a scope the call
+    does not name — a server launch, a route registration, a callback
+    subscription. The call is catalogued and therefore EXAMINED (INV-buzab), so
+    without this signal a retagged launch would count as an examined negative
+    and ``verify-claims`` would return a green tick over live ingress. ADR-0016's
+    table measures that shape in the outbound direction: cataloguing ``curl`` as
+    ``net_send`` moved a cron-dropper claim from ``inconclusive`` rc 2 to
+    ``confirmed`` rc 0.
+
+    ASKED OF THE CATALOGUE, NOT OF THE RETURNED BOUNDARY, exactly as
+    :func:`_opaque_launch_sites` is. ``classify_call`` yields ONE primitive, so a
+    row-order accident would decide whether a call is seen as deferring; the
+    registry parity test caught precisely that on Scala for opacity, and there is
+    no reason to re-learn it here.
+
+    Returns qualified primitive names rather than modules, for the same reason
+    the opacity sibling does: the blocker is not that the module is uncatalogued
+    — it is fully catalogued — but that THIS call hands arrival to somewhere
+    else, and naming the call is what makes the disclosure checkable against the
+    source.
+    """
+    grouped: dict[str, set[str]] = {}
+    for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
+        primitive = classify_call(
+            catalogs, dst, edge.get("meta"), dst_ref=_edge_dst_ref(edge),
+        )
+        if primitive is None:
+            continue
+        shadowed = catalog.deferred_crossings(primitive.module, primitive.name)
+        if not shadowed:
+            continue
+        site = ".".join(
+            part for part in (primitive.module, primitive.name) if part
+        )
+        for boundary in shadowed:
+            grouped.setdefault(boundary, set()).add(site)
+    return {k: sorted(v) for k, v in sorted(grouped.items())}
+
+
 def analysis_fidelity(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -3306,6 +3412,9 @@ def compute_boundary_coverage(
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
     coverage.unknown_receiver_scope = unknown_receiver_scope(raw_edges, catalogs)
+    coverage.deferred_crossing_sites = deferred_crossing_sites(
+        raw_edges, catalogs,
+    )
     # THE THIRD SIGNAL, and the only one not read off the edge set. A language
     # whose analyzer never emits an external instance-method call edge produces
     # the same empty set as a repository that simply makes no such call, so the
@@ -3639,6 +3748,13 @@ def _verify_claim_uncredited(
     # ``.get`` out of a ``net_send`` verdict — the mis-fire the 2026-08-11
     # measurement caught, and the reason the unscoped DOWNGRADE was refused.
     untyped = coverage.untyped_receiver_sites.get(claim.constraint_boundary) or []
+    # ADR-0049 clause 3, scoped by the claim's own boundary for the same
+    # reason the line above is: a listen site must not reach an fs_write
+    # claim. Read here so it rides the ONE clean-caveat builder below and
+    # cannot be forgotten on one of the four clean paths.
+    deferred = coverage.deferred_crossing_sites.get(
+        claim.constraint_boundary,
+    ) or []
     _scope_sites, _scope_total, _scope_names = coverage.unknown_receiver_scope
 
     def _clean_caveats(
@@ -3654,6 +3770,15 @@ def _verify_claim_uncredited(
         and the one that RUNS is not always the one a later reader edits.
         """
         out = list(base or [])
+        if deferred:
+            # ADR-0049 clause 3. FIRST among the clean-path caveats because it
+            # is the categorical one: an untyped receiver is a call we saw and
+            # could not adjudicate, while a deferred crossing is data we cannot
+            # see arrive at all, and no amount of cataloguing changes that.
+            out = _merge_caveat(
+                out,
+                _deferred_crossing_caveat(claim.constraint_boundary, deferred),
+            )
         if untyped:
             out = _merge_caveat(
                 out,

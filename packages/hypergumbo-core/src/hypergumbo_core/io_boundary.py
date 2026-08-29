@@ -99,7 +99,7 @@ if TYPE_CHECKING:
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.1"  # WI-javoh: command_launch_edges added (command-mediated launches disclosed, excluded from total_io_edges). 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.2"  # WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +144,7 @@ CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
     "process_send", "logging",
     "browser_storage_write",
     "browser_storage_read",
+    "net_listen",
 )
 KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
     CATALOG_BOUNDARY_TYPES + ("external_potential", "command_launch"),
@@ -156,8 +157,42 @@ KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
 # (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
 # consumer sees them without them inflating the headline.
 _DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
-    {"external_potential", "command_launch"},
+    {"external_potential", "command_launch", "net_listen"},
 )
+
+
+# The DEFERRED-CROSSING boundaries, mapped to the data boundary each one makes
+# unexaminable (ADR-0049 ruling 2). THIS IS NOT ``OPAQUE_BOUNDARIES``, and the
+# difference is the whole design.
+#
+# ``subprocess`` opacity is TOTAL: control left the process for a program that
+# could do anything, so a launch site makes EVERY boundary unexaminable and
+# ``compute_boundary_coverage`` withholds a clean verdict for all of them.
+# A deferred crossing is the opposite shape -- we know EXACTLY what we cannot
+# see. ``net/http.ListenAndServe`` means inbound network data will arrive
+# somewhere this call does not name; it says nothing whatever about whether the
+# program writes files. Putting it in ``OPAQUE_BOUNDARIES`` would send every
+# server in every language to ``inconclusive`` on ``fs_write``, ``env_read`` and
+# the rest -- a change that REPORTS LESS, on a gate that already withholds, and
+# one that every existing opacity test would have stayed green through.
+#
+# So the shadow is SCOPED: a ``net_listen`` site blocks a clean ``net_recv``
+# verdict and nothing else. ADR-0049 ruling 2 clause 3 says exactly this ("over
+# the CORRESPONDING data boundary"); the scoping is the ruling, not an
+# optimisation of it.
+#
+# WHY THE SHADOW IS REQUIRED AT ALL, rather than the tag simply minting nothing.
+# Since INV-buzab, a call the catalogue CLASSIFIED is what ``examined`` means.
+# Retagging a launch call to a boundary that mints no taint still classifies it,
+# so without the shadow the call counts as an examined negative and
+# ``verify-claims`` returns a green tick over live ingress. ADR-0016's own table
+# measures that in the outbound direction: cataloguing ``curl`` as ``net_send``
+# took a cron-dropper claim from ``inconclusive`` rc 2 to ``confirmed`` rc 0.
+# A disclosure boundary without its shadow is a false-all-clear generator and is
+# strictly worse than leaving the false source in place.
+DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
+    "net_listen": "net_recv",
+}
 
 # Boundaries whose classification records that the analysis CANNOT SEE PAST the
 # call, rather than a known and complete I/O surface (INV-gahuz).
@@ -1165,6 +1200,36 @@ class IoBoundaryCatalog:
             and primitive.module == module
             and primitive.name == name
             for primitive in self.primitives
+        )
+
+    def deferred_crossings(self, module: str, name: str) -> frozenset[str]:
+        """Which DATA boundaries this primitive's rows put in shadow (ADR-0049).
+
+        The deferred-crossing sibling of :meth:`declares_opaque_crossing`, and
+        asked the same way for the same measured reason: OVER EVERY ROW, never
+        over the one ``classify_call`` returned. ``classify_call`` yields ONE
+        primitive, so a call catalogued under two boundaries answers with
+        whichever row wins, and a boundary-blind check would miss a deferred
+        crossing whose *other* row happened to be found first. The parity test
+        over the registry caught exactly that shape on Scala for opacity.
+
+        Returns the SHADOWED boundaries (``net_recv``), not the declared ones
+        (``net_listen``), because the shadow is what every caller actually
+        wants to ask about — "may I confirm a clean ``net_recv`` verdict here".
+        Returning the declared tag would push the
+        :data:`DEFERRED_CROSSING_SHADOWS` lookup out to each caller, which is
+        the second-home shape this module has paid for repeatedly.
+
+        A frozenset rather than a single value: nothing stops a future
+        primitive from deferring two boundaries at once, and a scalar return
+        would silently pick one the way the boundary-blind opacity check did.
+        """
+        return frozenset(
+            DEFERRED_CROSSING_SHADOWS[primitive.boundary]
+            for primitive in self.primitives
+            if primitive.boundary in DEFERRED_CROSSING_SHADOWS
+            and primitive.module == module
+            and primitive.name == name
         )
 
     def merge(self, parent: IoBoundaryCatalog) -> IoBoundaryCatalog:
@@ -2583,6 +2648,12 @@ class BoundaryMap:
     total_io_edges: int = 0
     external_potential_edges: int = 0
     command_launch_edges: int = 0
+    #: Chain count of the ``net_listen`` bucket (ADR-0049). Disclosed in its own
+    #: field for the same reason as its two neighbours: a deferred crossing is a
+    #: REAL crossing the analysis cannot attribute to this call, so hiding it
+    #: would understate the surface while folding it into ``total_io_edges``
+    #: would claim it as verified I/O. Neither is true; it gets its own number.
+    net_listen_edges: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
@@ -2598,6 +2669,7 @@ class BoundaryMap:
             "total_io_edges": self.total_io_edges,
             "external_potential_edges": self.external_potential_edges,
             "command_launch_edges": self.command_launch_edges,
+            "net_listen_edges": self.net_listen_edges,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
@@ -2961,6 +3033,11 @@ def compute_boundary_map(
         if "command_launch" in entries
         else 0
     )
+    nl_edges = (
+        len(entries["net_listen"].chains)
+        if "net_listen" in entries
+        else 0
+    )
     bmap = BoundaryMap(
         entries=entries,
         total_io_edges=sum(
@@ -2969,6 +3046,7 @@ def compute_boundary_map(
         ),
         external_potential_edges=ep_edges,
         command_launch_edges=cl_edges,
+        net_listen_edges=nl_edges,
     )
 
     return bmap

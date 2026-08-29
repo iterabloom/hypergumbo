@@ -5362,6 +5362,15 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 if "command_launch" in filtered_entries
                 else 0
             )
+            # ADR-0049. THIS PATH REBUILDS THE ENVELOPE BY HAND, so a new
+            # disclosed-only bucket has to be added in BOTH homes or the two
+            # JSON paths disagree — the INV-pubom drift, caught here by the
+            # envelope key-lock test rather than in the field.
+            filtered_nl = (
+                len(filtered_entries["net_listen"].chains)
+                if "net_listen" in filtered_entries
+                else 0
+            )
             output = {
                 # PR-B: pin the io-boundaries envelope schema_version on
                 # the filtered path too; the unfiltered path inherits it
@@ -5370,6 +5379,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 "total_io_edges": filtered_total,
                 "external_potential_edges": filtered_ep,
                 "command_launch_edges": filtered_cl,
+                "net_listen_edges": filtered_nl,
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },

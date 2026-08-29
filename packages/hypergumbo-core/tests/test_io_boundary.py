@@ -3252,11 +3252,13 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins ``2.1`` (bumped from 2.0 by WI-javoh: the
-        new command_launch_edges disclosure key; 2.0 was WI-huhit/WI-foduh —
-        total_io_edges redefined to real categories + external_potential_edges).
+        """The exported constant pins ``2.2`` (bumped from 2.1 by WI-nosah /
+        ADR-0049: the new net_listen_edges disclosure key for deferred
+        crossings; 2.1 was WI-javoh's command_launch_edges; 2.0 was
+        WI-huhit/WI-foduh — total_io_edges redefined to real categories +
+        external_potential_edges).
         """
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.1", (
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.2", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -3277,7 +3279,7 @@ class TestIoBoundariesEnvelopeSchema:
         # this lock-set; the CLI integration test below covers it.
         expected_keys = {
             "schema_version", "total_io_edges", "external_potential_edges",
-            "command_launch_edges", "boundaries",
+            "command_launch_edges", "net_listen_edges", "boundaries",
         }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "
