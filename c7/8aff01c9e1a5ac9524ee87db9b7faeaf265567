@@ -1,0 +1,51 @@
+Original commit body from 1d4cce1d8de3ab5635e766d3bb892f35a06687c3:
+
+Adjudicates INV-kanuk. The gate half ships; the row half is refused, and the measurement is what refuses it.
+
+## The gate was blind twice, and either half alone would have hidden all eight rows
+
+`test_socket_setup_is_not_a_network_receive` could not see a single Go row:
+
+- **Scope.** `F2_LANGS` was a hardcoded **nine** names against **fifteen** shipped catalogues. `go`, `objc`, `python`, `swift`, `bash` were never asked.
+- **Case.** The predicate matched exact-case names. Go capitalises every exported identifier, so `syscall.Socket` is not `socket` — **adding go to the list would still have reported clean.**
+
+A name-based gate with an incomplete matcher does not fail. It exits 0.
+
+Scope is now derived by globbing `io_primitives/*.yaml` — deliberately **not** `CATALOG_LANGUAGES`, which names fourteen against fifteen shipped (`bash.yaml` sits outside it, which is how it also sat outside the WI-sugav subprocess guard) and would have reproduced the decay one constant over. The predicate is case-folded. Two gates on the instrument ride along: one asserts the derivation equals the tree and that `F2_LANGS` is a strict subset, one pins the case-fold on the *matcher* independently of whether any language currently offends.
+
+**Red proof:** with the go exemption lifted, the widened gate fails naming all eight rows — `unix.Socket/Bind/Listen`, `syscall.Socket/Bind/Listen`, `net.Listen`, `fiber.App.Listen`.
+
+## The rows are not removable, and I was wrong about that in writing
+
+The item's filed licence — *"`net.Conn.Read` and `syscall.Recvfrom` carry the actual receive, so the F2/F3 licence rule is satisfiable here"* — is **true of the catalogue and false of the run**. I restated that claim myself on the item yesterday, from rows rather than from a run.
+
+Measured on an idiomatic Go accept loop (`net.Listen` → `ln.Accept` → `conn.Read` → `os.WriteFile`):
+
+```
+net_recv: 4 chains
+  syscall.Socket   src=rawSetup
+  syscall.Bind     src=rawSetup
+  syscall.Listen   src=rawSetup
+  net.Listen       src=serve
+```
+
+Every reported receive is a setup call that receives nothing. `ln.Accept()` and `conn.Read()` emit dst `go:external:0-0:Accept` / `:Read`, which no `net.Listener.Accept` or `net.Conn.Read` row can match — and `external_potential_edges` is **0**, so they are not even disclosed as unresolved. They are absent.
+
+Removing the four firing rows takes go's network-input surface to **zero** rather than relocating it. ADR-0049 ruling 3 licenses a removal only while the crossing stays represented; here it would not be. That is the WI-lunav failure at four rows instead of one, and precisely what ruling 3's "run, not reasoned" clause exists to catch.
+
+Go is held by a **documented exemption pinned in both directions**: `test_f2_exemptions_still_have_something_to_exempt` fails when an exempt language stops having offenders, so the entry cannot outlive its reason — whoever clears the blocker is forced to delete it in the same change.
+
+## The blocker, filed as WI-doluf (P1, parent INV-linub)
+
+| form | dst emitted | matches? |
+|---|---|---|
+| param decl `func f(conn net.Conn)` | `go:net:0-0:Read` | yes |
+| var decl `var conn net.Conn` | `go:net:0-0:Read` | yes |
+| in-repo return `conn := makeConn()` | `go:external:0-0:Read` | **no** |
+| stdlib return `ln, _ := net.Listen(...)` | `go:external:0-0:Accept` | **no** |
+
+A **declared** external receiver type reaches the io-boundary module slot; one **inferred from a return value** does not. The positive control is what makes it attributable: `makeConn()` is declared *in-repo* returning `net.Conn`, so INV-dihos's return-type registry has something to register — and `conn.Read()` still yields `go:external:0-0:Read`. Without that control the filed mechanism would have been "the stdlib has no declaration to register", which is the wrong mechanism. This is WI-dizag's shape in a second language, and it means go's true receive surface on the canonical server pattern is **empty, not thin**.
+
+## Scope
+
+One test file plus the changelog. No source change, no catalogue row moved, no output changed. Tests: 197 passed, 2 skipped (the two documented exemptions), mypy ratchet clean at 669.
