@@ -227,6 +227,11 @@ from .backend_selection import (
     RUST_ANALYZER_ENV_VAR,
     resolve_rust_analyzer_optin,
 )
+from .catalogue_home import (
+    materialize_catalogue_home,
+    user_catalogue_home,
+    user_overlay_paths,
+)
 from .user_config import LayeredConfig
 from .rust_analyzer_install import (
     install_rust_analyzer,
@@ -5108,15 +5113,22 @@ def _resolve_io_overlays(
     treats a later path as the winner on qualified-name collision, so the
     concatenation order below IS the precedence order.
 
-    ADR-0045 ruling 4 adds the two config tiers BENEATH those, in the order
-    the ruling fixes — user config, then project config, then the claims
+    ADR-0047 ruling 3 adds the user's ``io_primitives.d/`` BENEATH EVERYTHING
+    (WI-talaz). It is scanned, not named, which makes it the least specific
+    statement of intent a user can make, so an explicitly-named path in
+    ``config.toml`` wins over a file dropped in the directory. Until this was
+    wired the directory was read by nothing, while the ruling-6 disclosure had
+    been telling users to edit it on every run that loaded a community overlay.
+
+    ADR-0045 ruling 4 adds the two config tiers BENEATH the claims file, in the
+    order the ruling fixes — user config, then project config, then the claims
     file, then the flag. A setting named closer to this specific invocation
     wins. ``repo_root`` is optional so a caller that has not resolved one
     simply gets no config tiers rather than a crash; that is a real case
     (analysis from a cached map with no repository in hand) and not a
     defensive branch.
     """
-    paths: "list[Path]" = []
+    paths: "list[Path]" = list(user_overlay_paths())
     if repo_root is not None:
         paths += _load_config_or_exit(repo_root).io_primitives
     paths += list(claims_paths or [])
@@ -6619,6 +6631,67 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         return 2
     if has_caveats:
         return 3
+    return 0
+
+
+def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
+    """The subcommand names the parser actually registers.
+
+    ONE FACT, ONE HOME. This used to be a hand-written set literal beside the
+    did-you-mean guard, which made adding a subcommand a two-edit operation
+    with no gate on the second edit. Forgetting it does not fail loudly: the
+    new command parses fine, then the guard above rejects it as "not a valid
+    subcommand" and helpfully suggests a DIFFERENT one — measured on
+    ``init-catalogs`` (WI-talaz), which is how this was found.
+
+    Derived from the parser, so a command cannot exist and be unlisted. The
+    set the literal held was exactly this set, so the swap changed no
+    behaviour; a test pins the two in agreement.
+    """
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()  # pragma: no cover - build_parser always adds subparsers
+
+
+def cmd_init_catalogs(args: argparse.Namespace) -> int:
+    """ADR-0047 ruling 4 — materialize the user's catalogue home, on request.
+
+    THIS IS THE ONLY PLACE HYPERGUMBO WRITES INTO A CONFIG DIRECTORY, and it
+    runs only because someone typed the subcommand. Analysis never calls it:
+    the shipped overlays load from the wheel, so materialization buys the
+    ability to EDIT them and nothing else.
+    """
+    home = Path(args.home) if getattr(args, "home", None) else user_catalogue_home()
+    result = materialize_catalogue_home(home, version=__version__)
+
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps({
+            "home": str(result.home),
+            "created_dirs": [str(p) for p in result.created_dirs],
+            "seeded": [str(p) for p in result.seeded],
+            "skipped": [str(p) for p in result.skipped],
+            "readme": str(result.readme),
+            "seeded_from": __version__,
+        }, indent=2))
+        return 0
+
+    print(f"Catalogue home: {result.home}")
+    if result.created_dirs:
+        print(f"  created {len(result.created_dirs)} director"
+              f"{'y' if len(result.created_dirs) == 1 else 'ies'}")
+    for path in result.seeded:
+        print(f"  seeded  {path.relative_to(result.home)}")
+    for path in result.skipped:
+        print(f"  kept    {path.relative_to(result.home)} (already present)")
+    if not result.seeded and not result.created_dirs:
+        print("  nothing to do — already materialized")
+    print()
+    print("These are DELTAS, not a copy: the base catalogues stay inside "
+          "hypergumbo")
+    print("and keep updating with it. Community rows remain rows hypergumbo "
+          "does not")
+    print(f"vouch for. See {result.readme.name} in that directory.")
     return 0
 
 
@@ -9965,6 +10038,43 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
     )
     p_config.set_defaults(func=cmd_config)
 
+    p_init_catalogs = sub.add_parser(
+        "init-catalogs",
+        help="Create your catalogue home and seed the community overlays "
+             "into it",
+        epilog=(
+            "Creates $XDG_CONFIG_HOME/hypergumbo/ with one <family>.d/ "
+            "directory per user-extensible catalogue family, and seeds the "
+            "shipped community overlays into io_primitives.d/ so you can edit "
+            "them.\n"
+            "\n"
+            "SEED, NEVER COPY. The base catalogues are NOT written here — they "
+            "stay inside hypergumbo and keep updating with it, and what lands "
+            "in your directory are deltas layered on top. A full copy would "
+            "mean the next release's rows never reach you, silently.\n"
+            "\n"
+            "Nothing is created unless you run this. Re-running never "
+            "overwrites a file you have edited; it reports it as kept.\n"
+            "\n"
+            "You do NOT need this to get the community overlays: they already "
+            "load from the wheel by default, and every run that uses them says "
+            "so on stderr. This exists so you can override or extend them."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_init_catalogs.add_argument(
+        "--home",
+        default=None,
+        help="Write to this directory instead of $XDG_CONFIG_HOME/hypergumbo",
+    )
+    p_init_catalogs.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_init_catalogs.set_defaults(func=cmd_init_catalogs)
+
     verify_claims_epilog = """\
 Claims file format (YAML):
 
@@ -11569,7 +11679,7 @@ def main(argv=None) -> int:
         print_all_help(parser)
         return 0
 
-    subcommands = {"survey", "run", "slice", "search", "routes", "explain", "catalog", "config", "sketch", "build-grammars", "install-gitleaks", "uninstall-gitleaks", "cache-status", "cache-clear", "install-embeddings", "uninstall-embeddings", "install-rust-analyzer", "uninstall-rust-analyzer", "trust-backend", "add-extras", "remove-extras", "test-coverage", "dead-code-maybe", "repeat-finder", "symbols", "compact", "io-boundaries", "verify-claims"}
+    subcommands = _registered_subcommands(parser)
 
     # WI-balij (UAT UX-04): accept --debug in any position. Strip it here so
     # `hypergumbo sketch . --debug` and `hypergumbo --debug sketch .` both

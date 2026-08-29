@@ -87,6 +87,12 @@
     "-t",
     "-x"
   ],
+  "init-catalogs": [
+    "--format",
+    "--help",
+    "--home",
+    "-h"
+  ],
   "install-embeddings": [
     "--check",
     "--help",
