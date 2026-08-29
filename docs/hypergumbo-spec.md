@@ -261,7 +261,27 @@ Two optional TOML tiers, both absent by default (ADR-0045):
 
 Recognised settings: `io_primitives` (list of I/O primitive overlay paths; relative entries resolve against **their own config file**, not the working directory).
 
-Precedence is ascending — user config < project config < claims-file `extra_catalogs:` < `--io-primitives` — matching `load_catalog`'s rule that a later path wins on qualified-name collision.
+Precedence is ascending — `io_primitives.d/` scan < user config < project config < claims-file `extra_catalogs:` < `--io-primitives` — matching `load_catalog`'s rule that a later path wins on qualified-name collision.
+
+### Catalogue data directories
+
+Alongside `config.toml`, the same directory holds one `<family>.d/` per catalogue family the registry declares user-extensible ([ADR-0047](adr/0047-catalogue-scope-and-user-visible-homes.md) rulings 3/4, WI-talaz). The repo tier is `<repo>/.hypergumbo/` — a *directory*, distinct from the `.hypergumbo.toml` *file* above.
+
+```
+$XDG_CONFIG_HOME/hypergumbo/
+  config.toml            # ADR-0045
+  README.md              # written by init-catalogs
+  dataflow_patterns.d/   frameworks.d/          function_summaries.d/
+  io_primitives.d/       taint_sanitizers.d/    taint_sources.d/
+```
+
+The directory list is **derived from `YAML_CATALOGS`**, so a family that gains a `user_channel` gains a directory and a family carrying `no_channel_reason` cannot acquire one by being overlooked.
+
+**`io_primitives.d/` is scanned on every run**, at the bottom of the precedence chain: a file dropped there loses to a path the user *named* in `config.toml`, which is the less specific statement of intent losing to the more specific one. The remaining channel directories are declared extensible but are **not yet consulted**; the README written into the home says so per family, rather than leaving a user to discover it through an overlay that silently does nothing (WI-sofov wires the rest). Before this, nothing read the directory at all — while the ruling-6 disclosure had been telling users to edit it on every run that loaded a community overlay.
+
+**Nothing here is created implicitly.** `hypergumbo init-catalogs` creates the home and seeds the shipped community overlays into `io_primitives.d/`; analysis never writes to it, because the shipped overlays already load from the wheel. Materialization buys the ability to *edit* them and nothing else — ADR-0045's precedent is a human-owned file the tool may read and must not write.
+
+**Seed, never copy.** The base catalogues are never materialized; only deltas land in the user's directory, so the next release's rows still reach a user who ran the command. Each seeded file is stamped `seeded_from:` (the hypergumbo version) beside its `retrieved:` date, which makes staleness against the shipped source checkable rather than asserted. Re-running never overwrites a file the user has edited; it reports it as kept.
 
 **A backend that executes analysed-repo code cannot be enabled from either tier.** `backends.rust_analyzer` is refused with an error, in both directions, because enabling it runs the analysed crate's `build.rs` as you — a per-repository *trust* decision, and a config file is designed to be copied between machines. Unknown settings and wrong types are refused rather than ignored, naming the file and the setting.
 
