@@ -6129,6 +6129,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
 
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
+    credited_user_summaries: set[str] = set()
     # INV-javam: track languages with no taint coverage so callers can
     # distinguish "no taint-flow violations" from "language not analyzed".
     # Without this, taint-flow trivially passes every claim on unsupported
@@ -6405,6 +6406,13 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         language=lang,
                         stmt_defuse=stmt_defuse,
                         forfeit_refutation=ddg_forfeits,
+                        # ADR-0047 ruling 10 (WI-sofov). Collected ACROSS
+                        # languages into one set: a terminated branch leaves no
+                        # finding, so there is nothing to attribute per claim,
+                        # and the caveat this feeds is run-scoped by
+                        # construction. Accumulating per language would imply a
+                        # precision the mechanism does not have.
+                        credited_user_summaries=credited_user_summaries,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
@@ -6457,6 +6465,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         raw_edges, catalogs, per_lang_sinks,
     )
 
+    # WI-sofov: which of the USER'S OWN terminating function summaries
+    # actually closed a branch this run. Declared at function scope, not
+    # inside the DDG branch, so the verdict call below always has a name
+    # to pass -- a repo with no DDG data simply contributes nothing.
     verdicts = _verify(
         claims, bmap, taint_findings=taint_findings, coverage=coverage,
         include_non_production=getattr(
@@ -6474,6 +6486,10 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         # suppression left no trace to find downstream.
         displaced_sinks=getattr(taint_catalog, "_displaced_sinks", None),
         displaced_sources=getattr(taint_catalog, "_displaced_sources", None),
+        # WI-sofov: the user's OWN terminating summaries that actually closed a
+        # branch this run. Empty unless they wrote one, so an installation with
+        # no user summaries produces byte-identical verdicts to before.
+        credited_user_summaries=credited_user_summaries,
     )
 
     # INV-zosun: assemble the catalogue provenance BEFORE either renderer, so

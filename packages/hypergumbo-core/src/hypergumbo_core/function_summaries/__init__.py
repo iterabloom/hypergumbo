@@ -28,7 +28,7 @@ See ``function_summaries/*.yaml`` files and ADR-0017 §4b for the schema.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -87,6 +87,13 @@ class FunctionSummary:
     side_effect: bool = False
     sanitizes: list[SanitizeEffect] = field(default_factory=list)
     callback: Optional[CallbackFlow] = None
+    #: True when this entry came from the USER'S channel
+    #: (``$XDG_CONFIG_HOME/hypergumbo/function_summaries.d/``), ADR-0047
+    #: ruling 10. Stamped at LOAD, never read from the YAML, so a file cannot
+    #: claim to be shipped. A user-supplied TERMINATING summary closes a branch
+    #: that is really open and DELETES a real finding, so verify_claims has to
+    #: be able to say whose word a clean answer rests on.
+    user_supplied: bool = False
 
 
 # Conservative default: all params flow to return
@@ -134,13 +141,28 @@ def load_function_summaries(
         _SUMMARY_CACHE[cache_key] = result
         return result
 
-    for yaml_path in sorted(search.glob("*.yaml")):
+    # ADR-0047 ruling 10 (WI-sofov). The user's entries load AFTER the shipped
+    # ones so they win on a name collision, and they are stamped
+    # ``user_supplied`` at merge rather than read from the file -- a summary
+    # cannot declare itself vouched-for. Only when the DEFAULT directory is
+    # being loaded, so an explicit ``search_dir`` (tests, and any caller asking
+    # about one particular tree) still means exactly that.
+    paths = sorted(search.glob("*.yaml"))
+    user_paths: "list[Path]" = []
+    if search_dir is None:
+        from ..catalogue_home import user_channel_files
+        user_paths = user_channel_files("function_summaries")
+        paths = [*paths, *user_paths]
+
+    for yaml_path in paths:
         with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not data or "summaries" not in data:
             continue
         for entry in data["summaries"]:
             summary = _parse_summary(entry)
+            if yaml_path in user_paths:
+                summary = replace(summary, user_supplied=True)
             result[summary.function] = summary
             # Also index by short name (last component)
             if "." in summary.function:

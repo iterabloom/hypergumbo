@@ -100,16 +100,16 @@ def test_declared_extensible_is_not_reported_as_readable(inv) -> None:
     extensible = [f for f in inv.families if f.extensible]
     assert len(extensible) > 1, "fixture wrong: only one extensible family"
     read_now = {f.directory for f in extensible if f.read_now}
-    assert read_now == {"io_primitives", "frameworks", "dataflow_patterns"}, (
+    assert read_now == {"io_primitives", "frameworks", "dataflow_patterns",
+                        "function_summaries"}, (
         "a channel changed readability without the inventory being told — "
         "update _WIRED_CHANNELS so users are neither sent to an inert "
         "directory nor told a working one is dead"
     )
     still_inert = {f.directory for f in extensible if not f.read_now}
-    assert still_inert == {"function_summaries", "taint_sources",
-                           "taint_sanitizers"}, (
-        "the remaining unwired channels changed; WI-sofov's function_summaries "
-        "arm carries a caveat gate and must not be reported readable without it"
+    assert still_inert == {"taint_sources", "taint_sanitizers"}, (
+        "the remaining unwired channels changed — a user must not be sent to "
+        "a directory nothing reads, nor told a working one is dead"
     )
 
 
@@ -197,8 +197,12 @@ def test_json_output_carries_the_same_facts(capsys, monkeypatch,
     # Still-inert, and the one whose gate is not built yet.
     fs = next(f for f in doc["families"]
               if f["directory"] == "function_summaries")
-    assert fs["extensible"] is True and fs["read_now"] is False
+    assert fs["extensible"] is True and fs["read_now"] is True
+    # The gate has to survive to the reader: this is the one channel whose
+    # entries can DELETE a finding, and the caveat is what discloses it.
     assert fs["channel_gated"] == "CAVEAT_USER_SUPPLIED_SANITIZER"
+    ts = next(f for f in doc["families"] if f["directory"] == "taint_sources")
+    assert ts["extensible"] is True and ts["read_now"] is False
     # Section-scoped: readable, but the scope has to survive to the reader.
     df = next(f for f in doc["families"]
               if f["directory"] == "dataflow_patterns")
