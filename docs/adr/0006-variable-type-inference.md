@@ -50,10 +50,17 @@ Nine analyzers implement variable type inference. The original six (Python, Java
 | TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py::_extract_named_imports`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
 | C#       | ✅ | ✅ | ✅ (`field_declaration`, `csharp.py::_extract_symbols_from_file`) | ✅ (`csharp.py::_extract_csharp_signature`, `327-362`) | ❌ (Phase 2) | File-scoped |
 | Dart     | ✅ | ✅ | ❌ | ✅ (`dart.py::_extract_dart_signature`, `539-601`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
-| Go       | ✅ (short var, var spec, `go.py::_parse_require_line`) | ✅ (`go.py::_external_package_for_type`) | ❌ | ❌ | ❌ (Phase 1) | File-scoped |
+| Go       | ✅ (short var, var spec, `go.py::_parse_require_line`) | ✅ (`go.py::_external_package_for_type`) | ❌ | ✅ (`go.py::_go_return_type_from_signature`) | ✅ (Phase 1, WI-kuroj; plain-function calls and package-qualified return types added by WI-doluf) | File-scoped |
 | Ruby     | ✅ (pattern-based: `.new`, `.find`, `.create`, `ruby.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
 | Lua      | ✅ (pattern-based: `MyClass:new()`, `lua.py::_extract_symbols_from_file`) | ❌ (no type annotations) | ❌ | ❌ | n/a (no annotations to register) | File-scoped |
+| Scala    | not assessed | not assessed | not assessed | not assessed | not assessed | — |
+| Obj-C    | not assessed | not assessed | not assessed | not assessed | not assessed | — |
+| Swift    | not assessed | not assessed | not assessed | not assessed | not assessed | — |
 | Rust     | ✅ (let-binding constructor / struct-expression / type-annotated let, `rust.py:_extract_var_types_rust`) | ✅ (`rust.py:_extract_param_types_rust`) | Partial (via `field_type_registry`, `self.field` only) | ✅ (`rust.py:_extract_rust_return_type_name` — Result/Option/Box/Rc/Arc unwrap, impl/dyn Trait opaque) | ✅ (Phase 3 / WI-titor) | File-scoped |
+
+**Three analyzers were absent from this table entirely** until WI-doluf, and absence read as "no gap" rather than "no answer". Scala, Obj-C and Swift carry **244 method-kind `io_primitives` rows between them** — 89%, 95% and 93% of their catalogues respectively — every one of which needs a typed receiver before it can match. They are now listed as *not assessed*, which is the honest state; assessing them is filed separately. A support table that does not enumerate the tree's own analyzers is the same decayed-inventory failure one level up from the row gaps it describes.
+
+**Scope of what a `✅` in Chained buys, measured on Go (WI-doluf).** The registry must store the type in a form the CONSUMER needs. Go's stored the bare name (`net.Conn` → `Conn`) because in-repo symbols are unqualified — correct for symbol lookup, wrong for the io-boundary module slot, which is the one consumer that needs the package and was handed an `external` placeholder instead. A `✅` here therefore does not by itself imply catalogued method rows are reachable; that is the INV-linub L3 question, tracked separately (WI-dizag, WI-papar for Rust).
 
 The **Chained** column tracks INV-dihos source 5: "this analyzer's `var_types` consults a global function-signature registry when assigning the result of a method call." A `❌` means the analyzer name-guesses the var type from the method name (or gives up); a `(Phase N)` annotation places the analyzer in the rollout plan in §Future Work. Languages with no return-type annotations at all (Ruby, Lua) are marked `n/a` because there is no source data to register; the same is true for fully-dynamic Python without PEP 484 annotations, but type-annotated Python is tracked by Phase 4.
 

@@ -1852,10 +1852,29 @@ def _extract_go_var_types(
                         method_name = node_text(field_node, source)
                         recv_type = func_vars.get(recv_name, "")
                         if recv_type:
-                            qualified = f"{recv_type}.{method_name}"
+                            # Fold: registry keys carry a BARE receiver, values
+                            # are qualified (WI-doluf).
+                            qualified = (
+                                f"{_bare_go_type(recv_type)}.{method_name}"
+                            )
                             type_name = method_return_type_registry.get(
                                 qualified
                             )
+                elif call_func is not None and call_func.type == "identifier":
+                    # WI-doluf: a PLAIN function call -- ``conn := makeConn()``.
+                    # This branch did not exist, so the registry was populated
+                    # for standalone functions (``analysis.method_return_types
+                    # [func_name]``) and consulted only for method calls. Every
+                    # factory function in every Go repo fell through to an
+                    # untyped variable, in-repo return types included: the
+                    # control fixture ``res := makeResult(); res.Rows()``
+                    # resolved to ``go:external:0-0:Rows`` before this branch.
+                    fn_name = node_text(call_func, source)
+                    if (
+                        fn_name not in _GO_BUILTIN_TYPES
+                        and fn_name not in _GO_BUILTIN_FUNCS
+                    ):
+                        type_name = method_return_type_registry.get(fn_name)
 
             if type_name and type_name not in _GO_BUILTINS:
                 func_vars[var_name] = type_name
@@ -2144,6 +2163,19 @@ def _type_identifier_from_node(
     return None  # pragma: no cover - pointer to non-named type (e.g. *func(), *chan)
 
 
+def _bare_go_type(type_name: str) -> str:
+    """``net.Conn`` -> ``Conn``. The fold, in one place.
+
+    The return-type registry is keyed ``Receiver.Method`` with an UNQUALIFIED
+    receiver, because that is how in-repo symbols are stored. Its VALUES are
+    package-qualified (WI-doluf), because the io-boundary module slot needs the
+    package. So every site that turns a *value* back into a *key*, or into a
+    symbol lookup, folds here -- open-coding ``rsplit`` at each one is how the
+    two forms drift apart.
+    """
+    return type_name.rsplit(".", 1)[-1] if "." in type_name else type_name
+
+
 def _go_return_type_from_signature(signature: str | None) -> str | None:
     """Extract the primary return type from a Go function signature.
 
@@ -2157,9 +2189,23 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
     - ``"(params)"``  → ``None`` (no return type / void)
 
     Go tuple returns with multiple non-error types (ambiguous) return
-    None.  Pointer-star prefixes are stripped.  Package-qualified types
-    (``pkg.Type``) are stripped to the bare type name because symbol
-    names in the symbol registry are unqualified.
+    None.  Pointer-star prefixes are stripped.
+
+    PACKAGE-QUALIFIED TYPES KEEP THEIR PACKAGE (``net.Conn`` stays
+    ``net.Conn``), and that is WI-doluf. They used to be stripped to the bare
+    name "because symbol names in the symbol registry are unqualified" -- true
+    of the SYMBOL LOOKUP and false of the io-boundary MODULE SLOT, which is the
+    one consumer that needs the package and was therefore served the
+    ``external`` placeholder forever. Measured consequence: a receiver typed
+    from a factory's return value could never match a method row, so on an
+    idiomatic accept loop go's entire reported network-input surface was setup
+    calls that receive nothing.
+
+    The bare form is now DERIVED where it is needed (:func:`_bare_go_type` at
+    the registry-key and symbol-lookup sites), rather than stored in the only
+    form one of two consumers wanted. Callers that build a registry key from a
+    type MUST fold it first -- the keys are ``Receiver.Method`` with a bare
+    receiver.
     """
     if not signature:
         return None
@@ -2187,13 +2233,13 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
             t for t in types if t not in _GO_BUILTIN_TYPES and t != "any"
         ]
         if len(non_error) == 1:
-            return non_error[0].rsplit(".", 1)[-1]
+            return non_error[0]
         return None  # ambiguous: 0 or 2+ non-builtin return types
     # Single return type: strip pointer and package prefix.
     bare = ret_part.lstrip("*")
     if bare in _GO_BUILTIN_TYPES or bare == "any":
         return None
-    return bare.rsplit(".", 1)[-1]
+    return bare
 
 
 def _extract_function_reference_edges(
@@ -2679,12 +2725,20 @@ def _extract_edges_from_file(
                                     inner_method = node_text(inner_field, source)
                                     recv_type = var_types.get(recv_name, "")
                                     if recv_type:
-                                        qualified = f"{recv_type}.{inner_method}"
+                                        # Both folds: key from a value, then a
+                                        # symbol lookup from a value (WI-doluf).
+                                        qualified = (
+                                            f"{_bare_go_type(recv_type)}"
+                                            f".{inner_method}"
+                                        )
                                         ret_type = method_return_type_registry.get(
                                             qualified
                                         )
                                         if ret_type:
-                                            outer_qualified = f"{ret_type}.{callee_name}"
+                                            outer_qualified = (
+                                                f"{_bare_go_type(ret_type)}"
+                                                f".{callee_name}"
+                                            )
                                             target = local_symbols.get(outer_qualified)
                                             if target is None and outer_qualified in global_symbols:
                                                 candidates = global_symbols[outer_qualified]
