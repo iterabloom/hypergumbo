@@ -54,10 +54,12 @@ removal deletes false flows AT THE SOURCE rather than suppressing real ones.
 
 from __future__ import annotations
 
+import pathlib
 import re
 
 import pytest
 
+from hypergumbo_core import io_boundary as io_boundary_module
 from hypergumbo_core.io_boundary import (
     MULTI_BOUNDARY_REASON_SIMULTANEOUS,
     IoBoundaryCatalog,
@@ -173,18 +175,138 @@ def test_haskell_keeps_the_boundaries_it_really_does_cross() -> None:
 #: F2's scope. A setup call is removed ONLY where a genuine transfer call is
 #: still rowed for the same channel -- the same "is the read still represented"
 #: rule that decides F3. Verified per language before any row was touched.
+#:
+#: WAS A HARDCODED NINE-NAME LIST UNTIL INV-kanuk, AND IT WAS BLIND TWICE OVER.
+#: The tree ships fifteen catalogues; this named nine, so go, objc, python,
+#: swift and bash were never asked. Worse, adding go would STILL have reported
+#: clean, because the predicate matched exact-case names and go capitalises
+#: every exported identifier -- ``syscall.Socket`` is not ``socket``. A
+#: name-based gate with an incomplete matcher does not fail, it exits 0
+#: (LIVE.md rule 6). Both halves are now closed: the scope is derived from the
+#: tree by :func:`_f2_languages` and the predicate is case-folded.
 F2_LANGS = ("c", "cpp", "elixir", "erlang", "haskell", "java", "kotlin",
             "rust", "scala")
 
 
-@pytest.mark.parametrize("lang", F2_LANGS)
+def _f2_languages() -> tuple[str, ...]:
+    """The tree's OWN catalogue languages, not a list maintained beside it.
+
+    A hardcoded inventory decays (LIVE.md rule 10), and this one had: nine
+    names against fifteen shipped catalogues. Deriving it means a new
+    ``io_primitives/<lang>.yaml`` is asked the F2 question on the commit that
+    adds it, with no second edit to remember.
+
+    Deliberately NOT ``CATALOG_LANGUAGES``: that constant names fourteen while
+    the package ships fifteen (``bash.yaml`` sits outside it, which is how it
+    also sat outside the WI-sugav subprocess guard). Inheriting that list would
+    reproduce the very defect this function exists to close.
+    """
+    catalog_dir = (pathlib.Path(io_boundary_module.__file__).parent
+                   / "io_primitives")
+    return tuple(sorted(p.stem for p in catalog_dir.glob("*.yaml")))
+
+
+#: Languages whose setup rows are KEPT, mapped to why. An exemption here is a
+#: DOCUMENTED DEBT, not a pass -- and it is pinned in BOTH directions by
+#: :func:`test_f2_exemptions_still_have_something_to_exempt`, which fails when
+#: an exempt language stops having offenders. So an exemption cannot quietly
+#: outlive the condition that justified it: whoever fixes the underlying gap is
+#: forced to delete the entry in the same change.
+F2_EXEMPT: dict[str, str] = {
+    "javascript": (
+        "JS's ENTIRE net_recv surface is callback registration -- there is no "
+        "call site at which bytes arrive. Removing Deno.listen would relocate "
+        "the read to nothing. Asserted positively in "
+        "test_javascript_is_deliberately_out_of_scope."
+    ),
+    "go": (
+        "INV-kanuk. Go's 8 setup rows ARE false sources and the removal is "
+        "NOT licensed, because go's real receive surface is unreachable on "
+        "idiomatic code: `ln, _ := net.Listen(...)` then `ln.Accept()` emits "
+        "dst `go:external:0-0:Accept`, which no `net.Listener.Accept` row can "
+        "match. MEASURED on a stdlib accept loop: net_recv reports 4 chains, "
+        "all four of them these setup rows, and ZERO true receives -- so "
+        "removing them takes go's network-input surface to nothing rather "
+        "than relocating it (ADR-0049 ruling 3, the WI-lunav rule). The "
+        "blocker is an INV-linub L3 residual: a DECLARED external receiver "
+        "type reaches the module slot (`func f(conn net.Conn)` -> "
+        "`go:net:0-0:Read`, matches) while one INFERRED FROM A RETURN VALUE "
+        "does not, in-repo and stdlib alike."
+    ),
+}
+
+
+@pytest.mark.parametrize("lang", _f2_languages())
 def test_socket_setup_is_not_a_network_receive(lang: str) -> None:
+    """CASE-FOLDED, and that is not a detail -- it is half of INV-kanuk.
+
+    The predicate used to be exact-case membership, which cannot see a single
+    go row: `syscall.Socket`, `unix.Bind`, `net.Listen`. Widening the language
+    list alone would have left this gate reporting clean over eight live false
+    sources.
+    """
+    if lang in F2_EXEMPT:
+        pytest.skip(f"{lang}: documented F2 exemption -- {F2_EXEMPT[lang]}")
     offenders = [f"{p.module}.{p.name}" for p in _rows(lang)
                  if p.boundary == "net_recv"
-                 and p.name in NON_TRANSFER_SOCKET_CALLS]
+                 and p.name.lower() in NON_TRANSFER_SOCKET_CALLS]
     assert offenders == [], (
         f"{lang}: socket setup declared net_recv (receives nothing): {offenders}"
     )
+
+
+@pytest.mark.parametrize("lang", sorted(F2_EXEMPT))
+def test_f2_exemptions_still_have_something_to_exempt(lang: str) -> None:
+    """THE GATE ON THE EXEMPTION LIST, so a debt cannot outlive its reason.
+
+    An exemption that stays after its offenders are gone is indistinguishable
+    from a language that was never in scope, and the next reader has no way to
+    tell which. Asserting the offenders are still THERE makes the entry
+    self-retiring: clear the underlying gap, this fails, and the same change
+    that fixes it must delete the entry.
+    """
+    offenders = [f"{p.module}.{p.name}" for p in _rows(lang)
+                 if p.boundary == "net_recv"
+                 and p.name.lower() in NON_TRANSFER_SOCKET_CALLS]
+    assert offenders, (
+        f"{lang}: F2 exemption has no offenders left -- delete the F2_EXEMPT "
+        f"entry, the reason it records no longer applies"
+    )
+
+
+def test_the_f2_scope_is_derived_from_the_tree_not_maintained_beside_it() -> None:
+    """A GATE ON THE INSTRUMENT (the WI-vafit shape).
+
+    INV-kanuk's root cause was an inventory that decayed silently: F2_LANGS
+    held nine names while the tree shipped fifteen, and nothing said so. This
+    asserts the derivation covers the tree and that the historical list is a
+    strict subset -- so a catalogue added tomorrow is asked the F2 question
+    without anyone remembering to widen a literal.
+    """
+    derived = set(_f2_languages())
+    catalog_dir = (pathlib.Path(io_boundary_module.__file__).parent
+                   / "io_primitives")
+    assert derived == {p.stem for p in catalog_dir.glob("*.yaml")}
+    assert set(F2_LANGS) < derived, (
+        "F2_LANGS should be a strict subset of the tree's catalogues; if it is "
+        "not, the historical record is wrong rather than the derivation"
+    )
+    assert set(F2_EXEMPT) <= derived, "an exemption names a non-existent catalogue"
+
+
+def test_the_f2_predicate_is_case_insensitive() -> None:
+    """THE OTHER HALF OF INV-kanuk, asserted on the MATCHER not the catalogue.
+
+    Go capitalises every exported identifier, so an exact-case membership test
+    against ("socket", "bind", "listen") flags none of its eight rows. This
+    pins the fold itself, independently of whether any language currently has
+    an offender -- the same reason the direction sweep's vocabulary is
+    asserted rather than assumed (WI-joruz).
+    """
+    for name in NON_TRANSFER_SOCKET_CALLS:
+        assert name == name.lower(), "the vocabulary must be the folded form"
+        assert name.capitalize().lower() in NON_TRANSFER_SOCKET_CALLS
+        assert name.upper().lower() in NON_TRANSFER_SOCKET_CALLS
 
 
 @pytest.mark.parametrize("lang", F2_LANGS)
