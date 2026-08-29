@@ -263,6 +263,16 @@ Recognised settings: `io_primitives` (list of I/O primitive overlay paths; relat
 
 Precedence is ascending — `io_primitives.d/` scan < user config < project config < claims-file `extra_catalogs:` < `--io-primitives` — matching `load_catalog`'s rule that a later path wins on qualified-name collision.
 
+### Repo-tier overlay examples (developer audience)
+
+A literal `~/hypergumbo` directory is a repository *checkout* — nobody makes one by accident, which is what makes its presence a deliberate signal a config directory can never be. When one is present, hypergumbo offers **once** to place example repo-tier overlay files in `~/hypergumbo/.hypergumbo-examples/` (ADR-0047 ruling 9, WI-putat). Three constraints:
+
+- **Nothing is written into an analysed repository.** The examples show what a `<repo>/.hypergumbo/` would contain; hypergumbo never creates one.
+- **The answer is recorded either way**, so the offer goes quiet — a decline is a decision, not a "not yet". It lives at `$XDG_STATE_HOME/hypergumbo/offers.json`, a *sibling* of the trust store rather than a member: the trust store refuses non-code-executing keys by design, and a UX decline is not a trust grant.
+- **Never raised without a TTY on stdin.** An offer that blocks a CI run or an agent invocation is a defect, not a courtesy.
+
+The repo tier still does not load by default; a repository shipping an overlay that silences its own boundaries would arrive on a machine whose owner never opted in.
+
 ### Catalogue inventory
 
 `hypergumbo catalog-inventory` reports what **this installation** knows (WI-vafit): the catalogue families and their file counts, which families you may extend and the directory your file goes in, whether that directory is actually read yet, per-language I/O catalogue status and row counts (including how many rows are `unvouched`), and one sentence per family naming what changes without it.

@@ -228,6 +228,7 @@ from .backend_selection import (
     resolve_rust_analyzer_optin,
 )
 from .catalogue_inventory import build_inventory
+from .repo_tier_offer import maybe_offer_repo_tier_examples
 from .catalogue_home import (
     materialize_catalogue_home,
     user_catalogue_home,
@@ -6655,6 +6656,20 @@ def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
     return set()  # pragma: no cover - build_parser always adds subparsers
 
 
+def _maybe_offer_repo_tier_examples() -> None:
+    """ADR-0047 ruling 9's offer, wrapped so it can never break a run.
+
+    An offer is a courtesy. A courtesy that raises out of ``main`` and turns a
+    successful analysis into a traceback is strictly worse than no offer, so
+    every failure here is swallowed — the user simply is not asked, which is
+    the pre-feature behaviour and is never wrong.
+    """
+    try:
+        maybe_offer_repo_tier_examples()
+    except Exception:  # pragma: no cover - defensive; see docstring
+        pass
+
+
 def cmd_catalog_inventory(args: argparse.Namespace) -> int:
     """WI-vafit — what THIS installation knows, for the person using it.
 
@@ -11897,6 +11912,13 @@ def main(argv=None) -> int:
 
     try:
         result = args.func(args)
+        # ADR-0047 ruling 9 (WI-putat). Asked AFTER the command has produced
+        # its output, so an offer never interleaves with the thing the user
+        # actually ran, and never before it in case they piped it. Every guard
+        # lives in should_offer(); the reason it is called here rather than
+        # inside the analysis pipeline is that the pipeline is reached from
+        # many entry points and is the wrong place to read stdin.
+        _maybe_offer_repo_tier_examples()
         # Flush while we can still catch a closed downstream pipe *in-band*.
         # stdout is block-buffered when piped, so a large write (e.g. a full
         # sketch) is otherwise deferred to interpreter shutdown — where the
