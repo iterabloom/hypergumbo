@@ -1,0 +1,22 @@
+- op: create  # 3584
+  at: '2026-08-29T07:12:21Z'  # 3584
+  by: agent  # 3584
+  actor: jgstern_agent  # 3584
+  clock: 1  # 3584
+  nonce: '3584'  # 3584
+  data:  # 3584
+    kind: work_item  # 3584
+    title: "Seed taint at the ARRIVAL scope, not the launch call: start_at:callee, dispatches_to and entrypoints all exist and taint.py references none of them"  # 3584
+    status: todo_hard  # 3584
+    priority: 2  # 3584
+    parent:  # 3584
+    tags:  # 3584
+    - taint  # 3584
+    - catalogue  # 3584
+    - io_boundary  # 3584
+    isbefore: []  # 3584
+    duplicate_of: []  # 3584
+    not_duplicate_of: []  # 3584
+    pr_ref:  # 3584
+    description: "FILED BY ADR-0049 §Consequences. This is the RE-REPRESENTATION half of ruling 3 --\nthe half that makes a deferred-crossing retag a relocation rather than a deletion.\n\nTHE SUBSTRATE ALL EXISTS AND IS UNWIRED. Verified:\n  * `start_at: \"callee\"` seeds a taint source AT A SYMBOL rather than at its\n    caller (taint.py, TaintSource + BFS seed selection + the DDG twin). Today it\n    is used by NOTHING in the shipped catalogues -- only by hypergumbo's own\n    self-catalogue under docs/hypergumbo-self-catalog/, to declare cmd_* CLI\n    handlers as entry points.\n  * `dispatches_to` is ALREADY in TAINT_CALL_EDGE_TYPES -- added by INV-zuhig for\n    exactly this reason, because excluding it \"made every framework-dispatched\n    handler unmintable as a start_at:callee source\".\n  * route_handler.py resolves routes to handler symbols (Rails, Phoenix, Laravel,\n    Express, Django, Gin/Echo/Fiber/Chi, React Router).\n  * entrypoints.py carries HTTP_ROUTE / GO_HANDLER / WEBSOCKET_HANDLER /\n    EVENT_HANDLER / SCHEDULED_TASK / BACKGROUND_TASK / PLUG_ROUTE /\n    GRAPHQL_SERVER on a DECLARED axis (entrypoint-kind, WI-pupiz).\n  * 107 framework YAMLs land `concept: route` and siblings on the handler symbol\n    as meta.concepts.\n\nTHE MISSING PIECE IS THE JOIN. `taint.py` and `verify_claims.py` contain ZERO\nreferences to entrypoints, framework_role, or route concepts, and every\nauto-derived source is start_at:\"caller\" (the auto-derivation path never sets the\nfield). So this is a code change, not a catalogue change.\n\nMEASURED, AND IT IS WORSE THAN \"unwired\" IN AT LEAST ONE FRAMEWORK. On a Flask\nfixture where `hypergumbo routes` CORRECTLY reports `/run -> run_cmd`, the cached\nsurvey carries usage_contexts: [], ZERO symbols with framework_role, and ZERO\ndispatches_to edges; the route survives only as meta.concepts on the handler,\nwhich route_handler.py does not consume. Note Flask is not in route_handler's\nsupported list, so this bounds the finding rather than generalising it -- but it\nmeans \"the linker exists\" is NOT evidence the handler is reachable, and per-\nframework verification is required before anything depends on this.\n\nWHAT TO DO. Establish, per framework, whether a handler symbol is reachable by\ntaint's identity scheme, THEN wire arrival-scope seeding in tiers:\n  Tier 1  framework-detected handler -- seed start_at:callee at symbols whose\n          meta.concepts carry route/controller/websocket_handler/graphql_resolver/\n          event_handler, and at dispatches_to targets.\n  Tier 2  framework-CONTRACT arrival method, catalogued by name with\n          start_at:callee -- Channel.channelRead, http.Handler.ServeHTTP,\n          HttpServlet.doGet/doPost/service, WSGI/ASGI __call__. Exactly ONE such\n          row exists across all catalogues today (swift-nio-and-log.yaml's\n          Channel.channelRead), which is itself the finding.\n  Tier 3  inline callback argument -- JS/TS already emits `_cb_<callee>` symbols\n          for call-argument callbacks. UNVERIFIED: no emitter of an INBOUND edge\n          into _cb_* symbols was found, so seeding there may be unreachable.\n          Check before relying on it.\n\nWhere no tier resolves, the disclosure boundary (WI-nosah) fires alone: ingress\ndisclosed, no taint invented, no clean verdict granted. That combination is what\nADR-0049 ruling 3 requires, and it is why these two items ship together or not at\nall."  # 3584
+    fields: {}  # 3584
