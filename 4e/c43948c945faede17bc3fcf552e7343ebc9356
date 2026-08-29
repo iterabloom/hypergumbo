@@ -1,0 +1,55 @@
+Original commit body from b7e51b2af8c7a9a5f511e829ce5270f774e94623:
+
+The 156 YAML files under hypergumbo ARE what it knows: which I/O primitives it
+recognises, which framework conventions it enriches, which taint sources it
+trusts. A user deciding whether to believe a verdict, or working out why their
+framework was not detected, had no way to ask what their installation carries.
+
+`scripts/yaml-catalog-index` does not answer this. It answers the OPERATOR's
+question -- is the registry in sync with the tree -- and it ships to nobody:
+pyproject.toml packages src/hypergumbo_core, so scripts/ is not in the wheel and
+an installed hypergumbo cannot run it at all.
+
+FOUR QUESTIONS, which are the item's and not mine:
+  * what is loaded RIGHT NOW, including the community overlays and the user's
+    own rows;
+  * which families may I EXTEND, and where does my file go;
+  * per language, is there a catalogue at all and is it finished
+    (provenance_declared vs in_progress) -- today that reaches a user only as a
+    one-line stderr warning during an analysis run, which is the wrong moment;
+  * why should I care -- one sentence per family naming what changes without
+    it, because "io_primitives: 15 files" tells a reader nothing about whether
+    to trust a verdict.
+
+EXTENSIBLE AND READABLE ARE REPORTED SEPARATELY, BECAUSE THEY DIFFER. Six
+families declare a user_channel; exactly one, io_primitives.d, is scanned. The
+other five are declared extensible with no loader taught to look (WI-sofov).
+Printing "extensible: yes" for all six would describe an intention as a
+capability and send someone to write a file that does nothing. That distinction
+is PINNED BEHAVIOURALLY -- the wired one is asserted through
+_resolve_io_overlays, and wiring a second fails the test until the inventory is
+told, rather than letting it advertise a capability the tool lacks.
+
+THE LANGUAGE LIST COMES FROM THE TREE. CATALOG_LANGUAGES names fourteen and the
+package ships fifteen; bash.yaml is the one outside it, which is how it also sat
+outside the WI-sugav subprocess guard (WI-surun found that). An inventory built
+on the constant would under-report the installation it describes, so it globs
+the catalogue directory and a test pins the two in agreement.
+
+EVERYTHING ELSE IS DERIVED FROM YAML_CATALOGS -- the family list, every
+extensibility answer, the channel directories -- so a new family appears with no
+edit here and cannot appear with a blank answer: the per-family "why should I
+care" mapping is gated by a test asserting it covers the registry exactly.
+
+NAMING, WHICH THE ITEM LEFT OPEN. `catalog` is taken and stays what it is: the
+languages and frameworks hypergumbo can ANALYSE. This is the DATA behind that,
+so it is a sibling verb rather than a --yaml mode of a command answering a
+different question. `catalog-inventory` is explicit and not confusable with
+`catalog` at a glance; a test asserts both exist and that their help text
+distinguishes them. Reversible.
+
+.ci/cli-flag-matrix.json regenerated through its own
+HYPERGUMBO_UPDATE_CLI_MATRIX path; the diff is exactly this subcommand's flags.
+
+Coverage: catalogue_inventory.py 100%, every new line of the CLI block covered.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
