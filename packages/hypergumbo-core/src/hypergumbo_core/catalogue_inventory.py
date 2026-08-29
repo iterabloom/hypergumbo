@@ -50,7 +50,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from .catalogue_home import user_catalogue_home, user_overlay_paths
+from .catalogue_home import (
+    WIRED_CHANNELS,
+    user_catalogue_home,
+    user_overlay_paths,
+)
 from .io_boundary import default_overlays, load_catalog
 from .yaml_catalogs import enumerate_catalogs
 
@@ -61,14 +65,6 @@ __all__ = [
     "LanguageRow",
     "build_inventory",
 ]
-
-#: Channels a loader actually consults today. NOT derived — there is no fact in
-#: the registry that distinguishes "declared extensible" from "wired", and
-#: inventing one would be a registry change riding in on an inventory feature.
-#: A behavioural test pins the wired one and the count, so wiring another
-#: (WI-sofov) fails here until this is updated rather than silently reporting a
-#: capability the tool does not have.
-_WIRED_CHANNELS = frozenset({"io_primitives.d"})
 
 #: Question 4: what goes wrong without this family. A row count is not an
 #: answer to "why should I care", and this is the sentence that is.
@@ -189,7 +185,7 @@ def build_inventory(
             channel_scope=spec.channel_scope,
             channel_gated=spec.channel_gated,
             no_channel_reason=spec.no_channel_reason,
-            read_now=channel in _WIRED_CHANNELS,
+            read_now=channel in WIRED_CHANNELS,
             your_files=len(user_paths) if channel == "io_primitives.d" else 0,
             consequence=FAMILY_CONSEQUENCE[spec.directory],
         ))
