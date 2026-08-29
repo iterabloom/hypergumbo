@@ -1,0 +1,24 @@
+- op: create  # 674c
+  at: '2026-08-29T07:13:34Z'  # 674c
+  by: agent  # 674c
+  actor: jgstern_agent  # 674c
+  clock: 1  # 674c
+  nonce: 674c  # 674c
+  data:  # 674c
+    kind: invariant  # 674c
+    title: "io_boundary is a 'canonical risk taxonomy' that consumers branch on, with no declared axis: absent from _known_axes(), no registry, no axiom, no drift linter"  # 674c
+    status: violated  # 674c
+    priority: 2  # 674c
+    parent:  # 674c
+    tags:  # 674c
+    - catalogue  # 674c
+    - io_boundary  # 674c
+    - axis  # 674c
+    isbefore: []  # 674c
+    duplicate_of: []  # 674c
+    not_duplicate_of: []  # 674c
+    pr_ref:  # 674c
+    description: "FILED BY ADR-0049 §\"Open work\". This is the ROOT CAUSE of why WI-johuk existed at\nall, stated separately because ADR-0049 is a value-level ruling that does not wait\non it.\n\nTHE FACT. `_known_axes()` lists edge-type, symbol-kind, evidence-type, language,\npass-id, protocol-origin, qualified-name, entrypoint-kind, visibility. `io-boundary`\nis ABSENT. There is no registry module, no one-sentence axiom, no drift linter, no\nAXIS_* name -- while ADR-0016 and taint.py BOTH call it \"hypergumbo's canonical\nI/O-boundary risk taxonomy\", and while several consumers branch on its values\n(AUTO_SOURCE_LABEL_MAP mints taint sources from three of them; OPAQUE_BOUNDARIES\nwithholds confirmations on one; _DISCLOSED_ONLY_BOUNDARIES excludes two from the\nheadline; verify-claims validates claim constraints against KNOWN_IO_BOUNDARIES).\n\nWHY IT MATTERS, AS MEASURED HISTORY RATHER THAN PRINCIPLE:\n  * INV-tutar. `env_read` carried TWO readings -- ambient configuration and secret\n    material -- and AUTO_SOURCE_LABEL_MAP read the wrong one. 134 of 195 shipped\n    env_read rows were host DESCRIPTION (runtime.GOOS, os.uname,\n    navigator.platform) or user identity (os.getlogin, pwd.getpwnam). Calling\n    those a secret is why host-secret-* claims carried 48 of 85 adjudicated flows\n    at 22.9% precision, the weakest family in measurement 0001. The catalogue was\n    already distorting itself to cope: python.yaml deliberately WITHHELD getpid\n    and cpu_count because rowing them \"would manufacture false sources\", while\n    go.yaml rowed GOOS and Getwd. One boundary value, two membership rules, two\n    shipped files.\n  * WI-johuk. The server-launch question was derived four times over five months\n    and ruled zero times, because there was no place a ruling could live. The only\n    governing text was a TEST DOCSTRING. Four independent censuses of the affected\n    rows produced four different numbers (37 / 52 / 63 / 75) because there was no\n    membership rule to count against.\n\nBoth are the same failure: a vocabulary that consumers branch on, with no axiom\nsaying what its values mean, drifts one row at a time and has nowhere to record a\ncorrection.\n\nWHAT TO DO (ADR-0024 four-artifact scaffolding, heavyweight):\n  1. a registry module mirroring edge_types.py, with the one-sentence axiom --\n     ADR-0049 ruling 1 is the candidate: a boundary value names WHAT DATA CROSSES\n     THE PROCESS BOUNDARY AT THIS CALL SITE, IN WHICH DIRECTION -- not what the\n     program is thereby arranged to do later;\n  2. a consumer helper;\n  3. a drift linter (parameterise scripts/check-edge-type-drift);\n  4. a runtime property test.\nThen wire io-boundary into _known_axes().\n\nSEQUENCING NOTE: this is a large PR and should land BEFORE the row moves, not\nafter -- otherwise the census (WI-hazop) and the retag (WI-nosah) are once again\nrecorded in prose that the next re-derivation is free to reinterpret. It is\nindependent of ADR-0049 itself, which stands as a value-level ruling either way."  # 674c
+    fields:  # 674c
+      statement: "Every multi-value vocabulary that consumers branch on must have a declared axis with a one-sentence axiom and a drift linter (ADR-0024); io_boundary has neither, while AUTO_SOURCE_LABEL_MAP, OPAQUE_BOUNDARIES, _DISCLOSED_ONLY_BOUNDARIES and verify-claims all branch on its values."  # 674c
+      root_cause: "The boundary vocabulary predates ADR-0024 and was never retrofitted, so there is no axiom stating what a boundary value means and no place a per-value ruling can be recorded. Measured consequences: INV-tutar (env_read carried two readings; 134 of 195 rows misclassified; 22.9% precision on host-secret claims) and WI-johuk (the same question derived four times over five months, ruled zero times, four incompatible censuses)."  # 674c
