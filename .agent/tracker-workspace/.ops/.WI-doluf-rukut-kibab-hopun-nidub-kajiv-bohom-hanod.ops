@@ -1,0 +1,46 @@
+- op: create  # 549d
+  at: '2026-08-29T08:15:39Z'  # 549d
+  by: agent  # 549d
+  actor: jgstern_agent  # 549d
+  clock: 1  # 549d
+  nonce: 549d  # 549d
+  data:  # 549d
+    kind: work_item  # 549d
+    title: "go: a return-value-inferred receiver drops its external type before the module slot, so net.Conn.Read / net.Listener.Accept are unreachable and an idiomatic accept loop reports ZERO true receives (INV-linub L3 residual)"  # 549d
+    status: todo_hard  # 549d
+    priority: 1  # 549d
+    parent: INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof  # 549d
+    tags:  # 549d
+    - io_boundary  # 549d
+    - catalogue  # 549d
+    - analysis_quality  # 549d
+    isbefore: []  # 549d
+    duplicate_of: []  # 549d
+    not_duplicate_of: []  # 549d
+    pr_ref:  # 549d
+    description: "INV-linub L3 RESIDUAL FOR GO, the sibling of WI-dizag (rust struct-field) and\nWI-papar (rust chained / try-expression). Found while adjudicating INV-kanuk;\nit is the reason INV-kanuk's row removal is NOT licensed.\n\nMEASURED 2026-08-29 on four fixtures (rig: ~/hypergumbo_lab_notebook/kanuk_go_08292026):\n\n  form                                     dst emitted                match?\n  param decl   func f(conn net.Conn)       go:net:0-0:Read            YES\n  var decl     var conn net.Conn           go:net:0-0:Read            YES\n  in-repo ret  conn := makeConn() net.Conn go:external:0-0:Read       NO\n  stdlib ret   ln, _ := net.Listen(...)    go:external:0-0:Accept     NO\n\nA DECLARED external receiver type reaches the io-boundary module slot and the\ncatalogue row matches. A type INFERRED FROM A RETURN VALUE does not -- the slot\nis filled with `external` and no `net.Conn.Read` / `net.Listener.Accept` row can\never match it.\n\nNOT AN EXTERNAL-BOUNDARY GAP. The positive control settles this: `makeConn()`\nis declared IN THE ANALYSED REPO with return type `net.Conn`, so the INV-dihos\nreturn-type registry has something to register -- and `conn.Read()` STILL emits\n`go:external:0-0:Read`. So this is not \"the stdlib has no declaration to\nregister\"; it is L3, the module slot, exactly WI-dizag's shape in another\nlanguage. Without that control I would have filed the wrong mechanism.\n\nNOT A DUPLICATE OF INV-dihos (satisfied, correctly). That item is about SYMBOL\nRESOLUTION -- `qry.Close()` resolving to the wrong in-repo symbol -- and its\nPhase 1 var-assignment chaining works. This is about the io_boundary MODULE\nSLOT, a different consumer of the same inferred type. An item can be satisfied\nfor resolution and still leak here, which is precisely the L1/L2/L3 chain\nINV-linub was filed to hold.\n\nWHY IT MATTERS MORE THAN A MISSING ROW. On an idiomatic Go accept loop --\n`ln, _ := net.Listen(...)`, `conn, _ := ln.Accept()`, `conn.Read(buf)` -- the\nwhole receive path is return-value-inferred, so NONE of it classifies.\nMeasured on that fixture: `net_recv` reports FOUR chains and every one of them\nis a setup call that receives nothing (syscall.Socket / Bind / Listen,\nnet.Listen). Go's true network-input surface on the canonical server shape is\nEMPTY, and the only thing making it look non-empty is four false sources.\n`external_potential_edges` is 0, so these calls are not even disclosed as\nunresolved -- they are simply absent.\n\nCONSEQUENCE FOR INV-kanuk, WHICH IS WHY THIS BLOCKS IT. ADR-0049 ruling 3\nlicenses a removal only while the crossing stays represented. INV-kanuk's filed\nlicence -- \"net.Conn.Read and syscall.Recvfrom carry the actual receive\" -- is\ntrue of the CATALOGUE and false of the RUN. Deleting the four firing rows takes\ngo's network ingress to zero rather than relocating it, which is the WI-lunav\nfailure at four rows instead of one.\n\nSUGGESTED SHAPE OF THE FIX: carry the inferred type through to the module slot\nfor return-value-inferred receivers, the same repair WI-dizag needs for rust\nstruct fields. Check whether one shared mechanism serves both before writing\neither -- three L3 residuals in three languages (this, WI-dizag, WI-papar) plus\nINV-mumov for python attribute chains is a family, not four bugs.\n\nREPRO\n  mkdir -p /tmp/goprobe && cd /tmp/goprobe && cat > go.mod <<'M'\n  module probe\n  go 1.21\n  M\n  cat > p.go <<'G'\n  package main\n  import \"net\"\n  func makeConn() net.Conn { var c net.Conn; return c }\n  func inRepoChain()  { conn := makeConn(); buf := make([]byte, 16); _, _ = conn.Read(buf) }\n  func declared(conn net.Conn) { buf := make([]byte, 16); _, _ = conn.Read(buf) }\n  G\n  hypergumbo survey /tmp/goprobe --out /tmp/goprobe/s.json\n  # declared    -> go:net:0-0:Read       (matches net.Conn.Read)\n  # inRepoChain -> go:external:0-0:Read  (matches nothing)"  # 549d
+    fields: {}  # 549d
+- op: update  # 7e6b
+  at: '2026-08-29T08:16:07Z'  # 7e6b
+  by: agent  # 7e6b
+  actor: jgstern_agent  # 7e6b
+  clock: 2  # 7e6b
+  nonce: 7e6b  # 7e6b
+  set: {}  # 7e6b
+  add:  # 7e6b
+    isbefore: [INV-kanuk-rokov-bonam-musut-mupuz-lapam-rutor-mutih]  # 7e6b
+- op: update  # ee6b
+  at: '2026-08-29T09:06:29Z'  # ee6b
+  by: agent  # ee6b
+  actor: jgstern_agent  # ee6b
+  clock: 3  # ee6b
+  nonce: ee6b  # ee6b
+  set:  # ee6b
+    status: done  # ee6b
+- op: discuss  # 6fad
+  at: '2026-08-29T09:45:13Z'  # 6fad
+  by: agent  # 6fad
+  actor: jgstern_agent  # 6fad
+  clock: 4  # 6fad
+  nonce: 6fad  # 6fad
+  message: "FIXED, and the filed diagnosis was half right in a way worth recording.\n\nWHAT I FILED: 'a return-value-inferred receiver drops its external type before the module slot'. TRUE, and that is one of two composing defects — but I borrowed WI-dizag's phrasing without checking whether the type was ever inferred in the first place. It was not.\n\nDEFECT 1 — THE REGISTRY WAS WRITE-ONLY FOR STANDALONE FUNCTIONS. WI-kuroj populates analysis.method_return_types[func_name] for every declared function, and the consumer branch keyed on call_func.type == 'selector_expression' — method calls only. A plain 'conn := makeConn()' never looked anything up, so EVERY factory function in EVERY go repo produced an untyped variable. My own control fixture is what exposed the size: 'res := makeResult(); res.Rows()' resolved to go:external:0-0:Rows too, with an IN-REPO type. This was never only an external-package problem, and I would not have found that half if I had written the control to confirm rather than to refute.\n\nDEFECT 2 — THE QUALIFIER WAS STRIPPED, AND THE STRIP WAS HALF RIGHT. _go_return_type_from_signature returned 'Conn' for 'net.Conn'. Correct for the SYMBOL LOOKUP (in-repo symbols are stored unqualified, and ADR-0006 documents the strip as deliberate for exactly that reason); wrong for the io-boundary MODULE SLOT, the one consumer that needs the package and was therefore handed the 'external' placeholder forever. One fact stored in the form only one of its two consumers wanted.\n\nTHE FIX IS DERIVATION, NOT A SECOND HOME. The registry now stores the qualified truth; the bare form is derived at the two sites that need it through a single _bare_go_type fold. The receiver path at the call site already stripped for declared types (bare_recv), so the two forms cannot drift.\n\nMEASURED. net.Conn.Read now classifies from an in-repo factory (probe2: net_recv 0 -> 1 chain) where it previously emitted go:external:0-0:Read and matched nothing. Full suite 24731 passed, 0 failed; 100% coverage on changed files; ratchet clean at 669.\n\nWHAT THIS DOES NOT DO, STATED PLAINLY. It does NOT move the INV-kanuk fixture. An idiomatic accept loop is entirely STDLIB return-value chaining — net.Listen -> ln.Accept() -> conn.Read() — and the registry is built from analysed declarations, so ln still cannot be typed. That fixture reports the same four chains, all setup calls, before and after. INV-kanuk stays blocked.\n\nCROSS-LANGUAGE CHECK (owner-requested, before choosing the shape of the remaining fix). 820 method-kind io rows across nine languages, deduped for catalogue inheritance, every one needing a typed receiver: python 184, java 139, objc 123, rust 118, swift 100, javascript 48, go 45, kotlin 42, scala 21. Method rows are 97% of java's catalogue, 97% of kotlin's, 95% of objc's, 93% of swift's, 89% of scala's. csharp is the clean negative — analyzer, no io catalogue, needs nothing. Rust is the only ADR-0006 'Chained' YES. Filed as WI-lalot with the shape verdict: a SEPARATE library-signature catalogue, not a 'returns:' key on io_primitives rows, because it is a signature fact whose consumer is var_types in nine analyzers rather than the io catalogue.\n\nADR-0006 UPDATED, INCLUDING A STALENESS FIX I DID NOT GO LOOKING FOR. Go's 'Chained' column read NO (Phase 1) while INV-dihos's own closure says Phase 1 shipped in April — the table had been stale for four months. Corrected, and Go's Return column with it. Also: scala, objc and swift were ABSENT from that table entirely — not NO, not n/a, absent — so absence read as 'no gap' rather than 'no answer' while 244 method rows depended on it. They are now listed 'not assessed', which is the honest state."  # 6fad
