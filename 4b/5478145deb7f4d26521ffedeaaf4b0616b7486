@@ -1,0 +1,63 @@
+Original commit body from b18297eaa17485c4ea284531d05befec2a6e8fea:
+
+TWO AUDIENCES, TWO MECHANISMS -- the ruling's own separation, and collapsing
+them is the error it corrects. $XDG_CONFIG_HOME/hypergumbo/ belongs to the
+NORMAL user and is reached by an explicit subcommand (WI-talaz). ~/hypergumbo is
+something else: a literal `hypergumbo` directory in a home directory is a
+repository CHECKOUT, and nobody makes one by accident, which is what turns its
+presence into a deliberate signal a config directory can never be.
+
+When one is present, hypergumbo offers ONCE to place EXAMPLE repo-tier overlay
+files in ~/hypergumbo/.hypergumbo-examples/ -- the material a developer needs to
+see what a <repo>/.hypergumbo/ would contain, WITHOUT one being written into any
+repository.
+
+THE THREE CONSTRAINTS, each a defect if dropped, and two of them asserted as
+things that must NOT happen:
+  * Nothing is ever written into an analysed repository. Containment is
+    asserted in the writer, not promised in a docstring -- that function is the
+    one whose bug puts a file in somebody's tree.
+  * A decline is RECORDED, so the offer goes quiet. The three-way
+    accepted/declined/never-asked return is the point: folding a decline into a
+    falsy "not accepted" re-asks forever, which is the nag ADR-0045 ruling 8
+    forbids and which this project has already written down as corrosive.
+  * Never raised when stdin is not a TTY. The gate is on STDIN, not stderr:
+    cli.py's existing isatty checks gate RENDERING, and an offer needs an
+    ANSWER, so the stream that must be a terminal is the one the answer arrives
+    on. A prompt that blocks a CI run or an agent invocation is a defect.
+
+WHERE THE DECISION LIVES, AND WHY IT IS NOT THE TRUST STORE. This item's
+instruction was to reuse ADR-0045 ruling 8's store. THAT IS NOT SATISFIABLE:
+backend_trust.record_decision raises for any key outside
+BACKENDS_EXECUTING_ANALYSED_CODE -- frozenset({'rust_analyzer'}) -- on the
+grounds that a non-executing opt-in is a preference and belongs in the
+configuration file, and the configuration file is the one ADR-0045 says the tool
+may READ and must NOT write. All three doors were shut, so the conflict went to
+the owner rather than being guessed at.
+
+OWNER'S RULING (2026-08-28): a separate UX-state record, kept clearly apart from
+the trust store. A UX decline is categorically not a trust grant, and that
+refusal is a SECURITY guard that should not be widened to carry a prompt
+preference. So the answer lives at $XDG_STATE_HOME/hypergumbo/offers.json, a
+SIBLING of trust.d. The separation is pinned structurally -- same state root,
+never nested inside the store, never inside the portable config directory -- and
+a test asserts the trust store STILL REFUSES this key, so a later change to that
+ruling surfaces here instead of leaving a stale second home behind.
+
+A FAILING OFFER CAN NEVER BREAK A RUN. The call site swallows everything: being
+un-asked is the pre-feature behaviour and is never wrong, while a courtesy that
+turns a successful analysis into a traceback is strictly worse than no courtesy.
+It is called at the dispatch return, AFTER the command has produced its output,
+so an offer never interleaves with the thing the user actually ran -- and not
+inside the analysis pipeline, which is reached from many entry points and is the
+wrong place to read stdin.
+
+Defaults to NO: only an explicit affirmative counts, so a stray keystroke writes
+nothing. The prompt names the exact destination before anyone answers, because
+~/hypergumbo is a git working tree and someone typing 'y' should know where the
+files land before they type it -- the examples directory is dot-prefixed and
+tool-named for the same reason, and its README says it is safe to delete and
+suggests .git/info/exclude.
+
+Coverage: repo_tier_offer.py 100%, and every new line of the CLI wrapper.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
