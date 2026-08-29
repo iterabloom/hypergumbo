@@ -1,0 +1,21 @@
+- op: create  # 6e91
+  at: '2026-08-29T20:34:16Z'  # 6e91
+  by: agent  # 6e91
+  actor: jgstern_agent  # 6e91
+  clock: 1  # 6e91
+  nonce: '6e91'  # 6e91
+  data:  # 6e91
+    kind: work_item  # 6e91
+    title: "A leaked tracker-recover-disabled marker silently disables ops self-healing and nothing detects it (observed: ~10h window after auto-pr died post-merge)"  # 6e91
+    status: todo_hard  # 6e91
+    priority: 2  # 6e91
+    parent:  # 6e91
+    tags:  # 6e91
+    - tracker  # 6e91
+    - durability  # 6e91
+    isbefore: []  # 6e91
+    duplicate_of: []  # 6e91
+    not_duplicate_of: []  # 6e91
+    pr_ref:  # 6e91
+    description: "OBSERVED LIVE 2026-08-29. `auto-pr` merged PR #635 successfully, then died during\nits post-merge local sync (the `git pull` that trips on pending .ops). It left\n`<git-dir>/tracker-recover-disabled` in place and sat idle for ~10 HOURS before a\nhuman question prompted a look.\n\nWHY THAT IS A SAFETY DEFECT AND NOT AN ANNOYANCE. That marker exists to stop the\nreference-transaction and post-checkout hooks from fighting the tracker's own\nreconciliation. While it is present, THE SELF-HEALING IS OFF: a `git reset --hard`\nor `git checkout` during that window drops pending ops and nothing restores them.\nThe journal still holds the data -- so this is a degraded-safety window, not a\ndata-loss event -- but the window was ten hours long and nothing anywhere said so.\nAGENTS.md already documents the leak (\"a hard SIGKILL of auto-pr/do_sync\nmid-operation leaks the marker; auto-recovery stays disabled until it's removed\")\nand documents it as a KNOWN gap. A known gap with no detector is a rule that\ndepends on someone remembering.\n\nIT IS SILENT IN BOTH DIRECTIONS, WHICH IS THE ACTUAL PROBLEM.\n  * Nothing reports the marker exists. `tracker recover` runs happily with it set\n    (it is the HOOKS that consult it, not the manual command), so the one command\n    a person would reach for gives no hint.\n  * `auto-pr` died WITHOUT writing its completion line, so there was no failure\n    signal either. The agent had already reported \"in CI\" and moved on. Absence of\n    an exit status read as \"still running\" for ten hours.\n\nPROPOSED CHECK, cheapest first:\n  1. `scripts/tracker recover` and `scripts/tracker count-todos` warn on stderr\n     when the marker is present, naming its AGE and the exact rm command. Age is\n     the discriminator: a marker seconds old is an auto-pr legitimately in flight;\n     one older than, say, 15 minutes is a leak, because no auto-pr fetch+ff window\n     is that long.\n  2. A test asserting the warning fires -- the marker is a file, so this is a\n     tmp_path test with no process involved.\n  3. OPTIONAL, and this half IS governance-gated: a stop-hook nudge. Do not bundle\n     it; see below.\n\nSCOPE / GOVERNANCE SPLIT, so this does not stall:\n  * `packages/hypergumbo-tracker/**` and `scripts/tracker` are NOT governance\n    files -- the warn-on-stale-marker half can ship normally.\n  * `.agent/hooks/**` IS governance. If a stop-hook surface is wanted, it needs\n    explicit human approval and its own PR. File that half separately rather than\n    letting it block the detector.\n\nDO NOT \"FIX\" THIS BY AUTO-DELETING THE MARKER. A marker that clears itself on a\ntimer would race a genuinely long auto-pr and re-open the exact fight the marker\nprevents (the fetch restores a journalled op as untracked, then `merge --ff-only`\nre-fires the hook and aborts the fast-forward that would have committed it). WARN,\nname the age, and let a human or the next auto-pr clear it."  # 6e91
+    fields: {}  # 6e91
