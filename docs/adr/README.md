@@ -55,6 +55,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0046](0046-two-axis-taint-precision.md) | Two-Axis Taint Precision — Correctness and Usefulness | Accepted | 2026-08-27 |
 | [0047](0047-catalogue-scope-and-user-visible-homes.md) | Catalogue Scope, and Where a User's Catalogue Data Lives | Accepted | 2026-08-27 |
 | [0048](0048-taint-precision-benchmark-frame.md) | The Taint-Precision Benchmark — Equal Allocation, Declared Frame, Pinned SHA | Accepted | 2026-08-28 |
+| [0049](0049-deferred-crossings-are-disclosed-not-minted.md) | A Deferred Crossing Is Disclosed, Not Minted (extends ADR-0016) | Accepted | 2026-08-29 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 
