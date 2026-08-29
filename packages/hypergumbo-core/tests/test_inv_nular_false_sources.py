@@ -735,23 +735,36 @@ class TestWaiResponsesAreEgress:
 
 
 class TestServerLaunchStaysAReceive:
-    """THE FAMILY WI-joruz REFUSED TO SPLIT.
+    """THE FAMILY WI-joruz REFUSED TO SPLIT. NOW RULED — SEE ADR-0049.
 
-    ``Network.Wai.Handler.Warp.{run, runSettings, runTLS, runEnv}`` are also
+    ``Network.Wai.Handler.Warp.{run, runSettings, runTLS, runEnv}`` are
     net_recv, and the argument cuts both ways: the server genuinely receives,
     but the bytes reach the ``app`` handler rather than ``run``'s caller, so
     taint minted at the call site is attributed to a scope that never sees a
     request.
 
-    THAT IS NOT A NEW QUESTION AND IT IS NOT A HASKELL QUESTION. It is the
-    Django rule (F3), the JavaScript ``createServer`` rule, and the
-    ``Phoenix.Router`` control F5 deliberately kept: arrival has no call site to
-    catalogue, so moving these rows would relocate the receive to NOTHING. The
-    family spans nine languages, is partly adjudicated already, and deserves one
-    ruling rather than nine — so it is KEPT here, identically to Phoenix.Router,
-    which is the "or neither" branch of the item's own constraint. Filed for a
-    single adjudication; pinned here so it cannot be split silently in the
-    meantime."""
+    THIS DOCSTRING IS NO LONGER THE RULING. It was, which was the defect
+    WI-johuk named: the question had been derived four times (Django F3, the
+    JavaScript ``createServer`` rule, the ``Phoenix.Router`` control F5 kept,
+    WI-joruz here) and recorded in no ADR, so each encounter re-derived it and
+    could have derived it differently. ADR-0049 rules it: a call that opens,
+    registers or defers a crossing whose data arrives in a scope the runtime
+    enters later is a DEFERRED CROSSING, and a deferred crossing is disclosed
+    rather than minted as a taint source.
+
+    THE ROWS STILL DO NOT MOVE, AND THIS IS STILL THE PIN. ADR-0049 ruling 3
+    licenses a retag only against a represented crossing, and ADR-0049 §"Open
+    work" sets the evidence bar that has to clear first — a corrected census
+    (four counts disagreed), a reachability fixture per row (``flask.Flask.run``
+    is in Python's ``ambiguous_names`` and mints nothing today), adjudicated
+    findings per shape, and an INV-buzab false-confirm check. Until that lands
+    the family stays ``net_recv`` and this class stops it being split silently.
+
+    ONE MEMBER IS ALREADY RULED OUT OF THE FAMILY: ``accept`` returns a
+    peer-chosen address to its caller, so it is a TRANSFER under ADR-0049
+    ruling 1 and stays ``net_recv`` on its own merits, not on this pin's.
+    WI-dosov had this right in Haskell; it is asserted below so the two
+    justifications cannot be confused again."""
 
     @pytest.mark.parametrize("name", ("run", "runSettings", "runTLS", "runEnv"))
     def test_warp_launch_is_kept_a_receive(self, name: str) -> None:
@@ -771,6 +784,34 @@ class TestServerLaunchStaysAReceive:
         """The cross-language half. Warp is kept because these are kept; if one
         of them is ever moved, this fails and forces the family to move
         together."""
+        assert _has(lang, "net_recv", mod, name)
+
+    @pytest.mark.parametrize("lang,mod,name", [
+        ("c", "sys/socket", "accept"),
+        ("rust", "std::net::TcpListener", "accept"),
+        ("erlang", "gen_tcp", "accept"),
+        ("haskell", "Network.Socket", "accept"),
+        ("java", "java.net.ServerSocket", "accept"),
+        ("go", "net.Listener", "Accept"),
+        ("python", "socket.socket", "accept"),
+    ])
+    def test_accept_is_a_transfer_not_a_member_of_this_family(
+        self, lang: str, mod: str, name: str,
+    ) -> None:
+        """``accept`` STAYS net_recv ON ITS OWN MERITS (ADR-0049 ruling 1).
+
+        It returns a peer-chosen address or a connected socket TO ITS CALLER,
+        so it is a transfer, not a deferred crossing -- WI-dosov already drew
+        this line in Haskell, removing socket/bind/listen while keeping accept.
+        Asserted separately from the pin above because the two rows survive for
+        OPPOSITE reasons: the launch rows are held by an unlanded evidence bar
+        and are expected to move, ``accept`` is ruled correct and is expected
+        to stay. Collapsing them into one assertion is how a family-wide retag
+        would take ``accept`` with it.
+
+        Language-facing view, so inherited rows appear under the child:
+        ``_CATALOG_PARENTS`` maps cpp->c, kotlin/scala->java, elixir->erlang,
+        and those four are omitted here rather than asserted twice."""
         assert _has(lang, "net_recv", mod, name)
 
 
