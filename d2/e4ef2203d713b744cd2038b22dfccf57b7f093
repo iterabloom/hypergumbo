@@ -1,0 +1,94 @@
+Original commit body from 8e025dd7de6e7bb5f57d9b08801e8af06f81b76d:
+
+Nobody edits files inside their site-packages. The registry already recorded
+WHICH catalogue families are user-extensible and what each one's overlay
+directory is called (ruling 7); what it could not say is where on disk that
+directory lives, because there was nowhere.
+
+`hypergumbo init-catalogs` creates $XDG_CONFIG_HOME/hypergumbo/ with one
+<family>.d/ per user-extensible family, a README explaining the layout, and the
+shipped community overlays seeded into io_primitives.d/. The repo tier is
+<repo>/.hypergumbo/ -- a DIRECTORY, one character and one kind away from
+ADR-0045's .hypergumbo.toml FILE, and pinned distinct by a test.
+
+SEED, NEVER COPY (ruling 2), which is the property whose violation is silent.
+Base catalogues are never materialized; only deltas land in the user's
+directory, because a full copy means the next release's rows never reach that
+user and nothing says so. The gate is a test asserting the seeded filenames and
+the shipped catalogue filenames are disjoint SETS, not a sentence in a
+docstring. Each seeded file is stamped `seeded_from:` beside its existing
+`retrieved:` date (ruling 5), and re-running never overwrites a file the user
+edited -- it reports it as kept, because a command that eats your edits is a
+command you run once.
+
+EXPLICIT, NEVER IMPLICIT (ruling 4), asserted as something that does NOT
+happen. Analysis never writes here: the community overlays already load from
+the wheel, so materialization buys the ability to EDIT them and nothing else.
+ADR-0045's precedent is a human-owned config file the tool may read and must
+not write, and a test pins that loading catalogues leaves the home absent.
+
+THE DIRECTORY LIST IS DERIVED FROM YAML_CATALOGS, not written down a second
+time. A family that gains a user_channel gains a directory with no edit in the
+new module, and a family carrying no_channel_reason cannot acquire one by being
+overlooked.
+
+AND THE HOME IS WIRED, BECAUSE OTHERWISE IT IS DECORATION. Nothing read
+$XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ -- the ADR-0045 `io_primitives`
+setting is a list of paths a user NAMES, not a scan. So hypergumbo has been
+printing "Override them in $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/" on
+every run that loads a community overlay (the ruling-6 disclosure) while
+reading nothing there. Measured before the fix: a row dropped in that directory
+changed no boundary. Seeding files into an unread directory would have turned
+one false instruction into a much larger one, so the scan is wired here, at the
+BOTTOM of the precedence chain -- a path NAMED in config.toml is a more
+specific statement of intent than a file dropped in a directory. Verified end
+to end: the same probe now reports the row.
+
+The scan leans on INV-lufib rather than inventing a second filter. The seeded
+directory holds overlays for five languages at once, so every one reaches every
+language's load; INV-lufib already ruled that an overlay for another SHIPPED
+language is "not mine" and is skipped, while one naming a language no catalogue
+knows is a typo and still raises. A test materializes the real home and asserts
+a python load survives it.
+
+THE README SAYS WHICH CHANNELS ARE LIVE. io_primitives.d is scanned; the other
+five are declared extensible and not yet consulted, and the README written into
+the home says so per family rather than leaving a user to find out through an
+overlay that silently does nothing. Wiring the rest is WI-sofov.
+
+TWO DEFECTS FOUND BY THE TESTS RATHER THAN BY REVIEW.
+
+  1. The seeded files were being CORRUPTED. An early draft stamped the version
+     with `!r` and a trailing .replace("'", '"') to get YAML double quotes.
+     Implicit string concatenation binds BEFORE the method call, so the replace
+     ran over the ENTIRE file and turned every apostrophe in the source
+     comments into a quote -- shipping mangled prose into a user's config home.
+     The comment-preservation test caught it; the version is now rendered with
+     json.dumps, and the docstring records why.
+
+  2. The did-you-mean guard's subcommand list was a SECOND HOME for a fact the
+     parser already owned. `init-catalogs` parsed correctly and was then
+     refused as "not a valid subcommand" with a suggestion to run `catalog`
+     instead. It is now derived from the parser, so a registered command cannot
+     be unlisted. The literal held EXACTLY the derived set -- checked before
+     the swap -- so this changed no behaviour, and a test pins the two in
+     agreement.
+
+SCOPE, STATED PLAINLY: `repo_catalogue_home()` NAMES the repo tier's location
+and nothing loads it yet. Ruling 9 keeps that tier opt-in and forbids
+hypergumbo from ever writing into an analysed repository; wiring the opt-in is
+WI-putat's, not this change's.
+
+The subcommand NAME is mine: ADR-0047 specifies "an explicit subcommand" and
+never names one. `init-catalogs` follows the existing verb-first
+build-grammars / install-embeddings shape. Reversible.
+
+Two existing gates moved with the change: the docs-prose gate that parsed
+the subcommand LITERAL out of main() is re-aimed to assert the DERIVATION
+is still in place (reintroducing a literal restores the hazard silently),
+and .ci/cli-flag-matrix.json is regenerated through its own
+HYPERGUMBO_UPDATE_CLI_MATRIX path -- the diff is exactly this subcommand's
+four flags.
+
+Coverage: catalogue_home.py 100%, and every new line of the CLI block covered.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
