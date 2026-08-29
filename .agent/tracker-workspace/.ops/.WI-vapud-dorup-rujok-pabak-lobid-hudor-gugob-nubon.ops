@@ -20,3 +20,12 @@
     pr_ref:  # d424
     description: "FILED BY ADR-0049 §\"Open work\" step 2. BLOCKS every row move in this family.\n\nA ROW CAN BE ARGUED ABOUT FOR A WHOLE PANEL WHILE MINTING NOTHING. `flask.Flask.run`\nis WI-johuk's headline Python example and the lead example in three separate\nwrite-ups of this question. Measured: `run` is in python's `ambiguous_names`, so\na bare `app.run()` yields ZERO edges and `total_io_edges 0`. It has never minted\na taint source. Meanwhile `serve_forever`, `uvicorn.run` and `asyncio.start_server`\nDO fire in the same fixture, so this is not a language-wide receiver-resolution\ngap -- it is per-row, and nobody knows which rows are on which side.\n\nWHAT TO DO. For each row the census (WI-hazop) returns, a fixture proving the row\nemits a classifiable edge. Report reachable / inert per row, with the reason for\neach inert one (ambiguous_names, unresolved receiver, no analyzer support for the\nconstruct, module-filter ordering per INV-fodar).\n\nWHY THIS GATES THE WORK RATHER THAN FOLLOWING IT. Two different reasons:\n\n1. PRIORITY. If most of the family is inert, the false-positive volume this whole\n   line of work removes is near zero, and it is a correctness cleanup competing\n   with six P1s -- not a precision fix. That changes what it is worth, not\n   whether the ruling is right. Nobody has measured it: measurement 0006 spans\n   16 repos / 10 languages / 112 adjudicated situations and includes caddy,\n   cilium, jaeger and cert-manager -- the archetypal ListenAndServe population --\n   and contains ZERO launch-family findings. The only adjudicated datapoint\n   anywhere is 0006 §A's `c | socket | net_recv | returns a descriptor; receives\n   nothing`.\n\n2. CORRECTNESS OF THE MEASUREMENT ITSELF. An A/B that moves an inert row measures\n   nothing and reports a clean zero -- the exact failure mode this family keeps\n   producing. A zero needs the right population, a denominator and a positive\n   control before it means anything.\n\nPRECEDENT FOR THE SHAPE: INV-misup is 11 javascript rows that match the catalogue\ncorrectly and are structurally unreachable. Presence is not reachability."  # d424
     fields: {}  # d424
+- op: update  # ed7b
+  at: '2026-08-29T07:15:13Z'  # ed7b
+  by: agent  # ed7b
+  actor: jgstern_agent  # ed7b
+  clock: 2  # ed7b
+  nonce: ed7b  # ed7b
+  set: {}  # ed7b
+  add:  # ed7b
+    isbefore: [WI-nosah-lufim-rutok-batas-kojob-tujum-luboz-vanag]  # ed7b
