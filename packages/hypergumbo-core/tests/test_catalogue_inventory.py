@@ -99,10 +99,17 @@ def test_declared_extensible_is_not_reported_as_readable(inv) -> None:
     them as usable would send a user to write a file that does nothing."""
     extensible = [f for f in inv.families if f.extensible]
     assert len(extensible) > 1, "fixture wrong: only one extensible family"
-    read_now = [f.directory for f in extensible if f.read_now]
-    assert read_now == ["io_primitives"], (
-        "a channel became readable without the inventory being told — wire it "
-        "into _WIRED_CHANNELS so users are not sent to an inert directory"
+    read_now = {f.directory for f in extensible if f.read_now}
+    assert read_now == {"io_primitives", "frameworks", "dataflow_patterns"}, (
+        "a channel changed readability without the inventory being told — "
+        "update _WIRED_CHANNELS so users are neither sent to an inert "
+        "directory nor told a working one is dead"
+    )
+    still_inert = {f.directory for f in extensible if not f.read_now}
+    assert still_inert == {"function_summaries", "taint_sources",
+                           "taint_sanitizers"}, (
+        "the remaining unwired channels changed; WI-sofov's function_summaries "
+        "arm carries a caveat gate and must not be reported readable without it"
     )
 
 
@@ -186,7 +193,16 @@ def test_json_output_carries_the_same_facts(capsys, monkeypatch,
     io_row = next(f for f in doc["families"] if f["directory"] == "io_primitives")
     assert io_row["read_now"] is True
     fw = next(f for f in doc["families"] if f["directory"] == "frameworks")
-    assert fw["extensible"] is True and fw["read_now"] is False
+    assert fw["extensible"] is True and fw["read_now"] is True
+    # Still-inert, and the one whose gate is not built yet.
+    fs = next(f for f in doc["families"]
+              if f["directory"] == "function_summaries")
+    assert fs["extensible"] is True and fs["read_now"] is False
+    assert fs["channel_gated"] == "CAVEAT_USER_SUPPLIED_SANITIZER"
+    # Section-scoped: readable, but the scope has to survive to the reader.
+    df = next(f for f in doc["families"]
+              if f["directory"] == "dataflow_patterns")
+    assert df["read_now"] is True and df["channel_scope"] == "library_patterns"
 
 
 def test_the_subcommand_is_reachable_through_main(tmp_path, monkeypatch) -> None:

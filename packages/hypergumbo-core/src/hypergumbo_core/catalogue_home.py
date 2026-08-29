@@ -47,11 +47,13 @@ from .user_config import user_config_path
 from .yaml_catalogs import YAML_CATALOGS
 
 __all__ = [
+    "WIRED_CHANNELS",
     "MaterializeResult",
     "channel_directories",
     "materialize_catalogue_home",
     "repo_catalogue_home",
     "user_catalogue_home",
+    "user_channel_files",
     "user_overlay_paths",
 ]
 
@@ -65,6 +67,19 @@ _OVERLAY_PACKAGE_DIR = Path(__file__).parent / "io_primitives_overlays"
 
 #: The family whose channel receives those overlays. Named once.
 _OVERLAY_CHANNEL = "io_primitives.d"
+
+
+#: Channels a loader actually consults today. NOT derived — there is no fact in
+#: the registry that distinguishes "declared extensible" from "wired", and
+#: inventing one would be a registry change riding in on an inventory feature.
+#: A behavioural test pins the wired one and the count, so wiring another
+#: (WI-sofov) fails here until this is updated rather than silently reporting a
+#: capability the tool does not have.
+WIRED_CHANNELS = frozenset({
+    "io_primitives.d",
+    "frameworks.d",        # WI-sofov
+    "dataflow_patterns.d", # WI-sofov, library_patterns section only
+})
 
 
 def user_catalogue_home(
@@ -128,10 +143,35 @@ def user_overlay_paths(
     user NAMED in ``config.toml`` is more specific than a file they dropped in
     a directory, so the named one wins on a qualified-name collision.
     """
-    channel = user_catalogue_home(environ, home) / _OVERLAY_CHANNEL
-    if not channel.is_dir():
+    return user_channel_files("io_primitives", environ, home)
+
+
+def user_channel_files(
+    family: str,
+    environ: "Optional[Mapping[str, str]]" = None,
+    home: "Optional[Path]" = None,
+) -> "list[Path]":
+    """Every YAML in the user's channel for ``family``, sorted, lowest first.
+
+    THE ONE PLACE THAT TURNS A REGISTRY ANSWER INTO A DIRECTORY LISTING. Three
+    loaders need it (io_primitives, frameworks, dataflow_patterns) and a fourth
+    will; writing the join four times is how the four drift apart. The channel
+    NAME is the registry's (``<family>.d``), not a string built here, so a
+    family whose channel is renamed cannot leave one loader reading the old
+    directory.
+
+    Returns ``[]`` for a family with no channel, rather than raising: a caller
+    asking "has the user extended this" about an internal family is asking a
+    fair question with the answer "no".
+    """
+    channel = next((s.user_channel for s in YAML_CATALOGS
+                    if s.directory == family and s.user_channel), None)
+    if channel is None:
         return []
-    return sorted(channel.glob("*.yaml"))
+    directory = user_catalogue_home(environ, home) / channel
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.yaml"))
 
 
 @dataclass(frozen=True)
@@ -147,6 +187,47 @@ class MaterializeResult:
     seeded: "tuple[Path, ...]"
     skipped: "tuple[Path, ...]"
     readme: Path
+
+
+def _channel_scope(channel: str) -> "Optional[str]":
+    """The YAML section a channel is limited to, when it is limited.
+
+    From the registry, because a scope stated in prose here and enforced in a
+    loader there is two homes for one fact — and the half that would be wrong
+    is the one a user reads before writing a file.
+    """
+    return next((s.channel_scope for s in YAML_CATALOGS
+                 if s.user_channel == channel), None)
+
+
+def _wired_listing(channels: "Sequence[str]") -> str:
+    wired = [c for c in channels if c in WIRED_CHANNELS]
+    lines = "\n".join(
+        f"  {c}/" + (f"   (only its `{scope}` section is read)"
+                     if (scope := _channel_scope(c)) else "")
+        for c in wired)
+    return (
+        "These directories are SCANNED on every run — drop a YAML in one and\n"
+        "its rows apply:\n"
+        "\n"
+        f"{lines}\n"
+    )
+
+
+def _inert_listing(channels: "Sequence[str]") -> str:
+    inert = [c for c in channels if c not in WIRED_CHANNELS]
+    if not inert:  # pragma: no cover - true only once every channel is wired
+        return ""
+    lines = "\n".join(f"  {c}/" for c in inert)
+    return (
+        "These are declared extensible and are NOT yet consulted by a run.\n"
+        "They exist so the layout is stable, but until their loaders are\n"
+        "wired a file you put in them has NO EFFECT. That is said here rather\n"
+        "than left for you to discover through an overlay that silently does\n"
+        "nothing:\n"
+        "\n"
+        f"{lines}\n"
+    )
 
 
 def _readme_text(channels: Sequence[str]) -> str:
@@ -167,15 +248,9 @@ def _readme_text(channels: Sequence[str]) -> str:
         "\n"
         "## What is read today\n"
         "\n"
-        f"`{_OVERLAY_CHANNEL}` is SCANNED on every run: drop a YAML in it and\n"
-        "its rows apply, beneath anything you name explicitly in `config.toml`\n"
-        "and beneath `--io-primitives`.\n"
+        f"{_wired_listing(channels)}"
         "\n"
-        "The other directories above are declared extensible and are NOT yet\n"
-        "consulted by a run. They are created so the layout is stable and so\n"
-        "you can see what is coming; until their loaders are wired, a file you\n"
-        "put in them has no effect. That is stated here rather than left for\n"
-        "you to discover by an overlay that silently does nothing.\n"
+        f"{_inert_listing(channels)}"
         "\n"
         "## Seed, never copy\n"
         "\n"

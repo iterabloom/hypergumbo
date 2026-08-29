@@ -34,7 +34,7 @@ Two-Tier Model (ADR-0015 §5)
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -220,11 +220,55 @@ def get_dataflow_config(language: str) -> Optional[DataflowConfig]:
     yaml_path = _DATAFLOW_DIR / f"{language}.yaml"
     if yaml_path.is_file():
         config = load_dataflow_config(yaml_path)
-        _config_cache[language] = config
+        _config_cache[language] = _with_user_library_patterns(language, config)
     else:
         _config_cache[language] = None
 
     return _config_cache[language]
+
+
+def _with_user_library_patterns(
+    language: str, config: DataflowConfig,
+) -> DataflowConfig:
+    """Append the user's ``library_patterns`` rows, and ONLY those.
+
+    ADR-0047 ruling 10 (WI-sofov). This family is MIXED, and the channel is
+    section-scoped for a reason that matters. The grammar section (node types,
+    field names) is internal by the same argument that keeps ``cfg_nodes``
+    internal: a user cannot know better than the grammar, and a wrong row
+    silently breaks the CFG, which silently breaks the taint walk. But
+    ``library_patterns`` rows are regexes over call SYNTAX, matched by method
+    name regardless of receiver type -- a claim about libraries and idioms,
+    which a user with an in-house collection type can legitimately extend.
+
+    So a user file's ``library_patterns`` are read and everything else in it is
+    ignored. Granting the whole file would hand over the grammar rules as well,
+    which is the failure this scoping exists to prevent -- and ignoring rather
+    than refusing keeps a user file that also carries grammar keys from
+    breaking the run, while a test pins that those keys have no effect.
+
+    Appended AFTER the shipped rows: ``scan_library_patterns`` takes the rows in
+    order, so a user row is consulted last and can only add a match where the
+    shipped rows found none. This channel widens recognition; it does not
+    silence it.
+    """
+    from .catalogue_home import user_channel_files
+
+    extra: "List[Dict[str, Any]]" = []
+    for path in user_channel_files("dataflow_patterns"):
+        if path.stem != language:
+            continue
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):  # pragma: no cover - unreadable file
+            continue
+        rows = data.get("library_patterns")
+        if isinstance(rows, list):
+            extra.extend(rows)
+    if not extra:
+        return config
+    return replace(config,
+                   library_patterns=[*config.library_patterns, *extra])
 
 
 def _build_line_index(root_node: Any) -> Dict[int, Any]:
