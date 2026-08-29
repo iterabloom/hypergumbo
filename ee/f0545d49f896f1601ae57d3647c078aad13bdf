@@ -1,0 +1,47 @@
+Original commit body from 86d3ad4d285272370ea8b39daa4d3cbe79051d95:
+
+Two composing defects in Go receiver typing. The filed diagnosis named one of them; the control fixture found the other.
+
+## Defect 1 — the return-type registry was write-only for standalone functions
+
+WI-kuroj populates `method_return_types[func_name]` for every declared function. The consumer branch keyed on `call_func.type == "selector_expression"` — **method calls only**. So `conn := makeConn()` never looked anything up, and every factory function in every Go repo produced an untyped variable.
+
+The control fixture is what exposed the size. I wrote it to prove the *external-package* path hadn't regressed, and it failed on current code: `res := makeResult(); res.Rows()` resolved to `go:external:0-0:Rows` with an **in-repo** type. This was never only an external-package problem.
+
+## Defect 2 — the package qualifier was stripped, and the strip was half right
+
+`_go_return_type_from_signature` returned `Conn` for `net.Conn`. That is **correct for the symbol lookup** — in-repo symbols are stored unqualified, and ADR-0006 documents the strip as deliberate for exactly that reason — and **wrong for the io-boundary module slot**, which is the one consumer that needs the package and was therefore handed the `external` placeholder forever.
+
+One fact stored in the form only one of its two consumers wanted. The fix is derivation rather than a second home: the registry stores the qualified truth, and the bare form is derived through a single `_bare_go_type` fold at the two sites that need it. The call-site receiver path already stripped for declared types (`bare_recv`), so the two forms cannot drift apart.
+
+## Measured
+
+`net.Conn.Read` now classifies from an in-repo factory, where it previously emitted `go:external:0-0:Read` and matched no catalogue row.
+
+**What this does not do, stated plainly:** it does **not** move the INV-kanuk fixture. An idiomatic accept loop — `net.Listen` → `ln.Accept()` → `conn.Read()` — is entirely *stdlib* return-value chaining, and the registry is built from analysed declarations, so `ln` still cannot be typed. Same four chains, all setup calls, before and after. INV-kanuk stays blocked, on something more specific than it was blocked on yesterday.
+
+## Cross-language check (owner-requested before choosing the remaining fix's shape)
+
+820 method-kind `io_primitives` rows across nine languages, deduped for catalogue inheritance — every one needing a typed receiver before it can match:
+
+| language | own method rows | own receiver types | ADR-0006 "Chained" |
+|---|---:|---:|---|
+| python | 184 | 26 | no (Phase 4) |
+| java | 139 | 36 | no (Phase 1, never landed) |
+| objc | 123 | 18 | **absent from the table** |
+| rust | 118 | 26 | yes (Phase 3 / WI-titor) |
+| swift | 100 | 31 | **absent from the table** |
+| javascript | 48 | 13 | no (n/a) |
+| go | 45 | 16 | yes (Phase 1; this PR) |
+| kotlin | 42 | 3 | no (Phase 2) |
+| scala | 21 | 5 | **absent from the table** |
+
+Method rows are 97% of java's catalogue, 97% of kotlin's, 95% of objc's, 93% of swift's, 89% of scala's. `csharp` is the clean negative — it has an analyzer and no io catalogue, so it needs nothing. Filed as WI-lalot with the shape verdict: a **separate library-signature catalogue**, not a `returns:` key on `io_primitives` rows, because it is a signature fact whose consumer is `var_types` in nine analyzers rather than the io catalogue — the INV-tutar shape if collapsed into one name.
+
+## ADR-0006 corrected, including staleness I wasn't looking for
+
+Go's **Chained** column read `no (Phase 1)` while INV-dihos's own closure says Phase 1 shipped in April — stale for four months. And scala, objc and swift were **absent from the table entirely**: not `no`, not `n/a`, absent — so absence read as "no gap" rather than "no answer" while 244 method rows depend on it. They are now listed *not assessed*, which is the honest state, and assessing them is the first step of WI-lalot.
+
+## Tests
+
+Full suite 24731 passed, 0 failed (36m). 100% coverage on changed source files. mypy strict ratchet clean at 669.
