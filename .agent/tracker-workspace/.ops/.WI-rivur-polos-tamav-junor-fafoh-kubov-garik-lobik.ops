@@ -1,0 +1,22 @@
+- op: create  # 8ad1
+  at: '2026-08-29T23:37:19Z'  # 8ad1
+  by: agent  # 8ad1
+  actor: jgstern_agent  # 8ad1
+  clock: 1  # 8ad1
+  nonce: 8ad1  # 8ad1
+  data:  # 8ad1
+    kind: work_item  # 8ad1
+    title: "Five misdeclarations found by the WI-hazop census that are NOT deferred crossings: gethostname as net_recv, removeObserver/os.wait* as ipc_recv, sqlite3 backup as db_read, ets.info as db_read"  # 8ad1
+    status: todo_hard  # 8ad1
+    priority: 3  # 8ad1
+    parent:  # 8ad1
+    tags:  # 8ad1
+    - catalogue  # 8ad1
+    - io_boundary  # 8ad1
+    - taint  # 8ad1
+    isbefore: []  # 8ad1
+    duplicate_of: []  # 8ad1
+    not_duplicate_of: []  # 8ad1
+    pr_ref:  # 8ad1
+    description: "FOUND IN PASSING during the WI-hazop census, which adjudicated 332 auto-source\nrows against ADR-0049 ruling 1. These are NOT deferred crossings and ADR-0049\ndoes not reach them. They are ordinary misdeclarations of a different kind,\nfiled together because they were found by one sweep and share one root cause:\na row's boundary was chosen by what the call is ABOUT rather than by what it\nDOES.\n\nEach is a live false source or a false surface, because every boundary below\nauto-derives a taint source via AUTO_SOURCE_LABEL_MAP.\n\n  1. erlang `inet.gethostname` -- declared net_recv. It reads the LOCAL\n     hostname. Nothing crosses the network boundary; the value is host\n     DESCRIPTION. Correct boundary: host_info_read, which is the split\n     INV-tutar made for exactly this confusion (134 of 195 env_read rows were\n     host description, driving host-secret-* claims to 22.9% precision).\n\n  2. objc `NSNotificationCenter.removeObserver:` and\n     `removeObserver:name:object:` -- declared ipc_recv. UN-registering an\n     observer receives nothing and crosses nothing. Not even a deferred\n     crossing: there is no arrival being arranged, there is an arrival being\n     cancelled. Straight deletion, no representation question.\n\n  3. python `os.wait`, `os.wait3`, `os.wait4`, `os.waitid`, `os.waitpid` --\n     declared ipc_recv. They return a child's EXIT STATUS and resource usage,\n     not an IPC payload. A status integer the kernel computed is not data\n     another process sent. Nearest correct reading is host_info_read, or no\n     row at all.\n\n  4. python `sqlite3.Connection.backup` -- declared db_read. It WRITES the\n     database to another connection. Wrong direction: db_write.\n\n  5. erlang `ets.info`, `mnesia.table_info` -- declared db_read. They return\n     TABLE METADATA (size, memory, type), not stored rows. Reading a table's\n     shape is not reading its contents, and treating it as untrusted_input\n     mints taint from a number the runtime computed.\n\nWHY THEY ARE FILED TOGETHER RATHER THAN AS FIVE ITEMS. One sweep, one shape of\nerror, and the fix for each is a one-line boundary change or a deletion. Filed\nseparately they would be five P3s nobody batches; filed together they are one\nreviewable diff with five independent justifications.\n\nEVIDENCE OWED BEFORE ANY ROW MOVES, same bar as the family:\n  * a reachability fixture per row (the flask.Flask.run lesson -- a row can be\n    argued about at length while minting nothing);\n  * for the DELETIONS (removeObserver, os.wait*) the F2/F3 licence question is\n    trivial -- nothing is being relocated because nothing crosses -- but say so\n    in the PR rather than assuming it;\n  * for the RETAGS (gethostname -> host_info_read, backup -> db_write) confirm\n    the destination boundary does not itself auto-derive a source that makes\n    the situation worse. host_info_read DOES auto-derive (label\n    host_description), so gethostname stays a source and only changes label."  # 8ad1
+    fields: {}  # 8ad1
