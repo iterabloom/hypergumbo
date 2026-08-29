@@ -1,0 +1,74 @@
+Original commit body from 4fcbcc722879fef2a1f1606a230b0d1bc6b4c1ce:
+
+THE CHANNEL THIS FAMILY MOST OBVIOUSLY WANTS, AND THE GATE IT LEAST OBVIOUSLY
+NEEDS. Function summaries describe callees "whose source is not analyzed" --
+dependencies, exactly where a user knows something hypergumbo cannot. But
+taint.py already documents the asymmetry: a false "terminates" lets the walk
+close a branch that is really open and DELETES A REAL SECURITY FINDING, while a
+false "propagates" only leaves an unknown unknown.
+
+So a user-supplied TERMINATING summary is a sanitizer declaration by another
+name -- it removes a flow the tool would otherwise report -- and it now
+qualifies a clean taint verdict with CAVEAT_USER_SUPPLIED_SANITIZER and its
+exit-3 contract. A PROPAGATING one does not, because it cannot silence
+anything. Granting this channel without the gate would have re-opened
+INV-buzab's shape on a fresh surface: the tool answering "clean" on the strength
+of the user's own word, with nothing saying so.
+
+THE ATTRIBUTION HAD TO BE COLLECTED DURING THE WALK, and that is the part worth
+reading. A SANITIZED flow still surfaces as a finding carrying
+`sanitized_by_user_supplied`, which is how the existing sanitizer caveat knows
+what to name. A TERMINATED branch produces NO FINDING AT ALL -- that is what
+terminating means -- so if the walk does not record what it credited, nothing
+downstream can. `_use_site_terminates` therefore gained a collector rather than
+the verdict code gaining a query, following the `escape_sites` out-param already
+in that same function.
+
+PURELY ADDITIVE, which is what makes it safe to touch this path at all: the
+bool return is untouched and the collector defaults to None, so an installation
+where nobody wrote a summary produces byte-identical verdicts to before.
+Recording happens only AFTER the line has actually terminated -- an entry
+consulted on a line that then escapes was not credited with anything.
+
+SCOPE, STATED IN THE CAVEAT'S OWN TEXT RATHER THAN ONLY IN A COMMIT MESSAGE:
+the caveat is RUN-SCOPED, not flow-scoped. With no finding to attribute, it
+rides every confirming TAINT verdict in a run where any user summary was
+credited. That over-discloses, which is the safe direction -- the failure it
+prevents is a clean verdict silently resting on a user's declaration -- but it
+is coarser than the sanitizer caveat beside it and must not be read as per-flow
+precision.
+
+PROVENANCE IS STAMPED AT LOAD, NEVER READ FROM THE FILE, so a summary cannot
+declare itself shipped. Otherwise a YAML key would be a way to silence a finding
+AND suppress the disclosure of having silenced it. A test writes
+`user_supplied: false` into a user file and asserts it still stamps True.
+
+CONTROLS: shipped summaries are never marked user-supplied (all 113 of them, or
+the caveat would fire every run and mean nothing); nothing is credited when the
+line does not terminate; the collector is optional and changes no verdict when
+absent; an explicit `search_dir` still means exactly that directory, so every
+existing caller's fixtures are untouched; and a VIOLATED verdict never carries
+the caveat -- the block sits under `if not violations:` and a test pins it
+there, because finding evidence is trustworthy regardless of what went
+unadjudicated.
+
+TWO THINGS I GOT WRONG AND CORRECTED, recorded because both nearly changed the
+outcome:
+  * I reasoned that this needed a SCHEMA CHANGE to carry the attribution across
+    an artifact boundary, and was close to deferring the whole arm on that. It
+    is false: cmd_verify_claims runs the walk IN-PROCESS and hands
+    taint_findings straight to the verdict logic, so there is no boundary.
+  * My first test helper built a summary that does NOT terminate.
+    `_summary_terminates` is a six-clause conjunction where any doubt reads as
+    "no", so `param_to_return={}` alone is not enough -- it also needs
+    `side_effect=True`. The predicate was being conservative exactly as
+    designed; the helper's docstring now says so rather than the fix being
+    silent.
+
+The WI-vafit inventory gate fired for the THIRD time here, which is the pattern
+working: marking the channel wired failed its tests until the inventory was
+told. Only taint_sources.d and taint_sanitizers.d remain inert.
+
+Full suite 24,711 passed / 0 failed. Ratchet clean at 669.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
