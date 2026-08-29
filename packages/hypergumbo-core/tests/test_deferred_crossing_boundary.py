@@ -50,6 +50,7 @@ import pytest
 import hypergumbo_core.io_boundary as io_boundary
 from hypergumbo_core.io_boundary import (
     BoundaryMap,
+    unruled_multi_boundary_primitives,
     CATALOG_BOUNDARY_TYPES,
     DEFERRED_CROSSING_SHADOWS,
     KNOWN_IO_BOUNDARIES,
@@ -60,6 +61,8 @@ from hypergumbo_core.io_boundary import (
 from hypergumbo_core.taint import AUTO_SOURCE_LABEL_MAP
 from hypergumbo_core.verify_claims import (
     Claim,
+    _MAX_REPORTED_UNTYPED_SITES,
+    _deferred_crossing_caveat,
     compute_boundary_coverage,
     deferred_crossing_sites,
     verify_claim,
@@ -231,3 +234,94 @@ class TestTheTwoEnvelopePathsCannotDrift:
                 f"{boundary}_edges; the unfiltered path emits it, so the two "
                 f"JSON paths would disagree (INV-pubom)"
             )
+
+
+class TestTheDisclosureSentenceAtScale:
+    """The truncation branch, which a one-site fixture never reaches.
+
+    Every other test here uses a single deferred-crossing site, so the "+N more"
+    path was uncovered while the file read as thorough. CI's package-isolated
+    coverage gate is what said so -- a local run reached it through some other
+    test and reported 100%, which is the cross-package gap
+    ``check-package-coverage`` exists to catch.
+    """
+
+    def test_the_sentence_is_bounded_and_says_how_many_it_dropped(self) -> None:
+        sites = [f"pkg{i}.Listen" for i in range(_MAX_REPORTED_UNTYPED_SITES + 3)]
+        cav = _deferred_crossing_caveat("net_recv", sites)
+        assert "(+3 more)" in cav["detail"]
+        # The FULL list still reaches the machine surface; only the human
+        # sentence is bounded, the same trade the sibling caveats make.
+        assert cav["entries"] == sites
+        assert str(len(sites)) in cav["detail"]
+
+    def test_at_or_below_the_cap_there_is_no_suffix(self) -> None:
+        """FALSIFIABILITY CONTROL for the branch above."""
+        sites = [f"pkg{i}.Listen" for i in range(_MAX_REPORTED_UNTYPED_SITES)]
+        assert "more)" not in _deferred_crossing_caveat("net_recv", sites)["detail"]
+
+
+class TestTheUnruledDebtListIsReachable:
+    """``unruled_multi_boundary_primitives`` over the REAL shipped catalogues.
+
+    Not a deferred-crossing test. It is here because ADR-0049 added a value to
+    ``CATALOG_BOUNDARY_TYPES``, which puts ``io_boundary.py`` in the changed-file
+    set that CI holds to 100% -- and this function's body was reached only
+    through a wider selection than the per-PR manifest runs. Asserting it
+    directly makes the coverage independent of which other test happens to walk
+    past it.
+    """
+
+    def test_it_reports_a_stable_debt_list_over_the_shipped_tree(self) -> None:
+        from hypergumbo_core.io_boundary import load_catalog
+        cats = {lang: load_catalog(lang) for lang in ("c", "erlang", "go", "python")}
+        out = unruled_multi_boundary_primitives(cats)
+        assert isinstance(out, list)
+        assert out == sorted(out), "the list is sorted so a pin can be exact"
+        for entry in out:
+            assert ":" in entry, f"expected lang:qualified_name, got {entry!r}"
+
+    def test_a_catalogue_with_no_multi_boundary_rows_reports_nothing(self) -> None:
+        """CONTROL: an empty result must come from ABSENCE, not from the loop
+        never running."""
+        from hypergumbo_core.io_boundary import load_catalog
+        assert unruled_multi_boundary_primitives({}) == []
+        assert isinstance(
+            unruled_multi_boundary_primitives({"go": load_catalog("go")}), list,
+        )
+
+    def test_an_unruled_multi_boundary_primitive_is_reported(self) -> None:
+        """THE REPORTING BRANCH, WHICH THE SHIPPED TREE CANNOT REACH.
+
+        ``unruled_multi_boundary_primitives`` returns ``[]`` across all fifteen
+        catalogues, with and without default overlays -- every multi-boundary
+        primitive in the tree today carries a ruling. So the append is
+        unreachable from real data and a synthetic row is the ONLY way to
+        exercise it, which is exactly why the line sat uncovered until CI's
+        package-isolated gate asked.
+
+        Kept honest by the control above: an empty answer must come from
+        absence, not from a loop that never runs. Here the loop runs and finds
+        something, so the two together pin both directions.
+        """
+        from hypergumbo_core.io_boundary import IoPrimitive
+
+        cat = replace(
+            load_catalog("go"),
+            primitives=[
+                # ``boundary_ruling="unruled"`` must be EXPLICIT. A
+                # multi-boundary primitive with the field unset returns
+                # ``None``, not ``unruled`` -- "nothing declared" and "declared
+                # open" are different states, which is the INV-vaduk split that
+                # made this predicate necessary in the first place.
+                IoPrimitive(module="acme", name="ambiguous",
+                            boundary="net_recv", kind="function",
+                            boundary_ruling="unruled"),
+                IoPrimitive(module="acme", name="ambiguous",
+                            boundary="fs_read", kind="function",
+                            boundary_ruling="unruled"),
+            ],
+        )
+        assert unruled_multi_boundary_primitives({"go": cat}) == [
+            "go:acme.ambiguous",
+        ]
