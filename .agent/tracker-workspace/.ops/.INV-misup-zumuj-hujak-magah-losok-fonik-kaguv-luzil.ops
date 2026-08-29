@@ -37,3 +37,12 @@
   clock: 3  # e2e2
   nonce: e2e2  # e2e2
   message: "Filed VIOLATED with a controlled repro: 4 fixtures, 2 positive controls firing in the same runs (fetch, localStorage), all 11 constructor-style-global rows producing zero chains in JS and TS, module and function scope."  # e2e2
+- op: update  # 32d3
+  at: '2026-08-28T22:42:50Z'  # 32d3
+  by: agent  # 32d3
+  actor: jgstern_agent  # 32d3
+  clock: 4  # 32d3
+  nonce: 32d3  # 32d3
+  set: {}  # 32d3
+  add:  # 32d3
+    isbefore: [WI-zumoz-mamok-tofah-fusol-dodig-romif-luzas-nilad]  # 32d3
