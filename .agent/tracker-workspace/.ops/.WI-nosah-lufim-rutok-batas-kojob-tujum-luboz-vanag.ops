@@ -1,0 +1,22 @@
+- op: create  # 83f8
+  at: '2026-08-29T07:11:15Z'  # 83f8
+  by: agent  # 83f8
+  actor: jgstern_agent  # 83f8
+  clock: 1  # 83f8
+  nonce: 83f8  # 83f8
+  data:  # 83f8
+    kind: work_item  # 83f8
+    title: "Build the opacity-gated disclosure boundary for deferred crossings (ADR-0049 ruling 2) -- all three clauses or none; clause 3 is what stops it being a false-all-clear generator"  # 83f8
+    status: todo_hard  # 83f8
+    priority: 2  # 83f8
+    parent:  # 83f8
+    tags:  # 83f8
+    - taint  # 83f8
+    - catalogue  # 83f8
+    - io_boundary  # 83f8
+    isbefore: []  # 83f8
+    duplicate_of: []  # 83f8
+    not_duplicate_of: []  # 83f8
+    pr_ref:  # 83f8
+    description: "FILED BY ADR-0049 §\"Open work\" steps 4-5. BLOCKED ON the census (WI-hazop) and the\nreachability pass (WI-vapud) -- ADR-0049 ruling 3 licenses no row move before both.\n\nWHAT TO BUILD. A catalog-declarable disclosure boundary (working name `net_listen`)\ncarrying ADR-0049 ruling 2's three clauses, ALL THREE:\n\n  1. absent from AUTO_SOURCE_LABEL_MAP and AUTO_SINK_ZONE_MAP -- mints no taint;\n  2. in _DISCLOSED_ONLY_BOUNDARIES with its own BoundaryMap count -- disclosed\n     without inflating the total_io_edges headline;\n  3. in OPAQUE_BOUNDARIES -- opacity-gating, so it WITHHOLDS `confirmed` on a\n     must_not_exist claim over the corresponding data boundary.\n\nCLAUSE 3 IS THE ONE THAT WILL BE OMITTED, AND OMITTING IT IS WORSE THAN SHIPPING\nNOTHING. Since INV-buzab, a call the catalogue CLASSIFIED is what `examined` means.\nA disclosure tag on ListenAndServe still classifies it -- so without clause 3 the\ncall counts as examined while minting nothing, and verify-claims returns a green\ntick over live ingress. That is not a hypothetical: ADR-0016's own table measures\nit in the outbound direction, where cataloguing `curl` as net_send took a\ncron-dropper claim from `inconclusive` rc 2 to `confirmed` rc 0. Six correct lines\nbought the false confirm.\n\nOPAQUE_BOUNDARIES ANTICIPATES THIS MEMBERSHIP, with one honest gap. Its governing\nsentence is \"boundaries whose classification records that the analysis CANNOT SEE\nPAST the call, rather than a known and complete I/O surface (INV-gahuz)\", and its\ndocstring says a future CATALOG_BOUNDARY_TYPES member with that meaning \"belongs\nhere too, and the axis-conformance tests are what will ask\". But its EXAMPLE\nphrasing is \"control left this process\" -- the outbound instance. The inbound case\n(\"data will arrive at a scope this call does not name\") is covered by the general\nsentence, not the example. ADR-0049 makes that extension explicitly; update the\ndocstring so the next reader does not have to re-derive it.\n\nDO NOT REUSE command_launch. It is producer-stamped and DELIBERATELY disjoint from\nCATALOG_BOUNDARY_TYPES (a producer-stamped boundary is inert if it is in that\ntuple, because _parse_catalog iterates exactly it). Every affected row is\ncatalogue-declared. Take the policy, not the vehicle.\n\nREQUIRED EVIDENCE BEFORE MERGE:\n  * ADR-0016's three-row table reproduced for the new tag: absent / tagged /\n    tagged+opaque. If the middle row confirms a claim the first row withheld, the\n    design ships a false all-clear and must not merge.\n  * A represented-crossing proof per moved row (ADR-0049 ruling 3), RUN not\n    reasoned. `inconclusive` afterwards is a WI-lunav repeat, not a licence.\n  * ADR-0046 labelling: the gain accrues to USEFUL precision (KIND-MISDECLARED),\n    not correctness precision. Say which number moved.\n\nCOSTS, so they are not discovered late: schema-version bump (new BoundaryMap\nbucket, minor per io_boundary.py's own rules), verify-claims constraint surface,\nKNOWN_IO_BOUNDARIES validation, ~49 references to the two boundary constants\nacross packages/ and scripts/, 100% coverage, shrink-only mypy ratchet, and a\nFULL test run because this is a data-file change. TestServerLaunchStaysAReceive\nmust be REWRITTEN, not deleted -- it is the pin, and its `accept` half must\nsurvive intact (accept is a transfer, not a family member).\n\nDECISIVENESS IS TRADED, AND THAT IS THE POINT OF DOING IT CAREFULLY: repos whose\ningress resolves to no arrival scope move from `violated` to\n`confirmed_with_caveats`. That is a real loss, taken deliberately in exchange for\nnot inventing the flow."  # 83f8
+    fields: {}  # 83f8

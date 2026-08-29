@@ -1,0 +1,22 @@
+- op: create  # b156
+  at: '2026-08-29T04:42:32Z'  # b156
+  by: agent  # b156
+  actor: jgstern_agent  # b156
+  clock: 1  # b156
+  nonce: b156  # b156
+  data:  # b156
+    kind: work_item  # b156
+    title: "taint_sources.d and taint_sanitizers.d are created and declared extensible but scanned by nothing: ruling 10's 'channel exists' is true of the flag, not the directory"  # b156
+    status: todo_hard  # b156
+    priority: 3  # b156
+    parent:  # b156
+    tags:  # b156
+    - adr_0047  # b156
+    - catalogue  # b156
+    - taint  # b156
+    isbefore: []  # b156
+    duplicate_of: []  # b156
+    not_duplicate_of: []  # b156
+    pr_ref:  # b156
+    description: "FOUND 2026-08-29 while closing WI-sofov (ADR-0047 ruling 10). Filed rather than\nfolded in, because it is a gap in a ruling's PREMISE and not in its\nimplementation.\n\nRULING 10'S TABLE SAYS taint_sources / taint_sanitizers ALREADY HAVE A CHANNEL\n(\"yes (exists)\"). That is true of the MECHANISM -- a user can supply rows via\n`--taint-sources` / `--taint-sanitizers` and via a claims file's\n`extra_catalogs:` -- and FALSE of the DIRECTORY. Verified on merged dev:\n\n    $ grep -rn \"taint_sources\\.d\\b\" packages/*/src --include=*.py \\\n        | grep -v yaml_catalogs.py | grep -v catalogue_home.py\n    (0 hits; same for taint_sanitizers.d)\n\nThe registry declares both channels (WI-tupid / ruling 7), `init-catalogs`\ncreates both directories (WI-talaz), and NOTHING SCANS EITHER. A user who drops\na YAML in $XDG_CONFIG_HOME/hypergumbo/taint_sources.d/ gets no effect and no\nerror.\n\nTHIS IS EXACTLY THE io_primitives.d GAP WI-talaz FOUND AND CLOSED, one family\nover: the registry declaring a channel is not the loader reading it, and the\ntwo drifted apart silently because nothing gated the difference. It is the same\nshape as INV-misup on the analyzer side -- a row that is present, correct and\nstructurally unreachable.\n\nNOT A FALSE-COVERAGE RISK TODAY, which is what keeps this P3. Nobody is misled:\n`catalog-inventory` reports both as declared-but-unread, and the README that\n`init-catalogs` writes lists them under \"NOT yet consulted\", both derived from\nthe same WIRED_CHANNELS constant the loaders use. The cost is missing\ncapability, not a wrong answer.\n\nWHAT THE FIX LOOKS LIKE. `user_channel_files(\"taint_sources\")` already exists\nand needs no new machinery; the work is deciding the MERGE SEMANTICS, which are\nnot obvious and differ from the three channels already wired:\n  * a user SOURCE only widens what is treated as untrusted -- it can add\n    findings, never remove them, so it needs no caveat;\n  * a user SANITIZER REMOVES flows the tool would otherwise report, so it is\n    the CAVEAT_USER_SUPPLIED_SANITIZER case in its most literal form -- and\n    unlike the function_summaries arm the plumbing already exists, because a\n    sanitized flow surfaces as a finding carrying `sanitized_by_user_supplied`\n    and `_credited_sanitizers` already reads it.\nSo the sanitizer half may be nearly free, and the two halves should still be\nadjudicated separately rather than wired as one \"taint channel\".\n\nSEQUENCING: independent of everything else in ADR-0047, which is now otherwise\ncomplete (r1/r8 WI-surun, r3/r4 WI-talaz, r9 WI-putat, r10 WI-sofov, the\ninventory WI-vafit)."  # b156
+    fields: {}  # b156
