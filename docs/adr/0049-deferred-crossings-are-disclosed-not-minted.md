@@ -168,13 +168,34 @@ Under ADR-0046 the gain accrues to *useful* precision (the KIND-MISDECLARED
 bucket), not to correctness precision, so the two headline numbers move
 differently and any record of the change must say which moved.
 
-## What this ADR does not do
+## Implementation state
 
-It moves no catalogue row, adds no boundary value, and changes no output.
-`TestServerLaunchStaysAReceive` remains valid and remains the pin: until the
-row work lands with its own evidence, the family stays `net_recv` and cannot
-be split silently. Its docstring is amended to cite this ADR rather than to
-serve as the ruling.
+**Ruling 2's mechanism has shipped (WI-nosah); no catalogue row uses it yet.**
+`net_listen` is a catalog-declarable boundary carrying all three clauses: absent
+from `AUTO_SOURCE_LABEL_MAP`, disclosed in its own `net_listen_edges` count and
+held out of the `total_io_edges` headline, and shadowing `net_recv` through
+`DEFERRED_CROSSING_SHADOWS` so a listen site qualifies a clean `net_recv`
+verdict and nothing else. `IO_BOUNDARIES_SCHEMA_VERSION` is `2.2`.
+
+**The shadow is scoped, not routed through `OPAQUE_BOUNDARIES`,** and the
+distinction is load-bearing. That set is TOTAL opacity — control left the
+process for a program that could do anything — so membership would send every
+server in every language to `inconclusive` on `fs_write` and `env_read`. A
+deferred crossing is the opposite shape: we know exactly what we cannot see.
+Clause 3's "over the corresponding data boundary" is that scoping, and it is
+asserted as an absence (`net_listen not in OPAQUE_BOUNDARIES`) so a later tidy
+cannot quietly widen it — every existing opacity test would stay green through
+such a change.
+
+**The middle row of ADR-0016's table is reproduced as a control** and it is what
+makes clause 3 non-optional: with the shadow map emptied, the same edge and the
+same claim yield a bare `confirmed` over a live listener, because the call is
+still classified and therefore still counts as examined (INV-buzab).
+
+**Still true: no catalogue row moves and no shipped output changes.**
+`TestServerLaunchStaysAReceive` remains the pin — until the row work lands with
+its own evidence the family stays `net_recv` and cannot be split silently. Its
+docstring cites this ADR rather than serving as the ruling.
 
 ## Open work — sequencing and the evidence bar
 
