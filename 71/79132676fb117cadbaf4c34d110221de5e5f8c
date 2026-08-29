@@ -1,0 +1,39 @@
+Original commit body from 864370b47b362210fc5deb0f6fe14f9290345824:
+
+Rules the server-launch family once, after four consistent re-derivations that were never recorded anywhere a fifth encounter could cite. No catalogue row moves and no output changes.
+
+## The problem
+
+`AUTO_SOURCE_LABEL_MAP` collapses `net_recv` to `untrusted_input`, so a boundary tag doubles as a taint-source declaration. Tagging the call that STARTS a server mints a source at a call that hands its caller an `error` (`ListenAndServe`), a `None` (`serve_forever`) or a `()` (`Warp.run`) — attributing untrusted input to a scope that never sees a request, and flowing it forward through everything reachable from `main`.
+
+The verdict to keep those rows had been reached four times by the same argument (Django's lazy QuerySet F3, the JavaScript `createServer` rule, the `Phoenix.Router` control F5, WI-joruz's Warp rows). A search of `docs/adr/` and `docs/audits/` returns nothing: the only governing text for a nine-language family was a **test docstring**.
+
+## The ruling
+
+A boundary tag asserts the crossing happens at that call, in that call's scope. The discriminator:
+
+> Does this call return — or write into a caller-visible location — a value whose content is chosen by the party on the far side?
+
+Yes ⇒ a **transfer**. No, and the call merely opens/registers/subscribes/schedules/defers ⇒ a **deferred crossing**, which is **disclosed and never minted**.
+
+Not new law. It is what removed Haskell's `gracefulClose` ("returns unit, so no byte reaches the program") and what WI-dosov applied when it dropped `socket`/`bind`/`listen` while keeping `accept`.
+
+This is **ADR-0016's own prohibition pointed inward**: INV-vavup already forbade attributing a launched program's I/O to the launcher and installed `command_launch` to disclose rather than resolve. The inbound treatment takes that policy but not its vehicle — `command_launch` is producer-stamped and deliberately disjoint from `CATALOG_BOUNDARY_TYPES`, while every affected row is catalogue-declared.
+
+**Ruling 2 clause 3 is the half that is easy to omit and would be worse than the status quo.** A disclosure boundary must be opacity-gating: since INV-buzab a classified call is what `examined` means, so a tag that mints nothing still counts as examined and returns a green tick over live ingress. ADR-0016's own table measures exactly that in the outbound direction — cataloguing `curl` as `net_send` took a cron-dropper claim from `inconclusive` rc 2 to `confirmed` rc 0.
+
+**Ruling 4 cuts the family by mechanism** — setup, blocking serve loop, per-connection accept, route-registration DSL. `accept` returns a peer-chosen address TO ITS CALLER, so it is a transfer and stays `net_recv` on its own merits, now asserted across seven languages **separately from the launch pin**, because the two survive for opposite reasons and a family-wide retag would otherwise take `accept` with it.
+
+## Three errors in the prompting item, corrected
+
+- **The census is one of four incompatible counts.** The item claims 37 rows / 9 languages; its own enumeration sums to 52; independent re-counts under different membership rules gave 63 and 75/13. They disagree because there was no written membership rule to count against.
+- **erlang, rust and c/cpp are omitted entirely** — the same hardcoded-9-languages defect the item cites INV-kanuk for, recurring inside the item itself.
+- **The headline Python example is inert.** `flask.Flask.run` is in python's `ambiguous_names`; a bare `app.run()` yields 0 edges and `total_io_edges 0`. It has never minted a source.
+
+## Scope
+
+Docs plus one test file. `TestServerLaunchStaysAReceive` remains the pin against a silent split, with its docstring demoted from BEING the ruling to CITING it, and gains a separate seven-language assertion that `accept` is a transfer. Ruling 3 licenses a retag only against a represented crossing — the WI-lunav rule, where dropping a row that transmitted nothing and whose every counterpart was catalogued still collapsed a real `violated(3)` to `inconclusive(0)`.
+
+Follow-on work is filed with its evidence bar, not waived: WI-hazop (census) → WI-vapud (reachability per row) → WI-nosah (opacity-gated disclosure boundary) + WI-ritog (arrival-scope seeding; `start_at:callee`, `dispatches_to` and `entrypoints` all exist and `taint.py` references none of them). INV-tafig records the root cause — `io_boundary` is a "canonical risk taxonomy" absent from `_known_axes()`, the condition under which `env_read` split (INV-tutar).
+
+Tests: smart-test green, 189 passed in the affected file, ratchet clean at 669.
