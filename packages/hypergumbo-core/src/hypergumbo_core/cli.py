@@ -227,6 +227,7 @@ from .backend_selection import (
     RUST_ANALYZER_ENV_VAR,
     resolve_rust_analyzer_optin,
 )
+from .catalogue_inventory import build_inventory
 from .catalogue_home import (
     materialize_catalogue_home,
     user_catalogue_home,
@@ -6654,6 +6655,83 @@ def _registered_subcommands(parser: argparse.ArgumentParser) -> "set[str]":
     return set()  # pragma: no cover - build_parser always adds subparsers
 
 
+def cmd_catalog_inventory(args: argparse.Namespace) -> int:
+    """WI-vafit — what THIS installation knows, for the person using it.
+
+    Deliberately not ``scripts/yaml-catalog-index``. That view asks whether the
+    registry is in sync with the tree, and it ships to nobody: ``scripts/`` is
+    not in the wheel. This one answers the four questions a user actually has —
+    what is loaded, what may I extend and where, does my language have a
+    catalogue and is it finished, and why should I care.
+    """
+    inv = build_inventory(__version__)
+
+    if getattr(args, "format", "text") == "json":
+        print(json.dumps({
+            "version": inv.version,
+            "home": str(inv.home),
+            "families": [{
+                "directory": f.directory, "purpose": f.purpose, "adr": f.adr,
+                "files": f.files, "extensible": f.extensible,
+                "channel": f.channel,
+                "channel_path": str(f.channel_path) if f.channel_path else None,
+                "channel_scope": f.channel_scope,
+                "channel_gated": f.channel_gated,
+                "no_channel_reason": f.no_channel_reason,
+                "read_now": f.read_now, "your_files": f.your_files,
+                "consequence": f.consequence,
+            } for f in inv.families],
+            "languages": [{
+                "language": lang.language, "status": lang.status,
+                "rows": lang.rows, "shipped_overlays": lang.shipped_overlays,
+                "unvouched_rows": lang.unvouched_rows,
+            } for lang in inv.languages],
+        }, indent=2))
+        return 0
+
+    print(f"hypergumbo {inv.version} — catalogue inventory")
+    print(f"Your catalogue home: {inv.home}")
+    print()
+    print("FAMILIES — what this installation carries")
+    print(f"  {'family':<24}{'files':>6}  {'yours':>5}  extend")
+    for f in inv.families:
+        if not f.extensible:
+            extend = "no"
+        elif f.read_now:
+            extend = f"yes -> {f.channel}/"
+        else:
+            extend = f"declared ({f.channel}/) — NOT read yet"
+        yours = str(f.your_files) if f.extensible else "-"
+        print(f"  {f.directory:<24}{f.files:>6}  {yours:>5}  {extend}")
+    print()
+    print("WHY EACH ONE MATTERS")
+    for f in inv.families:
+        print(f"  {f.directory}")
+        print(f"    {f.consequence}")
+        if f.channel_scope:
+            print(f"    Your rows apply to the '{f.channel_scope}' section only.")
+        if f.channel_gated:
+            print(f"    A user entry here rides {f.channel_gated}.")
+        if f.no_channel_reason:
+            print(f"    Not extensible: {f.no_channel_reason}")
+    print()
+    print("LANGUAGES — I/O primitive catalogues in this installation")
+    print(f"  {'language':<14}{'rows':>6}{'unvouched':>11}  status")
+    for lang in inv.languages:
+        print(f"  {lang.language:<14}{lang.rows:>6}{lang.unvouched_rows:>11}  "
+              f"{lang.status}")
+    print()
+    print("'unvouched' rows come from community overlays hypergumbo ships and "
+          "does not")
+    print("vouch for: they can ADD a finding but never license an all-clear. "
+          "A status of")
+    print("'in_progress' means that language's stdlib surface is not fully "
+          "enumerated,")
+    print("so a clean result there is weaker evidence than a clean result "
+          "elsewhere.")
+    return 0
+
+
 def cmd_init_catalogs(args: argparse.Namespace) -> int:
     """ADR-0047 ruling 4 — materialize the user's catalogue home, on request.
 
@@ -10074,6 +10152,36 @@ are excluded by default — pass --include-tests to see them. See ADR-0016."""
         help="Output format (default: text)",
     )
     p_init_catalogs.set_defaults(func=cmd_init_catalogs)
+
+    p_cat_inv = sub.add_parser(
+        "catalog-inventory",
+        help="Show what this installation knows: catalogue families, what you "
+             "may extend, and per-language status",
+        epilog=(
+            "The 156 YAML files under hypergumbo are the substance of what it "
+            "knows — which I/O primitives it recognises, which framework "
+            "conventions it enriches, which taint sources it trusts. This "
+            "reports what THIS installation carries.\n"
+            "\n"
+            "It answers four questions: what is loaded right now (including "
+            "community overlays and your own rows); which families you may "
+            "extend and where your file goes; whether your language has a "
+            "catalogue at all and whether it is finished; and what each family "
+            "changes, so a row count is not the only answer to 'why should I "
+            "care'.\n"
+            "\n"
+            "Distinct from `catalog`, which lists the languages and frameworks "
+            "hypergumbo can ANALYSE. This one is about the DATA behind that."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cat_inv.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    p_cat_inv.set_defaults(func=cmd_catalog_inventory)
 
     verify_claims_epilog = """\
 Claims file format (YAML):

@@ -40,6 +40,11 @@
     "--help",
     "-h"
   ],
+  "catalog-inventory": [
+    "--format",
+    "--help",
+    "-h"
+  ],
   "compact": [
     "--connectivity",
     "--coverage",

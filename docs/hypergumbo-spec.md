@@ -263,6 +263,14 @@ Recognised settings: `io_primitives` (list of I/O primitive overlay paths; relat
 
 Precedence is ascending — `io_primitives.d/` scan < user config < project config < claims-file `extra_catalogs:` < `--io-primitives` — matching `load_catalog`'s rule that a later path wins on qualified-name collision.
 
+### Catalogue inventory
+
+`hypergumbo catalog-inventory` reports what **this installation** knows (WI-vafit): the catalogue families and their file counts, which families you may extend and the directory your file goes in, whether that directory is actually read yet, per-language I/O catalogue status and row counts (including how many rows are `unvouched`), and one sentence per family naming what changes without it.
+
+It is distinct from `catalog`, which lists the languages and frameworks hypergumbo can *analyse*; this describes the **data** behind that. It is also not `scripts/yaml-catalog-index`, which answers the operator's registry-drift question and is not in the wheel at all (`pyproject.toml` packages `src/hypergumbo_core`, so `scripts/` ships to nobody).
+
+**Extensible and readable are reported separately, because they differ today.** Six families declare a `user_channel`; only `io_primitives.d/` is scanned. The inventory says so per family rather than reporting an intention as a capability and sending a user to write a file that does nothing.
+
 ### Catalogue data directories
 
 Alongside `config.toml`, the same directory holds one `<family>.d/` per catalogue family the registry declares user-extensible ([ADR-0047](adr/0047-catalogue-scope-and-user-visible-homes.md) rulings 3/4, WI-talaz). The repo tier is `<repo>/.hypergumbo/` — a *directory*, distinct from the `.hypergumbo.toml` *file* above.
