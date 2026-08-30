@@ -3460,6 +3460,57 @@ def compute_boundary_coverage(
     return coverage
 
 
+#: Pass id of ``linkers/build_target.py``. Held as a literal rather than imported
+#: because importing a linker module REGISTERS it as a side effect, and a safety
+#: gate must not change which linkers exist. ``test_config_language_call_edges``
+#: asserts this equals that module's own ``PASS_ID``, so a rename cannot drift
+#: the two apart silently (LIVE rule 11).
+_BUILD_TARGET_PASS_ID = "build-target-linker"
+
+
+def is_synthetic_build_target_call(edge: Mapping[str, Any]) -> bool:
+    """True for the manifest -> entrypoint link a linker mints for traversal.
+
+    WI-mital. ``linkers/build_target.py`` resolves each manifest
+    ``defines_target`` edge to the ``main()`` it names and emits a **``calls``**
+    edge, so a forward slice can traverse from a Cargo ``[[bin]]`` into the
+    application. Its source is the build-target symbol, whose language slot is
+    the MANIFEST's (``toml`` for Cargo.toml, ``manifest`` for the shared
+    extractor). So a data format appears to "make calls", lands in
+    ``languages_with_calls - set(catalogs)``, and every boundary and taint claim
+    over a Rust binary crate is withheld on a file that performs no I/O.
+    Reproduced on mini-redis: 516 call edges, exactly 2 sourced at ``toml``, both
+    from this linker.
+
+    WHY THE ORIGIN AND NOT THE LANGUAGE. The obvious rule -- "a config-format
+    language cannot call" -- is WRONG HERE, and measurably so: ``taxonomy``'s
+    ``FileRole.ANALYZABLE`` describes a file's ROLE, not whether an analyzer
+    exists, and 17 of the languages it marks non-analyzable DO have registered
+    analyzers, ``dockerfile``, ``cmake``, ``hcl``, ``starlark``, ``just`` and
+    ``jsonnet`` among them. A Dockerfile ``RUN curl ...`` is real I/O, so
+    exempting the language would be a false all-clear -- the direction these
+    gates exist to prevent. The synthetic edge is identified by what MINTED it,
+    which no real analyzer output shares.
+
+    It also covers the ``manifest`` pseudo-language for free: this linker walks
+    every ``defines_target`` edge, whatever extractor produced it.
+
+    BOTH ORIGIN SPELLINGS ARE HANDLED because ``Edge.origin`` is typed
+    ``str | List[str]`` and only ``__post_init__`` normalises the bare string to
+    a list -- so a properly constructed edge always serialises as a list (895 of
+    895 on a real map), while the FIELD still permits the scalar. This reads a
+    raw dict out of an artifact "that may predate either key or have been
+    hand-edited", the same reason ``call_site_modes`` validates rather than
+    trusts, so the scalar form is accepted rather than assumed away.
+    """
+    origin = edge.get("origin")
+    if isinstance(origin, str):
+        return origin == _BUILD_TARGET_PASS_ID
+    if isinstance(origin, (list, tuple)):
+        return _BUILD_TARGET_PASS_ID in origin
+    return False
+
+
 def _call_production_coverage(
     raw_edges: list[dict[str, Any]],
     supported_languages: set[str],
@@ -3499,10 +3550,19 @@ def _call_production_coverage(
             etype, edge.get("meta")
         ):
             continue
-        total_call_edges += 1
         src = edge.get("src", "")
-        if ":" in src:
-            languages_with_calls.add(src.split(":", 1)[0])
+        language = src.split(":", 1)[0] if ":" in src else ""
+        if is_synthetic_build_target_call(edge):
+            # A synthetic manifest -> entrypoint link, not a call site. It is
+            # skipped ENTIRELY rather than merely kept out of
+            # ``languages_with_calls``: counting it toward ``total_call_edges``
+            # would let a repo whose only "calls" are build-target links claim
+            # call production it does not have, and that error runs in the
+            # permissive direction.
+            continue
+        total_call_edges += 1
+        if language:
+            languages_with_calls.add(language)
 
     if total_call_edges == 0:
         return BoundaryCoverage(
