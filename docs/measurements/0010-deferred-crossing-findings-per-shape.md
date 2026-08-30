@@ -87,23 +87,49 @@ blanket application of the ruling to that row.**
 |---|---|---|
 | population | 112 situations / 336 rows | 783 violating flows |
 | family-rooted | **7 situations / 11 rows** (6.2%) | **50 situations / 411 rows** |
-| TRUE POSITIVE | **0** | 24 (**48.0%**) |
-| FALSE POSITIVE | 7 | 26 |
-| VACUOUS: KIND-MISDECLARED | 0 | 10 |
-| VACUOUS: CONFIGURED-ACTION | 0 | **3** |
-| **USEFUL** | **0 (0.0%)** | **11 (22.0%)** |
+| TRUE POSITIVE | **0** | 7 (**14.0%**) |
+| FALSE POSITIVE | 7 | 43 |
+| VACUOUS: KIND-MISDECLARED | 0 | 0 |
+| VACUOUS: CONFIGURED-ACTION | 0 | 0 |
+| **USEFUL** | **0 (0.0%)** | **7 (14.0%)** |
 
-The two arms disagree, and the disagreement is the result. Arm 1 saw only
-`SETUP` and `HANDLE` rows that are wired or file-backed; arm 2's population is
-14× larger and contains the shape arm 1 did not: a stdin handle **read in the
-scope that constructed it**.
+The two arms agree far more than they disagree, and where they differ it is
+because arm 2's population is 14× larger and contains one shape arm 1 did not:
+a stdin handle **read in the scope that constructed it**. Seven situations of
+fifty are that shape and are true; the other forty-three are false.
+
+**Arm 2 was adjudicated twice, and pass 1 was wrong in one direction for one
+reason.** Pass 1 read the SOURCE function and accepted the tool's advertised
+`path` as evidence that a value travelled it. Measurement 0001's rubric does
+not ask that — it asks whether a value derived from the source is an
+**argument to the sink call, or its receiver**, which is a fact about the
+**terminal** function of the path, and pass 1 never opened it. That is exactly
+the instrument bug 0006 diagnosed in its own packet builder (section F: sink
+sites searched *"only inside the source symbol's span, which makes the sink
+listing structurally empty for every multi-hop situation"*), reproduced here by
+hand. `sinksites.py` prints the sink calls in the LAST path element; under it
+pass 1's **24** true positives fall to **7** and its **11** useful fall to
+**7**. Every reversal runs the same way — the sink's arguments turn out to be
+paths or literals, often built before the source line ran:
+
+| pass 1 said | what the terminal function shows |
+|---|---|
+| caddy `cmdFmt` is a useful TP | `commandfuncs.go:682`'s `input` is inside `if configFile == "-"`, which **returns at :688**. The `:700 os.WriteFile(configFile, output, …)` uses a *different* `input`, read at `:691` by `os.ReadFile`. Two variables, one name |
+| beads `init_team` → subprocess | terminal is `sync_git.go:22 exec.Command("git","rev-parse","--git-dir")`, and `isGitRepo()` takes no arguments |
+| beads `init_team` → host-fs | the path's call is `config.SetYamlConfig("daemon.auto-sync","true")` — **both arguments literal** |
+| beads `delete.go` scanner → `os.Rename` | the scanned line goes to `json.Unmarshal`; `:347 os.Rename(temp, path)` takes two paths |
+| cilium iptables rule → subprocess | the rule *does* reach a command (`:248 prog.runProg`), but the finding names `runProgOutput` → `Cmd.Output`, which ran at `:208` **to produce the rules** |
+
+Pass 1's numbers are kept at `ledger_pass1.py` rather than deleted, because the
+size and direction of the correction is itself a result: **a single-pass
+adjudication of multi-hop findings over-called true positives by 3.4×.**
 
 ## The ruling holds for LAUNCH and fails for HANDLE
 
 | shape | situations | rows | TP | useful |
 |---|---:|---:|---:|---:|
 | **LAUNCH** (`net/http.ListenAndServe`) | 2 | 5 | **0** | **0** |
-| **HANDLE** (`os.Stdin`, `bufio.New*`, `sys.stdin`, `dets.open_file`) | 48 | 406 | 24 | **11** |
+| **HANDLE** (`os.Stdin`, `bufio.New*`, `sys.stdin`, `dets.open_file`) | 48 | 406 | 7 | **7** |
 
 Shape is not the discriminator. **What the source line does is**, and it is
 visible in the source rather than inferred:
@@ -112,8 +138,14 @@ visible in the source rather than inferred:
 |---|---:|---:|---:|---:|
 | `DEFERRED` — the crossing really does arrive in a scope this call does not name | 3 | 6 | **0** | **0** |
 | `WIRING` — the handle is assigned somewhere and never read here (`cmd.Stdin = os.Stdin`) | 8 | 19 | **0** | **0** |
-| `WRONG-CHANNEL` — the constructor wraps something other than the declared boundary | 17 | 65 | 10 | **0** |
-| `READ-IN-SCOPE` — the handle is consumed by a read in the same statement or function | 22 | 321 | 14 | **11** |
+| `WRONG-CHANNEL` — the constructor wraps something other than the declared boundary | 17 | 65 | **0** | **0** |
+| `READ-IN-SCOPE` — the handle is consumed by a read in the same statement or function | 22 | 321 | **7** | **7** |
+
+**Three of the four mechanisms produce nothing true.** Only a handle read in
+the scope that built it does — and only 7 of those 22, because a real stdin
+read is necessary and not sufficient: the value has to reach the sink's
+*argument*, and in fifteen of the twenty-two it reaches a y/N branch condition,
+a description field, or a command whose arguments are all literals.
 
 **`READ-IN-SCOPE` is the refutation.** `bufio.NewReader(os.Stdin)` returns a
 handle, so it fails ADR-0049 ruling 1 exactly as `ListenAndServe` does — but the
@@ -132,7 +164,10 @@ beads cmd/bd/init_contributor.go
 ```
 
 That is a true, useful, unhedged finding rooted at a deferred-crossing row.
-Retagging `bufio.NewReader` would delete it.
+Retagging `bufio.NewReader` would delete it. Seven survive pass 2 — five in
+beads's two setup wizards and two in caddy, where a config or a response body
+piped on stdin is written verbatim to `ConfigAutosavePath`
+(`caddy.go:392 os.WriteFile(ConfigAutosavePath, cfgJSON, 0o600)`).
 
 **And Go has nowhere to relocate it to.** The catalogue's entire Go stdin
 surface is three rows — `os.Stdin`, `bufio.NewScanner`, `bufio.NewReader` — and
@@ -247,35 +282,44 @@ rather than folded in, the way 0009 held its 14 misdeclared rows out.
 `dets:traverse` is the same shape and is **not** re-checked here; it produced no
 findings in this cohort. Filed on `WI-rivur`.
 
-## The first CONFIGURED-ACTION findings this project has adjudicated
+## CONFIGURED-ACTION is still zero, and the cohort was built to find it
 
-0006 reported **zero**, structurally: its claim set's TPs were all `env_read`,
-and an environment variable reaches its sink through string handling, not
-through a schema. ADR-0046 said "a cohort meant to exercise this class must
-contain one". This cohort contains caddy, and it produced three — including
-ADR-0046's own motivating example, now citable end to end:
+0006 reported zero, structurally: its TPs were all `env_read`, and an
+environment variable reaches its sink through string handling, not through a
+schema. ADR-0046 said "a cohort meant to exercise this class must contain one",
+so this cohort adds caddy deliberately — ADR-0046's own motivating repository.
 
-| clause | citation |
-|---|---|
-| 1. declared-configuration source | `cmd/main.go:163` `if configFile == "-" { config, err = io.ReadAll(os.Stdin) }` |
-| 2. schema deserialization | `caddy.go:344` `StrictUnmarshalJSON(strippedCfgJSON, &newCfg)` |
-| 3. field-parameterized sink | `modules/logging/filewriter.go:87` `Filename string \`json:"filename,omitempty"\`` → `:223` `os.OpenFile(fw.Filename, …)`, `:239` `os.Chmod(fw.Filename, …)` |
+**It still produced none, and the reason is clause 3.** Caddy's two surviving
+true positives *do* satisfy clauses 1 and 2 — `cmd/main.go:163` reads the
+config from stdin under `--config -`, and `caddy.go:344`
+`StrictUnmarshalJSON(strippedCfgJSON, &newCfg)` deserializes it into a
+tag-declared schema. What they do not satisfy is clause 3: the value reaching
+the sink argument is not read from a **field** of the deserialized object. It
+is the whole config blob, written verbatim to `ConfigAutosavePath`
+(`caddy.go:392`). ADR-0046 is explicit that a finding failing any clause "is
+not CONFIGURED-ACTION and counts as useful", and the test "defaults to counting
+a finding as useful, which is the conservative direction". So these two count
+as useful.
 
-All three are rooted at `os.Stdin` — a deferred-crossing HANDLE row. The class
-ADR-0046 was written for is reached **through** the family this ADR proposes to
-retag.
+**Pass 1 labelled them CONFIGURED-ACTION and that was wrong**, by asserting the
+`FileWriter.Filename` → `os.Chmod` chain ADR-0046 describes rather than the one
+the finding's own terminal function shows. The chain ADR-0046 describes is real
+in caddy's source; it is not what these two situations are anchored to. Naming
+this rather than quietly dropping the claim matters, because "the class exists
+and we finally sampled it" is a more interesting sentence than the truth and
+was the one pass 1 published.
 
 ## What this licenses, and what it does not
 
 **Licensed.** Retagging the `LAUNCH` shape, and the network-scoped `SETUP` shape
 that goes with it, to `net_listen`. Every adjudicated launch-family finding in
 both arms is a false positive (2 in arm 2, 4 in arm 1), the mechanism is the
-same in all six, and no useful finding is at risk. ADR-0049 ruling 3's
+same in all six, and no true finding of any kind is at risk. ADR-0049 ruling 3's
 represented-crossing proof must still be run per removal — this record does not
 substitute for it.
 
-**Not licensed.** Retagging the `HANDLE` shape. Eleven useful findings and all
-three CONFIGURED-ACTION findings are rooted there, and in Go there is no
+**Not licensed.** Retagging the `HANDLE` shape. Seven useful findings are
+rooted there — every true positive this arm found — and in Go there is no
 catalogued transfer row to relocate the crossing to. The correct sequence is the
 reverse of the one the ADR implies: **catalogue the reads first**
 (`bufio.Reader.ReadString`, `Scanner.Scan`/`Text`, `os.File.Read`, and their
@@ -290,29 +334,35 @@ and this record supplies none for those three shapes.
 
 ## Limitations, stated rather than left to be noticed
 
-- **One adjudicator, single pass.** 0006's frame rule F7 — a blind pass plus an
-  adversarial pass — is **not** reproduced. These labels are weaker than 0006's
-  by construction. What partly replaces the second pass is that the refutation
-  condition was written down before any label and then fired, and that every
-  label carries the file and line a reader needs to disagree
-  (`arm2_ledger.json`).
+- **One adjudicator. Two passes, and the second one moved the headline 3.4×.**
+  0006's frame rule F7 — a *blind* pass plus an *adversarial* pass by different
+  people — is **not** reproduced; two passes by the same reader is weaker, and
+  the direction of the correction (24 TP → 7) says how much weaker a single
+  pass would have been. Both ledgers ship (`ledger_pass1.py`,
+  `arm2_ledger.json`) and every label carries the file and line a reader needs
+  to disagree. **A third pass by someone else would probably move it again**,
+  and this record does not claim otherwise.
 - **The launch evidence is six situations.** Unanimous, and thin. It is all the
   evidence 17 repositories contain, which is itself the finding.
-- **Arm 2's 48.0% is not comparable to 0006's 33.9%.** Different denominator (a
-  filtered census, not an equal-allocation draw), different adjudicator, and no
-  refutation pass. It is reported to characterise the family, not to track the
-  tool.
-- **One sensitivity, disclosed.** cilium's two `bufio.NewScanner` TPs are
-  labelled `KIND-MISDECLARED` because the scanner wraps `strings.NewReader` over
-  a child process's stdout. A reader who holds that a subprocess pipe *is* an
-  IPC channel would call them useful, moving useful precision from 22.0% to
-  26.0%. Neither reading changes any conclusion above.
+- **Arm 2's 14.0% is not comparable to 0006's 33.9%.** Different denominator (a
+  filtered census, not an equal-allocation draw), different adjudicator, no
+  blind pass. It characterises the family; it does not track the tool.
+- **One near miss, recorded because the rubric decided it rather than the
+  evidence.** `beads:untrusted-input-no-subprocess:11` reads `planningPath`
+  from stdin and uses it at `init_contributor.go:157 cmd.Dir = planningPath` —
+  the working directory of a `git init` the program then runs. Under 0001's
+  rubric that is a false positive: a field assignment on the returned `Cmd` is
+  neither an argument to the sink call nor its receiver. Under a rubric that
+  admitted receiver-field writes it is a true positive, and useful precision
+  would be 8/50 = 16.0%. That is a rubric question, not a catalogue one, and it
+  is disclosed rather than resolved here.
 - **`WRONG-CHANNEL` is a second defect this record surfaces and does not
   measure.** `bufio.NewScanner` is declared `ipc_recv` unconditionally, but in
-  this corpus it wraps a file or an in-memory buffer far more often than stdin.
-  The boundary is a property of the ARGUMENT, which one row cannot express —
-  INV-vaduk's dual-classification problem in a new place. Ten of arm 2's
-  24 TPs are vacuous for that reason and not for ADR-0049's.
+  this corpus it wraps a file or an in-memory buffer **every single time** —
+  not once does an adjudicated site wrap stdin. The boundary is a property of
+  the ARGUMENT, which one row cannot express: INV-vaduk's dual-classification
+  problem in a new place. It contributes 17 situations and **zero** true
+  positives, so it is pure false-positive volume independent of ADR-0049.
 
 ## Reproduction
 
