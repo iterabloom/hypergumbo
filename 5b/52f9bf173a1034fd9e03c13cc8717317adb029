@@ -1,0 +1,73 @@
+Original commit body from 1d2b16d2fbb71c6ee5c90c0c3bec1db9897d1cd9:
+
+OWNER DECISION, 2026-08-30. Approved in session; this reverses a reversal, so
+both directions are recorded rather than one overwriting the other.
+
+WHY THE GATE WAS IN THE PER-PR PIPELINE (INV-bobor). It used to run only on the
+cron. A self-claim regression -- runtime-cli-no-host-fs going
+confirmed_with_caveats -> violated -- sat on green dev for 63 COMMITS. Detection
+was never the failure: the cron arm named it exactly, at the 2026-08-19 01:00
+firing. DELIVERY failed, three ways: MASKING (full-suite publishes ONE aggregate
+status for six steps, and at the 2026-08-20 firing that status was `failure`
+while this gate PASSED -- the red came from a flaky tracker TUI test);
+ADDRESSING (a cron status lands on a non-HEAD commit, and ci-debug rendered only
+HEAD); and ERROR-IS-NOT-FAILURE (a pipeline dying inside the gate is
+indistinguishable from one whose gate passed).
+
+WHY IT LEAVES NOW. The move into the per-PR pipeline was justified on a measured
+price: 3m49s wall-clock, running CONCURRENTLY with a 935s pytest step -- i.e.
+free. That number has gone stale by ~3.7x. The gate now takes ~14 minutes and
+finishes LAST, so it is the critical path of every code PR.
+
+--minimal, MEASURED COLD, TAKES 30.4% OFF WHAT REMAINS:
+
+    default   1450s (24.2 min)
+    --minimal 1009s (16.8 min)     -441s
+
+Both arms confirmed genuinely cold by their "No cached results found" line, run
+against separate throwaway XDG_CACHE_HOME dirs, and they produced BYTE-IDENTICAL
+output (309,026 bytes, 18/18 verdicts equal). It declines side outputs the gate
+never reads -- budget-tier previews, per-handler slices, sketch pre-computation
+-- not analysis scope, so the saving costs no coverage.
+
+THE FIRST MEASUREMENT SAID 24x AND WAS WRONG. Two worktrees at the same commit
+share a survey cache: it keys on repo CONTENT, not path, so the second arm rode
+the first's survey and 33s was a cache hit. Only the first arm's stderr carried
+the cold-cache line. Anyone re-measuring must ASSERT that line, not assume it;
+the probe in scripts' history does.
+
+ONE OF THE THREE DELIVERY FAILURES IS FIXED; TWO ARE ACCEPTED, NOT SOLVED.
+`ci-debug cron-status` (INV-bozid remedy (b), landed earlier today) closes
+ADDRESSING. MASKING and ERROR-IS-NOT-FAILURE remain, because they follow from
+the single aggregate status: a drift verdict now reads as "full-suite is red"
+and needs a log fetch to attribute. That is cheap WHILE THE AGGREGATE IS USUALLY
+GREEN. The failure mode is a sibling going chronically red, at which point the
+signal carries no information and nobody reads the log -- which is exactly what
+produced the 63 commits. The risk is lower than in August (the flaky tracker TUI
+test behind the 2026-08-20 masking was fixed the same day as this change) but it
+is not gone.
+
+TRIPWIRE, recorded in four places so it is acted on rather than rediscovered
+(woodpecker.yml tombstone, full-suite.yml header, the test docstring, and the
+ci-debug protocol playbook): if full-suite starts sitting red, give this gate its
+own workflow file and therefore its own commit-status context -- INV-bozid
+remedy (a), verified viable, and it must reuse the EXISTING `full-suite` cron
+name because crons are configured in repo settings and not in these files.
+
+THE PIN IS REWRITTEN, NOT DELETED. test_ci_self_claims_gate_scope.py had three
+assertions about the per-PR arm; it now pins what remains -- the cron arm exists,
+stays unconditional, and ACTUALLY INVOKES the script (the first two both pass for
+a step whose commands install dependencies and stop). Its docstring carries both
+decisions. NO TEST ASSERTS THE PER-PR ARM'S ABSENCE: pinning a removal would
+block whoever re-adds it, and INV-bobor says a future measurement may justify
+exactly that.
+
+Two comments that became false are corrected in the same change: full-suite.yml
+deferred to "the per-PR arm ... which carries the path filter and the full
+rationale", and the protocol playbook's topology section described ci.yml as
+gating merge without noting the gate had left it.
+
+smart-test 84 passed, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a moose building a sandcastle a tectonic plateau in a carousel horse that actually gallops in a bamboo forest with a guild of hamsters made of Torah scrolls
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
