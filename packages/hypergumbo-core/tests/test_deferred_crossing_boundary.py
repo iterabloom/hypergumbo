@@ -33,12 +33,19 @@ boundary"), not an optimisation of it.
 REAL CATALOGUE, REAL EDGE SHAPES. The sibling file
 ``test_verify_claims_examined_negative.py`` records that a hand-written
 ``IoBoundaryCatalog`` fixture is how a false-all-clear survived once already, so
-these tests load the SHIPPED go catalogue and mutate one row's boundary, and the
-edge dicts are the shapes an actual ``hypergumbo survey`` emitted over a Go
-accept-loop fixture. No row in the shipped tree carries ``net_listen`` yet --
-ADR-0049 ruling 3 licenses no retag before the census (WI-hazop) and the
-reachability pass (WI-vapud) -- so the row is synthesised here rather than
-assumed.
+these tests load the SHIPPED go catalogue and the edge dicts are the shapes an
+actual ``hypergumbo survey`` emitted over a Go accept-loop fixture.
+
+THE SHIPPED TREE NOW CARRIES ``net_listen`` (INV-kanuk). Go's 21 setup and
+serve-loop rows were retagged once the census (WI-hazop) and the reachability
+pass (WI-vapud, measurement 0009) cleared ADR-0049 ruling 3's bar, so these
+tests assert the REAL rows rather than synthesising one. THE FALSIFIABILITY
+CONTROL MOVED WITH THEM: it is no longer "the shipped catalogue defers nothing"
+-- that sentence is now false -- but :func:`_go_catalog_without_deferrals`, the
+same catalogue with every deferred row forced back to ``net_recv``, i.e. the
+tree as it stood before the retag. A test that cannot fail is worse than no
+test, and the obvious edit here (delete the control, it goes red) is exactly
+how a control stops controlling.
 """
 
 from __future__ import annotations
@@ -79,15 +86,59 @@ LISTEN_EDGE = {
 }
 
 
-def _go_catalog_with(boundary: str):
-    """The SHIPPED go catalogue with ``net.Listen`` re-tagged to ``boundary``."""
+#: The go rows INV-kanuk moved, as (module, name). Written out rather than
+#: derived from the catalogue, because a list derived from the thing under test
+#: agrees with it by construction and would pass over a catalogue that lost
+#: every row.
+GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
+    ("net", "Listen"), ("net", "ListenTCP"), ("net", "ListenUDP"),
+    ("net", "ListenUnix"), ("net", "ListenPacket"),
+    ("syscall", "Socket"), ("syscall", "Bind"), ("syscall", "Listen"),
+    ("unix", "Socket"), ("unix", "Bind"), ("unix", "Listen"),
+})
+
+#: The go rows that MUST NOT move: each returns data chosen by the far side.
+GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
+    # Genuine transfers: each returns data chosen by the far side.
+    ("net.Listener", "Accept"), ("net.Conn", "Read"),
+    ("syscall", "Accept"), ("syscall", "Accept4"),
+    ("syscall", "Recvfrom"), ("syscall", "Recvmsg"),
+    ("unix", "Accept"), ("unix", "Accept4"),
+    ("unix", "Recvfrom"), ("unix", "Recvmsg"),
+    # NOT transfers -- server LAUNCH rows, which ARE ADR-0049 deferred
+    # crossings but are pinned across nine languages by
+    # TestServerLaunchStaysAReceive until ADR-0049 open-work step 3 clears.
+    # INV-kanuk moved the SETUP rows only; these are listed so the partition
+    # below stays exhaustive and so the day they move, this fails and says why.
+    ("net/http", "ListenAndServe"), ("net/http", "ListenAndServeTLS"),
+    ("net/http", "Serve"),
+    ("github.com/gin-gonic/gin.Engine", "Run"),
+    ("github.com/gin-gonic/gin.Engine", "RunTLS"),
+    ("github.com/labstack/echo/v4.Echo", "Start"),
+    ("github.com/labstack/echo/v4.Echo", "StartTLS"),
+    ("github.com/gofiber/fiber/v2.App", "Listen"),
+    ("github.com/gofiber/fiber/v2.App", "ListenTLS"),
+    ("google.golang.org/grpc.Server", "Serve"),
+})
+
+
+def _go_catalog_without_deferrals():
+    """The shipped go catalogue as it stood BEFORE INV-kanuk's retag.
+
+    Every ``net_listen`` row forced back to ``net_recv``. This is the
+    falsifiability control for every assertion below: the shipped catalogue can
+    no longer play that role, because it now genuinely defers.
+    """
     cat = load_catalog("go")
     prims = [
-        replace(p, boundary=boundary)
-        if (p.module, p.name) == ("net", "Listen") else p
+        replace(p, boundary="net_recv") if p.boundary == "net_listen" else p
         for p in cat.primitives
     ]
-    assert any(p.boundary == boundary for p in prims), "the row was not re-tagged"
+    assert not any(p.boundary == "net_listen" for p in prims)
+    assert any(p.boundary == "net_listen" for p in cat.primitives), (
+        "the shipped go catalogue carries no net_listen row, so this control "
+        "is controlling for nothing -- INV-kanuk's retag has been reverted"
+    )
     return replace(cat, primitives=prims)
 
 
@@ -133,24 +184,28 @@ class TestTheVocabulary:
 class TestTheCatalogueQuery:
 
     def test_it_reports_the_shadowed_boundary_not_the_declared_one(self) -> None:
-        cat = _go_catalog_with("net_listen")
+        """Asked of the SHIPPED row, not a synthesised one (INV-kanuk)."""
+        cat = load_catalog("go")
         assert cat.deferred_crossings("net", "Listen") == frozenset({"net_recv"})
 
     def test_an_ordinary_row_shadows_nothing(self) -> None:
+        """The transfer rows are the counter-control: they survived the retag
+        and must keep shadowing nothing, or the family took `accept` with it."""
         cat = load_catalog("go")
-        assert cat.deferred_crossings("net", "Listen") == frozenset()
         assert cat.deferred_crossings("net.Conn", "Read") == frozenset()
+        assert cat.deferred_crossings("net.Listener", "Accept") == frozenset()
+        assert cat.deferred_crossings("syscall", "Recvfrom") == frozenset()
 
     def test_sites_are_grouped_by_the_boundary_they_shadow(self) -> None:
-        cats = {"go": _go_catalog_with("net_listen")}
-        assert deferred_crossing_sites([LISTEN_EDGE], cats) == {
+        assert deferred_crossing_sites([LISTEN_EDGE], {"go": load_catalog("go")}) == {
             "net_recv": ["net.Listen"],
         }
 
     def test_no_sites_when_no_row_defers(self) -> None:
         """FALSIFIABILITY CONTROL. Without it the test above is satisfied by a
         function that returns the same dict for any input."""
-        assert deferred_crossing_sites([LISTEN_EDGE], {"go": load_catalog("go")}) == {}
+        cats = {"go": _go_catalog_without_deferrals()}
+        assert deferred_crossing_sites([LISTEN_EDGE], cats) == {}
 
 
 class TestTheThreeRowTable:
@@ -158,7 +213,8 @@ class TestTheThreeRowTable:
     reason the shadow is not optional."""
 
     def _verdict(self, boundary: str, claim_boundary: str = "net_recv"):
-        cats = {"go": _go_catalog_with(boundary)}
+        cats = {"go": load_catalog("go") if boundary == "net_listen"
+                else _go_catalog_without_deferrals()}
         coverage = compute_boundary_coverage([LISTEN_EDGE], {"go"}, cats)
         return verify_claim(_claim(claim_boundary), BoundaryMap(), coverage)
 
@@ -325,3 +381,100 @@ class TestTheUnruledDebtListIsReachable:
         assert unruled_multi_boundary_primitives({"go": cat}) == [
             "go:acme.ambiguous",
         ]
+
+
+class TestTheGoRetag:
+    """INV-kanuk: the first catalogue rows to use ``net_listen``.
+
+    Go's 8 connection-SETUP rows minted ``untrusted_input`` at calls that return
+    a descriptor or an ``error``. WI-dosov had already removed the same shape
+    from Haskell, but the enforcing F2 gate could not see Go at all -- it
+    parametrised over a hardcoded 9-language list Go was not in, AND matched
+    lowercase names while Go capitalises every export, so adding Go to the list
+    would still have reported clean.
+
+    THE FIX IS A RETAG, NOT A REMOVAL, AND THAT DISTINCTION IS THE ITEM. This
+    item was blocked on its own reasoning that removal was unlicensed: go's real
+    receive surface is unreachable on idiomatic code (``ln, _ := net.Listen(...)``
+    then ``ln.Accept()`` emits ``go:external:0-0:Accept``), so deleting the rows
+    would take go's network-input surface to nothing rather than relocating it
+    -- the WI-lunav failure at eight rows. A retag has no such problem: the call
+    is still classified, so it still counts as examined (INV-buzab), and the
+    shadow qualifies the clean verdict instead of granting it.
+    """
+
+    def test_every_setup_and_serve_row_moved(self) -> None:
+        cat = load_catalog("go")
+        listen = {(p.module, p.name) for p in cat.primitives
+                  if p.boundary == "net_listen"}
+        assert listen == GO_DEFERRED_ROWS
+
+    def test_nothing_else_moved_with_them(self) -> None:
+        """THE COUNTER-CONTROL, and it guards two different things at once.
+
+        ADR-0049 ruling 4 keeps ``accept`` a TRANSFER, and a family-wide retag
+        is exactly how it would have been swept up. The launch rows are a
+        separate case: they ARE deferred crossings, and they stay only because
+        the cross-language pin has not been released yet."""
+        cat = load_catalog("go")
+        recv = {(p.module, p.name) for p in cat.primitives
+                if p.boundary == "net_recv"}
+        assert recv == GO_TRANSFER_ROWS
+
+    def test_nothing_was_dropped_on_the_way(self) -> None:
+        """The two sets PARTITION what used to be net_recv. A retag that lost a
+        row would satisfy both tests above and still be a recall regression."""
+        cat = load_catalog("go")
+        moved = {(p.module, p.name) for p in cat.primitives
+                 if p.boundary in ("net_listen", "net_recv")}
+        assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
+        assert len(moved) == 31
+
+    def test_the_f2_predicate_finds_only_the_documented_launch_row(self) -> None:
+        """INV-kanuk's own repro, inverted -- and it does NOT come back empty.
+
+        The item filed EIGHT offenders. Seven are gone. The eighth,
+        ``fiber.App.Listen``, is a FALSE POSITIVE OF THE PREDICATE rather than
+        a survivor: the predicate matches lowercase NAMES while the family is
+        cut by MECHANISM, and fiber's ``Listen`` is a server launch that
+        happens to be spelled like a setup call. It moves with the launch
+        family, and it is exempted at ROW granularity in F2_EXEMPT_ROWS so the
+        exemption cannot quietly cover anything else.
+
+        Asserting the exact remaining offender rather than ``== []`` is the
+        point: an empty assertion here would have forced either a wrong retag
+        or a language-wide exemption, and both hide a row.
+        """
+        cat = load_catalog("go")
+        offenders = sorted(f"{p.module}.{p.name}" for p in cat.primitives
+                           if p.boundary == "net_recv"
+                           and p.name.lower() in ("socket", "bind", "listen"))
+        assert offenders == ["github.com/gofiber/fiber/v2.App.Listen"]
+
+    def test_a_shipped_listener_qualifies_a_clean_net_recv_claim(self) -> None:
+        """END TO END on the shipped catalogue: ADR-0049 ruling 3's bar.
+
+        The retag must not buy a false all-clear. Over a real ``net.Listen``
+        edge, a "no network input" claim comes back QUALIFIED rather than
+        granted, naming the site.
+        """
+        cats = {"go": load_catalog("go")}
+        coverage = compute_boundary_coverage([LISTEN_EDGE], {"go"}, cats)
+        verdict = verify_claim(_claim("net_recv"), BoundaryMap(), coverage)
+        assert verdict.verdict == "confirmed_with_caveats", verdict.verdict
+        cav = next(c for c in verdict.caveats
+                   if c["kind"] == "deferred_crossing")
+        assert cav["entries"] == ["net.Listen"]
+
+    def test_before_the_retag_the_same_claim_was_granted_outright(self) -> None:
+        """WHAT THE RETAG BOUGHT, stated as a difference rather than asserted.
+
+        On the pre-retag catalogue the identical edge and claim produce a bare
+        ``confirmed``: ``net.Listen`` was a net_recv row, so it minted a source
+        AND counted as examined. If this stops differing from the test above,
+        the retag has stopped changing anything.
+        """
+        cats = {"go": _go_catalog_without_deferrals()}
+        coverage = compute_boundary_coverage([LISTEN_EDGE], {"go"}, cats)
+        verdict = verify_claim(_claim("net_recv"), BoundaryMap(), coverage)
+        assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)

@@ -64,7 +64,13 @@ net_recv:
     notes: Echo server startup. Pinned to v4, as above.
   - module: github.com/gofiber/fiber/v2.App
     methods: [Listen, ListenTLS]
-    notes: Fiber server startup. Pinned to v2, as above.
+    notes: >-
+      Fiber server startup. Pinned to v2, as above. `Listen` is a server LAUNCH
+      row that the INV-nular F2 gate flags by NAME (its predicate is the
+      lowercase set socket/bind/listen) while not being connection setup at
+      all -- a false positive of a name-based gate over a mechanism-based
+      family. It is exempted at ROW granularity in F2_EXEMPT_ROWS rather than
+      moved, so the launch family stays pinned together.
   - module: google.golang.org/grpc.Server
     methods: [Serve]
     notes: >-

@@ -58,7 +58,18 @@ fs_write:
 
 net_recv:
   - module: unix
-    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
+    functions: [Accept, Accept4, Recvfrom, Recvmsg]
+    notes: >-
+      Socket/Bind/Listen MOVED to net_listen (INV-kanuk, ADR-0049 ruling 1) --
+      they return a descriptor and transfer nothing, while net_recv
+      auto-derives a taint source. Accept/Accept4 return a peer-chosen
+      connection and Recvfrom/Recvmsg return bytes, so those four stay.
+
+# ADR-0049 deferred crossings: mints no taint, shadows net_recv.
+net_listen:
+  - module: unix
+    functions: [Socket, Bind, Listen]
+    notes: "SETUP. Returns a file descriptor or an error."
 
 net_send:
   - module: grpc
