@@ -1,0 +1,24 @@
+- op: create  # c57f
+  at: '2026-08-30T05:59:14Z'  # c57f
+  by: agent  # c57f
+  actor: jgstern_agent  # c57f
+  clock: 1  # c57f
+  nonce: c57f  # c57f
+  data:  # c57f
+    kind: invariant  # c57f
+    title: "A handle-constructor row's boundary is a property of its ARGUMENT: bufio.NewScanner is declared ipc_recv unconditionally and in the 0010 corpus wraps a file or an in-memory buffer every single time"  # c57f
+    status: violated  # c57f
+    priority: 2  # c57f
+    parent:  # c57f
+    tags:  # c57f
+    - catalogue  # c57f
+    - io_boundary  # c57f
+    - analysis_quality  # c57f
+    isbefore: []  # c57f
+    duplicate_of: []  # c57f
+    not_duplicate_of: []  # c57f
+    pr_ref:  # c57f
+    description: "FOUND 2026-08-30 by measurement 0010, which adjudicated 17 situations under the\nmechanism it named WRONG-CHANNEL.\n\nTHE OBSERVATION. `bufio.NewScanner` and `bufio.NewReader` are declared\n`ipc_recv` in go.yaml, unconditionally. They wrap an `io.Reader`, and WHICH\nBOUNDARY THE CROSSING IS depends entirely on what that argument is:\n\n  bufio.NewScanner(os.Stdin)                     ipc_recv     -- correct\n  bufio.NewScanner(f)               f = os.Open  fs_read      -- WRONG\n  bufio.NewScanner(bytes.NewReader(output))      no crossing  -- WRONG\n                                    output = cmd.Output()     (the real one is\n                                                               the pipe read)\n  bufio.NewScanner(strings.NewReader(string(output)))         -- WRONG\n\nMEASURED, in the 0010 cohort. EVERY `bufio.NewScanner` site adjudicated wraps a\nfile or an in-memory buffer; NOT ONE wraps stdin:\n\n  beads   delete.go:305, doctor/jsonl_integrity.go:55,\n          doctor/fix/migrate_tombstones.go:95, sync_check.go:237,\n          sync_import.go:52, doctor/integrity.go:370          -- a FILE\n  beads   import.go:664, init.go:940, jira.go:421/433/560,\n          status.go:180/218                                    -- a git command's stdout\n  cilium  iptables.go:213, iptables.go:1038                    -- iptables-save stdout\n  cilium  loader/compile.go:224                                -- a compiler's stderr\n\nTEN of arm 2's twenty-four true positives are vacuous (KIND-MISDECLARED) for\nthis reason and not for ADR-0049's. `bufio.NewReader` has the same shape and\ndoes sometimes wrap stdin, which is what makes it harder rather than easier:\none row cannot be right for both.\n\nTHIS IS INV-vaduk'S PROBLEM IN A NEW PLACE. That item ruled on rows that carry\nTWO boundaries because the catalogue cannot express why. Here the row carries\nONE boundary that is only sometimes true, and which one is true is a property of\nthe ARGUMENT AT THE CALL SITE -- something the catalogue has no vocabulary for\nat all. It is also INV-nular's rule (\"kind asserted by name, never checked\nagainst semantics\") reaching a case where checking the name cannot help.\n\nNOT THE SAME AS THE SIBLING ITEM. That one says the transfer calls are absent\nfrom the catalogue, which BLOCKS a retag. This one says the constructor rows\nare on the wrong boundary a majority of the time, which is a precision defect\nthat exists whether or not anything is ever retagged.\n\nTHREE CANDIDATE SHAPES, none chosen here:\n  (a) argument-conditioned rows -- new catalogue vocabulary, largest change;\n  (b) drop the constructor rows once the READ calls are catalogued (the sibling\n      item), which resolves this by making the constructors unnecessary;\n  (c) a weaker boundary for wrapper constructors that mints nothing and\n      discloses, which is ADR-0049's net_listen shape applied to ipc.\n\n(b) is the cheapest and is already sequenced by the sibling item. Recording all\nthree so the choice is visible rather than defaulted.\n\nREPRO / EVIDENCE\n  docs/measurements/0010-deferred-crossing-findings-per-shape.md § mechanism table\n  ~/hypergumbo_lab_notebook/step3_adjudication_08302026/arm2_ledger.json"  # c57f
+    fields:  # c57f
+      statement: "A catalogue row's io_boundary must be true of every call site the row matches."  # c57f
+      root_cause: "bufio.NewScanner/NewReader wrap an arbitrary io.Reader, so which boundary the crossing is depends on the argument; one row cannot express that, and the catalogue has no argument-conditioned vocabulary."  # c57f

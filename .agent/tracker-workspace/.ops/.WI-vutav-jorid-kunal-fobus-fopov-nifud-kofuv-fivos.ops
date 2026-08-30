@@ -1,0 +1,23 @@
+- op: create  # 3bc7
+  at: '2026-08-30T05:54:48Z'  # 3bc7
+  by: agent  # 3bc7
+  actor: jgstern_agent  # 3bc7
+  clock: 1  # 3bc7
+  nonce: 3bc7  # 3bc7
+  data:  # 3bc7
+    kind: work_item  # 3bc7
+    title: "Catalogue the READ calls behind the handle constructors (bufio.Reader.ReadString, Scanner.Scan/Text, os.File.Read and peers): go's entire stdin surface is three deferred-crossing rows with no transfer row to relocate a crossing to"  # 3bc7
+    status: todo_hard  # 3bc7
+    priority: 1  # 3bc7
+    parent:  # 3bc7
+    tags:  # 3bc7
+    - catalogue  # 3bc7
+    - io_boundary  # 3bc7
+    - taint  # 3bc7
+    - analysis_quality  # 3bc7
+    isbefore: []  # 3bc7
+    duplicate_of: []  # 3bc7
+    not_duplicate_of: []  # 3bc7
+    pr_ref:  # 3bc7
+    description: "FOUND 2026-08-30 by measurement 0010 (ADR-0049 open work step 3). This is the\nBLOCKER on retagging the deferred-crossing HANDLE shape, and it is a positive\npiece of work rather than a prohibition.\n\nTHE OBSERVATION. Go's ENTIRE catalogued stdin surface is three rows:\n\n  ipc_recv  os.Stdin            (attribute)\n  ipc_recv  bufio.NewScanner    (function)\n  ipc_recv  bufio.NewReader     (function)\n\nAll three are ADR-0049 deferred crossings -- each returns a handle, not a byte.\nThere is NO row for bufio.Reader.ReadString / ReadBytes / ReadLine, none for\nbufio.Scanner.Scan / Text / Bytes, none for os.File.Read / io.ReadAll. So the\ncall that actually transfers is catalogued nowhere, and the three constructor\nrows are the only representation the crossing has.\n\nWHY THAT BLOCKS THE RETAG, on ADR-0049's own terms. Ruling 3 licenses a retag\nonly against a REPRESENTED crossing, run not reasoned, and cites WI-lunav: a\nrow that \"transmits nothing\", whose every real counterpart is already\ncatalogued, was still load-bearing, because the true path ran through an\nuncatalogued combinator. Here the counterparts are not merely uncatalogued in\npractice -- they are absent from the file. Retagging the three would take Go's\nstdin ingress to ZERO rather than relocating it.\n\nAND THE ROWS ARE EARNING THEIR KEEP. 0010 adjudicated 22 READ-IN-SCOPE\nsituations: 14 true positives, 11 of them USEFUL under ADR-0046, including the\nthree CONFIGURED-ACTION findings in caddy that reach ADR-0046's own motivating\nexample. The mechanism is that the handle is consumed in the scope that built\nit -- `reader := bufio.NewReader(os.Stdin)` at line 26 and\n`readLineWithContext(ctx, reader, os.Stdin)` at line 129 of the same function\n-- so \"the scope this call does not name\" IS the caller's, and minting at the\nconstructor is a sound over-approximation rather than a mis-attribution.\n\nTHE WORK. Catalogue the transfer calls, per language, so the crossing has\nsomewhere to live:\n\n  go      bufio.Reader.{ReadString,ReadBytes,ReadLine,ReadRune,ReadSlice}\n          bufio.Scanner.{Scan,Text,Bytes}\n          os.File.Read, io.ReadAll   (io.ReadAll(os.Stdin) is the caddy idiom)\n  python  sys.stdin.{read,readline,readlines}, io.TextIOWrapper.read*\n  java    java.io.BufferedReader.readLine, InputStream.read\n  c/cpp   fgets/fread on stdin, std::getline\n  rust    std::io::Stdin.{read_line,lines,read_to_string}\n\nThen, and only then, re-run 0010's arm 2 and check the 11 useful findings\nsurvive the retag of the constructors. If they do, the constructors may move.\nIf they do not, they stay and the record says why.\n\nA SECOND DEFECT IS ADJACENT AND FILED SEPARATELY (see the sibling item): even\nbefore the retag question, `bufio.NewScanner` is declared ipc_recv\nunconditionally while in the 0010 corpus it wraps a FILE or an in-memory buffer\nfar more often than stdin -- 10 of arm 2's 24 true positives are vacuous for\nthat reason and not for ADR-0049's.\n\nREPRO / EVIDENCE\n  docs/measurements/0010-deferred-crossing-findings-per-shape.md\n  ~/hypergumbo_lab_notebook/step3_adjudication_08302026/arm2_ledger.json"  # 3bc7
+    fields: {}  # 3bc7

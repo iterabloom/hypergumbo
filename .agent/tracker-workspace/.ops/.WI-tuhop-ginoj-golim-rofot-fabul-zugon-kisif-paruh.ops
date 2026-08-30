@@ -1,0 +1,22 @@
+- op: create  # 9c56
+  at: '2026-08-30T05:12:26Z'  # 9c56
+  by: agent  # 9c56
+  actor: jgstern_agent  # 9c56
+  clock: 1  # 9c56
+  nonce: 9c56  # 9c56
+  data:  # 9c56
+    kind: work_item  # 9c56
+    title: "ADR-0048 publishes 44/112 = 39.3% for measurement 0006 while 0006 publishes 38/112 = 33.9%: the ADR quotes the blind-pass count, and the artifact named ledger-final.json is not final"  # 9c56
+    status: todo_hard  # 9c56
+    priority: 2  # 9c56
+    parent:  # 9c56
+    tags:  # 9c56
+    - docs  # 9c56
+    - taint  # 9c56
+    - analysis_quality  # 9c56
+    isbefore: []  # 9c56
+    duplicate_of: []  # 9c56
+    not_duplicate_of: []  # 9c56
+    pr_ref:  # 9c56
+    description: "FOUND 2026-08-30 while reusing measurement 0006's artifacts for ADR-0049 step 3.\n\nTWO PUBLISHED HEADLINE PRECISIONS FOR THE SAME MEASUREMENT:\n\n  docs/measurements/0006-*.md  headline table  TP/FP 38/74  precision 33.9%\n  docs/adr/0048-*.md           \"Both estimators give 44/112 = 39.3%.\"\n\n44 is the BLIND-PASS count. 0006's frame rule F7 requires \"0005's blind pass\nplus adversarial pass\", and pass 4 refuted seven of the blind TPs\n(pass4-summary.json: ArkLib#0, ArkLib#1, guacamole-client#4, jaeger#0,\nrabbitmq#5, tmux#3, tmux#6; one of the seven contested). 44 - 6 uncontested = 38,\nwhich is 0006's published figure. ADR-0048 quotes the pre-refutation number as\nthough it were the headline, in the paragraph that exists to argue equal\nallocation makes the estimator choice moot. The ARGUMENT is unaffected -- pooled\nand unweighted-mean coincide at 44/112 exactly as they do at 38/112 -- but a\nreader comparing the ADR to the record it governs finds two precisions for one\nmeasurement, and the frame ADR is the last document that should carry an\nunreconciled one.\n\nTHE MECHANISM IS A FILENAME, AND IT WILL CATCH THE NEXT READER TOO.\n`measurement_0006_08252026/ledger-final.json` has a top-level key `final` and\ncarries 44 TPs. It is not final: the refutations live in a SEPARATE file\n(`pass4-summary.json`) and have to be applied on top. I asserted 38 against\n`ledger-final.json` and the assertion failed, which is the only reason I looked;\nwithout the assertion I would have published a family slice computed against\nlabels that 0006 does not stand behind. `gibom_08272026/derive.py` reads BOTH\nfiles, so the derivation that produced 24.1% useful precision is correct -- the\ntrap is for anyone who reads only the one whose name says \"final\".\n\nFIX SHAPE, two parts and the second matters more:\n  (1) ADR-0048's sentence names 38/112 = 33.9%, or says explicitly that 44 is\n      the pre-refutation count being used to make an estimator point.\n  (2) The artifact is renamed (`ledger-blind.json` / `ledger-pass4.json`) or\n      grows a `refuted` field so the \"final\" file IS final. A note in a\n      docstring does not fix a filename that lies; the next reader opens the\n      file, not the docstring.\n\nNOT A DEFECT IN 0006. Its own record states the refutation pass, names the\ncontested one, and publishes 37/112 as the including-contested figure. The\ndefect is a downstream citation and an artifact name."  # 9c56
+    fields: {}  # 9c56
