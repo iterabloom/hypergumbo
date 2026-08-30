@@ -2761,8 +2761,17 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # INV-nogof: enforce the SAME ambiguity policy as `slice` — a name-based
     # spec resolving to symbols in >1 file is ambiguous. `--first` is the opt-in
     # escape that picks the top match; `--language`/`--file` (applied above)
-    # narrow the pool so the spec resolves unambiguously. The error message
-    # already names those flags (AmbiguousEntryError → "filter with --language").
+    # narrow the pool so the spec resolves unambiguously.
+    #
+    # WI-kutam: this comment used to end "The error message already names those
+    # flags (AmbiguousEntryError -> 'filter with --language')", and that is no
+    # longer unconditionally true — the shared error now offers `--language`
+    # ONLY when the language axis actually splits the candidates, because
+    # suggesting it to an all-python ambiguity sent the user round a loop. It
+    # does not offer `--file` either, and deliberately: THIS command has that
+    # flag and `slice` does not, so naming it in a message the two SHARE would
+    # be inapplicable advice one command over. The full node ID is the remedy
+    # both can act on, and it is always printed.
     if first_only:
         matches = matches[:1]
     else:
