@@ -332,56 +332,38 @@ steps:
       - python3 -m pip install --upgrade pip setuptools wheel
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
 
-  # ── self-claim drift gate, per-PR arm (WI-ninoz / INV-zuhig) ───────────────
-  # Runs `hypergumbo verify-claims` on this tree and fails on any drift from
-  # docs/hypergumbo.claims.expected.json — which pins, per claim, the verdict
-  # PLUS the caveat kinds PLUS whether sanitizer-credited flows are zero or
-  # nonzero (a verdict staying green while its credited evidence collapses is
-  # the INV-zuhig vacuousness shape this gate exists to catch).
+  # ── self-claim drift gate: REMOVED FROM THIS PIPELINE (owner decision,
+  #    2026-08-30). It now runs ONLY on the twice-daily full-suite cron.
   #
-  # WIDENED TO THE WHOLE CODE SURFACE (INV-bobor). This step used to be
-  # path-scoped to the claim surface, with analyzer .py changes riding the cron
-  # full-suite cadence — "a deliberate scoping decision — gating every core PR
-  # on a self-analysis was judged too heavy", priced in this comment at "~10
-  # minutes". Two measurements retired that trade:
+  # The history matters because this reverses a reversal. The gate was moved
+  # INTO this pipeline under INV-bobor, after a self-claim regression
+  # (runtime-cli-no-host-fs: confirmed_with_caveats -> violated) sat on green
+  # dev for 63 commits: the cron arm DETECTED it on 2026-08-19 and delivery
+  # failed, because a cron verdict is one bit of an aggregate that a sibling
+  # flake keeps red, on a commit that is not HEAD.
   #
-  #   * PRICE. The gate is 3m49s wall-clock on dev 6e290fcdb8, not ~10 minutes,
-  #     and it shares build-grammars with — and runs concurrently with — a
-  #     pytest step that took 935s in the same pipeline. The decision was taken
-  #     against a number 2.6x too high.
-  #   * THE FALLBACK DOES NOT DELIVER. The cron arm this scoping leans on DID
-  #     catch runtime-cli-no-host-fs regressing on 2026-08-19 01:00 and it
-  #     changed nothing for 63 commits, because a cron verdict is one bit of an
-  #     aggregate status that is chronically red from an unrelated flaky test,
-  #     landing on a commit that is not HEAD, which is the only commit
-  #     scripts/ci-debug reads. Detection was never the failure; delivery was.
+  # WHAT CHANGED, measured rather than re-argued:
+  #   * PRICE. That move was justified on the gate costing 3m49s and running
+  #     concurrently with a longer pytest step. It is now ~14 minutes and
+  #     finishes LAST, so it is the critical path of every code PR -- the
+  #     number the decision rested on has gone stale by ~3.7x.
+  #   * DELIVERY, one leg of three. `ci-debug cron-status` (INV-bozid
+  #     remedy (b)) now reads the latest cron verdict off whatever commit
+  #     carries it, so the ADDRESSING failure above is fixed.
   #
-  # A gate inside THIS pipeline needs no delivery mechanism: auto-pr refuses to
-  # merge on it, so detection is bounded at one commit by construction. Scoped
-  # to *code_paths (the pytest/lint trigger) plus the self-catalog, which holds
-  # a README that *code_paths does not match — keeping it explicit so this
-  # trigger cannot narrow by accident again. Pinned by
-  # tests/test_ci_self_claims_gate_scope.py.
+  # WHAT IS STILL TRUE AND WAS ACCEPTED: full-suite publishes ONE aggregate
+  # status for all six of its steps, so a self-claim regression reads as
+  # "full-suite is red" and needs a log fetch to attribute, and a sibling
+  # going chronically red would bury it again. That risk is lower than in
+  # August -- the flaky tracker TUI test behind the 2026-08-20 masking was
+  # fixed the same day as this change -- but it is not gone. If full-suite
+  # starts sitting red, give this gate its own workflow file (and therefore
+  # its own commit-status context): INV-bozid remedy (a), verified viable,
+  # and it must reuse the EXISTING `full-suite` cron name because crons are
+  # configured in repo settings rather than here.
   #
-  # THIS pipeline is the one that gates merges (auto-pr polls only
-  # ci/woodpecker/pr/woodpecker — see the mypy step's history for what
-  # happens to gates that live anywhere else). The .github/workflows/ci.yml
-  # twin of this job is the dormant GHA port, not the enforcement point.
-  # Same install + grammar build as full-suite's gate arm so both arms
-  # analyze the same language set and cannot disagree on identical trees.
-  - name: self-claims-gate
-    image: python:3.11-bookworm
-    depends_on: [build-grammars]
-    when:
-      - path: *code_paths
-      - path:
-          include:
-            - "docs/hypergumbo-self-catalog/**"
-    commands:
-      - pip install --upgrade pip && pip install jsonschema
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e "packages/hypergumbo-tracker[dev]"
-      - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
-      - PYTHON=python scripts/check-self-claims
+  # Detection is now bounded by the cron cadence (up to ~12h), not by one
+  # commit. tests/test_ci_self_claims_gate_scope.py pins what remains.
 
   # ── pytest + 100%-coverage-of-changed-files (smart-test manifest) ──────────
   # Faithful port of ci.yml's pytest job. No venv (the container IS the isolation)

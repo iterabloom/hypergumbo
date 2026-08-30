@@ -61,7 +61,28 @@ fi
 echo "check-self-claims: analysing hypergumbo with hypergumbo ..." >&2
 # verify-claims exits 1 for violated / 2 for inconclusive. Both are expected
 # states here — the snapshot decides pass/fail, not the exit code.
-"$PY_BIN" -m hypergumbo_core verify-claims . --claims "$CLAIMS" --json \
+# --minimal: decline the side outputs this gate never reads (budget-tier
+# previews, per-handler slices, sketch pre-computation). MEASURED, cold, both
+# arms confirmed by the "No cached results found" line, on two throwaway
+# XDG_CACHE_HOME dirs so neither could ride the other's survey:
+#
+#     default   1450s (24.2 min)
+#     --minimal 1009s (16.8 min)      -441s, 30.4%
+#
+# and the two runs produced BYTE-IDENTICAL output (309,026 bytes, 18/18 verdicts
+# equal), so the saving costs no coverage: it skips work whose result never
+# reaches the snapshot comparison, not analysis scope.
+#
+# THE FIRST MEASUREMENT OF THIS WAS WRONG AND SAID 24x. Two worktrees at the
+# same commit share a survey cache -- it keys on repo CONTENT, not path -- so the
+# second arm reused the first's survey and 33s was a cache hit. The tell is that
+# only the first arm's stderr carries "No cached results found, running
+# analysis...". Anyone re-measuring this must assert that line, not assume it.
+#
+# The documented caveat ("a survey cached from a --minimal run makes a later
+# `sketch` recompute its inputs") does not apply in CI: this step is its own
+# container and no step in either workflow runs `sketch` off that cache.
+"$PY_BIN" -m hypergumbo_core verify-claims . --claims "$CLAIMS" --json --minimal \
     > "$ACTUAL" 2>/dev/null || true
 
 if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ACTUAL" 2>/dev/null; then
