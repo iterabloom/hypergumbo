@@ -1,0 +1,67 @@
+Original commit body from 561cd92a1ac7651cc3defd9017a3b9f7e6361d75:
+
+Strategy 1.5 already walks a `self.field` receiver chain to its type through the
+struct field-type registry. It then uses that type ONLY to look up a FIRST-PARTY
+symbol. When the field's type is EXTERNAL (`File::write_all`) the lookup misses,
+`resolved` stays False, and THE TYPE COMPUTED MOMENTS EARLIER IS DISCARDED -- the
+call falls through to the unresolved branch carrying the bare `external`
+placeholder, which the no-module gate correctly refuses, so every method-kind row
+in rust.yaml was unreachable through a field receiver.
+
+That is the same discard PR #595 fixed for `_var_types` (plain identifier
+receivers), one shape over, and it is INV-linub's L3 residual. The fix recovers
+the type into the module slot: SLOT ONLY, `has_explicit_binding` untouched, so
+which edges are emitted -- including the generic-trait-method suppression -- is
+byte-identical.
+
+THIS ONE IS ON THE SINK SIDE, which is why it can move a verdict where #595 could
+not. #595 took rust from 303 to 360 classified call sites and moved ZERO taint
+flows, because the rows it unlocked were host_info_read and fs_read, and fs_read
+is excluded from AUTO_SOURCE_LABEL_MAP by design. write_all is fs_write, an
+auto-derived SINK.
+
+MEASURED, A/B in one process, the pre-fix arm restored by blanking the field-type
+registry so Strategy 1.5 resolves nothing:
+
+  spacedrive             587 -> 593 classified call sites   (+5 fs_write, +1 fs_read)
+  encrypted-dns-server     9 ->   9                          (+0)
+
+Reported as a CEILING ON THE FINDING DELTA, NOT A PAYOFF: this item's standing
+rule is to measure through L4 on findings, and a call site that does not classify
+cannot produce a finding, so this bounds the direction without establishing the
+size. encrypted-dns-server's zero is kept rather than dropped -- it classifies 9
+sites in total, so it has almost no catalogued surface for this to reach.
+
+THE DELTA IS SMALL BECAUSE THE FIX IS TYPE-DIRECTED, AND THAT IS THE POINT. A
+receiver-shape census on spacedrive finds 74 `self.<field>.lock(...)` and 295
+`self.<field>.write(...)` sites against +5 classified. `lock` is catalogued only
+as std::fs::File.lock and spacedrive's are Mutex::lock; a field `.write` is
+usually a Vec or a custom writer. Matching those would be a FALSE POSITIVE, not a
+recovered true one, so a raw miss-count overstates the defect wherever the
+receiver's type is not the catalogued type.
+
+TWO NEIGHBOURING SHAPES ARE DELIBERATELY NOT FIXED, and the test states their
+CURRENT behaviour rather than omitting them:
+  * `h.f.write_all(..)` where h is a typed parameter -- resolve_receiver_type
+    resolves "only ... chains rooted at a self_keywords token", so a var-rooted
+    field chain needs the walk Go already has (_resolve_field_chain) and rust does
+    not; that is shared analyze/base.py with a wider blast radius.
+  * a receiver bound from an external function's RETURN VALUE
+    (`let c = File::create(..).unwrap()`) -- that is WI-lalot.
+Asserting either as fs_write would pin work nobody has done, so the test asserts
+None and tells the next reader to move the assertion when one lands.
+
+FIXTURE CAUTION, learned by getting it wrong: rust's `_var_types` is FILE-scoped
+and first-writer-wins, so a receiver named `f` in one function is typed by an
+annotation on a DIFFERENT function's `f`. The first cut used `f` everywhere and a
+broken shape appeared to pass. Every receiver now has a distinct name, and the
+fixture's line numbers are DERIVED from the source rather than hand-counted --
+the first cut hardcoded five and got one wrong by one, which surfaced as a
+CONTROL failing and looked exactly like the fix breaking the prior fix.
+
+rust.py at 100% coverage; 5053 mainstream tests green.
+
+Rig: ~/hypergumbo_lab_notebook/dizag_rust_08302026/
+
+Racial-Capitalism-Is-Bad: a duck djing in a Shoney’s gift shop with dino plushies with a symposium of cats
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
