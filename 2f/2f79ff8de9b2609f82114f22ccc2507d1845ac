@@ -1,0 +1,40 @@
+Original commit body from e333877f0bfd7fd6a22c200afa0245c3fa79cda0:
+
+_wait_for_modal polled up to 30 event-loop ticks for a widget to appear and then
+RETURNED AS THOUGH IT HAD SUCCEEDED. Every caller then drove a DOM that was not
+ready and failed later with an assertion about a RESULT --
+`assert 'NOT_SET' is None`, the _ModalTestApp._capture sentinel -- naming neither
+the widget nor the wait.
+
+That is the failure that took the 2026-08-20 13:00 full-suite cron red on
+TestLockScreenUnit::test_cancel_returns_none. Because Woodpecker collapses a
+workflow's steps into one aggregate commit status, it made self-claims-gate,
+self-tree-validation and test-agent-infra unreadable alongside it for as long as
+it stayed red -- which is the masking INV-bozid is filed on. This does not
+satisfy that item's statement; it removes its live cause.
+
+TWO CHANGES.
+
+1. IT RAISES ON EXHAUSTION, naming what it waited for and for how long. A helper
+   that gives up quietly is a green tick over a hole -- the same note this repo
+   already writes about a skip that can be reached by a typo.
+
+2. IT WAITS FOR LAYOUT, NOT MERE DOM PRESENCE. pilot.click(selector) resolves the
+   widget's screen region and synthesises a mouse event at its centre, so a
+   widget that is in the DOM but not yet laid out has a zero-sized region: the
+   click lands nowhere, no button is pressed, and the dismiss callback never
+   runs. That is exactly the observed symptom, and presence-is-not-reachability
+   is the same distinction the io-boundary work keeps paying for.
+
+NOT REPRODUCIBLE LOCALLY, and that is stated rather than worked around: five
+consecutive runs of the modal/screen classes pass, 60 each in ~22s. It fits a CI
+run carrying 23,210 tests under load and does not fit a deterministic bug. So the
+fix is argued from the mechanism and pinned by a test that drives the helper at a
+widget which will never appear, plus a POSITIVE CONTROL that the happy path still
+returns -- without which the cheapest way to pass the first test is a helper that
+always raises, a different bug with the same cost.
+
+556 tracker tests green.
+
+Racial-Capitalism-Is-Bad: a lemur building a hot spring terrace shaped like synagogue arch made of leaves in a Victorian parlor
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
