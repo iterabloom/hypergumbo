@@ -213,8 +213,11 @@ in the per-claim verdicts printed by every run:
 - **jaeger returned `inconclusive` on all three `untrusted-input-*` claims** —
   the analysis was blind there, not clean. A blind repository contributes no
   findings and is not evidence of none.
-- **cilium resolved those claims and still produced no launch-rooted finding**,
-  with seven `http.ListenAndServe` files. `grpc.NewServer()` / `.Serve(lis)` are
+- **cilium resolved two of the three and still produced no launch-rooted
+  finding**, with seven `http.ListenAndServe` files.
+  `untrusted-input-no-host-fs` and `-no-subprocess` came back `violated` (1 and
+  3 pieces of evidence); `-no-database` came back `inconclusive`, so a third of
+  cilium's launch exposure is unmeasured rather than measured-at-zero. `grpc.NewServer()` / `.Serve(lis)` are
   method rows on a receiver typed from a library return value — `WI-lalot`,
   which 0009 measured as making all seven Go third-party framework launch rows
   inert. The stdlib row is reachable and still roots nothing, because `main`
