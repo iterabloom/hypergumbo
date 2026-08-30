@@ -1,0 +1,77 @@
+Original commit body from 0c02b5ea1140911fe03a38389fe55bcb0b195140:
+
+Two safety gates ask "which languages made calls, and do we have a catalogue for
+them" -- verify_claims._call_production_coverage (I/O) and cli's taint-language
+census. Both derive the language from a call edge's SOURCE ID, deliberately; the
+I/O gate's comment says why it is not keyed on languages merely present:
+
+  "Keyed on languages PRESENT this would name up to 16 apiece -- markdown,
+   gitignore, yaml, toml -- and downgrade every verdict for a .gitignore."
+
+That proxy broke from the other end. linkers/build_target.py resolves each
+manifest `defines_target` edge to the main() it names and emits a CALLS edge, so
+a forward slice can traverse from a Cargo [[bin]] into application code -- and
+its source is the build-target symbol, whose language slot is the manifest's. So
+a data format appears to make calls, lands in
+`languages_with_calls - set(catalogs)`, and every boundary and taint claim over a
+Rust binary crate is withheld on a file that performs no I/O.
+
+REPRODUCED on mini-redis: 516 call edges, exactly 2 sourced at `toml`, both from
+build-target-linker, and all seven claims withheld naming toml.
+
+NOT THE ITEM'S OPTION (a), BECAUSE IT WOULD REOPEN THE GAP THE LINKER CLOSES.
+WI-mital proposes retyping the edge to `defines_target`, flagging the risk that
+"the call graph may deliberately traverse" it. It does: the `defines_target` edge
+points at a BARE PATH STRING the slicer cannot follow, which is the entire reason
+build_target.py exists. The edge is exempted from the gates, not retyped, so
+slicing is untouched.
+
+AND NOT THE OBVIOUS RULE EITHER -- REFUTED BEFORE IT SHIPPED. The first cut keyed
+on taxonomy's FileRole.ANALYZABLE ("a config format cannot call"). FileRole
+describes a file's ROLE, not whether an analyzer exists, and SEVENTEEN of the
+languages it marks non-analyzable have registered analyzers -- dockerfile, cmake,
+hcl, starlark, just, jsonnet among them. A Dockerfile `RUN curl ...` is real I/O,
+so exempting the LANGUAGE would have been a false all-clear, the exact direction
+these gates exist to prevent. The shipped rule keys on WHAT MINTED THE EDGE: no
+real analyzer's output carries the build-target linker's pass id.
+TestARealAnalyzersCallIsNeverExempt keeps that refutation as a test.
+
+FIXING ONE GATE WAS NOT ENOUGH, AND THE SECOND GATE'S OWN COMMENT PREDICTED IT.
+After patching the I/O gate, mini-redis STILL reported toml -- through the taint
+census, which builds its own languages_with_calls inline. That function already
+warns: "Narrowing only the first check is how this function would come to give
+two different answers about the same fixture." Both now import one predicate,
+with a test that fails if either re-derives it, and another reconciling the
+pass-id literal against the linker's own PASS_ID. The constant cannot be an
+import: importing a linker REGISTERS it, and a safety gate must not change which
+linkers exist.
+
+THE MEASURED RESULT IS THE SIZING THE ITEM ASKED FOR AND HAD NOT DONE. WI-mital
+says the gate is "a ladder of early returns, so the reason string names the FIRST
+blocker", and that sizing needs the gate re-run with the toml edges removed.
+Re-run on mini-redis: toml is GONE from every verdict, and the next rung is now
+visible -- twelve uncatalogued Rust crates (atoi, bytes::Bytes,
+opentelemetry::*). All seven claims stay inconclusive, now for a legitimate
+reason instead of a false one. This removes a FALSE withholding; it does not by
+itself buy a clean verdict, and it is not reported as if it did.
+
+`manifest`-sourced build-target edges are covered by the same rule for free --
+the linker walks every defines_target edge whatever extractor produced it --
+which the item flagged as "very likely the SAME CLASS under a different name".
+
+THREE FAIL-CLOSED CONTROLS, because this moves the gates toward withholding LESS:
+  * an unregistered language (tcl, one of the item's own correct cases) withholds
+  * a real analyzer's call on a config-format language (dockerfile) withholds
+  * an edge with NO origin withholds -- absent provenance cannot establish that
+    an edge is synthetic
+Both origin spellings are handled rather than assumed: Edge.origin is typed
+`str | List[str]` and only __post_init__ normalises the scalar, so a well-formed
+edge always serialises as a list (895 of 895 on a real map) while the FIELD still
+permits a string, and this reads raw dicts from an artifact that may have been
+hand-edited. Covered by tests rather than a pragma, which would have asserted
+those branches unreachable when they are not.
+
+smart-test 5191 passed with all changed sources at 100%; 13468 core tests green.
+
+Racial-Capitalism-Is-Bad: a magpie teaching alginates to a class of turtles in a floating market shaped like deli pickle spear
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
