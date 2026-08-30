@@ -125,12 +125,24 @@ level.**
 the `env_read` error INV-tutar closed (one boundary value carrying two
 readings). Under Ruling 1 they separate cleanly:
 
-| shape | example | returns to caller | verdict |
-|---|---|---|---|
-| Setup | `socket`, `bind`, `listen` | a descriptor | deferred crossing |
-| Blocking serve loop | `ListenAndServe`, `serve_forever`, `Warp.run`, `uvicorn.run` | `error` / `None` / `()` | deferred crossing |
-| Per-connection accept | `accept`, `net.Listener.Accept`, `TcpListener.accept` | **a peer-chosen address / connection** | **transfer — stays `net_recv`** |
-| Route-registration DSL | `Phoenix.Router.{get,post,…}` | nothing; declarative | deferred crossing |
+| shape | example | returns to caller | verdict | rows |
+|---|---|---|---|---:|
+| Setup | `socket`, `bind`, `listen`, `net.Listen` | a descriptor | deferred crossing | 22 |
+| Blocking serve loop | `ListenAndServe`, `serve_forever`, `Warp.run`, `uvicorn.run` | `error` / `None` / `()` | deferred crossing | 25 |
+| Per-connection accept | `accept`, `net.Listener.Accept`, `TcpListener.accept` | **a peer-chosen address / connection** | **transfer — stays `net_recv`** | — |
+| Route-registration DSL | `Phoenix.Router.{get,post,…}`, `addEventListener`, `process.on` | nothing; declarative | deferred crossing | 23 |
+| **Handle constructor** | `sqlite3.connect`, `Connection.prepareStatement`, `bufio.NewReader`, `Socket.getInputStream`, `sys.stdin` | **a handle, not data** | deferred crossing | 28 |
+| **Lazy / unexecuted** | Django's QuerySet combinators, `Ecto.Repo.stream`, `TypedQuery.getResultStream`, `EntityManager.getReference`, `TcpListener.incoming` | **a query or iterator that has run nothing** | deferred crossing | 29 |
+| **Callback-delivered** | `ftplib.FTP.retrbinary`, `dets.traverse`, `ets.foldl` | **nothing; the data goes to a function you passed** | deferred crossing | 8 |
+
+**The last three rows were added after the census** (`WI-hazop`) and the
+reachability measurement ([0009](../measurements/0009-deferred-crossing-reachability.md))
+enumerated the family per row. They are not new law — each fails Ruling 1
+identically to the first two — but the original four-shape table implied
+"server launch" was the centre of gravity and it is not: **Lazy and Handle are
+the two largest shapes, and Setup + Blocking serve loop together are under
+half the family.** The row counts are the register's, over the three
+boundaries adjudicated to completion.
 
 `accept` is not a member of the family and never was. WI-dosov had this right
 in Haskell; the shipped Go rows carry `Accept` alongside `Socket`/`Bind`/
@@ -208,13 +220,18 @@ Filed as tracker items, in order. **No row moves until 1–3 are done.**
    rule to count against. Ruling 1 supplies one. The census is re-run against
    Ruling 1, with the production loader, all catalogues, parents and shipped
    overlays, case-insensitively.
-2. **Reachability before adjudication.** Every candidate row gets a fixture
-   proving it emits a classifiable edge. This is not optional: `flask.Flask.run`
-   — the prompting item's headline example — is in Python's `ambiguous_names`,
-   so `app.run()` yields **0 edges** and mints nothing. A row can be argued
-   about for an entire panel while being inert. If the family is largely
-   inert, this is a correctness cleanup rather than a precision fix, which
-   changes its priority but not its verdict.
+2. **Reachability before adjudication.** ~~Every candidate row gets a fixture
+   proving it emits a classifiable edge.~~ **DONE — `WI-vapud`, measurement
+   [0009](../measurements/0009-deferred-crossing-reachability.md).** The family
+   is **not** largely inert: **45 of 62 rows measured in real idiom fire
+   (72.6%)**, and Python's slice is 22 of 22. The worry recorded here rested on
+   `flask.Flask.run` yielding 0 edges — which is true only of an untyped
+   receiver (`def f(app): app.run()`) and **false of both forms a Flask program
+   is written in**. Where the family *is* inert the cause is not this ruling:
+   go's seven third-party framework launch rows and java's `prepareStatement`
+   are `WI-lalot` (a receiver typed from a library return value is not typed at
+   all), and six javascript rows are `INV-misup`. Those rows should be retagged
+   last, because moving them changes no output.
 3. **Adjudicated findings per shape.** Live findings from the measurement-0006
    corpus (which already contains caddy, cilium, jaeger, cert-manager — the
    archetypal `ListenAndServe` population), labelled under ADR-0046. Note
