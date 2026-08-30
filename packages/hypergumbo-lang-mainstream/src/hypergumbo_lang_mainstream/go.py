@@ -2106,7 +2106,29 @@ def _type_from_constructor_call(
     """Infer return type from Go constructor naming convention.
 
     Go convention: ``NewFoo()`` returns ``*Foo`` or ``Foo``.  Also handles
-    package-qualified calls: ``pkg.NewFoo()`` → ``Foo``.
+    package-qualified calls: ``pkg.NewFoo()`` → ``pkg.Foo``.
+
+    THE QUALIFIER IS PART OF THE ANSWER, and this branch used to drop it. Its
+    sibling — the ``composite_literal`` branch of :func:`_type_from_rhs` — was
+    fixed to keep it because a bare ``Client`` resolves to no package and lands
+    in the ``external`` module slot, where the catalogue cannot match it and the
+    no-module gate (io-boundary:F3) correctly refuses it.
+    :func:`_type_identifier_from_node` states the contract outright: the full
+    ``http.Client`` is "critical for IO boundary detection". One branch honoured
+    it and its neighbour did not, so two spellings of one declaration disagreed:
+
+        var reader *bufio.Reader        -> "bufio.Reader"   (reaches the catalogue)
+        reader := bufio.NewReader(...)  -> "Reader"         (reached nothing)
+
+    Measured on WI-vutav's fixtures: Go's whole catalogued stdin surface is three
+    rows and the calls that actually transfer bytes could not be catalogued at
+    all, because the dominant idiom emitted ``go:external:0-0:ReadString``.
+
+    ``a.b.NewFoo()`` ABSTAINS rather than inventing ``a.b.Foo``. Go has no
+    three-segment package selector in expression position, so the operand of that
+    selector is a value and the call is a method, not a package constructor —
+    there is no alias for ``a.b`` in ``import_aliases`` and a qualified name that
+    cannot be resolved is worse than none.
 
     Only matches when the suffix after ``New`` starts with an uppercase letter
     (Go exported type convention).
@@ -2124,10 +2146,16 @@ def _type_from_constructor_call(
     # pkg.NewFoo() → selector_expression with field_identifier "NewFoo"
     elif func_node.type == "selector_expression":
         field = find_child_by_field(func_node, "field")
+        operand = find_child_by_field(func_node, "operand")
         if field is not None:
             name = node_text(field, source)
             if name.startswith("New") and len(name) > 3 and name[3].isupper():
-                return name[3:]
+                # Only a BARE identifier operand can be a package name. Anything
+                # else (a nested selector, an index, a call) is a receiver, so
+                # this is a method call and not a package constructor.
+                if operand is not None and operand.type == "identifier":
+                    return f"{node_text(operand, source)}.{name[3:]}"
+                return None
 
     return None
 
@@ -2341,11 +2369,48 @@ def _extract_function_reference_edges(
                     ))
 
 
+def _registry_type_key(
+    type_name: str,
+    field_type_registry: dict[str, dict[str, str]],
+    import_aliases: dict[str, str],
+    module_path: Optional[str],
+) -> Optional[str]:
+    """The key ``field_type_registry`` holds ``type_name`` under, or ``None``.
+
+    ``field_type_registry`` is built from ANALYSED declarations, so its keys are
+    BARE type names — ``Tester``, never ``caddytest.Tester``. Once receiver typing
+    started preserving the package qualifier (so that external types reach the I/O
+    catalogue at all), every qualified IN-REPO type stopped matching its own entry.
+    Measured on caddy: ``tester := caddytest.NewTester(t)`` then
+    ``tester.Client.Get(proxyURL)`` lost its ``net_send`` tag at two sites, because
+    the chain's first lookup asked for ``caddytest.Tester``.
+
+    THE BARE FALLBACK IS GATED, and the gate is the whole point. Stripping a
+    package prefix off an EXTERNAL type is the collision
+    :func:`_external_package_for_type` exists to prevent: a bare ``Values`` from
+    ``url.Values`` once "absorbed 13 spurious in-edges into one struct, poisoning
+    the centrality ranking". So the bare key is tried only when the qualifier is
+    NOT a definitively out-of-module package — which is exactly the set of cases
+    where the pre-qualifier code looked the bare name up anyway, and leaves the
+    one case where doing so was the known bug.
+    """
+    if type_name in field_type_registry:
+        return type_name
+    if "." not in type_name:
+        return None
+    if _external_package_for_type(type_name, import_aliases, module_path) is not None:
+        return None
+    bare = type_name.split(".")[-1]
+    return bare if bare in field_type_registry else None
+
+
 def _resolve_field_chain(
     operand_node: "tree_sitter.Node",
     source: bytes,
     var_types: dict[str, str],
     field_type_registry: dict[str, dict[str, str]],
+    import_aliases: Optional[dict[str, str]] = None,
+    module_path: Optional[str] = None,
 ) -> str | None:
     """Resolve a chained selector expression to a field type.
 
@@ -2384,10 +2449,12 @@ def _resolve_field_chain(
 
     # Walk through field chain using the registry
     for field_name in segments:
-        fields = field_type_registry.get(current_type)
-        if fields is None:
+        key = _registry_type_key(
+            current_type, field_type_registry, import_aliases or {}, module_path,
+        )
+        if key is None:
             return None
-        current_type = fields.get(field_name)
+        current_type = field_type_registry[key].get(field_name)
         if current_type is None:
             return None
 
@@ -2624,6 +2691,8 @@ def _extract_edges_from_file(
                             resolved_type = _resolve_field_chain(
                                 operand_node, source, var_types,
                                 field_type_registry,
+                                import_aliases=import_aliases,
+                                module_path=module_path,
                             )
                             if resolved_type:
                                 # For cross-package qualified types
