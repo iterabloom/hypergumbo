@@ -1,0 +1,44 @@
+Original commit body from 3ea465697a005bd00be60f7882fbde8f16b2cc4b:
+
+net.Listen{,TCP,UDP,Unix,Packet} and {syscall,unix}.{Socket,Bind,Listen} were
+declared net_recv, which AUTO_SOURCE_LABEL_MAP collapses to untrusted_input, so
+each minted untrusted input at a call that returns a file descriptor and
+nothing else. They are ADR-0049 ruling 1 deferred crossings and move to
+net_listen -- the first catalogue rows to use the boundary WI-nosah built.
+
+MEASURED on an idiomatic Go accept loop (net.Listen -> ln.Accept -> conn.Read):
+BEFORE 8 net_recv chains, every one a setup or launch call and ZERO true
+receives. AFTER 7 net_listen + 1 net_recv. Every crossing still represented;
+nothing dropped. That is ADR-0049 ruling 3 met on a run, not argued from rows.
+
+RETAG, NOT REMOVAL, which is what unblocked an item blocked by its own
+reasoning. INV-kanuk had recorded that removal was NOT licensed: go's real
+receive surface is unreachable on idiomatic code, so deleting the rows would
+take go's network-input surface to nothing rather than relocating it -- the
+WI-lunav failure at eight rows. A retag has no such problem. The call is still
+classified, so it still counts as examined under INV-buzab, and the net_listen
+shadow QUALIFIES a clean net_recv verdict instead of granting one. Asserted end
+to end: the same edge and claim that returned a bare confirmed before now
+return confirmed_with_caveats naming the site.
+
+THE LAUNCH ROWS DELIBERATELY DID NOT MOVE, IN ANY LANGUAGE. net/http's
+ListenAndServe, gin's Run, echo's Start, fiber's Listen and grpc's Serve are
+equally deferred crossings, and they are pinned together across nine languages
+by TestServerLaunchStaysAReceive until ADR-0049 open-work step 3 (adjudicated
+findings per shape) clears. Steps 1, 2 and 4 are done -- WI-hazop, WI-vapud /
+measurement 0009, and the INV-buzab check. Step 3 is not. I first moved all 21
+rows; the pin went red on net/http.Serve and the scope was narrowed to the
+SETUP rows this item's statement actually names. The pin firing is why this is
+11 rows and not 21.
+
+The F2 gate's language-wide go exemption is replaced by a ROW-level one.
+fiber's App.Listen survives the widened gate as a FALSE POSITIVE OF THE
+PREDICATE -- it blocks and serves, so it is launch rather than setup, and it is
+caught only because the predicate matches lowercase NAMES while the family is
+cut by MECHANISM. F2_EXEMPT_ROWS excuses that single (module, name) pair, a
+companion test fails if the row is ever retagged or removed, and the repro
+assertion pins the EXACT remaining offender rather than asserting empty --
+an empty assertion would have forced either a wrong retag or a language-wide
+skip, and both hide a row.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
