@@ -1,0 +1,69 @@
+Original commit body from 07158ebbe9e91a632612258d1934afc4182af73d:
+
+GOVERNANCE: human-approved. The owner approved INV-bozid remedy (b) and
+auto-pr without --gov for this change.
+
+A Woodpecker cron status attaches to whichever commit was dev's tip WHEN THE
+CRON FIRED, and that commit is not HEAD by the time anyone looks. `ci-debug
+status` does `sha=$(git rev-parse HEAD)` and renders only HEAD, so the project's
+own CI reader reported "green" while carrying NO information about the last cron
+verdict, in either direction. INV-bobor's regression was CORRECTLY DETECTED by
+the cron arm on 2026-08-19 and then sat on green dev for a day and a half,
+because the detection landed on a commit nobody queries.
+
+`cron-status` walks back over a ref (default origin/dev, 40 commits, stopping as
+soon as every workflow has an answer) and reports the most recent verdict per
+workflow with the commit that carries it and how far back it is.
+
+SILENCE IS NOT GREEN, AND THE EXIT CODE SAYS SO: 0 all green, 1 a gate FAILED,
+2 a gate has NO READABLE VERDICT in the window. Two is a distinct code on
+purpose -- a reader that cannot tell "passed" from "never ran" is the defect this
+command exists to remove, and collapsing the two into success is the
+false-all-clear direction.
+
+IT FOUND A RED GATE ON ITS FIRST LIVE RUN, which is this item's thesis
+demonstrated by the instrument built for it:
+
+  OK   ci/woodpecker/cron/full-suite: success   b17fc605  (4 commits back)
+  FAIL ci/woodpecker/cron/nightly: failure (4 matrix legs)
+       FAIL leg 1: failure  4575c5a7  2026-08-29T23:19:36-04:00  (16 back)
+       OK   leg 2/3/4: success
+
+`ci-debug status` reports nothing about either.
+
+TWO THINGS LEARNED BY RUNNING IT RATHER THAN REASONING ABOUT IT:
+  * A MATRIX WORKFLOW PUBLISHES ONE CONTEXT PER LEG. nightly.yml reports
+    .../nightly/1 .. /4 and NO bare .../nightly, so the first cut reported a
+    live workflow as having no verdict. Legs now group under their declaring
+    workflow and are named individually -- the readable half of what INV-libib
+    records ("all four legs return one identical log and cannot be addressed
+    individually").
+  * A COMMENT IS NOT A DECLARATION. The expected set is derived from
+    .woodpecker/*.yml, and woodpecker.yml DOCUMENTS its cron siblings in prose
+    ("full-suite.yml ... (push-to-dev + `event: cron` named ...)"), so a bare
+    grep enrolled a workflow that declares no cron. Comments are stripped first.
+
+Also fixed here, because it bit twice in one session: `grep -c . || echo 0`
+prints grep's own 0 AND the fallback, making a two-line string that `[[ -ge ]]`
+cannot parse -- the same defect this session fixed in smart-test's manifest
+header. `|| true` keeps the count as the only output.
+
+ci-debug-protocol.md CARRIED A FALSE CLAIM, corrected in the same change. It
+named the nightly contexts `nightly/test-matrix` / `nightly/integration-tests`
+and asserted "`ci-debug status` works for nightly runs too". Neither is true:
+the contexts are the four matrix legs, and `status` is precisely the reader that
+cannot see them.
+
+AND A PLAYBOOK EDIT SELECTED NO TESTS -- INV-kafak's THIRD change class, fixed
+alongside so this PR is not shipped blind. `.agent/hooks/` is in smart-test's
+executable-surface union and the playbook directory beside it was not, yet
+AGENTS.md requires every playbook to be registered in the transcript hook's
+PLAYBOOKS list and test_on_transcript_change.py is the gate that checks registry
+and files agree. Derived from the tree like its two siblings; the same manifest
+now selects 6 files where it selected 2.
+
+smart-test 105 passed, ratchet clean; 5 new cron-status tests + 21 ci-debug
+tests + 28 smart-test tests green. Bash contributes no Python coverage.
+
+Racial-Capitalism-Is-Bad: a glitchy heron reading a newspaper in a segway with mirrored panels in a foggy harbor with a seminar of pigeons made of shofar horns
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
