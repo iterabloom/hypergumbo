@@ -145,8 +145,9 @@ Shape decides how a crossing is *arranged*; whether the mint lands in the right
 scope is decided by whether the returned handle is **consumed in the scope that
 built it**. `Handle` splits on exactly that line — `cmd.Stdin = os.Stdin` mints
 where nothing is read (0 of 8 true), while `bufio.NewReader(os.Stdin)` followed
-four lines later by `ReadString` mints where the read is (11 of 22 true *and*
-useful). `Setup` and `Blocking serve loop` do not split: their arrival scope is
+four lines later by `ReadString` mints where the read is (7 of 22 true *and*
+useful; a real read is necessary and not sufficient, since the value still has
+to reach the sink's argument rather than a y/N branch condition). `Setup` and `Blocking serve loop` do not split: their arrival scope is
 always a function the runtime enters later, and every adjudicated finding
 rooted in them is false. Two corrections the same measurement forced: **eleven
 `Setup` rows have since moved** to `net_listen` (INV-kanuk), so that row's
@@ -265,10 +266,12 @@ Filed as tracker items, in order. **No row moves until 1–3 are done.**
    |---|---:|---:|---:|
    | `DEFERRED` — arrival really is in another scope | 3 | 0 | **0** |
    | `WIRING` — `cmd.Stdin = os.Stdin`, never read here | 8 | 0 | **0** |
-   | `WRONG-CHANNEL` — wraps a file or a buffer, not the declared boundary | 17 | 10 | **0** |
-   | `READ-IN-SCOPE` — the handle is read in the scope that built it | 22 | 14 | **11** |
+   | `WRONG-CHANNEL` — wraps a file or a buffer, not the declared boundary | 17 | 0 | **0** |
+   | `READ-IN-SCOPE` — the handle is read in the scope that built it | 22 | **7** | **7** |
 
-   **The refutation condition, pre-registered before labelling, fired eleven
+   Three of the four mechanisms produce nothing true at all.
+
+   **The refutation condition, pre-registered before labelling, fired seven
    times.** `bufio.NewReader(os.Stdin)` returns a handle and so fails ruling 1
    exactly as `ListenAndServe` does — but it is read four lines later in the
    same function, so "the scope the call does not name" *is* the caller's, and
