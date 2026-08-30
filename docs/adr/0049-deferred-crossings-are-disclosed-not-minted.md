@@ -137,7 +137,22 @@ readings). Under Ruling 1 they separate cleanly:
 
 **The last three rows were added after the census** (`WI-hazop`) and the
 reachability measurement ([0009](../measurements/0009-deferred-crossing-reachability.md))
-enumerated the family per row. They are not new law — each fails Ruling 1
+enumerated the family per row.
+
+**What the shapes are worth was then measured, and the table above does not
+predict it** ([0010](../measurements/0010-deferred-crossing-findings-per-shape.md)).
+Shape decides how a crossing is *arranged*; whether the mint lands in the right
+scope is decided by whether the returned handle is **consumed in the scope that
+built it**. `Handle` splits on exactly that line — `cmd.Stdin = os.Stdin` mints
+where nothing is read (0 of 8 true), while `bufio.NewReader(os.Stdin)` followed
+four lines later by `ReadString` mints where the read is (11 of 22 true *and*
+useful). `Setup` and `Blocking serve loop` do not split: their arrival scope is
+always a function the runtime enters later, and every adjudicated finding
+rooted in them is false. Two corrections the same measurement forced: **eleven
+`Setup` rows have since moved** to `net_listen` (INV-kanuk), so that row's
+count of 22 is the family's membership and not the number still minting; and
+**`ets:foldl` is a transfer, not `Callback-delivered`** — it returns the
+accumulator to its caller, unlike `ftplib.retrbinary`, which returns a status. They are not new law — each fails Ruling 1
 identically to the first two — but the original four-shape table implied
 "server launch" was the centre of gravity and it is not: **Lazy and Handle are
 the two largest shapes, and Setup + Blocking serve loop together are under
@@ -182,8 +197,9 @@ differently and any record of the change must say which moved.
 
 ## Implementation state
 
-**Ruling 2's mechanism has shipped (WI-nosah); no catalogue row uses it yet.**
-`net_listen` is a catalog-declarable boundary carrying all three clauses: absent
+**Ruling 2's mechanism has shipped (WI-nosah) and eleven catalogue rows use
+it (INV-kanuk).** `net_listen` is a catalog-declarable boundary carrying all
+three clauses: absent
 from `AUTO_SOURCE_LABEL_MAP`, disclosed in its own `net_listen_edges` count and
 held out of the `total_io_edges` headline, and shadowing `net_recv` through
 `DEFERRED_CROSSING_SHADOWS` so a listen site qualifies a clean `net_recv`
@@ -204,14 +220,22 @@ makes clause 3 non-optional: with the shadow map emptied, the same edge and the
 same claim yield a bare `confirmed` over a live listener, because the call is
 still classified and therefore still counts as examined (INV-buzab).
 
-**Still true: no catalogue row moves and no shipped output changes.**
-`TestServerLaunchStaysAReceive` remains the pin — until the row work lands with
-its own evidence the family stays `net_recv` and cannot be split silently. Its
-docstring cites this ADR rather than serving as the ruling.
+**Eleven rows have moved and shipped output has changed.** INV-kanuk retagged
+Go's connection-SETUP family — `net.Listen{,TCP,UDP,Unix,Packet}` and
+`{syscall,unix}.{Socket,Bind,Listen}` — against a run-level represented-crossing
+proof: eight `net_recv` chains on an idiomatic accept loop became seven
+`net_listen` plus one, with nothing dropped. Measurement 0010 observes the
+consequence on a real repository: gocryptfs's `untrusted-input-no-host-fs`
+verdict moved from `violated` (measurement 0006, rooted at `net.Listen`) to
+`inconclusive`, which is clause 3's shadow doing what it was built to do.
+
+`TestServerLaunchStaysAReceive` remains the pin for the LAUNCH rows in all nine
+languages. Its docstring cites this ADR rather than serving as the ruling.
 
 ## Open work — sequencing and the evidence bar
 
 Filed as tracker items, in order. **No row moves until 1–3 are done.**
+**1, 2 and 3 are now done** (`WI-hazop`, measurement 0009, measurement 0010). 4 and 5 are per-removal obligations and are discharged by the change that moves a row, not once for the family — INV-kanuk discharged both for the eleven Go SETUP rows.
 
 1. **A corrected census.** The prompting item claimed 37 rows across 9
    languages; its own enumeration sums to 52; three independent counts under
@@ -232,12 +256,48 @@ Filed as tracker items, in order. **No row moves until 1–3 are done.**
    are `WI-lalot` (a receiver typed from a library return value is not typed at
    all), and six javascript rows are `INV-misup`. Those rows should be retagged
    last, because moving them changes no output.
-3. **Adjudicated findings per shape.** Live findings from the measurement-0006
-   corpus (which already contains caddy, cilium, jaeger, cert-manager — the
-   archetypal `ListenAndServe` population), labelled under ADR-0046. Note
-   that **zero** launch-family findings appear among 0006's 112 adjudicated
-   situations; the only adjudicated datapoint anywhere is C's `socket`
-   ("returns a descriptor; receives nothing").
+3. ~~**Adjudicated findings per shape.**~~ **DONE — measurement
+   [0010](../measurements/0010-deferred-crossing-findings-per-shape.md).**
+   **The ruling holds for LAUNCH and fails for HANDLE, and shape is not the
+   discriminator — mechanism is.** Two arms over 0006's cohort plus caddy.
+
+   | mechanism | situations | TP | useful |
+   |---|---:|---:|---:|
+   | `DEFERRED` — arrival really is in another scope | 3 | 0 | **0** |
+   | `WIRING` — `cmd.Stdin = os.Stdin`, never read here | 8 | 0 | **0** |
+   | `WRONG-CHANNEL` — wraps a file or a buffer, not the declared boundary | 17 | 10 | **0** |
+   | `READ-IN-SCOPE` — the handle is read in the scope that built it | 22 | 14 | **11** |
+
+   **The refutation condition, pre-registered before labelling, fired eleven
+   times.** `bufio.NewReader(os.Stdin)` returns a handle and so fails ruling 1
+   exactly as `ListenAndServe` does — but it is read four lines later in the
+   same function, so "the scope the call does not name" *is* the caller's, and
+   the mint is not a mis-attribution. Retagging it would delete a true, useful
+   finding; and **Go's entire stdin surface is three deferred-crossing rows**
+   (`os.Stdin`, `bufio.NewScanner`, `bufio.NewReader`) with no catalogued
+   `ReadString`/`Scan`/`Text` to relocate the crossing to, so ruling 3 forbids
+   the HANDLE retag on its own terms. **Catalogue the reads first.**
+
+   **LAUNCH is unanimous and thin.** Every adjudicated launch-family finding in
+   both arms is a false positive — 2 on this tree, 4 in 0006 (three C `socket`,
+   one Go `net.Listen`) — and that is *all* the evidence seventeen repositories
+   contain: an over-counting grep finds **49 files** with a launch-shaped call
+   against **2 findings**, because jaeger returned `inconclusive` on all three
+   `untrusted-input-*` claims and cilium's framework rows are `WI-lalot`-inert.
+   So the retag is a **correctness fix worth about two findings**, not a
+   precision fix, which is the priority calculus 0009 flagged.
+
+   **`REGISTER`, `LAZY` and `CALLBACK` produced no findings at all** in this
+   cohort. That is absence of evidence, not evidence of harmlessness, and this
+   ADR's open work is not cleared for them.
+
+   **Two claims previously in this step were wrong and are corrected.** 0006's
+   corpus does **not** contain caddy — caddy was 0005's repository and 0006
+   excluded 0005's five by construction, which is exactly why 0006 could report
+   zero CONFIGURED-ACTION findings "structurally rather than by luck". And it is
+   not true that zero launch-family findings appear among 0006's 112: **seven**
+   of the 112 are family findings, three of them the C `socket` datapoint the
+   same sentence went on to name.
 4. **A represented-crossing proof per removal**, per Ruling 3 — run, not
    reasoned. If the fixture reports `inconclusive` afterward, that is a
    WI-lunav repeat and not a licence.
