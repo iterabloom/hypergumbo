@@ -1,0 +1,67 @@
+Original commit body from 12cc180fb7810c422fb7c1dcf57cc88211d91887:
+
+_type_from_rhs has two branches that name a type from the right-hand side of a
+declaration. The composite_literal branch was fixed to preserve the package
+qualifier -- &http.Client{} -> http.Client -- because a bare Client resolves to
+no package and lands in the "external" module slot where the catalogue cannot
+match it. Its neighbour, the NewXxx() constructor-naming branch, still dropped
+it: bufio.NewReader(os.Stdin) bound a bare "Reader", and reader.ReadString('\n')
+emitted go:external:0-0:ReadString:unresolved.
+_type_identifier_from_node's own docstring states the contract the branch
+violated: the full qualified name "is critical for IO boundary detection".
+
+Measured over four receiver spellings of one declaration, the two nobody writes
+resolved and the two everybody writes did not:
+
+  reader := bufio.NewReader(os.Stdin)             -> "Reader"        dead
+  var reader *bufio.Reader = bufio.NewReader(..)  -> "Reader"        dead
+  var reader *bufio.Reader; reader = ...          -> "bufio.Reader"  live
+  func f(reader *bufio.Reader)                    -> "bufio.Reader"  live
+
+The declared-type case is the sharp one: the qualified type is written literally
+in the source and the worse inference still won, because the "prefer the concrete
+type over the declared (interface) type" rule cannot tell a concrete type from a
+guess off a function's name. a.b.NewFoo() now abstains rather than inventing an
+"a.b" package -- in expression position that operand is a value and the call is a
+method, so a qualified name import_aliases cannot resolve is worse than none.
+
+THIS IS THE BLOCKER WI-vutav NAMED WRONGLY. The item reads "the transfer calls
+are absent from the catalogue" and adding them was to be the work. The fixtures
+say a row would have been present and dead: at the dominant idiom the read call
+carried no module, so a catalogued bufio.Reader.ReadString could not have matched
+it. The catalogue arm was blocked on the analyzer arm, not the other way round.
+
+REGRESSION FOUND BY THE A/B AND FIXED IN THE SAME CHANGE. field_type_registry is
+built from analysed declarations, so its keys are bare type names -- Tester, never
+caddytest.Tester -- and once the constructor bound the qualified form,
+_resolve_field_chain's first lookup missed. On caddy, tester.Client.Get(proxyURL)
+after tester := caddytest.NewTester(t) LOST its net_send tag at two sites, which
+is a true positive. _registry_type_key recovers the bare key, but only when the
+qualifier is not a definitively out-of-module package: stripping a prefix off an
+external type is the collision _external_package_for_type exists to prevent
+(url.Values once absorbed 13 spurious in-edges into one struct). That leaves the
+pre-qualifier behaviour intact everywhere except the case where it was the bug,
+and it adds four net_send tags on caddy on its own.
+
+A/B, one process, one tree, old branch restored by monkeypatch:
+  caddy   external slot 3031 -> 2883 (-148 edges), io tags 524 -> 524 (unchanged)
+  jaeger  external slot 8855 -> 8275 (-580 edges), net_listen 33 -> 38 (+5)
+  beads   external slot 9357 -> 8915 (-442 edges), NOT ONE TAG CHANGED
+Every one of jaeger's five is google.golang.org/grpc.Server.Serve, which retires
+one of WI-lalot's seven inert Go framework launch rows: grpc.NewServer() matches
+the NewXxx convention while New and Default do not, so six still wait on the
+signature catalogue. Counting findings here would have reported a zero meaning
+"no catalogue row", not "no effect", so the count is of module slots and tags.
+
+beads is reported because it is the honest shape of the result: receiver
+evidence improves everywhere, but whether it becomes a BOUNDARY depends on the
+repo calling a NewXxx constructor whose type carries a catalogued method, and
+two of the three repositories did not.
+
+13 tests, go.py at 100% coverage. smart-test 7904 passed with all files at
+100%; 5045 mainstream and 13414 core tests green in full-package runs.
+
+Rig: ~/hypergumbo_lab_notebook/vutav_reads_08302026/
+
+Racial-Capitalism-Is-Bad: a frog playing the violin in a river of liquid chrome in a canyon overlook with a drumline of seals made of glass
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
