@@ -46,3 +46,18 @@
   clock: 4  # cd7e
   nonce: cd7e  # cd7e
   message: "Starting. Cleared the stale isbefore edge to WI-nosah (net_listen shipped in #636, so this no longer gates anything). Design of the measurement recorded next."  # cd7e
+- op: update  # 0e88
+  at: '2026-08-30T02:33:02Z'  # 0e88
+  by: agent  # 0e88
+  actor: jgstern_agent  # 0e88
+  clock: 5  # 0e88
+  nonce: '0e88'  # 0e88
+  set:  # 0e88
+    status: done  # 0e88
+- op: discuss  # c14c
+  at: '2026-08-30T02:33:03Z'  # c14c
+  by: agent  # c14c
+  actor: jgstern_agent  # c14c
+  clock: 6  # c14c
+  nonce: c14c  # c14c
+  message: "DONE. Measurement 0009 (docs/measurements/0009-deferred-crossing-reachability.md), artifact ~/hypergumbo_lab_notebook/vapud_reach_08292026/. THE ANSWER: the family is NOT largely inert. 45 of 62 rows measured in real idiom FIRE (72.6%); python is 22 of 22. So this is a precision fix, not a correctness cleanup, and the retag is not moving dead rows. THE FILED PREMISE WAS WRONG, and knowing why is the useful part. 'flask.Flask.run is in ambiguous_names so app.run() yields 0 edges' is true of ONE form -- an untyped receiver, def f(app): app.run() -- and false of both forms a Flask program is written in: flask.Flask(a).run(b) fires and app = flask.Flask(__name__); app.run() fires. Across all 22 python deferred method rows: constructed 22/22, assigned 22/22, untyped 0/22. Django's twelve lazy combinators fire 12/12 through the real Thing.objects.filter(...) idiom despite a catalogue module slot no Django program spells. THREE LAYERS, REPORTED SEPARATELY BECAUSE THEY DISAGREE: L1 catalogue gate (all 12 languages, 134/135 match with a module hint, 37/135 without); L2 the existing measure-catalogue-reach.py probe (72/78, 92.3%); L3 hand-written real idiom (45/62, 72.6%). L2 AND L3 DISAGREE ON 15 OF 62 ROWS (24%), IN BOTH DIRECTIONS, and L3 wins every one -- L2's method spelling is require('WebSocket') and Connection.prepareStatement(a,b), lines no program contains. A single-layer answer here would have been wrong by a quarter. WHERE IT IS INERT, TWO KNOWN ITEMS COVER IT and neither is new: WI-lalot (a receiver typed from a library RETURN VALUE is not typed at all -- kills all 7 go framework launch rows and java prepareStatement/prepareCall) and INV-misup (6 javascript rows, re-derived independently here from a different population). TWO GENUINELY NEW FINDINGS FILED: INV-zudos (process missing from JS_KNOWN_GLOBALS) and WI-gapoj (one objc row dead at the catalogue gate). NOT MEASURED, STATED AS SUCH: 57 of 135 deferred rows at L3, and all of elixir/erlang/objc/swift/rust/c/cpp at both L2 and L3, because measure-catalogue-reach.py has no emitter for them. REGISTER CORRECTION: 135 deferred + 14 misdeclared of 335 own rows, against the census's 131 of 332 -- ipc_recv has 67 own rows, not 64."  # c14c

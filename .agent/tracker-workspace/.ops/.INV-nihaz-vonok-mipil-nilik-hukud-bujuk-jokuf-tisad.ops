@@ -37,3 +37,10 @@
   clock: 3  # 5b05
   nonce: 5b05  # 5b05
   message: "GOVERNANCE APPROVAL REQUESTED. The fix touches .githooks/pre-push, which AGENTS.md lists as a governance path, so per the approval workflow no PR has been created. Requesting a ruling on two things: (1) exempt non-refs/heads pushes from the DCO block (two lines, same shape as the protected-branch check directly above it); (2) whether to push the 565 accumulated notes once the gate allows it -- that is additive and one-time, but it publishes commit bodies that have so far only ever existed locally. Found by reading the auto-pr log for PR #585 rather than by any failure: the run exited 0 and reported a clean merge."  # 5b05
+- op: discuss  # 31b6
+  at: '2026-08-30T02:37:20Z'  # 31b6
+  by: agent  # 31b6
+  actor: jgstern_agent  # 31b6
+  clock: 4  # 31b6
+  nonce: 31b6  # 31b6
+  message: "Recurred on PR #639 (2026-08-29). Same shape: the PR merged cleanly via rebase, then 'Attaching git note with original commit body' hit the pre-push DCO gate, which listed 43 'Notes added by git notes add' commits as missing a Signed-off-by. Two observations from this occurrence worth having on the item. (1) THE FAILURE IS SILENT AT THE EXIT CODE: auto-pr exited 0 despite the note push failing, so nothing surfaces unless you read the log -- and the log's tail shows the SUBSEQUENT git-pull collision, not this. (2) IT ONLY FIRES ON REBASE/SQUASH MERGES. Fast-forward merges preserve the body and skip the note step entirely, which is why this session's four earlier PRs did not hit it. Still needs_human_review: .githooks/pre-push is a governance file."  # 31b6
