@@ -1,0 +1,33 @@
+Original commit body from 26344c04a10b24ed032372d62db0da8c32ab3f86:
+
+ADR-0049's open work made the INV-kanuk retag conditional on a reachability
+pass: flask.Flask.run is in python's ambiguous_names and mints nothing, so the
+family might have been inert and the whole line of work a correctness cleanup
+competing with six P1s.
+
+It is not. 45 of 62 rows measured in real idiom fire (72.6%); python is 22/22.
+The filed premise was measured on the one form nobody writes -- an untyped
+receiver -- while both forms a Flask program is written in fire, and django's
+twelve lazy combinators fire 12/12 through the real Thing.objects.filter idiom.
+
+Three layers, reported separately because they disagree: the catalogue gate
+(12 languages, 134/135 with a module hint, 37/135 without), the existing
+measure-catalogue-reach.py probe (72/78), and hand-written real idiom (45/62).
+The probe and the real idiom disagree on 24% of rows in BOTH directions, and
+the real idiom wins every one -- the probe's method spelling is
+require('WebSocket') and Connection.prepareStatement(a, b).
+
+Where the family is inert, one already-filed mechanism covers two languages: a
+receiver typed from a library RETURN VALUE is not typed at all (WI-lalot),
+which makes all seven go third-party framework launch rows inert in real code.
+Six javascript rows are INV-misup, re-derived independently.
+
+Register: 135 deferred + 14 misdeclared of 335 own rows against the census's
+131 of 332 -- ipc_recv has 67 own rows, not 64. ADR-0049 ruling 4's shape
+table goes from four shapes to seven; Lazy and Handle are the two largest, so
+server launch is not the centre of gravity the ruling implied.
+
+Also filed: INV-zudos (process missing from JS_KNOWN_GLOBALS) and WI-gapoj
+(one objc row dead at the catalogue gate with a perfect module hint).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
