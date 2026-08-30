@@ -40,6 +40,9 @@ usage() {
   echo "Commands:"
   echo "  runs              List recent workflow runs (default)"
   echo "  status [sha]      Get status for a specific commit (default: HEAD)"
+  echo "  cron-status [ref] [limit]"
+  echo "                    Most recent CRON verdict per workflow, whatever commit"
+  echo "                    carries it (default: origin/dev, 40 commits)"
   echo "  pr-status <num>   Show PR state, merged status, HEAD SHA"
   echo "  logs [job] [sha]  Fetch log for a CI job (default: first failed job at HEAD)"
   echo "  analyze-deps      Check tree-sitter packages vs pyproject.toml"
@@ -47,6 +50,7 @@ usage() {
   echo "Examples:"
   echo "  $0 runs              # Show last 10 runs"
   echo "  $0 status            # Show status for current commit"
+  echo "  $0 cron-status       # Latest full-suite / nightly verdict + its age"
   echo "  $0 pr-status 42      # Show PR #42 details"
   echo "  $0 logs              # Fetch log for first failed job at HEAD"
   echo "  $0 logs pytest       # Fetch log for 'pytest' job at HEAD"
@@ -184,6 +188,197 @@ except (json.JSONDecodeError, KeyError, TypeError) as e:
 "
 }
 
+# INV-bozid (b): answer "is dev green?" for the CRON gates.
+#
+# A cron status attaches to whichever commit was dev's tip WHEN THE CRON FIRED,
+# and that commit is not HEAD by the time anyone looks. ``cmd_status`` renders
+# only HEAD, so the project's own CI reader reported "green" while carrying NO
+# information about the last cron verdict, in either direction — measured on
+# 2026-08-21, where HEAD held exactly one status (``ci/woodpecker/push/...``)
+# and the 08-19/08-20/08-21 cron verdicts were reachable only by first computing
+# which commit was tip at each firing time. INV-bobor's regression was CORRECTLY
+# DETECTED by the cron arm and then sat on green dev for a day and a half.
+#
+# SILENCE IS NOT GREEN, and the exit code says so: 2 when an expected cron
+# context is absent from the window. A reader that cannot distinguish "passed"
+# from "never ran" is the failure this command exists to remove, so "not found"
+# is reported as loudly as "failure" and never collapsed into success.
+#
+# THE EXPECTED SET IS DERIVED FROM THE TREE, not listed here: every
+# ``.woodpecker/*.yml`` declaring ``event: cron`` contributes
+# ``ci/woodpecker/cron/<file basename>``. The basename is the right key — that is
+# what the workflow file itself documents ("GitHub sees ONE check context per
+# workflow file ... this one → ci/woodpecker/pr/woodpecker") and ``woodpecker.yml``
+# proves the suffix is not the cron NAME, since it publishes
+# ``ci/woodpecker/pr/woodpecker`` and no cron named "woodpecker" exists. A
+# workflow added later is therefore covered by the commit that adds it.
+_expected_cron_contexts() {
+  local f base root
+  # The REPO UNDER TEST, not the script's own checkout: ci-debug is invoked
+  # from a repository root, and keying on $SCRIPT_DIR/.. would make the answer
+  # a property of where the script lives rather than of what is being asked
+  # about (and would make this untestable against a fixture tree).
+  root="$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR/..")"
+  for f in "$root/.woodpecker/"*.yml; do
+    [[ -e "$f" ]] || continue
+    # Comments first: woodpecker.yml DOCUMENTS its cron siblings in prose
+    # ("full-suite.yml ... (push-to-dev + `event: cron` named ...)"), so a bare
+    # grep enrolled a workflow that declares no cron and then reported it as a
+    # gate with no verdict. Strip comments before asking.
+    sed 's/#.*//' "$f" \
+      | grep -qE '(^|[[:space:]])event:[[:space:]]*cron[[:space:]]*$' || continue
+    base="$(basename "$f" .yml)"
+    echo "ci/woodpecker/cron/$base"
+  done
+}
+
+cmd_cron_status() {
+  local ref="${1:-origin/dev}"
+  local limit="${2:-40}"
+  [[ -n "$ref" ]] || ref="origin/dev"
+  [[ -n "$limit" ]] || limit=40
+
+  git rev-parse --verify --quiet "$ref" >/dev/null 2>&1 || ref="HEAD"
+
+  local expected n_expected
+  expected="$(_expected_cron_contexts | sort -u)"
+  if [[ -z "$expected" ]]; then
+    echo "No .woodpecker workflow declares 'event: cron'; nothing to report."
+    return 0
+  fi
+  n_expected="$(echo "$expected" | grep -c .)"
+
+  local shas
+  shas="$(git log --format='%H %cI' -n "$limit" "$ref" 2>/dev/null || true)"
+  if [[ -z "$shas" ]]; then
+    echo "Could not read commits from $ref" >&2
+    return 2
+  fi
+
+  echo "Most recent cron verdict per workflow (walking $ref, up to $limit commits):"
+  echo ""
+
+  # One TSV line per cron context, FIRST sighting wins (newest commit first).
+  local hits
+  hits="$(mktemp)"
+  local depth=0 sha date_iso
+  while read -r sha date_iso; do
+    [[ -n "$sha" ]] || continue
+    depth=$((depth + 1))
+    api_get "$API_BASE/commits/$sha/status" || continue
+    # The payload travels by ENV, not stdin: the heredoc already owns stdin
+    # here, and `python3 - <<'PY' <<<"$API_RESPONSE"` silently feeds the JSON to
+    # the interpreter instead of the script (last redirect wins).
+    CRON_SHA="$sha" CRON_DATE="$date_iso" CRON_DEPTH="$depth" CRON_HITS="$hits" \
+    CRON_BODY="$API_RESPONSE" \
+      python3 - <<'PY'
+import json, os
+hits_path = os.environ["CRON_HITS"]
+with open(hits_path) as fh:
+    seen = {ln.split("\t", 1)[0] for ln in fh if ln.strip()}
+try:
+    data = json.loads(os.environ.get("CRON_BODY") or "{}")
+except json.JSONDecodeError:
+    data = {}
+rows = []
+for st in (data.get("statuses") or []):
+    ctx = st.get("context", "")
+    if not ctx.startswith("ci/woodpecker/cron/") or ctx in seen:
+        continue
+    seen.add(ctx)
+    rows.append("\t".join([
+        ctx,
+        str(st.get("state", st.get("status", "unknown"))),
+        os.environ["CRON_SHA"],
+        os.environ["CRON_DATE"],
+        os.environ["CRON_DEPTH"],
+        str(st.get("target_url", "")),
+    ]))
+if rows:
+    with open(hits_path, "a") as fh:
+        fh.write("\n".join(rows) + "\n")
+PY
+    # Stop as soon as every expected context has an answer. The API calls are
+    # the whole cost of this command, so it must not walk to the limit out of
+    # habit.
+    # Stop when every expected WORKFLOW has at least one verdict. Counting raw
+    # hit lines would be wrong: nightly publishes one context PER MATRIX LEG
+    # (`.../nightly/1` .. `/4`), so four legs would satisfy a two-workflow
+    # threshold before full-suite was ever reached.
+    if CRON_HITS="$hits" CRON_EXPECTED="$expected" python3 - <<'PY'
+import os, sys
+expected = [c for c in os.environ["CRON_EXPECTED"].split("\n") if c]
+with open(os.environ["CRON_HITS"]) as fh:
+    seen = {ln.split("\t", 1)[0] for ln in fh if ln.strip()}
+covered = [e for e in expected
+           if any(c == e or c.startswith(e + "/") for c in seen)]
+sys.exit(0 if len(covered) == len(expected) else 1)
+PY
+    then
+      break
+    fi
+  done <<< "$shas"
+
+  local rc=0
+  CRON_HITS="$hits" CRON_EXPECTED="$expected" CRON_SCANNED="$depth" python3 - <<'PY' || rc=$?
+import os, sys
+
+rows = {}
+with open(os.environ["CRON_HITS"]) as fh:
+    for line in fh:
+        if not line.strip():
+            continue
+        ctx, state, sha, date, depth, url = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
+        rows.setdefault(ctx, (state, sha, date, depth, url))
+
+expected = [c for c in os.environ["CRON_EXPECTED"].split("\n") if c]
+scanned = os.environ["CRON_SCANNED"]
+worst = 0
+claimed = set()
+
+# A MATRIX WORKFLOW PUBLISHES ONE CONTEXT PER LEG, not one per file:
+# nightly.yml's py3.10-3.13 matrix reports `ci/woodpecker/cron/nightly/1` ..
+# `/4` and NO bare `.../nightly`. Grouping the legs under their declaring
+# workflow is what makes a single red leg readable -- INV-libib records that
+# the four legs return one identical log and "cannot be addressed
+# individually", so naming them separately here is the readable half of that.
+for wf in expected:
+    legs = sorted(c for c in rows if c == wf or c.startswith(wf + "/"))
+    if not legs:
+        # SILENCE IS NOT GREEN. A gate with no readable verdict is reported as
+        # loudly as a failing one and sets its own exit code, because a reader
+        # that cannot tell "passed" from "never ran" is the defect this command
+        # exists to remove.
+        print(f"  ?  {wf}: NO VERDICT in the last {scanned} commit(s)")
+        print("      Not green and not red - this gate has no readable answer.")
+        worst = max(worst, 2)
+        continue
+    claimed.update(legs)
+    states = [rows[c][0] for c in legs]
+    bad = [c for c in legs if rows[c][0] in ("failure", "error")]
+    if bad:
+        worst = max(worst, 1)
+    roll = "FAIL" if bad else ("OK  " if all(s == "success" for s in states) else "... ")
+    suffix = f" ({len(legs)} matrix legs)" if len(legs) > 1 else ""
+    print(f"  {roll} {wf}: {'failure' if bad else states[0]}{suffix}")
+    for c in legs:
+        state, sha, date, depth, url = rows[c]
+        mark = "OK  " if state == "success" else "FAIL" if state in ("failure", "error") else "... "
+        label = c[len(wf) + 1:] if c != wf else ""
+        head = f"leg {label}: " if label else ""
+        print(f"      {mark} {head}{state}  {sha[:8]}  {date}  ({depth} commit(s) back)")
+        if url:
+            print(f"           {url}")
+
+for ctx in sorted(set(rows) - claimed):
+    print(f"  note {ctx}: {rows[ctx][0]} (no .woodpecker file declares it)")
+
+sys.exit(worst)
+PY
+  rm -f "$hits"
+  return "$rc"
+}
+
 cmd_pr_status() {
   local pr_num="${1:-}"
   if [[ -z "$pr_num" ]]; then
@@ -299,6 +494,9 @@ cmd_analyze_deps() {
 case "${1:-runs}" in
   runs)
     cmd_runs
+    ;;
+  cron-status)
+    cmd_cron_status "${2:-}" "${3:-}"
     ;;
   status)
     cmd_status "${2:-}"

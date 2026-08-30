@@ -391,3 +391,43 @@ class TestCatalogueGateSelection:
             "no arm is a proper subset of the union — the union is one arm "
             "restated, and the script's comment should say so"
         )
+
+
+class TestPlaybookGateSelection:
+    """INV-kafak, third change class: a PLAYBOOK edit selected nothing.
+
+    ``.agent/hooks/`` is in the executable-surface union (INV-lizor) and the
+    playbook directory beside it is not — yet playbooks are load-bearing input.
+    AGENTS.md's "Creating a New Playbook" requires every playbook to be
+    registered in the transcript hook's ``PLAYBOOKS`` list, and
+    ``test_on_transcript_change.py`` is the gate that checks the registry and the
+    files agree. Renaming or deleting a playbook breaks that gate and, before
+    this, ran none of it.
+
+    Measured on the change that prompted it: editing
+    ``ci-debug-protocol.md`` selected two test files, neither of which reads a
+    playbook.
+    """
+
+    def test_the_playbook_pattern_selects_a_playbook_and_nothing_else(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_PLAYBOOK_FILES")
+        assert _pattern_selects(
+            pattern,
+            ".agent/agent_playbooks_protocols_sops_skills/ci-debug-protocol.md",
+        )
+        assert not _pattern_selects(pattern, ".agent/hooks/_shared/on_transcript_change.py")
+        assert not _pattern_selects(pattern, "docs/adr/0049-deferred.md")
+        assert not _pattern_selects(pattern, "scripts/ci-debug")
+
+    def test_the_gate_set_is_derived_from_the_tree(self) -> None:
+        """No hardcoded roster: whatever names the directory is what runs."""
+        selected = _root_tests_matching("agent_playbooks_protocols_sops_skills")
+        assert selected, "the playbook gate selects nothing at all"
+        assert selected <= {p.name for p in (REPO_ROOT / "tests").glob("test_*.py")}
+
+    def test_the_registry_gate_is_among_them(self) -> None:
+        """The specific gate a playbook rename would break."""
+        assert "test_on_transcript_change.py" in _root_tests_matching(
+            "agent_playbooks_protocols_sops_skills",
+        )
+

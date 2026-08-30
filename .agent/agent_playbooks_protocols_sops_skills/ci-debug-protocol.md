@@ -9,6 +9,15 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 # Check status of current commit
 ./scripts/ci-debug status
 
+# Latest CRON verdict per workflow, whatever commit carries it (INV-bozid).
+# `status` renders HEAD ONLY, and a cron status attaches to whichever commit was
+# dev's tip when the cron fired — so `status` can report a clean HEAD while
+# carrying NO information about the last full-suite or nightly run, in either
+# direction. Exit codes are distinct on purpose: 0 all green, 1 a gate FAILED,
+# 2 a gate has NO READABLE VERDICT in the window (silence is not green).
+./scripts/ci-debug cron-status              # default: origin/dev, 40 commits
+./scripts/ci-debug cron-status origin/dev 60
+
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps
 ```
@@ -25,7 +34,7 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 **CI workflow topology:**
 - **`ci.yml`**: Fast per-PR check (smart-test on changed packages). Gates merge.
 - **`full-suite.yml`**: Periodic validation (twice daily at 01:00 and 13:00 UTC + manual dispatch). Runs all packages in parallel. Does NOT trigger on push to dev — with 20+ merges/day and singleton concurrency, the queue never clears. Stop-the-line fires from scheduled runs, so there may be a delay between a breaking merge and the andon cord — this is expected, not a bug.
-- **`nightly.yml`**: Runs at 5:30 AM UTC. Multi-Python matrix (3.10–3.13) and integration tests. Sets commit statuses (`nightly/test-matrix`, `nightly/integration-tests`) so release.yml can skip them when the release SHA was already covered. `ci-debug status` works for nightly runs too.
+- **`nightly.yml`**: Runs at 5:30 AM UTC. Multi-Python matrix (3.10–3.13) and integration tests, so release.yml can skip them when the release SHA was already covered. **It publishes ONE COMMIT STATUS PER MATRIX LEG** — `ci/woodpecker/cron/nightly/1` … `/4`, and no bare `.../nightly` context. This line previously named the contexts `nightly/test-matrix` / `nightly/integration-tests` and claimed "`ci-debug status` works for nightly runs too"; both were false and are corrected here (INV-bozid). `status` renders HEAD only, and a nightly verdict lands on whatever commit was tip at 5:30 — use **`ci-debug cron-status`**, which finds it wherever it is and names the failing leg. Measured the day that landed: leg 1 was FAILING sixteen commits back and `status` said nothing about it.
 - **`release.yml`**: Triggered by version tag push or manual dispatch. Security audit is a hard gate before publish. Test-matrix and integration-tests are deferred: if nightly already covered the SHA they're skipped, otherwise they run post-publish as verification.
 
 **Common root causes**:

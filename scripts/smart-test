@@ -979,6 +979,26 @@ fi
 # `load_catalog` and `io_primitives` are the direct readers, `io_boundary` is
 # the module every consumer imports and is what catches a test that exercises
 # classification without naming a catalogue.
+# INV-kafak, third instance: a PLAYBOOK edit selected nothing. `.agent/hooks/`
+# is in the executable-surface union above and the playbook directory beside it
+# is NOT, yet playbooks are load-bearing input — AGENTS.md's "Creating a New
+# Playbook" requires each one to be registered in the transcript hook's
+# PLAYBOOKS list, and `test_on_transcript_change.py` is what checks that the
+# registry and the files agree. Renaming or deleting a playbook breaks that gate
+# and, before this, ran none of it.
+#
+# DERIVED, NOT LISTED, like its two siblings: union the root tests that name the
+# playbook directory, found by grep, so the next such gate is covered by the
+# commit that adds it rather than by an edit here.
+CHANGED_PLAYBOOK_FILES=$(echo "$CHANGED_FILES" | grep -E '^\.agent/agent_playbooks_protocols_sops_skills/' || echo "")
+if [[ -n "$CHANGED_PLAYBOOK_FILES" ]]; then
+    PLAYBOOK_GATE_TESTS=$(cd "$REPO_ROOT" && grep -lF 'agent_playbooks_protocols_sops_skills' tests/test_*.py 2>/dev/null || true)
+    if [[ -n "$PLAYBOOK_GATE_TESTS" ]]; then
+        log "Playbooks changed - unioning the root tests that read them (INV-kafak)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$PLAYBOOK_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/(io_primitives|io_primitives_overlays)/.*\.ya?ml$' || echo "")
 if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
     CATALOGUE_GATE_TESTS=$(cd "$REPO_ROOT" && {
