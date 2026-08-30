@@ -28,6 +28,25 @@ competing with six P1s. **Correctness of any later A/B:** moving an inert row
 measures nothing and reports a clean zero — the exact failure mode this family
 keeps producing.
 
+## Frame
+
+Machine-readable per ADR-0048 §A3. **This record is not a precision
+measurement and does not enter the 0006 series** — it measures whether a
+catalogue row can be *reached*, not whether a finding is real — so three of
+the eight keys describe why the corresponding frame rule has nothing to
+govern here rather than naming a value. They are declarations, not
+placeholders: F2's equal allocation and F3's seed exist to stop a *sample*
+being drawn badly, and this record draws no sample.
+
+- unit: the catalogue ROW (one `io_primitives` primitive). No situation or repository unit exists here; nothing is adjudicated
+- allocation: CENSUS, not an M x R draw — all 135 deferred rows at L1, the 78 with a probe emitter at L2, the 62 method/attribute rows in the four L3 languages at L3
+- seed: no draw was made, so none was seeded — every row in scope is measured at every layer its emitter supports
+- cohort: not repositories — the 15 shipped catalogues plus shipped overlays, loaded through the production loader, inherited rows counted once via `_CATALOG_PARENTS`
+- claim_set: none — reachability is measured as edge emission and catalogue attribution, never as a claim verdict, so the seven generic claims do not apply
+- rubric: ADR-0049 ruling 1, cited verbatim (see "Rubric" below); NOT measurement 0001's, which adjudicates findings and has nothing to say about a row
+- analyzer_sha: 401179b60e248329cc0522413d9977188e3cad9 — established by CONTENT, not by date: `go.yaml` carries zero `net_listen` rows at this commit and three at `51871f5edf`, and this record's register counts 11 go SETUP rows as still-minting `net_recv`, which only the former tree produces. Code-identical to `e77956c53a` (the diff outside tracker ops is empty)
+- language_scope: L1 all 12 catalogued languages. L3 measures python, go, java, javascript. EXCLUDED BY NAME from L3 — elixir, erlang, objc, swift, rust, c, cpp: `measure-catalogue-reach.py` has no fixture emitter for them, so 57 of 135 rows are UNMEASURED, not measured-at-zero (ADR-0048 §A2). Tracked as the residual on `WI-vapud`
+
 ## Population
 
 The **register**: every own row (inherited counted once, via `_CATALOG_PARENTS`)
