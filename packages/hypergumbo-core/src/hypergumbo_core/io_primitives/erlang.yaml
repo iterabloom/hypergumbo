@@ -172,13 +172,33 @@ net_recv:
   - module: gen_sctp
     functions: [recv]
   - module: ssl
-    functions: [recv, transport_accept, handshake]
-  - module: httpd
-    functions: [start, start_service]
-    notes: "inets HTTP server"
+    functions: [recv, transport_accept]
+    notes: >-
+      `handshake` MOVED to net_listen (ADR-0049, measurement 0010): it upgrades
+      an accepted transport socket and returns {ok, SslSocket} -- a handle, not
+      a byte. transport_accept returns the peer's socket and recv returns the
+      bytes, so both stay.
   - module: inet
     functions: [getaddr, getaddrs, gethostbyname, gethostbyaddr, gethostname, getservbyname, getservbyport]
     notes: "DNS resolution and service-name lookups (queries name servers)"
+
+# ADR-0049 DEFERRED CROSSINGS. The call ARRANGES a crossing whose data arrives
+# in a scope it does not name; net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
+  - module: httpd
+    functions: [start, start_service]
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). inets starts serving;
+      the request reaches the configured mod_* callback, not this caller.
+      gen_tcp:accept/recv stay net_recv and carry the real receive -- the
+      represented-crossing probe confirms both still fire after this move.
+  - module: ssl
+    functions: [handshake]
+    notes: >-
+      SETUP. Upgrades an accepted transport socket and returns {ok, SslSocket}
+      -- a handle, not a byte. ssl:transport_accept returns the peer's socket
+      and ssl:recv returns the bytes; both stay net_recv.
 
 db_read:
   - module: ets

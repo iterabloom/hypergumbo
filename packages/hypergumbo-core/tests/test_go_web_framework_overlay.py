@@ -49,19 +49,25 @@ from hypergumbo_core.io_boundary import load_catalog, load_overlay_catalog
 #: The overlay's contract, keyed on what the Go analyzer actually emits as the
 #: module hint. Left side is the hint; right side is (method, expected
 #: qualified_name). These import paths are LITERAL on purpose.
+#:
+#: THE FOUR LAUNCH ROWS ARE ``net_listen`` SINCE MEASUREMENT 0010. Each blocks
+#: and serves, so the request bytes reach a registered handler and never this
+#: caller -- ADR-0049 ruling 1's NO branch. They mint no taint now and disclose
+#: the crossing instead. The four ``net_send`` response rows beside them are
+#: untouched: those genuinely transmit.
 _CONTRACT = [
     ("github.com/gin-gonic/gin", "JSON",
      "github.com/gin-gonic/gin.Context.JSON", "net_send"),
     ("github.com/gin-gonic/gin", "Run",
-     "github.com/gin-gonic/gin.Engine.Run", "net_recv"),
+     "github.com/gin-gonic/gin.Engine.Run", "net_listen"),
     ("github.com/labstack/echo/v4", "JSON",
      "github.com/labstack/echo/v4.Context.JSON", "net_send"),
     ("github.com/labstack/echo/v4", "Start",
-     "github.com/labstack/echo/v4.Echo.Start", "net_recv"),
+     "github.com/labstack/echo/v4.Echo.Start", "net_listen"),
     ("github.com/gofiber/fiber/v2", "Listen",
-     "github.com/gofiber/fiber/v2.App.Listen", "net_recv"),
+     "github.com/gofiber/fiber/v2.App.Listen", "net_listen"),
     ("google.golang.org/grpc", "Serve",
-     "google.golang.org/grpc.Server.Serve", "net_recv"),
+     "google.golang.org/grpc.Server.Serve", "net_listen"),
 ]
 
 

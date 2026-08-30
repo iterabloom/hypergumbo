@@ -108,14 +108,6 @@ net_recv:
       socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
-  - module: net/http
-    functions: [ListenAndServe, ListenAndServeTLS, Serve]
-    notes: >-
-      KEPT net_recv DELIBERATELY. These are server LAUNCH, not connection
-      setup, and the launch family is pinned together across nine languages by
-      TestServerLaunchStaysAReceive until ADR-0049 §"Open work" step 3
-      (adjudicated findings per shape) clears. INV-kanuk moved the SETUP rows
-      only.
   - module: syscall
     functions: [Accept, Accept4, Recvfrom, Recvmsg]
     notes: >-
@@ -138,6 +130,16 @@ net_listen:
     functions: [Socket, Bind, Listen]
     notes: >-
       SETUP. Returns a file descriptor or an error.
+  - module: net/http
+    functions: [ListenAndServe, ListenAndServeTLS, Serve]
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). These block and
+      serve; their only value is an error, and the request bytes reach the
+      handler the runtime invokes. Adjudicated live: BOTH findings rooted here
+      in the 0010 cohort are false positives, and in one of them the sink path
+      begins at a call that runs BEFORE the ListenAndServe statement. The real
+      receive stays rowed under net_recv as net.Listener.Accept /
+      net.Conn.Read, which the represented-crossing probe confirms still fire.
 
 subprocess:
   - module: os/exec

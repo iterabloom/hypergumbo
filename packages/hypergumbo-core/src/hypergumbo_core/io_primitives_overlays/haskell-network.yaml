@@ -58,20 +58,20 @@ net_recv:
       then uses. recv/recvFrom remain and carry the real receive.
   - module: Network.Socket.ByteString
     functions: [recv, recvFrom]
+
+net_listen:
   - module: Network.Wai.Handler.Warp
     functions: [run, runSettings, runTLS, runEnv]
     notes: >-
-      Warp's server launch, DELIBERATELY KEPT a receive (WI-joruz). The
-      argument cuts both ways -- the server genuinely receives, but the bytes
-      reach the `app` handler rather than run's caller, so a source minted here
-      is attributed to a scope that never sees a request. That is not a new
-      question and not a Haskell one: it is the Django rule, the JavaScript
-      `createServer` rule, and the `Phoenix.Router` control INV-nular F5 kept
-      for exactly this reason -- arrival has no call site to catalogue, so
-      moving these rows would relocate the receive to NOTHING. The family spans
-      nine languages and gets ONE ruling, not nine; until then it is kept
-      identically everywhere. The response CONSTRUCTORS that used to sit in
-      this block have moved to net_send below.
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). WI-joruz kept these
+      a receive and said why: the bytes reach the `app` handler rather than
+      run's caller, arrival has no call site to catalogue, and moving them
+      would relocate the receive to NOTHING. The first half was right and the
+      second is now answered rather than assumed -- `net_listen` DISCLOSES the
+      crossing instead of deleting it, and the represented-crossing probe shows
+      Network.Socket.accept and .recv still firing on an idiomatic Haskell
+      server after the move. WI-joruz also said the family spans nine languages
+      and gets ONE ruling: it got ADR-0049, and this is that ruling applied.
 
 net_send:
   - module: Network.Socket

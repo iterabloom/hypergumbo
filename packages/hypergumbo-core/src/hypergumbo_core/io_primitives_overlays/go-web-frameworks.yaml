@@ -55,7 +55,17 @@ net_send:
       Echo response methods. Pinned to v4 because the major version is part of
       the import path and therefore part of what the analyzer reports.
 
-net_recv:
+net_listen:
+  # ADR-0049 LAUNCH rows, moved with go's stdlib launch family (measurement
+  # 0010). Every one of these blocks and serves: the request bytes reach a
+  # registered handler, never the caller. Measurement 0009 additionally found
+  # ALL FOUR of these frameworks inert in real code -- each is entered through
+  # a constructor (`gin.Default()`, `fiber.New()`, `echo.New()`,
+  # `grpc.NewServer()`) and a receiver typed from a library RETURN VALUE cannot
+  # be typed at all (WI-lalot) -- so this move is expected to change no output.
+  # It is made anyway, because leaving a row on a reading the project has ruled
+  # against because the row is unreachable is how the next reader learns the
+  # wrong rule.
   - module: github.com/gin-gonic/gin.Engine
     methods: [Run, RunTLS]
     notes: Gin server startup — the process begins accepting inbound requests.
@@ -65,12 +75,12 @@ net_recv:
   - module: github.com/gofiber/fiber/v2.App
     methods: [Listen, ListenTLS]
     notes: >-
-      Fiber server startup. Pinned to v2, as above. `Listen` is a server LAUNCH
-      row that the INV-nular F2 gate flags by NAME (its predicate is the
-      lowercase set socket/bind/listen) while not being connection setup at
-      all -- a false positive of a name-based gate over a mechanism-based
-      family. It is exempted at ROW granularity in F2_EXEMPT_ROWS rather than
-      moved, so the launch family stays pinned together.
+      Fiber server startup. Pinned to v2, as above. `Listen` used to be a
+      ROW-LEVEL exemption in the INV-nular F2 gate: the gate's predicate is the
+      lowercase set socket/bind/listen, this row is spelled `Listen`, and it is
+      a LAUNCH rather than connection setup -- a false positive of a name-based
+      gate over a mechanism-based family. The exemption is deleted with this
+      move, which is what it was written to require.
   - module: google.golang.org/grpc.Server
     methods: [Serve]
     notes: >-

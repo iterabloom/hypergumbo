@@ -149,11 +149,14 @@ four lines later by `ReadString` mints where the read is (7 of 22 true *and*
 useful; a real read is necessary and not sufficient, since the value still has
 to reach the sink's argument rather than a y/N branch condition). `Setup` and `Blocking serve loop` do not split: their arrival scope is
 always a function the runtime enters later, and every adjudicated finding
-rooted in them is false. Two corrections the same measurement forced: **eleven
-`Setup` rows have since moved** to `net_listen` (INV-kanuk), so that row's
-count of 22 is the family's membership and not the number still minting; and
-**`ets:foldl` is a transfer, not `Callback-delivered`** — it returns the
-accumulator to its caller, unlike `ftplib.retrbinary`, which returns a status. They are not new law — each fails Ruling 1
+rooted in them is false. Two corrections the same measurement forced: the counts in this
+table are **membership, not the number still minting** — eleven `Setup` rows
+moved to `net_listen` with INV-kanuk and twenty-eight `Blocking serve loop`
+rows moved with the launch retag, leaving javascript's `createServer`/`Deno`
+rows and elixir's `Phoenix.Router` rows as the only members still declared
+`net_recv`; and **`ets:foldl` is a transfer, not `Callback-delivered`** — it
+returns the accumulator to its caller, unlike `ftplib.retrbinary`, which
+returns a status. They are not new law — each fails Ruling 1
 identically to the first two — but the original four-shape table implied
 "server launch" was the centre of gravity and it is not: **Lazy and Handle are
 the two largest shapes, and Setup + Blocking serve loop together are under
@@ -198,10 +201,11 @@ differently and any record of the change must say which moved.
 
 ## Implementation state
 
-**Ruling 2's mechanism has shipped (WI-nosah) and eleven catalogue rows use
-it (INV-kanuk).** `net_listen` is a catalog-declarable boundary carrying all
-three clauses: absent
-from `AUTO_SOURCE_LABEL_MAP`, disclosed in its own `net_listen_edges` count and
+**Ruling 2's mechanism has shipped (WI-nosah) and thirty-nine catalogue rows
+use it** — eleven Go connection-SETUP rows (INV-kanuk) plus the twenty-eight
+server-LAUNCH rows measurement 0010 licensed, across go, python, haskell and
+erlang. `net_listen` is a catalog-declarable boundary carrying all three
+clauses: absent from `AUTO_SOURCE_LABEL_MAP`, disclosed in its own `net_listen_edges` count and
 held out of the `total_io_edges` headline, and shadowing `net_recv` through
 `DEFERRED_CROSSING_SHADOWS` so a listen site qualifies a clean `net_recv`
 verdict and nothing else. `IO_BOUNDARIES_SCHEMA_VERSION` is `2.2`.
@@ -230,8 +234,25 @@ consequence on a real repository: gocryptfs's `untrusted-input-no-host-fs`
 verdict moved from `violated` (measurement 0006, rooted at `net.Listen`) to
 `inconclusive`, which is clause 3's shadow doing what it was built to do.
 
-`TestServerLaunchStaysAReceive` remains the pin for the LAUNCH rows in all nine
-languages. Its docstring cites this ADR rather than serving as the ruling.
+**The LAUNCH rows have now moved too, in four languages of six.**
+`TestServerLaunchStaysAReceive` is `TestServerLaunchIsADeferredCrossing`; it
+pins the new state and, separately, the two holdouts — because they are held
+for *different* reasons and one assertion covering both is how the next retag
+takes the wrong one with it. **JavaScript** is `F2_EXEMPT`: its whole reachable
+`net_recv` surface is `{http,https,net}.createServer` and `Deno.listen`, and
+the rows that would survive are INV-misup-unreachable, so the move would
+relocate the receive to nothing. **`Phoenix.Router`** is held because step 3
+produced *no adjudicated findings* for the route-registration shape, which is
+absence of evidence rather than evidence of harmlessness.
+
+**Ruling 3's proof was run per language, not argued.** An idiomatic server
+probe in each affected language, before and after the move: go keeps
+`net.Listener.Accept`, python keeps `socket.socket.accept`, haskell keeps
+`Network.Socket.{accept,recv}`, erlang keeps `gen_tcp.{accept,recv}` — every
+one still reporting a `net_recv` chain afterwards. The finding-level half is in
+the repository's own suite: four `test_taint_recall_corpus.py` fixtures used
+launch rows as their untrusted-input source and were re-pointed at genuine
+transfers, with every assertion holding unchanged.
 
 ## Open work — sequencing and the evidence bar
 

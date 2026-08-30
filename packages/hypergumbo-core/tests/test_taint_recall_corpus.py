@@ -133,10 +133,10 @@ def test_python_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
     src = tmp_path / "src"
     src.mkdir()
 
-    # MUST FIND: asyncio.start_server (untrusted_input) reaches os.mkdir
+    # MUST FIND: socket.socket.recv (untrusted_input) reaches os.mkdir
     # (host_fs) through a first-party wrapper, along a forward call chain.
     (src / "reaches.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
@@ -145,7 +145,7 @@ def test_python_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
         "\n"
         "\n"
         "async def serve():\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    persist(str(server))\n"
         "    return server\n",
         encoding="utf-8",
@@ -154,11 +154,11 @@ def test_python_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
     # MUST NOT FIND: a source with nothing downstream of it. A propagator that
     # keys on source presence rather than on reachability reports this.
     (src / "no_sink.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "\n"
         "\n"
         "async def listen_only():\n"
-        "    return await asyncio.start_server(None, '0.0.0.0', 9090)\n",
+        "    return socket.socket().recv(2048)\n",
         encoding="utf-8",
     )
 
@@ -169,11 +169,11 @@ def test_python_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
     # vacuous. Everything below this line is only meaningful because of it.
     assert verdict["verdict"] == "violated"
     assert result["rc"] == 1
-    assert ("start_server", "mkdir") in _flow_pairs(verdict)
+    assert ("recv", "mkdir") in _flow_pairs(verdict)
 
     # PRECISION — exactly one distinct source->sink pair. ``listen_only``
     # contributes a source with no reachable sink and must add nothing.
-    assert _flow_pairs(verdict) == {("start_server", "mkdir")}
+    assert _flow_pairs(verdict) == {("recv", "mkdir")}
 
 
 def test_python_source_without_any_sink_confirms(
@@ -188,12 +188,19 @@ def test_python_source_without_any_sink_confirms(
     """
     src = tmp_path / "src"
     src.mkdir()
+    # THE RECEIVER IS AN ANNOTATED PARAMETER, not ``socket.socket()``. With the
+    # constructor form, this repo's ONLY call into the ``socket`` module is the
+    # constructor itself, which no catalogue row classifies -- so the coverage
+    # gate withholds and the verdict is ``inconclusive``, and this test would
+    # pass its "no evidence" line while failing its "confirmed" one. The
+    # annotated parameter removes the unclassified call and leaves the clean
+    # examined negative this test is actually about.
     (src / "listener.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "\n"
         "\n"
-        "async def serve():\n"
-        "    return await asyncio.start_server(None, '0.0.0.0', 8080)\n",
+        "def serve(conn: socket.socket):\n"
+        "    return conn.recv(1024)\n",
         encoding="utf-8",
     )
 
@@ -230,12 +237,12 @@ def test_python_sibling_calls_under_one_caller_are_connected(
     src = tmp_path / "src"
     src.mkdir()
     (src / "diamond.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def obtain():\n"
-        "    return await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    return socket.socket().recv(1024)\n"
         "\n"
         "\n"
         "def persist(value):\n"
@@ -269,13 +276,16 @@ def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
         "module example.com/corpus\n\ngo 1.21\n", encoding="utf-8",
     )
 
-    # MUST FIND: net/http.ListenAndServe (untrusted_input) reaches
-    # os.WriteFile (host_fs) through a first-party wrapper.
+    # MUST FIND: net.Conn.Read (untrusted_input) reaches os.WriteFile
+    # (host_fs) through a first-party wrapper. The receiver is a DECLARED
+    # PARAMETER, which is the form that resolves -- `ln, _ := net.Listen(...)`
+    # then `ln.Accept()` does not (WI-lalot), so a fixture written that way
+    # would measure the receiver-typing gap rather than the propagator.
     (tmp_path / "reaches.go").write_text(
         "package corpus\n"
         "\n"
         "import (\n"
-        "\t\"net/http\"\n"
+        "\t\"net\"\n"
         "\t\"os\"\n"
         ")\n"
         "\n"
@@ -283,9 +293,10 @@ def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
         "\tos.WriteFile(name, []byte(\"x\"), 0644)\n"
         "}\n"
         "\n"
-        "func Serve(addr string) {\n"
-        "\thttp.ListenAndServe(addr, nil)\n"
-        "\tpersist(addr)\n"
+        "func Serve(conn net.Conn) {\n"
+        "\tbuf := make([]byte, 16)\n"
+        "\tconn.Read(buf)\n"
+        "\tpersist(string(buf))\n"
         "}\n",
         encoding="utf-8",
     )
@@ -294,10 +305,11 @@ def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
     (tmp_path / "no_sink.go").write_text(
         "package corpus\n"
         "\n"
-        "import \"net/http\"\n"
+        "import \"net\"\n"
         "\n"
-        "func ListenOnly(addr string) {\n"
-        "\thttp.ListenAndServe(addr, nil)\n"
+        "func ReadOnly(conn net.Conn) {\n"
+        "\tbuf := make([]byte, 16)\n"
+        "\tconn.Read(buf)\n"
         "}\n",
         encoding="utf-8",
     )
@@ -307,8 +319,8 @@ def test_go_corpus_recall_and_precision(tmp_path: Path, capsys) -> None:
 
     assert verdict["verdict"] == "violated"
     assert result["rc"] == 1
-    assert ("ListenAndServe", "WriteFile") in _flow_pairs(verdict)
-    assert _flow_pairs(verdict) == {("ListenAndServe", "WriteFile")}
+    assert ("Read", "WriteFile") in _flow_pairs(verdict)
+    assert _flow_pairs(verdict) == {("Read", "WriteFile")}
 
 
 # --------------------------------------------------------------------------
@@ -356,24 +368,24 @@ def test_ddg_labels_a_data_connected_flow_as_precise(
     src.mkdir()
 
     (src / "connected.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def connected(name):\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    os.mkdir(str(server))\n"
         "    return server\n",
         encoding="utf-8",
     )
 
     (src / "disconnected.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def disconnected(name):\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    os.mkdir(name)\n"
         "    return server\n",
         encoding="utf-8",
@@ -405,7 +417,7 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
     variable defined on one line shared a single entry and their use-sets were
     merged. ``conflated`` below is the minimal real shape::
 
-        6   server = await asyncio.start_server(...)   # the SOURCE
+        6   server = socket.socket().recv(1024)        # the SOURCE
         7   keep = str(server); path = name            # uses server, defines path
         8   os.mkdir(path)                             # the SINK, on `path`
 
@@ -432,34 +444,34 @@ def test_ddg_does_not_credit_a_dependence_across_unrelated_definitions(
     src.mkdir()
 
     (src / "connected.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def connected(name):\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    os.mkdir(str(server))\n"
         "    return server\n",
         encoding="utf-8",
     )
     (src / "disconnected.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def disconnected(name):\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    os.mkdir(name)\n"
         "    return server\n",
         encoding="utf-8",
     )
     (src / "conflated.py").write_text(
-        "import asyncio\n"
+        "import socket\n"
         "import os\n"
         "\n"
         "\n"
         "async def conflated(name):\n"
-        "    server = await asyncio.start_server(None, '0.0.0.0', 8080)\n"
+        "    server = socket.socket().recv(1024)\n"
         "    keep = str(server); path = name\n"
         "    os.mkdir(path)\n"
         "    return keep\n",

@@ -95,6 +95,21 @@ GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("net", "ListenUnix"), ("net", "ListenPacket"),
     ("syscall", "Socket"), ("syscall", "Bind"), ("syscall", "Listen"),
     ("unix", "Socket"), ("unix", "Bind"), ("unix", "Listen"),
+    # THE LAUNCH ROWS, moved by measurement 0010 (ADR-0049 open work step 3).
+    # Each blocks and serves: the request bytes reach a registered handler, and
+    # the only value returned to this caller is an error. Both adjudicated
+    # findings rooted in `net/http.ListenAndServe` are false positives, and in
+    # one of them the sink path begins at a call that runs BEFORE the launch
+    # statement.
+    ("net/http", "ListenAndServe"), ("net/http", "ListenAndServeTLS"),
+    ("net/http", "Serve"),
+    ("github.com/gin-gonic/gin.Engine", "Run"),
+    ("github.com/gin-gonic/gin.Engine", "RunTLS"),
+    ("github.com/labstack/echo/v4.Echo", "Start"),
+    ("github.com/labstack/echo/v4.Echo", "StartTLS"),
+    ("github.com/gofiber/fiber/v2.App", "Listen"),
+    ("github.com/gofiber/fiber/v2.App", "ListenTLS"),
+    ("google.golang.org/grpc.Server", "Serve"),
 })
 
 #: The go rows that MUST NOT move: each returns data chosen by the far side.
@@ -105,20 +120,6 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("syscall", "Recvfrom"), ("syscall", "Recvmsg"),
     ("unix", "Accept"), ("unix", "Accept4"),
     ("unix", "Recvfrom"), ("unix", "Recvmsg"),
-    # NOT transfers -- server LAUNCH rows, which ARE ADR-0049 deferred
-    # crossings but are pinned across nine languages by
-    # TestServerLaunchStaysAReceive until ADR-0049 open-work step 3 clears.
-    # INV-kanuk moved the SETUP rows only; these are listed so the partition
-    # below stays exhaustive and so the day they move, this fails and says why.
-    ("net/http", "ListenAndServe"), ("net/http", "ListenAndServeTLS"),
-    ("net/http", "Serve"),
-    ("github.com/gin-gonic/gin.Engine", "Run"),
-    ("github.com/gin-gonic/gin.Engine", "RunTLS"),
-    ("github.com/labstack/echo/v4.Echo", "Start"),
-    ("github.com/labstack/echo/v4.Echo", "StartTLS"),
-    ("github.com/gofiber/fiber/v2.App", "Listen"),
-    ("github.com/gofiber/fiber/v2.App", "ListenTLS"),
-    ("google.golang.org/grpc.Server", "Serve"),
 })
 
 
@@ -430,26 +431,31 @@ class TestTheGoRetag:
         assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
         assert len(moved) == 31
 
-    def test_the_f2_predicate_finds_only_the_documented_launch_row(self) -> None:
-        """INV-kanuk's own repro, inverted -- and it does NOT come back empty.
+    def test_the_f2_predicate_now_comes_back_empty_for_go(self) -> None:
+        """INV-kanuk's own repro, and it is EMPTY NOW -- which it was not.
 
-        The item filed EIGHT offenders. Seven are gone. The eighth,
-        ``fiber.App.Listen``, is a FALSE POSITIVE OF THE PREDICATE rather than
-        a survivor: the predicate matches lowercase NAMES while the family is
-        cut by MECHANISM, and fiber's ``Listen`` is a server launch that
-        happens to be spelled like a setup call. It moves with the launch
-        family, and it is exempted at ROW granularity in F2_EXEMPT_ROWS so the
-        exemption cannot quietly cover anything else.
+        The item filed EIGHT offenders. INV-kanuk removed seven and left the
+        eighth, ``fiber.App.Listen``, deliberately: a FALSE POSITIVE OF THE
+        PREDICATE rather than a survivor, since the predicate matches lowercase
+        NAMES while the family is cut by MECHANISM, and fiber's ``Listen`` is a
+        server launch spelled like a setup call. It was exempted at ROW
+        granularity so the exemption could not quietly cover anything else.
 
-        Asserting the exact remaining offender rather than ``== []`` is the
-        point: an empty assertion here would have forced either a wrong retag
-        or a language-wide exemption, and both hide a row.
-        """
+        The launch retag moved it, so the exemption is deleted and the
+        predicate is clean. THE ASSERTION IS DELIBERATELY NOT JUST ``== []``:
+        emptiness here is only meaningful if the row still EXISTS somewhere,
+        and the second half checks it landed on ``net_listen`` rather than
+        being dropped. An empty gate over a deleted row is the failure this
+        whole file is about."""
         cat = load_catalog("go")
         offenders = sorted(f"{p.module}.{p.name}" for p in cat.primitives
                            if p.boundary == "net_recv"
                            and p.name.lower() in ("socket", "bind", "listen"))
-        assert offenders == ["github.com/gofiber/fiber/v2.App.Listen"]
+        assert offenders == []
+        listen_named = sorted(f"{p.module}.{p.name}" for p in cat.primitives
+                              if p.boundary == "net_listen"
+                              and p.name.lower() in ("socket", "bind", "listen"))
+        assert "github.com/gofiber/fiber/v2.App.Listen" in listen_named
 
     def test_a_shipped_listener_qualifies_a_clean_net_recv_claim(self) -> None:
         """END TO END on the shipped catalogue: ADR-0049 ruling 3's bar.
