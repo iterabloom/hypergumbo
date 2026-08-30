@@ -1,0 +1,46 @@
+Original commit body from 7263b4f867993b37f0f96e82dd78f0fb4cca65b7:
+
+`dev` was red and had been since PR #639, on a test no pull request could
+have run. `tests/test_check_measurement_frame.py::TestTheLiveTree` fails:
+measurement 0009 shipped without the `## Frame` block ADR-0048 §A3 makes
+mandatory from 0009 onward, and CI passed the PR that added it.
+
+MEASURED, NOT INFERRED. `smart-test --manifest` on a tree whose only edits
+were under `docs/` writes `Selected tests: 0`. The selector slices on
+`^packages/.*/src/.*\.py$`, a document is not a Python source file, and the
+docs/config-only branch then writes an empty manifest and exits. Thirteen
+root tests read `docs/` -- the measurement-frame gate, both ADR gates, the
+concept-axis and security-doc generators -- so on the one change class those
+gates exist to check, the selector ran every test except them.
+
+THE SELECTION IS DERIVED FROM THE TREE, NOT LISTED. A change under `docs/`
+now unions the root tests that reference `docs/`, found by grep over
+`tests/test_*.py`. A hardcoded roster would cover today's thirteen and leave
+the fourteenth green and unrun on the commit that adds it, which is the decay
+that left `F2_LANGS` naming nine of fifteen shipped catalogues. Same manifest
+now selects 14 files where it selected 0; the whole set is 203 tests in 6s.
+
+Three arms are grepped and only one is load-bearing, which the comment now
+says because a test refuted the first version of it: `docs/` alone reaches
+all thirteen gates today, and the two quoted-bareword arms are defensive for
+a `Path("docs") / "adr"` spelling no root test currently uses. The assertion
+was written as strict inequality, failed, and was corrected -- the redundancy
+is recorded rather than left for someone to discover and tidy away.
+
+A LATENT BUG THE UNION MADE REACHABLE. `grep -c .` prints `0` *and* exits 1
+on empty input, so `|| echo 0` fired in addition to grep's own count and made
+SOURCE_COUNT the two-line string "0\n0", writing a bare `0` into the manifest
+header between two `#` comments. Unreachable before: a change with zero
+source files exited at the docs/config-only branch and never reached that
+writer.
+
+0009's frame block is added here rather than the record being grandfathered
+-- grandfathering means "predates the gate", and ADR-0048 names 0009 as the
+first record bound by it. Its `analyzer_sha` is established by CONTENT, not
+reconstructed from dates (which §A1 refuses as "a guess wearing a fact's
+clothing"): `go.yaml` has zero `net_listen` rows at 401179b60e and three at
+51871f5edf, and 0009's register counts eleven Go SETUP rows as still-minting
+`net_recv`, which only the former tree produces.
+
+Racial-Capitalism-Is-Bad: a crane djing in a clockwork workshop with a guild of hamsters
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
