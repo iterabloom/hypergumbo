@@ -227,27 +227,18 @@ F2_EXEMPT: dict[str, str] = {
 #:
 #: The predicate is a lowercase name test over ``socket``/``bind``/``listen``,
 #: and the family it polices is cut by MECHANISM, not by name. Those two
-#: disagree on exactly one shipped row: fiber's ``App.Listen`` is a server
-#: LAUNCH -- it blocks and serves -- and is named ``Listen``. It is a genuine
-#: ADR-0049 deferred crossing, but it belongs to the LAUNCH family, which is
-#: pinned across nine languages by ``TestServerLaunchStaysAReceive`` until
-#: ADR-0049 §"Open work" step 3 clears. Moving it alone would split go's own
-#: framework rows from each other, which is worse than either alternative.
+#: disagreed on exactly one shipped row: fiber's ``App.Listen`` is a server
+#: LAUNCH -- it blocks and serves -- and is named ``Listen``.
 #:
-#: PINNED IN BOTH DIRECTIONS by
-#: :func:`test_f2_row_exemptions_still_describe_a_live_row`, so an entry cannot
-#: outlive the row it excuses.
-F2_EXEMPT_ROWS: dict[str, dict[tuple[str, str], str]] = {
-    "go": {
-        ("github.com/gofiber/fiber/v2.App", "Listen"): (
-            "LAUNCH, not setup: fiber's App.Listen blocks and serves, and the "
-            "requests reach the registered handlers. It is caught here only "
-            "because the predicate matches NAMES and this one is spelled "
-            "'Listen'. It moves with the launch family (ADR-0049 ruling 4 row "
-            "2), not with INV-kanuk's setup rows."
-        ),
-    },
-}
+#: **IT IS EMPTY NOW, AND THAT IS THE MECHANISM WORKING RATHER THAN A REASON TO
+#: DELETE IT.** The fiber entry said in terms that the row "moves with the
+#: launch family, not with INV-kanuk's setup rows", and
+#: :func:`test_f2_row_exemptions_still_describe_a_live_row` was written to fail
+#: the moment it did -- so the retag was forced to delete the entry in the same
+#: change. That is a self-retiring exemption completing its life cycle. The
+#: dict stays because the NEXT predicate false positive should land here rather
+#: than in a language-wide skip, which is the strictly wider thing it replaced.
+F2_EXEMPT_ROWS: dict[str, dict[tuple[str, str], str]] = {}
 
 
 @pytest.mark.parametrize("lang", _f2_languages())
@@ -872,56 +863,66 @@ class TestWaiResponsesAreEgress:
         assert boundaries == {"net_send"}
 
 
-class TestServerLaunchStaysAReceive:
-    """THE FAMILY WI-joruz REFUSED TO SPLIT. NOW RULED — SEE ADR-0049.
+class TestServerLaunchIsADeferredCrossing:
+    """THE FAMILY WI-joruz REFUSED TO SPLIT, RULED BY ADR-0049 AND NOW MOVED.
 
-    ``Network.Wai.Handler.Warp.{run, runSettings, runTLS, runEnv}`` are
-    net_recv, and the argument cuts both ways: the server genuinely receives,
-    but the bytes reach the ``app`` handler rather than ``run``'s caller, so
-    taint minted at the call site is attributed to a scope that never sees a
-    request.
+    This class was ``TestServerLaunchStaysAReceive``, and holding the line was
+    its whole job: stop the family being split before ADR-0049's evidence bar
+    was met. It did that job once, visibly -- an earlier attempt moved 21 rows,
+    this class went red, and the change narrowed to the eleven SETUP rows
+    INV-kanuk's statement actually named. A red ratified pin is an answer.
 
-    THIS DOCSTRING IS NO LONGER THE RULING. It was, which was the defect
-    WI-johuk named: the question had been derived four times (Django F3, the
-    JavaScript ``createServer`` rule, the ``Phoenix.Router`` control F5 kept,
-    WI-joruz here) and recorded in no ADR, so each encounter re-derived it and
-    could have derived it differently. ADR-0049 rules it: a call that opens,
-    registers or defers a crossing whose data arrives in a scope the runtime
-    enters later is a DEFERRED CROSSING, and a deferred crossing is disclosed
-    rather than minted as a taint source.
+    THE BAR IS NOW MET AND THE ROWS HAVE MOVED. Corrected census `WI-hazop`;
+    reachability measurement 0009; adjudicated findings per shape measurement
+    0010; a represented-crossing proof per language, run rather than reasoned.
 
-    THE ROWS STILL DO NOT MOVE, AND THIS IS STILL THE PIN. ADR-0049 ruling 3
-    licenses a retag only against a represented crossing, and ADR-0049 §"Open
-    work" sets the evidence bar that has to clear first — a corrected census
-    (four counts disagreed), a reachability fixture per row (``flask.Flask.run``
-    is in Python's ``ambiguous_names`` and mints nothing today), adjudicated
-    findings per shape, and an INV-buzab false-confirm check. Until that lands
-    the family stays ``net_recv`` and this class stops it being split silently.
+    WHAT THIS CLASS PINS NOW is the new state AND the two things that did NOT
+    move -- because they did not move for DIFFERENT reasons, and collapsing
+    them into one assertion is how the next retag takes the wrong one with it.
+    """
 
-    ONE MEMBER IS ALREADY RULED OUT OF THE FAMILY: ``accept`` returns a
-    peer-chosen address to its caller, so it is a TRANSFER under ADR-0049
-    ruling 1 and stays ``net_recv`` on its own merits, not on this pin's.
-    WI-dosov had this right in Haskell; it is asserted below so the two
-    justifications cannot be confused again."""
-
-    @pytest.mark.parametrize("name", ("run", "runSettings", "runTLS", "runEnv"))
-    def test_warp_launch_is_kept_a_receive(self, name: str) -> None:
-        assert _has("haskell", "net_recv", "Network.Wai.Handler.Warp", name)
-
+    #: The rows measurement 0010 licensed. One per moved language, chosen as
+    #: the row that language's users would name first.
     @pytest.mark.parametrize("lang,mod,name", [
-        ("elixir", "Phoenix.Router", "get"),
-        ("javascript", "http", "createServer"),
-        ("javascript", "Deno", "listen"),
-        ("python", "http.server.HTTPServer", "serve_forever"),
-        ("python", "asyncio", "start_server"),
+        ("go", "net/http", "ListenAndServe"),
         ("go", "net/http", "Serve"),
+        ("go", "github.com/gin-gonic/gin.Engine", "Run"),
+        ("go", "github.com/gofiber/fiber/v2.App", "Listen"),
+        ("go", "google.golang.org/grpc.Server", "Serve"),
+        ("python", "http.server.HTTPServer", "serve_forever"),
+        ("python", "socketserver.TCPServer", "serve_forever"),
+        ("python", "asyncio", "start_server"),
+        ("python", "flask.Flask", "run"),
+        ("python", "uvicorn", "run"),
+        ("haskell", "Network.Wai.Handler.Warp", "run"),
+        ("erlang", "httpd", "start"),
+        ("erlang", "ssl", "handshake"),
     ])
-    def test_the_same_ruling_holds_in_every_other_language(
+    def test_the_launch_family_is_disclosed_not_minted(
         self, lang: str, mod: str, name: str,
     ) -> None:
-        """The cross-language half. Warp is kept because these are kept; if one
-        of them is ever moved, this fails and forces the family to move
-        together."""
+        """A launch call blocks and serves; the bytes reach the handler the
+        runtime invokes, never this caller. `net_listen` mints no taint and
+        SHADOWS `net_recv`, so the crossing is disclosed rather than deleted."""
+        assert _has(lang, "net_listen", mod, name)
+        assert not _has(lang, "net_recv", mod, name)
+
+    @pytest.mark.parametrize("lang,mod,name", [
+        ("go", "net.Listener", "Accept"),
+        ("go", "net.Conn", "Read"),
+        ("python", "socket.socket", "recv"),
+        ("haskell", "Network.Socket", "recv"),
+        ("erlang", "gen_tcp", "recv"),
+    ])
+    def test_the_real_receive_is_still_rowed_in_every_moved_language(
+        self, lang: str, mod: str, name: str,
+    ) -> None:
+        """ADR-0049 ruling 3's CATALOGUE half. The run half is the
+        represented-crossing probe recorded in measurement 0010: an idiomatic
+        server in each of these four languages still reports a `net_recv`
+        chain after the move. This asserts the rows those chains land on, so a
+        later cull of the transfer surface fails HERE rather than silently
+        turning the launch retag into a deletion (the WI-lunav failure)."""
         assert _has(lang, "net_recv", mod, name)
 
     @pytest.mark.parametrize("lang,mod,name", [
@@ -933,24 +934,61 @@ class TestServerLaunchStaysAReceive:
         ("go", "net.Listener", "Accept"),
         ("python", "socket.socket", "accept"),
     ])
-    def test_accept_is_a_transfer_not_a_member_of_this_family(
+    def test_accept_is_a_transfer_and_did_not_move_with_the_family(
         self, lang: str, mod: str, name: str,
     ) -> None:
         """``accept`` STAYS net_recv ON ITS OWN MERITS (ADR-0049 ruling 1).
 
         It returns a peer-chosen address or a connected socket TO ITS CALLER,
-        so it is a transfer, not a deferred crossing -- WI-dosov already drew
-        this line in Haskell, removing socket/bind/listen while keeping accept.
-        Asserted separately from the pin above because the two rows survive for
-        OPPOSITE reasons: the launch rows are held by an unlanded evidence bar
-        and are expected to move, ``accept`` is ruled correct and is expected
-        to stay. Collapsing them into one assertion is how a family-wide retag
-        would take ``accept`` with it.
+        so it is a transfer, not a deferred crossing -- WI-dosov drew this line
+        in Haskell first, removing socket/bind/listen while keeping accept.
+        Asserted separately from the rows above because the two survive for
+        OPPOSITE reasons, and collapsing them is exactly how a family-wide
+        retag would have taken ``accept`` with it.
 
         Language-facing view, so inherited rows appear under the child:
         ``_CATALOG_PARENTS`` maps cpp->c, kotlin/scala->java, elixir->erlang,
         and those four are omitted here rather than asserted twice."""
         assert _has(lang, "net_recv", mod, name)
+
+    @pytest.mark.parametrize("mod,name", [
+        ("http", "createServer"),
+        ("https", "createServer"),
+        ("net", "createServer"),
+        ("Deno", "listen"),
+    ])
+    def test_javascript_did_not_move_and_the_reason_was_measured(
+        self, mod: str, name: str,
+    ) -> None:
+        """JAVASCRIPT IS HELD BACK, and not by omission.
+
+        Its entire REACHABLE `net_recv` surface is these rows. What would
+        survive the move -- `WebSocket.onmessage`, `EventSource.onmessage` and
+        their `addEventListener` peers -- is INV-misup-unreachable: a
+        constructor-bound receiver (`ws = new WebSocket(url)`) never resolves,
+        so the call becomes a `uses` edge and matches no row. Moving these four
+        would relocate JavaScript's inbound-network representation to NOTHING,
+        which ADR-0049 ruling 3 forbids.
+
+        That is `F2_EXEMPT`'s documented reasoning, and it is not taken on
+        authority here: an idiomatic JS server probe run for measurement 0010
+        reported exactly two `net_recv` chains, both `createServer`, and zero
+        from the WebSocket handler. When INV-misup closes, this test is what
+        asks whether the exemption still has a reason."""
+        assert _has("javascript", "net_recv", mod, name)
+
+    @pytest.mark.parametrize("name", ("get", "post", "resources", "scope"))
+    def test_the_register_shape_did_not_move_either(self, name: str) -> None:
+        """PHOENIX IS HELD BACK FOR A DIFFERENT REASON, WHICH IS WHY IT IS A
+        SEPARATE TEST: not unreachability, but an unmet evidence bar.
+
+        ADR-0049 step 3's bar is ADJUDICATED FINDINGS PER SHAPE, and
+        measurement 0010 adjudicated **none** for the REGISTER shape --
+        `Phoenix.Router` appears in one repository of seventeen and produced no
+        violating situation. Absence of findings is not evidence of
+        harmlessness. These rows move when a cohort supplies the findings, not
+        because they resemble the rows that did."""
+        assert _has("elixir", "net_recv", "Phoenix.Router", name)
 
 
 def test_the_sweep_vocabulary_covers_the_noun_form() -> None:
@@ -966,30 +1004,43 @@ def test_the_sweep_vocabulary_covers_the_noun_form() -> None:
     assert not DIRECTION_SENDY.search("readFile")
 
 
-@pytest.mark.parametrize(
-    "lang,module,name",
-    [(lang, mod, nm)
-     for lang, rows in sorted(F2_EXEMPT_ROWS.items())
-     for mod, nm in sorted(rows)],
-)
-def test_f2_row_exemptions_still_describe_a_live_row(
-    lang: str, module: str, name: str,
-) -> None:
+def test_f2_row_exemptions_still_describe_a_live_row() -> None:
     """THE GATE ON THE ROW-LEVEL EXEMPTION LIST (INV-kanuk).
 
     A row exemption is a claim about a SPECIFIC shipped row: "this one is a
     false positive of the predicate". If the row is retagged, renamed or
     dropped, the claim is about nothing and the entry is indistinguishable from
     a forgotten line. Asserting the row is still there AND still ``net_recv``
-    makes the entry self-retiring: whoever moves it with the launch family is
-    forced to delete this entry in the same change.
+    makes the entry self-retiring -- and it retired: the launch retag moved
+    fiber's ``App.Listen`` to ``net_listen`` and this gate is what forced the
+    entry out in the same change.
+
+    A PLAIN LOOP, NOT A PARAMETRIZE, because the dict is empty today and an
+    empty parametrize is collected as a skip -- a green tick over a gate that
+    ran nothing, which is the shape this file exists to refuse.
     """
-    matches = [p for p in _rows(lang) if (p.module, p.name) == (module, name)]
-    assert matches, (
-        f"{lang}: F2_EXEMPT_ROWS excuses {module}.{name}, which no longer "
-        f"exists in the catalogue -- delete the entry"
-    )
-    assert all(p.boundary == "net_recv" for p in matches), (
-        f"{lang}: {module}.{name} is no longer net_recv, so the exemption "
-        f"excuses nothing -- delete the entry"
-    )
+    for lang, rows in sorted(F2_EXEMPT_ROWS.items()):
+        for module, name in sorted(rows):
+            matches = [p for p in _rows(lang)
+                       if (p.module, p.name) == (module, name)]
+            assert matches, (
+                f"{lang}: F2_EXEMPT_ROWS excuses {module}.{name}, which no "
+                f"longer exists in the catalogue -- delete the entry"
+            )
+            assert all(p.boundary == "net_recv" for p in matches), (
+                f"{lang}: {module}.{name} is no longer net_recv, so the "
+                f"exemption excuses nothing -- delete the entry"
+            )
+
+
+def test_the_retired_row_exemption_really_did_retire() -> None:
+    """The other half of the life cycle, asserted POSITIVELY.
+
+    An emptied dict is indistinguishable from a dict someone emptied to make a
+    red test green. This says what actually happened: fiber's ``App.Listen``
+    is ``net_listen`` now, so the F2 predicate no longer flags it and there is
+    nothing left to excuse. If the retag is ever reverted without restoring the
+    exemption, the F2 gate goes red on go and this test tells the next reader
+    why."""
+    assert _has("go", "net_listen", "github.com/gofiber/fiber/v2.App", "Listen")
+    assert not _has("go", "net_recv", "github.com/gofiber/fiber/v2.App", "Listen")

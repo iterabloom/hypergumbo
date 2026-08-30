@@ -396,21 +396,33 @@ net_send:
 net_recv:
   - module: socket.socket
     methods: [recv, recvfrom, recv_into, recvmsg, accept]
-  - module: http.server.HTTPServer
-    methods: [serve_forever, handle_request]
-  - module: socketserver.TCPServer
-    methods: [serve_forever, handle_request]
   - module: ftplib.FTP
     methods: [retrbinary, retrlines]
-  - module: xmlrpc.server.SimpleXMLRPCServer
-    methods: [serve_forever, handle_request]
-  # asyncio networking
-  - module: asyncio
-    functions: [start_server, start_unix_server]
-    notes: "asyncio TCP server"
   - module: asyncio.StreamReader
     methods: [read, readline, readexactly, readuntil]
-  # Popular web frameworks
+
+# ADR-0049 DEFERRED CROSSINGS. The call ARRANGES a crossing whose data arrives
+# in a scope it does not name; net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
+  - module: http.server.HTTPServer
+    methods: [serve_forever, handle_request]
+    notes: >-
+      LAUNCH (ADR-0049 ruling 4 row 2, measurement 0010). Blocks and serves;
+      returns None. The request reaches the handler class the server was
+      constructed with. socket.socket.accept and .recv stay net_recv and carry
+      the real receive -- the represented-crossing probe confirms accept still
+      fires after this move.
+  - module: socketserver.TCPServer
+    methods: [serve_forever, handle_request]
+  - module: xmlrpc.server.SimpleXMLRPCServer
+    methods: [serve_forever, handle_request]
+  - module: asyncio
+    functions: [start_server, start_unix_server]
+    notes: >-
+      SETUP. Returns a Server object; the bytes arrive at the client-connected
+      callback, and asyncio.StreamReader.read* -- still net_recv -- is where a
+      program reads them.
 
 ipc_send:
   # ---------------------------------------------------------------

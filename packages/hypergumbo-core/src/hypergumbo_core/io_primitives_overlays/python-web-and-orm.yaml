@@ -61,7 +61,11 @@ fs_write:
       listed beside it -- its API is dumps/loads only, with no dump, so it has
       no file-write surface to catalogue and adding it would match nothing.
 
-net_recv:
+net_listen:
+  # ADR-0049 LAUNCH rows (measurement 0010), moved with python's stdlib launch
+  # family. flask.Flask.run is the headline example in three separate
+  # write-ups; measurement 0009 established it fires in both forms a Flask
+  # program is written in and only misses the untyped-receiver form.
   - module: flask.Flask
     methods: [run]
     notes: "Flask development server"
