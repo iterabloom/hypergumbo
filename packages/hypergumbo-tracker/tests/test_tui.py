@@ -2609,22 +2609,53 @@ async def _wait_for_modal(
     pilot: Any, app: Any, widget_id: str = "#modal-dialog",
     max_rounds: int = 30,
 ) -> None:
-    """Wait for a modal screen to compose and render.
+    """Wait for a modal screen to compose, render AND LAY OUT.
 
-    Polls until *widget_id* is found in the active screen's DOM, with a
-    configurable maximum number of event-loop ticks.  This accounts for
-    the asynchronous compose lifecycle when a ModalScreen is pushed from
-    ``on_mount``.
+    Polls until *widget_id* is found in the active screen's DOM and has a
+    non-zero size, with a configurable maximum number of event-loop ticks.
+    This accounts for the asynchronous compose lifecycle when a ModalScreen is
+    pushed from ``on_mount``.
+
+    TWO CHANGES, BOTH LEARNED FROM A CI FAILURE THIS HELPER MADE UNREADABLE
+    (INV-bozid). The 2026-08-20 13:00 full-suite cron went red on
+    ``TestLockScreenUnit::test_cancel_returns_none`` with
+    ``assert 'NOT_SET' is None`` -- the ``_ModalTestApp._capture`` sentinel,
+    meaning the dismiss callback never ran at all, so the click never landed on
+    a button. It is not reproducible locally (five consecutive runs of the
+    modal/screen classes pass, 60 each) and it turned a whole-codebase signal
+    carrying three other independent gates red, which is the masking INV-bozid
+    is about.
+
+    1. IT NO LONGER GIVES UP SILENTLY. The old loop ran out of rounds and
+       ``return``ed as if it had succeeded, so every caller then drove a DOM
+       that was not ready and failed later with an assertion about a RESULT,
+       naming neither the widget nor the wait. A helper that gives up quietly
+       is a green tick over a hole -- the same note this repo writes about a
+       skip that can be reached by a typo. It now raises, naming what it waited
+       for and for how long.
+    2. IT WAITS FOR LAYOUT, NOT MERE PRESENCE. ``pilot.click(selector)``
+       resolves the widget's screen region and synthesises a mouse event at its
+       centre; a widget that is in the DOM but not yet laid out has a zero-sized
+       region, so the click lands nowhere and no button is pressed -- which is
+       exactly the observed symptom. Presence is necessary and not sufficient,
+       and this is the same presence-is-not-reachability distinction the
+       io-boundary work keeps paying for.
     """
     from textual.css.query import NoMatches
 
     for _ in range(max_rounds):
         await pilot.pause()
         try:
-            app.screen.query_one(widget_id)
-            return
+            widget = app.screen.query_one(widget_id)
         except NoMatches:
             continue
+        if widget.size.width and widget.size.height:
+            return
+    raise AssertionError(
+        f"modal {widget_id!r} did not compose and lay out within {max_rounds} "
+        f"event-loop ticks; screen={type(app.screen).__name__}. Driving it "
+        f"anyway is what produced the unreadable 'NOT_SET' failures (INV-bozid)."
+    )
 
 
 class TestDiscussScreenUnit:
@@ -3156,6 +3187,40 @@ class TestBeforeScreenUnit:
             await pilot.press("escape")
             await pilot.pause()
             assert app._result is None
+
+
+class TestWaitForModalHelper:
+    """The helper every modal test depends on must FAIL when its wait fails.
+
+    INV-bozid: a full-suite cron went red on a modal test whose assertion named
+    the RESULT (``assert 'NOT_SET' is None``) rather than the wait, because
+    ``_wait_for_modal`` exhausted its rounds and returned as though it had
+    succeeded. One unreadable failure in one tracker test masked three other
+    independent gates in the same aggregate commit status for a day and a half.
+
+    These two tests are the ones that would have named the real cause.
+    """
+
+    async def test_it_raises_when_the_widget_never_appears(self) -> None:
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            with pytest.raises(AssertionError, match="did not compose and lay out"):
+                await _wait_for_modal(pilot, app, widget_id="#no-such-widget",
+                                      max_rounds=3)
+
+    async def test_it_still_returns_for_a_widget_that_is_there(self) -> None:
+        """POSITIVE CONTROL: the stricter wait must not break the happy path.
+
+        Without this, the cheapest way to satisfy the test above is a helper
+        that always raises, and every modal test would fail loudly instead of
+        silently — a different bug with the same cost.
+        """
+        screen = LockScreen("ID-1", set())
+        app = _ModalTestApp(screen)
+        async with app.run_test(size=(70, 20)) as pilot:
+            await _wait_for_modal(pilot, app)
+            assert app.screen.query_one("#modal-dialog").size.width > 0
 
 
 class TestLockScreenUnit:

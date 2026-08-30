@@ -7,6 +7,11 @@ This package is independently versioned from the main hypergumbo tool and licens
 
 ## [Unreleased]
 
+### Fixed
+
+- **The modal test harness gave up silently, and one tracker TUI test then masked three unrelated CI gates for a day and a half (INV-bozid).** `_wait_for_modal` polled up to 30 event-loop ticks for a widget to appear and then **returned as though it had succeeded**, so every caller drove a DOM that was not ready and failed later with an assertion about a *result* — `assert 'NOT_SET' is None`, the `_ModalTestApp._capture` sentinel — naming neither the widget nor the wait. That failure took the 2026-08-20 full-suite cron red, and because Woodpecker collapses a workflow's steps into one aggregate commit status, it made `self-claims-gate`, `self-tree-validation` and `test-agent-infra` unreadable alongside it. The helper now **raises**, naming what it waited for and for how long.
+- **It also waits for LAYOUT, not mere DOM presence.** `pilot.click(selector)` resolves a widget's screen region and synthesises a mouse event at its centre, so a widget that exists but is not yet laid out has a zero-sized region: the click lands nowhere, no button is pressed, and the dismiss callback never runs — exactly the observed symptom. Presence is necessary and not sufficient. Not reproducible locally (five consecutive runs of the modal/screen classes pass, 60 each in ~22s), which fits a CI run carrying 23,210 tests and does not fit a deterministic bug — so the fix is argued from the mechanism and pinned by a test that drives the helper at a widget that will never appear, plus a positive control that the happy path still returns. Without that control the cheapest way to pass the first test is a helper that always raises. 556 tracker tests green.
+
 ## [0.8.0] - 2026-08-20
 
 ### Added
