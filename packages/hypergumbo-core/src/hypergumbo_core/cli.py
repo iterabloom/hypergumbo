@@ -5844,6 +5844,7 @@ def _taint_blind_reason(
     from .verify_claims import (
         SOURCE_SCOPE_PRODUCTION,
         compute_boundary_coverage,
+        is_synthetic_build_target_call,
         symbol_source_scope,
     )
 
@@ -5896,10 +5897,20 @@ def _taint_blind_reason(
         if include_non_production
         or symbol_source_scope(edge.get("src", "")) == SOURCE_SCOPE_PRODUCTION
     ]
+    # WI-mital: the build-target linker mints a ``calls`` edge from a Cargo
+    # ``[[bin]]`` symbol (language slot ``toml``) to the ``main()`` it names, so
+    # a manifest appears to make calls and blocks every claim over a Rust binary
+    # crate on a file that performs no I/O. The predicate is IMPORTED from
+    # ``verify_claims`` rather than re-derived, for the reason the comment above
+    # already gives about this function's two checks: measured mid-fix, patching
+    # only the I/O gate left mini-redis still reporting ``toml`` THROUGH THIS
+    # CENSUS. A rule applied in one place and not the other is how this function
+    # comes to give two different answers.
     languages_with_calls = {
         edge.get("src", "").split(":", 1)[0]
         for edge in scoped_edges
         if edge.get("type") == "calls" and ":" in edge.get("src", "")
+        and not is_synthetic_build_target_call(edge)
     }
     blind = sorted(set(unsupported_taint_languages) & languages_with_calls)
     if blind:
