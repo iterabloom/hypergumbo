@@ -46,3 +46,10 @@
   set: {}  # 32d3
   add:  # 32d3
     isbefore: [WI-zumoz-mamok-tofah-fusol-dodig-romif-luzas-nilad]  # 32d3
+- op: discuss  # ac21
+  at: '2026-08-30T02:31:49Z'  # ac21
+  by: agent  # ac21
+  actor: jgstern_agent  # ac21
+  clock: 5  # ac21
+  nonce: ac21  # ac21
+  message: "Independently re-derived by measurement 0009 (WI-vapud), from the deferred-crossing register rather than from WI-zumoz. Starting from a different population and a different question, the SAME six rows came back inert: WebSocket.addEventListener/onclose/onmessage, EventSource.addEventListener/onmessage, BroadcastChannel.addEventListener. Fixture: idiom/js2 in ~/hypergumbo_lab_notebook/vapud_reach_08292026/, positive controls fs.readFileSync and http.createServer firing in the same run; the constructor-bound receiver produces a 'uses' edge with dst_ref=None and never a 'calls' edge, exactly as this item states. Two additions. (1) These six are ALSO ADR-0049 deferred crossings, so they sit in INV-kanuk's retag scope while being unreachable -- retagging them changes no output, and 0009 recommends they go last. (2) A DIFFERENT javascript gap turned up beside them and is filed separately as INV-zudos: 'process' is absent from JS_KNOWN_GLOBALS, so require-less process.on(...) emits no calls edge while process.stdin still fires through module_attr_ref. That is a named-global omission, not this item's constructor mechanism."  # ac21

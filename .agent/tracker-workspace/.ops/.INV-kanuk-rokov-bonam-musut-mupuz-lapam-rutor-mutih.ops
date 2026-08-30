@@ -58,3 +58,10 @@
   clock: 6  # b506
   nonce: b506  # b506
   message: "Merged as PR #633, dev SHA c78aff01c9e1."  # b506
+- op: discuss  # 8ed9
+  at: '2026-08-30T02:32:01Z'  # 8ed9
+  by: agent  # 8ed9
+  actor: jgstern_agent  # 8ed9
+  clock: 7  # 8ed9
+  nonce: 8ed9  # 8ed9
+  message: "UNBLOCKED, with the tranche order CHANGED by the measurement. WI-vapud / measurement 0009 is done: the deferred-crossing family is NOT largely inert (45 of 62 rows measured in real idiom fire, 72.6%), so the retag moves real output and is worth doing. Three things it settled that bear directly on this item. (1) THIS ITEM'S OWN CASE IS NOW MEASURED ON A RUN. In an ordinary go accept loop -- net.Listen, ln.Accept(), conn.Read() -- the chains that come back are net/http.ListenAndServe, net.Listen, syscall.{Socket,Bind,Listen} and unix.{Socket,Bind,Listen}: EIGHT false setup sources. ln.Accept() and conn.Read() produce NOTHING. So go's entire net_recv surface on a real server is eight false sources and zero true receives, and ADR-0049 ruling 3's represented-crossing licence is satisfied by the retag itself rather than by the Accept/Read rows. Fixture: idiom/go2 in ~/hypergumbo_lab_notebook/vapud_reach_08292026/. (2) TRANCHE ORDER. Go stdlib SETUP+LAUNCH fires completely and is the right first tranche. Go's seven THIRD-PARTY framework rows (gin/fiber/echo/grpc) are INERT in real code -- they are entered through constructor calls and blocked on WI-lalot -- so they go last; moving them changes no output and would make any A/B read a clean zero. (3) The register with per-row shape, which this item needs to cut tranches at all, is committed as the verdict table in docs/measurements/0009 and as verdict.json in the artifact dir."  # 8ed9
