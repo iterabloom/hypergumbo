@@ -99,16 +99,45 @@ net_send:
     functions: [Connect, Sendto, Sendmsg]
 
 net_recv:
-  - module: net
-    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
   - module: net.Listener
     methods: [Accept]
+    notes: >-
+      KEPT (ADR-0049 ruling 4). Accept returns a PEER-CHOSEN connection to its
+      own caller, so it is a transfer and not a member of the deferred-crossing
+      family -- the same verdict WI-dosov reached for Haskell when it dropped
+      socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
   - module: net/http
     functions: [ListenAndServe, ListenAndServeTLS, Serve]
+    notes: >-
+      KEPT net_recv DELIBERATELY. These are server LAUNCH, not connection
+      setup, and the launch family is pinned together across nine languages by
+      TestServerLaunchStaysAReceive until ADR-0049 §"Open work" step 3
+      (adjudicated findings per shape) clears. INV-kanuk moved the SETUP rows
+      only.
   - module: syscall
-    functions: [Socket, Bind, Listen, Accept, Accept4, Recvfrom, Recvmsg]
+    functions: [Accept, Accept4, Recvfrom, Recvmsg]
+    notes: >-
+      Socket/Bind/Listen MOVED to net_listen (INV-kanuk, ADR-0049 ruling 1):
+      they return a descriptor or an error and transfer nothing, while net_recv
+      auto-derives a taint source via AUTO_SOURCE_LABEL_MAP. Accept/Accept4
+      return a peer-chosen connection and Recvfrom/Recvmsg return bytes, so
+      those four stay.
+
+# ADR-0049 DEFERRED CROSSINGS: the call ARRANGES a crossing whose data arrives
+# somewhere it does not name. net_listen mints no taint and shadows net_recv,
+# so the crossing is DISCLOSED rather than either minted or silently dropped.
+net_listen:
+  - module: net
+    functions: [Listen, ListenTCP, ListenUDP, ListenUnix, ListenPacket]
+    notes: >-
+      SETUP. Returns a net.Listener; nothing has been received. The bytes
+      arrive at a later Accept/Read, which are rowed separately under net_recv.
+  - module: syscall
+    functions: [Socket, Bind, Listen]
+    notes: >-
+      SETUP. Returns a file descriptor or an error.
 
 subprocess:
   - module: os/exec

@@ -219,20 +219,34 @@ F2_EXEMPT: dict[str, str] = {
         "the read to nothing. Asserted positively in "
         "test_javascript_is_deliberately_out_of_scope."
     ),
-    "go": (
-        "INV-kanuk. Go's 8 setup rows ARE false sources and the removal is "
-        "NOT licensed, because go's real receive surface is unreachable on "
-        "idiomatic code: `ln, _ := net.Listen(...)` then `ln.Accept()` emits "
-        "dst `go:external:0-0:Accept`, which no `net.Listener.Accept` row can "
-        "match. MEASURED on a stdlib accept loop: net_recv reports 4 chains, "
-        "all four of them these setup rows, and ZERO true receives -- so "
-        "removing them takes go's network-input surface to nothing rather "
-        "than relocating it (ADR-0049 ruling 3, the WI-lunav rule). The "
-        "blocker is an INV-linub L3 residual: a DECLARED external receiver "
-        "type reaches the module slot (`func f(conn net.Conn)` -> "
-        "`go:net:0-0:Read`, matches) while one INFERRED FROM A RETURN VALUE "
-        "does not, in-repo and stdlib alike."
-    ),
+}
+
+#: ROW-level F2 exemptions, which are a DIFFERENT and much narrower thing than
+#: the language-level table above: they say "this one row is a FALSE POSITIVE OF
+#: THE PREDICATE", not "this language has debt".
+#:
+#: The predicate is a lowercase name test over ``socket``/``bind``/``listen``,
+#: and the family it polices is cut by MECHANISM, not by name. Those two
+#: disagree on exactly one shipped row: fiber's ``App.Listen`` is a server
+#: LAUNCH -- it blocks and serves -- and is named ``Listen``. It is a genuine
+#: ADR-0049 deferred crossing, but it belongs to the LAUNCH family, which is
+#: pinned across nine languages by ``TestServerLaunchStaysAReceive`` until
+#: ADR-0049 §"Open work" step 3 clears. Moving it alone would split go's own
+#: framework rows from each other, which is worse than either alternative.
+#:
+#: PINNED IN BOTH DIRECTIONS by
+#: :func:`test_f2_row_exemptions_still_describe_a_live_row`, so an entry cannot
+#: outlive the row it excuses.
+F2_EXEMPT_ROWS: dict[str, dict[tuple[str, str], str]] = {
+    "go": {
+        ("github.com/gofiber/fiber/v2.App", "Listen"): (
+            "LAUNCH, not setup: fiber's App.Listen blocks and serves, and the "
+            "requests reach the registered handlers. It is caught here only "
+            "because the predicate matches NAMES and this one is spelled "
+            "'Listen'. It moves with the launch family (ADR-0049 ruling 4 row "
+            "2), not with INV-kanuk's setup rows."
+        ),
+    },
 }
 
 
@@ -247,9 +261,11 @@ def test_socket_setup_is_not_a_network_receive(lang: str) -> None:
     """
     if lang in F2_EXEMPT:
         pytest.skip(f"{lang}: documented F2 exemption -- {F2_EXEMPT[lang]}")
+    exempt = F2_EXEMPT_ROWS.get(lang, {})
     offenders = [f"{p.module}.{p.name}" for p in _rows(lang)
                  if p.boundary == "net_recv"
-                 and p.name.lower() in NON_TRANSFER_SOCKET_CALLS]
+                 and p.name.lower() in NON_TRANSFER_SOCKET_CALLS
+                 and (p.module, p.name) not in exempt]
     assert offenders == [], (
         f"{lang}: socket setup declared net_recv (receives nothing): {offenders}"
     )
@@ -948,3 +964,32 @@ def test_the_sweep_vocabulary_covers_the_noun_form() -> None:
     for spelling in ("respond", "responseLBS", "resp", "render"):
         assert DIRECTION_SENDY.search(spelling), spelling
     assert not DIRECTION_SENDY.search("readFile")
+
+
+@pytest.mark.parametrize(
+    "lang,module,name",
+    [(lang, mod, nm)
+     for lang, rows in sorted(F2_EXEMPT_ROWS.items())
+     for mod, nm in sorted(rows)],
+)
+def test_f2_row_exemptions_still_describe_a_live_row(
+    lang: str, module: str, name: str,
+) -> None:
+    """THE GATE ON THE ROW-LEVEL EXEMPTION LIST (INV-kanuk).
+
+    A row exemption is a claim about a SPECIFIC shipped row: "this one is a
+    false positive of the predicate". If the row is retagged, renamed or
+    dropped, the claim is about nothing and the entry is indistinguishable from
+    a forgotten line. Asserting the row is still there AND still ``net_recv``
+    makes the entry self-retiring: whoever moves it with the launch family is
+    forced to delete this entry in the same change.
+    """
+    matches = [p for p in _rows(lang) if (p.module, p.name) == (module, name)]
+    assert matches, (
+        f"{lang}: F2_EXEMPT_ROWS excuses {module}.{name}, which no longer "
+        f"exists in the catalogue -- delete the entry"
+    )
+    assert all(p.boundary == "net_recv" for p in matches), (
+        f"{lang}: {module}.{name} is no longer net_recv, so the exemption "
+        f"excuses nothing -- delete the entry"
+    )
