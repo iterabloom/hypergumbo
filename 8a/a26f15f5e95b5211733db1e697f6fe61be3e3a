@@ -1,0 +1,68 @@
+Original commit body from 24d49c886b90e48c48887096474340aa7cf371d0:
+
+ADR-0049 open work step 3 cleared with measurement 0010, so the family the pin
+has held since 2026-08-28 moves. 28 rows -> net_listen, in four languages:
+
+  go       net/http.{ListenAndServe,ListenAndServeTLS,Serve}, gin Run/RunTLS,
+           echo Start/StartTLS, fiber Listen/ListenTLS, grpc Server.Serve
+  python   {HTTPServer,TCPServer,SimpleXMLRPCServer}.{serve_forever,
+           handle_request}, asyncio.{start_server,start_unix_server},
+           flask.Flask.run, uvicorn.run, aiohttp.web.run_app
+  haskell  Warp.{run,runSettings,runTLS,runEnv}
+  erlang   httpd.{start,start_service}, ssl.handshake
+
+Each returns an error, a handle, or nothing; the request bytes reach a handler
+the runtime invokes. That is ADR-0049 ruling 1's NO branch, and measurement
+0010 adjudicated every live finding rooted in the family FALSE -- 2 on this
+tree, 4 in measurement 0006.
+
+RULING 3'S PROOF IS A RUN, PER LANGUAGE, NOT AN ARGUMENT. An idiomatic server
+probe in each affected language, before and after:
+
+  go       net_recv 2 [Accept, ListenAndServe]  ->  net_listen 1 + net_recv 1 [Accept]
+  python   net_recv 2 [serve_forever, accept]   ->  net_listen 1 + net_recv 1 [accept]
+  haskell  net_recv 3 [accept, recv, Warp.run]  ->  net_listen 1 + net_recv 2
+  erlang   net_recv 3 [accept, recv, httpd]     ->  net_listen 1 + net_recv 2
+
+Every language keeps a net_recv chain afterwards, so nothing was deleted where
+the catalogue merely CLAIMED a counterpart -- the WI-lunav failure this rule
+exists to catch.
+
+TWO HOLDOUTS, DIFFERENT REASONS, ASSERTED SEPARATELY. JavaScript's whole
+REACHABLE net_recv surface is {http,https,net}.createServer and Deno.listen;
+what would survive -- WebSocket.onmessage and peers -- is INV-misup-unreachable,
+so the move would relocate the receive to NOTHING. That is F2_EXEMPT's existing
+reasoning, re-confirmed live by the same probe. Phoenix.Router is held because
+0010 adjudicated NO findings for the route-registration shape, and absence of
+findings is not evidence of harmlessness. One assertion covering both is how
+the next retag takes the wrong one with it.
+
+THE PIN INVERTS AND THE ROW EXEMPTION RETIRES ITSELF.
+TestServerLaunchStaysAReceive becomes TestServerLaunchIsADeferredCrossing. The
+fiber App.Listen entry in F2_EXEMPT_ROWS said in terms that the row "moves with
+the launch family", and its companion gate was written to fail the moment it
+did -- so this change was FORCED to delete it. The dict stays (empty) with the
+mechanism intact, and a new test asserts POSITIVELY that the row is net_listen
+now, because an emptied dict is indistinguishable from one emptied to make a
+red test green. The F2 predicate comes back empty for Go for the first time.
+
+FOUR RECALL-CORPUS FIXTURES RE-SOURCED, AND THAT IS THE FINDING-LEVEL HALF OF
+RULING 3. test_taint_recall_corpus.py used asyncio.start_server and
+net/http.ListenAndServe as its untrusted-input sources. They are re-pointed at
+genuine transfers -- socket.socket.recv, and net.Conn.Read through a DECLARED
+PARAMETER, the form that resolves (ln.Accept() after net.Listen does not,
+WI-lalot) -- and every assertion holds unchanged. One needed more care: with a
+socket.socket() constructor the repo's only call into the socket module is
+unclassified, so the coverage gate withholds and the "source with no sink" test
+would have passed its no-evidence line while failing its confirmed line. An
+annotated parameter removes the unclassified call. A test that passes because
+its source stopped existing is not a passing test.
+
+VERIFIED LOCALLY BECAUSE THE SELECTOR CANNOT SEE THIS CHANGE: smart-test slices
+on .py and a catalogue-YAML edit selects almost nothing, so the manifest is
+hand-extended with the io-boundary surface (INV-bigaz keeps hand-extensions).
+2098 tests green on io_boundary/taint/catalogue, 1321 on the affected language
+packages, and the core suite green to 98% before the command ceiling.
+
+Racial-Capitalism-Is-Bad: a hedgehog competing with a magician on the moon
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
