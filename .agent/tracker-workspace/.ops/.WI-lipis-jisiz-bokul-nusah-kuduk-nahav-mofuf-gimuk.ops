@@ -1,0 +1,32 @@
+- op: create  # 2d29
+  at: '2026-08-30T08:42:27Z'  # 2d29
+  by: agent  # 2d29
+  actor: jgstern_agent  # 2d29
+  clock: 1  # 2d29
+  nonce: 2d29  # 2d29
+  data:  # 2d29
+    kind: work_item  # 2d29
+    title: "Infer a wrapper constructor's boundary from its ARGUMENT's origin (bufio.NewScanner/NewReader, c FILE*, java Scanner, haskell Handle): 64.8% of 236 census sites name a local whose origin needs dataflow, so no catalogue row can answer them"  # 2d29
+    status: todo_hard  # 2d29
+    priority: 2  # 2d29
+    parent:  # 2d29
+    tags:  # 2d29
+    - catalogue  # 2d29
+    - io_boundary  # 2d29
+    - taint  # 2d29
+    - analysis_quality  # 2d29
+    isbefore: []  # 2d29
+    duplicate_of: []  # 2d29
+    not_duplicate_of: []  # 2d29
+    pr_ref:  # 2d29
+    description: "FOUND 2026-08-30 doing WI-vutav / INV-bagok. This is the fix INV-zumin names for\nits class (b) -- \"the honest fix is fd-type inference, not row reordering\" --\nstated for the handle-wrapper case and sized on a census.\n\nTHE PROBLEM, in one line: a wrapper constructor's boundary is a property of its\nARGUMENT, and one catalogue row cannot express that. INV-bagok holds the defect;\nthis item holds the remedy, so the invariant is not closed by a change nobody has\nagreed to.\n\nWHY A ROW CANNOT DO IT, measured. Census of every bufio.NewScanner /\nbufio.NewReader call site in the ADR-0049 cohort's Go repositories (n=236,\n~/hypergumbo_lab_notebook/vutav_reads_08302026/wraps.py):\n\n    153  (64.8%)  bare local var -- the argument NAMES a variable, not a source\n     45  (19.1%)  strings/bytes.NewReader -- no crossing at all\n     11  ( 4.7%)  os.Stdin       11 (4.7%) net.Conn      1 http body\n     15  ( 6.4%)  other expression\n\nTwo thirds of the sites need the ORIGIN of a local variable. A syntactic\nargument-conditioned row -- \"ipc_recv when arg is os.Stdin\" -- answers 4.7% and\nis silent on the rest. This is a dataflow question.\n\nTHE SHAPE. The information is already in the graph. `f, _ := os.Open(p)` gives an\nedge whose callee the catalogue classifies fs_read; `sc := bufio.NewScanner(f)`\nbinds sc from f. So the constructor's boundary is the classification of whatever\nits argument was bound from, with three terminal cases: a classified call\n(inherit its boundary), a known handle attribute such as os.Stdin (inherit the\nattribute's row), or an in-memory buffer (NO crossing -- emit nothing, which is\n19.1% of the population and pure false-positive removal).\n\nWHY IT IS TRACTABLE NOW AND WAS NOT BEFORE. The receiver could not be typed at\nall until the go constructor-qualifier fix (WI-vutav): `bufio.NewReader(os.Stdin)`\nbound a bare \"Reader\" that resolved to no package. With the qualifier preserved\nthe handle's type is known, which is the half this propagation needs on the\nconsuming side.\n\nCROSS-LANGUAGE, because the shape is not go's. The same wrapper-constructor\npattern is c stdio.{fgets,fscanf,fread,getc} over a FILE*, java.util.Scanner and\nBufferedReader over any Readable, haskell System.IO.hGet* over a Handle (already\ncarrying an INV-vaduk note that says exactly one of two boundaries is true and\nthe call site cannot know which), and rust's io::BufReader::new. Any design here\nmust be stated in terms a second language can consume, per the standing\ntwo-languages rule.\n\nSEQUENCING AND SCOPE DISCIPLINE. Do NOT let this item quietly close INV-bagok by\nemitting BOTH boundaries -- INV-zumin already ruled that multiplying class (b)\nrows is \"actively wrong ... the expensive direction\", and its `simultaneous: true`\nmarker was deliberately withheld from this class. The deliverable is inference\nwith a single answer per call site plus an honest abstention when the origin is\nnot recoverable, not a row that asserts several.\n\nBEFORE BUILDING: measure what fraction of the 153 undecidable sites the existing\ndataflow actually resolves. If it is low the item is much bigger than it looks,\nand that number should be published before any design is chosen."  # 2d29
+    fields: {}  # 2d29
+- op: update  # 9602
+  at: '2026-08-30T08:42:51Z'  # 9602
+  by: agent  # 9602
+  actor: jgstern_agent  # 9602
+  clock: 2  # 9602
+  nonce: '9602'  # 9602
+  set: {}  # 9602
+  add:  # 9602
+    isbefore: [INV-bagok-mipoj-zuluj-rihoh-kizog-gapil-gariz-bivof]  # 9602
