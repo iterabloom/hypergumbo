@@ -1,0 +1,64 @@
+Original commit body from 043be0a399c5650fa66c1c318153228e14795d7b:
+
+ADR-0049 §"Open work" step 3 -- adjudicated findings per shape -- is the last
+gate before the deferred-crossing family may be retagged, and it is the one
+that asks what the family's findings are actually WORTH. Two arms, and they
+disagree, and the disagreement is the result.
+
+ARM 1, from measurement 0006's own two-pass labels: the family is 7 situations
+of 112 (11 rows), 0 TP, 0 useful, against a 33.0% population. ARM 2, a fresh
+census over 0006's sixteen repositories plus caddy: 50 situations / 411 rows,
+48.0% correctness, 22.0% useful.
+
+SHAPE IS NOT THE DISCRIMINATOR. What the source line does is:
+
+  DEFERRED       arrival really is in another scope        3    0 TP   0 useful
+  WIRING         cmd.Stdin = os.Stdin, never read here     8    0 TP   0 useful
+  WRONG-CHANNEL  wraps a file or a buffer, not stdin      17   10 TP   0 useful
+  READ-IN-SCOPE  the handle is read where it was built    22   14 TP  11 useful
+
+THE REFUTATION CONDITION WAS WRITTEN DOWN BEFORE ANY LABEL AND IT FIRED,
+ELEVEN TIMES. bufio.NewReader(os.Stdin) returns a handle and so fails ruling 1
+exactly as ListenAndServe does -- but it is read four lines later in the same
+function, so "the scope the call does not name" IS the caller's and the mint is
+not a mis-attribution. Go's ENTIRE stdin surface is three deferred-crossing
+rows and the catalogue has no ReadString/Scan/Text/File.Read to relocate a
+crossing to, so retagging the HANDLE shape is forbidden by ruling 3 on its own
+terms. Catalogue the reads first.
+
+LAUNCH IS UNANIMOUS AND THIN, and the second half is published as loudly as the
+first: every adjudicated launch-family finding in both arms is a false positive
+(2 here, 4 in 0006), and that is ALL the evidence 17 repositories contain. An
+over-counting grep finds 49 files with a launch-shaped call against 2 findings,
+because jaeger returned inconclusive on all three untrusted-input claims and
+cilium's framework rows are WI-lalot-inert. The retag is a correctness fix
+worth about two findings, not a precision fix.
+
+REGISTER, LAZY and CALLBACK produced no findings at all. That is absence of
+evidence, not evidence of harmlessness, and step 3 is not cleared for them.
+
+FIRST CONFIGURED-ACTION FINDINGS THIS PROJECT HAS ADJUDICATED -- three, all in
+caddy, including ADR-0046's own motivating example citable clause by clause.
+0006 reported zero structurally; ADR-0046 said a cohort meant to exercise the
+class must contain one, so this one does.
+
+TWO REGISTER CORRECTIONS AND AN ARTIFACT TRAP. ets:foldl is a TRANSFER, not
+callback-delivered -- it returns the accumulator, unlike ftplib.retrbinary
+which returns a status; 15 situations, 23% of the raw join, moved out of the
+family on that. And measurement_0006/ledger-final.json IS NOT FINAL: it carries
+the blind pass's 44 TPs while the published 38 is what survives pass 4's
+refutations, which live in a separate file. Arm 1 asserted 38 against the file
+whose name says "final", failed, and only then found them -- tmux#3 is one of
+the seven refuted, so it is an FP here and would have been published as a TP.
+Filed as WI-tuhop.
+
+TWO CLAIMS IN STEP 3 ITSELF WERE WRONG AND ARE CORRECTED IN PLACE. 0006's
+corpus does not contain caddy (it was 0005's, and 0006 excluded 0005's five by
+construction -- which is exactly why 0006 could call its zero CONFIGURED-ACTION
+count structural rather than lucky). And it is not true that zero launch-family
+findings appear among the 112: seven do, three of them the C socket datapoint
+the same sentence went on to name. The ADR's "Implementation state" claim that
+no catalogue row uses net_listen is excised too; eleven have since INV-kanuk.
+
+Racial-Capitalism-Is-Bad: a seahorse reading a newspaper in a levitating taxi cab in a subterranean station with a regiment of lizards made of kiddush cups
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
