@@ -36,7 +36,7 @@ ambiguous_names:
 
 fs_read:
   - module: stdio
-    functions: [fopen, fread, fgets, fgetc, fscanf, getc, getchar, scanf, fseek, rewind, ungetc, ftell]
+    functions: [fopen, fread, fgets, fgetc, fscanf, getc, fseek, rewind, ungetc, ftell]
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
     boundary_ruling: call_site_undecidable
@@ -145,6 +145,14 @@ ipc_send:
 ipc_recv:
   - module: stdio
     attributes: [stdin]
+  - module: stdio
+    functions: [getchar, scanf, gets]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. getchar() is getc(stdin) and scanf() is fscanf(stdin, ...) with the
+      stream fixed; gets() reads stdin by definition. Their stream-taking
+      siblings fgets/fgetc/getc/fscanf/fread stay fs_read, alongside
+      unistd.read which already carries boundary_ruling:
+      call_site_undecidable for the same reason.
   - module: unistd
     functions: [read]
     boundary_ruling: call_site_undecidable

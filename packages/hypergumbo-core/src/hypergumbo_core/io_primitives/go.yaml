@@ -15,6 +15,7 @@ status: in_progress
 # to avoid false positives like t.Run() → gin.Engine.Run.
 ambiguous_names:
   - Read          # io.Reader.Read vs any .Read() method
+  - Scan          # fmt.Scan vs bufio.Scanner.Scan, sql.Rows.Scan
   - Write         # io.Writer.Write vs any .Write() method
   - Run           # exec.Cmd.Run vs testing.T.Run, cobra.Command.Run
   - Start         # exec.Cmd.Start vs any .Start() method
@@ -194,6 +195,13 @@ logging:
     notes: "slog.Logger instance methods"
 
 ipc_recv:
+  - module: fmt
+    functions: [Scan, Scanln, Scanf]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. fmt.Fscan/Fscanf take an io.Reader and fmt.Sscan takes a string,
+      so neither family is here. Scan is declared ambiguous above because
+      bufio.Scanner.Scan shares the short name and Go leaves an untyped
+      receiver with no module hint at all.
   - module: os
     attributes: [Stdin]
   - module: bufio

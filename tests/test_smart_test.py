@@ -301,3 +301,93 @@ class TestDocGateSelection:
         text = SMART_TEST.read_text()
         assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || true)' in text
         assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)' not in text
+
+
+def _catalogue_gate_greps() -> list[str]:
+    """Pull the live catalogue-gate grep spellings out of the script."""
+    text = SMART_TEST.read_text()
+    block = text.split("CATALOGUE_GATE_TESTS=", 1)
+    assert len(block) == 2, "CATALOGUE_GATE_TESTS assignment not found in smart-test"
+    body = block[1].split("} | sort -u)", 1)[0]
+    return [a or b for a, b in re.findall(r"grep -rlF (?:'([^']*)'|\"([^\"]*)\")", body)]
+
+
+def _tests_matching(needle: str) -> set[str]:
+    """Every package or root test containing ``needle``, by the script's rule."""
+    found = set()
+    for base in sorted(REPO_ROOT.glob("packages/*/tests")):
+        found |= {p.name for p in base.glob("test_*.py")
+                  if needle in p.read_text(encoding="utf-8", errors="ignore")}
+    found |= {p.name for p in (REPO_ROOT / "tests").glob("test_*.py")
+              if needle in p.read_text(encoding="utf-8", errors="ignore")}
+    return found
+
+
+class TestCatalogueGateSelection:
+    """INV-muvis: a catalogue YAML change must run the tests that read it.
+
+    MEASURED, on the change that prompted it. Moving stdin readers between
+    boundaries in five ``io_primitives`` files produced
+    ``Targeted run (2 test files, 0 changed sources)`` — and both of those were
+    the tests that same commit added. CI runs the COMMITTED manifest, so the
+    io-boundary and taint suites the change could break would not have run.
+
+    This is INV-kafak's defect in a second change class, which is why the fix
+    is the same derived-from-the-tree shape rather than a list of file names.
+    """
+
+    def test_the_catalogue_pattern_selects_a_catalogue_and_nothing_else(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_CATALOGUE_FILES")
+        assert _pattern_selects(
+            pattern,
+            "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/go.yaml",
+        )
+        assert _pattern_selects(
+            pattern,
+            "packages/hypergumbo-core/src/hypergumbo_core/io_primitives_overlays/"
+            "go-web-frameworks.yaml",
+        )
+        assert not _pattern_selects(
+            pattern,
+            "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py",
+        )
+        assert not _pattern_selects(pattern, "docs/measurements/0010-shapes.md")
+
+    def test_the_gate_set_is_derived_from_the_tree(self) -> None:
+        """No hardcoded roster: every selected name must exist as a test file."""
+        selected: set[str] = set()
+        for needle in _catalogue_gate_greps():
+            selected |= _tests_matching(needle)
+        assert selected, "the catalogue gate selects nothing at all"
+        names = {p.name for p in REPO_ROOT.glob("packages/*/tests/test_*.py")}
+        names |= {p.name for p in (REPO_ROOT / "tests").glob("test_*.py")}
+        assert selected <= names
+
+    def test_the_change_that_prompted_this_is_now_selected(self) -> None:
+        """The regression, named. These read the catalogue and ran on neither arm."""
+        selected: set[str] = set()
+        for needle in _catalogue_gate_greps():
+            selected |= _tests_matching(needle)
+        assert "test_unconditional_stdin_reads.py" in selected
+        assert "test_inv_nular_false_sources.py" in selected
+        assert "test_deferred_crossing_boundary.py" in selected
+
+    def test_every_arm_contributes_or_the_comment_is_wrong(self) -> None:
+        """The script claims three spellings each catch something the others miss.
+
+        A redundant arm is not harmful, but a comment asserting it is
+        load-bearing when it is not is — that exact claim was refuted once
+        already on the doc gate. So this measures rather than trusts: each arm
+        must select at least one file, and the union must be a strict superset
+        of at least one arm, or the comment above it needs rewriting.
+        """
+        per_arm = {n: _tests_matching(n) for n in _catalogue_gate_greps()}
+        for needle, hits in per_arm.items():
+            assert hits, f"the {needle!r} arm selects nothing"
+        union: set[str] = set()
+        for hits in per_arm.values():
+            union |= hits
+        assert any(union > hits for hits in per_arm.values()), (
+            "no arm is a proper subset of the union — the union is one arm "
+            "restated, and the script's comment should say so"
+        )
