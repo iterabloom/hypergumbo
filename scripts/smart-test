@@ -952,6 +952,40 @@ if [[ -n "$(echo "$UNMAPPED_TOP_LEVEL" | sed '/^$/d')" ]]; then
     AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$ROOT_SUITE" | sed '/^$/d' | sort -u)
 fi
 
+# INV-kafak: the gates that GOVERN documents live in the root suite, and a
+# docs-only change selected NOTHING — measured, not inferred: `smart-test
+# --manifest` on a tree whose only edits were `docs/` and `CHANGELOG.md` wrote
+# "Selected tests: 0", and measurement 0009 merged green while failing
+# `check-measurement-frame`, the gate ADR-0048 §A3 built for exactly that file.
+# So on the one change class those gates exist to check, the selector ran every
+# test except them.
+#
+# THE SELECTION IS DERIVED FROM THE TREE, NOT LISTED. A hardcoded roster would
+# cover today's thirteen doc-reading root tests and leave the fourteenth green
+# and unrun on the commit that adds it — the decay that put nine of fifteen
+# languages in `F2_LANGS`. Grepping the root suite for a `docs/` reference is
+# the same shape as the reverse-slice: whatever reads the tree is what runs.
+# Over-select, never under-select — the whole set is ~180 tests in ~5 seconds.
+CHANGED_DOC_FILES=$(echo "$CHANGED_FILES" | grep -E '^docs/' || echo "")
+if [[ -n "$CHANGED_DOC_FILES" ]]; then
+    # Three spellings, unioned. `docs/` is the load-bearing one and today it
+    # alone reaches all thirteen gates; the two quoted-bareword arms are
+    # DEFENSIVE, for a gate spelled `Path("docs") / "adr"` — a form no root
+    # test currently uses. That is measured, not assumed: a test asserts the
+    # union is a superset of every arm and would fail if an arm ever went
+    # missing, and the redundancy is stated here rather than left for someone
+    # to discover and "tidy".
+    DOC_GATE_TESTS=$(cd "$REPO_ROOT" && {
+        grep -lF 'docs/'  tests/test_*.py 2>/dev/null || true
+        grep -lF '"docs"' tests/test_*.py 2>/dev/null || true
+        grep -lF "'docs'" tests/test_*.py 2>/dev/null || true
+    } | sort -u)
+    if [[ -n "$DOC_GATE_TESTS" ]]; then
+        log "Docs changed - unioning the root tests that read docs/ (INV-kafak)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$DOC_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
     if [[ -z "$CHANGED_SOURCE_FILES" ]]; then
@@ -1245,7 +1279,14 @@ if [[ "$VERBOSE" == "true" ]]; then
 fi
 
 # CHANGED_SOURCE_FILES already computed above (before the empty-tests check)
-SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)
+#
+# `grep -c .` PRINTS 0 AND EXITS 1 ON EMPTY INPUT, so the old `|| echo 0` fired
+# IN ADDITION to grep's own "0" and made SOURCE_COUNT the two-line string
+# "0\n0" — writing a bare `0` line into the manifest header between two `#`
+# comments. It was unreachable until INV-kafak's doc-gate union, because a
+# change with zero source files used to exit at the docs/config-only branch
+# above and never reach this writer. `|| true` keeps grep's own count.
+SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || true)
 
 # Write manifest
 mkdir -p "$MANIFEST_DIR"

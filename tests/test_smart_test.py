@@ -209,3 +209,95 @@ class TestFixturePattern:
             pattern, "packages/hypergumbo-core/src/hypergumbo_core/fixtures.py"
         )
         assert not _pattern_selects(pattern, "docs/fixtures/example.json")
+
+
+def _doc_gate_greps() -> list[str]:
+    """Pull the live doc-gate grep spellings out of the script.
+
+    Extracted rather than restated for the reason the module docstring gives:
+    a copy is free to drift from what ships. If the union is ever narrowed to
+    one spelling, this returns one and the coverage assertion below fails.
+    """
+    text = SMART_TEST.read_text()
+    block = text.split("DOC_GATE_TESTS=", 1)
+    assert len(block) == 2, "DOC_GATE_TESTS assignment not found in smart-test"
+    body = block[1].split("} | sort -u)", 1)[0]
+    found = re.findall(r"grep -lF (?:'([^']*)'|\"([^\"]*)\")", body)
+    return [a or b for a, b in found]
+
+
+def _root_tests_matching(needle: str) -> set[str]:
+    """Root tests containing ``needle``, by the script's own fixed-string rule."""
+    return {
+        p.name
+        for p in sorted((REPO_ROOT / "tests").glob("test_*.py"))
+        if needle in p.read_text(encoding="utf-8")
+    }
+
+
+class TestDocGateSelection:
+    """INV-kafak: the gates that GOVERN documents must run on document changes.
+
+    Measured, not inferred. ``smart-test --manifest`` on a tree whose only
+    edits were under ``docs/`` wrote ``Selected tests: 0``, and measurement
+    0009 merged green while failing ``check-measurement-frame`` — the gate
+    ADR-0048 §A3 exists for. On the one change class those gates check, the
+    selector ran every test except them."""
+
+    def test_the_docs_pattern_selects_a_document_and_nothing_else(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_DOC_FILES")
+        assert _pattern_selects(pattern, "docs/measurements/0010-shapes.md")
+        assert _pattern_selects(pattern, "docs/adr/0049-deferred.md")
+        assert not _pattern_selects(pattern, "CHANGELOG.md")
+        assert not _pattern_selects(
+            pattern, "packages/hypergumbo-core/src/hypergumbo_core/ir.py"
+        )
+        assert not _pattern_selects(pattern, "notdocs/thing.md")
+
+    def test_the_gate_set_is_derived_from_the_tree(self) -> None:
+        """A hardcoded roster would cover today's gates and leave the next one
+        green and unrun — the decay that put nine of fifteen languages in
+        ``F2_LANGS``. The selection must glob the root suite."""
+        text = SMART_TEST.read_text()
+        assert "DOC_GATE_TESTS" in text
+        head = text.split("DOC_GATE_TESTS=", 1)[1][:600]
+        assert "tests/test_*.py" in head
+
+    def test_the_regression_that_merged_is_now_selected(self) -> None:
+        """The specific gate a docs-only PR skipped while breaking it."""
+        selected: set[str] = set()
+        for needle in _doc_gate_greps():
+            selected |= _root_tests_matching(needle)
+        assert "test_check_measurement_frame.py" in selected
+        assert "test_adr_readme_index_sync.py" in selected
+        assert "test_adr_supersession_symmetry.py" in selected
+
+    def test_the_union_is_a_superset_of_every_arm(self) -> None:
+        """The three arms are not equally load-bearing and the script says so.
+
+        `docs/` alone currently reaches all thirteen gates; the two
+        quoted-bareword arms are defensive, for a `Path("docs") / "adr"`
+        spelling no root test uses today. This asserted strict inequality
+        first and FAILED, which is how that was established rather than
+        assumed — the comment in the script was corrected to match. What is
+        pinned here is the property that actually matters: no arm reaches
+        outside the union, and the union is never smaller than the path arm."""
+        greps = _doc_gate_greps()
+        assert len(greps) >= 3, greps
+        union: set[str] = set()
+        for needle in greps:
+            union |= _root_tests_matching(needle)
+        for needle in greps:
+            assert _root_tests_matching(needle) <= union, needle
+        assert _root_tests_matching("docs/") <= union
+        assert len(union) >= 13, sorted(union)
+
+    def test_the_source_count_no_longer_writes_a_stray_zero(self) -> None:
+        """``grep -c .`` PRINTS 0 and EXITS 1 on empty input, so ``|| echo 0``
+        fired in addition to grep's own count and made SOURCE_COUNT the
+        two-line string ``0\\n0`` — a bare ``0`` in the manifest header between
+        two ``#`` comments. Latent until the doc-gate union made this writer
+        reachable with zero changed sources."""
+        text = SMART_TEST.read_text()
+        assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || true)' in text
+        assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)' not in text
