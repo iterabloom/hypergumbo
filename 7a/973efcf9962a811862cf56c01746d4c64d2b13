@@ -1,0 +1,46 @@
+Original commit body from 037bdaea0294ee326a7ee5727b21324cfabb41d7:
+
+The ambiguous-entry error appended "or filter with --language" UNCONDITIONALLY,
+so an ambiguity whose candidates all share a language sent the user round a
+loop: `--entry find_files` lists two python candidates, `--language python`
+returns the identical error. Reported twice from dogfooding, on two different
+candidate shapes -- a real symbol against a
+`python:external:0-0:...:unresolved` synthetic, and a same-name collision across
+two packages (`cli:main`).
+
+The suggestion is now offered only when the language axis actually SPLITS the
+candidate set, which is the branch the item's own fold-in note called for
+(`len({c.language for c in candidates})`). Its invariant phrasing: an ambiguity
+error "should not suggest --language as a remedy if the ambiguous candidates
+already share a language; the suggested fix should be applicable."
+
+NOTHING IS SUBSTITUTED FOR IT, AND THAT IS THE POINT. The tempting additions are
+inapplicable: `slice --path` is the REPO ROOT, not a file filter, and slice has
+no `--file` flag. A first draft of the test asserted `--path` and was WRONG for
+exactly that reason -- caught by reading `slice --help` instead of assuming,
+which would otherwise have replaced one inapplicable suggestion with another in
+the fix whose whole point is that suggested remedies must work. `--entry`
+accepts "symbol name, file path, node ID" and every candidate's ID is already
+printed above the hint, so the full-ID remedy was always the applicable one.
+
+THE FIX REACHES `explain` FOR FREE. INV-nogof (satisfied, PR #529) extracted
+`raise_if_ambiguous` so slice and explain share one ambiguity POLICY and one
+error class; improving the message improves both. That surfaced a stale comment
+in cmd_explain asserting "the error message already names those flags
+(AmbiguousEntryError -> 'filter with --language')", which is no longer
+unconditionally true. The corrected comment also records why the shared message
+does NOT name `--file`: explain HAS that flag and slice does not, so naming it
+in a message the two SHARE would be inapplicable advice one command over -- the
+same defect class, one consumer over.
+
+A CONTROL PINS THE CASE THE HINT WAS WRITTEN FOR: candidates in different
+languages must KEEP the --language suggestion, because the cheapest way to pass
+the new test is to delete the hint outright and make a working remedy disappear.
+The pre-existing CLI assertion at test_cli_commands.py:2472 exercises a
+python/typescript pair, so it takes that branch and is unchanged.
+
+smart-test 4683 passed with all changed sources at 100%; 317 slice + CLI tests
+green.
+
+Racial-Capitalism-Is-Bad: a seahorse building a metamorphic outcrop shaped like pickling barrel made of paperclips
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
