@@ -29,3 +29,20 @@
   set: {}  # ed7b
   add:  # ed7b
     isbefore: [WI-nosah-lufim-rutok-batas-kojob-tujum-luboz-vanag]  # ed7b
+- op: update  # 958d
+  at: '2026-08-30T02:16:46Z'  # 958d
+  by: agent  # 958d
+  actor: jgstern_agent  # 958d
+  clock: 3  # 958d
+  nonce: 958d  # 958d
+  set:  # 958d
+    status: in_progress  # 958d
+  remove:  # 958d
+    isbefore: [WI-nosah-lufim-rutok-batas-kojob-tujum-luboz-vanag]  # 958d
+- op: discuss  # cd7e
+  at: '2026-08-30T02:16:46Z'  # cd7e
+  by: agent  # cd7e
+  actor: jgstern_agent  # cd7e
+  clock: 4  # cd7e
+  nonce: cd7e  # cd7e
+  message: "Starting. Cleared the stale isbefore edge to WI-nosah (net_listen shipped in #636, so this no longer gates anything). Design of the measurement recorded next."  # cd7e

@@ -1,0 +1,24 @@
+- op: create  # d44d
+  at: '2026-08-30T02:31:03Z'  # d44d
+  by: agent  # d44d
+  actor: jgstern_agent  # d44d
+  clock: 1  # d44d
+  nonce: d44d  # d44d
+  data:  # d44d
+    kind: invariant  # d44d
+    title: "js: 'process' is missing from JS_KNOWN_GLOBALS, so process.on is unreachable in the require-less spelling that Node code actually uses"  # d44d
+    status: violated  # d44d
+    priority: 2  # d44d
+    parent:  # d44d
+    tags:  # d44d
+    - catalogue  # d44d
+    - javascript  # d44d
+    - io_boundary  # d44d
+    isbefore: []  # d44d
+    duplicate_of: []  # d44d
+    not_duplicate_of: []  # d44d
+    pr_ref:  # d44d
+    description: "FOUND 2026-08-29 by measurement 0009 (WI-vapud), from the deferred-crossing\nregister rather than from a javascript investigation.\n\nTHE REPRO. One file, no `require` of `process` anywhere, two positive controls\nfiring in the same run:\n\n    function control()   { return fs.readFileSync('/etc/hosts'); }   MATCHED (control)\n    function storage()   { return localStorage.getItem('k'); }       MATCHED (control)\n    function readStdin() { return process.stdin; }                   MATCHED\n    function onMessage(h){ process.on('message', h); }               NO CHAIN\n\nAdding `const process = require('process')` to the same file makes `process.on`\nfire. So the row is correct and the classifier is fine; the ANALYZER does not\nresolve the receiver.\n\nTHE MECHANISM. `js_ts.py::JS_KNOWN_GLOBALS` is the set of named globals whose\nmember accesses resolve without an import -- console, localStorage,\nsessionStorage, document, navigator, window, Deno, caches, indexedDB. `process`\nis NOT in it. In Node, `process` is a true global that needs no require, and the\nrequire-less spelling is the dominant one, so the spelling that misses is the\ncommon one.\n\nWHY `process.stdin` STILL FIRES AND `process.on` DOES NOT. They travel different\nemitters: the attribute reaches io-boundaries as a `module_attr_ref` edge, the\nmethod call would need a `calls` edge and never gets one. That asymmetry is why\nthis reads as \"mostly working\" from the outside.\n\nNOT INV-misup. That item's mechanism is a CONSTRUCTOR-BOUND receiver\n(`ws = new WebSocket(url)`), which is a different failure with a different fix.\nThis one is a named global missing from a list.\n\nAFFECTED: `process.on` (ipc_recv) in the require-less spelling. `Deno` is in the\nset already, so the Deno rows are unaffected.\n\nSCOPE CHECK BEFORE FIXING: adding a name to JS_KNOWN_GLOBALS widens what a bare\nmember access resolves to, so check what else in the catalogue hangs off\n`process` and whether any of it collides with a first-party symbol named\n`process` -- that identifier is a plausible local variable name, unlike\n`localStorage`."  # d44d
+    fields:  # d44d
+      statement: "Every row in a shipped io_primitives catalogue is reachable by the analyzer that owns its language: if the source contains the call the row describes, an edge is emitted that the row can classify."  # d44d
+      root_cause: "js_ts.py::JS_KNOWN_GLOBALS enumerates the named globals whose member accesses resolve without an import and omits 'process', which is a true Node global. A require-less 'process.on(...)' therefore emits no calls edge. The sibling attribute 'process.stdin' still fires because it travels the separate module_attr_ref emitter, which masks the gap."  # d44d

@@ -1,0 +1,21 @@
+- op: create  # 23d5
+  at: '2026-08-30T02:31:27Z'  # 23d5
+  by: agent  # 23d5
+  actor: jgstern_agent  # 23d5
+  clock: 1  # 23d5
+  nonce: 23d5  # 23d5
+  data:  # 23d5
+    kind: work_item  # 23d5
+    title: "objc NSURLConnection.sendAsynchronousRequest:queue:completionHandler: is the one row of 335 that cannot match even with a perfect module hint"  # 23d5
+    status: todo_hard  # 23d5
+    priority: 3  # 23d5
+    parent:  # 23d5
+    tags:  # 23d5
+    - catalogue  # 23d5
+    - io_boundary  # 23d5
+    isbefore: []  # 23d5
+    duplicate_of: []  # 23d5
+    not_duplicate_of: []  # 23d5
+    pr_ref:  # 23d5
+    description: "FOUND 2026-08-29 by measurement 0009 (WI-vapud), L1 gate layer.\n\nTHE FINDING. Of 335 own rows across net_recv / db_read / ipc_recv, exactly ONE\ncannot be matched even when handed a PERFECT module hint -- the row's own module\nstring, with the call_construct its own kind declares:\n\n    catalog.lookup_with_module(\n        \"sendAsynchronousRequest:queue:completionHandler:\",\n        \"NSURLConnection\", call_construct=\"method\")   -> does not return this row\n\nEvery other row in the population (334 of 335, including the sibling\n`NSURLConnection.sendSynchronousRequest:returningResponse:error:`) matches under\nthe same probe. So this is not a general objc problem and not a gate-design\nproblem; it is one row.\n\nWHY IT MATTERS DESPITE BEING ONE ROW. It is the FLOOR of reachability: a row\nthat fails the catalogue lookup with a perfect hint cannot be reached by any\nanalyzer improvement, so it is dead vocabulary that reads as coverage. The row\nis also a genuine ADR-0049 deferred crossing (the response is delivered to the\ncompletion handler, not returned), so it would otherwise be in scope for the\nINV-kanuk retag -- retagging a row that cannot match is pure motion.\n\nNOT YET DIAGNOSED. The obvious suspects are the selector's length or its\nmultiple colons interacting with a name/module split somewhere in the lookup\npath, but this was found by a census probe and not chased -- see\n`~/hypergumbo_lab_notebook/vapud_reach_08292026/gate.py`, which reproduces it in\nisolation in about ten lines.\n\nREPRO IS IN THE ARTIFACT: run gate.py; the row is printed under \"DEFERRED, dead\nat the gate even with a perfect module hint\"."  # 23d5
+    fields: {}  # 23d5
