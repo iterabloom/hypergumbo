@@ -2196,6 +2196,16 @@ def _extract_edges_from_file(
 
                     if callee_name:
                         resolved = False
+                        # WI-dizag: Strategy 1.5 resolves a self.field
+                        # receiver's type and then uses it ONLY to find a
+                        # first-party symbol. When the field's type is
+                        # EXTERNAL that lookup misses and the type was
+                        # dropped, so the call fell through to the
+                        # unresolved branch carrying the bare ``external``
+                        # placeholder. Carried here so the external branch
+                        # below can put it in the module slot -- the same
+                        # move PR #595 made for ``_var_types``.
+                        field_receiver_type: str | None = None
 
                         # Async spawn detection: tokio::spawn(task()),
                         # tokio::task::spawn(task()), rayon::spawn(task())
@@ -2343,6 +2353,9 @@ def _extract_edges_from_file(
                                     value_node, source, impl_target,
                                 )
                                 if receiver_type is not None:
+                                    # WI-dizag: keep it whether or not the
+                                    # first-party lookup below succeeds.
+                                    field_receiver_type = receiver_type
                                     # Strip module prefix from scoped types
                                     # (e.g., "std::sync::Mutex" → "Mutex")
                                     # because symbols are stored with bare names.
@@ -2711,6 +2724,43 @@ def _extract_edges_from_file(
                                                     module_path=_full,
                                                     name=callee_name,
                                                 )
+                                    # WI-dizag: the FIELD receiver's type, when
+                                    # the identifier arm above found nothing. The
+                                    # arm above requires ``_recv.type ==
+                                    # "identifier"``, so ``self.f.write_all(..)``
+                                    # never reaches it -- the receiver node is a
+                                    # ``field_expression``. Strategy 1.5 already
+                                    # resolved that chain through the struct
+                                    # field-type registry; this is the same
+                                    # module-slot recovery applied to the type it
+                                    # computed.
+                                    #
+                                    # SAME NARROWNESS AS #595: module SLOT only,
+                                    # ``has_explicit_binding`` untouched, so which
+                                    # edges get emitted -- including the
+                                    # generic-trait-method suppression below -- is
+                                    # byte-identical.
+                                    if (
+                                        ext_ref is None
+                                        and not has_explicit_binding
+                                        and is_method_call
+                                        and field_receiver_type
+                                    ):
+                                        # A scoped type names its own module;
+                                        # a bare one needs the use-alias that
+                                        # brought it in (``use std::fs::File``).
+                                        _ft = field_receiver_type
+                                        _fpath = (
+                                            _ft if "::" in _ft
+                                            else use_aliases.get(_ft)
+                                        )
+                                        if _fpath and "::" in _fpath:
+                                            module_hint = _fpath
+                                            ext_ref = ExternalRef(
+                                                lang="rust",
+                                                module_path=_fpath,
+                                                name=callee_name,
+                                            )
                                     if has_explicit_binding or callee_name not in _RUST_GENERIC_TRAIT_METHODS:
                                         edges.append(make_unresolved_edge(
                                             "rust", current_function.id, unresolved_name,
