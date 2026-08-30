@@ -966,6 +966,32 @@ fi
 # languages in `F2_LANGS`. Grepping the root suite for a `docs/` reference is
 # the same shape as the reverse-slice: whatever reads the tree is what runs.
 # Over-select, never under-select — the whole set is ~180 tests in ~5 seconds.
+# INV-muvis / INV-kafak, second instance: the CATALOGUE has the same hole
+# documents had. The slice above keys on `^packages/.*/src/.*\.py$`, and an
+# io_primitives YAML is not a Python source file — so a change that moves a row
+# between boundaries in five languages selected TWO test files, both of them the
+# ones the same commit added. CI then runs that committed manifest, so the
+# io-boundary and taint suites the change could break would not have run at all.
+#
+# DERIVED FROM THE TREE, NOT LISTED, for the reason the doc gate gives: a
+# hardcoded roster covers the cases someone already thought of, while a grep
+# covers the next test on the commit that adds it. Three fixed strings, unioned:
+# `load_catalog` and `io_primitives` are the direct readers, `io_boundary` is
+# the module every consumer imports and is what catches a test that exercises
+# classification without naming a catalogue.
+CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/(io_primitives|io_primitives_overlays)/.*\.ya?ml$' || echo "")
+if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
+    CATALOGUE_GATE_TESTS=$(cd "$REPO_ROOT" && {
+        grep -rlF 'load_catalog'   packages/*/tests/*.py tests/*.py 2>/dev/null || true
+        grep -rlF 'io_primitives'  packages/*/tests/*.py tests/*.py 2>/dev/null || true
+        grep -rlF 'io_boundary'    packages/*/tests/*.py tests/*.py 2>/dev/null || true
+    } | sort -u)
+    if [[ -n "$CATALOGUE_GATE_TESTS" ]]; then
+        log "Catalogue YAML changed - unioning the tests that read it (INV-muvis)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 CHANGED_DOC_FILES=$(echo "$CHANGED_FILES" | grep -E '^docs/' || echo "")
 if [[ -n "$CHANGED_DOC_FILES" ]]; then
     # Three spellings, unioned. `docs/` is the load-bearing one and today it

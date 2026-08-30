@@ -107,6 +107,15 @@ ambiguous_names:
 # ---------------------------------------------------------------------------
 # Scala stdlib I/O
 # ---------------------------------------------------------------------------
+ipc_recv:
+  - module: scala.io.StdIn
+    functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. MOVED from fs_read (INV-muvis), where the row sat under the note
+      "Scala stdlib stdin reading" -- the note named the stream and the boundary
+      named the filesystem. fs_read is absent from AUTO_SOURCE_LABEL_MAP, so all
+      ten minted nothing. scala.io.Source.fromFile and its peers stay fs_read.
+
 fs_read:
   - module: scala.io.Source
     # from* are companion-object static factories (Source.fromFile(p)) — no
@@ -117,9 +126,6 @@ fs_read:
     functions: [fromFile, fromURL, fromInputStream, fromResource]
     methods: [getLines, mkString]
     notes: "Scala stdlib file/URL reading (from* are companion-object factories)"
-  - module: scala.io.StdIn
-    functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
-    notes: "Scala stdlib stdin reading"
   - module: scala.io.Codec
     # Codec.fromFile is a companion-object factory (no value receiver).
     functions: [fromFile]

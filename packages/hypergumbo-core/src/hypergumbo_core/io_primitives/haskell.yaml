@@ -48,9 +48,33 @@ ambiguous_names:
   - trace         # Debug.Trace.trace vs any .trace
   - yield         # Control.Concurrent.yield vs any .yield
 
+# ADR-0016 boundary order note: ipc_recv precedes fs_read here only because the
+# stdin family is the one a reader most often needs to find.
+ipc_recv:
+  - module: Prelude
+    functions: [getLine, getChar, getContents, readLn, interact]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. All five are fixed to stdin: getContents is hGetContents stdin,
+      readLn is getLine >>= readIO, and interact reads all of stdin (its stdout
+      half is not represented here -- System.IO's handle-based writers carry
+      that, under their own INV-vaduk ruling). System.IO.hGetLine / hGetChar /
+      hGetContents take a Handle and stay fs_read.
+  - module: Data.Text.IO
+    functions: [getContents, getLine]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. The Data.Text mirrors of Prelude's stdin readers. readFile and the
+      hGet* family in this module stay fs_read.
+
 fs_read:
   - module: Prelude
-    functions: [readFile, getContents, readIO, readLn, interact]
+    functions: [readFile, readIO]
+    notes: >-
+      getContents/readLn/interact MOVED to ipc_recv (INV-muvis): they read
+      stdin, and fs_read is absent from AUTO_SOURCE_LABEL_MAP, so they minted no
+      taint source at all. readIO is left here under protest -- its type is
+      String -> IO a, so it parses a value already in hand and crosses NO
+      boundary; that is INV-zumin class (d) (a row that is simply wrong rather
+      than multi-valued) and it is filed separately rather than fixed here.
   - module: System.IO
     functions: [hGetContents, hGetLine, hGetChar, hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
   - module: System.Directory
@@ -58,7 +82,8 @@ fs_read:
   - module: Data.ByteString
     functions: [readFile, hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
   - module: Data.Text.IO
-    functions: [readFile, hGetContents, hGetLine, getContents, getLine]
+    functions: [readFile, hGetContents, hGetLine]
+    notes: "getContents/getLine MOVED to ipc_recv (INV-muvis) -- they read stdin."
 
 fs_write:
   - module: Prelude

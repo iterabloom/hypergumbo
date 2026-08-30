@@ -76,7 +76,8 @@ ambiguous_names:
   - start         # Process.start vs any .start()
   - next          # Scanner.next vs builtins.next()
   - dump          # json.dump vs any .dump()
-  - input         # fileinput.input vs builtins.input (not IO boundary)
+  - input         # fileinput.input (fs_read) vs builtins.input (ipc_recv):
+                  # BOTH are boundaries, so a bare .input() must not pick one
   # INV-maluk: Path.replace and Path.rename are method primitives whose
   # short names collide with str / bytes / list / dict.replace and various
   # .rename() helpers (e.g. pandas DataFrame.rename). The 2026-04-23 audit
@@ -495,6 +496,14 @@ ipc_recv:
   # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
+  - module: builtins
+    functions: [input]
+    notes: >-
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. input() reads a line from stdin and is the canonical untrusted
+      source in Python. INV-foluz is the other half: py.py emits no call edge
+      for a bare input(), because BUILTIN_CONSTRUCTOR_NAMES is a hardcoded
+      frozenset({"open"}) rather than the catalogue-derived set that item's
+      root_cause describes -- so this row alone does not make the call visible.
   - module: sys.stdin
     functions: [read, readline, readlines]
     notes: "INV-ponad slot family; consistent with the sys attribute row in this section. functions:, not methods: - see the os.environ note."
