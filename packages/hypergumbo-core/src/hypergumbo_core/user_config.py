@@ -40,10 +40,22 @@ while it stays open.
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, Mapping, Optional
+
+# ``tomllib`` is stdlib from Python 3.11. Every package here declares
+# ``requires-python = ">=3.10"``, so a BARE top-level import breaks the declared
+# minimum -- and this module is imported broadly enough that the failure is not
+# graceful: the 2026-08-29 nightly py3.10 leg recorded
+# ``ModuleNotFoundError: No module named 'tomllib'`` against **2905 failed**
+# tests. The three other ``tomllib`` sites in this tree
+# (``profile.py``, ``linkers/subprocess_cli.py``, ``py_deps.py``) already carry
+# this fallback and comment it as the py3.10 path; this one was the outlier.
+try:  # pragma: no cover - the branch taken depends on the interpreter
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - py3.10 fallback
+    import tomli as tomllib
 
 #: Backends whose activation executes code from the analysed repository, and
 #: whose opt-in is therefore a trust grant rather than a preference (ADR-0045
