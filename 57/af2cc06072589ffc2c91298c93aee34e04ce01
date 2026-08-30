@@ -1,0 +1,92 @@
+Original commit body from a8d86eb7a5b84b17f388d3123ac68199bb855fac:
+
+AUTO_SOURCE_LABEL_MAP maps net_recv, ipc_recv and db_read to untrusted_input.
+fs_read IS NOT IN IT. So a stdin read declared fs_read mints no taint source at
+all -- not a weaker one, none. `scanf("%s", buf); system(buf);` in C produced no
+finding, and neither did `val s = StdIn.readLine(); Process(s).run()` in Scala.
+
+Swept over all fifteen catalogues rather than the one language the parent item
+named:
+
+  go       fmt.{Scan,Scanln,Scanf}                  ABSENT ENTIRELY
+  python   builtins.input                           ABSENT; ambiguous_names even
+                                                    asserted "not IO boundary"
+  c        stdio.{getchar,scanf}                    declared fs_read (+ gets,
+                                                    absent)
+  haskell  Prelude.{getContents,readLn,interact}     declared fs_read
+           Prelude.{getLine,getChar}                ABSENT ENTIRELY
+           Data.Text.IO.{getContents,getLine}        declared fs_read
+  scala    all ten scala.io.StdIn readers           declared fs_read, under a
+                                                    note reading "Scala stdlib
+                                                    stdin reading"
+
+cpp std.cin, c stdio.stdin and rust's whole std::io::Stdin surface were already
+ipc_recv -- same family, same shape, three languages right and five wrong, which
+is what makes this drift and not an unmade decision. It is INV-nular's rule in
+the RECALL direction where the ADR-0049 campaign has been sweeping the precision
+direction; counting them together would let the campaign report progress while
+the recall hole grows.
+
+THE SCOPE LINE IS THE ARGUMENT. A read that takes a STREAM -- fgets, fscanf,
+getc, fread, System.IO.hGetLine, java.util.Scanner.nextLine,
+bufio.Reader.ReadString -- crosses whatever that stream is attached to, which
+INV-zumin classes as undecidable at the call site and INV-bagok holds open. None
+moved. INV-zumin recorded that multiplying such rows is "actively wrong ... the
+expensive direction", so the remedy there is inference (WI-lipis), not a
+boundary swap. TestArgumentConditionedReadsDidNotMove fails if the line moves.
+
+"Scan" joins go's ambiguous_names in the same change and that is not incidental:
+fmt.Scan and bufio.Scanner.Scan share a short name, and Go leaves an untyped
+receiver with NO module hint, so the row without the guard would have tagged
+every sc.Scan() in every Go program as a stdin read -- manufacturing exactly the
+false sources this commit is the mirror of. Pinned both ways.
+
+THREE OF THE FIVE ROWS ARE CORRECTNESS-ONLY TODAY, measured per language on
+fixtures rather than assumed:
+  c        scanf/getchar   FIRES     go   fmt.Scan   FIRES
+  scala    emits scala:external:0-0:readLine and readLine is in ambiguous_names,
+           so the no-module gate withholds it -- unchanged by the retag, it was
+           equally unreachable as fs_read
+  haskell  NO call edge at all for "name <- getLine" in a do-block bind
+  python   NO call edge for a bare input() -- INV-foluz, confirmed on a run
+This is a TWO-language recall fix and a FIVE-language correctness fix; the two
+numbers are stated separately. The new mainstream test pins only the two live
+arms, because pinning the three dead ones would pin a bug in place.
+
+CORPUS EFFECT IS ZERO AND IS REPORTED, NOT BURIED. Six repositories re-classified
+under both catalogues in one process with the analyzer run once (shellcheck,
+tmate, tmux, caddy, jaeger, hypergumbo): not one boundary tag changes. A uniform
+zero across six repos is the signature of a broken probe, so the before-arm was
+positive-controlled first -- it returns fs_read for scala.io.StdIn.readLine where
+the after-arm returns ipc_recv. The population is genuinely that thin:
+word-boundary greps find ONE real getLine in shellcheck and ZERO
+getchar/scanf/gets in tmux, against 28 substring "hits" that are sscanf and
+fgets. Both numbers are recorded so the loose one cannot be quoted alone.
+
+ALSO FIXED, AND IT IS WHY THE ABOVE COULD BE TRUSTED: a catalogue-only change
+selected TWO test files, both of them ones this commit adds. smart-test slices on
+^packages/.*/src/.*\.py$ and a YAML catalogue is not a Python source file, so CI
+-- which runs the committed manifest -- would not have run the io-boundary or
+taint suites on a change that moves rows between boundaries in five languages.
+That is INV-kafak's defect in a second change class, so it gets INV-kafak's fix:
+a change under io_primitives/ or io_primitives_overlays/ unions every test naming
+load_catalog, io_primitives or io_boundary, found by grep across package and root
+test directories. 104 files select where 2 did. The three spellings are not
+ASSUMED load-bearing -- a test measures that each arm selects something and that
+the union properly exceeds at least one arm, because that exact claim about the
+doc gate was refuted the first time it was checked.
+
+One row was left wrong on purpose: haskell Prelude.readIO is fs_read and its type
+is String -> IO a, so it parses a value already in hand and crosses nothing --
+INV-zumin class (d), which that item says needs its own item rather than being
+absorbed by a neighbouring fix. Filed as INV-savuk, with a note in the row saying
+why. Its sibling readLn (= getLine >>= readIO) did move: the composite crosses
+and the parser it delegates to does not.
+
+smart-test 5120 passed across the 104 newly-selected files; 13446 core tests
+green in a full-package run.
+
+Rig: ~/hypergumbo_lab_notebook/vutav_reads_08302026/
+
+Racial-Capitalism-Is-Bad: a spectral opossum casting spells from a book a trophy from a bygone merger in a network of mycelium threads in a canyon overlook with a posse of pigeons in a mirrored ballroom shaped like banana
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
