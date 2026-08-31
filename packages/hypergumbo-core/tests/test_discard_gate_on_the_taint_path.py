@@ -221,7 +221,7 @@ def test_both_propagators_consult_the_shared_sink_predicate() -> None:
 def test_widening_the_discarding_set_moves_both_claim_paths() -> None:
     """THE GATE THAT WILL CATCH ME, and it is derived rather than listed.
 
-    INV-kosur is a ONE FACT, TWO HOMES defect: ``_DISCARDING_TARGET_KINDS``
+    INV-kosur is a ONE FACT, TWO HOMES defect: ``_NON_CROSSING_TARGET_KINDS``
     was consulted by the boundary path and nothing else. A later author who
     re-implements the taint clause with its own literal set — or widens the
     boundary set and forgets the taint arm — reintroduces exactly the split
@@ -232,8 +232,8 @@ def test_widening_the_discarding_set_moves_both_claim_paths() -> None:
     paths follow it to a value neither knew about. It fails the moment the two
     stop sharing one constant.
     """
-    widened = frozenset(io_boundary._DISCARDING_TARGET_KINDS | {"std_stream"})
-    with mock.patch.object(io_boundary, "_DISCARDING_TARGET_KINDS", widened):
+    widened = frozenset(io_boundary._NON_CROSSING_TARGET_KINDS | {"std_stream"})
+    with mock.patch.object(io_boundary, "_NON_CROSSING_TARGET_KINDS", widened):
         # The taint path follows.
         assert _structural("std_stream") == []
         # ... and so does the boundary path, over the same target kind.

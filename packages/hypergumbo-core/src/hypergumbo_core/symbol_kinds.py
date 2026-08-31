@@ -885,13 +885,13 @@ def find_axis_drift(repo_root: Path) -> list[str]:
         # ``PROTOCOL_KINDS`` and ``BRIDGE_KINDS`` in ``edge_types.py``
         # are vocabularies for ``Edge.meta['protocol']`` /
         # ``Edge.meta['bridge_kind']`` — not ``Symbol.kind`` sets.
-        # ``_DISCARDING_TARGET_KINDS`` in ``io_boundary.py`` is the same
+        # ``_NON_CROSSING_TARGET_KINDS`` in ``io_boundary.py`` is the same
         # shape one axis over: the value space of
         # ``Edge.meta['io_target_kind']`` (INV-nular), which describes what
         # a call site's I/O TARGET is, not what a symbol is.
         # All three share the ``KIND`` substring but live on a different
         # axis; exclude them by name.
         excluded_target_names=(
-            "PROTOCOL_KINDS", "BRIDGE_KINDS", "_DISCARDING_TARGET_KINDS",
+            "PROTOCOL_KINDS", "BRIDGE_KINDS", "_NON_CROSSING_TARGET_KINDS",
         ),
     )

@@ -2085,6 +2085,47 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
 LITERAL_ONLY_ARG_SHAPE: Final[str] = "literal_only"
 
 
+def _source_call_can_mint_taint(edge: dict[str, Any]) -> bool:
+    """False when this call site provably reads nothing from outside.
+
+    WI-lipis, and the twin of :func:`_sink_call_can_carry_taint`. The sink side
+    already refuses a call site that hands its value to nothing
+    (``> /dev/null``); a source site that takes its value from nothing is the
+    same argument pointed the other way, and until now nothing asked it.
+
+    THE MEASURED CASE. ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as
+    ``ipc_recv`` -- which is in :data:`AUTO_SOURCE_LABEL_MAP`, so every call
+    site mints ``untrusted_input`` -- on the note "When wrapping os.Stdin", a
+    condition no catalogue row can enforce because the row sees the callee and
+    the answer is in the ARGUMENT. So
+    ``bufio.NewScanner(strings.NewReader(s))`` invented an untrusted-input
+    SOURCE out of a caller's string, and the DDG then confirmed a route from it
+    to ``exec.Command`` at ``confidence: precise`` -- a fully-confident false
+    positive built on a value that never left the process.
+
+    Measured on the ADR-0049 cohort's Go repositories: of the 83 bare-local
+    sites whose origin the shipped reaching-def solver resolves, 63 wrap an
+    ``os.Open`` handle (``fs_read``, deliberately NOT a taint source), 3 an
+    HTTP body, 1 a buffer, and **zero** wrap ``os.Stdin``. The row's own stated
+    condition holds nowhere in that population.
+
+    THE SAME VOCABULARY AS THE SINK SIDE, ON PURPOSE. Both ask
+    :func:`io_boundary.target_kinds_cross_no_boundary`, whose set holds
+    ``null_device`` (the kernel discards it) and ``in_memory`` (it never left
+    the process). One predicate, two directions, one home -- so widening the
+    vocabulary moves both arms and neither can drift.
+
+    WHAT IT DOES NOT DO. A bare local -- 64.8% of the measured population --
+    stamps nothing and is untouched here, because its boundary is the ORIGIN of
+    a variable and that is a dataflow question. Answering it is the rest of
+    WI-lipis; INV-zumin's ruling forbids answering it by emitting BOTH
+    boundaries, so the abstention stays an abstention.
+    """
+    return not target_kinds_cross_no_boundary(
+        call_site_target_kinds(edge.get("meta") or {}),
+    )
+
+
 def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
     """False when this call site provably cannot be the sink of a flow.
 
@@ -2568,7 +2609,7 @@ def propagate_taint_structural(
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
         )
-        if matched:
+        if matched and _source_call_can_mint_taint(edge):
             source_callers.append((edge["src"], edge["dst"], matched))
 
     # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an
@@ -3580,7 +3621,10 @@ def propagate_taint_ddg(
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
         )
-        if matched:
+        if matched and _source_call_can_mint_taint(edge):
+            # WI-lipis: the ddg arm asks the identical question through the
+            # identical predicate. Two copies is how the sink side's call
+            # family drifted across three consumers.
             source_callers.append((edge["src"], edge["dst"], matched))
 
     # INV-sukoh: one expression, one flow. ``os.environ.get(...)`` emits an

@@ -2147,7 +2147,24 @@ def call_site_modes(
 #: absent (a write to /dev/stderr really does leave the process and can publish
 #: a secret; it is a ``logging`` crossing, not a filesystem one) and so is
 #: ``unresolved`` (``> "$OUT"`` is a real write to a place we cannot name).
-_DISCARDING_TARGET_KINDS: Final[frozenset[str]] = frozenset({"null_device"})
+#: Target kinds at which a call site touches nothing outside this process.
+#:
+#: TWO DIFFERENT REASONS, ONE PREDICATE, and the name says the predicate rather
+#: than either reason -- it was ``_DISCARDING_TARGET_KINDS`` while
+#: ``null_device`` was the only member, and "discarding" is a WRITE-flavoured
+#: word that would have smuggled a second meaning under one name the moment a
+#: read joined it.
+#:
+#:   ``null_device``  the kernel throws the bytes away (INV-nular)
+#:   ``in_memory``    the bytes never left the process to begin with: a
+#:                    ``bufio.NewScanner(strings.NewReader(s))`` wraps a
+#:                    buffer, not a channel (WI-lipis)
+#:
+#: Both make the CLAIM FALSE rather than merely unproven, which is what
+#: licenses a gate on them at all.
+_NON_CROSSING_TARGET_KINDS: Final[frozenset[str]] = frozenset({
+    "null_device", "in_memory",
+})
 
 
 def call_site_target_kinds(
@@ -2192,7 +2209,7 @@ def target_kinds_cross_no_boundary(target_kinds: Sequence[str]) -> bool:
     is classified as it always was.
     """
     return bool(target_kinds) and all(
-        kind in _DISCARDING_TARGET_KINDS for kind in target_kinds
+        kind in _NON_CROSSING_TARGET_KINDS for kind in target_kinds
     )
 
 
