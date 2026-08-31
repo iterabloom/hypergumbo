@@ -1,0 +1,39 @@
+Original commit body from 793bb58ff818b940b76fa32222821bb1b85cf262:
+
+A sink that provably discards what it is handed was refused on the
+io-boundary claim path and accepted on the taint path. One repository
+holding one script whose only redirect is `echo "$API_KEY" > /dev/null`,
+verified twice against the same tree with the map pinned by --input:
+
+  {boundary: fs_write, must_not_exist: true}      confirmed  rc 0
+  {taint_flow: host_secret -> host_fs}            violated   rc 1
+
+Same tree, same edge, opposite verdicts. INV-nular wired
+target_kinds_cross_no_boundary into tag_io_boundaries; the taint arm
+derives its sinks straight from the catalogue and never saw the
+per-call-site io_target_kind.
+
+The clause lands in _sink_call_can_carry_taint, the one predicate both
+propagators already share, so it cannot be true of one arm and false of
+the other. Refusing further upstream in classify_call_in_catalog is not
+repeated -- INV-nular measured that worse, because the coverage gate asks
+"did the catalogue examine this call" and the answer is yes.
+
+One gate, one gap, established by enumeration: the boundary path reads
+call_site_modes and call_site_target_kinds; the taint path reads
+call_site_modes and call_arg_shape. Only target kinds were missing.
+
+Measured paired through the production CLI with the discarding vocabulary
+emptied to reproduce the pre-fix path (canary asserts the arms differ):
+cert-manager 37 -> 30 flows, spacedrive 81 -> 74, guacamole-client 12 -> 11.
+130 -> 115 overall, evidence rows 26 -> 14. Every removed row read back
+against source targets /dev/null; no real write was silenced.
+
+The source side is deliberately ungated -- no boundary carrying an
+io_target_kind stamp derives a taint source, so the clause would be
+unreachable -- and a test re-derives that premise from every shipped
+catalogue rather than asserting it in a comment.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
+Racial-Capitalism-Is-Bad: a red panda building a seamount shaped like top hat made of old recipe cards in a meteor-motif pizza parlor
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
