@@ -368,6 +368,23 @@ KNOWN_UNREACHABLE = {
     # the test under guard is. It runs in the same suite as its subject, so
     # the two never drift apart.
     "test_rct_pinned_standalone.py",
+    # INV-botuz. Its subject is not a file but the WHOLE PRODUCTION TREE: the
+    # walker enumerates 417 sources (78 of them extensionless python under
+    # scripts/) and fails on any import of a stdlib module whose debut is above
+    # the declared requires-python floor unless it sits inside a try catching
+    # ImportError. There is no source basename that could map it, because the
+    # defect it catches is a NEW import in a file that already existed.
+    #
+    # THIS ENTRY DISCLOSES A GAP RATHER THAN CLOSING ONE, and the distinction
+    # matters here more than for the scripts/lib/* entries above: the class of
+    # bug this gate exists for cost 2905 failed tests on the 2026-08-29 nightly
+    # py3.10 leg, and per-PR it will now go uncaught. It still runs post-merge
+    # in `full-suite` (`pytest tests/`, twice daily), so detection is bounded
+    # by the cron rather than absent. Closing it means selecting this file on
+    # any production-source change -- a fourth derived union in smart-test,
+    # beside the docs / catalogue-YAML / playbook ones -- which is filed
+    # separately rather than done inside an unrelated catalogue PR.
+    "test_stdlib_version_guarded_imports.py",
     # scripts/lib/* is deliberately unmapped (the module's own docstring
     # records the decision: sub-script basenames are generic and would
     # over-match). These test scripts/lib/pool_utils.py and forgejo-api.sh.
