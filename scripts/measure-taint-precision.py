@@ -217,6 +217,30 @@ def flows_from_payload(
                     "claim_id": claim_id,
                     "analysis_method": ev.get("analysis_method") or "structural",
                     "confidence": ev.get("confidence") or "approximate",
+                    # THE TOOL'S OWN DISCLOSURE ABOUT ITS OWN ROUTE, carried
+                    # forward rather than dropped. `verify-claims` stamps
+                    # `walk_verdict: "unavailable"` on every finding from the
+                    # STRUCTURAL propagator -- deliberately, because blank
+                    # would conflate "no walk was possible" with "this record
+                    # predates the field". This collector rebuilt each row
+                    # from an explicit key list and both fields were missing
+                    # from it, so every adjudication packet ever built here
+                    # printed an N-hop route and silently withheld the
+                    # statement that NO DATAFLOW WALK RAN and the route is
+                    # call-graph reachability. Measurement 0006's own
+                    # sample-112.json has neither key, so its two independent
+                    # 16-agent panels judged without it too.
+                    #
+                    # NOT defaulted. An absent field stays None: a map written
+                    # before the field existed made no claim about the walk,
+                    # and inventing "unavailable" for it would be the same
+                    # absence-means-two-things error the propagator's comment
+                    # exists to prevent. `walk_blocked_by` is the field
+                    # measurement 0007 partitioned blocked walks with, so
+                    # dropping it made that partition unrecoverable from a
+                    # flow file.
+                    "walk_verdict": ev.get("walk_verdict"),
+                    "walk_blocked_by": ev.get("walk_blocked_by"),
                     "source_symbol": ev.get("source_symbol", ""),
                     "source_primitive": ev.get("source_primitive", ""),
                     "source_module": ev.get("source_module", ""),
