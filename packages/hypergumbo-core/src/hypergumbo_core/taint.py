@@ -2206,16 +2206,43 @@ def _source_call_can_mint_taint(edge: dict[str, Any]) -> bool:
 def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
     """False when this call site provably cannot be the sink of a flow.
 
-    TWO INDEPENDENT PROOFS, and they live together because this is the one
+    THREE INDEPENDENT PROOFS, and they live together because this is the one
     place both propagators ask the question. The structural arm's own comment
     at its call site says why: two copies of this question is how the
     call-family set drifted across three consumers.
 
     PROOF ONE — INV-fubag: no argument at this call site can be the tainted
     value. PROOF TWO — INV-nular/INV-kosur: whatever is handed over is
-    discarded, so it reaches no zone at all. Either one makes the finding
-    false rather than merely unproven, which is what licenses a gate here at
-    all.
+    discarded, so it reaches no zone at all. PROOF THREE — WI-zovuz: no
+    externally-derived NAME can reach what the shell itself writes at this
+    redirect. Any one makes the finding false rather than merely unproven,
+    which is what licenses a gate here at all.
+
+    PROOF THREE, and why it is a proof rather than a heuristic. bash carries no
+    dataflow, so a redirect-sink finding rested on reachability alone: "this
+    file reads the environment somewhere AND reaches a function that writes
+    somewhere". ``redirect_origin_names`` closes the derivation over the whole
+    file — assignments, and positional parameters bound at every call site of
+    the enclosing function — and reports which externally-derived names can
+    reach the three things the SHELL contributes: the target operand, a
+    heredoc body it expands itself, and every producing stage's arguments. An
+    EMPTY list therefore says no value this program holds can be what crossed,
+    and bash's only taint sources are name-derived.
+
+    IT IS DELIBERATELY NOT THE BYTE-PRODUCER QUESTION, which was measured
+    WRONG. "Is the writer an external program?" deletes
+    ``echo "$SIGNING_CERT" | base64 -d > cert.pfx`` (beads), where a real
+    certificate is written and only stage ONE is a builtin, and it mistakes
+    ``sed -E "s#x#${v}#" f > out`` (cilium), where an in-process value is
+    interpolated THROUGH an external command. Asking which NAME can reach
+    survives both.
+
+    THE FETCH CASE IS LEFT OPEN ON PURPOSE. ``curl -L "$URL" > "$DEST"``
+    credits ``URL`` here, because deciding that curl's argument SELECTS a
+    remote resource rather than being interpolated into its output is
+    per-command semantics this gate does not have. That is INV-fumod shape (b)
+    and it stays open; ablation measured the omission at 3 of 186 names and
+    zero of 69 files, so the conservative answer costs almost nothing.
 
     INV-fubag. Taint models a flow as the tainted value being an ARGUMENT to
     the sink call or its RECEIVER. When a producer can prove every argument at
@@ -2273,6 +2300,9 @@ def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
     """
     meta = edge.get("meta") or {}
     if target_kinds_cross_no_boundary(call_site_target_kinds(meta)):
+        return False
+    origins = meta.get("redirect_origin_names")
+    if isinstance(origins, list) and not origins:
         return False
     return meta.get("call_arg_shape") != LITERAL_ONLY_ARG_SHAPE
 
