@@ -225,6 +225,216 @@ _HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
 })
 
 
+#: Redirection operators under which the SHELL performs a write. ``<`` is a
+#: read and is excluded: this map answers "what did the shell put there".
+_WRITE_REDIRECT_OPS: frozenset[str] = frozenset({">", ">|", ">>"})
+
+
+def _expansion_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Every variable name expanded anywhere under ``node``.
+
+    Walks the whole subtree, so a name inside a command substitution counts —
+    ``$(basename "$X")`` really does carry ``X`` into the result. That matches
+    the env-read rule one level up, which is also purely syntactic over
+    expansions: a subprocess that reads the environment ITSELF (``$(printenv
+    S)``) is invisible to both, so this introduces no gap the source side does
+    not already have.
+    """
+    return [
+        node_text(v, source)
+        for n in iter_tree(node)
+        if n.type in ("simple_expansion", "expansion")
+        for v in (find_child_by_type(n, "variable_name"),)
+        if v is not None
+    ]
+
+
+def _redirect_origin_names(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+    assigned_names: set[str],
+) -> dict[int, tuple[str, ...]]:
+    """Per write redirect, the EXTERNALLY-DERIVED names the shell can put there.
+
+    WI-zovuz. bash carries no dataflow (``dataflow_capable=False``), so a taint
+    finding in a shell script was call-graph reachability alone: "this file
+    reads the environment somewhere AND reaches a function that writes
+    somewhere". Measured over 15 cohort repos, 186 environment names are read
+    in the 69 files that also carry a write redirect and only 28 of them can
+    reach what the shell writes — 48 of those files have NO name that reaches
+    any redirect, so their redirect-sink findings rested on nothing.
+
+    WHAT THE SHELL CONTRIBUTES, and it is exactly three things:
+
+    1. the redirect's TARGET operand — ``> "$OUT"`` chooses *where* with a
+       value this program holds;
+    2. a HEREDOC body, which the shell expands itself before handing the
+       result to the command's stdin. Missing this is a false ALL-CLEAR over
+       ``cat > cfg <<EOF\npassword = $DB_PASSWORD\nEOF`` — every stage is
+       external there and the secret is still written. A quoted delimiter
+       (``<<'EOF'``) suppresses expansion, and the grammar already reflects
+       that by emitting no expansion node;
+    3. the ARGUMENTS of every producing stage. Deliberately every stage, not
+       only shell builtins: measured, ``sed -E "s#x#${v}#" f > out``
+       interpolates an in-process value THROUGH an external command, and
+       ``echo "$SECRET" | base64 -d > cert`` carries a real signing
+       certificate from stage one while the stage feeding the redirect is
+       external. Both are why the byte-producer question ("is the writer
+       external?") is the WRONG one; this asks whether a NAME can reach.
+
+    Returns a mapping keyed by the ``file_redirect`` node's start byte, which
+    is unique per site — deliberately not by line, because INV-vukiv is the
+    measurement that two redirects on one line must not collapse.
+    """
+    # A PARSE FAILURE IS NOT A PROOF OF EMPTINESS, and the damage is not
+    # local. tree-sitter recovers from a shape it cannot model with an ERROR
+    # node, and an unparsed heredoc body is then attached NOWHERE — cilium's
+    # `<<EOF cat >/etc/dnsmasq.conf` lands the ERROR on a SIBLING statement
+    # while the redirect itself parses cleanly, so a parent-scoped check reads
+    # it as "no name reaches" over a body that writes a value read from the
+    # environment. Answering for the whole file only when the whole file
+    # parsed is the only scope that holds. Measured: 11 of the 212 cohort bash
+    # files carrying a redirect contain an ERROR or MISSING node (5.2%), so
+    # the conservative scope costs almost nothing.
+    if any(n.type == "ERROR" or n.is_missing
+           for n in iter_tree(tree.root_node)):
+        return {}
+
+    def _is_external(name: str) -> bool:
+        # The same discriminator the env-read branch uses one level up: a name
+        # this file assigns is not external, and neither is one BASH assigns.
+        # Host-DESCRIPTION names stay in (INV-tutar routes them to a different
+        # label, but they are still a taint source, so a gate built on this set
+        # must not let them through unseen).
+        return bool(
+            name
+            and name not in assigned_names
+            and (name[0].isalpha() or name[0] == "_")
+            and name not in _SHELL_STATE_NAMES
+        )
+
+    derived: dict[str, set[str]] = {}
+    for node in iter_tree(tree.root_node):
+        # A LOOP VARIABLE IS A BINDING, and missing it is a false ALL-CLEAR.
+        # `for f in $SECRET_LIST; do echo "$f" > out; done` writes the secret,
+        # and the env-read rule one level up already treats `f` as ASSIGNED
+        # (``for_statement`` is in its own set), so without this clause `f`
+        # would be neither an external name nor derived from one, and the
+        # redirect would report reaching nothing. Found by reading a removed
+        # row back against source, which is the only reason it is here.
+        if node.type not in ("variable_assignment", "for_statement"):
+            continue
+        target = find_child_by_type(node, "variable_name")
+        if target is None:  # pragma: no cover - grammar always yields one
+            continue
+        rhs: list[str] = []
+        for child in node.children:
+            if child is target or child.type == "=":
+                continue
+            # A for-statement's body is not part of the binding — only the
+            # word list it iterates is. Taking the body too would credit every
+            # name mentioned anywhere in the loop.
+            if node.type == "for_statement" and child.type in ("do_group",
+                                                               "compound_statement"):
+                continue
+            rhs.extend(_expansion_names(child, source))
+        derived.setdefault(node_text(target, source), set()).update(rhs)
+
+    # Positional binding: `download "$A" "$B"` binds $1/$2 inside download.
+    # Whole-file and union-over-call-sites, matching the assigned_names rule's
+    # own reason — bash is dynamically scoped, so a per-call-site answer would
+    # claim a precision the language does not offer.
+    functions = {
+        name: node
+        for node in iter_tree(tree.root_node)
+        if node.type == "function_definition"
+        for name in (_extract_function_name(node, source),)
+        if name
+    }
+    positional: dict[str, dict[str, set[str]]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "command":
+            continue
+        name_node = find_child_by_type(node, "command_name")
+        if name_node is None:  # pragma: no cover - grammar always yields one
+            # tree-sitter-bash synthesizes a `command_name` for every
+            # `command`, inserting a MISSING word rather than omitting the
+            # node (verified on `FOO=bar > out`). The `word` guard below is
+            # the one that actually fires.
+            continue
+        word = find_child_by_type(name_node, "word")
+        if word is None:
+            continue
+        called = node_text(word, source)
+        if called not in functions:
+            continue
+        args = [c for c in node.children if c is not name_node]
+        slot = positional.setdefault(called, {})
+        for index, arg in enumerate(args, start=1):
+            slot.setdefault(str(index), set()).update(
+                _expansion_names(arg, source))
+
+    def _enclosing_function(node: "tree_sitter.Node") -> Optional[str]:
+        current = node.parent
+        while current is not None:
+            if current.type == "function_definition":
+                return _extract_function_name(current, source)
+            current = current.parent
+        return None
+
+    def _origins(name: str, fn: Optional[str],
+                 seen: frozenset[str]) -> set[str]:
+        if name in seen:  # a = "$b"; b = "$a" must terminate
+            return set()
+        seen = seen | {name}
+        if _is_external(name):
+            return {name}
+        if name.isdigit() and fn is not None:
+            return {
+                origin
+                for bound in positional.get(fn, {}).get(name, ())
+                for origin in _origins(bound, fn, seen)
+            }
+        return {
+            origin
+            for parent in derived.get(name, ())
+            for origin in _origins(parent, fn, seen)
+        }
+
+    out: dict[int, tuple[str, ...]] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "file_redirect":
+            continue
+        if not any(c.type in _WRITE_REDIRECT_OPS for c in node.children):
+            continue
+        parent = node.parent
+        fn = _enclosing_function(node)
+        names: list[str] = []
+        target = next(
+            (c for c in node.children
+             if c.type in ("word", "string", "raw_string", "concatenation",
+                           "simple_expansion", "expansion")),
+            None,
+        )
+        if target is not None:
+            names.extend(_expansion_names(target, source))
+        if parent is not None:
+            for sibling in parent.children:
+                # Skip EVERY file_redirect, not just this one by identity:
+                # tree-sitter hands out a fresh Node wrapper per access, so an
+                # `is` comparison silently never matches. Skipping the type is
+                # also the more correct rule — in `cmd > out 2> "$LOG"` the
+                # second redirect's target is not what the first one writes.
+                if sibling.type == "file_redirect":
+                    continue
+                names.extend(_expansion_names(sibling, source))
+        origins: set[str] = set()
+        for name in names:
+            origins |= _origins(name, fn, frozenset())
+        out[node.start_byte] = tuple(sorted(origins))
+    return out
+
+
 class BashAnalyzer(TreeSitterAnalyzer):
     """Tree-sitter-based Bash/shell script analyzer.
 
@@ -484,6 +694,12 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 if _name is not None:
                     assigned_names.add(node_text(_name, source))
 
+        # WI-zovuz: which externally-derived names can reach what the SHELL
+        # writes at each redirect. Computed once per file — the derivation
+        # closure is whole-file, so recomputing it per redirect would be the
+        # same answer at N times the cost.
+        redirect_origins = _redirect_origin_names(tree, source, assigned_names)
+
         for node in iter_tree(tree.root_node):
             if node.type in ("simple_expansion", "expansion"):
                 # INV-jurif: `$API_KEY` reads the environment, and bash emitted
@@ -568,6 +784,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 edge = self._redirect_edge(
                     node, source,
                     _get_enclosing_function(node) or module_symbol, run,
+                    redirect_origins.get(node.start_byte),
                 )
                 if edge is not None:
                     edges.append(edge)
@@ -742,6 +959,7 @@ class BashAnalyzer(TreeSitterAnalyzer):
         source: bytes,
         enclosing: Optional[Symbol],
         run: AnalysisRun,
+        origin_names: Optional[tuple[str, ...]] = None,
     ) -> Optional[Edge]:
         """One synthesized edge for a `file_redirect`, or None.
 
@@ -791,6 +1009,10 @@ class BashAnalyzer(TreeSitterAnalyzer):
                 "redirect_target": target or "<unresolved>",
                 "redirect_target_resolved": resolved,
                 "io_target_kind": self._target_kind(target, resolved),
+                # ABSENT, not empty, when the closure could not answer: an
+                # empty list is a PROOF the consumer acts on.
+                **({} if origin_names is None
+                   else {"redirect_origin_names": list(origin_names)}),
             },
         )
 

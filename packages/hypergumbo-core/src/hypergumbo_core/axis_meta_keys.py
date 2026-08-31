@@ -607,6 +607,31 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                     "Sole writer: bash.py's _redirect_edge, stamped in the "
                     "same dict literal as ``redirect_target``."
                 )),
+    MetaKeySpec("redirect_origin_names", AXIS_EDGE_META,
+                "The externally-derived variable names that can reach what "
+                "the SHELL ITSELF contributes at a redirect — its target "
+                "operand, a heredoc body the shell expands, and every "
+                "producing stage's arguments. WI-zovuz: bash carries no "
+                "dataflow, so a redirect-sink taint finding rested on "
+                "reachability alone ('this file reads the environment "
+                "somewhere AND reaches a function that writes somewhere'). "
+                "Measured over 15 cohort repos, 28 of the 186 environment "
+                "names read in the 69 files that also carry a write redirect "
+                "can reach one; 48 of those files have none. An EMPTY list is "
+                "a PROOF that no value this program holds crossed here, and "
+                "`_sink_call_can_carry_taint` consumes it as such — an ABSENT "
+                "key keeps the finding, because absence is the state of every "
+                "map written before this key existed. PER CALL SITE for the "
+                "same reason `redirect_target` is (INV-vukiv): two redirects "
+                "in one function reach different names.",
+                per_call_site=True,
+                write_discipline=DISCIPLINE_SINGLE_WRITER,
+                discipline_note=(
+                    "Sole writer: bash.py's _redirect_edge, stamped in the "
+                    "same dict literal as ``redirect_target`` from the "
+                    "whole-file closure ``_redirect_origin_names`` computes "
+                    "once per file. No later pass refines it."
+                )),
     MetaKeySpec("env_var", AXIS_EDGE_META,
                 "The variable name behind a synthesized environment read — "
                 "the `API_KEY` in `$API_KEY`. Carried for the READER rather "
