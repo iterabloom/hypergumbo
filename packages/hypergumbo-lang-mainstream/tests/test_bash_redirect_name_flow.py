@@ -36,29 +36,20 @@ def _redirect_origins(tmp_path: Path, script: str) -> dict[int, list[str]]:
 class TestTheShellsOwnBytes:
     """What the shell writes, it is credited with. What it does not, it is not."""
 
-    def test_an_external_stages_arguments_still_credit_conservatively(self, tmp_path):
-        # INV-fumod shape (b), the item's named instance in miniature, PINNED
-        # AT THE CONSERVATIVE ANSWER ON PURPOSE. The env value only SELECTS the
-        # network resource and the bytes the '>' writes are the HTTP response
-        # body -- but deciding that requires knowing curl fetches rather than
-        # interpolates, which is per-command semantics this change does not
-        # have. Every stage's arguments therefore credit, which is the
-        # fail-closed direction, and shape (b) stays open.
-        #
-        # MEASURED, so the omission is priced rather than assumed: ablating the
-        # fetch rule over 15 cohort repos moves 3 of 186 environment names and
-        # ZERO of the 69 files. It is load-bearing only for the per-name gate.
-        #
-        # This test also pins POSITIONAL BINDING: MYSQL_VERSION reaches the
-        # redirect only via $2 at the call site, two hops from the operand.
+    def test_positional_parameters_bind_at_every_call_site(self, tmp_path):
+        # Name flow across a function boundary: IMAGE_TAG reaches the redirect
+        # only via $2 at the call site, two hops from the written bytes. A
+        # non-fetch stage is used deliberately -- `sed` interpolates its
+        # argument into what it emits, so this asserts the BINDING rather than
+        # riding on the fetch rule that TestAFetchesArgumentSelects covers.
         origins = _redirect_origins(tmp_path, (
-            'download() {\n'
-            '    local URL="$2"\n'
-            '    curl -L "$URL" > /opt/drivers/mysql.jar\n'
+            'rewrite() {\n'
+            '    local TAG="$2"\n'
+            '    sed -E "s#tag#${TAG}#" in.txt > out.txt\n'
             '}\n'
-            'download "mysql" "https://example.com/c-$MYSQL_VERSION.tar.gz"\n'
+            'rewrite "svc" "$IMAGE_TAG"\n'
         ))
-        assert origins == {3: ["MYSQL_VERSION"]}
+        assert origins == {3: ["IMAGE_TAG"]}
 
     def test_a_builtin_stage_upstream_of_an_external_one_still_credits(self, tmp_path):
         # PINNED COUNTEREXAMPLE 1 (beads scripts/sign-windows.sh:99). The stage
@@ -234,3 +225,47 @@ class TestAParseFailureIsNotAProof:
             if str((edge.meta or {}).get("io_primitive", "")).startswith("redirect.")
         ]
         assert stamped and all("redirect_origin_names" in m for m in stamped)
+
+
+class TestAFetchesArgumentSelectsRatherThanWrites:
+    """INV-fumod shape (b): `curl "$URL" > f` writes the FAR SIDE's bytes."""
+
+    def test_a_fetch_stages_arguments_do_not_credit(self, tmp_path):
+        # The env value names a remote resource; what the '>' writes is the
+        # HTTP response body. ADR-0049 ruling 1 read on a shell command: the
+        # call hands back a value whose content the far side chose, so its
+        # ARGUMENT selected rather than being interpolated into the output.
+        origins = _redirect_origins(tmp_path, (
+            'download() {\n'
+            '    local URL="$2"\n'
+            '    curl -L "$URL" > /opt/drivers/mysql.jar\n'
+            '}\n'
+            'download "mysql" "https://example.com/c-$MYSQL_VERSION.tar.gz"\n'
+        ))
+        assert origins == {3: []}
+
+    def test_the_target_operand_still_credits_through_a_fetch(self, tmp_path):
+        # Only the BYTES come from the far side. `curl url > "$OUT"` still
+        # chooses WHERE with a value this program holds.
+        origins = _redirect_origins(tmp_path, (
+            'curl -L https://example.com/x > "$OUTPUT_PATH"\n'
+        ))
+        assert origins == {1: ["OUTPUT_PATH"]}
+
+    def test_a_non_fetch_external_stage_still_credits(self, tmp_path):
+        # PINNED: `sed` transforms its input using its ARGUMENTS, so an
+        # in-process value really is interpolated into the written bytes. The
+        # fetch rule must stay narrow enough not to swallow this.
+        origins = _redirect_origins(tmp_path, (
+            'sed -E "s#x#${IMAGE_TAG}#" in.txt > out.txt\n'
+        ))
+        assert origins == {1: ["IMAGE_TAG"]}
+
+    def test_a_builtin_upstream_of_a_fetch_still_credits(self, tmp_path):
+        # The pipeline's other stages are unaffected: uploading a secret and
+        # redirecting the RESPONSE still writes only the response, but a
+        # builtin that emits the secret into the stream is the shell's own.
+        origins = _redirect_origins(tmp_path, (
+            'echo "$PAYLOAD" | tee /tmp/copy.txt > /dev/null\n'
+        ))
+        assert origins == {1: ["PAYLOAD"]}

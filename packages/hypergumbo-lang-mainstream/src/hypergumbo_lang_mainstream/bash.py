@@ -225,6 +225,29 @@ _HOST_DESCRIPTION_NAMES: frozenset[str] = frozenset({
 })
 
 
+#: Commands whose STDOUT is content the far side chose, so their arguments
+#: SELECT a resource rather than being interpolated into what they emit.
+#:
+#: ADR-0049 ruling 1, read on a shell command instead of a function call: does
+#: this call hand back a value whose content is chosen by the party on the far
+#: side of the boundary? For `curl -L "$URL"` it plainly does — the bytes are
+#: the HTTP response body — so a redirect capturing that stdout writes nothing
+#: this program held, and INV-fumod shape (b) is the finding that says
+#: otherwise. It is ADR-0016's own prohibition stated positively: that ADR
+#: forbids attributing a launched program's I/O TO the shell, and this
+#: declines, on the same grounds, to attribute the child's BYTES to it.
+#:
+#: DELIBERATELY TINY, AND NOT IN THE CATALOGUE. `io_primitives/bash.yaml` is
+#: scoped to "the shell's REDIRECTION surface" — the primitives the SHELL
+#: performs — and these are properties of other programs, so the catalogue is
+#: the wrong home rather than merely an unused one. Every other external
+#: command stays creditable, which is the fail-closed direction: measured,
+#: `sed -E "s#x#${v}#" f > out` really does interpolate an in-process value
+#: through an external command, so a broad "external writer" rule was refuted.
+#: An addition here needs the same measured argument curl and wget have.
+_FAR_SIDE_FETCH_COMMANDS: frozenset[str] = frozenset({"curl", "wget"})
+
+
 #: Redirection operators under which the SHELL performs a write. ``<`` is a
 #: read and is excluded: this map answers "what did the shell put there".
 _WRITE_REDIRECT_OPS: frozenset[str] = frozenset({">", ">|", ">>"})
@@ -247,6 +270,30 @@ def _expansion_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
         for v in (find_child_by_type(n, "variable_name"),)
         if v is not None
     ]
+
+
+def _stage_expansion_names(node: "tree_sitter.Node", source: bytes) -> list[str]:
+    """Expansions a producing stage contributes to what the SHELL writes.
+
+    Every stage's arguments count EXCEPT a far-side fetch's, whose stdout is
+    the remote party's bytes (:data:`_FAR_SIDE_FETCH_COMMANDS`). Recurses into
+    pipelines and lists so `curl "$URL" | tar -xz > out` drops curl's argument
+    while keeping tar's, and `echo "$S" | curl -T - url > log` keeps echo's.
+    """
+    if node.type in ("pipeline", "list", "subshell", "compound_statement"):
+        return [
+            name
+            for child in node.children
+            for name in _stage_expansion_names(child, source)
+        ]
+    if node.type == "command":
+        name_node = find_child_by_type(node, "command_name")
+        word = (find_child_by_type(name_node, "word")
+                if name_node is not None else None)
+        if (word is not None
+                and node_text(word, source) in _FAR_SIDE_FETCH_COMMANDS):
+            return []
+    return _expansion_names(node, source)
 
 
 def _redirect_origin_names(
@@ -427,7 +474,7 @@ def _redirect_origin_names(
                 # second redirect's target is not what the first one writes.
                 if sibling.type == "file_redirect":
                     continue
-                names.extend(_expansion_names(sibling, source))
+                names.extend(_stage_expansion_names(sibling, source))
         origins: set[str] = set()
         for name in names:
             origins |= _origins(name, fn, frozenset())
