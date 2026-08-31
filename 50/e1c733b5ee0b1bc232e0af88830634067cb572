@@ -1,0 +1,48 @@
+Original commit body from c3b73c036a07223fab4163f6500cdc5f798557fc:
+
+Corrects four places that carry the same wrong claim, all merged earlier today:
+the 0006 correction section, the measurements index, the CHANGELOG entry, and
+the comment block in erlang.yaml.
+
+WHAT I CLAIMED. That measurement 0006's three adjudicated rabbitmq true
+positives "re-root onto io:format" when the io_lib row is removed, so ADR-0049
+ruling 3's represented-crossing test was met, S1 was void as a deduction, and
+useful precision was unchanged at 24.1%.
+
+WHAT THE PANEL FOUND. Two independent blind passes per repository, given the
+flow and the source but not the prior labels, walled off from every ledger and
+prior measurement. DISAGREEMENT 0 OF 7. All four rabbitmq situations are FALSE
+POSITIVES, and both passes derived the same structural refutation without
+conferring: the re-rooted route terminates at rabbit_misc:module_attributes/1,
+whose io:format (rabbit_misc.erl:731) has exactly one argument list --
+[Module] -- bound at :755-762 from application:get_key(App, modules). Neither
+parameter of module_attributes_from_apps/2 reaches it. Each panellist then
+searched independently for a real chain and found none; the real formatting
+runs through rabbit_misc:format/2 = lists:flatten(io_lib:format(...)) and is
+handed to ?LOG_* macros, which are logger:.
+
+So the removal replaced a VACUOUS TRUE POSITIVE with an OUTRIGHT FALSE ONE.
+S1's deduction STANDS and useful precision under it is 21.4% (24/112) -- the
+figure 0006 published before I tried to correct it.
+
+NOT RETRACTED: io_lib:format returns an iolist and writes nothing; the owner's
+ruling against the row; the removal itself, which deleted vacuous findings; the
+derived adjacency gate; and the javascript path.* finding. Only the LICENCE
+ARGUMENT is withdrawn -- for these three situations there is no real crossing
+to represent.
+
+THE LESSON. The A/B was run correctly: both arms cold on separate
+XDG_CACHE_HOME with the cold line asserted, a six-claim control, catalogue
+restored and verified by sha. What an A/B over TOOL OUTPUT cannot do is
+establish that a finding is TRUE. Presence of a finding after a change is not
+evidence the finding is correct, and re-rooting is not relocation unless the
+destination chain is real. An A/B prices a CHANGE; only adjudication prices a
+CLAIM.
+
+Also lands the paired precision study that produced this, run on the current
+tree with the analyzer SHA recorded per ADR-0048 A1: 97 of 0006's 112
+situations survive, correctness precision 33.9% -> 29.9%, useful precision
+24.1% -> 23.7%. Flat on useful, down on correctness. Five of the eleven
+vacuity deductions are genuinely fixed; six never left (INV-kosur).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
