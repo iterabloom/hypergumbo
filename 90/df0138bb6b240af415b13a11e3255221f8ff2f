@@ -1,0 +1,46 @@
+Original commit body from bcc15616255b31d8745866df82c455e18829af8e:
+
+tree-sitter parses erlang source, not preprocessed source, so
+?LOG_DEBUG("...", [Secret]) produced no call edge at all -- no edge, no
+catalogue match, no logging sink. rabbitmq writes 1,910 macro uses against
+183 direct logger: calls, so the analyzer saw 9% of its logging surface.
+
+SIZED BEFORE BUILT, as the item's own gate required. Expanding the macros
+source-to-source across rabbitmq and running the six generic taint claims
+cold on separate caches:
+
+  host-secret-no-logging   68 -> 138 situations  (93 -> 2028 pairs)
+  the other six claims     byte-identical
+
+1,910 macro sites convert to +70 situations -- 3.7%. The item's hypothesis
+that a recall hole no source reaches is worth less than its size suggests
+is confirmed and quantified. Keyed on (source, caller) all 68 pre-expansion
+situations survive; 61 re-root their sink from io:format to logger:*, which
+is the coincidental coverage the io_lib removal predicted.
+
+PREDICTION CONFIRMED BY AN INDEPENDENT MECHANISM. The transform arm forecast
+138 rows; the shipped analyzer change on UNMODIFIED rabbitmq produces the
+identical 138-row set and the same 1088 findings total.
+
+THE GATE IS THE INCLUDE, NOT THE NAME. A ?LOG_ prefix match would sweep in
+rabbitmq's ?LOG_DIR (a directory string), ?LOG_PREFIX (a prefix string) and
+?LOG_EXCH_NAME (a binary). Requiring the file to include a header named
+logger.hrl covers 2267 of 2267 sites across rabbitmq, emqx, ejabberd and
+vernemq; the literal include_lib("kernel/include/logger.hrl") covers 2266.
+
+THE PREPROCESSOR IS REFUSED ON MEASURED GROUNDS. General function-like macro
+names are multiply-defined at 5-21% per repo, so a global name->body map is
+ambiguous. The eight kernel names are never redefined in six repos. That
+asymmetry is the whole argument, and it is recorded beside the vocabulary.
+
+NOT COVERED, AND SAID SO: emqx's ?SLOG family (1,233 sites) and ejabberd's
+?DEBUG/?INFO_MSG/... family (1,330). OTP's eight names are ~64% of the
+corpus's macro-mediated logging.
+
+New evidence type macro_expansion, priced 0.80/0.40 below ast_call, because
+tree-sitter expanded nothing and evidence_type is how a consumer tells a
+call the analyzer SAW from one it INFERRED.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
+Racial-Capitalism-Is-Bad: a dolphin riding a surface of candy-coated peanuts in a neon arcade with a committee of porcupines made of jellybeans
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
