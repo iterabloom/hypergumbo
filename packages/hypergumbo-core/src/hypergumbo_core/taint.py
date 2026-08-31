@@ -2307,6 +2307,101 @@ def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
     return meta.get("call_arg_shape") != LITERAL_ONLY_ARG_SHAPE
 
 
+def _source_names_can_reach_sink(
+    source_names: Optional[frozenset[str]],
+    sink_names: Optional[frozenset[str]],
+) -> bool:
+    """False when no name this source carries can reach what the sink writes.
+
+    INV-fumod shape (b). A PAIR-level proof, which is why it lives beside
+    :func:`_source_and_sink_are_one_call` rather than inside either
+    per-call-site gate: neither edge alone answers it. The source edge knows
+    WHICH environment name it read (``env_var``); the sink edge knows which
+    names can reach what the shell writes there (``redirect_origin_names``);
+    the flow is false only if those sets are disjoint.
+
+    WHY THE PER-EDGE GATE IS NOT ENOUGH, on the item's own instance.
+    guacamole's ``curl -L "$URL" > "$DEST_PATH/$DEST_JAR"`` IS reached by a
+    name — ``DESTINATION``, via ``DEST_PATH="$DESTINATION/drivers/"`` — so
+    ``_sink_call_can_carry_taint`` keeps it, correctly. The row INV-fumod
+    filed is sourced at ``MYSQL_JDBC_VERSION``, read at line 87 on the FILE
+    symbol while ``DESTINATION`` is read at line 59 inside
+    ``download_driver``. Two source sites, one sink, so the false pair can be
+    refused while the other stands.
+
+    DEFAULT-DENY ON THE SILENCING DIRECTION. The pair survives unless BOTH
+    sides are known and provably disjoint. ``None`` on either side means the
+    question was not answered — a language with no name-level flow, a map
+    written before these keys existed — and an EMPTY source set means the
+    source carries no name at all, which is every source in every other
+    language. An empty SINK stamp is deliberately not answered here: "no name
+    reaches this redirect" is already a proof and it is
+    :func:`_sink_call_can_carry_taint`'s to make, so answering it twice would
+    put one fact in two homes.
+    """
+    if not source_names or sink_names is None:
+        return True
+    if not sink_names:
+        return True
+    return bool(source_names & sink_names)
+
+
+def _name_flow_indexes(
+    edges: list[dict[str, Any]],
+) -> tuple[dict[tuple[str, str], frozenset[str]],
+           dict[tuple[str, str], Optional[frozenset[str]]]]:
+    """Per (caller, callee): the names a source read, and the names a sink can write.
+
+    Both are keyed by the pair rather than by the edge because that is the
+    granularity the propagator pairs at. A source key unions every environment
+    name read at that site — guacamole's file symbol reads three JDBC version
+    variables and they share one ``env.environ`` callee — which is the
+    conservative direction: refusing the pair then requires ALL of them to be
+    unreachable.
+
+    A sink key is ``None`` the moment ANY edge under it lacks the stamp. A
+    partial answer must not read as a complete one: the unstamped edge could
+    be reached by a name the stamped ones are not.
+    """
+    source_names: dict[tuple[str, str], set[str]] = defaultdict(set)
+    sink_names: dict[tuple[str, str], Optional[set[str]]] = {}
+    for edge in edges:
+        meta = edge.get("meta") or {}
+        key = (edge.get("src", ""), edge.get("dst", ""))
+        env_var = meta.get("env_var")
+        if isinstance(env_var, str) and env_var:
+            source_names[key].add(env_var)
+        # ``<key>_values`` is where a collapsed edge's DISAGREEING per-site
+        # values live (:func:`ir._absorb_per_call_site_key`), and reading only
+        # the singular silently loses exactly the interesting case: guacamole's
+        # file symbol reads three JDBC version variables at three lines, so
+        # ``env_var`` is gone and ``env_var_values`` holds all three.
+        for value in meta.get("env_var_values") or ():
+            if isinstance(value, str) and value:
+                source_names[key].add(value)
+        if str(meta.get("io_primitive", "")).startswith("redirect."):
+            stamps = meta.get("redirect_origin_names_values")
+            if isinstance(stamps, list):
+                # Sites disagreed. Union them: any of those sites could be the
+                # one this pair flows to, and a bigger set keeps more findings.
+                merged = {str(n) for stamp in stamps
+                          if isinstance(stamp, list) for n in stamp}
+            elif isinstance(meta.get("redirect_origin_names"), list):
+                merged = {str(n) for n in meta["redirect_origin_names"]}
+            else:
+                sink_names[key] = None
+                continue
+            if key in sink_names and sink_names[key] is None:
+                continue
+            bucket = sink_names.setdefault(key, set())
+            assert bucket is not None  # narrowed by the branch above
+            bucket.update(merged)
+    return (
+        {k: frozenset(v) for k, v in source_names.items()},
+        {k: (None if v is None else frozenset(v)) for k, v in sink_names.items()},
+    )
+
+
 def _build_adjacency(
     edges: list[dict[str, Any]],
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -2752,6 +2847,11 @@ def propagate_taint_structural(
     # a primitive became both a source and a sink (INV-lozat), so it is built
     # here rather than hoisted into a shared helper that one caller would use
     # for two unrelated purposes.
+    # INV-fumod shape (b): which names a source read, and which can reach what
+    # a sink writes. Built here beside call_lines_by_pair for the same reason —
+    # the pairing loop is the only consumer.
+    source_name_index, sink_name_index = _name_flow_indexes(edges)
+
     call_lines_by_pair: dict[tuple[str, str], list[int]] = defaultdict(list)
     for edge in edges:
         if not _is_taint_call_edge(edge):
@@ -2810,6 +2910,13 @@ def propagate_taint_structural(
             if _source_and_sink_are_one_call(
                 caller_id, sink_node, source_callee_id, sink_callee_id,
                 call_lines_by_pair,
+            ):
+                continue
+            # INV-fumod shape (b): the name this source read cannot reach what
+            # this sink writes, so the pair is false rather than unproven.
+            if not _source_names_can_reach_sink(
+                source_name_index.get((caller_id, source_callee_id)),
+                sink_name_index.get((sink_node, sink_callee_id)),
             ):
                 continue
             if sink_node in reachable:
@@ -3738,6 +3845,11 @@ def propagate_taint_ddg(
     # Build call-graph adjacency for structural fallback
     forward_adj, _reverse_adj = _build_adjacency(call_edges)
 
+    # INV-fumod shape (b): the same two indexes the structural arm builds.
+    # Built from ``call_edges`` because that is where the analyzer's env-read
+    # and redirect edges live — ``ddg_edges`` carry def-use, not I/O meta.
+    source_name_index, sink_name_index = _name_flow_indexes(call_edges)
+
     # Step 1: Find source call sites (module + ambiguous_names aware — WI-razol)
     source_callers: list[tuple[str, str, TaintSource]] = []
     for edge in call_edges:
@@ -3856,6 +3968,16 @@ def propagate_taint_ddg(
             if _source_and_sink_are_one_call(
                 caller_id, sink_node, source_callee_id, sink_callee_id,
                 call_lines,
+            ):
+                continue
+            # INV-fumod shape (b), the SECOND home of this question. A language
+            # with no DDG still reaches findings through this arm (bash reports
+            # analysis_method "structural" with walk "unavailable" from here),
+            # so gating only the structural propagator left the item's own
+            # instance standing while every unit test passed.
+            if not _source_names_can_reach_sink(
+                source_name_index.get((caller_id, source_callee_id)),
+                sink_name_index.get((sink_node, sink_callee_id)),
             ):
                 continue
             is_sanitized = False
