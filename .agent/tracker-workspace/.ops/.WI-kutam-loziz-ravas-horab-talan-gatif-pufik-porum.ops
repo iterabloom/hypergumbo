@@ -65,3 +65,18 @@
   nonce: 7e5c  # 7e5c
   set:  # 7e5c
     description: "When 'hypergumbo slice --entry <name>' has multiple matches with the SAME language (e.g., real symbol vs python:external:0-0:<name>:unresolved synthetic), the error message says 'Use a full node ID to disambiguate, or filter with --language.' --language python doesn't disambiguate when both are python. Better hint: suggest --list-entries (which works and shows IDs) or copy-paste the full ID from the error message. Reproduce: hypergumbo slice --input survey.json --entry find_files → 2 python candidates listed; --language python on retry → same ambiguity error."  # 7e5c
+- op: update  # 7aea
+  at: '2026-08-30T13:48:49Z'  # 7aea
+  by: agent  # 7aea
+  actor: jgstern_agent  # 7aea
+  clock: 7  # 7aea
+  nonce: 7aea  # 7aea
+  set:  # 7aea
+    status: done  # 7aea
+- op: discuss  # aacd
+  at: '2026-08-30T13:48:49Z'  # aacd
+  by: agent  # aacd
+  actor: jgstern_agent  # aacd
+  clock: 8  # aacd
+  nonce: aacd  # aacd
+  message: "Fixed and merged in PR (dev 7a973efcf9). BEHAVIOURAL EVIDENCE -- this item's OWN filed repro, re-run on the merged tree:\n\n  $ hypergumbo slice --input survey.json --entry find_files\n  Error: Ambiguous entry 'find_files' matches 2 symbols in different files:\n    [python] packages/hypergumbo-core/src/hypergumbo_core/discovery.py:1013\n      ID: python:...:1013-1111:find_files:function\n    [python] <external>:0\n      ID: python:external:0-0:find_files:external_symbol\n  Use a full node ID (shown above) to disambiguate.\n\nExactly the candidate shape the description names (real symbol vs the\npython:external synthetic), and the '--language' suggestion is gone, so the\nretry loop the item reports is closed. The fold-in's invariant is satisfied: the\nsuggested fix is now applicable.\n\nNOTHING WAS SUBSTITUTED FOR THE REMOVED HINT, deliberately. The fold-in proposed\nsuggesting --file/--path; slice has NO --file flag and its --path is the REPO\nROOT, not a file filter, so either would have reproduced this exact defect one\nflag over. A first draft of my test asserted --path and was wrong for that\nreason -- caught by reading 'slice --help'. '--entry' accepts a node ID and the\nIDs are already printed, so the full-ID remedy was always the applicable one.\n\nCO-FIX SCOPE RESOLVED WITHOUT EXTRA WORK: the fold-in names INV-nogof as a\nco-fix under 'a shared ambiguity-resolution helper'. That helper LANDED --\nINV-nogof is satisfied (PR #529 extracted raise_if_ambiguous, shared by\ncmd_slice and cmd_explain) -- so slice and explain already share this error\nclass and both get the fix. That also surfaced a stale comment in cmd_explain\nasserting the message 'already names those flags', corrected in the same change,\nwhich now records why the SHARED message must not name --file: explain has that\nflag and slice does not.\n\nCONTROL, unit-level rather than behavioural because the corpus offered no\nconvenient cross-language collision: candidates in DIFFERENT languages must keep\nthe --language hint, since the cheapest way to pass the new test is to delete it\noutright. Pinned by test_language_hint_is_kept_when_it_does_disambiguate, and by\nthe pre-existing test_cli_commands.py:2472 assertion whose fixture is a\npython/typescript pair.\n\nINV-nugos (marked duplicate_of this item, fold-in already landed) is unaffected\nand still safe for human delete."  # aacd

@@ -1,0 +1,25 @@
+- op: create  # 1290
+  at: '2026-08-31T00:11:51Z'  # 1290
+  by: agent  # 1290
+  actor: jgstern_agent  # 1290
+  clock: 1  # 1290
+  nonce: '1290'  # 1290
+  data:  # 1290
+    kind: invariant  # 1290
+    title: "erlang: OTP ?LOG_* macros produce no logging sink, hiding ~91% of a real project's logging surface (1,910 macro uses vs 187 direct logger: calls on rabbitmq)"  # 1290
+    status: violated  # 1290
+    priority: 1  # 1290
+    parent:  # 1290
+    tags:  # 1290
+    - io_boundary  # 1290
+    - taint  # 1290
+    - erlang  # 1290
+    - analysis_quality  # 1290
+    isbefore: []  # 1290
+    duplicate_of: []  # 1290
+    not_duplicate_of: []  # 1290
+    pr_ref:  # 1290
+    description: "FOUND 2026-08-30 while running the finding-level proof for measurement 0006's\nsensitivity S1 (the io_lib:format removal). Not filed from a sweep -- found\nbecause removing a WRONG row exposed what it had been standing in for.\n\nTHE MEASUREMENT. rabbitmq, counted directly in the tree:\n\n    ?LOG_* macro uses      1,910\n    direct logger: calls     187\n\nSo roughly 91% of a real OTP project's logging surface is written through\nkernel/include/logger.hrl macros. The analyzer does not expand them, so those\ncall sites produce NO edge to logger, and no `logger` sink module appears\nanywhere in either arm of the A/B -- on a repository with 187 direct logger\ncalls and 1,910 macro ones.\n\nTHE CONCRETE INSTANCE, read against source rather than inferred.\ndeps/rabbitmq_auth_backend_http/src/rabbit_auth_backend_http.erl:208-248,\ndo_http_req/2:\n\n    {ok, Val1} = application:get_env(?APP, request_timeout),   %% env_read\n    ...\n    ?LOG_DEBUG(\"auth_backend_http: request timeout: ~tp, connection timeout: ~tp\",\n               [RequestTimeout, ConnectionTimeout]),           %% logging sink\n\nThat is a genuine host_secret -> logging flow. It was reported before the\nio_lib removal and is NOT reported after it -- but it was only ever reported\nBY COINCIDENCE, because the same function also builds a header with\nrabbit_misc:format/2, which flattens io_lib:format. The row that found it was\nwrong about which call crossed.\n\nWHY THIS IS NOT AN ARGUMENT FOR KEEPING THE io_lib ROW. Keeping a row that\nmisattributes the crossing, because it happens to co-occur with real logging,\nmakes the correct fix here look like a regression: expand the macros and the\nfinding re-roots onto the right call, while any measurement spanning the two\nchanges sees a number move for reasons it cannot attribute. The two defects\nare separable and are being separated.\n\nSCOPE. elixir inherits erlang's catalogue (_CATALOG_PARENTS) but Elixir code\ndoes not use the OTP macros -- it has require Logger / Logger.info, which is a\ndifferent mechanism and is separately rowed. So this is an erlang-analyzer\nquestion, not a catalogue question: no row can fix it, because there is no\ncall to match on until the macro is expanded.\n\nTHE HONEST DIFFICULTY. tree-sitter parses erlang source, not preprocessed\nerlang. Expanding ?LOG_* properly means either (a) special-casing the known\nkernel logger.hrl macro names -- cheap, covers the dominant idiom, and is a\nname-based gate with all the incompleteness that implies (LIVE rule: a\nname-based gate with an incomplete vocabulary reports clean); or (b) reading\n-include_lib and expanding real macro definitions, which is a preprocessor.\n(a) is probably right and should be SIZED against the ?LOG_* vocabulary\nactually used across the erlang corpus before being chosen.\n\nBEFORE BUILDING: count how many of the 1,910 sites pass a value that any\ncatalogued source could have tainted. A recall hole that no source reaches is\nworth less than its size suggests, and that number is not yet known."  # 1290
+    fields:  # 1290
+      statement: "A logging call written through OTP's ?LOG_* macros must be classified as the logging sink the macro expands to; today it produces no call edge at all."  # 1290
+      root_cause: "The erlang analyzer parses source, not preprocessed source, so kernel/include/logger.hrl macro invocations are never expanded and never match a catalogue row."  # 1290
