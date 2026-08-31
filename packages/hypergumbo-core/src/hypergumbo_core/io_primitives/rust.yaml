@@ -334,7 +334,21 @@ subprocess:
       unmatchable by construction AND marked the module method-starved,
       withholding every verdict on the repo (INV-nular).
   - module: std::process::Command
-    methods: [spawn, output, status]
+    methods: [spawn, status]
+  - module: std::process::Command
+    methods: [output]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: std::process
     functions: [exit, abort]
 
@@ -425,6 +439,20 @@ ipc_send:
       ipc_recv for why the constructor is absent and the methods are not.
 
 ipc_recv:
+  - module: std::process::Command
+    methods: [output]
+    simultaneous: true
+    notes: >-
+      INV-lozat: `Command::output` is the one-shot form of the
+      `Child::wait_with_output` rowed just below -- the stdlib implements it
+      as spawn-then-wait_with_output -- and it returns the same
+      `Output { stdout, stderr, status }`. The two were split across
+      boundaries in THIS FILE: the handle form minted an untrusted_input
+      source and the convenience form minted nothing, for identical bytes.
+      That intra-file disagreement is what made INV-lozat's diagnosis --
+      "no catalogue in any language treats the return direction as a
+      source" -- half wrong, and it is the precedent the other catalogues
+      now follow.
   - module: std::process::Child
     methods: [wait, try_wait, wait_with_output]
     notes: >-

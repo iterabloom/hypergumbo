@@ -146,7 +146,33 @@ subprocess:
   - module: os/exec
     functions: [Command, CommandContext, LookPath]
   - module: os/exec.Cmd
-    methods: [Run, Start, Output, CombinedOutput]
+    methods: [Run, Start]
+  - module: os/exec.Cmd
+    methods: [Output, CombinedOutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1. These hand back the CHILD'S BYTES, so the
+      call is a TRANSFER as well as a launch: the return value's content was
+      chosen by a program hypergumbo cannot see, which is the same fact that
+      makes `net_recv` a source. Before this row a Go program that piped
+      `exec.Command("git","log").Output()` straight into `sh -c` returned
+      `confirmed_with_caveats` on "untrusted input never reaches a subprocess",
+      with `os/exec.Cmd.Output` NAMED in the caveat as a door the analysis
+      could not see through -- opacity reported over live ingress.
+
+      `simultaneous: true` because BOTH facts are true at once, which is the
+      `scala.sys.process.Process.apply` shape INV-zumin built the marker for --
+      not the undecidable shape it forbids. Control leaves the process (the
+      arguments are a subprocess sink and the callee stays opaque) AND the
+      return value is data from another process. Without the marker
+      `io_boundaries` is not written, and since `ipc_recv` parses before
+      `subprocess` the launch chain would be the one that vanished.
+
+      `Run` and `Start` stay launch-only in the row above: they return an
+      error, not the child's message. The precedent is rust.yaml's
+      `std::process::Child.wait_with_output` / `ChildStdout.read`, which cite
+      python.yaml's `os.wait` in turn -- the return direction of a subprocess
+      was already modelled in two catalogues, and this makes the rest agree.
   - module: syscall
     functions: [Exec, ForkExec]
 
@@ -195,6 +221,20 @@ logging:
     notes: "slog.Logger instance methods"
 
 ipc_recv:
+  - module: os/exec.Cmd
+    methods: [Output, CombinedOutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: fmt
     functions: [Scan, Scanln, Scanf]
     notes: >-

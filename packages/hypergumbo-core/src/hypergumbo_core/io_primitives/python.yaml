@@ -507,6 +507,20 @@ ipc_recv:
   - module: sys.stdin
     functions: [read, readline, readlines]
     notes: "INV-ponad slot family; consistent with the sys attribute row in this section. functions:, not methods: - see the os.environ note."
+  - module: subprocess
+    functions: [check_output, getoutput, getstatusoutput]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: os
     functions: [wait, waitpid, wait3, wait4, waitid]
     notes: "Reaping a child collects its exit status - data received from another process."
@@ -532,14 +546,46 @@ subprocess:
   # ---------------------------------------------------------------
   - module: subprocess
     functions: [getoutput, getstatusoutput]
-    notes: "Shell-string conveniences the run/Popen rows did not cover."
+    simultaneous: true
+    notes: >-
+      Shell-string conveniences the run/Popen rows did not cover.
+
+      INV-lozat: both RETURN the command's output (`getstatusoutput` as
+      `(status, output)`), so they also carry an ipc_recv row and mint an
+      untrusted_input source. See that row for why `simultaneous` is
+      required here rather than optional.
   - module: asyncio
     functions: [create_subprocess_exec, create_subprocess_shell]
     notes: "asyncio carried net rows and NO subprocess rows - the one-boundary-vouches-for-all shape INV-zubuh measured on os."
   - module: os
     functions: [posix_spawn, posix_spawnp, startfile]
   - module: subprocess
-    functions: [run, Popen, call, check_call, check_output]
+    functions: [run, Popen, call, check_call]
+    notes: >-
+      INV-lozat, on why `check_output` left this row and these four did
+      not. `call` and `check_call` return a returncode; `Popen` returns a
+      HANDLE, which is an ADR-0049 deferred crossing rather than a
+      transfer. `run` is the contested one: its `CompletedProcess.stdout`
+      is the child's bytes ONLY when the caller passed `capture_output=` or
+      `stdout=PIPE`, and the catalogue matches on name, not on keyword
+      arguments. Rowing it would mint a source at every `subprocess.run`
+      call in the corpus, most of which capture nothing -- so it stays out
+      until the argument shape can be read, and that omission is disclosed
+      rather than silent.
+  - module: subprocess
+    functions: [check_output]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: os
     functions: [system, popen, execl, execle, execlp, execlpe, execv, execve, execvp, execvpe, spawnl, spawnle, spawnlp, spawnlpe, spawnv, spawnve, spawnvp, spawnvpe]
   - module: os

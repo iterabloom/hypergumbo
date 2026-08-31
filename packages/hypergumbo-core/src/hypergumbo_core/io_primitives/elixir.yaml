@@ -205,8 +205,17 @@ net_send:
 # ---------------------------------------------------------------------------
 subprocess:
   - module: System
-    functions: [cmd, shell, halt]
-    notes: "Elixir System.cmd launches external processes"
+    functions: [halt]
+    notes: "Elixir System.halt ends the VM; it launches nothing and returns nothing."
+  - module: System
+    functions: [cmd, shell]
+    simultaneous: true
+    notes: >-
+      Elixir System.cmd/System.shell launch external processes AND return
+      `{output, exit_status}` -- the output half is the child's bytes, so
+      they carry an ipc_recv row too (INV-lozat / ADR-0049 ruling 1).
+      `halt` moved to its own row because `simultaneous` is a property of
+      the primitive and these three did not share it.
   - module: Port
     functions: [open, command]
     notes: "Erlang-style external ports (used for subprocess IPC)"
@@ -270,6 +279,24 @@ logging:
 # ---------------------------------------------------------------------------
 # IPC — GenServer, Process, GenStage, Oban (job queues)
 # ---------------------------------------------------------------------------
+ipc_recv:
+  - module: System
+    functions: [cmd, shell]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: `System.cmd/3` and `System.shell/2` return
+      `{output, exit_status}`, and the output half is bytes the CHILD chose --
+      a transfer, not only a launch. Declared `simultaneous` with the
+      subprocess rows above because both facts hold at the same call; without
+      the marker `io_boundaries` is unwritten and, since `ipc_recv` parses
+      before `subprocess`, the LAUNCH is what would disappear from the boundary
+      map. `Port.open` stays launch-only: a port hands back a handle and the
+      data arrives as messages later, which ADR-0049 discloses rather than
+      mints.
+
+      Elixir inherits erlang's rows (`_CATALOG_PARENTS`), so `os:cmd` arrives
+      from there; these two are Elixir's own.
+
 ipc_send:
   - module: GenServer
     functions: [call, cast, abcast, multi_call]

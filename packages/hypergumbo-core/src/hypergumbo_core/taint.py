@@ -2085,6 +2085,59 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
 LITERAL_ONLY_ARG_SHAPE: Final[str] = "literal_only"
 
 
+def _source_and_sink_are_one_call(
+    source_caller: str,
+    sink_caller: str,
+    source_callee: str,
+    sink_callee: str,
+    call_lines: Mapping[tuple[str, str], Sequence[int]],
+) -> bool:
+    """True when the source call site and the sink call site are ONE call.
+
+    A value a call RETURNS cannot be an argument to that same call, so this
+    pair anchors no flow. The third per-call-site gate in this module, and
+    deliberately the same shape as the other two: `_sink_call_can_carry_taint`
+    refuses a site that provably discards, `_source_call_can_mint_taint`
+    refuses a site that provably reads memory, and this refuses a *pair* that
+    is one invocation. None of the three is the ADR-0017 §3a walk, which is
+    confirm-only and may not remove a flow.
+
+    WHY THIS ONLY BECAME REACHABLE WITH INV-lozat. Until a content-returning
+    launch was catalogued, no shipped primitive was a taint source AND a taint
+    sink at the same call: `db_read` pairs with `db_write`, `net_recv` with
+    `net_send`, always two different calls. `exec.Command(...).Output()`
+    receives the child's bytes and IS a subprocess sink, so both propagators
+    paired the call with itself and reported "data from a subprocess reaches a
+    subprocess" over a call that cannot feed its own arguments. Measured on the
+    measurement-0006 cohort, both arms cold: hypergumbo's own
+    `walk_blocked_by == "sink_before_source"` marks 4 of 692 pre-existing
+    evidence rows (0.6%) and 18 of the 51 rows those catalogue rows add
+    (35.3%) -- sixty times the background rate, and two of the three verdicts
+    that moved `inconclusive -> violated` rested on one such row each.
+
+    POSITIVE EVIDENCE IS REQUIRED, and the asymmetry is the whole design.
+    Removal is the expensive direction for a security tool, so the gate fires
+    only when the edge records EXACTLY ONE call line:
+
+    * TWO OR MORE lines means the caller invokes the primitive twice, and
+      iteration N's output really can reach iteration N+1's arguments
+      (`out = check_output(out)`), so the flow stays.
+    * NONE recorded means we do not know how many calls there are. `meta.
+      call_lines` absence is documented as "exactly one site" only alongside
+      `edge["line"]`; with neither, an unknown count is not a known one, and
+      the flow stays.
+
+    The residual false negative is stated rather than hidden: a single call
+    site whose own output feeds its own arguments on a later loop iteration is
+    suppressed. That requires the primitive to take the value it returns, in a
+    loop, through no intervening call -- `exec.Cmd.Output` takes no arguments
+    at all, and no instance appears anywhere in the cohort.
+    """
+    if source_caller != sink_caller or source_callee != sink_callee:
+        return False
+    return len(set(call_lines.get((source_caller, source_callee), ()))) == 1
+
+
 def _source_call_can_mint_taint(edge: dict[str, Any]) -> bool:
     """False when this call site provably reads nothing from outside.
 
@@ -2639,6 +2692,22 @@ def propagate_taint_structural(
     # sinks, so ``sys.stdout.write(x)`` doubles exactly as the env read does.
     _subsume_sink_sites(sink_callers)
 
+    # (caller, callee) -> every line that call occurs on, for
+    # ``_source_and_sink_are_one_call``. The DDG pass already builds this index
+    # for the §3a walk; the structural pass has no walk and needed it only when
+    # a primitive became both a source and a sink (INV-lozat), so it is built
+    # here rather than hoisted into a shared helper that one caller would use
+    # for two unrelated purposes.
+    call_lines_by_pair: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for edge in edges:
+        if not _is_taint_call_edge(edge):
+            continue
+        sites = _edge_call_sites(edge)
+        if sites:
+            call_lines_by_pair[
+                (edge.get("src", ""), edge.get("dst", ""))
+            ].extend(sites)
+
     # Step 3: Find sanitizer call sites — multi-label-aware so one
     # caller of a barrier function picks up every input_taint label it
     # sanitizes.
@@ -2683,6 +2752,12 @@ def propagate_taint_structural(
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
+            # INV-lozat: one call is not a source->sink pair with itself.
+            if _source_and_sink_are_one_call(
+                caller_id, sink_node, source_callee_id, sink_callee_id,
+                call_lines_by_pair,
+            ):
+                continue
             if sink_node in reachable:
                 is_sanitized = False
                 path = _reconstruct_path(parent, seed_id, sink_node)
@@ -3721,6 +3796,14 @@ def propagate_taint_ddg(
         for sink_node, sink_callee_id, taint_sink in _iter_sink_sites(
             sink_callers,
         ):
+            # INV-lozat: one call is not a source->sink pair with itself. This
+            # is NOT the §3a walk refusing -- the walk is confirm-only and its
+            # `sink_before_source` blocker is recorded, never acted on.
+            if _source_and_sink_are_one_call(
+                caller_id, sink_node, source_callee_id, sink_callee_id,
+                call_lines,
+            ):
+                continue
             is_sanitized = False
             # INV-pojib: the sanitizer the DDG arm credited, if that is the arm
             # that fired. Reset per sink site, because two sinks in one function

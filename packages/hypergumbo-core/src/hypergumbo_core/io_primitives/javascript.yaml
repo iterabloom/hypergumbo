@@ -179,7 +179,26 @@ net_recv:
 
 subprocess:
   - module: child_process
-    functions: [exec, execSync, execFile, execFileSync, spawn, spawnSync, fork]
+    functions: [exec, execFile, spawn, fork]
+    notes: >-
+      The ASYNCHRONOUS forms. Each returns a ChildProcess HANDLE; the
+      child's output arrives later, through a callback or a stream, which
+      is an ADR-0049 deferred crossing rather than a transfer. Split from
+      the *Sync row below by INV-lozat.
+  - module: child_process
+    functions: [execSync, execFileSync, spawnSync]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
 
 env_read:
   - module: process
@@ -242,6 +261,15 @@ ipc_send:
       unchanged because ipc_recv and net_recv both derive `untrusted_input`.
 
 ipc_recv:
+  - module: child_process
+    functions: [execSync, execFileSync, spawnSync]
+    simultaneous: true
+    notes: >-
+      INV-lozat: `execSync` and `execFileSync` RETURN the child's stdout;
+      `spawnSync` returns an object whose `stdout`/`stderr` are the same
+      bytes. The async siblings are deliberately absent -- they hand back a
+      handle, and a crossing that has not happened yet is disclosed, not
+      minted (ADR-0049).
   - module: BroadcastChannel
     methods: [addEventListener]
     notes: "Browser cross-tab messaging: the receive side (INV-nular)"

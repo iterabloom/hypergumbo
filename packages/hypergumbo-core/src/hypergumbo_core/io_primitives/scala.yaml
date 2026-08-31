@@ -108,6 +108,14 @@ ambiguous_names:
 # Scala stdlib I/O
 # ---------------------------------------------------------------------------
 ipc_recv:
+  - module: scala.sys.process.ProcessBuilder
+    methods: [lineStream, lazyLines]
+    simultaneous: true
+    notes: >-
+      INV-lozat: both yield the launched process's OUTPUT LINES, so the
+      call is a transfer as well as a launch. `ProcessBuilder.run` stays
+      launch-only -- it hands back a Process handle. This is the same
+      simultaneity `Process.apply` already declares one row over.
   - module: scala.io.StdIn
     functions: [readLine, readInt, readDouble, readFloat, readLong, readBoolean, readChar, readShort, readByte, readf]
     notes: >-
@@ -153,8 +161,22 @@ subprocess:
     simultaneous: true
     notes: "Scala process execution — wraps java.lang.ProcessBuilder"
   - module: scala.sys.process.ProcessBuilder
-    methods: [run, lineStream, lazyLines]
-    notes: "Scala process builder DSL"
+    methods: [run]
+    notes: "Scala process builder DSL. `run` returns a Process HANDLE."
+  - module: scala.sys.process.ProcessBuilder
+    methods: [lineStream, lazyLines]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
 
 env_read:
   - module: scala.sys
