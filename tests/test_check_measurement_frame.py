@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers_measurement_frame import load_gate
+from helpers_measurement_frame import load_gate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GATE = load_gate(REPO_ROOT / "scripts" / "check-measurement-frame")

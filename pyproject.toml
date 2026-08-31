@@ -10,8 +10,15 @@ markers = [
 ]
 # Required for hypergumbo-tracker's Textual TUI tests (async pilot tests)
 asyncio_mode = "auto"
-# Tracker tests import a shared 'helpers' module from their tests/ directory
-pythonpath = ["packages/hypergumbo-tracker/tests"]
+# Tracker tests import a shared 'helpers' module from their tests/ directory,
+# and tests/test_check_measurement_frame.py imports helpers_measurement_frame
+# from the root tests/ directory the same way. Neither directory is a package
+# (no __init__.py), so the import must not be spelled `tests.helpers_...`:
+# whether the repo ROOT lands on sys.path depends on the invocation --
+# `python -m pytest` inserts cwd, the `pytest` console script does not -- which
+# is why that spelling passed locally and raised ModuleNotFoundError in CI.
+# A pythonpath entry is independent of both the invocation and the import mode.
+pythonpath = ["packages/hypergumbo-tracker/tests", "tests"]
 # Filter expected warnings from tests
 filterwarnings = [
     # tree-sitter unavailability in fallback tests
