@@ -1,0 +1,47 @@
+Original commit body from 69de59bf08eda29b1eea6f77f8d165b062e74e37:
+
+verify-claims stamps walk_verdict: "unavailable" on every finding from the
+STRUCTURAL propagator. The propagator does it deliberately and its comment says
+why: blank would conflate "no walk was possible" with "this record predates the
+field". flows_from_payload rebuilt each row from an EXPLICIT key list, and
+walk_verdict / walk_blocked_by were not in it.
+
+So every adjudication packet ever built from this collector printed an N-hop
+route and silently withheld the statement that no dataflow walk ran and the
+route is call-graph reachability rather than a demonstrated value route.
+Measurement 0006's own sample/sample-112.json has neither key, so its two
+independent 16-agent panels judged 112 situations without it; a later blind
+panel spent its whole effort refuting a 16-hop rabbitmq route the tool had
+already flagged as unwalked. Their verdicts stand -- the rubric says judge the
+SOURCE and treat the route as a hint -- but the effort was wasted and the
+share of the population resting on no walk at all was hidden: 72.3%
+structural against 1.5% with a confirmed dependence, on the 16-repo cohort.
+
+CARRIED FAITHFULLY, NOT DEFAULTED. A change that stamped every row
+"unavailable" would satisfy the obvious test and be worse than the bug: it
+would label as unwalked the 1.5% of findings that carry a confirmed
+dependence. An absent field stays None, because a map written before the field
+existed made no claim about the walk. Four tests including that control, plus
+an end-to-end re-collect showing the three values surviving distinctly:
+structural -> unavailable, ddg_mixed -> not_attempted, ddg -> confirmed.
+
+THIS RELOCATES THE DEFECT, and the first diagnosis is recorded because it was
+wrong. The blind panels objected that a route was fictitious, which read as the
+tool asserting a route it had not established. It does not: verify-claims
+discloses the basis and taint.py documents `path` as "ONE call-graph route ...
+a witness, not 'the path'". The harness lost it.
+
+Three candidate fixes were priced and dropped first:
+  - hop-level argument check: NO call-site argument provenance exists. Across
+    220 call-edge construction sites every `args` field is decorator parsing.
+  - filter on analysis_method: BACKWARDS. structural is 35.4% precise against
+    ddg_mixed's 18.8% on the adjudicated survivors -- a third population
+    reproducing 0006's "analysis_method REVERSES between populations".
+  - full interprocedural dataflow: ADR-0017 section 4, whose refutation payoff
+    measurements 0007 and 0008 already put at zero.
+
+Discharges measurement 0006 defect family F, "the measurement's own packet
+builder, NOT hypergumbo. Fix before reuse", for the field that mattered most.
+The script had no tests at all before this.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
