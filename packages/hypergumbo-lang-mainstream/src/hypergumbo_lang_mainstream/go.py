@@ -2293,6 +2293,112 @@ _GO_IN_MEMORY_READERS: Final[tuple[str, ...]] = (
 )
 
 
+#: Calls that PRODUCE a filesystem handle. A read through one of these is an
+#: ``fs_read`` crossing, which hypergumbo deliberately does not mint a taint
+#: source from -- the sensitivity of a file read depends on what is stored, so
+#: ``fs_read`` is absent from ``AUTO_SOURCE_LABEL_MAP`` by design.
+#:
+#: 63 of the 83 resolved bare-local ``bufio.New*`` sites in the ADR-0049 cohort
+#: wrap one of these (WI-lipis), which makes it the LARGEST false-source
+#: population the wrapper row creates -- larger than the in-memory case the
+#: first deliverable addressed, and omitted from that estimate.
+_GO_FILE_HANDLE_PRODUCERS: Final[tuple[str, ...]] = (
+    "os.Open(", "os.OpenFile(", "os.Create(", "os.CreateTemp(",
+    "ioutil.TempFile(", "ioutil.OpenFile(",
+)
+
+#: Node types that BIND a name in a Go function body. ``var_spec`` covers
+#: ``var f = os.Open(p)``; the other two cover ``:=`` and ``=``.
+_GO_BINDING_NODES: Final[frozenset[str]] = frozenset({
+    "short_var_declaration", "assignment_statement", "var_spec",
+})
+
+
+def _go_enclosing_body(node: "tree_sitter.Node") -> "Optional[tree_sitter.Node]":
+    """The body of the function or literal this node sits inside, or None."""
+    cur = node.parent
+    while cur is not None:
+        if cur.type in (
+            "function_declaration", "method_declaration", "func_literal",
+        ):
+            return find_child_by_field(cur, "body")
+        cur = cur.parent
+    return None  # pragma: no cover - a call at file scope does not parse in Go
+
+
+def _go_binding_rhs(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Text of the LAST binding of ``name`` at or above ``node``'s line.
+
+    A deliberately smaller instrument than a reaching-def solver, and its
+    answers are a SUBSET of one: the enclosing function only, textual line
+    order only, no branch or loop reasoning. The analyzer runs before any DDG
+    exists, so the alternative is not "use the DDG here" but "answer nothing",
+    and 74.1% of the resolvable population is a single ``:=`` five lines up.
+
+    ORDER IS THE WHOLE POINT rather than a detail. A scan that took the last
+    match in the FILE would read a rebinding below the call as if it reached
+    it, and one that took the first would miss a rebinding above it. Both
+    shapes are pinned by tests.
+    """
+    body = _go_enclosing_body(node)
+    if body is None:  # pragma: no cover - see _go_enclosing_body
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        cur = stack.pop()
+        stack.extend(cur.children)
+        if cur.type not in _GO_BINDING_NODES:
+            continue
+        if cur.start_point[0] > use_line or cur.start_point[0] < best_line:
+            continue
+        left = find_child_by_field(cur, "left") or find_child_by_field(
+            cur, "name",
+        )
+        right = find_child_by_field(cur, "right") or find_child_by_field(
+            cur, "value",
+        )
+        if left is None or right is None:
+            continue
+        targets = [node_text(c, source) for c in left.named_children] or [
+            node_text(left, source),
+        ]
+        if name not in targets:
+            continue
+        # ``f, err := os.Open(p)`` binds TWO names from ONE call, so the right
+        # side has fewer elements than the left and the whole of it is what
+        # produced ``f``. ``a, b := g(), h()`` has as many, and there the
+        # position decides -- taking the whole text there would report ``h()``
+        # as ``a``'s origin.
+        sources = right.named_children or [right]
+        if len(sources) == len(targets):
+            chosen = sources[targets.index(name)]
+        else:
+            chosen = right
+        best_line = cur.start_point[0]
+        best_text = node_text(chosen, source).strip()
+    return best_text
+
+
+def _go_classify_handle_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a handle, or None.
+
+    One place, so the inline argument and the resolved binding cannot drift
+    into disagreeing about what ``strings.NewReader(s)`` is.
+    """
+    if any(r in text for r in _GO_IN_MEMORY_READERS):
+        return "in_memory"
+    if any(o in text for o in _GO_FILE_HANDLE_PRODUCERS):
+        return "host_path"
+    if "os.Stdin" in text:
+        return "std_stream"
+    return None
+
+
 def _go_wrapped_handle_kind(
     node: "tree_sitter.Node", source: bytes, module: str, callee: str,
 ) -> Optional[str]:
@@ -2302,9 +2408,15 @@ def _go_wrapped_handle_kind(
     row whose boundary depends on a per-call-site fact the row cannot see, so
     the analyzer stamps the discriminator and the consumers read it.
 
-    Returns None for everything not provable at the call site -- a bare local
-    (64.8% of the measured population) needs the variable's ORIGIN, which is a
-    dataflow question and deliberately not answered here.
+    TWO STEPS, and the second is this item's second deliverable. The argument
+    is classified DIRECTLY when it names the producer inline; when it is a bare
+    identifier -- 64.8% of the measured population -- the enclosing function is
+    read for that name's last binding and the binding is classified instead.
+
+    Returns None for everything still not provable: a parameter, a struct
+    field, a value from a function this file does not bind. INV-zumin's ruling
+    is that a call site gets ONE answer or NONE, so an unresolved origin stamps
+    nothing and classifies exactly as it did before this existed.
     """
     if (module, callee) not in _GO_HANDLE_WRAPPERS:
         return None
@@ -2316,11 +2428,14 @@ def _go_wrapped_handle_kind(
         # the whole repo's analysis with it.
         return None
     arg_text = node_text(args, source).strip()
-    if any(r in arg_text for r in _GO_IN_MEMORY_READERS):
-        return "in_memory"
-    if "os.Stdin" in arg_text:
-        return "std_stream"
-    return None
+    direct = _go_classify_handle_text(arg_text)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip("()").strip()
+    if not bare.isidentifier():
+        return None
+    rhs = _go_binding_rhs(node, source, bare)
+    return None if rhs is None else _go_classify_handle_text(rhs)
 
 
 def _extract_function_reference_edges(

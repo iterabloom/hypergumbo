@@ -551,7 +551,10 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "catalogue row cannot tell: 'host_path' (a place in a "
                 "filesystem), 'null_device' (a kernel sink that discards), "
                 "'std_stream' (/dev/stdout, /dev/stderr, /dev/fd/N — a real "
-                "crossing, but a logging one rather than a filesystem one), or "
+                "crossing, but a logging one rather than a filesystem one), "
+                "'in_memory' (WI-lipis: the bytes never left the process — a "
+                "`bufio.NewScanner(strings.NewReader(s))` wraps a buffer, not "
+                "a channel), or "
                 "'unresolved' (a variable target; a real write to a place the "
                 "analyzer cannot name). INV-nular: `redirect.>` is ONE "
                 "catalogue row whose boundary depends on the target at the "
@@ -564,11 +567,16 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 per_call_site=True,
                 write_discipline=DISCIPLINE_SINGLE_WRITER,
                 discipline_note=(
-                    "Sole writer: bash.py's _redirect_edge, stamped in the "
-                    "same dict literal as redirect_target. A second language "
-                    "adding the key (python's os.devnull is the same fact) "
-                    "would be a second writer over DISJOINT edges, as "
-                    "io_mode's two analyzer families already are."
+                    "TWO writers over DISJOINT edges, which is what this "
+                    "discipline permits and io_mode's two analyzer families "
+                    "already do. bash.py's _redirect_edge stamps it on "
+                    "redirect edges, in the same dict literal as "
+                    "redirect_target. go.py's _go_wrapped_handle_kind stamps "
+                    "it on handle-wrapper call edges (WI-lipis) — a "
+                    "`bufio.NewScanner` edge is never a bash redirect, so no "
+                    "edge can receive both. The note previously read 'sole "
+                    "writer: bash.py' and anticipated exactly this second "
+                    "writer; it went stale when one arrived."
                 )),
     MetaKeySpec("redirect_target", AXIS_EDGE_META,
                 "The path (or `<unresolved>`) a shell redirection writes to "

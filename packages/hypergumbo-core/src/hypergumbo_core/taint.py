@@ -64,6 +64,7 @@ from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import (
     call_site_modes,
     call_site_target_kinds,
+    read_boundary_for_target_kind,
     target_kinds_cross_no_boundary,
 )
 from .ir import symbol_name_slot, symbol_path_slot
@@ -2162,20 +2163,43 @@ def _source_call_can_mint_taint(edge: dict[str, Any]) -> bool:
     HTTP body, 1 a buffer, and **zero** wrap ``os.Stdin``. The row's own stated
     condition holds nowhere in that population.
 
-    THE SAME VOCABULARY AS THE SINK SIDE, ON PURPOSE. Both ask
-    :func:`io_boundary.target_kinds_cross_no_boundary`, whose set holds
-    ``null_device`` (the kernel discards it) and ``in_memory`` (it never left
-    the process). One predicate, two directions, one home -- so widening the
-    vocabulary moves both arms and neither can drift.
+    THE SAME VOCABULARY AS THE SINK SIDE, ON PURPOSE, and the second
+    deliverable generalised the question rather than adding a second gate
+    beside it. The sink side asks "does this site cross a boundary AT ALL"
+    (:func:`io_boundary.target_kinds_cross_no_boundary`). The source side needs
+    a strictly finer question -- "does it cross one that MINTS" -- because an
+    ``os.Open`` handle crosses a real boundary (``fs_read``) that is absent
+    from :data:`AUTO_SOURCE_LABEL_MAP` by design: the sensitivity of a file
+    read depends on what is stored. So this asks
+    :func:`io_boundary.read_boundary_for_target_kind`, which answers from the
+    non-crossing set FIRST and therefore still moves when that set is widened
+    at its single home. Both directions read one vocabulary; neither can drift.
 
-    WHAT IT DOES NOT DO. A bare local -- 64.8% of the measured population --
-    stamps nothing and is untouched here, because its boundary is the ORIGIN of
-    a variable and that is a dataflow question. Answering it is the rest of
-    WI-lipis; INV-zumin's ruling forbids answering it by emitting BOTH
-    boundaries, so the abstention stays an abstention.
+    THREE ANSWERS, AND THE DEFAULT IS THE CONSERVATIVE ONE:
+
+    * the vocabulary has NO opinion on some site's kind (``unresolved``, or a
+      value from a future analyzer) -- mint, and let the catalogue row decide;
+    * every site crosses nothing, or crosses only non-minting boundaries --
+      refuse;
+    * any site crosses a minting boundary -- mint. ANY, not every, for
+      INV-vukiv's reason: silencing a real receive on the strength of a
+      DIFFERENT collapsed call site is the false-negative trade.
+
+    WHAT IT STILL DOES NOT DO. A bare local whose binding the analyzer cannot
+    find in the enclosing function -- a parameter, a struct field -- stamps
+    nothing and is untouched here. INV-zumin's ruling forbids answering it by
+    emitting BOTH boundaries, so the abstention stays an abstention.
     """
-    return not target_kinds_cross_no_boundary(
-        call_site_target_kinds(edge.get("meta") or {}),
+    kinds = call_site_target_kinds(edge.get("meta") or {})
+    if not kinds:
+        return True
+    resolved = [read_boundary_for_target_kind(kind) for kind in kinds]
+    if any(not known for known, _boundary in resolved):
+        return True
+    return any(
+        boundary in AUTO_SOURCE_LABEL_MAP
+        for _known, boundary in resolved
+        if boundary is not None
     )
 
 

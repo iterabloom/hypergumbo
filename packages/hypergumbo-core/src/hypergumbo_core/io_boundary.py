@@ -2167,6 +2167,48 @@ _NON_CROSSING_TARGET_KINDS: Final[frozenset[str]] = frozenset({
 })
 
 
+#: For a call site that READS, the boundary each target kind actually crosses.
+#:
+#: DIRECTION IS THE ASKER'S, NOT THE MAP'S, and that is why this is not simply
+#: ``TARGET_KIND_BOUNDARY``. A ``host_path`` WRITE is ``fs_write`` and a
+#: ``host_path`` READ is ``fs_read``; the target kind alone does not decide, so
+#: a single direction-free map would carry two facts under one name -- the
+#: shape INV-tutar cost 134 misclassified rows on. The only consumer today is
+#: the SOURCE side, which is a read by construction, and the name says so.
+#:
+#: The non-crossing kinds are deliberately ABSENT here and answered from
+#: :data:`_NON_CROSSING_TARGET_KINDS` at call time rather than copied in: two
+#: homes for one vocabulary is exactly what
+#: ``test_widening_the_vocabulary_moves_the_source_side_too`` exists to catch,
+#: and an import-time copy would make that gate pass while the fact drifted.
+_READ_TARGET_KIND_BOUNDARY: Final[Mapping[str, str]] = {
+    # WI-lipis: 63 of the 83 resolved bare-local ``bufio.New*`` sites in the
+    # ADR-0049 cohort wrap an ``os.Open`` handle. That read really does cross a
+    # boundary -- it is just ``fs_read``, which is absent from
+    # ``AUTO_SOURCE_LABEL_MAP`` by design, because the sensitivity of a file
+    # read depends on what is stored.
+    "host_path": "fs_read",
+    "std_stream": "ipc_recv",
+    # ``unresolved`` is deliberately absent: a variable target is a real read
+    # to a place we cannot name, so the catalogue's own row must decide.
+}
+
+
+def read_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+    """``(known, boundary)`` for a READ at ``kind``.
+
+    ``known=False`` means this vocabulary has no opinion and the caller must
+    fall back to the catalogue row -- the only safe default in a direction that
+    removes findings. ``known=True, boundary=None`` means the read crosses
+    nothing at all.
+    """
+    if kind in _NON_CROSSING_TARGET_KINDS:
+        return True, None
+    if kind in _READ_TARGET_KIND_BOUNDARY:
+        return True, _READ_TARGET_KIND_BOUNDARY[kind]
+    return False, None
+
+
 def call_site_target_kinds(
     edge_meta: Optional[Mapping[str, Any]],
 ) -> tuple[str, ...]:

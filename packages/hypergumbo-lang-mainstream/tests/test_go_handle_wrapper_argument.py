@@ -99,13 +99,23 @@ func f() {
     assert list(kinds.values()) == ["std_stream"]
 
 
-def test_a_bare_local_stamps_nothing(tmp_path: Path) -> None:
-    """THE ABSTENTION, and it is 64.8% of the real population.
+def test_a_bare_local_whose_origin_is_unresolvable_stamps_nothing(
+    tmp_path: Path,
+) -> None:
+    """THE ABSTENTION, narrowed by the SECOND deliverable and kept.
 
-    ``f`` here is an ``os.Open`` handle, which the analyzer cannot see from the
-    call site. Stamping a guess would be worse than stamping nothing: the
-    consumers treat absence as "classify as before", which is the only safe
-    default in the direction that removes findings.
+    This test asserted ``[None]`` for ``h, _ := os.Open(p)`` when the first
+    deliverable shipped, because the origin lookup did not exist and the item
+    said so: a bare local "needs the variable's ORIGIN, which is a dataflow
+    question and deliberately not answered here". WI-lipis's second deliverable
+    answers it, so that spelling now stamps ``host_path`` and its assertion
+    lives in ``test_go_wrapper_argument_origin.py``.
+
+    WHAT STAYS TRUE is the rule the old test was really about, and it is the
+    one INV-zumin rules: a call site gets ONE answer or NONE. A PARAMETER has
+    no binding in this function, the analyzer has nothing to read, and it must
+    not invent an answer — absence still means "classify exactly as before",
+    which is the only safe default in the direction that removes findings.
     """
     kinds = _kinds(tmp_path, '''package main
 
@@ -114,8 +124,7 @@ import (
 	"os"
 )
 
-func f(p string) {
-	h, _ := os.Open(p)
+func f(h *os.File) {
 	sc := bufio.NewScanner(h)
 	_ = sc
 }

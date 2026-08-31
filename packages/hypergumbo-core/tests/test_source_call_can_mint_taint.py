@@ -44,6 +44,7 @@ from unittest import mock
 from hypergumbo_core import io_boundary, taint
 from hypergumbo_core.cfg import DdgEdge
 from hypergumbo_core.taint import (
+    AUTO_SOURCE_LABEL_MAP,
     TaintSink,
     TaintSource,
     propagate_taint_structural,
@@ -122,6 +123,60 @@ def test_a_discarding_target_also_refuses_on_the_source_side() -> None:
     directions read one set rather than two that can drift.
     """
     assert _flows("null_device") == []
+
+
+def test_a_file_handle_mints_no_source() -> None:
+    """WI-lipis's SECOND deliverable, and the LARGER of its two false-source
+    populations: 63 of the 83 resolved bare-local sites wrap an ``os.Open``
+    handle, against the 19.1% in-memory bucket the first deliverable's estimate
+    counted."""
+    assert _flows("host_path") == []
+
+
+def test_the_file_case_is_refused_FOR_ITS_BOUNDARY_not_for_crossing_nothing(
+) -> None:
+    """THE DISCRIMINATING ASSERTION for the generalisation, and the reason a
+    second gate was not added beside the first.
+
+    ``host_path`` is NOT in the non-crossing set and must not be: reading a
+    file is a real crossing, and the sink side depends on that (a ``host_path``
+    write is exactly what ``fs_write`` claims count). The source side refuses
+    it anyway, because the boundary that crossing carries -- ``fs_read`` -- is
+    absent from ``AUTO_SOURCE_LABEL_MAP`` by design. A gate that conflated the
+    two questions would have had to either call a file read "no crossing"
+    (breaking every fs claim) or keep minting from it (the defect).
+    """
+    assert not io_boundary.target_kinds_cross_no_boundary(("host_path",))
+    known, boundary = io_boundary.read_boundary_for_target_kind("host_path")
+    assert (known, boundary) == (True, "fs_read")
+    assert boundary not in AUTO_SOURCE_LABEL_MAP
+    assert _flows("host_path") == []
+
+
+def test_a_site_the_vocabulary_does_not_know_still_mints() -> None:
+    """THIRD FAIL-CLOSED CONTROL. ``unresolved`` is a real read to a place the
+    analyzer cannot name, so the catalogue row decides and the finding stays.
+    An unknown kind must never be read as a known-harmless one."""
+    assert io_boundary.read_boundary_for_target_kind("unresolved") == (
+        False, None,
+    )
+    assert len(_flows("unresolved")) == 1
+
+
+def test_one_minting_site_among_several_keeps_the_flow() -> None:
+    """INV-vukiv, on the source side. A collapsed edge whose sites disagree --
+    one wrapping a file, one wrapping stdin -- must keep minting. Silencing a
+    real receive on the strength of a DIFFERENT call site is the
+    false-negative trade INV-vukiv's collapse rule exists to refuse."""
+    edges = _edges(None)
+    edges[0]["meta"] = {
+        "call_construct": "method",
+        "io_target_kind_values": ["host_path", "std_stream"],
+    }
+    flows = list(propagate_taint_structural(
+        edges, [_SOURCE], [_SINK], [], language="go",
+    ))
+    assert len(flows) == 1
 
 
 def test_widening_the_vocabulary_moves_the_source_side_too() -> None:
