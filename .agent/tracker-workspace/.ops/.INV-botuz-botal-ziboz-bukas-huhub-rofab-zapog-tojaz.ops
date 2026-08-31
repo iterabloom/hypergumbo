@@ -36,3 +36,18 @@
   clock: 3  # 27d7
   nonce: 27d7  # 27d7
   message: "Fix merged at dev 9e3a2e7127. Status is pending_validation and NOT satisfied on purpose: the statement is about runtime behaviour on Python 3.10 and this session's interpreter is 3.12, so the matrix leg cannot be run locally. Verified here: the guard imports cleanly, the new gate fires on the reverted defect (naming user_config.py:43) and passes on the repaired tree, the AST walker reaches 417 real sources, and both affected packages now declare the backport. NOT verified: that nightly leg 1 goes green. The evidence required to close is that leg, readable via 'ci-debug cron-status' — closing on 'tests pass locally' would be the proxy-metric closure INV-nufob was false-satisfied on."  # 27d7
+- op: update  # f8f3
+  at: '2026-08-31T11:36:31Z'  # f8f3
+  by: agent  # f8f3
+  actor: jgstern_agent  # f8f3
+  clock: 4  # f8f3
+  nonce: f8f3  # f8f3
+  set:  # f8f3
+    status: satisfied  # f8f3
+- op: discuss  # 169d
+  at: '2026-08-31T11:36:32Z'  # 169d
+  by: agent  # 169d
+  actor: jgstern_agent  # 169d
+  clock: 5  # 169d
+  nonce: 169d  # 169d
+  message: "VALIDATED BY THE LEG THAT REPORTED THE BREAK, AND THE COMMIT WAS CHECKED RATHER\nTHAN THE COLOUR.\n\nThis item was left `pending_validation` deliberately, on the rule that a nightly\nverdict you happen to read may PREDATE the fix. Checked both halves:\n\n  nightly cron, all four matrix legs: success at 17d67608\n    leg 1 is python 3.10 (.woodpecker/nightly.yml `matrix.python: [\"3.10\", ...]`)\n    https://ci.revolving-tactile.com.de/repos/1/pipeline/2029/1\n  the fix is 9e3a2e7127 \"fix(py310): guard the tomllib import and declare the\n    tomli backport\"\n  `git merge-base --is-ancestor 9e3a2e7127 17d67608` -> TRUE\n\nSo the green leg ran WITH the fix in the tree, on the exact interpreter that\nrecorded `ModuleNotFoundError: No module named 'tomllib'` against 2905 failed\ntests and 124 errors. That is behavioural evidence on the production path, not a\nproxy: the item's statement is about whether hypergumbo runs on its declared\nminimum, and the run that answers it is the one that previously did not.\n\nWHAT IS NOT CLAIMED. This validates the ONE import that broke. It does not\nvalidate that no other 3.11+ symbol has entered the tree since -- the standing\nguard for that is `test_stdlib_version_guarded_imports.py`, which the earlier\nentry disclosed is selected by no top-level source and therefore runs on\n`full-suite` twice daily rather than per-PR. That gap is disclosed on its own\nterms and is not closed here."  # 169d

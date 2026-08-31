@@ -1,0 +1,23 @@
+- op: create  # 21aa
+  at: '2026-08-31T09:52:28Z'  # 21aa
+  by: agent  # 21aa
+  actor: jgstern_agent  # 21aa
+  clock: 1  # 21aa
+  nonce: 21aa  # 21aa
+  data:  # 21aa
+    kind: work_item  # 21aa
+    title: "A launch that returns a HANDLE leaves its crossing unrepresented in 4 languages (Popen.stdout, Process.getInputStream, Cmd.StdoutPipe, popen FILE*) where rust already rows the far end"  # 21aa
+    status: todo_hard  # 21aa
+    priority: 2  # 21aa
+    parent:  # 21aa
+    tags:  # 21aa
+    - catalogue  # 21aa
+    - io_boundary  # 21aa
+    - taint  # 21aa
+    isbefore: []  # 21aa
+    duplicate_of: []  # 21aa
+    not_duplicate_of: []  # 21aa
+    pr_ref:  # 21aa
+    description: ""  # 21aa
+    fields:  # 21aa
+      description: "FOUND 2026-08-31 while classifying the subprocess catalogue for INV-lozat. That\nitem shipped ONE of the three categories ADR-0049 ruling 1 divides the family\ninto; this is the second, filed rather than folded in silently.\n\nTHE CLASSIFICATION, over all 116 subprocess symbols in the 14 shipped\ncatalogues, by ruling 1 (\"does this call return a value whose content the far\nside chose?\"):\n\n  (A) RETURNS THE CHILD'S CONTENT -- 18 symbols, 8 languages. SHIPPED by\n      INV-lozat as ipc_recv + simultaneous.\n  (B) RETURNS A HANDLE the child fills later -- THIS ITEM.\n  (C) RETURNS AN EXIT STATUS OR UNIT -- correctly launch-only, unchanged.\n\nCATEGORY B, enumerated:\n\n  c           stdlib::popen                    -> FILE*\n  python      subprocess::Popen                -> Popen object (.stdout)\n              os::popen                        -> file object\n  go          os/exec::Command / CommandContext-> *Cmd (StdoutPipe)\n  java        java.lang.ProcessBuilder::start  -> Process (getInputStream)\n              java.lang.Runtime::exec          -> Process\n  rust        std::process::Command::spawn     -> Child (already has\n                                                  ChildStdout::read rowed\n                                                  ipc_recv -- see below)\n  haskell     System.Process::createProcess    -> (stdin,stdout,stderr,handle)\n              System.Process.Typed::startProcess\n  javascript  child_process::spawn / fork      -> ChildProcess\n              child_process::exec / execFile   -> ChildProcess, stdout via cb\n  objc        NSTask::launch                   -> output via NSPipe\n  swift       Process (Foundation)             -> output via Pipe\n  elixir      Port::open                       -> port, data arrives as msgs\n  erlang      erlang::open_port                -> same\n  scala       Process::run / ProcessBuilder::run -> Process handle\n\nTHIS IS THE `net_listen` SHAPE ONE CHANNEL OVER. ADR-0049 ruling 1 answers NO\nfor every row above: the call hands back a handle, and the crossing happens\nlater, in a scope the call does not name. Ruling 2 then says a deferred crossing\nis DISCLOSED and never minted, and that it must SHADOW the corresponding data\nboundary so a disclosure tag does not become a false-all-clear generator under\nINV-buzab. `net_listen` shadows `net_recv`; the analogue here would shadow\n`ipc_recv`.\n\nWHY THIS IS NOT OBVIOUSLY WORTH DOING, and why the item says so up front. The\nlaunch rows ALREADY carry `subprocess`, which is in OPAQUE_BOUNDARIES, so every\none of these calls already withholds a clean verdict on EVERY boundary\n(`declares_opaque_crossing`). A deferred-crossing tag would be strictly weaker\nthan the opacity these rows already assert. The question this item exists to\nanswer is therefore NOT \"should these mint?\" (ruling 1 says no, settled) but\n\"does the corpus contain a real crossing these rows leave unrepresented, that\nsome OTHER row could carry?\" -- ruling 3's finding-level test.\n\nWHERE THE ANSWER PROBABLY IS, and it is not symmetric across languages. rust\nalready rows the far end: `ChildStdout::read` / `ChildStderr::read` / \n`Child::wait_with_output` are ipc_recv, so a rust `spawn` has its crossing\nrepresented one call later and needs nothing. python has NO row for\n`Popen.stdout.read` or `.communicate()`; java has none for\n`Process.getInputStream`; go has none for `Cmd.StdoutPipe`. So the likely\ndeliverable is not a deferred-crossing tag at all -- it is the MISSING FAR-END\nROWS in the four languages where rust has them and nobody else does, which is\nthe same intra-tree inconsistency INV-lozat found one call earlier.\n\nBEFORE BUILDING: measure emission shape first. INV-lozat did not, and shipped a\nchange whose rows classify only 23 of 217 candidate call sites on beads (10.6%)\nbecause Go leaves a `cmd := exec.Command(...)` receiver untyped. `Popen.stdout`\nis an ATTRIBUTE on a bare local and will be worse. Publish the number before\nchoosing a design."  # 21aa
