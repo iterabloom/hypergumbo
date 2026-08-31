@@ -368,10 +368,17 @@ logging:
 # above as `io:format`, so the crossing is represented and ruling 3 licenses
 # the removal.
 #
-# PROVEN AT THE FINDING LEVEL, NOT ARGUED, per ruling 3. rabbitmq, both arms
-# cold: `host-secret-no-logging` stays violated, 100 -> 68 flows; sink modules
-# io_lib 94 -> 0 and io 5 -> 64; all three of measurement 0006's adjudicated
-# true positives re-root onto io:format. The other six claims are unchanged.
+# THE REMOVAL IS CORRECT; ONE ARGUMENT FIRST OFFERED FOR IT WAS NOT. A cold A/B
+# on rabbitmq showed `host-secret-no-logging` still violated, 100 -> 68 flows,
+# sink modules io_lib 94 -> 0 and io 5 -> 64, with measurement 0006's three
+# adjudicated true positives appearing to "re-root" onto io:format. That was
+# read as ruling 3's represented-crossing test being met. A BLIND PANEL REFUTED
+# IT (two independent passes, 0/7 disagreement, 2026-08-30): the re-rooted
+# route terminates at rabbit_misc:module_attributes/1, whose io:format takes
+# only [Module] -- bound from application:get_key -- so no source value reaches
+# it. The removal therefore deleted VACUOUS findings rather than relocating
+# real ones, which is still the right outcome and is why the row is gone.
+# Measurement 0006's sensitivity S1 STANDS; useful precision under it is 21.4%.
 # The vanished shape is `rabbit_misc:format/2` = lists:flatten(io_lib:format(
 # ...)), a pure function whose result is returned in an {error, _} tuple.
 #
