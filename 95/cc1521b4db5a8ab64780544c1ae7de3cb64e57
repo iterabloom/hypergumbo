@@ -1,0 +1,46 @@
+Original commit body from 998fb9a280e679645625eb04c2a0c4fc931a917d:
+
+ADR-0049 ruling 1 asks whether a call returns a value whose content the far
+side chose. `exec.Command("git","log").Output()` does, and minted nothing: a
+Go program piping that straight into `sh -c` returned confirmed_with_caveats
+on "untrusted input never reaches a subprocess", with os/exec.Cmd.Output NAMED
+in the caveat as a door the analysis could not see through. It now returns
+violated, 3 flows, [origins: 3 ipc_recv].
+
+The boundary was not a new choice. rust.yaml already rows
+Child.wait_with_output / ChildStdout.read as ipc_recv, citing python.yaml's
+os.wait -- and rows Command::output, the stdlib's own spawn-then-
+wait_with_output, as subprocess. One file, two answers, identical bytes. So
+this makes eight catalogues agree with the two that had it right, at
+ipc_recv, declared `simultaneous: true` (the scala Process.apply shape) so
+the launch keeps its sink, its opacity and its boundary-map chain. No core
+code was needed for the rows.
+
+18 symbols in 8 languages return the child's CONTENT and ship. Handle-
+returning launches (Popen, ProcessBuilder.start, Command::spawn, popen) are
+the net_listen shape one channel over and are filed, not folded in.
+subprocess.run is deliberately out: its stdout is the child's only when the
+caller passed capture_output=, and the catalogue matches on name.
+
+A primitive that is both a source and a sink was new, and both propagators
+paired the call with ITSELF. Priced on hypergumbo's own walk_blocked_by over
+the measurement-0006 cohort, every arm cold: sink_before_source marks 4 of
+692 pre-existing rows (0.6%) and 18 of the 51 the rows add (35.3%) -- sixty
+times background. _source_and_sink_are_one_call joins the two existing
+per-call-site gates; it is NOT the §3a walk, which is confirm-only. It fires
+only on positive evidence of a single recorded call line.
+
+Three arms, 16 repositories. Ships at 692 -> 732 rows, +40 / -0: no
+pre-existing finding deleted anywhere, all 15 ddg-confirmed flows survive the
+gate, 12 repositories unchanged. Of the 40 added, 5 (12.5%) are ddg-confirmed
+at `precise` and 10 (25%) still carry sink_before_source -- the gate answers
+the one-call case, not a different sink preceding the source. Filed.
+
+Ceiling disclosed, measured after the fact rather than before: on beads the
+rows classify 23 call sites against 217 functions containing such a call
+(10.6%), because `cmd := exec.Command(...)` leaves the receiver untyped. That
+is WI-lipis's defect on the receiver instead of the argument, and it is why
+only one of the seven rows WI-lipis removed comes back.
+
+Racial-Capitalism-Is-Bad: a kiwi playing the violin in a river of liquid chrome in a coral reef with a conclave of turtles made of pastrami slices
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
