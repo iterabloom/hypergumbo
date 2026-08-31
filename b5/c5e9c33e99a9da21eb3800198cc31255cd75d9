@@ -1,0 +1,46 @@
+Original commit body from 053b7cf17fa461c093d83e8e8fd3da7c4dfeb62c:
+
+go.yaml files bufio.{NewScanner,NewReader} as ipc_recv on the note "When
+wrapping os.Stdin" -- a condition no catalogue row can enforce, because the
+row sees the CALLEE and the answer is in the ARGUMENT. ipc_recv is in
+AUTO_SOURCE_LABEL_MAP, so bufio.NewScanner(strings.NewReader(s)) invented an
+untrusted_input source out of a caller's string and reported it reaching
+exec.Command at confidence: PRECISE. Confidence measures the walk, not the
+catalogue, so a precise verdict over a wrong source is the worst-shaped false
+positive the tool can emit.
+
+SIZED FIRST, as the item required. On hypergumbo's own reaching-def solver,
+the shipped dataflow resolves 83 of 163 bare-local sites -- 50.9% pooled,
+25-91% per repo. The item feared a low number would make the work "much
+bigger than it looks"; it is not low. Of the 83 resolved, 63 wrap an os.Open
+handle (fs_read, not a taint source), 3 an HTTP body, 1 a buffer, and ZERO
+wrap os.Stdin. The row's stated condition holds nowhere.
+
+ONE PREDICATE, TWO DIRECTIONS. A /dev/null write and an in-memory read are
+the same claim -- this call site touches nothing outside the process -- so
+io_target_kind gains `in_memory` and _DISCARDING_TARGET_KINDS becomes
+_NON_CROSSING_TARGET_KINDS ("discarding" is write-flavoured and would have
+smuggled a second meaning under one name). _source_call_can_mint_taint
+mirrors _sink_call_can_carry_taint and both read ONE vocabulary, with a test
+that widens it at its single home and asserts both arms follow.
+
+ONLY THE PROVABLE CASES ARE STAMPED. A bare local -- 64.8% of the population
+-- stamps nothing, because its boundary is the origin of a variable and that
+is a dataflow question. INV-zumin forbids answering it by emitting both
+boundaries, so the abstention stays an abstention.
+
+THE REMOVAL IS NOT A CLEAN WIN, AND THIS SAYS SO. Paired A/B, gate disarmed
+vs armed, eight arms cold: beads 1974 -> 1957 findings, cilium 623 -> 612,
+caddy and jaeger unchanged. All SEVEN removed rows read back against source:
+every one wraps a buffer filled from a subprocess's stdout. The item calls
+this "pure false-positive removal"; on this corpus it is not. The row is
+wrong about WHERE the crossing happens, but the flow tracked real external
+data one hop earlier. Net recall reduction until INV-lozat is closed.
+
+The wrong row still went, on the precedent already ruled for io_lib: keeping
+a misattributing row because it co-occurs with a real crossing makes the
+correct fix look like a regression later.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
+Racial-Capitalism-Is-Bad: a manatee riding a zeppelin in a lighthouse balcony with a rehearsal of parrots made of black bread crusts
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
