@@ -329,6 +329,50 @@ the row, useful precision is **21.4%** (24/112).
 **So the band is tripped at 24.1%, and the one live sensitivity can only trip
 it harder.** No reading of the evidence puts useful precision above 25%.
 
+#### CORRECTION 2026-08-30 — S1 is void as a deduction, and the row is still wrong
+
+**S1's 21.4% assumed the three TPs would VANISH if the row went. They do not.**
+The owner ruled against the row, and the removal was tested at the finding
+level first, per ADR-0049 ruling 3. On rabbitmq, both arms cold with separate
+`XDG_CACHE_HOME` and the cold line asserted:
+
+| | arm A (row present) | arm B (row removed) |
+|---|---|---|
+| `host-secret-no-logging` | violated, 100 flows | violated, **68 flows** |
+| sink modules | `io_lib` 94, `io` 5 | `io` **64**, other 4 |
+| rabbitmq#0 `start_setup_proc/1` | `io_lib:format`, 8 hops | **`io:format`, 17 hops** |
+| rabbitmq#4 `default_queue_type/2` | `io_lib:format`, 13 hops | **`io:format`, 15 hops** |
+| rabbitmq#6 `maybe_load_..._pluggable_source/2` | `io_lib:format`, 8 hops | **`io:format`, 17 hops** |
+| the other six claims | — | evidence sets **identical** |
+
+All three re-root onto the genuine sink. The claim "a host secret reaches
+logging" stays true by a path the tool can trace, so **the finding is not
+vacuous and nothing is deducted. Useful precision is unchanged at 24.1%.**
+
+**What the row actually was is named two paragraphs below this one, about a
+different row.** This record calls `urllib.request.Request` under `net_send`
+*"An attribution defect, not a vacuous claim"* — because its value reaches
+`urlopen` on the next line. `io_lib:format` is that shape exactly, and this
+record filed the two into different buckets. The classification rule was never
+stated: **a row that misattributes WHERE a crossing happens is an attribution
+defect; only a row that asserts a crossing which does not happen at all is
+vacuous.** ADR-0046's KIND-MISDECLARED class means the second. S1 was the
+first, so it was never a candidate for deduction.
+
+**One caveat this A/B does not settle.** The re-rooted chains are 15-17 hops,
+all `analysis_method: structural`, up from 8/13/8. Whether they survive
+adjudication at that length is a fresh question, and this record's own FP
+inventory carries `reachability-only 8`. The findings survive; whether the
+*true positives* do is for a re-measurement to say.
+
+**A larger defect was found underneath, and it is filed rather than deducted.**
+Some flows that vanished with the row were real — `do_http_req/2` logs an
+env-derived timeout — but via `?LOG_DEBUG`, an OTP macro the analyzer does not
+expand. rabbitmq uses **1,910 `?LOG_*` macros against 187 direct `logger:`
+calls**, so 91% of its logging surface is invisible and `io_lib:format` was
+standing in for it by coincidence. That is a recall hole wider than anything
+this row covered, and no `logger` sink appears anywhere in either arm.
+
 ### Two sink-side defects found by this pass, neither deducted
 
 Both are new — section A looked only at sources — and both are filed onto

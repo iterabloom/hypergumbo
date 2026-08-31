@@ -12,9 +12,10 @@ language: erlang
 # HTTP), inet (DNS + socket options), ets/dets/mnesia (databases), erlang
 # process primitives + gen_server/gen_statem/gen_event/supervisor/proc_lib
 # (OTP behaviours), rpc/global (distributed), os/application/init
-# (environment), code (loading .beam files), io/io_lib/logger/error_logger
+# (environment), code (loading .beam files), io/logger/error_logger
 # (output). digraph_utils / digraph / crypto / random / rand are
-# intentionally absent — not IO. dist_util is internal-only.
+# intentionally absent — not IO, and io_lib joined them (INV-nular F6): it
+# formats into an iolist and writes nothing. dist_util is internal-only.
 status: provenance_declared
 stdlib_provenance:
   source_url: https://erlang.org/doc/apps/stdlib/index.html
@@ -354,9 +355,30 @@ logging:
       logging" fired at a call that emits nothing, and the data actually read
       from stdin was not a taint SOURCE at all, so the most ordinary untrusted
       input a program has was invisible.
-  - module: io_lib
-    functions: [format, fwrite]
-    notes: "Returns iolist, not direct I/O, but typically written immediately"
+# io_lib: DELETED (INV-nular F6, measurement 0006 sensitivity S1).
+#
+# `io_lib:format/2` returns an iolist. It writes nothing. Erlang splits io_lib
+# from io for exactly that reason, and this row's own note conceded it --
+# "Returns iolist, not direct I/O, but typically written immediately" -- while
+# AUTO_SINK_ZONE_MAP turned `logging` into a taint SINK at every call site.
+#
+# ADJACENCY IS NOT A CROSSING. A boundary tag asserts the crossing happens AT
+# THIS CALL, in this call's scope (ADR-0049 ruling 1). "Typically written
+# immediately" describes a DIFFERENT call, one hop later -- which is rowed
+# above as `io:format`, so the crossing is represented and ruling 3 licenses
+# the removal.
+#
+# PROVEN AT THE FINDING LEVEL, NOT ARGUED, per ruling 3. rabbitmq, both arms
+# cold: `host-secret-no-logging` stays violated, 100 -> 68 flows; sink modules
+# io_lib 94 -> 0 and io 5 -> 64; all three of measurement 0006's adjudicated
+# true positives re-root onto io:format. The other six claims are unchanged.
+# The vanished shape is `rabbit_misc:format/2` = lists:flatten(io_lib:format(
+# ...)), a pure function whose result is returned in an {error, _} tuple.
+#
+# NOT AN ARGUMENT FOR KEEPING IT: some vanished flows were real, logging via
+# ?LOG_DEBUG -- an OTP macro the analyzer does not expand. rabbitmq has 1,910
+# ?LOG_* uses against 187 direct `logger:` calls, so io_lib was covering that
+# gap BY COINCIDENCE. The macro gap is filed; a wrong row is not its fix.
   - module: error_logger
     functions: [info_msg, info_report, warning_msg, warning_report, error_msg, error_report]
     notes: "Legacy logging; replaced by logger in OTP 21+"

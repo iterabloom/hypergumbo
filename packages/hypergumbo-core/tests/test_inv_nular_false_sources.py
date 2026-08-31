@@ -1044,3 +1044,153 @@ def test_the_retired_row_exemption_really_did_retire() -> None:
     why."""
     assert _has("go", "net_listen", "github.com/gofiber/fiber/v2.App", "Listen")
     assert not _has("go", "net_recv", "github.com/gofiber/fiber/v2.App", "Listen")
+
+
+# --------------------------------------------------------------------------
+# F6 — ADJACENCY IS NOT A CROSSING (measurement 0006's sensitivity S1)
+# --------------------------------------------------------------------------
+
+#: A row whose own note concedes the call is not I/O and then declares a
+#: boundary anyway, on the grounds that a REAL crossing usually happens NEARBY.
+#:
+#: This is a distinct defect from F1-F3. Those rows misdescribe what a call
+#: DOES (a ref is not a database, a builder issues no statement). These rows
+#: describe it correctly and then declare a boundary for a call one hop AWAY --
+#: so the crossing is real, and it is attributed to the wrong call. ADR-0049
+#: ruling 1 is the same test pointed outbound: a boundary tag asserts the
+#: crossing happens AT THIS CALL, IN THIS CALL'S SCOPE.
+#:
+#: The vocabulary is deliberately narrow. A sweep for self-refuting notes
+#: generally ("not I/O", "returns", "constructor") returned 13 hits of which 11
+#: were notes NARRATING A PAST REMOVAL -- a gate needing an 11-row exemption
+#: list is a gate nobody will maintain. Matching the RATIONALISATION instead
+#: ("typically written immediately", "commonly precede fs_read") returns
+#: exactly the two live families, in three languages.
+ADJACENCY_RATIONALISATION = re.compile(
+    r'(?i)(typically|commonly|usually|often|generally)\b[^.]{0,60}?'
+    r'\b(precede|preceded|precedes|follow|followed|follows|immediately|next|'
+    r'then|before|after|written|read)')
+
+#: KNOWN-WRONG AND DELIBERATELY NOT FIXED HERE, which is not the same as
+#: adjudicated correct -- the distinction this entry exists to keep visible.
+#:
+#: javascript's seven ``path.*`` rows are the same defect as ``io_lib:format``,
+#: with the same sentence shape in the note. They are NOT removed in the change
+#: that removed io_lib because ADR-0049 ruling 3's proof is run PER LANGUAGE and
+#: not argued: erlang's removal carries a finding-level A/B on rabbitmq showing
+#: the crossing re-roots onto ``io:format``. No such run exists for javascript,
+#: and ``path.*`` has no obvious executor row to re-root ONTO -- ``fs.readFile``
+#: takes the joined path as an ARGUMENT rather than being reached from it. So
+#: removing them could delete a crossing rather than relocate one, which is the
+#: false-all-clear direction. Filed as WI-tunod; the fix ships with its own
+#: measurement. python's ``urllib.request.Request`` under ``net_send`` is the
+#: same family but does NOT trip this gate -- its note states the defect
+#: plainly instead of rationalising it -- and is filed as WI-gihif.
+ADJACENCY_KNOWN_UNFIXED = {
+    ("javascript", "path"),
+}
+
+
+class TestAdjacencyIsNotACrossing:
+    """``io_lib:format`` returns an iolist. It writes nothing.
+
+    Erlang splits ``io_lib`` from ``io`` precisely because one formats and the
+    other writes, and the row's own note conceded it -- *"Returns iolist, not
+    direct I/O, but typically written immediately"* -- while
+    ``AUTO_SINK_ZONE_MAP`` turned the declaration into a taint SINK at every
+    call site.
+
+    THE REMOVAL IS LICENSED BY A RUN, NOT BY THE SEMANTICS. ADR-0049 ruling 3
+    permits removal only once the crossing is represented somewhere else, and
+    says to test that AT THE FINDING LEVEL. Measured on rabbitmq, both arms
+    cold (separate ``XDG_CACHE_HOME``, the "No cached results found" line
+    asserted rather than assumed, since the survey cache keys on repo CONTENT
+    and would otherwise have handed arm B arm A's answer):
+
+        host-secret-no-logging   violated in BOTH arms, 100 -> 68 flows
+        sink modules             io_lib 94 -> 0,  io 5 -> 64
+        all three adjudicated TPs (0006's rabbitmq#0/#4/#6) RE-ROOT onto
+                                 io:format at 17, 15 and 17 hops
+        control                  the other six claims: evidence sets identical
+
+    So this deletes 32 flows that reach no traceable output and keeps every one
+    that does. The vanished shape, read against source: ``rabbit_misc:format/2``
+    is literally ``lists:flatten(io_lib:format(Fmt, Args))``, a pure function
+    whose result is returned inside an ``{error, _}`` tuple.
+
+    WHAT THE RUN ALSO SHOWED, AND IT IS NOT AN ARGUMENT FOR KEEPING THE ROW.
+    Some vanished flows were TRUE -- ``do_http_req/2`` logs an env-derived
+    timeout -- but via ``?LOG_DEBUG``, an OTP macro the analyzer never expands.
+    rabbitmq uses 1,910 ``?LOG_*`` macros against 187 direct ``logger:`` calls,
+    so 91% of its logging surface is invisible and ``io_lib:format`` was
+    standing in for it BY COINCIDENCE. Keeping a wrong row to cover a missing
+    one makes the correct fix look like a regression. Filed separately.
+    """
+
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    @pytest.mark.parametrize("name", ("format", "fwrite"))
+    def test_formatting_into_a_string_is_not_a_logging_sink(
+        self, lang: str, name: str,
+    ) -> None:
+        assert not _has(lang, "logging", "io_lib", name)
+
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    def test_io_lib_declares_no_boundary_at_all(self, lang: str) -> None:
+        """Not merely "not logging". ``io_lib`` is a pure formatting module;
+        there is no boundary it belongs under, so the assertion is total rather
+        than per-boundary -- a re-add under ``fs_write`` would be the same
+        defect wearing a different tag."""
+        assert [p for p in _rows(lang) if p.module == "io_lib"] == []
+
+    @pytest.mark.parametrize("lang", ("erlang", "elixir"))
+    @pytest.mark.parametrize("name", ("format", "fwrite", "put_chars", "nl", "write"))
+    def test_the_real_writer_still_carries_the_crossing(
+        self, lang: str, name: str,
+    ) -> None:
+        """ADR-0049 ruling 3's represented-crossing half, as a control. This is
+        the row the rabbitmq findings re-rooted ONTO; if it ever leaves, the
+        removal above stops being a relocation and becomes a deletion."""
+        assert _has(lang, "logging", "io", name)
+
+    def test_logging_really_is_an_auto_derived_sink(self) -> None:
+        """WHY THE ROW WAS NOT MERELY UNTIDY. Without this, "declared logging"
+        would be a labelling quibble; with it, every ``io_lib:format`` call was
+        a taint sink."""
+        from hypergumbo_core.taint import AUTO_SINK_ZONE_MAP
+        assert AUTO_SINK_ZONE_MAP["logging"] == ("logging", "untrusted")
+
+    def test_no_row_declares_a_boundary_on_adjacency_grounds(self) -> None:
+        """THE DERIVED GATE, which is the point of this class.
+
+        Pinning ``io_lib`` alone would catch this row and nothing else. Sweeping
+        every shipped catalogue for the RATIONALISATION catches the next author
+        who writes an honest note and declares a boundary anyway -- on the
+        commit that adds it, rather than after a measurement adjudicates it."""
+        offenders = {
+            (lang, p.module)
+            for lang in ALL_LANGS
+            for p in _rows(lang)
+            if ADJACENCY_RATIONALISATION.search(p.notes or "")
+        }
+        assert offenders <= ADJACENCY_KNOWN_UNFIXED, (
+            "a row declares an I/O boundary on the grounds that a real "
+            "crossing happens NEARBY: "
+            f"{sorted(offenders - ADJACENCY_KNOWN_UNFIXED)}. A boundary tag "
+            "asserts the crossing happens AT THIS CALL (ADR-0049 ruling 1). "
+            "Either the call crosses -- fix the note -- or it does not: move "
+            "the row to the call that does, and prove the relocation at the "
+            "FINDING level, per language."
+        )
+
+    def test_the_known_unfixed_entry_still_describes_a_live_row(self) -> None:
+        """Exemption bookkeeping, the same life cycle F2_EXEMPT_ROWS gets. An
+        entry that no longer matches anything is a stale excuse that would
+        silently widen the gate's blind spot."""
+        for lang, module in sorted(ADJACENCY_KNOWN_UNFIXED):
+            flagged = [p for p in _rows(lang)
+                       if p.module == module
+                       and ADJACENCY_RATIONALISATION.search(p.notes or "")]
+            assert flagged, (
+                f"{lang}: ADJACENCY_KNOWN_UNFIXED excuses {module}, which no "
+                f"longer trips the gate -- delete the entry"
+            )
