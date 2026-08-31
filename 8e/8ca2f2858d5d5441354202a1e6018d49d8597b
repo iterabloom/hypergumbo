@@ -1,0 +1,48 @@
+Original commit body from ae2caf7f6fadbf856537b431602ad1865ef17676:
+
+`io_lib:format/2` returns an iolist; `io:format/2` writes. Erlang splits the
+two modules for exactly that reason, and the row's own note conceded it —
+"Returns iolist, not direct I/O, but typically written immediately" — while
+AUTO_SINK_ZONE_MAP turned `logging` into an auto-derived taint SINK at every
+call site. A boundary tag asserts the crossing happens AT THIS CALL, in this
+call's scope (ADR-0049 ruling 1); "typically written immediately" describes a
+different call, one hop later.
+
+Removed against a finding-level proof, per ADR-0049 ruling 3, run per language
+rather than argued. rabbitmq, both arms cold on separate XDG_CACHE_HOME with
+the "No cached results found" line asserted rather than assumed — the survey
+cache keys on repo CONTENT, so a shared cache would have handed arm B arm A's
+answer and produced a clean fake null:
+
+    host-secret-no-logging   violated in BOTH arms, 100 -> 68 flows
+    sink modules             io_lib 94 -> 0,  io 5 -> 64
+    rabbitmq#0/#4/#6         all three adjudicated TPs RE-ROOT onto io:format
+    control                  the other six claims: evidence sets identical
+
+CORRECTS MEASUREMENT 0006. Its sensitivity S1 projected useful precision at
+21.4% on the assumption those three TPs would vanish. They do not, so nothing
+is deducted and useful precision is unchanged at 24.1%. 0006 names the same
+shape for urllib.request.Request two paragraphs later and calls it "an
+attribution defect, not a vacuous claim" — it filed two identical shapes into
+different buckets because the rule was never stated. Stated now: a row that
+misattributes WHERE a crossing happens is an attribution defect; only a row
+asserting a crossing that does not happen at all is vacuous.
+
+The gate is DERIVED, which is the durable part. Pinning io_lib would catch
+io_lib and nothing else. A general sweep for self-refuting notes returned 13
+hits of which 11 were notes narrating a past removal — an 11-row exemption
+list is a gate nobody maintains. Matching the rationalisation instead returns
+exactly the live families in three languages, and found javascript's seven
+`path.*` rows under fs_read on "not I/O but commonly precede fs_read" —
+pinned as known-wrong-and-unfixed, not adjudicated-correct, because ruling 3's
+proof runs per language and path.* has no obvious executor to re-root onto.
+
+A wider hole underneath is filed, not papered over: some vanished flows were
+REAL, logging via ?LOG_DEBUG, an OTP macro the analyzer never expands.
+rabbitmq has 1,910 ?LOG_* uses against 187 direct `logger:` calls, so 91% of
+its logging surface is invisible and io_lib was covering it by coincidence.
+
+Filed: INV-zihor (the macro gap, P1), WI-tunod (javascript path.*),
+WI-gihif (urllib.request.Request). F6 recorded on INV-nular.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
