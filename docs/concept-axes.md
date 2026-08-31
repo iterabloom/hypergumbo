@@ -361,6 +361,7 @@ Values that name the inference pathway by which the analyzer concluded this edge
 - **`jsx_element`** — Edge inferred from a JSX element reference.
 - **`link`** — Edge inferred from an OTP link/monitor relationship. _(derived confidence 0.95)_
 - **`luajit_ffi_lookup`** — Edge inferred from a LuaJIT FFI symbol lookup. Cluster B canonical for `luajit_ffi_unresolved` (ADR-0028 §Phase 3 Cluster B / WI-nunal).
+- **`macro_expansion`** — Edge inferred by expanding a preprocessor macro whose definition the analyzer did not parse (INV-zihor: erlang's OTP ?LOG_* levels). The call is real after preprocessing but was never in the AST, so it is NOT ``ast_call`` -- a consumer distinguishing a call the analyzer SAW from one it INFERRED reads this field. _(derived confidence 0.80; 0.40 when unresolved)_
 - **`make_prerequisite`** — Edge inferred from a Make/CMake prerequisite declaration.
 - **`message_send`** — Edge inferred from a message-send construct (Erlang `!`, Smalltalk). _(derived confidence 0.90)_
 - **`method_reference`** — Edge inferred from a method reference (Java `::method`, etc.). _(derived confidence 0.85)_
@@ -423,14 +424,14 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 
 `Edge.create` derives `Edge.confidence` from the edge's `evidence_type` via `derive_confidence(evidence_type, is_resolved)` — detection *reliability*, not ranking prominence (that lives on `rank_score`). Values sit in the analyzer/linker band **0.30–0.95**; 1.0 is a reserved ceiling, since no detection method is certain. See [spec §12](hypergumbo-spec.md#12-confidence-scoring) for the model and [ADR-0039](adr/0039-confidence-separation.md) for the ruling.
 
-**80 of 125 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
+**81 of 126 pathways are seeded.** Each base is the edge-weighted modal confidence that pathway's producers historically hardcoded, so the migration off literal `confidence=` sites preserved the dominant cohort and collapsed per-emitter outliers onto one canonical value.
 
 | Derived confidence | Pathways |
 |---|---|
 | **0.95** | `ast_attribute`, `ast_decorator`, `ast_extends`, `ast_implements`, `ast_import`, `ast_new`, `behaviour`, `bridging_header_import`, `build_dependency`, `build_target_main`, `canonical_name`, `dockerfile_copy_from`, `dockerfile_from`, `extends`, `hg_annotation`, `import`, `import_declaration`, `import_directive`, `import_statement`, `import_static`, `include`, `include_directive`, `link`, `module_source`, `open`, `open_import`, `reference`, `require`, `require_statement`, `source_statement`, `static`, `subdir_include`, `trait_impl`, `use`, `use-package`, `use_declaration`, `use_directive`, `using_directive` |
 | **0.90** | `ast_method_this_property`, `behaviour_callback`, `enclosing_scope`, `import_to_manifest`, `instance`, `message_send`, `notify`, `require_static`, `span_overlap`, `typeclass_instance` |
 | **0.85** | `ast_call`, `ast_call_direct`, `ast_call_type_inferred`, `ast_method_type_inferred`, `ast_name_read`, `ast_type_ref`, `async_spawn`, `closure_wrapper`, `dispatch_table_reference`, `eta_expansion`, `function_pointer`, `method_reference`, `module_attribute_reference`, `module_identifier_reference`, `naming_convention`, `signal_constraint`, `stack_construction`, `type_hierarchy` |
-| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `object_field_reference` |
+| **0.80** | `ast_call_extension`, `ast_call_ufcs`, `function_reference`, `hash_field_reference`, `macro_expansion`, `object_field_reference` |
 | **0.75** | `callback_argument_reference`, `grpc_stub_resolution`, `module_export_heuristic` |
 | **0.70** | `ast_method_inferred`, `dispatch_pattern`, `function_reference_arg`, `struct_field_reference` |
 | **0.50** | `ast_annotation` |
@@ -442,6 +443,7 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 |---|---|---|
 | `ast_call` | 0.85 | 0.40 |
 | `ast_call_direct` | 0.85 | 0.50 |
+| `macro_expansion` | 0.80 | 0.40 |
 
 **Unseeded (45).** `derive_confidence` returns `None` for these, so the producer keeps whatever literal it emits and `confidence_source` stays `emitter_constant`. That is the honest state, not a gap to paper over: an unseeded pathway has no measured modal cohort to seed from. Seeding one is a producer-side migration (the ADR-0039 ruling-1 shape), not a documentation change.
 

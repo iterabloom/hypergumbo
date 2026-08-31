@@ -1397,6 +1397,7 @@
                 "dockerfile_from": "inference_pathway",
                 "enclosing_scope": "inference_pathway",
                 "eta_expansion": "inference_pathway",
+                "macro_expansion": "inference_pathway",
                 "extends": "inference_pathway",
                 "function_pointer": "inference_pathway",
                 "function_pointer_arg": "inference_pathway",
