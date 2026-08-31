@@ -329,49 +329,76 @@ the row, useful precision is **21.4%** (24/112).
 **So the band is tripped at 24.1%, and the one live sensitivity can only trip
 it harder.** No reading of the evidence puts useful precision above 25%.
 
-#### CORRECTION 2026-08-30 — S1 is void as a deduction, and the row is still wrong
+#### CORRECTION 2026-08-30 — S1 STANDS. Useful precision is 21.4%, and the first version of this section was wrong
 
-**S1's 21.4% assumed the three TPs would VANISH if the row went. They do not.**
-The owner ruled against the row, and the removal was tested at the finding
-level first, per ADR-0049 ruling 3. On rabbitmq, both arms cold with separate
-`XDG_CACHE_HOME` and the cold line asserted:
+**This section was published earlier the same day claiming the opposite, and a
+blind panel refuted it. Both versions are recorded, because the error is
+instructive and excising it would hide the mechanism.**
+
+S1 asked whether the three rabbitmq true positives are vacuous, `io_lib:format`
+being a call that returns an iolist and writes nothing. The owner ruled against
+the row, and before the removal shipped it was tested at the finding level per
+ADR-0049 ruling 3. That A/B (rabbitmq, both arms cold on separate
+`XDG_CACHE_HOME` with the cold line asserted) showed:
 
 | | arm A (row present) | arm B (row removed) |
 |---|---|---|
 | `host-secret-no-logging` | violated, 100 flows | violated, **68 flows** |
 | sink modules | `io_lib` 94, `io` 5 | `io` **64**, other 4 |
-| rabbitmq#0 `start_setup_proc/1` | `io_lib:format`, 8 hops | **`io:format`, 17 hops** |
-| rabbitmq#4 `default_queue_type/2` | `io_lib:format`, 13 hops | **`io:format`, 15 hops** |
-| rabbitmq#6 `maybe_load_..._pluggable_source/2` | `io_lib:format`, 8 hops | **`io:format`, 17 hops** |
-| the other six claims | — | evidence sets **identical** |
+| rabbitmq#0 / #4 / #6 | `io_lib:format`, 8/13/8 hops | **`io:format`, 17/15/17 hops** |
 
-All three re-root onto the genuine sink. The claim "a host secret reaches
-logging" stays true by a path the tool can trace, so **the finding is not
-vacuous and nothing is deducted. Useful precision is unchanged at 24.1%.**
+**The wrong inference drawn from it:** that the findings "re-root onto the
+genuine sink", so the crossing is represented, the claims are not vacuous, and
+S1 deducts nothing. On that reading useful precision stayed at 24.1%.
 
-**What the row actually was is named two paragraphs below this one, about a
-different row.** This record calls `urllib.request.Request` under `net_send`
-*"An attribution defect, not a vacuous claim"* — because its value reaches
-`urlopen` on the next line. `io_lib:format` is that shape exactly, and this
-record filed the two into different buckets. The classification rule was never
-stated: **a row that misattributes WHERE a crossing happens is an attribution
-defect; only a row that asserts a crossing which does not happen at all is
-vacuous.** ADR-0046's KIND-MISDECLARED class means the second. S1 was the
-first, so it was never a candidate for deduction.
+**What a blind panel found.** Two independent adjudicators per repository, given
+the flow and the source but not the prior labels, walled off from every ledger
+and prior measurement. **Disagreement 0 of 7.** All four rabbitmq situations are
+FALSE POSITIVES, and both passes derived the same structural refutation without
+conferring: the claimed route terminates at `rabbit_misc:module_attributes/1`,
+whose `io:format` (`rabbit_misc.erl:731`) has exactly one argument list —
+`[Module]` — bound at `rabbit_misc.erl:755-762` from
+`{ok, Modules} <- [application:get_key(App, modules)]`, an independent read of
+the application controller's module table. Neither parameter of
+`module_attributes_from_apps/2` reaches it: `Name` is used only in an equality
+test (control dependence), `Apps` only selects which external table to read
+(resource selection, excluded by the tie-break). The route is structurally
+incapable of carrying any of the four source values.
 
-**One caveat this A/B does not settle.** The re-rooted chains are 15-17 hops,
-all `analysis_method: structural`, up from 8/13/8. Whether they survive
-adjudication at that length is a fresh question, and this record's own FP
-inventory carries `reachability-only 8`. The findings survive; whether the
-*true positives* do is for a re-measurement to say.
+Each panellist then searched independently for a real chain and found none: in
+`deps/rabbit/src` and `deps/rabbit_common/src` the actual `io:format` call sites
+are enumerable, and no source value reaches any of them. The real formatting in
+these files runs through `rabbit_misc:format/2` — `lists:flatten(io_lib:format(
+Fmt, Args))` at `rabbit_misc.erl:558` — and the result is handed to `?LOG_*`
+macros, which expand to `logger:` calls.
 
-**A larger defect was found underneath, and it is filed rather than deducted.**
-Some flows that vanished with the row were real — `do_http_req/2` logs an
-env-derived timeout — but via `?LOG_DEBUG`, an OTP macro the analyzer does not
-expand. rabbitmq uses **1,910 `?LOG_*` macros against 187 direct `logger:`
-calls**, so 91% of its logging surface is invisible and `io_lib:format` was
-standing in for it by coincidence. That is a recall hole wider than anything
-this row covered, and no `logger` sink appears anywhere in either arm.
+**So what the removal did is the reverse of what was claimed.** It replaced a
+*vacuous true positive* — the value genuinely reaches `io_lib:format`, which
+writes nothing — with an *outright false positive*, in which the value reaches
+nothing at all. **S1's deduction stands. Useful precision under it is 21.4%
+(24/112), the figure this record published before the correction attempt.**
+
+**THE METHODOLOGICAL LESSON, which is the part worth carrying.** The A/B was
+run correctly and measured what it measured. What it cannot do is tell you
+whether a finding is TRUE — **the presence of a finding after a change is not
+evidence that the finding is correct**, and re-rooting is not relocation unless
+the destination chain is real. An A/B over tool output prices a change; only
+adjudication prices a claim. This record's own headline exists because pass 4
+refuted 7 of 44 panel-agreed true positives; the same discipline applied one
+level down would have caught this before it was published.
+
+**What is NOT retracted.** `io_lib:format` returns an iolist and writes nothing;
+Erlang splits `io_lib` from `io` for that reason and the row's own note conceded
+it. Removing the row was correct and remains correct — it deleted findings that
+were vacuous. Only the *licence argument* offered for it, that a real crossing
+was represented at `io:format`, is withdrawn. For these three situations there
+is no real crossing to represent.
+
+**A defect this exposed, filed rather than absorbed.** Two independent panels
+demonstrated a 14-to-17-hop chain that provably cannot carry a value, on
+`analysis_method: structural`. That is family D ("`hops` not realizable") with a
+reproducible instance and a checkable rule: the terminal function's sink call
+takes no argument derived from that function's parameters.
 
 ### Two sink-side defects found by this pass, neither deducted
 
