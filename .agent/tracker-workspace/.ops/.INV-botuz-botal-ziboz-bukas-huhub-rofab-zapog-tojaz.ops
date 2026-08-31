@@ -1,0 +1,38 @@
+- op: create  # cedc
+  at: '2026-08-30T22:02:13Z'  # cedc
+  by: agent  # cedc
+  actor: jgstern_agent  # cedc
+  clock: 1  # cedc
+  nonce: cedc  # cedc
+  data:  # cedc
+    kind: invariant  # cedc
+    title: "hypergumbo is broken on Python 3.10, its own declared minimum: a bare top-level 'import tomllib' (3.11+ stdlib) in user_config.py failed 2905 tests on the nightly py3.10 leg, and the tomli backport was declared nowhere"  # cedc
+    status: violated  # cedc
+    priority: 1  # cedc
+    parent:  # cedc
+    tags:  # cedc
+    - ci_infrastructure  # cedc
+    - analysis_quality  # cedc
+    isbefore: []  # cedc
+    duplicate_of: []  # cedc
+    not_duplicate_of: []  # cedc
+    pr_ref:  # cedc
+    description: "FOUND 2026-08-30 by `ci-debug cron-status`, on its first live run, minutes after\nthat command was added for INV-bozid remedy (b). It is the defect INV-bozid's\nmasking was hiding, and it had been red since at least 2026-08-29.\n\nTHE OBSERVATION. `tomllib` entered the standard library in Python 3.11. Every\npackage in this repository declares `requires-python = \">=3.10\"`.\npackages/hypergumbo-core/src/hypergumbo_core/user_config.py carried a BARE\ntop-level `import tomllib`, and that module is imported broadly enough that the\nfailure is not graceful. The 2026-08-29 nightly py3.10 leg (pipeline 1947/1, tip\n4575c5a7):\n\n    ModuleNotFoundError: No module named 'tomllib'\n    = 2905 failed, 18111 passed, 19 skipped, 1 xfailed, 124 errors in 1126.39s =\n\nIT WAS THE ONLY UNGUARDED SITE IN THE TREE, which is what makes this a gate\nrather than a one-line fix. profile.py, linkers/subprocess_cli.py, py_deps.py\nand scripts/generate-architecture ALL already carry\n`try: import tomllib / except ImportError: import tomli as tomllib` and comment\nit as the py3.10 fallback path. Four authors followed the house pattern, one did\nnot, and nothing checked.\n\nAND THE BACKPORT WAS DECLARED NOWHERE. `tomli` was not a dependency of any\npackage, so even the four CORRECT sites were not working on 3.10 -- their\nfallback resolved to nothing and they degraded silently (returning None) rather\nthan parsing. That half is invisible in the test log because those sites fail\nsoft; only user_config.py fails loud.\n\nWHY IT SURVIVED. The py3.10 leg is one of four in a matrix whose verdict\nWoodpecker collapses into a single aggregate commit status, attached to whatever\ncommit was dev's tip at 05:30 -- never HEAD by the time anyone looks. `ci-debug\nstatus` renders HEAD only and reported nothing. That is INV-bozid exactly, and\nthis is its second live instance (the first being the intermittent tracker TUI\nassertion INV-bozid was filed on).\n\nWHAT SHIPPED (dev 9e3a2e7127):\n  * user_config.py uses the house guard.\n  * `tomli~=2.0; python_version < \"3.11\"` declared on hypergumbo-core and\n    hypergumbo-lang-mainstream, the two packages that import tomllib.\n  * tests/test_stdlib_version_guarded_imports.py: walks 417 production sources\n    (78 of them scripts/) and fails on any import of a stdlib module whose debut\n    is ABOVE the declared requires-python floor unless it is inside a `try`\n    catching ImportError. The watched set is DERIVED from the floor read out of\n    the pyproject files, so raising the floor to 3.11 retires tomllib from the\n    table on the commit that raises it.\n\nVERIFIED BY REVERTING: restored to the pre-fix shape the gate fails naming\nuser_config.py:43; it passes on the repaired tree. Three further controls,\nbecause a gate that never fires proves nothing -- the watched set must be\nnon-empty for the current floor; the four files that genuinely import tomllib\nare named so the AST walker is demonstrably reaching real imports; and a package\nimporting tomllib must DECLARE the backport, since a guard whose fallback is\nundeclared still fails on the floor.\n\nSTATUS IS pending_validation, NOT satisfied, DELIBERATELY. The statement is about\nruntime behaviour on Python 3.10 and this session's interpreter is 3.12 -- I\ncannot run the matrix leg locally. Everything verifiable here is verified; the\nleg itself is the next nightly's answer, and `ci-debug cron-status` is now the\ninstrument that will report it without archaeology. Do not close this on\n\"tests pass\" -- that is the proxy-metric closure INV-nufob was false-satisfied\non. The evidence required is leg 1 green."  # cedc
+    fields:  # cedc
+      statement: "A module that is stdlib only ABOVE the declared requires-python floor must be imported inside a try/except ImportError with a declared backport fallback. VIOLATED: user_config.py imported tomllib bare at module level while every package declares requires-python >= 3.10; tomllib is 3.11+. The 2026-08-29 nightly py3.10 leg recorded ModuleNotFoundError with 2905 failed and 124 errors. Separately, tomli was declared as a dependency of no package, so the four already-guarded sites resolved their fallback to nothing on 3.10 and degraded silently."  # cedc
+      root_cause: "The house pattern existed and was unenforced: four sites (profile.py, linkers/subprocess_cli.py, py_deps.py, scripts/generate-architecture) already carried the guarded import and commented it as the py3.10 path, and nothing checked that a fifth followed. Compounded by the guard being unusable anyway -- no package declared the tomli backport -- and by INV-bozid's masking, which put the only signal on a non-HEAD commit inside a collapsed matrix aggregate that the project's own CI reader cannot see."  # cedc
+- op: update  # 4ac7
+  at: '2026-08-30T22:02:34Z'  # 4ac7
+  by: agent  # 4ac7
+  actor: jgstern_agent  # 4ac7
+  clock: 2  # 4ac7
+  nonce: 4ac7  # 4ac7
+  set:  # 4ac7
+    status: pending_validation  # 4ac7
+- op: discuss  # 27d7
+  at: '2026-08-30T22:02:34Z'  # 27d7
+  by: agent  # 27d7
+  actor: jgstern_agent  # 27d7
+  clock: 3  # 27d7
+  nonce: 27d7  # 27d7
+  message: "Fix merged at dev 9e3a2e7127. Status is pending_validation and NOT satisfied on purpose: the statement is about runtime behaviour on Python 3.10 and this session's interpreter is 3.12, so the matrix leg cannot be run locally. Verified here: the guard imports cleanly, the new gate fires on the reverted defect (naming user_config.py:43) and passes on the repaired tree, the AST walker reaches 417 real sources, and both affected packages now declare the backport. NOT verified: that nightly leg 1 goes green. The evidence required to close is that leg, readable via 'ci-debug cron-status' — closing on 'tests pass locally' would be the proxy-metric closure INV-nufob was false-satisfied on."  # 27d7
