@@ -89,7 +89,7 @@ import re
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -2270,6 +2270,59 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
     return bare
 
 
+
+#: Go wrapper constructors whose BOUNDARY is a property of their argument.
+#:
+#: ``go.yaml`` files ``bufio.{NewScanner,NewReader}`` as ``ipc_recv`` on the
+#: note "When wrapping os.Stdin" -- a condition no catalogue row can enforce,
+#: because the row sees the callee and the answer is in the ARGUMENT. Measured
+#: on the ADR-0049 cohort's Go repositories, of the 83 bare-local sites whose
+#: origin the shipped reaching-def solver resolves, 63 wrap an ``os.Open``
+#: handle, 3 an HTTP body, 1 a buffer, and ZERO wrap ``os.Stdin`` (WI-lipis).
+_GO_HANDLE_WRAPPERS: Final[frozenset[tuple[str, str]]] = frozenset({
+    ("bufio", "NewScanner"), ("bufio", "NewReader"),
+})
+
+#: Argument prefixes that prove the wrapped handle never left this process.
+#: Only the PROVABLE case is listed: anything unrecognised stamps nothing and
+#: classifies exactly as before, because a gate whose default silenced
+#: findings would be a false-negative generator on a security analysis.
+_GO_IN_MEMORY_READERS: Final[tuple[str, ...]] = (
+    "strings.NewReader(", "bytes.NewReader(", "bytes.NewBuffer(",
+    "bytes.NewBufferString(",
+)
+
+
+def _go_wrapped_handle_kind(
+    node: "tree_sitter.Node", source: bytes, module: str, callee: str,
+) -> Optional[str]:
+    """``io_target_kind`` for a handle-wrapper call site, or None.
+
+    WI-lipis. Same shape as bash's redirect target (INV-nular): ONE catalogue
+    row whose boundary depends on a per-call-site fact the row cannot see, so
+    the analyzer stamps the discriminator and the consumers read it.
+
+    Returns None for everything not provable at the call site -- a bare local
+    (64.8% of the measured population) needs the variable's ORIGIN, which is a
+    dataflow question and deliberately not answered here.
+    """
+    if (module, callee) not in _GO_HANDLE_WRAPPERS:
+        return None
+    args = find_child_by_field(node, "arguments")
+    if args is None:  # pragma: no cover - defensive
+        # A tree-sitter-go ``call_expression`` always carries an ``arguments``
+        # field, so this cannot fire on a well-formed parse. Kept because the
+        # line below would raise on None, and a crash inside an analyzer takes
+        # the whole repo's analysis with it.
+        return None
+    arg_text = node_text(args, source).strip()
+    if any(r in arg_text for r in _GO_IN_MEMORY_READERS):
+        return "in_memory"
+    if "os.Stdin" in arg_text:
+        return "std_stream"
+    return None
+
+
 def _extract_function_reference_edges(
     args_node: "tree_sitter.Node",
     source: bytes,
@@ -3187,6 +3240,18 @@ def _extract_edges_from_file(
                                 else:
                                     # Fallback: use "external" as the path
                                     dst_id = f"go:external:0-0:{callee_name}:unresolved"
+                                _meta: dict[str, object] = {
+                                    "call_construct": "method",
+                                }
+                                # WI-lipis: what this call site actually
+                                # touches, where the catalogue row cannot say.
+                                _handle = _go_wrapped_handle_kind(
+                                    node, source,
+                                    (unresolved_path or "").rsplit("/", 1)[-1],
+                                    callee_name,
+                                )
+                                if _handle:
+                                    _meta["io_target_kind"] = _handle
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=dst_id,
@@ -3196,7 +3261,7 @@ def _extract_edges_from_file(
                                     is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method"},
+                                    meta=_meta,
                                 ))
                             # WI-vovum / WI-mafik: bare-identifier call whose
                             # name was dot-imported (``import . "strings"`` +
