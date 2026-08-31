@@ -61,7 +61,11 @@ import yaml
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
-from .io_boundary import call_site_modes
+from .io_boundary import (
+    call_site_modes,
+    call_site_target_kinds,
+    target_kinds_cross_no_boundary,
+)
 from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
@@ -2082,7 +2086,18 @@ LITERAL_ONLY_ARG_SHAPE: Final[str] = "literal_only"
 
 
 def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
-    """False when this call site provably cannot pass the tainted value.
+    """False when this call site provably cannot be the sink of a flow.
+
+    TWO INDEPENDENT PROOFS, and they live together because this is the one
+    place both propagators ask the question. The structural arm's own comment
+    at its call site says why: two copies of this question is how the
+    call-family set drifted across three consumers.
+
+    PROOF ONE — INV-fubag: no argument at this call site can be the tainted
+    value. PROOF TWO — INV-nular/INV-kosur: whatever is handed over is
+    discarded, so it reaches no zone at all. Either one makes the finding
+    false rather than merely unproven, which is what licenses a gate here at
+    all.
 
     INV-fubag. Taint models a flow as the tainted value being an ARGUMENT to
     the sink call or its RECEIVER. When a producer can prove every argument at
@@ -2109,8 +2124,38 @@ def _sink_call_can_carry_taint(edge: dict[str, Any]) -> bool:
     all keep the finding. Absence is the state of every edge in every behavior
     map written before this key existed, and a gate whose default silenced
     findings would be a false-negative generator on a security analysis.
+
+    INV-kosur — THE DISCARD CLAUSE, AND WHY IT IS HERE AND NOT UPSTREAM.
+    ``target_kinds_cross_no_boundary`` was wired into ``tag_io_boundaries``
+    and nowhere else, so ``echo "$API_KEY" > /dev/null`` returned ``confirmed``
+    against ``{boundary: fs_write, must_not_exist: true}`` and ``violated``
+    against ``{taint_flow: host_secret -> host_fs}``: same tree, same edge,
+    opposite verdicts, because the taint arm derives its sinks straight from
+    the catalogue (:data:`AUTO_SINK_ZONE_MAP` over every ``fs_write`` row) and
+    never saw the per-call-site fact. The gate's own reasoning — "the kernel
+    discards the bytes and no observation anywhere differs because the
+    redirect ran" — is about the CALL SITE and says nothing about claim shape,
+    so it belongs on every path that asks whether that site is a sink.
+
+    Refusing the match UPSTREAM in ``classify_call_in_catalog`` instead was
+    tried for INV-nular and measured worse: the coverage gate asks "did the
+    catalogue EXAMINE this call" and the answer is emphatically yes, so
+    refusing there traded a false ``violated`` for an ``inconclusive``. This
+    arm inherits that reasoning unchanged.
+
+    THE SOURCE SIDE IS DELIBERATELY NOT GATED. ``< /dev/null`` yields EOF and
+    is exactly as vacuous, but no boundary that can carry an
+    ``io_target_kind`` stamp derives a taint source: the stamp rides on bash
+    redirects, and bash files ``redirect`` under ``fs_write``/``fs_read``,
+    neither of which is in :data:`AUTO_SOURCE_LABEL_MAP`. A source-side clause
+    would be unreachable, and an unreachable gate proves nothing. The premise
+    is re-derived from the shipped catalogues by
+    ``test_no_shipped_catalogue_derives_a_source_from_a_redirect``, which
+    fails with the remedy if someone files ``redirect.<`` as ``ipc_recv``.
     """
     meta = edge.get("meta") or {}
+    if target_kinds_cross_no_boundary(call_site_target_kinds(meta)):
+        return False
     return meta.get("call_arg_shape") != LITERAL_ONLY_ARG_SHAPE
 
 
