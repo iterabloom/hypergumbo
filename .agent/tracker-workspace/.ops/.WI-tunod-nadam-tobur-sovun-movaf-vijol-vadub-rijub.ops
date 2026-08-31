@@ -1,0 +1,23 @@
+- op: create  # 2577
+  at: '2026-08-31T00:13:06Z'  # 2577
+  by: agent  # 2577
+  actor: jgstern_agent  # 2577
+  clock: 1  # 2577
+  nonce: '2577'  # 2577
+  data:  # 2577
+    kind: work_item  # 2577
+    title: "javascript: seven path.* rows declared fs_read on adjacency grounds ('not I/O but commonly precede fs_read') -- same defect as erlang io_lib:format, needs its own per-language finding-level proof"  # 2577
+    status: todo_hard  # 2577
+    priority: 2  # 2577
+    parent:  # 2577
+    tags:  # 2577
+    - io_boundary  # 2577
+    - catalogue  # 2577
+    - javascript  # 2577
+    - analysis_quality  # 2577
+    isbefore: []  # 2577
+    duplicate_of: []  # 2577
+    not_duplicate_of: []  # 2577
+    pr_ref:  # 2577
+    description: "FOUND 2026-08-30 by the derived gate added with the io_lib:format removal\n(INV-nular F6). Not found by looking for it: the gate sweeps every shipped\ncatalogue for rows that declare a boundary on ADJACENCY grounds, and these are\nthe only other hits.\n\nTHE ROWS. javascript.yaml declares seven path operations as fs_read:\n\n    path.resolve  path.join  path.dirname  path.basename\n    path.extname  path.relative  path.normalize\n\nall carrying the same note: \"Path operations are not I/O but commonly precede\nfs_read\".\n\nTHE DEFECT IS THE SAME ONE, WITH THE SAME SENTENCE SHAPE. erlang's io_lib row\nsaid \"Returns iolist, not direct I/O, but typically written immediately\".\nBoth concede the call is not I/O and declare a boundary anyway because a real\ncrossing usually happens NEARBY. ADR-0049 ruling 1: a boundary tag asserts the\ncrossing happens AT THIS CALL, in this call's scope. Adjacency is not a\ncrossing.\n\nWHY IT IS NOT FIXED IN THE SAME CHANGE, and this is the whole reason this is\nan item rather than a diff. ADR-0049 ruling 3 licenses a removal only once the\ncrossing is REPRESENTED somewhere else, and its proof is run PER LANGUAGE, not\nargued -- the ADR's own implementation section ran an idiomatic probe in each\nof four languages rather than reasoning from one. erlang's removal carries a\nfinding-level A/B on rabbitmq showing all three adjudicated true positives\nre-root onto io:format. There is no such run for javascript.\n\nAND THE PRIOR IS DIFFERENT, WHICH IS WHY IT NEEDS THE RUN. io_lib:format's\nvalue FLOWS INTO io:format, so the walk re-roots. path.join's value flows into\nfs.readFile as an ARGUMENT -- fs.readFile is not reached FROM the path call,\nit CONSUMES it. So the two shapes are not obviously analogous, and removal\ncould delete a crossing rather than relocate one, which is the false-all-clear\ndirection this project treats as needing more evidence, not less.\n\nfs_read is NOT in AUTO_SOURCE_LABEL_MAP, so these rows mint no taint source --\nthe damage is narrower than io_lib's was. What they do affect is any\nmust_not_exist claim about filesystem reads: a program that only joins paths\nand never opens a file reports an fs_read crossing.\n\nWHAT TO DO, in order:\n 1. Check whether fs.readFile / readFileSync / createReadStream etc. are rowed\n    (they are) AND reachable in idiom (INV-misup is live for javascript and is\n    exactly the reason a javascript row can be present and dead).\n 2. Run the finding-level A/B on a real node repository, both arms cold on\n    separate XDG_CACHE_HOME with the cold line ASSERTED, as the erlang one was.\n 3. Only then remove, and update ADJACENCY_KNOWN_UNFIXED in\n    test_inv_nular_false_sources.py -- the gate has an entry pinning these\n    rows as known-wrong-and-unfixed, plus a bookkeeping test that fails if the\n    entry stops describing a live row."  # 2577
+    fields: {}  # 2577
