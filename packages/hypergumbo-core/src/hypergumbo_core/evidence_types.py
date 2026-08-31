@@ -233,6 +233,14 @@ _RAW_EVIDENCE_TYPES: tuple[EvidenceTypeSpec, ...] = (
                      "Edge inferred from an enclosing-scope relationship."),
     EvidenceTypeSpec("eta_expansion", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from an eta-expansion (point-free → pointed)."),
+    EvidenceTypeSpec("macro_expansion", AXIS_INFERENCE_PATHWAY,
+                     "Edge inferred by expanding a preprocessor macro whose "
+                     "definition the analyzer did not parse (INV-zihor: "
+                     "erlang's OTP ?LOG_* levels). The call is real after "
+                     "preprocessing but was never in the AST, so it is NOT "
+                     "``ast_call`` -- a consumer distinguishing a call the "
+                     "analyzer SAW from one it INFERRED reads this field.",
+                     base_confidence=0.8, base_confidence_unresolved=0.4),
     EvidenceTypeSpec("extends", AXIS_INFERENCE_PATHWAY,
                      "Edge inferred from a generic extends/inheritance relationship."),
     EvidenceTypeSpec("function_pointer", AXIS_INFERENCE_PATHWAY,

@@ -52,8 +52,10 @@ Erlang-Specific Considerations
 """
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
 
 from hypergumbo_core.analyze.base import (
     AnalysisResult,
@@ -400,6 +402,42 @@ def _extract_symbols_from_file(
     return symbols, module_name
 
 
+#: OTP's eight logger levels, as declared in ``kernel/include/logger.hrl``,
+#: mapped to the ``logger:`` function each expands to (INV-zihor).
+#:
+#: EIGHT NAMES, NOT A ``?LOG_`` PREFIX. rabbitmq also defines ``?LOG_DIR`` (a
+#: directory string), ``?LOG_PREFIX`` (a prefix string) and ``?LOG_EXCH_NAME``
+#: (a binary); a prefix match would mint logging sinks out of string literals.
+#:
+#: Widening this set is the unsafe direction, so a ninth entry needs the same
+#: evidence these eight have: measured across rabbitmq, emqx, ejabberd,
+#: vernemq, rebar3 and cowboy, none of these names is EVER redefined, while
+#: general function-like macro names collide in more than one file at 5-21%
+#: per repository. That asymmetry is the whole argument for handling these by
+#: name and refusing to generalise into a preprocessor on the cheap.
+OTP_LOGGER_LEVEL_MACROS: Final[dict[str, str]] = {
+    "LOG_EMERGENCY": "emergency",
+    "LOG_ALERT": "alert",
+    "LOG_CRITICAL": "critical",
+    "LOG_ERROR": "error",
+    "LOG_WARNING": "warning",
+    "LOG_NOTICE": "notice",
+    "LOG_INFO": "info",
+    "LOG_DEBUG": "debug",
+}
+
+#: A file only receives OTP's macros by including a header named
+#: ``logger.hrl``. Gating on the INCLUDE rather than on the name is what makes
+#: this sound instead of merely probable, and it is measured: across rabbitmq,
+#: emqx, ejabberd and vernemq this covers 2267 of 2267 OTP macro sites, where
+#: the stricter ``include_lib("kernel/include/logger.hrl")`` covers 2266 --
+#: ejabberd reaches kernel's header through its OWN same-named one, which is
+#: one level of indirection and exactly the case a literal match misses.
+_LOGGER_HRL_INCLUDE = re.compile(
+    r'-include(?:_lib)?\(\s*"[^"]*logger\.hrl"\s*\)'
+)
+
+
 def _get_enclosing_function_erlang(
     node: "tree_sitter.Node",
     source: bytes,
@@ -440,6 +478,11 @@ def _extract_edges_from_file(
     """
     edges: list[Edge] = []
     file_id = make_file_id("erlang", file_path)
+
+    # INV-zihor: whether THIS file can see OTP's ?LOG_* macros. Computed once
+    # per file rather than per node -- the answer cannot vary within a file.
+    logger_macros_visible = bool(_LOGGER_HRL_INCLUDE.search(source.decode(
+        "utf-8", errors="replace")))
 
     # Build local symbol map (name -> symbol)
     local_symbols = {s.name: s for s in file_symbols}
@@ -486,6 +529,38 @@ def _extract_edges_from_file(
                     evidence_type="import",
                 )
                 edges.append(edge)
+
+        elif node.type == "macro_call_expr" and logger_macros_visible:
+            # INV-zihor: ?LOG_DEBUG("...", [Secret]) IS a logging call, but
+            # tree-sitter parses source rather than preprocessed source, so it
+            # produced no edge at all and no catalogue row could match it. On
+            # rabbitmq that hid 1,910 of 2,093 logging call sites.
+            #
+            # EXPANDED HERE, NOT IN THE CATALOGUE, because the catalogue can
+            # only match a call the analyzer emitted -- and there was none. The
+            # item's own scope note says as much: no row can fix this.
+            macro_var = find_child_by_type(node, "var")
+            level = OTP_LOGGER_LEVEL_MACROS.get(
+                node_text(macro_var, source) if macro_var else "",
+            )
+            caller = _get_enclosing_function_erlang(
+                node, source, local_symbols,
+            )
+            if level and caller:
+                edges.append(Edge.create(
+                    src=caller.id,
+                    dst=f"erlang:logger:0-0:{level}:function",
+                    edge_type="calls",
+                    line=node.start_point[0] + 1,
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                    # NOT ``ast_call``. tree-sitter expanded nothing; this edge
+                    # is an inference from a macro name plus an include, and a
+                    # consumer telling a seen call from an inferred one reads
+                    # exactly this field.
+                    evidence_type="macro_expansion",
+                    meta={"call_construct": "macro"},
+                ))
 
         elif node.type == "call":
             # Function call
