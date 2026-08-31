@@ -1,0 +1,52 @@
+Original commit body from aa6cb2d217b53bc5239fa120bd7c7cbed0422176:
+
+The per-EDGE gate WI-zovuz shipped fires only when NO externally-derived name
+reaches a redirect, and INV-fumod's own instance is not that shape:
+guacamole's `curl -L "$URL" > "$DEST_PATH/$DEST_JAR"` IS reached, by
+DESTINATION via `DEST_PATH="$DESTINATION/drivers/"`. The row the item filed is
+sourced at MYSQL_JDBC_VERSION, read at line 87 on the FILE symbol while
+DESTINATION is read at line 59 inside download_driver -- two source sites, one
+sink, so the false pair can be refused while the other stands.
+
+Two pieces:
+
+1. `_source_names_can_reach_sink`, a PAIR-level proof beside
+   `_source_and_sink_are_one_call` because neither edge alone answers it. It
+   survives unless both sides are known and provably disjoint; None on either
+   side, or an empty source set (every source in every other language), keeps
+   the pair.
+
+2. `_FAR_SIDE_FETCH_COMMANDS` (curl, wget): ADR-0049 ruling 1 read on a shell
+   command. The call hands back a value whose content the far side chose, so a
+   redirect capturing its stdout writes nothing this program held. It is
+   ADR-0016's prohibition stated positively -- that ADR forbids attributing a
+   launched program's I/O TO the shell; this declines to attribute the child's
+   BYTES to it. Deliberately not in bash.yaml, which is scoped to primitives
+   the SHELL performs.
+
+TWO DEFECTS FOUND WHILE THE UNIT TESTS WERE GREEN:
+
+  The collapsed edge is where the names live. When collapsed sites disagree,
+  ir._absorb_per_call_site_key REMOVES the singular key and moves the values
+  to `<key>_values`. guacamole's file symbol reads three JDBC version
+  variables at three lines, so `env_var` is absent and `env_var_values` holds
+  all three; reading only the singular found nothing and defaulted to keeping.
+
+  One fact, two homes, and the second silently won. Gating only
+  propagate_taint_structural left the instance standing, because bash reaches
+  findings through the DDG arm (which reports analysis_method "structural"
+  with walk_verdict "unavailable" when no DDG exists). Both arms are gated and
+  both are pinned by tests.
+
+Measured on 15 cohort repositories, every arm cold (15/15): 19 rows removed,
+0 new findings, no claim verdict changed category. Live on the item's own
+instance, cold: violated(6) -> violated(3), and the filed row is gone.
+
+The residual guacamole row -- sourced at DESTINATION, a name assigned in the
+SOURCING script and so mis-read as an environment variable -- is a different
+defect with a different fix and is filed separately.
+
+Refs INV-fumod, WI-zovuz.
+
+Racial-Capitalism-Is-Bad: a goat building a folded mountain ridge shaped like braided challah made of Torah scrolls in a cave-painted pancake griddle
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
