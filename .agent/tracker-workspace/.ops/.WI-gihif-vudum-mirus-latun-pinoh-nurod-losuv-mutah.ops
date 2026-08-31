@@ -1,0 +1,23 @@
+- op: create  # f2fa
+  at: '2026-08-31T00:14:11Z'  # f2fa
+  by: agent  # f2fa
+  actor: jgstern_agent  # f2fa
+  clock: 1  # f2fa
+  nonce: f2fa  # f2fa
+  data:  # f2fa
+    kind: work_item  # f2fa
+    title: "python: urllib.request.Request declared net_send but constructs and sends nothing -- 0006 called it an attribution defect and kept it; same shape as erlang io_lib:format"  # f2fa
+    status: todo_hard  # f2fa
+    priority: 2  # f2fa
+    parent:  # f2fa
+    tags:  # f2fa
+    - io_boundary  # f2fa
+    - catalogue  # f2fa
+    - python  # f2fa
+    - analysis_quality  # f2fa
+    isbefore: []  # f2fa
+    duplicate_of: []  # f2fa
+    not_duplicate_of: []  # f2fa
+    pr_ref:  # f2fa
+    description: "FOUND 2026-08-30, filed from measurement 0006's own text rather than from a\nnew sweep -- 0006 names this row and adjudicates it, and the adjudication is\nright while its FILING is inconsistent with the sibling case.\n\nTHE ROW. python.yaml declares urllib.request.Request under net_send, rowed\nbeside urlopen. Request is a CONSTRUCTOR: it builds a request object and sends\nnothing. 0006 says so in as many words -- \"Request is a constructor and sends\nnothing -- the same shape as newIORef\".\n\n0006 DID NOT DEDUCT IT, AND THAT CALL WAS CORRECT. Its reason: in jaeger's\nscripts/release/notes.py every Request(...) is consumed by urlopen(req) on the\nnext line, so the network boundary really is crossed. It labels the row \"An\nattribution defect, not a vacuous claim.\"\n\nWHAT THIS ITEM IS FOR. That verdict is right and the row is still wrong. An\nattribution defect misattributes WHERE a crossing happens; it does not stop\nbeing a defect because the crossing is real one call later. ADR-0049 ruling 1\nis the test: does THIS call hand a value to the far side? Request does not.\n\nTHE CONNECTION TO S1, which is why this is filed now. erlang's io_lib:format\nwas the identical shape and 0006 filed it into a DIFFERENT bucket -- as a\nvacuity sensitivity (S1) projected to cost 3 true positives. The finding-level\nA/B run on 2026-08-30 showed the io_lib TPs re-root onto io:format rather than\nvanishing, so S1 was void as a deduction and the row was an attribution defect\nall along -- exactly what 0006 had already concluded about Request two\nparagraphs earlier. The classification rule was never stated; it now is, in\nthe 0006 correction: a row that misattributes WHERE a crossing happens is an\nattribution defect, and only a row asserting a crossing that does not happen\nat all is vacuous.\n\nTHE PRIOR HERE IS THE GOOD ONE, unlike javascript's path.* (WI-tunod).\nRequest's value flows INTO urlopen, the same relationship io_lib:format has to\nio:format, so a walk should re-root the same way. That makes this the cheaper\nof the two to prove.\n\nWHAT TO DO:\n 1. Confirm urlopen is rowed net_send (it is) and reachable in python idiom.\n 2. Finding-level A/B on a repository that actually uses urllib.request --\n    jaeger is the one 0006 read, so it is the natural first arm. Both arms\n    cold, separate XDG_CACHE_HOME, cold line ASSERTED not assumed.\n 3. Remove the Request row only if the findings re-root. If they do not, the\n    honest outcome is that urlopen is not reachable and THAT is the defect.\n\nNOTE THE DIRECTION. Removing a net_send row reports LESS. Per the standing\ndiscipline that needs more evidence than a change reporting more, and per\nADR-0049 ruling 3 the proof is run per language rather than inherited from\nerlang's."  # f2fa
+    fields: {}  # f2fa
