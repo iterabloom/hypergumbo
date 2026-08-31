@@ -262,6 +262,7 @@ process_send:
 subprocess:
   - module: os
     functions: [cmd]
+    simultaneous: true
     notes: >-
       os:cmd/1 runs a command through the OS shell and returns its output.
       Opaque by the ADR-0016 rule that a launch's own I/O is not in the edge
@@ -322,6 +323,20 @@ env_write:
     functions: [set_env, unset_env, load, start, stop, ensure_started, ensure_all_started]
 
 ipc_recv:
+  - module: os
+    functions: [cmd]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
   - module: io
     functions: [read, get_line, get_chars]
     boundary_ruling: call_site_undecidable

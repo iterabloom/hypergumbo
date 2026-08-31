@@ -51,6 +51,14 @@ ambiguous_names:
 # ADR-0016 boundary order note: ipc_recv precedes fs_read here only because the
 # stdin family is the one a reader most often needs to find.
 ipc_recv:
+  - module: System.Process
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: >-
+      INV-lozat: the read* family RETURNS the child's stdout as a String
+      (`readProcessWithExitCode` as `(ExitCode, stdout, stderr)`), so each
+      is a transfer as well as a launch. The call*/spawn*/system forms stay
+      launch-only above -- they return unit, an ExitCode, or a handle.
   - module: Prelude
     functions: [getLine, getChar, getContents, readLn, interact]
     notes: >-
@@ -116,7 +124,26 @@ fs_write:
 
 subprocess:
   - module: System.Process
-    functions: [callProcess, callCommand, readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode, createProcess, spawnProcess, spawnCommand, system, rawSystem, waitForProcess, terminateProcess, interruptProcessGroupOf, cleanupProcess]
+    functions: [callProcess, callCommand, createProcess, spawnProcess, spawnCommand, system, rawSystem, waitForProcess, terminateProcess, interruptProcessGroupOf, cleanupProcess]
+    notes: >-
+      The forms that return unit, an ExitCode, or process HANDLES.
+      `createProcess` returns the three handles plus a ProcessHandle -- an
+      ADR-0049 deferred crossing, disclosed here and not minted. Split from
+      the read* row below by INV-lozat.
+  - module: System.Process
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: >-
+      INV-lozat / ADR-0049 ruling 1: returns the CHILD'S output, so the call is
+      a transfer as well as a launch and mints an untrusted_input source. Both
+      facts are true at once (the `scala.sys.process.Process.apply` shape), so
+      `simultaneous` is required -- without it `io_boundaries` is unwritten and
+      the subprocess chain loses the race to `ipc_recv`, which parses first.
+      The siblings that return only an exit status or a HANDLE stay
+      launch-only: a status is not the child's message, and a handle is a
+      crossing that has not happened yet (the ADR-0049 deferred shape).
+      Follows rust.yaml's `Child.wait_with_output`, which follows python.yaml's
+      `os.wait`.
 
 env_read:
   - module: System.Environment

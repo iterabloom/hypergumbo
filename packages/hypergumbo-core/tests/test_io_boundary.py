@@ -12,6 +12,7 @@ import pytest
 
 from hypergumbo_core.io_boundary import (
     HIGH_RISK_EXEMPTIONS_SUBPROCESS,
+    MULTI_BOUNDARY_REASON_SIMULTANEOUS,
     HIGH_RISK_PRIMITIVES,
     IO_BOUNDARIES_SCHEMA_VERSION,
     BoundaryMap,
@@ -28,6 +29,7 @@ from hypergumbo_core.io_boundary import (
     is_high_risk,
     load_catalog,
     match_edge_to_primitive,
+    multi_boundary_reason,
     tag_io_boundaries,
 )
 from hypergumbo_core.ir import Edge
@@ -5444,13 +5446,65 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
     """
 
     def test_erlang_os_cmd_is_a_subprocess_launch(self) -> None:
+        """ASKED OVER EVERY ROW, not over the one ``lookup_with_module``
+        returns, and the difference became live rather than theoretical when
+        INV-lozat gave ``os:cmd`` its second (``ipc_recv``) declaration.
+
+        ``os:cmd/1`` both launches a program AND returns its output, so it is
+        now the INV-zumin class (c) shape one class over from
+        ``scala.sys.process.Process.apply``. ``CATALOG_BOUNDARY_TYPES`` lists
+        ``ipc_recv`` before ``subprocess``, so the single-slot answer is now
+        the receive — which is exactly the race
+        :meth:`declares_opaque_crossing` documents ("opacity can lose that
+        race"). Asserting the slot would therefore have pinned an artefact of
+        tuple order rather than WI-jupaf's guarantee.
+
+        WHAT WI-jupaf ACTUALLY MEASURED is asserted instead, and it is
+        STRICTLY STRONGER than the slot check it replaces: the launch reaches
+        the boundary map as a ``subprocess`` chain, which is what a
+        ``{boundary: subprocess, must_not_exist: true}`` claim counts, and the
+        call still declares an opaque crossing.
+        """
         cat = load_catalog("erlang")
-        got = cat.lookup_with_module("os.cmd", "os")
-        assert got is not None, "os.cmd must stay catalogued — this is a RE-KEY"
-        assert got.boundary == "subprocess", (
-            f"os:cmd/1 runs a command through the OS shell; it is not an "
-            f"environment read. Got boundary={got.boundary!r}"
+        assert cat.lookup_with_module("os.cmd", "os") is not None, (
+            "os.cmd must stay catalogued — this is a RE-KEY"
         )
+        assert "subprocess" in cat.all_boundaries_for("os.cmd"), (
+            f"os:cmd/1 runs a command through the OS shell; it is not an "
+            f"environment read. Got {sorted(cat.all_boundaries_for('os.cmd'))}"
+        )
+        assert cat.declares_opaque_crossing("os", "cmd"), (
+            "knowing what the child SAID is not seeing what it DID; the launch "
+            "must stay opaque (INV-gahuz)"
+        )
+        assert "subprocess" in set(self._boundary_map_for_os_cmd("erlang")), (
+            "the false-confirm WI-jupaf measured is back: no subprocess chain "
+            "reaches the boundary map for an os:cmd edge, so "
+            "`{boundary: subprocess, must_not_exist: true}` confirms over a "
+            "live shell-out."
+        )
+
+    @staticmethod
+    def _boundary_map_for_os_cmd(lang: str):
+        """One ``os:cmd`` call edge, exactly as the Erlang analyzer emits it
+        (``call_construct='remote'``, module slot ``os``, name slot ``cmd``),
+        put through the production tagger."""
+        from dataclasses import dataclass
+        from typing import Any, Dict, Optional
+
+        @dataclass
+        class _E:
+            src: str
+            dst: str
+            edge_type: str = "calls"
+            meta: Optional[Dict[str, Any]] = None
+
+        edge = _E(
+            src=f"{lang}:src/leak.erl:2-4:handler:function",
+            dst=f"{lang}:os:0-0:cmd:external_symbol",
+            meta={"call_construct": "remote"},
+        )
+        return compute_boundary_map([edge], {lang: load_catalog(lang)}).entries
 
     def test_erlang_open_port_is_a_subprocess_launch(self) -> None:
         """``erlang:open_port/2`` is the other launch primitive, and the one
@@ -5478,12 +5532,17 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
         inherited answer, so a future edit that fixes only the child leaves the
         parent's defect visible here.
         """
-        got = load_catalog("elixir").lookup_with_module("os.cmd", "os")
-        assert got is not None
-        assert got.boundary == "subprocess", (
+        cat = load_catalog("elixir")
+        assert cat.lookup_with_module("os.cmd", "os") is not None
+        # Over every row, for the reason spelled out in
+        # ``test_erlang_os_cmd_is_a_subprocess_launch``: since INV-lozat this
+        # primitive carries two simultaneously-true boundaries and the
+        # single-slot answer is decided by tuple order, not by the catalogue.
+        assert "subprocess" in cat.all_boundaries_for("os.cmd"), (
             f"elixir inherits erlang's os module; :os.cmd/1 must be a launch "
-            f"there too. Got {got.boundary!r}"
+            f"there too. Got {sorted(cat.all_boundaries_for('os.cmd'))}"
         )
+        assert "subprocess" in set(self._boundary_map_for_os_cmd("elixir"))
 
     def test_the_shell_out_is_marked_high_risk(self) -> None:
         """``subprocess`` is flagged ``*** HIGH RISK ***`` on the invariant that
@@ -5503,15 +5562,36 @@ class TestTheBeamShellOutIsASubprocessNotAnEnvRead:
         pasted. The env rows are REMOVED, not supplemented.
         """
         for lang in ("erlang", "elixir"):
+            cat = load_catalog(lang)
             boundaries = {
-                p.boundary for p in load_catalog(lang).primitives
+                p.boundary for p in cat.primitives
                 if p.qualified_name == "os.cmd"
             }
-            assert boundaries == {"subprocess"}, (
-                f"{lang}: os.cmd must be declared under subprocess ALONE, or "
-                f"row order decides which declaration survives (INV-zumin). "
-                f"Got {sorted(boundaries)}"
+            assert not (boundaries & {"env_read", "env_write"}), (
+                f"{lang}: os.cmd is back under an env boundary. It runs a "
+                f"command through the OS shell. Got {sorted(boundaries)}"
             )
+            # THE PROPERTY, NOT THE PROXY. This assertion used to read
+            # ``== {"subprocess"}`` — sole declaration as a stand-in for "row
+            # order cannot decide the outcome". INV-lozat added a genuinely
+            # simultaneous ``ipc_recv`` row (os:cmd returns the command's
+            # output), which is INV-zumin's class (c): the marker makes every
+            # declaration reachable through ``io_boundaries``, so order decides
+            # nothing. Pinning sole-declaration would have forbidden the one
+            # multi-boundary shape the mechanism exists to support, while
+            # still permitting an unmarked pair — the actual hazard — anywhere
+            # else. So the check is now: no env row, and any multi-boundary set
+            # must declare WHY.
+            if len(boundaries) > 1:
+                assert (
+                    multi_boundary_reason(cat, "os.cmd")
+                    == MULTI_BOUNDARY_REASON_SIMULTANEOUS
+                ), (
+                    f"{lang}: os.cmd is declared under {sorted(boundaries)} "
+                    f"without saying why, so `lookup_with_module` returns one "
+                    f"row decided by YAML order and the rest are unreachable "
+                    f"(INV-zumin)."
+                )
 
 
 class TestSimultaneouslyTrueBoundariesAreAllReachable:
