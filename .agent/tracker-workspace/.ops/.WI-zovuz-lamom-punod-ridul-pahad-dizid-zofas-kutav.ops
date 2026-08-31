@@ -1,0 +1,23 @@
+- op: create  # 19e6
+  at: '2026-08-31T19:17:05Z'  # 19e6
+  by: agent  # 19e6
+  actor: jgstern_agent  # 19e6
+  clock: 1  # 19e6
+  nonce: '19e6'  # 19e6
+  data:  # 19e6
+    kind: work_item  # 19e6
+    title: "bash has no name-level flow, so a redirect-sink taint finding cannot be refuted: INV-fumod shape (b) needs reach across source"  # 19e6
+    status: todo_hard  # 19e6
+    priority: 2  # 19e6
+    parent:  # 19e6
+    tags:  # 19e6
+    - taint  # 19e6
+    - bash  # 19e6
+    - dataflow  # 19e6
+    isbefore:  # 19e6
+    - INV-fumod-faziz-dapaf-gavur-sokis-vuduj-juhas-tatut  # 19e6
+    duplicate_of: []  # 19e6
+    not_duplicate_of: []  # 19e6
+    pr_ref:  # 19e6
+    description: "PREREQUISITE FOR INV-fumod SHAPE (b), established by measurement rather than\nassumed. bash is dataflow_capable=false (blockers: cfg_mapping,\natomic_statement, def_use_extractor, ddg_spec), so every taint finding in a\nshell script is call-graph reachability: \"this file reads env somewhere AND\nreaches a function that writes somewhere\". A two-file minimal repro\n(`curl -L \"$URL\" > \"$DEST\"` vs `echo \"version is $MSG\" > f`) produces findings\nthat are byte-identical in shape -- same env.environ source at FILE\ngranularity, same redirect.> sink, same structural/unavailable walk.\n\nWHY NAME-LEVEL FLOW, AND WHY IT MUST CROSS `source`. INV-fumod's own named\ninstance is guacamole-docker/build.d/020-download-drivers.sh:71,\n`curl -L \"$URL\" > \"$DEST_PATH/$DEST_JAR\"`. bash.py's env-read rule is \"an\nexpansion whose name is never assigned in this file\"; DEST_PATH is\n\"$DESTINATION/drivers/\" and DESTINATION is never assigned in that file, so by\nthe analyzer's own rule the redirect TARGET is env-derived and the finding is\ncorrect by its own lights. It is false only because DESTINATION is assigned at\nguacamole-docker/bin/build-guacamole.sh:58 (DESTINATION=\"$2\"), in the script\nthat SOURCES this one (:61-63). Intra-file flow alone does not refute it.\nbash.py already emits `source`/`.` edges, so the graph exists.\n\nWHAT IT UNBLOCKS. Two questions the taint engine cannot currently ask at a\nredirect: (1) does a source-derived NAME reach the redirect's target operand?\n(2) does one reach the byte stream -- via a builtin stage that emits its\narguments (`echo`/`printf`), or an argument a stage interpolates? Both are\nneeded; measured evidence that neither can be skipped:\n  - beads scripts/sign-windows.sh:99\n    `echo \"$WINDOWS_SIGNING_CERT_PFX_BASE64\" | base64 -d > \"$CERT_FILE\"`\n    is a TRUE positive whose byte contribution comes from pipeline stage ONE,\n    a builtin, while the stage feeding the redirect is external.\n  - cilium images/builder/update-cilium-builder-image.sh:22\n    `sed -E \"s#...#\\1${image_full}#\" \"${i}\" > \"${i}.sedtmp\"` interpolates an\n    in-process value into the written bytes through an external stage.\nAny gate that reasons only about the LAST stage, or only about the target,\ngets one of these wrong. That is why INV-fumod shape (b) shipped no gate.\n\nSCOPE NOTE. Emission shape, 15 cohort repos: 576 write redirects (external\nbyte-producer 42.4%, builtin 25.2%); 37 redirect-sink taint findings over 9\nrepos. This is the dominant bash taint surface, not a corner.\n\nNOT IN SCOPE HERE: a full CFG/DDG for bash. The claim is only that redirect\nadjudication needs name-level reach, including through `source`."  # 19e6
+    fields: {}  # 19e6
