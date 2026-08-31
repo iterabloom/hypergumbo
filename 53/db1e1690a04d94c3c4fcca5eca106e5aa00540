@@ -1,0 +1,54 @@
+Original commit body from b167a43987f340fa3634012afba8ad2b8d8aabd7:
+
+go.yaml files bufio.{NewScanner,NewReader} as ipc_recv on the note "When
+wrapping os.Stdin" -- a condition holding at ZERO of the 83 bare-local sites
+the shipped reaching-def solver resolves across the ADR-0049 cohort, 63 of
+which (74.1%) wrap an os.Open handle. ipc_recv mints untrusted_input, so those
+63 invent a taint source out of a file read. This is the LARGER of the item's
+two false-source populations and the one its 19.1% estimate omitted.
+
+The analyzer runs before any DDG exists, so the origin lookup is syntactic and
+deliberately smaller than the solver that measured the 83: the last binding of
+the name at or above the use line, in the enclosing function only, no branch or
+loop reasoning. Both ordering shapes are pinned -- a rebinding above the call
+wins, a rebinding below it is not used. One classifier decides what an
+expression produces, so an inline argument and a resolved binding cannot drift.
+
+The source gate got FINER rather than gaining a sibling. The sink side asks
+"does this site cross a boundary at all"; the source side needs "does it cross
+one that MINTS", because a file read crosses a real boundary -- fs_read -- that
+is absent from AUTO_SOURCE_LABEL_MAP by design. Conflating the two would have
+meant either calling a file read "no crossing" (breaking every fs_write claim,
+which counts exactly those host_path targets) or minting from it.
+read_boundary_for_target_kind answers from the non-crossing set FIRST, so
+widening that set at its single home still moves both arms.
+
+Three fail-closed controls, because the direction is removal: an os.Stdin
+handle reached through a local still mints; net.Dial and an http body stamp
+nothing so the catalogue still decides; an unknown target kind mints. INV-vukiv
+on the source side is pinned too. The superseded first-deliverable assertion is
+rewritten, not deleted, and now pins what survives: a PARAMETER has no binding
+to read, so the abstention stays an abstention (INV-zumin).
+
+Measured on the 0006 cohort, both arms cold: 8 rows removed, 0 added, no
+verdict moved. All eight are beads. EVERY ONE WAS READ BACK AGAINST SOURCE and
+every one is `f, err := os.Open(...)` then `bufio.NewScanner(f)` -- including
+one inside an if-initializer. None is a stdin, network or subprocess read. The
+crossing is not lost: beads carries 55 os.Open fs_read chains, so ADR-0049
+ruling 3 is satisfied by a represented crossing rather than by argument. That
+is the opposite outcome to the first deliverable, whose seven removed rows each
+wrapped a subprocess's stdout -- the difference is the read-back, not the delta.
+
+Resolution rate, with the caveat that it is NOT the DDG's number: 92 of 97
+wrapper call EDGES stamped (beads 65/67, cilium 15/27, jaeger 2/2, gocryptfs
+1/1). Different denominator from the item's 83-of-163, which counted bare-local
+textual SITES. The effect is also smaller than the stamp count suggests --
+cilium resolves 15 and no finding moves, because a corrected source only
+changes a verdict where it reached a sink.
+
+Also fixes a stale meta-key declaration of my own making: io_target_kind still
+listed four values after in_memory was added, and its write_discipline note
+read "sole writer: bash.py" while go.py had become a second writer.
+
+Racial-Capitalism-Is-Bad: a dik-dik playing a grand piano in a tractor disguised as a Trojan horse in a time-warped Shoney’s buffet line with a syndicate of moths made of lox roses
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
