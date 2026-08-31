@@ -1,0 +1,25 @@
+- op: create  # 95bb
+  at: '2026-08-31T09:51:15Z'  # 95bb
+  by: agent  # 95bb
+  actor: jgstern_agent  # 95bb
+  clock: 1  # 95bb
+  nonce: 95bb  # 95bb
+  data:  # 95bb
+    kind: invariant  # 95bb
+    title: "A finding whose every sink call precedes its source is still reported and can carry a verdict alone: 25% of INV-lozat's rows and both surviving verdict moves are this shape"  # 95bb
+    status: violated  # 95bb
+    priority: 1  # 95bb
+    parent:  # 95bb
+    tags:  # 95bb
+    - taint  # 95bb
+    - analysis_quality  # 95bb
+    - dataflow  # 95bb
+    isbefore: []  # 95bb
+    duplicate_of: []  # 95bb
+    not_duplicate_of: []  # 95bb
+    pr_ref:  # 95bb
+    description: ""  # 95bb
+    fields:  # 95bb
+      statement: "A taint finding marked walk_blocked_by=sink_before_source has no demonstrated route, and on the current cohort both verdicts that rest on such a row alone are false; the tool reports them and lets them move a verdict from inconclusive to violated."  # 95bb
+      root_cause: "ADR-0017 s3a is confirm-only, so walk_blocked_by is recorded and never acted on. That was measured when the shape was 0.6% of rows; a primitive that is both a source and a sink raises it to 25% of the rows it adds, and nothing distinguishes a loop (where the pair can be real) from straight-line code (where it cannot)."  # 95bb
+      description: "FOUND 2026-08-31 measuring INV-lozat, and found because the fix that closes one\ngap makes the next one countable rather than by looking for it.\n\nTHE SHAPE. hypergumbo's dataflow walk records `walk_blocked_by:\nsink_before_source` when every sink call site in a finding is reached BEFORE the\nsource call in the same function. The finding is still reported: ADR-0017 s3a is\nconfirm-only and taint.py says so where the field is defined -- \"NOTHING IS\nACTED ON ... No verdict moves because of this field.\" That is a deliberate,\nratified position and this item does NOT propose overturning it by default: a\nloop makes a textually-earlier sink genuinely reachable from a later source, so\nthe marker is \"the walk could not run\", not \"the flow is impossible\".\n\nWHAT MAKES IT ACTIONABLE NOW IS THE RATE AND WHAT SITS BEHIND IT. Measured over\nmeasurement 0006's 16-repository cohort, every arm cold, using the tool's own\nfield:\n\n    dev before INV-lozat        4 of 692 rows    0.6%\n    INV-lozat, rows only       18 of  51 added  35.3%\n    INV-lozat as shipped       10 of  40 added  25.0%   (corpus rate 1.9%)\n\nINV-lozat's `_source_and_sink_are_one_call` answers the case where the source\ncall and the sink call are ONE call. It does not answer the case where a\nDIFFERENT sink call textually precedes the source in the same function, which\nis the residual 25%.\n\nTWO INSTANCES, READ BACK AGAINST SOURCE RATHER THAN ASSERTED:\n\n  gocryptfs internal/fido2/fido2.go:38-70  callFidoCommand\n      `io.WriteString(in, s+\"\\n\")` writes the CHILD'S STDIN; `cmd.Output()`\n      reads its stdout four lines later. \"Subprocess output reaches a file\n      write\" is false, and this SINGLE row is the whole of gocryptfs's\n      inconclusive -> violated move on untrusted-input-no-host-fs.\n\n  plausible tracker/compiler/analyze-sizes.js:283-297  readFileSize\n      Two `execSync` calls (gzip, then brotli). The edge records two call\n      lines, so INV-lozat's gate ABSTAINS by design -- at two sites the pair\n      CAN be real. Here it is not: the gzip result feeds `.length`, not\n      brotli's argument. This single row is the whole of plausible's\n      inconclusive -> violated move.\n\nSo on this cohort, BOTH verdict moves that survive INV-lozat's gate rest on a\nrow that is false. That is what makes this worth pricing rather than noting.\n\nWHAT WOULD HAVE TO BE ESTABLISHED BEFORE ANYTHING CHANGES, because this is the\nREMOVAL direction and s3a is ratified:\n  1. How often is a `sink_before_source` finding actually true? The loop case is\n     the whole defence and nobody has counted it. A census of the 14 rows on the\n     current corpus, read against source, is the cheapest possible answer.\n  2. Can the walk distinguish \"sink precedes source, no loop encloses either\"\n     from \"sink precedes source inside a loop\"? The CFG has back-edges; whether\n     the DDG plumbing exposes them at this point is unknown and is the real\n     feasibility question.\n  3. If (1) says the true rate is not ~0, the answer is NOT to remove -- it is\n     to stop these rows from moving a VERDICT while still reporting them, which\n     is a third thing s3a does not currently express.\nDo not skip (1). \"Presence of a finding after a change is not evidence the\nfinding is correct\" cost a published retraction once already."  # 95bb
