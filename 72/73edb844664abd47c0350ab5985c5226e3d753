@@ -1,0 +1,26 @@
+Original commit body from a0831afd193c01190b988c9690791f2a82040e5e:
+
+_extract_use_aliases read three use-forms and every one of them is a DIRECT
+child of use_declaration. A grouped list is not -- tree-sitter wraps it in a
+scoped_use_list one level down -- so all three lookups missed and the whole
+declaration registered nothing. The call edge is still emitted, so nothing
+fails loudly; only its identity is wrong, and the module slot gets the
+`external` sentinel while the whole path is crammed into the name slot,
+matching no io_primitives row.
+
+Replaced with a recursive walk of the use-tree, because a use-tree nests.
+The prefix is read textually from the node start to the opening brace rather
+than by enumerating node types, since a prefix may be an identifier, a
+scoped_identifier, crate, self, super, or carry a leading `::`. Wildcards
+abstain at every depth without suppressing their siblings.
+
+A/B over five rust repos, cold, baseline asserted by grepping the runtime
+file: 642 -> 754 io chains, +112, zero lost, and the `external` sentinel goes
+to zero on both repos audited for it. just is unchanged and is reported.
+
+The item's second question is answered NO: the fully-qualified miss does not
+share this cause -- both arms are still 0 after this fix, because those call
+sites have no use statement to expand. Filed separately, with the PHP
+instance the cross-language sweep found.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
