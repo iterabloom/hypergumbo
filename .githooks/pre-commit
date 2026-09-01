@@ -337,6 +337,38 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
+# io_boundary axis coherence (ADR-0050 / INV-tafig) — only fires when
+# packages/*.py files are staged. Sibling of the three drift gates
+# above. Companion to the property tests in
+# tests/test_io_boundary_types.py.
+#
+# A CLEAN EXIT HERE MEANS LESS THAN THE SIBLINGS', and the difference is
+# worth knowing before trusting it. The shared AST walker matches
+# module-level string-literal sets, and ADR-0050 derived io_boundary.py's
+# five vocabulary constants from the registry, so the tree currently holds
+# no such set and this exits 0 over an EMPTY collection. It guards a
+# future hand-rolled set — the ADR-0023 silent-bug shape — and does NOT
+# reach the dict-shaped consumers (AUTO_SOURCE_LABEL_MAP,
+# DEFERRED_CROSSING_SHADOWS, _READ_TARGET_KIND_BOUNDARY), which the
+# property tests assert explicitly instead. Widening the shared walker is
+# WI-jinuj.
+echo -n "  io_boundary axis coherence... "
+if git diff --cached --name-only | grep -qE "^packages/.*\.py$"; then
+    DRIFT_LOG="/tmp/.io-boundary-drift.$$"
+    if scripts/check-io-boundary-drift > "$DRIFT_LOG" 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+        rm -f "$DRIFT_LOG"
+    else
+        echo -e "${RED}✗${NC}"
+        echo ""
+        cat "$DRIFT_LOG"
+        rm -f "$DRIFT_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
+fi
+
 # Multi-value field axis declaration (WI-busij) — only fires when
 # ir.py or datamodels.py is staged. Catches new str / Optional[str] /
 # Literal[str, ...] fields added to @dataclass declarations in core
