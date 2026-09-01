@@ -624,6 +624,85 @@ def _extract_static_imports(
     return static_imports
 
 
+#: The package JLS 7.3 imports into every compilation unit whether or not it is
+#: written. Not a heuristic and not a class list — the language guarantees it.
+_IMPLICIT_IMPORT_PACKAGE = "java.lang"
+
+
+def _fully_qualified_type_reference(chain_text: str) -> "str | None":
+    """``java.nio.file.Files`` -> itself; ``this.svc`` / ``a.b`` -> ``None``.
+
+    INV-hahak. A receiver written as a dotted chain is EITHER a field-access
+    expression (``this.svc``, ``config.client``) OR a fully-qualified type name
+    (``java.nio.file.Files``). Only the second names a module, and the second was
+    being flattened to its last component so a wildcard could then overwrite the
+    package the source had spelled out.
+
+    The discriminator is java's own package/type spelling convention: package
+    components are lowercase and a type is capitalised. That inference is applied
+    HERE, inside the java analyzer, where the convention is java's; it is the
+    same inference ``io_boundary._module_matches`` makes language-agnostically
+    across 15 catalogues, and the difference in scope is the point — the module-key
+    audit found that predicate degenerate in haskell, swift, objc and elixir,
+    where module names are capitalised. Nothing here is offered to those.
+
+    Requires at least one leading component so a bare ``Files`` is not mistaken
+    for a qualified name, and rejects ``this``-rooted chains outright.
+    """
+    parts = chain_text.split(".")
+    if len(parts) < 2:
+        return None
+    if not parts[-1][:1].isupper():
+        return None
+    if any(not p or not p[0].islower() or not p.isidentifier() for p in parts[:-1]):
+        return None
+    return chain_text
+
+
+def _wildcard_candidate_slot(
+    wildcard_imports: list[str], receiver_name: str,
+) -> str:
+    """The module slot for a capitalised receiver resolved through wildcards.
+
+    INV-hahak. This used to be ``f"{wildcard_imports[0]}.{receiver_name}"`` — the
+    FIRST wildcard, unconditionally — which made a wildcard a blanket file-level
+    prefix rather than a candidate. :func:`_extract_wildcard_imports`' docstring
+    already described the intended behaviour ("the first wildcard whose package
+    the receiver could plausibly belong to"); the code never implemented it, and
+    nothing failed loudly because the file parses, the edge is still emitted, and
+    only the module slot is wrong. The loss surfaces as a catalogue miss.
+
+    THE DOMINANT CASE IS ``java.lang`` AND IT IS NOT A HEURISTIC. JLS 7.3 makes
+    ``java.lang.*`` implicitly imported, so ``System``, ``String``, ``Integer``,
+    ``Math`` and ``Thread`` are in scope in every file having never been written.
+    A file carrying ANY wildcard mis-attributed all of them: measured on jedis,
+    170 external refs name a java.lang class under a non-java.lang package,
+    including ``System.currentTimeMillis`` x28 and ``System.nanoTime``, both
+    catalogued ``host_info_read`` and both lost.
+
+    EMITS THE DISJUNCTION THE SITUATION ACTUALLY IS, reusing the comma-joined
+    slot contract cpp has used since INV-funuf — ``_module_hint_candidates``
+    splits on commas and asks an ANY question over the disjuncts, and
+    ``module_hint_disjuncts`` asks the ALL question for the coverage gate. A
+    single-wildcard file still yields two disjuncts rather than one, which is
+    honest: the class may come from the wildcard OR from java.lang.
+
+    THE UNQUALIFIED CLASS NAME IS DELIBERATELY NOT A CANDIDATE. Offering bare
+    ``Files`` would match any catalogue row whose module ends in ``.Files``, so a
+    project's own ``Files`` class would reach ``java.nio.file.Files`` — the
+    INV-dijor false-positive shape, imported into a fix meant to recover recall.
+    Every candidate here names a package that is genuinely in scope.
+    """
+    seen: set[str] = set()
+    parts: list[str] = []
+    for package in [*wildcard_imports, _IMPLICIT_IMPORT_PACKAGE]:
+        candidate = f"{package}.{receiver_name}"
+        if candidate not in seen:
+            seen.add(candidate)
+            parts.append(candidate)
+    return ",".join(parts)
+
+
 def _extract_wildcard_imports(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -1680,6 +1759,7 @@ def _extract_edges(
 
                 method_name = _node_text(name_node, source) if name_node else None
                 receiver_name = None
+                explicit_fq_module: str | None = None
 
                 if object_node is not None:
                     if object_node.type == "identifier":
@@ -1689,6 +1769,17 @@ def _extract_edges(
                         # and use it for type-inference lookup
                         fa_field = object_node.child_by_field_name("field")
                         fa_obj = object_node.child_by_field_name("object")
+                        # INV-hahak, second half: a chain that spells a PACKAGE
+                        # PATH is a fully-qualified type reference, not a
+                        # receiver expression, and the source states it outright.
+                        # Keeping only ``Files`` from ``java.nio.file.Files`` let
+                        # the wildcard fallback below re-attribute a call whose
+                        # own package was written at the call site.
+                        fq_type = _fully_qualified_type_reference(
+                            _node_text(object_node, source),
+                        )
+                        if fq_type is not None:
+                            explicit_fq_module = fq_type
                         if fa_field:
                             receiver_name = _node_text(fa_field, source)
                         # If the object is "this", treat the field as the
@@ -2149,14 +2240,21 @@ def _extract_edges(
                             # qualified module path is
                             # ``{wildcard_package}.{receiver_name}`` —
                             # matching the explicit-import shape.
+                            elif explicit_fq_module is not None:
+                                module = explicit_fq_module
+                                ext_ref = ExternalRef(
+                                    lang="java",
+                                    module_path=explicit_fq_module,
+                                    name=method_name,
+                                )
                             elif (
                                 receiver_name
                                 and receiver_name != "this"
                                 and receiver_name[:1].isupper()
                                 and wildcard_imports
                             ):
-                                wildcard_module = (
-                                    f"{wildcard_imports[0]}.{receiver_name}"
+                                wildcard_module = _wildcard_candidate_slot(
+                                    wildcard_imports, receiver_name,
                                 )
                                 module = wildcard_module
                                 ext_ref = ExternalRef(
