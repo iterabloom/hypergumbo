@@ -33,6 +33,7 @@ a shebang line (#!/bin/bash), requiring special detection beyond glob patterns.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -294,6 +295,273 @@ def _stage_expansion_names(node: "tree_sitter.Node", source: bytes) -> list[str]
                 and node_text(word, source) in _FAR_SIDE_FETCH_COMMANDS):
             return []
     return _expansion_names(node, source)
+
+
+#: Characters that make a ``source`` argument non-literal.
+_DYNAMIC_ARG = re.compile(r"[$`*?]")
+
+
+def _strip_quotes(text: str) -> str:
+    """``"$SCRIPT"`` -> ``$SCRIPT``. Only a matched outer pair is removed."""
+    s = text.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        return s[1:-1]
+    return s
+
+
+def _literal_tail(arg: str) -> Optional[str]:
+    """The trailing path component of *arg*, when it is fully literal.
+
+    ``source $TOOL_LIB_PATH/gitlib.sh`` is dynamic in the PREFIX and literal in
+    the TAIL, and that is the shape 62 of the cohort's 80 dynamic targets take.
+    A bare ``$ENV_FILE`` has no literal tail and must decline.
+    """
+    a = _strip_quotes(arg)
+    tail = a.rsplit("/", 1)[-1] if "/" in a else a
+    if not tail or _DYNAMIC_ARG.search(tail):
+        return None
+    return tail
+
+
+def _source_command_arg(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """The raw first-argument text of a ``source``/``.`` command node.
+
+    Deliberately WIDER than the ``sources`` edge emitter above, which takes
+    only children of type ``word``: a quoted or substituted target is a
+    ``string`` / ``command_substitution`` node, and those are 82.5% of the
+    cohort's population.
+    """
+    name_node = find_child_by_type(node, "command_name")
+    if name_node is None:  # pragma: no cover - a command always has a name
+        return None
+    word = find_child_by_type(name_node, "word")
+    if word is None or node_text(word, source) not in ("source", "."):
+        return None
+    for child in node.children:
+        if child.type == "command_name":
+            continue
+        if child.type in (
+            "word", "string", "simple_expansion", "expansion",
+            "concatenation", "command_substitution",
+        ):
+            return str(node_text(child, source))
+    return None
+
+
+def _for_loop_words(
+    node: "tree_sitter.Node", source: bytes, var: str,
+) -> list[str]:
+    """The iteration words of an enclosing ``for <var> in ...`` around *node*.
+
+    INV-pujob's own instance is ``for SCRIPT in /opt/guacamole/build.d/*.sh; do
+    source "$SCRIPT"; done`` -- the argument names a loop variable, so the
+    target is whatever the loop iterates.
+    """
+    current = node.parent
+    while current is not None:
+        if current.type == "for_statement":
+            name_node = find_child_by_type(current, "variable_name")
+            if name_node is not None and node_text(name_node, source) == var:
+                return [
+                    node_text(c, source)
+                    for c in current.children
+                    if c.type in ("word", "string", "concatenation")
+                ]
+        current = current.parent
+    return []
+
+
+class _RepoBashIndex:
+    """Repository-wide bash facts, built once and reused across both passes.
+
+    Holds the per-file assignment sets and the ``source`` graph, so the
+    env-read discriminator can ask "is this name assigned in a file joined to
+    mine by ``source``?" rather than only "assigned in mine".
+    """
+
+    def __init__(self, root: Path, parser: "tree_sitter.Parser") -> None:
+        self.root = root
+        self._parser = parser
+        self.assigned: dict[str, set[str]] = {}
+        self.sources: dict[str, set[str]] = {}
+        self._reach: dict[str, set[str]] = {}
+        self._build()
+
+    # -- construction ----------------------------------------------------
+    def _build(self) -> None:
+        try:
+            files = find_bash_files(self.root)
+        except OSError:  # pragma: no cover - defensive
+            return
+        parser = self._parser
+        trees: dict[str, tuple["tree_sitter.Tree", bytes]] = {}
+        for path in files:
+            try:
+                data = path.read_bytes()
+                rel = str(path.relative_to(self.root))
+            except (OSError, ValueError):  # pragma: no cover - defensive
+                continue
+            trees[rel] = (parser.parse(data), data)
+            self.assigned[rel] = _assigned_names(trees[rel][0], data)
+
+        by_name: dict[str, list[str]] = {}
+        by_dir: dict[str, list[str]] = {}
+        for rel in trees:
+            by_name.setdefault(rel.rsplit("/", 1)[-1], []).append(rel)
+            parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            by_dir.setdefault(parent.rsplit("/", 1)[-1], [])
+            if parent not in by_dir[parent.rsplit("/", 1)[-1]]:
+                by_dir[parent.rsplit("/", 1)[-1]].append(parent)
+
+        for rel, (tree, data) in trees.items():
+            targets: set[str] = set()
+            for node in iter_tree(tree.root_node):
+                if node.type != "command":
+                    continue
+                arg = _source_command_arg(node, data)
+                if arg is None:
+                    continue
+                targets |= self._resolve(
+                    arg, node, data, rel, trees, by_name, by_dir,
+                )
+            self.sources[rel] = targets
+        self._compute_reach()
+
+    def _compute_reach(self) -> None:
+        """Per-file visible-assignment sets, computed once for the whole repo.
+
+        Precomputed rather than memoised on demand: every file is asked exactly
+        once, so a lazy cache would never be read a second time and the branch
+        that reads it could not be tested honestly.
+        """
+        undirected: dict[str, set[str]] = {}
+        for a, targets in self.sources.items():
+            for b in targets:
+                undirected.setdefault(a, set()).add(b)
+                undirected.setdefault(b, set()).add(a)
+        for rel in self.assigned:
+            seen = {rel}
+            stack = [rel]
+            while stack:
+                cur = stack.pop()
+                for nxt in undirected.get(cur, ()):
+                    if nxt not in seen:
+                        seen.add(nxt)
+                        stack.append(nxt)
+            out: set[str] = set()
+            for other in seen:
+                if other != rel:
+                    out |= self.assigned.get(other, set())
+            self._reach[rel] = out
+
+    def _resolve(
+        self,
+        arg: str,
+        node: "tree_sitter.Node",
+        data: bytes,
+        rel: str,
+        trees: dict[str, tuple["tree_sitter.Tree", bytes]],
+        by_name: dict[str, list[str]],
+        by_dir: dict[str, list[str]],
+    ) -> set[str]:
+        """Repo-relative bash files *arg* may name. EMPTY means DECLINE.
+
+        Fail-closed at every branch: this removes taint sources, so an
+        ambiguous or unrecognised target must contribute nothing rather than
+        guess. Ambiguity is not hypothetical -- two ``common.sh`` in different
+        directories is ordinary, the cohort merely happens not to contain one.
+        """
+        raw = _strip_quotes(arg)
+        # A bare variable: the only binding this understands is an enclosing
+        # for-loop, which is the glob-loop shape.
+        if raw.startswith("$") and "/" not in raw:
+            var = raw.lstrip("$").strip("{}")
+            out: set[str] = set()
+            for word in _for_loop_words(node, data, var):
+                out |= self._resolve_glob(word, by_dir, trees)
+            return out
+        if "*" in raw or "?" in raw:
+            return self._resolve_glob(raw, by_dir, trees)
+        if not _DYNAMIC_ARG.search(raw):
+            here = rel.rsplit("/", 1)[0] if "/" in rel else ""
+            cand = _norm_join(here, raw)
+            if cand in trees:
+                return {cand}
+        tail = _literal_tail(raw)
+        if tail is None:
+            return set()
+        matches = by_name.get(tail, [])
+        return {matches[0]} if len(matches) == 1 else set()
+
+    def _resolve_glob(
+        self, word: str, by_dir: dict[str, list[str]],
+        trees: dict[str, tuple["tree_sitter.Tree", bytes]],
+    ) -> set[str]:
+        """Files named by a glob, matched on its DIRECTORY's last component.
+
+        guacamole's glob is ``/opt/guacamole/build.d/*.sh`` -- a CONTAINER path
+        with no counterpart in the tree; the repo's own ``build.d`` is joined
+        to it only by a Dockerfile ``COPY``. Matching the trailing directory
+        component recovers it without teaching bash about Dockerfiles.
+        """
+        w = _strip_quotes(word)
+        if "*" not in w and "?" not in w:
+            return set()
+        parent = w.rsplit("/", 1)[0] if "/" in w else ""
+        comp = parent.rsplit("/", 1)[-1]
+        if not comp or _DYNAMIC_ARG.search(comp):
+            return set()
+        dirs = by_dir.get(comp, [])
+        if len(dirs) != 1:
+            return set()
+        target_dir = dirs[0]
+        return {
+            rel for rel in trees
+            if (rel.rsplit("/", 1)[0] if "/" in rel else "") == target_dir
+        }
+
+    # -- query -----------------------------------------------------------
+    def names_visible_to(self, rel: str) -> set[str]:
+        """Names assigned in any file joined to *rel* by ``source``.
+
+        BOTH DIRECTIONS, because bash is dynamically scoped: a sourced script
+        sees the sourcer's assignments (guacamole's ``DESTINATION``) and the
+        sourcer sees the sourced script's (cilium's ``GHCURL``). Transitive,
+        and cycle-safe -- ``contrib/backporting`` sources in a cycle.
+        """
+        return self._reach.get(rel, set())
+
+
+def _norm_join(base: str, rel: str) -> str:
+    """POSIX-join *base* and *rel*, collapsing ``.``/``..``. No filesystem."""
+    parts: list[str] = []
+    for chunk in (base.split("/") if base else []) + rel.split("/"):
+        if chunk in ("", "."):
+            continue
+        if chunk == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(chunk)
+    return "/".join(parts)
+
+
+def _assigned_names(tree: "tree_sitter.Tree", source: bytes) -> set[str]:
+    """Names this file assigns -- INV-jurif's whole-file discriminator.
+
+    ONE HOME: the edge extractor and the repo index must agree exactly, and a
+    second copy of this three-line rule is how the two drift into calling
+    different things an environment read.
+    """
+    names: set[str] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type in ("variable_assignment", "for_statement"):
+            name_node = find_child_by_type(node, "variable_name")
+            if name_node is not None:
+                names.add(node_text(name_node, source))
+    return names
 
 
 def _redirect_origin_names(
@@ -680,6 +948,34 @@ class BashAnalyzer(TreeSitterAnalyzer):
         if symbol.kind in ("function", "file"):
             global_symbols[symbol.name] = symbol
 
+    #: (repo root, index) for the tree most recently analyzed. The module
+    #: keeps ONE analyzer instance, so this is reset when the root changes
+    #: rather than accumulating an entry per repository.
+    _bash_repo_index: Optional[tuple[Path, "_RepoBashIndex"]] = None
+
+    def _repo_index(
+        self, file_path: Path, rel_path: str,
+    ) -> Optional["_RepoBashIndex"]:
+        """The repo-wide bash index for the tree *file_path* lives in.
+
+        Built once per repository root and cached on the analyzer. The root is
+        recovered from the file's own path rather than threaded through the
+        base-class signature, which keeps this entirely inside bash.py.
+        """
+        try:
+            root = Path(str(file_path)[: -len(rel_path)] or ".")
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            return None
+        cached = self._bash_repo_index
+        if cached is not None and cached[0] == root:
+            return cached[1]
+        try:
+            index = _RepoBashIndex(root, self._create_parser())
+        except Exception:  # pragma: no cover - never fail analysis for this
+            return None
+        self._bash_repo_index = (root, index)
+        return index
+
     def extract_edges_from_file(
         self,
         tree: "tree_sitter.Tree",
@@ -734,12 +1030,24 @@ class BashAnalyzer(TreeSitterAnalyzer):
         # env read and over-report. Erring toward FEWER sources is the right
         # direction for a taint SOURCE — a missed source under-reports, an
         # invented one manufactures findings that do not exist.
-        assigned_names: set[str] = set()
-        for _n in iter_tree(tree.root_node):
-            if _n.type in ("variable_assignment", "for_statement"):
-                _name = find_child_by_type(_n, "variable_name")
-                if _name is not None:
-                    assigned_names.add(node_text(_name, source))
+        assigned_names = _assigned_names(tree, source)
+
+        # INV-pujob: and names assigned in any file joined to this one by
+        # `source`. bash is dynamically scoped in BOTH directions -- the
+        # sourced script sees the sourcer's assignments (guacamole's
+        # DESTINATION, assigned at build-guacamole.sh:58 and read by every
+        # build.d script it sources) and the sourcer sees the sourced script's
+        # (cilium's GHCURL, assigned in gitlib.sh). Whole-file was the
+        # conservative rule available before this index existed; it called
+        # DESTINATION a host_secret and carried a host_fs finding on it.
+        #
+        # FAILS CLOSED BY CONSTRUCTION: the index contributes names only for
+        # `source` targets it RESOLVED, and every ambiguous or unrecognised
+        # target resolves to nothing. This direction removes taint SOURCES, so
+        # an over-eager resolution is a false all-clear, not a false positive.
+        index = self._repo_index(file_path, rel_path)
+        if index is not None:
+            assigned_names = assigned_names | index.names_visible_to(rel_path)
 
         # WI-zovuz: which externally-derived names can reach what the SHELL
         # writes at each redirect. Computed once per file — the derivation
