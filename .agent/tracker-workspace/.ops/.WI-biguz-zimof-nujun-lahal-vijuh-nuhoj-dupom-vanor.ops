@@ -1,0 +1,21 @@
+- op: create  # 3256
+  at: '2026-09-01T20:24:15Z'  # 3256
+  by: agent  # 3256
+  actor: jgstern_agent  # 3256
+  clock: 1  # 3256
+  nonce: '3256'  # 3256
+  data:  # 3256
+    kind: work_item  # 3256
+    title: "ExternalRef.name carries the same 'never branch on the value itself' free-text justification that was just proven false on module_path — verify or narrow it"  # 3256
+    status: todo_hard  # 3256
+    priority: 3  # 3256
+    parent:  # 3256
+    tags:  # 3256
+    - axis  # 3256
+    - architecture  # 3256
+    isbefore: []  # 3256
+    duplicate_of: []  # 3256
+    not_duplicate_of: []  # 3256
+    pr_ref:  # 3256
+    description: "FOUND WHILE RETIRING ITS SIBLING (WI-kijup / ADR-0051). ExternalRef has two\nfree-text fields declared with the SAME justification clause, one of which was\nproven false and removed; this item asks whether the other is false for the same\nreason.\n\n    module_path: str  # axis: free-text -- ... consumers display/lookup,\n                      #   never branch on the value itself.     <- RETIRED\n    name: str         # axis: free-text -- symbol name at the definition site;\n                      #   consumers display/lookup, never branch on the\n                      #   value itself.                          <- STILL LIVE\n\nTHE CASE THAT IT IS ALSO FALSE. io_boundary.strip_redundant_module_qualifier\n(landed by INV-januj) does not merely look the name up -- it DECOMPOSES it:\nnorm_callee.rpartition(\".\"), then compares the head COMPONENT-WISE against the\nmodule hint's tail and returns the tail. That is branching on the value's\ninternal structure, which is more than the \"display/lookup\" the justification\nlicenses. INV-januj was itself a NAME-slot defect: several analyzers write the\nqualifier into both slots (java module_path=\"System\" with name=\"System.in\";\npython \"sys\" with \"sys.stderr\") while catalogues key the name WITHOUT it.\n\nTHE CASE THAT IT IS FINE. \"lookup\" plausibly covers keyed retrieval, and the\nname slot has no competing NOTIONS the way the module slot did -- there is no\nobserved case of the name slot carrying a receiver variable or a disjunction.\nThe decomposition is one helper, not a vocabulary.\n\nWHY THIS IS FILED RATHER THAN DECIDED: declaring a symbol-name axis is a\nseparate argument with its own axiom, and folding it into the module-key\ndeclaration would be exactly the scope drift that campaign exists to stop. The\nuseful first step is EVIDENCE, not a ruling -- enumerate every consumer that\ndoes anything with ExternalRef.name beyond equality/dict lookup, then decide\nbetween (a) declare a symbol-name axis, (b) narrow the justification to what is\nactually true (\"consumers look the value up and may split it on the language's\nseparator\"), or (c) leave it.\n\n(b) IS PROBABLY ENOUGH AND IS CHEAP. The defect WI-kijup fixed was not the\nabsence of an axis so much as a justification that said something untrue; a\njustification that describes the decomposition would already be honest. But the\nsame argument was made about module_path before the audit, so measure first.\n\nGENERAL FORM, worth checking in the same pass: `# axis: free-text` requires the\njustification to be PRESENT, not TRUE, so every free-text justification in ir.py\nand datamodels.py is an unverified claim. Counting how many assert \"never branch\non the value itself\" and grepping for consumers that do is a bounded exercise\nand would say whether this is two instances or a pattern."  # 3256
+    fields: {}  # 3256
