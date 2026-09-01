@@ -1,0 +1,36 @@
+Original commit body from 5c4f924a9c803258dbca3db7167f95eb65fe7a85:
+
+Owner-approved governance edit (2026-09-01): .githooks/** and AGENTS.md
+require human approval, granted explicitly along with self-merge via
+auto-pr.
+
+THE DEFECT. DEFAULT_CORE_FILES grew a third entry (io_boundary.py) while
+.githooks/pre-commit still fired the axis-declaration check on
+^packages/.*/src/.*/(ir|datamodels)\.py$. Staging only io_boundary.py
+therefore printed "skipped" over a file the constant said was in scope —
+visible in WI-mubup's own commit output. CI was never affected:
+test_live_tree_passes runs find_field_drift over every scoped file
+regardless of staging. The local fast-feedback path was the narrow one, and
+a gate that prints "skipped" is easy to read past.
+
+THE REGEX FIX ALONE WOULD HAVE BEEN THE WRONG DELIVERABLE, because the same
+drift recurs the next time a file joins the constant — the hook and the
+constant are two homes for one fact, which is the shape this whole campaign
+exists to remove. So the deliverable is the agreement test:
+test_the_precommit_hook_regex_covers_every_scoped_core_file parses the
+alternation out of the hook and asserts it covers every stem in
+DEFAULT_CORE_FILES.
+
+PROVED TO FIRE RATHER THAN ASSUMED: narrowing the regex back to
+(ir|datamodels) fails the test; restoring it passes. And the live hook was
+exercised on a staged io_boundary.py alone, which now runs the check
+instead of skipping it.
+
+AGENTS.md's essentialization named the same two files and is updated with
+the regex, including the two new registry-backed axis names (io-boundary /
+module-key per ADR-0050 / ADR-0051) in its list of valid categories.
+
+1,759 tests pass, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a hedgehog painting a trophy from a bygone merger on the moon with a caravan of donkeys
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
