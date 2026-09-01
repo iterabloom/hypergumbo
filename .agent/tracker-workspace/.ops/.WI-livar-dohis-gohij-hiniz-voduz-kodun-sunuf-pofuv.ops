@@ -1,0 +1,29 @@
+- op: create  # 8b00
+  at: '2026-09-01T05:42:17Z'  # 8b00
+  by: agent  # 8b00
+  actor: jgstern_agent  # 8b00
+  clock: 1  # 8b00
+  nonce: 8b00  # 8b00
+  data:  # 8b00
+    kind: work_item  # 8b00
+    title: "PROPOSAL: the module key has no declared axis (no axiom, registry, consumer helper or drift linter) while edge_type/symbol_kind/evidence_type all do — ~18 filed items reduce to the gap"  # 8b00
+    status: needs_human_review  # 8b00
+    priority: 3  # 8b00
+    parent:  # 8b00
+    tags:  # 8b00
+    - io_boundary  # 8b00
+    - architecture  # 8b00
+    - analysis_quality  # 8b00
+    isbefore: []  # 8b00
+    duplicate_of: []  # 8b00
+    not_duplicate_of: []  # 8b00
+    pr_ref:  # 8b00
+    description: "PROPOSAL, NOT A DECISION. Raised 2026-09-01 by the module-key concept audit\n(cadence). Needs a human ruling before any ADR is written -- the ADRs, the spec\nand the tracker are SILENT on what the module key is for, so per the standing\n\"decide what you can, and if silent say so\" rule this is escalated rather than\ndecided. Full write-up:\n~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md\n\nTHE OBSERVATION. Three multi-value fields on the IR have a declared axis with the\nfull ADR-0024 four-artifact scaffolding -- an axiom, a registry module, a consumer\nhelper, and a drift linter:\n\n    Edge.edge_type       ADR-0023   edge_types_on_axis()   check-edge-type-drift\n    Symbol.kind          ADR-0027   symbol_kinds_on_axis()\n    Edge.evidence_type   ADR-0028\n\nThe MODULE KEY has none of the four. There is no axiom saying what may go in\nIoPrimitive.module or ExternalRef.module_path, no registry, no consumer helper,\nand no drift linter. What exists instead is _module_matches: one string predicate\nwith four hand-tuned arms, one of which infers \"type vs sub-package\" from\nCAPITALISATION using a rule its own docstring justifies by Go's naming convention\nwhile serving all 15 catalogues.\n\nWHAT THE FIELD ACTUALLY HOLDS, measured over 65,187 external refs on a 21-repo,\n10-language cold cohort:\n\n    88.1%  module-shaped name  -- itself a namespace (os, java.io), a TYPE\n                                  (std::fs::File, gin.Context), a global object\n                                  VALUE (process, window, navigator), or a\n                                  receiver VARIABLE name\n     6.2%  a DISJUNCTION -- cpp's comma-joined #include set (a SET, not a module)\n     2.7%  a relative path (legitimate module id in JS/TS)\n     1.5%  the sentinel 'external'\n     1.4%  a header name <string.h> (legitimate module id in C/C++)\n     0.1%  the sentinel 'redirect' (bash: not a call at all; name slot is '>')\n\n7.8% is not a single module identity at all. Objective-C's analyzer writes\n`module_path=receiver_name` literally; on the objc+swift repos 1,102 of 4,207\nexternal refs (26%) carry a local identifier -- expectation, request, session,\nresp, download, components.\n\nWHY THIS IS AN AXIS QUESTION AND NOT A PILE OF BUGS. Roughly eighteen\nseparately-filed tracker items reduce to the same conflation, and they are filed\nseparately BECAUSE no document says what the field is for, so each mismatch reads\nas a local analyzer defect:\n\n  INV-linub (the class), INV-zuvib, INV-hahak, INV-fofoj, INV-januj, INV-kotob,\n  INV-mumov, INV-safig, INV-fokik, INV-funuf, INV-zimud, INV-papih, INV-dijor,\n  WI-zazul, WI-damir, WI-sugom, WI-gudak, WI-papar, WI-kamin, WI-monul\n\nTwo of them were shown by this audit to be ONE defect in two languages\n(INV-fofoj's java half IS INV-januj), which is the signature of a missing axis\nrather than of unrelated bugs.\n\nTHE QUESTION FOR THE HUMAN, and it is genuinely a judgment call:\n\n(a) DECLARE AN AXIS. Split the notions -- namespace / type / value / variable --\n    give the row a declared discriminator instead of leaving _module_matches to\n    infer it orthographically, ship the four artifacts. Large: it touches 15\n    catalogues, ~35 analyzers, and the id grammar, and it would very likely\n    require a stable_id scheme bump (ADR-0032 / the v9/v10 gate), which is\n    release-gated by WI-talos.\n(b) DOCUMENT ONLY. Write the axiom and the consumer helper, leave the data\n    shape alone, and keep filing per-language defects against the axiom. Cheap,\n    and it makes the next mismatch legible as an axis violation rather than a\n    fresh mystery.\n(c) NEITHER. The per-item flow is working; the volume of harm is low (this\n    audit measured 32 of 1,676 tagged boundaries decided by the heuristic arms,\n    1 of 9 distinct shapes wrong) and the coordination cost of (a) exceeds it.\n\nMY READ, offered as input and not as a decision: (b). The measured harm today\ndoes not justify (a)'s blast radius, but the eighteen-item pile is real and is\nthe cost of having no axiom -- each new language pays the discovery cost again.\n(b) captures most of the value for a fraction of the risk, and leaves (a)\navailable if the module key ever needs a scheme bump for another reason."  # 8b00
+    fields: {}  # 8b00
+- op: discuss  # f52c
+  at: '2026-09-01T05:45:40Z'  # f52c
+  by: agent  # f52c
+  actor: jgstern_agent  # f52c
+  clock: 2  # f52c
+  nonce: f52c  # f52c
+  message: "INV-tafig (violated, P2) is the SAME SHAPE OF GAP on a different field -- the io_boundary VALUE axis (fs_read/net_send/...) is also absent from _known_axes() with no registry, axiom or drift linter. Related, not duplicate: that item is about the boundary vocabulary, this one about the module key. If the human rules (a) or (b) here, the two should be scoped together -- they would share the registry pattern and the drift-linter shape."  # f52c
