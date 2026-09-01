@@ -1,0 +1,25 @@
+- op: create  # 3062
+  at: '2026-09-01T02:27:01Z'  # 3062
+  by: agent  # 3062
+  actor: jgstern_agent  # 3062
+  clock: 1  # 3062
+  nonce: '3062'  # 3062
+  data:  # 3062
+    kind: invariant  # 3062
+    title: "A java wildcard import binds every unqualified class name in the file to that wildcard's package, and overrides a fully-qualified call site, so the call matches no catalogue row"  # 3062
+    status: violated  # 3062
+    priority: 1  # 3062
+    parent:  # 3062
+    tags:  # 3062
+    - catalogue  # 3062
+    - java  # 3062
+    - analysis_quality  # 3062
+    - io_boundary  # 3062
+    isbefore: []  # 3062
+    duplicate_of: []  # 3062
+    not_duplicate_of: []  # 3062
+    pr_ref:  # 3062
+    description: "FOUND 2026-09-01 while measuring WI-lipis's java half. Found because the java\nprobe's SINK would not fire: `Files.writeString` produced no fs_write chain, and\nthe reason was not the catalogue.\n\nTHE REPRO, isolated to ONE variable (survey, cold, production CLI):\n\n    import java.nio.file.Files;      Files.writeString(Path.of(\"/x\"), s);\n      -> java:java.nio.file.Files:0-0:writeString      RESOLVES, row matches\n\n    import java.io.*;                Files.writeString(Path.of(\"/x\"), s);\n      -> java:java.io.Files:0-0:writeString            WRONG PACKAGE, no row\n\n    (no import at all)               Files.writeString(Path.of(\"/x\"), s);\n      -> java:external:0-0:Files.writeString           unresolved, no row\n\nThe second form is the defect: `java.nio.file.Files` is bound to `java.io`\nbecause `java.io.*` is the wildcard in scope. `Path.of` goes the same way, and\nso does `String.valueOf` (-> `java.io.String.valueOf`).\n\nIT ALSO OVERRIDES A FULLY-QUALIFIED CALL SITE, which is the part that makes this\nmore than an import-table gap. Under `import java.io.*;` alone:\n\n    java.nio.file.Files.writeString(java.nio.file.Path.of(\"/x\"), s);\n      -> java:java.io.Files:0-0:writeString\n\nThe call site spells the package out and is still re-attributed to the wildcard's\npackage. So the wildcard is applied as a blanket file-level prefix rather than as\na candidate to be confirmed.\n\nPOPULATION, corpus-wide (a grep BOUND used for sizing, counting import\nSTATEMENTS and FILES, not call sites):\n\n    wildcard import statements           2556\n    files with at least one wildcard     1622\n    files with two or more wildcards      464   (packages actively compete)\n    repositories                            38\n    heaviest: spark 365, playframework 308, jedis 301, pekko 224, gradle 213\n\nNOTE THE TWO POPULATIONS ARE DIFFERENT QUESTIONS. With two or more wildcards a\nclass name is genuinely ambiguous and the first one wins. With ONE wildcard the\nresolution is still wrong for every class the named package does not declare --\nwhich is the measured case above -- so the 1622 figure is the affected set and\n464 is only the subset where two packages compete.\n\nSAME FAMILY AS INV-zuvib, DIFFERENT LANGUAGE. There a rust grouped\n`use a::{b, c};` registers no alias and the call lands as\n`rust:external:0-0:File::open`. Here a java wildcard registers the WRONG alias\nand the call lands as `java:java.io.Files:0-0:writeString`. Both degrade\nsilently toward \"no row matched\", which is why neither was visible until\nsomething that should have been found was not.\n\nDIRECTION IS A SILENT FALSE NEGATIVE, and it is not confined to io names: any\ncatalogue keyed on a qualified module -- io_primitives, taint sources, taint\nsinks, sanitizers -- misses every call routed through a wildcard import.\n\nFIRST STEP: establish whether the wildcard is recorded as a prefix and applied\nunconditionally, or recorded as a candidate and mis-ranked. The fully-qualified\noverride above suggests the former, but that is one observation and not a read\nof the code. Do NOT assume the no-import case (whole path in the NAME slot) has\nthe same cause as the wrong-package case; they may be one bug or two.\n\nREPRO ARTEFACT: scratchpad lipis4/{jw_one,jw_none,jw_fq,java_wild,java_expl}/"  # 3062
+    fields:  # 3062
+      statement: "A call's module slot must name the package that actually declares the callee. VIOLATED: under 'import java.io.*;' a call to java.nio.file.Files.writeString lands as java:java.io.Files:0-0:writeString and matches no io_primitives row, while the explicit-import form of the identical call resolves. The wildcard prefix is applied even when the call site spells the package out."  # 3062
+      root_cause: "The java analyzer records a wildcard 'import p.*;' as a blanket module prefix for the file rather than as a candidate package to be confirmed against the class's real home, and applies it unconditionally -- including over a call site's own fully-qualified path. Nothing fails loudly: the file parses, the call edge is still emitted, only the module slot is wrong, so the loss appears as a catalogue miss rather than as a resolution error."  # 3062

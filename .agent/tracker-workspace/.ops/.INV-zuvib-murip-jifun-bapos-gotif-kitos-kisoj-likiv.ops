@@ -1,0 +1,25 @@
+- op: create  # 54b6
+  at: '2026-09-01T01:31:43Z'  # 54b6
+  by: agent  # 54b6
+  actor: jgstern_agent  # 54b6
+  clock: 1  # 54b6
+  nonce: 54b6  # 54b6
+  data:  # 54b6
+    kind: invariant  # 54b6
+    title: "rust grouped use-lists register no import aliases, so every call through one lands in the external module slot and matches no catalogue row"  # 54b6
+    status: violated  # 54b6
+    priority: 1  # 54b6
+    parent:  # 54b6
+    tags:  # 54b6
+    - catalogue  # 54b6
+    - rust  # 54b6
+    - analysis_quality  # 54b6
+    - io_boundary  # 54b6
+    isbefore: []  # 54b6
+    duplicate_of: []  # 54b6
+    not_duplicate_of: []  # 54b6
+    pr_ref:  # 54b6
+    description: "FOUND 2026-08-31 while testing whether rust satisfies WI-lipis's wrapper\nrequirement. The owner pushed back on a proposal to strike rust from that item's\nscope; testing instead of asserting is what surfaced this.\n\nTHE REPRO, minimal and isolated to one variable (io-boundaries, cold):\n\n    use std::fs::File;                          fn f() { File::open(\"/x\"); }\n      -> 1 io edge, std::fs::File.open, fs_read            RESOLVES\n\n    use std::fs::{read_to_string, File};        fn f() { File::open(\"/x\"); }\n      -> 0 io edges                                        SILENTLY LOST\n\nNOT A PARSE FAILURE, which is the first thing to rule out. Both files parse,\nboth extract the symbol `f`, and both emit exactly one `calls` edge. The\ndifference is the edge's IDENTITY:\n\n    single   dst=rust:std::fs::File:0-0:open:unresolved      callee_name=open\n    grouped  dst=rust:external:0-0:File::open:unresolved     callee_name=File::open\n\nThe single form puts `std::fs::File` in the MODULE slot and `open` in the NAME\nslot, which is what the catalogue row `module: std::fs::File` matches. The\ngrouped form puts `external` in the module slot and crams the whole path\n`File::open` into the name slot, matching nothing. So this is an import-alias\nregistration gap, not an id-format defect and not a catalogue gap.\n\nPOPULATION, corpus-wide (a regex BOUND used for sizing, not an exact count --\nit counts use STATEMENTS, not the names inside them, and each grouped list\nholds several):\n\n    grouped   use a::{b, c};      97450   (37.9% of all use statements)\n    single    use a::b;          159745\n    rust repositories containing at least one grouped list: 121\n\nEvery name imported through a grouped list is affected, not only io ones -- the\nprobe lost `read_to_string` the same way it lost `File::open`.\n\nWHY IT HAS BEEN INVISIBLE: it degrades silently in the direction that produces\nNO row, so it can only be seen by looking for something that should be there.\nIt also explains a second observation from the same session: fully-qualified\n`std::io::stdin()` is not detected while `io::stdin()` and a bare imported\n`stdin()` are (~972 path-qualified stdio-handle call sites corpus-wide). That\nmay be the same root cause or an adjacent one in the same path-resolution code;\nit is NOT yet established which, and the two should not be assumed identical.\n\nFIRST STEP: confirm whether the `use_list` expansion is simply absent or present\nand mis-keyed, and whether the fully-qualified-path miss shares the cause. Do\nnot fix one and assume the other."  # 54b6
+    fields:  # 54b6
+      statement: "A rust grouped use-list (`use std::fs::{read_to_string, File};`) does not register its names as import aliases, so a call through one of them lands in the `external` module slot with the whole path in the NAME slot and matches no io_primitives row. The single-import form of the identical call resolves correctly."  # 54b6
+      root_cause: "The rust analyzer's use-declaration handling reads the single form `use a::b;` and registers `b -> a::b`, but does not expand a `use_list` node (`use a::{b, c};`) into one alias per name. Nothing fails loudly: the file parses, symbols are extracted and the call edge is still emitted, so the loss is silent and shows up only as a module slot of `external` with a `::`-bearing name."  # 54b6
