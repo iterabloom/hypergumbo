@@ -1,0 +1,71 @@
+Original commit body from e14d62aaadba1a9a3f3053665b8ff30ffa044084:
+
+The module key did not lack an axis declaration — it carried a false one.
+ExternalRef.module_path read:
+
+    # axis: free-text — module import path in source-language grammar;
+    #   consumers display/lookup, never branch on the value itself.
+
+A consumer branches on the value itself. io_boundary._module_matches
+decides type-vs-sub-package from ORTHOGRAPHY
+(longer_raw[shared][:1].isupper()) and carries a Swift carve-out that
+branches on the value being a single token the catalogue name ends with.
+The static lint accepted the declaration because a free-text
+justification must be PRESENT, not TRUE — so the gap survived a check
+already reading that exact line. The heuristic it justified is
+information-free wherever module names are capitalised: haskell 100%,
+swift 97%, objc 95%, elixir 52%, javascript 21%.
+
+AXIOM: the module key names the STATIC OWNER PATH of the called symbol —
+the namespace or type in which it is DEFINED — not a property of the call
+site. A TYPE IS CONFORMANT, and that is the cut an orthographic heuristic
+cannot make: the catalogues are deliberately full of types (net.Conn,
+std::fs::File, pathlib.Path) because a method-shaped primitive is
+unaddressable without its owning type. A receiver VARIABLE is not — resp
+is not where read is defined. ADR-0023's endpoint-property cut reused,
+and the tell is that _module_matches already carries a Swift carve-out
+whose only purpose is to tolerate the non-conformant shape.
+
+Six notions in four sections. Axiom-conformance is DERIVED from the
+section, never stored per-notion: a stored flag beside the section is one
+fact in two homes, the shape this axis exists to remove.
+pending_classification derives to NOT conformant — "not yet argued", not
+"argued and accepted".
+
+The best evidence is four lines of source rather than a percentage.
+swift.py:1223 falls back receiver_type -> import alias -> receiver_hint
+-> "external": a TYPE, a NAMESPACE, a receiver VARIABLE and a SENTINEL
+into one slot with no record of which produced it. That also locates
+INV-kotob's swift emission site, which the concept audit failed to find.
+Same trace corrected the audit: it recorded objc as writing a receiver
+variable, but objc.py:644 is gated on receiver_name[0].isupper() and a
+capitalised Objective-C message receiver is normally a CLASS name, so
+objc's slot is predominantly a type. The lowercase identifiers the audit
+counted came from swift; its "26% of objc+swift refs" is a
+combined-cohort figure and is not attributable to objc.
+
+Structural policy, not a value registry — module names are unenumerable,
+so this follows qualified_name_axis under ADR-0024 §4's "use judgment"
+carveout while the sibling io-boundary axis takes the heavyweight shape.
+Citations are checked rather than trusted: each notion cites its producer
+site by file:line plus an anchor, and a test asserts the line still
+contains it.
+
+DEVIATIONS, STATED: nothing an analyzer emits changes (external_symbol
+ids embed the slot, so migration needs the v9/v10 scheme bump WI-talos
+gates — ADR-0024 step 7, WI-marok), and no drift linter ships, because
+the AST walker checks a consumer set against a registry and there is no
+enumerable value set to check. The # axis: declaration lint is the live
+enforcement and is what the ir.py change satisfies.
+
+Two open questions recorded, neither answered: global_object
+(process/window/navigator) is genuinely contested and left for a
+per-value audit with no row moved; ExternalRef.name carries the SAME
+"never branch on the value itself" clause while
+strip_redundant_module_qualifier decomposes it with rpartition(".") —
+filed as WI-biguz rather than folded in.
+
+19,742 tests pass, 100% coverage, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: an otter practicing karate a nitrogen-freezing in a tractor-trailer hauling giant tulips in an opera house with a class of turtles made of caraway seeds
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
