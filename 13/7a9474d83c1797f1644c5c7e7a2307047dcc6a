@@ -1,0 +1,46 @@
+Original commit body from 02db64c71a1ebaf6a203b812100bc39e69310341:
+
+_module_matches arm 3 ("dropped qualification") compares trailing
+components after casefolding BOTH sides, discarding the one signal that
+separates java's `System` — an unqualified reference to the class
+java.lang.System — from go's `context`, a parameter of type *cli.Context
+spelled like the trailing component of github.com/gin-gonic/gin.Context.
+sops's context.String("input-type"), a urfave/cli flag read, reached a
+net_send row. That is INV-safig's remedy biting back: appending the type
+to the import path is what put Context in trailing position.
+
+THE FIX IS CASE AGREEMENT, NOT A CAPITALISATION TEST, and the item's own
+first step warned the obvious fix was not obviously right. Arm 2 asks
+whether a component IS capitalised — Go's "capitals mean types", in a
+predicate that takes no language and serves fifteen catalogues, carrying
+no information where module names are capitalised (haskell 100%, swift
+97%, objc 95%, elixir 52%). Arm 3 now asks only whether the two sides are
+SPELLED THE SAME WAY. Language-neutral: in those same languages both
+sides are capitalised, so they agree and every prior match survives.
+
+WHAT IT MUST NOT COST, each pinned by a named test: java.lang.System <-
+System keeps matching (INV-januj and INV-hahak both depend on this arm;
+breaking it re-loses java's only ipc_recv row), and so do go's filepath
+<- path/filepath and grpc <- google.golang.org/grpc, which INV-dijor
+names as true positives at risk from fix (a).
+
+MEASURED, BOTH DIRECTIONS. Catalogue-wide: all 1,090 rows with a
+capitalised trailing component now refuse a variable-spelled hint, while
+3,954 correctly-cased hints still match and ZERO break. End-to-end on the
+filed repo, both arms cold in their own XDG_CACHE_HOME with the baseline
+asserted by grepping the runtime file: 159 chains -> 157, REMOVED 2,
+ADDED 0 — exactly the two calls INV-dijor filed, inputStore
+(main.go:2383) and outputStore, both READ BACK AGAINST SOURCE as
+urfave/cli flag reads. Control alive in the same run: context.Deadline ->
+None, os.Open still resolves, and String still reaches gin.Context from
+the hint it is FOR.
+
+This is EVIDENCE, not the declaration ADR-0051 anticipates — case
+disagreement is a proxy for "the hint names a variable, not an owner
+path", not a per-row declaration. Arm 2's case-VALUE inference is
+untouched and is the residual (WI-zozun).
+
+11,212 tests pass, 100% coverage, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a pumpkin-eyed goat painting a hollow mannequin in a bamboo forest with a seminar of pigeons made of prayer shawls
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
