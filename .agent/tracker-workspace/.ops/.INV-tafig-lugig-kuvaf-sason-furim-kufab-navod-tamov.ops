@@ -22,3 +22,25 @@
     fields:  # 674c
       statement: "Every multi-value vocabulary that consumers branch on must have a declared axis with a one-sentence axiom and a drift linter (ADR-0024); io_boundary has neither, while AUTO_SOURCE_LABEL_MAP, OPAQUE_BOUNDARIES, _DISCLOSED_ONLY_BOUNDARIES and verify-claims all branch on its values."  # 674c
       root_cause: "The boundary vocabulary predates ADR-0024 and was never retrofitted, so there is no axiom stating what a boundary value means and no place a per-value ruling can be recorded. Measured consequences: INV-tutar (env_read carried two readings; 134 of 195 rows misclassified; 22.9% precision on host-secret claims) and WI-johuk (the same question derived four times over five months, ruled zero times, four incompatible censuses)."  # 674c
+- op: discuss  # 0e7d
+  at: '2026-09-01T19:16:46Z'  # 0e7d
+  by: agent  # 0e7d
+  actor: jgstern_agent  # 0e7d
+  clock: 2  # 0e7d
+  nonce: 0e7d  # 0e7d
+  message: "OWNER RULING (2026-09-01) on the sibling WI-livar: option (a), DECLARE THE AXIS,\nand INV-tafig is scoped TOGETHER with it. This item is no longer waiting on\nanything -- it is now half of one campaign.\n\nWHY THE TWO SHARE A ROOT AND NOT JUST A SHAPE. This item says io_boundary is\nabsent from _known_axes(). Verified, and the reason is structural rather than\noversight: multi_value_field_axis.DEFAULT_CORE_FILES is exactly ir.py and\ndatamodels.py, while IoPrimitive lives in io_boundary.py. So IoPrimitive.boundary\ncarries no axis comment and nothing ever asked it for one -- the linter cannot\nsee the file. The identical fact hides WI-livar's IoPrimitive.module. One scope\nfix un-hides both, and it is the gate that would have caught each of them.\n\nTHE TWO AXES ARE DIFFERENT SHAPES, WHICH IS WHY THIS IS TWO REGISTRIES AND NOT\nONE. io-boundary is ENUMERABLE -- CATALOG_BOUNDARY_TYPES is 17 values,\nKNOWN_IO_BOUNDARIES adds external_potential and command_launch for 19 -- so it\ntakes the heavyweight edge_types.py registry: AXIS_* constants, an IoBoundarySpec\nfrozen dataclass carrying name + axis + description, the tuple of specs,\nall_io_boundary_names() / io_boundaries_on_axis() / find_io_boundary().\nThe module key is NOT enumerable and takes the qualified_name_axis.py structural-\npolicy shape instead (ADR-0024 section 4 \"use judgment\").\n\nAXIOM CANDIDATE, as this item proposes and ADR-0049 ruling 1 supplies: a boundary\nvalue names WHAT DATA CROSSES THE PROCESS BOUNDARY AT THIS CALL SITE, IN WHICH\nDIRECTION -- not what the program is thereby arranged to do later. Adopting it\nverbatim keeps ADR-0049 the value-level ruling and this the axis that ruling\nlives on. It is falsifiable in the ADR-0024 sense: it is what makes net_listen a\ndisclosure rather than a crossing, and it is the sentence env_read failed when\nINV-tutar found 134 of 195 rows were host DESCRIPTION rather than secret\nmaterial.\n\nSEQUENCING, honouring this item's own note that the axis lands BEFORE the row\nmoves: the registry ships first, then the census (WI-hazop) and the retag\n(WI-nosah) are recorded against it rather than in prose. Also confirmed: the\nfive consumers this item names all still branch on the vocabulary --\nAUTO_SOURCE_LABEL_MAP, OPAQUE_BOUNDARIES, _DISCLOSED_ONLY_BOUNDARIES,\nDEFERRED_CROSSING_SHADOWS (added since filing, by ADR-0049) and verify_claims'\nKNOWN_IO_BOUNDARIES check. DEFERRED_CROSSING_SHADOWS is a sixth branching\nconsumer that did not exist when this was filed, which is the drift the item\npredicts."  # 0e7d
+- op: update  # f6e5
+  at: '2026-09-01T19:16:57Z'  # f6e5
+  by: agent  # f6e5
+  actor: jgstern_agent  # f6e5
+  clock: 3  # f6e5
+  nonce: f6e5  # f6e5
+  set:  # f6e5
+    priority: 1  # f6e5
+- op: discuss  # 2035
+  at: '2026-09-01T19:16:57Z'  # 2035
+  by: agent  # 2035
+  actor: jgstern_agent  # 2035
+  clock: 4  # 2035
+  nonce: '2035'  # 2035
+  message: "P2 -> P1: scoped with WI-livar by owner ruling (a) on 2026-09-01, and it ships FIRST of the two -- it is the enumerable axis, so it is the one that instantiates the shared registry/linter/property-test shape the module-key axis then reuses."  # 2035
