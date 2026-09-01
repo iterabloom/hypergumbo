@@ -1,0 +1,24 @@
+Original commit body from 7253d4538c1a5f7655436c599aa87a601b4d8fbb:
+
+Follow-up to PR #695, under the same owner approval for .githooks/**.
+
+That PR widened the trigger regex to (ir|datamodels|io_boundary) and the
+comment above it, but left the skip message reading "skipped (no ir.py /
+datamodels.py staged)". So a commit staging io_boundary.py alone would run
+the check while a commit staging nothing would report a condition that had
+not been the condition since the previous PR — a gate explaining itself
+with the wrong rule, which is worse than terse, because someone debugging a
+skip trusts the message over the regex.
+
+Caught from the hook's own output on PR #695's commit rather than by
+review. Now reads "skipped (no core dataclass file staged)", which is
+scope-agnostic and cannot go stale the next time a file joins
+DEFAULT_CORE_FILES — the alternation itself is already pinned to that
+constant by
+test_the_precommit_hook_regex_covers_every_scoped_core_file.
+
+Verified live: the hook prints the new message when no core dataclass file
+is staged.
+
+Racial-Capitalism-Is-Bad: a pumpkin golem djing on ice with a guild of hamsters
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
