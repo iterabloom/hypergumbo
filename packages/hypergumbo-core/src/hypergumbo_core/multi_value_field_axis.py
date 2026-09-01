@@ -80,9 +80,24 @@ from typing import Callable, Iterable, Iterator
 # Hard-coded core dataclass files. To add a file, append its path
 # (relative to repo root) here. A sentinel-comment opt-in mechanism
 # is reserved for a future PR if drift surfaces.
+#
+# WHY io_boundary.py IS HERE (WI-mubup). It was not, and that omission is the
+# single structural reason two axes went undeclared for as long as they did.
+# ``IoPrimitive`` lives in io_boundary.py, so ``IoPrimitive.boundary`` (the
+# io-boundary vocabulary, INV-tafig) and ``IoPrimitive.module`` (the module key,
+# WI-livar) carried no axis comment and nothing ever asked them for one -- while
+# their EDGE-side counterparts in ir.py were linted the whole time. Each axis was
+# split across a scanned file and an unscanned one, which is how two halves of
+# one key drift apart without a single gate firing.
+#
+# The lesson generalises past this one file: the scope of this constant IS the
+# scope of the discipline, so a dataclass that carries a vocabulary and is not
+# named here is unlinted by construction, however carefully its own module is
+# written.
 DEFAULT_CORE_FILES: tuple[str, ...] = (
     "packages/hypergumbo-core/src/hypergumbo_core/ir.py",
     "packages/hypergumbo-core/src/hypergumbo_core/datamodels.py",
+    "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py",
 )
 
 

@@ -2,7 +2,8 @@
 # Multi-Value Field Axis Declaration Playbook
 
 This playbook explains the per-PR mechanical gate that every
-`str`-typed field on a core dataclass (in `ir.py` or `datamodels.py`)
+`str`-typed field on a core dataclass (in `ir.py`, `datamodels.py` or
+`io_boundary.py`)
 must declare its axis via a `# axis: <category>` trailing comment.
 The gate is enforced by `scripts/check-multi-value-field-axis-declaration`
 and the live-tree property test
@@ -14,13 +15,14 @@ Complement: the **Fundamental Concept Audit** playbook (
 `what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md`
 ) covers the audit case — "I suspect an existing field is doing the
 wrong job." This playbook covers the creation case — "I'm sitting in
-front of `ir.py` right now about to add or modify a field." Same
+front of a core dataclass file right now about to add or modify a field." Same
 vocabulary, different procedure, different trigger.
 
 ## When this applies
 
-You're editing `packages/hypergumbo-core/src/hypergumbo_core/ir.py`
-or `packages/hypergumbo-core/src/hypergumbo_core/datamodels.py`, and
+You're editing `packages/hypergumbo-core/src/hypergumbo_core/ir.py`,
+`packages/hypergumbo-core/src/hypergumbo_core/datamodels.py` or
+`packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py`, and
 your change either:
 
 - Adds a new `@dataclass`-decorated class with one or more
@@ -336,10 +338,11 @@ needed, follow ADR-0024's seven-step workflow to declare separate
   failure; don't block commits).
 - **CI gate**: the property test
   `tests/test_multi_value_field_axis.py::test_live_tree_passes`
-  runs against the live `ir.py` and `datamodels.py` and asserts
+  runs against the live `ir.py`, `datamodels.py` and `io_boundary.py`
+  and asserts
   agreement. Every PR's test run exercises this.
 - **Pre-commit hook**: not yet wired (governance follow-up). When
-  wired, the hook entry skips when no `ir.py` / `datamodels.py`
+  wired, the hook entry skips when no core-dataclass
   files are staged.
 
 ## What this playbook does NOT cover
@@ -353,7 +356,8 @@ needed, follow ADR-0024's seven-step workflow to declare separate
   ADR-0027 (`symbol-kind`), ADR-0028 (`evidence-type`) are the
   worked examples for heavyweight axis declarations.
 - **Adding the field to non-core files** — the linter only scans
-  `ir.py` and `datamodels.py` by default. A future sentinel-comment
+  `ir.py`, `datamodels.py` and `io_boundary.py` by default (the third
+  added by WI-mubup — see below). A future sentinel-comment
   opt-in mechanism is reserved for other files if drift surfaces.
 
 ## Cross-references
@@ -371,3 +375,35 @@ needed, follow ADR-0024's seven-step workflow to declare separate
   entry script.
 - `.agent/agent_playbooks_protocols_sops_skills/what-if-we-dont-know-what-the-fuck-we-are-talking-about-audit-aka-fundamental-concept-audit.md`
   — the audit-case complement to this playbook.
+
+## Why `io_boundary.py` joined the scope (WI-mubup)
+
+`DEFAULT_CORE_FILES` was `ir.py` and `datamodels.py` only. `IoPrimitive` lives
+in `io_boundary.py`, so `IoPrimitive.boundary` (the I/O-boundary vocabulary,
+INV-tafig) and `IoPrimitive.module` (the module key, WI-livar) carried no axis
+comment and **nothing ever asked them for one** — while their edge-side
+counterparts `ExternalRef.module_path` and the boundary values in `ir.py` were
+linted the whole time.
+
+That is the structural reason both axes went undeclared for as long as they
+did. Each axis was split across a scanned file and an unscanned one, so neither
+half's absence could fire a gate, and the two halves were free to drift apart.
+
+**The generalisable rule: the scope of `DEFAULT_CORE_FILES` IS the scope of
+this discipline.** A dataclass that carries a vocabulary and is not named there
+is unlinted by construction, however carefully its own module is written. When
+you declare a new axis, ask where *both* halves of the field live before
+assuming the lint covers it.
+
+Widening the scope surfaced **20 undeclared fields across 7 dataclasses**, not
+just `IoPrimitive`'s six. Expect that: run
+
+```python
+find_field_drift(repo_root, core_files=["<candidate path>"])
+```
+
+in report-only mode *before* deciding the diff shape. And do not bulk-stamp the
+residue as `free-text` to clear the report — a `free-text` justification that
+is not true is precisely the defect ADR-0051 was written to remove, and the
+lint cannot tell the difference because it only requires the justification to
+be **present**.

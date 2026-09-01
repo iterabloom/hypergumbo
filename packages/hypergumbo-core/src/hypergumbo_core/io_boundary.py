@@ -619,11 +619,11 @@ class IoPrimitive:
             updated would be the row-order hazard again, wearing a new hat.
     """
 
-    boundary: str
-    module: str
-    name: str
-    kind: str  # "function" or "method"
-    notes: str = ""
+    boundary: str  # axis: io-boundary
+    module: str  # axis: module-key
+    name: str  # axis: free-text — the primitive's own function/method name, used WHOLE as a dict key (``_by_short[p.name]``) and never decomposed; the module qualifier lives in the sibling slot.
+    kind: str  # axis: bounded-enum
+    notes: str = ""  # axis: free-text — prose caveats for a human reader; no consumer branches on it.
     simultaneous: bool = False
     #: True when this row came from a SHIPPED COMMUNITY overlay — rows
     #: hypergumbo distributes and discloses but does NOT vouch for
@@ -636,7 +636,7 @@ class IoPrimitive:
     #: withheld ``fs_write`` verdict into ``confirmed`` for every repo that
     #: uses requests — the false-all-clear direction, shipped by default.
     unvouched: bool = False
-    boundary_ruling: Optional[str] = None
+    boundary_ruling: Optional[str] = None  # axis: bounded-enum
     """Why this primitive is catalogued under several boundaries (INV-vaduk).
 
     ``None`` for a single-boundary primitive, and for the two shapes whose
@@ -676,9 +676,22 @@ class IoBoundaryCatalog:
     Provides O(1) lookup by qualified name and O(1) lookup by short name
     (unqualified). Short-name lookup may return multiple matches (e.g.
     ``open`` is both fs_read and fs_write).
+
+    ``status`` is a bounded enum of exactly three values, and the third is
+    not declarable:
+
+    * ``provenance_declared`` — the catalogue cites its stdlib source, which
+      is validated at load against the provenance allowlist.
+    * ``in_progress`` — the catalogue is partial; absence of a row is not
+      evidence the primitive is absent.
+    * ``unsupported`` — the status of a catalogue that DOES NOT EXIST
+      (:data:`CATALOG_STATUS_UNSUPPORTED`, WI-gofah). A YAML may not declare
+      it — ``_validate_catalog_dict`` refuses it — because it describes the
+      absence of the file rather than anything the file says. Set only on
+      ``load_catalog``'s missing-file fallback.
     """
 
-    language: str
+    language: str  # axis: language
     primitives: list[IoPrimitive] = field(default_factory=list)
     ambiguous_names: frozenset[str] = field(default_factory=frozenset)
     # INV-javam: True when a YAML catalog (or alias/parent) was loaded
@@ -714,7 +727,7 @@ class IoBoundaryCatalog:
     # property of today's two call sites, not of the field. The next consumer to
     # ask ``== "provenance_declared"`` would get a citation-backed answer for a
     # language nobody catalogued, and it would fail OPEN.
-    status: str = "provenance_declared"
+    status: str = "provenance_declared"  # axis: bounded-enum
     # Plan C, PR B: provenance of the stdlib symbol list. ``None`` for
     # ``status: in_progress``; required (and validated) for
     # ``status: provenance_declared``. Shape: ``{source_url, version,
@@ -1795,9 +1808,9 @@ class DefaultOverlay:
     """
 
     path: Path
-    language: str
-    provenance: str
-    retrieved: str
+    language: str  # axis: language
+    provenance: str  # axis: free-text — prose citation of where the rows came from; displayed for the ADR-0047 disclosure, never parsed.
+    retrieved: str  # axis: free-text — the date a human last checked the upstream source, shown so a reader can judge staleness; not parsed or compared.
 
 
 def validate_default_overlays(paths: "Sequence[Path]") -> None:
@@ -2647,7 +2660,7 @@ class ModeArgument:
     """
 
     position: int
-    keyword: Optional[str] = None
+    keyword: Optional[str] = None  # axis: free-text — the target language's own keyword spelling for this argument, compared for equality against a call site's keyword; not enumerable across languages.
 
 
 # Where each language puts the mode argument of each mode-discriminated
@@ -2765,13 +2778,13 @@ class IoChain:
             isn't yet provenance-validated.
     """
 
-    boundary: str
-    primitive: str
-    io_edge_src: str
-    io_edge_dst: str
+    boundary: str  # axis: io-boundary
+    primitive: str  # axis: free-text — the matched primitive's qualified name, carried for display and for the deduplicated ``primitives_used`` list; no consumer branches on it.
+    io_edge_src: str  # axis: identity
+    io_edge_dst: str  # axis: identity
     entry_points: list[str] = field(default_factory=list)
     dst_tier: Optional[int] = None
-    dst_tier_name: Optional[str] = None
+    dst_tier_name: Optional[str] = None  # axis: bounded-enum
     dst_external_boundary: bool = False
     dst_classification_unreliable: bool = False
 
@@ -2804,7 +2817,7 @@ class BoundaryMapEntry:
         primitives_used: Deduplicated I/O primitive names across all chains.
     """
 
-    boundary: str
+    boundary: str  # axis: io-boundary
     chains: list[IoChain] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
     primitives_used: list[str] = field(default_factory=list)
@@ -3472,8 +3485,8 @@ class FirstPartyModuleGrammar:
             has no self-reference spelling" is the claim that fails open.
     """
 
-    language: str
-    basis: str
+    language: str  # axis: language
+    basis: str  # axis: free-text — prose naming the language rule the entry rests on, so a reader can check it; deliberately unparsed.
     self_reference_components: frozenset[str] = frozenset()
     relative_specifiers: bool = False
 
