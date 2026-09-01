@@ -62,9 +62,11 @@ import yaml
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
 from .io_boundary import (
+    _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
     call_site_modes,
     call_site_target_kinds,
     read_boundary_for_target_kind,
+    strip_redundant_module_qualifier,
     target_kind_discriminated_primitives,
     target_kinds_cross_no_boundary,
 )
@@ -745,7 +747,9 @@ def collapse_unadjudicated_flows(
 # one frozenset is what stops the pair drifting apart again — the live sink
 # matcher tested only the bare spelling for months while the (never-wired)
 # _sink_module_compatible tested both.
-_UNRESOLVED_MODULE_PLACEHOLDERS = frozenset({"external", "<external>"})
+#: Re-exported from :mod:`io_boundary`, which is the canonical home (the two
+#: consumers must not drift about what "no module" looks like).
+_UNRESOLVED_MODULE_PLACEHOLDERS = _UNRESOLVED_MODULE_PLACEHOLDERS_IO
 
 
 def _lookup_named_entry(
@@ -809,6 +813,31 @@ def _lookup_named_entry(
         hits, callee_name, module_hint, ambiguous_names,
         call_construct=call_construct,
     )
+
+
+def _retry_name_unqualified(
+    idx: Mapping[str, Sequence[TaintEntry]],
+    callee_name: str,
+    module_hint: str | None,
+) -> str:
+    """Return the unqualified callee when the qualified one indexes nothing.
+
+    INV-januj / INV-fofoj. The public ``match_source`` / ``match_sink`` entry
+    points take a callee name a caller already extracted, so the retry cannot be
+    folded into :func:`_match_propagation_entry`'s copy; this is the shared shape
+    both use, and it returns the name to look up rather than the hits so the
+    caller's own ``idx.get`` stays the single lookup.
+
+    ONLY ON A MISS. A name that already indexes something is returned unchanged,
+    which is what makes this recall-only: no currently-matching call can be
+    re-pointed at a different entry.
+    """
+    if idx.get(callee_name):
+        return callee_name
+    bare = strip_redundant_module_qualifier(module_hint, callee_name)
+    if bare is not None and idx.get(bare):
+        return bare
+    return callee_name
 
 
 def _build_callee_index(
@@ -892,7 +921,21 @@ def _match_propagation_entry(
     callee_name = _extract_callee_name(edge_dst)
     hits = index.get(callee_name)
     if not hits:
-        return None
+        # INV-januj / INV-fofoj: the name slot may re-state the qualifier the
+        # module slot already carries (java ``System`` + ``System.in``, python
+        # ``sys`` + ``sys.stderr``). Retry once unqualified — STRICTLY after the
+        # miss, so no edge that matches today can change. The io-boundary seam
+        # carries the mirror of this; both call the one helper so they cannot
+        # drift about what "redundant" means.
+        bare = strip_redundant_module_qualifier(
+            _extract_callee_module(edge_dst), callee_name,
+        )
+        if bare is None:
+            return None
+        hits = index.get(bare)
+        if not hits:
+            return None
+        callee_name = bare
     # Mode gate for DUAL-CLASSIFIED primitives, applied before every other
     # arm so both the resolved and unresolved paths inherit it rather than
     # growing a second copy. Only entries that opted in via ``requires_mode``
@@ -1172,6 +1215,7 @@ class TaintCatalog:
         rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._source_by_name.get(language, {})
+        callee_name = _retry_name_unqualified(idx, callee_name, module_hint)
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),
@@ -1195,6 +1239,7 @@ class TaintCatalog:
         rejected without the name needing to be in ``ambiguous_names``.
         """
         idx = self._sink_by_name.get(language, {})
+        callee_name = _retry_name_unqualified(idx, callee_name, module_hint)
         return _lookup_named_entry(
             idx.get(callee_name), callee_name, module_hint,
             self._ambiguous_names.get(language, frozenset()),

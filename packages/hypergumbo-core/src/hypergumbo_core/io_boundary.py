@@ -3956,6 +3956,71 @@ def classify_call(
     return classify_call_in_catalog(catalogs, dst, meta, dst_ref=dst_ref)[0]
 
 
+#: Module-slot values meaning "no module identity was recovered".
+#:
+#: THE CANONICAL HOME. ``taint`` imports this rather than keeping its own copy —
+#: the two both filter a module hint before comparing it against a catalogue row,
+#: and a set that drifted between them would make one consumer treat a sentinel as
+#: a real module name while the other degraded, which is the "one fact, two homes"
+#: shape this module has paid for repeatedly (INV-fokik, INV-zimud).
+#:
+#: DELIBERATELY NOT WIDENED HERE. The 2026-09-01 module-key audit measured two
+#: further non-identity values in the slot — ``<unknown>`` (minted by
+#: ``_parse_dangling_id`` for malformed ids) and bash's ``redirect`` (47 refs,
+#: name slot ``>``). Both are inert today: no catalogue rows a primitive either
+#: could match. Adding them would be an unmeasured behaviour change riding along
+#: with a recall fix, so they stay out and stay recorded.
+_UNRESOLVED_MODULE_PLACEHOLDERS_IO: Final[frozenset[str]] = frozenset(
+    {"external", "<external>"}
+)
+
+
+def strip_redundant_module_qualifier(
+    module_hint: Optional[str], callee: Optional[str],
+) -> Optional[str]:
+    """Return ``callee`` without a leading qualifier the module slot ALREADY carries.
+
+    INV-januj / INV-fofoj (java half). Several analyzers write the module
+    qualifier into BOTH slots — java emits ``module_path="System"`` with
+    ``name="System.in"``, python ``module_path="sys"`` with ``name="sys.stderr"``
+    — while every catalogue keys the name WITHOUT it (``java.lang.System`` + ``in``,
+    ``sys`` + ``stderr``). The composed key doubles the prefix and matches nothing.
+
+    Returns ``None`` when nothing is redundant, which is the common case and the
+    caller's cue to change nothing.
+
+    THE HEAD IS COMPARED COMPONENT-WISE AGAINST THE HINT'S TAIL, not for equality,
+    because the two slots are routinely written at different depths: java's edge
+    says ``System`` where the row says ``java.lang.System``. A bare equality test
+    would have caught python and missed java — which is exactly how these came to
+    be filed as two unrelated items in the first place.
+
+    REDUNDANT IS NOT THE SAME AS QUALIFIED, and only the first is stripped. The
+    module slot must already carry the qualifier for it to be dropped: an
+    ``os``-hinted ``sys.stderr`` keeps its head, because there the head is
+    information rather than repetition.
+    """
+    if not module_hint or not callee:
+        return None
+    if module_hint in _UNRESOLVED_MODULE_PLACEHOLDERS_IO:
+        return None
+    norm_callee = normalize_module_separators(callee)
+    head, sep, tail = norm_callee.rpartition(".")
+    if not sep or not head or not tail:
+        return None
+    hint_parts = normalize_module_separators(module_hint).split(".")
+    # ``head`` is non-empty by the guard above, so ``split`` yields at least one
+    # component and an emptiness check here would be dead.
+    head_parts = head.split(".")
+    if len(head_parts) > len(hint_parts):
+        return None
+    if [p.casefold() for p in hint_parts[-len(head_parts):]] != [
+        p.casefold() for p in head_parts
+    ]:
+        return None
+    return tail
+
+
 def classify_call_in_catalog(
     catalogs: dict[str, IoBoundaryCatalog],
     dst: str,
@@ -3990,13 +4055,37 @@ def classify_call_in_catalog(
     if catalog is None:
         return None, None
     edge_meta = meta or {}
-    return catalog.lookup_with_module(
-        callee, adjusted_hint,
-        call_construct=edge_meta.get("call_construct"),
-        io_modes=call_site_modes(edge_meta),
-        io_target_kinds=call_site_target_kinds(edge_meta),
-        allow_short_name_fallback=not is_first_party_callable_dst(dst),
-    ), catalog
+
+    def _lookup(name: str) -> Optional[IoPrimitive]:
+        return catalog.lookup_with_module(
+            name, adjusted_hint,
+            call_construct=edge_meta.get("call_construct"),
+            io_modes=call_site_modes(edge_meta),
+            io_target_kinds=call_site_target_kinds(edge_meta),
+            allow_short_name_fallback=not is_first_party_callable_dst(dst),
+        )
+
+    hit = _lookup(callee) if callee else None
+    if hit is not None:
+        return hit, catalog
+
+    # INV-januj / INV-fofoj: the name slot may re-state the qualifier the module
+    # slot already carries (java ``System`` + ``System.in``, python ``sys`` +
+    # ``sys.stderr``) while every catalogue keys the name WITHOUT it. Retry once
+    # on the unqualified name.
+    #
+    # STRICTLY AFTER THE FIRST MISS, WHICH IS THE WHOLE SAFETY ARGUMENT. No call
+    # that matches today can change, so this is recall-only by construction and
+    # the direction that needs watching is precision — which is left to the gates
+    # the retry still runs through. Measured on a 21-repo cohort: 299 refs reach
+    # this retry, ``os.path`` / ``./constants.open`` / ``ajax.request`` /
+    # ``sre_constants.error`` / ``urllib.parse`` / ``reflect.String`` all still
+    # resolve to None, and 58 boundaries not otherwise tagged are recovered
+    # (java ``System.out`` x51 — java's only ipc_recv row is on the same seam).
+    bare = strip_redundant_module_qualifier(adjusted_hint, callee)
+    if bare is None:
+        return None, catalog
+    return _lookup(bare), catalog
 
 
 def tag_io_boundaries(
