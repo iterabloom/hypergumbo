@@ -3740,12 +3740,55 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     # is how source code normally spells these — Go writes `http.Get` after
     # importing `net/http`, and Java writes `System.in` for
     # `java.lang.System.in`, so the hint is routinely the unqualified tail of
-    # the catalog's fully-qualified module. No capitalisation test applies
-    # here: the extra components are leading NAMESPACE, and dropping a
-    # namespace cannot turn one module into a different one the way appending
-    # a sub-package can. Whole components still have to match, which is what
-    # keeps `os`/`chaos` and `grpc`/`…otlptracegrpc` rejected.
-    if cm_parts[-shared:] == em_parts[-shared:]:
+    # the catalog's fully-qualified module. Whole components still have to
+    # match, which is what keeps `os`/`chaos` and `grpc`/`…otlptracegrpc`
+    # rejected.
+    #
+    # THE MATCHED COMPONENTS MUST ALSO AGREE IN CASE (INV-dijor), and this is a
+    # STRICTLY WEAKER QUESTION THAN ARM 2'S. Arm 2 asks whether a component IS
+    # capitalised, which encodes Go's "capitals mean types" in a predicate that
+    # takes no language and serves fifteen catalogues — information-free where
+    # module names are capitalised (haskell 100%, swift 97%, objc 95%, elixir
+    # 52%). This arm asks only whether the two sides are SPELLED THE SAME WAY,
+    # which is language-neutral: in those same capitalised-module languages
+    # both sides are capitalised, so they agree and every prior match survives.
+    #
+    # WHAT IT BUYS. The comment here used to say no capitalisation test applies
+    # because "the extra components are leading NAMESPACE". True when the
+    # trailing component is a namespace; false when it is a TYPE, which is what
+    # INV-safig's remedy created by appending the type to the import path. With
+    # both sides casefolded, `github.com/gin-gonic/gin.Context` was reachable
+    # from a bare `context` — so sops's `context.String("input-type")`, a
+    # urfave/cli flag read on a PARAMETER named context, classified as
+    # net_send. 1,090 catalogue rows across 9 languages carry a capitalised
+    # trailing component and were each matchable from a lowercase variable of
+    # the same spelling (python `Path` 40 rows, kotlin `File` 34, elixir `Repo`
+    # 24, haskell `ByteString` 23, rust `File` 23, go `Context` 13).
+    #
+    # WHAT IT MUST NOT COST, and why the test file names each one. Java's
+    # unqualified class references keep matching — `System` against
+    # `java.lang.System`, both capitalised — and INV-januj and INV-hahak both
+    # depend on that arm, so breaking it would re-lose java's only ipc_recv
+    # row. Go's `filepath` ← `path/filepath` and `grpc` ←
+    # `google.golang.org/grpc`, which INV-dijor names as true positives at risk
+    # from a naive capitalisation test, are lowercase on both sides and survive.
+    #
+    # This is EVIDENCE, not the declaration ADR-0051 anticipates: the axiom
+    # says the slot names an owner path and that a receiver VARIABLE is the
+    # non-conformant notion, and case disagreement is a proxy for that. Arm 2's
+    # case-VALUE inference is untouched and remains the residual.
+    if cm_parts[-shared:] == em_parts[-shared:] and all(
+        c[:1].isupper() == e[:1].isupper()
+        # strict=True documents the invariant rather than trusting it:
+        # ``shared`` is min(len(cm_parts), len(em_parts)) and both slices
+        # are ``[-shared:]``, so the two are the same length by
+        # construction. A silent truncation here would make the case test
+        # skip components, which is the direction that lets a wrong match
+        # back through.
+        for c, e in zip(
+            cm_parts_raw[-shared:], em_parts_raw[-shared:], strict=True,
+        )
+    ):
         return True
 
     # Swift receiver-variable carve-out: single-token names only, catalog ends
