@@ -1827,62 +1827,134 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+#: Use-tree node types that name an importable path.  ``crate`` / ``super``
+#: appear here because a group item may be spelled with either.
+_USE_NAME_NODE_TYPES = ("identifier", "scoped_identifier", "crate", "super")
+
+
+def _join_use_path(prefix: str, segment: str) -> str:
+    """Compose a use-path segment onto the prefix its enclosing groups built."""
+    return f"{prefix}::{segment}" if prefix else segment
+
+
+def _use_tree_bindings(
+    node: "tree_sitter.Node",
+    prefix: str,
+    source: bytes,
+    out: dict[str, str],
+) -> None:
+    """Record ``alias -> full path`` for one node of a Rust use-tree.
+
+    ``prefix`` is the path the ENCLOSING groups have accumulated, without a
+    trailing ``::``; it is empty at the top of a ``use_declaration``.  The
+    walk is recursive because a use-tree nests -- ``use std::{fs::{File}};``
+    is a group inside a group -- so the same six node shapes appear at every
+    depth and the only thing that changes is the prefix.
+
+    Wildcards are the one shape that deliberately yields nothing: the set of
+    names ``use a::*;`` brings into scope is a property of the imported
+    module, which the analyzer cannot see, so registering anything here would
+    invent a binding rather than record one.  Top-level wildcards have always
+    behaved this way; a wildcard INSIDE a group must not suppress its
+    siblings.
+    """
+    kind = node.type
+
+    if kind == "scoped_use_list":
+        list_node = find_child_by_type(node, "use_list")
+        if list_node is None:  # pragma: no cover - the grammar always pairs them
+            return
+        # The prefix is read TEXTUALLY, from the start of this node to the
+        # opening brace, rather than by enumerating node types.  A use-path
+        # prefix may be an ``identifier``, a ``scoped_identifier``, ``crate``,
+        # ``self``, ``super``, a repeated ``super::super``, or carry a leading
+        # ``::`` -- several node shapes spelling one concept, all of which the
+        # source text already spells correctly.
+        head = source[node.start_byte : list_node.start_byte].decode(
+            "utf-8", errors="replace"
+        )
+        inner = _join_use_path(prefix, head.strip().rstrip(":"))
+        for item in list_node.named_children:
+            _use_tree_bindings(item, inner, source, out)
+        return
+
+    if kind == "use_as_clause":
+        # ``a::b as c`` and ``{self as c}``.  The renamed thing is the first
+        # NAMED child; the new name is the last ``identifier``.
+        named = node.named_children
+        if not named:  # pragma: no cover - the grammar always fills the clause
+            return
+        path_node = named[0]
+        alias_node = None
+        for child in node.children:
+            if child.type == "identifier":
+                alias_node = child
+        if alias_node is None:  # pragma: no cover - `as` always names a target
+            return
+        alias = node_text(alias_node, source)
+        # ``use Trait as _;`` imports a trait ANONYMOUSLY -- there is no name
+        # to call through, and ``_`` reaches this walk as an ordinary
+        # identifier, so trusting the node type would bind the underscore.
+        if not alias or alias == "_":
+            return
+        # A ``self`` here renames the MODULE, so the prefix IS the path;
+        # composing it as a segment would build the nonexistent ``a::b::self``.
+        full = prefix if path_node.type == "self" else _join_use_path(
+            prefix, node_text(path_node, source)
+        )
+        if full:
+            out[alias] = full
+        return
+
+    if kind == "self":
+        # ``use a::b::{self, C};`` imports the module itself, under its own
+        # last segment.  With no prefix (a bare ``use self;``) there is no
+        # module to name.
+        if prefix:
+            out[prefix.rsplit("::", 1)[-1]] = prefix
+        return
+
+    if kind in _USE_NAME_NODE_TYPES:
+        text = node_text(node, source)
+        if text:
+            full = _join_use_path(prefix, text)
+            out[full.rsplit("::", 1)[-1]] = full
+    # Anything else -- ``use_wildcard``, and the ``visibility_modifier`` that
+    # ``pub use`` puts beside the use-tree -- binds no name.
+
+
 def _extract_use_aliases(
     tree: "tree_sitter.Tree",
     source: bytes,
 ) -> dict[str, str]:
-    """Extract use statement aliases from a parsed Rust tree.
+    """Extract use-statement aliases from a parsed Rust tree.
 
-    Maps imported names to their full paths for disambiguation:
-    - use crate::module::func; -> func: crate::module::func
-    - use std::io::Write; -> Write: std::io::Write
-    - use foo::bar as baz; -> baz: foo::bar
+    Maps each imported name to the full path it names, so a later call
+    through that name can be split into a module slot and a member slot:
 
-    Returns dict mapping local alias -> full import path.
+    - ``use crate::module::func;``        -> ``func: crate::module::func``
+    - ``use std::io::Write;``             -> ``Write: std::io::Write``
+    - ``use foo::bar as baz;``            -> ``baz: foo::bar``
+    - ``use std::fs::{File, read};``      -> ``File: std::fs::File``,
+      ``read: std::fs::read``
+
+    The last form is why this is a recursive walk rather than three lookups
+    (INV-zuvib).  Every non-grouped form is a DIRECT child of
+    ``use_declaration``, so the original implementation found them with
+    ``find_child_by_type``; a grouped list is wrapped in a ``scoped_use_list``
+    one level down, matched none of the three, and registered nothing at all.
+    A call through such an import then reached no module slot and matched no
+    ``io_primitives`` row -- silently, because the file still parses and the
+    call edge is still emitted.
+
+    Returns a dict mapping local alias -> full import path.
     """
     aliases: dict[str, str] = {}
-
     for node in iter_tree(tree.root_node):
         if node.type != "use_declaration":
             continue
-
-        # Handle 'use foo::bar as baz;' - use_as_clause
-        as_clause = find_child_by_type(node, "use_as_clause")
-        if as_clause:
-            # Find the scoped_identifier (foo::bar) and alias (baz)
-            path_node = find_child_by_type(as_clause, "scoped_identifier")
-            if not path_node:
-                path_node = find_child_by_type(as_clause, "identifier")
-            alias_node = find_child_by_type(as_clause, "identifier")
-            # The alias is typically the last identifier child
-            for child in as_clause.children:
-                if child.type == "identifier":
-                    alias_node = child
-            if path_node and alias_node:
-                full_path = node_text(path_node, source)
-                alias = node_text(alias_node, source)
-                if alias and full_path:
-                    aliases[alias] = full_path
-            continue
-
-        # Handle regular 'use foo::bar;' - scoped_identifier
-        path_node = find_child_by_type(node, "scoped_identifier")
-        if path_node:
-            full_path = node_text(path_node, source)
-            if full_path and "::" in full_path:
-                # Last segment is the imported name
-                name = full_path.rsplit("::", 1)[-1]
-                if name:
-                    aliases[name] = full_path
-            continue
-
-        # Handle simple 'use foo;'
-        id_node = find_child_by_type(node, "identifier")
-        if id_node:
-            name = node_text(id_node, source)
-            if name:
-                aliases[name] = name
-
+        for child in node.named_children:
+            _use_tree_bindings(child, "", source, aliases)
     return aliases
 
 
