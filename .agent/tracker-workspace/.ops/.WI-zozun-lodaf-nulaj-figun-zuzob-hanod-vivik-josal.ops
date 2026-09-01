@@ -20,3 +20,12 @@
     pr_ref:  # 5b69
     description: "The behavioural payoff of the module-key axis (owner ruling (a), 2026-09-01).\nOnce the axis declares WHICH NOTION a module slot carries, _module_matches stops\ninferring it from spelling.\n\nTODAY io_boundary.py:3644 has four hand-tuned arms and infers type-vs-sub-package\nfrom CAPITALISATION -- longer_raw[shared][:1].isupper(). Its own docstring\njustifies that by GO's naming convention (\"package names are lowercase, exported\ntype names are capitalised\") while the predicate serves all 15 catalogues. Where\nmodule names are capitalised the discriminator is CONSTANT-TRUE and therefore\ninformation-free: haskell 100%, swift 97%, objc 95%, elixir 52%, javascript 21%.\n\nARM 3 HAS NO CAPITALISATION TEST AT ALL, which is INV-dijor: a catalogue module\nending in a TYPE matches a bare receiver variable, so sops's context.String(...)\n-- a urfave/cli flag read on a PARAMETER named context -- classifies net_send via\ngithub.com/gin-gonic/gin.Context.String. Control: context.Deadline returns None.\n\nDO NOT TREAT THIS AS \"TIGHTEN ARM 3\". Arm 3 also carries TRUE positives\n(filepath, grpc), and the docstring already records the tradeoff in the other\ndirection -- a lowercase extra component blocks a match in languages that do not\nsignal types by case, so the current rule UNDER-matches there. Reading a declared\ndiscriminator is what dissolves both directions at once; tightening the heuristic\ntrades one for the other. MEASURE BEFORE AND AFTER on the same repo set: 1090\nrows are exposed to arm 3, and the audit found harm in 1 of 9 distinct shapes.\nSuccess condition is boundaries recovered and READ BACK AGAINST SOURCE with\nremoved=0, not a verdict-count move.\n\nRELATED, DO NOT CONFLATE: WI-monul is receiver_type_hint -- stamped by 6\nanalyzers, read by 2 linkers, read by NEITHER io_boundary NOR taint. It is the\nright supply for swift's discriminator, but go does NOT stamp it, so WI-monul\nwill not fix INV-dijor and this item cannot lean on it for go."  # 5b69
     fields: {}  # 5b69
+- op: update  # a48e
+  at: '2026-09-01T19:21:41Z'  # a48e
+  by: agent  # a48e
+  actor: jgstern_agent  # a48e
+  clock: 2  # a48e
+  nonce: a48e  # a48e
+  set: {}  # a48e
+  add:  # a48e
+    isbefore: [WI-marok-zotov-futuh-vasin-nogub-galih-tozaf-karuv]  # a48e
