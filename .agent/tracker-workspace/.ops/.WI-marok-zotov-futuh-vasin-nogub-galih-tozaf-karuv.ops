@@ -1,0 +1,22 @@
+- op: create  # 1437
+  at: '2026-09-01T19:20:25Z'  # 1437
+  by: agent  # 1437
+  actor: jgstern_agent  # 1437
+  clock: 1  # 1437
+  nonce: '1437'  # 1437
+  data:  # 1437
+    kind: work_item  # 1437
+    title: "PHASE 2 (gated on v9/v10): migrate module-slot violators — objc receiver-variable, cpp include disjunction, sentinels — per ADR-0024 step 7"  # 1437
+    status: todo_hard  # 1437
+    priority: 3  # 1437
+    parent:  # 1437
+    tags:  # 1437
+    - axis  # 1437
+    - io_boundary  # 1437
+    - architecture  # 1437
+    isbefore: []  # 1437
+    duplicate_of: []  # 1437
+    not_duplicate_of: []  # 1437
+    pr_ref:  # 1437
+    description: "PHASE 2 of the owner's 2026-09-01 ruling (a) on WI-livar: ADR-0024 step 7,\n\"migrate violators\". GATED -- do not start this before the gate clears.\n\nWHY IT IS GATED, stated so the next reader does not re-derive it. external_symbol\nnode ids EMBED the module slot (rust:external:0-0:File::open), so changing what an\nanalyzer puts in that slot changes emitted ids. WI-talos DECISION 3 already\nallocates v9 (relabel only, digest-compatible with v8) and v10 (the bitbake/bibtex\nstable_id fix, no compatibility declared), and the scheme bumps are gated behind\ntwo releases. A third content-changing bump queues behind those. ADR-0024's own\nworkflow draws this line -- steps 1-4 mandatory and additive, step 7 explicitly\noptional and separate -- which is why the axis DECLARATION ships now and this does\nnot.\n\nWHAT MIGRATES, from the module-key concept audit (65,187 external refs, 21-repo\n10-language cold cohort; write-up\n~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md):\n\n  * OBJECTIVE-C writes module_path=receiver_name LITERALLY. 1,102 of 4,207 refs\n    (26%) on the objc+swift repos carry a local identifier -- expectation,\n    request, session, resp, download, components. This is the largest violator\n    and the least ambiguous: a receiver variable is not a module under any\n    reading of the axiom.\n  * DISJUNCTIONS, 6.2%. cpp joins every #include in the file into one\n    comma-separated slot. It is a SET, and the analyzer says so itself. Whether\n    the axiom admits a disjunction as a legal value or the shape moves to a\n    sibling field is the ADR's call, NOT this item's to assume.\n  * SENTINELS: 'external' (1.5%) and bash's 'redirect' (0.1%, whose name slot is\n    '>' -- not a call at all).\n\n  NOT violators, and do not migrate them: relative paths (2.7%, a legitimate\n  module id in JS/TS) and C/C++ header names like <string.h> (1.4%). An earlier\n  cut of this audit bucketed by a leading '<' and swept 929 legitimate headers\n  into \"sentinel\", inflating the non-identity share from 7.8% to 11.9%. The\n  corrected number is 7.8%.\n\nFIRST STEP WHEN UNGATED: re-measure. These are 2026-09-01 figures and the\nanalyzers will have moved. Follow ADR-0023's four-phase migration shape --\nconsumers, producers, schema bump, deprecation removal -- not a single sweeping\nproducer rewrite."  # 1437
+    fields: {}  # 1437

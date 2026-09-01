@@ -1,0 +1,22 @@
+- op: create  # dd86
+  at: '2026-09-01T19:20:21Z'  # dd86
+  by: agent  # dd86
+  actor: jgstern_agent  # dd86
+  clock: 1  # dd86
+  nonce: dd86  # dd86
+  data:  # dd86
+    kind: work_item  # dd86
+    title: "Axis-declaration linter cannot see the catalogue dataclass: widen DEFAULT_CORE_FILES to io_boundary.py and declare axes on IoPrimitive fields"  # dd86
+    status: todo_hard  # dd86
+    priority: 1  # dd86
+    parent:  # dd86
+    tags:  # dd86
+    - axis  # dd86
+    - architecture  # dd86
+    - io_boundary  # dd86
+    isbefore: []  # dd86
+    duplicate_of: []  # dd86
+    not_duplicate_of: []  # dd86
+    pr_ref:  # dd86
+    description: "THE GATE THAT WOULD HAVE CAUGHT BOTH GAPS. Filed from the owner's 2026-09-01\nruling (a) on WI-livar/INV-tafig, and it is the single structural reason those two\nsurvived rather than an oversight in either.\n\nTHE FACT. multi_value_field_axis.DEFAULT_CORE_FILES is exactly two paths:\n\n    packages/hypergumbo-core/src/hypergumbo_core/ir.py\n    packages/hypergumbo-core/src/hypergumbo_core/datamodels.py\n\nIoPrimitive lives in io_boundary.py. So IoPrimitive.boundary and\nIoPrimitive.module carry NO axis comment and nothing ever asked them for one --\nthe linter cannot see the file. Each axis is therefore split across a LINTED half\n(ExternalRef.module_path in ir.py) and an UNLINTED half (IoPrimitive.module in\nio_boundary.py), which is exactly how two halves of one key drifted apart without\na single gate firing. AGENTS.md states the rule as covering \"ir.py or\ndatamodels.py\" specifically, so the doc and the constant agree with each other and\nBOTH miss the catalogue dataclass.\n\nSCOPE. Add io_boundary.py to DEFAULT_CORE_FILES, then declare an axis on every\nstr/Optional[str]/Literal[str,...] field of IoPrimitive that the newly-widened\nlint demands -- boundary takes the io-boundary axis, module takes the module-key\naxis, and the remainder (name, kind, notes, ...) take identity / bounded-enum /\nfree-text WITH A TRUE JUSTIFICATION. Update the AGENTS.md essentialization and the\nmulti-value-field-axis playbook so the documented scope matches the constant.\n\nEXPECT THE WIDENING TO FIND MORE THAN IoPrimitive. io_boundary.py is a large\nmodule with other dataclasses (BoundaryMapEntry, IoChain and peers). Enumerate what\nthe widened lint reports BEFORE deciding the diff shape: if the residue is large,\ndeclare the axes that are real and file the rest rather than bulk-stamping\nfree-text, because a free-text justification that is not true is the precise defect\nWI-livar exists to remove -- do not fix one instance by manufacturing five.\n\nBLOCKED BY BOTH AXES EXISTING: IoPrimitive.boundary cannot name the io-boundary\naxis until that registry lands, and IoPrimitive.module cannot name the module-key\naxis until that one does. This is the capstone of the pair, not a prerequisite.\n\nDONE = a new undeclared multi-value field on IoPrimitive fails CI, and the\nregression test asserts the live tree passes with io_boundary.py in scope."  # dd86
+    fields: {}  # dd86

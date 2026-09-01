@@ -1,0 +1,22 @@
+- op: create  # 5b69
+  at: '2026-09-01T19:19:25Z'  # 5b69
+  by: agent  # 5b69
+  actor: jgstern_agent  # 5b69
+  clock: 1  # 5b69
+  nonce: 5b69  # 5b69
+  data:  # 5b69
+    kind: work_item  # 5b69
+    title: "_module_matches reads the declared module-key discriminator instead of inferring type-vs-package from capitalisation (dissolves INV-dijor arm 3)"  # 5b69
+    status: todo_hard  # 5b69
+    priority: 2  # 5b69
+    parent:  # 5b69
+    tags:  # 5b69
+    - axis  # 5b69
+    - io_boundary  # 5b69
+    - analysis_quality  # 5b69
+    isbefore: []  # 5b69
+    duplicate_of: []  # 5b69
+    not_duplicate_of: []  # 5b69
+    pr_ref:  # 5b69
+    description: "The behavioural payoff of the module-key axis (owner ruling (a), 2026-09-01).\nOnce the axis declares WHICH NOTION a module slot carries, _module_matches stops\ninferring it from spelling.\n\nTODAY io_boundary.py:3644 has four hand-tuned arms and infers type-vs-sub-package\nfrom CAPITALISATION -- longer_raw[shared][:1].isupper(). Its own docstring\njustifies that by GO's naming convention (\"package names are lowercase, exported\ntype names are capitalised\") while the predicate serves all 15 catalogues. Where\nmodule names are capitalised the discriminator is CONSTANT-TRUE and therefore\ninformation-free: haskell 100%, swift 97%, objc 95%, elixir 52%, javascript 21%.\n\nARM 3 HAS NO CAPITALISATION TEST AT ALL, which is INV-dijor: a catalogue module\nending in a TYPE matches a bare receiver variable, so sops's context.String(...)\n-- a urfave/cli flag read on a PARAMETER named context -- classifies net_send via\ngithub.com/gin-gonic/gin.Context.String. Control: context.Deadline returns None.\n\nDO NOT TREAT THIS AS \"TIGHTEN ARM 3\". Arm 3 also carries TRUE positives\n(filepath, grpc), and the docstring already records the tradeoff in the other\ndirection -- a lowercase extra component blocks a match in languages that do not\nsignal types by case, so the current rule UNDER-matches there. Reading a declared\ndiscriminator is what dissolves both directions at once; tightening the heuristic\ntrades one for the other. MEASURE BEFORE AND AFTER on the same repo set: 1090\nrows are exposed to arm 3, and the audit found harm in 1 of 9 distinct shapes.\nSuccess condition is boundaries recovered and READ BACK AGAINST SOURCE with\nremoved=0, not a verdict-count move.\n\nRELATED, DO NOT CONFLATE: WI-monul is receiver_type_hint -- stamped by 6\nanalyzers, read by 2 linkers, read by NEITHER io_boundary NOR taint. It is the\nright supply for swift's discriminator, but go does NOT stamp it, so WI-monul\nwill not fix INV-dijor and this item cannot lean on it for go."  # 5b69
+    fields: {}  # 5b69
