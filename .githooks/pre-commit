@@ -369,8 +369,15 @@ else
     echo -e "${YELLOW}skipped (no packages/*.py staged)${NC}"
 fi
 
-# Multi-value field axis declaration (WI-busij) — only fires when
-# ir.py or datamodels.py is staged. Catches new str / Optional[str] /
+# Multi-value field axis declaration (WI-busij) — only fires when a
+# core dataclass file is staged. THE ALTERNATION BELOW MUST TRACK
+# multi_value_field_axis.DEFAULT_CORE_FILES: a file in that constant but
+# not in this regex is checked by CI and silently skipped locally, which
+# is how io_boundary.py sat in scope for one commit while this hook
+# printed "skipped" over it (WI-mubup). The two are kept in agreement by
+# tests/test_multi_value_field_axis.py
+# ::test_the_precommit_hook_regex_covers_every_scoped_core_file.
+# Catches new str / Optional[str] /
 # Literal[str, ...] fields added to @dataclass declarations in core
 # files without an accompanying `# axis: <category>` trailing
 # comment. Companion to the live-tree property test in
@@ -381,7 +388,7 @@ fi
 # .agent/agent_playbooks_protocols_sops_skills/multi-value-field-axis-declaration-playbook.md
 # for the practitioner walkthrough.
 echo -n "  Multi-value field axis declaration... "
-if git diff --cached --name-only | grep -qE "^packages/.*/src/.*/(ir|datamodels)\.py$"; then
+if git diff --cached --name-only | grep -qE "^packages/.*/src/.*/(ir|datamodels|io_boundary)\.py$"; then
     DRIFT_LOG="/tmp/.field-axis-drift.$$"
     if scripts/check-multi-value-field-axis-declaration > "$DRIFT_LOG" 2>&1; then
         echo -e "${GREEN}✓${NC}"
