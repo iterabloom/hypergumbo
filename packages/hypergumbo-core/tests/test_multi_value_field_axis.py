@@ -395,3 +395,72 @@ def test_dataclass_with_no_str_fields_passes(tmp_path: Path):
         "@dataclass\nclass C:\n    n: int = 0\n    f: float = 0.0\n",
     )
     assert find_field_drift(root, core_files=[rel]) == []
+
+
+# ---------------------------------------------------------------------------
+# WI-mubup: the catalogue dataclass is in scope
+# ---------------------------------------------------------------------------
+
+def test_io_boundary_module_is_in_the_linted_scope():
+    """The omission that let two axes go undeclared, pinned so it cannot return.
+
+    ``IoPrimitive`` lives in io_boundary.py while its edge-side counterpart
+    ``ExternalRef`` lives in ir.py. Only ir.py was scanned, so each of the two
+    axes those dataclasses share — the io-boundary vocabulary (INV-tafig) and
+    the module key (WI-livar) — was split across a linted half and an unlinted
+    one. Neither half's absence could ever fire a gate.
+    """
+    from hypergumbo_core.multi_value_field_axis import DEFAULT_CORE_FILES
+
+    assert (
+        "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+        in DEFAULT_CORE_FILES
+    )
+
+
+def test_the_widened_scan_actually_reaches_ioprimitive_fields():
+    """Non-vacuity: the scan must SEE the fields, not merely list the file.
+
+    A path in DEFAULT_CORE_FILES that the AST walker fails to parse, or a
+    dataclass whose fields the walker does not recognise, produces zero
+    offenders — indistinguishable from a clean file. This asserts the walker
+    actually yields IoPrimitive's fields.
+    """
+    from hypergumbo_core.multi_value_field_axis import (
+        _iter_dataclass_str_fields,
+    )
+
+    path = (
+        REPO_ROOT
+        / "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+    )
+    seen = {
+        (cls, field)
+        for cls, field, _lineno, _line in _iter_dataclass_str_fields(path)
+    }
+    for field_name in ("boundary", "module", "name", "kind", "notes"):
+        assert ("IoPrimitive", field_name) in seen, field_name
+
+
+def test_ioprimitive_names_the_two_axes_this_campaign_declared():
+    """The point of the widening, stated as an assertion.
+
+    ``IoPrimitive.boundary`` and ``IoPrimitive.module`` are the catalogue-side
+    halves of the two axes declared by ADR-0050 and ADR-0051. If either
+    regressed to ``free-text`` the live-tree test above would still pass — a
+    justification is only required to be present — so the specific axis names
+    are asserted here.
+    """
+    path = (
+        REPO_ROOT
+        / "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
+    )
+    declarations = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        for field_name in ("boundary: str", "module: str"):
+            if stripped.startswith(field_name):
+                declarations[field_name.split(":")[0]] = stripped
+
+    assert "# axis: io-boundary" in declarations["boundary"]
+    assert "# axis: module-key" in declarations["module"]
