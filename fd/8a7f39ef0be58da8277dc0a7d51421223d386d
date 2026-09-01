@@ -1,0 +1,54 @@
+Original commit body from 2e7a5c97a441ea3560456d5baace94cac276b51c:
+
+THE GATE THAT WOULD HAVE CAUGHT BOTH PRECEDING AXES. DEFAULT_CORE_FILES was
+ir.py and datamodels.py only. IoPrimitive lives in io_boundary.py, so
+IoPrimitive.boundary (the I/O-boundary vocabulary, INV-tafig) and
+IoPrimitive.module (the module key, WI-livar) carried no axis comment and
+nothing ever asked them for one — while their edge-side counterparts in
+ir.py were linted the whole time. Each axis was split across a scanned file
+and an unscanned one, so neither half's absence could fire a gate and the
+two were free to drift apart. That is the structural reason both gaps
+survived, rather than an oversight in either.
+
+THE WIDENING SURFACED 20 UNDECLARED FIELDS ACROSS 7 DATACLASSES, not just
+IoPrimitive's six — IoBoundaryCatalog, DefaultOverlay, ModeArgument,
+IoChain, BoundaryMapEntry, FirstPartyModuleGrammar. Measured in report-only
+mode before deciding the diff shape, per the item's own first step.
+
+EACH FIELD WAS READ AND CLASSIFIED INDIVIDUALLY. boundary -> io-boundary,
+module -> module-key, three language fields -> language, io_edge_src /
+io_edge_dst -> identity, four bounded enums (IoPrimitive.kind,
+IoPrimitive.boundary_ruling, IoBoundaryCatalog.status,
+IoChain.dst_tier_name), remainder free-text WITH JUSTIFICATIONS CHECKED
+AGAINST THE CODE — IoPrimitive.name is free-text because _by_short[p.name]
+uses it whole as a dict key and never decomposes it, which was verified
+rather than assumed. NONE OF THE RESIDUE WAS BULK-STAMPED: a free-text
+justification that is not true is precisely the defect ADR-0051 removed,
+and the lint cannot tell the difference because it only requires the
+justification to be PRESENT.
+
+Declaring IoBoundaryCatalog.status a bounded enum required listing its
+values, which surfaced that `unsupported` — the status of a catalogue that
+does not exist (WI-gofah), which a YAML may not declare — appeared nowhere
+in the class docstring beside provenance_declared and in_progress. Now
+documented with the reason it is producer-only.
+
+Two non-vacuity tests, because a path in DEFAULT_CORE_FILES that the walker
+cannot parse yields zero offenders and looks identical to a clean file: one
+asserts the walker actually yields IoPrimitive's fields, one asserts the
+two specific axis names (a regression to free-text would otherwise still
+pass, since a justification need only be present).
+
+KNOWN GAP, DISCLOSED: .githooks/pre-commit fires this check on
+^packages/.*/src/.*/(ir|datamodels)\.py$, so staging only io_boundary.py
+skips it. The CI property test runs find_field_drift over all three files
+regardless of staging, so the gate is live and a new undeclared field fails
+CI — only the local fast-feedback path is narrower than the constant it
+serves. The one-line regex fix is a governance-file edit and is held for
+approval rather than bundled here. AGENTS.md's essentialization still says
+"ir.py or datamodels.py" for the same reason.
+
+12,476 tests pass, 100% coverage, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a bison riding a piano keyboard in a nightclub with a posse of pigeons made of feathers
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
