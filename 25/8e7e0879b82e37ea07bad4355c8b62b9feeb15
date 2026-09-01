@@ -1,0 +1,56 @@
+Original commit body from 0a9d0d3476edaf846487b94d18a9b68b4a680506:
+
+ADR-0016 and taint.py both call this vocabulary "hypergumbo's canonical
+I/O-boundary risk taxonomy" and six consumers branch on its values, yet it
+had none of ADR-0024's four artifacts and io-boundary was absent from
+_known_axes(), so no field could even name it. The cost was measured twice:
+INV-tutar (env_read carried two readings; 134 of 195 rows misclassified;
+22.9% precision on host-secret claims) and WI-johuk (one question derived
+four times over five months, ruled zero times, four incompatible censuses,
+the only governing text a test docstring).
+
+The axiom is taken VERBATIM from ADR-0049 ruling 1 rather than newly
+written, so that ruling stays the value-level ruling and this is the axis
+it lives on: a boundary value names what data crosses the process boundary
+at this call site, in which direction — not what the program is thereby
+arranged to do later.
+
+Four sections over nineteen values. deferred_crossing is a section rather
+than a violation: net_listen is precisely what the axiom's second clause
+excludes from data_crossing, and ADR-0049 created it deliberately. Two
+properties stay per-value because both cut across the partition —
+catalog_declarable (the channel split, which makes io_boundary.py's own
+"each set is reachable through exactly one channel" comment executable) and
+counts_in_headline (subprocess is opaque AND counted, so an axis query
+would need exactly one special case).
+
+io_boundary.py no longer writes its five vocabulary constants by hand.
+Property tests pin the pre-refactor membership and, for
+CATALOG_BOUNDARY_TYPES, the pre-refactor ORDER — _parse_catalog iterates it
+and several sites resolve a doubly-declared primitive by
+first-declared-wins, so membership equality alone would let a reordering
+through.
+
+DISCLOSED NEGATIVE: the drift linter collects nothing on the live tree.
+The shared AST walker matches string-literal sets, and the derivation above
+removed the last of them, so the linter exits 0 over an empty collection
+and would exit 0 identically if it were broken. A synthetic-tree test
+proves the scanner fires. The vocabulary's real consumers are dicts and
+derived frozensets the walker structurally cannot see
+(AUTO_SOURCE_LABEL_MAP, DEFERRED_CROSSING_SHADOWS,
+_READ_TARGET_KIND_BOUNDARY); all three get explicit assertions instead,
+because a name-filtered scan that silently missed them would look like
+coverage. Widening the shared walker serves all four axes and is filed
+separately as WI-jinuj.
+
+logging is recorded as the first per-value audit candidate — the one
+data_crossing value naming a purpose rather than a medium, overlapping
+ipc_send on stdout across 46 rows in 12 catalogues. No row moves.
+
+Also: generate-concept-axes rendered per-axis sections in four copies that
+had begun to diverge; extracted to one helper (57 insertions, 0 deletions —
+the three existing fields render byte-identically). ADR-0049 was missing
+from the README thematic grouping; added alongside 0050.
+
+Racial-Capitalism-Is-Bad: a digital jack-o-lantern riding a piano keyboard in a canyon overlook with a duo of llamas made of black bread crusts
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
