@@ -44,3 +44,10 @@
   clock: 4  # 2035
   nonce: '2035'  # 2035
   message: "P2 -> P1: scoped with WI-livar by owner ruling (a) on 2026-09-01, and it ships FIRST of the two -- it is the enumerable axis, so it is the one that instantiates the shared registry/linter/property-test shape the module-key axis then reuses."  # 2035
+- op: discuss  # 3cf6
+  at: '2026-09-01T19:21:42Z'  # 3cf6
+  by: agent  # 3cf6
+  actor: jgstern_agent  # 3cf6
+  clock: 5  # 3cf6
+  nonce: 3cf6  # 3cf6
+  message: "Its four artifacts are now WI-kurod (P1), which carries the ADR, the io_boundary_types.py registry, scripts/check-io-boundary-drift, the property test and the _known_axes wiring. IoPrimitive.boundary's own axis comment is NOT in WI-kurod: it needs WI-mubup, which widens the linter to io_boundary.py, because DEFAULT_CORE_FILES is ir.py and datamodels.py only and cannot see the catalogue dataclass. This item stays violated until both land, and per its own sequencing note it precedes the WI-hazop census and the WI-nosah retag rather than following them."  # 3cf6

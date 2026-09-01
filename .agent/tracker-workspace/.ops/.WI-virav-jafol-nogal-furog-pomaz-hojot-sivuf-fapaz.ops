@@ -1,0 +1,21 @@
+- op: create  # 2f7e
+  at: '2026-09-01T19:21:10Z'  # 2f7e
+  by: agent  # 2f7e
+  actor: jgstern_agent  # 2f7e
+  clock: 1  # 2f7e
+  nonce: 2f7e  # 2f7e
+  data:  # 2f7e
+    kind: work_item  # 2f7e
+    title: "Restate the ~18-item module-key pile as axis violations once the axiom exists (annotate only; no folds, no closures)"  # 2f7e
+    status: todo_hard  # 2f7e
+    priority: 3  # 2f7e
+    parent:  # 2f7e
+    tags:  # 2f7e
+    - axis  # 2f7e
+    - io_boundary  # 2f7e
+    isbefore: []  # 2f7e
+    duplicate_of: []  # 2f7e
+    not_duplicate_of: []  # 2f7e
+    pr_ref:  # 2f7e
+    description: "The module-key concept audit's central finding was not a bug but an ILLEGIBILITY:\nroughly eighteen separately-filed tracker items reduce to ONE conflation, and they\nwere filed separately BECAUSE no document said what the field was for, so each\nmismatch read as a local analyzer defect. Once the axiom exists (WI-livar ruling\n(a)), the pile can be made legible -- each item restated as an axis violation\nagainst a written sentence rather than as a fresh mystery.\n\nTHE COHORT as the audit identified it:\n  INV-linub (the class), INV-zuvib, INV-hahak, INV-fofoj, INV-januj, INV-kotob,\n  INV-mumov, INV-safig, INV-fokik, INV-funuf, INV-zimud, INV-papih, INV-dijor,\n  WI-zazul, WI-damir, WI-sugom, WI-gudak, WI-papar, WI-kamin, WI-monul\n\nTWO OF THEM WERE SHOWN TO BE ONE DEFECT IN TWO LANGUAGES -- INV-fofoj's java half\nIS INV-januj -- which is the signature of a missing axis rather than of unrelated\nbugs, and is the concrete evidence that this sweep is worth doing rather than a\ntidying exercise.\n\nSCOPE. For each open member: tag it with the module-key axis, and add ONE\ndiscussion entry naming which clause of the axiom the item violates and which of\nthe six notions its slot actually carries (namespace / type / global-object value /\nreceiver variable / disjunction / sentinel). Do NOT fold, close, or re-prioritise\nanything -- folding decisions are the human's per the tracker-hygiene playbook, and\nseveral of these are genuinely distinct defects that merely share a root.\n\nSTATUS CARE. INV-januj and INV-hahak are already SATISFIED (shipped 2026-09-01) and\nINV-fofoj is now HASKELL-ONLY after its java half was shown to be INV-januj -- so\nre-read each item's CURRENT state before annotating; do not annotate from this\nlist, which is a snapshot. Never isbefore onto a satisfied item.\n\nWORTH DOING LAST, cheaply, and only once both axes have landed: annotating against\na draft axiom would have to be redone if the ADR's wording moves."  # 2f7e
+    fields: {}  # 2f7e

@@ -52,3 +52,18 @@
   clock: 5  # 18a2
   nonce: 18a2  # 18a2
   message: "Owner ruled (a) on 2026-09-01 and scoped it with INV-tafig, so this leaves needs_human_review and becomes the campaign design item. P3 -> P1: the ~18-item pile the audit identified hangs off this axiom, and INV-tafig is now sequenced behind it."  # 18a2
+- op: discuss  # 7bbe
+  at: '2026-09-01T19:21:42Z'  # 7bbe
+  by: agent  # 7bbe
+  actor: jgstern_agent  # 7bbe
+  clock: 6  # 7bbe
+  nonce: 7bbe  # 7bbe
+  message: "DECOMPOSED under ruling (a), 6 items, flat. WI-kurod (P1) io-boundary axis, the enumerable one, ships FIRST and instantiates the shared registry/linter/property-test shape. WI-kijup (P1) the module-key axis itself, structural-policy shape per qualified_name_axis.py, and retires the FALSE free-text declaration at ir.py:743. WI-mubup (P1) widens DEFAULT_CORE_FILES to io_boundary.py -- the gate that would have caught both -- blocked on both axes existing. WI-zozun (P2) makes _module_matches read the declared discriminator instead of guessing from capitalisation; that is the behavioural payoff and dissolves INV-dijor arm 3. WI-marok (P3) is ADR-0024 step 7 value migration, isbefore-gated on WI-talos because external_symbol ids embed the module slot. WI-virav (P3) restates the ~18-item pile against the axiom, annotate-only. This item stays open as the design home until WI-kurod and WI-kijup have both landed."  # 7bbe
+- op: update  # 521e
+  at: '2026-09-01T19:21:59Z'  # 521e
+  by: agent  # 521e
+  actor: jgstern_agent  # 521e
+  clock: 7  # 521e
+  nonce: 521e  # 521e
+  set:  # 521e
+    title: "RULED (a): declare the module-key axis — axiom, registry, consumer helper, drift linter — scoped with INV-tafig; ~18 filed items reduce to the gap"  # 521e
