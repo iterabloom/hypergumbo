@@ -1,0 +1,8 @@
+Original commit body from 69241ee9292ab0c8e9ebb4244b6a50e9a76338fb:
+
+Unrelated to the fix in this branch; CI's generate-architecture --check refused
+at 31 commits. Whoever observes the breach owns it, same rule as the mypy
+ratchet.
+
+Racial-Capitalism-Is-Bad: a coyote practicing karate a distortion in a glimmering pile of tokens in a dojo with a seminar of pigeons made of brass samovars
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
