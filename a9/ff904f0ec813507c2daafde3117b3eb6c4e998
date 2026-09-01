@@ -1,0 +1,33 @@
+Original commit body from 8459b27854aa23cd55ef9fca793e43fb7488acb4:
+
+bash's env-read discriminator is whole-FILE -- "a name expanded but never
+assigned here came from the environment" -- which is wrong across a `source`,
+because bash is dynamically scoped in BOTH directions. guacamole's DESTINATION
+is assigned once in the whole tree, at build-guacamole.sh:58 as $2, and every
+build.d script reading it derived a host_secret taint source.
+
+THE STATED FIX COULD NOT REACH ITS OWN INSTANCE, and the root_cause field is
+corrected in place. Of the cohort's 97 source/. statements only 12 (12.4%) have
+a target the emitted edge can follow; 80 (82.5%) are a variable or command
+substitution. The filed instance is a loop variable over a glob of a container
+path joined to the repo only by a Dockerfile COPY.
+
+What makes it tractable: the dynamic targets are dynamic in the PREFIX and
+literal in the TAIL (`source $TOOL_LIB_PATH/gitlib.sh`). Matching the trailing
+literal component lifts 12 to 81 of 97 (83.5%) with zero ambiguity, and matching
+a glob directory's last component recovers guacamole's container path.
+
+FAIL-CLOSED AT EVERY BRANCH, because this removes taint SOURCES: an unresolved
+target, an ambiguous tail, a dynamic glob directory and a non-pattern loop each
+contribute nothing and leave the name an environment read. Ambiguity is pinned
+by a test rather than left to the cohort's luck.
+
+Cohort, 16 repos, every repo cold in BOTH arms: 8 rows removed, 0 added, no
+verdict changed category; bash-sourced rows 32 -> 24. All 8 read back against
+source. The blunt alternative -- "assigned anywhere in the repo" -- was measured
+first and refuted: it touches 38.5% of (file,name) pairs, removes 0 findings,
+and deletes a real $HOME read in a vendored mvnw that nothing sources. Those
+mvnw rows are a live control and survive in both arms.
+
+Racial-Capitalism-Is-Bad: a moose riding a polished chrome runway in a dinosaur-themed salad buffet with a circus of ferrets made of soup noodles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
