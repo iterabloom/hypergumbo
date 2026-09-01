@@ -337,6 +337,177 @@ def _extract_symbols_from_file(
     return symbols
 
 
+#: Handle-taking READ functions whose boundary the handle argument decides.
+#:
+#: WI-lipis. ``haskell.yaml`` declares every one of these under BOTH ``fs_read``
+#: and ``ipc_recv``, because ``hGetLine stdin`` and ``hGetLine h`` are the same
+#: row and different crossings (INV-bagok / INV-zumin class (b)). This set is
+#: the producer half of that: it decides which calls are worth asking about.
+#:
+#: NO PER-FUNCTION ARGUMENT INDEX, unlike the C sibling, and the asymmetry is
+#: real rather than an omission -- every function here takes its Handle FIRST
+#: (``hGet h n``, ``hGetSome h n``), whereas C puts the stream third in
+#: ``fgets`` and first in ``fscanf``. A shared "last argument" rule would get
+#: ``fscanf`` wrong in the direction that INVENTS a crossing.
+_HS_HANDLE_READERS: frozenset[str] = frozenset({
+    "hGetContents", "hGetLine", "hGetChar",
+    "hGet", "hGetSome", "hGetNonBlocking",
+})
+
+#: Standard streams. A read here crosses ``ipc_recv`` via ``std_stream``.
+_HS_STD_HANDLES: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
+
+#: Calls that produce a ``Handle`` over a PATH.
+#:
+#: ``hDuplicate`` and friends are deliberately absent: they take a Handle whose
+#: nature was established wherever THAT handle came from, which is INV-vaduk's
+#: whole point, so classifying them here would assert a filesystem read over a
+#: standard stream.
+_HS_PATH_HANDLE_PRODUCERS: tuple[str, ...] = ("openFile", "openBinaryFile")
+
+
+def _hs_classify_handle_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a ``Handle``.
+
+    ONE PLACE, so an inline handle and a resolved binding cannot drift into
+    disagreeing about what ``openFile`` is -- the same reason the C and Go
+    siblings each have exactly one such function.
+
+    FAIL CLOSED: an expression this cannot name returns ``None`` and the call
+    is left classified exactly as the catalogue's first-declared row says. The
+    direction here ADDS findings, so an unrecognised handle must not guess.
+    """
+    stripped = text.strip().strip("()").strip()
+    if stripped in _HS_STD_HANDLES:
+        return "std_stream"
+    parts = stripped.split()
+    if len(parts) > 1 and parts[0] in _HS_PATH_HANDLE_PRODUCERS:
+        return "host_path"
+    return None
+
+
+#: Node types that can be the top-level definition enclosing a call.
+#:
+#: BOTH ARE REQUIRED and the second was found by a coverage gap rather than by
+#: reading the grammar. Haskell spells a definition with NO arguments
+#: (``f = do ...``) as ``bind`` and one WITH arguments (``f p = do ...``) as
+#: ``function`` -- and the second is the common shape for exactly the code this
+#: seam is about, since a ``Handle`` usually arrives as a parameter or is opened
+#: from one. Searching only ``bind`` silently abstained on every parameterised
+#: function, which is a false NEGATIVE in the direction that loses a source.
+_HS_DEFINITION_TYPES: frozenset[str] = frozenset({"bind", "function"})
+
+
+def _hs_enclosing_definition(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The OUTERMOST definition ancestor of *node*.
+
+    OUTERMOST, not nearest. Haskell spells both a top-level definition and a
+    ``do`` statement as ``bind``, so taking the first match walking up would
+    scope the search to the single statement the call sits in, where no earlier
+    binding can ever be found.
+    """
+    outermost: Optional["tree_sitter.Node"] = None
+    current = node.parent
+    while current is not None:
+        if current.type in _HS_DEFINITION_TYPES:
+            outermost = current
+        current = current.parent
+    return outermost
+
+
+def _hs_binding_rhs(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Text of the LAST binding of *name* at or above *node*'s line.
+
+    Deliberately smaller than a reaching-def solver and its answers are a
+    SUBSET of one: the enclosing definition only, textual line order only, no
+    branch or guard reasoning. The analyzer runs before any DDG exists, so the
+    alternative is not "use the solver" but "answer nothing".
+
+    ORDER IS THE POINT, and both directions are pinned by tests. A scan taking
+    the last match in the FILE would read a rebinding BELOW the call as if it
+    reached it; one taking the first would miss a rebinding above it.
+    """
+    body = _hs_enclosing_definition(node)
+    if body is None:  # pragma: no cover - see below
+        # DEFENSIVE. Every call the analyzer emits an edge for sits inside a
+        # ``bind`` or a ``function``, because the edge needs a CALLER and the
+        # caller symbol comes from one of those nodes. It was reachable while
+        # this searched only ``bind`` -- a parameterised definition has neither
+        # a bind ancestor nor, at that point, a resolvable origin -- and adding
+        # ``function`` closed it. Kept because the walk can return None and
+        # that must be handled where it is read.
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type != "bind" or len(current.children) < 3:
+            continue
+        target = current.children[0]
+        if target.type != "variable" or node_text(target, source) != name:
+            continue
+        # A MONADIC BIND, not a definition. Haskell spells both ``h <- expr``
+        # and ``f = expr`` as ``bind``, and only the first one binds a value in
+        # this scope: a definition's second child is a ``match`` holding the
+        # whole right-hand side including the ``=``. Requiring the ``<-`` token
+        # is what keeps ``f = do ...`` from being read as a binding of ``f``.
+        if current.children[1].type != "<-":
+            continue
+        line = current.start_point[0]
+        if line > use_line or line < best_line:
+            continue
+        best_line = line
+        best_text = node_text(current.children[2], source)
+    return best_text
+
+
+def _hs_handle_target_kind(
+    node: "tree_sitter.Node", source: bytes, callee_name: str,
+) -> Optional[str]:
+    """``io_target_kind`` for a handle-taking read at *node*, or ``None``.
+
+    *node* is the ``apply`` whose first child named ``callee_name``, so the
+    handle is ``children[1]`` -- true for both arities in this family, because
+    ``hGet h n`` parses as ``apply(apply(hGet, h), n)`` and the edge is emitted
+    at the INNER apply.
+    """
+    if callee_name not in _HS_HANDLE_READERS or len(node.children) < 2:
+        return None
+    arg_text = node_text(node.children[1], source)
+    direct = _hs_classify_handle_text(arg_text)
+    if direct is not None:
+        return direct
+    bound = _hs_binding_rhs(node, source, arg_text.strip())
+    if bound is None:
+        return None
+    return _hs_classify_handle_text(bound)
+
+
+def _hs_call_meta(
+    node: "tree_sitter.Node", source: bytes, callee_name: str,
+) -> dict[str, str]:
+    """Edge ``meta`` for one application, with the handle's origin when known.
+
+    ONE BUILDER FOR BOTH BRANCHES on purpose. The resolved and unresolved arms
+    below construct the same edge from the same AST node and differ only in
+    ``dst``; giving each its own meta literal is how the two drift, and a
+    stamp that reached only the unresolved arm would be invisible in exactly
+    the repositories that resolve their own helpers.
+    """
+    meta = {"call_construct": "application"}
+    kind = _hs_handle_target_kind(node, source, callee_name)
+    if kind is not None:
+        meta["io_target_kind"] = kind
+    return meta
+
+
 def _find_enclosing_function_haskell(
     node: "tree_sitter.Node",
     source: bytes,
@@ -521,7 +692,7 @@ def _extract_edges_from_file(
                                 origin_run_id=run_id,
                                 evidence_type="ast_call",
                                 confidence=confidence,
-                                meta={"call_construct": "application"},
+                                meta=_hs_call_meta(node, source, callee_name),
                             )
                             edges.append(edge)
                         else:
@@ -550,7 +721,7 @@ def _extract_edges_from_file(
                                 confidence=0.50,
                                 # INV-tadup: NOT "application_external" — same AST shape
                                 # as the resolved branch; the externality is in ``dst``.
-                                meta={"call_construct": "application"},
+                                meta=_hs_call_meta(node, source, callee_name),
                             )
                             edges.append(edge)
 

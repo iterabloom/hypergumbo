@@ -941,6 +941,7 @@ class IoBoundaryCatalog:
         *, call_construct: str | None = None,
         allow_short_name_fallback: bool = True,
         io_modes: Sequence[str] | None = None,
+        io_target_kinds: Sequence[str] | None = None,
     ) -> Optional[IoPrimitive]:
         """Look up a primitive with optional module context for disambiguation.
 
@@ -965,12 +966,25 @@ class IoBoundaryCatalog:
         DUAL-CLASSIFIED primitive. Without it this returned whichever row the
         catalogue happened to declare first, which made every ``open(p, "w")``
         an ``fs_read`` — a false negative on real writes.
+
+        ``io_target_kinds`` (threaded the same way, via
+        :func:`call_site_target_kinds`) settles the OTHER kind of dual
+        classification — the one no literal can decide, where the boundary is a
+        property of the STREAM ARGUMENT. ``fgets(buf, n, stdin)`` and
+        ``fgets(buf, n, f)`` are the same row and different crossings
+        (WI-lipis / INV-bagok). Both seams run on every path below, because a
+        predicate is inert until every call site passes it, and both abstain to
+        the first-declared row so an unstamped call is classified exactly as it
+        was before either existed.
         """
         # Qualified-name match always wins (exact). It can still be several
         # rows when the primitive is dual-classified, so the mode decides.
         qualified_hits = self._qualified_rows(name)
         if qualified_hits:
-            return select_by_mode(qualified_hits, io_modes)
+            return select_by_mode(
+                _narrow_by_target_kind(qualified_hits, io_target_kinds),
+                io_modes,
+            )
 
         hits = self._by_short.get(name)
         if not hits:
@@ -1007,7 +1021,10 @@ class IoBoundaryCatalog:
             if call_construct == "method" and len(candidates) > 1:
                 filtered = [p for p in filtered if p.kind != "function"]
             if filtered:
-                return select_by_mode(filtered, io_modes)
+                return select_by_mode(
+                    _narrow_by_target_kind(filtered, io_target_kinds),
+                    io_modes,
+                )
             # No match with module filtering — this is likely NOT an IO
             # primitive (e.g., crypto/rand.Read is not net.Conn.Read)
             return None
@@ -1041,7 +1058,9 @@ class IoBoundaryCatalog:
         # candidate LIST to apply its kind and ambiguity rules — collapsing to
         # one row first would decide what the gate exists to decide.
         return gate_named_entry(
-            _narrow_by_mode(hits, io_modes), name, module_hint,
+            _narrow_by_mode(
+                _narrow_by_target_kind(hits, io_target_kinds), io_modes,
+            ), name, module_hint,
             self.ambiguous_names, call_construct=call_construct,
         )
 
@@ -2303,6 +2322,139 @@ def _narrow_by_mode(
     ]
 
 
+#: The boundaries the READ target-kind vocabulary can produce.
+#:
+#: DERIVED from :data:`_READ_TARGET_KIND_BOUNDARY` rather than listed, because a
+#: listed copy is the "one fact, two homes" shape this module has paid for
+#: repeatedly: widening the vocabulary at its single home must move the
+#: discrimination rule with it, and an import-time copy would let the two drift
+#: while every test still passed.
+_READ_BOUNDARY_VALUES: Final[frozenset[str]] = frozenset(
+    _READ_TARGET_KIND_BOUNDARY.values()
+)
+
+
+def resolve_target_kind_across_sites(
+    target_kinds: Optional[Sequence[str]],
+) -> Optional[str]:
+    """The read boundary EVERY collapsed call site agrees on, or ``None``.
+
+    ALL, NOT ANY, AND THE QUANTIFIER IS THE DESIGN. Its sibling
+    :func:`resolve_mode_boundary_across_sites` picks ``fs_write`` when ANY site
+    writes, because that seam keeps a finding that a read above it would
+    delete. This seam runs in the opposite direction: ``c.yaml`` and
+    ``haskell.yaml`` file their stream-takers as ``fs_read``, which mints no
+    taint source, so selecting ``ipc_recv`` ADDS findings. Choosing it on the
+    strength of ONE site among several would reclassify a file read as an IPC
+    receive -- the false positive the ``fs_read`` default exists to avoid.
+
+    ``None`` means "keep today's behaviour", and it is returned for three
+    different reasons, all of which are abstentions rather than answers:
+
+    * no site carries a kind -- every edge written before the key existed;
+    * some site's kind is one this vocabulary has no opinion on
+      (``unresolved``, or a value a future analyzer stamps);
+    * some site crosses NOTHING (``in_memory``). That is a real fact, but it is
+      :func:`_source_call_can_mint_taint`'s to act on, not a boundary to
+      select. Answering it here would give the row a second home.
+    """
+    if not target_kinds:
+        return None
+    wanted: Optional[str] = None
+    for kind in target_kinds:
+        known, boundary = read_boundary_for_target_kind(kind)
+        if not known or boundary is None:
+            return None
+        if wanted is None:
+            wanted = boundary
+        elif wanted != boundary:
+            return None
+    return wanted
+
+
+def _target_kind_discriminated_keys(
+    primitives: Iterable[IoPrimitive],
+) -> frozenset[tuple[str, str, str]]:
+    """Primitives whose boundary a STREAM ARGUMENT decides.
+
+    THE RULE IS "TWO OR MORE READ BOUNDARIES", and it earns its shape by what
+    it EXCLUDES rather than by what it admits:
+
+    * ``builtins.open`` is ``fs_read`` + ``fs_write``. ``fs_write`` is not a
+      read boundary, so the intersection is one member and this seam never
+      touches it -- the mode seam keeps it, and INV-rusof's fix stands. That
+      exclusion is a consequence of the rule, not a second clause bolted on,
+      which is why there is no reference to ``_mode_discriminated_keys`` here.
+    * ``bufio.NewScanner`` is ``ipc_recv`` alone. One row is not a choice, so
+      go's behaviour after WI-lipis's second deliverable is unchanged and its
+      target kinds keep reaching only the mint gate.
+    * ``simultaneous`` primitives are excluded for INV-zumin's reason: both
+      rows are true AT ONCE, so there is nothing to discriminate and dropping
+      one would lose a real crossing.
+
+    ``c.stdio.fgets`` (fs_read + ipc_recv) and ``c.unistd.read`` (fs_read +
+    ipc_recv + net_recv) are what remains, which is the population WI-lipis and
+    INV-vaduk shape 3 name.
+    """
+    by_primitive: dict[tuple[str, str, str], set[str]] = {}
+    simultaneous: set[tuple[str, str, str]] = set()
+    for p in primitives:
+        key = (p.module, p.name, p.kind)
+        by_primitive.setdefault(key, set()).add(p.boundary)
+        if p.simultaneous:
+            simultaneous.add(key)
+    return frozenset(
+        key
+        for key, boundaries in by_primitive.items()
+        if len(boundaries & _READ_BOUNDARY_VALUES) >= 2
+        and key not in simultaneous
+    )
+
+
+def _narrow_by_target_kind(
+    hits: Sequence[IoPrimitive], target_kinds: Optional[Sequence[str]],
+) -> list[IoPrimitive]:
+    """Drop the losing rows of every target-kind-discriminated primitive.
+
+    NARROWING RATHER THAN SELECTING, ON EVERY PATH, and that is a design choice
+    rather than an accident of where it was wired. The mode seam has both a
+    ``select_`` and a ``_narrow_`` form because only its gate path needs the
+    list; this one is narrowing everywhere because it has to COMPOSE with the
+    mode seam — ``select_by_mode(_narrow_by_target_kind(...))`` still lets a
+    mode settle whatever the stream argument did not, whereas two selectors in
+    a row would have the first one decide what the second exists to decide. A
+    ``_narrow_by_target_kind`` twin was written first and deleted: nothing could
+    call it without breaking that composition, which is WI-famig's defect (a
+    mechanism with no live consumer) caught by its own uncovered line.
+
+    :func:`gate_named_entry` needs the whole bucket for the same reason, since
+    it applies its own kind and ambiguity rules to it.
+
+    WHAT AN ABSTENTION LEAVES BEHIND IS THE SAFETY ARGUMENT. Returning the list
+    untouched means the downstream selection falls back to the FIRST-DECLARED
+    row, and ``c.yaml`` / ``haskell.yaml`` declare ``fs_read`` first on purpose:
+    a call whose stream origin cannot be recovered classifies exactly as it did
+    before this seam existed. Declaration order is therefore load-bearing and is
+    pinned by a test against the shipped catalogues.
+
+    THIS ARM IS NOT OPTIONAL. C's ``fgets`` carries no module slot, so it
+    reaches ``lookup_with_module``'s short-name fallback and never touches
+    :func:`_narrow_by_target_kind`. The mode seam learned this the expensive
+    way -- stamping ``io_mode`` for C moved nothing until this same arm was
+    narrowed too, because a predicate is inert until every call site passes it.
+    """
+    gated = _target_kind_discriminated_keys(hits)
+    if not gated:
+        return list(hits)
+    wanted = resolve_target_kind_across_sites(target_kinds)
+    if wanted is None:
+        return list(hits)
+    return [
+        h for h in hits
+        if (h.module, h.name, h.kind) not in gated or h.boundary == wanted
+    ]
+
+
 def mode_spanned_boundaries(
     catalog: "IoBoundaryCatalog",
     match: IoPrimitive,
@@ -2362,6 +2514,24 @@ def mode_discriminated_primitives(
     docstring enumerates from collapsing into one.
     """
     return _mode_discriminated_keys(catalog.primitives)
+
+
+def target_kind_discriminated_primitives(
+    catalog: IoBoundaryCatalog,
+) -> frozenset[tuple[str, str, str]]:
+    """``(module, name, kind)`` triples whose boundary a STREAM ARGUMENT decides.
+
+    The target-kind twin of :func:`mode_discriminated_primitives`, and it exists
+    for the same consumer: the taint derivation needs to mark the source it
+    derives from the MINTING row as conditional, because the non-minting row
+    never becomes a source at all and so cannot compete with it by name.
+
+    Keyed on the primitive rather than the short name for INV-kaduh's reason,
+    which bites harder here than it does for modes: ``read`` is c's
+    ``unistd.read`` AND a method on half the catalogues, and gating every
+    ``read`` on a target kind no analyzer stamps for it would silence them all.
+    """
+    return _target_kind_discriminated_keys(catalog.primitives)
 
 
 def multi_boundary_reason(
@@ -3824,6 +3994,7 @@ def classify_call_in_catalog(
         callee, adjusted_hint,
         call_construct=edge_meta.get("call_construct"),
         io_modes=call_site_modes(edge_meta),
+        io_target_kinds=call_site_target_kinds(edge_meta),
         allow_short_name_fallback=not is_first_party_callable_dst(dst),
     ), catalog
 

@@ -558,6 +558,15 @@ def _extract_edges(
             stamp_io_mode_from_call(
                 edges, _edges_before_call, node, source, "c",
             )
+            # WI-lipis: the stream argument's origin, recorded the same way and
+            # in the same place as the mode -- once over the edges THIS call
+            # produced, keyed on the call node rather than a line, because two
+            # calls can share a line.
+            _kind = _c_stream_target_kind(node, source)
+            if _kind is not None:
+                for _edge in edges[_edges_before_call:]:
+                    _edge.meta = dict(_edge.meta or {})
+                    _edge.meta["io_target_kind"] = _kind
 
         # Explicit function pointer: &process
         elif node.type == "pointer_expression":
@@ -807,6 +816,159 @@ def _analyze_c_file(
 # references, which then get tagged as ``ipc_send`` / ``ipc_recv`` by
 # ``io_boundary.tag_io_boundaries`` against the existing entries at
 # ``io_primitives/c.yaml:85,92``.
+#: Which ARGUMENT of a stdio read carries the ``FILE *``.
+#:
+#: WI-lipis. ``c.yaml`` files all five as ``fs_read`` and says why: their
+#: boundary "is a property of the argument (INV-bagok / INV-zumin class (b)),
+#: and moving them would assert an IPC crossing for every read over a file".
+#: That is the right DEFAULT; this table is how a call site can do better.
+#:
+#: THE INDEX IS PER FUNCTION and reading the wrong one silently classifies some
+#: other argument as the stream -- ``fread(buf, 1, n, stdin)`` puts it fourth
+#: while ``fscanf(stdin, ...)`` puts it first, and a single "last argument" rule
+#: would get ``fscanf`` wrong in the direction that INVENTS a crossing.
+_C_STREAM_ARG_INDEX: dict[str, int] = {
+    "fgets": 2,
+    "fscanf": 0,
+    "fread": 3,
+    "getc": 0,
+    "fgetc": 0,
+}
+
+#: Standard streams. A read here crosses ``ipc_recv`` via ``std_stream``.
+_C_STD_STREAMS: frozenset[str] = frozenset({"stdin", "stdout", "stderr"})
+
+#: Calls that produce a ``FILE *`` over a PATH. ``fdopen`` is deliberately
+#: absent: it takes a descriptor whose nature was established wherever that
+#: descriptor came from, which is INV-vaduk's whole point, so classifying it
+#: here would assert a filesystem read over a socket.
+_C_PATH_STREAM_PRODUCERS: tuple[str, ...] = ("fopen", "freopen")
+
+
+def _c_declarator_name(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
+    """The identifier a (possibly pointer/array) declarator declares."""
+    current = node
+    while True:
+        if current.type == "identifier":
+            return node_text(current, source)
+        nxt = current.child_by_field_name("declarator")
+        if nxt is None:
+            return None
+        current = nxt
+
+
+def _c_enclosing_body(
+    node: "tree_sitter.Node",
+) -> Optional["tree_sitter.Node"]:
+    """The body of the ``function_definition`` containing *node*, if any."""
+    current = node.parent
+    while current is not None:
+        if current.type == "function_definition":
+            return current.child_by_field_name("body")
+        current = current.parent
+    return None
+
+
+def _c_classify_stream_text(text: str) -> Optional[str]:
+    """``io_target_kind`` for an expression that produces a ``FILE *``.
+
+    ONE PLACE, so an inline ``fgets(b, 8, fopen(p, "r"))`` and a resolved
+    binding cannot drift into disagreeing about what ``fopen`` is -- the same
+    reason ``_go_classify_handle_text`` is one place.
+    """
+    stripped = text.strip()
+    if stripped in _C_STD_STREAMS:
+        return "std_stream"
+    head = stripped.split("(", 1)[0].strip()
+    if head in _C_PATH_STREAM_PRODUCERS and "(" in stripped:
+        return "host_path"
+    return None
+
+
+def _c_binding_rhs(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional[str]:
+    """Text of the LAST binding of *name* at or above *node*'s line.
+
+    Deliberately smaller than a reaching-def solver and its answers are a
+    SUBSET of one: the enclosing function only, textual line order only, no
+    branch or loop reasoning. The analyzer runs before any DDG exists, so the
+    alternative is not "use the solver" but "answer nothing".
+
+    ORDER IS THE POINT. A scan taking the last match in the FILE would read a
+    rebinding BELOW the call as if it reached it; one taking the first would
+    miss a rebinding above it. Both are pinned by tests.
+    """
+    body = _c_enclosing_body(node)
+    if body is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best_text: Optional[str] = None
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type not in ("init_declarator", "assignment_expression"):
+            continue
+        if current.start_point[0] > use_line or current.start_point[0] < best_line:
+            continue
+        left = current.child_by_field_name(
+            "declarator",
+        ) or current.child_by_field_name("left")
+        right = current.child_by_field_name(
+            "value",
+        ) or current.child_by_field_name("right")
+        if left is None or right is None:  # pragma: no cover - see below
+            # DEFENSIVE. tree-sitter-c gives ``init_declarator`` both a
+            # ``declarator`` and a ``value``, and ``assignment_expression``
+            # both a ``left`` and a ``right``, on every shape reachable here --
+            # including the malformed ones (``int a = ;`` still yields two
+            # fields). Kept because a field lookup that can return None must be
+            # handled where it is read, and marked because no C source can
+            # exercise it.
+            continue
+        if _c_declarator_name(left, source) != name:
+            continue
+        best_line = current.start_point[0]
+        best_text = node_text(right, source).strip()
+    return best_text
+
+
+def _c_stream_target_kind(
+    call_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``io_target_kind`` for a stdio read call, or None to stay silent.
+
+    Returns None for everything not provable -- a parameter, a ``popen`` pipe,
+    a value from a function this file does not bind. INV-zumin's ruling is that
+    a call site gets ONE answer or NONE, and an unstamped edge classifies
+    exactly as it did before this existed
+    (``read_boundary_for_target_kind`` answers ``known=False``).
+    """
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None or func_node.type != "identifier":
+        return None
+    index = _C_STREAM_ARG_INDEX.get(node_text(func_node, source))
+    if index is None:
+        return None
+    args = call_node.child_by_field_name("arguments")
+    if args is None:  # pragma: no cover - a call always carries arguments
+        return None
+    actual = [c for c in args.children if c.is_named]
+    if index >= len(actual):
+        return None
+    arg_text = node_text(actual[index], source)
+    direct = _c_classify_stream_text(arg_text)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip()
+    if not bare.isidentifier():
+        return None
+    rhs = _c_binding_rhs(call_node, source, bare)
+    return None if rhs is None else _c_classify_stream_text(rhs)
+
+
 _C_STDIO_GLOBALS: dict[str, str] = {
     "stdout": "stdio",
     "stderr": "stdio",
