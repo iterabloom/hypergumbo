@@ -36,7 +36,18 @@ ambiguous_names:
 
 fs_read:
   - module: stdio
-    functions: [fopen, fread, fgets, fgetc, fscanf, getc, fseek, rewind, ungetc, ftell]
+    functions: [fopen, fseek, rewind, ungetc, ftell]
+  - module: stdio
+    functions: [fread, fgets, fgetc, fscanf, getc]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the stream-taking readers, split out of the row above because
+      their boundary is a property of the FILE * argument and the row above
+      is unconditional. THIS ROW STAYS FIRST: an unstamped call abstains to the
+      first-declared row, so the fs_read answer is what a call whose stream
+      origin cannot be recovered keeps. See the ipc_recv twin for the
+      selection rule. `boundary_ruling` is declared on BOTH rows because it is
+      a property of the PRIMITIVE, not of one declaration.
   - module: unistd
     functions: [read, readlink, access, stat, lstat, fstat]
     boundary_ruling: call_site_undecidable
@@ -148,11 +159,30 @@ ipc_recv:
   - module: stdio
     functions: [getchar, scanf, gets]
     notes: >-
-      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. getchar() is getc(stdin) and scanf() is fscanf(stdin, ...) with the
-      stream fixed; gets() reads stdin by definition. Their stream-taking
-      siblings fgets/fgetc/getc/fscanf/fread stay fs_read, alongside
-      unistd.read which already carries boundary_ruling:
-      call_site_undecidable for the same reason.
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known
+      at the call site with no argument to inspect. getchar() is getc(stdin)
+      and scanf() is fscanf(stdin, ...) with the stream fixed; gets() reads
+      stdin by definition.
+  - module: stdio
+    functions: [fgets, fgetc, getc, fscanf, fread]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the SAME five functions the fs_read row declares, and BOTH
+      declarations are needed because the boundary is a property of the STREAM
+      ARGUMENT (INV-bagok / INV-zumin class (b)) -- fgets(buf, n, stdin) and
+      fgets(buf, n, f) are one row and two different crossings. The analyzer
+      stamps io_target_kind from the argument's origin and
+      _narrow_by_target_kind keeps the matching row; a call whose origin cannot be
+      recovered abstains to the FIRST-DECLARED row, which is why fs_read stays
+      above this one and why that order is pinned by a test rather than left to
+      a reviewer. An earlier version of this file said these five "stay
+      fs_read" because moving them "would assert an IPC crossing for every read
+      over a file". That objection was correct about MOVING and is answered by
+      SELECTING: the file read still gets fs_read, and only a read whose stream
+      is demonstrably a standard stream gets ipc_recv. Measured before the
+      change, with a live control in one cold run: scanf(...) reaching a file
+      write returned violated while fgets(buf, n, stdin) with the identical
+      flow shape returned nothing.
   - module: unistd
     functions: [read]
     boundary_ruling: call_site_undecidable

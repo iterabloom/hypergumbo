@@ -65,6 +65,7 @@ from .io_boundary import (
     call_site_modes,
     call_site_target_kinds,
     read_boundary_for_target_kind,
+    target_kind_discriminated_primitives,
     target_kinds_cross_no_boundary,
 )
 from .ir import symbol_name_slot, symbol_path_slot
@@ -130,6 +131,26 @@ class TaintSource:
     # database-write. Keeping the boundary makes them separable WITHOUT
     # changing the label, so no already-published claim changes meaning.
     source_boundary: str = ""
+    # WI-lipis: non-empty only for a source derived from a primitive whose
+    # boundary the STREAM ARGUMENT decides -- c's ``stdio.fgets`` is declared
+    # under fs_read AND ipc_recv, and which one is true depends on what the
+    # third argument was bound from. The sink side has carried the same idea as
+    # ``requires_mode`` since INV-rusof; this is that idea on the axis no mode
+    # literal can answer.
+    #
+    # WHY A SOURCE NEEDS IT AT ALL, given that ``_narrow_by_target_kind`` already
+    # picks the row for io-boundaries. Only the MINTING row survives derivation
+    # here -- ``fs_read`` is deliberately absent from AUTO_SOURCE_LABEL_MAP --
+    # so the fs_read row simply does not become a TaintSource, and the ipc_recv
+    # one would then match ``fgets`` by NAME at every call site, including the
+    # file reads the boundary tagger correctly classified fs_read. That is one
+    # fact with two homes and the second silently winning; measured on the c
+    # repro before this field existed, ``fgets`` over a ``popen`` handle minted
+    # untrusted_input while ``io-boundaries`` tagged the same edge fs_read.
+    #
+    # Empty means UNCONDITIONAL, which is what every other source is and must
+    # stay: ``scanf`` reads stdin whatever its arguments say.
+    requires_target_kind: str = ""
 
     @property
     def qualified_name(self) -> str:
@@ -819,6 +840,7 @@ def _match_propagation_entry(
     is_resolved: bool = True,
     language: str = "",
     io_modes: "Sequence[str] | None" = None,
+    io_target_kinds: "Sequence[str] | None" = None,
 ):
     """Match an edge's callee against a propagation source/sink ``index``.
 
@@ -879,7 +901,10 @@ def _match_propagation_entry(
     # ``getattr`` for BOTH reads, not just the guard: the index is typed
     # ``TaintSource | TaintSink`` and only sinks carry ``requires_mode``, so
     # a direct attribute read is a strict-mode union-attr error.
-    from .io_boundary import resolve_mode_boundary_across_sites
+    from .io_boundary import (
+        resolve_mode_boundary_across_sites,
+        resolve_target_kind_across_sites,
+    )
     # INV-vukiv: EVERY collapsed site's mode, not the first one's. A function
     # that opens a path 'r' at one line and 'w' at another arrives here as one
     # edge, and asking only the survivor's singular ``io_mode`` dropped the
@@ -890,6 +915,21 @@ def _match_propagation_entry(
     hits = [
         h for h in hits
         if getattr(h, "requires_mode", "") in ("", _needed)
+    ]
+    # WI-lipis: the same gate on the axis a mode literal cannot answer. Kept
+    # beside the mode gate rather than in a second pass so both dual-classified
+    # shapes are refused in one place, and ``getattr`` for the same reason --
+    # only sources carry this one.
+    #
+    # ``None`` from the resolver is an ABSTENTION, and it deliberately admits
+    # only the unconditional entries: a stream whose origin the analyzer could
+    # not recover keeps today's classification instead of minting on a guess.
+    # That is the conservative direction HERE because this seam ADDS findings,
+    # the mirror of ``_source_call_can_mint_taint``, which removes them.
+    _needed_kind = resolve_target_kind_across_sites(io_target_kinds)
+    hits = [
+        h for h in hits
+        if getattr(h, "requires_target_kind", "") in ("", _needed_kind)
     ]
     if not hits:
         return None
@@ -1594,6 +1634,13 @@ def _derive_auto_imports_from_io_primitives(
         # no ``io_mode`` that deleted rust's only host_fs write sink outright
         # (INV-kaduh's control finding).
         mode_gated = mode_discriminated_primitives(catalog)
+        # WI-lipis: primitives this catalogue declares under two or more READ
+        # boundaries, so the source derived from the minting row records that
+        # it only applies when the call's stream argument says so. Derived from
+        # the catalogue for the same reason ``mode_gated`` is, and keyed on
+        # (module, name, kind) for INV-kaduh's reason -- a short name is shared
+        # across modules and gating on it would silence an unrelated row.
+        target_kind_gated = target_kind_discriminated_primitives(catalog)
         for prim in catalog.primitives:
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
@@ -1601,6 +1648,12 @@ def _derive_auto_imports_from_io_primitives(
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
+                    requires_target_kind=(
+                        prim.boundary
+                        if (prim.module, prim.name, prim.kind)
+                        in target_kind_gated
+                        else ""
+                    ),
                     # The map above is many-to-one: net_recv, ipc_recv and
                     # db_read all become `untrusted_input`. Carry the
                     # boundary so the collapse is reversible downstream
@@ -2810,6 +2863,7 @@ def propagate_taint_structural(
             is_resolved=edge.get("is_resolved", True),
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
         if matched and _source_call_can_mint_taint(edge):
             source_callers.append((edge["src"], edge["dst"], matched))
@@ -3861,6 +3915,7 @@ def propagate_taint_ddg(
             is_resolved=edge.get("is_resolved", True),
             language=language,
             io_modes=call_site_modes(edge.get("meta")),
+            io_target_kinds=call_site_target_kinds(edge.get("meta")),
         )
         if matched and _source_call_can_mint_taint(edge):
             # WI-lipis: the ddg arm asks the identical question through the

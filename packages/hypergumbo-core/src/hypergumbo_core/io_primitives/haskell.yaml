@@ -62,16 +62,49 @@ ipc_recv:
   - module: Prelude
     functions: [getLine, getChar, getContents, readLn, interact]
     notes: >-
-      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. All five are fixed to stdin: getContents is hGetContents stdin,
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing
+      is known at the call site with no argument to inspect. All five are fixed
+      to stdin: getContents is hGetContents stdin,
       readLn is getLine >>= readIO, and interact reads all of stdin (its stdout
       half is not represented here -- System.IO's handle-based writers carry
       that, under their own INV-vaduk ruling). System.IO.hGetLine / hGetChar /
-      hGetContents take a Handle and stay fs_read.
+      hGetContents take a Handle and are declared under BOTH boundaries below
+      (WI-lipis): which one is true is a property of that Handle.
   - module: Data.Text.IO
     functions: [getContents, getLine]
     notes: >-
-      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing is known at the call site. Stream-taking siblings stay where they are -- their boundary is a property of the argument (INV-bagok / INV-zumin class (b)), and moving them would assert an IPC crossing for every read over a file. The Data.Text mirrors of Prelude's stdin readers. readFile and the
-      hGet* family in this module stay fs_read.
+      INV-muvis: reads STANDARD INPUT unconditionally, so the crossing
+      is known at the call site with no argument to inspect. The Data.Text
+      mirrors of Prelude's stdin readers. readFile stays fs_read; the hGet*
+      family takes a Handle and is declared under both boundaries below
+      (WI-lipis).
+
+  - module: System.IO
+    functions: [hGetContents, hGetLine, hGetChar]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: also declared fs_read, and BOTH are needed -- the boundary is a
+      property of the HANDLE ARGUMENT, so `hGetLine stdin` and `hGetLine h`
+      (from openFile) are one row and two different crossings (INV-bagok /
+      INV-zumin class (b)). The analyzer stamps io_target_kind from the
+      handle's origin and _narrow_by_target_kind keeps the matching row; a handle whose
+      origin cannot be recovered abstains to the FIRST-DECLARED row, which is
+      why fs_read stays above this one and why that order is pinned by a test.
+      Measured with a live control in one cold run: readProcess reaching
+      writeFile returned violated while `hGetLine stdin` with the identical
+      flow shape returned nothing.
+  - module: Data.ByteString
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the System.IO rule over a ByteString handle. Same argument,
+      same abstention, same declaration order.
+  - module: Data.Text.IO
+    functions: [hGetContents, hGetLine]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the System.IO rule over a Text handle. Same argument, same
+      abstention, same declaration order.
 
 fs_read:
   - module: Prelude
@@ -84,14 +117,30 @@ fs_read:
       boundary; that is INV-zumin class (d) (a row that is simply wrong rather
       than multi-valued) and it is filed separately rather than fixed here.
   - module: System.IO
-    functions: [hGetContents, hGetLine, hGetChar, hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
+    functions: [hReady, hIsEOF, hSeek, hTell, hFileSize, openFile, openBinaryFile, withFile, withBinaryFile]
+  - module: System.IO
+    functions: [hGetContents, hGetLine, hGetChar]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-lipis: the Handle-taking readers, split out of the row above because
+      their boundary is a property of the Handle argument. THIS ROW STAYS
+      FIRST -- an unstamped call abstains to the first-declared row. Declared
+      on both rows because `boundary_ruling` is a property of the primitive.
   - module: System.Directory
     functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getCurrentDirectory, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, makeAbsolute]
   - module: Data.ByteString
-    functions: [readFile, hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    functions: [readFile]
+  - module: Data.ByteString
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-lipis: the System.IO rule over a ByteString handle."
   - module: Data.Text.IO
-    functions: [readFile, hGetContents, hGetLine]
+    functions: [readFile]
     notes: "getContents/getLine MOVED to ipc_recv (INV-muvis) -- they read stdin."
+  - module: Data.Text.IO
+    functions: [hGetContents, hGetLine]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-lipis: the System.IO rule over a Text handle."
 
 fs_write:
   - module: Prelude
