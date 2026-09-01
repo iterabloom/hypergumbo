@@ -1,0 +1,40 @@
+- op: create  # beed
+  at: '2026-09-01T01:05:27Z'  # beed
+  by: agent  # beed
+  actor: jgstern_agent  # beed
+  clock: 1  # beed
+  nonce: beed  # beed
+  data:  # beed
+    kind: work_item  # beed
+    title: "bash source targets with no literal tail (13 of 97) leave cross-file names classified as environment reads"  # beed
+    status: todo_hard  # beed
+    priority: 2  # beed
+    parent:  # beed
+    tags:  # beed
+    - taint  # beed
+    - bash  # beed
+    - dataflow  # beed
+    isbefore: []  # beed
+    duplicate_of: []  # beed
+    not_duplicate_of: []  # beed
+    pr_ref:  # beed
+    description: "FILED AS INV-pujob'S RESIDUAL, 2026-08-31, under the standing ruling \"close on\nthe filed row and file the residual\". INV-pujob's fix resolves a bash `source`\ntarget by its literal trailing component and, for a glob, by the glob\ndirectory's trailing component. That covers 81 of the cohort's 97 source/.\nstatements. THIS IS THE OTHER 16.\n\nMEASURED (artifact: ~/hypergumbo_lab_notebook/pujob_bash_cross_source_08312026/,\nsuffix.json):\n\n    static (fully literal)               17  (17.5%)\n    dynamic, literal tail, UNIQUE match  62  (63.9%)   <- resolved by INV-pujob\n    dynamic, no literal tail             13  (13.4%)   <- THIS ITEM\n    dynamic, literal tail not in repo     5  ( 5.2%)   <- THIS ITEM\n    AMBIGUOUS (tail matches 2+ files)     0\n\nTHE 13 WITH NO LITERAL TAIL, verbatim:\n  rabbitmq  selenium/bin/gen-{keycloak-json,json,advanced-config,spring-yml,\n            rabbitmq-conf,httpd-conf,uaa-yml}          `source $ENV_FILE`   (8)\n  rabbitmq  selenium/bin/suite_template:48              `source $f`\n  rabbitmq  deps/rabbit/scripts/rabbitmq-env:100        `source \"$RABBITMQ_CONF_ENV_FILE\"`\n  rabbitmq  deps/rabbitmq_mqtt/.../mvnw:47              `source \"$HOME/.mavenrc\"`\n  cert-manager hack/verify-upgrade.sh:23                `\"${REPO_ROOT}/hack/build/version.sh\"`\n  cilium    contrib/scripts/k8s-code-gen.sh:12          `\"${CODEGEN_PKG}/kube_codegen.sh\"`\n  jaeger    (x2) shunit2                                `\"${SHUNIT2}/shunit2\"`\n\nCONSEQUENCE: a name assigned only through one of these edges is still called an\nenvironment read and still mints a host_secret taint source.\n\nNOT ALL OF THEM ARE WORTH RESOLVING, and that is the first thing to establish\nrather than assume. `source \"$HOME/.mavenrc\"` and `source $ENV_FILE` name\nRUNTIME config files that are not in the repository at all -- there is nothing to\nresolve them TO, and an attempt would be inventing an edge. `${REPO_ROOT}/hack/\nbuild/version.sh` and `${CODEGEN_PKG}/kube_codegen.sh` DO have a literal tail\n(`version.sh`, `kube_codegen.sh`); they fell into the \"not in repo\" bucket, which\nfor cert-manager means the file genuinely is not there and for cilium means the\ntarget is a vendored dependency.\n\nSO THE HONEST SIZE OF THIS ITEM IS SMALLER THAN 16 AND IS NOT YET MEASURED. Step\none is to classify the 18 by whether a resolvable in-repo target EXISTS at all,\nand only then decide whether the remaining shapes (a variable bound by an\nassignment rather than a for-loop -- `suite_template:48`'s `$f`) justify reading\nassignments as well as loop bindings.\n\nFAIL-CLOSED REMAINS NON-NEGOTIABLE: this direction removes taint SOURCES, so an\nunresolvable target must keep contributing nothing."  # beed
+    fields: {}  # beed
+- op: update  # 16a4
+  at: '2026-09-01T01:05:50Z'  # 16a4
+  by: agent  # 16a4
+  actor: jgstern_agent  # 16a4
+  clock: 2  # 16a4
+  nonce: 16a4  # 16a4
+  set: {}  # 16a4
+  add:  # 16a4
+    isbefore: [INV-pujob-padob-fomif-zivif-kabam-hurog-kirub-jozav]  # 16a4
+- op: update  # 8c0f
+  at: '2026-09-01T01:06:05Z'  # 8c0f
+  by: agent  # 8c0f
+  actor: jgstern_agent  # 8c0f
+  clock: 3  # 8c0f
+  nonce: 8c0f  # 8c0f
+  set: {}  # 8c0f
+  remove:  # 8c0f
+    isbefore: [INV-pujob-padob-fomif-zivif-kabam-hurog-kirub-jozav]  # 8c0f
