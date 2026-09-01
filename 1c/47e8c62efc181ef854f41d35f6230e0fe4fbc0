@@ -1,0 +1,28 @@
+Original commit body from 938f6e180acf3b0968ed41304521b5a449198ab1:
+
+Owner-approved governance edit (2026-09-01): ".githooks/**" requires
+human approval, granted explicitly along with self-merge via auto-pr.
+
+Sibling of the Edge-type / Symbol.kind / Edge.evidence_type drift gates,
+same shape and same staging condition (fires only when packages/*.py is
+staged).
+
+THE HOOK COMMENT STATES THE WEAKENED GUARANTEE AT THE POINT OF USE. A
+reader seeing four adjacent axis gates will reasonably assume they carry
+the same weight, and this one does not: ADR-0050 derived io_boundary.py's
+five vocabulary constants from the registry, which removed the last
+string-literal set the shared AST walker can see, so this gate exits 0
+over an EMPTY collection. It guards a future hand-rolled set and does not
+reach the dict-shaped consumers (AUTO_SOURCE_LABEL_MAP,
+DEFERRED_CROSSING_SHADOWS, _READ_TARGET_KIND_BOUNDARY), which the property
+tests assert explicitly. WI-jinuj widens the shared walker.
+
+Both hook paths exercised live before commit, not assumed: a staged clean
+packages/*.py prints the green tick, and the same file carrying
+SOME_BOUNDARY_NAMES = {'fs_read', 'bogus_boundary_value'} prints the red
+cross and names bogus_boundary_value. The first attempt wrote literal
+✓ / ✗ escapes instead of the glyphs its siblings use; corrected
+and re-verified.
+
+Racial-Capitalism-Is-Bad: a mongoose riding a hover-limo with disco lighting in a fern-filled breakfast nook with a seminar of pigeons made of gingerbread
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
