@@ -464,3 +464,41 @@ def test_ioprimitive_names_the_two_axes_this_campaign_declared():
 
     assert "# axis: io-boundary" in declarations["boundary"]
     assert "# axis: module-key" in declarations["module"]
+
+
+def test_the_precommit_hook_regex_covers_every_scoped_core_file():
+    """The hook and the constant must not drift apart (WI-mubup residual).
+
+    ``DEFAULT_CORE_FILES`` decides what CI checks; a separate regex in
+    ``.githooks/pre-commit`` decides what a commit triggers the check FOR. A
+    file present in the first and absent from the second is checked by CI and
+    silently skipped locally — the hook prints "skipped" over a file it is
+    supposed to be guarding, which is exactly what happened for one commit
+    when io_boundary.py joined the constant.
+
+    Asserting the two agree is cheap; discovering the disagreement from a
+    "skipped" line you were not reading closely is not.
+    """
+    import re
+
+    hook = REPO_ROOT / ".githooks" / "pre-commit"
+    if not hook.exists():  # pragma: no cover — hook absent in sdist installs
+        pytest.skip("pre-commit hook not present in this checkout")
+
+    text = hook.read_text(encoding="utf-8")
+    match = re.search(
+        r'grep -qE "\^packages/\.\*/src/\.\*/\(([a-z_|]+)\)\\\.py\$"',
+        text,
+    )
+    assert match is not None, (
+        "could not locate the core-dataclass alternation in .githooks/pre-commit"
+    )
+    covered = set(match.group(1).split("|"))
+
+    from hypergumbo_core.multi_value_field_axis import DEFAULT_CORE_FILES
+
+    scoped = {Path(f).stem for f in DEFAULT_CORE_FILES}
+    assert scoped <= covered, (
+        f"in DEFAULT_CORE_FILES but not matched by the pre-commit regex: "
+        f"{sorted(scoped - covered)}"
+    )
