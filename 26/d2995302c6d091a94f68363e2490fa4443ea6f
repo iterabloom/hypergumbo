@@ -1,0 +1,55 @@
+Original commit body from 1fb110c7da9f7cfcd608ab91b599f30ca96aae46:
+
+WI-lipis's third deliverable, the cross-language half. c.yaml filed
+fgets/fscanf/fread/getc/fgetc and haskell.yaml filed hGetLine/hGetContents/
+hGetChar as fs_read, which is absent from AUTO_SOURCE_LABEL_MAP, so
+`fgets(buf, n, stdin)` and `hGetLine stdin` -- the canonical untrusted-input
+calls in both languages -- minted no taint source at all.
+
+THE DIRECTION IS THE OPPOSITE OF GO'S, in the same item. Go's wrapper was
+filed ipc_recv, which mints, so a wrong argument INVENTED a source and the fix
+removed false positives. Here a wrong argument MISSES one, so this ADDS
+findings and is judged as new surface.
+
+MEASURED WITH A LIVE CONTROL PER LANGUAGE, one cold run each, before building:
+c's `scanf` reaching a file write returned violated while `fgets(buf, n,
+stdin)` with the identical flow shape returned nothing; haskell's
+`readProcess` reaching `writeFile` returned violated while `hGetLine stdin`
+returned nothing.
+
+WHAT SHIPPED. Both families are now declared under fs_read AND ipc_recv with
+boundary_ruling: call_site_undecidable, and `_narrow_by_target_kind` drops the
+losing row from the stamped io_target_kind. It NARROWS rather than selects on
+every path -- including lookup_with_module's short-name fallback, where c's
+fgets actually lands and where the mode seam was once inert -- because it has
+to compose with select_by_mode. A `select_by_target_kind` twin was written and
+deleted: nothing could call it without breaking that composition, which is
+WI-famig's defect (a mechanism with no live consumer), caught by its own
+uncovered line.
+
+AN ABSTENTION RESOLVES TO THE FIRST-DECLARED ROW, which is the safety
+argument. A parameter, a popen handle, or a collapsed edge whose sites
+disagree classifies exactly as before, because fs_read is declared first in
+both catalogues. Declaration order is therefore load-bearing and is pinned by
+a test against the shipped YAML.
+
+THE CATALOGUE CHANGE ALONE WAS WRONG, and only read-back caught it. fs_read
+never becomes a TaintSource, so the surviving ipc_recv row matched fgets BY
+NAME at every call site including the file reads io-boundaries had just tagged
+fs_read -- one fact with two homes. TaintSource now carries
+requires_target_kind, the mirror of the sink side's requires_mode.
+
+Four-way outcome per language, control alive: the stdin read is found, the
+control fires, and the fopen/openFile variants stay correctly silent. popen is
+deliberately unanswered (its FILE* needs a new io_target_kind -- WI-kanor).
+
+Also fixed, found by the coverage gate rather than by reading the grammar: a
+haskell definition WITH parameters is a `function` node, not a `bind`, so
+searching only `bind` abstained on every parameterised function -- the common
+shape, since a Handle is usually opened from a path the function was handed.
+
+Ratchet 669, delta +0; the c producer half carried one unreachable `return`
+that is now restructured.
+
+Racial-Capitalism-Is-Bad: a phantom squirrel conducting in a Victorian parlor with a cluster of hedgehogs
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
