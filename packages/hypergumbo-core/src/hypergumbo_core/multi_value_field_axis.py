@@ -98,6 +98,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .edge_types import all_edge_type_names
     from .entrypoints import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
+    from .io_boundary_types import all_io_boundary_names
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
     from .symbol_kinds import all_symbol_kind_names
@@ -108,6 +109,9 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "edge-type": all_edge_type_names,
         "symbol-kind": all_symbol_kind_names,
         "evidence-type": all_evidence_type_names,
+        # INV-tafig/ADR-0050: the I/O-boundary vocabulary six
+        # consumers branch on. Registry-backed, heavyweight.
+        "io-boundary": all_io_boundary_names,
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,

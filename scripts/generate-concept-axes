@@ -54,6 +54,14 @@ from hypergumbo_core.evidence_types import (  # noqa: E402
     EVIDENCE_TYPES,
     EvidenceTypeSpec,
 )
+from hypergumbo_core.io_boundary_types import (
+    AXIS_DATA_CROSSING,
+    AXIS_DEFERRED_CROSSING,
+    AXIS_OPACITY,
+    AXIS_SPECULATIVE,
+    IO_BOUNDARY_TYPES,
+    IoBoundarySpec,
+)
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -128,6 +136,45 @@ _KIND_SECTIONS: tuple[tuple[str, str, str], ...] = (
         "entities (Cluster G), and the long-tail domain vocabulary "
         "(Cluster H). Each cluster's audit decides between fold-to-"
         "Cluster-A vs separate-axis declaration vs producer-side drop.",
+    ),
+)
+
+
+# io_boundary section ordering (ADR-0050). Mirrors _SECTIONS in shape.
+# Headline membership is NOT a section: it cuts across this partition
+# (subprocess is opaque AND counts in the headline), so it lives as
+# per-value metadata on the spec.
+_IO_BOUNDARY_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_DATA_CROSSING,
+        "`data_crossing` — ADR-0050 compliant",
+        "Values that name what data crosses the process boundary at this "
+        "call site, and in which direction. Per ADR-0050 this is the only "
+        "axis a new catalogue-declarable boundary should occupy.",
+    ),
+    (
+        AXIS_OPACITY,
+        "`opacity` — control left this process",
+        "The call is correctly classified and the analysis cannot see past "
+        "it, so it does not license \"I looked and found nothing\". Split by "
+        "channel: `subprocess` is catalogue-declared, `command_launch` is "
+        "producer-stamped, and each is reachable through exactly one of "
+        "them.",
+    ),
+    (
+        AXIS_DEFERRED_CROSSING,
+        "`deferred_crossing` — disclosed, never minted (ADR-0049)",
+        "The call ARRANGES a crossing it does not itself perform — exactly "
+        "what the axiom's second clause excludes from `data_crossing`, "
+        "which is why it is a section rather than a violation. Each value "
+        "shadows the data boundary it makes unexaminable.",
+    ),
+    (
+        AXIS_SPECULATIVE,
+        "`speculative` — synthesised uncertainty",
+        "Not a classification but an admission that the call could not be "
+        "matched. Declarable by no catalogue, and excluded from the "
+        "`total_io_edges` headline.",
     ),
 )
 
@@ -222,6 +269,26 @@ eight clusters; this section lays out the three axes (Cluster A on
 `pending_classification` until per-cluster audit-findings docs ship).
 """
 
+_IO_BOUNDARY_HEADER = """\
+
+---
+
+## `io_boundary` — the I/O-boundary axis (ADR-0050)
+
+**Axiom.** A boundary value names *what data crosses the process boundary at
+this call site, in which direction* — not what the program is thereby arranged
+to do later.
+
+Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
+`OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
+`verify-claims`' claim validation, and the CLI's `--io-boundary` filter), which
+is why it is registry-backed rather than a documented enumeration. Two
+properties are carried per value rather than as sections, because both cut
+across the axis partition: whether a catalogue may declare the value
+(`_parse_catalog` iterates exactly the declarable names) and whether it counts
+in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
+"""
+
 
 def _confidence_annotation(spec: object) -> str:
     """Render a spec's seeded detection-reliability, if it has one.
@@ -260,6 +327,45 @@ def _format_axis_section(
         )
     lines.append("")
     return "\n".join(lines)
+
+
+def _render_axis_sections(
+    specs: Iterable[object],
+    section_table: tuple[tuple[str, str, str], ...],
+    section_table_name: str,
+) -> list[str]:
+    """Render one field's per-axis sections, plus a guard for undocumented axes.
+
+    EXTRACTED AT THE FOURTH COPY. Edge.edge_type, Symbol.kind and
+    Edge.evidence_type each open-coded this block; ADR-0050's io-boundary axis
+    would have been the fourth, and the blocks had already begun to diverge in
+    whitespace and in the wording of their own guard message. The guard is the
+    part worth having in one place: it surfaces a registry axis that has no
+    documented section, so a future axis addition cannot silently drop out of
+    the generated doc.
+    """
+    by_axis: dict[str, list[object]] = {}
+    for spec in specs:
+        by_axis.setdefault(spec.axis, []).append(spec)  # type: ignore[attr-defined]
+    out = [
+        _format_axis_section(heading, preamble, by_axis.get(axis_id, []))
+        for axis_id, heading, preamble in section_table
+    ]
+    known = {axis_id for axis_id, _, _ in section_table}
+    for axis_id, axis_specs in sorted(by_axis.items()):
+        if axis_id in known:
+            continue
+        out.append(  # pragma: no cover — defensive
+            _format_axis_section(
+                f"`{axis_id}` — undocumented axis",
+                "This axis appears in the registry but has no documented "
+                "section in scripts/generate-concept-axes. Add an entry to "
+                f"`{section_table_name}` describing the axis and its "
+                "rationale.",
+                axis_specs,
+            ),
+        )
+    return out
 
 
 def _format_confidence_table() -> str:
@@ -354,78 +460,30 @@ def render() -> str:
     sections: list[str] = [_HEADER]
 
     # Edge.type sections.
-    edge_by_axis: dict[str, list[EdgeTypeSpec]] = {}
-    for spec in EDGE_TYPES:
-        edge_by_axis.setdefault(spec.axis, []).append(spec)
-    for axis_id, heading, preamble in _SECTIONS:
-        sections.append(
-            _format_axis_section(heading, preamble, edge_by_axis.get(axis_id, [])),
-        )
-    # Surface any Edge.type axis values that are NOT in _SECTIONS — guards
-    # against future axis additions silently dropping out of the doc.
-    known_edge_axes = {axis_id for axis_id, _, _ in _SECTIONS}
-    for axis_id, specs in sorted(edge_by_axis.items()):
-        if axis_id in known_edge_axes:
-            continue
-        sections.append(  # pragma: no cover — defensive
-            _format_axis_section(
-                f"`{axis_id}` — undocumented axis",
-                "This axis appears in the registry but has no documented "
-                "section in scripts/generate-concept-axes. Add an entry "
-                "to `_SECTIONS` describing the axis and its rationale.",
-                specs,
-            ),
-        )
+    sections.extend(_render_axis_sections(EDGE_TYPES, _SECTIONS, "_SECTIONS"))
 
     # Symbol.kind sections.
     sections.append(_KIND_HEADER)
-    kind_by_axis: dict[str, list[SymbolKindSpec]] = {}
-    for kspec in SYMBOL_KINDS:
-        kind_by_axis.setdefault(kspec.axis, []).append(kspec)
-    for axis_id, heading, preamble in _KIND_SECTIONS:
-        sections.append(
-            _format_axis_section(heading, preamble, kind_by_axis.get(axis_id, [])),
-        )
-    known_kind_axes = {axis_id for axis_id, _, _ in _KIND_SECTIONS}
-    for axis_id, specs in sorted(kind_by_axis.items()):
-        if axis_id in known_kind_axes:
-            continue
-        sections.append(  # pragma: no cover — defensive
-            _format_axis_section(
-                f"`{axis_id}` — undocumented axis",
-                "This axis appears in the registry but has no documented "
-                "section in scripts/generate-concept-axes. Add an entry "
-                "to `_KIND_SECTIONS` describing the axis and its rationale.",
-                specs,
-            ),
-        )
+    sections.extend(
+        _render_axis_sections(SYMBOL_KINDS, _KIND_SECTIONS, "_KIND_SECTIONS"),
+    )
 
     # Edge.evidence_type sections.
     sections.append(_EVIDENCE_HEADER)
-    evidence_by_axis: dict[str, list[EvidenceTypeSpec]] = {}
-    for espec in EVIDENCE_TYPES:
-        evidence_by_axis.setdefault(espec.axis, []).append(espec)
-    for axis_id, heading, preamble in _EVIDENCE_SECTIONS:
-        sections.append(
-            _format_axis_section(
-                heading, preamble, evidence_by_axis.get(axis_id, []),
-            ),
-        )
-    known_evidence_axes = {axis_id for axis_id, _, _ in _EVIDENCE_SECTIONS}
-    for axis_id, specs in sorted(evidence_by_axis.items()):
-        if axis_id in known_evidence_axes:
-            continue
-        sections.append(  # pragma: no cover — defensive
-            _format_axis_section(
-                f"`{axis_id}` — undocumented axis",
-                "This axis appears in the registry but has no documented "
-                "section in scripts/generate-concept-axes. Add an entry "
-                "to `_EVIDENCE_SECTIONS` describing the axis and its "
-                "rationale.",
-                specs,
-            ),
-        )
+    sections.extend(
+        _render_axis_sections(
+            EVIDENCE_TYPES, _EVIDENCE_SECTIONS, "_EVIDENCE_SECTIONS",
+        ),
+    )
     sections.append(_format_confidence_table())
+
+    # io_boundary sections (ADR-0050).
+    sections.append(_IO_BOUNDARY_HEADER)
+    sections.extend(
+        _render_axis_sections(
+            IO_BOUNDARY_TYPES, _IO_BOUNDARY_SECTIONS, "_IO_BOUNDARY_SECTIONS",
+        ),
+    )
 
     return "\n".join(sections).rstrip() + "\n"
 

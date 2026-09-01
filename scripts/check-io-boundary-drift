@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the
+canonical ``hypergumbo_core.io_boundary_types.IO_BOUNDARY_TYPES`` registry.
+
+Mirrors the property test
+``packages/hypergumbo-core/tests/test_io_boundary_types.py
+::test_live_tree_has_no_boundary_set_drift`` and shares its drift-detection
+function (``io_boundary_types.find_axis_drift``) so pre-commit matches what CI
+enforces. Catches the ADR-0023 silent-bug shape: a consumer-side hardcoded set
+that drifts from the canonical list, in either direction — values runtime emits
+that the set omits, and phantom values runtime never emits.
+
+SCOPE, STATED PLAINLY BECAUSE A CLEAN EXIT HERE MEANS LESS THAN IT LOOKS.
+The shared AST walker collects module-level string-literal sets only. After
+ADR-0050 derived io_boundary.py's five vocabulary constants from the registry,
+the live tree contains no such set, so this script exits 0 over an empty
+collection. It guards against a future hand-rolled set; it does NOT verify the
+dict-shaped consumers (``AUTO_SOURCE_LABEL_MAP``,
+``DEFERRED_CROSSING_SHADOWS``, ``_READ_TARGET_KIND_BOUNDARY``), which the
+property test asserts explicitly instead.
+
+Exit codes:
+    0 — no drift detected.
+    1 — drift detected; offenders printed to stdout, fix instructions to stderr.
+    2 — could not import the canonical registry (likely a packaging /
+        editable-install problem; do not block commits on this).
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(REPO_ROOT / "packages" / "hypergumbo-core" / "src"))
+
+try:
+    from hypergumbo_core.io_boundary_types import find_axis_drift
+except ImportError as exc:  # pragma: no cover — defensive
+    print(
+        f"check-io-boundary-drift: cannot import canonical registry: {exc}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "I/O-boundary drift linter — verifies *BOUNDAR* consumer sets "
+            "are subsets of the canonical registry."
+        ),
+    )
+    parser.parse_args(argv)
+
+    offenders = find_axis_drift(REPO_ROOT)
+    if not offenders:
+        return 0
+
+    print("I/O-boundary axis-coherence check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print()
+    print(
+        "Either add the missing values to the canonical registry at\n"
+        "  packages/hypergumbo-core/src/hypergumbo_core/io_boundary_types.py\n"
+        "with an axis classification per ADR-0050, or remove them from the\n"
+        "consumer set. If the value is legitimate but the set is not an\n"
+        "enumeration of this vocabulary, add its name to\n"
+        "excluded_target_names in find_axis_drift.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

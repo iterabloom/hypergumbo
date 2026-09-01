@@ -452,3 +452,60 @@ Values deferred to per-cluster audit-findings docs at `docs/audits/<NN>-<topic>.
 `alias_resolution`, `ast_call_inherited`, `ast_call_inherited_field`, `ast_call_inherited_method`, `ast_call_namespace`, `ast_call_static`, `ast_call_this`, `ast_call_this_property`, `ast_cite`, `ast_include`, `ast_includes`, `ast_method_this`, `ast_package`, `ast_perform`, `ast_ref`, `ast_static_call`, `callable_reference`, `cffi_call`, `cffi_stdlib_call`, `cgo_call`, `cmake_target_link`, `constructor_reference`, `ctypes_call`, `ctypes_stdlib_call`, `designated_init_fptr`, `dispatch_table_initializer`, `function_pointer_arg`, `import_resolution`, `interface_dispatch`, `ipc_channel_match`, `jsx_element`, `luajit_ffi_lookup`, `make_prerequisite`, `qualified_call`, `recipe_dependency`, `require_alias_call`, `schema_relation`, `scip_occurrence_ref`, `scip_relationship`, `sql_foreign_key`, `topic_match`, `tree_sitter`, `variable_match`, `verilog_instantiation`, `vhdl_architecture`
 
 </details>
+
+
+---
+
+## `io_boundary` — the I/O-boundary axis (ADR-0050)
+
+**Axiom.** A boundary value names *what data crosses the process boundary at
+this call site, in which direction* — not what the program is thereby arranged
+to do later.
+
+Six consumers branch on this vocabulary (`AUTO_SOURCE_LABEL_MAP`,
+`OPAQUE_BOUNDARIES`, `_DISCLOSED_ONLY_BOUNDARIES`, `DEFERRED_CROSSING_SHADOWS`,
+`verify-claims`' claim validation, and the CLI's `--io-boundary` filter), which
+is why it is registry-backed rather than a documented enumeration. Two
+properties are carried per value rather than as sections, because both cut
+across the axis partition: whether a catalogue may declare the value
+(`_parse_catalog` iterates exactly the declarable names) and whether it counts
+in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
+
+### `data_crossing` — ADR-0050 compliant
+
+Values that name what data crosses the process boundary at this call site, and in which direction. Per ADR-0050 this is the only axis a new catalogue-declarable boundary should occupy.
+
+- **`browser_storage_read`** — Read from browser-local storage. Like fs_read and for the same reason, deliberately NOT in AUTO_SOURCE_LABEL_MAP: sensitivity depends on what is stored, so a project-local catalogue adds its own taint_sources rows for its threat model.
+- **`browser_storage_write`** — Write to browser-local storage (localStorage and peers). Structurally distinct from the host filesystem -- reachable via XSS, not via local-user FS access (WI-lokuv).
+- **`db_read`** — Read from a database or persistent store -- java.sql.Connection, erlang ets/dets, CoreData NSManagedObjectContext, sqlite3.
+- **`db_write`** — Write to a database or persistent store -- java.sql.Statement, erlang ets/dets, CoreData NSManagedObjectContext.
+- **`env_read`** — Read ambient CONFIGURATION -- values that may carry a credential. Narrowed by INV-tutar: host description and user identity are host_info_read, not this. Mints a host_secret taint source, which is why the narrowing mattered.
+- **`env_write`** — Mutate the process environment -- os.environ assignment, std::env::set_var, System.Environment setEnv.
+- **`fs_read`** — Read data from the local filesystem. Deliberately QUIET as a taint source -- sensitivity depends on what is stored, so it mints nothing (ADR-0016 risk-classification note).
+- **`fs_write`** — Write data to the local filesystem.
+- **`host_info_read`** — Read host DESCRIPTION or user identity -- not a secret (split from env_read by INV-tutar) -- INCLUDING THE CLOCK (WI-pavob). Fires almost universally, so its discriminating power is deliberately low and that was accepted on the record.
+- **`ipc_recv`** — Receive data from another process -- stdin, a pipe read, shared memory read.
+- **`ipc_send`** — Send data to another process -- stdout write, pipe write, shared memory write. See the module docstring's gap 2: the stdout half overlaps `logging`, unsettled.
+- **`logging`** — Emit data to a log sink -- java.util.logging.Logger, go fmt/io print, Prelude.putStrLn, Swift print. THE ONE CANONICAL VALUE NAMING A PURPOSE RATHER THAN A MEDIUM, and it overlaps ipc_send on stdout. First candidate for a per-value audit; see the module docstring, gap 2. No row moves on that note.
+- **`net_recv`** — Receive data from the network. Shadowed by net_listen: a deferred-crossing site blocks a clean net_recv verdict and nothing else (ADR-0049 ruling 2).
+- **`net_send`** — Send data to the network. Egress risk is additionally graded by the supply-chain dst_tier rather than by this value alone.
+- **`process_send`** — Send a message to another runtime-managed process or actor -- erlang send, Control.Concurrent. Distinct from ipc_send: the far side is a peer inside the same runtime, not an OS pipe.
+
+### `opacity` — control left this process
+
+The call is correctly classified and the analysis cannot see past it, so it does not license "I looked and found nothing". Split by channel: `subprocess` is catalogue-declared, `command_launch` is producer-stamped, and each is reachable through exactly one of them.
+
+- **`command_launch`** — The same question as subprocess -- did control leave this process? -- asked of the producer-stamped channel (INV-larol). bash.py stamps it directly because there is no bash catalogue and per ADR-0016 there is not going to be one: cataloguing curl as net_send would attribute curl's network activity to the shell script. Definite but uncurated, so disclosed and excluded from the headline.
+- **`subprocess`** — Launch or communicate with a child process. OPAQUE: control left this process for a program whose behaviour is not in the edge set, so a subprocess site withholds a clean verdict on EVERY boundary. Without that, a program whose only statement was subprocess.run(['curl', '-o', '/etc/cron.d/pwned', ...]) returned confirmed rc 0 for both fs_write and net_send must_not_exist claims. The one boundary carrying the display-only high_risk marker (ADR-0016).
+
+### `deferred_crossing` — disclosed, never minted (ADR-0049)
+
+The call ARRANGES a crossing it does not itself perform — exactly what the axiom's second clause excludes from `data_crossing`, which is why it is a section rather than a violation. Each value shadows the data boundary it makes unexaminable.
+
+- **`net_listen`** — Bind or accept: the call ARRANGES inbound network data to arrive somewhere it does not name, and returns no such data itself. DISCLOSED, NEVER MINTED (ADR-0049). Its shadow over net_recv is required, not optional -- since INV-buzab a classified call is what `examined` means, so a tag that mints nothing would still count as an examined negative and hand verify-claims a green tick over live ingress.
+
+### `speculative` — synthesised uncertainty
+
+Not a classification but an admission that the call could not be matched. Declarable by no catalogue, and excluded from the `total_io_edges` headline.
+
+- **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call edge: receiver-unresolved speculative noise that MIGHT be I/O. Not a classification, an admission of uncertainty -- hence no direction.

@@ -70,6 +70,12 @@ import yaml
 
 from .axis_meta_keys import write_meta_key
 from .edge_types import is_grpc_rpc_implementation
+from .io_boundary_types import (
+    all_io_boundary_names,
+    catalog_declarable_names,
+    disclosed_only_names,
+    opacity_names,
+)
 from .ir import symbol_name_slot, symbol_path_slot
 
 if TYPE_CHECKING:
@@ -137,18 +143,13 @@ IO_BOUNDARIES_SCHEMA_VERSION: str = "2.2"  # WI-nosah/ADR-0049: net_listen_edges
 #: fallback, whose companion signal is ``is_supported=False`` (INV-javam).
 CATALOG_STATUS_UNSUPPORTED: str = "unsupported"
 
-CATALOG_BOUNDARY_TYPES: tuple[str, ...] = (
-    "fs_read", "fs_write", "net_send", "net_recv",
-    "ipc_recv", "ipc_send", "env_read", "host_info_read", "env_write",
-    "subprocess", "db_read", "db_write",
-    "process_send", "logging",
-    "browser_storage_write",
-    "browser_storage_read",
-    "net_listen",
-)
-KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
-    CATALOG_BOUNDARY_TYPES + ("external_potential", "command_launch"),
-)
+# DERIVED FROM THE REGISTRY (ADR-0050), not written out here. Each spec
+# declares whether a catalogue may declare it; ``catalog_declarable_names``
+# returns those IN DECLARATION ORDER, because ``_parse_catalog`` iterates this
+# tuple and several sites resolve a primitive declared under two boundaries by
+# first-declared-wins. A property test pins the order, not just the membership.
+CATALOG_BOUNDARY_TYPES: tuple[str, ...] = catalog_declarable_names()
+KNOWN_IO_BOUNDARIES: frozenset[str] = all_io_boundary_names()
 
 # Boundaries that are DISCLOSED but EXCLUDED from the ``total_io_edges``
 # headline (the verified/curated I/O surface). ``external_potential`` is
@@ -156,9 +157,11 @@ KNOWN_IO_BOUNDARIES: frozenset[str] = frozenset(
 # is the high-volume, definite-but-uncurated command-mediated launch cohort
 # (WI-javoh). Both are surfaced in their own ``BoundaryMap`` count fields so a
 # consumer sees them without them inflating the headline.
-_DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = frozenset(
-    {"external_potential", "command_launch", "net_listen"},
-)
+# DERIVED: a spec's ``counts_in_headline=False``. Headline membership cuts
+# ACROSS the axis partition -- ``subprocess`` is opaque AND curated, so it
+# counts -- which is why it is per-value metadata on the spec rather than an
+# axis query with one special case (ADR-0024 fold-residue discipline).
+_DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = disclosed_only_names()
 
 
 # The DEFERRED-CROSSING boundaries, mapped to the data boundary each one makes
@@ -221,7 +224,7 @@ DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
 # for BOTH a ``fs_write`` and a ``net_send`` ``must_not_exist`` claim, while
 # ``open(f, "w")`` and ``socket.send`` controls returned ``violated`` rc 1 in
 # the same session.
-OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"subprocess"})
+OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=True)
 
 # The SAME question — "did control leave this process?" — asked of the other
 # channel (INV-larol). A boundary here is SYNTHESISED BY A PRODUCER rather than
@@ -253,7 +256,7 @@ OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"subprocess"})
 # into a root cron directory. Declaring ``subprocess`` alongside restores the
 # refusal, which is the control proving the row matched and the boundary
 # choice — not the analyzer's sight — decided the verdict.
-PRODUCER_OPAQUE_BOUNDARIES: frozenset[str] = frozenset({"command_launch"})
+PRODUCER_OPAQUE_BOUNDARIES: frozenset[str] = opacity_names(catalog_declarable=False)
 
 
 # ---------------------------------------------------------------------------
