@@ -401,7 +401,7 @@ if git diff --cached --name-only | grep -qE "^packages/.*/src/.*/(ir|datamodels|
         exit 1
     fi
 else
-    echo -e "${YELLOW}skipped (no ir.py / datamodels.py staged)${NC}"
+    echo -e "${YELLOW}skipped (no core dataclass file staged)${NC}"
 fi
 
 # Producer-side axis coherence (L3) — gates the producer surface for
