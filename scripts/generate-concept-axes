@@ -62,6 +62,14 @@ from hypergumbo_core.io_boundary_types import (
     IO_BOUNDARY_TYPES,
     IoBoundarySpec,
 )
+from hypergumbo_core.module_key_axis import (
+    AXIS_CALL_SITE_PROPERTY,
+    AXIS_OWNER_PATH,
+    AXIS_PENDING as MODULE_KEY_AXIS_PENDING,
+    AXIS_UNCERTAINTY,
+    MODULE_KEY_AXIOM,
+    MODULE_KEY_NOTIONS,
+)
 
 
 # Edge.type section ordering (most-canonical first). Each entry:
@@ -179,6 +187,43 @@ _IO_BOUNDARY_SECTIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# module-key section ordering (ADR-0051). A STRUCTURAL-POLICY axis: the
+# rows below are the axis's NOTIONS, not its legal field values, which
+# are unenumerable (every package on every index is legal).
+_MODULE_KEY_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        AXIS_OWNER_PATH,
+        "`owner_path` — ADR-0051 compliant",
+        "Notions that name where the callee is DEFINED. A type belongs "
+        "here alongside a namespace: a method-shaped primitive is "
+        "unaddressable without its owning type, and the catalogues have "
+        "always spelled it that way.",
+    ),
+    (
+        AXIS_CALL_SITE_PROPERTY,
+        "`call_site_property` — belongs on the call site, not in the key",
+        "Notions that name the CALL SITE rather than the definition. The "
+        "same primitive reached through a differently-named variable gets "
+        "a different key, which is the defect. Correct home is "
+        "`Edge.meta`, where the receiver's type is already stamped.",
+    ),
+    (
+        AXIS_UNCERTAINTY,
+        "`uncertainty` — honest admissions, not identities",
+        "The analyzer genuinely does not know which module, and says so. "
+        "Non-conformant as an identity while being the right answer to "
+        "the question; these want their own field rather than removal.",
+    ),
+    (
+        MODULE_KEY_AXIS_PENDING,
+        "`pending_classification` — per-value audit pending",
+        "Genuinely contested. Ruling these in the axis declaration would "
+        "be the undisciplined move the axis exists to prevent; verdicts "
+        "arrive with each value's audit-findings document.",
+    ),
+)
+
+
 _HEADER = """\
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <!-- AUTO-GENERATED — do not edit manually.
@@ -287,6 +332,27 @@ properties are carried per value rather than as sections, because both cut
 across the axis partition: whether a catalogue may declare the value
 (`_parse_catalog` iterates exactly the declarable names) and whether it counts
 in the `total_io_edges` headline (`subprocess` is opaque *and* counted).
+"""
+
+_MODULE_KEY_HEADER = """\
+
+---
+
+## `module_key` — the module-key axis (ADR-0051)
+
+**Axiom.** """ + MODULE_KEY_AXIOM + """
+
+One fact with two homes by design — `IoPrimitive.module` on the catalogue side
+and `ExternalRef.module_path` on the edge side — paired by
+`io_boundary._module_matches`.
+
+This is a **structural-policy** axis, not a registry of values: module names
+cannot be enumerated, so what is declared is the set of *notions* a slot may
+carry. `ExternalRef.module_path` previously declared `# axis: free-text` with
+the justification "consumers display/lookup, never branch on the value itself",
+which `_module_matches` contradicts — it infers type-vs-sub-package from
+capitalisation. The lint accepted it because a free-text justification must be
+*present*, not *true*.
 """
 
 
@@ -482,6 +548,14 @@ def render() -> str:
     sections.extend(
         _render_axis_sections(
             IO_BOUNDARY_TYPES, _IO_BOUNDARY_SECTIONS, "_IO_BOUNDARY_SECTIONS",
+        ),
+    )
+
+    # module-key sections (ADR-0051).
+    sections.append(_MODULE_KEY_HEADER)
+    sections.extend(
+        _render_axis_sections(
+            MODULE_KEY_NOTIONS, _MODULE_KEY_SECTIONS, "_MODULE_KEY_SECTIONS",
         ),
     )
 

@@ -509,3 +509,48 @@ The call ARRANGES a crossing it does not itself perform — exactly what the axi
 Not a classification but an admission that the call could not be matched. Declarable by no catalogue, and excluded from the `total_io_edges` headline.
 
 - **`external_potential`** — Synthesised by _compute_external_potential for an unmatched first-party call edge: receiver-unresolved speculative noise that MIGHT be I/O. Not a classification, an admission of uncertainty -- hence no direction.
+
+
+---
+
+## `module_key` — the module-key axis (ADR-0051)
+
+**Axiom.** The module key names the STATIC OWNER PATH of the called symbol -- the namespace or type in which it is DEFINED, spelled in the source language's import vocabulary. It is not a property of the CALL SITE: not the receiver's variable name, not a set of candidates, and not a marker for the absence of an answer.
+
+One fact with two homes by design — `IoPrimitive.module` on the catalogue side
+and `ExternalRef.module_path` on the edge side — paired by
+`io_boundary._module_matches`.
+
+This is a **structural-policy** axis, not a registry of values: module names
+cannot be enumerated, so what is declared is the set of *notions* a slot may
+carry. `ExternalRef.module_path` previously declared `# axis: free-text` with
+the justification "consumers display/lookup, never branch on the value itself",
+which `_module_matches` contradicts — it infers type-vs-sub-package from
+capitalisation. The lint accepted it because a free-text justification must be
+*present*, not *true*.
+
+### `owner_path` — ADR-0051 compliant
+
+Notions that name where the callee is DEFINED. A type belongs here alongside a namespace: a method-shaped primitive is unaddressable without its owning type, and the catalogues have always spelled it that way.
+
+- **`namespace`** — A package, module or import path: os, java.io, net/http, std::fs, node:fs/promises, ./relative/module. The value that would appear in a clean import statement -- NOT the in-scope alias, which is a property of the importing file. C and C++ header names (<string.h>) are namespaces in this sense, and so are JS/TS relative paths: 2.7% of shipped refs, legitimate.
+- **`type`** — The class or type that OWNS a method-shaped primitive: net.Conn, std::fs::File, java.sql.Connection, pathlib.Path. Conformant because a type names where the symbol is DEFINED. This is not a concession -- a method primitive is unaddressable without it, and IoPrimitive.module's own docstring says 'the module or class path'. It is also what makes the capitalisation heuristic in _module_matches necessary: that predicate is trying to recover whether an extra component is a type (same owner) or a sub-package (different owner), which the axis says should be DECLARED rather than inferred from spelling.
+
+### `call_site_property` — belongs on the call site, not in the key
+
+Notions that name the CALL SITE rather than the definition. The same primitive reached through a differently-named variable gets a different key, which is the defect. Correct home is `Edge.meta`, where the receiver's type is already stamped.
+
+- **`receiver_variable`** — The spelling of the receiver at ONE call site -- resp, session, request, fileIO. Non-conformant: a local binding is not where the callee is defined, and the same primitive reached through a differently-named variable gets a different key. Its correct home is Edge.meta on the call site, where the receiver's TYPE is already stamped as receiver_type_hint. _module_matches carries an explicit Swift carve-out for this shape (catalogue name ends with hint, never the reverse), which is the tell: the predicate has a special case whose only purpose is to tolerate a non-conformant value.
+
+### `uncertainty` — honest admissions, not identities
+
+The analyzer genuinely does not know which module, and says so. Non-conformant as an identity while being the right answer to the question; these want their own field rather than removal.
+
+- **`disjunction`** — A comma-joined SET of candidate modules -- cpp joins every #include in the file, because a call in that unit could come from any of them. 6.2% of shipped refs. Non-conformant as an IDENTITY while being the honest answer to the question: the analyzer genuinely does not know which. Already handled downstream by two deliberately different quantifiers -- _module_hint_candidates asks ANY (INV-funuf) and module_hint_disjuncts asks ALL (INV-zimud) -- which is why the shape wants its own field rather than removal.
+- **`sentinel`** — A fixed marker standing for 'no module identity was recovered': 'external' (1.5% of refs) and bash's 'redirect' (0.1%, whose name slot is '>' -- not a call at all). Non-conformant as an identity, and load-bearing as an admission: io_boundary and taint share _UNRESOLVED_MODULE_PLACEHOLDERS_IO precisely so the two cannot drift about what 'no module' looks like.
+
+### `pending_classification` — per-value audit pending
+
+Genuinely contested. Ruling these in the axis declaration would be the undisciplined move the axis exists to prevent; verdicts arrive with each value's audit-findings document.
+
+- **`global_object`** — An ambient runtime object used as the owner path: process, window, document, navigator, console, localStorage. DELIBERATELY UNRULED. The case FOR conformance is real -- you do not import `process` in node, so the global's name IS how JS's vocabulary spells that owner path, and js_ts.py maps each to itself in the import map for exactly that reason. The case AGAINST is that these name a VALUE rather than a definition site, which is the receiver-variable objection one step up. Ruling this in the declaration would be the undisciplined move the axis exists to prevent; it is the first candidate for a per-value audit under ADR-0024's family-audit methodology, and NO ROW MOVES on this note.

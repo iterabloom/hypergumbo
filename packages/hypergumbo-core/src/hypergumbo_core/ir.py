@@ -740,7 +740,7 @@ class ExternalRef:
     """
 
     lang: str  # axis: language
-    module_path: str  # axis: free-text — module import path in source-language grammar; consumers display/lookup, never branch on the value itself.
+    module_path: str  # axis: module-key
     name: str  # axis: free-text — symbol name at the definition site; consumers display/lookup, never branch on the value itself.
 
     def to_dict(self) -> Dict[str, str]:

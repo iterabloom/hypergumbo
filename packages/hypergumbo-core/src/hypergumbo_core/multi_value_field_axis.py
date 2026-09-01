@@ -99,6 +99,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .entrypoints import all_known_entrypoint_kinds
     from .evidence_types import all_evidence_type_names
     from .io_boundary_types import all_io_boundary_names
+    from .module_key_axis import all_module_key_notions
     from .protocol_origins import all_protocol_origin_names
     from .qualified_name_axis import all_qualified_name_languages
     from .symbol_kinds import all_symbol_kind_names
@@ -112,6 +113,11 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         # INV-tafig/ADR-0050: the I/O-boundary vocabulary six
         # consumers branch on. Registry-backed, heavyweight.
         "io-boundary": all_io_boundary_names,
+        # WI-kijup/ADR-0051: what may occupy a module slot.
+        # Structural-policy axis (qualified-name shape): the
+        # resolver returns the axis's NOTIONS, not legal field
+        # values, which are unenumerable.
+        "module-key": all_module_key_notions,
         "language": all_known_languages,
         "pass-id": all_known_pass_ids,
         "protocol-origin": all_protocol_origin_names,
