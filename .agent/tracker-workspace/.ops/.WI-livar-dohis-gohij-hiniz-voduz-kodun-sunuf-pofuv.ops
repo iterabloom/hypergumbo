@@ -27,3 +27,28 @@
   clock: 2  # f52c
   nonce: f52c  # f52c
   message: "INV-tafig (violated, P2) is the SAME SHAPE OF GAP on a different field -- the io_boundary VALUE axis (fs_read/net_send/...) is also absent from _known_axes() with no registry, axiom or drift linter. Related, not duplicate: that item is about the boundary vocabulary, this one about the module key. If the human rules (a) or (b) here, the two should be scoped together -- they would share the registry pattern and the drift-linter shape."  # f52c
+- op: discuss  # 3ac6
+  at: '2026-09-01T19:16:27Z'  # 3ac6
+  by: agent  # 3ac6
+  actor: jgstern_agent  # 3ac6
+  clock: 3  # 3ac6
+  nonce: 3ac6  # 3ac6
+  message: "OWNER RULING (2026-09-01): option (a) -- DECLARE THE AXIS -- and scoped TOGETHER\nwith INV-tafig. This supersedes my (b) input above. WI-livar moves out of\nneeds_human_review and becomes the campaign's design item.\n\nTWO PREMISES RE-VERIFIED IN CODE BEFORE PLANNING, and one is WORSE than filed.\n\n(1) The filed text says the module key has \"no declared axis\". It is sharper\n    than that: ir.py:743 declares one, and the declaration is FALSE.\n\n        module_path: str  # axis: free-text -- module import path in\n        source-language grammar; consumers display/lookup, never branch on\n        the value itself.\n\n    A consumer does branch on the value itself. io_boundary.py:3644\n    _module_matches decides type-vs-sub-package from ORTHOGRAPHY --\n    longer_raw[shared][:1].isupper() -- and the Swift carve-out branches on the\n    value being a single token the catalogue name ends with. So the field is not\n    merely undeclared; it carries a declaration whose stated justification is\n    contradicted by the code. The linter passes it because a free-text\n    justification is required to be PRESENT, not to be TRUE. This matters for\n    scoping: the fix is not only \"add an axis\", it is \"retire a false one\".\n\n(2) The catalogue side of BOTH axes is outside the linter's reach.\n    multi_value_field_axis.DEFAULT_CORE_FILES is exactly ir.py and\n    datamodels.py. IoPrimitive lives in io_boundary.py, so IoPrimitive.module\n    (this item) and IoPrimitive.boundary (INV-tafig) have NO axis comments at\n    all and nothing ever asked them for one. That is the single structural\n    reason both gaps survived: the two halves of each axis are split across a\n    linted file and an unlinted one.\n\nWHAT (a) MEANS HERE, AND WHY IT IS NOT BLOCKED BY THE v9/v10 GATE.\nThe concern recorded above -- that (a) needs a stable_id scheme bump, which\nWI-talos DECISION 3 gates behind two releases -- applies to CHANGING WHAT THE\nSLOT HOLDS, because external_symbol ids embed the module slot\n(rust:external:0-0:File::open). It does NOT apply to declaring the axis.\nADR-0024's own workflow already draws this line: steps 1-4 (ADR, registry,\nlinter, property test) are mandatory and additive; step 7 (migrate violators) is\nexplicitly optional and separate. So:\n\n  PHASE 1, SHIPS NOW, no id change, no scheme bump: axiom + registry + consumer\n  helper + drift linter + property test, and _module_matches reads a DECLARED\n  discriminator instead of inferring one from capitalisation.\n  PHASE 2, QUEUED BEHIND THE GATE: normalising what analyzers put in the slot\n  (objc writes module_path=receiver_name literally) changes emitted ids and is\n  ADR-0024 step 7. It queues behind v9/v10 per WI-talos.\n\nSHAPE OF THE MODULE-KEY AXIS: structural policy, not an enumerable value set --\nthe qualified_name_axis.py precedent (ADR-0024 section 4 \"use judgment\"), since\nmodule names cannot be enumerated. The axis declares WHICH NOTION the slot\ncarries per row (namespace / type / value / receiver-variable / disjunction /\nsentinel), which is exactly the discriminator _module_matches currently guesses.\nINV-tafig's io-boundary axis is the OTHER shape -- 19 enumerable values, so a\nheavyweight edge_types.py-style registry. Shared: the linter, the property-test\nshape, and the DEFAULT_CORE_FILES scope fix, which is why the owner scoped them\ntogether."  # 3ac6
+- op: update  # 5c1e
+  at: '2026-09-01T19:16:56Z'  # 5c1e
+  by: agent  # 5c1e
+  actor: jgstern_agent  # 5c1e
+  clock: 4  # 5c1e
+  nonce: 5c1e  # 5c1e
+  set:  # 5c1e
+    status: todo_hard  # 5c1e
+    priority: 1  # 5c1e
+  add:  # 5c1e
+    tags: [axis]  # 5c1e
+- op: discuss  # 18a2
+  at: '2026-09-01T19:16:56Z'  # 18a2
+  by: agent  # 18a2
+  actor: jgstern_agent  # 18a2
+  clock: 5  # 18a2
+  nonce: 18a2  # 18a2
+  message: "Owner ruled (a) on 2026-09-01 and scoped it with INV-tafig, so this leaves needs_human_review and becomes the campaign design item. P3 -> P1: the ~18-item pile the audit identified hangs off this axiom, and INV-tafig is now sequenced behind it."  # 18a2
