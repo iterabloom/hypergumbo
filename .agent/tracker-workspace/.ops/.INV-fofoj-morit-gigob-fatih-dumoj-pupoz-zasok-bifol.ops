@@ -1,0 +1,26 @@
+- op: create  # 396a
+  at: '2026-09-01T02:28:17Z'  # 396a
+  by: agent  # 396a
+  actor: jgstern_agent  # 396a
+  clock: 1  # 396a
+  nonce: 396a  # 396a
+  data:  # 396a
+    kind: invariant  # 396a
+    title: "A catalogued primitive whose call site is not a function application emits no matchable edge: haskell zero-arg IO actions and java's System.in attribute are rowed but unreachable"  # 396a
+    status: violated  # 396a
+    priority: 1  # 396a
+    parent:  # 396a
+    tags:  # 396a
+    - catalogue  # 396a
+    - haskell  # 396a
+    - java  # 396a
+    - analysis_quality  # 396a
+    - io_boundary  # 396a
+    isbefore: []  # 396a
+    duplicate_of: []  # 396a
+    not_duplicate_of: []  # 396a
+    pr_ref:  # 396a
+    description: "FOUND 2026-09-01 while measuring WI-lipis's haskell and java halves. Found the\nway a dead control is always found: the CONTROL produced no finding, and the\ncontrol is supposed to be the thing that cannot fail.\n\nTHE SHAPE. Every catalogue is keyed on a callee name, and the analyzers emit a\n`calls` edge for a function APPLICATION. A primitive whose call site is not an\napplication -- a zero-argument IO action, or an attribute read -- is rowed but\nemits no matchable edge, so the row is unreachable no matter how it is\nclassified. Rowed is not found (WI-pimun's lesson in a second form).\n\nINSTANCE 1 -- HASKELL ZERO-ARGUMENT IO ACTIONS. Cold survey, one file:\n\n    s <- getLine                      -> NO call edge at all\n    s <- readProcess \"uname\" [] \"\"    -> haskell:external:0-0:readProcess\n\nBoth are rowed ipc_recv under Prelude / System.Process. The discriminator is\napplication-with-arguments, not the row. So Prelude's entire zero-argument\nipc_recv set -- getLine, getChar, getContents, readLn -- is undetectable.\nVerified end-to-end in one cold verify-claims run over the same file: the\n`readProcess` control reaches `writeFile` and returns VIOLATED, while the\n`getLine` function with the identical flow shape produces nothing.\n\nINSTANCE 2 -- JAVA'S ONLY ipc_recv ROW IS AN ATTRIBUTE.\n\n    java.yaml ipc_recv:  module java.lang.System, attributes [in]\n\n    int c = System.in.read();  ->  java:external:0-0:in.read:external_symbol\n\nThe receiver is not resolved to `java.lang.System`, so the attribute row never\nmatches. Consequence: java has ZERO reachable untrusted_input sources through\nipc_recv. (db_read and net_recv DO fire -- `java.sql.ResultSet.getString` and\n`java.net.Socket.getInputStream` both reach a sink in a cold run -- so this is\nspecific to the attribute row, not to java taint generally.)\n\nPOPULATION.\n    haskell getLine/getChar/getContents/readLn    27 sites, 8 repositories\n      (simplex-chat 6, cohort6_crypto 6, pandoc 5, yesod 3, stack 3)\n    java System.in                                not counted; it is one row,\n      but it is the ONLY ipc_recv row java has.\n\nThe haskell count is small. The reason to file anyway is not volume: it is that\nthese are the CANONICAL untrusted-input calls in their languages, they are the\ncontrols any future measurement will reach for, and a dead control reads as\nconfirmation of whatever the measurer already believes. This one already cost a\nretraction once (WI-lipis's first rust probe).\n\nRELATION TO INV-muvis, which must not be assumed to cover it. INV-muvis is about\nthese rows being declared `fs_read` when they should be `ipc_recv`, and haskell's\nPrelude row has SINCE been moved to ipc_recv -- so INV-muvis's catalogue half\nlooks done for haskell while the calls remain just as undetectable. Fixing a row\ndoes not make it reachable. That is the whole point of filing this separately.\n\nTWO INSTANCES, ONE FAMILY, CAUSES NOT ESTABLISHED AS IDENTICAL. A zero-argument\napplication and an attribute read are different constructs and may need\ndifferent fixes. Do not fix one and assume the other -- INV-zuvib's filed first\nstep, for the same reason.\n\nREPRO ARTEFACT: scratchpad lipis4/{hs2,java2,java3,java_ctrl}/"  # 396a
+    fields:  # 396a
+      statement: "Every catalogued primitive must be reachable by some call site the analyzers emit an edge for. VIOLATED: haskell 'getLine' (and getChar/getContents/readLn) emit no call edge at all, while 'readProcess x y z' in the same file does; java's System.in emits java:external:0-0:in.read rather than resolving java.lang.System, so java's only ipc_recv row never matches and java has no reachable untrusted_input source through ipc_recv."  # 396a
+      root_cause: "The analyzers emit a calls edge for a function APPLICATION and the catalogues are keyed on the callee of one. A zero-argument IO action bound with '<-' is a bare identifier, not an application, so haskell emits nothing; an attribute read is a field access, not a call, so java emits an unresolved receiver-qualified name. The row's boundary is therefore irrelevant -- correcting the classification, as INV-muvis did for haskell's Prelude rows, leaves the call just as undetectable."  # 396a
