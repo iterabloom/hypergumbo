@@ -1,0 +1,33 @@
+- op: create  # a83f
+  at: '2026-08-31T23:16:20Z'  # a83f
+  by: agent  # a83f
+  actor: jgstern_agent  # a83f
+  clock: 1  # a83f
+  nonce: a83f  # a83f
+  data:  # a83f
+    kind: invariant  # a83f
+    title: "bash calls a name assigned only in the SOURCING script an environment read, so a sourced variable becomes a host_secret source"  # a83f
+    status: violated  # a83f
+    priority: 2  # a83f
+    parent:  # a83f
+    tags:  # a83f
+    - taint  # a83f
+    - bash  # a83f
+    - dataflow  # a83f
+    isbefore: []  # a83f
+    duplicate_of: []  # a83f
+    not_duplicate_of: []  # a83f
+    pr_ref:  # a83f
+    description: "FOUND BY CLOSING INV-fumod SHAPE (b), AND IT IS THE ROW THAT SURVIVED IT.\nFiled separately on the owner's ruling rather than folded in, because it is a\ndifferent mechanism with a different fix.\n\nTHE DEFECT. bash.py's env-read rule is \"an expansion whose name is never\nassigned in THIS FILE came from the environment\" -- the conservative\ndiscriminator available without cross-file analysis. It is wrong whenever a\nscript is `source`d by another that assigns the name. Live instance, cold,\nafter shape (b) closed:\n\n  guacamole-docker/build.d/020-download-drivers.sh\n    :59  local DEST_PATH=\"$DESTINATION/drivers/\"\n    :71  curl -L \"$URL\" > \"$DEST_PATH/$DEST_JAR\"\n\n  reports host_secret -> host_fs, sourced at DESTINATION. DESTINATION is NOT\n  an environment variable: it is assigned exactly once in the whole tree, at\n  guacamole-docker/bin/build-guacamole.sh:58 (DESTINATION=\"$2\"), supplied as\n  the literal /opt/guacamole at Dockerfile:72, and 020-download-drivers.sh runs\n  only because build-guacamole.sh:61-63 SOURCES it. Measurement 0006's human\n  refuter established the same thing by hand (\"$DESTINATION is NOT environ ...\n  grep -rn 'export ' guacamole-docker/ returns only ...\").\n\nWHY IT IS NOT INV-fumod SHAPE (b). That shape is \"bytes fetched by a command\nwhose ARGUMENT is tainted are credited to the redirect\" -- a claim about the\nBYTES, now refused (the MYSQL_JDBC_VERSION row is gone; violated(6) ->\nviolated(3) on the item's own instance). This row is credited through the\nredirect's OPERAND by a name that should never have been a taint source at\nall. Different half of the sink, different cause, different fix.\n\nTHE FIX IS CROSS-`source` NAME REACH, and the graph already exists: bash.py\nemits source/. edges (its `source`/`.` branch), and WI-zovuz's closure is\nwhole-file. What is missing is following an import edge so a name assigned in\nthe SOURCING script is known to be assigned. Note the ordering hazard: bash is\ndynamically scoped and a sourced script sees the sourcer's assignments, so the\nclosure must run over the source-graph, not per file in isolation.\n\nSCOPE NOTE, so this is not read as bigger than it is: WI-zovuz already\nestablished the machinery (derivation closure, positional binding, fail-closed\non parse errors, the `<key>_values` collapsed-edge reader). This is that\nclosure taught to cross one edge type.\n\nNOT MEASURED YET: how many cohort findings rest on a name assigned only in a\nsourcing script. The guacamole row is one. Measuring that population is step\none, before any gate -- the same order that saved WI-zovuz from shipping a\nbyte-producer rule that deleted a real signing certificate."  # a83f
+    fields:  # a83f
+      statement: "A bash expansion whose name is never assigned in its own file is classified as an environment read, so a variable assigned in a script that SOURCES it (guacamole's DESTINATION, assigned at build-guacamole.sh:58 as $2) becomes a host_secret taint source and carries a host_fs finding through the redirect's target operand."  # a83f
+      root_cause: "The env-read discriminator is scoped to a single file because no cross-file name analysis exists; bash.py emits source/. edges but the WI-zovuz derivation closure does not follow them."  # a83f
+- op: update  # ab62
+  at: '2026-09-01T00:09:08Z'  # ab62
+  by: agent  # ab62
+  actor: jgstern_agent  # ab62
+  clock: 2  # ab62
+  nonce: ab62  # ab62
+  set:  # ab62
+    fields:  # ab62
+      root_cause: "The env-read discriminator is scoped to a single file because no cross-file name analysis exists. CORRECTED 2026-08-31: the original text said the fix is that \"bash.py emits source/. edges but the WI-zovuz derivation closure does not follow them\". Following those edges does NOT reach this item's own instance. guacamole sources via `for SCRIPT in /opt/guacamole/build.d/*.sh; do source \"$SCRIPT\"; done` (build-guacamole.sh:61-63), so the emitted `sources` edge carries sourced_path=\"$SCRIPT\" -- a loop variable over a glob of a CONTAINER path that does not exist in the repository tree. The files live at guacamole-docker/build.d/ and are connected to /opt/guacamole/build.d/ only by Dockerfile:64 COPY. Reaching the instance through the edge therefore needs variable resolution AND glob expansion AND a cross-language Dockerfile path mapping."  # ab62
