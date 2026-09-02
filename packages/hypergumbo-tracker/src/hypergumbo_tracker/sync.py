@@ -1307,6 +1307,141 @@ def preflight_check(repo_root: Path) -> PreflightResult:
     )
 
 
+_SYNC_BRANCH_PREFIX = "tracker-sync/"
+
+
+def _sync_branch_names(repo_root: Path, remote: str) -> list[str]:
+    """Every ``tracker-sync/*`` branch name visible under ``remote``.
+
+    ``remote=""`` reads LOCAL branches, which is what the tests use and what a
+    caller wants when it has already fetched. A non-empty remote reads that
+    remote's tracking refs; the caller is responsible for fetching first, since
+    pruning on a stale ref set would evaluate the predicate against an old base.
+    """
+    pattern = (
+        f"refs/remotes/{remote}/{_SYNC_BRANCH_PREFIX}*"
+        if remote
+        else f"refs/heads/{_SYNC_BRANCH_PREFIX}*"
+    )
+    result = _git(
+        repo_root, "for-each-ref", "--format=%(refname:short)", pattern,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if remote:
+        prefix = f"{remote}/"
+        names = [n[len(prefix):] if n.startswith(prefix) else n for n in names]
+    return names
+
+
+def find_superseded_sync_branches(
+    repo_root: Path,
+    base_branch: str = "dev",
+    remote: str = "origin",
+) -> list[str]:
+    """``tracker-sync/*`` branches whose merge into ``base_branch`` changes NOTHING.
+
+    WHY THIS PREDICATE AND NOT "DOES THE FORGE SAY CONFLICT". Those are different
+    questions and conflating them destroys data. A sync branch conflicts on the
+    forge whenever it and ``dev`` both appended to one ``.ops`` file, because
+    ``merge=union`` is a client-side driver the server does not read — that is
+    true of a branch holding unique ops and of one holding none. Only "the merge
+    result equals the base tree" distinguishes them, and only that licenses
+    closing anything.
+
+    WHY IT IS SAFE. The tree comparison is exact: if merging the branch produces
+    the base's own tree, the branch contributes zero bytes, so closing its PR can
+    lose nothing. A branch holding one line dev lacks yields a different tree and
+    is never returned.
+
+    FAILS SAFE, DELIBERATELY. ``git merge-tree --write-tree`` needs git >= 2.38;
+    a missing base ref, a non-repo, or an old client all yield an EMPTY list
+    rather than an exception or a guess. An undecidable predicate must not read
+    as "superseded" — that would close PRs on the strength of a missing feature.
+
+    Args:
+        repo_root: Git repository root.
+        base_branch: Branch the sync PRs target (default ``dev``).
+        remote: Remote whose tracking refs to read; ``""`` reads local branches.
+            The caller must have fetched already.
+
+    Returns:
+        Sorted branch names, safe to close. Empty when undecidable.
+    """
+    if not repo_root.is_dir():
+        # ``_git`` passes repo_root as subprocess cwd and raises on a missing
+        # directory rather than returning non-zero, so the fail-safe contract
+        # has to be honoured here rather than by reading a return code.
+        return []
+
+    base_ref = f"{remote}/{base_branch}" if remote else base_branch
+    base_tree = _git(repo_root, "rev-parse", f"{base_ref}^{{tree}}", check=False)
+    if base_tree.returncode != 0:
+        return []
+    want = base_tree.stdout.strip()
+    if not want:
+        return []
+
+    superseded: list[str] = []
+    for branch in _sync_branch_names(repo_root, remote):
+        branch_ref = f"{remote}/{branch}" if remote else branch
+        merged = _git(
+            repo_root, "merge-tree", "--write-tree", base_ref, branch_ref,
+            check=False,
+        )
+        if merged.returncode != 0:
+            # A CONFLICT here is not a reason to prune — it is the ordinary
+            # state of every stale sync branch on a client without the union
+            # driver in play, and it says nothing about unique content.
+            continue
+        if merged.stdout.strip().splitlines()[:1] == [want]:
+            superseded.append(branch)
+    return sorted(superseded)
+
+
+def prune_superseded_sync_branches(
+    repo_root: Path,
+    base_branch: str = "dev",
+    *,
+    dry_run: bool = True,
+    api_base: str | None = None,
+    token: str | None = None,
+) -> list[str]:
+    """Close the PR and delete the branch for each superseded sync branch.
+
+    Both actions are best-effort and non-fatal: this is litter collection, and a
+    forge hiccup must never fail the sync that called it. Returns the branches
+    acted on (or that WOULD be acted on under ``dry_run``).
+    """
+    fetch = _git(repo_root, "fetch", "origin", base_branch, check=False)
+    if fetch.returncode != 0:  # pragma: no cover - offline path
+        _log("prune: fetch failed, skipping (stale refs would misjudge the base)")
+        return []
+
+    candidates = find_superseded_sync_branches(repo_root, base_branch, "origin")
+    if not candidates or dry_run:
+        return candidates
+
+    if token is None:
+        env = _load_env(repo_root)
+        token = env.get("HG_GITHUB_TOKEN") or env.get("FORGEJO_TOKEN") or ""
+    if not token:  # pragma: no cover - unauthenticated path
+        _log("prune: no token available, reporting only")
+        return candidates
+
+    if api_base is None:
+        api_base = _detect_api_base(repo_root)
+    for branch in candidates:
+        found = _find_open_pr(api_base, token, branch)
+        if found is not None:
+            _close_pr(api_base, token, found[0])
+            _log(f"prune: closed PR #{found[0]} for superseded {branch}")
+        _delete_remote_branch(api_base, token, branch)
+    return candidates
+
+
 def do_sync(
     repo_root: Path,
     preflight: PreflightResult,
