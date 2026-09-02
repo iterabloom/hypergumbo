@@ -1,0 +1,23 @@
+- op: create  # ab35
+  at: '2026-09-02T12:06:45Z'  # ab35
+  by: agent  # ab35
+  actor: jgstern_agent  # ab35
+  clock: 1  # ab35
+  nonce: ab35  # ab35
+  data:  # ab35
+    kind: work_item  # ab35
+    title: "ADR-0017 section 4 summaries exist for exactly ONE builtin function, so INV-foluz's new edges make the walk more conservative — a WI-kabif prerequisite"  # ab35
+    status: todo_hard  # ab35
+    priority: 1  # ab35
+    parent:  # ab35
+    tags:  # ab35
+    - taint  # ab35
+    - adr_0017  # ab35
+    - dataflow  # ab35
+    - python  # ab35
+    isbefore: []  # ab35
+    duplicate_of: []  # ab35
+    not_duplicate_of: []  # ab35
+    pr_ref:  # ab35
+    description: "PREREQUISITE FOR WI-kabif (section 3a removal authority), found while shipping\nINV-foluz in PR #711 and filed rather than folded into it.\n\nTHE FACT. function_summaries/python_stdlib.yaml holds 16 entries, of which\nexactly ONE is a builtin FUNCTION: builtins.print. (builtins.list.pop is a\nmethod.) Every other builtin callee has no ADR-0017 section 4 summary at all.\n\nWHY THAT NOW MATTERS MORE THAN IT DID. Before INV-foluz, a bare builtin call\nemitted no edge, so the walk saw nothing at the line. After it, the call reaches\ncallees_at -- and taint.py's call_beside_heir branch enumerates the PERMITTING\ncases rather than the blocking ones:\n\n    if not (callees_at or {}).get((symbol_id, use_line)):\n        continue                      # no callee   -> NOT an escape\n    if _use_site_terminates(...):\n        continue                      # terminates  -> NOT an escape\n    escaped = True                    # callee, no summary -> ESCAPE\n\nSo a callee WITHOUT a summary converts \"not an escape\" into an escape. Measured\non hypergumbo-core: 13,193 new edges, of which 459 (builtins.print) are\nconsultable and 12,734 are not.\n\nDIRECTION, PRECISELY. A confirmation cannot be lost -- `return True`\nshort-circuits at taint.py:3598, before the post-loop `if escaped: return None`\nat :3690. The movement is False -> None only: fewer refutations, never a\nsuppressed finding. That is the SAFE direction, which is why INV-foluz shipped\nwithout waiting on this. It is also the direction that makes WI-kabif weaker,\nwhich is why this must land BEFORE removal authority is exercised rather than\nafter.\n\nTHE WORK. Write section 4 summaries for the builtins the corpus actually calls,\nby measured frequency rather than by guess. Top callees on the two A/B repos:\n\n    hypergumbo-core   len 4660, str 1826, set 990, frozenset 978, isinstance 665,\n                      range 514, sorted 486, print 459, any 456, list 322,\n                      next 301, getattr 298\n    pretix            str 1512, super 1415, len 1092, isinstance 757, dict 511,\n                      list 473, set 293, getattr 281, hasattr 245, int 238\n\nTheir taint semantics are well-defined and enumerable, which is what makes this\ntractable and what distinguishes it from a general summary-writing project:\n  * TERMINATING (return derives nothing from the argument's CONTENT):\n    len, isinstance, hasattr, id -- note len leaks LENGTH, so if any consumer\n    ever treats size as sensitive this needs re-deciding rather than assuming.\n  * PROPAGATING (param_to_return): str, list, dict, set, frozenset, tuple,\n    sorted, reversed, next, iter, enumerate.\n  * NEEDS A RULING: getattr / setattr / super -- dynamic attribute access is\n    where a summary can be confidently wrong in the deleting direction.\n\nDO NOT BULK-STAMP. A wrong TERMINATING summary licenses a False, and since\nPR #214 a False earns `sanitized` and DROPS a flow. Each row needs its own\njustification, and the propagating/terminating split above is a starting\nhypothesis, not a verdict.\n\nMEASURE THROUGH FINDINGS, not through edges: re-run INV-busis's escape-cause\nbreakdown before and after, and report the walks that changed verdict."  # ab35
+    fields: {}  # ab35

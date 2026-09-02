@@ -1,0 +1,25 @@
+- op: create  # e713
+  at: '2026-09-02T12:07:11Z'  # e713
+  by: agent  # e713
+  actor: jgstern_agent  # e713
+  clock: 1  # e713
+  nonce: e713  # e713
+  data:  # e713
+    kind: invariant  # e713
+    title: "python: a receiver rooted at a subscript, call or binop emits NO call edge at all (INV-mumov's refuted emission clause does not cover non-Name roots)"  # e713
+    status: violated  # e713
+    priority: 2  # e713
+    parent:  # e713
+    tags:  # e713
+    - taint  # e713
+    - python  # e713
+    - analyzer  # e713
+    - adr_0017  # e713
+    isbefore: []  # e713
+    duplicate_of: []  # e713
+    not_duplicate_of: []  # e713
+    pr_ref:  # e713
+    description: "FOUND 2026-09-02 while shipping INV-foluz (PR #711), by running the production\nanalyzer over a fixture covering every receiver shape rather than only the ones\nthat item named.\n\nTHE FACT, read in code. _unwind_attribute_chain (py.py:5344) walks an\nast.Attribute chain back to its root and returns None unless that root is an\nast.Name:\n\n    attrs = []\n    current = node\n    while isinstance(current, ast.Attribute):\n        attrs.append(current.attr); current = current.value\n    if not isinstance(current, ast.Name):\n        return None\n\nSo every receiver rooted at something other than a bare name emits NO CALL EDGE\nAT ALL. Measured on the production analyzer:\n\n    items[i].startswith(x)     SUBSCRIPT root   -> no edge\n    f().x.y()                  CALL root        -> no edge   (per the docstring)\n    (a + b).c()                BINOP root       -> no edge   (per the docstring)\n\nRELATIONSHIP TO INV-mumov, stated because the titles collide. INV-mumov's title\nrecords that its EMISSION clause is REFUTED -- attribute chains do emit, and its\nlive gap is that the module slot degrades to `external` (an L3 / INV-linub\nconcern). That refutation is true for Name-ROOTED chains, which is what was\nmeasured. It does not cover these three shapes, where emission is still absent\nrather than merely unqualified. Filed separately so INV-mumov's refuted clause\nis not quietly re-opened.\n\nWHY IT IS NOT COSMETIC. It is the same \"costs twice\" INV-mumov documents: no edge\nmeans the sink is never considered (a false negative in the flow report) AND the\ncall stays out of callees_at, so the section 3a walk records an ESCAPE where a\nsection 4 summary could have accounted for the step. INV-busis attributes 50.0%\nof escape sites to \"no call edge emitted at all\"; INV-foluz closed the bare-name\nhalf of that bucket, and this is a remaining member of it.\n\nNOT SIZED. The corpus population of these three shapes was NOT measured -- the\nfixture proves the mechanism, not its volume. Size it before building: the\ndocstring's stated rationale (\"those receivers don't participate in\nimport-qualified call resolution and would be misresolved if we pretended they\ndid\") is a real argument for the RESOLUTION path and not obviously an argument\nfor emitting nothing, since the sibling INV-mumov branch already emits\n`python:external:0-0:<attr>:unresolved` for exactly the \"receiver type genuinely\nunknown\" case."  # e713
+    fields:  # e713
+      statement: "Every call site of a catalogued taint source or sink in Python produces a calls edge regardless of receiver syntax. VIOLATED for non-Name-rooted receivers: items[i].startswith(x), f().x.y() and (a+b).c() emit nothing, because _unwind_attribute_chain returns None unless the chain root is an ast.Name."  # e713
+      root_cause: "py.py:5344 _unwind_attribute_chain walks an ast.Attribute chain back to its root and returns None for any root that is not an ast.Name, so the caller emits no edge. The docstring justifies this for the RESOLUTION path, but the sibling INV-mumov branch already emits python:external:0-0:<attr>:unresolved for the 'receiver type genuinely unknown' case, so the same argument does not license emitting nothing."  # e713
