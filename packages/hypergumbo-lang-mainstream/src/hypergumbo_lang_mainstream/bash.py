@@ -548,12 +548,58 @@ def _norm_join(base: str, rel: str) -> str:
     return "/".join(parts)
 
 
-def _assigned_names(tree: "tree_sitter.Tree", source: bytes) -> set[str]:
-    """Names this file assigns -- INV-jurif's whole-file discriminator.
+#: A parameter expansion that supplies a DEFAULT, an ALTERNATE or an ERROR for
+#: an unset name. Writing any of these is the script declaring the name may
+#: arrive from outside: ``${VAR:-x}`` means "if VAR is unset or null, use x".
+#:
+#: Deliberately NOT the transforming forms -- ``${VAR#p}``, ``${VAR%p}``,
+#: ``${VAR/a/b}``, ``${#VAR}`` -- which operate on a value the script already
+#: holds and say nothing about its origin. Treating those as evidence of
+#: external supply would make every local string manipulation a taint source.
+_DEFAULTED_EXPANSION = re.compile(
+    r"\$\{([A-Za-z_][A-Za-z0-9_]*):?[-=?+]"
+)
 
-    ONE HOME: the edge extractor and the repo index must agree exactly, and a
-    second copy of this three-line rule is how the two drift into calling
-    different things an environment read.
+
+def _externally_defaulted_names(
+    tree: "tree_sitter.Tree", source: bytes,
+) -> set[str]:
+    """Names the file assigns AND still reads from its environment (INV-sihom).
+
+    The conditional-default idiom is one of the commonest ways a shell script
+    reads its environment -- test whether the environment supplied the name,
+    assign a FALLBACK only when it did not:
+
+        if [[ -z ${TMPDIR:-} ]]; then TMPDIR=/var/tmp; fi
+
+    Read through the whole-file assignment rule alone, the fallback at line 2
+    is proof ``TMPDIR`` is a local. It is the opposite: it is the script
+    saying the value MAY come from outside. Measured cost of getting this
+    wrong -- three of the seven adjudicated USEFUL true positives that
+    measurement 0006 recorded and the tool later stopped reporting, including
+    ``gocryptfs#2``, which 0006's own panel had already reversed once by hand.
+
+    Read off ``expansion`` NODES rather than the raw file so a ``${VAR:-}``
+    inside a comment cannot mint a source. String interiors are deliberately
+    included: the shell expands inside double quotes.
+    """
+    names: set[str] = set()
+    for node in iter_tree(tree.root_node):
+        if node.type == "expansion":
+            names.update(_DEFAULTED_EXPANSION.findall(node_text(node, source)))
+    return names
+
+
+def _assigned_names(tree: "tree_sitter.Tree", source: bytes) -> set[str]:
+    """Names this file SETS ITSELF -- INV-jurif's whole-file discriminator.
+
+    Not simply "names assigned": a name the file assigns is excluded again
+    when the file also reads it with a default operator, because that
+    assignment is a fallback rather than a definition (INV-sihom). The
+    subtraction lives here, in the ONE HOME, rather than at either consumer:
+    the edge extractor and the repo index must agree exactly, and a second
+    copy of this rule is how the two drift into calling different things an
+    environment read.
     """
     names: set[str] = set()
     for node in iter_tree(tree.root_node):
@@ -561,7 +607,7 @@ def _assigned_names(tree: "tree_sitter.Tree", source: bytes) -> set[str]:
             name_node = find_child_by_type(node, "variable_name")
             if name_node is not None:
                 names.add(node_text(name_node, source))
-    return names
+    return names - _externally_defaulted_names(tree, source)
 
 
 def _redirect_origin_names(

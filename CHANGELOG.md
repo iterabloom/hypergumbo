@@ -12,6 +12,12 @@ This changelog tracks the **tool version** (package releases). The **schema vers
 
 ## [Unreleased]
 
+### Fixed
+
+- **A SHELL VARIABLE GIVEN A DEFAULT IS STILL READ FROM THE ENVIRONMENT (INV-sihom).** INV-jurif's env-read discriminator is *"a variable expansion whose name is never ASSIGNED in this file"*. That is right for a local and wrong for the conditional-default idiom — one of the commonest ways a shell script reads its environment: test whether the environment supplied the name, and assign a **fallback** only when it did not. `gocryptfs/test.bash:17` is the canonical shape (`if [[ -z ${TMPDIR:-} ]]; then TMPDIR=/var/tmp; fi`), and the whole-file rule read that fallback as proof `TMPDIR` is a local. `${VAR:-x}` means "if VAR is unset or null, use x" — writing it is the script declaring the value may arrive from outside. All eight default/alternate/error operators now count (`:-`, `-`, `:=`, `=`, `:?`, `?`, `:+`, `+`); the transforming forms (`${VAR#p}`, `${VAR%p}`, `${VAR/a/b}`, `${#VAR}`) deliberately do not, since they operate on a value the script already holds and say nothing about its origin.
+- **The subtraction lives in `_assigned_names` itself, the ONE HOME its docstring names**, because the edge extractor and the repo `source`-join index both consult it and a second copy is how the two drift into calling different things an environment read. Read off `expansion` nodes rather than raw text, so a `${VAR:-}` in a comment cannot mint a source.
+- **Behavioural evidence: `gocryptfs/test.bash` returns to `violated`** — `env.environ → redirect.>` — which is the flow measurement 0006 recorded and whose true-positive label it reached only on a **second** pass, after finding `exec 200> "$LOCKFILE"`, a numbered-fd redirect to an env-derived path. That reversal survived human review and had since been lost.
+
 ### Added
 
 - **THE ADJUDICATION PACKET BUILDER IS IN-REPO AND TESTED, AND IT WAS MANUFACTURING EVIDENCE OF ABSENCE (WI-rudin).** Measurement 0006's own §F names ~12 reports against *"the measurement's own packet builder, NOT hypergumbo"* and ends **"Fix before reuse."** That builder was a session artifact and was never committed, so its defects could only be re-encountered — the same failure WI-ratuv recorded when an uncommitted script made a 589 → 782 delta unattributable. It now ships as `measure-taint-precision.py packet` with 42 tests, one per named defect.
