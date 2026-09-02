@@ -1,0 +1,25 @@
+- op: create  # 2339
+  at: '2026-09-02T05:41:10Z'  # 2339
+  by: agent  # 2339
+  actor: jgstern_agent  # 2339
+  clock: 1  # 2339
+  nonce: '2339'  # 2339
+  data:  # 2339
+    kind: invariant  # 2339
+    title: "haskell.yaml rows System.Exit's exitWith/exitFailure/exitSuccess/die as env_write, so a process exit derives a host_env taint SINK (26 chains, latent until INV-fofoj made them reachable)"  # 2339
+    status: violated  # 2339
+    priority: 2  # 2339
+    parent:  # 2339
+    tags:  # 2339
+    - catalogue  # 2339
+    - haskell  # 2339
+    - io_boundary  # 2339
+    - taint  # 2339
+    isbefore: []  # 2339
+    duplicate_of: []  # 2339
+    not_duplicate_of: []  # 2339
+    pr_ref:  # 2339
+    description: "FOUND 2026-09-02 when INV-fofoj's fix made these rows reachable for the first\ntime and 26 chains appeared under a boundary that does not describe them.\n\n    haskell.yaml, env_write:\n      - module: System.Exit\n        functions: [exitWith, exitFailure, exitSuccess, die]\n\nA PROCESS EXIT IS NOT AN ENVIRONMENT WRITE. `env_write`'s siblings in the same\nblock are System.Environment's setEnv/unsetEnv/withArgs/withProgName, which do\nmutate the process environment. exitWith/exitFailure/exitSuccess/die terminate\nthe process; they write nothing an `env_read` could later observe, and the\ntaint model derives a SINK at trust zone `host_env` from every env_write row\n(spec section on auto-derived sinks). So a value flowing into `die msg` is\nreported as reaching the host environment.\n\nMEASURED. Over the eight haskell repositories, once these rows became\nreachable: exitFailure 16 chains, exitSuccess 10. They were unreachable before\nonly because a bare `exitFailure` on a `do` line is not an application --\nINV-fofoj's mechanism -- so the mis-declaration has been latent, not benign.\n\nTHIS IS INV-nular's RULE (\"kind asserted by name, never checked against\nsemantics\") reaching a row whose name gives no cover at all: nothing about\n`exitFailure` suggests the environment.\n\nWHAT THE RIGHT ANSWER IS, NOT DECIDED HERE. Three shapes, and the cheapest is\nnot obviously right:\n  (a) drop the rows -- process exit crosses no I/O boundary this vocabulary\n      names, so the honest answer may be \"not an I/O primitive\";\n  (b) a process-lifecycle boundary, which does not exist in the io-boundary\n      axis (ADR-0050, 19 values) and would be a new heavyweight axis value\n      with the full four-artifact scaffolding;\n  (c) leave them and accept that `die` reads as a host_env sink.\n(a) is cheapest and (c) is the status quo; do not default. Whether OTHER\ncatalogues row their exit primitives the same way is UNMEASURED and is the\nfirst step -- python's sys.exit, go's os.Exit, rust's std::process::exit and\nc's exit()/_exit() are the obvious peers, and if they disagree with each other\nthat is a second finding.\n\nREPRO\n  grep -n -A2 'module: System.Exit' \\\n    packages/hypergumbo-core/src/hypergumbo_core/io_primitives/haskell.yaml\n  printf 'import System.Exit\\nmain = do\\n  putStrLn \"x\"\\n  exitFailure\\n' \\\n    > /tmp/e/Main.hs && hypergumbo io-boundaries /tmp/e --format json"  # 2339
+    fields:  # 2339
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: System.Exit terminates the process and writes nothing to the environment, but is rowed env_write, from which the taint model auto-derives a sink at trust zone host_env."  # 2339
+      root_cause: "The env_write block groups System.Environment (which really does mutate the environment) with System.Exit (which does not), and the io-boundary axis has no process-lifecycle value to put the latter under, so a wrong-but-adjacent boundary was chosen over none."  # 2339

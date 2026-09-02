@@ -1,0 +1,32 @@
+- op: create  # 1478
+  at: '2026-09-02T05:40:13Z'  # 1478
+  by: agent  # 1478
+  actor: jgstern_agent  # 1478
+  clock: 1  # 1478
+  nonce: '1478'  # 1478
+  data:  # 1478
+    kind: work_item  # 1478
+    title: "haskell zero-arg IO actions in INFIX positions (bind, reverse-bind, fmap, applicative) still emit no call edge: 63 catalogued sites, excluded on a measured 18-35% wrong-edge rate"  # 1478
+    status: todo_hard  # 1478
+    priority: 3  # 1478
+    parent:  # 1478
+    tags:  # 1478
+    - haskell  # 1478
+    - catalogue  # 1478
+    - analysis_quality  # 1478
+    - io_boundary  # 1478
+    isbefore: []  # 1478
+    duplicate_of: []  # 1478
+    not_duplicate_of: []  # 1478
+    pr_ref:  # 1478
+    description: "FOUND 2026-09-02 while fixing INV-fofoj, and found by the measurement that\nchose that fix's scope rather than by looking for it.\n\nTHE SHAPE. haskell's analyzer now emits a calls edge for a bare identifier in\nthree positions where it is unambiguously executed: `pat <- act`, a bare `do`\nstatement, and the argument of a run-the-action combinator. It deliberately\ndoes NOT emit for the infix operators, which are equally execution positions\nsemantically -- `getContents >>= putStrLn`, `f =<< getLine`,\n`lines <$> getContents`, `a <*> b`, `a *> b`.\n\nTHE EXCLUSION IS MEASURED, NOT ASSUMED, and this item exists so the trade is\nvisible rather than buried in a docstring. Every bare-identifier site in the\neight distinct haskell repositories was classified as catalogued /\nmodule-level-in-repo / bound-inside-the-enclosing-definition:\n\n    position          catalogued  1st-party  local-bound  other   total  wrong\n    pat <- act               267       1172          294    861    2594  11.3%\n    bare do statement         33        768          164    111    1076  15.2%\n    liftIO act               142        164           68     65     439  15.5%\n    -- EXCLUDED --\n    <$>                       23        376          530    574    1503  35.3%\n    >>=                        5        116          119    122     362  32.9%\n    <*>                        1        149          227    320     697  32.6%\n    =<<                       11         24           23     30      88  26.1%\n    >>                        23        321          116     62     522  22.2%\n    *> / <*                    0        501          187    307     995  18.8%\n\nWHY THE OPERATORS ARE WORSE, and it is not an accident of this corpus.\nHaskell spells fmap/bind over Maybe, Either, lists and every other monad with\nthe SAME operators it spells IO with. `f <$> xs` over a list is a value\nmapping, not a call, and nothing in the syntax distinguishes it from\n`f <$> getContents`. The `do`-statement positions do not have this problem\nbecause a bare identifier as a statement or as a `<-` right-hand side is being\nRUN whatever the monad, so the only error left there is naming a local\nbinding, which the fail-closed guard already removes most of.\n\nCOST OF THE GAP: 63 catalogued sites unreachable through these positions, over\neight repositories. It is a SITE-level recall gap, not a primitive-level\nreachability gap -- every catalogued name that appears in an excluded position\nalso appears in a covered one somewhere in the corpus, which is why INV-fofoj\nclosed. The exception is `yield`, which appears only under `>>`, and which is\nin haskell.yaml's ambiguous_names and therefore suppressed anyway.\n\nWHAT WOULD ACTUALLY FIX IT, so the next person does not reach for a better\nheuristic. Nothing syntactic will: the true and false cases are spelled\nidentically, which is WI-zozun's shape in a second place. The discriminator is\na TYPE -- is this expression in IO? -- and haskell type inference is not\nsomething the tree-sitter analyzer has or should grow. Two honest directions:\n  (a) accept the gap permanently and record it (this item as a wont_do);\n  (b) a narrow, local type hint: a `do` block whose enclosing definition has a\n      signature ending in `IO a` is an IO do-block, so operands of `>>=`/`<$>`\n      INSIDE it are actions. Coverage is bounded by how many definitions carry\n      signatures, which is UNMEASURED and is the first step if (b) is chosen.\nDo not pick from the armchair. (b)'s size is unmeasured and that measurement\nis the next step for this item.\n\nPINNED: test_infix_operand_is_deliberately_excluded in\npackages/hypergumbo-lang-common/tests/test_haskell_zero_arg_actions.py\nasserts the exclusion, so a later reader must re-measure rather than assume."  # 1478
+    fields: {}  # 1478
+- op: update  # 1a47
+  at: '2026-09-02T05:40:24Z'  # 1a47
+  by: agent  # 1a47
+  actor: jgstern_agent  # 1a47
+  clock: 2  # 1a47
+  nonce: 1a47  # 1a47
+  set: {}  # 1a47
+  add:  # 1a47
+    not_duplicate_of: [WI-mital-jusaf-kuzif-lukin-sanat-gotok-biput-mutih]  # 1a47
