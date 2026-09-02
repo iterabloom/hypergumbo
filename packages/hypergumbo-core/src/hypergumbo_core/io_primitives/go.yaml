@@ -54,6 +54,40 @@ fs_read:
     notes: "Deprecated in Go 1.16 but still widely used"
   - module: filepath
     functions: [Walk, WalkDir, Glob]
+  - module: bufio
+    functions: [NewScanner, NewReader]
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      INV-bagok. These wrap an arbitrary io.Reader, so WHICH boundary the
+      crossing is depends entirely on the argument -- and the ipc_recv twin
+      carried the whole primitive on the note "When wrapping os.Stdin", a
+      condition holding at 11 of 236 censused sites (4.7%).
+
+      THE ANALYZER HAS BEEN STAMPING THE ANSWER SINCE WI-lipis AND NOTHING
+      COULD USE IT. `io_target_kind` resolves correctly (os.Stdin ->
+      std_stream, `f, _ := os.Open(p)` -> host_path, bytes.NewReader ->
+      in_memory, an unresolvable receiver -> absent), but
+      `_target_kind_discriminated_keys` requires TWO OR MORE read boundaries
+      before a stamp may choose between them, and this primitive had one row.
+      This row is the second.
+
+      `abstains_to: ipc_recv` IS LOAD-BEARING (INV-fatok). An unstamped call
+      falls back to the first row, which is otherwise the order of
+      CATALOG_BOUNDARY_TYPES -- fs_read, globally. Measured over six Go
+      repositories, that fallback moves 5 network reads off ipc_recv onto
+      fs_read, which mints no source: alertmanager
+      cluster/tls_connection.go:136 wraps a TLS connection and caddy
+      httpredirectlistener.go:90 wraps a net.Conn from Accept, both with
+      io_target_kind ABSENT. Each would lose a TRUE untrusted_input source.
+      Go needs the OPPOSITE fallback from c.yaml and haskell.yaml, which
+      started fs_read-only (a false negative) where this started ipc_recv-only
+      (a false positive).
+
+      NO net_recv ROW, deliberately: `bufio.NewScanner(conn)` really is a
+      network receive, but no target kind names a network stream, so such a row
+      could never be SELECTED -- an unreachable declaration making the
+      catalogue look more capable than it is. The vocabulary has to grow first.
   # Low-level syscall IO (important for kernel/runtime projects like gvisor)
   - module: syscall
     functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents]
@@ -246,4 +280,13 @@ ipc_recv:
     attributes: [Stdin]
   - module: bufio
     functions: [NewScanner, NewReader]
-    notes: "When wrapping os.Stdin"
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      INV-bagok: the ipc_recv twin of the fs_read row, and the row an UNSTAMPED
+      call falls back to (see `abstains_to` there for the measurement). Selected
+      when the analyzer stamps `io_target_kind: std_stream` -- the "When
+      wrapping os.Stdin" condition this row used to assert unconditionally, now
+      asserted only where the argument's origin says so. Both markers are
+      repeated here because they are properties of the PRIMITIVE, not of one
+      declaration, and c.yaml states the same rule for stdio.fgets.
