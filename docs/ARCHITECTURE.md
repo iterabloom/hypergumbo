@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **316** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 84 core, 4 CLI, 33 tracker)
-- **43173** symbols (functions, classes, methods)
-- **151449** edges by type:
-  - calls: 78604
-  - contains: 39841
-  - imports: 13364
-  - instantiates: 11200
-  - references: 5610
-  - module_attr_ref: 1404
-  - other: 1426
+- **318** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 86 core, 4 CLI, 33 tracker)
+- **43579** symbols (functions, classes, methods)
+- **171161** edges by type:
+  - calls: 97790
+  - contains: 40163
+  - imports: 13463
+  - instantiates: 11219
+  - references: 5685
+  - module_attr_ref: 1412
+  - other: 1429
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 43173 Symbols + 151449 Edges + UsageContexts           │
+│  Output: 43579 Symbols + 171161 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,20 +272,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
+| `len` | external_symbol | 7330.0 | <external> |
 | `Span` | class | 6416.2 | ir.py |
-| `write_text` | external_symbol | 6331.0 | <external> |
+| `write_text` | external_symbol | 6338.0 | <external> |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `Edge.create` | method | 2154.3 | ir.py |
-| `get` | external_symbol | 2024.0 | <external> |
-| `load_catalog` | function | 1972.4 | io_boundary.py |
-| `load_framework_patterns` | function | 1960.6 | framework_patterns.py |
+| `Edge.create` | method | 2310.8 | ir.py |
+| `next` | external_symbol | 2110.0 | <external> |
+| `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
+| `load_catalog` | function | 2035.3 | io_boundary.py |
+| `get` | external_symbol | 2029.0 | <external> |
+| `str` | external_symbol | 2012.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `Path` | external_symbol | 1858.0 | <external> |
-| `main` | function | 1587.4 | cli.py |
-| `append` | external_symbol | 1454.0 | <external> |
-| `clear_pattern_cache` | function | 1347.3 | framework_patterns.py |
-| `Edge` | class | 1337.8 | ir.py |
-| `mkdir` | external_symbol | 1085.0 | <external> |
+| `Path` | external_symbol | 1868.0 | <external> |
+| `main` | function | 1615.6 | cli.py |
+| `append` | external_symbol | 1457.0 | <external> |
 
 ## Pattern System
 
@@ -470,6 +470,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
 | `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
 | `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
 | `check-multi-value-field-axis-declaration` | Pre-commit / CI lint: every str-typed field on a core dataclass |
@@ -514,6 +515,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `measure-narrowing-headroom.py` | How much of the run set could Phase 3 drop, and what forbids dropping it. |
 | `measure-parse-redundancy.py` | Count how many times a single run parses the SAME file. |
 | `measure-playbook-overlap.py` | Measure read-then-injected playbook overlap (waste signal). |
+| `measure-row-inflation.py` | What does a composed walk COST in emitted rows?  (WI-famig step 2) |
 | `measure-sanitizer-module-slot-ab.py` | A/B the sanitizer registration gate's module-slot permit branch. |
 | `measure-survey-phase-split.py` | Attribute a cold ``run_survey`` wall-clock to individual pipeline phases. |
 | `measure-symbol-id-colon-conformance.py` | Count symbol ids whose colon layout makes two parsers disagree (INV-fokik / WI-ribuz). |
@@ -597,12 +599,14 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.gitleaks`**: Gitleaks integration for secret scanning.
 - **`hypergumbo_core.import_scope`**: Per-file import-binding bookkeeping for language analyzers (WI-tihu...
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
+- **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
 - **`hypergumbo_core.meta_write_discipline`**: INV-hazov: static enforcement of ``MetaKeySpec.write_discipline``.
 - **`hypergumbo_core.metrics`**: Metrics computation for behavior map output.
+- **`hypergumbo_core.module_key_axis`**: The module-key axis: what may occupy a module slot (ADR-0051).
 - **`hypergumbo_core.multi_value_field_axis`**: Multi-value field axis declaration linter (WI-busij).
 - **`hypergumbo_core.name_matcher`**: Name-form normalization at matcher boundaries (Level 2 of WI-zigah).
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
@@ -898,8 +902,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9485bdfd209f
-  commit_count: 7000
+  commit: b94103dfe4ab
+  commit_count: 7032
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
