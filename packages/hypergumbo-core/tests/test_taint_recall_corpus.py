@@ -710,9 +710,13 @@ def test_published_scope_distinguishes_capable_from_incapable(
     # that matters: 69 Java sinks are unreachable by data flow.
     assert by_lang["java"]["catalog_sinks"] > 50
 
-    # The a2 fact, machine-readable rather than prose (R16). §3a is
-    # confirm-only, so no flow's INCLUSION was decided by data flow.
-    assert scope["inclusion_decided_by"] == "call_graph_reachability"
+    # The a2 fact, machine-readable rather than prose (R16). Re-pointed
+    # 2026-09-02 when WI-kabif granted §3a removal authority: no flow's
+    # INCLUSION is decided by data flow (reachability still decides that, and
+    # the walk mints nothing), but the walk may now SUBTRACT a flow it refutes.
+    assert scope["inclusion_decided_by"] == (
+        "call_graph_reachability_minus_ddg_refutation"
+    )
     assert scope["findings_total"] == sum(
         scope["findings_by_analysis_method"].values(),
     )

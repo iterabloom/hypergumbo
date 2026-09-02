@@ -148,17 +148,31 @@ class TestEmittedShape:
     def test_dict_states_what_decides_inclusion(self) -> None:
         """The a2 fact must be machine-readable, not left to prose.
 
-        ADR-0017 §3a is confirm-only: the walk raises confidence and never
-        removes a flow, so EVERY reported flow was included by call-graph
-        reachability. Reading ``analysis_method == "ddg"`` as "this flow's
-        inclusion was decided by data flow" is the misreading INV-sadah was
-        filed for, and it has been made twice in this repository. Emitting the
-        fact gives the claim an executable re-evaluation trigger (R16): when
-        §3a gains refutation, this value has to change or the test fails.
+        **THIS TEST HAS ALREADY FIRED ONCE, WHICH IS THE POINT OF IT.** It used
+        to assert ``call_graph_reachability`` on the grounds that §3a was
+        confirm-only, and it says so here rather than being quietly rewritten:
+        WI-kabif granted §3a removal authority on 2026-09-02, and this test —
+        the R16 trigger — caught two production constants and a rendered
+        disclosure that would otherwise have gone on publishing a false claim
+        to consumers.
+
+        Re-pointed, not relaxed. The value now names BOTH halves because both
+        are true, and the asymmetry is asserted separately below: a flow is
+        still INCLUDED by reachability and the walk can only SUBTRACT. Reading
+        ``analysis_method == "ddg"`` as "this flow's inclusion was decided by
+        data flow" is therefore still the INV-sadah misreading — a surviving
+        ``ddg`` flow was included by reachability and merely corroborated.
         """
         out = dataflow_scope_dict([_row(language="python")], {"ddg": 3})
         assert out["inclusion_decided_by"] == INCLUSION_DECIDED_BY
-        assert INCLUSION_DECIDED_BY == "call_graph_reachability"
+        assert INCLUSION_DECIDED_BY == (
+            "call_graph_reachability_minus_ddg_refutation"
+        )
+        # The half that did NOT change: reachability still decides inclusion,
+        # and the walk still adds nothing. A future edit that lets the walk
+        # MINT a flow has to come back through here.
+        assert INCLUSION_DECIDED_BY.startswith("call_graph_reachability")
+        assert "minus" in INCLUSION_DECIDED_BY
 
     def test_dict_states_what_capability_does_NOT_claim(self) -> None:
         """Capability is per language; it is not per-function coverage.
