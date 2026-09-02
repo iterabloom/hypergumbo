@@ -984,15 +984,61 @@ def effective_span(
     return (int(start), int(end))
 
 
-def _language_of(path: str) -> str:
-    ext = Path(path).suffix
-    return {
-        ".py": "python", ".sh": "bash", ".bash": "bash", ".go": "go",
-        ".js": "javascript", ".ts": "typescript", ".java": "java",
-        ".rs": "rust", ".rb": "ruby", ".c": "c", ".h": "c", ".cpp": "cpp",
-        ".kt": "kotlin", ".swift": "swift", ".scala": "scala",
-        ".ex": "elixir", ".exs": "elixir", ".hs": "haskell", ".m": "objc",
-    }.get(ext, "")
+_EXT_LANGUAGES = {
+    ".py": "python", ".sh": "bash", ".bash": "bash", ".go": "go",
+    ".js": "javascript", ".ts": "typescript", ".java": "java",
+    ".rs": "rust", ".rb": "ruby", ".c": "c", ".h": "c", ".cpp": "cpp",
+    ".kt": "kotlin", ".swift": "swift", ".scala": "scala",
+    ".ex": "elixir", ".exs": "elixir", ".hs": "haskell", ".m": "objc",
+}
+
+# Only interpreters whose language the table above already knows. A shebang
+# for anything else resolves to "" exactly as an unknown extension does --
+# the point is to stop MISSING a language, not to start guessing one.
+_SHEBANG_LANGUAGES = {
+    "sh": "bash", "bash": "bash", "dash": "bash", "ksh": "bash",
+    "zsh": "bash", "python": "python", "python2": "python",
+    "python3": "python", "ruby": "ruby",
+}
+
+
+def _interpreter_of(first_line: str) -> str:
+    """The interpreter a shebang names, or "" if the line is not one.
+
+    Handles both spellings that occur: a direct path (``#!/bin/bash``) and
+    the env form (``#!/usr/bin/env bash``), where the interpreter is the
+    ARGUMENT rather than the executable.
+    """
+    if not first_line.startswith("#!"):
+        return ""
+    parts = first_line[2:].split()
+    if not parts:
+        return ""
+    name = Path(parts[0]).name
+    if name == "env":
+        return Path(parts[1]).name if len(parts) > 1 else ""
+    return name
+
+
+def _language_of(path: str, first_line: str = "") -> str:
+    """The language of a file, by extension and then by shebang.
+
+    THE EXTENSION IS CONSULTED FIRST AND WINS. It is the author's declaration
+    about the whole file, where a shebang says only how one entry point is
+    executed; letting the interpreter line win would relabel a ``.py`` wrapper
+    that happens to open ``#!/bin/bash``.
+
+    The shebang exists here because ``Path(".github_deploy").suffix`` is ""
+    -- a leading dot is not an extension -- so shellcheck's two extensionless
+    bash scripts were read as an unknown language. That silently skipped the
+    bash-only ambient-expansion listing and printed "(none found)" for a file
+    whose line 11 is ``for tag in $TAGS``: evidence of absence the instrument
+    manufactured, in the direction of FALSE POSITIVE.
+    """
+    return (
+        _EXT_LANGUAGES.get(Path(path).suffix)
+        or _SHEBANG_LANGUAGES.get(_interpreter_of(first_line), "")
+    )
 
 
 def _read_lines(repo_root: Path, rel: str) -> "list[str] | None":
@@ -1028,8 +1074,8 @@ def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
 
     src_rel = flow.get("source_file") or ""
     src_span = flow.get("source_lines") or [0, 0]
-    src_lang = _language_of(src_rel)
     src_lines = _read_lines(repo_root, src_rel)
+    src_lang = _language_of(src_rel, src_lines[0] if src_lines else "")
     if src_lines is None:
         out.append(f"   -- SOURCE sites in {src_rel} --")
         out.append(f"        (unreadable: {src_rel})")
@@ -1075,7 +1121,10 @@ def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
             continue
         if end == -1:
             end = len(lines)
-        hits = find_sites(lines, names, start, end, _language_of(rel))
+        hits = find_sites(
+            lines, names, start, end,
+            _language_of(rel, lines[0] if lines else ""),
+        )
         total += len(hits)
         if hits:
             out.append(f"     in {symbol_name} ({rel} {start}-{end}):")
