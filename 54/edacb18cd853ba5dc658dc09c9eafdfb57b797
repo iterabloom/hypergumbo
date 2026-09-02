@@ -1,0 +1,49 @@
+Original commit body from cf7151ad789c0656a96dad2ee4a34d9399daa8a4:
+
+INV-foluz routes bare builtin calls into callees_at, and taint.py's
+call_beside_heir branch enumerates the PERMITTING cases, so a callee arriving
+with no ADR-0017 section 4 summary converts "not an escape" into an escape.
+python_stdlib.yaml held exactly one builtin FUNCTION summary (builtins.print).
+
+MEASURED, NOT RANKED. python_stdlib.yaml's header states its own scope rule --
+"ENUMERATION-DERIVED, NOT A STDLIB SURVEY; every entry is a callee the section
+3a walk was measured consulting at a real escape site" -- so the by-frequency
+list this was originally filed as is forbidden by the file itself. Running
+measure-call-escape-cause.py on hypergumbo-core gives the entire 4a bucket as
+TWO callees, not the ~12,700 edges the filing estimated:
+
+    cli.py:11933   if hasattr(args, "_path_flag"):
+    cli.py:4086    if float(e["last_used"]) != newest_per_repo[...]
+
+Both read back against source. THEIR VERDICTS DISAGREE -- hasattr returns a
+bool derived from an argument's STRUCTURE, float returns a value derived from
+an argument's CONTENT -- so a frequency-ranked list would have been half wrong
+in the DELETING direction, and since PR #214 a wrong terminating summary
+licenses a False, earns `sanitized` and drops a flow.
+
+EFFECT, same instrument: escape sites 8 -> 7 and the catalogue-gap bucket is
+EMPTY. hasattr closes; float is reclassified 4a-KEY PRESENT, NO SUMMARY ->
+4b-SUMMARY SAYS PROPAGATES (a real escape), which is correct and is not a
+closure -- the value genuinely leaves the call. Every remaining escape has an
+owner: INV-mumov 1, INV-linub 3, WI-zumud 2 (correctly provenance-gated).
+
+THE SECTION 3a CENSUS DID NOT MOVE: 14 confirmed / 12 escaped / 0 unconfirmed
+across 27 walks, unchanged. cli.py's main carries three other escape sites, so
+closing one changed no walk's outcome. Escape closure is all-or-nothing per
+walk, which is why a site count never converts to a verdict count.
+
+side_effect WAS CARRYING TWO FACTS UNDER ONE NAME. Every terminating entry in
+all four catalogues is genuine I/O, logging or an assertion, so the field's
+documented meaning ("I/O, logging") had never been tested against a pure
+predicate. Its single consumer, _summary_terminates, reads it as "this dead end
+is modelled and the taint stops here" -- a property param_to_return == {} cannot
+express, since builtins.list.pop has the identical empty mapping and returns its
+receiver's content. The docstring now states the operational meaning. No schema
+change, no behaviour change, one consumer.
+
+Tests: 6 new, including the list.pop control and an executable pin that the two
+measured verdicts disagree. 2408 passed, 100% coverage on changed files, mypy
+ratchet clean.
+
+Racial-Capitalism-Is-Bad: a spectral opossum casting a trophy from a bygone merger in a rooftop garden with a school of goldfish made of chopped liver
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
