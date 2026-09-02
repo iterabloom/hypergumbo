@@ -636,6 +636,39 @@ class IoPrimitive:
     #: withheld ``fs_write`` verdict into ``confirmed`` for every repo that
     #: uses requests — the false-all-clear direction, shipped by default.
     unvouched: bool = False
+    abstains_to: Optional[str] = None  # axis: io-boundary
+    """Which row an UNSTAMPED call falls back to, for this primitive (INV-fatok).
+
+    ``_narrow_by_target_kind`` returns the candidate list untouched when no
+    ``io_target_kind`` resolves, and whatever selects afterwards takes the
+    FIRST row. Before this field, which row that was came from the order of
+    :data:`CATALOG_BOUNDARY_TYPES` -- a frozen module-level list, identical for
+    every language -- so ``c.yaml``'s note "THIS ROW STAYS FIRST" described a
+    property it did not control. Moving a whole boundary block in the YAML,
+    with the parsed content asserted byte-identical, does not move the loaded
+    indices.
+
+    WHICH FALLBACK IS CONSERVATIVE IS A PROPERTY OF THE PRIMITIVE, WHICH IS WHY
+    ONE GLOBAL ORDER CANNOT SERVE. c's ``fgets`` was fs_read-ONLY, a false
+    NEGATIVE (fs_read mints no taint source, so a read of stdin minted
+    nothing): its conservative direction is toward not minting, and the
+    registry order already gives it that. go's ``bufio.NewScanner`` is
+    ipc_recv-ONLY, a false POSITIVE (a source minted over every file read): its
+    conservative direction is the opposite one. Measured, adding go's fs_read
+    row moves 51 rows over six repositories -- 46 correctly, and 5 wrongly,
+    every one of the five with ``io_target_kind`` ABSENT, i.e. moved by the
+    fallback flipping rather than by anything inferred, each losing a TRUE
+    untrusted_input source.
+
+    ``None`` LEAVES THE REGISTRY ORDER ALONE, so this is forward-only: every
+    row shipped before this field behaves exactly as it did.
+
+    DECLARED, NOT INFERRED, and validated at load because all three failure
+    modes are silent -- a misspelled boundary, a boundary the primitive has no
+    row for, and two rows of one primitive naming different targets would each
+    leave the catalogue READING as though a fallback had been chosen while the
+    registry order quietly decided it. That is the very defect this removes.
+    """
     boundary_ruling: Optional[str] = None  # axis: bounded-enum
     """Why this primitive is catalogued under several boundaries (INV-vaduk).
 
@@ -1373,6 +1406,24 @@ class IoBoundaryCatalog:
                             f"while resolving to nothing."
                         )
 
+                # INV-fatok. Row-level for the same reason ``simultaneous``
+                # and ``boundary_ruling`` are: it sits beside the rows it
+                # qualifies. The cross-row agreement check runs after the loop,
+                # once every section has been read.
+                abstains_to = entry.get("abstains_to")
+                if abstains_to is not None:
+                    abstains_to = str(abstains_to)
+                    if abstains_to not in CATALOG_BOUNDARY_TYPES:
+                        raise ValueError(
+                            f"{language}: {module}."
+                            f"{entry.get('functions') or entry.get('methods')}"
+                            f" declares abstains_to={abstains_to!r}, which is "
+                            f"not a catalogue boundary; expected one of "
+                            f"{sorted(CATALOG_BOUNDARY_TYPES)}. An "
+                            f"unrecognised value would be dropped by the row "
+                            f"reader and the row would read as having chosen "
+                            f"a fallback while the registry order decided it."
+                        )
                 for func_name in entry.get("functions", []):
                     primitives.append(IoPrimitive(
                         boundary=boundary,
@@ -1382,6 +1433,7 @@ class IoBoundaryCatalog:
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
+                        abstains_to=abstains_to,
                     ))
                 for method_name in entry.get("methods", []):
                     primitives.append(IoPrimitive(
@@ -1392,6 +1444,7 @@ class IoBoundaryCatalog:
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
+                        abstains_to=abstains_to,
                     ))
                 for attr_name in entry.get("attributes", []):
                     primitives.append(IoPrimitive(
@@ -1402,7 +1455,10 @@ class IoBoundaryCatalog:
                         notes=notes,
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
+                        abstains_to=abstains_to,
                     ))
+
+        primitives = _apply_abstention_targets(language, primitives)
 
         ambiguous = frozenset(data.get("ambiguous_names", []))
 
@@ -1673,6 +1729,65 @@ def load_yaml_strict(content: str, *, origin: str) -> Any:
         # trips the shrink-only ratchet on whichever one you did not run.
         # Widening the binding asks mypy nothing on either.
         loader.dispose()
+
+
+def _apply_abstention_targets(
+    language: str, primitives: list[IoPrimitive],
+) -> list[IoPrimitive]:
+    """Move each primitive's declared ``abstains_to`` row ahead of its siblings.
+
+    INV-fatok. ``_from_dict`` fills ``primitives`` by iterating
+    ``CATALOG_BOUNDARY_TYPES``, so without this the row an abstaining call
+    falls back to is that list's order for every language at once. This runs
+    AFTER every section has been read, because the rows of one primitive live
+    in different YAML sections by construction and no single section can see
+    the group.
+
+    REORDERING, NOT FILTERING. The fallback is "whatever selects takes the
+    first row", so putting the named row first is the whole mechanism -- and it
+    leaves every other row present, so a later stamp can still narrow to one of
+    them. Dropping the losers here would decide at LOAD time a question the
+    call site is supposed to decide.
+
+    THE OTHER ROWS KEEP THEIR RELATIVE ORDER. Only the named row moves, into
+    the group's earliest slot; C's ``unistd.read`` has three and the two that
+    are not named must not be reshuffled, since their order is still the
+    registry's answer to a question this declaration did not ask.
+    """
+    groups: dict[tuple[str, str, str], list[int]] = {}
+    for index, primitive in enumerate(primitives):
+        groups.setdefault(
+            (primitive.module, primitive.name, primitive.kind), []
+        ).append(index)
+
+    for (module, name, _kind), positions in groups.items():
+        rows = [primitives[i] for i in positions]
+        declared = {r.abstains_to for r in rows if r.abstains_to is not None}
+        if not declared:
+            continue
+        if len(declared) > 1:
+            raise ValueError(
+                f"{language}: {module}.{name} rows disagree about "
+                f"abstains_to ({sorted(declared)}). It is a property of the "
+                f"PRIMITIVE, and a fallback that is live or inert depending on "
+                f"which YAML section a later editor updated is the row-order "
+                f"hazard this field exists to remove."
+            )
+        target = declared.pop()
+        if not any(r.boundary == target for r in rows):
+            raise ValueError(
+                f"{language}: {module}.{name} declares abstains_to="
+                f"{target!r} but does not declare a {target!r} row "
+                f"(it has {sorted(r.boundary for r in rows)}). The "
+                f"declaration would be inert and the registry order would "
+                f"decide the fallback, while the catalogue read as though a "
+                f"choice had been made."
+            )
+        chosen = next(r for r in rows if r.boundary == target)
+        reordered = [chosen] + [r for r in rows if r is not chosen]
+        for slot, row in zip(positions, reordered, strict=True):
+            primitives[slot] = row
+    return primitives
 
 
 class IoPrimitiveOverlayError(Exception):
@@ -2726,6 +2841,30 @@ def select_by_mode(
         return None
     if len(candidates) == 1:
         return candidates[0]
+    # INV-fatok. A DECLARED abstention target outranks the mode default, and
+    # only the mode default -- positive mode evidence still decides below.
+    #
+    # WITHOUT THIS THE DECLARATION IS INERT, and reordering the candidate list
+    # cannot save it. ``resolve_mode_boundary_across_sites`` answers ``fs_read``
+    # for an ABSENT mode (deliberately: guessing ``fs_write`` from ignorance
+    # would re-create the false positives the mode gate removes), so the loop
+    # below selects whatever ``fs_read`` row is present no matter where it sits
+    # in the list. That is right for ``builtins.open``, whose mode really is
+    # the discriminator and whose absence really does mean a read. It is a
+    # category error for a primitive with no mode argument at all:
+    # ``bufio.NewScanner`` is discriminated by its STREAM ARGUMENT, and the
+    # mode seam was quietly answering a question it was never asked.
+    #
+    # Measured: go's bufio rows reordered so ipc_recv came first, and an
+    # unstamped call still classified fs_read -- the list order never reached
+    # the decision.
+    if not io_modes:
+        declared = {c.abstains_to for c in candidates if c.abstains_to}
+        if len(declared) == 1:
+            target = declared.pop()
+            for cand in candidates:
+                if cand.boundary == target:
+                    return cand
     wanted = resolve_mode_boundary_across_sites(io_modes)
     for cand in candidates:
         if cand.boundary == wanted:
