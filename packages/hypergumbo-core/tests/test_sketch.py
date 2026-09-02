@@ -675,12 +675,39 @@ class TestGenerateSketch:
         assert "other items" in sketch
 
     def test_various_directory_types(self, tmp_path: Path) -> None:
-        """Sketch labels different directory types correctly."""
+        """Sketch labels different directory types correctly.
+
+        THE BODY MUST DEFINE NOTHING AND CALL NOTHING, and that is the point
+        rather than an accident. ``get_dir_label`` lives in the WORKING-TREE
+        renderer, which ``generate_sketch`` reaches only when
+        ``symbols and raw_in_degree`` is falsy. Any file that defines a symbol
+        OR produces a call edge takes the map-driven ADR-0005 tree instead,
+        which ranks files by importance and collapses the rest — so these labels
+        are structurally unreachable there, for real repositories always.
+
+        This fixture used to say ``print('hello')``, which reached the labelled
+        renderer only because Python emitted NO edge for a bare builtin call
+        (INV-foluz). Fixing that gave the one-line fixture an in-degree and
+        flipped it to the other renderer.
+
+        MEASURED ACROSS THAT FIX, five bodies, both arms — exactly one moved::
+
+            VERSION = '1.0'      map        -> map
+            x = 1                map        -> map
+            def f(): pass        map        -> map
+            print('hello')       LABELLED   -> map      <- the only change
+            (empty)              LABELLED   -> LABELLED
+
+        A comment-only body was then confirmed LABELLED in both arms before
+        being adopted here, rather than assumed: two earlier candidates
+        (``VERSION = '1.0'`` and ``x = 1``) look inert and are not — a
+        module-level assignment defines a symbol.
+        """
         (tmp_path / "lib").mkdir()
         (tmp_path / "test").mkdir()
         (tmp_path / "doc").mkdir()
         (tmp_path / "random").mkdir()
-        (tmp_path / "main.py").write_text("print('hello')\n")
+        (tmp_path / "main.py").write_text("# placeholder, deliberately defines nothing\n")
 
         sketch = generate_sketch(tmp_path)
 

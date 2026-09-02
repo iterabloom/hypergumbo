@@ -103,6 +103,7 @@ Why This Design
 - Rich metadata feeds YAML-driven framework pattern enrichment (ADR-3aaa)
 """
 import ast
+import builtins
 import hashlib
 import warnings
 from dataclasses import dataclass, field
@@ -566,6 +567,48 @@ EXTERNAL_CONSTRUCTOR_TYPES = _derive_external_constructor_types()
 #: every other row must be positively bound to the module it claims, tightening
 #: INV-kipor's check from "not contradicted" to "confirmed".
 BUILTIN_CONSTRUCTOR_NAMES: frozenset[str] = frozenset({"open"})
+
+#: Every public callable in :mod:`builtins` — the permitting set for EMITTING a
+#: bare-name call edge (INV-foluz).
+#:
+#: WHY THIS IS A SEPARATE SET FROM :data:`BUILTIN_CONSTRUCTOR_NAMES`, WHICH IT
+#: STRICTLY CONTAINS. The two answer different questions and were fused into one
+#: for long enough to cost 50% of the section 3a escape sites. This set answers
+#: "is this name a real builtin?", which is a fact about the Python LANGUAGE and
+#: is exactly what the dst slot asserts when it writes ``module_path="builtins"``.
+#: ``BUILTIN_CONSTRUCTOR_NAMES`` answers "may an unbound name be TRUSTED to carry
+#: a catalogued receiver TYPE?", which is a fact about the I/O catalogue and stays
+#: default-deny for the reason its own docstring gives. Gating emission on the
+#: second meant the permitting condition was "this builtin is a catalogued I/O
+#: primitive", so ``print`` — which holds an ADR-0017 section 4 TERMINATING
+#: summary under both ``print`` and ``builtins.print`` — could never be consulted,
+#: because no edge ever reached ``callees_at``.
+#:
+#: DERIVED, NOT ENUMERATED. A hand-written list would re-commit INV-foluz's own
+#: defect in a milder form: a per-name allowlist that each new callee has to be
+#: discovered and added to. :mod:`builtins` is the authority on what a Python
+#: builtin is, so the set is read from it.
+#:
+#: DUNDERS ARE INCLUDED, AND AN EARLIER CUT OF THIS SET EXCLUDED THEM ON A GUESS
+#: THAT MEASUREMENT REFUTED. The exclusion was justified as "not a bare-call
+#: shape worth an edge"; the three names it actually removed are
+#: ``__build_class__``, ``__loader__`` and ``__import__``, and the last is
+#: written by hand — 8 call sites in ``hypergumbo-core`` alone
+#: (``analyzer_identity.py:149``, ``build_grammars.py:338``, six in tests). With
+#: the exclusion those fell through to the residual arm and emitted
+#: ``python:external:0-0:__import__``, asserting an UNKNOWN external callee for a
+#: name the language defines — a sentinel (ADR-0051) standing in for a fact we
+#: hold. The other two are compiler hooks nobody writes, so admitting them costs
+#: nothing measurable.
+#:
+#: HONEST LIMIT: this is the RUNNING interpreter's builtins, so a repo analyzed
+#: under 3.10 and under 3.13 can differ by the handful of names added between
+#: them (``aiter``/``anext`` are the 3.10 examples). That is a real
+#: reproducibility seam and it is preferred to a frozen list that goes stale
+#: silently, which is the failure this item exists to remove.
+PY_BUILTIN_CALLABLES: frozenset[str] = frozenset(
+    name for name in dir(builtins) if callable(getattr(builtins, name, None))
+)
 
 #: Members that RETURN THE RECEIVER'S OWN TYPE, keyed by the exact type string the
 #: analyzer puts in a symbol id's module slot. ``__truediv__`` carries the ``/``
@@ -6269,6 +6312,29 @@ def _process_call(
             if stack is not None and stack.frames
             else frozenset()
         )
+        # INV-foluz: the LEGB shadow, which is `_caller_locals` UNIONED OVER
+        # EVERY ENCLOSING FRAME. `ScopeStack.frames` is the materialized chain
+        # outermost-first, so this is the same fact `_enclosing_shadow`
+        # (INV-fahub / WI-luhah gap 1c) computes for the module-attr path,
+        # taken from the structure `_process_call` already receives rather than
+        # recomputed — one fact, one home.
+        #
+        # WHY THE IMMEDIATE FRAME IS NOT ENOUGH, found by reading emitted rows
+        # BACK AGAINST SOURCE rather than by reasoning. pretix's
+        # `control/permissions.py:114` calls `function(request, *args, **kw)`
+        # where `function` is a PARAMETER OF THE ENCLOSING `decorator`, called
+        # from the nested `wrapper`; `sentry.py:32` calls `weak_request()`, a
+        # parameter of the enclosing `_make_event_processor`. Neither name is in
+        # the calling function's OWN frame, so an immediate-frame guard admits
+        # both. A closure-captured `open` or `input` would then have minted a
+        # FABRICATED BUILTIN — the same defect as the `StreamWriter` case the
+        # arm below guards, reached by a different route. A binding is a binding
+        # however written.
+        _caller_shadow = (
+            frozenset().union(*(f.local_names for f in stack.frames))
+            if stack is not None and stack.frames
+            else frozenset()
+        )
         _caller_decos = {
             d.get("name")
             for d in (caller_symbol.meta or {}).get("decorators", [])
@@ -6847,7 +6913,44 @@ def _process_call(
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
-            elif callee_name in BUILTIN_CONSTRUCTOR_NAMES:
+            elif (
+                callee_name in PY_BUILTIN_CALLABLES
+                and callee_name not in _caller_shadow
+            ):
+                # INV-foluz WIDENED THIS ARM FROM ``BUILTIN_CONSTRUCTOR_NAMES``
+                # TO ``PY_BUILTIN_CALLABLES``, and split the local-rebinding
+                # refusal out as its own explicit condition. The comment below is
+                # WI-mitul's original rationale for the arm, kept because it is
+                # still why the arm writes ``builtins`` in the module slot; what
+                # changed is only WHICH names reach it.
+                #
+                # THE OLD GATE WAS THE WRONG QUESTION, NOT A TOO-SMALL ANSWER.
+                # ``BUILTIN_CONSTRUCTOR_NAMES`` means "bare rows that are REAL
+                # builtins" *as far as the I/O catalogue is concerned*, so the
+                # permitting condition on EMISSION was "this builtin is a
+                # catalogued I/O primitive" — and ``print``/``len``/``input``/
+                # ``eval``/``getattr`` are not I/O primitives, so they emitted
+                # nothing. That cost more than I/O coverage: the ADR-0017
+                # section 4 index holds a TERMINATING summary for ``print``
+                # under both ``print`` and ``builtins.print``, and it could never
+                # be applied because the callee never reached ``callees_at``, so
+                # the section 3a walk recorded an ESCAPE where it had an
+                # accounted-for step. Measured as 50.0% of section 3a escape
+                # sites (INV-busis, 26 sites, dev ecb954eb05) — the single
+                # largest cause.
+                #
+                # ``not in _caller_shadow`` IS THE HALF THAT MUST NOT BE DROPPED.
+                # The arm ASSERTS the name is a builtin, so the only thing
+                # standing between it and a fabrication is the refusal to trust a
+                # name the enclosing scope rebound. pretix's
+                # ``StreamWriter = codecs.getwriter('utf-8'); StreamWriter(data)``
+                # is the measured case: it minted
+                # ``python:builtins:0-0:StreamWriter:unresolved`` on the shipping
+                # tree when an earlier revision of this arm trusted unbound names
+                # by default. Widening the name set makes that shape MORE
+                # reachable, not less, which is why the guard becomes explicit
+                # here rather than staying implicit in a four-name set.
+                #
                 # WI-mitul: a bare builtin I/O constructor (open) — Case 1 found
                 # no import so nothing was emitted, leaving the io_primitives/
                 # python.yaml `builtins` rows (fs_read/fs_write functions=[open])
@@ -6856,25 +6959,18 @@ def _process_call(
                 # .read()/.write() edges (WI-fuvuj, module=file) are orthogonal
                 # to this open()-call edge.
                 #
-                # GATED ON ``BUILTIN_CONSTRUCTOR_NAMES``, NOT ON THE WHOLE TABLE.
-                # This arm asserts the name IS a builtin — it writes the module
-                # slot ``builtins`` — and it consults no import binding, so the
-                # membership test is the ONLY thing standing between it and a
-                # fabricated builtin. It used to test ``EXTERNAL_CONSTRUCTOR_TYPES``
-                # under a comment claiming "only the bare key ``open`` can match",
-                # which was an unstated dependency on that table being curated
-                # down to builtins. Deriving the table from the catalogue added
-                # seventeen bare type names and falsified it immediately: pretix's
-                # ``StreamWriter = codecs.getwriter('utf-8'); StreamWriter(data)``
-                # — a LOCAL rebinding — minted
-                # ``python:builtins:0-0:StreamWriter:unresolved``. The sibling
+                # HISTORY WORTH KEEPING, because it is why the guard above is
+                # spelled out rather than left to a name set. This arm once
+                # tested ``EXTERNAL_CONSTRUCTOR_TYPES`` under a comment claiming
+                # "only the bare key ``open`` can match" — an unstated dependency
+                # on that table being curated down to builtins. Deriving the
+                # table from the catalogue added seventeen bare type names and
+                # falsified it immediately, which is how the ``StreamWriter``
+                # fabrication reached the shipping tree. The sibling
                 # ``_external_constructor_type`` refused the very same name a few
                 # lines earlier via its INV-kipor binding check; two consumers of
                 # one table disagreeing about what membership licenses is the
-                # drift this file keeps rediscovering, so the permitting set is
-                # now named directly. ``BUILTIN_CONSTRUCTOR_NAMES`` already means
-                # exactly "bare rows that are REAL builtins", so this consolidates
-                # onto an existing rule rather than minting a third one.
+                # drift this file keeps rediscovering.
                 dst_id = f"python:builtins:0-0:{callee_name}:unresolved"
                 edges.append(Edge.create(
                     src=caller_symbol.id,
@@ -6885,6 +6981,46 @@ def _process_call(
                     is_resolved=False,
                     dst_ref=ExternalRef(
                         lang="python", module_path="builtins", name=callee_name
+                    ),
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+            elif callee_name not in _caller_shadow:
+                # INV-foluz, the residual arm. A bare name that is not imported,
+                # not a builtin and not bound in the enclosing scope — a
+                # star-import, a name from a module the analyzer never read, or a
+                # genuine typo. Every OTHER analyzer in the fleet emits an
+                # unresolved edge in this position (43 of them call
+                # ``make_unresolved_edge``; ``py.py`` called it zero times), and
+                # the sibling ATTRIBUTE arm a few hundred lines above already
+                # emits ``python:external:0-0:<attr>:unresolved`` for exactly the
+                # same reason — INV-mumov's "costs twice" note. Depth and shape
+                # were the only difference, and nothing justified it.
+                #
+                # ``external`` RATHER THAN ``builtins``: the callee is genuinely
+                # unknown here. Writing ``builtins`` would assert a language fact
+                # that is false, which is the failure the arm above guards; the
+                # ``external`` placeholder is the one the matcher already
+                # degrades on and the one INV-linub's module-key axis names as a
+                # SENTINEL notion (ADR-0051).
+                #
+                # STILL REFUSED: a name bound anywhere in the LEGB chain. It
+                # is a call, but its callee is a value some enclosing scope
+                # produced, so neither ``builtins`` nor ``external`` describes it
+                # and inventing an edge would put a name in the module slot that
+                # names nothing. Measured on pretix: this refusal is what keeps
+                # `function(request, ...)` (an enclosing decorator's parameter)
+                # and `weak_request()` out of the graph. Left unemitted and filed
+                # rather than guessed.
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=f"python:external:0-0:{callee_name}:unresolved",
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call_direct",
+                    is_resolved=False,
+                    dst_ref=ExternalRef(
+                        lang="python", module_path="external", name=callee_name
                     ),
                     origin=PASS_ID,
                     origin_run_id=run_id,
