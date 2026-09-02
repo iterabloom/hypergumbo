@@ -4863,8 +4863,16 @@ class TestVariableMethodCalls:
         call_edges = [e for e in data["edges"] if e["type"] == "calls"]
         inst_edges = [e for e in data["edges"] if e["type"] == "instantiates"]
         unresolved_calls = [e for e in call_edges if "external_symbol" in e["dst"]]
-        assert len(unresolved_calls) == 1, "Should have 1 unresolved call edge for do_something"
-        assert "do_something" in unresolved_calls[0]["dst"]
+        # RE-POINTED (INV-foluz), NOT RELAXED. This assertion counted the FILE
+        # TOTAL and used it as a proxy for "do_something emitted one edge"; the
+        # proxy held only while `unknown_factory()` — an unresolvable bare name —
+        # emitted nothing at all, which was the defect. Both calls now emit, so
+        # the total is 2 and the original requirement is asserted directly on the
+        # callee it was always about.
+        do_something = [e for e in unresolved_calls if "do_something" in e["dst"]]
+        assert len(do_something) == 1, "Should have 1 unresolved call edge for do_something"
+        factory = [e for e in unresolved_calls if "unknown_factory" in e["dst"]]
+        assert len(factory) == 1, "The unresolvable bare-name callee must also emit (INV-foluz)"
         assert len(inst_edges) == 0, "Should not have instantiates edges for unresolved constructor"
 
     def test_imported_class_method_call(self, tmp_path: Path) -> None:
