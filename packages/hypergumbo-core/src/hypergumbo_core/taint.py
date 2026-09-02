@@ -483,6 +483,34 @@ class TaintFlowFinding:
     #: reader must not add the categories up as if each were independently
     #: addressable.
     walk_blocked_by: str = ""
+    #: INV-muhij Finding A: what the WHOLE GROUP reported, for a collapsed row.
+    #:
+    #: The two scalars above describe ONE finding. On a collapsed row they are
+    #: ``grp[0]``'s and nothing recorded what the other members said, so a row
+    #: printed ``walk_blocked_by: sink_before_source`` while standing for
+    #: members whose walk ran, or was blocked somewhere else entirely. Measured
+    #: on beads through the production path: 208 groups contain a
+    #: ``sink_before_source`` member, 133 of them (63.9%) are NOT unanimous,
+    #: and only 349 of the 1,073 members under them (32.5%) carry it.
+    #:
+    #: THIS IS A PRECONDITION, NOT A REMEDY. §3a stays confirm-only and no
+    #: verdict moves because of these fields either. But INV-muhij's remedy —
+    #: stop a ``sink_before_source`` row from carrying a verdict alone — has to
+    #: read a fact that is true of everything the row stands for, and the
+    #: scalar is not one. A rule may act on ``walk_blocked_by_values ==
+    #: ("sink_before_source",)``; it may not act on the scalar.
+    #:
+    #: UNIONED LIKE THEIR FIVE SIBLINGS in :func:`collapse_unadjudicated_flows`,
+    #: and NEVER EMPTY for the same reason the primitive tuples are not:
+    #: ``__post_init__`` derives the singleton. ``""`` is a VALUE here (the walk
+    #: ran), not an absence — dropping it would make a mixed group read as
+    #: unanimous, which is the exact misreading these fields exist to prevent.
+    #:
+    #: ``_values`` rather than a plural because ``walk_blocked_by`` does not
+    #: pluralise, and because that is already this project's spelling for
+    #: "the collapsed sites disagreed about a per-site key".
+    walk_verdict_values: tuple[str, ...] = ()
+    walk_blocked_by_values: tuple[str, ...] = ()
     #: INV-karud: THE AUTHORITATIVE STATEMENT OF WHAT THIS FINDING CLAIMS.
     #:
     #: The scalar ``source_primitive`` / ``sink_primitive`` / ``sink_symbol``
@@ -554,6 +582,14 @@ class TaintFlowFinding:
             )
         if not self.sink_symbols:
             self.sink_symbols = (self.sink_symbol,)
+        # INV-muhij: ``not`` rather than ``is None`` would be wrong here in a
+        # way it is not above — ``("",)`` is a legitimate derived value and
+        # must not be re-derived on every construction, but ``()`` is the
+        # "caller did not set it" default. ``len(...) == 0`` says exactly that.
+        if len(self.walk_verdict_values) == 0:
+            self.walk_verdict_values = (self.walk_verdict,)
+        if len(self.walk_blocked_by_values) == 0:
+            self.walk_blocked_by_values = (self.walk_blocked_by,)
 
     @property
     def verdict(self) -> str:
@@ -596,6 +632,12 @@ class TaintFlowFinding:
             # is 0 unconfirmed / 14 escaped / 139 not_attempted.
             "walk_verdict": self.walk_verdict,
             "walk_blocked_by": self.walk_blocked_by,
+            # INV-muhij Finding A: the scalars are the REPRESENTATIVE's. A
+            # consumer deciding what a collapsed row is entitled to claim must
+            # read the union, so serializing only the scalars would leave the
+            # misreading in place for every JSON consumer.
+            "walk_verdict_values": list(self.walk_verdict_values),
+            "walk_blocked_by_values": list(self.walk_blocked_by_values),
             "path": self.path,
             # INV-pojib. Emitted because a JSON consumer asking "is this clean
             # verdict resting on something the analysed repo said about itself"
@@ -732,6 +774,18 @@ def collapse_unadjudicated_flows(
             )),
             sanitized_by_user_supplied=tuple(sorted(
                 {b for m in grp for b in m.sanitized_by_user_supplied}
+            )),
+            # INV-muhij Finding A. The scalars stay ``grp[0]``'s -- they are
+            # the witness the ``path`` belongs to -- but the row now also says
+            # what the REST of the group reported, because a rule deciding
+            # whether this row may carry a verdict alone has to read a fact
+            # true of every member. 63.9% of the groups containing a
+            # ``sink_before_source`` member are not unanimous.
+            walk_verdict_values=tuple(sorted(
+                {v for m in grp for v in m.walk_verdict_values}
+            )),
+            walk_blocked_by_values=tuple(sorted(
+                {v for m in grp for v in m.walk_blocked_by_values}
             )),
         )
     return [s for s in slots if s is not None]
