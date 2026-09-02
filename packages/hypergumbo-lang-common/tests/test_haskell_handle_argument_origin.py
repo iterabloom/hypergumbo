@@ -181,7 +181,17 @@ class TestStampingFromTheCallSite:
     def test_a_reader_with_no_arguments_is_not_stamped(
         self, tmp_path: Path,
     ) -> None:
-        """``getLine`` takes no handle; there is nothing to classify."""
+        """``getLine`` takes no handle; there is nothing to classify.
+
+        RE-POINTED, NOT RELAXED (INV-fofoj). This asserted ``"NO-EDGE"`` --
+        that ``getLine`` produced no call edge at all -- which was true only
+        because a zero-argument IO action is a bare identifier and the
+        analyzer emitted edges solely for applications. That is the defect
+        INV-fofoj filed, and the sentinel was pinning it. The requirement this
+        test exists to check is that a reader with NO HANDLE ARGUMENT gets NO
+        ``io_target_kind`` stamp, and the edge now existing is what makes that
+        requirement checkable directly instead of vacuously.
+        """
         edges = _edges(tmp_path, (
             "module Main where\n"
             "f :: IO ()\n"
@@ -189,7 +199,7 @@ class TestStampingFromTheCallSite:
             "  s <- getLine\n"
             "  writeFile \"/tmp/a\" s\n"
         ))
-        assert _kind_for(edges, "getLine") == "NO-EDGE"
+        assert _kind_for(edges, "getLine") is None
 
 
 class TestBindingLookupEdgesThatReturnNothing:
