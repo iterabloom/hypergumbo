@@ -75,7 +75,20 @@ class FunctionSummary:
         param_to_return: Maps param index → True if param flows to return.
         param_to_self: Maps param index → True if param flows to self/receiver.
         mutates_self: Whether the function mutates its receiver.
-        side_effect: Whether the function has side effects (I/O, logging).
+        side_effect: The POSITIVE marker that this callee is a modelled dead
+            end: the taint stops here and nothing derived from it comes back.
+            Named for the shape that dominates the catalogues — ``fmt.Printf``,
+            ``console.log``, ``os.Remove`` — but the property
+            ``_summary_terminates`` actually reads is "modelled, and it ends
+            here", NOT "performs I/O". ``builtins.hasattr`` carries it while
+            doing no I/O at all, and that is correct.
+
+            It cannot be inferred from ``param_to_return == {}``, which is why
+            it exists: ``builtins.list.pop`` has an empty ``param_to_return``
+            and returns its RECEIVER'S content, a flow no field here can
+            express. Absent the marker, an empty mapping means "unexpressed",
+            not "nothing comes out" — the conservative reading, since a false
+            terminating verdict deletes a real finding.
         sanitizes: List of sanitization effects.
         callback: Optional callback flow description.
     """
