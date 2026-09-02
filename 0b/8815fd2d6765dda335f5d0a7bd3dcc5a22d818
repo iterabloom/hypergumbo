@@ -1,0 +1,51 @@
+Original commit body from 2b20f3dd5d597d5847504ed3dd43bd9f252bd946:
+
+INV-jurif's env-read discriminator is "a variable expansion whose name is never
+ASSIGNED in this file". That is right for a local and wrong for the
+conditional-default idiom, one of the commonest ways a shell script reads its
+environment: test whether the environment supplied the name, assign a FALLBACK
+only when it did not.
+
+    gocryptfs/test.bash:17   if [[ -z ${TMPDIR:-} ]]; then TMPDIR=/var/tmp; fi
+
+Read through the whole-file rule, the fallback on line 18 is proof TMPDIR is a
+local. It is the opposite: `${VAR:-x}` means "if VAR is unset or null, use x",
+so writing it is the script declaring the value may arrive from outside.
+
+All eight default / alternate / error operators count (:- - := = :? ? :+ +).
+The TRANSFORMING forms deliberately do not -- ${VAR#p}, ${VAR%p}, ${VAR/a/b},
+${#VAR} operate on a value the script already holds and say nothing about its
+origin; treating them as evidence of external supply would make every local
+string manipulation a taint source.
+
+ONE HOME. The subtraction lives inside _assigned_names, which its own docstring
+names as the single home, because the edge extractor and the repo source-join
+index both consult it and a second copy is how the two drift into calling
+different things an environment read. Read off `expansion` NODES rather than
+raw text, so a ${VAR:-} inside a comment cannot mint a source.
+
+BEHAVIOURAL EVIDENCE. gocryptfs/test.bash returns to `violated` on the
+production path:
+    1 unsanitized host_secret flow to host_fs zone [origins: 1 env_read]:
+    env.environ [bash:test.bash:1-1:file:file] -> redirect.>
+
+That is the flow measurement 0006 recorded, and whose true-positive label its
+panel reached only on a SECOND pass -- the first cut labelled it discard-only
+on four /dev/null sites and missed `exec 200> "$LOCKFILE"`, a numbered-fd
+redirect to an env-derived path. The reversal survived human review and had
+since been lost to this rule.
+
+SCOPE, MEASURED AND SMALLER THAN THE FILING CLAIMED. Carried 0006's adjudicated
+labels forward across the 16-repo cohort before and after: this recovers ONE of
+the situations the tool had stopped reporting. INV-sihom was filed on "7 of 27
+useful true positives lost"; re-checked with a source-keyed match, five of those
+are still reported with the SAME source and a different sink PRIMITIVE (`>` vs
+`>>`) -- a collapse-representative change my content key read as a loss. The
+filing is corrected on the item rather than left standing.
+
+Tests: 16, including non-vacuity floors (a plain local is still not a source, an
+unassigned name still is) and the four transforming forms as negative controls.
+7917 passed, 100% coverage on changed files, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a mongoose riding a surface of holographic panels in a library with a regiment of crabs made of garlic cloves
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
