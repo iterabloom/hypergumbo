@@ -1,0 +1,47 @@
+Original commit body from eb1958b6ecf6f1913ffdf581b62cae6983c24acd:
+
+Nine tracker-sync PRs sat unmergeable, the oldest since August 24, and every
+one of them was empty.
+
+.gitattributes declares merge=union on .ops -- the point of an append-only
+journal. That is a CLIENT-SIDE driver; the forge merges server-side and does not
+read .gitattributes. Measured on .INV-juvul-*.ops: merge-base 32 lines, branch
+tip 54, current dev 61 with different lines appended. Both sides appended at the
+end of one file from a common base: a trivial union on any client, a textual
+conflict on the server.
+
+Nothing regressed. While syncs merged promptly, dev never diverged at the append
+point. Once one PR sits unmerged and another sync appends to the same log, that
+PR is permanently unmergeable, and recent tracker throughput closed the window.
+
+The action is CLOSE, not merge. Two independent methods agree the nine carry
+nothing: a per-file set difference finds 0 lines dev lacks, and merge-tree
+produces a tree identical to dev's for all nine. This is the durability design
+working -- do_sync gates its destructive cleanup on merge success (WI-lufal), so
+a failed sync leaves ops in the working tree and the next sync carries them
+forward. The data always arrived; the branches were litter.
+
+find_superseded_sync_branches keys on "merging changes nothing", never on "the
+forge says conflict". Conflating those is how a tidying step becomes data loss:
+a branch with unique ops conflicts for the same reason as one without. Pinned by
+a real conflicting fixture asserting conflict is not supersession, and by a
+unique-op fixture with a second test proving the op is genuinely absent from dev
+so the first cannot pass vacuously. Undecidable cases -- old git, missing base
+ref, non-repo, blank base tree -- all return empty rather than guessing.
+
+tracker sync --prune runs it explicitly, before preflight on purpose since a
+superseded branch is one whose ops already landed. A successful auto-sync runs it
+automatically.
+
+The automatic call lives in _maybe_auto_sync, not do_sync. Wiring it to
+do_sync's post-merge path broke 23 tests that script an exact sequence of _git
+calls; do_sync implements a transaction and litter collection is not part of it.
+The safety property never depended on do_sync's sync gate: a concurrent sync
+pushes ops dev lacks, so its branch can never satisfy the predicate.
+
+A failing prune cannot damage a sync that already merged -- asserted as all three
+halves, since _maybe_auto_sync disables autonomous mode after enough consecutive
+sync failures and a forge hiccup must never count as one.
+
+Racial-Capitalism-Is-Bad: a glitching deer building a hydrothermal vent shaped like chopping board made of lox roses in a space station
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
