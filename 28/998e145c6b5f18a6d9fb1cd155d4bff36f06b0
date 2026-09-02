@@ -1,0 +1,46 @@
+Original commit body from b5c343fe0238f9242897d693aedf7dc10b019bb3:
+
+Every catalogue is keyed on a callee name and the analyzer emitted a `calls`
+edge only for a function APPLICATION. A zero-argument IO action is a bare
+identifier in every position it appears, so `s <- getLine` produced nothing
+while `s <- readProcess "uname" [] ""` in the identical flow shape produced an
+edge. The row's boundary was irrelevant -- INV-muvis had already moved
+Prelude's rows to ipc_recv and the calls stayed just as undetectable. Fixing a
+row does not make it reachable.
+
+Emits for the three positions where a bare identifier is unambiguously
+EXECUTED: the right-hand side of a `<-` bind, a bare `do` statement, and the
+argument of a combinator whose only purpose is to run an action. Fails closed
+on a name the enclosing definition binds for itself, matching the rule
+_hs_classify_handle_text already states in this module.
+
+The infix operators are excluded on MEASUREMENT, not oversight. Haskell spells
+fmap over Maybe, lists and Either with the same operators it spells IO with,
+and without types the two are indistinguishable. Over eight repositories they
+would add 63 catalogued sites for 3,812 more at 18-35% naming a local binding,
+against the 442 of 505 (87.5%) the three covered positions reach at the three
+lowest wrong-edge rates. A test pins the trade so a later reader must
+re-measure rather than assume.
+
+A/B, both arms cold in their own XDG_CACHE_HOME with the baseline asserted by
+grepping the runtime file: 1,916 -> 2,239 I/O chains, +323, ZERO lost, all
+haskell. Three read back against source (simplex-chat Bot.hs:35 `void getLine`,
+stack FileWatch.hs:108, yesod AddHandler.hs:73).
+
+The population is 505 sites, not the 19 the item scoped to: the same mechanism
+hid every zero-argument row in the catalogue, and getCurrentTime (220),
+getCurrentDirectory (20), getArgs (17), getEnvironment (17) and exitFailure
+(16) dominate the four Prelude stdin readers the item named.
+
+CORRECTS THE ITEM'S FILED POPULATION. simplex-chat is a symlink into
+cohort6_crypto/simplex-chat/ and all 267 of cohort6_crypto's .hs files live
+under it, so the two paths are one repository. The item's per-repo tally reads
+"cohort6_crypto 6, simplex-chat 6" for one set of six: its 25 sites over 9
+repositories is 19 over 8. A first pass of this measurement made the same
+mistake and reported 794 catalogued sites where there are 505.
+
+test_a_reader_with_no_arguments_is_not_stamped is RE-POINTED, not deleted: it
+asserted getLine produced no edge at all, which was true only because of this
+defect, so the sentinel was pinning the bug.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
