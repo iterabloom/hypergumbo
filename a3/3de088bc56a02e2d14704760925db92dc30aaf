@@ -1,0 +1,44 @@
+Original commit body from 28f3ef87f687c9614402284bba99492afede5e8e:
+
+py.py's terminal bare-Name arm gated EMISSION on BUILTIN_CONSTRUCTOR_NAMES --
+frozenset({"open"}), a set whose purpose is receiver typing for I/O
+classification. So the permitting condition was "this builtin is a catalogued
+I/O primitive", and print/len/input/eval/getattr emitted nothing, as did every
+unresolvable bare name.
+
+The cost is not about I/O. ADR-0017 section 4 holds a TERMINATING summary for
+print under both keys and could never apply, because the callee never reached
+callees_at, so the section 3a walk recorded an ESCAPE where it had an
+accounted-for step -- 50.0% of section 3a escape sites, the largest cause.
+Verified Python-specific rather than assumed: 43 analyzers call
+make_unresolved_edge and py.py called it zero times.
+
+The fix splits two questions one set was answering. "Is this a real builtin?"
+is a fact about the language, now read from builtins itself. "May an unbound
+name be trusted to carry a catalogued receiver type?" stays with
+BUILTIN_CONSTRUCTOR_NAMES, unchanged and default-deny.
+
+A/B, baseline asserted by grepping the runtime file, every arm file checked
+non-empty before restore: hypergumbo-core 74,641 -> 87,834 (+13,193), pretix
+92,344 -> 100,703 (+8,359), ZERO lost in both.
+
+Reading rows back against source corrected the fix twice, and neither defect
+showed in the totals. The guard first saw only the caller's own frame, so
+pretix's function(request, ...) -- an enclosing decorator's parameter called
+from a nested wrapper -- was admitted; a closure-captured open would then have
+minted a fabricated builtin, the StreamWriter defect by another route. Now the
+union over every LEGB frame: pretix's unresolvable bare names went 22 -> 0,
+builtin counts unmoved. And excluding dunders on taste pushed __import__ (8 call
+sites in hypergumbo-core) into external -- a sentinel for a name the language
+defines.
+
+Direction on the walk, stated because it is not the flattering one: a
+confirmation cannot be lost (return True short-circuits at taint.py:3598), but a
+new callee with no terminating summary turns "not an escape" into an escape, so
+this moves False -> None only -- fewer refutations, never a suppressed finding.
+Only builtins.print carries a summary today, so 459 of 13,193 new edges are
+consultable; summaries for the common pure builtins are filed as a prerequisite
+for granting section 3a removal authority.
+
+Racial-Capitalism-Is-Bad: a haunted turkey building a windmill shaped like dragon made of onion skins in a raptor-run fried chicken counter
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
