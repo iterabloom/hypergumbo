@@ -44,14 +44,22 @@ rather than here, where no consumer would find it. The finer signal is WI-joluk'
 in its body); when it lands, this constant becomes ``function``.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — II. ``inclusion_decided_by`` is a
-constant, not a measurement, and it says ``call_graph_reachability``. ADR-0017
-§3a is confirm-only: the walk raises confidence on a flow and never removes
-one, so every reported flow — including every ``ddg`` one — was *included* by
-call-graph reachability. Reading ``analysis_method == "ddg"`` as "this flow's
-inclusion was decided by data flow" is the misreading INV-sadah exists for, and
-it has been made twice in this repository's own history. Emitting the fact as
-data gives that prose claim the executable re-evaluation trigger R16 requires:
-when §3a gains refutation the constant must change or its test fails.
+constant, not a measurement. **It changed on 2026-09-02, which is the R16
+trigger firing exactly as designed** — the previous text said that when §3a
+gained refutation this constant must change or its test fails, and WI-kabif
+granted §3a removal authority. It now reads
+``call_graph_reachability_minus_ddg_refutation``, and the compound name is the
+honest one because BOTH halves are still true: a flow is still *included* by
+call-graph reachability, and the walk can now *remove* one it refutes.
+
+The asymmetry matters more than the rename. The walk only ever SUBTRACTS: it
+adds no flow that reachability did not already report, and it removes only on
+``unconfirmed`` — the walk exhausted every route with nothing unexplained.
+``escaped`` is ignorance and removes nothing. So reading ``analysis_method ==
+"ddg"`` as "this flow's inclusion was decided by data flow" is STILL the
+misreading INV-sadah exists for, and it has been made twice in this
+repository's own history: a surviving ``ddg`` flow was included by
+reachability and merely corroborated by the walk.
 """
 from __future__ import annotations
 
@@ -63,8 +71,8 @@ from .ddg_build import registered_ddg_languages
 
 #: What decided that a reported flow is a flow, as opposed to what raised its
 #: confidence afterwards. See the module docstring — this is a declared
-#: property of ADR-0017 §3a's confirm-only design, not a per-run measurement.
-INCLUSION_DECIDED_BY = "call_graph_reachability"
+#: property of ADR-0017 §3a's adjudicating design, not a per-run measurement.
+INCLUSION_DECIDED_BY = "call_graph_reachability_minus_ddg_refutation"
 
 #: The granularity at which capability is reported. ``language`` is a statement
 #: of what is NOT claimed: a capable language still holds functions the def/use
@@ -312,6 +320,7 @@ def dataflow_scope_dict(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
+    flows_removed_by_walk: int = 0,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -329,6 +338,12 @@ def dataflow_scope_dict(
         "languages": [row.to_dict() for row in rows],
         "findings_by_analysis_method": counts,
         "findings_total": sum(counts.values()),
+        # WI-kabif. How many flows the §3a walk REFUTED and removed this run.
+        # Emitted always, and zero is a real answer: the alternative is a
+        # security tool whose findings can silently be fewer than the analysis
+        # produced, with no number a reader could check. ``findings_total``
+        # counts what SURVIVED, so the two together say what the walk did.
+        "flows_removed_by_walk": flows_removed_by_walk,
         # Always present, like every other key here: a disclosure that appears
         # only when it has something to say teaches a consumer to treat its
         # absence as "not applicable" rather than "zero".
@@ -342,6 +357,7 @@ def render_dataflow_scope_text(
     rows: Sequence[LanguageDataflowScope],
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
+    flows_removed_by_walk: int = 0,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -377,9 +393,17 @@ def render_dataflow_scope_text(
     lines.append(f"  Taint findings by analysis method ({total} total): {breakdown}.")
     lines.append(
         "  Flow INCLUSION rests on call-graph reachability for every finding "
-        "above; the data-flow walk raises confidence and never removes a flow "
-        "(§3a is confirm-only), so a 'ddg' label corroborates a flow rather "
-        "than deciding it."
+        "above, so a 'ddg' label corroborates a flow rather than deciding it. "
+        "The walk can now SUBTRACT (ADR-0017 §3a removal authority): a flow is "
+        "dropped only where the walk exhausted every route inside one function "
+        "and found no dependence. A walk that LOST the value removes nothing, "
+        "and no flow is ever added by the walk."
+    )
+    lines.append(
+        f"  Flows REMOVED by the walk this run: {flows_removed_by_walk}. "
+        "Counted separately from the total above, which counts survivors — a "
+        "removal a reader cannot see is the failure mode this number exists "
+        "to prevent."
     )
     lines.append(
         f"  Coverage is reported per {COVERAGE_GRANULARITY}: 'wired' means the "

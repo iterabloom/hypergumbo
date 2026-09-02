@@ -547,10 +547,34 @@ transforms:
 
 #### 3a. On native DDG (primary path)
 
-> **PARTIALLY IMPLEMENTED — the walk RUNS, and it is CONFIRM-ONLY.** Stated up
-> front rather than as a trailing note, because a fragment read of the numbered
-> steps below would otherwise be indistinguishable from a description of what
-> the code does.
+> **PARTIALLY IMPLEMENTED — the walk RUNS, and since 2026-09-02 it ADJUDICATES.**
+> Stated up front rather than as a trailing note, because a fragment read of the
+> numbered steps below would otherwise be indistinguishable from a description
+> of what the code does.
+>
+> **REMOVAL AUTHORITY IS GRANTED (WI-kabif + WI-joluk, one PR).** The §3a arm no
+> longer collapses `False` into `None`. A walk that seeded on a recorded
+> definition, followed every route out of it, and ended everywhere ACCOUNTED FOR
+> — a §4 terminating summary or a barrier — without reaching a sink argument now
+> REMOVES the flow. `escaped` is ignorance and removes nothing; `not_attempted`
+> never ran. WI-joluk's forfeit gate runs first and downgrades any `False` from
+> a function whose CFG missed a call node in its body, so an exhausted walk over
+> a demonstrably incomplete graph never reaches the removal.
+>
+> **The trade is a deliberate departure from §7b's stated preference for
+> overapproximation**, and it was granted by the owner in writing rather than
+> taken by the implementation: §7b excludes alias analysis, so this introduces
+> false negatives on container and alias mutation.
+>
+> **MEASURED EFFECT AT THE GRANT: ZERO.** hypergumbo-core reports 15 confirmed /
+> 12 escaped / **0 unconfirmed** across 27 walks, and the 11-repo cohort reports
+> the same zero (153 `ddg_mixed` rows: 0 unconfirmed / 14 escaped / 139
+> not_attempted). These are live semantics over a currently empty class. They
+> activate as escape sites close — the remaining ones on the self-tree belong to
+> INV-mumov (1) and INV-linub (3). Forcing every escape closed yields 7 `False`
+> on that corpus, which is the ceiling, not a prediction. `verify-claims`
+> publishes `dataflow_coverage.flows_removed_by_walk` every run so the number is
+> never inferred.
 >
 > **What `propagate_taint_ddg` actually does today** (re-measured 2026-08-26 on
 > dev `daafb0abb1`): steps 1–4 run. `_ddg_taint_reaches` *is* this subsection's
@@ -569,10 +593,13 @@ transforms:
 > **76.3% of all never-ran walks** (measurement 0007, 11 repositories). Lifting
 > that is WI-famig, not more catalogue work.
 >
-> **What it still does NOT do: decide flow INCLUSION.** Inclusion remains
-> call-graph BFS. The walk raises confidence to `precise` where it finds a
-> dependence and never removes a flow on the §3a arm. Removal authority is
-> WI-kabif's and is unbuilt.
+> **What it still does NOT do: ADD a flow.** Inclusion remains call-graph BFS —
+> the walk mints nothing, so `inclusion_decided_by` still opens with
+> `call_graph_reachability` and now reads
+> `call_graph_reachability_minus_ddg_refutation`. The walk raises confidence to
+> `precise` where it finds a dependence, and SUBTRACTS where it refutes one.
+> Reading `analysis_method == "ddg"` as "this flow's inclusion was decided by
+> data flow" is therefore still the INV-sadah misreading.
 >
 > **Two blockers this banner used to name are CLOSED**, recorded rather than
 > deleted because both were load-bearing here for months. (a) The walk keyed on

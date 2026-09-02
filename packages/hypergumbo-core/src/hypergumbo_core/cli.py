@@ -6160,6 +6160,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # Run taint-flow analysis if any claims have taint_flow constraints
     taint_findings = None
     credited_user_summaries: set[str] = set()
+    # WI-kabif. Flows the §3a walk REFUTED and removed, collected across every
+    # language for the same reason ``credited_user_summaries`` is: the removal
+    # count is a property of the RUN, and a per-language split would imply a
+    # precision the disclosure does not have.
+    refuted_flows: list[Any] = []
     # INV-javam: track languages with no taint coverage so callers can
     # distinguish "no taint-flow violations" from "language not analyzed".
     # Without this, taint-flow trivially passes every claim on unsupported
@@ -6443,6 +6448,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         # construction. Accumulating per language would imply a
                         # precision the mechanism does not have.
                         credited_user_summaries=credited_user_summaries,
+                        refuted_flows=refuted_flows,
                     ))
                 else:
                     taint_findings.extend(propagate_taint_structural(
@@ -6560,6 +6566,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 # stable; empty ``languages`` on a run with no taint claims.
                 "dataflow_coverage": dataflow_scope_dict(
                     dataflow_rows, findings_by_method, sanitizer_scope,
+                    flows_removed_by_walk=len(refuted_flows),
                 ),
                 # INV-zosun: which catalogues this verdict rested on. Always
                 # present, like dataflow_coverage above, so `user_supplied:
@@ -6622,6 +6629,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         from .dataflow_scope import render_dataflow_scope_text
         for line in render_dataflow_scope_text(
             dataflow_rows, findings_by_method, sanitizer_scope,
+            flows_removed_by_walk=len(refuted_flows),
         ):
             print(line)
 

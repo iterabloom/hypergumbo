@@ -286,9 +286,10 @@ def _qualify(module: str, name: str) -> str:
 # fixed, and would silently invalidate every published use of ``ddg_mixed``
 # (docs/measurements/0006, docs/VERIFY-CLAIMS-SCOPE.md).
 #
-# NOTHING IS ACTED ON. §3a stays confirm-only: these are recorded so the
-# addressable domain can be MEASURED rather than upper-bounded. No verdict
-# moves because of this field.
+# NOTHING IS ACTED ON *BY THIS FIELD*. §3a gained removal authority on
+# 2026-09-02 (WI-kabif) and now acts on ``walk_verdict``; this one is still
+# recorded only, so the addressable domain can be MEASURED rather than
+# upper-bounded. No verdict moves because of ``walk_blocked_by``.
 #: Why the §3a walk did not run, when the DDG DID cover the source function.
 #: The measurement that made this necessary: across the 11 cohort repositories
 #: that carry a ``ddg_mixed`` finding, 153 such rows split 0 ``unconfirmed`` /
@@ -468,9 +469,11 @@ class TaintFlowFinding:
     #: §7a's removal authority impossible to price: dropping every ``ddg_mixed``
     #: removes findings on the authority of a walk that did not run.
     #:
-    #: RECORDED, NOT ACTED ON. §3a stays confirm-only and no verdict moves
-    #: because of this field; what it buys is that the addressable domain can
-    #: be measured instead of upper-bounded.
+    #: ACTED ON SINCE 2026-09-02 (WI-kabif). This field WAS recorded-only,
+    #: and the note here said so; §3a now removes a flow whose verdict is
+    #: ``unconfirmed`` -- and ONLY that one, since ``escaped`` is ignorance.
+    #: A consumer reading this field is therefore reading the thing that
+    #: decides removal, not a label beside it.
     walk_verdict: str = ""
     #: INV-zidur: the FIRST guard that stopped the §3a walk, for a finding whose
     #: ``walk_verdict`` is ``not_attempted``. One of :data:`WALK_BLOCKERS`;
@@ -493,8 +496,9 @@ class TaintFlowFinding:
     #: ``sink_before_source`` member, 133 of them (63.9%) are NOT unanimous,
     #: and only 349 of the 1,073 members under them (32.5%) carry it.
     #:
-    #: THIS IS A PRECONDITION, NOT A REMEDY. §3a stays confirm-only and no
-    #: verdict moves because of these fields either. But INV-muhij's remedy —
+    #: THIS IS A PRECONDITION, NOT A REMEDY. No verdict moves because of
+    #: these two union fields -- §3a's removal authority (WI-kabif) reads the
+    #: scalar ``walk_verdict``, never these. But INV-muhij's remedy —
     #: stop a ``sink_before_source`` row from carrying a verdict alone — has to
     #: read a fact that is true of everything the row stands for, and the
     #: scalar is not one. A rule may act on ``walk_blocked_by_values ==
@@ -2252,8 +2256,10 @@ def _source_and_sink_are_one_call(
     deliberately the same shape as the other two: `_sink_call_can_carry_taint`
     refuses a site that provably discards, `_source_call_can_mint_taint`
     refuses a site that provably reads memory, and this refuses a *pair* that
-    is one invocation. None of the three is the ADR-0017 §3a walk, which is
-    confirm-only and may not remove a flow.
+    is one invocation. None of the three is the ADR-0017 §3a walk. That walk
+    may now remove a flow (WI-kabif) but only on its own ``unconfirmed``
+    verdict; these three refusals are upstream of it and are about what
+    counts as a source/sink PAIR at all.
 
     WHY THIS ONLY BECAME REACHABLE WITH INV-lozat. Until a content-returning
     launch was catalogued, no shipped primitive was a taint source AND a taint
@@ -3401,8 +3407,8 @@ def _ddg_taint_reaches(
     """Does a value defined at a source call reach a use at a sink call?
 
     TWO CALLERS ASK TWO QUESTIONS OF THIS ONE WALK. With no ``barrier_lines``
-    it answers §3a's "is there a data dependence from source to sink" — the
-    confirm-only adjudication. With the sanitizer call sites as barriers it
+    it answers §3a's "is there a data dependence from source to sink" — which
+    since WI-kabif both confirms a flow and, on ``False``, removes it. With the sanitizer call sites as barriers it
     answers "is there such a dependence that does NOT pass through a
     sanitizer", and the difference between the two runs is what earns
     ``sanitized`` for a same-function barrier (WI-fasub). Both readings rest on
@@ -3510,7 +3516,7 @@ def _ddg_taint_reaches(
             walk twice, once with barriers and once without, is what lets
             :func:`propagate_taint_ddg` tell "every data route to this sink
             passes through the sanitizer" from "some route does not" (WI-fasub).
-            Empty by default, so the §3a confirm-only walk is unaffected.
+            Empty by default, so the §3a adjudicating walk is unaffected.
         forfeit_refutation: The caller has established that this function's
             CFG statement extents do not cover every call node in its AST
             body — i.e. the def/use extractor did not see part of it. The
@@ -3822,6 +3828,7 @@ def propagate_taint_ddg(
     ] | None = None,
     forfeit_refutation: set[str] | None = None,
     credited_user_summaries: set[str] | None = None,
+    refuted_flows: list["TaintFlowFinding"] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -4117,8 +4124,9 @@ def propagate_taint_ddg(
             sink_callers,
         ):
             # INV-lozat: one call is not a source->sink pair with itself. This
-            # is NOT the §3a walk refusing -- the walk is confirm-only and its
-            # `sink_before_source` blocker is recorded, never acted on.
+            # is NOT the §3a walk refuting -- that walk removes only on its own
+            # `unconfirmed` verdict, and its `sink_before_source` blocker stays
+            # recorded, never acted on.
             if _source_and_sink_are_one_call(
                 caller_id, sink_node, source_callee_id, sink_callee_id,
                 call_lines,
@@ -4184,8 +4192,11 @@ def propagate_taint_ddg(
             #     cannot see may well receive the taint, so the absence of a
             #     dependence to the one line we can see licenses nothing.
             adjudicated = False
-            # INV-zidur. ``adjudicated`` is the CONFIRM-ONLY question and stays
-            # a bool because every consumer of it below asks exactly that. The
+            # INV-zidur. ``adjudicated`` is the CONFIRMATION question and stays
+            # a bool because every consumer of it below asks exactly that. It is
+            # deliberately NOT the removal question: removal reads ``verdict``
+            # further down, so that ``False`` and ``None`` stay distinguishable
+            # right up to the point one of them acts. The
             # walk's raw three-valued answer, and whether it ran at all, are
             # kept alongside so the label can say which of the three
             # non-confirming outcomes this was.
@@ -4221,12 +4232,13 @@ def propagate_taint_ddg(
                 elif not sink_after_source:
                     blocked_by = WALK_BLOCKED_SINK_BEFORE_SOURCE
                 if sink_call_lines and source_tracked and sink_after_source:
-                    # CONFIRM-ONLY. The walk raises confidence when it finds a
-                    # data dependence and never removes a flow, because a sound
-                    # refutation is not available on this substrate — see the
-                    # note on §4 below. ``None`` (escaped) and ``False``
-                    # (exhausted) are therefore treated alike: neither is
-                    # evidence the flow is absent.
+                    # ADJUDICATING, NOT CONFIRM-ONLY (WI-kabif, granted
+                    # 2026-09-02). ``None`` (escaped) and ``False``
+                    # (exhausted) are no longer alike: the first is ignorance
+                    # and keeps the flow, the second is positive evidence of
+                    # NO dependence and REMOVES it below. That asymmetry is
+                    # the entire grant, and it is why ``walk_verdict_for``
+                    # carries two names for the two negatives.
                     walk_ran = True
                     # INV-lupav L2, AND IT IS NO LONGER A NO-OP HERE. The rule
                     # is that a site which CONSUMES the walk's ``False`` must
@@ -4386,6 +4398,63 @@ def propagate_taint_ddg(
                 sanitized_by_user = tuple(
                     b.qualified_name for b in ddg_barrier if b.user_supplied
                 )
+
+            # ADR-0017 §3a REMOVAL AUTHORITY (WI-kabif + WI-joluk).
+            #
+            # ``unconfirmed`` is the ONLY verdict that may remove a flow, and
+            # it means something narrow: the walk seeded on a definition the
+            # DDG actually recorded, followed every route out of it, and every
+            # route ended somewhere ACCOUNTED FOR -- a §4 terminating summary
+            # or a barrier -- without ever reaching a sink argument.
+            # ``escaped`` (the value went into a container, a field, a closure,
+            # or a callee nothing is declared about) is IGNORANCE and keeps its
+            # flow; ``not_attempted`` never ran.
+            #
+            # THREE THINGS KEEP THIS EARNED, EACH INDIVIDUALLY LOAD-BEARING.
+            # (1) WI-joluk's forfeit gate has already downgraded any ``False``
+            # from a function whose CFG missed a call node in its body, so an
+            # exhausted walk over a demonstrably incomplete graph never arrives
+            # here. (2) ``_summary_terminates`` is a conjunction in which any
+            # doubt reads as "no", so an unmodelled callee escapes rather than
+            # terminating. (3) The walk is intraprocedural, so "every route" is
+            # a claim about one function body, not about the program.
+            #
+            # WHAT IS BEING TRADED, IN WRITING. ADR-0017 §7b excludes alias
+            # analysis and states a preference for overapproximation, so this
+            # introduces FALSE NEGATIVES on container and alias mutation. The
+            # owner granted that trade explicitly on 2026-09-02. It is not a
+            # trade this code may make on its own authority.
+            #
+            # MEASURED EFFECT ON TODAY'S CORPUS: ZERO. hypergumbo-core reports
+            # 15 confirmed / 12 escaped / 0 unconfirmed across 27 walks, and
+            # the 11-repo cohort reports the same zero (153 ``ddg_mixed`` rows:
+            # 0 unconfirmed / 14 escaped / 139 not_attempted). These are live
+            # semantics over a currently EMPTY class; they activate as escape
+            # sites close, which is why ``refuted_flows`` exists -- a removal
+            # nobody can count is a security tool deleting findings in silence.
+            if verdict == WALK_VERDICT_UNCONFIRMED:
+                if refuted_flows is not None:
+                    refuted_flows.append(TaintFlowFinding(
+                        taint_label=taint_label,
+                        source_symbol=seed_id,
+                        source_primitive=taint_source.name,
+                        source_module=taint_source.module,
+                        source_boundary=taint_source.source_boundary,
+                        sink_symbol=sink_callee_id,
+                        sink_primitive=taint_sink.name,
+                        sink_module=taint_sink.module,
+                        sink_zone=taint_sink.zone,
+                        sink_call_sites=((sink_node, sink_callee_id),),
+                        sanitized=is_sanitized,
+                        sanitized_by=sanitized_by,
+                        sanitized_by_user_supplied=sanitized_by_user,
+                        confidence=confidence,
+                        analysis_method=method,
+                        walk_verdict=verdict,
+                        path=path,
+                    ))
+                continue
+
             findings.append(TaintFlowFinding(
                 taint_label=taint_label,
                 source_symbol=seed_id,
