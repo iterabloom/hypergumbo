@@ -1,0 +1,66 @@
+Original commit body from c83f55832c41fb450ae99abe2c94f3d6cd7c2139:
+
+The section 3a arm read `adjudicated = walk_result is True`, so "the walk
+exhausted every route and found no dependence" (False) and "the walk lost the
+value" (None) were the same event and neither removed anything. False now
+REMOVES the flow.
+
+ONE PR FOR TWO ITEMS, and the pairing is load-bearing. Since PR #214 an
+unearned False is a live falsehood in a security tool. WI-joluk's forfeit gate
+-- downgrade False to None for any function whose CFG statement extents miss a
+call node in its body -- is what keeps a False earned. It was already wired to
+this arm (2026-08-26); WI-joluk's description still said NOT WIRED, which was
+stale. A gate protecting an arm that never consumed a False was a no-op anyone
+could have tidied away, so it now has a test.
+
+THREE PROPERTIES KEEP THE REMOVAL EARNED, each independently load-bearing:
+  1. the forfeit gate runs first, so an exhausted walk over a demonstrably
+     incomplete graph never reaches the removal;
+  2. _summary_terminates is a conjunction in which any doubt reads as "no";
+  3. the walk is intraprocedural, so "every route" is a claim about one
+     function body, not about the program.
+`escaped` is IGNORANCE and keeps its flow. `not_attempted` never ran.
+
+THE MEASURED EFFECT IS ZERO AND IS REPORTED AS ZERO. hypergumbo-core:
+15 confirmed / 12 escaped / 0 unconfirmed across 27 walks. The 11-repo cohort
+reports the same zero (153 ddg_mixed rows: 0 unconfirmed / 14 escaped / 139
+not_attempted). These are live semantics over a currently EMPTY class; they
+activate as escape sites close, and the survivors on the self-tree belong to
+INV-mumov (1) and INV-linub (3). Forcing every escape closed yields 7 False on
+that corpus -- a CEILING, not a prediction, since that arm also closes callees
+that genuinely propagate. The filing's pre-registered "~13% fewer evidence
+rows" cannot be scored against a corpus that produces no refutations, so it is
+re-registered against the escape-closure work rather than claimed as met.
+
+A REMOVAL IS NEVER SILENT. verify-claims publishes
+dataflow_coverage.flows_removed_by_walk on both the JSON and text surfaces,
+counted separately from findings_total (which counts survivors). A security
+tool whose findings can be fewer than its analysis produced, with no number a
+reader can check, is the failure mode this prevents. The first live run printed
+0.
+
+THE CHANGE FALSIFIED A PUBLISHED CLAIM IN TEN PLACES AND THE R16 TRIGGER BUILT
+FOR EXACTLY THIS CAUGHT IT. dataflow_coverage.inclusion_decided_by was the
+constant "call_graph_reachability", justified by section 3a being confirm-only,
+with a test whose docstring said it must change when section 3a gained
+refutation. It fired. The value is now
+"call_graph_reachability_minus_ddg_refutation" -- compound because BOTH halves
+stay true: the walk mints nothing, so inclusion is still bounded by
+reachability, and reading analysis_method == "ddg" as "inclusion decided by
+data flow" is still the INV-sadah misreading. Also corrected: the rendered text
+disclosure ("never removes a flow"), TaintFlowFinding.walk_verdict's docstring
+("RECORDED, NOT ACTED ON" -- it is now the field that decides removal), six
+further taint.py comments, the ADR section 3a banner, and two spec paragraphs.
+
+WHAT IS BEING TRADED, IN WRITING. ADR-0017 section 7b excludes alias analysis
+and states a preference for overapproximation, so this introduces FALSE
+NEGATIVES on container and alias mutation. The owner granted that trade
+explicitly on 2026-09-02; it is not one the implementation may make on its own.
+
+Tests: 11 new, including a non-vacuity floor, escaped/not_attempted controls,
+a forfeit-gate protection test with a vacuity guard on the function key, and a
+parametrised assertion that a confirmation is never removed either way.
+6653 passed, 100% coverage on changed files, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a ferret riding a zero-gravity pogo stick in a subterranean station with a council of owls made of shofar horns
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
