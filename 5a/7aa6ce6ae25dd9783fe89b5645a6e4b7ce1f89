@@ -1,0 +1,49 @@
+Original commit body from d2fde8cf106e14e1b0c36bb5a051fe17dd059b36:
+
+collapse_unadjudicated_flows unions six fields across a group so the surviving
+row names every site it stands for. walk_verdict and walk_blocked_by were not
+among them: the row inherited grp[0]'s and nothing recorded what the other
+members reported.
+
+INV-muhij's remedy is to stop a sink_before_source row from carrying a verdict
+alone. A rule keyed on the ROW's scalar would act on a fact true of a minority
+of what the row represents. Re-derived on this tree by spying on the production
+collapse through verify-claims on beads, rather than read off the item:
+
+    1,870 groups / 6,857 members
+      396 groups (21.2%) disagree internally about walk_blocked_by
+      171 groups disagree about walk_verdict -- the sibling field, inherited
+          by the identical mechanism, which is why both move here
+      208 groups contain a sink_before_source member
+      133 of those (63.9%) are NOT unanimous
+      349 of the 1,073 members under them (32.5%) carry the marker
+
+On the PUBLISHED record the distortion runs both ways: of beads' 134 evidence
+rows the scalar marks sink_before_source on 9, only 3 unanimous -- so 6 of 9
+would be suppressed on a false premise -- and 2 further rows contain a
+sink_before_source member the scalar hides entirely.
+
+The fix is the shape this function already uses five times: a companion union,
+scalar kept as the witness. `""` is a VALUE (the walk ran), not an absence;
+dropping it would make a mixed group read as unanimous, which is the exact
+misreading these prevent.
+
+ONE FACT, TWO HOMES. The fields were added to TaintFlowFinding.to_dict first
+and reached the published JSON not at all -- verify_claims builds its own
+evidence dict rather than calling to_dict, so the first corpus measurement
+after the change reported 0 rows carrying the field. Caught by measuring the
+published record instead of the dataclass. Both serializers emit it now.
+
+NOTHING IS SUPPRESSED AND NO VERDICT MOVES. Section 3a stays confirm-only.
+This makes the record honest enough that a suppression rule COULD be written
+against it, which is what the item's census named as a precondition.
+
+Also records WI-kanor's discharged precondition, which refutes that item's
+guessed deliverable: the missing far-end rows would be inert, because the
+analyzers emit the `external` sentinel in the module slot for
+Popen.communicate / Process.getInputStream / Cmd.StdoutPipe while the rows
+themselves match perfectly at every resolved slot. That answers INV-muhij's
+replacement step 2 in the negative -- the ordering test cannot anchor on the
+effect call, because the effect call resolves to nothing the catalogue names.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
