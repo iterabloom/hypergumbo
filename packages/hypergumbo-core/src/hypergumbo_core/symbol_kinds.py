@@ -893,5 +893,43 @@ def find_axis_drift(repo_root: Path) -> list[str]:
         # axis; exclude them by name.
         excluded_target_names=(
             "PROTOCOL_KINDS", "BRIDGE_KINDS", "_NON_CROSSING_TARGET_KINDS",
+            # --- surfaced by WI-jinuj's widening (dicts / tuples are now
+            # collected). Each of these is 0/N conformant with this
+            # registry, which is the test that separates a name collision
+            # from a consumer: a constant that shares the ``KIND`` substring
+            # but none of the vocabulary is a different axis.
+            #
+            # ``_RELATED_ENDPOINT_KINDS`` (cli.py) is the
+            # ``meta["framework_role"]`` vocabulary -- ADR-0027 Phase 3 /
+            # audit-findings 0013 folded these OFF Symbol.kind, and
+            # ``cmd_routes`` reads ``meta.framework_role`` first
+            # (cli.py:2239). Same shape as PROTOCOL_KINDS above.
+            "_RELATED_ENDPOINT_KINDS",
+            # ``_PROVENANCE_KINDS`` (verify_claims.py) enumerates catalogue
+            # PROVENANCE categories (io_primitives, taint_sinks, ...).
+            "_PROVENANCE_KINDS",
+            # ``_ANNOTATION_KINDS`` (tracker) is the TUI annotation-shape
+            # vocabulary (arrow, rect).
+            "_ANNOTATION_KINDS",
+            # ``_READ_TARGET_KIND_BOUNDARY`` (io_boundary.py) is a CROSS-AXIS
+            # map: keys are ``Edge.meta['io_target_kind']`` values, values
+            # are io-boundary names. Neither side is a Symbol.kind, so both
+            # are excluded here -- the io-boundary linter keeps the VALUES
+            # side, which is its own axis.
+            "_READ_TARGET_KIND_BOUNDARY",
+            # ``_PHP_CONTAINER_KINDS`` KEYS are tree-sitter NODE types
+            # (class_declaration, trait_declaration); its VALUES are real
+            # Symbol.kinds and stay checked, which is what the per-side
+            # exclusion is for.
+            "_PHP_CONTAINER_KINDS:keys",
+            # --- DEBT, NOT A COLLISION: INV-lagot. ``scip/index.py``'s
+            # ``_KIND_MAP`` IS a Symbol.kind consumer -- 5 of its 8 values
+            # are registered -- and the other 3 (parameter, type_parameter,
+            # meta) plus the ``"unknown"`` fallback at index.py:166 are
+            # phantom values this registry does not describe. Suppressed
+            # here so WI-jinuj's shared-machinery widening lands green, per
+            # that item's own instruction that per-axis residue is filed
+            # rather than fixed. DELETE THIS LINE when INV-lagot closes.
+            "_KIND_MAP",
         ),
     )

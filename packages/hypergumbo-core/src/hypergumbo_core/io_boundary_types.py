@@ -515,5 +515,14 @@ def find_axis_drift(repo_root: Path) -> list[str]:
         repo_root,
         name_filter="BOUNDAR",
         registry_names=all_io_boundary_names(),
-        excluded_target_names=("VALID_BOUNDARY_RULINGS",),
+        excluded_target_names=(
+            "VALID_BOUNDARY_RULINGS",
+            # WI-jinuj: ``_READ_TARGET_KIND_BOUNDARY`` is a CROSS-AXIS map --
+            # keyed by ``Edge.meta['io_target_kind']`` values (host_path,
+            # std_stream) and VALUED by io-boundary names. Only the KEYS are
+            # off this axis, so only the keys are excluded; the values side
+            # stays checked, which is the whole reason a dict's two sides are
+            # collected separately rather than unioned.
+            "_READ_TARGET_KIND_BOUNDARY:keys",
+        ),
     )
