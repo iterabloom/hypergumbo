@@ -1,0 +1,30 @@
+- op: create  # c027
+  at: '2026-09-02T21:37:37Z'  # c027
+  by: agent  # c027
+  actor: jgstern_agent  # c027
+  clock: 1  # c027
+  nonce: c027  # c027
+  data:  # c027
+    kind: work_item  # c027
+    title: "0006's adjudication packet builder manufactured evidence of absence: 58.9% of its 112 situations showed an EMPTY sink listing because it searched only the source symbol's span"  # c027
+    status: todo_hard  # c027
+    priority: 1  # c027
+    parent:  # c027
+    tags:  # c027
+    - measurement_0006  # c027
+    - taint  # c027
+    - analysis_quality  # c027
+    isbefore: []  # c027
+    duplicate_of: []  # c027
+    not_duplicate_of: []  # c027
+    pr_ref:  # c027
+    description: "FILED 2026-09-02 while preparing to re-run 0006's frame. The defect is the\nMEASUREMENT'S OWN INSTRUMENT, not hypergumbo, which is why it had no item: the\n0006 record names it (section F, ~12 reports) and ends \"Fix before reuse\", and\nnothing tracked that.\n\nWHAT WAS WRONG, quoted from 0006 section F:\n  1. \"candidate-line listings match sink names as bare SUBSTRINGS\n     (`inFORMATion` matched `format`; `-> ` inside a quoted pattern matched\n     `>`)\"\n  2. \"match any `$VAR` including shell COMMENTS and locals\"\n  3. \"miss literal call sites\"\n  4. \"search for sink sites only inside the SOURCE symbol's span -- which\n     makes the sink listing structurally empty for every multi-hop situation\"\n\nWHY IT MATTERS MORE THAN A TOOLING NIT. Defect 4 shows the ADJUDICATOR\nMANUFACTURED EVIDENCE OF ABSENCE. Measured on 0006's own shipped packets:\n\n    packets2/ (the 112 adjudicated situations)   66 EMPTY sink listings (58.9%)\n\nSo for nearly six adjudications in ten, the reader applying 0001's rubric was\nshown \"(none found in span)\" for a sink that is often plainly present in the\nNEXT symbol on the path. ArkLib#3 is the canonical case: path is main (201-255)\nthen generate_dot_graph (110-137), and `open` is called in the second. Both\ndirections of error are available from that -- a FALSE POSITIVE label supported\nby a listing that showed no sink, and a TRUE POSITIVE label reached despite it.\n0006's published 33.9% / 24.1% rest on those 112 adjudications.\n\nTHE BUILDER WAS A SESSION ARTIFACT AND WAS NEVER COMMITTED, so the defects\ncould not be fixed, only re-encountered. That is the same failure this project\nrecorded on WI-ratuv (\"the 2026-08-21 script was a session artifact and was not\ncommitted\", which made a 589 -> 782 delta unattributable).\n\nFIXED, in-repo, as `measure-taint-precision.py packet` with 42 tests:\n  - identifier-boundary matching, so `format` cannot match `information`;\n  - comment and string-literal scrubbing that PRESERVES LENGTH;\n  - every FIRST-PARTY symbol on the flow's path is searched, not just the\n    source span (defect 4);\n  - every primitive a collapsed situation stands for is searched, not just the\n    headline `sink_name` (defect 3);\n  - an honest empty NAMES WHAT WAS SEARCHED, so a reader can tell \"not there\"\n    from \"not looked for\".\n\nMEASURED EFFECT on the same cohort: empty sink listings 58.9% -> 0.3%.\nDenominators differ (112 sampled vs 730 all-collected) and that is disclosed\nrather than smoothed over; the mechanism is not in doubt.\n\nTWO DEFECTS FOUND IN MY OWN FIX BY READING RENDERED PACKETS BACK AGAINST\nSOURCE, neither caught by the unit fixtures:\n  (a) a FILE-anchored symbol declares span 1-1\n      (bash:scripts/lintWhitespace.sh:1-1:file:file for a 26-line script), so\n      honouring the declared span searched ONE line and reported \"none found\"\n      for a redirect on line 10 -- defect 4 arriving by another route. File\n      symbols are now searched whole.\n  (b) shell LOCALS bound by `read -r file` / `for f in` were listed as\n      environment reads; only `NAME=` was excluded. ArkLib's lintWhitespace.sh\n      listed `$file` on four lines as an env_read source. With both closed that\n      situation now reports NO environment read anywhere in the file, which\n      points the adjudication the opposite way from what the old packet\n      supported.\n\nRESIDUAL, NOT FIXED: block comments are not handled (a regex over 16 languages\nwould trade a known limitation for an unknown one), and shell assignment\ndetection has no notion of order or scope, so a name both inherited AND\nreassigned reads as local and is dropped. Both err toward showing the\nadjudicator LESS, which is the safe direction for a listing whose job is to\nsupport a refutation."  # c027
+    fields: {}  # c027
+- op: update  # 5e40
+  at: '2026-09-02T21:41:55Z'  # 5e40
+  by: agent  # 5e40
+  actor: jgstern_agent  # 5e40
+  clock: 2  # 5e40
+  nonce: '5e40'  # 5e40
+  set:  # 5e40
+    status: done  # 5e40

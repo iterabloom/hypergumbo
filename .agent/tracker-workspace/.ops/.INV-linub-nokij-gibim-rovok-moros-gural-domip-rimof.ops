@@ -334,3 +334,12 @@
   clock: 43  # 1286
   nonce: '1286'  # 1286
   message: "SEQUENCING CORRECTION -- I am reversing my own change, and recording why.\n\nLast session I raised this item to P1 and added isbefore INV-duvup, on the\ngrounds that its 08-06 catalogue-only exposure table predicts which languages\nproduce zero taint flows on the independent 08-25 cohort (monotone over 10\nlanguages: >=87% method-kind = 13 repos, ZERO flows). That mechanism claim\nstands and I am not withdrawing it.\n\nTHE SEQUENCING WAS WRONG, and I put it in the graph without checking it against\nthe standing band. WI-sivuz: \"<50%: precision is the headline problem and\nRECALL WORK SHOULD STOP until it is understood.\" The later useful-precision\nband is tighter (\"<=25% useful ⇒ recall stays stopped\"). 0006 useful precision\nis 24.1% (27/112), which is below BOTH, so the two readings agree and the\nquestion does not turn on which one is authoritative.\n\nTHIS CLASS IS RECALL WORK. Every fix under it makes more catalogued sinks\nREACHABLE. So is WI-dizag, WI-papar, INV-mumov and WI-nasuf. The band stops\nthem, and the edge I added asserted the opposite -- that the baselines had to\nwait for recall.\n\nWHAT INV-duvup ACTUALLY NEEDS FROM THIS ITEM IS A DECLARATION, NOT A FIX.\nINV-duvup's own complaint is \"a two-repo cohort wearing a five-repo label\". A\nfifteen-language cohort in which five or six languages structurally produce\nzero flows is that same failure one level up -- and the remedy INV-duvup exists\nto impose is to DECLARE the scope and name the exclusions with their reason,\nnot to repair them (EXCLUDED is not ZERO). This item is the reason; citing it\nin the benchmark's pre-registration discharges the dependency.\n\nEdge removed. Priority left at P1 -- the class is still the largest known\nrecall defect and it is still the right first thing to do when the band lifts.\nReversible: if precision clears the band and the benchmark is still open, the\nedge goes back."  # 1286
+- op: update  # 4347
+  at: '2026-09-02T20:45:11Z'  # 4347
+  by: agent  # 4347
+  actor: jgstern_agent  # 4347
+  clock: 44  # 4347
+  nonce: '4347'  # 4347
+  set: {}  # 4347
+  add:  # 4347
+    isbefore: [WI-mifag-vunus-vosug-ratam-fomij-voguz-nizad-tamir]  # 4347

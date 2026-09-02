@@ -1,0 +1,40 @@
+- op: create  # 7a8d
+  at: '2026-09-02T20:44:46Z'  # 7a8d
+  by: agent  # 7a8d
+  actor: jgstern_agent  # 7a8d
+  clock: 1  # 7a8d
+  nonce: 7a8d  # 7a8d
+  data:  # 7a8d
+    kind: work_item  # 7a8d
+    title: "WI-ratuv's test-only-reachability gate excludes 204 METHODS: deciding one needs receiver typing (INV-linub), so the bare short name cannot tell Store.add from set.add"  # 7a8d
+    status: todo_hard  # 7a8d
+    priority: 2  # 7a8d
+    parent:  # 7a8d
+    tags:  # 7a8d
+    - dead_code  # 7a8d
+    - axis  # 7a8d
+    - analysis_quality  # 7a8d
+    isbefore: []  # 7a8d
+    duplicate_of: []  # 7a8d
+    not_duplicate_of: []  # 7a8d
+    pr_ref:  # 7a8d
+    description: "WI-ratuv's gate shipped in PR #717 covering FUNCTIONS ONLY. The 204 METHODS in\nthe same cohort are counted and reported but never gated, and this is the item\nfor closing that half once its blocker lifts.\n\nTHE COHORT, measured at dev 89f3c7f457 on a full self-map:\n    test-only-reachable symbols   789\n      functions (GATED)           585  ->  317 after demotion\n      methods   (NOT gated)       204\n\nWHY THEY ARE EXCLUDED, and it is a real blocker rather than caution. A method's\nidentity in the call graph is its SHORT name, so the demotion arm -- which asks\n\"does production reference this name by a mechanism the call graph cannot see\"\n-- cannot distinguish `Store.add` from `set.add`. Measured on the live cohort,\n47.5% of methods came back \"referenced in another production module\" against\n4.1% of functions; that gap is short-name collision, not a real difference in\nreachability. WI-ratuv's own thread recorded the same failure independently:\n`Pattern.matches` scored 497 hits off regex `.matches` and `PhaseDuration.group`\nscored 669 off `.group()`.\n\nDeciding a method needs the receiver's TYPE, which is INV-linub's territory\n(and WI-dizag's shape B for rust). Until a method reference can be resolved to\nits owning type, ~200 rows are unadjudicable, and freezing them into the\nshrink-only baseline would produce exactly the rubber-stamped ratchet the\n2026-08-05 owner ruling on WI-ratuv forbids (\"a rubber-stamped ratchet is worse\nthan none\").\n\nTHE DELIVERABLE when the blocker lifts:\n  1. widen GATED_KINDS to include `method` in\n     hypergumbo_core/test_only_reachability.py;\n  2. make `demotion_reason` resolve a method reference through the receiver\n     type rather than the bare last name component -- the function currently\n     documents this exact limitation in its docstring;\n  3. re-run `scripts/check-test-only-reachability --write-baseline` and\n     ADJUDICATE A SAMPLE of the newly added rows before freezing, per the\n     ruling's standing constraint;\n  4. update the test\n     `TestGatedCohort::test_methods_are_counted_but_never_gated`, which pins\n     the current exclusion and will fail on purpose.\n\nNOT A REGRESSION TODAY. The gate is correct as shipped; this is scope it\ndeclines to claim, recorded so the exclusion does not become permanent by\nnobody noticing. The census line `set aside: 204 not_gated_kind` in the gate's\nown output is the standing reminder."  # 7a8d
+    fields: {}  # 7a8d
+- op: update  # 1da9
+  at: '2026-09-02T20:44:54Z'  # 1da9
+  by: agent  # 1da9
+  actor: jgstern_agent  # 1da9
+  clock: 2  # 1da9
+  nonce: 1da9  # 1da9
+  set:  # 1da9
+    fields:  # 1da9
+      isbefore: "[\"INV-linub\"]"  # 1da9
+- op: update  # b5f6
+  at: '2026-09-02T20:45:11Z'  # b5f6
+  by: agent  # b5f6
+  actor: jgstern_agent  # b5f6
+  clock: 3  # b5f6
+  nonce: b5f6  # b5f6
+  set:  # b5f6
+    fields:  # b5f6
+      isbefore: ""  # b5f6
