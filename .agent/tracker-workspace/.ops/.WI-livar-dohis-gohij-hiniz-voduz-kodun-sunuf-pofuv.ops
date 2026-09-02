@@ -67,3 +67,18 @@
   nonce: 521e  # 521e
   set:  # 521e
     title: "RULED (a): declare the module-key axis — axiom, registry, consumer helper, drift linter — scoped with INV-tafig; ~18 filed items reduce to the gap"  # 521e
+- op: update  # 2bc5
+  at: '2026-09-02T18:32:58Z'  # 2bc5
+  by: agent  # 2bc5
+  actor: jgstern_agent  # 2bc5
+  clock: 8  # 2bc5
+  nonce: 2bc5  # 2bc5
+  set:  # 2bc5
+    status: done  # 2bc5
+- op: discuss  # 9ab4
+  at: '2026-09-02T18:32:58Z'  # 9ab4
+  by: agent  # 9ab4
+  actor: jgstern_agent  # 9ab4
+  clock: 9  # 9ab4
+  nonce: 9ab4  # 9ab4
+  message: "CLOSING on this item's OWN stated criterion, which was that it stays open until\nWI-kurod and WI-kijup have both landed. Verified positively rather than assumed:\n\n  WI-kurod   done       io-boundary axis declaration (ADR + registry + linter)\n  WI-kijup   done       module-key axis declaration + retire the FALSE\n                        free-text declaration on ExternalRef.module_path\n  WI-mubup   done       axis lint widened to io_boundary.py, 20 fields declared\n  INV-tafig  satisfied  the invariant this was scoped with\n\nThe four ADR-0024 artifacts this item said the module key lacked now all exist,\nchecked on disk and not inferred from the tracker:\n\n  axiom      MODULE_KEY_AXIOM in module_key_axis.py, with MODULE_KEY_NOTIONS\n             and the six-notion vocabulary (AXIS_OWNER_PATH,\n             AXIS_CALL_SITE_PROPERTY, AXIS_UNCERTAINTY, AXIS_PENDING)\n  registry   packages/hypergumbo-core/src/hypergumbo_core/module_key_axis.py\n             (io-boundary peer: io_boundary_types.py)\n  helper     notions_on_axis / find_module_key_notion / is_axiom_conformant\n  linter     scripts/check-io-boundary-drift\n  ADRs       docs/adr/0050-io-boundary-axis.md, 0051-module-key-axis.md\n\nBEHAVIOURAL EVIDENCE, both gates run at this tree (dev c53e6de270):\n  scripts/check-io-boundary-drift                       rc=0, no output\n  scripts/check-multi-value-field-axis-declaration      rc=0, no output\n\nWHAT IS NOT CLOSED BY THIS, stated so the closure is not read as wider than it\nis. Declaring the axis is not migrating the values to it. The PAYOFF (WI-zozun,\nthe capitalisation arm at io_boundary.py:3644 that applies Go's naming\nconvention to all 15 catalogues) is open, and the Phase 2 VALUE migration\n(WI-marok) is deliberately out of scope and stays gated behind WI-talos v9/v10.\nWI-virav's ~18-item pile is annotated against the axiom, not folded."  # 9ab4
