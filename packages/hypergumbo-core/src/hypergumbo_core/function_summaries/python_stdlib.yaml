@@ -32,6 +32,46 @@ summaries:
     param_to_return: {}
     side_effect: true
 
+  # THE NEXT TWO ARE THE ENTIRE `4a` BUCKET (key present, no summary) of
+  # scripts/measure-call-escape-cause.py run against hypergumbo-core at dev
+  # c53e6de270 -- the only two callees the §3a walk was measured consulting at
+  # a real escape site and unable to look up. Added under this file's scope
+  # rule, which forbids a stdlib survey, and NOT ranked by call frequency:
+  # their verdicts DISAGREE, so a frequency list would have been half wrong in
+  # the DELETING direction.
+  #
+  #   cli.py:11933   if hasattr(args, "_path_flag"):
+  #   cli.py:4086    if float(e["last_used"]) != newest_per_repo[...]
+
+  # hasattr(obj, name) -> bool. TERMINATING, and it is the first entry in any
+  # of the four catalogues that carries `side_effect: true` while performing no
+  # I/O. That is not a mislabel -- see the field's docstring in
+  # function_summaries/__init__.py, which the same change made honest.
+  # `side_effect` is the POSITIVE marker meaning "this dead end is modelled,
+  # the taint stops here"; `param_to_return: {}` alone cannot mean that,
+  # because builtins.list.pop above has exactly the same empty mapping and
+  # returns its receiver's content.
+  #
+  # WHAT IS BEING TRADED, stated because a wrong TERMINATING drops a flow.
+  # hasattr does leak one bit -- whether the attribute EXISTS -- and existence
+  # is not content. The tainted object's value reaches nothing; the bool that
+  # comes out gates a branch, and control-flow influence is outside what this
+  # DDG walk models (ADR-0017 §7b). If that scope ever widens, this entry is
+  # the first one to revisit.
+  - function: "builtins.hasattr"
+    param_to_return: {}
+    side_effect: true
+
+  # float(x) -> a numeric value DERIVED FROM x's CONTENT. PROPAGATES; a
+  # tainted numeric string that becomes a float is still attacker-influenced.
+  # Declaring it does NOT close its escape site and is not meant to: the value
+  # genuinely leaves the call, so the walk is right to lose it there. What the
+  # entry buys is that the escape is now an ARGUED propagation rather than an
+  # unknown, and that nobody bulk-stamps it terminating alongside its
+  # measurement partner above.
+  - function: "builtins.float"
+    param_to_return: {0: true}
+
   # --- logging: the canonical Python terminating family ---
   #
   # DECLARED TWICE ON PURPOSE, AND ONLY ONE FORM CAN FIRE TODAY (INV-rozaj).
