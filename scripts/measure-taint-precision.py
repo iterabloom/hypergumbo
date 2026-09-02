@@ -734,6 +734,381 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# packet — the adjudication packet, and the four defects 0006 filed against it
+#
+# Measurement 0006 §F names ~12 reports against "the measurement's own packet
+# builder, NOT hypergumbo", and ends "Fix before reuse." That builder was a
+# session artifact and was never committed, so its defects could only be
+# re-encountered. This is it, in-repo, with each defect closed and pinned by
+# ``tests/test_adjudication_packet.py``:
+#
+#   1. substring matching (`inFORMATion` matched `format`; `-> ` inside a
+#      quoted pattern matched the bash redirect `>`)
+#   2. matching inside comments and string literals
+#   3. missing literal call sites — only the situation's HEADLINE sink name was
+#      searched, though a collapsed situation stands for several primitives
+#   4. searching only the SOURCE symbol's span, which makes the sink listing
+#      structurally empty for every multi-hop situation
+#
+# Defect 4 is the load-bearing one: ArkLib#3's path is main (201-255) then
+# generate_dot_graph (110-137), `open` is called in the second, and the packet
+# printed "(none found in span)". That is manufactured evidence of absence, and
+# an adjudicator has no way to tell it from the real thing.
+# --------------------------------------------------------------------------
+
+#: Line-comment openers by language. Block comments are deliberately NOT
+#: handled: doing it correctly needs a lexer, and doing it by regex across 16
+#: languages would trade a known limitation for an unknown one. A block comment
+#: therefore still yields candidate lines, which errs toward showing the
+#: adjudicator too much rather than too little.
+_COMMENT_OPENERS: dict[str, tuple[str, ...]] = {
+    "bash": ("#",), "python": ("#",), "ruby": ("#",), "elixir": ("#",),
+    "yaml": ("#",), "perl": ("#",), "r": ("#",),
+    "go": ("//",), "javascript": ("//",), "typescript": ("//",),
+    "java": ("//",), "rust": ("//",), "c": ("//",), "cpp": ("//",),
+    "kotlin": ("//",), "swift": ("//",), "scala": ("//",), "objc": ("//",),
+    "haskell": ("--",), "sql": ("--",), "lua": ("--",),
+}
+
+_QUOTES = ("'", '"', "`")
+
+
+def scrub(line: str, language: str) -> str:
+    """Blank string literals and line comments, PRESERVING LENGTH.
+
+    Length is preserved so a caller can still report a column. Single-line and
+    quote-naive by design: it tracks one opening quote at a time and does not
+    follow a string across lines, so a multi-line string's interior is still
+    searchable. Stated rather than hidden — the honest limitation is narrower
+    than the defect it replaces.
+    """
+    openers = _COMMENT_OPENERS.get(language, ())
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            out.append(" ")
+            if ch == "\\" and i + 1 < len(line):
+                out.append(" ")
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in _QUOTES:
+            quote = ch
+            out.append(" ")
+            i += 1
+            continue
+        if any(line.startswith(o, i) for o in openers):
+            out.append(" " * (len(line) - i))
+            return "".join(out)
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _site_pattern(name: str) -> "re.Pattern[str]":
+    """Identifier-boundary for a name, literal for an operator.
+
+    ``format`` must not match inside ``information``; ``>`` has no identifier
+    boundary to require and is matched literally (after scrubbing, so a ``>``
+    inside a quoted pattern is already gone).
+    """
+    bare = name.rsplit(".", 1)[-1]
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", bare):
+        return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(bare) + r"(?![A-Za-z0-9_])")
+    return re.compile(re.escape(bare))
+
+
+def find_sites(
+    lines: "list[str]", names: "list[str]", start: int, end: int, language: str,
+) -> "list[tuple[int, str]]":
+    """Lines in ``[start, end]`` where any of ``names`` occurs as a real use.
+
+    Returns the ORIGINAL line text, not the scrubbed one — the adjudicator
+    reads source, and a blanked string would misrepresent it. Scrubbing decides
+    only WHETHER the line is a site.
+    """
+    patterns = [_site_pattern(n) for n in names if n]
+    out: list[tuple[int, str]] = []
+    for lineno in range(max(1, start), min(len(lines), end) + 1):
+        raw = lines[lineno - 1]
+        cooked = scrub(raw, language)
+        if any(p.search(cooked) for p in patterns):
+            out.append((lineno, raw.rstrip("\n")))
+    return out
+
+
+def sink_names(flow: dict[str, Any]) -> "list[str]":
+    """Every primitive the situation stands for, not just its headline.
+
+    ADR-0017's collapse means one situation can carry several sink primitives
+    (ArkLib#3: ``builtins.open``, ``file.write``, ``json.dump``). Searching
+    only ``sink_name`` is defect 3 and reported "nothing found" for a sink
+    plainly present two lines away.
+    """
+    names = {
+        p.rsplit(".", 1)[-1]
+        for p in (flow.get("sink_primitives") or [])
+        if p
+    }
+    if flow.get("sink_name"):
+        names.add(str(flow["sink_name"]).rsplit(".", 1)[-1])
+    return sorted(names)
+
+
+def sink_search_spans(
+    flow: dict[str, Any],
+) -> "list[tuple[str, int, int, str]]":
+    """``(path, start, end, name)`` for every FIRST-PARTY symbol on the path.
+
+    Defect 4. The sink of a multi-hop flow is called in a callee, not in the
+    source function, so searching the source span alone answers a question
+    nobody asked. External symbols name no file and are skipped; a symbol with
+    no span is skipped rather than read as line 0, because an excerpt at the
+    top of a file reads as evidence and is not.
+    """
+    symbols = list(flow.get("path") or []) or [flow.get("source_symbol") or ""]
+    seen: set[tuple[str, int, int, str]] = set()
+    spans: list[tuple[str, int, int, str]] = []
+    for symbol in symbols:
+        if not symbol:
+            continue
+        parsed = parse_symbol_id(symbol)
+        if _is_external(parsed):
+            continue
+        if parsed.get("kind") != "file" and (
+            parsed["start"] is None or parsed["end"] is None
+        ):
+            continue
+        if parsed.get("kind") == "file":
+            # Widened by the caller, which holds the line count; the sentinel
+            # keeps the row addressable here.
+            parsed["start"], parsed["end"] = 1, -1
+        row = (parsed["path"], parsed["start"], parsed["end"], parsed["name"])
+        if row not in seen:
+            seen.add(row)
+            spans.append(row)
+    return spans
+
+
+#: Shell parameters that are not environment reads: positionals and specials.
+_SHELL_NON_ENV = frozenset("0123456789@*#?$!-_")
+
+_SHELL_EXPANSION = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+_SHELL_ASSIGN = re.compile(
+    r"^\s*(?:export\s+|declare\s+(?:-\w+\s+)?|local\s+|readonly\s+)?"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*=",
+)
+
+#: The other ways a shell binds a LOCAL name. ``NAME=`` alone is not enough:
+#: ArkLib's lintWhitespace.sh binds ``file`` with ``read -r file`` and ``$file``
+#: was then listed as an environment read on four lines. Found by reading the
+#: rendered packet back against source.
+_SHELL_BINDERS = (
+    re.compile(r"\bread\b(?:\s+-\w+)*\s+((?:[A-Za-z_][A-Za-z0-9_]*\s*)+)"),
+    re.compile(r"\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b"),
+    re.compile(r"\bselect\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b"),
+)
+
+
+def shell_env_sites(lines: "list[str]") -> "list[tuple[int, str]]":
+    """Lines where an AMBIENT shell parameter is expanded.
+
+    A bash ``environ`` source names no literal token, so name matching finds
+    nothing and the packet shows an empty listing for a source that is really
+    there. The evidence is the EXPANSION. 0006 §F names two things the old
+    builder got wrong about that — it matched "any ``$VAR`` including shell
+    COMMENTS and LOCALS" — and both are closed here:
+
+      * comments are scrubbed (``scrub`` with the bash openers);
+      * a name ASSIGNED anywhere in the file is a local, not an environment
+        read, so ``tmpfile=$(mktemp)`` disqualifies every ``$tmpfile``.
+
+    STRINGS ARE DELIBERATELY NOT EXCLUDED, unlike everywhere else in this
+    module: the shell expands inside double quotes, so ``"$HOME/x"`` is a real
+    read and scrubbing it would reintroduce the false-absence defect.
+
+    HONEST LIMIT: file-scoped assignment detection has no notion of order or
+    scope, so a name both inherited AND reassigned reads as local and is
+    dropped. That errs toward showing the adjudicator less, which is the safe
+    direction for a listing whose job is to support a refutation.
+    """
+    assigned: set[str] = set()
+    for line in lines:
+        cooked = scrub(line, "bash")
+        if m := _SHELL_ASSIGN.match(cooked):
+            assigned.add(m.group(1))
+        for binder in _SHELL_BINDERS:
+            for hit in binder.finditer(cooked):
+                assigned.update(hit.group(1).split())
+    out: list[tuple[int, str]] = []
+    for lineno, raw in enumerate(lines, start=1):
+        # Comment-strip only: keep string interiors, per the note above.
+        body = raw.split("#", 1)[0] if raw.lstrip().startswith("#") else raw
+        names = {
+            n for n in _SHELL_EXPANSION.findall(body)
+            if n not in assigned and n not in _SHELL_NON_ENV
+        }
+        if names:
+            out.append((lineno, raw.rstrip("\n")))
+    return out
+
+
+def effective_span(
+    parsed: dict[str, Any], line_count: int,
+) -> "tuple[int, int] | None":
+    """The lines a symbol actually covers, honouring FILE-anchored symbols.
+
+    A ``kind == "file"`` symbol declares span ``1-1`` — bash's
+    ``lintWhitespace.sh`` is ``bash:scripts/lintWhitespace.sh:1-1:file:file``
+    for a 26-line script. Reading that span literally searches ONE line and
+    reports "none found" for a redirect on line 10, which is the same
+    manufactured absence as defect 4 arriving by another route. A file symbol
+    means "somewhere in this file", so its scope is the whole file.
+
+    Found by running the fixed builder against 0006's own ArkLib flows and
+    reading the output back against source, not by a test — the unit fixtures
+    all used function-kind symbols, where the declared span is right.
+    """
+    if parsed.get("kind") == "file":
+        return (1, line_count) if line_count else None
+    start, end = parsed.get("start"), parsed.get("end")
+    if start is None or end is None:
+        return None
+    return (int(start), int(end))
+
+
+def _language_of(path: str) -> str:
+    ext = Path(path).suffix
+    return {
+        ".py": "python", ".sh": "bash", ".bash": "bash", ".go": "go",
+        ".js": "javascript", ".ts": "typescript", ".java": "java",
+        ".rs": "rust", ".rb": "ruby", ".c": "c", ".h": "c", ".cpp": "cpp",
+        ".kt": "kotlin", ".swift": "swift", ".scala": "scala",
+        ".ex": "elixir", ".exs": "elixir", ".hs": "haskell", ".m": "objc",
+    }.get(ext, "")
+
+
+def _read_lines(repo_root: Path, rel: str) -> "list[str] | None":
+    try:
+        return (repo_root / rel).read_text(
+            encoding="utf-8", errors="replace",
+        ).splitlines()
+    except OSError:
+        return None
+
+
+def render_packet(flow: dict[str, Any], repo_root: Path) -> str:
+    """One adjudication packet: the flow's facts and the source behind them.
+
+    Carries NO verdict and no precision language — the primary and the blind
+    second pass consume the same text, which is what makes the second pass
+    blind rather than merely independent.
+    """
+    out: list[str] = []
+    out.append(
+        f"## {flow.get('flow_id', '?')}  claim={flow.get('claim_id', '?')}  "
+        f"method={flow.get('analysis_method', '?')}  "
+        f"stands_for={flow.get('collapsed_flow_count', 1)}"
+    )
+    out.append(
+        f"   SOURCE {flow.get('source_primitive', '?')} "
+        f"({flow.get('source_boundary', '?')}) in {flow.get('source_file', '?')}"
+    )
+    out.append(
+        f"   SINK   {flow.get('sink_name', '?')} @ {flow.get('sink_module', '?')}"
+        f"   hops={flow.get('hops', '?')}"
+    )
+
+    src_rel = flow.get("source_file") or ""
+    src_span = flow.get("source_lines") or [0, 0]
+    src_lang = _language_of(src_rel)
+    src_lines = _read_lines(repo_root, src_rel)
+    if src_lines is None:
+        out.append(f"   -- SOURCE sites in {src_rel} --")
+        out.append(f"        (unreadable: {src_rel})")
+    else:
+        span = effective_span(
+            parse_symbol_id(flow.get("source_symbol") or ""), len(src_lines),
+        ) or (int(src_span[0]), int(src_span[1]))
+        # The label reports the EFFECTIVE span, not the declared one: a
+        # file-anchored symbol declares 1-1 and is searched whole, and a header
+        # saying 1-1 above a hit on line 16 is a contradiction a reader would
+        # have to resolve by guessing.
+        out.append(
+            f"   -- SOURCE sites in {src_rel} span {span[0]}-{span[1]} --"
+        )
+        primitive = str(flow.get("source_primitive") or "")
+        if src_lang == "bash" and primitive in {"environ", "env"}:
+            hits = [
+                (n, s) for n, s in shell_env_sites(src_lines)
+                if span[0] <= n <= span[1]
+            ]
+        else:
+            hits = find_sites(
+                src_lines, [primitive], span[0], span[1], src_lang,
+            )
+        for lineno, text in hits or []:
+            out.append(f"     {lineno:6}: {text}")
+        if not hits:
+            out.append(
+                f"        (none found; searched {src_rel} "
+                f"{span[0]}-{span[1]})"
+            )
+
+    names = sink_names(flow)
+    spans = sink_search_spans(flow)
+    out.append(
+        f"   -- SINK {names} sites across {len(spans)} path symbol(s) --"
+    )
+    total = 0
+    for rel, start, end, symbol_name in spans:
+        lines = _read_lines(repo_root, rel)
+        if lines is None:
+            out.append(f"     {symbol_name} ({rel}): (unreadable)")
+            continue
+        if end == -1:
+            end = len(lines)
+        hits = find_sites(lines, names, start, end, _language_of(rel))
+        total += len(hits)
+        if hits:
+            out.append(f"     in {symbol_name} ({rel} {start}-{end}):")
+            for lineno, text in hits:
+                out.append(f"     {lineno:6}: {text}")
+    if not total:
+        scope = ", ".join(
+            f"{n} {r} {s}-{e}" for r, s, e, n in spans
+        ) or "no first-party symbol on the path"
+        out.append(f"        (none found; searched {scope})")
+    return "\n".join(out)
+
+
+def cmd_packet(args: argparse.Namespace) -> int:
+    """Render one packet per collected flow, grouped by repository."""
+    flows = load_flows(Path(args.flows))
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    by_repo: dict[str, list[dict[str, Any]]] = {}
+    for flow in flows:
+        by_repo.setdefault(str(flow.get("repo") or "unknown"), []).append(flow)
+    for repo, rows in sorted(by_repo.items()):
+        root = Path(args.repo_root) / repo if args.repo_root else Path(repo)
+        body = [f"# PACKET v3 — {repo}", ""]
+        for flow in rows:
+            body.append(render_packet(flow, root))
+            body.append("")
+        (out_dir / f"{repo}.md").write_text("\n".join(body), encoding="utf-8")
+        print(f"  {repo}: {len(rows)} packet(s)")
+    print(f"wrote {len(by_repo)} file(s) to {out_dir}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -769,6 +1144,17 @@ def main(argv: list[str] | None = None) -> int:
     p_score.add_argument("--compare", action="append", default=[],
                          help="second ledger for the disagreement rate")
     p_score.set_defaults(func=cmd_score)
+
+    p_packet = sub.add_parser(
+        "packet", help="render blind adjudication packets from collected flows",
+    )
+    p_packet.add_argument("--flows", required=True)
+    p_packet.add_argument("--out", required=True)
+    p_packet.add_argument(
+        "--repo-root", default="",
+        help="directory holding the analysed repositories, one per label",
+    )
+    p_packet.set_defaults(func=cmd_packet)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
