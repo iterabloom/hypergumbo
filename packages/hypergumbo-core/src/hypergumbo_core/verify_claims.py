@@ -4109,6 +4109,18 @@ def _flow_evidence_dict(v: "TaintFlowFinding") -> dict[str, Any]:
         # walk. Reported because "the walk never ran" is not actionable on its
         # own and "which guard" is exactly what prices a remedy.
         "walk_blocked_by": v.walk_blocked_by,
+        # INV-muhij Finding A: the two scalars above are the REPRESENTATIVE's.
+        # On a collapsed row the other members frequently reported something
+        # else -- 63.9% of the groups containing a ``sink_before_source``
+        # member are not unanimous, and only 32.5% of the members under such a
+        # row carry it -- so a consumer deciding what this row is entitled to
+        # claim must read the union rather than the scalar. Emitted HERE as
+        # well as in ``TaintFlowFinding.to_dict`` because this record is a
+        # second serializer, not a caller of it: the fields were added to
+        # ``to_dict`` first and reached this view not at all, which is the
+        # one-fact-two-homes shape the module has paid for before.
+        "walk_verdict_values": list(v.walk_verdict_values),
+        "walk_blocked_by_values": list(v.walk_blocked_by_values),
         # INV-karud: what this record actually claims. The scalars above are
         # the witness the `path` belongs to; these are the sets the finding
         # stands for, module-qualified so each is checkable by catalogue

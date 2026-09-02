@@ -1055,6 +1055,17 @@ class TestViolatedFlowEvidence:
                 # rather than through a propagator, so nothing stamped them.
                 "walk_verdict": "",
                 "walk_blocked_by": "",
+                # INV-muhij Finding A: what the WHOLE GROUP reported, beside
+                # the representative's scalar. A collapsed row inherited
+                # ``grp[0]``'s marker and nothing recorded the rest, so a rule
+                # deciding whether such a row may carry a verdict alone was
+                # reading a fact true of about one member in three. Singletons
+                # here because this fixture is one uncollapsed finding, and
+                # ``[""]`` rather than ``[]`` because an empty marker is a
+                # VALUE (the walk ran) — dropping it would make a mixed group
+                # read as unanimous, which is the misreading these prevent.
+                "walk_verdict_values": [""],
+                "walk_blocked_by_values": [""],
                 # INV-karud: the sets are what the row CLAIMS; the scalars
                 # above are the witness the `path` belongs to. Singletons here
                 # because the fixture is one pair, and module-qualified — bare
