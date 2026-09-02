@@ -1,0 +1,63 @@
+Original commit body from d321d6df513f2c087196c729514164ec3b46722a:
+
+Owner ruled option (a) on INV-fatok.
+
+A primitive declared under two boundaries with boundary_ruling:
+call_site_undecidable is narrowed at match time by the stamped io_target_kind.
+When the stamp ABSTAINS, the fallback row decides -- and which row that was
+came from CATALOG_BOUNDARY_TYPES, a frozen module-level list identical for
+every language. c.yaml's note "THIS ROW STAYS FIRST" described a property it
+did not control: moving go.yaml's entire fs_read: block below ipc_recv:, with
+the parsed content asserted byte-identical, did not move the loaded indices.
+
+Which fallback is CONSERVATIVE is a property of the primitive. c's fgets was
+fs_read-only, a false NEGATIVE (fs_read mints no taint source). go's
+bufio.NewScanner is ipc_recv-only, a false POSITIVE. They need opposite
+defaults and the mechanism could express one.
+
+`abstains_to` names it per row. Absent, the registry order stands, so every
+row shipped before this field is unchanged -- pinned against the shipped c and
+haskell catalogues. Validated at load, because all three failure modes are
+silent: a misspelled boundary, a boundary the primitive has no row for, and two
+rows of one primitive naming different targets would each leave the catalogue
+READING as though a fallback had been chosen while the registry order quietly
+decided it, which is the defect this removes.
+
+REORDERING THE LIST WAS NOT ENOUGH, and finding that out corrected the
+diagnosis. resolve_mode_boundary_across_sites answers fs_read for an ABSENT
+mode -- deliberately, since guessing fs_write from ignorance would re-create
+the false positives the mode gate removes -- so select_by_mode selected
+whatever fs_read row was present REGARDLESS of list position. Measured: with
+go's bufio rows reordered ipc_recv-first, an unstamped call still classified
+fs_read. That default is right for builtins.open, whose mode IS the
+discriminator; it is a category error for a primitive with no mode argument at
+all. A declared abstains_to now outranks the mode DEFAULT and only the default:
+positive mode evidence still decides, and builtins.open is untouched.
+
+INV-bagok rides on it. bufio.NewScanner/NewReader were ipc_recv unconditionally
+on the note "When wrapping os.Stdin", true at 11 of 236 censused sites (4.7%).
+The analyzer has stamped the answer correctly since WI-lipis and nothing could
+use it, because _target_kind_discriminated_keys needs two or more read
+boundaries before a stamp may choose and this primitive had one row.
+
+A/B over six Go repositories, both arms cold, baseline asserted by grepping the
+runtime files: 42 rows move ipc_recv -> fs_read, 0 chains added, 0 lost, every
+move on a positive host_path stamp. Read back against source: jaeger
+uiconv/reader.go:31 (os.OpenFile O_RDONLY -> bufio.NewReader), beads' JSONL
+readers.
+
+THE FIRST VERSION MOVED 51 AND FIVE WERE WRONG, which is why abstains_to exists
+rather than a bare second row. Under the registry-order fallback alertmanager
+cluster/tls_connection.go:136 (a TLS connection), caddy
+httpredirectlistener.go:90 (a net.Conn from Accept) and three peers moved to
+fs_read -- all five with io_target_kind ABSENT, moved by the default flipping
+rather than by anything inferred, each losing a TRUE untrusted_input source.
+None of the five moves now. Nine stopped moving in total, four of them
+file-shaped rows that were also riding the default; the honest count is 42
+evidence-backed retags.
+
+No net_recv row, deliberately: bufio.NewScanner(conn) really is a network
+receive, but no target kind names a network stream, so such a row could never
+be SELECTED.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
