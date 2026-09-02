@@ -1,0 +1,24 @@
+Original commit body from 31bea943319f89f5c280486faebad9b0b07ba3af:
+
+WI-famig recorded an ordering deadlock: its load-bearing open question needs
+a composition prototype, and the item forbids building one before the row
+cost is priced. This prices it.
+
+At the ceiling the 11-repo cohort goes 3,166 -> 4,470 emitted rows (+1,304,
+x1.41); x1.22 at 50% sufficiency, x1.11 at 25%. Reported as a curve because
+sufficiency needs param_to_calls, which does not exist.
+
+Three results matter more than the headline. Measurement 0008's relative
+framing used the wrong denominator -- its 298 is the rows carrying a walk
+verdict, not the 3,166 the cohort emits -- so the ratio was overstated ~2.5x.
+The cost is not one row per confirmation: 1,549 composable findings yield
++1,304 rows because a group whose members are all composable vanishes, and
+touched groups run 1 to 104 members. And §4a would invalidate a premise the
+collapse design states quantitatively -- the ddg bypass is justified because
+ddg is 1.7% of flows, which reproduces today at 1.43% and would go to 13.17%.
+
+0008's ceiling has also drifted 18.3% -> 14.8% in six days; five repos are
+byte-identical and jaeger's halved. The simulation is checked against the
+production collapse function on four repos and is exact on each.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
