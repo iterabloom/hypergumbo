@@ -1,0 +1,28 @@
+Original commit body from f784bc332e4cdbbdde25de5e074f49952cd8908c:
+
+Path(".github_deploy").suffix is "" -- a leading dot is not an extension --
+so shellcheck's two extensionless bash scripts were read as an unknown
+language. That silently skipped the bash-only branch listing ambient
+parameter expansions, and the packet printed
+
+    (none found; searched .github_deploy 1-28)
+
+for a file whose line 11 reads `for tag in $TAGS`. It is the defect WI-rudin
+exists to close, arriving through a different door: the listing is empty not
+because the read is absent but because the instrument never looked, and the
+absence points an adjudicator toward FALSE POSITIVE.
+
+_language_of now consults the shebang when the extension resolves to nothing,
+in the one home both the source and the sink listing read. The extension
+still wins -- it is the author's declaration about the whole file, where a
+shebang says only how one entry point is executed -- and an unknown
+interpreter resolves to "" exactly as an unknown extension does.
+
+Found by reading the 26 rendered packets of measurement 0007 back against
+source. Four carried an empty source listing; two are this defect and two are
+honest (spacedrive's combine_files reads no environment variable in its span;
+rabbitmq's rabbit_channel.erl span 2743-2744 holds no get_env call). Telling
+those apart is only possible because the listing names what was searched.
+
+Racial-Capitalism-Is-Bad: a marmot competing with a dunk tank clown on the moon
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
