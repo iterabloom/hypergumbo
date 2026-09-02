@@ -122,3 +122,18 @@
   clock: 15  # 6025
   nonce: '6025'  # 6025
   message: "PHASE 0 RE-VERIFICATION AT TIP, 2026-08-25, dev e41a655d6d. This item's own\nstatus line (\"BUILT, TESTED and WIRED TO THE BARRIER ARM\") is ACCURATE at tip,\nand the gate demonstrably works on the motivating construct. Measured on a Go\nfixture with the caddy if-initializer shape, control in the same run:\n\n    forfeit_refut : ['go:main.go:8-14:leak:function']   <- if-initializer, FORFEITED\n    (control) 'go:main.go:16-20:covered:function'       <- NOT forfeited\n    leak: 1 ddg edge (msg's use never recorded); covered: 2 (fully recorded)\n\nThe byte-extent design in cfg.uncovered_call_lines is doing what its docstring\nclaims: a line test would have called the initializer covered, the extent test\ndoes not.\n\nREMOVED FROM THE CAMPAIGN'S PHASE 1 (fail-open family), for the reason this\nitem already gives: the remaining work is the section 3a arm, wiring it alone\nis a measured no-op (that arm tests `is True`), and it must land in the same PR\nas WI-kabif's removal authority. Nothing a session can do moves it. Recording\nthe re-verification so the next reader does not re-derive it."  # 6025
+- op: update  # e4a3
+  at: '2026-09-02T19:48:36Z'  # e4a3
+  by: agent  # e4a3
+  actor: jgstern_agent  # e4a3
+  clock: 16  # e4a3
+  nonce: e4a3  # e4a3
+  set:  # e4a3
+    status: done  # e4a3
+- op: discuss  # 5b73
+  at: '2026-09-02T19:48:36Z'  # 5b73
+  by: agent  # 5b73
+  actor: jgstern_agent  # 5b73
+  clock: 17  # 5b73
+  nonce: 5b73  # 5b73
+  message: "DONE, PR #716 (merged, dev b26d97bd11). This item's own summary said\n\"NOT WIRED: the section 3a arm passes nothing\", and that was STALE: the wiring\nlanded on 2026-08-26 in commit 2fca492700 (\"wire INV-lupav's forfeit gate to the\nsection 3a walk\"). Verified in code before building on the claim --\ntaint.py:4252 passes forfeit_refutation=(source_fn in (forfeit_refutation or\nset())) on the section 3a arm, and test_forfeit_set_is_actually_populated\nalready covers the adapter producing a NON-EMPTY set for real Python.\n\nSO WHAT REMAINED WAS THE PART THIS ITEM SAID MUST NOT BE DONE ALONE: the arm now\nCONSUMES the False the gate protects. Both landed in one PR, per this item's own\ninstruction.\n\nBEHAVIOURAL EVIDENCE, production path, not the walk in isolation. A fixture\nthrough propagate_taint_ddg that reaches walk_verdict == \"unconfirmed\":\n\n    1  data = decrypt(token)   <- source\n    2  copy = data            <- heir, itself tracked\n    3  print(copy)            <- TERMINATING (section 4)\n    4  send(\"literal\")        <- sink, reached by no tainted route\n\n  gate OFF (forfeit_refutation=None)  -> 0 findings   (the flow is REMOVED)\n  gate ON  (forfeit_refutation={FN})  -> 1 finding, walk_verdict \"escaped\"\n\nplus a vacuity guard: forfeiting a DIFFERENT function does not protect this one\n(still 0 findings), so the gate is proven to key on the source function rather\nthan firing unconditionally. And a parametrised control over both gate states\nproves a CONFIRMATION is never removed either way -- the gate blocks False ONLY.\n\nA NOTE FOR WHOEVER TOUCHES THIS NEXT, because it is the reason the gate needed a\ntest at all: while the section 3a arm collapsed False into None, this gate was\nprotecting an arm that could not consume what it blocked. It was a no-op that\nlooked like a safety feature, and nothing would have failed if someone had\nremoved it. It is now load-bearing and asserted."  # 5b73
