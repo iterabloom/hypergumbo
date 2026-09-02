@@ -1,0 +1,27 @@
+Original commit body from 15a5975aedf0ded9914497adc59ff65d31f1f8d7:
+
+iter_axis_set_assignments collected string-literal sets and frozenset()
+wrappers only, so a dict, tuple or list copy of any of the four axis
+vocabularies was invisible to every drift linter at once. It now also
+collects bare tuples/lists, dict keys, dict values, and elements that are
+module-local NAME references to string constants.
+
+A dict with strings on both sides yields <NAME>:keys and <NAME>:values
+separately. io_boundary._READ_TARGET_KIND_BOUNDARY is keyed by
+io_target_kind values and valued by io-boundary names -- two axes in one
+assignment -- so unioning the sides would force io-boundary to exclude the
+whole constant to silence the keys and lose the check on the values. A
+bare-name exclusion still silences both sides.
+
+The mandatory report-only pass corrected the item's diagnosis: the three
+derived io-boundary constants are produced by a CALL and should stay
+invisible, because a constant derived from the registry cannot drift from
+it; AUTO_SOURCE_LABEL_MAP and DEFERRED_CROSSING_SHADOWS fail the NAME
+FILTER rather than the shape test and are filed separately.
+
+Five newly-red constants are axis-name collisions, each 0/N conformant and
+each excluded with its own reason. The sixth, scip/index.py's _KIND_MAP, is
+a real Symbol.kind consumer at 5/8 conformant whose other values are
+phantoms; filed as INV-lagot and suppressed with an exclusion that says so.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
