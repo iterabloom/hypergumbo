@@ -2078,7 +2078,11 @@ def _cmd_fork_setup(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     """Handle 'sync' subcommand — push tracker changes via streamlined PR."""
-    from hypergumbo_tracker.sync import do_sync, preflight_check
+    from hypergumbo_tracker.sync import (
+        do_sync,
+        preflight_check,
+        prune_superseded_sync_branches,
+    )
 
     repo_root = Path(
         subprocess.run(  # nosec B603, B607
@@ -2088,6 +2092,24 @@ def _cmd_sync(args: argparse.Namespace) -> int:
             check=True,
         ).stdout.strip()
     )
+
+    if getattr(args, "prune", False):
+        # Deliberately BEFORE preflight: a superseded branch is by definition
+        # one whose ops already reached the base, so there is usually nothing
+        # local to sync when pruning is wanted. Gating this on changed_files
+        # would make the command a no-op exactly when it is needed.
+        pruned = prune_superseded_sync_branches(
+            repo_root, base_branch=args.base_branch, dry_run=args.dry_run,
+        )
+        if not pruned:
+            print("no superseded tracker-sync branches")
+            return EXIT_SUCCESS
+        verb = "would close" if args.dry_run else "closed"
+        print(f"{verb} {len(pruned)} superseded tracker-sync branch(es):")
+        for branch in pruned:
+            print(f"  {branch}")
+        return EXIT_SUCCESS
+
     pre = preflight_check(repo_root)
     if not pre.ok:
         print(f"error: {pre.error}", file=sys.stderr)
@@ -2617,6 +2639,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run", dest="dry_run", action="store_true",
         help="Show what would be synced without pushing",
     )
+    p_sync.add_argument(
+        "--prune", action="store_true",
+        help=(
+            "Close superseded tracker-sync PRs instead of syncing. A branch is "
+            "superseded only when merging it into the base produces the base's "
+            "own tree, i.e. it carries nothing the base lacks. Combine with "
+            "--dry-run to report without closing."
+        ),
+    )
 
     # --- tui ---
     sub.add_parser("tui", help="Launch interactive TUI (requires textual)")
@@ -3037,6 +3068,7 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
         do_sync,
         pending_sync_lines,
         preflight_check,
+        prune_superseded_sync_branches,
     )
 
     try:
@@ -3172,6 +3204,35 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
                 f"via PR #{sync_result.pr_number}",
                 file=sys.stderr,
             )
+            # WI-torug: collect superseded sibling branches. Dev has just
+            # advanced, which is exactly when a sibling becomes redundant.
+            #
+            # HERE RATHER THAN INSIDE ``do_sync``, and the reason is worth
+            # recording: the first cut put it on do_sync's post-merge path and
+            # broke 23 existing tests, which script an EXACT sequence of ``_git``
+            # calls and got StopIteration from the extra fetch. That is a fair
+            # signal — do_sync is a long function pinned call-for-call, and
+            # litter collection is not part of the transaction it implements.
+            #
+            # THE SAFETY PROPERTY DOES NOT DEPEND ON THE SYNC GATE, which is why
+            # moving out from under it is sound. A concurrent sync pushes ops dev
+            # does not yet have, so its branch cannot satisfy "merging changes
+            # nothing" and is never a candidate. The predicate carries the
+            # guarantee; the gate was only ever belt-and-braces.
+            try:
+                pruned = prune_superseded_sync_branches(
+                    repo_root, dry_run=False,
+                )
+                if pruned:
+                    print(
+                        f"auto-sync: closed {len(pruned)} superseded "
+                        f"tracker-sync branch(es)",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                # The ops are already merged; litter collection must never turn
+                # a successful sync into a reported failure.
+                print(f"auto-sync: prune skipped ({exc})", file=sys.stderr)
         else:
             # Set failure marker — circuit breaker opens
             new_count = fail_count + 1
