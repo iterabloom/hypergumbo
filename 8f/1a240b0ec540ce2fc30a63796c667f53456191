@@ -1,0 +1,63 @@
+Original commit body from 3d302054c806c8fa5ef580aa66298938a6ede981:
+
+Measurement 0006's own section F names ~12 reports against "the measurement's
+own packet builder, NOT hypergumbo" and ends "Fix before reuse." The builder
+was a session artifact and was never committed, so its defects could only be
+re-encountered rather than fixed -- the same failure WI-ratuv recorded when an
+uncommitted script made a 589 -> 782 delta unattributable. This puts it in the
+repo as `measure-taint-precision.py packet`, with 42 tests, one per defect.
+
+THE LOAD-BEARING DEFECT. The builder searched for sink sites only inside the
+SOURCE symbol's span. ArkLib#3's path is main (201-255) then generate_dot_graph
+(110-137), and `open` is called in the SECOND, so the packet printed
+"(none found in span)" for a sink plainly present two symbols along. Measured
+on 0006's own shipped packets:
+
+    packets2/ (the 112 adjudicated situations)   66 EMPTY sink listings (58.9%)
+
+For nearly six adjudications in ten the reader applying 0001's rubric was shown
+manufactured absence. Both directions of error follow from that, and every
+published 0006 figure -- 33.9% correctness, 24.1% useful -- rests on those 112
+adjudications. Searching every first-party symbol on the flow's path takes the
+empty rate to 0.3%. DENOMINATORS DIFFER (112 sampled vs 730 all-collected) and
+that is disclosed rather than smoothed over; the mechanism is not in doubt.
+
+THE OTHER THREE NAMED DEFECTS, closed with it:
+  - substring matching (`format` matched inside `information`; `-> ` inside a
+    quoted pattern matched the bash redirect `>`) -> identifier-boundary
+    matching, plus length-preserving comment and string scrubbing;
+  - `$VAR` matched in comments and locals -> shell expansions matched outside
+    comments, with locally-bound names excluded;
+  - missed literal call sites -> every primitive a COLLAPSED situation stands
+    for is searched, not just the headline sink_name. ArkLib#3 collapses open,
+    file.write and json.dump; only `open` was searched.
+An honest empty now NAMES WHAT WAS SEARCHED, so a reader can tell "not there"
+from "not looked for" -- the distinction whose absence made the original
+listing misleading rather than merely thin.
+
+TWO DEFECTS IN MY OWN FIX, FOUND BY READING RENDERED PACKETS BACK AGAINST
+SOURCE, neither caught by the unit fixtures (which all used function-kind
+symbols, where the declared span is right):
+  (a) a FILE-anchored symbol declares span 1-1 --
+      bash:scripts/lintWhitespace.sh:1-1:file:file for a 26-line script -- so
+      honouring it searched ONE line and reported "none found" for a redirect
+      on line 10. Defect 4 arriving by another route. File symbols are now
+      searched whole, and the header reports the EFFECTIVE span so a hit on
+      line 16 cannot sit under a heading saying 1-1.
+  (b) shell locals bound by `read -r file` / `for f in` were listed as
+      environment reads, because only `NAME=` was excluded. That ArkLib
+      situation listed `$file` on four lines as an env_read source; with both
+      fixes it reports NO environment read anywhere in the file, which points
+      the adjudication the OPPOSITE way from what the old packet supported.
+
+RESIDUAL, STATED NOT HIDDEN: block comments are not handled (a regex over 16
+languages would trade a known limitation for an unknown one), and shell
+assignment detection has no notion of order or scope, so a name both inherited
+AND reassigned reads as local and is dropped. Both err toward showing the
+adjudicator LESS, which is the safe direction for a listing whose job is to
+support a refutation.
+
+Ran clean over 37 repositories' collected flows. 46 passed, mypy ratchet clean.
+
+Racial-Capitalism-Is-Bad: a stork djing in a fossil-framed pie case with a platoon of ants
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
