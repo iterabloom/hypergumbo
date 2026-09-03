@@ -1,0 +1,31 @@
+Original commit body from 4af54c2907872f3b05eaf61b01d089e7994d63ea:
+
+`h.f.write_all(..)` -- a method call whose receiver is a struct field on a
+typed PARAMETER or local rather than on `self` -- dropped its receiver type
+before the module slot was built, so every method-kind row in rust.yaml was
+unreachable through it (INV-linub L3 residual). Shape A (self.f) shipped via
+resolve_receiver_type, but that resolver is self-rooted only by contract.
+
+Adds resolve_var_field_chain to the shared TreeSitterAnalyzer: root h ->
+Holder via _var_types, field f -> File via the same struct field-type
+registry -- the walk Go's _resolve_field_chain already does. Additive:
+nothing else calls it, so the self-only path is unchanged; sets the module
+SLOT only (never has_explicit_binding or resolved), so emission is
+byte-identical and it cannot mint a first-party calls edge. Nine direct unit
+tests cover every branch; the rust fixture's shape B moves from OPEN to
+passing while shapes A/D/E hold as controls.
+
+MEASURED CORPUS DELTA IS ZERO, reported not hidden. Edge-level A/B on
+spacedrive (patch confirmed engaging by a 2,461x call trace): the walk
+resolves 811 field chains, 0 io-boundary classifications change. The resolved
+types are Option/Vec/String/HashMap/PathBuf/in-repo structs; the only
+catalogued hit is Instant (host_info_read, not a sink). The field-receiver
+write/lock/write_all sites here are on RwLock/Mutex/watcher fields, not
+std::fs::File -- classifying them would be the false positives the item warned
+of. Type-directed and correct-by-construction; the recoverable-and-catalogued-
+sink subset is simply empty on this sample, and no genuine File write is
+dropped (verified). This closes the STRUCTURE, matching shape A's ceiling-not-
+payoff reporting.
+
+Racial-Capitalism-Is-Bad: a lemur building a lighthouse shaped like kugel spiral made of teacups in a Jurassic jukebox diner
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
