@@ -1,0 +1,52 @@
+Original commit body from b80bed052136368c1c41f2993e645b127fcd2553:
+
+Go's stdin surface was three deferred-crossing handles (os.Stdin,
+bufio.NewReader, bufio.NewScanner) and no row for the call that transfers
+the bytes one line later, so the crossing could live nowhere but the
+constructor and ADR-0049 ruling 3 forbade retagging it. The handle's own
+boundary already followed its argument (WI-lipis); the read is one binding
+further away.
+
+go.yaml: bufio.Reader.{ReadString,ReadBytes,ReadLine,ReadRune,ReadSlice,
+Read} and bufio.Scanner.{Scan,Text,Bytes}, dual fs_read/ipc_recv under
+call_site_undecidable (INV-zumin class (b): what a read crosses is whatever
+the handle wraps), abstains_to fs_read -- the OPPOSITE of the constructors'
+ipc_recv, on purpose: an unstamped read's receiver came from a scope the
+analyzer cannot see, and the wrapper there already carries the unresolved
+case's ipc_recv fallback; a second one here would double-mint one crossing.
+
+go.py: on the typed-receiver unresolved edge, resolve the receiver's last
+binding; when it is a package-qualified call in _GO_HANDLE_WRAPPERS
+(alias resolved through the imports), classify its argument exactly as the
+wrapper site does -- inline producer directly, bare identifier through one
+more hop taken AT THE WRAPPER'S LINE so a handle rebound between wrapper
+and read is not misread. _go_binding_rhs becomes _go_last_binding (text +
+line, optional use_line) and the argument classification is shared by both
+sites so they cannot disagree. Parameter, field, non-wrapper binding, or an
+argument the file does not bind: no stamp.
+
+Measured A/B on six Go repositories (arm A finished before any edit;
+call-edge counts identical per repo): 179 read sites reach the rows, 0
+removed, constructors unmoved. 8 stamped std_stream, every one read back
+to a local bufio.New*(os.Stdin); 91 host_path; 41 in_memory (refused as
+sources at the mint gate); 39 unstamped, each read back as a parameter, a
+field, or a wrapper fed by a parameter / in-repo wrapper / pipe /
+io.LimitReader / &bytes.Buffer -- no missed os.Open. Nothing moved on
+cert-manager or alertmanager. Reachability was probed before the rows were
+written (LIVE rule 9): every name reaches from the `bufio` hint and none
+leaks through a hint-less short-name match, so ambiguous_names is unchanged.
+
+The constructor retag stays a SEPARATE ruling (re-run measurement 0010
+arm 2 now that a represented crossing exists). NewReaderSize/NewReadWriter
+readers are disclosed on the row and stamp nothing.
+
+Two derived rules moved with the rows (LIVE rule 10): the catalogue
+scope gate's reviewed enumeration of stdlib receiver types gains
+bufio.Reader/bufio.Scanner, and INV-muvis's "untyped scanner Scan is not
+captured" test is re-pointed at a genuinely untyped receiver (sql.Rows
+from db.Query, premise asserted): its *bufio.Scanner PARAMETER fixture was
+typed all along and held only because no row existed. Full smart-test:
+11,638 passed, every changed file at 100%, before those two test-only
+re-points; the affected set re-run green after them.
+
+https://claude.ai/code/session_01AjN216ATXcbTPVWuS5r9bS
