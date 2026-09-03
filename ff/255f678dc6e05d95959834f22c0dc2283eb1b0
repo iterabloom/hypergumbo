@@ -1,0 +1,38 @@
+Original commit body from 0a481c37d54666467850335a58cd2e4880837a25:
+
+Run under 0006's ratified frame on the same 16 repositories at dev f247b52587:
+two independent 12-agent blind panels (96.2% agreement), one disagreement
+adjudicated from source, an adversarial refutation pass, and an ADR-0046
+vacuity pass.
+
+    correctness   34.0%  (32/94)
+    useful        30.9%  pooled, 28.0% unweighted per-repo mean
+    0006          24.1%  (27/112)
+
+The standing gate is "<=25% useful => recall work stays stopped". It clears on
+both estimators. Reported, not acted on: the priority change is the owner's.
+
+THE LOAD-BEARING CHECK. 68 of the 94 labels ARE 0006's labels, which invites a
+survivorship reading -- the survivors are 0006's sample filtered by survival.
+The 26 fresh situations exist to close that hole and are drawn from a
+population that has changed by ~600 situations. Carried reads 30.9% useful;
+fresh reads 30.8%. They agree to a tenth of a point on the figure the band is
+written against. One draw of 26 has a wide interval, and no A/B was run, so
+this is evidence against the objection rather than proof, and no fix is
+attributed.
+
+n=94 rather than 112 because five repos can no longer supply M=7 -- shellcheck
+fell 23 -> 3 and cert-manager 9 -> 3 BECAUSE the vacuous families they
+exhibited were fixed. sum(min(population, 7)) is 94. F2's equal allocation is
+therefore unreachable, so pooled != unweighted mean, and both are reported
+everywhere.
+
+Pass 4 killed 0 of 11, against 0006's 7 of 44. All three vacuous TPs are
+KIND-MISDECLARED; two are new INV-nular members of the missing-boundary_ruling
+shape (io.WriteString to a subprocess pipe; sendmsg on an AF_UNIX socket).
+CONFIGURED-ACTION stays structurally at zero.
+
+Nine producer defects filed rather than chased (INV-mozas, WI-binod).
+
+Racial-Capitalism-Is-Bad: a raccoon reading a newspaper in a prehistoric root beer stand with a brigade of beetles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
