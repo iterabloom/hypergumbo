@@ -1,0 +1,23 @@
+- op: create  # 435a
+  at: '2026-09-03T08:56:20Z'  # 435a
+  by: agent  # 435a
+  actor: jgstern_agent  # 435a
+  clock: 1  # 435a
+  nonce: 435a  # 435a
+  data:  # 435a
+    kind: work_item  # 435a
+    title: "java: BufferedReader.readLine / read and Scanner.nextLine are FIXED fs_read rows, so a stdin read mints nothing -- dual rows + receiver-origin io_target_kind (WI-vutav's go shape, nested-constructor argument)"  # 435a
+    status: todo_hard  # 435a
+    priority: 2  # 435a
+    parent:  # 435a
+    tags:  # 435a
+    - catalogue  # 435a
+    - io_boundary  # 435a
+    - taint  # 435a
+    - java  # 435a
+    isbefore: []  # 435a
+    duplicate_of: []  # 435a
+    not_duplicate_of: []  # 435a
+    pr_ref:  # 435a
+    description: "RESIDUAL OF WI-vutav, found 2026-09-03 by checking the item's other arms through the loader.\n\nTHE OBSERVATION. java.yaml rows java.io.BufferedReader.{readLine,read} and java.util.Scanner.{next,nextLine,nextInt} at a FIXED fs_read. fs_read mints no taint source, so\n\n  BufferedReader in = new BufferedReader(new InputStreamReader(System.in));\n  String line = in.readLine();\n\nproduces NO untrusted_input source at all -- the silent false-NEGATIVE direction c had before WI-lipis's third deliverable. The same rows over a FileReader are fs_read and correct; one boundary cannot be right for both (INV-zumin class (b), INV-bagok's shape one hop later).\n\nWHAT go NOW HAS AND java DOES NOT (WI-vutav): dual fs_read/ipc_recv rows under call_site_undecidable, narrowed by an io_target_kind the analyzer stamps on the READ by resolving the receiver's binding back to the wrapper and classifying the wrapper's argument. java's wrapper is a NESTED constructor (new BufferedReader(new InputStreamReader(System.in))), so the argument walk is two constructors deep rather than one call; java.py already stamps receiver_type_hint (so the receiver TYPE is known), which is the half go lacked. WI-lipis holds the constructor-side half for java (\"java Scanner\" is in its title); this item is the READ-row half.\n\nDELIVERABLE. (1) dual rows for the three primitives (+ InputStream.read, absent today), abstains_to fs_read for WI-vutav's reason (the constructor scope carries the unresolved case) -- or ipc_recv if the constructor rows are NOT dual in java, which must be checked first: an fs_read fallback with no ipc_recv constructor fallback would leave the stdin crossing represented nowhere. (2) java.py: io_target_kind on the read from the receiver's binding, through the nested-constructor argument. (3) A/B on the java repos in the corpus (guacamole-client, jaeger's java parts) with every moved row read back. Reachability probe BEFORE writing rows (LIVE rule 9).\n\nREPRO. hypergumbo_core.io_boundary.load_catalog(\"java\"): rows for module java.io.BufferedReader name readLine -> boundary fs_read only."  # 435a
+    fields: {}  # 435a
