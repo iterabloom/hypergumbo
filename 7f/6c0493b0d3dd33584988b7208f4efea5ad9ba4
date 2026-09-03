@@ -1,0 +1,51 @@
+Original commit body from e52ed4f070debf8a4b6af704de4b63a4007d597f:
+
+java.py typed a local only from its INITIALIZER (new T(), or a resolved
+in-repo method's return type) and never read the declaration one token
+to the left, so `OutputStream o = sock.getOutputStream(); o.write(b)`
+glued the variable name into the callee (java:external:0-0:o.write). On
+guacamole-client that was 315 typed bindings out of ~2,180.
+
+Declared locals, catch parameters, for-each variables, try-with-resources,
+explicitly typed lambda parameters, record components, generic and
+inline-qualified fields, and fields declared in an ancestor class now
+bind the declared type. A constructor initializer still narrows it to
+the concrete class; a return-type INFERENCE never overrides a
+declaration -- the lookup behind it is name-keyed, and on guacamole it
+answered for an enum constant's covariant override and for an anonymous
+class's get() reached through a chained receiver, retyping a declared
+String as Future. Locals are scoped to their method by a scope stack
+keyed on the method's end byte, so an anonymous class body inside the
+method closes its own scope and not the enclosing one; before, a local
+`File f` in one method typed a sibling method's `Socket f` FIELD.
+
+The module slot for a declared type: the import, an inline FQN, a nested
+type on an imported outer, a wildcard package, or -- for the closed list
+of java.lang public types only, since a forgotten `import
+java.io.InputStream` must not become java.lang.InputStream -- the JLS
+7.3 implicit import. `Runtime rt = Runtime.getRuntime(); rt.exec(cmd)`
+reaches the catalogued subprocess sink.
+
+WI-kuroj's method_return_type_registry was built in analyze_java and
+never passed to _extract_edges (write-only; WI-doluf's Go Defect 1). It
+is now the one interface a return type is read through: key
+<Owner>.<method> (project class bare, library owner qualified), value
+qualified through the DECLARING file's imports or a bare project class --
+the shape WI-lalot's library rows will feed. Consulted at the assignment,
+typed-receiver and chained sites; ADR-0006's Java "Chained" column flips.
+
+Read back per call site with both arms in one process
+(~/hypergumbo_lab_notebook/vugon_javadecl_09032026/):
+  guacamole-client  9,105 sites: 1,662 untyped -> typed, 257 -> project
+                    hint, 190 hint -> typed, 0 lost, 36 re-keys (every one
+                    the old arm carrying a type leaked from another
+                    method's parameter); io-boundaries 38 -> 40, 0 lost.
+  keycloak          386,340 sites: 67,400 untyped -> typed, 12,419 ->
+                    project hint, 3,906 hint -> typed, 166 lost a type
+                    (80 bare lambda parameters; the rest var/inherited
+                    project fields the old arm typed only by leak, three
+                    of them wrong), 1,765 re-keys in 429 pairs, top pairs
+                    read back.
+
+Racial-Capitalism-Is-Bad: a cinnamon sparrow building a subduction accretionary wedge shaped like deli counter scale made of knishes in a bioluminescent lagoon
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
