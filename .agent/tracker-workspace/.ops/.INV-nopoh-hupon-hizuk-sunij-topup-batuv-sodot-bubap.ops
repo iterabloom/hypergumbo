@@ -22,3 +22,19 @@
     fields:  # 65fd
       statement: "Every call site the Go analyzer parses emits a calls edge anchored to some symbol. A function literal bound at package level (var x = func(){...}, or a struct-field initialiser such as cobra Run: func(){...}) has the enclosing package-level variable as its anchor; today it emits nothing."  # 65fd
       root_cause: "_extract_edges_from_file anchors src on current_function, the enclosing function_declaration/method_declaration; a package-level literal has none, so every call under it is skipped although the enclosing package-level variable is already emitted as a symbol. Measured on beads: 578 of 1,331 fmt.Fprintf sites, 577 inside literals, 0 edges; fixture probe reproduces on both package-level shapes and not inside a named function."  # 65fd
+- op: update  # df14
+  at: '2026-09-03T18:22:16Z'  # df14
+  by: agent  # df14
+  actor: jgstern_agent  # df14
+  clock: 2  # df14
+  nonce: df14  # df14
+  set:  # df14
+    status: satisfied  # df14
+    pr_ref: '#746'  # df14
+- op: discuss  # 5864
+  at: '2026-09-03T18:22:16Z'  # 5864
+  by: agent  # 5864
+  actor: jgstern_agent  # 5864
+  clock: 3  # 5864
+  nonce: '5864'  # 5864
+  message: "SATISFIED in PR #746 (merged as dev aa809a6510). Behavioural evidence, per the\nclosure-evidence rule, re-run on the MERGED tree:\n\n1. The item's own fixture (golit/m.go, 5 Fprintf sites): on dev 7cf2cf411a the\n   two package-level sites emitted 0 calls edges; on the merged tree all 5\n   emit, the package-level ones anchored on `packageLevel:variable` and\n   `rootCmd:variable`, the three inside `named` unchanged. Pinned in\n   test_go_package_level_anchor.py (17 tests).\n2. The denominator that found this: beads `fmt.Fprintf(` grep 1,331 vs analyzer\n   753 -> 1,330. The 1,331st is `// fmt.Fprintf(...)` in\n   internal/storage/sqlite/store.go:102, a comment. cert-manager's one gap is\n   the same shape (factory.go:219, commented out).\n3. Six-repo A/B (~/hypergumbo_lab_notebook/nopoh_pkglit_09032026/, README):\n   beads 66,848 -> 72,062 calls edges (5,205 anchored on variables), every\n   removed key read back per site.\n\nWHAT THE READ-BACK FOUND AND THE SAME PR FIXED (rule: a remedy can be the next\ndefect's cause -- here it was the next defect's DETECTOR):\n- Grouped `var ( ... )` blocks had NO variable symbols (symbol pass never\n  descended var_spec_list); the first arm B anchored 1,508 cert-manager calls\n  on the FILE for that reason. Fixed; interface assertions in grouped blocks\n  now detected too.\n- The new alias symbols made dot-imported bare names a 3-candidate ambiguity\n  (alertmanager test helpers re-export testutils in two packages): 114 sites\n  fell resolved -> placeholder in arm B0/B1. Fixed by offering the dot-imported\n  in-module path as the resolver's path hint. Zero resolved -> unresolved\n  transitions remain in the final arm.\n- All other \"losses\" are false edges the real variable now shadows (cilium\n  `entry: DenyEntry` x128, `AllowEntry` x93, `tick` -> Watcher.tick x96; beads\n  `Commit` -> DoltStore.Commit).\n\nWHAT THE NEW EDGES DO DOWNSTREAM: taint on beads 134 -> 162 rows, 29 added,\nevery new source a cobra command variable -- and all `structural`, because\nthe DDG builds no CFG for a literal under a var_spec. Filed as a WI (this\nthread's sibling). The attribute-read side (module_attr_ref inside the same\nhandler) still anchors on the FILE -- noted on WI-pimun.\n\nFILED FROM THIS ITEM: INV-bamij (the nine-language family, fixture-proven);\nthe Go bare-call no-edge gap (INV-foluz's Go shape); the var-alias dead-end\n(WI-gulot's Go twin); the DDG var_spec gap."  # 5864
