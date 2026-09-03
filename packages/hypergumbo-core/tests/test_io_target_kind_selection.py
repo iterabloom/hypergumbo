@@ -235,6 +235,12 @@ class TestShippedCatalogues:
         ("haskell", "System.IO", "hGetLine"),
         ("haskell", "System.IO", "hGetContents"),
         ("haskell", "System.IO", "hGetChar"),
+        # WI-vutav: the read one binding after go's wrapper.
+        ("go", "bufio.Reader", "ReadString"),
+        ("go", "bufio.Reader", "Read"),
+        ("go", "bufio.Scanner", "Scan"),
+        ("go", "bufio.Scanner", "Text"),
+        ("go", "bufio.Scanner", "Bytes"),
     ])
     def test_stream_taker_is_declared_under_both(
         self, lang: str, module: str, name: str,
@@ -249,6 +255,8 @@ class TestShippedCatalogues:
     @pytest.mark.parametrize("lang,module,name", [
         ("c", "stdio", "fgets"),
         ("haskell", "System.IO", "hGetLine"),
+        ("go", "bufio.Reader", "ReadString"),
+        ("go", "bufio.Scanner", "Scan"),
     ])
     def test_fs_read_is_declared_first(
         self, lang: str, module: str, name: str,

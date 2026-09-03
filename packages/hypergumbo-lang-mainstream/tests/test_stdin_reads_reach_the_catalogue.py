@@ -161,6 +161,16 @@ func main() {
     def test_an_untyped_scanner_scan_is_not_captured(
         self, tmp_path: Path, go_available: None,
     ) -> None:
+        """RE-POINTED with WI-vutav. The fixture used to be a ``*bufio.Scanner``
+        PARAMETER, which is a TYPED receiver: its ``Scan`` lands in the
+        ``bufio`` slot, and the assertion held only because no
+        ``bufio.Scanner.Scan`` row existed. Now one does (dual, falling back
+        to ``fs_read`` for an unstamped receiver, which mints nothing -- see
+        ``test_go_receiver_binding_origin``), so that fixture measured the
+        wrong thing. The subject here is the UNTYPED receiver -- ``sql.Rows``
+        from a ``db.Query`` the analyzer cannot type -- whose ``Scan`` has no
+        module hint at all and must not reach ``fmt.Scan`` by short name.
+        The premise is asserted, not assumed."""
         from hypergumbo_lang_mainstream.go import analyze_go
 
         (tmp_path / "go.mod").write_text("module probe\n\ngo 1.21\n")
@@ -168,20 +178,31 @@ func main() {
 package main
 
 import (
-\t"bufio"
+\t"database/sql"
 \t"os"
 )
 
-func consume(sc *bufio.Scanner) {
-\tfor sc.Scan() {
-\t\tos.WriteFile(sc.Text(), []byte("x"), 0644)
+func consume(db *sql.DB) {
+\trows, _ := db.Query("select name from t")
+\tfor rows.Next() {
+\t\tvar name string
+\t\trows.Scan(&name)
+\t\tos.WriteFile(name, []byte("x"), 0644)
 \t}
 }
 ''')
         result = analyze_go(tmp_path)
         assert not result.skipped
+        scan_dsts = [
+            e.dst for e in result.edges
+            if e.edge_type == "calls" and e.dst.split(":")[3] == "Scan"
+        ]
+        assert scan_dsts and all(d.startswith("go:external:") for d in scan_dsts), (
+            f"the fixture's receiver must be UNTYPED for this test to mean "
+            f"anything; got {scan_dsts}"
+        )
         got = _boundaries(result, "go", {"Scan"})
         assert got.get("Scan") is None, (
-            f"bufio.Scanner.Scan was captured as {got.get('Scan')!r} — the short-name "
-            f"fallback reached fmt.Scan"
+            f"an untyped receiver's Scan was captured as {got.get('Scan')!r} — the "
+            f"short-name fallback reached fmt.Scan"
         )

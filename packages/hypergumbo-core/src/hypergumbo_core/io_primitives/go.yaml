@@ -88,6 +88,54 @@ fs_read:
       network receive, but no target kind names a network stream, so such a row
       could never be SELECTED -- an unreachable declaration making the
       catalogue look more capable than it is. The vocabulary has to grow first.
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav. The call that TRANSFERS the bytes, one binding after the
+      wrapper rowed above: `reader := bufio.NewReader(f)`, then
+      `reader.ReadString('\n')`. What it crosses is whatever the handle wraps,
+      so it is dual and narrowed by the same `io_target_kind` the wrapper
+      stamps -- go.py resolves the RECEIVER's last binding, finds the wrapper
+      call, and classifies that call's argument (INV-zumin class (b) forbids a
+      fixed boundary for this population). Reachable from the `bufio` slot the
+      receiver's type puts the edge in; a `bufio.ReadWriter` receiver reaches
+      these rows through the same package hint.
+
+      `abstains_to: fs_read` IS THE OPPOSITE OF THE CONSTRUCTOR'S, ON PURPOSE.
+      An unstamped read is one whose receiver came from a scope go.py cannot
+      see -- a parameter, a struct field -- and the wrapper that built it lives
+      in THAT scope, where the constructor row already carries the unresolved
+      case's ipc_recv fallback. A second ipc_recv here would mint a second
+      untrusted_input source on one crossing; fs_read mints nothing and leaves
+      the crossing where it already is. Measured on six Go repositories (alertmanager, beads, caddy,
+      cert-manager, cilium, jaeger; WI-vutav's thread): 179 read sites reach
+      these rows, 0 rows removed, the constructor rows unmoved. 8 are stamped
+      `std_stream` and every one read back to a local
+      `bufio.New*(os.Stdin)`; 91 `host_path` (a file); 41 `in_memory`, which
+      classify here and are refused as sources at the mint gate; 39 are
+      unstamped -- 2 parameter receivers, 9 struct fields, and 28 locals
+      whose wrapper argument is itself a parameter, an in-repo wrapper
+      function, a pipe, an `io.LimitReader`, or `&buf` of a declared
+      `bytes.Buffer` -- and each read back as a shape the one-hop rule
+      cannot prove, not a missed `os.Open`.
+
+      NOT rowed, disclosed: a reader built by `bufio.NewReaderSize` or
+      `bufio.NewReadWriter` is not in go.py's wrapper set, so its reads are
+      unstamped and fall back here. `bufio.Scanner` is the sibling row.
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: `bufio.Reader`'s sibling, same mechanism, same fallback and
+      the same reason for it (see that row). `Scan` is declared ambiguous
+      above, so an UNTYPED receiver's `.Scan()` -- sql.Rows, fmt -- is
+      refused; only a receiver go.py typed as `bufio.Scanner` reaches this.
+      `Text` and `Bytes` return what the last `Scan` read, so they carry the
+      crossing too: a program that scans and never calls either has read
+      nothing it can act on.
   # Low-level syscall IO (important for kernel/runtime projects like gvisor)
   - module: syscall
     functions: [Open, Openat, Read, Pread, Readlink, Stat, Lstat, Fstat, Getdents]
@@ -290,3 +338,18 @@ ipc_recv:
       asserted only where the argument's origin says so. Both markers are
       repeated here because they are properties of the PRIMITIVE, not of one
       declaration, and c.yaml states the same rule for stdio.fgets.
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: the ipc_recv twin of the fs_read row, selected only when go.py
+      stamps `io_target_kind: std_stream` from the receiver's binding. Both
+      markers are repeated because they are properties of the PRIMITIVE; the
+      fallback and its measurement are on the fs_read row.
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: >-
+      WI-vutav: the ipc_recv twin of the fs_read row; see `bufio.Reader` above.

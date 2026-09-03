@@ -2326,10 +2326,16 @@ def _go_enclosing_body(node: "tree_sitter.Node") -> "Optional[tree_sitter.Node]"
     return None  # pragma: no cover - a call at file scope does not parse in Go
 
 
-def _go_binding_rhs(
+def _go_last_binding(
     node: "tree_sitter.Node", source: bytes, name: str,
-) -> Optional[str]:
-    """Text of the LAST binding of ``name`` at or above ``node``'s line.
+    *, use_line: Optional[int] = None,
+) -> Optional[tuple[str, int]]:
+    """``(text, line)`` of the LAST binding of ``name`` at or above a line.
+
+    The line defaults to ``node``'s own. ``use_line`` lets a caller resolve a
+    name as of an EARLIER point -- WI-vutav resolves the wrapper's argument at
+    the WRAPPER'S line, not the read's, so a rebinding of the handle between
+    the two is not misread as what the reader wraps.
 
     A deliberately smaller instrument than a reaching-def solver, and its
     answers are a SUBSET of one: the enclosing function only, textual line
@@ -2345,7 +2351,8 @@ def _go_binding_rhs(
     body = _go_enclosing_body(node)
     if body is None:  # pragma: no cover - see _go_enclosing_body
         return None
-    use_line = node.start_point[0]
+    if use_line is None:
+        use_line = node.start_point[0]
     best_line = -1
     best_text: Optional[str] = None
     stack = [body]
@@ -2381,7 +2388,7 @@ def _go_binding_rhs(
             chosen = right
         best_line = cur.start_point[0]
         best_text = node_text(chosen, source).strip()
-    return best_text
+    return None if best_text is None else (best_text, best_line)
 
 
 def _go_classify_handle_text(text: str) -> Optional[str]:
@@ -2427,15 +2434,72 @@ def _go_wrapped_handle_kind(
         # line below would raise on None, and a crash inside an analyzer takes
         # the whole repo's analysis with it.
         return None
-    arg_text = node_text(args, source).strip()
+    return _go_handle_kind_from_argument_text(
+        node, source, node_text(args, source).strip(),
+    )
+
+
+def _go_handle_kind_from_argument_text(
+    node: "tree_sitter.Node", source: bytes, arg_text: str,
+    *, use_line: Optional[int] = None,
+) -> Optional[str]:
+    """``io_target_kind`` for a wrapper's argument TEXT, or None.
+
+    Shared by the wrapper's own call site and the read one binding later, so
+    the two cannot disagree about what ``bufio.NewReader(f)`` wraps. Inline
+    producers classify directly; a bare identifier is followed through ONE
+    binding, resolved as of ``use_line`` (the wrapper's line when the caller
+    is a read). Anything else abstains.
+    """
     direct = _go_classify_handle_text(arg_text)
     if direct is not None:
         return direct
     bare = arg_text.strip("()").strip()
     if not bare.isidentifier():
         return None
-    rhs = _go_binding_rhs(node, source, bare)
-    return None if rhs is None else _go_classify_handle_text(rhs)
+    found = _go_last_binding(node, source, bare, use_line=use_line)
+    return None if found is None else _go_classify_handle_text(found[0])
+
+
+def _go_receiver_handle_kind(
+    node: "tree_sitter.Node", source: bytes, receiver: str,
+    import_aliases: dict[str, str],
+) -> Optional[str]:
+    """``io_target_kind`` for a READ whose receiver was bound to a wrapper call, or None.
+
+    WI-vutav. The wrapper transfers nothing (ADR-0049); the bytes cross at
+    ``reader.ReadString('\\n')``, on a receiver whose type puts the edge in the
+    ``bufio`` slot. Its boundary is still the wrapper's ARGUMENT'S origin, now
+    one binding further away: resolve the receiver's last binding, and when
+    that is a call to a package-qualified wrapper in :data:`_GO_HANDLE_WRAPPERS`
+    (the alias resolved through the file's imports, so ``b.NewReader`` under
+    ``import b "bufio"`` still counts), classify its argument exactly as the
+    wrapper site would -- with the identifier hop taken AT THE WRAPPER'S LINE.
+
+    Every other shape abstains: a parameter or field receiver (no binding), a
+    binding that is not a call, an unqualified or in-repo constructor, a
+    package that is not a wrapper. INV-zumin: one answer per call site or
+    none, and this direction selects a minting boundary.
+    """
+    found = _go_last_binding(node, source, receiver)
+    if found is None:
+        return None
+    rhs, bound_line = found
+    head, paren, rest = rhs.partition("(")
+    if not paren or not rest.endswith(")"):
+        return None
+    alias, dot, callee = head.rpartition(".")
+    if not dot:
+        return None
+    import_path = import_aliases.get(alias)
+    if (
+        import_path is None
+        or (import_path.rsplit("/", 1)[-1], callee) not in _GO_HANDLE_WRAPPERS
+    ):
+        return None
+    return _go_handle_kind_from_argument_text(
+        node, source, rest[:-1].strip(), use_line=bound_line,
+    )
 
 
 def _extract_function_reference_edges(
@@ -3078,6 +3142,16 @@ def _extract_edges_from_file(
                             _alias = node_text(operand_node, source)
                             if _alias in var_types:
                                 _slot = receiver_module_hint or "external"
+                                # WI-vutav: what THIS read touches, resolved through the
+                                # receiver's binding; the catalogue row cannot see it.
+                                _meta_b: dict[str, object] = {
+                                    "call_construct": "method", "receiver": "external",
+                                }
+                                _handle_b = _go_receiver_handle_kind(
+                                    node, source, _alias, import_aliases,
+                                )
+                                if _handle_b:
+                                    _meta_b["io_target_kind"] = _handle_b
                                 dst_id = (
                                     f"go:{_slot}:0-0:{callee_name}:unresolved"
                                 )
@@ -3097,7 +3171,7 @@ def _extract_edges_from_file(
                                     is_resolved=False,
                                     origin=PASS_ID,
                                     origin_run_id=run.execution_id,
-                                    meta={"call_construct": "method", "receiver": "external"},
+                                    meta=_meta_b,
                                 ))
                                 callee_name = None  # Already handled
 

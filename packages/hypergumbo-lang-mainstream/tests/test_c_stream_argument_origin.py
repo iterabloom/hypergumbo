@@ -146,7 +146,7 @@ class TestUnprovableOriginsStampNothing:
 
 
 class TestBindingOrder:
-    """Same rule as ``_go_binding_rhs``: the LAST binding at or above the use,
+    """Same rule as ``_go_last_binding``: the LAST binding at or above the use,
     in the enclosing function only. Both directions are pinned because a
     last-match-in-file scan gets one wrong and a first-match scan the other."""
 
