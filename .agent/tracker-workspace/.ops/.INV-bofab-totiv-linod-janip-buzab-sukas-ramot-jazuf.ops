@@ -1,0 +1,24 @@
+- op: create  # 3a76
+  at: '2026-09-03T03:54:26Z'  # 3a76
+  by: agent  # 3a76
+  actor: jgstern_agent  # 3a76
+  clock: 1  # 3a76
+  nonce: 3a76  # 3a76
+  data:  # 3a76
+    kind: invariant  # 3a76
+    title: "All 18 self-claims moved confirmed_with_caveats -> inconclusive with empty caveats (4 lost credited flows) since the 2026-09-02 13:00 UTC full-suite firing; masked behind the aggregate status for two firings"  # 3a76
+    status: violated  # 3a76
+    priority: 1  # 3a76
+    parent:  # 3a76
+    tags:  # 3a76
+    - self_analysis  # 3a76
+    - security  # 3a76
+    - ci_infrastructure  # 3a76
+    isbefore: []  # 3a76
+    duplicate_of: []  # 3a76
+    not_duplicate_of: []  # 3a76
+    pr_ref:  # 3a76
+    description: "FOUND 2026-09-03 BY THE FIRST LIVE RUN OF `ci-debug cron-status` PER-STEP\nRENDERING (INV-bozid, masking half). Every number below is read out of the\nWoodpecker pipeline API and a fetched CI transcript via scripts/ci-debug.\n\nTHE REGRESSION. At the full-suite cron firing of 2026-09-02 13:00 UTC (tip\n4fcff62951) the self-claims gate FAILED with SELF-CLAIM DRIFT: all 18 claims\nin docs/hypergumbo.claims.yaml moved\n\n    confirmed_with_caveats -> inconclusive\n    caveats [opaque_boundary, unknown_receiver_scope, ...] -> []\n\nand FOUR lost their sanitizer-credited flows (REGRESSED, nonzero -> zero):\nbuild-grammars-no-host-fs, install-gitleaks-no-host-fs,\nruntime-cli-no-host-fs, runtime-cli-no-subprocess. Same drift at the next\nfiring (2026-09-03 01:00 UTC, tip ff255f67, pipeline 2189).\n\nTHE WINDOW. The 2026-09-02 01:00 UTC firing (tip c2686a6131) had the gate\nGREEN. Five non-tracker commits lie between:\n\n    a33de088bc fix(python): a bare-name call emits an edge whatever the\n               callee is for (INV-foluz)                        py.py\n    b730e10d41 feat(io-boundary): declare the abstention fallback per row\n               (INV-fatok, INV-bagok)                 io_boundary.py, go.yaml\n    5a7aa6ce6a fix(taint): a collapsed row's walk marker describes the\n               group (INV-muhij)                     taint.py, verify_claims.py\n    28998e145c fix(haskell): a zero-argument IO action emits a call edge\n               (INV-fofoj)                                       haskell.py\n    c05d573e69 docs(measurements): 0011                             docs only\n\nTHE SHAPE POINTS AT ONE VERDICT SITE. `inconclusive` with EMPTY caveats is\nthe verify_claims.py:3898 arm -- `not coverage.complete and not\ncoverage.qualifying_only` -- i.e. the call-production coverage gate\nwithheld every claim for a NON-qualifying reason (the shape WI-mital hit:\n\"language(s) X made calls but have no I/O catalog\"), before any chain was\ncounted. That is consistent with a new call-edge EMITTER (a33de088bc\npython bare names, 28998e145c haskell zero-arg actions) surfacing a language\nor a source-id shape the census has no catalogue for. Not yet confirmed: the\nverdict `details` string, which names `coverage.reason`, is being captured\nby a local run of the gate's own command.\n\nWHY IT WAS INVISIBLE FOR TWO FIRINGS, AND WHY THAT IS INV-bobor RECURRING.\nAt 4fcff62951 every sibling step was GREEN and the gate alone was red; the\naggregate commit status could only say `failure`, and `ci-debug logs` (first\nfailed step) at the NEXT firing returned test-all-packages' transcript -- a\nstale line citation, fixed on dev -- so the diagnosis stopped one step short.\nINV-bobor (satisfied, PR #465) put the gate in the per-PR pipeline for this\nreason; the owner removed that arm on 2026-08-30 and accepted cron-bounded\ndetection WITH the tripwire \"if full-suite sits red, unmask\". It sat red on\nthe third day. Per-step rendering is the unmask; this item is the drift.\n\nCLOSURE NEEDS: the introducing commit named, the cause fixed or the snapshot\nre-recorded WITH the SECURITY.md text corrected (never the snapshot alone),\nand a green self-claims-gate step on a subsequent firing, read via\n`ci-debug cron-status`."  # 3a76
+    fields:  # 3a76
+      statement: "A move in any self-claim verdict, caveat set, or credited-flow bit must be acknowledged by a human re-recording the snapshot and correcting SECURITY.md; the gate detected this move at the first firing after the introducing commit, and nothing delivered it."  # 3a76
+      root_cause: "Not yet attributed. One of five commits in c2686a6131..4fcff62951; the verdict shape (inconclusive, empty caveats) is the non-qualifying call-production-coverage withhold at verify_claims.py:3898, pointing at a new call-edge emitter (a33de088bc python bare names or 28998e145c haskell zero-arg actions) surfacing a language or source-id shape the I/O census has no catalogue for."  # 3a76
