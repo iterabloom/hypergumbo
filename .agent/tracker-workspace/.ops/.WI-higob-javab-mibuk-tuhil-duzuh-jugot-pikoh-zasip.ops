@@ -1,0 +1,23 @@
+- op: create  # a15c
+  at: '2026-09-03T19:36:43Z'  # a15c
+  by: agent  # a15c
+  actor: jgstern_agent  # a15c
+  clock: 1  # a15c
+  nonce: a15c  # a15c
+  data:  # a15c
+    kind: work_item  # a15c
+    title: "INV-dihos Phase 6: Return-Type Registry consumer for Swift + ObjC (never scheduled; 100 + 123 method-kind io rows have no consumer to feed; swift first needs INV-kotob)"  # a15c
+    status: todo_hard  # a15c
+    priority: 4  # a15c
+    parent: INV-dihos-razov-momat-runoh-mohov-zumop-mivar-nijog  # a15c
+    tags:  # a15c
+    - analysis_quality  # a15c
+    - io_boundary  # a15c
+    - swift  # a15c
+    - objc  # a15c
+    isbefore: []  # a15c
+    duplicate_of: []  # a15c
+    not_duplicate_of: []  # a15c
+    pr_ref:  # a15c
+    description: "FILED 2026-09-03 from the WI-lalot sequencing discussion. The INV-dihos phase\nplan scheduled a return-type registry consumer for Java + Go (Phase 1, done),\nKotlin + C# (Phase 2, done), Rust + C++ + Scala (Phase 3; rust done, cpp and\nscala split out as WI-zimat / WI-hijot), Python (Phase 4, WI-hudam) and the\ncross-linker integration (Phase 5, WI-fukut). Swift and ObjC were never in any\nphase. WI-lalot's data table says why that matters: swift carries 100 own\nmethod-kind io rows (93% of its catalogue) and objc 123 (95%); a row for\neither language cannot match until its receiver is typed from a producing\ncall's return type, and there is no consumer to feed.\n\nSTATE TODAY. swift: WI-riguf (done) tracks receiver types for a fixed list of\ncommon method names; INV-kotob (P3, violated) says the module slot can carry\nthe receiver VARIABLE NAME (`swift:fm:0-0:fileExists`), which is worse than\nuntyped -- a present-but-wrong hint. objc: WI-nakut notes it renders an empty\nmethod name in the untyped-receiver caveat; WI-marok (v9/v10-gated) lists\n\"objc receiver-variable\" among the module-slot violators. Neither analyzer\nconsults any registry when assigning the result of a method call (ADR-0006's\n\"Chained\" column does not list them).\n\nDELIVERABLES, mirroring WI-hijot's shape: (1) extend each analyzer's var_types\nso a local bound to a method call consults the shared registry (the interface\nWI-lalot's loader will feed -- settle that shape first, see WI-lalot); (2) for\nswift, land INV-kotob first or in the same change, so the slot carries a TYPE;\n(3) one fixture per binding form (constructor, declared, in-repo return,\nlibrary return, chained); (4) measure through L4 on findings once the corpus\nitem filed alongside this supplies a repo. P4 to match its siblings; raise it\nif WI-lalot's rows for swift/objc are wanted before then."  # a15c
+    fields: {}  # a15c

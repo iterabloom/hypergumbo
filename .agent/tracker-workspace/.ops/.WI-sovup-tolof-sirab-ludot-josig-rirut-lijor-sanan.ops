@@ -1,0 +1,25 @@
+- op: create  # 15f2
+  at: '2026-09-03T19:36:39Z'  # 15f2
+  by: agent  # 15f2
+  actor: jgstern_agent  # 15f2
+  clock: 1  # 15f2
+  nonce: 15f2  # 15f2
+  data:  # 15f2
+    kind: work_item  # 15f2
+    title: "L4 corpus coverage for receiver-typing work: kotlin and objc have NO repo on disk, swift and scala one each (VernissageServer, docspell); INV-linub's measure-through-L4 rule and WI-lalot's row admission cannot run for four of nine languages"  # 15f2
+    status: todo_hard  # 15f2
+    priority: 3  # 15f2
+    parent:  # 15f2
+    tags:  # 15f2
+    - measurement  # 15f2
+    - corpus  # 15f2
+    - kotlin  # 15f2
+    - scala  # 15f2
+    - objc  # 15f2
+    - swift  # 15f2
+    isbefore: []  # 15f2
+    duplicate_of: []  # 15f2
+    not_duplicate_of: []  # 15f2
+    pr_ref:  # 15f2
+    description: "FILED 2026-09-03 from the WI-lalot sequencing discussion. INV-linub's standing\nrule for every receiver-typing fix is \"measure through L4 ON FINDINGS, not L2\non edges\", and WI-lalot's rows are meant to be admitted where a catalogued\nmethod row's receiver was measured untyped on a real repo. Both need a corpus\nrepo per language. Counted on disk (~/ALL_REPOS, two directory levels deep,\nrepos with >= 20 files of the language):\n\n    kotlin   0 repos\n    objc     0 repos\n    swift    1  repos_Apr12_2026/VernissageServer   (906 .swift files)\n    scala    1  repos_Apr12_2026/docspell           (872 .scala files)\n\nThe measurement-0006 / 0012 sixteen-repo cohort has none of the four. So for\nkotlin and objc the L4 rule cannot be applied at all today, and for swift and\nscala it can be applied on one repo, which is a smoke test, not a measurement\n(experiment-design playbook: no conclusions from a single repo).\n\nWHY IT IS ITS OWN ITEM. Four items need it and none owns it: WI-nasuf (kotlin\nemission), WI-hijot (scala registry consumer), the swift/objc consumer phase\nfiled alongside this, and WI-lalot (rows for all nine languages). Without a\ncorpus, rows and consumers for these languages ship present-and-dead with no\nway to say so -- the measurement-0009 trap.\n\nWHAT CLOSES IT. Two repos per language (kotlin, objc; a second for swift and\nscala), chosen for I/O density -- a CLI or a server, not a UI-only or\nlibrary-only repo -- downloaded per\n~/hypergumbo_lab_notebook/curriculum_repo_download_process.txt (github.com is\nallowlisted). Record each repo's path in a repos.txt beside the cohort lists\nso the collect / arm scripts can take it, and run the 1-repo mini trial\nbefore any experiment. Kotlin/objc candidates are the owner's call if there is\na preferred domain; otherwise pick by stars and by presence of network + file\nI/O in the source."  # 15f2
+    fields: {}  # 15f2
