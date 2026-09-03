@@ -1,0 +1,24 @@
+- op: create  # 5f63
+  at: '2026-09-03T00:23:52Z'  # 5f63
+  by: agent  # 5f63
+  actor: jgstern_agent  # 5f63
+  clock: 1  # 5f63
+  nonce: 5f63  # 5f63
+  data:  # 5f63
+    kind: invariant  # 5f63
+    title: "A source is anchored to a symbol that does not contain it (erlang arity collapse; a go route that runs backwards)"  # 5f63
+    status: violated  # 5f63
+    priority: 1  # 5f63
+    parent:  # 5f63
+    tags:  # 5f63
+    - taint  # 5f63
+    - measurement_0012  # 5f63
+    - spans  # 5f63
+    isbefore: []  # 5f63
+    duplicate_of: []  # 5f63
+    not_duplicate_of: []  # 5f63
+    pr_ref:  # 5f63
+    description: "Found by measurement 0012's adversarial refutation pass, reported independently\nby two refuters reading source.\n\nTWO INSTANCES, DIFFERENT LANGUAGES, SAME SHAPE — the symbol a source is\nanchored to does not contain the source call.\n\n1. ERLANG, ARITY COLLAPSE. rabbitmq:host-secret-no-logging:17 declares its\n   source span as deps/rabbit/src/rabbit_channel.erl 2743-2744. Those two lines\n   are get_consumer_timeout/2, a pure argument-forwarding wrapper containing no\n   environment read at all. The genuine application:get_env is at line 819, in\n   the arity-0 function of the same name. Erlang distinguishes functions by\n   name/arity; the analyzer appears to key on name alone and collapse them.\n\n2. GO, DIRECTION. gocryptfs:untrusted-input-no-host-fs:0 reports hops=0 with\n   source and sink both inside callFidoCommand (internal/fido2/fido2.go 38-70),\n   asserting an intra-procedural route that CANNOT EXECUTE: the sink at :61 runs\n   strictly BEFORE the source at :65 on every invocation. The real chain is a\n   five-hop interprocedural loop out through Register and init_dir.go and back\n   in on a second call.\n\nWHY IT MATTERS BEYOND TIDINESS. The adjudication packet searches for source\nsites INSIDE the declared span, so a mis-anchored span produces an EMPTY\ncandidate listing for a source that is really there — evidence of absence the\ninstrument manufactured, pointing an adjudicator toward FALSE POSITIVE. In 0012\none refuter recovered from it only by searching the whole file and finding the\ncall 1,900 lines away. The finding itself was true.\n\nRELATED, CITE DO NOT FOLD: WI-nabaz is 0006's cause E (spans). INV-linub is\nreceiver typing. This is neither: the span is a well-formed span of the WRONG\nSYMBOL.\n\nNOT DONE HERE: no fix proposed, and the catalogue of affected languages is the\ntwo that happened to be sampled. Erlang arity collapse should be checked\nagainst elixir, and the direction defect against every language whose def/use\nextractor is wired."  # 5f63
+    fields:  # 5f63
+      statement: "The symbol a taint source is anchored to must contain the source call. Measured on 0012: rabbitmq's source span points at get_consumer_timeout/2, a forwarding wrapper with no env read, while the real application:get_env is in the arity-0 function 1,900 lines away; gocryptfs reports hops=0 with the sink executing strictly BEFORE the source in the same function."  # 5f63
+      root_cause: "Not diagnosed. Erlang instance is consistent with keying functions by name and ignoring arity; go instance is consistent with intra-procedural co-location standing in for a route with no ordering check."  # 5f63
