@@ -1,0 +1,34 @@
+Original commit body from 274ce4d822904e0f8bae81f44b87d97cd330bb47:
+
+## INV-nopoh: a Go call under a package-level `var` now emits a `calls` edge anchored on the variable
+
+**Root cause.** `_get_enclosing_function` walked up to a `function_declaration`/`method_declaration` and returned `None` at the file root; the call arm skipped every call with no anchor. Every cobra `Run:` handler, every `var logger = log.New(...)`, every literal bound to a package variable emitted nothing. Measured on beads: 578 of 1,331 `fmt.Fprintf` sites (43.4%).
+
+**Fix.** A call under a package-level `var_spec` anchors on that variable's own symbol (kind `variable`, already emitted); a blank `var _ = register()` anchors on the file pseudo-symbol; a literal inside a named function keeps its anchor. `_get_enclosing_func_name` (the `var_types` scope) returns the same name through one shared helper, so the WI-suhug writer classifier works inside a package-level body.
+
+**Two more defects found by reading the new rows back, fixed in the same change.**
+1. Grouped `var ( a = ...; b = ... )` blocks had NO variable symbols (the symbol pass iterated `var_declaration`'s direct children and never saw `var_spec_list`) and no interface-assertion detection. Both descend now.
+2. The new alias symbols (`var ( NewWebhook = testutils.NewWebhook )`, two packages) made a dot-imported bare `NewWebhook()` a three-candidate ambiguity; the resolver's guard withheld it and 114 alertmanager sites fell from a resolved function to a placeholder in the first arm B. The dot-imported in-module paths are now offered as the resolver's path hint; the call binds to the dot-imported package's alias variable.
+
+**A/B, six Go repos, arm A = dev `7cf2cf411a`** (`~/hypergumbo_lab_notebook/nopoh_pkglit_09032026/`, README first):
+
+| repo | calls A | calls B | new anchors (variable / file) | Fprintf A -> B (grep) |
+|---|---|---|---|---|
+| beads | 66,848 | 72,062 | 5,205 / 0 | 753 -> 1,330 (1,331; the last is a comment) |
+| alertmanager | 14,202 | 14,331 | 125 / 0 | 21 -> 21 |
+| caddy | 16,697 | 16,767 | 66 / 4 | 5 -> 5 |
+| cert-manager | 32,706 | 34,299 | 201 / 1,384 | 25 -> 25 (26; comment) |
+| cilium | 152,433 | 158,969 | 4,800 / 1,655 | 683 -> 733 (736) |
+| jaeger | 32,284 | 32,576 | 279 / 13 | 2 -> 2 |
+
+The file-anchored rows are the blank-var rule at work: cert-manager's 1,384 and cilium's 1,655 are Ginkgo `var _ = Describe("...", func() { It(...); Expect(...) })` suites, whose every call was invisible before.
+
+Every removed edge key read back per site (`pair_churn.py`): losses are false matches the real variable now shadows (cilium 128 `entry: DenyEntry`, 93 `AllowEntry`, 96 `tick` argument -> `Watcher.tick`; beads `Commit` -> `DoltStore.Commit`) plus, on cilium, 3 `entry.updated.Unix()` calls on a `time.Time` that used to bind to an unrelated in-repo `Unix` function and now read `external`, and 1 `nowFunc: time.Now` field value that used to bind to an in-repo `Now`. On alertmanager 134 placeholder and 114 luckily-resolved dot-imported calls now bind to the alias variable, and 37 more resolve to the dot-imported package's real functions. Zero resolved -> unresolved transitions remain after fix 2 (`churn_*.txt`).
+
+**Taint on beads** (cold cache, generic claims): 134 -> 162 evidence rows; 29 added, every new source a cobra command variable (`initCmd`, `doctorCmd`, `migrateCmd`, `rootCmd`, ...); all `structural`, because the DDG builds no CFG for a literal under a `var_spec` -- WI filed. 1 row's representative sink moved (`fetchJiraIssueTimestamp`: Fprintf -> Printf, hops 2 -> 4) as new sinks joined its situation.
+
+**Family sweep (fixture, not reading):** rust, java, kotlin, swift, ruby, c, cpp, scala, lua drop the same site; js/ts anchor it on the arrow's function symbol, py/php on the file. Filed as INV-bamij. Also filed after the PR: a bare Go call that resolves nowhere emits no edge (INV-foluz's Go shape); a call through a var alias dead-ends at the variable (WI-gulot's Go twin); the DDG spec gap.
+
+**Tests.** 17 new in `test_go_package_level_anchor.py` (both package-level shapes, plain initializer, blank var, struct-field reference, grouped block incl. INV-sidab control and interface assertion, classifier stamps inside a literal, dot-import binding with qualified-call and external-dot-import controls). 534 Go tests green; full smart-test green with 100% on changed files; mypy ratchet clean.
+
+https://claude.ai/code/session_01AjN216ATXcbTPVWuS5r9bS
