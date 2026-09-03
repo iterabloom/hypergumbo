@@ -181,6 +181,10 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "crypto/tls.Conn", "log/slog.Logger", "net.Conn", "net.Listener",
             "net/http.Client", "net/http.Transport", "net/smtp.Client",
             "os/exec.Cmd", "testing.B", "testing.T",
+            # WI-vutav: the two bufio handle TYPES, so the READ one binding
+            # after `bufio.NewReader`/`NewScanner` has a row to reach. Both
+            # are stdlib (package bufio); the constructors were already in.
+            "bufio.Reader", "bufio.Scanner",
         }),
     ),
     "haskell": Scope(

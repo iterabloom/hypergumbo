@@ -290,3 +290,79 @@ class TestTheShippedCataloguesAreUnchanged:
     def test_haskell_hgetline_still_falls_back_to_fs_read(self) -> None:
         from hypergumbo_core.io_boundary import load_catalog
         assert _order_for(load_catalog("haskell"), "hGetLine")[0] == "fs_read"
+
+
+#: WI-vutav's nine read rows, one binding after go's two wrappers.
+_BUFIO_READ_ROWS = (
+    ("bufio.Reader", "ReadString"), ("bufio.Reader", "ReadBytes"),
+    ("bufio.Reader", "ReadLine"), ("bufio.Reader", "ReadRune"),
+    ("bufio.Reader", "ReadSlice"), ("bufio.Reader", "Read"),
+    ("bufio.Scanner", "Scan"), ("bufio.Scanner", "Text"),
+    ("bufio.Scanner", "Bytes"),
+)
+
+
+class TestTheBufioReadRowsFallBackTheOtherWay:
+    """WI-vutav: the READ one binding after the wrapper.
+
+    The constructor rows fall back to ``ipc_recv`` (five network reads would
+    otherwise be lost -- the measurement in this file's docstring). The read
+    rows fall back to ``fs_read``, and the asymmetry is the point: an
+    unstamped read is one whose receiver's origin the analyzer could not see
+    (a parameter, a struct field), and the wrapper that built that handle sits
+    in some OTHER scope, where its own row already carries the unresolved
+    case's ``ipc_recv`` fallback. Falling back to ``ipc_recv`` here too would
+    mint a second ``untrusted_input`` source on one crossing; ``fs_read``
+    mints nothing and leaves the crossing where it already is. A stamped read
+    narrows exactly as the wrapper does.
+    """
+
+    @staticmethod
+    def _go(name: str, meta: dict[str, object] | None) -> str | None:
+        from hypergumbo_core.io_boundary import (
+            classify_call_in_catalog, load_catalog,
+        )
+        stamped: dict[str, object] = {"call_construct": "method"}
+        stamped.update(meta or {})
+        prim, _ = classify_call_in_catalog(
+            {"go": load_catalog("go")},
+            f"go:bufio:0-0:{name}:unresolved", stamped,
+        )
+        return prim.boundary if prim else None
+
+    @pytest.mark.parametrize("module,name", _BUFIO_READ_ROWS)
+    def test_each_read_is_dual_undecidable_and_falls_back_to_fs_read(
+        self, module: str, name: str,
+    ) -> None:
+        from hypergumbo_core.io_boundary import load_catalog
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == module and p.name == name
+        ]
+        assert {r.boundary for r in rows} == {"fs_read", "ipc_recv"}
+        assert {r.boundary_ruling for r in rows} == {"call_site_undecidable"}
+        assert {r.abstains_to for r in rows} == {"fs_read"}
+        assert {r.kind for r in rows} == {"method"}
+
+    @pytest.mark.parametrize("module,name", _BUFIO_READ_ROWS)
+    def test_an_unstamped_read_mints_nothing(self, module: str, name: str) -> None:
+        assert self._go(name, None) == "fs_read"
+
+    @pytest.mark.parametrize("name", ["ReadString", "Scan", "Text"])
+    def test_a_stdin_stamp_selects_ipc_recv(self, name: str) -> None:
+        assert self._go(name, {"io_target_kind": "std_stream"}) == "ipc_recv"
+
+    @pytest.mark.parametrize("name", ["ReadString", "Scan", "Text"])
+    def test_a_file_stamp_selects_fs_read(self, name: str) -> None:
+        assert self._go(name, {"io_target_kind": "host_path"}) == "fs_read"
+
+    def test_the_wrappers_own_fallback_is_untouched(self) -> None:
+        """The asymmetry is between two primitives, not a change to one."""
+        from hypergumbo_core.io_boundary import (
+            classify_call_in_catalog, load_catalog,
+        )
+        prim, _ = classify_call_in_catalog(
+            {"go": load_catalog("go")},
+            "go:bufio:0-0:NewReader:external_symbol", None,
+        )
+        assert prim is not None and prim.boundary == "ipc_recv"
