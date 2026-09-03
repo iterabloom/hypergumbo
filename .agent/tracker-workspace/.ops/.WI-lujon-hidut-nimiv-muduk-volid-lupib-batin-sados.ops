@@ -1,0 +1,21 @@
+- op: create  # f2d2
+  at: '2026-09-03T03:55:50Z'  # f2d2
+  by: agent  # f2d2
+  actor: jgstern_agent  # f2d2
+  clock: 1  # f2d2
+  nonce: f2d2  # f2d2
+  data:  # f2d2
+    kind: work_item  # f2d2
+    title: "smart-test does not select a citation test when the file it cites by string changes: bash.py:1353 rotted under a green per-PR gate and fired two crons later"  # f2d2
+    status: todo_hard  # f2d2
+    priority: 2  # f2d2
+    parent:  # f2d2
+    tags:  # f2d2
+    - ci_infrastructure  # f2d2
+    - smart_test  # f2d2
+    isbefore: []  # f2d2
+    duplicate_of: []  # f2d2
+    not_duplicate_of: []  # f2d2
+    pr_ref:  # f2d2
+    description: "FOUND 2026-09-03 while attributing a red full-suite firing (INV-bozid).\n\nTHE MISS. `test_module_key_axis.py::test_every_cited_emission_site_still_exists`\npins that every `file:line` citation in `module_key_axis.MODULE_KEY_NOTIONS`\nstill contains its quoted anchor. The INV-sihom fix (0b8815fd2d) added lines\nto `hypergumbo_lang_mainstream/bash.py`, shifting the redirect emission from\n:1353 to :1399. The per-PR smart-test gate on that PR was GREEN: the citation\ntest lives in hypergumbo-core and names bash.py by STRING, so the import-graph\nreverse slice never selected it. It fired on the next full-suite cron\n(2026-09-03 01:00 UTC, pipeline 2189: `1 failed, 25483 passed`) and was\nrepaired in passing by 59a396395a -- two firings later, and only because a\ndifferent PR happened to touch a core file that selected it.\n\nTHE CLASS. Any test that pins a path-plus-line citation into another package\n(a \"citation test\") is invisible to a slice that follows imports. The\nsame shape exists wherever a docstring, ADR, or axis registry cites a\nproducer site by `file:line` and a test checks it against the tree.\n\nWHAT TO DO. smart-test already unions non-import selectors for data files\nand playbooks (INV-kafak's three change classes). Add a fourth: a test file\nthat contains a string literal naming a changed source path (by basename or\nrepo-relative path) is selected when that path changes. Cheap to derive from\nthe tree, and it makes a citation test fire on the commit that rots the\ncitation rather than on the next cron."  # f2d2
+    fields: {}  # f2d2
