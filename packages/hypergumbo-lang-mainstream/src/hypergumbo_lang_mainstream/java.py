@@ -536,10 +536,23 @@ class _ParsedFile:
 
     Type inference sources for variable method call resolution (e.g., stub.method()):
     1. Direct constructor calls: stub = new Client() → var_types['stub'] = 'Client'
-    2. Return type annotations: stub = factory.createClient() where createClient returns
-       Client → var_types['stub'] = 'Client'
+    2. Return types, read through ``method_return_type_registry``:
+       stub = factory.createClient() where createClient returns Client →
+       var_types['stub'] = 'Client'; a library value comes back QUALIFIED
+       (``java.io.FileWriter``) because the registry qualified it through the
+       DECLARING file's imports (WI-gajuh)
     3. Parameter type annotations: void process(Client client) → var_types['client'] = 'Client'
     4. Field declarations: private Repository repo → var_types['repo'] = 'Repository'
+    5. DECLARED local types (INV-vugon): ``OutputStream o = <anything>``,
+       ``catch (IOException e)``, ``for (File f : files)``, ``try (T r = …)``
+       and an explicitly typed lambda parameter ``(File f) -> …`` bind the
+       declared type whatever the initializer's shape. A constructor
+       initializer (1) still narrows it afterwards; a return-type inference
+       (2) never overrides it.
+
+    Sources 3 and 4 are file-wide; sources 1, 2 and 5 are unbound when the
+    next method begins, so a local named like a field cannot retype the field
+    in a sibling method.
     """
 
     path: Path
@@ -701,6 +714,190 @@ def _wildcard_candidate_slot(
             seen.add(candidate)
             parts.append(candidate)
     return ",".join(parts)
+
+
+def _declared_type_name(
+    type_node: "tree_sitter.Node | None", source: bytes,
+) -> str | None:
+    """The receiver-typing name a DECLARED type carries, or ``None``.
+
+    INV-vugon. ``List<String>`` names ``List``, ``Map.Entry<K, V>`` names
+    ``Map.Entry``, ``java.io.Writer`` names itself. ``var`` carries no type
+    (only an inference can bind it); a primitive or an array has no methods a
+    catalogue row could be written against, so neither binds anything.
+    """
+    if type_node is None:
+        return None
+    if type_node.type == "generic_type":
+        base = next(
+            (
+                c for c in type_node.children
+                if c.type in ("type_identifier", "scoped_type_identifier")
+            ),
+            None,
+        )
+        if base is None:  # pragma: no cover - the grammar always supplies a base
+            return None
+        type_node = base
+    if type_node.type not in ("type_identifier", "scoped_type_identifier"):
+        return None
+    text = _node_text(type_node, source)
+    return None if text == "var" else text
+
+
+#: The public types of ``java.lang`` (JDK 17), which JLS 7.3 imports into every
+#: compilation unit. A CLOSED list on purpose: a bare, unimported ``InputStream``
+#: in a file that forgot its import is NOT ``java.lang.InputStream``, and
+#: writing that into the module slot would be a present-but-wrong hint -- the
+#: INV-kotob shape, worse than untyped. Annotations are omitted (never a
+#: receiver); nested types (``Thread.UncaughtExceptionHandler``) are spelled
+#: with their outer and reach here through the nested-type branch.
+_JAVA_LANG_TYPES: frozenset[str] = frozenset({
+    # interfaces
+    "Appendable", "AutoCloseable", "CharSequence", "Cloneable", "Comparable",
+    "Iterable", "ProcessHandle", "Readable", "Runnable",
+    # classes
+    "Boolean", "Byte", "Character", "Class", "ClassLoader", "ClassValue",
+    "Double", "Enum", "Float", "InheritableThreadLocal", "Integer", "Long",
+    "Math", "Module", "ModuleLayer", "Number", "Object", "Package", "Process",
+    "ProcessBuilder", "Record", "Runtime", "RuntimePermission",
+    "SecurityManager", "Short", "StackTraceElement", "StackWalker",
+    "StrictMath", "String", "StringBuffer", "StringBuilder", "System",
+    "Thread", "ThreadGroup", "ThreadLocal", "Throwable", "Void",
+    # exceptions
+    "ArithmeticException", "ArrayIndexOutOfBoundsException",
+    "ArrayStoreException", "ClassCastException", "ClassNotFoundException",
+    "CloneNotSupportedException", "EnumConstantNotPresentException",
+    "Exception", "IllegalAccessException", "IllegalArgumentException",
+    "IllegalCallerException", "IllegalMonitorStateException",
+    "IllegalStateException", "IllegalThreadStateException",
+    "IndexOutOfBoundsException", "InstantiationException",
+    "InterruptedException", "LayerInstantiationException",
+    "NegativeArraySizeException", "NoSuchFieldException",
+    "NoSuchMethodException", "NullPointerException", "NumberFormatException",
+    "ReflectiveOperationException", "RuntimeException", "SecurityException",
+    "StringIndexOutOfBoundsException", "TypeNotPresentException",
+    "UnsupportedOperationException",
+    # errors
+    "AbstractMethodError", "AssertionError", "BootstrapMethodError",
+    "ClassCircularityError", "ClassFormatError", "Error",
+    "ExceptionInInitializerError", "IllegalAccessError",
+    "IncompatibleClassChangeError", "InstantiationError", "InternalError",
+    "LinkageError", "NoClassDefFoundError", "NoSuchFieldError",
+    "NoSuchMethodError", "OutOfMemoryError", "StackOverflowError",
+    "ThreadDeath", "UnknownError", "UnsatisfiedLinkError",
+    "UnsupportedClassVersionError", "VerifyError", "VirtualMachineError",
+})
+
+
+def _qualify_receiver_type(
+    type_name: str,
+    imports: dict[str, str],
+    wildcard_imports: list[str] | None,
+    class_symbols: dict[str, Symbol],
+    project_class_names: frozenset[str],
+) -> str | None:
+    """The module slot a receiver's TYPE names, or ``None`` when the file gives no path.
+
+    INV-vugon / ADR-0051: the slot carries the static owner path of the
+    called method -- the type that declares it -- and only a path the source
+    actually establishes:
+
+    - an imported simple name → its import (``Connection`` → ``java.sql.Connection``);
+    - an inline package path → itself (``java.sql.Connection``), by the same
+      spelling test :func:`_fully_qualified_type_reference` applies to receivers;
+    - a nested type on an imported outer (``Map.Entry`` → ``java.util.Map.Entry``);
+    - a bare name in :data:`_JAVA_LANG_TYPES` → ``java.lang.<name>`` (JLS 7.3;
+      a single-type import shadows it and is handled first, an on-demand
+      import cannot shadow it -- JLS 6.4.1);
+    - any other bare name, when the file has wildcard imports → the comma-joined
+      disjunction of those packages, the INV-hahak "ANY" contract the static
+      receiver slot already uses.
+
+    A project class is left alone: it is not a module, and the Tier-2
+    ``inherited_calls`` linker resolves it from ``receiver_type_hint``. An
+    unqualifiable name is left alone rather than written in bare -- a simple
+    name in the module slot asserts a module that does not exist (INV-fazim)
+    -- and, unlike :func:`_wildcard_candidate_slot`, it is NOT sent to
+    ``java.lang`` on the strength of being capitalised: that slot serves a
+    static receiver the source spelled as a type, this one a declared type the
+    source may have forgotten to import.
+    """
+    if type_name in imports:
+        return imports[type_name]
+    if "." in type_name:
+        if _fully_qualified_type_reference(type_name) is not None:
+            return type_name
+        outer, _, inner = type_name.partition(".")
+        if outer in imports:
+            return f"{imports[outer]}.{inner}"
+        return None
+    if type_name in class_symbols or type_name in project_class_names:
+        return None
+    if type_name in _JAVA_LANG_TYPES:
+        return f"{_IMPLICIT_IMPORT_PACKAGE}.{type_name}"
+    if wildcard_imports:
+        return ",".join(f"{package}.{type_name}" for package in wildcard_imports)
+    return None
+
+
+def _inherited_field_module(
+    current_class: str,
+    field_name: str,
+    class_parents: dict[str, str],
+    class_fields: dict[str, dict[str, str]],
+    class_symbols: dict[str, Symbol],
+    sym_file_imports: dict[str, dict[str, str]] | None,
+    project_class_names: frozenset[str],
+    depth_cap: int = 8,
+) -> str | None:
+    """The qualified LIBRARY type of ``field_name`` declared in an ancestor of ``current_class``.
+
+    INV-vugon. Walks ``class_parents`` (child name -> parent symbol name) up
+    to ``depth_cap`` with a cycle guard and returns the first ancestor's
+    declared type for the field, qualified through THAT ancestor's file
+    imports (``sym_file_imports`` keyed by the class symbol's id). ``None``
+    when no ancestor declares it, when the type is a project class (the
+    Tier-2 ``inherited_calls`` linker resolves those from
+    ``inherited_field_receiver``), or when the declaring file gives no path.
+    """
+    seen: set[str] = set()
+    cls = current_class
+    for _ in range(depth_cap):
+        parent = class_parents.get(cls)
+        if parent is None or parent in seen:
+            return None
+        seen.add(parent)
+        field_type = class_fields.get(parent, {}).get(field_name)
+        if field_type is not None:
+            if field_type in class_symbols or field_type in project_class_names:
+                return None
+            parent_sym = class_symbols.get(parent)
+            parent_imports = (
+                (sym_file_imports or {}).get(parent_sym.id, {})
+                if parent_sym is not None else {}
+            )
+            return _qualify_receiver_type(
+                field_type, parent_imports, None, class_symbols,
+                project_class_names,
+            )
+        cls = parent
+    return None
+
+
+def _registry_lookup(
+    registry: dict[str, str], owner_slot: str, method_name: str,
+) -> str | None:
+    """``registry["<owner>.<method>"]`` over each disjunct of ``owner_slot``.
+
+    WI-gajuh. The owner slot may be a comma-joined disjunction (the wildcard /
+    ``java.lang`` shape); the first disjunct with a row wins.
+    """
+    for owner in owner_slot.split(","):
+        hit = registry.get(f"{owner}.{method_name}")
+        if hit is not None:
+            return hit
+    return None
 
 
 def _extract_wildcard_imports(
@@ -1614,6 +1811,8 @@ def _extract_edges(
     class_fields: dict[str, dict[str, str]] | None = None,
     static_imports: dict[str, str] | None = None,
     wildcard_imports: list[str] | None = None,
+    method_return_type_registry: dict[str, str] | None = None,
+    project_class_names: frozenset[str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a parsed Java tree (pass 2).
 
@@ -1628,9 +1827,18 @@ def _extract_edges(
     - Object instantiation: new ClassName()
     - Inherited method calls: walks extends chain when direct lookup fails
 
-    Type inference tracks types from:
+    Type inference tracks types from (the numbered list on ``_ParsedFile``):
     - Constructor calls: stub = new Client() -> stub has type Client
     - Method/constructor parameters: void process(Client client) -> client has type Client
+    - Declared locals, catch parameters and for-each variables (INV-vugon)
+    - ``method_return_type_registry`` (WI-gajuh): ``<Owner>.<method>`` -> the
+      returned type, consulted for an assigned call (``var w = F.make()``) and
+      for a chained receiver (``s.getOutputStream().write(b)``). Library rows
+      (WI-lalot) and in-repo rows share the dict; a value is either a
+      qualified path or the bare name of a project class.
+
+    ``project_class_names`` is the set of simple names of every project class
+    (nested ones included); it is derived from ``class_symbols`` when absent.
     """
     if imports is None:
         imports = {}
@@ -1638,10 +1846,116 @@ def _extract_edges(
         resolver = NameResolver(global_symbols)
     if class_resolver is None:
         class_resolver = NameResolver(class_symbols)
+    if method_return_type_registry is None:
+        method_return_type_registry = {}
+    if project_class_names is None:
+        project_class_names = frozenset(k.rsplit(".", 1)[-1] for k in class_symbols)
     edges: list[Edge] = []
     _caller_path = str(file_path)
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
+    # INV-vugon: one scope per method being walked -- ``(end_byte, shadow)``
+    # where ``shadow`` records what each LOCAL binding in that method
+    # replaced (``None`` = nothing). A scope closes when the walk passes its
+    # end byte, and its locals are put back to what they shadowed. It is a
+    # STACK because a method can nest inside a method: an anonymous class
+    # body (``new FilenameFilter() { public boolean accept(..) {..} }``) is a
+    # method_declaration inside the enclosing method's span, and closing the
+    # enclosing scope there unbound ``protocol_directory`` for the rest of
+    # the method that declared it (measured on guacamole-client's
+    # LocalEnvironment.readProtocols). Fields and parameters are never
+    # recorded here and keep their file-wide binding.
+    scope_stack: list[tuple[int, dict[str, str | None], set[str]]] = []
+    # Type parameters seen so far in the file (``<T>``): a bare ``T`` is not a
+    # class in any package, so it must never be sent to the ``java.lang`` slot.
+    type_params: set[str] = set()
+
+    def _bind(name: str, type_name: str, *, local: bool) -> None:
+        if local and scope_stack:
+            shadow = scope_stack[-1][1]
+            if name not in shadow:
+                shadow[name] = var_types.get(name)
+        var_types[name] = type_name
+
+    def _close_scopes_before(node: "tree_sitter.Node") -> None:
+        while scope_stack and node.start_byte >= scope_stack[-1][0]:
+            _, shadow, _ = scope_stack.pop()
+            for local_name, shadowed in shadow.items():
+                if shadowed is None:
+                    var_types.pop(local_name, None)
+                else:
+                    var_types[local_name] = shadowed
+
+    def _bind_declarator(
+        declarator: "tree_sitter.Node", type_name: str, *, exact: bool,
+    ) -> None:
+        """Bind the variable a ``variable_declarator`` introduces.
+
+        A declarator under ``local_variable_declaration`` is a local (scoped to
+        the method); under ``field_declaration`` it is a field (file-wide).
+
+        ``exact`` says whether ``type_name`` is the object's own class (the
+        declaration itself, or a ``new T()`` initializer) or an INFERENCE from
+        a resolved call's return type. An inference never overrides a type the
+        source declared: the lookup behind it is name-keyed, so an enum
+        constant's covariant override (``Connection getConnectable()`` under
+        ``abstract Connectable getConnectable()``) or an anonymous class's
+        ``get()`` reached through a chained receiver can answer for the wrong
+        method -- both measured on guacamole-client, where ``String ksmConfig
+        = group.getAttributes().get(k)`` was retyped ``Future``. A declared
+        type is the one fact the source states outright.
+        """
+        name_node = declarator.child_by_field_name("name")
+        if name_node is None:  # pragma: no cover - the grammar always names one
+            return
+        name = _node_text(name_node, source)
+        parent = declarator.parent
+        is_local = parent is not None and parent.type == "local_variable_declaration"
+        if is_local and scope_stack:
+            declared = scope_stack[-1][2]
+            if exact:
+                declared.add(name)
+            elif name in declared:
+                return
+        _bind(name, type_name, local=is_local)
+
+    def _registry_owner(type_name: str) -> str:
+        """The registry key prefix for a receiver of ``type_name``.
+
+        A project class is keyed bare, the way Pass 1 names its methods
+        (``Client.send``); anything else is keyed by the qualified path the
+        file establishes, so a library row (``java.net.Socket.getOutputStream``)
+        is reached from ``Socket s`` plus ``import java.net.Socket``.
+        """
+        if type_name in class_symbols or type_name in type_params:
+            return type_name
+        return _qualify_receiver_type(
+            type_name, imports, wildcard_imports, class_symbols,
+            project_class_names,
+        ) or type_name
+
+    def _chained_receiver_type(
+        inner: "tree_sitter.Node", current_class: str | None,
+    ) -> str | None:
+        """What ``inner`` returns, for ``inner(...).method()`` (WI-gajuh)."""
+        inner_name = inner.child_by_field_name("name")
+        if inner_name is None:  # pragma: no cover - the grammar always names one
+            return None
+        inner_obj = inner.child_by_field_name("object")
+        owner: str | None = None
+        if inner_obj is None:
+            owner = current_class
+        elif inner_obj.type == "identifier":
+            recv = _node_text(inner_obj, source)
+            if recv in var_types:
+                owner = _registry_owner(var_types[recv])
+            elif recv in class_symbols:
+                owner = recv
+        if owner is None:
+            return None
+        return _registry_lookup(
+            method_return_type_registry, owner, _node_text(inner_name, source),
+        )
     # Track class inheritance: child_class_name -> parent_class_name
     # Uses global map if provided (for cross-file inheritance), plus
     # augmented with per-file extends relationships discovered during traversal.
@@ -1652,6 +1966,7 @@ def _extract_edges(
         class_parents = dict(class_parents)
 
     for node in iter_tree(tree.root_node):
+        _close_scopes_before(node)
         # Check for extends (superclass) in class declarations
         if node.type == "class_declaration":
             name = _get_class_name(node, source)
@@ -1724,6 +2039,11 @@ def _extract_edges(
 
         # Method/constructor declarations - extract parameter types for type inference
         elif node.type in ("method_declaration", "constructor_declaration"):
+            # INV-vugon: open this method's local scope. Before scoping,
+            # ``File f = new File(p)`` in one method left ``f`` bound to
+            # ``File`` for every later method in the file, so a sibling's use
+            # of the ``Socket f`` FIELD was typed ``java.io.File``.
+            scope_stack.append((node.end_byte, {}, set()))
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
             # Note: This is file-scoped, not method-scoped, but variable name collisions
@@ -1733,18 +2053,95 @@ def _extract_edges(
 
         # Class field declarations — track field types for method call resolution
         # Java: private Repository repo; → var_types["repo"] = "Repository"
+        # INV-vugon: read through ``_declared_type_name`` so a generic
+        # (``Map<String, String> attrs``) or inline-qualified
+        # (``java.io.File f``) field binds its base type too; only a bare
+        # ``type_identifier`` child was read before.
         elif node.type == "field_declaration":
-            type_node = None
+            declared = _declared_type_name(node.child_by_field_name("type"), source)
+            if declared is not None:
+                for child in node.children:
+                    if child.type == "variable_declarator":
+                        _bind_declarator(child, declared, exact=True)
+
+        # A record's components are its fields:
+        # ``record Connector(CountDownLatch latch, JChannel ch)`` binds ``latch``
+        # file-wide the way a field declaration does (keycloak: 75 files).
+        elif node.type == "record_declaration":
+            components = node.child_by_field_name("parameters")
+            for component in (components.children if components is not None else []):
+                if component.type != "formal_parameter":
+                    continue
+                declared = _declared_type_name(
+                    component.child_by_field_name("type"), source,
+                )
+                name_node = component.child_by_field_name("name")
+                if declared is not None and name_node is not None:
+                    _bind(_node_text(name_node, source), declared, local=False)
+
+        # INV-vugon: a DECLARED local type is a receiver-typing source. The
+        # analyzer typed a local only from its INITIALIZER (``new T()``, or a
+        # resolved in-repo method's return type) and never read the
+        # declaration one token to the left, so ``OutputStream o =
+        # sock.getOutputStream(); o.write(b)`` glued the VARIABLE NAME into
+        # the callee (``java:external:0-0:o.write``). On guacamole-client that
+        # was 315 typed bindings out of ~2,180. The declaration is bound first
+        # (pre-order), so a constructor initializer visited afterwards still
+        # narrows it to the concrete type.
+        elif node.type == "local_variable_declaration":
+            declared = _declared_type_name(node.child_by_field_name("type"), source)
+            if declared is not None:
+                for child in node.children:
+                    if child.type == "variable_declarator":
+                        _bind_declarator(child, declared, exact=True)
+
+        # ``catch (IOException e)`` — one declared type binds; a multi-catch
+        # (``A | B e``) declares no single type and binds nothing.
+        elif node.type == "catch_formal_parameter":
+            catch_type = next(
+                (c for c in node.children if c.type == "catch_type"), None,
+            )
+            name_node = node.child_by_field_name("name")
+            if catch_type is not None and name_node is not None:
+                alternatives = [c for c in catch_type.children if c.is_named]
+                if len(alternatives) == 1:
+                    declared = _declared_type_name(alternatives[0], source)
+                    if declared is not None:
+                        _bind(_node_text(name_node, source), declared, local=True)
+
+        # ``for (File f : files)``, and ``try (LDAPQuery q = make())`` -- a
+        # try-with-resources ``resource`` carries the same type/name fields.
+        # (keycloak declares every LDAPQuery and RandomAccessFile this way;
+        # the old arm typed them only by a leak from another method.)
+        elif node.type in ("enhanced_for_statement", "resource"):
+            declared = _declared_type_name(node.child_by_field_name("type"), source)
+            name_node = node.child_by_field_name("name")
+            if declared is not None and name_node is not None:
+                _bind(_node_text(name_node, source), declared, local=True)
+
+        # ``(String s) -> s.trim()``: a lambda's EXPLICITLY typed parameters
+        # bind like any declaration. ``s -> s.trim()`` declares nothing and
+        # stays untyped -- a lambda parameter is the one binding form in
+        # valid Java whose type is never written at the binding.
+        elif node.type == "lambda_expression":
+            params = node.child_by_field_name("parameters")
+            if params is not None and params.type == "formal_parameters":
+                for lambda_param in params.children:
+                    if lambda_param.type != "formal_parameter":
+                        continue
+                    declared = _declared_type_name(
+                        lambda_param.child_by_field_name("type"), source,
+                    )
+                    name_node = lambda_param.child_by_field_name("name")
+                    if declared is not None and name_node is not None:
+                        _bind(_node_text(name_node, source), declared, local=True)
+
+        # ``<T>`` on a class or method: ``T`` is not a class in any package.
+        elif node.type == "type_parameter":
             for child in node.children:
-                if child.type == "type_identifier":
-                    type_node = child
-                elif child.type == "variable_declarator" and type_node is not None:
-                    for vc in child.children:
-                        if vc.type == "identifier":
-                            var_types[_node_text(vc, source)] = _node_text(
-                                type_node, source
-                            )
-                            break
+                if child.type in ("identifier", "type_identifier"):
+                    type_params.add(_node_text(child, source))
+                    break
 
         # Method invocations — use tree-sitter field names for reliable extraction
         elif node.type == "method_invocation":
@@ -1808,6 +2205,21 @@ def _extract_edges(
                     pr4_receiver_type_hint: str | None = None
                     pr4_inherited_field_receiver: str | None = None
                     pr4_enclosing_class_hint: str | None = None
+
+                    # WI-gajuh: a CHAINED receiver -- ``s.getOutputStream()
+                    # .write(b)`` -- has no name to look up, but the inner
+                    # call has an owner and a method, and the registry says
+                    # what that returns. ADR-0006's "Chained" column for
+                    # Java. Only the final unresolved emit reads this hint
+                    # (``receiver_name`` stays ``None`` for the cases below).
+                    if (
+                        object_node is not None
+                        and object_node.type == "method_invocation"
+                        and method_return_type_registry
+                    ):
+                        pr4_receiver_type_hint = _chained_receiver_type(
+                            object_node, current_class,
+                        )
 
                     # Case 1: this.method() or method() - resolve in current class
                     if receiver_name is None or receiver_name == "this":
@@ -1950,6 +2362,23 @@ def _extract_edges(
                             )
                         ):
                             resolved_sym = lookup_result.symbol
+                        elif method_return_type_registry:
+                            # WI-gajuh, the WI-lalot interface: the method is
+                            # not a project symbol, so its return type can only
+                            # come from a LIBRARY row -- ``java.net.Socket
+                            # .getOutputStream`` -> ``java.io.OutputStream``.
+                            # Bind the assigned variable to it.
+                            library_ret = _registry_lookup(
+                                method_return_type_registry,
+                                _registry_owner(type_class_name), method_name,
+                            )
+                            parent_node = node.parent
+                            if (
+                                library_ret is not None
+                                and parent_node is not None
+                                and parent_node.type == "variable_declarator"
+                            ):
+                                _bind_declarator(parent_node, library_ret, exact=False)
 
                     # Case 3.5: inherited field.method() — Site 3.
                     # WI-puvil (PR-5): the parent-chain field walk
@@ -1969,21 +2398,45 @@ def _extract_edges(
                     ):
                         pr4_inherited_field_receiver = receiver_name
                         pr4_enclosing_class_hint = current_class
+                        # INV-vugon: a field DECLARED in an ancestor is a
+                        # declared type too (``protected RealmModel realm`` in
+                        # AbstractTokenExchangeProvider, used by every
+                        # subclass). The linker resolves a PROJECT-class field
+                        # type from ``inherited_field_receiver``; what nothing
+                        # carried was a LIBRARY type's module, so
+                        # ``conn.commit()`` on an inherited
+                        # ``java.sql.Connection`` field named the variable.
+                        # Qualified through the DECLARING (parent) file's
+                        # imports, never this file's; a project-class type is
+                        # left to the linker's own walk, unchanged.
+                        inherited_module = _inherited_field_module(
+                            current_class, receiver_name, class_parents,
+                            class_fields, class_symbols, sym_file_imports,
+                            project_class_names,
+                        )
+                        if inherited_module is not None:
+                            pr4_receiver_type_hint = inherited_module
 
                     # Return type inference: if the resolved method has
                     # a return type and the call is in a variable assignment,
                     # track the variable's type from that return type.
+                    #
+                    # WI-gajuh: read through the registry, whose value was
+                    # qualified through the DECLARING file's imports, so
+                    # ``var w = F.makeWriter()`` in a file that never imports
+                    # ``FileWriter`` still binds ``java.io.FileWriter``. The
+                    # registry is the ONE home for a return type -- the
+                    # signature parse that used to live here read the same
+                    # fact through the caller's imports, the wrong file's
+                    # answer for a library type -- so a method the registry
+                    # does not know (``Object``, or a type its own file gives
+                    # no path for) binds nothing.
                     if resolved_sym and resolved_sym.kind == "method":
-                        ret_name = _extract_java_return_type_name(
-                            resolved_sym.signature
-                        )
-                        if ret_name and ret_name in class_symbols:
+                        ret_name = method_return_type_registry.get(resolved_sym.name)
+                        if ret_name:
                             parent_node = node.parent
                             if parent_node and parent_node.type == "variable_declarator":
-                                for pc in parent_node.children:
-                                    if pc.type == "identifier":
-                                        var_types[_node_text(pc, source)] = ret_name
-                                        break
+                                _bind_declarator(parent_node, ret_name, exact=False)
 
                     # Case 4: Fallback - try imported class or just the receiver name
                     # This handles edge cases where the receiver isn't recognized as a
@@ -2208,13 +2661,29 @@ def _extract_edges(
                             # ``_lookup_named_entry`` returns from its
                             # module-filter branch before ``gate_named_entry``
                             # ever sees it.
+                            #
+                            # INV-vugon widened "in ``imports``" to every path
+                            # the file establishes (:func:`_qualify_receiver_type`):
+                            # an inline ``java.sql.Connection``, a nested
+                            # ``Map.Entry`` on an imported outer, and the JLS
+                            # 7.3 ``java.lang`` implicit import that
+                            # ``Runtime rt = Runtime.getRuntime(); rt.exec(cmd)``
+                            # -- a catalogued subprocess sink -- needs. A
+                            # ``receiver_name`` of ``None`` is the CHAINED
+                            # receiver WI-gajuh types from the registry.
                             elif (
-                                receiver_name
-                                and receiver_name != "this"
+                                receiver_name != "this"
                                 and pr4_receiver_type_hint
-                                and pr4_receiver_type_hint in imports
+                                and pr4_receiver_type_hint not in type_params
+                                and (
+                                    typed_module := _qualify_receiver_type(
+                                        pr4_receiver_type_hint, imports,
+                                        wildcard_imports, class_symbols,
+                                        project_class_names,
+                                    )
+                                ) is not None
                             ):
-                                module = imports[pr4_receiver_type_hint]
+                                module = typed_module
                                 unresolved_name = method_name
                                 # ``call_construct="method"`` is set once, above,
                                 # for every receiver-bearing call; this branch's
@@ -2313,13 +2782,10 @@ def _extract_edges(
             if type_name and node.parent:
                 parent = node.parent
                 # Java variable declarations: Type varName = new Type();
+                # The declaration (visited first) bound the declared type;
+                # the constructor narrows it to the concrete one.
                 if parent.type == "variable_declarator":
-                    # Find variable name
-                    for pc in parent.children:
-                        if pc.type == "identifier":
-                            var_name = _node_text(pc, source)
-                            var_types[var_name] = type_name
-                            break
+                    _bind_declarator(parent, type_name, exact=True)
 
         # Method references: App::transform, this::process, Class::new
         # Creates a "references" edge from the enclosing method to the
@@ -2690,27 +3156,26 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                                 if dst_sym is not None:
                                     global_class_parents[current] = dst_sym.name
                                 break
-            # Collect field declarations per class
+            # Collect field declarations per class. INV-vugon: through
+            # ``_declared_type_name``, so a generic or inline-qualified field
+            # registers its base type for the inherited-field walk, the same
+            # reading ``_extract_edges`` gives the file's own fields.
             elif node.type == "field_declaration":
                 cls_ancestors = _get_class_ancestors(node, pf.source)
-                if cls_ancestors:
+                declared_field_type = _declared_type_name(
+                    node.child_by_field_name("type"), pf.source,
+                )
+                if cls_ancestors and declared_field_type is not None:
                     cls_name = ".".join(cls_ancestors)
-                    type_node = None
                     for child in node.children:
-                        if child.type == "type_identifier":
-                            type_node = child
-                        elif (
-                            child.type == "variable_declarator"
-                            and type_node is not None
-                        ):
-                            for vc in child.children:
-                                if vc.type == "identifier":
-                                    field_name = _node_text(vc, pf.source)
-                                    type_name = _node_text(type_node, pf.source)
-                                    if cls_name not in global_class_fields:
-                                        global_class_fields[cls_name] = {}
-                                    global_class_fields[cls_name][field_name] = type_name
-                                    break
+                        if child.type != "variable_declarator":
+                            continue
+                        vc = child.child_by_field_name("name")
+                        if vc is None:  # pragma: no cover - the grammar always names one
+                            continue
+                        global_class_fields.setdefault(cls_name, {})[
+                            _node_text(vc, pf.source)
+                        ] = declared_field_type
 
     # WI-puvil (PR-5 of INV-nilud): attach the global_class_fields data
     # to each class symbol's ``meta["fields"]`` so the Tier-2
@@ -2729,17 +3194,47 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             cls_sym.meta = {}
         cls_sym.meta["fields"] = dict(fields_dict)
 
-    # WI-kuroj: build method return-type registry from Pass 1 symbols.
-    # Java already chains return types inline during edge extraction
-    # (lines 1475-1488 in _extract_edges), so this registry is primarily
-    # for cross-language consistency and downstream linker consumption.
-    # The inline chaining handles the active use case.
+    # WI-gajuh: the method return-type registry (WI-kuroj) is the ONE
+    # interface Pass 2 reads a return type through. It was built here and
+    # never passed to ``_extract_edges`` -- write-only, the defect WI-doluf
+    # found in Go -- while a comment beside it cited an inline arm that
+    # "handles the active use case"; that arm read the signature and bound
+    # the type only when it named a PROJECT class, so ``var w =
+    # F.makeWriter(); w.write()`` across files was ``java:external:0-0:w.write``.
+    #
+    # THE CONTRACT, which WI-lalot's library-signature loader will feed with
+    # the same shape: key ``<Owner>.<method>`` -- a project class bare, the
+    # way Pass 1 names its methods (``F.makeWriter``); a library owner by its
+    # qualified path (``java.net.Socket.getOutputStream``). Value: the
+    # returned type, QUALIFIED through the DECLARING file's imports
+    # (``java.io.FileWriter``) so the caller's imports are never consulted for
+    # another file's answer, or the bare name of a project class. A return
+    # type the declaring file gives no path for is not registered; a
+    # ``<T> T get()`` registers nothing because ``T`` is in no import, no
+    # wildcard and not in the closed ``java.lang`` list.
+    project_class_names = frozenset(k.rsplit(".", 1)[-1] for k in class_symbols)
+    file_scope: dict[str, tuple[dict[str, str], list[str]]] = {
+        str(pf.path): (pf.imports or {}, pf.wildcard_imports or [])
+        for pf in parsed_files
+    }
     method_return_type_registry: dict[str, str] = {}
     for sym in all_symbols:
-        if sym.kind == "method" and sym.meta:
-            ret = sym.meta.get("return_type")
-            if ret and ret != "Object":
-                method_return_type_registry.setdefault(sym.name, ret)
+        if sym.kind != "method" or not sym.meta:
+            continue
+        ret = sym.meta.get("inferred_return_type") or sym.meta.get("return_type")
+        if not ret or ret == "Object":
+            continue
+        ret_text = str(ret)
+        if ret_text not in class_symbols and ret_text not in project_class_names:
+            declaring_imports, declaring_wildcards = file_scope.get(sym.path, ({}, []))
+            qualified = _qualify_receiver_type(
+                ret_text, declaring_imports, declaring_wildcards, class_symbols,
+                project_class_names,
+            )
+            if qualified is None:
+                continue
+            ret_text = qualified
+        method_return_type_registry.setdefault(sym.name, ret_text)
 
     # Pass 2: Extract edges using global symbol registry
     # Build resolvers ONCE and share across all files — the registry is frozen
@@ -2764,6 +3259,8 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             class_fields=global_class_fields,
             static_imports=pf.static_imports or {},
             wildcard_imports=pf.wildcard_imports or [],
+            method_return_type_registry=method_return_type_registry,
+            project_class_names=project_class_names,
         )
         # WI-lozug: emit module_attr_ref edges for field_access nodes
         # whose base resolves to an imported class or to ``System``
