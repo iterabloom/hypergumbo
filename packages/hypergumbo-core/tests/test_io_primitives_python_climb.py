@@ -243,3 +243,56 @@ class TestTheCompletenessTail:
     ])
     def test_is_enumerated(self, module: str) -> None:
         assert CATALOGS["python"].module_io_is_enumerated(module), module
+
+
+class TestBuiltinsIsEnumeratedAndItsIoIsRowed:
+    """INV-bofab: the module every bare builtin call names must be examined.
+
+    INV-foluz (a33de088bc) made ``py.py`` emit an edge for every bare builtin
+    call with ``builtins`` in the module slot -- ``len``, ``str``,
+    ``isinstance``, thousands of sites per repo. ``builtins`` carried three
+    rows (``open`` twice, ``input``) and NO completeness entry, so the
+    coverage gate's "a named module the catalogue has not enumerated" branch
+    fired on every Python repo, hypergumbo's own included: all 18 self-claims
+    moved ``confirmed_with_caveats -> inconclusive`` at the next cron firing
+    and sat there, masked, for two firings.
+
+    The completeness entry rests on THESE rows. The survey's probe cannot see
+    a C module, so the surface was walked by hand over ``dir(builtins)``
+    (144 public callables on 3.12); what prints, reads, or launches is rowed
+    here, and everything else is a constructor, an exception class, or
+    in-process evaluation.
+    """
+
+    def test_builtins_is_enumerated(self) -> None:
+        assert CATALOGS["python"].module_io_is_enumerated("builtins")
+
+    def test_print_writes_the_standard_stream(self) -> None:
+        assert _boundary("builtins", "print") == "logging"
+
+    def test_breakpoint_reaches_the_stream_hook(self) -> None:
+        """Delegates to ``sys.breakpointhook``, which is already a logging row."""
+        assert _boundary("builtins", "breakpoint") == "logging"
+
+    @pytest.mark.parametrize("name", ["copyright", "credits"])
+    def test_the_site_printers_print(self, name: str) -> None:
+        assert _boundary("builtins", name) == "logging", name
+
+    def test_license_opens_the_licence_files_and_prints_them(self) -> None:
+        """``_sitebuiltins._Printer`` opens its LICENSE candidates on first call."""
+        assert _boundary("builtins", "license") in ("fs_read", "logging")
+
+    def test_help_prints_and_may_launch_a_pager(self) -> None:
+        """``pydoc.getpager`` hands a tty to ``pipepager``, which is
+        ``subprocess.Popen(cmd, shell=True)`` over ``less`` / ``more``."""
+        assert _boundary("builtins", "help") in ("logging", "subprocess")
+
+    @pytest.mark.parametrize(
+        "name",
+        ["len", "str", "isinstance", "getattr", "ValueError", "exec", "eval",
+         "exit", "quit"],
+    )
+    def test_the_rest_of_the_surface_is_not_io(self, name: str) -> None:
+        """Constructors, exception classes, in-process evaluation, and the
+        two ``SystemExit`` raisers. A row here would be a false boundary."""
+        assert _boundary("builtins", name) is None, name

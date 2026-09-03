@@ -137,6 +137,23 @@ ambiguous_names:
   - metadata      # importlib.metadata.metadata vs common attribute-ish name
   - files         # importlib.metadata.files vs common local name
   - platform      # platform.platform vs the module name used bare
+  # INV-bofab. Derived by the same mechanical rule as the INV-mivud block
+  # above (test_ambiguous_names_completeness flagged all six on the day they
+  # landed): the rows added when `builtins` was enumerated are builtins BY
+  # CONSTRUCTION, so each short name collides with itself. Suppression still
+  # fires only on a HINT-LESS bare call -- every edge INV-foluz emits for a
+  # bare builtin carries `builtins` in the module slot and matches through
+  # the module path (the `open` / `input` precedent above). What a hint-less
+  # match would have fabricated is a logging crossing at a repo's own
+  # `help()` / `credits()` helper or a `self.print(...)` method the analysis
+  # could not resolve. test_ambiguous_names_completeness pins both
+  # directions: hinted still matches, hint-less is refused.
+  - print         # builtins.print vs any local print() / .print() method
+  - breakpoint    # builtins.breakpoint vs any local breakpoint()
+  - copyright     # builtins.copyright vs any local copyright() or attribute
+  - credits       # builtins.credits vs any local credits()
+  - license       # builtins.license vs any local license() or attribute
+  - help          # builtins.help vs any local help() / .help() (CLI frameworks)
 
 fs_read:
   # ---------------------------------------------------------------
@@ -187,6 +204,12 @@ fs_read:
   - module: builtins
     functions: [open]
     notes: "Dual-classified: fs_read when mode is 'r'/'rb' (default), fs_write when 'w'/'a'/'x'"
+  - module: builtins
+    functions: [license]
+    simultaneous: true
+    notes: >-
+      INV-bofab. The fs_read half of site's license(): _Printer.__setup opens
+      LICENSE.txt candidates on first call, then prints (the logging twin).
   - module: pathlib.Path
     methods: [read_text, read_bytes, stat, exists, is_file, is_dir, iterdir, glob, rglob]
   - module: os
@@ -461,6 +484,39 @@ logging:
   - module: sys
     functions: [displayhook, excepthook, unraisablehook, breakpointhook]
     notes: "The interpreter hooks that write the standard streams - what keeps sys's completeness entry honest."
+  - module: builtins
+    functions: [print, breakpoint, copyright, credits]
+    notes: >-
+      INV-bofab. The vocabulary's own rule -- a module that PRINTS does I/O --
+      applied to the module every bare builtin call names since INV-foluz.
+      print writes sys.stdout; breakpoint delegates to sys.breakpointhook
+      (rowed above); copyright and credits are site's _Printer objects and
+      print. The builtins completeness entry rests on these rows.
+  - module: builtins
+    functions: [license]
+    simultaneous: true
+    notes: >-
+      INV-bofab. site's _Printer: on first call it OPENS its LICENSE.txt
+      candidates (the fs_read twin) and then prints them. Both happen in the
+      one call, hence `simultaneous` on both rows.
+  - module: builtins
+    functions: [help]
+    boundary_ruling: unruled
+    notes: >-
+      INV-bofab. help() renders through pydoc to stdout on every call; on a
+      tty pydoc.getpager hands the text to pipepager, which is
+      subprocess.Popen(cmd, shell=True) over less/more (the subprocess twin).
+      Not `simultaneous` -- the launch is conditioned on the ENVIRONMENT, not
+      the arguments -- and not `call_site_undecidable`, because both can be
+      true at once. `unruled` on both rows, per INV-vaduk: a visible open
+      question beats an absent one. The question is stated in
+      test_multi_boundary_ruling's EXPECTED_UNRULED and owned by WI-kapak.
+      A THIRD surface is disclosed here and NOT rowed: help() with no
+      argument runs pydoc's interactive loop, which reads stdin through
+      input(). help returns None, so nothing the far side chose reaches
+      the caller, and ADR-0049 says never mint -- an ipc_recv row would
+      mint an untrusted_input source at a call that hands the program
+      nothing.
   - module: warnings
     functions: [warn, warn_explicit, showwarning]
     notes: "showwarning writes stderr; warn reaches it. The audit's disqualifier for warnings, now a row."
@@ -554,6 +610,13 @@ subprocess:
       `(status, output)`), so they also carry an ipc_recv row and mint an
       untrusted_input source. See that row for why `simultaneous` is
       required here rather than optional.
+  - module: builtins
+    functions: [help]
+    boundary_ruling: unruled
+    notes: >-
+      INV-bofab. The pager half of help(): pydoc.pipepager launches less/more
+      via subprocess.Popen(shell=True) when stdout is a tty. See the logging
+      twin for why this pair is `unruled` rather than `simultaneous`.
   - module: asyncio
     functions: [create_subprocess_exec, create_subprocess_shell]
     notes: "asyncio carried net rows and NO subprocess rows - the one-boundary-vouches-for-all shape INV-zubuh measured on os."
@@ -1434,3 +1497,24 @@ module_completeness:
       WI-fuvuj's synthetic module for typed open() results. Read half under
       fs_read, write half under fs_write; the remainder (seek, tell, close,
       fileno) is handle management on a file the caller already opened.
+  - module: builtins
+    completeness: complete
+    retrieved: "2026-09-03"
+    notes: >-
+      INV-bofab. Enumerated because INV-foluz (a33de088bc) made every bare
+      builtin call name this module, and an unenumerated module withholds
+      every verdict on every Python repo -- hypergumbo's own 18 self-claims
+      went inconclusive at the next cron firing. The survey probe cannot see
+      a C module, so the surface was walked by hand over dir(builtins) on
+      3.12 (144 public callables): 66 exception classes and the type
+      constructors do no I/O; open (fs_read/fs_write), input (ipc_recv),
+      print/breakpoint/copyright/credits (logging), license (fs_read +
+      logging) and help (logging + subprocess pager, `unruled` -- WI-kapak;
+      its no-argument interactive stdin loop returns nothing to the caller
+      and is disclosed on the row rather than rowed, per ADR-0049) carry
+      rows; exit/quit
+      raise SystemExit; exec/eval/compile evaluate in-process and cross no
+      boundary of their own. __import__ is a dunder, outside the
+      public-callable rule the whole audit applies, and is the import
+      statement's callable form -- no catalogue models an import as I/O;
+      importlib's refusal above is the related open question.

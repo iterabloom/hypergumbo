@@ -645,3 +645,42 @@ class TestShorteningIsBoundedByItsOwnPurpose:
             {"python": _py_catalog()},
         )
         assert coverage.complete is True, coverage.reason
+
+
+class TestBuiltinsDoNotWithholdTheVerdict:
+    """INV-bofab, pinned against the SHIPPED catalogue rather than a stand-in.
+
+    After INV-foluz every bare builtin call names ``builtins`` in its module
+    slot. A stand-in catalogue cannot catch the regression this guards
+    against -- it was python.yaml's own completeness list that lacked the
+    entry -- so these load ``python.yaml`` and ask the gate the question the
+    CLI asks on every Python repo.
+    """
+
+    def test_a_repo_calling_only_builtins_earns_a_complete_coverage(self) -> None:
+        from hypergumbo_core.io_boundary import load_catalog
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:builtins:0-0:len:external_symbol"),
+                _call("python:builtins:0-0:isinstance:external_symbol"),
+                _call("python:builtins:0-0:str:external_symbol"),
+            ],
+            {"python"},
+            {"python": load_catalog("python")},
+        )
+        assert coverage.complete is True, coverage.reason
+
+    def test_an_unenumerated_module_beside_builtins_still_withholds(self) -> None:
+        """Control: the gate is not loosened, only ``builtins`` is examined."""
+        from hypergumbo_core.io_boundary import load_catalog
+        coverage = compute_boundary_coverage(
+            [
+                _call("python:builtins:0-0:len:external_symbol"),
+                _call("python:telnetlib:0-0:Telnet:external_symbol"),
+            ],
+            {"python"},
+            {"python": load_catalog("python")},
+        )
+        assert coverage.complete is False
+        assert "telnetlib" in coverage.reason
+        assert "builtins" not in coverage.reason

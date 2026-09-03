@@ -197,3 +197,50 @@ their parent module (`module: os, attributes: [environ]`). A method call on the
 attribute (`os.environ.get(...)`, `sys.stdout.write(...)`) carries the attribute
 as its module slot, so the row cannot reach it. Adding rows keyed on the
 attribute path would be a second home for one fact. Filed separately.
+
+## Addendum 2026-09-03 — `builtins`, and why a new emitter flipped eighteen verdicts (INV-bofab)
+
+`builtins` was never on either list above. It did not need to be: until
+2026-09-02 the Python analyzer emitted a call edge for a bare builtin only
+when the name was `open` (a gate keyed on the I/O catalogue rather than on the
+language — INV-foluz), so `builtins` reached the coverage gate only at sites
+that already carried a row.
+
+INV-foluz's fix (`a33de088bc`) made every bare builtin call emit an edge with
+`builtins` in the module slot — `len`, `str`, `isinstance`, thousands of sites
+per repo. The gate did exactly what it is written to do: a named module with
+no completeness entry is "none I could see", so every Python repo's clean
+verdicts were withheld. On hypergumbo itself all 18 self-claims moved
+`confirmed_with_caveats → inconclusive` at the 2026-09-02 13:00 UTC cron
+firing and four lost their credited flows; the aggregate commit status could
+only say "failure", so it took the per-step reader built for INV-bozid to see
+which gate had moved.
+
+**Enumerated by hand, because the probe cannot see a C module.** `dir(builtins)`
+on 3.12 lists 144 public callables. Walked against the rule above:
+
+| surface | boundary | row |
+|---|---|---|
+| `open` | fs_read / fs_write (mode) | already rowed |
+| `input` | ipc_recv | already rowed (INV-muvis) |
+| `print` | logging | **new** — the vocabulary's "a module that prints does I/O" |
+| `breakpoint` | logging | **new** — delegates to `sys.breakpointhook`, itself a row |
+| `copyright`, `credits` | logging | **new** — `site`'s `_Printer` objects print |
+| `license` | fs_read + logging, simultaneous | **new** — `_Printer.__setup` opens LICENSE candidates, then prints |
+| `help` | logging + subprocess, `unruled` | **new** — `pydoc.pipepager` is `Popen(shell=True)` over `less`/`more` on a tty, after `os.system` probes for a pager; neither `simultaneous` nor `call_site_undecidable` describes "logging always, launch only when the environment supplies a tty", so the question is registered in `EXPECTED_UNRULED` and owned by WI-kapak. The no-argument interactive stdin loop returns nothing to the caller and is disclosed, not rowed (ADR-0049) |
+| `exit`, `quit` | none | raise `SystemExit` |
+| `exec`, `eval`, `compile` | none | in-process evaluation; the code they run is the caller's, as a file object is the caller's |
+| 66 exception classes, the type constructors, `len`/`getattr`/… | none | — |
+
+**Two corrections the suite made on the day the rows landed.** The six new names are builtins by construction, so INV-mivud's derived completeness rule (`test_ambiguous_names_completeness`) put them in `ambiguous_names`; that suppresses only a hint-less bare call, and every edge INV-foluz emits carries the `builtins` hint, pinned in both directions. And `builtins.help` is the one entry in the unruled register INV-nular had emptied — see the row above.
+
+**What is deliberately outside the rule.** `__import__` is a dunder, which the
+probe and the rule both exclude, and it is the `import` statement's callable
+form: no catalogue models an import as I/O, and `importlib`'s refusal above is
+the related open question. Declaring `builtins` complete does not vouch for
+`__import__` any more than an `import` line is vouched for; it is named here
+so the omission is a decision and not an oversight.
+
+**Why not refuse, as `importlib` was refused.** A refusal is affordable when
+the module is one dependency among many; it is not affordable for the module
+that every Python call site names. Refusing `builtins` is refusing Python.
