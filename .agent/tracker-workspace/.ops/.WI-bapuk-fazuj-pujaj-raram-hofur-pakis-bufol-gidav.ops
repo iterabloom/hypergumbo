@@ -1,0 +1,23 @@
+- op: create  # 214e
+  at: '2026-09-03T08:57:05Z'  # 214e
+  by: agent  # 214e
+  actor: jgstern_agent  # 214e
+  clock: 1  # 214e
+  nonce: 214e  # 214e
+  data:  # 214e
+    kind: work_item  # 214e
+    title: "cpp std::getline and c getline are ABSENT; the stream is an ARGUMENT (the fgets shape) -- dual rows, and cpp needs the stream-argument io_target_kind stamp c already has"  # 214e
+    status: todo_hard  # 214e
+    priority: 2  # 214e
+    parent:  # 214e
+    tags:  # 214e
+    - catalogue  # 214e
+    - io_boundary  # 214e
+    - taint  # 214e
+    - cpp  # 214e
+    isbefore: []  # 214e
+    duplicate_of: []  # 214e
+    not_duplicate_of: []  # 214e
+    pr_ref:  # 214e
+    description: "RESIDUAL OF WI-vutav, found 2026-09-03 by checking the item's other arms through the loader.\n\nTHE OBSERVATION. cpp.yaml has no row for std::getline, and c.yaml none for POSIX getline. std.cin is rowed ipc_recv (attribute) and fires, but the idiomatic C++ stdin read is\n\n  std::string s;\n  std::getline(std::cin, s);\n\nwhose stream is an ARGUMENT -- the fgets shape (INV-bagok / INV-zumin class (b)), and the read that transfers the bytes. Absent row -> no source; and a fixed row would be wrong over an ifstream.\n\nWHAT EXISTS TO REUSE. c already has the stream-argument mechanism: stdio.{fgets,fread,fgetc,getc,fscanf} are dual fs_read/ipc_recv under call_site_undecidable and c.py stamps io_target_kind from the stream argument's origin (test_c_stream_argument_origin.py). c getline(&buf, &n, stdin) is a ROW-ONLY addition to that. cpp needs the stamp: std::getline(std::cin, s) has the stream inline (trivial), std::getline(in, s) with `std::ifstream in(path)` or a parameter needs the binding hop -- the same one-hop rule as go's, on a declaration-with-initialiser rather than a `:=`.\n\nDELIVERABLE. (1) c.yaml: stdio.getline dual, alongside fgets. (2) cpp.yaml: std.getline dual under call_site_undecidable; check what module slot the cpp analyzer emits for a bare `std::getline` / `getline` call FIRST (LIVE rule 9 -- presence is not reachability; the c fgets row lands via the short-name fallback and cpp may differ). (3) cpp.py: io_target_kind from the stream argument -- inline std::cin, or one binding hop to an ifstream/fstream declaration. (4) A/B on the cpp repos in the corpus with every moved row read back.\n\nREPRO. load_catalog(\"cpp\"): no primitive named getline. load_catalog(\"c\"): none either."  # 214e
+    fields: {}  # 214e

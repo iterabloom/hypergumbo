@@ -161,3 +161,19 @@
   clock: 20  # ac59
   nonce: ac59  # ac59
   message: "PARTIAL DISCHARGE OF THIS ITEM'S ROOT_CAUSE, NOT A CLOSURE — the live gap is untouched.\n\nThis item's root_cause field names two behaviours: 'analyze_python emits no calls edge when the callee is an attribute chain whose root is not an imported module' AND '...and none for a builtin bare Name (print())'. The SECOND clause is now false: PR #711 (dev a33de088bc, INV-foluz) makes print/len/input/eval/getattr and every unresolvable bare name emit. Verified cold on the merged tree with four controls in the same run.\n\nWHY THIS ITEM STAYS VIOLATED. Its title records that the EMISSION clause was refuted and the gap moved to L3 — attribute chains emit, but the module slot degrades to 'external' so catalogued method-kind sinks reached that way stay unmatchable. Nothing in #711 touches that. The root_cause field's bare-Name sentence is the part that is now stale, and it is stale in this item's favour: one of the two shapes it measured is fixed elsewhere.\n\nA THIRD SHAPE WAS FOUND WHILE DOING IT, AND IT IS FILED SEPARATELY AS INV-luhug rather than folded here, because folding it would quietly re-open this item's refuted emission clause. _unwind_attribute_chain (py.py:5344) returns None for any chain root that is not an ast.Name, so items[i].startswith(x) (subscript root), f().x.y() (call root) and (a+b).c() (binop root) emit NO edge at all. This item's refutation — 'attribute chains do emit' — was measured on Name-ROOTED chains and holds there; it does not extend to these three. Population NOT sized."  # ac59
+- op: update  # bcb6
+  at: '2026-09-03T08:57:11Z'  # bcb6
+  by: agent  # bcb6
+  actor: jgstern_agent  # bcb6
+  clock: 21  # bcb6
+  nonce: bcb6  # bcb6
+  set: {}  # bcb6
+  add:  # bcb6
+    tags: [axis, module_key]  # bcb6
+- op: discuss  # 749b
+  at: '2026-09-03T08:57:11Z'  # 749b
+  by: agent  # 749b
+  actor: jgstern_agent  # 749b
+  clock: 22  # 749b
+  nonce: 749b  # 749b
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel (`external`) for an attribute-chain receiver; the owner path -- the TYPE of the chain's terminal object -- is unresolved rather than mis-stated. An L3 instance of INV-linub (the class), python's spelling."  # 749b

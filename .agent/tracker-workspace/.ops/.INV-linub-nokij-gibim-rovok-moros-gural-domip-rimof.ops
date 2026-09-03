@@ -357,3 +357,19 @@
   clock: 46  # 5542
   nonce: '5542'  # 5542
   message: "BAND STOP-ORDER OFF, by the band's own terms. The standing rule is '<=25% useful => recall work stays stopped'. Measurement 0012 reads 30.9% pooled / 28.0% unweighted per-repo mean (docs/measurements/0012-taint-precision-after-escape-closure.md). The condition is not met, so the stop-order does not apply. This is not a status change on this item -- nothing on the tracker ever gated it; it blocks six others. It is a decision about effort: receiver-typing work is no longer withheld under the band. Recorded here so the next reader does not re-ask."  # 5542
+- op: update  # 3499
+  at: '2026-09-03T08:57:09Z'  # 3499
+  by: agent  # 3499
+  actor: jgstern_agent  # 3499
+  clock: 47  # 3499
+  nonce: '3499'  # 3499
+  set: {}  # 3499
+  add:  # 3499
+    tags: [axis, module_key]  # 3499
+- op: discuss  # 807a
+  at: '2026-09-03T08:57:10Z'  # 807a
+  by: agent  # 807a
+  actor: jgstern_agent  # 807a
+  clock: 48  # 807a
+  nonce: 807a  # 807a
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel (`external`, section uncertainty) at every L3/L4 failure, where the axiom requires the owner path -- for a method-kind primitive, the TYPE. This class item is the axiom read from the consumer side: a catalogue row is addressed by owner path, so a call site whose slot is a sentinel cannot reach its row whatever the receiver syntax was. Each member names where the owner path was lost (emission, binding, chain)."  # 807a
