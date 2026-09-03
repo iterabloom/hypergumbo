@@ -26,7 +26,7 @@ answer per call site or none, and this direction (selecting ``ipc_recv`` over
 WHAT THIS DOES NOT DO. It is not a second dataflow engine: same enclosing
 function, textual line order, no branch reasoning -- ``_go_last_binding``'s
 contract. ``bufio.NewReaderSize`` and ``bufio.NewReadWriter`` are not in
-``_GO_HANDLE_WRAPPERS`` and stamp nothing here either; they are disclosed on
+``_GO_TARGET_ARGUMENT_INDEX`` and stamp nothing here either; they are disclosed on
 the catalogue rows, not claimed.
 """
 

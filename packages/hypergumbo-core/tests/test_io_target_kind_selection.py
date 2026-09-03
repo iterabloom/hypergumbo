@@ -32,10 +32,15 @@ import pytest
 from hypergumbo_core.io_boundary import (
     IoBoundaryCatalog,
     IoPrimitive,
+    _READ_TARGET_KIND_BOUNDARY,
+    _WRITE_TARGET_KIND_BOUNDARY,
     classify_call,
     _narrow_by_target_kind,
+    _target_kind_discriminated_keys,
+    _target_kind_gated_directions,
     load_catalog,
     resolve_target_kind_across_sites,
+    write_boundary_for_target_kind,
 )
 
 
@@ -274,3 +279,226 @@ class TestShippedCatalogues:
             if p.module == module and p.name == name
         ]
         assert rows[0].boundary == "fs_read"
+
+
+class TestTheWriteDirection:
+    """WI-suhug: the same seam, pointed at the WRITER.
+
+    ``fmt.Fprintf(w, ...)`` and ``io.WriteString(w, s)`` cross whatever ``w``
+    is, exactly as ``bufio.NewScanner(r)`` reads whatever ``r`` is, and go.yaml
+    gave each a fixed boundary (measurement 0012's vacuous class: a write to a
+    child's ``StdinPipe`` reported as a host-filesystem crossing). The
+    direction is the ASKER's, so a second map answers writes; the two maps
+    share one key vocabulary so a kind one direction knows and the other does
+    not is a drift, not a feature.
+    """
+
+    def test_host_path_resolves_to_fs_write(self) -> None:
+        assert resolve_target_kind_across_sites(
+            ["host_path"], direction="write",
+        ) == "fs_write"
+
+    def test_std_stream_resolves_to_logging(self) -> None:
+        """WI-dutah: terminal output is logging, not IPC."""
+        assert resolve_target_kind_across_sites(
+            ["std_stream"], direction="write",
+        ) == "logging"
+
+    def test_pipe_resolves_to_ipc_send(self) -> None:
+        assert resolve_target_kind_across_sites(
+            ["pipe"], direction="write",
+        ) == "ipc_send"
+
+    def test_net_stream_resolves_to_net_send(self) -> None:
+        assert resolve_target_kind_across_sites(
+            ["net_stream"], direction="write",
+        ) == "net_send"
+
+    def test_the_read_direction_learned_the_new_kinds_too(self) -> None:
+        assert resolve_target_kind_across_sites(["pipe"]) == "ipc_recv"
+        assert resolve_target_kind_across_sites(["net_stream"]) == "net_recv"
+
+    def test_non_crossing_kinds_abstain_in_both_directions(self) -> None:
+        for kind in ("in_memory", "null_device"):
+            assert resolve_target_kind_across_sites(
+                [kind], direction="write",
+            ) is None
+            assert write_boundary_for_target_kind(kind) == (True, None)
+
+    def test_an_unknown_kind_is_unknown_in_both_directions(self) -> None:
+        assert write_boundary_for_target_kind("unresolved") == (False, None)
+        assert resolve_target_kind_across_sites(
+            ["host_path", "unresolved"], direction="write",
+        ) is None
+
+    def test_the_two_maps_share_one_key_vocabulary(self) -> None:
+        assert set(_READ_TARGET_KIND_BOUNDARY) == set(_WRITE_TARGET_KIND_BOUNDARY)
+
+
+def _writer_catalog() -> IoBoundaryCatalog:
+    """``io.WriteString`` under the four write boundaries, fs_write first."""
+    rows = [
+        IoPrimitive(boundary=b, module="io", name="WriteString", kind="function")
+        for b in ("fs_write", "ipc_send", "net_send", "logging")
+    ]
+    rows.append(IoPrimitive(
+        boundary="fs_write", module="os", name="Remove", kind="function",
+    ))
+    return IoBoundaryCatalog(
+        language="go", status="provenance_declared", primitives=rows,
+    )
+
+
+class TestNarrowingAWriter:
+    def _writer_rows(self) -> list[IoPrimitive]:
+        return _writer_catalog().primitives[:4]
+
+    def test_a_pipe_keeps_only_the_ipc_send_row(self) -> None:
+        got = _narrow_by_target_kind(self._writer_rows(), ["pipe"])
+        assert [p.boundary for p in got] == ["ipc_send"]
+
+    def test_an_abstention_keeps_every_row_in_declared_order(self) -> None:
+        order = ["fs_write", "ipc_send", "net_send", "logging"]
+        for kinds in (None, [], ["in_memory"], ["pipe", "host_path"]):
+            got = _narrow_by_target_kind(self._writer_rows(), kinds)
+            assert [p.boundary for p in got] == order
+
+    def test_a_kind_is_answered_in_the_primitives_own_direction(self) -> None:
+        """``std_stream`` is ``ipc_recv`` for a reader and ``logging`` for a writer."""
+        got = _narrow_by_target_kind(self._writer_rows(), ["std_stream"])
+        assert [p.boundary for p in got] == ["logging"]
+
+    def test_an_ungated_sibling_in_the_bucket_is_untouched(self) -> None:
+        rows = _writer_catalog().primitives
+        got = _narrow_by_target_kind(rows, ["net_stream"])
+        assert [(p.name, p.boundary) for p in got] == [
+            ("WriteString", "net_send"), ("Remove", "fs_write"),
+        ]
+
+    def test_end_to_end_through_classify_call(self) -> None:
+        cats = {"go": _writer_catalog()}
+        dst = "go:io:0-0:WriteString:unresolved"
+        stamped = classify_call(cats, dst, {"io_target_kind": "net_stream"})
+        assert stamped is not None and stamped.boundary == "net_send"
+        plain = classify_call(cats, dst, {})
+        assert plain is not None and plain.boundary == "fs_write"
+        file = classify_call(cats, dst, {"io_target_kind": "host_path"})
+        assert file is not None and file.boundary == "fs_write"
+
+    def test_builtins_open_is_still_the_mode_seams(self) -> None:
+        """fs_read + fs_write is ONE of each direction, so neither gates it."""
+        rows = [
+            IoPrimitive(boundary=b, module="builtins", name="open", kind="function")
+            for b in ("fs_read", "fs_write")
+        ]
+        assert _target_kind_discriminated_keys(rows) == frozenset()
+        assert _target_kind_gated_directions(rows) == {}
+
+    def test_each_gated_key_reports_its_direction(self) -> None:
+        rows = _writer_catalog().primitives + [
+            IoPrimitive(boundary=b, module="stdio", name="fgets", kind="function")
+            for b in ("fs_read", "ipc_recv")
+        ]
+        assert _target_kind_gated_directions(rows) == {
+            ("io", "WriteString", "function"): "write",
+            ("stdio", "fgets", "function"): "read",
+        }
+
+    def test_a_primitive_gated_in_both_directions_is_refused(self) -> None:
+        """``io.Copy`` rowed as fs_read+ipc_recv AND fs_write+ipc_send: one
+        stamp cannot say which direction it names. Refused, not guessed."""
+        rows = [
+            IoPrimitive(boundary=b, module="io", name="Copy", kind="function")
+            for b in ("fs_read", "ipc_recv", "fs_write", "ipc_send")
+        ]
+        with pytest.raises(ValueError, match="both"):
+            _target_kind_gated_directions(rows)
+
+    def test_the_loader_refuses_it_too(self) -> None:
+        data = {
+            "language": "probe", "status": "in_progress",
+            "fs_read": [{"module": "io", "functions": ["Copy"]}],
+            "ipc_recv": [{"module": "io", "functions": ["Copy"]}],
+            "fs_write": [{"module": "io", "functions": ["Copy"]}],
+            "ipc_send": [{"module": "io", "functions": ["Copy"]}],
+        }
+        with pytest.raises(ValueError, match="both"):
+            IoBoundaryCatalog._from_dict(data)
+
+    def test_a_simultaneous_primitive_is_not_gated_in_either_direction(self) -> None:
+        rows = [
+            IoPrimitive(
+                boundary=b, module="p", name="w", kind="function", simultaneous=True,
+            )
+            for b in ("fs_write", "ipc_send")
+        ]
+        assert _target_kind_gated_directions(rows) == {}
+
+
+class TestShippedWriteRows:
+    """The go rows themselves, so a YAML edit cannot silently undo this."""
+
+    @pytest.mark.parametrize("module,name", [
+        ("io", "WriteString"),
+        ("fmt", "Fprint"), ("fmt", "Fprintln"), ("fmt", "Fprintf"),
+    ])
+    def test_the_writer_is_declared_under_every_write_boundary(
+        self, module: str, name: str,
+    ) -> None:
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == module and p.name == name
+        ]
+        assert {r.boundary for r in rows} == {
+            "fs_write", "ipc_send", "net_send", "logging",
+        }
+        assert {r.boundary_ruling for r in rows} == {"call_site_undecidable"}
+
+    @pytest.mark.parametrize("module,name,fallback", [
+        ("io", "WriteString", "fs_write"),
+        ("fmt", "Fprint", "logging"),
+        ("fmt", "Fprintln", "logging"),
+        ("fmt", "Fprintf", "logging"),
+    ])
+    def test_the_fallback_is_todays_answer(
+        self, module: str, name: str, fallback: str,
+    ) -> None:
+        """INV-fatok: an unstamped call classifies exactly as before the rows."""
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == module and p.name == name
+        ]
+        assert rows[0].boundary == fallback
+        assert {r.abstains_to for r in rows} == {fallback}
+
+    @pytest.mark.parametrize("name", ["Print", "Println", "Printf"])
+    def test_the_unconditional_printers_stay_single_row(self, name: str) -> None:
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == "fmt" and p.name == name
+        ]
+        assert [r.boundary for r in rows] == ["logging"]
+        assert rows[0].boundary_ruling is None
+
+    @pytest.mark.parametrize("module,name", [
+        ("bufio", "NewScanner"), ("bufio", "NewReader"),
+        ("bufio.Reader", "ReadString"), ("bufio.Scanner", "Scan"),
+    ])
+    def test_the_readers_gained_the_network_row_the_vocabulary_now_reaches(
+        self, module: str, name: str,
+    ) -> None:
+        """INV-bagok's own note withheld this row until ``net_stream`` existed."""
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == module and p.name == name
+        ]
+        assert {r.boundary for r in rows} == {"fs_read", "ipc_recv", "net_recv"}
+        assert len({r.abstains_to for r in rows}) == 1
+
+    def test_io_copy_is_deferred_and_still_single_row(self) -> None:
+        """A mode-seam pair (fs_read + fs_write), deferred on the row's note."""
+        rows = [
+            p for p in load_catalog("go").primitives
+            if p.module == "io" and p.name == "Copy"
+        ]
+        assert [r.boundary for r in rows] == ["fs_read"]

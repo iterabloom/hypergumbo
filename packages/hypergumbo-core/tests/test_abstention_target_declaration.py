@@ -339,7 +339,9 @@ class TestTheBufioReadRowsFallBackTheOtherWay:
             p for p in load_catalog("go").primitives
             if p.module == module and p.name == name
         ]
-        assert {r.boundary for r in rows} == {"fs_read", "ipc_recv"}
+        # WI-suhug added the net_recv row the moment ``net_stream`` joined the
+        # vocabulary; the fallback and the ruling are unchanged.
+        assert {r.boundary for r in rows} == {"fs_read", "ipc_recv", "net_recv"}
         assert {r.boundary_ruling for r in rows} == {"call_site_undecidable"}
         assert {r.abstains_to for r in rows} == {"fs_read"}
         assert {r.kind for r in rows} == {"method"}

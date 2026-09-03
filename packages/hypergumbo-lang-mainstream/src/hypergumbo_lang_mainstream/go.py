@@ -89,7 +89,7 @@ import re
 import time
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Optional
+from typing import TYPE_CHECKING, ClassVar, Final, Iterator, Mapping, Optional
 
 if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
@@ -2279,18 +2279,90 @@ def _go_return_type_from_signature(signature: str | None) -> str | None:
 #: on the ADR-0049 cohort's Go repositories, of the 83 bare-local sites whose
 #: origin the shipped reaching-def solver resolves, 63 wrap an ``os.Open``
 #: handle, 3 an HTTP body, 1 a buffer, and ZERO wrap ``os.Stdin`` (WI-lipis).
-_GO_HANDLE_WRAPPERS: Final[frozenset[tuple[str, str]]] = frozenset({
-    ("bufio", "NewScanner"), ("bufio", "NewReader"),
-})
+#: Calls whose I/O TARGET is one of their arguments, and which one.
+#:
+#: WI-lipis started this as the two ``bufio`` wrappers (a frozenset; the
+#: argument was always the only one). WI-suhug made it a table because the
+#: WRITE side has the same shape one argument in: ``fmt.Fprintf(w, ...)`` and
+#: ``io.WriteString(w, s)`` cross whatever ``w`` is, and ``go.yaml`` had each
+#: at one fixed boundary (measurement 0012's vacuous class). The table serves
+#: THREE readers, which is why it is one table: the call site stamps
+#: ``io_target_kind`` from the named argument; a bare identifier whose last
+#: binding is a call to a member is followed INTO that member's argument
+#: (``tw := tabwriter.NewWriter(os.Stdout, ...)`` then ``fmt.Fprintf(tw,
+#: ...)`` -- the largest resolvable write shape on the six-repo corpus); and
+#: WI-vutav's receiver hop requires the receiver's binding to be a member.
+#: The non-transferring wrappers (``tabwriter.NewWriter``, ``bufio.NewWriter``,
+#: ``io.LimitReader``) are here for the hop; a stamp on their own call edge is
+#: inert because no catalogue rows them, and disclosed here rather than
+#: special-cased away.
+_GO_TARGET_ARGUMENT_INDEX: Final[Mapping[tuple[str, str], int]] = {
+    ("bufio", "NewScanner"): 0, ("bufio", "NewReader"): 0,
+    ("bufio", "NewWriter"): 0,
+    ("tabwriter", "NewWriter"): 0,
+    ("io", "LimitReader"): 0,
+    ("io", "WriteString"): 0,
+    ("fmt", "Fprint"): 0, ("fmt", "Fprintln"): 0, ("fmt", "Fprintf"): 0,
+}
 
-#: Argument prefixes that prove the wrapped handle never left this process.
+#: How many binding / wrapper hops the classifier follows before abstaining.
+#: Three covers the deepest measured shape (``w = f`` <- ``f, _ :=
+#: os.Create(p)``, or ``bw := bufio.NewWriter(f)`` <- ``os.Create``) with one
+#: to spare; the cap exists so a self-referential rebinding cannot loop.
+_GO_TARGET_HOP_LIMIT: Final[int] = 3
+
+#: Argument prefixes that prove the handle never left this process.
 #: Only the PROVABLE case is listed: anything unrecognised stamps nothing and
 #: classifies exactly as before, because a gate whose default silenced
 #: findings would be a false-negative generator on a security analysis.
-_GO_IN_MEMORY_READERS: Final[tuple[str, ...]] = (
+#: ``io.Pipe()`` is here on purpose: its far end is a goroutine, not a
+#: process (``os.Pipe()`` is the OS pipe and is in ``_GO_PIPE_PRODUCERS``).
+#: The hashes are writers whose bytes stay in the digest.
+_GO_IN_MEMORY_PRODUCERS: Final[tuple[str, ...]] = (
     "strings.NewReader(", "bytes.NewReader(", "bytes.NewBuffer(",
-    "bytes.NewBufferString(",
+    "bytes.NewBufferString(", "bytes.Buffer{", "strings.Builder{",
+    "io.Pipe(",
+    "sha256.New(", "sha512.New(", "sha1.New(", "md5.New(", "hmac.New(",
 )
+
+#: The kernel discards what is written here (INV-nular's ``null_device``).
+_GO_NULL_DEVICES: Final[tuple[str, ...]] = ("io.Discard", "ioutil.Discard")
+
+#: The process's standard streams. WI-dutah: a WRITE here is ``logging``.
+_GO_STD_STREAMS: Final[tuple[str, ...]] = ("os.Stdin", "os.Stdout", "os.Stderr")
+
+#: A channel whose far end is ANOTHER PROCESS: the child's three pipes, and
+#: an OS pipe (whose far end may be handed to one). gocryptfs's write of a
+#: plaintext to ``cmd.StdinPipe()`` is measurement 0012's headline row.
+_GO_PIPE_PRODUCERS: Final[tuple[str, ...]] = (
+    ".StdinPipe(", ".StdoutPipe(", ".StderrPipe(", "os.Pipe(",
+)
+
+#: A connection. ``.Accept(`` is INV-bagok's caddy case (``c, _ :=
+#: ln.Accept()``); the dials are the client side.
+_GO_NET_STREAM_PRODUCERS: Final[tuple[str, ...]] = (
+    "net.Dial(", "net.DialTimeout(", "net.DialTCP(", "net.DialUDP(",
+    "tls.Dial(", "tls.DialWithDialer(", ".Accept(",
+)
+
+#: Declared TYPES that decide a target kind when no binding is visible -- a
+#: parameter, a ``var buf bytes.Buffer`` taken by address. Keyed by the
+#: package's import-path tail and the type name; resolved through the file's
+#: imports so a local package called ``bytes`` is not the stdlib's. The
+#: ABSENCES are the design: ``io.Writer`` and ``*os.File`` abstain (a file may
+#: be stdout, a file or a pipe end), ``bufio.Writer`` / ``tabwriter.Writer``
+#: abstain (the wrapper's target is in the caller's scope), and ``net.UnixConn``
+#: is unmapped because a Unix socket is process-local IPC, not a network
+#: stream -- the same family question WI-baran asks of c's ``send``.
+_GO_TYPED_TARGET_KINDS: Final[Mapping[tuple[str, str], str]] = {
+    ("bytes", "Buffer"): "in_memory",
+    ("strings", "Builder"): "in_memory",
+    ("net", "Conn"): "net_stream",
+    ("net", "TCPConn"): "net_stream",
+    ("net", "UDPConn"): "net_stream",
+    ("tls", "Conn"): "net_stream",
+    ("http", "ResponseWriter"): "net_stream",
+}
 
 
 #: Calls that PRODUCE a filesystem handle. A read through one of these is an
@@ -2396,36 +2468,198 @@ def _go_classify_handle_text(text: str) -> Optional[str]:
 
     One place, so the inline argument and the resolved binding cannot drift
     into disagreeing about what ``strings.NewReader(s)`` is.
+
+    THE CROSSING KINDS ARE TESTED FIRST AND THE NON-CROSSING ONES LAST, on
+    purpose: a producer list is a substring rule, and when a text somehow
+    names two producers the tie must go to the answer that KEEPS a finding.
+    A wrong ``in_memory`` on a write deletes a sink (the false-all-clear
+    direction); a wrong ``std_stream`` mis-kinds a crossing that is still
+    reported.
     """
-    if any(r in text for r in _GO_IN_MEMORY_READERS):
-        return "in_memory"
+    if any(s in text for s in _GO_STD_STREAMS):
+        return "std_stream"
     if any(o in text for o in _GO_FILE_HANDLE_PRODUCERS):
         return "host_path"
-    if "os.Stdin" in text:
-        return "std_stream"
+    if any(p in text for p in _GO_PIPE_PRODUCERS):
+        return "pipe"
+    if any(n in text for n in _GO_NET_STREAM_PRODUCERS):
+        return "net_stream"
+    if any(r in text for r in _GO_IN_MEMORY_PRODUCERS):
+        return "in_memory"
+    if any(d in text for d in _GO_NULL_DEVICES):
+        return "null_device"
     return None
+
+
+def _go_typed_target_kind(
+    type_name: str, import_aliases: Mapping[str, str],
+) -> Optional[str]:
+    """``io_target_kind`` from a DECLARED type, or None.
+
+    WI-suhug. The last resort of the argument classifier, for a name with no
+    visible binding: a parameter (``w http.ResponseWriter``), or a ``var sb
+    strings.Builder`` taken by address (96 of the 105 ``&ident`` write sites
+    on the six-repo corpus). The type's package alias is resolved through the
+    file's imports to its import-path tail before the table is consulted, so
+    an in-repo type that happens to be spelled ``bytes.Buffer`` under a local
+    ``bytes`` package is not the stdlib's; an unqualified type is in-repo by
+    construction and abstains.
+    """
+    alias, dot, name = type_name.rpartition(".")
+    if not dot:
+        return None
+    import_path = import_aliases.get(alias)
+    if import_path is None:
+        return None
+    return _GO_TYPED_TARGET_KINDS.get((import_path.rsplit("/", 1)[-1], name))
+
+
+def _go_nth_argument_text(arg_list_text: str, index: int) -> Optional[str]:
+    """The ``index``-th top-level argument of a call's argument text, or None.
+
+    Text-level and depth-aware (parentheses, brackets, braces), because the
+    binding hop hands back TEXT (``_go_last_binding``) and the call site's AST
+    is rendered to the same text so the two readers cannot disagree about
+    which argument is which. A string literal containing a comma is not
+    split: quotes are tracked too.
+    """
+    args: list[str] = []
+    depth = 0
+    quote: Optional[str] = None
+    current: list[str] = []
+    for ch in arg_list_text:
+        if quote is not None:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "\"'`":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            args.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        args.append(tail)
+    return args[index] if index < len(args) else None
+
+
+def _go_target_argument_of(
+    call_text: str, import_aliases: Mapping[str, str],
+) -> Optional[str]:
+    """The TARGET argument's text when ``call_text`` calls a table member, else None.
+
+    ``tabwriter.NewWriter(os.Stdout, 0, 8, 1, ' ', 0)`` -> ``os.Stdout``. The
+    callee's package alias is resolved through the imports so ``b.NewReader``
+    under ``import b "bufio"`` counts and an unqualified or in-repo
+    ``NewReader`` does not.
+    """
+    head, paren, rest = call_text.partition("(")
+    if not paren or not rest.endswith(")"):
+        return None
+    alias, dot, callee = head.strip().rpartition(".")
+    if not dot:
+        return None
+    import_path = import_aliases.get(alias)
+    if import_path is None:
+        return None
+    index = _GO_TARGET_ARGUMENT_INDEX.get((import_path.rsplit("/", 1)[-1], callee))
+    if index is None:
+        return None
+    return _go_nth_argument_text(rest[:-1], index)
+
+
+def _go_target_kind_from_expression(
+    node: "tree_sitter.Node", source: bytes, expr: str,
+    *,
+    import_aliases: Mapping[str, str],
+    var_types: Optional[Mapping[str, str]] = None,
+    use_line: Optional[int] = None,
+    hops: int = _GO_TARGET_HOP_LIMIT,
+) -> Optional[str]:
+    """``io_target_kind`` for the TEXT of an I/O target argument, or None.
+
+    Shared by every reader of :data:`_GO_TARGET_ARGUMENT_INDEX` -- the wrapper
+    or write call site (WI-lipis, WI-suhug) and the read one binding after the
+    wrapper (WI-vutav) -- so none of them can disagree about what ``f`` is.
+    In order, and each step abstains to the next:
+
+    1. an inline PRODUCER classifies directly (``os.Stdout``, ``os.Open(p)``,
+       ``&bytes.Buffer{}``, ``cmd.StdinPipe()``);
+    2. a call to another table member is followed INTO its target argument
+       (``bufio.NewWriter(f)`` -> ``f``; ``io.LimitReader(&buf, n)`` ->
+       ``&buf``);
+    3. a bare or ``&``-prefixed identifier is followed through its LAST
+       binding in the enclosing function, resolved as of ``use_line`` (the
+       wrapper's line when the caller is a read; WI-vutav's rebinding rule),
+       and the binding's text re-enters at step 1;
+    4. a name with no usable binding is classified by its DECLARED type via
+       the analyzer's ``var_types`` (a parameter, a ``var`` buffer).
+
+    ``hops`` bounds steps 2 and 3 together. Anything still unproven -- an
+    ``io.Writer`` parameter, a struct field, an in-repo constructor -- returns
+    None: INV-zumin's one answer per call site or none, and both directions
+    this stamp serves can remove a finding on a wrong answer.
+    """
+    expr = expr.strip()
+    direct = _go_classify_handle_text(expr)
+    if direct is not None:
+        return direct
+    if hops <= 0:
+        return None
+    inner = _go_target_argument_of(expr, import_aliases)
+    if inner is not None:
+        return _go_target_kind_from_expression(
+            node, source, inner, import_aliases=import_aliases,
+            var_types=var_types, use_line=use_line, hops=hops - 1,
+        )
+    bare = expr[1:] if expr.startswith("&") else expr
+    if not bare.isidentifier():
+        return None
+    found = _go_last_binding(node, source, bare, use_line=use_line)
+    if found is not None:
+        rhs, bound_line = found
+        bound = _go_target_kind_from_expression(
+            node, source, rhs, import_aliases=import_aliases,
+            var_types=var_types, use_line=bound_line, hops=hops - 1,
+        )
+        if bound is not None:
+            return bound
+    declared = (var_types or {}).get(bare)
+    return None if declared is None else _go_typed_target_kind(
+        declared, import_aliases,
+    )
 
 
 def _go_wrapped_handle_kind(
     node: "tree_sitter.Node", source: bytes, module: str, callee: str,
+    *,
+    import_aliases: Mapping[str, str],
+    var_types: Optional[Mapping[str, str]] = None,
 ) -> Optional[str]:
-    """``io_target_kind`` for a handle-wrapper call site, or None.
+    """``io_target_kind`` for a call whose target is one of its arguments, or None.
 
     WI-lipis. Same shape as bash's redirect target (INV-nular): ONE catalogue
     row whose boundary depends on a per-call-site fact the row cannot see, so
-    the analyzer stamps the discriminator and the consumers read it.
+    the analyzer stamps the discriminator and the consumers read it. WI-suhug
+    pointed it at the WRITE side too: ``fmt.Fprintf(w, ...)`` stamps from
+    ``w`` exactly as ``bufio.NewReader(r)`` stamps from ``r``, and which
+    argument is the target is :data:`_GO_TARGET_ARGUMENT_INDEX`'s to say.
 
-    TWO STEPS, and the second is this item's second deliverable. The argument
-    is classified DIRECTLY when it names the producer inline; when it is a bare
-    identifier -- 64.8% of the measured population -- the enclosing function is
-    read for that name's last binding and the binding is classified instead.
-
-    Returns None for everything still not provable: a parameter, a struct
-    field, a value from a function this file does not bind. INV-zumin's ruling
-    is that a call site gets ONE answer or NONE, so an unresolved origin stamps
-    nothing and classifies exactly as it did before this existed.
+    Returns None for everything not provable: a parameter of an interface
+    type, a struct field, a value from a function this file does not bind.
+    INV-zumin's ruling is that a call site gets ONE answer or NONE, so an
+    unresolved origin stamps nothing and classifies exactly as it did before
+    this existed.
     """
-    if (module, callee) not in _GO_HANDLE_WRAPPERS:
+    index = _GO_TARGET_ARGUMENT_INDEX.get((module, callee))
+    if index is None:
         return None
     args = find_child_by_field(node, "arguments")
     if args is None:  # pragma: no cover - defensive
@@ -2434,36 +2668,19 @@ def _go_wrapped_handle_kind(
         # line below would raise on None, and a crash inside an analyzer takes
         # the whole repo's analysis with it.
         return None
-    return _go_handle_kind_from_argument_text(
-        node, source, node_text(args, source).strip(),
-    )
-
-
-def _go_handle_kind_from_argument_text(
-    node: "tree_sitter.Node", source: bytes, arg_text: str,
-    *, use_line: Optional[int] = None,
-) -> Optional[str]:
-    """``io_target_kind`` for a wrapper's argument TEXT, or None.
-
-    Shared by the wrapper's own call site and the read one binding later, so
-    the two cannot disagree about what ``bufio.NewReader(f)`` wraps. Inline
-    producers classify directly; a bare identifier is followed through ONE
-    binding, resolved as of ``use_line`` (the wrapper's line when the caller
-    is a read). Anything else abstains.
-    """
-    direct = _go_classify_handle_text(arg_text)
-    if direct is not None:
-        return direct
-    bare = arg_text.strip("()").strip()
-    if not bare.isidentifier():
+    target = _go_nth_argument_text(node_text(args, source).strip()[1:-1], index)
+    if target is None:
         return None
-    found = _go_last_binding(node, source, bare, use_line=use_line)
-    return None if found is None else _go_classify_handle_text(found[0])
+    return _go_target_kind_from_expression(
+        node, source, target, import_aliases=import_aliases, var_types=var_types,
+    )
 
 
 def _go_receiver_handle_kind(
     node: "tree_sitter.Node", source: bytes, receiver: str,
-    import_aliases: dict[str, str],
+    import_aliases: Mapping[str, str],
+    *,
+    var_types: Optional[Mapping[str, str]] = None,
 ) -> Optional[str]:
     """``io_target_kind`` for a READ whose receiver was bound to a wrapper call, or None.
 
@@ -2471,34 +2688,31 @@ def _go_receiver_handle_kind(
     ``reader.ReadString('\\n')``, on a receiver whose type puts the edge in the
     ``bufio`` slot. Its boundary is still the wrapper's ARGUMENT'S origin, now
     one binding further away: resolve the receiver's last binding, and when
-    that is a call to a package-qualified wrapper in :data:`_GO_HANDLE_WRAPPERS`
-    (the alias resolved through the file's imports, so ``b.NewReader`` under
-    ``import b "bufio"`` still counts), classify its argument exactly as the
-    wrapper site would -- with the identifier hop taken AT THE WRAPPER'S LINE.
+    that is a call to a package-qualified member of
+    :data:`_GO_TARGET_ARGUMENT_INDEX` (the alias resolved through the file's
+    imports, so ``b.NewReader`` under ``import b "bufio"`` still counts),
+    classify its target argument exactly as the wrapper site would -- with the
+    identifier hop taken AT THE WRAPPER'S LINE.
 
-    Every other shape abstains: a parameter or field receiver (no binding), a
-    binding that is not a call, an unqualified or in-repo constructor, a
-    package that is not a wrapper. INV-zumin: one answer per call site or
-    none, and this direction selects a minting boundary.
+    THE RECEIVER'S BINDING MUST BE A TABLE CALL, and this is stricter than the
+    argument classifier on purpose: ``r := NewReader(os.Stdin)`` (an in-repo
+    constructor) may do anything with ``os.Stdin``, so the substring rule that
+    is right for an ARGUMENT'S origin is not applied to a receiver's. Every
+    other shape abstains: a parameter or field receiver (no binding), a
+    binding that is not a call, a package that is not in the table. INV-zumin:
+    one answer per call site or none, and this direction selects a minting
+    boundary.
     """
     found = _go_last_binding(node, source, receiver)
     if found is None:
         return None
     rhs, bound_line = found
-    head, paren, rest = rhs.partition("(")
-    if not paren or not rest.endswith(")"):
+    target = _go_target_argument_of(rhs, import_aliases)
+    if target is None:
         return None
-    alias, dot, callee = head.rpartition(".")
-    if not dot:
-        return None
-    import_path = import_aliases.get(alias)
-    if (
-        import_path is None
-        or (import_path.rsplit("/", 1)[-1], callee) not in _GO_HANDLE_WRAPPERS
-    ):
-        return None
-    return _go_handle_kind_from_argument_text(
-        node, source, rest[:-1].strip(), use_line=bound_line,
+    return _go_target_kind_from_expression(
+        node, source, target, import_aliases=import_aliases,
+        var_types=var_types, use_line=bound_line,
     )
 
 
@@ -3149,6 +3363,7 @@ def _extract_edges_from_file(
                                 }
                                 _handle_b = _go_receiver_handle_kind(
                                     node, source, _alias, import_aliases,
+                                    var_types=var_types,
                                 )
                                 if _handle_b:
                                     _meta_b["io_target_kind"] = _handle_b
@@ -3438,6 +3653,8 @@ def _extract_edges_from_file(
                                     node, source,
                                     (unresolved_path or "").rsplit("/", 1)[-1],
                                     callee_name,
+                                    import_aliases=import_aliases,
+                                    var_types=var_types,
                                 )
                                 if _handle:
                                     _meta["io_target_kind"] = _handle

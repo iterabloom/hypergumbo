@@ -231,3 +231,10 @@ def _ddg_edge() -> list:
         variable="sc", def_block="b0", def_line=3,
         use_block="b0", use_line=5, symbol_id=_CALLER,
     )]
+
+
+def test_the_new_kinds_mint_in_the_read_direction() -> None:
+    """WI-suhug widened the vocabulary at its one home: a pipe from a child or a
+    network stream is a real receive, and the source arm follows the map."""
+    assert len(_flows("pipe")) == 1
+    assert len(_flows("net_stream")) == 1
