@@ -27,3 +27,19 @@
   clock: 2  # cde5
   nonce: cde5  # cde5
   message: "LIVE CORROBORATION OF THE HIJACK CHANNEL, from measurement 0005 (docs/measurements/0005-taint-precision-after-vocabulary-split.md), with a user-visible consequence this item had not yet recorded.\n\nWHAT WAS SEEN. In caddy, the taint walk reports a call-graph route containing the hop `modules/caddytls/capools.go StoragePool.Provision -> caddy.go Load`. That hop does not exist. capools.go:358 calls `ca.storage.Load(ctx, caID)` -- an INTERFACE METHOD on certmagic.Storage -- and it was resolved to `caddy.Load(cfgJSON []byte, forceReload bool)`, the package-level function in the repo's own root package. That is exactly the failure this item names: Go strips the package prefix and probes the repo symbol table BEFORE the import-path fallback, so a bare `Load` finds the wrong in-repo symbol. It is not the initializer-inference gap; it is the resolution-ORDER defect that this item says must be fixed first.\n\nWHY IT MATTERS BEYOND THE 17.1% RATE ALREADY ON RECORD. The hijack does not merely mis-attribute one edge -- it FABRICATES A ROUTE THROUGH THE CONFIG PIPELINE, and every taint flow that walks through it inherits a path a reader cannot follow. In 0005 the same fictitious shape appeared under FOUR separate situations (untrusted-input-no-host-fs 2/3/5/6 and host-description-no-network 2/3 route through a sibling fabrication, `internal/filesystems/map.go FileSystemMap.Get -> caddy.Load`, where FileSystemMap.Get is a plain sync.Map lookup that calls nothing). Two independent adjudicators found the fabrication on their own and said so unprompted.\n\nTHE SHARPEST FORM OF THE HARM, because it cuts both ways. For caddy:untrusted-input-no-host-fs:2 the reported route is fictitious AND the flow is a genuine true positive -- the real chain runs UP out of the source symbol through cmdRun to caddy.Load, a direction the tool never claimed. So the hijack does not simply add false positives: it makes a CORRECT finding uncheckable from its own record. Under the 0001 rubric that flow is rescued only by the \"fictitious route, real chain\" clause; judged on the route the tool actually printed, the hop is real dynamic dispatch and the finding would be UNADJUDICABLE.\n\nNO NEW MEASUREMENT IS CLAIMED HERE and the 17.1%/+0.61% trade on this item is not re-derived. This is corroboration that the hijack channel is live on a current tree at a repo already in this item's own A/B corpus, plus a consequence (route fabrication feeding the taint walk) to weigh when the disputed net-effect question is finally measured."  # cde5
+- op: update  # cf81
+  at: '2026-09-03T08:57:57Z'  # cf81
+  by: agent  # cf81
+  actor: jgstern_agent  # cf81
+  clock: 3  # cf81
+  nonce: cf81  # cf81
+  set: {}  # cf81
+  add:  # cf81
+    tags: [axis, module_key]  # cf81
+- op: discuss  # 6301
+  at: '2026-09-03T08:57:57Z'  # 6301
+  by: agent  # 6301
+  actor: jgstern_agent  # 6301
+  clock: 4  # 6301
+  nonce: '6301'  # 6301
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED (by the naive fix this item forbids): owner path \"spelled in the source language's import vocabulary\". NOTION: type, but package-STRIPPED (`Client`, not `net/http.Client`). A bare type is not an owner path, it is a name that collides -- which is exactly why carrying initializer types into the slot naively hijacks resolution at the measured 17.1%. The axiom says the fix is the QUALIFIED spelling (WI-vutav's constructor-qualifier fix is one instance), not more inference."  # 6301

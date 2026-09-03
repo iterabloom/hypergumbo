@@ -37,3 +37,19 @@
   clock: 3  # fb0f
   nonce: fb0f  # fb0f
   message: "Instance of the INV-linub class; blocks its closure. Separate from WI-dizag: different strategy, different helper, and additionally needs the qualified-path treatment applied to RHS inference."  # fb0f
+- op: update  # 53b0
+  at: '2026-09-03T08:57:56Z'  # 53b0
+  by: agent  # 53b0
+  actor: jgstern_agent  # 53b0
+  clock: 4  # 53b0
+  nonce: 53b0  # 53b0
+  set: {}  # 53b0
+  add:  # 53b0
+    tags: [axis, module_key]  # 53b0
+- op: discuss  # e78c
+  at: '2026-09-03T08:57:56Z'  # e78c
+  by: agent  # e78c
+  actor: jgstern_agent  # e78c
+  clock: 5  # e78c
+  nonce: e78c  # e78c
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel -- while the conformant value, the receiver TYPE, is computed by Strategy 1.9 and DROPPED before the slot (the carry is missing, not the inference). Landing it also meets the spelling clause: `std::fs::File`, not the bare `File` `_infer_type_from_rust_rhs` returns, which is the same package-stripped hazard WI-kamin guards in go."  # e78c
