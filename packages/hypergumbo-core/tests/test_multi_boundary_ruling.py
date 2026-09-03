@@ -91,9 +91,10 @@ def _multi_boundary(cat: IoBoundaryCatalog) -> dict[str, set[str]]:
 # requires deleting from it. Each entry states the question, because an
 # unruled row without a stated question is indistinguishable from an
 # overlooked one.
-#: THE DECLARED-DEBT REGISTER, AND IT IS NOW EMPTY (INV-nular, 2026-08-28).
+#: THE DECLARED-DEBT REGISTER. EMPTIED 2026-08-28 (INV-nular); RE-OPENED
+#: 2026-09-03 WITH ONE ENTRY (INV-bofab -> WI-kapak), stated below.
 #:
-#: It held exactly two questions, and both were answered by removing rows
+#: Before that it held exactly two questions, and both were answered by removing rows
 #: rather than by ruling the rows correct:
 #:
 #: * ``erlang``/``elixir`` ``gen_udp.open`` — "Is a socket-acquisition call a
@@ -111,7 +112,26 @@ def _multi_boundary(cat: IoBoundaryCatalog) -> dict[str, set[str]]:
 #: (``test_no_multi_boundary_primitive_lacks_a_reason``) is what keeps it
 #: honest: a new multi-boundary row with no reason still fails CI, and the only
 #: way to pass is to rule it or add it back here WITH ITS QUESTION STATED.
-EXPECTED_UNRULED: dict[str, str] = {}
+#:
+#: The entry below is the second route taken deliberately. It is NOT a row
+#: nobody looked at: both settled reasons were tried against the shipped
+#: pydoc source and each asserts something false, so the honest state is a
+#: question the vocabulary cannot yet answer, and WI-kapak owns answering it.
+EXPECTED_UNRULED: dict[str, str] = {
+    "python:builtins.help": (
+        "Which ruling describes 'logging ALWAYS, subprocess only when the "
+        "ENVIRONMENT supplies a tty and a pager'? help() renders through "
+        "pydoc to stdout on every call; on a tty pydoc.getpager probes for "
+        "pager/less/more through os.system and then pipes the text through "
+        "subprocess.Popen(shell=True). `simultaneous` claims the launch "
+        "happens off a tty too; `call_site_undecidable` claims exactly one "
+        "boundary is true and the call site decides, and neither half holds. "
+        "Rowed when INV-bofab enumerated builtins. WI-kapak holds the "
+        "vocabulary gap, and also why help()'s no-argument interactive stdin "
+        "loop is disclosed on the row and not rowed: help returns None, so "
+        "nothing the far side chose reaches the caller (ADR-0049)."
+    ),
+}
 
 
 class TestEveryMultiBoundaryPrimitiveDeclaresAReason:
@@ -156,8 +176,9 @@ class TestEveryMultiBoundaryPrimitiveDeclaresAReason:
         is indistinguishable from one that returns a constant.
 
         ``unruled`` IS DELIBERATELY NOT ASSERTED HERE. It names an OPEN
-        QUESTION, and the live count of open questions is currently zero
-        (INV-nular answered both). Requiring one to exist would make the suite
+        QUESTION, and the live count of open questions is whatever the register
+        above holds -- zero after INV-nular answered both, one since INV-bofab
+        rowed ``builtins.help``. Requiring one to exist would make the suite
         fail the moment the last piece of declared debt is paid — a test that
         punishes success, and a hardcoded inventory besides. The resolver's
         ``unruled`` branch is exercised on a synthetic catalogue instead, in
