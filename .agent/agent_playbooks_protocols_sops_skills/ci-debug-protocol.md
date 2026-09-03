@@ -21,6 +21,7 @@ When CI fails but tests pass locally, use `./scripts/ci-debug`:
 # so instead of showing nothing. `status` renders the same beneath each job.
 ./scripts/ci-debug cron-status              # default: origin/dev, 40 commits
 ./scripts/ci-debug cron-status origin/dev 60
+./scripts/ci-debug logs self-claims-gate <sha>   # one STEP's transcript; found on ANY gate reporting on <sha> (WI-ratam)
 
 # Analyze tree-sitter dependencies (finds missing packages)
 ./scripts/ci-debug analyze-deps

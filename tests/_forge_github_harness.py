@@ -104,6 +104,7 @@ outfile = None
 url = None
 headers = []
 data = None
+w_fmt = None
 i = 0
 while i < len(args):
     a = args[i]
@@ -115,7 +116,9 @@ while i < len(args):
         headers.append(args[i + 1]); i += 2; continue
     if a == "-d":
         data = args[i + 1]; i += 2; continue
-    if a in ("-w", "--max-time"):
+    if a == "-w":
+        w_fmt = args[i + 1]; i += 2; continue
+    if a == "--max-time":
         i += 2; continue
     if a.startswith("-"):
         i += 1; continue
@@ -135,9 +138,20 @@ for fx in fixtures:
         body = fx.get("body", "{}")
         break
 if outfile:
+    # Real curl: body to the file, -w format (the http code) to stdout.
     with open(outfile, "w") as fh:
         fh.write(body)
-sys.stdout.write(code)
+    sys.stdout.write(code)
+else:
+    # Real curl without -o: body to stdout; a trailing -w '\n%{http_code}'
+    # appends the code on its own line (the Woodpecker log-fetch shape).
+    # WI-ratam: this fake claimed to mirror test_forge_backend_github.py's
+    # and had drifted from it here -- it printed the CODE alone, so the
+    # first green-path log fetch through this harness parsed "200" as the
+    # log body ("returned int, not a log-entry list").
+    sys.stdout.write(body)
+    if w_fmt is not None:
+        sys.stdout.write("\n" + code)
 '''
 
 # Fake ``gh`` for contribute: logs argv; ``auth status`` exits $GH_AUTH_EXIT

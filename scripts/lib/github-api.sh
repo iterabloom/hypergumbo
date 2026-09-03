@@ -330,6 +330,60 @@ if statuses:
 		IFS=$'\t' read -r target_url how ctx <<<"$_sel"
 	fi
 
+	# WI-ratam: a STEP name matches no context, so the selector above has
+	# already fallen through to a gate chosen by rule 2 -- before any step was
+	# looked at. On dev 8955d9a2 (push/woodpecker beside cron/full-suite, both
+	# green) `logs self-claims-gate` therefore declared "no step by that name"
+	# and printed the push transcript, while `status` had just LISTED that
+	# step under the cron gate: the per-step reader and this fetcher
+	# disagreed about what exists. So, when the name matched no gate, search
+	# every gate's pipeline for a step carrying it (failed gates first,
+	# mirroring rule 2) and let the first hit choose the pipeline. The honest
+	# substitution warning below stays for the genuinely-absent case, and it
+	# is honest only because every pipeline was read before it fires.
+	if [[ -n "$job_name" && "${how:-}" != "matched" ]] && _wp_have_credentials; then
+		local _cands _cand_url _cand_ctx _cand_coords _cand_repo _cand_pipe _cand_json
+		_cands=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    statuses = [s for s in json.load(sys.stdin).get('statuses', [])
+                if s.get('target_url')]
+except Exception:
+    sys.exit(0)
+failed = [s for s in statuses
+          if str(s.get('state', '')).lower() in ('failure', 'error')]
+for s in failed + [s for s in statuses if s not in failed]:
+    print('\t'.join((s['target_url'], str(s.get('context', '')))))
+" 2>/dev/null || echo "")
+		_cand_json=$(mktemp)
+		# `while ... done <<<` runs in THIS shell, so the assignments inside
+		# survive it -- a `| while` pipeline would lose them (the WP_HTTP_CODE
+		# lesson, one function over).
+		while IFS=$'\t' read -r _cand_url _cand_ctx; do
+			[[ -n "$_cand_url" ]] || continue
+			_cand_coords=$(_wp_pipeline_coords "$_cand_url") || continue
+			read -r _cand_repo _cand_pipe _ <<<"$_cand_coords"
+			_wp_pipeline_json "$_cand_repo" "$_cand_pipe" "$_cand_json" || continue
+			if WP_JOB="$job_name" python3 -c "
+import sys, json, os
+want = (os.environ.get('WP_JOB') or '').strip().lower()
+try:
+    workflows = json.load(sys.stdin).get('workflows') or []
+except Exception:
+    sys.exit(1)
+sys.exit(0 if any(str(s.get('name', '')).lower() == want
+                  for wf in workflows for s in (wf.get('children') or []))
+         else 1)
+" <"$_cand_json" 2>/dev/null; then
+				target_url="$_cand_url"
+				how="matched-step"
+				ctx="$_cand_ctx"
+				break
+			fi
+		done <<<"$_cands"
+		rm -f "$_cand_json"
+	fi
+
 	# WI-solob. Fetching a Woodpecker log takes TWO calls, not one, and the
 	# reason is a trap worth stating: the trailing number in the UI url
 	# (/repos/<repo>/pipeline/<number>/<n>) is the WORKFLOW index, not the step.
