@@ -1,0 +1,22 @@
+- op: create  # 90f3
+  at: '2026-09-03T00:24:13Z'  # 90f3
+  by: agent  # 90f3
+  actor: jgstern_agent  # 90f3
+  clock: 1  # 90f3
+  nonce: 90f3  # 90f3
+  data:  # 90f3
+    kind: work_item  # 90f3
+    title: "Packet builder residuals: block comments, whole-file pseudo-symbols, BASH_SOURCE as an env read"  # 90f3
+    status: todo_hard  # 90f3
+    priority: 2  # 90f3
+    parent:  # 90f3
+    tags:  # 90f3
+    - taint  # 90f3
+    - measurement_0012  # 90f3
+    - tooling  # 90f3
+    isbefore: []  # 90f3
+    duplicate_of: []  # 90f3
+    not_duplicate_of: []  # 90f3
+    pr_ref:  # 90f3
+    description: "Three defects in scripts/measure-taint-precision.py's packet subcommand, all\nfound by refuters reading measurement 0012's rendered packets against source.\nNone changed a label; each is a way the packet misleads a reader.\n\n1. A SINK SITE MATCHED INSIDE A BLOCK COMMENT. The tmux packet lists\n   compat/imsg-buffer.c:813 as a sendmsg call site. Line 813 is comment text\n   -- \" * assumption: fd got sent if sendmsg sent anything\" -- inside a /* */\n   opened at 812. `scrub` blanks LINE comments and string interiors; it does\n   not track multi-line block comments, so every continuation line of a C-style\n   block comment is searched as code. This is defect 1 from 0006 section F\n   (\"matches sink names as bare SUBSTRINGS ... inside a quoted pattern\")\n   returning through the one comment form scrub does not model.\n\n2. A WHOLE-FILE PSEUDO-SYMBOL DOUBLE-ATTRIBUTES SITES. ArkLib :3 and :5 list\n   the same open() sites twice: once under the real enclosing function\n   (revert_nav 5-84) and once under a module-level symbol printed as\n   `in file (scripts/revert_nav.py 1-93)`. Module-level execution never reaches\n   those calls; the whole-file span contains them TEXTUALLY, not as a body.\n   In :3 the pseudo-symbol is even named `file`, colliding with a loop variable\n   of the same name on line 26.\n\n3. BASH_SOURCE LISTED AS AN ENVIRONMENT READ SITE. The cert-manager packet\n   lists checkhash.sh:21 (SCRIPT_DIR=\"$( cd \"$( dirname \"${BASH_SOURCE[0]}\" )\"\n   ...)\") among the SOURCE sites for a source typed environ (env_read).\n   BASH_SOURCE is a bash-internal special array, never exported. hypergumbo\n   ITSELF stopped emitting it as an env read (INV-nular, PR #541); the packet\n   builder's own shell_env_sites has not followed, so the instrument now\n   asserts something the tool under measurement no longer does.\n\nItem 3 is the pointed one: the builder was put in-repo precisely so its defects\ncould be fixed rather than re-encountered, and it has now drifted away from the\nproduction catalogue it is supposed to illustrate. Its _SHELL_NON_ENV set is a\nsecond home for a fact bash.py already owns."  # 90f3
+    fields: {}  # 90f3
