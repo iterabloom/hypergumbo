@@ -1,0 +1,23 @@
+- op: create  # bd9b
+  at: '2026-09-03T18:21:22Z'  # bd9b
+  by: agent  # bd9b
+  actor: jgstern_agent  # bd9b
+  clock: 1  # bd9b
+  nonce: bd9b  # bd9b
+  data:  # bd9b
+    kind: invariant  # bd9b
+    title: "go: a bare call whose name resolves nowhere emits NO calls edge (INV-foluz's Go shape): unknownThing() -> []"  # bd9b
+    status: violated  # bd9b
+    priority: 2  # bd9b
+    parent:  # bd9b
+    tags:  # bd9b
+    - go  # bd9b
+    - call_graph  # bd9b
+    isbefore: []  # bd9b
+    duplicate_of: []  # bd9b
+    not_duplicate_of: []  # bd9b
+    pr_ref:  # bd9b
+    description: "FOUND 2026-09-03 while reading back INV-nopoh's arm B (dev 7cf2cf411a + the\nINV-nopoh working tree; the behaviour is identical on unmodified dev).\n\nTHE SHAPE. A BARE identifier call whose name resolves to nothing -- not in the\nfile's local_symbols, withheld by the resolver's ambiguity guard (3+ global\ncandidates, no path hint), or simply absent from the repo -- emits NO `calls`\nedge at all. Fixture (one file):\n\n    package main\n    func g() { unknownThing() }        -> calls edges: []\n\nIn `_extract_edges_from_file`'s call arm the bare-identifier path is: local\nsymbol -> resolver lookup -> (INV-fahub deferral) -> selector_expression\nunresolved emission -> dot-import placeholder. A bare identifier that falls\nthrough every branch has no `make_unresolved_edge` fallback, although\n`analyze/base.py` provides one and Python's analyzer routes exactly this case\nthrough it since INV-foluz (PR #711). This is INV-foluz's statement -- \"every\ncall site the analyzer parses emits a calls edge\" -- at the Go bare-name arm,\ndistinct from INV-nopoh (package-level ANCHOR) and from the family item filed\nwith it (other languages' package-level sites).\n\nWHY IT MATTERED TODAY. INV-nopoh's grouped-`var` symbols made alertmanager's\n`NewWebhook` a three-candidate name; before the dot-import path-hint fallback\nlanded in the same PR, 114 call sites went from a resolved function to a\nplaceholder -- and had the calling files NOT dot-imported anything, those 114\nwould have emitted NOTHING, silently. The ambiguity guard is right to withhold\na binding (INV-nogof); withholding the EDGE is the defect.\n\nNOT MEASURED: how many bare call sites per repo fall through. The instrument is\nthe one INV-nopoh used (grep the callee name vs analyzer edges per file,\nnormalised paths) on a name the resolver withholds.\n\nFIX SHAPE: after the dot-import arm, `else: edges.append(make_unresolved_edge(\n\"go\", current_function.id, callee_name, line, PASS_ID, run.execution_id))`,\nminus Go builtins (already filtered) and minus type conversions\n(`_GO_BUILTIN_TYPES`, already filtered). Read every new placeholder back on one\nrepo before closing: the arm also catches local closures called by name\n(`f := func(){}; f()`), which are LOCAL bindings, not external callees --\nINV-kipor's Python lesson -- and must be anchored, not minted as external."  # bd9b
+    fields:  # bd9b
+      statement: "Every call site the Go analyzer parses emits a calls edge anchored on some symbol; a bare identifier call that is not a local symbol, is withheld by the resolver's ambiguity guard, and is not dot-imported emits nothing."  # bd9b
+      root_cause: "The bare-identifier arm of _extract_edges_from_file has no make_unresolved_edge fallback after the dot-import arm; Python routes the same case through make_unresolved_edge since INV-foluz."  # bd9b

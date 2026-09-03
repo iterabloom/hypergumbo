@@ -1,0 +1,22 @@
+- op: create  # 0fc2
+  at: '2026-09-03T18:21:18Z'  # 0fc2
+  by: agent  # 0fc2
+  actor: jgstern_agent  # 0fc2
+  clock: 1  # 0fc2
+  nonce: 0fc2  # 0fc2
+  data:  # 0fc2
+    kind: work_item  # 0fc2
+    title: "DDG builds no CFG for a function literal under a package-level var_spec: every INV-nopoh-anchored finding is structural-only (29 of 29 on beads)"  # 0fc2
+    status: todo_hard  # 0fc2
+    priority: 2  # 0fc2
+    parent:  # 0fc2
+    tags:  # 0fc2
+    - go  # 0fc2
+    - taint  # 0fc2
+    - dataflow  # 0fc2
+    isbefore: []  # 0fc2
+    duplicate_of: []  # 0fc2
+    not_duplicate_of: []  # 0fc2
+    pr_ref:  # 0fc2
+    description: "FILED 2026-09-03 with INV-nopoh's fix, which anchors a Go call under a\npackage-level `var` on the variable's own symbol (kind `variable`, span = the\nvar_spec). Measured on beads (taint arm A vs B, cold, generic-taint-claims):\n134 -> 162 flow rows; 29 added, and EVERY added row whose source is a\n`:variable` symbol (the cobra command variables: rootCmd, initCmd, doctorCmd,\nmigrateCmd, ...) carries analysis_method=structural. None can be DDG-adjudicated.\n\nWHY. `hypergumbo_lang_mainstream/go_def_use.py` registers\n    LanguageDdgSpec(function_node_types={\"function_declaration\", \"method_declaration\"}, ...)\nand `ddg_build` walks the tree for those node types, takes `child_by_field_name(\"body\")`,\nand names the CFG with make_symbol_id(lang, path, start, end, name, kind). A function\nliteral under a package-level var_spec is neither node type, so no CFG is built for\nits body; the taint walk finds no ddg_symbols entry for `go:...:23-425:migrateCmd:variable`\nand falls back to structural reachability. The edges exist now; the walk cannot run\nover them. (INV-muhij Finding B and section 3a are unaffected: nothing new gates a\nverdict.)\n\nWHAT WOULD FIX IT (design, not done):\n  1. Let the spec name a body for a var_spec whose initializer is (or contains, at\n     the struct-field position) a func_literal: `function_node_types` gains\n     \"var_spec\" restricted to package level, `name_for` returns the var name,\n     `kind_for` returns \"variable\", and a new optional `body_for(node)` hook returns\n     the literal's `body` (default: child_by_field_name(\"body\")). The id then matches\n     the analyzer's variable symbol EXACTLY (same span, same name, same kind) -- the\n     line-up constraint go_def_use.py's own header states.\n  2. A cobra handler `Run: func(cmd *cobra.Command, args []string) {...}` has\n     PARAMETERS; the CFG's parameter defs must come from the literal's\n     parameter_list, not the var_spec.\n  3. Two literals under one var (`var x = struct{A, B func()}{A: func(){}, B: func(){}}`)\n     share the anchor; the CFG should cover both bodies or the first and disclose.\n  4. Measure: re-run taint arm B on beads; the 29 structural rows should gain\n     ddg_mixed where the value actually flows, and the rows where it does NOT\n     (env read in one branch, print in another) should be refuted or forfeited\n     per WI-kabif's gate -- that is the point.\nSame gap will apply to each language fixed under the family item filed with INV-nopoh."  # 0fc2
+    fields: {}  # 0fc2
