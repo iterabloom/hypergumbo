@@ -1,0 +1,22 @@
+- op: create  # 2e3c
+  at: '2026-09-03T16:50:04Z'  # 2e3c
+  by: agent  # 2e3c
+  actor: jgstern_agent  # 2e3c
+  clock: 1  # 2e3c
+  nonce: 2e3c  # 2e3c
+  data:  # 2e3c
+    kind: work_item  # 2e3c
+    title: "go: os.File.{Write,WriteString} and bufio.Writer.{Write,WriteString} have no catalogue row -- a write through the handle's own method has no sink (17 sites on six repos)"  # 2e3c
+    status: todo_hard  # 2e3c
+    priority: 2  # 2e3c
+    parent:  # 2e3c
+    tags:  # 2e3c
+    - catalogue  # 2e3c
+    - go  # 2e3c
+    - io_boundary  # 2e3c
+    isbefore: []  # 2e3c
+    duplicate_of: []  # 2e3c
+    not_duplicate_of: []  # 2e3c
+    pr_ref:  # 2e3c
+    description: "FOUND 2026-09-03 in WI-suhug's arm-A census (six Go repositories). The METHOD forms of WriteString on a typed receiver are separate primitives from `io.WriteString`, and two of them have no catalogue row:\n\n    435  strings.Builder.WriteString   in-memory  -> correctly unrowed (crosses nothing)\n     62  bytes.Buffer.WriteString      in-memory  -> correctly unrowed\n     10  bufio.Writer.WriteString      NOT ROWED  -> the write goes wherever bufio.NewWriter's argument pointed (WI-vutav's receiver hop, WRITE side)\n      7  os.File.WriteString           NOT ROWED  -> a file, or os.Stdout / os.Stderr (both are *os.File), or a pipe end\n     68  <untyped receiver>.WriteString              -> refused by design (no module hint)\n\nNeither `os.File.{Write,WriteString}` nor `bufio.Writer.{Write,WriteString,Flush}` appears in go.yaml's fs_write section, so a program that opens a file and writes through the handle's own methods has NO write sink at all today (the only rowed write is the free function io.WriteString and the os-level helpers). That is a recall gap in the finding-losing direction.\n\nDESIGN (same shape as WI-vutav + WI-suhug, already built): row `os.File.{Write,WriteString}` dual fs_write / logging / ipc_send, `abstains_to: fs_write`, and stamp from the RECEIVER's binding through `_go_receiver_handle_kind` (an `os.Create` handle -> host_path; `os.Stdout` -> std_stream -> logging; an `os.Pipe()` end -> pipe). Row `bufio.Writer.{Write,WriteString}` dual under the four write boundaries, `abstains_to: fs_write`, stamped through the receiver's `bufio.NewWriter(x)` binding -- `bufio.NewWriter` is already in `_GO_TARGET_ARGUMENT_INDEX`, so the receiver hop works today; only the rows are missing. Run the derived rules first (scope gate: `os.File` / `bufio.Writer` join the reviewed receiver-type enumeration; `Write` is already in ambiguous_names, so only the TYPED receiver reaches the rows).\n\nSizing: 17 sites on six repos -- small, but the shape (write through the handle's own method) is the idiomatic Go file write, so the corpus count understates it wherever `f.Write(b)` is used instead of WriteString: census `.Write(` on typed *os.File receivers before deciding priority."  # 2e3c
+    fields: {}  # 2e3c
