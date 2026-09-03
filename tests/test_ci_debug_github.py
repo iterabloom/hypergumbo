@@ -16,6 +16,7 @@ Dormant (default forgejo while Codeberg is origin), forced here via
 
 from __future__ import annotations
 
+import base64
 import json
 
 from _forge_github_harness import bindir_with_fakes, calls, fake_repo, run_script
@@ -401,3 +402,120 @@ class TestStatusNamesEachStep:
         assert r.returncode == 0, r.stdout + r.stderr
         assert "per-step verdicts not read" in r.stdout, r.stdout
         assert not any("wp.example/api" in u for u in _urls(logs))
+
+
+# WI-ratam. ``status`` LISTS every step behind every gate on a commit (the
+# per-step reader, INV-bozid), but ``logs <step>`` could only FETCH a step from
+# the gate the name selected as a CONTEXT -- and a step name matches no
+# context, so it fell through to a fallback gate before any step was looked
+# at. Observed on dev 8955d9a2 (INV-bofab's fix commit): push/woodpecker
+# (success) beside cron/full-suite (success, pipeline 2206, triggered by hand).
+# ``logs self-claims-gate`` said "Nothing named 'self-claims-gate' on this
+# commit -- no gate and no step by that name" and printed the PUSH transcript,
+# while ``status`` had just listed the step under the cron gate. Listing and
+# fetching disagreed about what exists, and the closure evidence for a
+# security-gate regression had to rest on a construction argument instead of
+# the transcript.
+_STATUS_TWO_GREEN_GATES = json.dumps({
+    "state": "success",
+    "statuses": [
+        {"state": "success", "context": "ci/woodpecker/push/woodpecker",
+         "target_url": "https://wp.example/repos/1/pipeline/100/1"},
+        {"state": "success", "context": "ci/woodpecker/cron/full-suite",
+         "target_url": "https://wp.example/repos/1/pipeline/200/1"},
+    ],
+})
+_PIPELINE_100 = json.dumps({"workflows": [{
+    "pid": 1, "name": "woodpecker",
+    "children": [
+        {"id": 11, "name": "lint", "state": "success", "exit_code": 0},
+        {"id": 12, "name": "pytest", "state": "success", "exit_code": 0},
+    ],
+}]})
+_PIPELINE_200 = json.dumps({"workflows": [{
+    "pid": 1, "name": "full-suite",
+    "children": [
+        {"id": 41, "name": "build-grammars", "state": "success", "exit_code": 0},
+        {"id": 42, "name": "self-claims-gate", "state": "success",
+         "exit_code": 0},
+    ],
+}]})
+
+
+def _log_body(text):
+    return json.dumps([
+        {"line": 1, "data": base64.b64encode(text.encode()).decode()},
+    ])
+
+
+class TestAStepOnASiblingGateIsFetchedByName:
+    """A step the per-step reader lists must be fetchable by that name."""
+
+    _WP = {
+        "WOODPECKER_SERVER": "https://wp.example",
+        "WOODPECKER_TOKEN": "wtok",
+        "CF_ACCESS_CLIENT_ID": "cfid",
+        "CF_ACCESS_CLIENT_SECRET": "cfsecret",
+    }
+
+    def _run(self, tmp_path, args):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        return run_script(
+            "ci-debug", repo, args,
+            fixtures=[
+                {"match": "/commits/", "code": 200,
+                 "body": _STATUS_TWO_GREEN_GATES},
+                {"match": "GET https://wp.example/api/repos/1/pipelines/100",
+                 "code": 200, "body": _PIPELINE_100},
+                {"match": "GET https://wp.example/api/repos/1/pipelines/200",
+                 "code": 200, "body": _PIPELINE_200},
+                {"match": "GET https://wp.example/api/repos/1/logs/100/12",
+                 "code": 200, "body": _log_body("396 passed\n")},
+                {"match": "GET https://wp.example/api/repos/1/logs/200/42",
+                 "code": 200,
+                 "body": _log_body(
+                     "check-self-claims-drift: OK -- 18 claims unchanged\n"
+                 )},
+            ],
+            env={**_GH, **self._WP}, bindir=bindir,
+        )
+
+    def test_a_step_listed_under_the_second_gate_is_fetched_from_it(
+        self, tmp_path,
+    ):
+        r, logs = self._run(tmp_path, ("logs", "self-claims-gate"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "18 claims unchanged" in r.stdout, (
+            "the named step lives on the SECOND gate's pipeline and must be "
+            f"fetched from there:\n{r.stdout}{r.stderr}"
+        )
+        combined = r.stdout + r.stderr
+        assert "Nothing named" not in combined and "INSTEAD" not in combined, (
+            "the step exists; nothing was substituted, so nothing may be "
+            f"reported as substituted:\n{combined}"
+        )
+        urls = _urls(logs)
+        assert any("/logs/200/42" in u for u in urls), urls
+        assert not any("/logs/100/" in u for u in urls), (
+            f"the push pipeline's transcript was fetched instead: {urls}"
+        )
+
+    def test_a_genuinely_absent_step_still_says_so_after_searching_every_gate(
+        self, tmp_path,
+    ):
+        """The control. The honest fallback survives -- and it is honest only
+        once EVERY gate's pipeline was searched, so both pipelines must have
+        been read before the substitution is reported."""
+        r, logs = self._run(tmp_path, ("logs", "no-such-step"))
+        combined = r.stdout + r.stderr
+        assert "no-such-step" in combined and "Nothing named" in combined, (
+            combined
+        )
+        urls = _urls(logs)
+        assert any("/pipelines/100" in u for u in urls), urls
+        assert any("/pipelines/200" in u for u in urls), (
+            "the second gate's pipeline was never searched before the name "
+            f"was declared absent: {urls}"
+        )
+
