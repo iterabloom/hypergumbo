@@ -865,6 +865,70 @@ runs can find prior work:
   already existed. Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-call_construct_08272026.md`.
 
+- **2026-09-01 — the MODULE KEY (`IoPrimitive.module` × `ExternalRef.module_path`
+  × the id path slot).** Trigger: cadence (73 commits vs. threshold 72); suspect
+  nominated by the agent from the INV-zuvib / INV-hahak / INV-fofoj family and
+  chosen by the human; run on dev `26d2995302`. Hypothesis: the slot a call is
+  matched on smuggles three questions — the qualifier written at the call site,
+  what the import table resolves it to, and what the catalogue row is keyed on —
+  and when they disagree the lookup returns nothing rather than erroring.
+  **Outcome: confirmed — and the leak was already in the tracker as ~15
+  separately-filed analyzer bugs, because no document said what the field was
+  FOR.** Inventory: 3,079 catalogue rows over 15 languages (482 distinct
+  `(lang, module)` slots; `IoPrimitive.module`'s own docstring admits "module
+  **or class path**") and 65,187 external refs over 21 repos / 10 languages, of
+  which 7.8% are not a single module identity at all (a comma-joined cpp
+  `#include` set 6.2%, the `external` sentinel 1.5%, bash `redirect` 0.1%), and
+  the 88.1% that are module-shaped still carry a namespace, a TYPE, a global
+  object VALUE (`process`, `window`), or a receiver VARIABLE name (objc writes
+  `module_path=receiver_name` literally: 1,102 of 4,207 objc+swift refs, 26%).
+  Pair 1 namespace-vs-type: **all four tests fire** — 22 slots carry more than
+  one `IoPrimitive.kind`; `testing` and `testing.T` share the slot and the
+  predicate; the matcher infers type-vs-package from the CASE of the value, Go's
+  convention applied to all 15 catalogues. Pair 2 identity-vs-sentinel: Test 2
+  fires, **KEEP** — guarded by `_UNRESOLVED_MODULE_PLACEHOLDERS`; trigger
+  written (any catalogue row whose module is literally `external`/`redirect`).
+  Pair 3 qualifier-in-MODULE-slot vs NAME-slot: Test 2 fires, **DEPRECATE, fix
+  the producers**. Silent bugs, each verified through the production classifier:
+  **F1** the suffix arm has no capitalisation test, so sops'
+  `context.String("input-type")` — a CLI flag read on a `*cli.Context`
+  parameter — is classified `net_send` via `github.com/gin-gonic/gin.Context`
+  (INV-safig's remedy biting back: appending the type made `Context` a
+  matchable suffix); 1,090 rows exposed, 32 of 1,676 cohort boundaries decided
+  by the heuristic arms, 8 of 9 shapes right and 1 wrong → INV-dijor, fixed the
+  same day. **F2** `receiver_type_hint` is stamped by six analyzers and read by
+  two linkers but by neither `io_boundary.py` nor `taint.py`, the two that
+  guess the type from capitalisation (Step 4.5 five-shape trace: zero hits at
+  that seam) → WI-monul. **F3** INV-fofoj's java half is a NAME-slot defect
+  (`name="System.in"` misses, `name="in"` hits `java.lang.System.in`) — the
+  same defect as INV-januj, which was filed python-only. **F4** that defect is
+  cross-language: 3,515 refs re-state the qualifier, 299 miss a row they would
+  otherwise hit, 58 genuinely new boundaries (a lower bound; `System.out` ×51).
+  **F5** INV-kotob confirmed and sized (26%), its emission site located, and the
+  matcher's Swift carve-out already encodes the defect as a supported case.
+  Audit-level finding: `edge_type`, `Symbol.kind` and `evidence_type` each have
+  an axiom, a registry, a consumer helper and a drift linter; **the module key
+  had none of the four.** Action: ADR-0050 (io-boundary axis) and ADR-0051
+  (module-key axis: the slot names the STATIC OWNER PATH — namespace or type —
+  never a receiver variable, a set, or a sentinel), landed the same day as
+  WI-kurod / WI-kijup / WI-mubup (`module_key_axis.py`,
+  `scripts/check-io-boundary-drift`, the axis lint widened to `io_boundary.py`,
+  the FALSE `free-text` declaration on `ExternalRef.module_path` retired);
+  WI-livar ruled (a) and closed; WI-zozun (arm 2 decides by parent agreement,
+  not case value) landed 09-02; WI-virav holds the annotation of the ~18-item
+  pile against the axiom. Three instrument errors are recorded in the write-up
+  (a vacuous coldness assertion, a sentinel classifier that swept 929
+  `<string.h>` headers into "sentinel", an over-claim about WI-lipis's java arm
+  refuted by probe). **Process finding, the mirror of 2026-08-20's:** this
+  audit left the full trail — write-up, ADRs, items — and never ran
+  `scripts/concept-audit-record`, so the state stayed on `call_construct`/08-27
+  and the cadence hook fired at "104 commits" on 09-03 when the true count was
+  31. The record was written retroactively on 2026-09-03 with the audit's own
+  SHA and the write-up's mtime, not the recording commit's. A trail without
+  bookkeeping over-fires the hook; bookkeeping without a trail silences it —
+  the recorder guards the second, nothing yet guards the first. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
