@@ -1,0 +1,20 @@
+- op: create  # ba87
+  at: '2026-09-03T07:23:53Z'  # ba87
+  by: agent  # ba87
+  actor: jgstern_agent  # ba87
+  clock: 1  # ba87
+  nonce: ba87  # ba87
+  data:  # ba87
+    kind: work_item  # ba87
+    title: "ci-debug logs <step> searches only the first status's pipeline, so a step the per-step reader LISTS on a sibling workflow (the cron-only self-claims-gate) cannot be FETCHED by name and falls back to the wrong transcript"  # ba87
+    status: todo_hard  # ba87
+    priority: 2  # ba87
+    parent:  # ba87
+    tags:  # ba87
+    - ci  # ba87
+    isbefore: []  # ba87
+    duplicate_of: []  # ba87
+    not_duplicate_of: []  # ba87
+    pr_ref:  # ba87
+    description: "OBSERVED 2026-09-03 05:45Z, on dev 8955d9a22b (the INV-bofab fix commit).\n`ci-debug status 8955d9a2` lists TWO statuses on the commit, each with its\nsteps rendered by the per-step reader (INV-bozid, PR #731):\n\n  ci/woodpecker/push/woodpecker: 9 steps (git, lint, mypy, audit, hook-tests,\n                                 prepare-git, build-grammars, verify-generated,\n                                 pytest) -- all OK\n  ci/woodpecker/cron/full-suite: 7 steps (git, prepare-git, build-grammars,\n                                 test-all-packages, self-tree-validation,\n                                 self-claims-gate, test-agent-infra) -- all OK\n                                 (pipeline 2206, a full-suite run the owner\n                                 triggered by hand after the merge)\n\n`ci-debug logs self-claims-gate 8955d9a2` then reports:\n\n  Nothing named 'self-claims-gate' on this commit -- no gate and no step by\n  that name. Showing 'ci/woodpecker/push/woodpecker' INSTEAD.\n\nand prints the push pipeline's transcript (an apt-get + pytest run). The\nfallback is honestly labelled -- that part of the design works -- but the\nclaim \"no step by that name\" is FALSE: the step exists, on the second\nstatus's pipeline, and `status` had just listed it.\n\nTHE MECHANISM (to confirm in scripts/lib/github-api.sh::_github_fetch_job_log):\nthe step-name search runs against ONE status's pipeline (the first, or the\nfirst failed) rather than every status on the commit. A step that lives on a\nsibling workflow -- exactly the cron-only gate this whole arc is about -- is\nunreachable by name, so the per-step reader can LIST a step whose transcript\nthe log fetcher cannot FETCH. Listing and fetching disagree about what exists.\n\nWHY IT MATTERS. INV-bofab's closure needed the self-claims-gate transcript to\nconfirm the green was \"OK -- 18 claims unchanged\" rather than vacuous; the\nstep's OK is non-vacuous by construction of scripts/check-self-claims (exit 2\non infra failure, non-zero on drift), so the closure stands on cron-status --\nbut the next reader will not always have that construction argument, and a\ngate whose transcript is unreachable by name is the addressing failure\nINV-bozid closed, back one level down.\n\nFIX SHAPE. Search every status on the commit for the named step (context\nname first, then any workflow's step name), fetch the log from the pipeline\nthat owns it, and keep the honest fallback for the genuinely-absent case.\nPin with a test in tests/test_ci_debug_github.py beside TestStatusNamesEachStep:\ntwo statuses, the step on the second, `logs <step>` returns the second's\ntranscript and never the fallback line."  # ba87
+    fields: {}  # ba87
