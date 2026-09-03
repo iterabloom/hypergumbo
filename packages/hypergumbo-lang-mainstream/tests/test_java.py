@@ -4999,13 +4999,22 @@ public class Wrong {
         must do exactly what it did before. A receiver with no entry in
         ``var_types`` has no type evidence, and manufacturing one would be the
         bare-name category error this whole area is trying to stop.
+
+        The receiver is a LAMBDA parameter: it is the one binding form in
+        valid Java that declares no type. (This fixture used ``Object o``,
+        which only looked untyped because ``Object`` was never in
+        ``imports``; INV-vugon reads the JLS 7.3 implicit import, so that
+        receiver now correctly names ``java.lang.Object`` -- see
+        ``test_java_declared_receiver_types``.)
         """
         from hypergumbo_lang_mainstream.java import analyze_java
 
         (tmp_path / "Sites.java").write_text("""
+import java.util.List;
+
 public class Sites {
-    public static void go(Object o) {
-        o.hashCode();
+    public static void go(List<Object> xs) {
+        xs.forEach(o -> o.hashCode());
     }
 }
 """)
