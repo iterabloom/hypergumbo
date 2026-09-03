@@ -114,6 +114,17 @@ GO_DEFERRED_ROWS: frozenset[tuple[str, str]] = frozenset({
 
 #: The go rows that MUST NOT move: each returns data chosen by the far side.
 GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
+    # WI-suhug: the bufio rows INV-bagok withheld until a target kind could
+    # name a network stream. They are TRANSFERS (the read happens in the
+    # scope that built the handle -- measurement 0010's finding), rowed under
+    # net_recv beside their fs_read / ipc_recv twins and selected only by a
+    # ``net_stream`` stamp; an unstamped call keeps its declared fallback.
+    ("bufio", "NewScanner"), ("bufio", "NewReader"),
+    ("bufio.Reader", "ReadString"), ("bufio.Reader", "ReadBytes"),
+    ("bufio.Reader", "ReadLine"), ("bufio.Reader", "ReadRune"),
+    ("bufio.Reader", "ReadSlice"), ("bufio.Reader", "Read"),
+    ("bufio.Scanner", "Scan"), ("bufio.Scanner", "Text"),
+    ("bufio.Scanner", "Bytes"),
     # Genuine transfers: each returns data chosen by the far side.
     ("net.Listener", "Accept"), ("net.Conn", "Read"),
     ("syscall", "Accept"), ("syscall", "Accept4"),
@@ -429,7 +440,7 @@ class TestTheGoRetag:
         moved = {(p.module, p.name) for p in cat.primitives
                  if p.boundary in ("net_listen", "net_recv")}
         assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
-        assert len(moved) == 31
+        assert len(moved) == 42  # 31 + WI-suhug's 11 bufio net_recv rows
 
     def test_the_f2_predicate_now_comes_back_empty_for_go(self) -> None:
         """INV-kanuk's own repro, and it is EMPTY NOW -- which it was not.

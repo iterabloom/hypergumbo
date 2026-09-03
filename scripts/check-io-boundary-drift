@@ -17,7 +17,8 @@ ADR-0050 derived io_boundary.py's five vocabulary constants from the registry,
 the live tree contains no such set, so this script exits 0 over an empty
 collection. It guards against a future hand-rolled set; it does NOT verify the
 dict-shaped consumers (``AUTO_SOURCE_LABEL_MAP``,
-``DEFERRED_CROSSING_SHADOWS``, ``_READ_TARGET_KIND_BOUNDARY``), which the
+``DEFERRED_CROSSING_SHADOWS``, ``_READ_TARGET_KIND_BOUNDARY``,
+``_WRITE_TARGET_KIND_BOUNDARY``), which the
 property test asserts explicitly instead.
 
 Exit codes:

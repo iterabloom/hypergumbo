@@ -68,6 +68,7 @@ from .io_boundary import (
     read_boundary_for_target_kind,
     strip_redundant_module_qualifier,
     target_kind_discriminated_primitives,
+    target_kind_fallback_boundaries,
     target_kinds_cross_no_boundary,
 )
 from .ir import symbol_name_slot, symbol_path_slot
@@ -153,6 +154,17 @@ class TaintSource:
     # Empty means UNCONDITIONAL, which is what every other source is and must
     # stay: ``scanf`` reads stdin whatever its arguments say.
     requires_target_kind: str = ""
+    # INV-minol: True on the ONE entry of a target-kind-gated primitive that
+    # an ABSTAINING stamp (absent, unknown, or disagreeing across collapsed
+    # sites) still admits -- the entry derived from the row ``classify_call``
+    # falls back to (INV-fatok's ``abstains_to``, else the first declared).
+    # Without it the matcher admitted only unconditional entries on an
+    # abstention, and an unstamped ``bufio.NewScanner`` -- fallback
+    # ``ipc_recv`` on INV-bagok's own measurement -- minted nothing while
+    # ``io-boundaries`` tagged the same edge ``ipc_recv``: one catalogue, two
+    # answers, 19 lost sources on six repositories. Set by the derivation from
+    # the same reordered row list the classifier reads, never by hand.
+    abstention_fallback: bool = False
 
     @property
     def qualified_name(self) -> str:
@@ -183,6 +195,18 @@ class TaintSink:
             takes no mode, so gating it on mode evidence would delete every
             real deletion from the violation set — a false negative in a
             security gate, the expensive direction.
+        requires_target_kind: WI-suhug, the mirror of ``TaintSource``'s field
+            on the WRITE side. Non-empty only for a sink derived from a
+            primitive declared under two or more write boundaries -- go's
+            ``io.WriteString`` is ``fs_write`` to a file, ``ipc_send`` to a
+            child's ``StdinPipe``, ``net_send`` to a connection and ``logging``
+            to stderr, and which one depends on what its first argument was
+            bound from. The stamp is resolved in the WRITE direction
+            (``std_stream`` is ``logging`` here and ``ipc_recv`` for a source).
+        abstention_fallback: INV-minol; see ``TaintSource``. True on the sink
+            derived from the row an unstamped call falls back to, so that an
+            abstention keeps TODAY'S sink (``host_fs`` for ``io.WriteString``,
+            ``logging`` for ``fmt.Fprintf``) instead of deleting the finding.
     """
 
     zone: str
@@ -191,6 +215,8 @@ class TaintSink:
     name: str
     kind: str  # "function", "method", or "attribute"
     requires_mode: str = ""
+    requires_target_kind: str = ""
+    abstention_fallback: bool = False
 
     @property
     def qualified_name(self) -> str:
@@ -918,6 +944,26 @@ def _build_callee_index(
     return idx
 
 
+def _target_kind_admits(entry: object, needed: Optional[str]) -> bool:
+    """Does the stamp's resolution in this entry's direction admit ``entry``?
+
+    Three admissions and nothing else: an UNCONDITIONAL entry (no
+    ``requires_target_kind`` -- every entry the catalogue does not gate,
+    including sanitizers, which carry neither field); a gated entry whose
+    boundary the stamp RESOLVED to; and, when the stamp ABSTAINS
+    (``needed is None``: no stamp, an unknown kind, a non-crossing kind, or
+    collapsed sites that disagree), the primitive's single
+    ``abstention_fallback`` entry. ``getattr`` because the index is typed
+    ``TaintEntry`` and sanitizer entries carry neither attribute.
+    """
+    required = getattr(entry, "requires_target_kind", "")
+    if not required:
+        return True
+    if needed is None:
+        return bool(getattr(entry, "abstention_fallback", False))
+    return bool(required == needed)
+
+
 def _match_propagation_entry(
     index: Mapping[str, Sequence[TaintEntry]],
     edge_dst: str,
@@ -1027,10 +1073,22 @@ def _match_propagation_entry(
     # not recover keeps today's classification instead of minting on a guess.
     # That is the conservative direction HERE because this seam ADDS findings,
     # the mirror of ``_source_call_can_mint_taint``, which removes them.
-    _needed_kind = resolve_target_kind_across_sites(io_target_kinds)
+    #
+    # INV-minol / WI-suhug: an abstention admits the primitive's FALLBACK entry
+    # too -- the one derived from the row ``classify_call`` selects for an
+    # unstamped call -- so the two consumers of one catalogue give one answer.
+    # The stamp is resolved in the ENTRY'S direction: a source reads (a
+    # ``std_stream`` mints ``ipc_recv``), a sink writes (the same
+    # ``std_stream`` is a ``logging`` sink).
+    _needed_read = resolve_target_kind_across_sites(io_target_kinds)
+    _needed_write = resolve_target_kind_across_sites(
+        io_target_kinds, direction="write",
+    )
     hits = [
         h for h in hits
-        if getattr(h, "requires_target_kind", "") in ("", _needed_kind)
+        if _target_kind_admits(
+            h, _needed_write if isinstance(h, TaintSink) else _needed_read,
+        )
     ]
     if not hits:
         return None
@@ -1744,19 +1802,22 @@ def _derive_auto_imports_from_io_primitives(
         # (module, name, kind) for INV-kaduh's reason -- a short name is shared
         # across modules and gating on it would silence an unrelated row.
         target_kind_gated = target_kind_discriminated_primitives(catalog)
+        # INV-minol: which row of each gated primitive an ABSTAINING stamp
+        # falls back to, read off the same reordered list the classifier
+        # reads so the two consumers cannot disagree about "first".
+        target_kind_fallback = target_kind_fallback_boundaries(catalog)
         for prim in catalog.primitives:
+            key = (prim.module, prim.name, prim.kind)
+            gated_boundary = prim.boundary if key in target_kind_gated else ""
+            is_fallback = target_kind_fallback.get(key) == prim.boundary
             if prim.boundary in AUTO_SOURCE_LABEL_MAP:
                 sources_by_lang[lang].append(TaintSource(
                     taint_label=AUTO_SOURCE_LABEL_MAP[prim.boundary],
                     module=prim.module,
                     name=prim.name,
                     kind=prim.kind,
-                    requires_target_kind=(
-                        prim.boundary
-                        if (prim.module, prim.name, prim.kind)
-                        in target_kind_gated
-                        else ""
-                    ),
+                    requires_target_kind=gated_boundary,
+                    abstention_fallback=is_fallback,
                     # The map above is many-to-one: net_recv, ipc_recv and
                     # db_read all become `untrusted_input`. Carry the
                     # boundary so the collapse is reversible downstream
@@ -1772,10 +1833,12 @@ def _derive_auto_imports_from_io_primitives(
                     name=prim.name,
                     kind=prim.kind,
                     requires_mode=(
-                        prim.boundary
-                        if (prim.module, prim.name, prim.kind) in mode_gated
-                        else ""
+                        prim.boundary if key in mode_gated else ""
                     ),
+                    # WI-suhug: the write-side twin of the source field above,
+                    # resolved in the WRITE direction at match time.
+                    requires_target_kind=gated_boundary,
+                    abstention_fallback=is_fallback,
                 ))
 
     return dict(sources_by_lang), dict(sinks_by_lang), ambiguous_by_lang

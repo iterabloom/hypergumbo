@@ -129,9 +129,11 @@ func fromParam(r *strings.Reader) {
 
     def test_a_network_conn_is_not_claimed_as_a_file(self, tmp_path) -> None:
         """NON-DESTRUCTION on the source side. `net.Dial` returns a Conn; a
-        read off it IS a network crossing and must keep minting. Nothing is
-        stamped, so the catalogue's `ipc_recv` row still decides — the
-        conservative direction."""
+        read off it IS a network crossing and must keep minting. Before
+        WI-suhug nothing was stamped and the catalogue's `ipc_recv` row
+        decided; now the vocabulary names a network stream and the stamp
+        selects the `net_recv` row -- still minting, and now at the boundary
+        it actually crosses."""
         edges = _edges(tmp_path, """
 func fromConn(addr string) {
 \tc, _ := net.Dial("tcp", addr)
@@ -139,7 +141,7 @@ func fromConn(addr string) {
 \t_ = sc
 }
 """)
-        assert _target_kinds(edges, "NewScanner") == []
+        assert _target_kinds(edges, "NewScanner") == ["net_stream"]
 
     def test_the_last_binding_before_the_call_wins(self, tmp_path) -> None:
         """REBINDING. A name bound twice takes the binding that reaches the

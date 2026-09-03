@@ -84,10 +84,10 @@ fs_read:
       started fs_read-only (a false negative) where this started ipc_recv-only
       (a false positive).
 
-      NO net_recv ROW, deliberately: `bufio.NewScanner(conn)` really is a
-      network receive, but no target kind names a network stream, so such a row
-      could never be SELECTED -- an unreachable declaration making the
-      catalogue look more capable than it is. The vocabulary has to grow first.
+      The net_recv row exists since WI-suhug, when `net_stream` joined the
+      target-kind vocabulary (it was withheld before that because no kind
+      could select it -- an unreachable declaration would have made the
+      catalogue look more capable than it is). See it under net_recv.
   - module: bufio.Reader
     methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
     boundary_ruling: call_site_undecidable
@@ -147,6 +147,50 @@ fs_write:
     functions: [WriteFile, TempFile, TempDir]
   - module: io
     functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: >-
+      WI-suhug. The first argument is ANY io.Writer, so WHICH boundary the
+      write crosses is a property of that argument -- INV-zumin class (b), the
+      WRITE-side twin of INV-bagok's bufio rows -- and the row was fixed at
+      fs_write: measurement 0012's entire VACUOUS class (gocryptfs writing a
+      plaintext to cmd.StdinPipe(), a pipe to a child, reported as a
+      host-filesystem crossing). Declared under fs_write, ipc_send, net_send
+      and logging; go.py stamps `io_target_kind` from the writer argument
+      (os.Stdout/os.Stderr -> std_stream -> logging per WI-dutah; an os.Create
+      handle -> host_path -> fs_write; cmd.Std*Pipe()/os.Pipe() -> pipe ->
+      ipc_send; a net.Conn / http.ResponseWriter -> net_stream -> net_send; a
+      bytes.Buffer / strings.Builder / hash / io.Discard crosses nothing), and
+      `_narrow_by_target_kind` selects the row in the WRITE direction.
+
+      `abstains_to: fs_write` IS TODAY'S ANSWER (INV-fatok): an unstamped call
+      -- an io.Writer or *os.File parameter, a struct field, a value the file
+      does not bind -- classifies exactly as it did before these rows, and
+      keeps its host_fs sink (INV-minol: the taint entry derived from this row
+      is the abstention fallback). Sized on six Go repositories before the
+      change: 8 `io.WriteString` call edges (the METHOD forms
+      `strings.Builder.WriteString` 435 / `bytes.Buffer.WriteString` 62 /
+      `bufio.Writer.WriteString` 10 / `os.File.WriteString` 7 are different
+      primitives; the first two are in-memory and correctly unrowed, the last
+      two are NOT rowed and are disclosed here, not claimed). io.Copy is
+      DEFERRED: fs_read + fs_write is a mode-discriminated pair and would enter
+      the mode seam; its row's note says so.
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: >-
+      WI-suhug: the same mechanism and fallback rule as `io.WriteString` (see
+      that row under fs_write); `abstains_to: logging` because that is what
+      every Fprint* call classified as before the rows existed. Sized on six
+      Go repositories: 1,940 Fprint* call edges, first argument os.Stdout /
+      os.Stderr at 913, a bare identifier at 749 (172 io.Writer parameters,
+      81 *bufio.Writer and 68 *tabwriter.Writer parameters -- abstain; ~210
+      locals bound to tabwriter.NewWriter / bufio.NewWriter over stdout, a
+      buffer or a file -- followed through the wrapper), &buf over a declared
+      strings.Builder / bytes.Buffer at 105, a struct field at 166 (abstains).
+      Print/Println/Printf write stdout unconditionally and stay single-row
+      below.
   - module: testing.T
     methods: [TempDir]
     notes: "Go testing stdlib — creates temp dir scoped to test"
@@ -159,6 +203,16 @@ fs_write:
 net_send:
   - module: net
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the net_send twin of the fs_write row (see it); selected by a `net_stream` stamp -- a net.Conn, *tls.Conn or http.ResponseWriter writer."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the net_send twin of the logging row (see it)."
   - module: net.Conn
     methods: [Write]
   - module: crypto/tls
@@ -191,6 +245,30 @@ net_recv:
       socket/bind/listen while keeping accept.
   - module: net.Conn
     methods: [Read]
+  - module: bufio
+    functions: [NewScanner, NewReader]
+    boundary_ruling: call_site_undecidable
+    abstains_to: ipc_recv
+    notes: >-
+      WI-suhug: the row INV-bagok's note withheld "until the vocabulary
+      grows". It has: `net_stream` names a connection (a net.Conn / *tls.Conn
+      parameter by type, `c, _ := ln.Accept()`, `net.Dial(...)` by binding),
+      and `_READ_TARGET_KIND_BOUNDARY` maps it to net_recv, so
+      `bufio.NewScanner(conn)` -- alertmanager's TLS connection reader, caddy's
+      redirect listener -- selects THIS row and mints untrusted_input from a
+      network receive rather than an IPC one. Same fallback as its siblings:
+      an unstamped wrapper is still ipc_recv (INV-fatok; and, since INV-minol,
+      that fallback mints on the taint side too).
+  - module: bufio.Reader
+    methods: [ReadString, ReadBytes, ReadLine, ReadRune, ReadSlice, Read]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: "WI-suhug: the net_recv twin of the fs_read / ipc_recv read rows (WI-vutav), selected by a `net_stream` stamp on the receiver's binding. Fallback unchanged: fs_read."
+  - module: bufio.Scanner
+    methods: [Scan, Text, Bytes]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_read
+    notes: "WI-suhug: `bufio.Reader`'s sibling, same mechanism, same fallback."
   - module: syscall
     functions: [Accept, Accept4, Recvfrom, Recvmsg]
     notes: >-
@@ -287,11 +365,31 @@ host_info_read:
 ipc_send:
   - module: os
     attributes: [Stdout, Stderr]
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the ipc_send twin of the fs_write row (see it); selected by a `pipe` stamp -- cmd.StdinPipe(), os.Pipe(). The 0012 gocryptfs row lands here."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the ipc_send twin of the logging row (see it)."
 
 logging:
   - module: fmt
-    functions: [Print, Println, Printf, Fprint, Fprintln, Fprintf]
-    notes: "Console output — logging, not IPC"
+    functions: [Print, Println, Printf]
+    notes: "Console output — logging, not IPC. Unconditional: these write os.Stdout whatever their arguments say."
+  - module: fmt
+    functions: [Fprint, Fprintln, Fprintf]
+    boundary_ruling: call_site_undecidable
+    abstains_to: logging
+    notes: "WI-suhug: the row an UNSTAMPED Fprint* falls back to -- today's answer -- and the one a `std_stream` stamp (os.Stdout, os.Stderr, a tabwriter over either) selects. The mechanism and the sizing are on the fs_write row of the same functions."
+  - module: io
+    functions: [WriteString]
+    boundary_ruling: call_site_undecidable
+    abstains_to: fs_write
+    notes: "WI-suhug: the logging twin of the fs_write row (see it); selected by a `std_stream` stamp. WI-dutah: terminal output is logging, not IPC."
   - module: log
     functions: [Print, Println, Printf, Fatal, Fatalln, Fatalf, Panic, Panicln, Panicf]
     notes: "Go stdlib log package — writes to stderr by default"

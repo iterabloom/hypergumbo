@@ -158,8 +158,8 @@ rather than papered over:
   the ADR-0023 silent-bug shape and asserts the scanner reports it, so a broken
   scanner and a clean tree are distinguishable.
 - The vocabulary's *real* consumers are dicts and derived frozensets, which the
-  set-walker structurally cannot see. All three — `AUTO_SOURCE_LABEL_MAP`,
-  `DEFERRED_CROSSING_SHADOWS`, `_READ_TARGET_KIND_BOUNDARY` — get explicit
+  set-walker structurally cannot see. All four — `AUTO_SOURCE_LABEL_MAP`,
+  `DEFERRED_CROSSING_SHADOWS`, `_READ_TARGET_KIND_BOUNDARY` and its write-direction twin `_WRITE_TARGET_KIND_BOUNDARY` (WI-suhug) — get explicit
   registry-membership assertions instead. A name-filtered scan that silently
   missed them would be worse than no gate, because it would look like coverage.
 

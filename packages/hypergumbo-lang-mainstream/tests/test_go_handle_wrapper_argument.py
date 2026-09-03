@@ -133,11 +133,14 @@ func f(h *os.File) {
 
 
 def test_an_unrelated_constructor_is_not_stamped(tmp_path: Path) -> None:
-    """CONTROL on the wrapper set. ``bufio.NewWriter`` is not a read wrapper.
+    """CONTROL on the target-argument table. ``bufio.NewReaderSize`` is not in it.
 
     It wraps an in-memory buffer here, so a stamp keyed on the ARGUMENT alone
-    would mark it ``in_memory`` and a source-side gate would then be reasoning
-    about a WRITER. The wrapper set is consulted first for exactly that reason.
+    would mark it ``in_memory``; the table is consulted first for exactly that
+    reason, and the rows disclose this constructor as unstamped. (The control
+    used to be ``bufio.NewWriter``; WI-suhug put that one IN the table so a
+    local bound to it can be followed into its target -- its own stamp is
+    inert, since no catalogue rows it.)
     """
     kinds = _kinds(tmp_path, '''package main
 
@@ -147,8 +150,8 @@ import (
 )
 
 func f(b *bytes.Buffer) {
-	w := bufio.NewWriter(b)
-	_ = w
+	r := bufio.NewReaderSize(b, 4096)
+	_ = r
 }
 ''')
     assert list(kinds.values()) == [None]

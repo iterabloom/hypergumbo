@@ -1486,6 +1486,10 @@ class IoBoundaryCatalog:
                     ))
 
         primitives = _apply_abstention_targets(language, primitives)
+        # WI-suhug: a primitive gated in BOTH directions is refused here, at
+        # load, so the ValueError names the catalogue rather than surfacing
+        # from inside a match on some repository.
+        _target_kind_gated_directions(primitives)
 
         ambiguous = frozenset(data.get("ambiguous_names", []))
 
@@ -2366,24 +2370,78 @@ _READ_TARGET_KIND_BOUNDARY: Final[Mapping[str, str]] = {
     # read depends on what is stored.
     "host_path": "fs_read",
     "std_stream": "ipc_recv",
+    # WI-suhug: the two kinds the write side needed, and the read side gets
+    # them at the same moment because the key vocabulary is ONE set (pinned by
+    # ``test_the_two_maps_share_one_key_vocabulary``). A ``pipe`` is a channel
+    # whose far end is another process (``cmd.StdoutPipe()``, ``os.Pipe()``);
+    # a ``net_stream`` is a connection or a response writer. INV-bagok's own
+    # note withheld go's ``net_recv`` rows until a kind could name a network
+    # stream; this is that kind.
+    "pipe": "ipc_recv",
+    "net_stream": "net_recv",
     # ``unresolved`` is deliberately absent: a variable target is a real read
     # to a place we cannot name, so the catalogue's own row must decide.
 }
 
+#: For a call site that WRITES, the boundary each target kind actually crosses.
+#:
+#: The twin of :data:`_READ_TARGET_KIND_BOUNDARY`, and the reason that map is
+#: not simply ``TARGET_KIND_BOUNDARY``: ``host_path`` is ``fs_write`` here and
+#: ``fs_read`` there, ``std_stream`` is ``logging`` here (WI-dutah, shipped for
+#: c / rust / js / elixir: terminal output is not IPC -- c.yaml's
+#: ``unistd.write`` note that calls ``write(STDOUT_FILENO)`` an ``ipc_send`` is
+#: the stale sibling, disclosed on INV-nular, not followed) and ``ipc_recv``
+#: there. WI-suhug: measurement 0012's entire vacuous class was
+#: ``io.WriteString`` / ``fmt.Fprint*`` rowed at ONE fixed boundary although
+#: their first argument is any ``io.Writer`` -- gocryptfs writing a plaintext
+#: to a child's ``StdinPipe`` reported as a host-filesystem crossing.
+#:
+#: The non-crossing kinds are answered from :data:`_NON_CROSSING_TARGET_KINDS`
+#: at call time, exactly as the read map does and for the same reason.
+_WRITE_TARGET_KIND_BOUNDARY: Final[Mapping[str, str]] = {
+    "host_path": "fs_write",
+    "std_stream": "logging",
+    "pipe": "ipc_send",
+    "net_stream": "net_send",
+}
 
-def read_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
-    """``(known, boundary)`` for a READ at ``kind``.
+#: Direction -> the map that answers it. The two functions below and every
+#: resolver take the direction from HERE, so a third direction (or a renamed
+#: map) has one place to land. The name carries neither ``BOUNDAR`` nor
+#: ``KIND`` on purpose: both axis-drift scanners select dict literals by name
+#: filter and would read the direction keys as off-axis values.
+_TARGET_MAP_BY_DIRECTION: Final[Mapping[str, Mapping[str, str]]] = {
+    "read": _READ_TARGET_KIND_BOUNDARY,
+    "write": _WRITE_TARGET_KIND_BOUNDARY,
+}
+
+
+def _boundary_for_target_kind(
+    kind: str, direction: str,
+) -> tuple[bool, Optional[str]]:
+    """``(known, boundary)`` for a call in ``direction`` at ``kind``.
 
     ``known=False`` means this vocabulary has no opinion and the caller must
     fall back to the catalogue row -- the only safe default in a direction that
-    removes findings. ``known=True, boundary=None`` means the read crosses
+    removes findings. ``known=True, boundary=None`` means the call crosses
     nothing at all.
     """
     if kind in _NON_CROSSING_TARGET_KINDS:
         return True, None
-    if kind in _READ_TARGET_KIND_BOUNDARY:
-        return True, _READ_TARGET_KIND_BOUNDARY[kind]
+    table = _TARGET_MAP_BY_DIRECTION[direction]
+    if kind in table:
+        return True, table[kind]
     return False, None
+
+
+def read_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+    """``(known, boundary)`` for a READ at ``kind``; see :func:`_boundary_for_target_kind`."""
+    return _boundary_for_target_kind(kind, "read")
+
+
+def write_boundary_for_target_kind(kind: str) -> tuple[bool, Optional[str]]:
+    """``(known, boundary)`` for a WRITE at ``kind``; see :func:`_boundary_for_target_kind`."""
+    return _boundary_for_target_kind(kind, "write")
 
 
 def call_site_target_kinds(
@@ -2490,12 +2548,27 @@ def _narrow_by_mode(
 _READ_BOUNDARY_VALUES: Final[frozenset[str]] = frozenset(
     _READ_TARGET_KIND_BOUNDARY.values()
 )
+_WRITE_BOUNDARY_VALUES: Final[frozenset[str]] = frozenset(
+    _WRITE_TARGET_KIND_BOUNDARY.values()
+)
+_GATING_VALUES_BY_DIRECTION: Final[Mapping[str, frozenset[str]]] = {
+    "read": _READ_BOUNDARY_VALUES,
+    "write": _WRITE_BOUNDARY_VALUES,
+}
 
 
 def resolve_target_kind_across_sites(
     target_kinds: Optional[Sequence[str]],
+    *,
+    direction: str = "read",
 ) -> Optional[str]:
-    """The read boundary EVERY collapsed call site agrees on, or ``None``.
+    """The boundary EVERY collapsed call site agrees on, or ``None``.
+
+    ``direction`` is the ASKER'S: a source reads, a sink writes, and a
+    catalogue row is narrowed in the direction its own boundaries name
+    (:func:`_target_kind_gated_directions`). The default is ``read`` because
+    that was the only direction for the seam's first year and every caller
+    written then meant it.
 
     ALL, NOT ANY, AND THE QUANTIFIER IS THE DESIGN. Its sibling
     :func:`resolve_mode_boundary_across_sites` picks ``fs_write`` when ANY site
@@ -2520,7 +2593,7 @@ def resolve_target_kind_across_sites(
         return None
     wanted: Optional[str] = None
     for kind in target_kinds:
-        known, boundary = read_boundary_for_target_kind(kind)
+        known, boundary = _boundary_for_target_kind(kind, direction)
         if not known or boundary is None:
             return None
         if wanted is None:
@@ -2530,29 +2603,32 @@ def resolve_target_kind_across_sites(
     return wanted
 
 
-def _target_kind_discriminated_keys(
+def _target_kind_gated_directions(
     primitives: Iterable[IoPrimitive],
-) -> frozenset[tuple[str, str, str]]:
-    """Primitives whose boundary a STREAM ARGUMENT decides.
+) -> dict[tuple[str, str, str], str]:
+    """Each primitive whose boundary a STREAM ARGUMENT decides, with its direction.
 
-    THE RULE IS "TWO OR MORE READ BOUNDARIES", and it earns its shape by what
-    it EXCLUDES rather than by what it admits:
+    THE RULE IS "TWO OR MORE BOUNDARIES OF ONE DIRECTION", and it earns its
+    shape by what it EXCLUDES rather than by what it admits:
 
-    * ``builtins.open`` is ``fs_read`` + ``fs_write``. ``fs_write`` is not a
-      read boundary, so the intersection is one member and this seam never
-      touches it -- the mode seam keeps it, and INV-rusof's fix stands. That
-      exclusion is a consequence of the rule, not a second clause bolted on,
-      which is why there is no reference to ``_mode_discriminated_keys`` here.
-    * ``bufio.NewScanner`` is ``ipc_recv`` alone. One row is not a choice, so
-      go's behaviour after WI-lipis's second deliverable is unchanged and its
-      target kinds keep reaching only the mint gate.
+    * ``builtins.open`` is ``fs_read`` + ``fs_write``: ONE of each direction,
+      so neither intersection reaches two and this seam never touches it --
+      the mode seam keeps it, and INV-rusof's fix stands. That exclusion is a
+      consequence of the rule, not a second clause bolted on, which is why
+      there is no reference to ``_mode_discriminated_keys`` here.
     * ``simultaneous`` primitives are excluded for INV-zumin's reason: both
       rows are true AT ONCE, so there is nothing to discriminate and dropping
       one would lose a real crossing.
+    * a primitive with two or more boundaries in BOTH directions is REFUSED,
+      not guessed: one stamp cannot say which direction it names. ``io.Copy``
+      rowed as fs_read+ipc_recv and fs_write+ipc_send is the shape, and it is
+      deferred on its row until the mode seam can say which end a site is.
+      The loader calls this so the refusal surfaces at load, never at match.
 
-    ``c.stdio.fgets`` (fs_read + ipc_recv) and ``c.unistd.read`` (fs_read +
-    ipc_recv + net_recv) are what remains, which is the population WI-lipis and
-    INV-vaduk shape 3 name.
+    ``c.stdio.fgets`` (fs_read + ipc_recv), ``c.unistd.read`` (three read
+    boundaries), go's ``bufio`` family, and -- since WI-suhug -- go's
+    ``io.WriteString`` / ``fmt.Fprint*``, c's ``unistd.write`` and haskell's
+    ``hPut*`` (two or more WRITE boundaries) are what remains.
     """
     by_primitive: dict[tuple[str, str, str], set[str]] = {}
     simultaneous: set[tuple[str, str, str]] = set()
@@ -2561,12 +2637,36 @@ def _target_kind_discriminated_keys(
         by_primitive.setdefault(key, set()).add(p.boundary)
         if p.simultaneous:
             simultaneous.add(key)
-    return frozenset(
-        key
-        for key, boundaries in by_primitive.items()
-        if len(boundaries & _READ_BOUNDARY_VALUES) >= 2
-        and key not in simultaneous
-    )
+    gated: dict[tuple[str, str, str], str] = {}
+    for key, boundaries in by_primitive.items():
+        if key in simultaneous:
+            continue
+        directions = [
+            direction
+            for direction, values in _GATING_VALUES_BY_DIRECTION.items()
+            if len(boundaries & values) >= 2
+        ]
+        if len(directions) > 1:
+            module, name, _kind = key
+            raise ValueError(
+                f"{module}.{name} is declared under two or more boundaries "
+                f"in both the read and the write direction "
+                f"({sorted(boundaries)}); one io_target_kind stamp cannot "
+                f"say which direction a site is. Split it into two "
+                f"primitives, declare it simultaneous, or leave it at one "
+                f"boundary per direction until the mode seam can tell."
+            )
+        if directions:
+            gated[key] = directions[0]
+    return gated
+
+
+def _target_kind_discriminated_keys(
+    primitives: Iterable[IoPrimitive],
+) -> frozenset[tuple[str, str, str]]:
+    """The keys of :func:`_target_kind_gated_directions`, for callers that
+    only need membership (the taint derivation)."""
+    return frozenset(_target_kind_gated_directions(primitives))
 
 
 def _narrow_by_target_kind(
@@ -2601,16 +2701,25 @@ def _narrow_by_target_kind(
     way -- stamping ``io_mode`` for C moved nothing until this same arm was
     narrowed too, because a predicate is inert until every call site passes it.
     """
-    gated = _target_kind_discriminated_keys(hits)
+    gated = _target_kind_gated_directions(hits)
     if not gated:
         return list(hits)
-    wanted = resolve_target_kind_across_sites(target_kinds)
-    if wanted is None:
-        return list(hits)
-    return [
-        h for h in hits
-        if (h.module, h.name, h.kind) not in gated or h.boundary == wanted
-    ]
+    wanted_by_direction = {
+        direction: resolve_target_kind_across_sites(
+            target_kinds, direction=direction,
+        )
+        for direction in set(gated.values())
+    }
+    kept: list[IoPrimitive] = []
+    for h in hits:
+        direction = gated.get((h.module, h.name, h.kind))
+        if direction is None:
+            kept.append(h)
+            continue
+        wanted = wanted_by_direction[direction]
+        if wanted is None or h.boundary == wanted:
+            kept.append(h)
+    return kept
 
 
 def mode_spanned_boundaries(
@@ -2672,6 +2781,34 @@ def mode_discriminated_primitives(
     docstring enumerates from collapsing into one.
     """
     return _mode_discriminated_keys(catalog.primitives)
+
+
+def target_kind_fallback_boundaries(
+    catalog: IoBoundaryCatalog,
+) -> dict[tuple[str, str, str], str]:
+    """For each target-kind-gated primitive, the boundary an ABSTAINING call gets.
+
+    INV-minol. It is the FIRST of the primitive's rows in ``catalog.primitives``
+    -- which is the ``abstains_to`` row when one is declared, because
+    :func:`_apply_abstention_targets` moved it there at load, and the registry
+    order otherwise -- i.e. exactly the row ``classify_call`` selects when
+    ``_narrow_by_target_kind`` leaves the candidates untouched. Read off the
+    same reordered list rather than re-deriving it from ``abstains_to`` so the
+    two consumers cannot disagree about what "first" means.
+
+    The taint derivation marks the entry derived from this row
+    ``abstention_fallback``, which is what lets an unstamped
+    ``bufio.NewScanner`` keep minting (INV-bagok's chosen fallback) and an
+    unstamped ``io.WriteString`` keep its ``host_fs`` sink (today's answer)
+    while a stamp that resolves elsewhere still selects one row and one only.
+    """
+    gated = _target_kind_discriminated_keys(catalog.primitives)
+    fallback: dict[tuple[str, str, str], str] = {}
+    for p in catalog.primitives:
+        key = (p.module, p.name, p.kind)
+        if key in gated and key not in fallback:
+            fallback[key] = p.boundary
+    return fallback
 
 
 def target_kind_discriminated_primitives(

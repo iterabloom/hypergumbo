@@ -495,8 +495,9 @@ def find_axis_drift(repo_root: Path) -> list[str]:
     ``KNOWN_IO_BOUNDARIES`` was), a bare tuple (what ``CATALOG_BOUNDARY_TYPES``
     was), and dicts keyed or valued by boundary. All three live dict consumers
     -- ``taint.AUTO_SOURCE_LABEL_MAP``,
-    ``io_boundary.DEFERRED_CROSSING_SHADOWS`` and
-    ``io_boundary._READ_TARGET_KIND_BOUNDARY`` -- are asserted explicitly in
+    ``io_boundary.DEFERRED_CROSSING_SHADOWS``,
+    ``io_boundary._READ_TARGET_KIND_BOUNDARY`` and its write-direction twin
+    ``io_boundary._WRITE_TARGET_KIND_BOUNDARY`` -- are asserted explicitly in
     ``tests/test_io_boundary_types.py`` instead. Widening the shared walker to
     reach dicts and tuples would serve every axis and is filed separately; it
     is not done here because it changes machinery three other registries
@@ -524,5 +525,7 @@ def find_axis_drift(repo_root: Path) -> list[str]:
             # stays checked, which is the whole reason a dict's two sides are
             # collected separately rather than unioned.
             "_READ_TARGET_KIND_BOUNDARY:keys",
+            # WI-suhug: its write-direction twin, same shape, same rule.
+            "_WRITE_TARGET_KIND_BOUNDARY:keys",
         ),
     )

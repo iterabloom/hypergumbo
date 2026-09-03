@@ -893,6 +893,10 @@ def find_axis_drift(repo_root: Path) -> list[str]:
         # axis; exclude them by name.
         excluded_target_names=(
             "PROTOCOL_KINDS", "BRIDGE_KINDS", "_NON_CROSSING_TARGET_KINDS",
+            # ``_GO_TYPED_TARGET_KINDS`` (go.py) is the same io_target_kind
+            # value space, keyed by a Go TYPE (WI-suhug): a declared
+            # ``net.Conn`` writer is a ``net_stream`` target, not a Symbol.kind.
+            "_GO_TYPED_TARGET_KINDS",
             # --- surfaced by WI-jinuj's widening (dicts / tuples are now
             # collected). Each of these is 0/N conformant with this
             # registry, which is the test that separates a name collision
@@ -917,6 +921,9 @@ def find_axis_drift(repo_root: Path) -> list[str]:
             # are excluded here -- the io-boundary linter keeps the VALUES
             # side, which is its own axis.
             "_READ_TARGET_KIND_BOUNDARY",
+            # ``_WRITE_TARGET_KIND_BOUNDARY`` (io_boundary.py) is the same
+            # cross-axis map in the write direction (WI-suhug).
+            "_WRITE_TARGET_KIND_BOUNDARY",
             # ``_PHP_CONTAINER_KINDS`` KEYS are tree-sitter NODE types
             # (class_declaration, trait_declaration); its VALUES are real
             # Symbol.kinds and stay checked, which is what the per-side

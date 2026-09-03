@@ -311,3 +311,12 @@ def test_io_boundary_axis_is_wired_into_known_axes():
     axes = _known_axes()
     assert "io-boundary" in axes
     assert frozenset(axes["io-boundary"]()) == all_io_boundary_names()
+
+
+def test_write_target_kind_boundary_values_are_registered():
+    """WI-suhug: the write-direction twin of the map above, same blind spot."""
+    from hypergumbo_core.io_boundary import _WRITE_TARGET_KIND_BOUNDARY
+    from hypergumbo_core.io_boundary_types import all_io_boundary_names
+
+    unknown = set(_WRITE_TARGET_KIND_BOUNDARY.values()) - all_io_boundary_names()
+    assert not unknown, f"_WRITE_TARGET_KIND_BOUNDARY produces unknown: {unknown}"
