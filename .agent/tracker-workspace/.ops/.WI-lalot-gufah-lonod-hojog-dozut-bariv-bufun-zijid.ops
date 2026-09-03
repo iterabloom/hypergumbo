@@ -41,3 +41,19 @@
   clock: 4  # df6f
   nonce: df6f  # df6f
   message: "CORRECTION TO THE PRECEDING MESSAGE. One sentence in it is blank where three\nnames should be -- I passed the text through a double-quoted shell argument and\nthe backticked identifiers were command-substituted away. Edit-mode is\nhuman-gated, so the sentence is restored here rather than repaired in place:\n\n  \"THE SPLIT IS EXACTLY THE NAMING CONVENTION, so the residual is precise rather\n   than estimated. The heuristic requires a name starting with New, longer than\n   three characters, with an uppercase fourth character. New and Default are\n   neither, so gin.Default(), fiber.New() and echo.New() are untouched and still\n   inert.\"\n\nNothing else in that message is affected; the measured numbers and the\nsix-of-seven residual stand as written."  # df6f
+- op: update  # 608e
+  at: '2026-09-03T19:01:18Z'  # 608e
+  by: agent  # 608e
+  actor: jgstern_agent  # 608e
+  clock: 5  # 608e
+  nonce: 608e  # 608e
+  set: {}  # 608e
+  add:  # 608e
+    isbefore: [INV-muhij-dojud-jibab-bujud-guzub-nizat-hijub-gidoj]  # 608e
+- op: discuss  # f504
+  at: '2026-09-03T19:01:18Z'  # f504
+  by: agent  # f504
+  actor: jgstern_agent  # f504
+  clock: 6  # f504
+  nonce: f504  # f504
+  message: "Now the recorded owner of INV-muhij's blocker (isbefore edge added 2026-09-03).\nINV-muhij's remedy needs an ordering test anchored on the EFFECT call of a\ndeferred constructor (exec.Command at gocryptfs daemonize.go:46 is the\ncatalogued sink; the crossing is c.Start() at :51), and c.Start() emits\ngo:external:0-0:Start because nothing declares what exec.Command returns.\nRe-measured on dev 68db7bd6e5: ln.Accept(), conn.Read(), c.Start(),\nc.StdoutPipe() all land on `external`; an in-repo factory's return type\nresolves (WI-doluf). A go-first slice -- os/exec, net, bufio, net/http\nproducers -- is the increment that moves INV-muhij and INV-kanuk's accept-loop\nfixture; the consumption path already exists."  # f504

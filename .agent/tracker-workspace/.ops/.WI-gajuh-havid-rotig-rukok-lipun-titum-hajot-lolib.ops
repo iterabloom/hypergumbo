@@ -1,0 +1,23 @@
+- op: create  # 6fdc
+  at: '2026-09-03T19:24:48Z'  # 6fdc
+  by: agent  # 6fdc
+  actor: jgstern_agent  # 6fdc
+  clock: 1  # 6fdc
+  nonce: 6fdc  # 6fdc
+  data:  # 6fdc
+    kind: work_item  # 6fdc
+    title: "java: WI-kuroj's method_return_type_registry is built in java.py and never passed to _extract_edges (write-only; ADR-0006 Chained ❌) -- var w = F.makeWriter(); w.write() emits java:external across files; WI-doluf's Go Defect 1 in Java"  # 6fdc
+    status: todo_hard  # 6fdc
+    priority: 3  # 6fdc
+    parent:  # 6fdc
+    tags:  # 6fdc
+    - java  # 6fdc
+    - io_boundary  # 6fdc
+    - call_graph  # 6fdc
+    isbefore:  # 6fdc
+    - INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof  # 6fdc
+    duplicate_of: []  # 6fdc
+    not_duplicate_of: []  # 6fdc
+    pr_ref:  # 6fdc
+    description: "FOUND 2026-09-03 alongside the declared-local-type invariant (filed with it;\nthat item is the larger of the two). Tree: dev 68db7bd6e5. Rig:\n~/hypergumbo_lab_notebook/javareg_09032026/fixture_cross_file/.\n\nWI-kuroj (done, PR #2824, April) added the return-type registry for Java + Go.\nIn java.py it is BUILT (java.py ~2737: method_return_type_registry from Pass 1\nsymbols' meta.return_type) and then never passed to _extract_edges -- the call\nat ~2755 takes no such argument. The comment beside it says inline chaining\n\"handles the active use case\" and cites lines 1475-1488, which now hold\n_is_import_class_mismatch. The registry is write-only: the same defect WI-doluf\nfound in Go's (\"Defect 1 -- the registry was write-only for standalone\nfunctions\") and fixed there. ADR-0006 already records the consequence: Java's\nChained column is \"❌ (Phase 1)\".\n\nMEASURED. Same file, `var w = makeWriter(); w.write(..)` IS typed\n(java.io.FileWriter.write) through the inline arm. Across files:\n\n    F.java   static FileWriter makeWriter() { ... }\n    M2.java  var w = F.makeWriter();        w.write(\"z\")  -> java:external:0-0:w.write\n             FileWriter w = F.makeWriter(); w.write(\"y\")  -> java:external:0-0:w.write\n\nThe second line is the declared-type invariant, not this item. The first is\nthis item: only a cross-file registry can type it, and the one that exists is\nnever consulted.\n\nSIZE. Small on the current corpus: guacamole-client has ZERO `var`\ndeclarations (shapes_guac.py), so the registry would change nothing there\ntoday; it matters for codebases written after Java 10 that use `var`, and for\nthe chained form once WI-lalot's Java rows exist. P3 for that reason; the\ndeclared-type item is where the volume is.\n\nFIX SHAPE. Pass the registry into _extract_edges and consult it in the\nreturn-type arm (~1977) when the resolved method is NOT in the current file,\nstoring the QUALIFIED type (WI-doluf's Defect 2: the bare name resolves to no\npackage and lands in `external`). One fixture per form (same-file, cross-file,\n`var`, declared), and the INV-linub rule: measure through L4 on findings."  # 6fdc
+    fields: {}  # 6fdc
