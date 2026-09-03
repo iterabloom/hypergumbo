@@ -9,7 +9,9 @@ This analyzer uses tree-sitter to parse Go files and extract:
 - Package-level var aliases (var Name = expr) as variable symbols
 - Struct fields and interface methods as their own symbols
 - Closure-wrapper functions (middleware), tagged ``concepts: [middleware]``
-- Function call relationships
+- Function call relationships, anchored on the enclosing function or method,
+  or on the enclosing package-level variable for a call under a package-level
+  ``var`` initializer (a cobra ``Run:`` literal, ``var logger = log.New(...)``)
 - Function references in struct literal fields (cobra, http dispatch)
 - Import relationships (import statements)
 - ``wraps`` edges for middleware composition, ``module_attr_ref`` for bare
@@ -127,7 +129,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.symbol_resolution import ListNameResolver
+from hypergumbo_core.symbol_resolution import ListNameResolver, LookupResult
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -619,6 +621,42 @@ def _strip_module_prefix(import_path: str, module_path: str) -> str:
     return import_path
 
 
+def _go_lookup_through_dot_imports(
+    resolver: ListNameResolver,
+    name: str,
+    dot_imports: list[str],
+    module_path: Optional[str],
+) -> LookupResult:
+    """Resolve a BARE identifier the plain lookup could not, via its dot imports.
+
+    ``import . "example.com/m/alias1"`` puts every exported name of ``alias1``
+    in scope, so a bare ``Helper()`` that is not declared in the calling
+    package is ``alias1.Helper`` -- Go rejects the file otherwise. The plain
+    lookup has no package evidence for a bare name and, once several packages
+    declare a ``Helper``, its ambiguity guard returns nothing. That is exactly
+    what INV-nopoh's grouped-``var`` symbols exposed: a test-helper package
+    re-exporting ``testutils`` through ``var ( NewWebhook = testutils.NewWebhook )``
+    went from one global candidate (the function, resolved by luck) to three
+    (the function plus two alias variables) and 114 alertmanager call sites
+    fell to an unresolved placeholder. The dot import IS the evidence: each
+    dot-imported in-module path is offered as the ``path_hint`` the qualified
+    arm already uses, and the first package that narrows the name to ONE
+    symbol wins (the alias variable in the dot-imported package, not the
+    function it aliases -- the graph continues from the variable). Only
+    ``exact`` / ``path_hint`` matches are accepted; an external dot import
+    (``. "strings"``) has no in-repo path and is skipped, leaving the caller's
+    existing dot-import placeholder.
+    """
+    for dot_path in dot_imports:
+        hint = _strip_module_prefix(dot_path, module_path) if module_path else dot_path
+        if not hint or "." in hint.split("/", 1)[0]:
+            continue  # external (host-qualified) package: nothing in-repo to match
+        result = resolver.lookup(name, path_hint=hint)
+        if result.found and result.match_type in ("exact", "path_hint"):
+            return result
+    return LookupResult(symbol=None)
+
+
 def _external_package_for_type(
     type_name: str,
     import_aliases: dict[str, str],
@@ -1042,6 +1080,42 @@ def _extract_receiver_type_from_node(
     return ""  # pragma: no cover - well-formed Go always has a typed receiver
 
 
+def _go_package_level_var_name(
+    node: "tree_sitter.Node",
+    source: bytes,
+) -> str | None:
+    """The declared name when ``node`` is a PACKAGE-LEVEL ``var_spec``, else None.
+
+    INV-nopoh. Go has exactly one place outside a function body where an
+    expression -- and so a call, or a function literal holding calls -- can
+    appear: a package-level ``var`` initializer (``const`` initializers admit
+    only builtins, which the call walk skips). Every cobra ``Run:`` handler,
+    every ``var logger = log.New(...)``, every ``var _ = register()`` is this
+    node. Both walks that name an enclosing scope (``_get_enclosing_function``
+    for the edge anchor, ``_get_enclosing_func_name`` for ``var_types``) must
+    agree on the name they give it, or a typed local inside a package-level
+    literal is recorded under one key and looked up under another -- so the
+    test lives here, once. A grouped ``var ( ... )`` block nests its specs
+    under a ``var_spec_list``; both spellings are one declaration. A
+    ``var_spec`` under a ``statement_list`` is a LOCAL (INV-sidab) and is
+    deliberately not matched: the walk continues to the enclosing function.
+    The blank name ``_`` is returned as written; the caller decides what a
+    nameless anchor falls back to. ``node`` must be a ``var_spec``; both
+    callers test the type before calling.
+    """
+    decl = node.parent
+    if decl is not None and decl.type == "var_spec_list":  # grouped ``var ( ... )``
+        decl = decl.parent
+    if decl is None or decl.type != "var_declaration":  # pragma: no cover - grammar
+        return None
+    if decl.parent is None or decl.parent.type != "source_file":
+        return None
+    name_node = find_child_by_field(node, "name")
+    if name_node is None:  # pragma: no cover - grammar always supplies a name
+        return None
+    return node_text(name_node, source)
+
+
 def _get_enclosing_func_name(
     node: "tree_sitter.Node",
     source: bytes,
@@ -1049,8 +1123,11 @@ def _get_enclosing_func_name(
     """Walk up the tree to find the enclosing function/method name.
 
     For method declarations, returns the qualified name (``Type.Method``).
-    For function declarations, returns the simple function name.
-    For positions outside any function, returns None.
+    For function declarations, returns the simple function name. For a
+    position under a package-level ``var`` (a literal bound at package level,
+    or a plain initializer) returns the variable's name, matching the anchor
+    ``_get_enclosing_function`` gives the same position (INV-nopoh). For
+    positions outside any of those, returns None.
 
     Used to scope variable type bindings to their enclosing function.
     """
@@ -1072,6 +1149,10 @@ def _get_enclosing_func_name(
                     if receiver_type:
                         return f"{receiver_type}.{method_name}"
                 return method_name  # pragma: no cover - methods always have receivers
+        elif current.type == "var_spec":
+            var_name = _go_package_level_var_name(current, source)
+            if var_name is not None:
+                return var_name
         current = current.parent
     return None
 
@@ -1552,7 +1633,21 @@ def _extract_symbols_from_file(
             is_package_level = (
                 node.parent is not None and node.parent.type == "source_file"
             )
-            for child in node.children:
+            # A grouped ``var ( a = ...; b = ... )`` block nests its specs
+            # under a ``var_spec_list``; a single ``var a = ...`` does not.
+            # Until INV-nopoh every grouped spec was skipped here -- no
+            # symbol, no interface assertion -- although grouped blocks are
+            # where most package-level ``errors.New`` / ``regexp.MustCompile``
+            # / ``promauto.New*`` initializers live (cert-manager: 1,508
+            # such call sites in one corpus run).
+            flattened = [
+                spec
+                for child in node.children
+                for spec in (
+                    child.children if child.type == "var_spec_list" else (child,)
+                )
+            ]
+            for child in flattened:
                 if child.type == "var_spec":
                     _detect_interface_assertion(child, source, impl_assertions)
                     if not is_package_level:
@@ -1691,8 +1786,9 @@ def _get_enclosing_function(
     node: "tree_sitter.Node",
     source: bytes,
     local_symbols: dict[str, Symbol],
+    file_symbol: Optional[Symbol] = None,
 ) -> Optional[Symbol]:
-    """Walk up the tree to find the enclosing function/method.
+    """Walk up the tree to find the symbol a call at ``node`` is anchored on.
 
     For calls inside anonymous functions (func_literal), continues walking up
     to find the containing named function. This enables call attribution for
@@ -1702,13 +1798,30 @@ def _get_enclosing_function(
     to avoid incorrect attribution when multiple types define the same method
     name. Falls back to short name if the qualified name isn't in local_symbols.
 
+    INV-nopoh: a call under a PACKAGE-LEVEL ``var`` -- a function literal
+    bound to a variable, a struct-field literal such as cobra's ``Run:
+    func(...) {...}``, or a plain initializer ``var logger = log.New(...)`` --
+    is anchored on that variable's own symbol, which the symbol pass already
+    emits (kind ``variable``). Before this arm every such call returned None
+    and emitted nothing: on beads 578 of 1,331 ``fmt.Fprintf`` sites, 43.4%,
+    all under cobra handlers. When the variable has no symbol (``var _ =
+    register()``, or a name a same-file method's short name has displaced in
+    ``local_symbols``) the anchor is ``file_symbol`` -- the file's
+    pseudo-symbol, the anchor Python gives module-level code -- so the call
+    is still emitted rather than dropped.
+
     Args:
         node: The current node.
         source: Source bytes for extracting text.
-        local_symbols: Map of function names to Symbol objects.
+        local_symbols: Map of symbol names to Symbol objects for this file.
+        file_symbol: The file's pseudo-symbol, the anchor of last resort for a
+            package-level site with no variable symbol. None keeps the
+            historical contract (return None) for callers without one.
 
     Returns:
-        The Symbol for the enclosing function, or None if not inside a function.
+        The Symbol for the enclosing function, method or package-level
+        variable; ``file_symbol`` for a package-level site with no variable
+        symbol; None only when ``file_symbol`` is None.
     """
     current = node.parent
     while current is not None:
@@ -1735,11 +1848,21 @@ def _get_enclosing_function(
                 # Fall back to short name (when qualified name not in local_symbols)
                 if method_name in local_symbols:  # pragma: no cover - qualified always present
                     return local_symbols[method_name]  # pragma: no cover
+        elif current.type == "var_spec":
+            var_name = _go_package_level_var_name(current, source)
+            if var_name is not None:
+                sym = local_symbols.get(var_name)
+                if sym is not None and sym.kind == "variable":
+                    return sym
+                return file_symbol
         # For func_literal (anonymous functions), continue walking up
         # to find the containing named function rather than returning None
         # This handles: go func() { helper() }(), callbacks, etc.
         current = current.parent
-    return None  # pragma: no cover - defensive
+    # Valid Go admits no call outside a function body or a package-level
+    # var initializer, both handled above; tree-sitter's error recovery can
+    # still hand us one, and it belongs to the file.
+    return file_symbol  # pragma: no cover - unreachable on well-formed Go
 
 
 def _extract_go_var_types(
@@ -2395,7 +2518,9 @@ def _go_enclosing_body(node: "tree_sitter.Node") -> "Optional[tree_sitter.Node]"
         ):
             return find_child_by_field(cur, "body")
         cur = cur.parent
-    return None  # pragma: no cover - a call at file scope does not parse in Go
+    # A call in a package-level ``var`` initializer (INV-nopoh) has no
+    # enclosing body: a binding lookup from there answers nothing, honestly.
+    return None
 
 
 def _go_last_binding(
@@ -2421,7 +2546,7 @@ def _go_last_binding(
     shapes are pinned by tests.
     """
     body = _go_enclosing_body(node)
-    if body is None:  # pragma: no cover - see _go_enclosing_body
+    if body is None:
         return None
     if use_line is None:
         use_line = node.start_point[0]
@@ -2962,6 +3087,20 @@ def _extract_edges_from_file(
 
     edges: list[Edge] = []
     file_id = make_file_id("go", str(file_path))
+    # The file's pseudo-symbol: src of ``imports`` edges, anchor of
+    # module_attr_refs outside any callable, and (INV-nopoh) anchor of last
+    # resort for a package-level call whose ``var`` has no symbol.
+    file_pseudo_symbol = Symbol(
+        id=file_id,
+        name=file_path.name,
+        kind="module",
+        language="go",
+        path=str(file_path),
+        span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
+        origin=PASS_ID,
+        origin_run_id=run.execution_id,
+        line_span=1,
+    )
 
     # Extract function-scoped variable-to-type bindings for receiver disambiguation
     scoped_var_types = _extract_go_var_types(
@@ -3005,7 +3144,9 @@ def _extract_edges_from_file(
 
         # Detect function calls
         elif node.type == "call_expression":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(
+                node, source, local_symbols, file_symbol=file_pseudo_symbol,
+            )
             if current_function is not None:
                 # Get var_types scoped to the current enclosing function
                 var_types = scoped_var_types.get(current_function.name, {})
@@ -3580,6 +3721,18 @@ def _extract_edges_from_file(
                         # Check global symbols with disambiguation via ListNameResolver
                         else:
                             lookup_result = resolver.lookup(callee_name, path_hint=import_path_hint)
+                            if (
+                                not lookup_result.found
+                                and import_path_hint is None
+                                and func_node.type == "identifier"
+                                and dot_imports
+                            ):
+                                # A bare name the ambiguity guard withheld, in a
+                                # file with dot imports: the dot-imported package
+                                # is the binding (see _go_lookup_through_dot_imports).
+                                lookup_result = _go_lookup_through_dot_imports(
+                                    resolver, callee_name, dot_imports, module_path,
+                                )
                             # INV-fahub: a BARE identifier call (``import_path_hint
                             # is None`` — no package evidence) that resolves only to
                             # a DIFFERENT type's METHOD on weak (ambiguous /
@@ -3716,7 +3869,9 @@ def _extract_edges_from_file(
         # AST: keyed_element -> literal_element (key) : literal_element (value)
         # The value's child may be an identifier or selector_expression.
         elif node.type == "keyed_element":
-            current_function = _get_enclosing_function(node, source, local_symbols)
+            current_function = _get_enclosing_function(
+                node, source, local_symbols, file_symbol=file_pseudo_symbol,
+            )
             if current_function is not None:
                 # Get the value part: the last literal_element child
                 lit_elems = [c for c in node.children if c.type == "literal_element"]
@@ -3792,17 +3947,6 @@ def _extract_edges_from_file(
         if alias not in ("_", ".")
     }
     if attr_imports:
-        file_pseudo_symbol = Symbol(
-            id=file_id,
-            name=file_path.name,
-            kind="module",
-            language="go",
-            path=str(file_path),
-            span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
-            origin=PASS_ID,
-            origin_run_id=run.execution_id,
-            line_span=1,
-        )
         emit_module_attribute_refs(
             tree.root_node,
             source,
