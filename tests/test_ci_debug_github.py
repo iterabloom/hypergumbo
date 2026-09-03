@@ -328,3 +328,76 @@ class TestAbsentGateIsNotSilentlySubstituted:
             env=_GH, bindir=bindir,
         )
         assert "https://ci.example.test/build/9" in r.stderr
+
+
+class TestStatusNamesEachStep:
+    """INV-bozid, the MASKING half, on ``status``.
+
+    The per-PR pipeline is one workflow too, so ``ci/woodpecker/pr/woodpecker:
+    failure`` names none of lint / mypy / pytest / build-grammars. The
+    pipeline API carries each step's own state; ``status`` renders it under
+    the job line whenever a status points at a Woodpecker pipeline and the
+    credentials are set. ``cron-status`` does the same for cron verdicts —
+    see test_ci_debug_cron_status.py for the full matrix (error/skipped,
+    matrix legs, refused fetch); this pins that ``status`` shares the path.
+    """
+
+    _WP = {
+        "WOODPECKER_SERVER": "https://wp.example",
+        "WOODPECKER_TOKEN": "wtok",
+        "CF_ACCESS_CLIENT_ID": "cfid",
+        "CF_ACCESS_CLIENT_SECRET": "cfsecret",
+    }
+
+    def test_status_renders_the_steps_behind_a_woodpecker_status(self, tmp_path):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        bindir = bindir_with_fakes(tmp_path)
+        status = json.dumps({
+            "state": "failure",
+            "statuses": [
+                {"state": "failure", "context": "ci/woodpecker/pr/woodpecker",
+                 "target_url": "https://wp.example/repos/1/pipeline/7/1"},
+            ],
+        })
+        pipeline = json.dumps({"workflows": [{
+            "pid": 1, "name": "woodpecker",
+            "children": [
+                {"id": 1, "name": "lint", "state": "success", "exit_code": 0},
+                {"id": 2, "name": "mypy", "state": "success", "exit_code": 0},
+                {"id": 3, "name": "pytest", "state": "failure", "exit_code": 1},
+            ],
+        }]})
+        r, _ = run_script(
+            "ci-debug", repo, ("status",),
+            fixtures=[
+                {"match": "/commits/", "code": 200, "body": status},
+                {"match": "GET https://wp.example/api/repos/1/pipelines/7",
+                 "code": 200, "body": pipeline},
+            ],
+            env={**_GH, **self._WP}, bindir=bindir,
+        )
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "ci/woodpecker/pr/woodpecker: failure" in r.stdout
+        assert "FAIL pytest (exit 1)" in r.stdout, r.stdout
+        assert "OK   lint" in r.stdout, r.stdout
+        assert "OK   mypy" in r.stdout, r.stdout
+
+    def test_status_without_credentials_says_the_steps_were_not_read(
+        self, tmp_path,
+    ):
+        repo = fake_repo(tmp_path, "https://github.com/o/r.git")
+        status = json.dumps({
+            "state": "failure",
+            "statuses": [
+                {"state": "failure", "context": "ci/woodpecker/pr/woodpecker",
+                 "target_url": "https://wp.example/repos/1/pipeline/7/1"},
+            ],
+        })
+        r, logs = run_script(
+            "ci-debug", repo, ("status",),
+            fixtures=[{"match": "/commits/", "code": 200, "body": status}],
+            env=_GH, bindir=bindir_with_fakes(tmp_path),
+        )
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "per-step verdicts not read" in r.stdout, r.stdout
+        assert not any("wp.example/api" in u for u in _urls(logs))

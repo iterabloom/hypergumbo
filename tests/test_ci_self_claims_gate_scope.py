@@ -35,21 +35,25 @@ now the only one. Two things changed, and only one of them is an opinion:
   (INV-bozid remedy (b)) reads the latest cron verdict off whatever commit
   carries it, so ADDRESSING is closed.
 
-WHAT REMAINS UNFIXED, AND WAS ACCEPTED RATHER THAN SOLVED: masking and
-error-is-not-failure. Both follow from the single aggregate status, so a
-self-claim regression now reads as "full-suite is red" and needs a log fetch to
-attribute. The judgement was that a log fetch is cheap WHEN THE AGGREGATE IS
+WHAT REMAINED UNFIXED ON 2026-08-30, AND WAS ACCEPTED RATHER THAN SOLVED:
+masking and error-is-not-failure. Both follow from the single aggregate status,
+so a self-claim regression read as "full-suite is red" and needed a log fetch
+to attribute. The judgement was that a log fetch is cheap WHEN THE AGGREGATE IS
 USUALLY GREEN -- the failure mode is a sibling going chronically red, at which
 point "full-suite is red" carries no information and nobody reads the log. That
-is precisely what produced the 63 commits. The risk is lower than in August (the
-flaky TUI test behind the 2026-08-20 masking was fixed the same day as this
-change) but it is not gone.
+is precisely what produced the 63 commits.
 
-THE TRIPWIRE, stated so it can be acted on rather than rediscovered: if
-``full-suite`` starts sitting red, give this gate its own workflow file and
-therefore its own commit-status context (INV-bozid remedy (a), verified viable;
-it must reuse the EXISTING ``full-suite`` cron name, because crons are
-configured in repo settings and not in these files).
+BOTH CLOSED FROM THE READER'S SIDE ON 2026-09-03, on the first firings that
+sat red (two in a row, a stale line citation in one core test). ``ci-debug
+cron-status`` (and ``status``) now render every step's own verdict beneath the
+aggregate, read off the Woodpecker pipeline API -- ``OK`` / ``FAIL`` / ``ERR``
+/ ``SKIP`` -- so this gate's answer is readable while a sibling is red, and a
+pipeline that died inside the gate no longer reads as the gate passing
+(test_ci_debug_cron_status.py pins it). The per-gate workflow-file split
+(INV-bozid remedy (a), verified viable; it must reuse the EXISTING
+``full-suite`` cron name, because crons are configured in repo settings and
+not in these files) remains the route if this gate ever needs its OWN GitHub
+check context. It is not needed for readability.
 
 Detection is now bounded by the cron cadence -- up to ~12 hours -- not by one
 commit. These tests pin what is left: that the surviving arm exists, runs

@@ -142,11 +142,13 @@ steps:
   # tests/test_ci_self_claims_gate_scope.py pins that this arm survives, stays
   # unconditional, and actually invokes the script.
   #
-  # DETECTION IS NOW BOUNDED BY THE CRON CADENCE (~12h), not by one commit, and
-  # this workflow publishes ONE aggregate status for all six of its steps — so a
-  # drift verdict reads as "full-suite is red" and needs a log fetch to
-  # attribute. Read it with `ci-debug cron-status`, which finds the verdict on
-  # whatever commit carries it (INV-bozid remedy (b)).
+  # DETECTION IS NOW BOUNDED BY THE CRON CADENCE (~12h), not by one commit.
+  # This workflow publishes ONE aggregate status for all six of its steps, so
+  # on GitHub a drift verdict reads as "full-suite is red" — read it with
+  # `ci-debug cron-status`, which finds the verdict on whatever commit carries
+  # it (INV-bozid remedy (b)) AND names each step's own verdict beneath it
+  # (the MASKING half, 2026-09-03), so this gate's answer is readable even
+  # while a sibling step sits red.
   - name: self-claims-gate
     image: python:3.11-bookworm
     depends_on: [build-grammars]

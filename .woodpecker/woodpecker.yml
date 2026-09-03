@@ -351,16 +351,20 @@ steps:
   #     remedy (b)) now reads the latest cron verdict off whatever commit
   #     carries it, so the ADDRESSING failure above is fixed.
   #
-  # WHAT IS STILL TRUE AND WAS ACCEPTED: full-suite publishes ONE aggregate
-  # status for all six of its steps, so a self-claim regression reads as
-  # "full-suite is red" and needs a log fetch to attribute, and a sibling
-  # going chronically red would bury it again. That risk is lower than in
-  # August -- the flaky tracker TUI test behind the 2026-08-20 masking was
-  # fixed the same day as this change -- but it is not gone. If full-suite
-  # starts sitting red, give this gate its own workflow file (and therefore
-  # its own commit-status context): INV-bozid remedy (a), verified viable,
-  # and it must reuse the EXISTING `full-suite` cron name because crons are
-  # configured in repo settings rather than here.
+  # WHAT IS STILL TRUE: full-suite publishes ONE aggregate commit status for
+  # all six of its steps, so on GitHub a self-claim regression reads as
+  # "full-suite is red". WHAT IS NO LONGER TRUE (2026-09-03, INV-bozid, the
+  # MASKING half): attributing it needs no log fetch. `ci-debug cron-status`
+  # and `ci-debug status` render every step's own verdict beneath the
+  # aggregate (OK / FAIL / ERR / SKIP -- a pipeline that died inside the gate
+  # no longer reads as the gate passing), read off the Woodpecker pipeline
+  # API with the credentials in .env. A sibling sitting red therefore no
+  # longer hides this gate from the instrument. The per-gate workflow-file
+  # split (INV-bozid remedy (a), verified viable; it must reuse the EXISTING
+  # `full-suite` cron name because crons are configured in repo settings
+  # rather than here) remains the route if this gate ever needs its OWN
+  # GitHub check context, e.g. as a required check. It is not needed for
+  # readability.
   #
   # Detection is now bounded by the cron cadence (up to ~12h), not by one
   # commit. tests/test_ci_self_claims_gate_scope.py pins what remains.
