@@ -469,6 +469,13 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "System.Process.Typed.startProcess",
     "System.Process.Typed.withProcessTerm",
     "System.Process.Typed.withProcessWait",
+    # Haskell (System.Process.Text — `process-extras`, community overlay).
+    # The Text-typed twins of the process readers above; same launch, so the
+    # same high-risk classification (WI-zozun).
+    "System.Process.Text.readCreateProcess",
+    "System.Process.Text.readCreateProcessWithExitCode",
+    "System.Process.Text.readProcess",
+    "System.Process.Text.readProcessWithExitCode",
     # Swift (Foundation.Process — launchPath is the canonical launch site
     # tracked by swift.yaml; there is no separate Process.launch entry).
     "Process.launchPath",
@@ -548,7 +555,21 @@ def gate_named_entry(hits, name, module_hint, ambiguous_names,
       a method-kind primitive needs a module hint it does not have here, so
       method-kind hits are filtered out;
     * the ``ambiguous_names`` short-name set is retained as the meta-absent /
-      non-Python safety net (the gate is additive — it does not replace it).
+      non-Python safety net (the gate is additive — it does not replace it);
+    * among the survivors a VOUCHED row is preferred to an UNVOUCHED one.
+      Default overlays merge in FRONT of the base catalogue, so before this
+      sort a bare ``readProcess`` after ``import System.Process`` was
+      attributed to ``System.Process.Typed`` — a ``provenance: community``
+      row for a Hackage package the program never imported — and, because
+      that row does not carry the boot library's ``simultaneous`` marker,
+      the ``subprocess`` half of the crossing vanished with it. ADR-0047
+      lets an unvouched row ADD a detection; it does not let one REPLACE a
+      vouched detection with a wrong module. Measured across every shipped
+      overlay: 74 (overlay, base) pairs share a short name across modules.
+      A sort rather than a filter, so a row nobody else has still fires,
+      and stable, so INV-fatok's first-declared abstention is unchanged
+      among vouched rows. Hits from duck-typed callers that carry no
+      ``unvouched`` attribute sort as vouched.
 
     See ``io_boundary_f3_impl_design_06272026.md``.
     """
@@ -559,6 +580,7 @@ def gate_named_entry(hits, name, module_hint, ambiguous_names,
         return None
     if ambiguous_names and name in ambiguous_names:
         return None
+    non_method.sort(key=lambda h: bool(getattr(h, "unvouched", False)))
     return non_method[0]
 
 
@@ -3796,6 +3818,42 @@ def is_definitionally_first_party(language: str, module: str) -> bool:
     return False
 
 
+def _extra_component_names_a_type(parent_raw: str, extra_raw: str) -> bool:
+    """Does the first EXTRA path component name a type inside ``parent``?
+
+    THE ONE HOME of arm 2's discriminator (WI-zozun). When one module path is
+    a strict component-prefix of the other, the first extra component is
+    either a TYPE inside the matched module (``os/exec`` + ``Cmd``) or a
+    SIBLING module that merely shares the prefix (``net/http`` + ``fcgi``).
+
+    A type is spelled differently from the module it lives in; a sibling
+    module is spelled the same way. So the answer is whether the extra
+    component's case DISAGREES with the component it follows -- compared
+    within the longer path, never across the two paths.
+
+    WHY NOT ``extra[:1].isupper()``, which this replaced. That encodes Go's
+    "capitals mean types" in a predicate that takes no language and serves
+    fifteen catalogues, and it is CONSTANT-TRUE wherever module names are
+    capitalised (haskell 195/195 rows, swift 106/107, objc 126/131, elixir
+    250/529). Measured across eight repos in those languages, arm 2 fired nine
+    times and named a type ZERO times; two firings were confirmed false
+    positives (livebook's ``IO.ANSI.format`` builds chardata and performs no
+    I/O; ``Req.Request.merge_options`` is struct manipulation). For a
+    lowercase parent the two tests are identical, so every match the docstring
+    of :func:`_module_matches` documents survives unchanged.
+
+    WHAT THIS CANNOT SEE, stated because it is the item's thesis: ``Data.
+    ByteString + Lazy`` (a parallel API that really does read files) and
+    ``Req + Response`` (which does not send) are orthographically identical.
+    That difference is semantic, and the catalogue carries it -- the haskell
+    siblings have their own rows and arrive through arm 1 -- rather than a
+    spelling rule pretending to.
+    """
+    if not extra_raw:
+        return False
+    return extra_raw[:1].isupper() != parent_raw[:1].isupper()
+
+
 def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     """Check if a catalog entry's module matches the edge's module hint.
 
@@ -3827,16 +3885,20 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     the *test* request constructor which performs no network IO, reported as a
     network sink.
 
-    WHY CAPITALISATION DECIDES THE STRICT-PREFIX CASE. The obvious fix — keep
-    ``/`` distinct from ``.`` so a package path can never be confused with a
-    member — does not work here, because the Go analyzer emits ``os.exec.Cmd``
-    for what the catalog spells ``os/exec``. The separator is therefore not
-    reliable evidence of a package boundary. What *is* reliable is Go's naming
-    convention: package names are lowercase, exported type names are
-    capitalised. So when one side is a strict component-prefix of the other, the
-    first extra component decides — ``Cmd``/``File``/``FileInputStream`` name a
-    type inside the matched module, while ``fcgi``/``httptest``/``smtp`` name a
-    different module.
+    WHY CASE DECIDES THE STRICT-PREFIX CASE, AND WHICH CASE TEST. The obvious
+    fix — keep ``/`` distinct from ``.`` so a package path can never be
+    confused with a member — does not work here, because the Go analyzer emits
+    ``os.exec.Cmd`` for what the catalog spells ``os/exec``. The separator is
+    therefore not reliable evidence of a package boundary. What *is* reliable
+    is that a TYPE is spelled differently from the module it sits in while a
+    SIBLING MODULE is spelled the same way. So when one side is a strict
+    component-prefix of the other, the first extra component decides by
+    whether its case DISAGREES with the component it follows
+    (:func:`_extra_component_names_a_type`): ``exec``→``Cmd``,
+    ``fs``→``File``, ``io``→``FileInputStream`` are types; ``http``→``fcgi``
+    and ``ByteString``→``Lazy`` are siblings. This used to be "is the extra
+    component capitalised", which is Go's convention and is constant-true in
+    every language whose module names are capitalised (WI-zozun).
 
     DIRECTION IS THE SAFETY PROPERTY OF THE SWIFT CARVE-OUT. Swift hints are
     receiver *variable* names (camelCase) against PascalCase catalog types, and
@@ -3847,11 +3909,13 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
     ``os``. The suffix must also start on a capital, so it names a whole word
     rather than landing mid-token.
 
-    Known tradeoff, stated rather than discovered later: a lowercase extra
-    component now blocks a match even in languages that do not signal
-    types by case, so this can UNDER-match where it previously over-matched.
-    That is the safe direction for a sink catalog — a missed sink is a gap, a
-    spurious one is a false claim about the program's behaviour.
+    Known tradeoff, stated rather than discovered later: an extra component
+    spelled like its parent blocks a match even where it is a parallel API
+    with the same I/O surface (haskell's ``Data.ByteString.Lazy``), so this
+    UNDER-matches there. That is the safe direction for a sink catalog — a
+    missed sink is a gap, a spurious one is a false claim about the program's
+    behaviour — and the catalogue closes the gap by giving such siblings
+    their own rows, which arm 1 matches exactly.
     """
     # Normalize separators, but keep the raw (unfolded) components too: the
     # strict-prefix rule needs original capitalisation to tell a type from a
@@ -3872,7 +3936,9 @@ def _module_matches(catalog_module: str, edge_module_hint: str) -> bool:
         longer_raw = (
             em_parts_raw if len(em_parts) > len(cm_parts) else cm_parts_raw
         )
-        if longer_raw[shared][:1].isupper():
+        if _extra_component_names_a_type(
+            longer_raw[shared - 1], longer_raw[shared],
+        ):
             return True
 
     # Dropped qualification: one side is a component-SUFFIX of the other. This

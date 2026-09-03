@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# COMMUNITY I/O primitive overlay — Haskell `extra` and `process-extras`.
+#
+# THIS FILE SHIPS IN THE WHEEL AND IS LOADED BY DEFAULT, and every run that
+# loads it says so on stderr (ADR-0047 rulings 1, 5 and 6). HYPERGUMBO DOES
+# NOT VOUCH FOR THESE ROWS; `provenance: community` is a third state, not a
+# softer form of either neighbour (see haskell-network.yaml's header).
+#
+# WHY THESE ROWS EXIST (WI-zozun). `System.Directory.Extra` re-exports all of
+# `System.Directory` and `System.Process.Text` is the Text-typed twin of
+# `System.Process`. Both are Hackage packages that sit under a GHC boot
+# library's module prefix, so arm 2 of `_module_matches` used to reach the
+# boot-library row from them by inferring "capitalised means type" -- a rule
+# that is constant-true in Haskell and matched these by luck. That rule is
+# gone; these are the rows that carry the boundaries it happened to get
+# right. Measured before they existed: haskell-language-server lost 4
+# System.Directory boundaries and 4 System.Process ones (2 sites x 2
+# boundaries) with nothing else changed.
+#
+# WHY AN OVERLAY AND NOT haskell.yaml: the boot-library line (ADR-0047
+# ruling 8). `extra` and `process-extras` come from Hackage, exactly as
+# `typed-process` does, and the base catalogue's header says what ships
+# with the compiler and nothing else.
+#
+# Function lists are LIMITED TO THE RE-EXPORTS THE BASE ROWS ALREADY CARRY,
+# under the same boundaries, so nothing here asserts more than the boot
+# library row it mirrors. `retrieved:` is the date these were written
+# against the packages' current export lists.
+#
+# To override a row, put your own file in
+# $XDG_CONFIG_HOME/hypergumbo/io_primitives.d/ — your entry wins on a
+# qualified-name collision. To turn these off entirely, see
+# `--no-default-overlays`.
+
+language: haskell
+status: overlay
+provenance: community
+retrieved: 2026-09-02
+
+fs_read:
+  - module: System.Directory.Extra
+    functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getCurrentDirectory, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, makeAbsolute, listFiles, listFilesRecursive, listFilesInside, listContents]
+    notes: >-
+      Re-exports System.Directory in full (the `extra` package), plus its own
+      list* walkers, which read directory contents exactly as listDirectory
+      does. Mirrors haskell.yaml's System.Directory fs_read row.
+
+fs_write:
+  - module: System.Directory.Extra
+    functions: [createDirectory, createDirectoryIfMissing, removeFile, removeDirectory, removeDirectoryRecursive, removePathForcibly, renameFile, renameDirectory, copyFile, copyFileWithMetadata, setPermissions, setCurrentDirectory, createDirectoryPrivate]
+    notes: "Mirrors haskell.yaml's System.Directory fs_write row (`extra`)."
+
+ipc_recv:
+  - module: System.Process.Text
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: >-
+      The Text-typed twins of System.Process's readers (`process-extras`):
+      the same launch-and-read, returning Text instead of String. Declared
+      under BOTH ipc_recv and subprocess exactly as the base row is -- the
+      call is a transfer as well as a launch.
+
+subprocess:
+  - module: System.Process.Text
+    functions: [readProcess, readProcessWithExitCode, readCreateProcess, readCreateProcessWithExitCode]
+    simultaneous: true
+    notes: "The launch half; see ipc_recv above (`process-extras`)."

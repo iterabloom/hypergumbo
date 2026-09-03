@@ -196,10 +196,19 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "(Network.HTTP.*), wai and warp (Network.Wai*), and "
             "typed-process (System.Process.Typed) — the last is the one a "
             "prefix rule would have wrongly admitted under System.Process, "
-            "which is why this language is enumerated rather than prefixed."
+            "which is why this language is enumerated rather than prefixed. "
+            "Data.ByteString's strict/lazy/Char8 SIBLING modules "
+            "(Data.ByteString.Lazy, .Char8, .Lazy.Char8) are the same "
+            "`bytestring` boot library and are admitted here for the same "
+            "reason (WI-zozun): each is a module of a package that ships "
+            "with GHC. System.Directory.Extra and System.Process.Text are "
+            "NOT admitted — they are the Hackage `extra` and `process-extras` "
+            "packages, and live in the community overlay."
         ),
         modules=frozenset({
             "Control.Concurrent", "Control.Exception", "Data.ByteString",
+            "Data.ByteString.Char8", "Data.ByteString.Lazy",
+            "Data.ByteString.Lazy.Char8",
             "Data.Text.IO", "Data.Time.Clock", "Data.Time.Clock.System",
             "Debug.Trace", "GHC.Clock", "Prelude", "System.Directory",
             "System.Environment", "System.Exit", "System.IO", "System.Info",

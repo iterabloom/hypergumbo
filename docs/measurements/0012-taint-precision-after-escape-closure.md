@@ -9,6 +9,21 @@
 - **Series position:** continues 0006 under the same ratified frame. **It is
   not independent of 0006** — see "What this does not support".
 
+## Frame
+
+Machine-readable per ADR-0048 §A3. This record CONTINUES 0006's frame (F8), so
+each key names 0006's value or the disclosed deviation from it; the full
+narrative is in `~/hypergumbo_lab_notebook/measurement_0012_09022026/FRAME-NOTE.md`.
+
+- unit: the SITUATION (post-`INV-karud` collapse record), with the row rate reported beside it throughout — 34.0% / 30.0% correctness, 30.9% / 28.8% useful
+- allocation: M=7 CAPPED x R=16, n=94. NOT F2's equal allocation — five repos cannot supply M=7 because the vacuous families they exhibited were fixed, so `sum(min(population, 7))` is 94 and the pooled rate is no longer the unweighted per-repo mean (28.0%); both are reported (DEVIATION 1)
+- seed: cohort seed 20260825 (unchanged from 0006); the fresh 26-situation draw is seed 20260902. 68 of the 94 are carried 0006 labels, not a fresh draw (DEVIATION 2)
+- cohort: 0006's 16 repositories, unchanged, so this record composes with 0006
+- claim_set: `docs/example-claims/generic-taint-claims.yaml`, the same six generic claims, verbatim (F5)
+- rubric: measurement 0001's, carried through 0005 and 0006 unchanged and byte-identical for both panels (F6); the ADR-0046 vacuity vocabulary applied to surviving TPs by a single adjudicator
+- analyzer_sha: f247b52587
+- language_scope: whatever the 16 repositories contain (10 languages, as 0006 established); NOT a language census — a language absent from the cohort is absent from the denominator
+
 ## The question
 
 The standing decision band is *"≤25% useful precision ⇒ recall work stays

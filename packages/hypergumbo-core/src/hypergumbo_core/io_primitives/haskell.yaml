@@ -99,6 +99,18 @@ ipc_recv:
     notes: >-
       WI-lipis: the System.IO rule over a ByteString handle. Same argument,
       same abstention, same declaration order.
+  - module: Data.ByteString.Lazy
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Char8
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
   - module: Data.Text.IO
     functions: [hGetContents, hGetLine]
     boundary_ruling: call_site_undecidable
@@ -130,10 +142,41 @@ fs_read:
     functions: [listDirectory, getDirectoryContents, doesFileExist, doesDirectoryExist, getPermissions, getFileSize, getModificationTime, getCurrentDirectory, getHomeDirectory, getTemporaryDirectory, findFile, findFiles, canonicalizePath, makeAbsolute]
   - module: Data.ByteString
     functions: [readFile]
+  - module: Data.ByteString.Lazy
+    functions: [readFile]
+    notes: >-
+      WI-zozun: a SIBLING MODULE of Data.ByteString with the same I/O surface,
+      given its own row because arm 2 of _module_matches no longer infers
+      "capitalised means type" -- Data.ByteString + Lazy is orthographically
+      identical to elixir's Req + Response, which does NOT share its parent's
+      I/O, so the predicate cannot tell them apart and the catalogue must.
+      Measured before the row existed: stack (8), hls (3), servant (1) lost
+      real readFile/writeFile boundaries through these modules. Function
+      lists are the strict/lazy/Char8 export differences of bytestring
+      (Lazy has no hGetLine/hGetSome; Char8 adds hPutStrLn), verified
+      2026-09-02 against the calls the corpus actually makes.
+  - module: Data.ByteString.Char8
+    functions: [readFile]
+    notes: "WI-zozun sibling row; see Data.ByteString.Lazy above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [readFile]
+    notes: "WI-zozun sibling row; see Data.ByteString.Lazy above."
   - module: Data.ByteString
     functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
     boundary_ruling: call_site_undecidable
     notes: "WI-lipis: the System.IO rule over a ByteString handle."
+  - module: Data.ByteString.Lazy
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Char8
+    functions: [hGetContents, hGetLine, hGet, hGetSome, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [hGetContents, hGet, hGetNonBlocking]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-zozun sibling row; WI-lipis ruling as Data.ByteString above."
   - module: Data.Text.IO
     functions: [readFile]
     notes: "getContents/getLine MOVED to ipc_recv (INV-muvis) -- they read stdin."
@@ -159,6 +202,15 @@ fs_write:
     functions: [createDirectory, createDirectoryIfMissing, removeFile, removeDirectory, removeDirectoryRecursive, removePathForcibly, renameFile, renameDirectory, copyFile, copyFileWithMetadata, setPermissions, setCurrentDirectory]
   - module: Data.ByteString
     functions: [writeFile, appendFile, hPut, hPutStr, hPutNonBlocking]
+  - module: Data.ByteString.Lazy
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
+  - module: Data.ByteString.Char8
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutStrLn, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
+  - module: Data.ByteString.Lazy.Char8
+    functions: [writeFile, appendFile, hPut, hPutStr, hPutStrLn, hPutNonBlocking]
+    notes: "WI-zozun sibling row; see the fs_read Data.ByteString.Lazy row."
   - module: Data.Text.IO
     functions: [writeFile, appendFile, hPutStr, hPutStrLn]
 
