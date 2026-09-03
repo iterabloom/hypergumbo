@@ -1,0 +1,24 @@
+- op: create  # 65fd
+  at: '2026-09-03T10:00:13Z'  # 65fd
+  by: agent  # 65fd
+  actor: jgstern_agent  # 65fd
+  clock: 1  # 65fd
+  nonce: 65fd  # 65fd
+  data:  # 65fd
+    kind: invariant  # 65fd
+    title: "go: a call inside a PACKAGE-LEVEL function literal emits no call edge (cobra Run handlers) -- 578 of 1,331 fmt.Fprintf sites on beads (43.4%) invisible to every catalogue row"  # 65fd
+    status: violated  # 65fd
+    priority: 1  # 65fd
+    parent:  # 65fd
+    tags:  # 65fd
+    - go  # 65fd
+    - call_graph  # 65fd
+    - io_boundary  # 65fd
+    isbefore: []  # 65fd
+    duplicate_of: []  # 65fd
+    not_duplicate_of: []  # 65fd
+    pr_ref:  # 65fd
+    description: "FOUND 2026-09-03 while checking the denominator of WI-suhug's arm A (LIVE rule 9: measure emission shape first), on dev de3538531b.\n\nMEASURED. beads (a cobra CLI): `grep -c 'fmt.Fprintf('` over every non-vendor .go file = 1,331 sites; the Go analyzer emits 753 `calls` edges to `go:fmt:0-0:Fprintf:unresolved` (per call site -- 232 distinct (src,dst) pairs, so this is NOT INV-vukiv's collapse). 578 sites (43.4%) emit nothing, in 61 files, and 577 of the 578 sit inside a function literal. Fixture probe (scratchpad golit/m.go, 5 sites): a literal bound at package level (`var packageLevel = func() {...}`) and a literal in a struct-field initialiser at package level (`var rootCmd = &cmd{Run: func() {...}}`) emit ZERO edges; a literal inside a named function, and a `go func(){}()` inside one, attribute their calls to the named function (3 of 5 sites emitted). The package-level shape is every cobra `Run:`/`RunE:` handler, i.e. the bulk of a Go CLI's I/O.\n\nINVARIANT VIOLATED. Every call site the analyzer parses emits a call edge anchored to SOME symbol (the INV-foluz statement, python; this is its Go twin, and the same dominant root INV-busis measured at 50.0% of section-3a escapes: \"no call edge emitted at all\").\n\nROOT CAUSE (structural). `_extract_edges_from_file` anchors `src` on `current_function`, the enclosing function_declaration / method_declaration symbol; a package-level literal has none, so the walk skips every call under it. The enclosing PACKAGE-LEVEL VARIABLE is already a symbol (`packageLevel`, `rootCmd` are emitted as kind `variable`), so an anchor exists -- the walk just does not use it. Python anchors module-level calls the same way after INV-foluz.\n\nCONSEQUENCE FOR THE CATALOGUE. No row can reach these sites: WI-suhug's write rows, WI-vutav's read rows, every logging/subprocess sink under a cobra handler. Arm A of WI-suhug is reported against the 753 the analyzer emits, with this gap disclosed; the six-repo write-side reach is capped at whatever fraction of each repo's I/O sits in named functions.\n\nNOT THIS ITEM: attributing the literal's calls to the enclosing named function is already the behaviour and is kept (a closure's I/O happens when its owner runs it -- the same attribution INV-foluz took). The fix is the package-level anchor; sweep for the same shape in the other tree-sitter analyzers (rust `static X: fn = ...`, js/ts arrow functions at module level are known-handled -- verify by fixture, not by reading)."  # 65fd
+    fields:  # 65fd
+      statement: "Every call site the Go analyzer parses emits a calls edge anchored to some symbol. A function literal bound at package level (var x = func(){...}, or a struct-field initialiser such as cobra Run: func(){...}) has the enclosing package-level variable as its anchor; today it emits nothing."  # 65fd
+      root_cause: "_extract_edges_from_file anchors src on current_function, the enclosing function_declaration/method_declaration; a package-level literal has none, so every call under it is skipped although the enclosing package-level variable is already emitted as a symbol. Measured on beads: 578 of 1,331 fmt.Fprintf sites, 577 inside literals, 0 edges; fixture probe reproduces on both package-level shapes and not inside a named function."  # 65fd
