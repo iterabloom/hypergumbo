@@ -1,0 +1,46 @@
+Original commit body from fdc44718300a633d2cff9674e177cf3303640966:
+
+THE STEP READER LISTED A STEP THE LOG FETCHER COULD NOT REACH. On dev
+8955d9a2 -- push/woodpecker beside the hand-triggered cron/full-suite
+pipeline 2206, both green -- `ci-debug status` rendered self-claims-gate
+under the cron gate (INV-bozid's per-step reader), and `ci-debug logs
+self-claims-gate 8955d9a2` answered "Nothing named 'self-claims-gate' on
+this commit -- no gate and no step by that name" and printed the PUSH
+pipeline's transcript. Listing and fetching disagreed about what exists,
+and INV-bofab's closure evidence had to rest on a construction argument
+(check-self-claims exits 2 on infra failure, non-zero on drift) instead
+of the transcript itself.
+
+THE MECHANISM, FROM THE FETCHER'S OWN COMMENT. WI-zavut made the job name
+select a GATE by context (full or trailing segment) and, failing that,
+fall back to the failed gate or the first one -- before any step was
+consulted. A step name matches no context, so for every step on a sibling
+gate rule 2 had already chosen the wrong pipeline by the time the step
+selector ran, and the honest substitution warning (INV-vazuh) then
+reported a step as absent that the same tool had just listed.
+
+THE FIX. When the name matches no gate and credentials are present, every
+gate's pipeline is read (failed gates first, mirroring rule 2) and the
+first one carrying a step of that name chooses the pipeline; the existing
+step selector then matches it and no warning fires. The genuinely-absent
+case keeps the warning, and it is honest only because every pipeline was
+searched before it fires -- pinned by the control test, which asserts both
+pipeline reads precede the substitution line. The loop is a `while ...
+done <<<` in the calling shell so its assignments survive (the
+WP_HTTP_CODE lesson, one function up).
+
+THE HARNESS HAD DRIFTED. tests/_forge_github_harness.py's fake curl claims
+to mirror test_forge_backend_github.py's and printed the HTTP code ALONE
+when no -o was given, so the first green-path log fetch through it parsed
+"200" as the log body ("returned int, not a log-entry list"). It now emits
+body then code for -w as real curl does; all 72 tests across the nine
+harness consumers pass unchanged.
+
+LIVE REPRO, RE-RUN WITH THE FIX: `ci-debug logs self-claims-gate 8955d9a2`
+returns the cron gate's 485-line transcript with no substitution line,
+ending "check-self-claims-drift: OK -- 18 claims unchanged (18
+confirmed_with_caveats)" -- the transcript INV-bofab's closure note named
+as unread.
+
+Racial-Capitalism-Is-Bad: a pumpkin spice moth conducting an orchestra of penguins on ice in a brontosaurus banquet hall with a dynasty of pigeons in a Bronto-burger grill shack shaped like gefilte fish oval
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
