@@ -2454,6 +2454,37 @@ def _extract_edges_from_file(
                                         ))
                                         resolved = True
 
+                        # WI-dizag shape B: a VAR-ROOTED field chain,
+                        # ``h.f.write_all(..)`` with ``h`` a typed parameter or
+                        # local. Strategy 1.5 above handles only ``self``-rooted
+                        # chains (``resolve_receiver_type`` returns None for a
+                        # non-self root), so it left ``field_receiver_type``
+                        # None here and the module-slot recovery downstream had
+                        # nothing to consume. ``resolve_var_field_chain`` is the
+                        # sibling walk: root ``h`` -> ``Holder`` via
+                        # ``_var_types``, field ``f`` -> ``File`` via the same
+                        # struct field-type registry. It sets the type ONLY;
+                        # like #595 it does not set ``has_explicit_binding`` or
+                        # ``resolved``, so emission is byte-identical and the
+                        # module slot is rebuilt from the recovered type
+                        # exactly as the ``self.field`` case is.
+                        if (
+                            field_receiver_type is None
+                            and is_method_call
+                            and analyzer is not None
+                            and _var_types
+                        ):
+                            _vnode = inner.child_by_field_name("value")
+                            if (
+                                _vnode is not None
+                                and _vnode.type == "field_expression"
+                            ):
+                                _vt = analyzer.resolve_var_field_chain(
+                                    _vnode, source, _var_types,
+                                )
+                                if _vt is not None:
+                                    field_receiver_type = _vt
+
                         # Strategy 1.8 (WI-titor / INV-dihos Phase 3):
                         # ``var.method()`` where ``var`` is a typed local
                         # / parameter / let-binding tracked in
