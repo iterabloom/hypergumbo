@@ -1,0 +1,44 @@
+Original commit body from 4eb60d2135b44190f95f27c0c96ccbee64f14b78:
+
+GOVERNANCE: owner-approved in session (governance changes and auto-pr
+without --gov, 2026-09-02).
+
+A Woodpecker workflow publishes ONE commit status for all of its steps, so
+`ci/woodpecker/cron/full-suite: failure` names no step, and one
+chronically-red step makes every sibling's verdict unreadable for as long
+as it stays red -- INV-bozid's MASKING half, accepted on 2026-08-30 with the
+tripwire "if full-suite starts sitting red, unmask it".
+
+It sat red on the third day, and this is the unmask. The pipeline object
+behind a status's target_url carries every step's own state, and the log
+fetcher was already reading it to pick the failed step; `cron-status` and
+`status` now render it, one line per step (OK / FAIL (exit N) / ERR / SKIP /
+KILL), per matrix leg for nightly. `error` and `skipped` are marked apart
+from `success` because INV-bobor's third delivery failure was a pipeline
+dying inside a gate reading as the gate passing. When the steps cannot be
+read -- no Woodpecker credentials in .env, a refused fetch, a workflow index
+the pipeline lacks -- the output says so and names why, rather than showing
+nothing.
+
+IT CAUGHT A MASKED SECURITY-GATE REGRESSION ON ITS FIRST LIVE RUN. The
+2026-09-03 01:00 UTC firing (ff255f67) was red; `ci-debug logs` returned the
+FIRST failed step (a stale line citation, already repaired on dev) and the
+diagnosis stopped there. Per-step rendering showed THREE red steps,
+self-claims-gate among them; walking back, the 13:00 UTC firing on
+4fcff62951 had every sibling green and the security gate alone red -- all 18
+self-claims moved to inconclusive with empty caveats -- behind an aggregate
+that could only say "failure". Filed as INV-bofab (P1).
+
+The per-gate workflow-file split (remedy (a)) was verified viable and not
+taken: each split file needs its own clone and grammar build, a single-agent
+runner serializes them, and a cron-file change is first validated up to
+twelve hours later. The tripwire text in its four homes is re-pointed, not
+struck. The pipeline body travels by FILE, not $(...): a subshell throws the
+HTTP code away, and the first cut reported every refusal as HTTP 000.
+
+Also filed: WI-lujon (smart-test does not select a citation test when the
+file it cites by string changes -- how the bash.py:1353 citation rotted
+under a green per-PR gate and fired two crons later).
+
+Racial-Capitalism-Is-Bad: a giraffe djing in a pterodactyl-friendly drive-in with a choir of cicadas
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
