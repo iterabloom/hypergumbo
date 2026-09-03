@@ -1,0 +1,69 @@
+Original commit body from 951070799bb98eda7427ab39e7f6b54f94481b6a:
+
+ALL 18 SELF-CLAIMS WENT INCONCLUSIVE AT THE 2026-09-02 13:00 UTC CRON FIRING
+and four lost their credited flows -- a security-claim regression that sat
+behind the full-suite aggregate bit for two firings, found by the per-step
+reader shipped for INV-bozid (PR #731) on its first live run.
+
+THE MECHANISM. INV-foluz (a33de088bc) made py.py emit a call edge for EVERY
+bare builtin call with `builtins` in the module slot -- len, str,
+isinstance, getattr, thousands of sites per repo. Before it only `open`
+reached the coverage gate, and `open` carries a row. `builtins` had three
+rows (open x2, input) and no entry in python.yaml's module_completeness, so
+_uncatalogued_external_modules returned it, _call_production_coverage set
+qualifying_only=False, and every claim took the verify_claims.py:3898
+inconclusive-without-caveats arm. Reproduced locally with the gate's own
+command: the identical 40-line drift. Replayed on hypergumbo's own map with
+the shipped predicates, before and after this change: unknown modules 69 before, 68 after, the single difference being builtins (20,325 builtins call edges among 105,931 Python call edges); nothing added.
+
+THE GATE IS RIGHT AND IS NOT TOUCHED. An unenumerated module IS unexamined.
+The fix is the positive, dated declaration the catalogue's own rule
+requires: every I/O surface of `builtins` rowed or absent. The survey probe
+cannot see a C module, so dir(builtins) on 3.12 was walked by hand (144
+public callables):
+
+  print, breakpoint, copyright, credits  -> logging      (new rows)
+  license                                -> fs_read + logging, simultaneous
+  help                                   -> logging + subprocess, `unruled`
+                                            (pydoc.pipepager is
+                                            Popen(shell=True) on a tty)
+  open, input                            -> already rowed
+  exit, quit                             -> raise SystemExit; no I/O
+  exec, eval, compile                    -> in-process evaluation
+  66 exception classes, the constructors -> no I/O
+
+`__import__` is a dunder, outside the public-callable rule the whole audit
+applies, and is the import statement's callable form; it is named in the
+entry rather than left implicit, with importlib's refusal as the related
+open question. `builtins.help` joins HIGH_RISK_PRIMITIVES: a launch is a
+launch. Survey addendum records the walk.
+
+TESTS ARE AGAINST THE SHIPPED CATALOGUE, NOT A STAND-IN. A stand-in could
+not have caught this -- it was python.yaml's own completeness list that
+lacked the entry -- so the coverage test loads python.yaml and asks the
+gate the question the CLI asks on every Python repo, with an unenumerated
+control (telnetlib) beside it to show the gate is not loosened.
+
+READ BACK ON HYPERGUMBO'S OWN MAP: of the 20,325 builtins call sites,
+193 are print and none is breakpoint/help/license/copyright/credits, so
+the new rows add 193 logging crossings here and nothing else; no
+self-claim constrains logging.
+
+THE ITEM'S OWN REPRO, RE-RUN: check-self-claims-drift reports OK, 18 claims unchanged (18 confirmed_with_caveats) -- every verdict, caveat set and credited-flow bit back on the recorded snapshot, with no snapshot update.
+
+TWO CORRECTIONS THE SUITE MADE. (1) The six names join python.yaml's
+ambiguous_names: they are builtins by construction, so INV-mivud's derived
+completeness rule flagged all six on the day they landed. Suppression fires
+only on a HINT-LESS bare call; every edge INV-foluz emits carries `builtins`
+in the module slot and matches through it -- pinned in both directions, on
+the taint index and on the io-boundary lookup. (2) `builtins.help` is the
+one entry in the unruled register INV-nular had emptied. Neither settled
+reason fits "logging ALWAYS, pager launch only when the environment supplies
+a tty" (read off pydoc.getpager on 3.12: os.system probes for pager/less/
+more, then Popen(shell=True)), so the register states the question and
+WI-kapak owns the vocabulary gap -- together with why help()'s no-argument
+stdin loop is disclosed and not rowed (help returns None; ADR-0049 says
+never mint).
+
+Racial-Capitalism-Is-Bad: a duck teaching calligraphy to a class of turtles in a Jurassic jukebox booth
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
