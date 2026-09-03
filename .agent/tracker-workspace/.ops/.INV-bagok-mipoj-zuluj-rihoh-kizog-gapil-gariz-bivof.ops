@@ -53,3 +53,10 @@
     fields:  # aeca
       statement: "A catalogue row's io_boundary must be true of every call site the row matches. VIOLATED, NETWORK CASE ONLY as of 2026-09-02: bufio.NewScanner/NewReader now follow their argument's origin where it resolves (fs_read over an os.Open handle, ipc_recv over os.Stdin, no crossing over an in-memory buffer), but a net.Conn argument is a real network receive and still classifies ipc_recv, because no io_target_kind value names a network stream and a net_recv row could therefore never be selected."  # aeca
       root_cause: "The io_target_kind vocabulary has no value for a network stream, so the narrowing seam cannot select a net_recv row and one would be an unreachable declaration. Downstream of that, an unresolvable origin (a struct field such as alertmanager's conn.connection) abstains whatever the vocabulary contains, which is the WI-dizag / INV-linub L3 receiver-typing family."  # aeca
+- op: discuss  # b1f3
+  at: '2026-09-03T09:05:27Z'  # b1f3
+  by: agent  # b1f3
+  actor: jgstern_agent  # b1f3
+  clock: 6  # b1f3
+  nonce: b1f3  # b1f3
+  message: "THE MISSING VALUE THIS ITEM'S NETWORK CASE WAITS ON IS NOW SCHEDULED: WI-suhug (P1, 2026-09-03) introduces `net_stream` into the io_target_kind vocabulary for the write side (io.WriteString(conn, ...) / fmt.Fprintf(w http.ResponseWriter, ...) -> net_send) and, because the vocabulary gate moves both sides together, on the read side net_stream -> net_recv -- which is exactly what would let a net_recv row for bufio.NewScanner(conn) be SELECTED rather than be the unreachable declaration this item's note refuses. The go classifier learns the value from the receiver's TYPE (net.Conn, *tls.Conn, http.ResponseWriter) via var_types, not from a producer call. Re-measure this item's five network sites (alertmanager tls_connection.go:136, caddy httpredirectlistener.go:90 and peers) once WI-suhug lands."  # b1f3

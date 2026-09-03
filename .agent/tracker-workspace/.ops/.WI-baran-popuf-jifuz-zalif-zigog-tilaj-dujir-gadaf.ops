@@ -1,0 +1,23 @@
+- op: create  # b4c1
+  at: '2026-09-03T09:04:32Z'  # b4c1
+  by: agent  # b4c1
+  actor: jgstern_agent  # b4c1
+  clock: 1  # b4c1
+  nonce: b4c1  # b4c1
+  data:  # b4c1
+    kind: work_item  # b4c1
+    title: "c: sys/socket send*/recv* are net_* only; an AF_UNIX / socketpair fd is process-local IPC (0012 tmux) -- dual rows + socket-family stamp from the fd's binding"  # b4c1
+    status: todo_hard  # b4c1
+    priority: 2  # b4c1
+    parent:  # b4c1
+    tags:  # b4c1
+    - catalogue  # b4c1
+    - io_boundary  # b4c1
+    - taint  # b4c1
+    - c  # b4c1
+    isbefore: []  # b4c1
+    duplicate_of: []  # b4c1
+    not_duplicate_of: []  # b4c1
+    pr_ref:  # b4c1
+    description: "FOUND 2026-09-03 from INV-nular's 09-03 entry (measurement 0012). c.yaml:90 declares sys/socket.{connect,send,sendto,sendmsg} under net_send with NO boundary_ruling, while the very next row (unistd.write) carries call_site_undecidable for exactly this reason. tmux:host-description-no-network:6 sends over an fd that is always AF_UNIX (client.c:122, server.c:123, proc.c:364 socketpair) -- process-local IPC, the catalogue's own ipc_send zone -- and was reported as a network send (0012 VACUOUS:KIND-MISDECLARED). The same shape holds on the read side: sys/socket.{recv,recvfrom,recvmsg} are net_recv only, and an AF_UNIX recv is ipc_recv.\n\nWHAT DECIDES IT is the socket FAMILY, established where the fd was created: socket(AF_UNIX, ...) / socketpair(...) -> process-local; socket(AF_INET|AF_INET6, ...) -> network. That is the same \"the fd's nature is established where it was opened\" rule INV-vaduk wrote on unistd.read/write, one hop back through the fd variable -- the hop c.py already performs for fgets's stream argument (test_c_stream_argument_origin.py).\n\nDESIGN. (1) Rows: send/sendto/sendmsg dual net_send + ipc_send, recv/recvfrom/recvmsg dual net_recv + ipc_recv, boundary_ruling call_site_undecidable, abstains_to = today's answer (net_*) so unstamped calls classify as before. connect stays net_send-only (it transmits nothing but a connection; ADR-0049's deferred shape -- separate question). (2) c.py stamps io_target_kind on the send/recv from the fd argument's binding: socketpair(...) or socket(AF_UNIX/AF_LOCAL, ...) -> `pipe` (process-local); socket(AF_INET/AF_INET6, ...) -> `net_stream`; anything else abstains. Both kinds are introduced by the sibling go item; land that first or together. (3) A/B on the c/cpp repos in the corpus (tmux, tmate, shellcheck's C bits), every moved row read back.\n\nDEPENDS ON the sibling write-side item for the vocabulary (`pipe`, `net_stream`) and the write-side seam."  # b4c1
+    fields: {}  # b4c1
