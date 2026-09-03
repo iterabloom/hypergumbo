@@ -1,0 +1,21 @@
+- op: create  # 2560
+  at: '2026-09-03T16:49:15Z'  # 2560
+  by: agent  # 2560
+  actor: jgstern_agent  # 2560
+  clock: 1  # 2560
+  nonce: '2560'  # 2560
+  data:  # 2560
+    kind: work_item  # 2560
+    title: "go: _go_last_binding takes a binding inside a branch that does not contain the use (conditional rebinding, 1 of 29 WI-suhug rows) -- abstain when two bindings are alternatives"  # 2560
+    status: todo_hard  # 2560
+    priority: 3  # 2560
+    parent:  # 2560
+    tags:  # 2560
+    - go  # 2560
+    - io_boundary  # 2560
+    isbefore: []  # 2560
+    duplicate_of: []  # 2560
+    not_duplicate_of: []  # 2560
+    pr_ref:  # 2560
+    description: "FOUND 2026-09-03 by reading WI-suhug's 29 moved rows back against source (LIVE rule 8). One of the 29 is not a true move.\n\ncilium pkg/k8s/client/testutils/fake.go:485-495:\n    out := s.LogWriter()\n    if len(args) > 0 {\n        f, err := os.OpenFile(s.Path(args[0]), os.O_CREATE|os.O_WRONLY, 0644)\n        ...\n        out = f\n    }\n    fmt.Fprintf(out, \"%s:\\n\", tc.domain)\n\n`_go_last_binding` returns the LAST binding at or above the use line in textual order, with -- by its own contract -- no branch reasoning. Here that is `out = f` inside the `if`, so the write stamps host_path and classifies fs_write; the truth is \"a file when --out is given, else the log writer\". The mis-kind keeps a sink (fs_write instead of logging), so it is the safe direction, but it is a wrong answer where INV-zumin says one answer or NONE.\n\nSTRUCTURAL FIX. When the last binding sits inside a block (if / else / for / switch case / select case) that does NOT contain the use, and an earlier binding of the same name exists OUTSIDE that block, the two bindings are alternatives and the resolver must abstain (return None). A binding in an enclosing block that contains the use still dominates and is fine. This is a DOMINANCE question answered on the AST (block nesting), not a dataflow one, so it stays inside `_go_last_binding`'s \"smaller instrument\" contract. Analogues to sweep: c.py `_c_binding_rhs`, haskell.py `_hs_binding_rhs` (haskell's `let`/`where` shapes differ -- check whether the same case can arise in a `do` block with `if`).\n\nSIZING. 1 of 29 moved write rows on six repos; unknown on the read side (WI-vutav's 179 were read back with a regex that could not see the shape either -- re-check the 91 host_path reads with the fixed resolver). Positive control: `w := os.Stdout; f, _ := os.Create(p); w = f; fmt.Fprintf(w, ...)` (straight-line rebinding) must STILL resolve to host_path -- pinned today by test_the_last_binding_wins."  # 2560
+    fields: {}  # 2560
