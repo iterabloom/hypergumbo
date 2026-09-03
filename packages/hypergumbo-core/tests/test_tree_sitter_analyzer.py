@@ -1631,6 +1631,99 @@ class TestMethodReturnTypeRegistryAggregation:
         assert captured == {}
 
 
+class TestResolveVarFieldChain:
+    """TreeSitterAnalyzer.resolve_var_field_chain() — WI-dizag shape B.
+
+    The var-rooted sibling of resolve_receiver_type: same field-registry walk,
+    but the root's type comes from ``var_types`` rather than ``enclosing_type``.
+    Every None branch is exercised here so the production wiring in rust.py
+    (which only takes the happy path on the fixture) is not the coverage floor.
+    """
+
+    def setup_method(self) -> None:
+        self.analyzer = StubAnalyzer()
+        self.analyzer._field_type_registry = {
+            "Holder": {"f": "File", "inner": "Inner"},
+            "Inner": {"g": "Socket"},
+        }
+
+    def _chain(self, chain: list[str]) -> tuple[MagicMock, bytes]:
+        # Reuse the field_expression mock builder from the sibling test class.
+        return TestResolveReceiverType._make_field_expr(self, chain)
+
+    def test_var_field_resolves(self) -> None:
+        """h.f resolves to File via var_types[h]=Holder, Holder.f=File."""
+        node, source = self._chain(["h", "f"])
+        assert self.analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) == "File"
+
+    def test_nested_var_field_chain(self) -> None:
+        """h.inner.g walks Holder -> Inner -> Socket."""
+        node, source = self._chain(["h", "inner", "g"])
+        assert self.analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) == "Socket"
+
+    def test_untracked_root_returns_none(self) -> None:
+        node, source = self._chain(["h", "f"])
+        assert self.analyzer.resolve_var_field_chain(node, source, {}) is None
+
+    def test_unknown_field_returns_none(self) -> None:
+        node, source = self._chain(["h", "missing"])
+        assert self.analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) is None
+
+    def test_intermediate_type_not_in_registry_returns_none(self) -> None:
+        self.analyzer._field_type_registry = {"Holder": {"inner": "Inner"}}
+        node, source = self._chain(["h", "inner", "g"])
+        assert self.analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) is None
+
+    def test_bare_identifier_is_left_to_the_plain_var_lookup(self) -> None:
+        """A root with no field chain has empty segments and is not answered
+        here — Strategy 1.8's plain var_types lookup owns that case."""
+        root = MagicMock()
+        root.type = "identifier"
+        root.start_byte, root.end_byte = 0, 1
+        assert self.analyzer.resolve_var_field_chain(
+            root, b"h", {"h": "Holder"},
+        ) is None
+
+    def test_non_identifier_root_returns_none(self) -> None:
+        """A chain rooted at self (or any non-identifier) is the sibling's job."""
+        node, source = self._chain(["self", "f"])
+        # 'self' is an identifier token here, but a call_expression root is not:
+        call_root = MagicMock()
+        call_root.type = "call_expression"
+        parent = MagicMock()
+        parent.type = "field_expression"
+        field = MagicMock()
+        field.start_byte, field.end_byte = 0, 1
+        parent.child_by_field_name = lambda n: (
+            call_root if n == "value" else field if n == "field" else None
+        )
+        assert self.analyzer.resolve_var_field_chain(
+            parent, b"x.f", {"x": "Holder"},
+        ) is None
+
+    def test_empty_registry_returns_none(self) -> None:
+        self.analyzer._field_type_registry = {}
+        node, source = self._chain(["h", "f"])
+        assert self.analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) is None
+
+    def test_no_registry_attr_returns_none(self) -> None:
+        analyzer = StubAnalyzer()
+        node, source = self._chain(["h", "f"])
+        assert analyzer.resolve_var_field_chain(
+            node, source, {"h": "Holder"},
+        ) is None
+
+
 class TestResolveReceiverType:
     """Tests for TreeSitterAnalyzer.resolve_receiver_type()."""
 

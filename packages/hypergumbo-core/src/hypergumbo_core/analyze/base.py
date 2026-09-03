@@ -3401,6 +3401,82 @@ class TreeSitterAnalyzer:
 
         return current_type
 
+    def resolve_var_field_chain(
+        self,
+        value_node: "tree_sitter.Node",
+        source: bytes,
+        var_types: dict[str, str],
+    ) -> str | None:
+        """Resolve a VARIABLE-rooted field chain to its type name.
+
+        The sibling of :meth:`resolve_receiver_type` for the case its own
+        docstring excludes: ``h.f`` where ``h`` is a parameter or local rather
+        than ``self``. The field-registry walk is identical — only the root's
+        type differs. ``resolve_receiver_type`` starts from ``enclosing_type``
+        because a ``self`` chain is rooted in the impl/class; this starts from
+        ``var_types[root]`` because a variable carries its own declared type.
+
+        This is what Go's ``_resolve_field_chain`` does (root in ``var_types``,
+        walk the field registry), ported so Rust's WI-dizag shape B —
+        ``h.f.write_all(..)`` — can recover ``File`` from ``Holder.f`` instead
+        of discarding it. Additive: nothing else calls it, so no analyzer that
+        relies on the self-only resolver changes behaviour.
+
+        Args:
+            value_node: The receiver node of a method call (e.g. the ``h.f``
+                part of ``h.f.write_all()``).
+            source: Source bytes for extracting node text.
+            var_types: Variable name → type name, for the enclosing scope.
+
+        Returns:
+            The resolved type name, or None if the root is not a tracked
+            variable or any field step misses.
+        """
+        registry = getattr(self, "_field_type_registry", {})
+        if not registry:
+            return None
+
+        # Decompose the chain leaf-to-root, exactly as resolve_receiver_type
+        # does — the two must agree on what a chain IS, so the traversal is the
+        # same and only the root handling below differs. The cursor is Optional
+        # because ``child_by_field_name`` is, and the ``while`` guards it.
+        segments: list[str] = []
+        cursor: "tree_sitter.Node | None" = value_node
+        while (
+            cursor is not None
+            and cursor.type in ("field_expression", "member_expression")
+        ):
+            field_node = cursor.child_by_field_name("field")
+            if field_node is None:  # pragma: no cover — always has a field
+                return None
+            segments.append(node_text(field_node, source))
+            cursor = (
+                cursor.child_by_field_name("value")
+                or cursor.child_by_field_name("argument")
+            )
+
+        # The root must be a tracked variable, not self (that is the sibling's
+        # job) and not another expression. A bare ``h`` with no field chain has
+        # empty ``segments`` and is left to the plain var_types lookup rather
+        # than answered here.
+        if cursor is None or cursor.type != "identifier" or not segments:
+            return None
+        current_type = var_types.get(node_text(cursor, source))
+        if current_type is None:
+            return None
+
+        segments.reverse()
+        for field_name in segments:
+            fields = registry.get(current_type)
+            if fields is None:
+                return None
+            next_type = fields.get(field_name)
+            if next_type is None:
+                return None
+            current_type = next_type
+
+        return current_type
+
     # -- Template methods: global symbol registry --------------------------
 
     def register_symbol(

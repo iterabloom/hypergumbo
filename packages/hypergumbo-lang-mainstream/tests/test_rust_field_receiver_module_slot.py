@@ -147,8 +147,15 @@ LINE_DECLARED_PARAM = _line_of("d_var")
 LINE_ANNOTATED_LET = _line_of("e_var")
 
 
-class TestSelfFieldReceiverReachesTheCatalogue:
-    """Shape A: the type Strategy 1.5 computes must not be discarded."""
+class TestFieldReceiverReachesTheCatalogue:
+    """Shapes A and B: a field receiver's type must not be discarded.
+
+    A is ``self.f`` (Strategy 1.5, self-rooted, shipped in the first WI-dizag
+    cut). B is ``h.f`` with ``h`` a typed PARAMETER — the var-rooted field
+    chain this change adds. Both resolve ``File`` through the struct
+    field-type registry; the only difference is where the root's type comes
+    from (``enclosing_type`` for self, ``_var_types`` for a variable).
+    """
 
     def test_self_field_write_all_is_fs_write(
         self, tmp_path: Path, rust_available: None,
@@ -157,6 +164,22 @@ class TestSelfFieldReceiverReachesTheCatalogue:
         assert got.get(LINE_SELF_FIELD) == "fs_write", (
             f"self.f.write_all classified {got.get(LINE_SELF_FIELD)!r}; the "
             f"receiver type was resolved and then dropped"
+        )
+
+    def test_param_field_write_all_is_fs_write(
+        self, tmp_path: Path, rust_available: None,
+    ) -> None:
+        """Shape B: ``h.f.write_all`` with ``h: &mut Holder`` a parameter.
+
+        The root ``h`` is typed ``Holder`` in ``_var_types`` (the same
+        mechanism that types shapes D and E), and ``Holder.f`` is ``File`` in
+        the field-type registry, so a var-rooted walk recovers ``File`` and the
+        module slot reaches ``std::fs::File.write_all`` — an ``fs_write`` sink.
+        """
+        got = _write_all_boundaries(tmp_path)
+        assert got.get(LINE_PARAM_FIELD) == "fs_write", (
+            f"h.f.write_all classified {got.get(LINE_PARAM_FIELD)!r}; the "
+            f"var-rooted field chain did not reach std::fs::File"
         )
 
 
@@ -182,25 +205,20 @@ class TestThePriorFixStillHolds:
         )
 
 
-class TestTheTwoShapesThisDoesNotFix:
+class TestTheShapeThisDoesNotFix:
     """Recorded as OPEN, not asserted as correct.
 
-    Shape B needs a var-rooted field-chain walk (``resolve_receiver_type``
-    handles only ``self``-rooted chains); shape C is a receiver typed from an
-    external function's RETURN VALUE, which is WI-lalot. Both are genuinely
-    unfixed, so this test states what they do TODAY and is expected to be
-    edited — not deleted — when either lands. Asserting them as ``fs_write``
-    would be pinning work that has not been done.
+    Shape C is a receiver typed from an external function's RETURN VALUE
+    (``let c = File::create(..).unwrap()``), which is WI-lalot — the type is
+    never written down, so no field or var walk can recover it. It states what
+    it does TODAY and is expected to be edited — not deleted — when WI-lalot
+    lands. Asserting it as ``fs_write`` would pin work that has not been done.
     """
 
-    def test_param_field_and_external_return_are_still_unclassified(
+    def test_external_return_receiver_is_still_unclassified(
         self, tmp_path: Path, rust_available: None,
     ) -> None:
         got = _write_all_boundaries(tmp_path)
-        assert got.get(LINE_PARAM_FIELD) is None, (
-            "h.f.write_all now classifies — WI-dizag shape B has been fixed; "
-            "move this assertion into the passing class above"
-        )
         assert got.get(LINE_EXTERNAL_RETURN) is None, (
             "the external-return receiver now classifies — that is WI-lalot; "
             "move this assertion into the passing class above"
