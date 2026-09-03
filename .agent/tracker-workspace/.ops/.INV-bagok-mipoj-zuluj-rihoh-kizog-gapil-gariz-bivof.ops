@@ -60,3 +60,10 @@
   clock: 6  # b1f3
   nonce: b1f3  # b1f3
   message: "THE MISSING VALUE THIS ITEM'S NETWORK CASE WAITS ON IS NOW SCHEDULED: WI-suhug (P1, 2026-09-03) introduces `net_stream` into the io_target_kind vocabulary for the write side (io.WriteString(conn, ...) / fmt.Fprintf(w http.ResponseWriter, ...) -> net_send) and, because the vocabulary gate moves both sides together, on the read side net_stream -> net_recv -- which is exactly what would let a net_recv row for bufio.NewScanner(conn) be SELECTED rather than be the unreachable declaration this item's note refuses. The go classifier learns the value from the receiver's TYPE (net.Conn, *tls.Conn, http.ResponseWriter) via var_types, not from a producer call. Re-measure this item's five network sites (alertmanager tls_connection.go:136, caddy httpredirectlistener.go:90 and peers) once WI-suhug lands."  # b1f3
+- op: discuss  # 38f9
+  at: '2026-09-03T16:50:12Z'  # 38f9
+  by: agent  # 38f9
+  actor: jgstern_agent  # 38f9
+  clock: 7  # 38f9
+  nonce: 38f9  # 38f9
+  message: "2026-09-03: the network case is no longer waiting. WI-suhug (PR #743) added `net_stream` to the target-kind vocabulary (a net.Conn / *tls.Conn / http.ResponseWriter by declared type; `c, _ := ln.Accept()` / `net.Dial(...)` by binding) and the bufio constructors + Reader/Scanner reads gained net_recv rows selected by it. The two sites this item's note named -- alertmanager cluster/tls_connection.go:136 (`bufio.NewReader(conn.connection)`, a struct FIELD) and caddy httpredirectlistener.go:91 (`bufio.NewReader(c)`, a net.Conn from Accept in a struct literal) -- see bc_compare_readside.out for what each now stamps; a field receiver still abstains (field-chain target kinds not built). Separately, INV-minol found that the ipc_recv FALLBACK this item chose was honoured by io-boundaries but not by taint: unstamped constructors minted nothing since this item's dual row landed. Fixed in the same PR; the unstamped sites now mint ipc_recv as the note intended."  # 38f9
