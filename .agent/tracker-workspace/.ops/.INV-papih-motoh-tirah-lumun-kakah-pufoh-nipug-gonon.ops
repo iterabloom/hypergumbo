@@ -23,3 +23,19 @@
     fields:  # c010
       statement: "Every emitted symbol id has exactly one span slot, so the ADR-0036 anchored parse has a unique correct answer for its path and name slots."  # c010
       root_cause: "Some rust external-symbol emission path builds an id by embedding an already-formed inner id into the name slot, producing two spans and no true path slot. The conformant form is emitted by a different path in the same run, so both shapes coexist in one map. Producer line NOT localized."  # c010
+- op: update  # 35fa
+  at: '2026-09-03T08:57:12Z'  # 35fa
+  by: agent  # 35fa
+  actor: jgstern_agent  # 35fa
+  clock: 2  # 35fa
+  nonce: 35fa  # 35fa
+  set: {}  # 35fa
+  add:  # 35fa
+    tags: [axis, module_key]  # 35fa
+- op: discuss  # e608
+  at: '2026-09-03T08:57:12Z'  # e608
+  by: agent  # e608
+  actor: jgstern_agent  # e608
+  clock: 3  # e608
+  nonce: e608  # e608
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSES VIOLATED: \"names the static owner path ... spelled in the source language's import vocabulary\" AND \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel (`external`) while the real owner path (`std::env`, `fs`, `Stdio`) is displaced into the NAME slot -- the audit's Pair 3 (qualifier in the NAME slot), rust's spelling of the defect INV-januj was filed for in python and INV-fofoj's java half turned out to be. The conformant form is emitted by a sibling path in the same run, so this is two producers disagreeing about which slot owns the path."  # e608

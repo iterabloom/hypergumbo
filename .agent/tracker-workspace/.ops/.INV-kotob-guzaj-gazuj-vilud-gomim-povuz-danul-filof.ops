@@ -43,3 +43,19 @@
   clock: 4  # 723c
   nonce: 723c  # 723c
   message: "SWIFT'S EMISSION SITE IS LOCATED. This item was carried as \"objc site located,\nswift's not\"; it is swift.py:1223, inside the INV-pirot method-call gate:\n\n    gate_path_hint = (\n        receiver_type                       # a TYPE      (var_types lookup)\n        or import_aliases.get(callee_name)  # a NAMESPACE (import alias)\n        or receiver_hint                    # a receiver VARIABLE\n        or \"external\"                       # a SENTINEL\n    )\n    ... ExternalRef(lang=\"swift\", module_path=gate_path_hint, name=callee_name)\n\nONE EXPRESSION, FOUR DIFFERENT NOTIONS, IN PRIORITY ORDER, ALL WRITTEN INTO ONE\nSLOT WITH NO RECORD OF WHICH ONE PRODUCED IT. This is the module-key conflation\nin its most literal form and is now the best single piece of evidence for\nWI-kijup's axiom -- better than the corpus percentages, because it is four lines\nof source rather than a measurement. Supporting reads: receiver_hint is\nreceiver_parts[0] (swift.py:1037), the first component of the receiver\nexpression, so a variable spelling; var_types is populated from variable\ndeclarations (:1108) and parameters (:1117), so receiver_type is a resolved type.\n\nThe second swift site (:1299) is NOT this shape: path_hint there is\nimport_aliases.get(callee_name) alone, a namespace, and the ExternalRef is\nwithheld entirely when it is absent. Only the gate site conflates.\n\nA CORRECTION TO WHAT THE AUDIT RECORDED ABOUT OBJC, since it changes the\nmigration target. The audit said objc \"writes module_path=receiver_name\nliterally\", and it does (objc.py:644) -- but the site is GATED on\nreceiver_name[0].isupper() (:637), and a capitalised Objective-C message\nreceiver is normally a CLASS name, not a variable. So objc's slot is\npredominantly a TYPE, not a receiver variable, and the lowercase identifiers the\naudit counted (expectation, request, session, resp, download, components) cannot\nhave come from that site. The receiver-VARIABLE notion is SWIFT's, via the third\nclause above. The \"26% of objc+swift refs\" figure was over the combined cohort\nand should not be attributed to objc.\n\nCONSEQUENCE FOR WI-marok (the gated Phase 2 migration): its objc bullet is\nmis-aimed as filed and should be re-derived per-language before any row moves.\nRecorded there too."  # 723c
+- op: update  # 70ea
+  at: '2026-09-03T08:57:10Z'  # 70ea
+  by: agent  # 70ea
+  actor: jgstern_agent  # 70ea
+  clock: 5  # 70ea
+  nonce: 70ea  # 70ea
+  set: {}  # 70ea
+  add:  # 70ea
+    tags: [axis, module_key]  # 70ea
+- op: discuss  # bf61
+  at: '2026-09-03T08:57:10Z'  # bf61
+  by: agent  # bf61
+  actor: jgstern_agent  # bf61
+  clock: 6  # bf61
+  nonce: bf61  # bf61
+  message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a property of the call site: not the receiver's variable name\". NOTION THE SLOT CARRIES: receiver_variable (section call_site_property). ADR-0051 s2 is this item stated as principle; the module-key audit sized it (1,102 of 4,207 objc+swift refs, 26%, 266 distinct locals) and located objc's literal `module_path=receiver_name`. The conformant value -- the receiver TYPE -- already has a home in `receiver_type_hint`; WI-monul is the consumer half."  # bf61
