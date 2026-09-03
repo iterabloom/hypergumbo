@@ -1,0 +1,17 @@
+Original commit body from b8ab5ea0aa547c096193e4c5eb160c5cc5b269c9:
+
+Changelog audit of both `[Unreleased]` sections, emphasising readability and concision (owner request).
+
+**Main changelog.** 910 lines / 530 KB / 708 bullets → 158 lines / 62 KB / 87 bullets, at the register of the 8.0.0 release section: a Summary, then Added / Changed / Fixed / Documentation with one `####` subhead per cluster and one bullet per feature or fix cluster. Effect first; the one or two numbers that size it; ADR references, code identifiers and every version transition preserved (`SCHEMA_VERSION` 0.20.1 → 0.20.3, envelope 2.0 → 2.2, `IO_BOUNDARIES_SCHEMA_VERSION` 2.2, ratchet 671 → 669); tracker IDs stripped per the playbook. The five duplicate `### Fixed` / three `### Added` / three `### Changed` headings that had re-accreted since the 08-28 merge are gone.
+
+**Supersessions merged rather than left contradicting:** self-claims gate per-PR → cron-only; the `io_lib:format` re-rooting argument withdrawn (0006 useful precision 21.4%, 0012 at 30.9%); 0008's ceiling re-measured by 0011.
+
+**Phase 1 (completeness, 192 commits since v8.0.0):** three commits had no presence — duplicate-YAML-key refusal at catalogue load, `tag-release` credential preflight, `cli.github.com` allowlist — now recorded. **Phase 0:** nothing misplaced in either direction.
+
+**Verification:** every number, backticked identifier, ADR ref and measurement id in the new text checked mechanically against the old section text plus the commit log (positive and negative controls on the checker); 14 residual flags are abbreviations of longer source identifiers, verified by eye. No script parses the Unreleased body; the header-line tests and the release-notes promotion tests pass.
+
+**Tracker changelog:** 15 → 11 lines; `tracker sync --prune` gets an Added bullet, the nine empty sync PRs and the modal harness get one Fixed bullet each.
+
+Not touched: `docs/RELEASE-NOTES-8.X.md`'s `## Unreleased` (85 lines, says `SCHEMA_VERSION` is at 0.20.2; now 0.20.3) — outside the playbook's scope, flagged for a follow-up.
+
+https://claude.ai/code/session_01AjN216ATXcbTPVWuS5r9bS
