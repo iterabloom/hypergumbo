@@ -117,6 +117,150 @@ _wp_warn_substituted() {
 	} >&2
 }
 
+# ------------------------------------------------------------------
+# Woodpecker pipeline readers (INV-bozid, the MASKING half).
+#
+# A Woodpecker workflow publishes ONE commit status for all of its steps, so
+# `ci/woodpecker/cron/full-suite: failure` names no step, and one
+# chronically-red step makes every sibling's verdict unreadable for as long
+# as it stays red. The pipeline object behind a status's target_url carries
+# each step's own state (`workflows[].children[].state`), and the log fetcher
+# below was already reading it to pick the failed step -- so the per-gate
+# verdict the aggregate hides was one call away the whole time. These helpers
+# make that call once and render it, for `ci-debug status` and `ci-debug
+# cron-status` alike.
+#
+# The alternative -- one workflow FILE per gate, so GitHub sees one context
+# per gate -- was verified viable and deliberately not taken: every split
+# file needs its own clone and its own grammar build, a single-agent runner
+# would serialize them, and the first validation of any cron-file change is
+# the next firing up to twelve hours away. Reading the verdict that already
+# exists costs none of that. The split stays available if a gate ever needs
+# its own GitHub check context (a required check, say); nothing here
+# forecloses it.
+#
+# Credentials come from .env (WOODPECKER_SERVER / WOODPECKER_TOKEN /
+# CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET -- see the tail of
+# _github_fetch_job_log for what each HTTP code means). The GitHub token is
+# never sent to the Woodpecker host.
+# ------------------------------------------------------------------
+_wp_have_credentials() {
+	[[ -n "${WOODPECKER_SERVER:-}" && -n "${WOODPECKER_TOKEN:-}" \
+	   && -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]
+}
+
+# _wp_curl ARGS...
+#   curl against the Woodpecker host with the Access + API headers attached.
+#   The ONE place those headers are spelled.
+_wp_curl() {
+	curl -sS --max-time 60 \
+		-H "Authorization: Bearer $WOODPECKER_TOKEN" \
+		-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+		-H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+		"$@"
+}
+
+# _wp_pipeline_coords TARGET_URL
+#   Prints "REPO PIPELINE [WORKFLOW_INDEX]" parsed off a status target_url
+#   (/repos/<repo>/pipeline/<number>[/<index>]); returns 1 for any other URL.
+#   Only the PATH is matched -- the host comes from .env, never from the URL,
+#   so a target_url can never redirect the credentials elsewhere (WI-solob).
+#   The trailing number is the WORKFLOW index within the pipeline, which is
+#   what a matrix leg's context (`.../nightly/2`) points at.
+_wp_pipeline_coords() {
+	local url="${1:-}"
+	if [[ "$url" =~ /repos/([0-9]+)/pipeline/([0-9]+)(/([0-9]+))? ]]; then
+		echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[4]:-}"
+		return 0
+	fi
+	return 1
+}
+
+# _wp_pipeline_json REPO PIPELINE OUTFILE
+#   GET /api/repos/{repo}/pipelines/{n}; the body lands in OUTFILE and the
+#   HTTP code in WP_HTTP_CODE, so a refusal can be named rather than hidden.
+#   Returns 0 on 200. The body goes to a FILE and not to stdout on purpose:
+#   a caller capturing stdout with `$(...)` runs this in a subshell, where
+#   WP_HTTP_CODE is set and then thrown away -- the first cut reported every
+#   refusal as "HTTP 000" for exactly that reason.
+_wp_pipeline_json() {
+	local repo="$1" pipeline="$2" out="$3" host="${WOODPECKER_SERVER%/}"
+	WP_HTTP_CODE=$(_wp_curl -o "$out" -w '%{http_code}' \
+		"$host/api/repos/$repo/pipelines/$pipeline" 2>/dev/null) || WP_HTTP_CODE="000"
+	[[ "$WP_HTTP_CODE" == "200" ]]
+}
+
+# _wp_render_steps TARGET_URL [INDENT]
+#   One line per step of the workflow a status points at:
+#     OK   self-claims-gate
+#     FAIL test-all-packages (exit 1)
+#     ERR  build-grammars          <- the pipeline died here; NOT a pass
+#     SKIP test-agent-infra        <- never ran; NOT a pass
+#   `error` and `skipped` get their own marks because INV-bobor's third
+#   delivery failure was exactly a died-inside-the-gate pipeline reading like
+#   a passed gate. Prints nothing for a non-Woodpecker URL. When the steps
+#   CANNOT be read -- no credentials, a refused fetch, an index the pipeline
+#   does not have -- it says so and names why (once per run for the
+#   credential case): an empty that does not name what it searched is an
+#   absence manufactured by the instrument.
+_wp_render_steps() {
+	local url="${1:-}" indent="${2:-}"
+	local coords repo pipeline wf
+	coords=$(_wp_pipeline_coords "$url") || return 0
+	read -r repo pipeline wf <<<"$coords"
+	if ! _wp_have_credentials; then
+		if [[ -z "${_WP_CREDS_NOTED:-}" ]]; then
+			_WP_CREDS_NOTED=1
+			echo "${indent}(per-step verdicts not read: WOODPECKER_SERVER, WOODPECKER_TOKEN,"
+			echo "${indent} CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must all be set in .env)"
+		fi
+		return 0
+	fi
+	local body
+	body=$(mktemp)
+	if ! _wp_pipeline_json "$repo" "$pipeline" "$body"; then
+		rm -f "$body"
+		echo "${indent}(per-step verdicts not read: pipeline $pipeline returned HTTP ${WP_HTTP_CODE:-000})"
+		return 0
+	fi
+	# The payload travels by FILE: the heredoc owns stdin here.
+	WP_BODY_FILE="$body" WP_WF="$wf" WP_INDENT="$indent" WP_PIPELINE="$pipeline" \
+		python3 - <<'PY'
+import json, os
+indent = os.environ.get("WP_INDENT", "")
+want = os.environ.get("WP_WF") or ""
+pipeline = os.environ.get("WP_PIPELINE", "?")
+try:
+    with open(os.environ["WP_BODY_FILE"]) as fh:
+        data = json.load(fh)
+except (OSError, json.JSONDecodeError):
+    data = {}
+workflows = (data.get("workflows") or []) if isinstance(data, dict) else []
+if want:
+    workflows = [w for w in workflows if str(w.get("pid")) == want]
+    if not workflows:
+        print(f"{indent}(per-step verdicts not read: pipeline {pipeline} has no workflow #{want})")
+        raise SystemExit(0)
+MARK = {"success": "OK  ", "failure": "FAIL", "error": "ERR ",
+        "skipped": "SKIP", "killed": "KILL"}
+shown = 0
+for wf in workflows:
+    for step in (wf.get("children") or []):
+        state = str(step.get("state") or "pending")
+        mark = MARK.get(state, "... ")
+        suffix = ""
+        if state == "failure" and step.get("exit_code"):
+            suffix = f" (exit {step['exit_code']})"
+        elif state not in MARK:
+            suffix = f" ({state})"
+        print(f"{indent}{mark} {step.get('name', '?')}{suffix}")
+        shown += 1
+if not shown:
+    print(f"{indent}(per-step verdicts not read: pipeline {pipeline} lists no steps)")
+PY
+	rm -f "$body"
+}
+
 # _github_fetch_job_log HEAD_SHA [JOB_NAME]
 #   Capability gap: Woodpecker CI logs live behind Cloudflare Access and
 #   are not retrievable via the GitHub API (GitHub Actions is disabled;
@@ -197,25 +341,17 @@ if statuses:
 	# the repo is public, so the CI host is configuration, not source. Only the
 	# pipeline COORDINATES are read off target_url, and only its path is
 	# matched, so a target_url can never reintroduce a hard-coded host.
-	local wp_host wp_repo wp_pipeline
+	local wp_host wp_repo wp_pipeline _wp_coords
 	wp_host="${WOODPECKER_SERVER:-}"
 	wp_host="${wp_host%/}"
-	if [[ "$target_url" =~ /repos/([0-9]+)/pipeline/([0-9]+) ]]; then
-		wp_repo="${BASH_REMATCH[1]}"
-		wp_pipeline="${BASH_REMATCH[2]}"
+	if _wp_coords=$(_wp_pipeline_coords "$target_url"); then
+		read -r wp_repo wp_pipeline _ <<<"$_wp_coords"
 	fi
 
-	if [[ -n "$wp_host" && -n "${wp_repo:-}" && -n "${wp_pipeline:-}" \
-	      && -n "${WOODPECKER_TOKEN:-}" && -n "${CF_ACCESS_CLIENT_ID:-}" \
-	      && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-		local -a _wp_hdr=(
-			-H "Authorization: Bearer $WOODPECKER_TOKEN"
-			-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
-			-H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"
-		)
+	if [[ -n "${wp_repo:-}" && -n "${wp_pipeline:-}" ]] && _wp_have_credentials; then
 		local pipeline_json step_id
-		pipeline_json=$(curl -sS "${_wp_hdr[@]}" \
-			"$wp_host/api/repos/$wp_repo/pipelines/$wp_pipeline" 2>/dev/null || true)
+		pipeline_json=$(mktemp)
+		_wp_pipeline_json "$wp_repo" "$wp_pipeline" "$pipeline_json" || true
 		# Prefer a step whose name matches JOB_NAME; otherwise the FAILED step,
 		# so `ci-debug logs` with no job lands on the thing that actually broke.
 		local _step_sel step_how step_name
@@ -241,7 +377,8 @@ for s in steps:
         emit(s, 'fallback-failed')
 if steps:
     emit(steps[-1], 'fallback-first')
-" <<<"$pipeline_json" 2>/dev/null || echo "")
+" <"$pipeline_json" 2>/dev/null || echo "")
+		rm -f "$pipeline_json"
 		IFS=$'\t' read -r step_id step_how step_name <<<"$_step_sel"
 		# ONE name is tried as a gate and then as a step, so a fallback at
 		# either level alone is not a substitution:
@@ -257,7 +394,7 @@ if steps:
 
 		if [[ -n "$step_id" ]]; then
 			local body http
-			body=$(curl -sS -w $'\n%{http_code}' "${_wp_hdr[@]}" \
+			body=$(_wp_curl -w $'\n%{http_code}' \
 				"$wp_host/api/repos/$wp_repo/logs/$wp_pipeline/$step_id" 2>/dev/null || true)
 			http="${body##*$'\n'}"
 			body="${body%$'\n'*}"
