@@ -1,0 +1,46 @@
+Original commit body from 9de9160236f18a6829870cba5f6a854151a50f20:
+
+THE MODULE-KEY AXIS PAYOFF. When one module path is a strict component-prefix
+of the other, _module_matches's arm 2 decides whether the first extra
+component names a TYPE inside the matched module (os/exec + Cmd -> match) or a
+SIBLING module that shares the prefix (net/http + fcgi -> no match). It decided
+that with extra[:1].isupper() -- Go's "capitals mean types", in a predicate
+that takes no language and serves fifteen catalogues, and is constant-true
+wherever module names are themselves capitalised (haskell 195/195 rows, swift
+106/107, objc 126/131, elixir 250/529). Measured across eight repos in those
+languages, arm 2 fired nine times and named a type ZERO times.
+
+The rule is now _extra_component_names_a_type(parent, extra): a type is spelled
+differently from the module it sits in, a sibling module the same way, so the
+extra component decides by whether its case DISAGREES with the parent it
+follows. Identical to the old test for a lowercase parent; rejects for a
+capitalised one. One home, so scripts/measure-module-matches-arm2-ab.py can
+patch exactly it.
+
+The item's own analysis said no single route reaches removed=0 -- the
+parent-agreement rule "fixes elixir completely and breaks haskell", because
+Data.ByteString.Lazy.readFile really is a file read. So the benign firings
+re-enter through the CATALOGUE, not the predicate: the bytestring siblings get
+their own boot-library rows (arm 1, exact) and the Hackage extra/process-extras
+packages get a new community overlay. Data.ByteString.Lazy and elixir's
+Req.Response are orthographically identical and differ only semantically, which
+no spelling rule can see -- the item's thesis, now shipped.
+
+A pre-existing unvouched-row hijack surfaced by the A/B and fixed with it:
+overlays merge in front of the base catalogue and gate_named_entry returned
+non_method[0], so a hint-less readProcess was attributed to
+System.Process.Typed (unvouched), dropping the subprocess half with its lost
+simultaneous marker. The gate now sorts vouched-first (stable). 74 overlay/base
+short-name collisions across all languages were exposed to this.
+
+Old-tree/new-tree A/B, 5 haskell/elixir repos + 3 controls, baseline asserted
+by grep, every arm file non-empty, every moved row read back against source:
+removed 2 (both livebook false positives, confirmed), lost 0 true boundaries,
+GAINED 8 (7 real System.Process.readProcess subprocess reads + hls
+listFilesInside, all dropped by the old hijack). go/python/swift: 0 changed.
+
+Also: added the ## Frame block measurement 0012 needed (ADR-0048 §A3), and
+re-pointed a module_key_axis.py citation the INV-sihom fix had drifted.
+
+Racial-Capitalism-Is-Bad: a capybara playing chess in a subway car with a parliament of ravens made of soup noodles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
