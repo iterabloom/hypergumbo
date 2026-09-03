@@ -1,0 +1,26 @@
+Original commit body from 23397d1210a823ad02bcf8219abad87da6a52f9a:
+
+The module-key concept audit ran on 2026-09-01 against dev 26d2995302,
+left its full trail (the 16 KB write-up in the lab notebook, ADR-0050,
+ADR-0051, INV-dijor, WI-monul, WI-kurod / WI-kijup / WI-mubup, WI-livar,
+WI-zozun, WI-virav) and never ran scripts/concept-audit-record. The state
+file stayed on call_construct / 2026-08-27, so the session-start hook
+fired at "104 commits" on 09-03 when the count since the last audit was
+31 -- below the 72 threshold. This is the mirror of the 2026-08-20
+failure the recorder now guards against: a trail without bookkeeping
+over-fires the hook; bookkeeping without a trail silences it.
+
+- .agent/.last_concept_audit.json: audits_run 13 -> 14, suspect
+  module-key. The recorder was run (its findings-document gate passed on
+  the 09-01 write-up), then the SHA and date were set to the audit's OWN
+  coordinates -- the tree it ran on and the write-up's mtime -- not the
+  recording commit's, so the cadence counts from when the codebase was
+  last looked at, not from when the paperwork landed.
+- playbook Examples: the 09-01 entry in the 08-27 entry's shape,
+  including the process finding.
+
+No fresh audit was run: 31 commits since the last one is under the
+threshold, and the queue item that said "concept audit is NEXT" rested
+on the stale record.
+
+https://claude.ai/code/session_01AjN216ATXcbTPVWuS5r9bS
