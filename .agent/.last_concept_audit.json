@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "7e61496f526c1b6408f6960c509ea8aee12919bd",
-  "last_audit_iso_date": "2026-08-27T12:12:39.253450-04:00",
-  "suspect_domain": "call_construct",
-  "audits_run": 13
+  "last_audit_sha": "26d2995302c6d091a94f68363e2490fa4443ea6f",
+  "last_audit_iso_date": "2026-09-01T01:40:23-04:00",
+  "suspect_domain": "module-key",
+  "audits_run": 14
 }
