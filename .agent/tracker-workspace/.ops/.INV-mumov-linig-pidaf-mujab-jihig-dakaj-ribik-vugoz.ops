@@ -191,3 +191,12 @@
   clock: 24  # 063f
   nonce: 063f  # 063f
   message: "Attribute-chain slice shipped in PR #756 (dev a21ef3223f). `obj.field.method()` where `obj` is a project class whose `__init__` typed `field` with a catalogued constructor now carries that module in the slot, from any file: `_receiver_type` answers a dotted field path from `external_var_types`, the walker binds `<local>.<field>` keys at the binding site (purged on rebind, pruned with a shadowed root, one hop through a project-class field, `self.<field>.<field>` too). Structural finding from the red tests: the per-class field maps were built INSIDE `_extract_edges` per file, so a class imported from another file had no map at all; they are now built once per repo before any file's edges (`_collect_class_field_maps`, keyed by class-symbol id) with the per-file param-type resolvers factored into `_make_param_type_helpers`. Side effect: a DERIVATION rooted at `self.<field>` (`self.out_dir / name`) is typed for the first time — the key existed but only the self-branch emitter read it. Measured (lab: ~/hypergumbo_lab_notebook/mumov_attrchain_09032026/): io-boundaries A→B python io chains poetry 190→191, mitmproxy 534→535, meson 2873→2880, pretix 1093→1093 (9 new `pathlib.Path` rows, 0 lost, every one read back at source); per-site churn poetry 4 gains / meson 11 / mitmproxy 7 / pretix 0, 0 losses, 0 re-keys, every moved row read back at source. NOT closed by this slice: a factory FUNCTION returning a catalogued type (`sqlite3.connect(p)` — the derived constructor table holds `sqlite3.Connection`, the class) is the return-type-registry consumer's job (INV-dihos python phase). Status stays violated until the bakeoff validates (awaits_bakeoff_validation kept)."  # 063f
+- op: update  # 1681
+  at: '2026-09-04T16:29:20Z'  # 1681
+  by: agent  # 1681
+  actor: jgstern_agent  # 1681
+  clock: 25  # 1681
+  nonce: '1681'  # 1681
+  set: {}  # 1681
+  remove:  # 1681
+    tags: [awaits_bakeoff_validation]  # 1681
