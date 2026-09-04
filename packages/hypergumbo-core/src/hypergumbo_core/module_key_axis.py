@@ -161,7 +161,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1299,
+                line=1599,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -193,8 +193,8 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=644,
-                anchor="module_path=receiver_name",
+                line=827,
+                anchor="_module: str | None = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
                     "gated on receiver_name[0].isupper(), and a capitalised "
@@ -230,15 +230,20 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1223,
-                anchor="gate_path_hint = (",
+                line=1528,
+                anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
-                    "THE CONFLATION IN ITS PUREST FORM, and the single best "
-                    "evidence for this axis. One fallback chain yields a TYPE "
-                    "(receiver_type), then a NAMESPACE (import alias), then a "
-                    "receiver VARIABLE (receiver_hint), then a SENTINEL "
-                    "('external') -- four notions into one slot with no "
-                    "record of which one produced it. INV-kotob."
+                    "WAS the conflation in its purest form, and the single "
+                    "best evidence for this axis: until PR #757 one fallback "
+                    "chain (gate_path_hint) yielded a TYPE (receiver_type), "
+                    "then a NAMESPACE (import alias), then a receiver "
+                    "VARIABLE (receiver_hint), then a SENTINEL ('external') "
+                    "-- four notions into one slot with no record of which "
+                    "one produced it. INV-kotob (satisfied 2026-09-04) cut "
+                    "the variable clause: the slot now carries an external "
+                    "TYPE or an import alias, else the sentinel, and a "
+                    "project type rides in receiver_type_hint only. The site "
+                    "is kept as the historical anchor of the notion."
                 ),
             ),
         ),
@@ -324,7 +329,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=5989,
+                line=6212,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -336,7 +341,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=790,
+                line=798,
                 anchor="JS_KNOWN_GLOBALS",
                 note="The nine globals treated as addressable owners.",
             ),
