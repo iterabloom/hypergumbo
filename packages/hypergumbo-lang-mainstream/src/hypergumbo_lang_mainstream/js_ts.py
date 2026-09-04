@@ -304,6 +304,14 @@ class _ParsedFile:
     2. Return type annotations (TypeScript): client = getClient() where
        getClient(): Client → var_types['client'] = 'Client'
     3. Parameter type annotations: constructor(private db: Database) → var_types['db'] = 'Database'
+    4. A CATALOGUED constructor's module (INV-misup): ws = new WebSocket(u) →
+       var_ctor_modules['ws'] = 'WebSocket'; s = new net.Socket() →
+       'net.Socket'. Read only when the in-repo lookup for the receiver
+       misses, so a project class never lands a module here.
+
+    A receiver none of these type (``obj.write(x)``) still emits the
+    ``external`` placeholder with ``call_construct: method`` (WI-nasuf) —
+    disclosure and walk coverage, not recall.
     """
 
     path: Path
@@ -798,6 +806,47 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "caches",         # Service Worker CacheStorage (open, match, has, keys)
     "indexedDB",      # Browser IndexedDB (open, databases)
 })
+
+def _derive_js_constructor_types() -> dict[str, str]:
+    """``{constructor name: catalogue module}`` for every ``new``-able receiver type.
+
+    INV-misup. A receiver bound by construction (``ws = new WebSocket(u)``)
+    landed the bare constructor name in ``var_types`` and nothing carried it
+    to the io-boundary layer, so every row keyed on ``WebSocket``,
+    ``XMLHttpRequest``, ``EventSource`` and ``BroadcastChannel`` -- and the
+    whole XHR egress surface -- was inert. Derived from the catalogue rather
+    than listed here, the way ``py.py`` derives ``EXTERNAL_CONSTRUCTOR_TYPES``,
+    so a row added tomorrow is reachable without a code change.
+
+    A bare PascalCase module (``WebSocket``) keys on its own name; a dotted one
+    (``net.Socket``, ``dgram.Socket``) keys on the class leaf under its
+    namespace and is matched at the ``new ns.Class()`` site, where the
+    namespace import supplies the module. A leaf claimed by two modules is
+    withheld -- ``Socket`` belongs to both ``net`` and ``dgram``, so the
+    namespace decides, never the leaf.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    # A KNOWN GLOBAL that happens to be PascalCase (``Deno``) is a namespace
+    # receiver the Case-3b path already handles, not something ``new``-ed.
+    modules = {
+        p.module for p in load_catalog("javascript").primitives
+        if p.kind == "method" and p.module and p.module[:1].isupper()
+        and p.module not in JS_KNOWN_GLOBALS
+    }
+    dotted = {
+        p.module for p in load_catalog("javascript").primitives
+        if p.kind == "method" and p.module and "." in p.module
+        and p.module.rsplit(".", 1)[1][:1].isupper()
+    }
+    derived = {m: m for m in modules}
+    for m in dotted:
+        derived[m] = m
+    return derived
+
+
+#: ``{constructor key: module}`` -- see :func:`_derive_js_constructor_types`.
+JS_CONSTRUCTOR_TYPES: dict[str, str] = _derive_js_constructor_types()
 
 # Bare global functions (called as ``fn(...)``, not ``obj.fn(...)``) that the
 # io-boundary catalog recognises. ``fetch`` is the global network primitive
@@ -3267,6 +3316,59 @@ def _jsts_constructed_from(
     return None
 
 
+def _constructed_module(
+    class_name: str, ns_import_path: str | None,
+) -> str | None:
+    """The catalogue module a ``new`` expression's instance belongs to, or ``None``.
+
+    INV-misup. ``new WebSocket(u)`` -> ``WebSocket`` (a catalogued global
+    constructor keys on its own name); ``new net.Socket()`` under
+    ``const net = require('net')`` -> ``net.Socket`` (the namespace import
+    supplies the module and the catalogue keys the dotted form). A class the
+    catalogue does not know yields ``None``: nothing is asserted for it.
+    """
+    if ns_import_path is not None:
+        dotted = f"{_normalize_import_module_hint(ns_import_path)}.{class_name}"
+        return dotted if dotted in JS_CONSTRUCTOR_TYPES else None
+    return JS_CONSTRUCTOR_TYPES.get(class_name)
+
+
+def _new_expression_module(
+    new_node: "tree_sitter.Node",
+    source: bytes,
+    namespace_imports: dict[str, str] | None,
+) -> str | None:
+    """The catalogue module of an INLINE ``new X(...)`` receiver, or ``None``.
+
+    INV-misup, chained form: ``new net.Socket().write(d)`` /
+    ``new XMLHttpRequest().open(..)``. Reads the constructor the same way the
+    ``new_expression`` branch does (bare identifier, or ``ns.Class`` under a
+    namespace import) and asks :func:`_constructed_module` -- one rule for the
+    assigned and the inline shape.
+    """
+    ns_path: str | None = None
+    class_name: str | None = None
+    for child in new_node.children:
+        if child.type == "identifier":
+            class_name = _node_text(child, source)
+            break
+        if child.type == "member_expression":
+            ns_name = None
+            for mc in child.children:
+                if mc.type == "identifier":
+                    ns_name = _node_text(mc, source)
+                elif mc.type == "property_identifier":
+                    class_name = _node_text(mc, source)
+            if ns_name and namespace_imports and ns_name in namespace_imports:
+                ns_path = namespace_imports[ns_name]
+            else:
+                class_name = None
+            break
+    if class_name is None:
+        return None
+    return _constructed_module(class_name, ns_path)
+
+
 def _extract_field_type(node: "tree_sitter.Node", source: bytes) -> Optional[str]:
     """Return the type-annotation text (without the leading ``: ``, e.g.
     ``"string[]"``) of a class field (``public_field_definition``) or a variable
@@ -4772,6 +4874,10 @@ def _extract_edges(
     edges: list[Edge] = []
     # Track variable types for type inference: var_name -> class_name
     var_types: dict[str, str] = {}
+    # INV-misup: the catalogue module of a ``new``-constructed local, keyed by
+    # variable name, beside ``var_types`` (which keeps the bare class name for
+    # in-repo resolution). Only catalogued constructors land here.
+    var_ctor_modules: dict[str, str] = {}
 
     for node in iter_tree(tree.root_node):
         # Import statements
@@ -5062,7 +5168,16 @@ def _extract_edges(
                     for child in func_node.children:
                         if child.type == "property_identifier":
                             method_name = _node_text(child, source)
-                        elif child.type in ("identifier", "this", "member_expression"):
+                        elif child.is_named and child.type not in (
+                            "optional_chain", "comment",
+                        ):
+                            # The receiver: an identifier, ``this``, a member
+                            # chain, or -- INV-misup / WI-nasuf -- ANY other
+                            # expression (``new X(..)``, ``f()``, ``a[i]``,
+                            # ``(x)``, ``await p``). A receiver the analyzer
+                            # cannot name is still a receiver (INV-pirot):
+                            # the branches below type what they can and the
+                            # terminal placeholder emits for the rest.
                             obj_node = child
 
                     if method_name:
@@ -5239,6 +5354,67 @@ def _extract_edges(
                             edges.append(edge)
                             edge_added = True
 
+                        # INV-misup: a receiver bound by construction whose
+                        # in-repo lookup missed (``ws = new WebSocket(u);
+                        # ws.send(x)``) carries the constructor's catalogue
+                        # module into the slot. Only a catalogued constructor
+                        # reaches ``var_ctor_modules``, so a project class or
+                        # an unknown library class never lands a fictional
+                        # module here. ``receiver_type_hint`` keeps the bare
+                        # class for the Tier-2 linkers, unchanged.
+                        # A TypeScript-DECLARED receiver of a catalogued type
+                        # (``function go(ws: WebSocket)``, ``const d: Date``)
+                        # names the same module a constructed one does --
+                        # java's INV-vugon rule: the declaration is evidence.
+                        # Read from ``var_types`` (where parameter and
+                        # annotation types already land) only when the bare
+                        # name IS a catalogued constructor, so a project class
+                        # never lands a module here.
+                        if (
+                            not edge_added
+                            and obj_name
+                            and obj_name not in var_ctor_modules
+                            and var_types.get(obj_name) in JS_CONSTRUCTOR_TYPES
+                        ):
+                            var_ctor_modules[obj_name] = JS_CONSTRUCTOR_TYPES[
+                                var_types[obj_name]
+                            ]
+                        if (
+                            not edge_added
+                            and obj_name
+                            and obj_name in var_ctor_modules
+                        ):
+                            _ctor_module = var_ctor_modules[obj_name]
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, method_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                module_hint=_ctor_module,
+                                receiver_type_hint=var_types.get(obj_name),
+                                call_construct="method",
+                            ))
+                            edge_added = True
+
+                        # INV-misup, inline form: ``new net.Socket().write(d)``
+                        # -- the receiver IS the construction.
+                        if (
+                            not edge_added
+                            and obj_node is not None
+                            and obj_node.type == "new_expression"
+                        ):
+                            _inline_module = _new_expression_module(
+                                obj_node, source, namespace_imports,
+                            )
+                            if _inline_module is not None:
+                                edges.append(make_unresolved_edge(
+                                    lang, current_function.id, method_name,
+                                    node.start_point[0] + 1 + line_offset,
+                                    PASS_ID, run.execution_id,
+                                    module_hint=_inline_module,
+                                    call_construct="method",
+                                ))
+                                edge_added = True
+
                         # Case 4: Fallback - method name match with low confidence.
                         # Emit only one edge to the best candidate (not all
                         # candidates) to avoid name-collision fanout where
@@ -5271,6 +5447,7 @@ def _extract_edges(
                                             PASS_ID, run.execution_id,
                                             enclosing_class=_enclosing_type,
                                         ))
+                                        edge_added = True
                                     else:
                                         edge = Edge.create(
                                             src=current_function.id,
@@ -5283,6 +5460,41 @@ def _extract_edges(
                                             confidence=0.60 * lookup_result.confidence,
                                         )
                                         edges.append(edge)
+                                        edge_added = True
+
+                        # WI-nasuf (javascript): an instance-method call on a
+                        # receiver nothing above could type or resolve --
+                        # ``obj.write(x)`` -- emitted NOTHING, while ``helper(x)``,
+                        # ``fs.readFileSync(x)`` and ``console.log(x)`` in the
+                        # same function all emitted. python, java, go, rust,
+                        # scala and swift emit the ``external`` placeholder with
+                        # ``call_construct: method`` for exactly this case; the
+                        # taint gates read that stamp (a bare-name sanitizer match
+                        # is refused ONLY on it), the io-boundary coverage gate
+                        # counts the site, and ``verify_claims`` discloses it as
+                        # an ``untyped_receiver`` -- so this is the edge that lets
+                        # ``analyzer_disclosure`` stop declaring javascript blind.
+                        # It reaches no catalogue row (``gate_named_entry`` refuses
+                        # a method-kind hit with no module hint), so it is
+                        # disclosure and walk coverage, not recall. ``this`` and a
+                        # ``this.prop`` receiver keep their Site-1 / Site-1b
+                        # paths; a typed receiver whose class the analyzer knows
+                        # still carries ``receiver_type_hint`` for the linkers.
+                        if (
+                            not edge_added
+                            and obj_node is not None
+                            and not is_this_call
+                        ):
+                            edges.append(make_unresolved_edge(
+                                lang, current_function.id, method_name,
+                                node.start_point[0] + 1 + line_offset,
+                                PASS_ID, run.execution_id,
+                                receiver_type_hint=(
+                                    var_types.get(obj_name) if obj_name else None
+                                ),
+                                call_construct="method",
+                            ))
+                            edge_added = True
 
             # Callback argument references: func(handler) or app.get("/path", handler)
             # When a bare identifier in the arguments resolves to a function,
@@ -5487,6 +5699,17 @@ def _extract_edges(
                         if pc.type == "identifier":
                             var_name = _node_text(pc, source)
                             var_types[var_name] = class_name
+                            # INV-misup: a namespace-constructed class keeps
+                            # its module (``new net.Socket()`` -> ``net.Socket``)
+                            # so the call site can name the row the catalogue
+                            # keys; a bare global constructor keys on itself.
+                            _constructed: str | None = _constructed_module(
+                                class_name, ns_import_path,
+                            )
+                            if _constructed is not None:
+                                var_ctor_modules[var_name] = _constructed
+                            else:
+                                var_ctor_modules.pop(var_name, None)
                             break
 
         # Object literal function references: {onClick: handleClick}
