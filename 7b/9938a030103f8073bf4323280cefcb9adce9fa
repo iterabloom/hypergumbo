@@ -1,0 +1,34 @@
+Original commit body from 9af5dad5b23c5b796e39dc37084f844d8f78f24e:
+
+Only a PascalCase class-message receiver (`[NSFileManager defaultManager]`)
+ever got a module; every lowercase receiver took the bare placeholder even when
+its class was written two lines up (`NSFileManager *fm = ...`) or in the method
+signature (`(NSFileManager *)fm`). Sized on AFNetworking / SDWebImage: 1306 of
+1989 (66%) and 2375 of 3778 (63%) message sends carried no module, and the
+catalogue's 123 objc method-kind rows (95% of it) key by exactly that class.
+
+`_objc_declared_receiver_types` collects, per method / function body, the
+receiver names a `method_parameter` (`type_identifier` + trailing identifier)
+or a `declaration` (`type_identifier` + the identifier under its declarator)
+types -- `id obj` has no type_identifier and stays untyped -- and the message
+emit reads the innermost body's map. The class lands in the dst id, `dst_ref`
+and `receiver_type_hint`; a PROJECT class (the analyzer's own class symbols,
+threaded in as `project_classes`) is a symbol, not a module, and rides in the
+hint only. The class-message arm is unchanged. The first arm-B read-back
+showed SDWebImage's categories (`@implementation UIImage (Transform)`) minting
+class symbols named after the FRAMEWORK class, which put UIImage / NSData /
+UIColor in the project set and kept their receivers hint-only; the class
+symbol now carries `meta["category"]` and the project set excludes
+category-only names.
+
+Measured on AFNetworking / SDWebImage (arm A = dev 2cffc262d2, objc.py unchanged since):
+  per-site churn: AFNetworking 459 / 2313 sites gain a class, SDWebImage 816 / 4481;
+  0 losses, 0 re-keys. probe: no-module bucket 1306 -> 928 (AFNetworking),
+  2375 -> 1807 (SDWebImage). io-boundaries: AFNetworking 7 -> 15 chains
+  (NSNotificationCenter add/removeObserver x6, NSOutputStream write:maxLength:,
+  NSMutableURLRequest setHTTPBody:), SDWebImage 5 -> 8 (NSURLSession
+  dataTaskWithRequest:, NSBundle pathForResource:ofType:, NSData writeToURL --
+  the last one is the category fix's), 0 lost; every moved row read back at source.
+
+Racial-Capitalism-Is-Bad: a llama conducting in a stegosaurus-sized soda fountain with a school of goldfish
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
