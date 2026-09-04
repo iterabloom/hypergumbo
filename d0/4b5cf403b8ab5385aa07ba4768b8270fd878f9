@@ -1,0 +1,70 @@
+Original commit body from 181ab63cf8ebe935ad0b24c05b35cb859de1b554:
+
+Strategy 1.9 already INFERRED the receiver type of `File::create(p)?.write_all(..)`
+and dropped it when the in-repo `Type::method` lookup missed — which is exactly
+what an external type does. The inference had run; only the carry was missing.
+
+`?` and `.unwrap()` / `.expect()` are the SAME mechanism — a wrapper projecting
+`Result<T, E>` to `T` — and are handled together. #595 left `?` alone on purpose
+so its shape-3 walker would mirror `_infer_type_from_rust_rhs` exactly; the
+unwrapping belongs in the shared helper where both get it, which is what this
+item said. The measurement decided the scope: over ripgrep + bellman +
+tiktoken-rs a receiver reached through `.unwrap()` / `.expect()` occurs 49 times
+against 29 for `?`, so shipping the syntax form alone would have fixed the rarer
+half of one mechanism.
+
+`_infer_type_from_rust_rhs` normalises a scoped path to a BARE name, so
+`std::fs::File::create(p)?` came back as `File` and the written path was gone —
+the package-stripped hazard this item's own ADR-0051 annotation names. It is
+recovered from the scoped callee the way #595's `_var_type_paths` does for
+annotations, so the slot names `std::fs::File`.
+
+TWO GUARDS, BOTH FOUND BY READING THE MOVED ROWS BACK, NOT BY REASONING:
+
+  (a) The CALL's own callee must not be a projector. In
+      `File::create(p).unwrap()` the receiver of `unwrap` is the
+      `Result<File, E>`, not the `File`. Without this guard, 135 of 213 new
+      ripgrep edges were `unwrap` attributed to `std::fs::File`.
+  (b) The RECEIVER must have been explicitly unwrapped. `File::create(p)`
+      evaluates to a Result; only `File::create(p)?` or `.unwrap()` evaluates to
+      a `File`, and nothing here knows whether a library associated function is
+      fallible. A raw `Type::assoc()` receiver is withheld — withhold, never
+      pick-first.
+
+MEASURED, every surviving row read back at source:
+
+  ripgrep      typed module slots 431 -> 442,  11 new edges,  0 genuine losses
+  bellman      typed module slots 220 -> 233
+  tiktoken-rs  typed module slots  66 ->  67
+
+ripgrep's 11: `file.write_all` ×3, `file.set_len` ×2, `file.lines` ×2,
+`file.flush`, `h.as_file()` -> `winapi_util::Handle`, and
+`sink.stats().unwrap().clone()` -> `crate::stats::Stats`. The 8 A-only rows are
+those same sites under `external::` — re-keys, not losses. io-boundaries are
+unchanged (ripgrep 30 edges / 25 chains; bellman and tiktoken-rs 0 / 0, the
+controls).
+
+THE ITEM'S 580-SITE ESTIMATE IS NOT REACHABLE, and guard (b) is why. I sized the
+associated-fn receiver population at 580 and called it the headline before
+building it; most of that is a raw `Type::assoc()` receiver whose Result-ness is
+undecidable here. The reachable population is the explicitly-unwrapped forms —
+29 `?` sites plus 49 `.unwrap()` / `.expect()` sites on this corpus.
+
+`test_rust_field_receiver_module_slot.py`'s shape-C assertion moves from "still
+unclassified" to "classifies", as that test's own failure message instructs. Its
+note attributed the shape to WI-lalot "because the type is never written down".
+The type IS written down — in the producer's own scoped path — so the shape
+closes here, with no `std::fs::File::create` row involved.
+
+SEPARATELY, AN INSTRUMENT DEFECT THAT INVALIDATES EARLIER RUST CHURN NUMBERS:
+`pair_churn_lang.py` splits a dst on ':' and reads fields POSITIONALLY, which
+assumes the module has no colons. A rust module does, so a site whose module
+gains `::` reads as one loss plus one gain. That is why this run first reported
+42 ripgrep losses where a file:line read-back finds 0. `slot_count.py` anchors on
+the span instead. Treat rust churn from that rig as suspect wherever a module is
+qualified.
+
+Lab: ~/hypergumbo_lab_notebook/papar_rust_chained_09042026/
+
+Racial-Capitalism-Is-Bad: a toucan riding a surfboard in a lava-lamp lit salad bar with a rehearsal of parrots made of seltzer bubbles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
