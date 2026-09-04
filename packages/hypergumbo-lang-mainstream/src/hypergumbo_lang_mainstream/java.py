@@ -99,6 +99,7 @@ from typing import TYPE_CHECKING, ClassVar, Iterator, Optional, TypeAlias
 
 from hypergumbo_core.confidence import derive_confidence
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
+from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id,
@@ -3235,6 +3236,14 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
                 continue
             ret_text = qualified
         method_return_type_registry.setdefault(sym.name, ret_text)
+
+    # WI-lalot: the library rows. They ship ALREADY fully qualified and so
+    # deliberately bypass the `_qualify_receiver_type` step above, which resolves
+    # an analysed return type against its DECLARING FILE's imports -- a catalogue
+    # row has no declaring file. Merged after the analysed rows, so an in-repo
+    # declaration always wins.
+    for _lib_key, _lib_ret in load_library_signatures("java").items():
+        method_return_type_registry.setdefault(_lib_key, _lib_ret)
 
     # Pass 2: Extract edges using global symbol registry
     # Build resolvers ONCE and share across all files — the registry is frozen

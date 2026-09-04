@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **319** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 87 core, 4 CLI, 33 tracker)
-- **44066** symbols (functions, classes, methods)
-- **172659** edges by type:
-  - calls: 98461
-  - contains: 40624
-  - imports: 13567
-  - instantiates: 11269
-  - references: 5878
-  - module_attr_ref: 1425
-  - other: 1435
+- **320** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 88 core, 4 CLI, 33 tracker)
+- **44503** symbols (functions, classes, methods)
+- **177311** edges by type:
+  - calls: 102582
+  - contains: 40945
+  - imports: 13691
+  - instantiates: 11274
+  - references: 5947
+  - module_attr_ref: 1434
+  - other: 1438
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 44066 Symbols + 172659 Edges + UsageContexts           │
+│  Output: 44503 Symbols + 177311 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,20 +272,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
-| `len` | external_symbol | 7350.0 | <external> |
+| `len` | external_symbol | 7374.0 | <external> |
+| `write_text` | external_symbol | 6421.0 | <external> |
 | `Span` | class | 6416.2 | ir.py |
-| `write_text` | external_symbol | 6359.0 | <external> |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `Edge.create` | method | 2310.8 | ir.py |
-| `load_catalog` | function | 2130.0 | io_boundary.py |
-| `next` | external_symbol | 2110.0 | <external> |
+| `get` | external_symbol | 2892.0 | <external> |
+| `Edge.create` | method | 2395.6 | ir.py |
+| `load_catalog` | function | 2193.1 | io_boundary.py |
+| `next` | external_symbol | 2117.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `get` | external_symbol | 2041.0 | <external> |
-| `str` | external_symbol | 2016.0 | <external> |
+| `str` | external_symbol | 2017.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `Path` | external_symbol | 1883.0 | <external> |
+| `Path` | external_symbol | 1900.0 | <external> |
 | `main` | function | 1615.6 | cli.py |
-| `append` | external_symbol | 1463.0 | <external> |
+| `append` | external_symbol | 1561.0 | <external> |
 
 ## Pattern System
 
@@ -353,7 +353,7 @@ patterns:
 
 ## YAML Catalogs (auto)
 
-The `hypergumbo-core` package ships 164 YAML catalog files across 9 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
+The `hypergumbo-core` package ships 169 YAML catalog files across 10 directories. Each directory holds a category of analysis data consumed by a specific loader; the registry at `hypergumbo_core.yaml_catalogs` is the canonical index. Run `scripts/yaml-catalog-index` for the same view at the CLI, or `scripts/yaml-catalog-index --check` to verify the registry matches the filesystem.
 
 | Directory | Files | User channel | ADR | Loader | Purpose |
 |---|---:|---|---|---|---|
@@ -366,6 +366,7 @@ The `hypergumbo-core` package ships 164 YAML catalog files across 9 directories.
 | `taint_sanitizers/` | 1 | `taint_sanitizers.d` | ADR-0017 | `hypergumbo_core.taint` | Sanitizer declarations for taint-flow analysis. |
 | `function_summaries/` | 4 | `function_summaries.d` (gated) | ADR-0017 | `hypergumbo_core.function_summaries` | Per-language function summaries (return-type and side-effect annotations consumed by language-config). |
 | `url_folding/` | 2 | internal | — | `hypergumbo_core.url_folding` | Per-idiom URL-folding declarations (string interpolation, array join, ...) wiring active route-detector languages to engine functions in hypergumbo_core.url_folding. |
+| `library_signatures/` | 5 | `library_signatures.d` | ADR-0006 | `hypergumbo_core.library_signatures` | Per-language library signatures: the type a producing function returns, so a receiver bound to a LIBRARY call can be typed at all. |
 
 **User channel** (ADR-0047 ruling 7) names where a user's own rows for that family live, under `$XDG_CONFIG_HOME/hypergumbo/` — or `internal` when the family describes the *language's* world rather than the *user's* and takes no user input. The fields are required on `CatalogSpec`, so a new family cannot land without answering.
 
@@ -603,6 +604,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.io_boundary`**: I/O boundary analysis — catalogue, matching, tagging and map (ADR-0...
 - **`hypergumbo_core.io_boundary_types`**: Canonical registry of I/O-boundary values — the io-boundary axis (A...
 - **`hypergumbo_core.ir`**: Internal Representation (IR) for code analysis.
+- **`hypergumbo_core.library_signatures`**: DRAFT for WI-lalot — the library-signature catalogue: what a librar...
 - **`hypergumbo_core.limits`**: Limits tracking for behavior map output.
 - **`hypergumbo_core.linkers.registry`**: Linker registry for dynamic dispatch.
 - **`hypergumbo_core.member_names`**: Single home for the owner/member separator vocabulary in ``Symbol.n...
@@ -905,8 +907,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3a66e4ddf7e9
-  commit_count: 7066
+  commit: 13cb94341301
+  commit_count: 7092
   hypergumbo: 8.0.0
   python: 3.12.3
 -->

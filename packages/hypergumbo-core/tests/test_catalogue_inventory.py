@@ -93,15 +93,19 @@ def test_your_files_counts_what_the_user_actually_put_there(tmp_path) -> None:
 # ------------------------------------------------------------ wired != declared
 
 def test_declared_extensible_is_not_reported_as_readable(inv) -> None:
-    """THE DISTINCTION THIS VIEW EXISTS TO MAKE. Five of the six declared
-    channels are read by nothing today: the registry says the family is
-    extensible and no loader has been taught to look (WI-sofov). Reporting
-    them as usable would send a user to write a file that does nothing."""
+    """THE DISTINCTION THIS VIEW EXISTS TO MAKE. Some declared channels are
+    read by nothing today: the registry says the family is extensible and no
+    loader has been taught to look (WI-sofov). Reporting them as usable would
+    send a user to write a file that does nothing.
+
+    `library_signatures` (WI-lalot) is wired from the day it is declared,
+    precisely because ADR-0047 ruling 3 exists about the opposite: a channel
+    advertised to users while nothing scanned it."""
     extensible = [f for f in inv.families if f.extensible]
     assert len(extensible) > 1, "fixture wrong: only one extensible family"
     read_now = {f.directory for f in extensible if f.read_now}
     assert read_now == {"io_primitives", "frameworks", "dataflow_patterns",
-                        "function_summaries"}, (
+                        "function_summaries", "library_signatures"}, (
         "a channel changed readability without the inventory being told — "
         "update _WIRED_CHANNELS so users are neither sent to an inert "
         "directory nor told a working one is dead"

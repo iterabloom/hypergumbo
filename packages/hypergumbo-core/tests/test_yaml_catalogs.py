@@ -187,7 +187,7 @@ def test_every_family_answers_the_extensibility_question():
 
 
 def test_ruling_10_table_is_the_shipped_registry():
-    """The eight families carry exactly the ADR-0047 ruling-10 verdicts.
+    """The ten families carry exactly the ADR-0047 ruling-10 verdicts.
 
     Pinned as a table rather than a count so a future edit that flips one
     family's channel has to change this test and say so, instead of drifting.
@@ -215,6 +215,12 @@ def test_ruling_10_table_is_the_shipped_registry():
             "function_summaries.d", None, "CAVEAT_USER_SUPPLIED_SANITIZER",
         ),
         "url_folding": (None, None, None),
+        # WI-lalot. Ruling 10's test is "does the family describe the USER'S
+        # world or the LANGUAGE'S". These rows describe LIBRARIES and their
+        # signatures, and an in-house factory returning an in-house type is
+        # exactly the row a user has and the shipped catalogue cannot — so it
+        # gets a channel, ungated and unscoped.
+        "library_signatures": ("library_signatures.d", None, None),
     }
 
 

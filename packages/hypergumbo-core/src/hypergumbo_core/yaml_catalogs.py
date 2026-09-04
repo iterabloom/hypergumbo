@@ -184,6 +184,19 @@ YAML_CATALOGS: tuple[CatalogSpec, ...] = (
         "the package already contains — the channel would be inert without "
         "also accepting user code.",
     ),
+    CatalogSpec(
+        directory="library_signatures",
+        purpose="Per-language library signatures: the type a producing function "
+        "returns, so a receiver bound to a LIBRARY call can be typed at all.",
+        loader="hypergumbo_core.library_signatures",
+        adr="ADR-0006",
+        # ADR-0047 ruling 10's test is "does the family describe the USER'S world
+        # or the LANGUAGE'S". These rows describe LIBRARIES, and an in-house
+        # factory returning an in-house type is exactly the row a user has and
+        # the shipped catalogue cannot.
+        user_channel="library_signatures.d",
+        no_channel_reason=None,
+    ),
 )
 
 

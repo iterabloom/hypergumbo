@@ -97,6 +97,7 @@ if TYPE_CHECKING:
     from hypergumbo_core.supply_chain import DependencyManifest
 
 from hypergumbo_core.dataflow import annotate_dataflow as _annotate_dataflow, get_dataflow_config as _get_dataflow_config
+from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import (
     AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, UsageContext,
@@ -1982,6 +1983,24 @@ def _extract_go_var_types(
                             )
                             type_name = method_return_type_registry.get(
                                 qualified
+                            )
+                        else:
+                            # WI-lalot: a PACKAGE-qualified producer --
+                            # ``net.Listen(...)``, ``exec.Command(...)``. ``net``
+                            # is a package, not a variable, so the receiver-type
+                            # lookup above finds nothing and this shape never
+                            # reached the registry at all: the merge alone left
+                            # `ln.Accept()` and `c.Start()` on the `external`
+                            # sentinel, which is exactly the inertness WI-lalot
+                            # was filed for.
+                            #
+                            # The registry itself is the gate. An ANALYSED go key
+                            # is either a bare function name or `Receiver.Method`
+                            # with a bare -- conventionally capitalised -- Go type
+                            # as the receiver, so a hit on a lowercase
+                            # `package.Func` key can only come from a library row.
+                            type_name = method_return_type_registry.get(
+                                f"{recv_name}.{method_name}"
                             )
                 elif call_func is not None and call_func.type == "identifier":
                     # WI-doluf: a PLAIN function call -- ``conn := makeConn()``.
@@ -5345,6 +5364,13 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
     for analysis in file_analyses.values():
         for key, ret_type in analysis.method_return_types.items():
             method_return_type_registry.setdefault(key, ret_type)
+    # WI-lalot: the library rows, merged AFTER the analysed ones so an in-repo
+    # declaration always wins. `analyze_go` keeps its own aggregation rather than
+    # using the base class's, so the merge has to happen here too -- go is the
+    # language whose inert rows (net.Listener.Accept, exec.Cmd.Start) this
+    # catalogue exists for.
+    for key, ret_type in load_library_signatures("go").items():
+        method_return_type_registry.setdefault(key, ret_type)
 
     # Aggregate interface_method_sets across all files for the ambiguity
     # guard's interface-dispatch preference (go.py ambiguity guard).

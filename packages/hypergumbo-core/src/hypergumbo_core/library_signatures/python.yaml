@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for Python.
+#
+# WI-lalot. py.py's TYPE_PRESERVING_MEMBERS says in its own comment that the
+# concept's home is FileAnalysis.method_return_types and that it exists only
+# because "the types here ship no source for Pass 1 to parse". These rows ARE
+# that home, so the pathlib entries MIGRATE here rather than being duplicated --
+# one fact, one home.
+#
+# NOT here: EXTERNAL_CONSTRUCTOR_TYPES, which is catalogue-DERIVED from the
+# io_primitives method rows and answers "what does sqlite3.connect() CONSTRUCT".
+# Deriving beats enumerating; these rows answer a different question.
+language: python
+module_completeness: partial
+signatures:
+  # pathlib: migrated from TYPE_PRESERVING_MEMBERS. Every one returns a Path.
+  pathlib.Path.__truediv__: pathlib.Path
+  pathlib.Path.joinpath: pathlib.Path
+  pathlib.Path.resolve: pathlib.Path
+  pathlib.Path.absolute: pathlib.Path
+  pathlib.Path.expanduser: pathlib.Path
+  pathlib.Path.with_name: pathlib.Path
+  pathlib.Path.with_suffix: pathlib.Path
+  pathlib.Path.with_stem: pathlib.Path
+  pathlib.Path.relative_to: pathlib.Path
+  pathlib.Path.readlink: pathlib.Path
+  # socket / subprocess / sqlite3: the receivers INV-mumov's Django-shaped chains
+  # and WI-lipis's wrapper census reach through a library return value.
+  socket.socket.accept: socket.socket
+  socket.socket.makefile: io.BufferedRWPair
+  subprocess.Popen.communicate: builtins.tuple
+  sqlite3.Connection.cursor: sqlite3.Cursor
+  sqlite3.Connection.execute: sqlite3.Cursor
+  sqlite3.Cursor.execute: sqlite3.Cursor

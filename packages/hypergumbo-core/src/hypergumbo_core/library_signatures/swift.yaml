@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for Swift.
+#
+# WI-lalot. swift carries 100 own method-kind io_primitives rows (93% of its
+# catalogue) and WI-higob shipped BOTH halves of the consumer -- Pass 1 registers
+# `<Owner>.<func> -> T`, Pass 2 types a local bound to a call result and a chained
+# receiver expression -- with nothing to feed it for Foundation. These are that feed.
+#
+# KEY SHAPE, read from swift.py's consumers:
+#   * a method is keyed `<Owner>.<func>`, both sides BARE (generics stripped,
+#     optionals unwrapped by `_swift_bare_type`)
+#   * a free function is keyed by its bare name
+#   * the VALUE is a BARE type, because the swift catalogue keys its rows by bare
+#     type (`FileManager`, `URLSession`) -- unlike go, swift does NOT qualify.
+language: swift
+module_completeness: partial
+signatures:
+  # Foundation producers whose result is a catalogued receiver.
+  FileManager.temporaryDirectory: URL
+  FileManager.urls: URL
+  URLSession.dataTask: URLSessionDataTask
+  URLSession.downloadTask: URLSessionDownloadTask
+  URLSession.uploadTask: URLSessionUploadTask
+  URLSession.webSocketTask: URLSessionWebSocketTask
+  URL.appendingPathComponent: URL
+  URL.appendingPathExtension: URL
+  URL.deletingLastPathComponent: URL
+  URL.standardizedFileURL: URL
+  Process.standardOutput: Pipe
+  Pipe.fileHandleForReading: FileHandle
+  Pipe.fileHandleForWriting: FileHandle
+  FileHandle.availableData: Data

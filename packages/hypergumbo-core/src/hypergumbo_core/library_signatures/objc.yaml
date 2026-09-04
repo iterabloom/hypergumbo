@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Library signatures for Objective-C.
+#
+# WI-lalot. objc carries 123 own method-kind io_primitives rows (95% of its
+# catalogue). WI-higob shipped the consumer: Pass 1 registers `<Class>.<selector>`
+# (instancetype -> the owner) and Pass 2 types an `id x = [obj sel]` local and a
+# NESTED send `[[obj sel] frob]`. Its own read-back recorded the gap these rows
+# close: "io-boundaries unchanged because the chains that would reach the catalogue
+# stop at Foundation returns -- `[[obj session] configuration]` -- the loader's rows
+# will supply."
+#
+# KEY SHAPE: `<Class>.<selector>`; the selector is the FULL objc selector with its
+# colons, because that is what the analyzer's registry is keyed by. Values are class
+# names.
+language: objc
+module_completeness: partial
+signatures:
+  "NSFileManager.defaultManager": NSFileManager
+  "NSFileManager.contentsOfDirectoryAtPath:error:": NSArray
+  "NSURLSession.sharedSession": NSURLSession
+  "NSURLSession.dataTaskWithRequest:completionHandler:": NSURLSessionDataTask
+  "NSURLSession.dataTaskWithURL:completionHandler:": NSURLSessionDataTask
+  "NSURLSession.configuration": NSURLSessionConfiguration
+  "NSBundle.mainBundle": NSBundle
+  "NSUserDefaults.standardUserDefaults": NSUserDefaults
+  "NSNotificationCenter.defaultCenter": NSNotificationCenter
+  "NSURLCache.sharedURLCache": NSURLCache
