@@ -2347,6 +2347,12 @@ def _cmd_recover(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_USER_ERROR
+    print(
+        "recover: DEPRECATED — use `tracker reconcile`, which also flushes "
+        "pending ops and fast-forwards. `recover` restores the journal and "
+        "leaves the repo behind, which is how the other two steps get skipped.",
+        file=sys.stderr,
+    )
     result = journal.recover(git_dir.parent)
     if result.restored:
         print(
@@ -2359,6 +2365,128 @@ def _cmd_recover(args: argparse.Namespace) -> int:
     else:
         print(
             f"recover: nothing to restore (journal: {result.journal_dir})",
+            file=sys.stderr,
+        )
+    return EXIT_SUCCESS
+
+
+def _reconcile_fast_forward(repo_root: Path) -> tuple[bool, str]:
+    """Fast-forward ``repo_root`` to its upstream; return (advanced, detail).
+
+    Deliberately does NOT set the ``tracker-recover-disabled`` marker.
+    ``do_sync`` sets it around its own fetch on purpose — without it a
+    journalled-but-uncommitted op is restored as an untracked file mid-fetch and
+    the reconciling fast-forward aborts on its own overwrite check. Here the
+    opposite is wanted: the post-checkout and reference-transaction hooks should
+    be LIVE, because restoring ops the pull disturbs is exactly their job.
+    """
+    from .sync import _git
+
+    # sync._git is this package's single mockable VCS entry point; going
+    # through it keeps the lint suppressions and the env handling in one place.
+    proc = _git(repo_root, "pull", "--ff-only", check=False)
+    return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
+
+
+def _cmd_reconcile(args: argparse.Namespace) -> int:
+    """Handle 'reconcile' — flush pending ops, fast-forward, restore the journal.
+
+    These are the three steps that a failed post-merge pull leaves an operator to
+    run by hand, in order, each skipped when it is not needed. Every step reports
+    what it did or why it did nothing: a silent step is indistinguishable from a
+    step that was not needed, and that ambiguity is what sends the next reader
+    back to doing it manually.
+
+    Returns 0 on success (including a full no-op), 1 outside a repository or
+    while an auto-pr holds its gate, and ``do_sync``'s own exit code if the flush
+    fails.
+    """
+    from . import journal
+    from . import sync as _sync
+    from .store import _find_git_dir
+
+    start = Path(args.tracker_root) if args.tracker_root else Path.cwd()
+    git_dir = _find_git_dir(start.resolve())
+    if git_dir is None:
+        print(
+            "reconcile: not inside a git repository — nothing to reconcile.",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+    repo_root = git_dir.parent
+
+    if (git_dir / "PR_PENDING").exists():
+        print(
+            "reconcile: .git/PR_PENDING exists — an auto-pr is in flight. It "
+            "copies the ops dirs aside and restores them around its own rebase, "
+            "so syncing or fast-forwarding underneath it makes the two fight "
+            "over the same files. Wait for it to finish, then re-run.",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
+
+    # 1. Flush pending ops upstream so the incoming commit no longer collides
+    #    with them. do_sync takes no threshold argument — the line-count gate
+    #    lives in its caller — so no synthetic mutation is needed to trip a
+    #    counter, and the append-only log stays free of entries that mean
+    #    nothing.
+    pre = _sync.preflight_check(repo_root)
+    if not pre.ok:
+        print(f"reconcile: not flushing — {pre.error}", file=sys.stderr)
+    elif not pre.changed_files:
+        print("reconcile: nothing to flush", file=sys.stderr)
+    elif args.dry_run:
+        print(
+            f"reconcile: would flush {len(pre.changed_files)} file(s)",
+            file=sys.stderr,
+        )
+    else:
+        result = _sync.do_sync(
+            repo_root=repo_root,
+            preflight=pre,
+            base_branch=args.base_branch,
+            ci_timeout=args.timeout,
+        )
+        if not result.success:
+            # Stop here on purpose: advancing on top of ops that never reached
+            # the remote is the collision this command exists to prevent.
+            print(
+                f"reconcile: flush failed, not fast-forwarding — {result.error}",
+                file=sys.stderr,
+            )
+            return result.exit_code
+        print(
+            f"reconcile: flushed {result.files_synced} file(s) "
+            f"via PR #{result.pr_number}",
+            file=sys.stderr,
+        )
+
+    # 2. Advance to the upstream now that the collision is gone.
+    if args.dry_run:
+        print("reconcile: would fast-forward to the upstream", file=sys.stderr)
+    else:
+        advanced, detail = _reconcile_fast_forward(repo_root)
+        if advanced:
+            print("reconcile: fast-forwarded to the upstream", file=sys.stderr)
+        else:
+            print(
+                f"reconcile: fast-forward did not run:\n{detail}",
+                file=sys.stderr,
+            )
+
+    # 3. Union-restore anything the journal holds that the worktree lacks.
+    recovered = journal.recover(repo_root)
+    if recovered.restored:
+        print(
+            f"reconcile: restored {len(recovered.restored)} ops file(s) from "
+            f"{recovered.journal_dir}:",
+            file=sys.stderr,
+        )
+        for rel in recovered.restored:
+            print(f"  {rel}", file=sys.stderr)
+    else:
+        print(
+            f"reconcile: nothing to restore (journal: {recovered.journal_dir})",
             file=sys.stderr,
         )
     return EXIT_SUCCESS
@@ -2582,8 +2710,25 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="Initialize tracker directory structure")
     sub.add_parser(
         "recover",
-        help="Restore pending ops from the out-of-repo journal "
-        "(after a reset --hard / checkout / clean dropped them)",
+        help="DEPRECATED (use `reconcile`): restore pending ops from the "
+        "out-of-repo journal only, leaving the repo behind the upstream",
+    )
+    p_reconcile = sub.add_parser(
+        "reconcile",
+        help="Flush pending ops, fast-forward, and restore the journal — the "
+        "three steps a failed post-merge pull leaves behind",
+    )
+    p_reconcile.add_argument(
+        "--base-branch", dest="base_branch", default="dev",
+        help="Target branch for the flush (default: dev)",
+    )
+    p_reconcile.add_argument(
+        "--timeout", type=int, default=300,
+        help="CI timeout in seconds for the flush (default: 300)",
+    )
+    p_reconcile.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="Report what each step would do without doing any of it",
     )
 
     # --- setup ---
@@ -3339,6 +3484,8 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(_cmd_migrate(args))
     if args.command == "recover":
         raise SystemExit(_cmd_recover(args))
+    if args.command == "reconcile":
+        raise SystemExit(_cmd_reconcile(args))
     if args.command == "sync":
         raise SystemExit(_cmd_sync(args))
     if args.command == "serve" and (args.stop or args.status):
