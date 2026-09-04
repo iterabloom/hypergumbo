@@ -1,0 +1,59 @@
+Original commit body from 56fc88a9a5c78d6d648153e87915fd4509ce5b2f:
+
+`walk_blocked_by: sink_before_source` means every sink call site precedes its
+source in the same function, so the walk had no route to demonstrate. ADR-0017
+§3a records the field and acts on nothing — ratified when the shape was 0.6% of
+rows, and load-bearing once a primitive that is both source and sink raised it to
+25% of the rows INV-lozat adds.
+
+THE THREE PRECONDITIONS THIS ITEM SET, IN ORDER:
+
+  1. The census. DONE: all 14 such rows on the 16-repository cohort read back
+     against source — 1 true (7.1%), and BOTH verdict moves that rested on such
+     a row alone were false.
+  2. Can the walk distinguish "sink precedes source, no loop encloses either"
+     from "inside a loop"? ANSWERED NEGATIVE, and this is the first time it has
+     been established rather than assumed: the decision in `taint.py` is purely
+     line-based (`sink_line > source_line`) and the DDG plumbing exposes no loop
+     enclosure at that point. The narrow rule is not available today.
+  3. Because (1) is not ~0, the remedy is verdict-NEUTRALITY, not removal.
+
+So the rule is BROADER THAN IDEAL and says so in its own caveat text: it rests on
+the census — where 0 of 14 rows had a loop enclosing both calls, so the narrow
+rule would behave identically on the measured population — rather than on
+per-row loop evidence.
+
+A claim whose every surviving flow is unanimously blocked this way no longer
+reads `violated`. The rows are STILL REPORTED: they ride as evidence, raise a
+`sink_before_source_only` caveat, and add a clause to `details`, so the verdict
+can never read as a plain `confirmed` on their account. Removal is what the
+census did NOT license and is not what this does.
+
+THE RULE READS `walk_blocked_by_values`, NEVER THE SCALAR. On a collapsed row the
+scalar is `grp[0]`'s and says nothing about the other members — measured on
+beads, 133 of 208 groups containing such a member are not unanimous. That field's
+own docstring states the constraint; the mixed-group test enforces it.
+
+Measured on the production path, against the pre-change arm of the same six-repo
+cohort: gocryptfs `UI-FS` and caddy `UI-PROC` each move `violated` →
+`inconclusive`, evidence count preserved at 1, reason disclosed. The behavioural
+test carries its own control — the same primitives with the order swapped still
+return `violated`, so a rule that merely broke the taint path could not pass it.
+
+SEPARATELY, A PRE-EXISTING GAP THIS SURFACED: the coverage gate's `inconclusive`
+downgrade dropped `caveats` entirely, so every structured disclosure vanished for
+exactly the verdicts that are least certain, while the prose survived only
+because `details` happens to be spliced. A consumer reading `caveats` saw an
+empty list and could not tell an unqualified inconclusive from one carrying an
+untyped-receiver or sink-before-source disclosure. They are carried through now.
+
+The taint arm's declared-blindness branch had no live input on the shipped tree —
+both language declarations went sighted with WI-nasuf and INV-misup — so rather
+than pragma it, the test re-declares kotlin blind exactly as it stood on
+2026-08-23, keeping INV-nuhun's both-arms rule pinned by a test instead of by the
+accident of no language currently being blind.
+
+Lab: ~/hypergumbo_lab_notebook/muhij_sink_before_source_census_08312026/
+
+Racial-Capitalism-Is-Bad: a scarecrow made of VHS tape racing a tightrope walker in a nightclub
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
