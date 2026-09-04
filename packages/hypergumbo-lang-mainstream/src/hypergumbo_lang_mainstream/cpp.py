@@ -6,11 +6,22 @@ This analyzer uses tree-sitter to parse C++ files and extract:
 - Struct declarations
 - Enum declarations
 - Function definitions (standalone and class methods)
+- Pure-virtual methods, which carry ``modifiers=[visibility, "virtual",
+  "abstract"]``; the enclosing class is marked ``abstract`` in turn
+  (``_emit_cpp_pure_virtual`` / ``_cpp_has_pure_virtual``)
+- Data-member fields, one ``field`` Symbol per class/struct member
+  (``_emit_cpp_field_symbols``)
+- Enum members, one ``field`` Symbol per enumerator named ``Color::Red``
+  (WI-dorop)
+- Namespace- and module-scope variables (``variable`` Symbols)
 - Namespace aliases (used as resolution path hints, ADR-0007)
 - Function call relationships
 - Include directives
 - Object instantiation (new expressions, stack construction, and compound literals)
-- Dispatch table edges (function pointers in static array initializers)
+- Dispatch table edges (function pointers in static array initializers),
+  plus ``references`` edges carrying ``meta.ref_construct='dispatch_table'``
+  for the USE of a dispatch table inside a lookup function, which completes
+  the chain from caller through lookup to dispatched target
 - Function-pointer references (address-of expressions like `&func` or `&Class::method`)
 - Module attribute references for iostream IO (`std::cout`/`std::cerr`/`std::cin` and namespace-alias attribute reads; feeds io-boundaries)
 
