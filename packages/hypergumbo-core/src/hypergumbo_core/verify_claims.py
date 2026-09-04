@@ -520,6 +520,20 @@ CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
 #: ID appears in ``analysis_fidelity`` and this caveat does not fire — if it
 #: fired either way, enabling the backend would leave the verdict looking just
 #: as qualified and nobody would enable it.
+#: INV-muhij remedy (3). Every sink call in the finding precedes its source, so the
+#: walk had no route to demonstrate and the row is not evidence of one. The row is
+#: still REPORTED -- this is verdict-neutrality, not removal -- but it does not by
+#: itself hold a claim at ``violated``.
+#:
+#: WHY IT IS NOT SIMPLY DROPPED. A loop makes a textually-earlier sink genuinely
+#: reachable from a later source, so the marker means "the walk could not run", not
+#: "the flow is impossible". The census behind this rule read all 14 such rows on the
+#: 16-repository cohort against source: 1 was true (7.1%) and NO row had a loop
+#: enclosing both calls, which refutes the loop defence empirically -- but the walk
+#: cannot check enclosure per row (the decision is line-based and the DDG exposes no
+#: loop spans there), so the rule is broader than ideal and says so.
+CAVEAT_SINK_BEFORE_SOURCE_ONLY = "sink_before_source_only"
+
 CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
 
 #: Backend name (as a person types it at ``--backend``) -> the pass ID its
@@ -4464,6 +4478,41 @@ def _verify_taint_claim_uncredited(
             else:
                 excluded_flows[scope] = excluded_flows.get(scope, 0) + 1
 
+    # INV-muhij remedy (3). A finding whose walk was blocked because EVERY sink call
+    # precedes the source has no demonstrated route: `walk_blocked_by` means the walk
+    # could not run, not that a flow exists. Such a row may not hold a claim at
+    # `violated` ON ITS OWN — but it is still reported, because a loop can make a
+    # textually-earlier sink genuinely reachable and this rule cannot check enclosure
+    # per row.
+    #
+    # READ FROM `walk_blocked_by_values`, NEVER THE SCALAR. On a collapsed row the
+    # scalar is `grp[0]`'s and says nothing about the other members; measured on beads,
+    # 133 of 208 groups containing such a member are NOT unanimous. The field's own
+    # docstring states this constraint: "A rule may act on `walk_blocked_by_values ==
+    # ("sink_before_source",)`; it may not act on the scalar."
+    from .taint import WALK_BLOCKED_SINK_BEFORE_SOURCE
+
+    deferred_flows = 0
+    _verdict_carrying = []
+    for finding in violations:
+        if tuple(getattr(finding, "walk_blocked_by_values", ()) or ()) == (
+            WALK_BLOCKED_SINK_BEFORE_SOURCE,
+        ):
+            deferred_flows += 1
+        else:
+            _verdict_carrying.append(finding)
+    _deferred_only = bool(violations) and not _verdict_carrying
+    if _deferred_only:
+        # Every surviving flow is one the walk could not run. Report them, do not
+        # let them carry the verdict. Falling into the no-violation branch below is
+        # what makes that true of the VERDICT VALUE and therefore of the exit code.
+        _deferred_evidence = [
+            _flow_evidence_dict(v) for v in violations[:_MAX_EVIDENCE_ROWS]
+        ]
+        violations = []
+    else:
+        _deferred_evidence = []
+
     if not violations:
         excluded_clause = ""
         if excluded_flows:
@@ -4639,16 +4688,45 @@ def _verify_taint_claim_uncredited(
                         coverage.higher_fidelity_available,
                     ),
                 )
+        # INV-muhij remedy (3). The rows are REPORTED, not dropped: they ride as
+        # evidence and raise a caveat, so the verdict can never read as a plain
+        # `confirmed` on their account and a reader is told what was set aside and
+        # why. Verdict-neutrality is the whole remedy — removal was explicitly NOT
+        # what the census licensed.
+        deferred_clause = ""
+        if _deferred_only:
+            deferred_clause = (
+                f" {deferred_flows} flow(s) reach that zone but every sink call in "
+                f"them PRECEDES its source, so the walk had no route to demonstrate; "
+                f"they are reported below and do not carry this verdict."
+            )
+            caveats = _merge_caveat(caveats, {
+                "kind": CAVEAT_SINK_BEFORE_SOURCE_ONLY,
+                "flow_count": deferred_flows,
+                "detail": (
+                    f"Every flow found for this claim ({deferred_flows}) was blocked "
+                    f"at `sink_before_source`: each sink call site precedes its "
+                    f"source in the same function, so the walk could not run and the "
+                    f"row is not evidence of a route. A loop CAN make a "
+                    f"textually-earlier sink genuinely reachable, and this rule "
+                    f"cannot check enclosure per row, so the rows are reported rather "
+                    f"than removed. On the 16-repository census behind this rule, 1 "
+                    f"of 14 such rows was true and none had a loop enclosing both "
+                    f"calls."
+                ),
+            })
         return ClaimVerdict(
             claim_id=claim.id,
             claim_text=claim.text,
             verdict=(
                 "confirmed_with_caveats" if caveats else "confirmed"
             ),
+            evidence=_deferred_evidence,
+            evidence_count=deferred_flows,
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
-                f"{sanitized_clause}{excluded_clause}"
+                f"{sanitized_clause}{excluded_clause}{deferred_clause}"
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
@@ -4856,6 +4934,15 @@ def _require_coverage_to_confirm(
         verdict="inconclusive",
         evidence=verdict.evidence,
         evidence_count=verdict.evidence_count,
+        # CARRY THE CAVEATS. This construction dropped them, so every caveat the
+        # confirmed path had raised vanished the moment coverage downgraded the
+        # verdict — the structured disclosure disappeared for exactly the verdicts
+        # that are least certain, while the prose survived in `details` only
+        # because that field is spliced. A programmatic consumer reading
+        # `caveats` saw an empty list and could not tell an unqualified
+        # inconclusive from one carrying an untyped-receiver or
+        # sink-before-source disclosure.
+        caveats=verdict.caveats,
         details=(
             f"{verdict.details} NOT CONFIRMED: {blind_reason}. Absence of "
             f"evidence here is not evidence of absence."
