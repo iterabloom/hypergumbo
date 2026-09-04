@@ -1,0 +1,32 @@
+Original commit body from 2c78271e88b7ffa545b0df7351bba31bae423759:
+
+`pub fn exfiltrate(sock: &UdpSocket, payload: &[u8]) { sock.send(payload) }`
+emitted NO call edge: `send` is on SUPPRESSED_METHOD_NAMES["rust"], the
+generic-trait denylist that stops `x.clone()` / `v.into()` on an untypable
+receiver from binding to an arbitrary impl (WI-bakak: 22 of 29 false callers
+on `JoltDevice::load`) or, if emitted blind, from bloating two crates' edges by
+33-207% -- and the emission gate applied it before looking at the receiver.
+Meanwhile the generic-parameter form `drain<W: Write>(w: &mut W) { w.write_all }`
+DID emit, so the case where the type is syntactically in hand produced nothing
+while the case where it is not produced an edge.
+
+The receiver was already typed: `_var_types` holds `sock -> UdpSocket` from the
+signature and `use_aliases` resolves it to `std::net::UdpSocket`, so `ext_ref`
+was set and then discarded. The gate now lets a typed receiver through: the
+type in the slot is exactly the evidence the denylist lacks, and the
+catalogued net_send row is reachable. An untypable receiver keeps the denylist
+and the verify-claims disclosure it feeds (INV-polad) -- that disclosure's
+wording, "on an untypable receiver", was already the true statement.
+
+Measured on bellman / tiktoken-rs / ripgrep (arm A = the unchanged rust.py):
+  fixture: `exfiltrate` emits rust:std::net::UdpSocket:0-0:send:unresolved, tagged
+  net_send; `drain` still emits untyped; an untypable `.clone()` stays suppressed.
+  per-site churn (typed receivers, denylisted names now emitted): bellman +42 of
+  2495 sites (1.7%), tiktoken-rs +48 of 304 (15.8%), ripgrep +133 of 11322 (1.2%),
+  0 losses, 0 re-keys -- against the +33% / +67% total-edge cost of blind emission
+  that justified the denylist. io-boundaries unchanged (0 / 0 / 25 chains): none of
+  the three crates calls a denylisted catalogued sink on a typed receiver, so the
+  fixture is the behavioural evidence and the corpus is the bloat bound.
+
+Racial-Capitalism-Is-Bad: a walrus piloting a parade float shaped like balloon dog with a gallery of chameleons made of brass samovars
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
