@@ -80,6 +80,7 @@ WIRED_CHANNELS = frozenset({
     "frameworks.d",          # WI-sofov
     "dataflow_patterns.d",   # WI-sofov, library_patterns section only
     "function_summaries.d",  # WI-sofov, gated by CAVEAT_USER_SUPPLIED_SANITIZER
+    "library_signatures.d",  # WI-lalot
 })
 
 

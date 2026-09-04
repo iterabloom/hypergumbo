@@ -56,6 +56,7 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, Iterator, Optional
 
+from ..library_signatures import load_library_signatures
 from ..dataflow import annotate_dataflow, get_dataflow_config
 from ..discovery import find_files
 from ..paths import normalize_path
@@ -4109,6 +4110,14 @@ class TreeSitterAnalyzer:
         for analysis, _, _source in file_analyses.values():
             for key, ret_type in analysis.method_return_types.items():
                 method_return_type_registry.setdefault(key, ret_type)
+        # WI-lalot: LIBRARY rows join the same dict, AFTER the analysed ones, so
+        # a declaration in the repository always beats a catalogue guess. Without
+        # them a receiver bound to a library call cannot be typed at all -- there
+        # is no declaration in the tree to register -- and the method-kind
+        # io_primitives rows that need a typed receiver are unreachable however
+        # correct they are.
+        for key, ret_type in load_library_signatures(self.lang).items():
+            method_return_type_registry.setdefault(key, ret_type)
         self._method_return_type_registry = method_return_type_registry
 
         # 5. Pass 2: Extract edges and usage contexts

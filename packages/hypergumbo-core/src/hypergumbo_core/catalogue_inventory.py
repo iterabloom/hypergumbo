@@ -69,6 +69,13 @@ __all__ = [
 #: Question 4: what goes wrong without this family. A row count is not an
 #: answer to "why should I care", and this is the sentence that is.
 FAMILY_CONSEQUENCE: "dict[str, str]" = {
+    "library_signatures": (
+        "Says what a LIBRARY function returns, which is the only way a receiver "
+        "bound to a library call can be typed at all — nothing in your "
+        "repository declares it. Without them such a receiver stays on the "
+        "`external` sentinel and every method-kind row keyed by its type is "
+        "unreachable however correct that row is."
+    ),
     "frameworks": (
         "Without these, a symbol is just a function: decorators, annotations "
         "and naming conventions stop being read as routes, handlers or "

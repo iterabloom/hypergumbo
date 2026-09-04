@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
+from hypergumbo_core.library_signatures import load_library_signatures
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
@@ -957,6 +958,10 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         for analysis in file_analyses.values():
             for _key, _ret in analysis.method_return_types.items():
                 _method_return_types.setdefault(_key, _ret)
+        # WI-lalot: the library rows the comment above anticipated. Merged AFTER
+        # the analysed ones, so an in-repo declaration always wins.
+        for _key, _ret in load_library_signatures("objc").items():
+            _method_return_types.setdefault(_key, _ret)
         for objc_file, analysis in file_analyses.items():
             edges = _extract_edges_from_file(
                 objc_file, parser, analysis.methods_by_name, method_resolver, run,

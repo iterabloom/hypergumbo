@@ -637,12 +637,31 @@ PY_BUILTIN_CALLABLES: frozenset[str] = frozenset(
 #: signatures. This table is the stdlib complement Python needs — the types here ship no
 #: source for Pass 1 to parse — so it states the same fact in the same shape (qualified
 #: member → returned type) rather than minting a new catalogue for it.
-TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = {
-    "pathlib.Path": frozenset({
-        "__truediv__", "joinpath", "resolve", "absolute", "expanduser",
-        "with_name", "with_suffix", "with_stem", "relative_to", "readlink",
-    }),
-}
+def _derive_type_preserving_members() -> dict[str, frozenset[str]]:
+    """Owner -> the members that return the owner's OWN type.
+
+    WI-lalot. This table used to enumerate ten ``pathlib.Path`` members inline,
+    under a comment saying "THE CONCEPT'S HOME IS ``FileAnalysis.method_return_types``
+    ... this is the stdlib complement Python needs -- so it states the same fact in
+    the same shape (qualified member -> returned type) rather than minting a new
+    catalogue for it". That catalogue now exists, so the fact is DERIVED from it
+    rather than stated twice: a member whose declared return type IS its owner
+    preserves the type. Deriving beats enumerating -- the same argument
+    :func:`_derive_external_constructor_types` already makes -- and the
+    propagation rule in :func:`_preserved_receiver_type` is untouched, because
+    WIDENING which receivers carry a type must not widen which members preserve it.
+    """
+    from hypergumbo_core.library_signatures import load_library_signatures
+
+    out: dict[str, set[str]] = {}
+    for key, ret in load_library_signatures("python").items():
+        owner, _, member = key.rpartition(".")
+        if owner and ret == owner:
+            out.setdefault(owner, set()).add(member)
+    return {owner: frozenset(members) for owner, members in out.items()}
+
+
+TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_members()
 
 # WI-sozoj: Django ORM database-I/O visibility. Django's ORM I/O is invisible to
 # the io-boundary detector because it arrives as bare untyped method calls the
