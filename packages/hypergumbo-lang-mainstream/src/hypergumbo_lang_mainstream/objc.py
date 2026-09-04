@@ -82,6 +82,25 @@ def _extract_type_name(node: "tree_sitter.Node", source: bytes) -> str:
     return "".join(parts)
 
 
+def _objc_return_class(signature: str | None, owner: str | None) -> str | None:
+    """The bare class an objc signature returns, or ``None``.
+
+    WI-higob. :func:`_extract_objc_signature` renders ``(...): NSString*``; the
+    part after ``: `` minus the pointer star is the class. ``instancetype`` /
+    ``id`` carry no class of their own: ``instancetype`` IS the owner, ``id``
+    is unknown. Primitives (``BOOL``, ``NSInteger``) and ``void`` are not
+    receiver types the catalogue keys by and yield ``None``.
+    """
+    if not signature or ": " not in signature:
+        return None
+    ret = signature.rsplit(": ", 1)[1].replace("*", "").strip()
+    if ret == "instancetype":
+        return owner
+    if not ret or ret == "id" or not ret[:1].isupper() or ret.isupper():
+        return None
+    return ret
+
+
 def _extract_objc_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -139,6 +158,10 @@ class FileAnalysis:
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     methods_by_name: dict[str, Symbol] = field(default_factory=dict)
     current_class: str | None = None
+    #: WI-higob: ``<Class>.<selector>`` -> the bare class a method returns
+    #: (``instancetype`` resolved to the class), keyed the way every other
+    #: analyzer's return-type registry is, so WI-lalot's loader can feed it.
+    method_return_types: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_class_name(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -393,6 +416,10 @@ def _extract_symbols_from_file(
 
                 # Extract signature
                 signature = _extract_objc_signature(node, source)
+                # WI-higob: the return-type registry's producer side.
+                _ret_class = _objc_return_class(signature, current_class)
+                if _ret_class is not None:
+                    analysis.method_return_types.setdefault(full_name, _ret_class)
 
                 symbol = Symbol(
                     id=symbol_id,
@@ -553,8 +580,35 @@ def _first_descendant(node: "tree_sitter.Node", kind: str) -> "tree_sitter.Node 
     return None
 
 
+def _objc_send_result_class(
+    msg: "tree_sitter.Node",
+    source: bytes,
+    types: dict[str, str],
+    registry: dict[str, str],
+) -> str | None:
+    """The registry class a ``message_expression`` RETURNS, or ``None``.
+
+    WI-higob. The receiver's class is the declared map's answer for a
+    lowercase receiver, the name itself for a class message, or -- for a
+    nested receiver ``[[obj make] frob]`` -- this function on the inner
+    send; the key is ``<class>.<selector>``.
+    """
+    receiver = _extract_message_receiver(msg, source)
+    if receiver is None:
+        inner = next((c for c in msg.children if c.type == "message_expression"), None)
+        owner = _objc_send_result_class(inner, source, types, registry) if inner is not None else None
+    elif receiver[:1].isupper():
+        owner = receiver
+    else:
+        owner = types.get(receiver)
+    selector = _extract_message_selector(msg, source)
+    if owner is None or not selector:
+        return None
+    return registry.get(f"{owner}.{selector}")
+
+
 def _objc_declared_receiver_types(
-    root: "tree_sitter.Node", source: bytes,
+    root: "tree_sitter.Node", source: bytes, registry: dict[str, str] | None = None,
 ) -> list[tuple[int, int, dict[str, str]]]:
     """Per method / function body: ``(start_byte, end_byte, {receiver name: declared class})``.
 
@@ -579,15 +633,35 @@ def _objc_declared_receiver_types(
                     types[node_text(names[-1], source)] = node_text(t, source)
             elif sub.type == "declaration":
                 t = next((c for c in sub.children if c.type == "type_identifier"), None)
-                if t is None:
-                    continue
                 for c in sub.children:
                     if c.type in ("init_declarator", "pointer_declarator", "identifier"):
                         name = c if c.type == "identifier" else _first_descendant(c, "identifier")
-                        if name is not None:
+                        if name is None:  # pragma: no cover - a declarator always names something
+                            continue
+                        if t is not None:
                             types[node_text(name, source)] = node_text(t, source)
+                            continue
+                        # WI-higob: ``id x = [obj sel]`` -- no declared class;
+                        # the registry knows what ``sel`` returns.
+                        msg = next((m for m in c.children if m.type == "message_expression"), None)
+                        if msg is not None and registry:
+                            ret = _objc_send_result_class(msg, source, types, registry)
+                            if ret is not None:
+                                types[node_text(name, source)] = ret
         spans.append((node.start_byte, node.end_byte, types))
     return spans
+
+
+def _objc_receiver_types_at(
+    spans: list[tuple[int, int, dict[str, str]]], node: "tree_sitter.Node",
+) -> dict[str, str]:
+    """The innermost body's declared-receiver map holding ``node`` (``{}`` outside any)."""
+    best: dict[str, str] = {}
+    best_len: int | None = None
+    for start, end, types in spans:
+        if start <= node.start_byte < end and (best_len is None or end - start < best_len):
+            best, best_len = types, end - start
+    return best
 
 
 def _objc_receiver_type(
@@ -612,6 +686,7 @@ def _extract_edges_from_file(
     method_resolver: NameResolver,
     run: AnalysisRun,
     project_classes: frozenset[str] = frozenset(),
+    method_return_types: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge.
 
@@ -628,7 +703,8 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
-    _recv_spans = _objc_declared_receiver_types(tree.root_node, source)
+    _registry = method_return_types or {}
+    _recv_spans = _objc_declared_receiver_types(tree.root_node, source, _registry)
 
     for node in iter_tree(tree.root_node):
         # Handle imports
@@ -729,11 +805,24 @@ def _extract_edges_from_file(
                         # arm keeps its WI-nigah behaviour unchanged (a
                         # project class in that slot is WI-marok's question).
                         receiver_name = _extract_message_receiver(node, source)
-                        _declared = (
-                            _objc_receiver_type(_recv_spans, node, receiver_name)
-                            if receiver_name and not receiver_name[0].isupper()
-                            else None
-                        )
+                        if receiver_name is None:
+                            # WI-higob: a NESTED receiver ``[[obj make] frob]``
+                            # -- the inner send's registered return class.
+                            _inner = next(
+                                (c for c in node.children if c.type == "message_expression"), None,
+                            )
+                            _declared = (
+                                _objc_send_result_class(
+                                    _inner, source,
+                                    _objc_receiver_types_at(_recv_spans, node), _registry,
+                                ) if _inner is not None else None
+                            )
+                        else:
+                            _declared = (
+                                _objc_receiver_type(_recv_spans, node, receiver_name)
+                                if not receiver_name[0].isupper()
+                                else None
+                            )
                         if receiver_name and receiver_name[0].isupper():
                             _module: str | None = receiver_name
                         elif _declared is not None and _declared not in project_classes:
@@ -861,10 +950,18 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
             sym.name for sym in all_symbols
             if sym.kind == "class" and not (sym.meta or {}).get("category")
         )
+        # WI-higob: aggregate the per-file return-type maps, first writer
+        # wins (the base analyzer's rule); WI-lalot's loader will add
+        # library rows to this same dict.
+        _method_return_types: dict[str, str] = {}
+        for analysis in file_analyses.values():
+            for _key, _ret in analysis.method_return_types.items():
+                _method_return_types.setdefault(_key, _ret)
         for objc_file, analysis in file_analyses.items():
             edges = _extract_edges_from_file(
                 objc_file, parser, analysis.methods_by_name, method_resolver, run,
                 project_classes=_project_classes,
+                method_return_types=_method_return_types,
             )
             all_edges.extend(edges)
 
