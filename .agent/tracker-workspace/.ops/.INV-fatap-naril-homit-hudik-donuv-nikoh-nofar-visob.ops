@@ -1,0 +1,25 @@
+- op: create  # ec21
+  at: '2026-09-04T05:19:58Z'  # ec21
+  by: agent  # ec21
+  actor: jgstern_agent  # ec21
+  clock: 1  # ec21
+  nonce: ec21  # ec21
+  data:  # ec21
+    kind: invariant  # ec21
+    title: "swift: a call on a typed receiver binds a project member by BARE name, ignoring argument labels -- a same-named extension method captures a Foundation call"  # ec21
+    status: violated  # ec21
+    priority: 3  # ec21
+    parent:  # ec21
+    tags:  # ec21
+    - swift  # ec21
+    - analyzer  # ec21
+    - analysis_quality  # ec21
+    - io_boundary  # ec21
+    isbefore: []  # ec21
+    duplicate_of: []  # ec21
+    not_duplicate_of: []  # ec21
+    pr_ref:  # ec21
+    description: "Observed 2026-09-04 during INV-kotob's arm-B read-back on Alamofire. swift.py resolves `recv.method(...)` on a typed receiver as `f\"{type_name}.{callee_name}\" in local_symbols / global_symbols` — by BARE method name, ignoring Swift argument labels and (until PR #757) static-vs-instance. Once `let fileManager = FileManager.default` was typed, `fileManager.removeItem(at:)` bound to the test-only `extension FileManager { static func removeItem(at:) }` (Tests/FileManager+AlamofireTests.swift:65) and the catalogued `FileManager.removeItem` boundary vanished behind a resolved edge (2 sites). The static half is closed by `_static_member_on_instance`; the LABEL half is open: a project extension INSTANCE method that shares a bare name with a Foundation method (`func removeItem(atPath:)` next to Foundation's `removeItem(at:)`) still captures the call. Fix shape: key project members by name+labels where the signature is known (the Symbol carries `signature`), fall back to bare name only when the callee has one project overload. Evidence: ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/README.md (pass 2/3)."  # ec21
+    fields:  # ec21
+      statement: "A call on a typed receiver MUST bind a project member only when the member is compatible with the call (argument labels, static-vs-instance); a bare-name match alone is not evidence of the callee."  # ec21
+      root_cause: "swift.py resolves f'{type_name}.{callee_name}' in local_symbols / global_symbols by bare method name (~line 1150). PR #757 added the static-vs-instance guard (_static_member_on_instance); argument labels are still ignored, so a project extension instance method sharing a bare name with a Foundation method captures the call."  # ec21
