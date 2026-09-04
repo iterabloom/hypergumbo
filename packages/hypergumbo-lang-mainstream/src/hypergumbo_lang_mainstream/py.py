@@ -5533,12 +5533,15 @@ def _external_constructor_type(
     func = call.func
     if isinstance(func, ast.Name):
         claimed = EXTERNAL_CONSTRUCTOR_TYPES.get(func.id)
-        if claimed is None:
-            return None
         bound = _import_binding_for(func.id, imports, module_imports)
+        if claimed is None:
+            return _imported_class_instance(bound)
         if bound is None:
             return claimed if func.id in BUILTIN_CONSTRUCTOR_NAMES else None
-        return claimed if bound == claimed else None
+        # INV-kipor: a table name bound ELSEWHERE is refused the catalogued type;
+        # it is still a construction of whatever the import supplied, so
+        # ``from decoy import Path`` types a ``decoy.Path`` -- honest, and no row.
+        return claimed if bound == claimed else _imported_class_instance(bound)
     if isinstance(func, ast.Attribute):
         chain = _unwind_attribute_chain(func)
         if chain is None:
@@ -5547,8 +5550,31 @@ def _external_constructor_type(
         if root.id not in module_imports:
             return None
         module = ".".join([module_imports[root.id], *attrs[:-1]])
-        return EXTERNAL_CONSTRUCTOR_TYPES.get(f"{module}.{attrs[-1]}")
+        qualified = f"{module}.{attrs[-1]}"
+        return EXTERNAL_CONSTRUCTOR_TYPES.get(qualified) or _imported_class_instance(qualified)
     return None
+
+
+def _imported_class_instance(bound: str | None) -> str | None:
+    """The instance type an IMPORTED PascalCase name constructs, else ``None``.
+
+    WI-makij / INV-mumov L3. Only the I/O-catalogue constructor table typed a
+    receiver, so ``f = Fernet(key); f.decrypt(token)`` carried the ``external``
+    placeholder and the four shipped plaintext sources and four sanitizers --
+    every one a ``Class.method`` row -- were unreachable in both forms. A called
+    name that an import binds and that is PascalCase is a CONSTRUCTION, the same
+    convention WI-jubag already reads to mint ``instantiates``; the import IS the
+    binding, so the instance is typed to the module that actually supplied the
+    name (``cryptography.fernet.Fernet``) and a namesake from ``decoy`` names
+    ``decoy.<Class>``, never the catalogued row. A lowercase callable is not a
+    construction and types nothing, in the safe direction. The catalogue table
+    is consulted first by the callers because its ``file`` row for ``open`` is
+    synthetic and its leaf-collision withholding is stricter than this.
+    """
+    if bound is None:
+        return None
+    leaf = bound.rsplit(".", 1)[-1]
+    return bound if leaf[:1].isupper() else None
 
 
 def _receiver_type(
@@ -6153,7 +6179,18 @@ def _process_call(
         here is what keeps the INV-kipor binding check identical for a chain ROOT
         (``Path(raw).write_text(x)``) and an assignment (``p = Path(raw)``) — the
         two shapes are typed in different scopes and must not drift apart.
+
+        A call the project itself defines (``Order()`` after ``from models import
+        Order``) is refused here the way the assignment site refuses it -- there,
+        in-repo resolution runs first and only a miss reaches the external
+        resolver. Without this, the imported-class rule would hand a PROJECT class
+        to the external module slot, where it is not a module.
         """
+        if _resolve_call_target(
+            call, local_symbols, imports, global_symbols, module_imports, resolver,
+            inner_scope=stack.immediate_symbols() if stack else None,
+        ) is not None:
+            return None
         return _external_constructor_type(call, imports, module_imports)
 
     func = call_node.func
@@ -6814,7 +6851,38 @@ def _process_call(
             # unresolved edge so io-boundaries and taint-flow can match
             # dotted-submodule stdlib primitives.
             chain = _unwind_attribute_chain(func)
-            if chain is not None:
+            if chain is None:
+                # INV-luhug. A chain rooted at something other than a Name --
+                # ``items[i].startswith(x)`` (Subscript), ``f().x.y()`` (Call),
+                # ``(a + b).c()`` (BinOp) -- and whose type the WI-zilag branch
+                # above could not establish. ``_unwind_attribute_chain``'s
+                # docstring justifies returning ``None`` for the RESOLUTION
+                # path (such receivers "would be misresolved if we pretended"
+                # they were import-qualified), and that argument is right; it
+                # was never an argument for emitting NOTHING, because the
+                # sibling INV-mumov branch below emits the ``external``
+                # placeholder for exactly the "receiver type genuinely unknown"
+                # case. PR #254 kept the inline/assigned asymmetry deliberately
+                # and wrote down its re-evaluation trigger -- "a consumer that
+                # distinguishes no-edge from untyped-edge" -- and the ADR-0017
+                # section 3a walk is that consumer: a call with no edge has no
+                # ``callees_at`` entry, so the walk records an ESCAPE where a
+                # section 4 summary could have accounted for the step
+                # (INV-busis: 50.0% of call-node escape sites had no edge).
+                # Same placeholder, same stamp; an untyped placeholder still
+                # reaches no catalogue row, so this is walk coverage, not recall.
+                edges.append(Edge.create(
+                    src=caller_symbol.id,
+                    dst=f"python:external:0-0:{func.attr}:unresolved",
+                    edge_type="calls",
+                    line=call_node.lineno,
+                    evidence_type="ast_call_direct",
+                    is_resolved=False,
+                    meta={"call_construct": "method"},
+                    origin=PASS_ID,
+                    origin_run_id=run_id,
+                ))
+            else:
                 root_name_node, chain_attrs = chain
                 root_name = root_name_node.id
                 if root_name in module_imports and len(chain_attrs) >= 2:

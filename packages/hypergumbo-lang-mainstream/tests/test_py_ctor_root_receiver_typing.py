@@ -278,24 +278,26 @@ class TestTheEmissionAsymmetryIsDeliberate:
     """The one way the two forms still differ, pinned so it is disclosed rather than
     discovered.
 
-    For a receiver of UNKNOWN type the assigned form emits an untyped ``external``
-    placeholder edge (PR #231) and the inline form emits no edge at all. Both mean
-    the same thing to every consumer and both tag zero boundaries — verified in the
-    parity test above — so the difference is edge volume, not verdict.
+    For a receiver of UNKNOWN type the assigned form emitted an untyped ``external``
+    placeholder edge (PR #231) and the inline form emitted no edge at all. PR #254
+    kept that asymmetry deliberately — the ~27,085 untypeable call-or-``/`` receivers
+    across seven repos are what PR #231 measured as moving zero findings — and wrote
+    down the re-evaluation trigger: a consumer that distinguishes "no edge" from "an
+    edge to an untyped receiver".
 
-    IT STAYS THIS WAY BECAUSE THE VOLUME IS THE WHOLE POPULATION. Across the seven
-    measured repos, 27,354 call sites have a call-or-``/`` receiver and only 269 are
-    typeable; emitting a placeholder for the other ~27,085 is precisely what PR #231
-    measured as moving zero findings. Closing this asymmetry would mean minting those
-    edges, so it is a deliberate non-fix rather than an oversight.
-
-    RE-EVALUATION TRIGGER: if a consumer is ever added that distinguishes "no edge"
-    from "an edge to an untyped receiver" — a call-graph completeness metric, or a
-    coverage gate that counts unresolved call sites — this asymmetry starts to matter
-    and must be revisited then.
+    THE TRIGGER FIRED (INV-luhug). The ADR-0017 §3a walk is that consumer: a call
+    with no edge has no ``callees_at`` entry, so the walk cannot ask whether the
+    callee consumes the value and records an ESCAPE where a §4 summary could have
+    accounted for the step. INV-busis measured "no call edge emitted at all" at
+    50.0% of call-node escape sites, and INV-foluz closed the bare-builtin half of
+    that bucket on the same reasoning. So the inline form now emits the SAME
+    placeholder as the assigned form. What has NOT changed is the recall claim:
+    an untyped placeholder still reaches no catalogue row, both forms still tag
+    zero boundaries, and the cost is priced in edge rows and walk escapes, not
+    findings (``test_py_unknown_root_and_imported_ctor.py``).
     """
 
-    def test_unknown_receiver_emits_no_edge_inline_but_a_placeholder_assigned(
+    def test_unknown_receiver_emits_the_same_placeholder_inline_and_assigned(
         self, tmp_path: Path,
     ) -> None:
         src = "from somewhere import make_thing\n\ndef h(raw, data):\n"
@@ -304,6 +306,6 @@ class TestTheEmissionAsymmetryIsDeliberate:
             tmp_path / "a",
             src + "    p = make_thing(raw)\n    p.write_text(data)\n",
         )
-        assert _slot(inline, "write_text") == ""
+        assert _slot(inline, "write_text") == "external"
         assert _slot(assigned, "write_text") == "external"
         assert _tagged(inline) == _tagged(assigned) == 0

@@ -168,9 +168,11 @@ class TestBindingOwnershipDecidesTrust:
 
     def test_mismatched_binding_is_withheld(self, tmp_path: Path) -> None:
         """``fastapi.Path`` is a parameter declaration, not a filesystem path;
-        ``.replace`` on it is ``str.replace``."""
+        ``.replace`` on it is ``str.replace``. The CATALOGUED type is withheld;
+        the instance is typed as what the import actually supplied
+        (``fastapi.Path``, WI-makij's imported-class rule), which reaches no row."""
         edges = _analyse(tmp_path / "bad", self.BAD)
-        assert _module_slot(_dsts_named(edges, "replace")[0]) == "external"
+        assert _module_slot(_dsts_named(edges, "replace")[0]) == "fastapi.Path"
         assert _tagged(edges) == 0
 
     def test_mismatched_binding_is_withheld_from_taint_too(
