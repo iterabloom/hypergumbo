@@ -131,3 +131,26 @@ class TestThroughTheAnalyzer:
         )})
         assert any(s.name == "go" for s in res.symbols)
         assert (tmp_path / "str" / "S.swift").read_text().count("`a b c`") == 1
+
+    def test_an_erroring_file_with_neither_spelling_is_left_alone(
+        self, tmp_path: Path,
+    ) -> None:
+        """The `rewritten == source` early return: a parse failure the rewrite has
+        no answer for keeps the original bytes and the original tree."""
+        res = _symbols(tmp_path / "other", {"O.swift": "struct S {\n  ],\n"})
+        assert any(s.name == "S" and s.kind == "struct" for s in res.symbols)
+
+    def test_a_rewrite_that_does_not_help_is_discarded(self, tmp_path: Path) -> None:
+        """The strictly-fewer-errors guard, and the reason it exists: a backtick
+        identifier inside a STRING must not be rewritten just because the file
+        happens to fail to parse for an unrelated reason. Here the rewrite DOES
+        change the bytes (the string contains a backticked phrase with a space) and
+        does NOT reduce the ERROR count, so the original bytes are what the analysis
+        runs on."""
+        res = _symbols(tmp_path / "nohelp", {"N.swift": (
+            "struct S {\n"
+            "  ],\n"
+            "}\n"
+            "let banner = \"use `a b` here\"\n"
+        )})
+        assert any(s.name == "S" for s in res.symbols)
