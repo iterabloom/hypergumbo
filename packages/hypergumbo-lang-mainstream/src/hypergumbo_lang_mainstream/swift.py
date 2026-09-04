@@ -372,6 +372,34 @@ def _swift_bare_type(text: str) -> str | None:
     return t
 
 
+def _swift_type_parameter_names(
+    node: "tree_sitter.Node", source: bytes,
+) -> set[str]:
+    """The generic parameter names in scope at a declaration.
+
+    WI-higob. ``func map<U>(...) -> U`` returns a name that is a type only
+    INSIDE the declaration; at a call site it names nothing, so registering it
+    puts a meaningless module in the slot. The constraint in ``<V: Codable>`` is
+    nested under a ``user_type`` rather than being a direct child, so reading
+    the first ``type_identifier`` of each ``type_parameter`` takes the parameter
+    name and never its bound.
+    """
+    names: set[str] = set()
+    cur: "tree_sitter.Node | None" = node
+    while cur is not None:
+        if cur.type in (
+            "function_declaration", "class_declaration", "protocol_declaration",
+        ):
+            params = find_child_by_type(cur, "type_parameters")
+            for tp in (params.children if params is not None else []):
+                if tp.type == "type_parameter":
+                    ident = find_child_by_type(tp, "type_identifier")
+                    if ident is not None:
+                        names.add(node_text(ident, source))
+        cur = cur.parent
+    return names
+
+
 def _swift_return_type_name(node: "tree_sitter.Node", source: bytes) -> str | None:
     """The bare declared return type of a ``function_declaration``, or ``None``.
 
@@ -379,15 +407,25 @@ def _swift_return_type_name(node: "tree_sitter.Node", source: bytes) -> str | No
     walk -- the type node after the parameter list's closing paren -- but
     keeps only what :func:`_swift_bare_type` admits, so the registry never
     carries ``[String]`` or ``() -> Void`` as a receiver type.
+
+    Two spellings name a type only from INSIDE the declaration and were
+    measured putting a meaningless module in the slot once slice 2 let a chained
+    receiver read this registry: ``Self`` (76 sites on Alamofire, every one a
+    fluent ``-> Self`` builder) resolves to the enclosing type, which is what it
+    means; a generic PARAMETER (2 sites) resolves to nothing and is refused.
     """
     found_closing_paren = False
     for child in node.children:
         if child.type == ")":
             found_closing_paren = True
         elif found_closing_paren and child.type in ("user_type", "optional_type"):
-            return _swift_bare_type(node_text(child, source))
+            name = _swift_bare_type(node_text(child, source))
+            if name == "Self":
+                return _get_enclosing_type(node, source)
+            if name is not None and name in _swift_type_parameter_names(node, source):
+                return None
+            return name
     return None
-
 
 def _register_swift_field_type(
     node: "tree_sitter.Node", source: bytes, analysis: FileAnalysis,
@@ -1141,49 +1179,102 @@ def _extract_call_target(
     return ("", None, False)  # pragma: no cover
 
 
-def _swift_call_result_type(
-    node: "tree_sitter.Node",
+def _swift_nav_receiver(
+    call: "tree_sitter.Node",
+    source: bytes,
+) -> "tree_sitter.Node | None":
+    """The receiver EXPRESSION node of a navigation call, or ``None``.
+
+    WI-higob slice 2. ``_extract_call_target`` reports the receiver's first
+    *simple_identifier*, which a receiver that is an expression does not have.
+    This returns the node itself so its type can be computed rather than named.
+    """
+    nav = find_child_by_type(call, "navigation_expression")
+    if nav is None:  # pragma: no cover - the caller only asks about nav calls
+        return None
+    return next(
+        (c for c in nav.children if c.is_named and c.type != "navigation_suffix"),
+        None,
+    )
+
+
+def _swift_receiver_expr_type(
+    node: "tree_sitter.Node | None",
     source: bytes,
     type_of: "Callable[[str], str | None]",
     registry: dict[str, str],
 ) -> str | None:
-    """The registry type of the CALL a ``property_declaration`` is initialised with.
+    """The TYPE an expression evaluates to, or ``None`` when nothing names it.
 
-    WI-higob. ``let s = store.session()`` looks up ``<type of store>.session``;
-    ``let s = Store.make()`` looks up ``Store.make``; a bare ``let s =
-    makeSession()`` inside a type looks up ``<enclosing type>.makeSession``
-    and then the free function ``makeSession``. ``try`` / ``await`` wrappers
-    are unwrapped. Anything the registry does not hold yields ``None`` -- the
-    local stays untyped, which is what an unknown result means.
+    WI-higob slice 2. The wrappers that carry no type of their own -- ``try``,
+    ``await``, parentheses -- are stripped; a cast names its type outright; a
+    call is typed by :func:`_swift_call_type`, which recurses back here for its
+    own receiver, so ``a.b().c().d()`` is walked rather than one level being
+    special-cased. A parenthesised TUPLE (more than one element) is not a
+    receiver type the catalogue knows and yields ``None``, as does a cast to a
+    collection (``o as! [String]``) -- ``_swift_bare_type`` is the one rule for
+    which spellings are receiver types.
     """
-    call: "tree_sitter.Node | None" = None
-    for child in node.children:
-        cur: "tree_sitter.Node | None" = child
-        # try / await wrap the call one or two levels deep
-        for _ in range(3):
-            if cur is None or cur.type == "call_expression":
-                break
-            if cur.type in ("try_expression", "await_expression"):
-                cur = next((c for c in cur.children if c.type in ("call_expression", "try_expression", "await_expression")), None)
-            else:
-                cur = None
-        if cur is not None and cur.type == "call_expression":
-            call = cur
-            break
-    if call is None:
+    while node is not None:
+        if node.type in ("try_expression", "await_expression", "tuple_expression"):
+            # ``try_operator`` is a NAMED child of ``try_expression``; the
+            # ``await`` keyword and the parentheses are not.
+            inner = [
+                c for c in node.children
+                if c.is_named and c.type != "try_operator"
+            ]
+            node = inner[0] if len(inner) == 1 else None
+            continue
+        if node.type == "as_expression":
+            cast_to = find_child_by_type(node, "user_type")
+            return (
+                _swift_bare_type(node_text(cast_to, source))
+                if cast_to is not None else None
+            )
+        if node.type == "call_expression":
+            return _swift_call_type(node, source, type_of, registry)
         return None
+    return None
+
+
+def _swift_call_type(
+    call: "tree_sitter.Node",
+    source: bytes,
+    type_of: "Callable[[str], str | None]",
+    registry: dict[str, str],
+) -> str | None:
+    """The TYPE a ``call_expression`` evaluates to, or ``None``.
+
+    WI-higob. A bare capitalised callee is a constructor and evaluates to its
+    own type; a method call is looked up in the return-type registry under
+    ``<owner>.<method>``, where the owner is the receiver's type -- from the
+    scope map for a named receiver, from the head itself for a capitalised one,
+    and from :func:`_swift_receiver_expr_type` when the receiver is an
+    expression. A bare lowercase callee is looked up under the enclosing type
+    and then as a free function. Recursion terminates on the AST: each step
+    descends into a strictly smaller subtree.
+    """
     callee_name, receiver_hint, has_receiver = _extract_call_target(call, source)
-    if not callee_name or callee_name[:1].isupper():
-        return None  # a constructor, already typed by the caller
+    if not callee_name:  # pragma: no cover - defensive, mirrors the gate
+        return None
     keys: list[str] = []
-    if has_receiver and receiver_hint:
-        owner = type_of(receiver_hint)
-        if owner is None and receiver_hint[:1].isupper():
+    if has_receiver:
+        owner = type_of(receiver_hint) if receiver_hint else None
+        if owner is None and receiver_hint is not None and receiver_hint[:1].isupper():
             owner = receiver_hint
-        if owner is not None:
-            keys.append(f"{owner}.{callee_name}")
-    elif not has_receiver:
-        enclosing = _get_enclosing_type(node, source)
+        if owner is None and receiver_hint is None:
+            owner = _swift_receiver_expr_type(
+                _swift_nav_receiver(call, source), source, type_of, registry,
+            )
+        if owner is None:
+            return None
+        # Generics are stripped the same way the module slot strips them:
+        # the registry is keyed by the bare owner name.
+        keys.append(f"{owner.split('<', 1)[0]}.{callee_name}")
+    else:
+        if callee_name[:1].isupper():
+            return callee_name  # a constructor evaluates to its own type
+        enclosing = _get_enclosing_type(call, source)
         if enclosing:
             keys.append(f"{enclosing}.{callee_name}")
         keys.append(callee_name)
@@ -1192,6 +1283,31 @@ def _swift_call_result_type(
             return registry[key]
     return None
 
+
+def _swift_call_result_type(
+    node: "tree_sitter.Node",
+    source: bytes,
+    type_of: "Callable[[str], str | None]",
+    registry: dict[str, str],
+) -> str | None:
+    """The type of the expression a ``property_declaration`` is initialised with.
+
+    WI-higob. ``let s = store.session()`` looks up ``<type of store>.session``;
+    ``let s = Store.make()`` looks up ``Store.make``; a bare ``let s =
+    makeSession()`` inside a type looks up ``<enclosing type>.makeSession`` and
+    then the free function. Slice 2 replaced this function's own three-level
+    ``try``/``await`` unwrapping and its single-level receiver lookup with the
+    shared expression walker, so a chained initialiser (``let s =
+    Store().session()``) and a cast (``let fm = o as! FileManager``) are typed
+    by the same rule that types a chained RECEIVER. Anything the registry does
+    not hold yields ``None`` -- the local stays untyped, which is what an
+    unknown result means.
+    """
+    for child in node.children:
+        vtype = _swift_receiver_expr_type(child, source, type_of, registry)
+        if vtype is not None:
+            return vtype
+    return None
 
 def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | None, str | None]:
     """Extract variable name and type from a property_declaration node.
@@ -1497,6 +1613,23 @@ def _extract_edges_from_file(
                             and receiver_hint not in declared_names
                         ):
                             receiver_type = receiver_hint
+                        # WI-higob slice 2: the receiver is an EXPRESSION and
+                        # names nothing -- ``store.session().resume()``,
+                        # ``Store().session()``, ``(o as! FileManager).x()``,
+                        # any of them under ``try`` / ``await``. Until now every
+                        # such site took the ``external`` placeholder while the
+                        # SAME call one binding apart (``let s =
+                        # store.session(); s.resume()``) was typed through the
+                        # return-type registry, so one catalogued sink was
+                        # reachable in one spelling and unmatchable in the
+                        # other. ``receiver_hint`` is None for exactly this
+                        # family (INV-pirot established that a nameless
+                        # receiver still HAS a receiver), which is the gate.
+                        if receiver_type is None and receiver_hint is None:
+                            receiver_type = _swift_receiver_expr_type(
+                                _swift_nav_receiver(node, source), source,
+                                _type_lookup_at(node), method_return_type_registry,
+                            )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
                         # The WI-huzuv structured dst_ref survives suppression

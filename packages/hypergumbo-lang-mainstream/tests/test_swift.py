@@ -2199,3 +2199,35 @@ class TestSwiftProtocolRequirements:
         by_name = {s.name: s for s in analyze_swift(tmp_path).symbols}
         assert by_name["P.items"].kind == "property"
         assert by_name["P.items"].signature is not None
+
+
+class TestErrorNodeTypeRecoveryUnderTheCurrentGrammar:
+    """The ERROR-node type recovery path, pinned with a fixture the SHIPPED grammar
+    actually fails on.
+
+    `TestErrorNodeRecovery`'s `@dynamicMemberLookup` / `#if` / `_$` fixture stopped
+    reaching this path when tree-sitter-swift went 0.0.1 -> 0.7.3 (PR #763): 0.7.3
+    parses that class cleanly and puts only `$observationRegistrar` in an ERROR node,
+    which carries no type keyword. The test still passed, because it asserts that
+    `Store` is found and `Store` is now found by the ordinary path. That is the
+    failure mode the assertion cannot see, so this fixture pins the recovery itself.
+
+    The fixture is the delta-debugged minimum of VernissageServer's
+    `ActivityDtoDeserialization.swift`, one of 246 corpus files whose ERROR node
+    carries a type keyword: a type header the grammar accepts followed by a token it
+    cannot place, which makes error recovery swallow the header.
+    """
+
+    def test_a_struct_header_swallowed_by_error_recovery_is_still_a_symbol(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.swift import analyze_swift
+
+        (tmp_path / "A.swift").write_text("struct ActivityDtoDeserialization {\n  ],\n")
+        result = analyze_swift(tmp_path)
+        recovered = [
+            s for s in result.symbols
+            if s.name == "ActivityDtoDeserialization" and s.kind == "struct"
+        ]
+        assert recovered, [(s.name, s.kind) for s in result.symbols]
+        assert recovered[0].span.start_line == 1
