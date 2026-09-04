@@ -155,3 +155,10 @@
   set: {}  # cc4a
   remove:  # cc4a
     tags: [awaits_bakeoff_validation]  # cc4a
+- op: discuss  # 2522
+  at: '2026-09-04T10:40:46Z'  # 2522
+  by: agent  # 2522
+  actor: jgstern_agent  # 2522
+  clock: 19  # 2522
+  nonce: '2522'  # 2522
+  message: "Tag stripped in the 2026-09-04 queue audit (phase 2, D-stale). The validation this tag was waiting for ALREADY EXISTS on this thread: the 2026-08-25 entry records it run on the merged tree through the production path (hypergumbo verify-claims --claims docs/hypergumbo.claims.yaml .), 18 of 18 claims confirmed_with_caveats, with a positive control in a paired run (one line reverted on a pristine copy of the same commit) and artifacts at ~/hypergumbo_lab_notebook/campaign_p0_08252026/. The tag was simply never removed. Independently, this item's statement is about THIS repository's own asserted claims, so a BROAD/DEEP cohort over other repositories could not have validated it in any case -- the production self-proof is the right instrument and it was used. Status stays satisfied. Audit: ~/hypergumbo_lab_notebook/bakeoff_queue_09042026/PHASE1_CLASSIFICATION.md"  # 2522

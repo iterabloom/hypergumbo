@@ -1,0 +1,23 @@
+- op: create  # ec77
+  at: '2026-09-04T13:29:21Z'  # ec77
+  by: agent  # ec77
+  actor: jgstern_agent  # ec77
+  clock: 1  # ec77
+  nonce: ec77  # ec77
+  data:  # ec77
+    kind: work_item  # ec77
+    title: "Community overlay: go framework constructor signatures (gin.Default, fiber.New, echo.New) — the third-party half WI-lalot cannot ship"  # ec77
+    status: todo_soft  # ec77
+    priority: 3  # ec77
+    parent:  # ec77
+    tags:  # ec77
+    - io_boundary  # ec77
+    - catalogue  # ec77
+    - go  # ec77
+    - analysis_quality  # ec77
+    isbefore: []  # ec77
+    duplicate_of: []  # ec77
+    not_duplicate_of: []  # ec77
+    pr_ref:  # ec77
+    description: "FILED 2026-09-04 from WI-lalot's own measurement, as the half its shipped-catalogue\nchange cannot reach by construction.\n\nWI-lalot's discussion (measurement 0009 / WI-vapud) measured seven go framework rows as\nINERT in real code, and named exactly why: every one of those frameworks is entered\nthrough a CONSTRUCTOR-shaped producer.\n\n    gin.Engine.Run / RunTLS          entered via gin.Default()\n    fiber.App.Listen / ListenTLS     entered via fiber.New()\n    echo.Echo.Start / StartTLS       entered via echo.New()\n    grpc.Server.Serve                entered via grpc.NewServer()   (already live --\n                                     go's NewXxx convention covers it, WI-vutav)\n\nWI-lalot shipped the library-signature catalogue that supplies \"what does this producer\nreturn\", plus the go LOOKUP change without which a package-qualified producer never\nconsulted the registry at all. What it did NOT ship is rows for these four, because\nADR-0047 rules that the shipped catalogues are STDLIB-ONLY and third-party rows belong in\ncommunity overlays that load by default and are stamped `unvouched` at merge.\n\nSO THIS ITEM IS THE OVERLAY. Rows needed (the loader and all four merge points already\nexist; nothing new has to be built):\n\n    gin.Default:    gin.Engine\n    gin.New:        gin.Engine\n    fiber.New:      fiber.App\n    echo.New:       echo.Echo\n\nMEASURE IT THE WAY WI-lalot WAS MEASURED, AND DO NOT REPEAT ITS RECALL CLAIM WITHOUT\nEVIDENCE. WI-lalot's stdlib rows moved 317 call sites off the `external` sentinel on\ncaddy + gocryptfs with 0 regressions and moved io-boundaries by ZERO, because the io\nclassifier was already matching those methods by short name. The framework rows may\nbehave the same way -- `Run` / `Listen` / `Start` / `Serve` are all on go.yaml's ambiguous\n-name list, which is exactly the gate that REFUSES a short-name match, so these may be the\npopulation where the module slot is genuinely load-bearing. That is the hypothesis, not\nthe finding.\n\nACCEPTANCE: a repository using gin / fiber / echo, both arms cold, showing the\nframework's launch row reached where it was not before -- and if io does not move, say so\nand report the module-slot delta instead."  # ec77
+    fields: {}  # ec77
