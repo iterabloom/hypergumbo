@@ -1,0 +1,35 @@
+Original commit body from 79a5061e6611c1e28b2afd7bccd674fa88a7e507:
+
+`gate_path_hint` ended in `receiver_hint` -- the receiver's VARIABLE NAME -- so
+`fm.fileExists(atPath:)` shipped `dst_ref.module_path == "fm"` while the dst id
+said `external` at the same site: two answers, one of them a local identifier
+that every consumer reading the slot as a module hint refuses outright. Sized on
+Alamofire: 1462 of 3501 unresolved method-call edges (42%) carried such a name;
+VernissageServer 2753 of 11014 (25%). The handful that "matched" did so only
+because the variable was named like its type (`fileManager`).
+
+One answer now, written to both the id and dst_ref: the receiver's TYPE when it
+is external (the swift catalogue keys its rows by bare type -- `FileManager`,
+`URLSession`), the import alias for a module-qualified call, else the `external`
+placeholder. Three shapes learned along the way, each from an arm-B read-back:
+a singleton / enum-case initializer types its local (`let fm = FileManager
+.default`); a capitalised chain head that is not a declared variable is the
+type itself (`FileManager.default.fileExists`, but not `AF.request` on
+`let AF = Session.default`); generic arguments are stripped before the
+project-type check, so `Protected<State>` stays out of the slot with the hint
+in meta. And an instance receiver never binds a `static`/`class` member by bare
+name: once `fileManager` was typed, a test-only `extension FileManager { static
+func removeItem(at:) }` had captured the call and hidden the Foundation boundary.
+
+Measured on Alamofire / VernissageServer (arm A = dev a21ef3223f):
+  per-site churn: Alamofire 786 / 10697 sites gain a type, Vernissage 2236 / 12544;
+  0 sites lose a type; 9 + 1 re-keys are `Set<X>` -> `Set` (the same type, generic
+  arguments stripped); the 5 `resolved -> typed` moves are instance calls that had
+  bound to test-only static extension members (Tests/FileManager+AlamofireTests.swift).
+  probe: receiver-VARIABLE dst_ref bucket 1462 -> 0 (Alamofire), 2753 -> 0 (Vernissage).
+  io-boundaries: Alamofire 27 -> 31 chains (6 real FileManager fs boundaries surfaced
+  that the mis-bindings hid; 1 Tier-2 phantom URLSession.dataTask link gone -- the
+  analyzer edges at that site are identical in both arms), Vernissage 8 -> 8.
+
+Racial-Capitalism-Is-Bad: a harvest beetle teaching zest-extraction to a class of turtles in a dinosaur topiary garden café made of origami cranes
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
