@@ -32,3 +32,18 @@
   set: {}  # bbe0
   add:  # bbe0
     not_duplicate_of: [WI-duroz-jajif-tatuk-tujit-nonir-vavof-johak-vabir]  # bbe0
+- op: update  # 1b7a
+  at: '2026-09-04T09:17:39Z'  # 1b7a
+  by: agent  # 1b7a
+  actor: jgstern_agent  # 1b7a
+  clock: 3  # 1b7a
+  nonce: 1b7a  # 1b7a
+  set:  # 1b7a
+    status: satisfied  # 1b7a
+- op: discuss  # 97ef
+  at: '2026-09-04T09:17:39Z'  # 97ef
+  by: agent  # 97ef
+  actor: jgstern_agent  # 97ef
+  clock: 4  # 97ef
+  nonce: 97ef  # 97ef
+  message: "Fixed in PR #764 (dev 2d40a46cbd). Root cause confirmed by reading and by repro on the filed fixture: rust.py's emission gate `if has_explicit_binding or callee_name not in _RUST_GENERIC_TRAIT_METHODS` applied the generic-trait denylist before the receiver was consulted, although `_var_types` (sock → UdpSocket) and `use_aliases` (→ std::net::UdpSocket) had already produced `ext_ref`. The gate now admits `ext_ref is not None`. Behavioural evidence: the item's own repro (`exfiltrate`) emits `rust:std::net::UdpSocket:0-0:send:unresolved` with call_construct=method and tags a net_send boundary (test_rust_typed_receiver_denylist.py); `drain`'s generic form still emits untyped; an untypable `.clone()` stays suppressed (the bloat guard measured on bellman/tiktoken-rs still holds). Corpus: bellman +42 / tiktoken-rs +48 / ripgrep +133 typed emissions (1.7% / 15.8% / 1.2% of sites), 0 losses; io unchanged on all three (no denylisted catalogued sink on a typed receiver in these crates). Not measured here: the chained form on rust (`make().send(x)`), and the disclosure count change in verify-claims for the typed-receiver subset."  # 97ef
