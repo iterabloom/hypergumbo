@@ -380,3 +380,19 @@
   clock: 49  # b0dd
   nonce: b0dd  # b0dd
   message: "JAVA L3 MOVED, PR #750 (dev 7f6c0493b0), INV-vugon + WI-gajuh. The class\nstatement's java cell now reads: a DECLARED receiver type -- local, catch,\nfor-each, try-with-resources, typed lambda param, record component, generic /\nqualified field, ancestor field -- carries its owner path into the module\nslot, and the return-type registry (keyed `<Owner>.<method>`, qualified values)\nis consumed at the assignment, typed-receiver and chained sites. Measured L2/L3\nper call site with both arms in one process: guacamole-client 1,662 of 9,105\nsites untyped -> typed, 0 lost; keycloak 67,400 of 386,340, 166 lost (all leaks\nthe old arm carried from a sibling method, 80 of them bare lambda params).\nL4 on findings: guacamole io-boundaries 38 -> 40 chains, 0 lost -- small because\nguacamole's declared locals are mostly uncatalogued types. NOT closed here:\njava's remaining L3 gap is receivers typed from a LIBRARY return value\n(`var o = sock.getOutputStream()`, WI-lalot's rows; the consumer is wired and\npinned by an injected-row test) and bare lambda parameters. kotlin/scala not\nswept (WI-nasuf). Rig: ~/hypergumbo_lab_notebook/vugon_javadecl_09032026/."  # b0dd
+- op: update  # fe4e
+  at: '2026-09-04T10:40:47Z'  # fe4e
+  by: agent  # fe4e
+  actor: jgstern_agent  # fe4e
+  clock: 50  # fe4e
+  nonce: fe4e  # fe4e
+  set: {}  # fe4e
+  remove:  # fe4e
+    tags: [awaits_bakeoff_validation]  # fe4e
+- op: discuss  # d929
+  at: '2026-09-04T10:40:47Z'  # d929
+  by: agent  # d929
+  actor: jgstern_agent  # d929
+  clock: 51  # d929
+  nonce: d929  # d929
+  message: "Tag stripped in the 2026-09-04 queue audit (phase 2, E-misapplied) -- STATUS UNCHANGED, this item stays violated and P1. Rationale: awaits_bakeoff_validation names a single quantitative improvement claim that a cohort can move. This is a CLASS item; it carries no such number of its own, and each per-language instance ships with its own A/B measured through L4 and is validated in its own PR (java INV-vugon/WI-gajuh, kotlin WI-nasuf, python INV-mumov, swift INV-kotob/WI-higob, rust INV-pamis, js INV-misup). Leaving the tag on the rollup makes the queue report a validation that no cohort run can ever discharge, which is how the queue accumulates the anomalies the drain playbook exists to clear. The tag belongs on the instances; INV-mumov still carries it. Audit: ~/hypergumbo_lab_notebook/bakeoff_queue_09042026/PHASE1_CLASSIFICATION.md"  # d929
