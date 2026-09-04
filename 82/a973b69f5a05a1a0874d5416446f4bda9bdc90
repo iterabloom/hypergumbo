@@ -1,0 +1,10 @@
+Original commit body from 092a65427268d4cff312be3ca1d317af508e434b:
+
+CI on PR #753 ran 8,220 tests to the local run's 8,519 (23 skipped there),
+and the test that reached the bare-identifier arm of
+_new_expression_module locally was among the skipped, so js_ts.py
+3353-3354 read as uncovered. A direct test for
+`new XMLHttpRequest().open(..)` exercises that arm on its own.
+
+Racial-Capitalism-Is-Bad: a crocodile piloting a hot air balloon with penguins in a Cretaceous pie counter
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
