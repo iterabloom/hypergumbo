@@ -20,7 +20,8 @@ Design properties:
   tree, so the op *data* survives any working-tree git command — empirically
   ``reset --hard``, ``checkout``, ``clean -fdx``, even ``rm -rf .git``. For the
   common vectors (``reset --hard`` / ``checkout`` / ``clean``) ``.git`` survives,
-  so ``tracker recover`` runs directly. After ``rm -rf .git`` the *data* is still
+  so ``tracker reconcile`` runs directly (``tracker recover`` is the
+  deprecated journal-only half of it). After ``rm -rf .git`` the *data* is still
   safe under the journal root, but ``recover`` (which locates the repo via
   ``.git``) can't auto-run until the repo is re-init'd / re-cloned — the journal
   is keyed by the toplevel's absolute path, so recovery is then a one-liner.
