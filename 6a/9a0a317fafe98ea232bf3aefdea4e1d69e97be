@@ -1,0 +1,76 @@
+Original commit body from cc5c2ad1855c0f6da2b825d1b645b2ac8afe16e4:
+
+WI-pozut. When auto-pr merges and its post-merge pull then aborts because
+pending `.ops` collide with the same paths in the incoming commit, the way out
+was three commands: `tracker sync`, a raw fast-forward, `tracker recover`. Two
+tracker commands with a plain VCS command between them, none of which reports
+whether the next is still needed.
+
+That recipe was documented, short, and still lost to hand-rolled file surgery
+the first time it was needed under pressure — by an operator who had just quoted
+it correctly. A procedure that loses to improvisation at the moment it matters is
+a procedure with a missing command, so this adds the command.
+
+WHAT IT DOES, each step skipped when it is not needed:
+
+  1. flush   pending ops upstream via do_sync
+  2. ff      fast-forward now that the collision is gone
+  3. restore union-restore anything the journal holds that the tree lacks
+
+Every step reports what it did OR why it did nothing. A silent step is
+indistinguishable from a step that was not needed, and that ambiguity is exactly
+what sends the next reader back to doing it by hand.
+
+DESIGN POINTS THAT ARE NOT INCIDENTAL:
+
+- NO SYNTHETIC MUTATION. An earlier sketch proposed tripping the flush with a
+  canned harmless op repeated every time. Rejected on reading the code: do_sync
+  takes no threshold argument (the line-count gate lives in its caller), so there
+  is nothing to trick; a mutation writes a real op into a real item's history,
+  and the append-only log's whole value is that every line means something; and
+  "the same every time" is the worst variant, because op ids are content-hashed
+  with skip-existing idempotency, so a byte-identical mutation may add no lines
+  and fail to trip the gate at all.
+
+- REFUSES UNDER .git/PR_PENDING. An in-flight auto-pr moves the ops dirs around
+  its own rebase; syncing or fast-forwarding underneath it is how the two end up
+  fighting over the same files.
+
+- STOPS RATHER THAN FAST-FORWARDING WHEN THE FLUSH FAILS, propagating do_sync's
+  exit code. Advancing on top of ops that never reached the remote is precisely
+  the collision this exists to prevent.
+
+- DOES NOT SET `tracker-recover-disabled`. do_sync sets it around its own fetch
+  on purpose. Here the opposite is wanted: the post-checkout and
+  reference-transaction hooks should be LIVE, because restoring ops the pull
+  disturbs is their job.
+
+- CLEAN NO-OP on a healthy repo, so it is safe to run reflexively after every
+  auto-pr — which is the only way it gets run at all.
+
+DEPRECATION. `recover` stays: it is the primitive `reconcile` calls and the
+hooks' entry point. It now prints a notice pointing at `reconcile`, and the exit
+code is unchanged. Verified rather than assumed: both `.githooks/post-checkout`
+and `.githooks/reference-transaction` invoke it with `>/dev/null 2>&1`, so the
+notice is silent on every automatic invocation and surfaces only for manual use.
+Had they not redirected, every ref transaction and every checkout would have
+begun printing a deprecation warning.
+
+13 new tests, and the 535 existing tracker tests unchanged and green. Confirmed
+against a real repository: `reconcile --dry-run` reports all three steps, and the
+real run correctly declines to claim success when the branch has no upstream,
+printing the VCS's own words instead.
+
+AGENTS.md, under explicit owner approval for the governance edit: its Op
+Durability bullet named `recover` four times as the thing you run by hand. Those
+now name `reconcile`, plus a new sentence saying outright that `reconcile` is the
+answer to the aborted-pull state and that the three-step recipe is superseded —
+its first step obsolete regardless, since do_sync takes no threshold. Three
+`recover` mentions deliberately remain: what the hooks actually call, the
+deprecation note, and the description of the superseded recipe.
+
+The two `recover` mentions in the root CHANGELOG are historical released entries
+and are deliberately left alone.
+
+Racial-Capitalism-Is-Bad: a cinnamon sparrow riding a segway with mirrored panels in a mossy Shoney’s atrium with a parliament of ravens made of prayer shawls
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
