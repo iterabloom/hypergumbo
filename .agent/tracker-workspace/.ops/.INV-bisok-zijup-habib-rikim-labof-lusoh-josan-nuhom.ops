@@ -1,0 +1,31 @@
+- op: create  # cdae
+  at: '2026-09-04T05:19:54Z'  # cdae
+  by: agent  # cdae
+  actor: jgstern_agent  # cdae
+  clock: 1  # cdae
+  nonce: cdae  # cdae
+  data:  # cdae
+    kind: invariant  # cdae
+    title: "swift: Alamofire's open class Session (Source/Core/Session.swift) is not extracted -- its methods surface as top-level functions and the class name is treated as an external type"  # cdae
+    status: violated  # cdae
+    priority: 3  # cdae
+    parent:  # cdae
+    tags:  # cdae
+    - swift  # cdae
+    - analyzer  # cdae
+    - analysis_quality  # cdae
+    isbefore: []  # cdae
+    duplicate_of: []  # cdae
+    not_duplicate_of: []  # cdae
+    pr_ref:  # cdae
+    description: "Observed 2026-09-04 while measuring INV-kotob on Alamofire: `open class Session: @unchecked Sendable {` (Source/Core/Session.swift, 1457 lines) is NOT among the extracted symbols — its methods (`webSocketRequest`, `withAllRequests`, `cancelAllRequests`, ...) are extracted as top-level FUNCTIONS instead (82 symbols from the file, no class). A three-line snippet `open class Session: @unchecked Sendable { func go() {} }` extracts `Session` as a class, so the miss is file-specific: something earlier in the file drops the class_declaration (an ERROR node from newer Swift syntax is the first hypothesis; not confirmed). Consequences: every `Session.x` / `session.x` receiver in Alamofire is treated as an EXTERNAL type (`swift:Session:0-0:request:unresolved` reached the module slot in the kotob arm B), and the class's 100+ methods are mis-kinded. Repro: `analyze_swift` on a dir holding only that file; check for a `class` symbol named `Session`. Lab: ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/README.md (pass 1 read-back)."  # cdae
+    fields:  # cdae
+      statement: "Every class_declaration in a parsed Swift file MUST yield a class symbol, and its methods MUST be kinded as methods of that class, never as top-level functions."  # cdae
+      root_cause: "UNCONFIRMED and file-specific: a three-line snippet with the same header extracts a class; Source/Core/Session.swift (1457 lines) yields 82 symbols and no class. First hypothesis: an ERROR node from newer Swift syntax earlier in the file swallows the class_declaration."  # cdae
+- op: discuss  # ce45
+  at: '2026-09-04T07:24:47Z'  # ce45
+  by: agent  # ce45
+  actor: jgstern_agent  # ce45
+  clock: 2  # ce45
+  nonce: ce45  # ce45
+  message: "ROOT CAUSE FOUND 2026-09-04 (bisected Source/Core/Session.swift by prefix, first erroring prefix ends at line 509): a conditional-compilation block inside the class body -- '#if canImport(Darwin) && !canImport(FoundationNetworking)' wrapping 'open func webSocketRequest' -- is not parsed by tree-sitter-swift; error recovery re-parents the class header ('open class Session: @unchecked Sendable {' becomes simple_identifier + ERROR spanning lines 30-511) and the class's members surface under ERROR nodes, so no class symbol is minted and its methods are kinded as top-level functions. A 3-line class with the same header parses clean; the '#if' inside the body is the trigger. Consequences beyond symbol extraction: the receiver-type scoping in swift.py treats a declaration under an ERROR as file-level and walks lookups through ERRORs (PR for the registry consumer), which keeps 'rootQueue.async' typed in this file, but sites whose declarations are re-parented arbitrarily still lose (part of the 105 residual losses on Alamofire). Fix shape: pre-strip '#if/#else/#endif' directive lines inside type bodies before parsing (keeping line numbers by replacing them with blank lines), or teach the grammar; the former is local and testable."  # ce45
