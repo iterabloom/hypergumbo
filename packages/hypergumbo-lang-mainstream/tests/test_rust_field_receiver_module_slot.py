@@ -205,21 +205,32 @@ class TestThePriorFixStillHolds:
         )
 
 
-class TestTheShapeThisDoesNotFix:
-    """Recorded as OPEN, not asserted as correct.
+class TestTheShapeThisDidNotFix_NowFixed:
+    """Shape C was recorded as OPEN and is now CLOSED — by WI-papar, not WI-lalot.
 
-    Shape C is a receiver typed from an external function's RETURN VALUE
-    (``let c = File::create(..).unwrap()``), which is WI-lalot — the type is
-    never written down, so no field or var walk can recover it. It states what
-    it does TODAY and is expected to be edited — not deleted — when WI-lalot
-    lands. Asserting it as ``fs_write`` would pin work that has not been done.
+    The original note read: a receiver typed from an external function's RETURN
+    VALUE (``let c = File::create(..).unwrap()``) is WI-lalot, because "the type
+    is never written down, so no field or var walk can recover it", and it
+    instructed a future editor to move the assertion here rather than delete it
+    when that landed.
+
+    The premise turned out to be wrong in a useful way. The type IS written down
+    — in the PRODUCER's own scoped path, ``File::create`` — and what was missing
+    was not a signature catalogue but the CARRY: Strategy 1.9 already inferred
+    the type and dropped it when the in-repo ``Type::method`` lookup missed, and
+    ``_infer_type_from_rust_rhs`` stripped the path to a bare ``File``. WI-papar
+    supplies both, so the shape closes without needing a row for
+    ``std::fs::File::create`` at all. WI-lalot shipped separately and is not what
+    moved this.
     """
 
-    def test_external_return_receiver_is_still_unclassified(
+    def test_external_return_receiver_now_classifies(
         self, tmp_path: Path, rust_available: None,
     ) -> None:
         got = _write_all_boundaries(tmp_path)
-        assert got.get(LINE_EXTERNAL_RETURN) is None, (
-            "the external-return receiver now classifies — that is WI-lalot; "
-            "move this assertion into the passing class above"
+        assert got.get(LINE_EXTERNAL_RETURN) == "fs_write", (
+            f"let c = File::create(..).unwrap(); c.write_all(..) classified "
+            f"{got.get(LINE_EXTERNAL_RETURN)!r}; WI-papar carries the producer's "
+            f"own scoped path into the module slot, so this must reach the "
+            f"catalogue"
         )
