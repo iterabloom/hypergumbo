@@ -26,7 +26,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from hypergumbo_core.discovery import classify_dot_m_file, find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, PASS_VERSION, Span, Symbol, make_pass_id
@@ -148,6 +148,24 @@ def _extract_class_name(node: "tree_sitter.Node", source: bytes) -> str | None:
         if child.type == "identifier":
             return node_text(child, source)
     return None  # pragma: no cover
+
+
+def _objc_category_name(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The category name of ``@interface Cls (Cat)`` / ``@implementation Cls (Cat)``, else ``None``.
+
+    tree-sitter-objc shapes a category as the same ``class_interface`` /
+    ``class_implementation`` node with ``( identifier )`` after the class
+    identifier, so the class symbol minted for it carries the FRAMEWORK class's
+    name. WI-higob reads this to keep ``UIImage`` / ``NSData`` out of the
+    project-class set: a category extends a class the repo does not define.
+    """
+    seen_paren = False
+    for child in node.children:
+        if child.type == "(":
+            seen_paren = True
+        elif seen_paren and child.type == "identifier":
+            return node_text(child, source)
+    return None
 
 
 def _extract_base_classes_objc(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -305,7 +323,13 @@ def _extract_symbols_from_file(
 
                 # Extract base classes/protocols for inheritance linker
                 base_classes = _extract_base_classes_objc(node, source)
-                meta = {"base_classes": base_classes} if base_classes else None
+                _class_meta: dict[str, Any] = {}
+                if base_classes:
+                    _class_meta["base_classes"] = base_classes
+                _category = _objc_category_name(node, source)
+                if _category:
+                    _class_meta["category"] = _category
+                meta = _class_meta or None
 
                 symbol = Symbol(
                     id=symbol_id,
@@ -521,12 +545,73 @@ def _get_enclosing_method_objc(
     return None  # pragma: no cover - defensive
 
 
+def _first_descendant(node: "tree_sitter.Node", kind: str) -> "tree_sitter.Node | None":
+    """The first descendant of ``kind`` in document order, or ``None``."""
+    for sub in iter_tree(node):
+        if sub.type == kind:
+            return sub
+    return None
+
+
+def _objc_declared_receiver_types(
+    root: "tree_sitter.Node", source: bytes,
+) -> list[tuple[int, int, dict[str, str]]]:
+    """Per method / function body: ``(start_byte, end_byte, {receiver name: declared class})``.
+
+    WI-higob (objc). Two declaration shapes carry a receiver's class:
+    a typed parameter ``(NSFileManager *)fm`` (``method_parameter`` ->
+    ``type_identifier`` + trailing ``identifier``) and a local
+    ``NSFileManager *x = ...`` (``declaration`` -> ``type_identifier`` +
+    the identifier under its declarator). ``id obj`` has no
+    ``type_identifier`` and stays untyped. Last declaration wins within a
+    body, which is what a rebinding means in straight-line code.
+    """
+    spans: list[tuple[int, int, dict[str, str]]] = []
+    for node in iter_tree(root):
+        if node.type not in ("method_definition", "function_definition"):
+            continue
+        types: dict[str, str] = {}
+        for sub in iter_tree(node):
+            if sub.type == "method_parameter":
+                t = _first_descendant(sub, "type_identifier")
+                names = [c for c in sub.children if c.type == "identifier"]
+                if t is not None and names:
+                    types[node_text(names[-1], source)] = node_text(t, source)
+            elif sub.type == "declaration":
+                t = next((c for c in sub.children if c.type == "type_identifier"), None)
+                if t is None:
+                    continue
+                for c in sub.children:
+                    if c.type in ("init_declarator", "pointer_declarator", "identifier"):
+                        name = c if c.type == "identifier" else _first_descendant(c, "identifier")
+                        if name is not None:
+                            types[node_text(name, source)] = node_text(t, source)
+        spans.append((node.start_byte, node.end_byte, types))
+    return spans
+
+
+def _objc_receiver_type(
+    spans: list[tuple[int, int, dict[str, str]]],
+    node: "tree_sitter.Node",
+    name: str,
+) -> str | None:
+    """The declared class of receiver ``name`` in the innermost body holding ``node``."""
+    best: str | None = None
+    best_len: int | None = None
+    for start, end, types in spans:
+        if start <= node.start_byte < end and name in types:
+            if best_len is None or end - start < best_len:
+                best, best_len = types[name], end - start
+    return best
+
+
 def _extract_edges_from_file(
     file_path: Path,
     parser: "tree_sitter.Parser",
     local_methods: dict[str, Symbol],
     method_resolver: NameResolver,
     run: AnalysisRun,
+    project_classes: frozenset[str] = frozenset(),
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge.
 
@@ -543,6 +628,7 @@ def _extract_edges_from_file(
         return edges
 
     tree = parser.parse(source)
+    _recv_spans = _objc_declared_receiver_types(tree.root_node, source)
 
     for node in iter_tree(tree.root_node):
         # Handle imports
@@ -633,18 +719,39 @@ def _extract_edges_from_file(
                         # it, objc reached a clean boundary verdict over 122
                         # catalogued method sinks (95% of its catalogue) and
                         # named none of them.
+                        # WI-higob: a lowercase receiver the body DECLARES
+                        # (``NSFileManager *fm``, a ``(NSFileManager *)fm``
+                        # parameter) carries that class the way a class
+                        # message does -- the catalogue's objc rows key by
+                        # bare class, so the declaration is the whole match.
+                        # A PROJECT class is a symbol, not a module, and rides
+                        # in ``receiver_type_hint`` only; the class-MESSAGE
+                        # arm keeps its WI-nigah behaviour unchanged (a
+                        # project class in that slot is WI-marok's question).
                         receiver_name = _extract_message_receiver(node, source)
+                        _declared = (
+                            _objc_receiver_type(_recv_spans, node, receiver_name)
+                            if receiver_name and not receiver_name[0].isupper()
+                            else None
+                        )
                         if receiver_name and receiver_name[0].isupper():
+                            _module: str | None = receiver_name
+                        elif _declared is not None and _declared not in project_classes:
+                            _module = _declared
+                        else:
+                            _module = None
+                        if _module is not None:
                             edges.append(make_unresolved_edge(
                                 "objc", current_method.id, selector,
                                 line, PASS_ID, run.execution_id,
-                                module_hint=receiver_name,
+                                module_hint=_module,
                                 dst_ref=ExternalRef(
                                     lang="objc",
-                                    module_path=receiver_name,
+                                    module_path=_module,
                                     name=selector,
                                 ),
                                 enclosing_class=_enclosing_type,
+                                receiver_type_hint=_declared,
                                 call_construct="method",
                             ))
                         else:
@@ -652,6 +759,7 @@ def _extract_edges_from_file(
                                 "objc", current_method.id, selector,
                                 line, PASS_ID, run.execution_id,
                                 enclosing_class=_enclosing_type,
+                                receiver_type_hint=_declared,
                                 call_construct="method",
                             ))
 
@@ -746,9 +854,17 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         method_resolver = NameResolver(global_methods)
         all_edges: list[Edge] = []
 
+        # WI-higob: a class the repo DECLARES (not merely extends with a
+        # category) -- `UIImage (Transform)` does not make UIImage a project
+        # class, and its catalogued rows stay reachable through the slot.
+        _project_classes = frozenset(
+            sym.name for sym in all_symbols
+            if sym.kind == "class" and not (sym.meta or {}).get("category")
+        )
         for objc_file, analysis in file_analyses.items():
             edges = _extract_edges_from_file(
-                objc_file, parser, analysis.methods_by_name, method_resolver, run
+                objc_file, parser, analysis.methods_by_name, method_resolver, run,
+                project_classes=_project_classes,
             )
             all_edges.extend(edges)
 
