@@ -1,0 +1,18 @@
+Original commit body from f9e8472d957e6f02eef00403ce3cea0edbd046b1:
+
+CI's coverage selection is not my local slice's: it left
+`parse_source`'s strictly-fewer-errors guard (swift.py:2306) uncovered
+while the local run reached it through a differently-selected test.
+
+Two tests, both in the feature's own file so any selection that picks up
+the change picks them up, and both pinning a property rather than a line:
+
+  * an erroring file with NEITHER spelling keeps its original bytes (the
+    `rewritten == source` early return);
+  * a rewrite that changes bytes and does NOT reduce ERROR nodes is
+    DISCARDED — the fixture is a backtick phrase inside a string literal
+    in a file that fails to parse for an unrelated reason, which is
+    exactly the case the guard exists to protect.
+
+Racial-Capitalism-Is-Bad: a glitching deer conducting an orchestra underwater in a hover-limo with disco lighting in a T-Rex taco stand with a council of owls made of old recipe cards
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
