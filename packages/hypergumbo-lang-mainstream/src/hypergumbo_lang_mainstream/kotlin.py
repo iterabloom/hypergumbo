@@ -596,11 +596,135 @@ class FileAnalysis:
     - Function parameters: fun process(client: Client) -> client has type Client
 
     Type inference does NOT track types from function returns (val obj = getMyClass()).
+    WI-nasuf: it DOES bind a DECLARED type (``val c: Connection = make()``), a bare or
+    dotted constructor (``java.io.File(p)``), and a chained construction
+    (``File(p).writeText(s)``); an instance-method call nothing resolves emits an
+    unresolved edge whose module slot is the receiver's type qualified through the
+    file's imports (or the ``external`` placeholder), stamped ``call_construct: method``.
     """
 
     symbols: list[Symbol] = field(default_factory=list)
     symbol_by_name: dict[str, Symbol] = field(default_factory=dict)
     imports: dict[str, str] = field(default_factory=dict)
+
+
+def _kt_declared_type(type_node: "tree_sitter.Node | None", source: bytes) -> str | None:
+    """The receiver-typing name a Kotlin ``user_type`` carries, or ``None``.
+
+    WI-nasuf. ``List<String>`` names ``List``; ``java.io.File`` names itself;
+    a nullable ``File?`` names ``File``. A function type (``() -> T``) is not
+    a receiver type and yields ``None``.
+    """
+    if type_node is None or type_node.type != "user_type":
+        return None
+    text = node_text(type_node, source).strip()
+    if "<" in text:
+        text = text.split("<", 1)[0]
+    text = text.rstrip("?").strip()
+    return text or None
+
+
+def _kt_constructor_type(callee: "tree_sitter.Node", source: bytes) -> str | None:
+    """The type a constructor CALLEE names -- ``File`` or ``java.io.File`` -- or ``None``.
+
+    A bare capitalised identifier is a constructor by Kotlin convention (the
+    rule the ``property_declaration`` branch already applied); a dotted
+    navigation whose last segment is capitalised is a qualified one. Anything
+    else (``make()``, ``obj.build()``) is a call whose result this analyzer
+    cannot type here.
+    """
+    if callee.type == "identifier":
+        name = node_text(callee, source)
+        return name if name[:1].isupper() else None
+    if callee.type == "navigation_expression":
+        # okhttp writes builder chains one segment per line
+        # (``Request\n  .Builder()``); the segments are the evidence, not the
+        # whitespace between them.
+        text = "".join(node_text(callee, source).split())
+        parts = text.split(".")
+        if len(parts) >= 2 and parts[-1][:1].isupper() and all(
+            p.isidentifier() for p in parts
+        ):
+            return text
+    return None
+
+
+def _kt_chain_root_constructor(call_expr: "tree_sitter.Node", source: bytes) -> str | None:
+    """The constructor a call CHAIN is rooted at -- ``MockResponse().setBody(x)`` names
+    ``MockResponse``, ``Cfg(..).subConfig("a").subConfig("b")`` names ``Cfg`` -- or ``None``.
+
+    WI-nasuf, read back on okhttp and detekt: the old ``find_child_by_type(call_expr,
+    "identifier")`` walked into the chain and typed the local from its ROOT
+    constructor; requiring the outermost callee to be the constructor lost 92 + 3
+    sites that resolved before. The root's type is what a builder chain returns
+    often enough that the old arm's bindings were right at every site read back,
+    and no better evidence exists here (a builder's return type is WI-lalot's).
+    """
+    node: "tree_sitter.Node | None" = call_expr
+    depth = 0
+    while node is not None and node.type == "call_expression":
+        callee: "tree_sitter.Node | None" = next(
+            (c for c in node.children if c.type in ("identifier", "navigation_expression")),
+            None,
+        )
+        if callee is None:
+            return None
+        found = _kt_constructor_type(callee, source)
+        if found is not None:
+            # A DOTTED constructor at the root of a LONGER chain --
+            # ``Request.Builder().url(u).build()`` -- types the local as the
+            # OUTER class (``Request``), which is what the old arm did and what
+            # ``.build()`` returns; the precise ``Request.Builder`` is right only
+            # when the constructor IS the whole initializer. A lowercase-headed
+            # path (``java.io.File(p).resolve(x)``) is a package path and stays.
+            if depth > 0 and "." in found and found[:1].isupper():
+                return found.split(".", 1)[0]
+            return found
+        if callee.type != "navigation_expression":
+            return None
+        # ``a.b().c`` -- step into the receiver of the outermost navigation
+        node = next((c for c in callee.children if c.type == "call_expression"), None)
+        depth += 1
+    return None
+
+
+def _kt_project_type_key(type_name: str) -> str:
+    """The name kotlin's symbol registry keys a receiver TYPE under.
+
+    WI-nasuf, read back on okhttp: nested-class methods are keyed by the INNER
+    class alone (``Builder.url`` for ``Request.Builder.url``), so a receiver
+    typed ``Request.Builder`` by its dotted constructor must look up
+    ``Builder.url`` -- 146 sites resolved in the old arm went unresolved when
+    the full path was used. A lowercase-headed path (``java.io.File``) is a
+    package path, not a project nesting, and stays whole.
+    """
+    if "." in type_name and type_name[:1].isupper():
+        return type_name.rsplit(".", 1)[-1]
+    return type_name
+
+
+def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
+    """The module slot a receiver TYPE names, or ``None`` when the file gives no path.
+
+    WI-nasuf / ADR-0051. An imported simple name maps through the import
+    (``File`` -> ``java.io.File``); an inline dotted path whose head is
+    lowercase (``java.io.File``) names itself; a nested ``Outer.Inner`` on an
+    imported outer maps through the outer. A bare name the file never imports
+    is left alone rather than written in bare (a simple name in the slot
+    asserts a module that does not exist), and no implicit-package guess is
+    made here: kotlin auto-imports ``kotlin.*`` / ``kotlin.io.*`` /
+    ``java.lang.*``, and the catalogue's kotlin rows are all explicitly
+    imported JDK / kotlin.io types, so a closed list buys nothing yet.
+    """
+    if type_name in imports:
+        return imports[type_name]
+    if "." in type_name:
+        head, _, rest = type_name.partition(".")
+        if head[:1].islower():
+            return type_name
+        if head in imports:
+            return f"{imports[head]}.{rest}"
+    return None
 
 
 def _extract_imports(
@@ -1117,6 +1241,31 @@ def _extract_edges_from_file(
 
     # Track variable types from constructor calls: val x = ClassName()
     var_types: dict[str, str] = {}
+    # WI-nasuf (the java INV-vugon lesson, kotlin's version): a LOCAL binding
+    # closes with its function. ``var_types`` was file-scoped, so
+    # ``var factory: LoggingEventListener.Factory = ...`` in one method retyped
+    # the class FIELD ``factory`` (a ``TestValueFactory``) used in a later
+    # method -- a present-but-wrong module in the slot, read back on okhttp.
+    # Each scope is ``(end_byte, shadow)``: what every local in that function
+    # replaced, restored when the walk passes the function's end. Fields and
+    # parameters keep their file-wide binding.
+    scope_stack: list[tuple[int, dict[str, str | None]]] = []
+
+    def _bind_local_type(name: str, type_name: str) -> None:
+        if scope_stack:
+            shadow = scope_stack[-1][1]
+            if name not in shadow:
+                shadow[name] = var_types.get(name)
+        var_types[name] = type_name
+
+    def _close_scopes_before(n: "tree_sitter.Node") -> None:
+        while scope_stack and n.start_byte >= scope_stack[-1][0]:
+            _, shadow = scope_stack.pop()
+            for local_name, shadowed in shadow.items():
+                if shadowed is None:
+                    var_types.pop(local_name, None)
+                else:
+                    var_types[local_name] = shadowed
 
     # Build class/object symbols dict for static call resolution
     class_symbols: dict[str, Symbol] = {
@@ -1125,6 +1274,7 @@ def _extract_edges_from_file(
     }
 
     for node in iter_tree(tree.root_node):
+        _close_scopes_before(node)
         # Detect import statements
         if node.type == "import":
             # Get the qualified identifier being imported
@@ -1162,19 +1312,23 @@ def _extract_edges_from_file(
             # Find variable_declaration and call_expression children
             var_decl = find_child_by_type(node, "variable_declaration")
             call_expr = find_child_by_type(node, "call_expression")
-            if var_decl and call_expr:
-                var_name_node = find_child_by_type(var_decl, "identifier")
-                # Check if call is a simple constructor (identifier, not navigation)
-                callee_node = find_child_by_type(call_expr, "identifier")
-                if var_name_node and callee_node:
-                    var_name = node_text(var_name_node, source)
-                    type_name = node_text(callee_node, source)
-                    # Only track if type_name looks like a class (capitalized)
-                    if type_name and type_name[0].isupper():
-                        var_types[var_name] = type_name
+            # WI-nasuf: the DECLARED type (``val c: Connection = make()``) is a
+            # receiver-typing source whatever the initializer -- java's
+            # INV-vugon rule; the constructor, bare (``File(p)``) or dotted
+            # (``java.io.File(p)``), still narrows it afterwards.
+            var_name_node = find_child_by_type(var_decl, "identifier") if var_decl else None
+            if var_decl and var_name_node:
+                declared = _kt_declared_type(find_child_by_type(var_decl, "user_type"), source)
+                if declared is not None:
+                    _bind_local_type(node_text(var_name_node, source), declared)
+            if var_decl and call_expr and var_name_node:
+                _ctor_type: str | None = _kt_chain_root_constructor(call_expr, source)
+                if _ctor_type:
+                    _bind_local_type(node_text(var_name_node, source), _ctor_type)
 
         # Function declarations - extract parameter types for type inference
         elif node.type == "function_declaration":
+            scope_stack.append((node.end_byte, {}))
             param_types = _extract_param_types(node, source)
             # Add parameter types to var_types for method call resolution
             for param_name, param_type in param_types.items():
@@ -1202,6 +1356,11 @@ def _extract_edges_from_file(
                     elif child.type == "navigation_expression":
                         # Nested: this.property.method() — inner nav is
                         # this.property, outer identifier is method
+                        receiver_node = child
+                    elif child.type == "call_expression":
+                        # WI-nasuf: a CHAINED receiver -- ``File(p).writeText(s)``.
+                        # The receiver IS a construction (or a call); the
+                        # emit below types it from the constructor callee.
                         receiver_node = child
                     elif child.type == "identifier":
                         if receiver_node is None:
@@ -1272,6 +1431,16 @@ def _extract_edges_from_file(
                     # For non-this cases, get receiver name from identifier node
                     else:
                         receiver_name = node_text(receiver_node, source)
+                        # WI-nasuf: a chained receiver has no name to look up;
+                        # its type is what its constructor callee names.
+                        chained_type: str | None = None
+                        if receiver_node.type == "call_expression":
+                            receiver_name = ""
+                            _inner_callee = find_child_by_type(
+                                receiver_node, "identifier",
+                            ) or find_child_by_type(receiver_node, "navigation_expression")
+                            if _inner_callee is not None:
+                                chained_type = _kt_constructor_type(_inner_callee, source)
 
                         resolved_nav_sym = None
 
@@ -1297,7 +1466,7 @@ def _extract_edges_from_file(
 
                         # Case 3: instance.method() - use type inference
                         elif receiver_name in var_types:
-                            type_class_name = var_types[receiver_name]
+                            type_class_name = _kt_project_type_key(var_types[receiver_name])
                             candidate = f"{type_class_name}.{method_name}"
                             # Use import path of the type as hint for disambiguation
                             import_hint = imports.get(type_class_name)
@@ -1391,12 +1560,16 @@ def _extract_edges_from_file(
                                             ] = ret_name
 
                         # Case 4: Fallback - try qualified name directly
-                        if not edge_added:  # pragma: no cover
+                        if not edge_added and receiver_name:
                             candidate = f"{receiver_name}.{method_name}"
                             # Use import path as hint if receiver is an imported name
                             import_hint = imports.get(receiver_name)
                             lookup_result = resolver.lookup(candidate, path_hint=import_hint, caller_path=_caller_path)
-                            if lookup_result.found and lookup_result.symbol is not None:
+                            # A ``<variable>.<method>`` key never suffix-matches a
+                            # symbol (the resolver suffix-matches a BARE name only),
+                            # so this historical fallback resolves nothing in
+                            # practice; kept for a receiver spelled like a class.
+                            if lookup_result.found and lookup_result.symbol is not None:  # pragma: no cover
                                 edges.append(Edge.create(
                                     src=current_function.id,
                                     dst=lookup_result.symbol.id,
@@ -1407,6 +1580,44 @@ def _extract_edges_from_file(
                                     origin_run_id=run.execution_id,
                                     evidence_type="ast_call_direct",
                                 ))
+                                edge_added = True
+
+                        # WI-nasuf: nothing above resolved the call. Every gate
+                        # so far was ``lookup_result.found``, which a JDK method
+                        # can never satisfy, so ``f.writeText(s)`` on an imported
+                        # ``java.io.File`` emitted NOTHING -- 89 of kotlin's 93
+                        # catalogued sinks are method-kind, and okhttp's 573
+                        # files produced 49 io chains, every one a bare println.
+                        # A typed receiver (a declared, parameter or constructed
+                        # local, or a chained construction) carries its type,
+                        # qualified through the file's imports or written
+                        # inline, in the module slot; an untyped one carries the
+                        # ``external`` placeholder. Both stamp
+                        # ``call_construct: method``, which the taint gates and
+                        # the untyped-receiver disclosure read, and both keep the
+                        # bare type as ``receiver_type_hint`` for the Tier-2
+                        # linkers. This is the edge that lets
+                        # ``analyzer_disclosure`` stop declaring kotlin blind.
+                        if not edge_added:
+                            _recv_type = (
+                                chained_type
+                                if chained_type is not None
+                                else var_types.get(receiver_name)
+                            )
+                            _module = (
+                                _kt_receiver_module(_recv_type, imports)
+                                if _recv_type is not None else None
+                            )
+                            edges.append(make_unresolved_edge(
+                                "kotlin", current_function.id, method_name,
+                                node.start_point[0] + 1, PASS_ID, run.execution_id,
+                                module_hint=_module or "external",
+                                receiver_type_hint=(
+                                    _kt_project_type_key(_recv_type)
+                                    if _recv_type is not None else None
+                                ),
+                                call_construct="method",
+                            ))
             else:
                 # Simple function call: helper()
                 callee_node = find_child_by_type(node, "identifier")
