@@ -1,0 +1,17 @@
+Original commit body from 466070a13751db00602fda2a6a020cf41096750e:
+
+PR #755's changed-file coverage gate reported kotlin.py:1027-1073 -- the WI-dorop
+enum_entry loop, untouched by that PR -- at 0%. The only test that exercises it,
+test_scala_cpp_kotlin_enum_members.py, reaches each analyzer through the registry
+(run_analyzer("kotlin", ...)) and imports none of them, so the import-graph slice
+never put it in the manifest and CI ran without it. The same blindness holds for
+scala.py and cpp.py, whose enum loops the same test covers.
+
+Three lines in .ci/coverage-only-deps.txt (the WI-zaziz mechanism built for exactly
+this class) map each of the three analyzers to that test, so smart-test's manifest
+augmentation carries it on every future change to any of them. Verified: the
+regenerated manifest lists the test and the targeted run reports all changed files
+at 100%.
+
+Racial-Capitalism-Is-Bad: a fox steering a koi fish–shaped submarine with a jamboree of monkeys made of dreidels
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
