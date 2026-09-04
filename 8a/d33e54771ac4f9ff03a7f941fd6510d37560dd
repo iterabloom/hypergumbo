@@ -1,0 +1,57 @@
+Original commit body from 93ca24adabec6ed346858913d9a7849fdc21270e:
+
+Docstring-staleness audit, 2026-09-04, C bundle. Where the A+B+D bundle
+(PR #776) removed claims the code no longer supports, these add prose for
+functionality that shipped without ever reaching the module docstring. No
+claim here is corrected — each is an omission.
+
+  kotlin.py         RECEIVER TYPING (WI-nasuf) was entirely undocumented: the
+                    declared-type read, the constructor-typed chain root, the
+                    module_hint / receiver_type_hint pair and the ADR-0051
+                    reason the slot names the type and not the variable. Also
+                    property and enum-entry symbols, extends/implements,
+                    decorated_by, references, and the four post-passes.
+  ruby.py           Rails/Sinatra routes, ActiveJob-Sidekiq event_publishes,
+                    instantiates for .new, field/variable data anchors,
+                    included_modules mixins, extends; and the callback set is
+                    wider than the three action callbacks named (the _filter
+                    spellings, model lifecycle, transaction callbacks, validate).
+  cpp.py            Four symbol kinds it emits and did not mention: data-member
+                    fields, pure-virtual methods (and the abstract class that
+                    follows), enum members, namespace-scope variables; plus
+                    references edges for dispatch-table USE.
+  ir.py             Edge.confidence_source / rank_score (ADR-0039 rulings 2-3);
+                    the provenance group is four fields, not two.
+  io_boundary.py    classify_call_in_catalog's io_target_kind discrimination and
+                    its qualifier-strip retry.
+  gitleaks.py       Three public names, four more safety-zone wrappers, and --
+                    the one that matters -- repo_inspect_scan, a SUBPROCESS-zone
+                    call that reads the whole analysed repo and so was invisible
+                    under a heading called "Filesystem discipline".
+  graceful_degrade  RustAnalyzerNotInstalled named; the WI-todon diagnostic layer
+                    (once-per-(exc,workspace) dedup, bounded stderr tails, the
+                    SIGKILL/OOM shape, the tmp_artifact scratch dir), whose
+                    entire purpose is that a silent fall-through and a backend
+                    that did nothing look identical.
+  rst.py            The docstring-population step; the INV-dulah dual-ID contract.
+  migration.py      That it is a ONE-SHOT historical path -- neither input file
+                    exists any more -- and that what it still does every run is
+                    scaffold stealth/, .gitattributes, .gitignore and config.yaml.
+  sync_log.py       write_log always mirrors to stderr, file handle or not.
+
+AND ONE MORE ROTTED CITATION, from this very bundle. Adding lines to cpp.py's
+module docstring shifted every line below it, moving MODULE_KEY_NOTIONS'
+`disjunction` citation off cpp.py:1393 (now 1404). Re-pointed; 7/7 resolve.
+
+That is the SECOND time today this citation scheme broke, and the more
+interesting one: the first (PR #776) came from code movement, this one from a
+pure DOCSTRING edit in an unrelated package. EmissionSite stores both `line`
+and `anchor`, and the anchor is the real identity -- the line number is a hint
+that rots on any edit above it, in any file, for any reason. Filed separately.
+
+Guards: module-docstring first-line check and ruff, both clean.
+
+Notebook: ~/hypergumbo_lab_notebook/staleness_audit_09042026.md
+
+Racial-Capitalism-Is-Bad: a marmot building a tilted strata wall shaped like matzo cracker made of knishes in a time-warped Shoney’s buffet line
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
