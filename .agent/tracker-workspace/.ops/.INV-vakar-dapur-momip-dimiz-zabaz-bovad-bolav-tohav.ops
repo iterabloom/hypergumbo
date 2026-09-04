@@ -1,0 +1,35 @@
+- op: create  # a937
+  at: '2026-09-04T10:01:10Z'  # a937
+  by: agent  # a937
+  actor: jgstern_agent  # a937
+  clock: 1  # a937
+  nonce: a937  # a937
+  data:  # a937
+    kind: invariant  # a937
+    title: "swift: an imported C function whose name is UpperCamelCase is read as a constructor, so a FUNCTION name reaches the module slot"  # a937
+    status: violated  # a937
+    priority: 4  # a937
+    parent:  # a937
+    tags:  # a937
+    - swift  # a937
+    - analyzer  # a937
+    - module_key  # a937
+    - axis  # a937
+    - io_boundary  # a937
+    isbefore: []  # a937
+    duplicate_of: []  # a937
+    not_duplicate_of: []  # a937
+    pr_ref:  # a937
+    description: "Observed 2026-09-04 reading back WI-higob slice 2 (chained receivers) on Alamofire.\n\nswift.py infers \"a bare capitalised callee is a constructor, so the call evaluates to a\ntype of that name\" -- the analyzer's long-standing convention (`_extract_var_type` has\nused it for `let x = Store()` since before the receiver-typing work) and correct for\nSwift's own naming convention, where types are UpperCamelCase and functions are\nlowerCamelCase. Imported C functions break that convention:\n\n    Source/Features/MultipartFormData.swift:557,575\n        let id = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension,\n                                                       pathExtension as CFString, nil)?.takeRetainedValue(),\n    Source/Features/MultipartFormData.swift:558,576\n        let contentType = UTTypeCopyPreferredTagWithClass(id, kUTTagClassMIMEType)?.takeRetainedValue()\n\nSlice 2 lets a chained receiver read that inference, so `takeRetainedValue` now emits\n`swift:UTTypeCreatePreferredIdentifierForTag:0-0:takeRetainedValue:unresolved` -- a\nFUNCTION name in the module slot, which ADR-0051 reserves for the static owner path.\nThat is a present-but-wrong hint of exactly the kind INV-kotob closed, in a much smaller\npopulation.\n\nMEASURED, not estimated: 4 sites on Alamofire (2 + 2), 0 on VernissageServer. Both arms\nin one process, `~/hypergumbo_lab_notebook/higob2_chained_09042026/` (README, and\n`diff_b1_b2_Alamofire.txt` for the per-site read-back).\n\nWHY IT WAS NOT FIXED IN THE SLICE THAT FOUND IT: a bare `Foo()` constructor and a bare\n`CFunc()` call are syntactically identical; the only signal is the name, and no exact\ndiscriminator was found. Candidate fixes, none yet sized: (a) refuse a callee whose name\nis longer than some bound, which is a heuristic and would be the wrong kind of rule;\n(b) consult the file's imports -- a CoreServices / CoreFoundation import makes C-function\nspellings likely, which is also a heuristic; (c) require the name to appear as a TYPE\nsomewhere the analysis can see (a project symbol, a catalogue row, or an annotation in\nthe repo), which is exact but would also refuse every uncatalogued external constructor\nand so needs its own measurement before it is chosen.\n\nACCEPTANCE: the 4 Alamofire sites stop naming a function in the module slot, with no loss\nat the constructor sites the same rule serves correctly (786 typed on Alamofire under\nINV-kotob's arm B; re-measure with pair_churn_lang.py)."  # a937
+    fields:  # a937
+      statement: "The module slot names the static owner path of the receiver (ADR-0051); a bare capitalised CALLEE may be treated as a constructor only when the name denotes a type, never merely because Swift's naming convention makes types capitalised."  # a937
+      root_cause: "swift.py's constructor-by-convention rule (_swift_call_type's bare-uppercase branch, mirroring _extract_var_type) cannot distinguish a Swift constructor Foo() from an imported C function UTTypeCreatePreferredIdentifierForTag(); the chained-receiver walker (WI-higob slice 2) then carries the function name into the module slot."  # a937
+- op: update  # bcae
+  at: '2026-09-04T10:01:27Z'  # bcae
+  by: agent  # bcae
+  actor: jgstern_agent  # bcae
+  clock: 2  # bcae
+  nonce: bcae  # bcae
+  set: {}  # bcae
+  add:  # bcae
+    not_duplicate_of: [INV-dulum-kakum-guhus-podas-mirup-lavut-jamob-kakif]  # bcae
