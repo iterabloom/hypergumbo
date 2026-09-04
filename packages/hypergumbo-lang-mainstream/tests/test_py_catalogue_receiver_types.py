@@ -418,14 +418,18 @@ class TestDottedModuleConstructorsResolve:
             "def f(http, h):\n    return http.client.HTTPConnection(h)\n"
         ) is None
 
-    def test_a_decoy_module_of_the_same_shape_mints_nothing(self) -> None:
+    def test_a_decoy_module_of_the_same_shape_mints_its_own_type_not_the_catalogued_one(
+        self,
+    ) -> None:
         """``import mylib.client`` must not satisfy ``http.client.HTTPConnection``
         merely by ending in the same two segments — ``_module_matches`` is
-        permissive by design and is not a guard."""
+        permissive by design and is not a guard. The instance IS a construction
+        of what the import supplied, so it is typed ``mylib.client.HTTPConnection``
+        (WI-makij's imported-class rule) — its own path, which reaches no row."""
         assert _resolve_ctor(
             "import mylib.client\n\n\n"
             "def f(h):\n    return mylib.client.HTTPConnection(h)\n"
-        ) is None
+        ) == "mylib.client.HTTPConnection"
 
     @pytest.mark.xfail(strict=True, reason=(
         "KNOWN GAP, PRE-EXISTING AND WIDENED HERE — filed, not fixed in this PR. "
