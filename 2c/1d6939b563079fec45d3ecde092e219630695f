@@ -1,0 +1,77 @@
+Original commit body from 9b6b3f3e1d0cdbd849080b43af8c14190fdf924b:
+
+Docstring-staleness audit, 2026-09-04, per the playbook. A+B+D bundle: every
+edit removes or corrects a claim the code no longer supports. Docs only.
+
+FOUND BY THE REGISTRY CROSS-REFERENCE PASS, which the mechanical scan cannot
+see and flagged none of (a docstring naming a retired edge type never ages
+relative to its body). Verified at the construction site in every case, so the
+fix is documentation and not code:
+
+  imports_module       js_module.py                          -> emits `imports`
+  imports_component    vue_component.py, vue/svelte/astro.py -> emits `imports`
+  uses_dispatch_table  c.py, cpp.py                          -> emits `references`
+                                                                + meta.ref_construct
+
+  ranking.py claimed IMPORT_EDGE_TYPES held three members and that
+  `imports_module` carried a 0.2x weight. It holds one, and no such weight key
+  exists.
+
+  implements_rpc and di_binding were checked too and are clean -- every hit is
+  fold-explaining prose.
+
+USER-FACING, and the same shape: `verify-claims --help` enumerated 17 boundary
+values and said a value "outside the vocabulary above" errors. The vocabulary
+is 19. Verified behaviourally: `boundary: net_listen` and `boundary:
+command_launch` are both accepted (rc 0), and the validator's own error message
+lists all 19 -- so one command carried two vocabularies and the help was the
+stale one.
+
+FOUND BY THE SCAN, then verified by reading the code:
+
+  cli.py            3 registered subcommands missing from the list; the
+                    "authoritative set in main()" is no longer a set literal
+  verify_claims.py  "Four kinds exist" -> 9 constants + 1; "the taint arm does
+                    not consume this signal" -> it has since INV-nuhun
+  taint.py          ddg_mixed also covers walks that never ran; `structural` exists
+  io_boundary.py    the closed catalog-declarable set is 17, not 16 (net_listen)
+  axis_meta_keys.py the subscript linter is shipped, not "a follow-on work item";
+                    the edge-type census is COMPLETE, not UNCLASSIFIED
+  symbol_kinds.py   pending values include Cluster H and `operation`; the
+                    "every hardcoded KIND set" claim has an exclusion list
+  multi_value_...   2 core files -> 3; 7 known axes -> 11; a dead symbol reference
+  yaml_catalogs.py  "seven directories holding ~150 YAML files" -> ten, 169
+  ruby.py           typed_receiver_call is a Go evidence type; ruby is not two-pass
+  gate.py           two either/or conditions -> three ranked tiers; `on` is truthy;
+                    the function is not pure when repo_root is given
+  ir.py             UsageContext is not an edge annotation; `quality` has no producer
+  ipc.py            postMessage emits no edge at all; the receive side is detected,
+                    not dropped; one `bridge_invokes` survivor
+  gitleaks.py       is_gitleaks_available runs no smoke test
+  function_summ...  get_default_summary has no production caller
+  graceful_deg...   the "future analyzer registry wrapper" shipped
+
+AND THREE ROTTED CITATIONS, which unbroke dev. The suite failed
+test_module_key_axis.py::test_every_cited_emission_site_still_exists on a file
+this branch never touched: MODULE_KEY_NOTIONS cites its motivating emission
+sites by file:line, and today's own receiver-typing PRs (#765/#768/#772) moved
+the code out from under three of the seven citations --
+
+  namespace          swift.py:1599 -> 1855
+  type               objc.py:827   -> 845
+  receiver_variable  swift.py:1528 -> 1784
+
+Both files were at dev state here, so dev was red; fixed forward rather than
+reverted, because the three PRs are correct and only the citations moved. Same
+defect this bundle exists to remove -- a reference that sends the reader to a
+line now saying something else -- and invisible to check-docstring-drift for
+the same reason the retired names are: a file:line rots from CODE movement,
+with no docstring edit and no blame-date change.
+
+Guards: the module-docstring first-line check (that line publishes verbatim in
+ARCHITECTURE.md) and ruff, both clean. ARCHITECTURE.md regenerated.
+
+Notebook: ~/hypergumbo_lab_notebook/staleness_audit_09042026.md
+
+Racial-Capitalism-Is-Bad: a salamander competing with a giant puppet in a Dino Disco dance floor made of black bread crusts
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
