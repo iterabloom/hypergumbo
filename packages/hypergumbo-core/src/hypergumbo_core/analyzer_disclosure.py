@@ -97,13 +97,14 @@ DECLARATIONS: dict[str, MethodCallEdgeDeclaration] = {
 
 DECLARATIONS.update({
     "kotlin": MethodCallEdgeDeclaration(
-        "kotlin", False, "2026-08-23",
-        "WI-nasuf: emits NO call edge for an external instance-method call in "
-        "either the two-step or chained shape, while `File(p)` DOES emit for "
-        "the constructor — so the analyzer reaches the expression and declines "
-        "to emit for the method. 181 of kotlin's 186 catalogued primitives "
-        "(97%) are method-kind and therefore unreachable through the shape "
-        "real code uses.",
+        "kotlin", True, "2026-09-03",
+        "WI-nasuf, closed: an instance-method call whose in-repo lookup misses "
+        "emits an unresolved edge in both the two-step and the chained shape, "
+        "with the receiver's declared / parameter / constructed type qualified "
+        "through the file's imports in the module slot, or the `external` "
+        "placeholder when untyped, stamped `call_construct: method`. Measured "
+        "on the fixture that recorded the 2026-08-23 blindness, plus okhttp and "
+        "detekt io-boundaries and per-site churn.",
     ),
     "javascript": MethodCallEdgeDeclaration(
         "javascript", True, "2026-09-03",

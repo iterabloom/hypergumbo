@@ -22,10 +22,21 @@ construct" is a qualified opinion (ADR-0016 §4), and ``inconclusive`` would say
 the analysis formed no view at all — false, and less useful to a reader. The
 verdict still reads clean; the exit code moves 0 -> 3; the sentence names the
 language and the scale.
+
+THE LIVE INSTANCES ARE GONE, THE MECHANISM IS NOT. javascript's declaration
+flipped in PR #753 (INV-misup / WI-nasuf) and kotlin's in the PR that closed
+WI-nasuf's kotlin cell, so every shipped analyzer is now declared sighted and
+nothing in ``DECLARATIONS`` exercises the caveat. The tests below that need a
+blind language re-declare kotlin blind through the ``blind_kotlin`` fixture,
+with the 2026-08-23 date the real declaration carried, so the mechanism stays
+covered until the next analyzer that cannot see a call shape declares it.
 """
+
+import pytest
 
 from hypergumbo_core.analyzer_disclosure import (
     DECLARATIONS,
+    MethodCallEdgeDeclaration,
     emits_external_method_call_edges,
     method_call_blind_languages,
 )
@@ -45,6 +56,17 @@ from hypergumbo_core.verify_claims import (
 import glob
 import os
 from pathlib import Path
+
+
+@pytest.fixture
+def blind_kotlin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-declare kotlin blind, exactly as it was declared on 2026-08-23."""
+    monkeypatch.setitem(DECLARATIONS, "kotlin", MethodCallEdgeDeclaration(
+        "kotlin", False, "2026-08-23",
+        "WI-nasuf: emits NO call edge for an external instance-method call in "
+        "either the two-step or chained shape. 181 of kotlin's 186 catalogued "
+        "primitives (97%) are method-kind and therefore unreachable.",
+    ))
 
 
 def _catalogued_languages() -> set[str]:
@@ -95,7 +117,7 @@ class TestWhichLanguagesTheCaveatIsAbout:
     """Both conditions are load-bearing and each excludes a different false
     positive."""
 
-    def test_a_blind_language_absent_from_the_repo_raises_nothing(self) -> None:
+    def test_a_blind_language_absent_from_the_repo_raises_nothing(self, blind_kotlin: None) -> None:
         assert method_call_blind_languages(set(), {"kotlin"}) == []
 
     def test_a_language_with_no_method_sinks_raises_nothing(self) -> None:
@@ -104,7 +126,7 @@ class TestWhichLanguagesTheCaveatIsAbout:
         that is always there is discounted by its reader."""
         assert method_call_blind_languages({"c"}, set()) == []
 
-    def test_a_present_blind_language_with_method_sinks_is_named(self) -> None:
+    def test_a_present_blind_language_with_method_sinks_is_named(self, blind_kotlin: None) -> None:
         assert method_call_blind_languages(
             {"kotlin", "java"}, {"kotlin", "java"},
         ) == ["kotlin"]
@@ -129,7 +151,7 @@ def _claim(boundary: str = "net_send") -> Claim:
 
 class TestTheVerdict:
 
-    def test_a_clean_verdict_on_a_blind_language_is_not_bare(self) -> None:
+    def test_a_clean_verdict_on_a_blind_language_is_not_bare(self, blind_kotlin: None) -> None:
         """THE POINT OF THE WHOLE PR. kotlin emits a call edge for the
         constructor and none for the method, so the analysis looks busy and
         sees none of the 181 method sinks its own catalogue declares."""
@@ -167,7 +189,7 @@ class TestTheVerdict:
         assert verdict.verdict == "confirmed"
         assert verdict.caveats == []
 
-    def test_the_caveat_rides_alongside_the_untyped_receiver_one(self) -> None:
+    def test_the_caveat_rides_alongside_the_untyped_receiver_one(self, blind_kotlin: None) -> None:
         """A polyglot repo can be blind in one language AND untyped in another;
         ``_merge_caveat`` exists because a second writer overwriting the first
         is this module's documented failure (INV-virat)."""
@@ -194,7 +216,7 @@ class TestTheCaveatSentence:
     """The prose is the product here — a machine-readable ``entries`` list
     nobody can read is not a disclosure."""
 
-    def test_it_names_the_language_and_the_scale(self) -> None:
+    def test_it_names_the_language_and_the_scale(self, blind_kotlin: None) -> None:
         """"Some calls were not seen" is unactionable; "kotlin, 181 of 186
         catalogued primitives are method-kind" tells a reader whether this
         verdict is worth anything for their repository. The counts come from
@@ -207,7 +229,7 @@ class TestTheCaveatSentence:
         assert "method-kind" in cav["detail"]
         assert "Declared 2026-08-23" in cav["detail"]
 
-    def test_two_blind_languages_read_as_plural(self) -> None:
+    def test_two_blind_languages_read_as_plural(self, blind_kotlin: None) -> None:
         from hypergumbo_core.verify_claims import (
             _analyzer_method_call_blind_caveat,
         )
