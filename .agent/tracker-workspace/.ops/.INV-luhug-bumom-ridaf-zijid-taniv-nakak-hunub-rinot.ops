@@ -23,3 +23,18 @@
     fields:  # e713
       statement: "Every call site of a catalogued taint source or sink in Python produces a calls edge regardless of receiver syntax. VIOLATED for non-Name-rooted receivers: items[i].startswith(x), f().x.y() and (a+b).c() emit nothing, because _unwind_attribute_chain returns None unless the chain root is an ast.Name."  # e713
       root_cause: "py.py:5344 _unwind_attribute_chain walks an ast.Attribute chain back to its root and returns None for any root that is not an ast.Name, so the caller emits no edge. The docstring justifies this for the RESOLUTION path, but the sibling INV-mumov branch already emits python:external:0-0:<attr>:unresolved for the 'receiver type genuinely unknown' case, so the same argument does not license emitting nothing."  # e713
+- op: update  # 5649
+  at: '2026-09-04T00:30:43Z'  # 5649
+  by: agent  # 5649
+  actor: jgstern_agent  # 5649
+  clock: 2  # 5649
+  nonce: '5649'  # 5649
+  set:  # 5649
+    status: satisfied  # 5649
+- op: discuss  # 16f7
+  at: '2026-09-04T00:30:43Z'  # 16f7
+  by: agent  # 16f7
+  actor: jgstern_agent  # 16f7
+  clock: 3  # 16f7
+  nonce: 16f7  # 16f7
+  message: "FIXED IN PR #752 (dev d0080868c6). A chain whose root is not a Name and whose\ntype the WI-zilag branch cannot establish now emits\n`python:external:0-0:<method>:unresolved` with `call_construct: method` --\nthe same placeholder, same stamp, the assigned form has carried since PR\n#231. The docstring argument on `_unwind_attribute_chain` (non-Name roots\n\"would be misresolved if we pretended\" they were import-qualified) is right\nabout RESOLUTION and was never an argument for emitting nothing; PR #254's\npinned asymmetry test is flipped and its recorded re-evaluation trigger\ncited: the section 3a walk is the consumer that distinguishes no-edge from\nuntyped-edge.\nSIZED before building (pure AST census, luhug_pyroots_09032026/size_roots.py):\nnon-Name-root attribute calls -- mitmproxy 1,235 of 19,131 (6.5%), poetry\n1,102 of 12,364 (8.9%), meson 2,139 of 30,962 (6.9%), pretix 5,828 Call-rooted\nalone; Call roots dominate, Subscript next, BinOp small but almost all\npathlib `/` chains (already typed by WI-zilag).\nMEASURED: mitmproxy 22,320 -> 23,429 sites (315 typed, 0 lost); poetry 15,345 -> 16,263 (186 typed, 0 lost, 3 re-keys); pretix 69,755 -> 78,852 sites (748 typed, 0 lost, 0 re-keys); io-boundaries byte-identical on mitmproxy / poetry / meson (534 / 190 / 2,873); crypto reach on real code: mlflow utils/crypto.py:350 and litellm app_crypto.py:32 go python:external:0-0:decrypt -> ...aead.AESGCM.decrypt, accepted by the production source matcher.\nDIRECTION: an untyped placeholder reaches no catalogue row (pinned:\n`_tagged == 0`), so this is walk coverage, not recall; escape-cause A/B on\nhypergumbo self and pretix: self 21 sites both arms, 'no edge' 3 -> 2, callees_at 106,534 -> 106,576, escapes 245 -> 246 (accounting moved, escapes did not); pretix's table refused on both arms (javascript has no call-node vocabulary, WI-nukut)."  # 16f7

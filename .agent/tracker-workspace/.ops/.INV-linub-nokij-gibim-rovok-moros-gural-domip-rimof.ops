@@ -373,3 +373,10 @@
   clock: 48  # 807a
   nonce: 807a  # 807a
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel (`external`, section uncertainty) at every L3/L4 failure, where the axiom requires the owner path -- for a method-kind primitive, the TYPE. This class item is the axiom read from the consumer side: a catalogue row is addressed by owner path, so a call site whose slot is a sentinel cannot reach its row whatever the receiver syntax was. Each member names where the owner path was lost (emission, binding, chain)."  # 807a
+- op: discuss  # b0dd
+  at: '2026-09-03T22:09:21Z'  # b0dd
+  by: agent  # b0dd
+  actor: jgstern_agent  # b0dd
+  clock: 49  # b0dd
+  nonce: b0dd  # b0dd
+  message: "JAVA L3 MOVED, PR #750 (dev 7f6c0493b0), INV-vugon + WI-gajuh. The class\nstatement's java cell now reads: a DECLARED receiver type -- local, catch,\nfor-each, try-with-resources, typed lambda param, record component, generic /\nqualified field, ancestor field -- carries its owner path into the module\nslot, and the return-type registry (keyed `<Owner>.<method>`, qualified values)\nis consumed at the assignment, typed-receiver and chained sites. Measured L2/L3\nper call site with both arms in one process: guacamole-client 1,662 of 9,105\nsites untyped -> typed, 0 lost; keycloak 67,400 of 386,340, 166 lost (all leaks\nthe old arm carried from a sibling method, 80 of them bare lambda params).\nL4 on findings: guacamole io-boundaries 38 -> 40 chains, 0 lost -- small because\nguacamole's declared locals are mostly uncatalogued types. NOT closed here:\njava's remaining L3 gap is receivers typed from a LIBRARY return value\n(`var o = sock.getOutputStream()`, WI-lalot's rows; the consumer is wired and\npinned by an injected-row test) and bare lambda parameters. kotlin/scala not\nswept (WI-nasuf). Rig: ~/hypergumbo_lab_notebook/vugon_javadecl_09032026/."  # b0dd

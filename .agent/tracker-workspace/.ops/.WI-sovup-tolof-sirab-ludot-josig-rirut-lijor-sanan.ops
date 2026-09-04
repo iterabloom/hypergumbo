@@ -23,3 +23,25 @@
     pr_ref:  # 15f2
     description: "FILED 2026-09-03 from the WI-lalot sequencing discussion. INV-linub's standing\nrule for every receiver-typing fix is \"measure through L4 ON FINDINGS, not L2\non edges\", and WI-lalot's rows are meant to be admitted where a catalogued\nmethod row's receiver was measured untyped on a real repo. Both need a corpus\nrepo per language. Counted on disk (~/ALL_REPOS, two directory levels deep,\nrepos with >= 20 files of the language):\n\n    kotlin   0 repos\n    objc     0 repos\n    swift    1  repos_Apr12_2026/VernissageServer   (906 .swift files)\n    scala    1  repos_Apr12_2026/docspell           (872 .scala files)\n\nThe measurement-0006 / 0012 sixteen-repo cohort has none of the four. So for\nkotlin and objc the L4 rule cannot be applied at all today, and for swift and\nscala it can be applied on one repo, which is a smoke test, not a measurement\n(experiment-design playbook: no conclusions from a single repo).\n\nWHY IT IS ITS OWN ITEM. Four items need it and none owns it: WI-nasuf (kotlin\nemission), WI-hijot (scala registry consumer), the swift/objc consumer phase\nfiled alongside this, and WI-lalot (rows for all nine languages). Without a\ncorpus, rows and consumers for these languages ship present-and-dead with no\nway to say so -- the measurement-0009 trap.\n\nWHAT CLOSES IT. Two repos per language (kotlin, objc; a second for swift and\nscala), chosen for I/O density -- a CLI or a server, not a UI-only or\nlibrary-only repo -- downloaded per\n~/hypergumbo_lab_notebook/curriculum_repo_download_process.txt (github.com is\nallowlisted). Record each repo's path in a repos.txt beside the cohort lists\nso the collect / arm scripts can take it, and run the 1-repo mini trial\nbefore any experiment. Kotlin/objc candidates are the owner's call if there is\na preferred domain; otherwise pick by stars and by presence of network + file\nI/O in the source."  # 15f2
     fields: {}  # 15f2
+- op: discuss  # 5734
+  at: '2026-09-03T22:09:23Z'  # 5734
+  by: agent  # 5734
+  actor: jgstern_agent  # 5734
+  clock: 2  # 5734
+  nonce: '5734'  # 5734
+  message: "THE FILED CENSUS WAS WRONG ABOUT TWO OF THE FOUR LANGUAGES (LIVE.md rule 2:\nright that something is thin, wrong about which part). Counted 2026-09-03 by\nfile extension under ~/ALL_REPOS/*/<repo>:\n  kotlin  detekt        1,106 .kt     whole_bunch_of_repos/detekt   (CLI, file I/O)\n  objc    AFNetworking     49 .m      whole_bunch_of_repos/AFNetworking (network)\n  swift   VernissageServer 906, Alamofire 96 (whole_bunch_of_repos)\n  scala   docspell 872, http4s 652 (whole_bunch_of_repos)\nSo swift and scala already have TWO repos each and need nothing; kotlin and\nobjc have ONE each. The filing's \"0 repos\" for kotlin/objc did not look in\nwhole_bunch_of_repos, or its language heuristic missed them -- the instrument\nwas not kept, so which is not recoverable. Cloning the second of each now via\n~/clone_all.py into whole_bunch_of_repos: square/okhttp (kotlin, network I/O)\nand SDWebImage/SDWebImage (objc, network + disk cache). Paths will be recorded\nin ~/hypergumbo_lab_notebook/sovup_corpus_09032026/repos.txt when the clones\nland; 1-repo mini trial before any experiment, per the experiment-design\nplaybook."  # 5734
+- op: update  # 5da2
+  at: '2026-09-03T22:16:08Z'  # 5da2
+  by: agent  # 5da2
+  actor: jgstern_agent  # 5da2
+  clock: 3  # 5da2
+  nonce: 5da2  # 5da2
+  set:  # 5da2
+    status: done  # 5da2
+- op: discuss  # d61a
+  at: '2026-09-03T22:16:09Z'  # d61a
+  by: agent  # d61a
+  actor: jgstern_agent  # d61a
+  clock: 4  # d61a
+  nonce: d61a  # d61a
+  message: "DONE 2026-09-03. Two repos per language are on disk and recorded in\n~/hypergumbo_lab_notebook/sovup_corpus_09032026/repos.txt (name language path):\n  kotlin  detekt (1,106 .kt, already present) + okhttp (573 .kt, cloned; network I/O)\n  objc    AFNetworking (49 .m, already present) + SDWebImage (104 .m, cloned; network + disk cache)\n  swift   VernissageServer (906) + Alamofire (96, already present)\n  scala   docspell (872) + http4s (652, already present)\nClones via ~/clone_all.py into whole_bunch_of_repos (github.com allowlisted;\nclone.log: total=2 success=2). 1-REPO MINI TRIAL run as the experiment-design\nplaybook requires: okhttp, `io-boundaries --format json --minimal`, cold\ncache, 58 s wall / 340 MB RSS -- so a two-repo kotlin arm is minutes, not\nhours. Its result is not a measurement but it IS WI-nasuf's kotlin cell on a\nreal repo: 49 kotlin chains, all `kotlin.io.ConsoleKt.println`/`print`\n(function-kind), ZERO method-kind chains despite okhttp's Socket / Buffer /\nFile surface. README in the lab dir.\nWhat this does NOT settle: the four repos I found already present were not\nseen by the filing's census, and that instrument was not kept, so whether it\nlooked in the wrong directory or misjudged the language is not recoverable.\nCount by file extension under ~/ALL_REPOS/*/<repo> before filing a corpus gap."  # d61a

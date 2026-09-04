@@ -177,3 +177,10 @@
   clock: 22  # 749b
   nonce: 749b  # 749b
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a marker for the absence of an answer\". NOTION THE SLOT CARRIES: sentinel (`external`) for an attribute-chain receiver; the owner path -- the TYPE of the chain's terminal object -- is unresolved rather than mis-stated. An L3 instance of INV-linub (the class), python's spelling."  # 749b
+- op: discuss  # 0e11
+  at: '2026-09-04T00:30:44Z'  # 0e11
+  by: agent  # 0e11
+  actor: jgstern_agent  # 0e11
+  clock: 23  # 0e11
+  nonce: '0e11'  # 0e11
+  message: "PARTIAL, PR #752 (dev d0080868c6): the CONSTRUCTOR-typed slice of this item's\nL3 gap. An imported PascalCase name that is called now types its instance\n`<module>.<Class>` in both the assigned and inline forms\n(`_imported_class_instance`, consulted after the I/O constructor table), so\n`f = Fernet(key); f.decrypt(t)` carries `cryptography.fernet.Fernet` where it\ncarried `external`. What stays open under this item: ATTRIBUTE chains rooted\nat a typed object (`obj.related.create()`), which need the attribute's type\nfrom the class field maps -- filed as the next slice, not folded here.\nMEASURED: mitmproxy 22,320 -> 23,429 sites (315 typed, 0 lost); poetry 15,345 -> 16,263 (186 typed, 0 lost, 3 re-keys); pretix 69,755 -> 78,852 sites (748 typed, 0 lost, 0 re-keys); io-boundaries byte-identical on mitmproxy / poetry / meson (534 / 190 / 2,873); crypto reach on real code: mlflow utils/crypto.py:350 and litellm app_crypto.py:32 go python:external:0-0:decrypt -> ...aead.AESGCM.decrypt, accepted by the production source matcher."  # 0e11

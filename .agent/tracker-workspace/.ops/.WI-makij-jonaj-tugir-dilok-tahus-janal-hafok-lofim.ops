@@ -48,3 +48,25 @@
   clock: 5  # 8ed5
   nonce: 8ed5  # 8ed5
   message: "TITLE LARGELY OBSOLETE. \"Chained method calls emit no call edge\" is now false for\nseven of the nine at-risk languages. Measured 2026-08-16, dev 0d305fe0e4, via\nINV-linub's chain_probe (production _match_propagation_entry, controls reported).\n\nCHAINED-site emission, all nine languages:\n\n    emit:     go, java, objc, python, rust, scala, swift\n    NO EDGE:  javascript, kotlin        <- WI-nasuf's cell, unchanged\n\nAnd python's CHAINED site does not merely emit, it MATCHES: Path(raw).write_text(x)\ncarries module_hint=pathlib.Path and reaches the catalogue entry. Constructor\nreceiver typing closed it. python is now the only language clean on all three\nchain_probe sites.\n\nWHAT REMAINS UNDER THIS TITLE is not emission. Every other CHAINED row is\n\"emit, NOMATCH\" with module_hint=external -- the edge exists and the F3 gate\ncorrectly refuses it for want of a receiver type. That is INV-linub's L3, not\nthis item's L2. An emission-shaped fix here would now move nothing.\n\nRECOMMEND folding the emission clause into INV-linub's L3 work and keeping this\nitem only if it is re-scoped to a specific remaining language. Not applied --\nflagged for the owner, since two of the languages it named (javascript, kotlin)\nare WI-nasuf's and the rest have moved."  # 8ed5
+- op: discuss  # 6c07
+  at: '2026-09-03T22:09:24Z'  # 6c07
+  by: agent  # 6c07
+  actor: jgstern_agent  # 6c07
+  clock: 6  # 6c07
+  nonce: 6c07  # 6c07
+  message: "RE-RAN THIS ITEM'S OWN REPRO ON dev 7f6c0493b0, 2026-09-03:\n    plain = Fernet(key).decrypt(token)   -> instantiates Fernet only; NO calls edge for .decrypt\n    Path(\"/tmp/out\").write_bytes(plain)  -> python:pathlib.Path:0-0:write_bytes:unresolved (typed, catalogue-reachable)\nSo the SINK half of the filed shape is fixed (PR #254, constructor-root typing)\nand the SOURCE half is not: `Fernet` is not an I/O-catalogue constructor, so\n`_receiver_type` returns None and the unknown-type Call root emits NOTHING --\nwhich is INV-luhug's shape exactly. The assigned form `f = Fernet(key);\nf.decrypt(token)` emits `python:external:0-0:decrypt:unresolved` (an edge, no\ntype), so the four built-in plaintext sources and four sanitizers are still\nunreachable in BOTH forms. NOT closing on this. The fix for both is the next\nPR: (1) INV-luhug -- an unknown-type non-Name root emits the same `external`\nplaceholder the assigned form does (PR #254's pinned asymmetry flips; its\nrecorded re-evaluation trigger is \"a consumer that distinguishes no-edge from\nuntyped-edge\", and INV-busis's escape classification is that consumer); (2) an\nIMPORTED PascalCase constructor types its instance as `<module>.<Class>` in\nboth forms, the way WI-jubag already reads PascalCase as construction, so\n`cryptography.fernet.Fernet.decrypt` matches. Sized 2026-09-03 (pure AST):\nreceiver sites typed by an imported PascalCase ctor -- mitmproxy 2,225, poetry\n2,901, pretix 3,597 (most are project classes already typed for the assigned\nform; the library share is the new reach)."  # 6c07
+- op: update  # d8bc
+  at: '2026-09-04T00:30:44Z'  # d8bc
+  by: agent  # d8bc
+  actor: jgstern_agent  # d8bc
+  clock: 7  # d8bc
+  nonce: d8bc  # d8bc
+  set:  # d8bc
+    status: done  # d8bc
+- op: discuss  # b676
+  at: '2026-09-04T00:30:44Z'  # b676
+  by: agent  # b676
+  actor: jgstern_agent  # b676
+  clock: 8  # b676
+  nonce: b676  # b676
+  message: "DONE IN PR #752 (dev d0080868c6), on this item's OWN repro, re-run on the merged tree:\n    plain = Fernet(key).decrypt(token)   -> python:cryptography.fernet.Fernet:0-0:decrypt:unresolved (call_construct method)\n    Path(\"/tmp/out\").write_bytes(plain)  -> python:pathlib.Path:0-0:write_bytes:unresolved\nand the decrypt edge reaches `cryptography.fernet.Fernet.decrypt` through\nproduction `_match_propagation_entry` over the SOURCE index (pinned by\n`test_the_instance_reaches_the_taint_catalogue`). Both halves of the filed\ntwo-line shape now emit AND match: the sink half by PR #254 (constructor-root\ntyping), the source half by this PR (an imported PascalCase constructor types\nits instance; an unknown-type non-Name root emits the placeholder). The four\nbuilt-in plaintext sources and four sanitizers are reachable in both the\ninline and the assigned form for the first time.\nThe 2026-08-17 note's re-scope stands as the item's final shape: the \"chained\nmethod calls emit no call edge\" clause was refuted for seven of nine languages\nbefore this PR; the two that still emit nothing (javascript, kotlin) are\nWI-nasuf's, next in the owner's queue, and the remaining \"emit, NOMATCH\"\nrows are INV-linub L3 per language."  # b676
