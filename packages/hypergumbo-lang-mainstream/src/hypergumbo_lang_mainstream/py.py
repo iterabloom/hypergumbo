@@ -3585,10 +3585,414 @@ def _prune_shadowed(
     empty (e.g. a no-arg lambda) so no-shadow sub-scopes share the dicts."""
     if not shadow:
         return var_types, external_var_types
+    # A field path (``svc.conn``, INV-mumov) is bound to its ROOT: a sub-scope
+    # that rebinds ``svc`` must lose ``svc.conn`` with it.
     return (
         {k: v for k, v in var_types.items() if k not in shadow},
-        {k: v for k, v in external_var_types.items() if k not in shadow},
+        {
+            k: v for k, v in external_var_types.items()
+            if k.split(".", 1)[0] not in shadow
+        },
     )
+
+
+def _make_param_type_helpers(
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    module_imports: dict[str, str],
+    resolver: "SymbolResolver | None",
+    interprocedural_param_types: dict[tuple[str, int], str],
+) -> tuple[
+    Callable[[ast.FunctionDef | ast.AsyncFunctionDef], dict[str, Symbol]],
+    Callable[[ast.expr], str | None],
+    Callable[..., dict[str, str]],
+]:
+    """One file's ``(param_types, annotation_module_hint, external_param_types)``
+    resolvers, closed over that file's import bindings.
+
+    These lived as nested defs inside :func:`_extract_edges`. INV-mumov's
+    repo-wide class-field pre-pass (:func:`_collect_class_field_maps`, run from
+    :func:`analyze_python` before any file's edges) needs the same three
+    resolvers for every file, so the closures are built here and
+    :func:`_extract_edges` calls this factory where the defs used to sit.
+    Bodies unchanged; only the free variables became parameters.
+    """
+    def _extract_param_types(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    ) -> dict[str, Symbol]:
+        """Extract type information from function parameter annotations.
+
+        Handles simple annotations like:
+        - def f(session: Session) -> session maps to Session class
+        - def f(item: Item) -> item maps to Item class
+
+        Does not currently handle:
+        - Generic types: Optional[T], List[T], etc.
+        - String annotations: "Session"
+        """
+        param_types: dict[str, Symbol] = {}
+
+        for arg in func_node.args.args + func_node.args.kwonlyargs:
+            if arg.annotation is None:
+                continue
+
+            param_name = arg.arg
+            annotation = arg.annotation
+
+            # Handle simple name annotations: param: ClassName
+            if isinstance(annotation, ast.Name):
+                type_name = annotation.id
+
+                # Check local symbols first
+                class_symbol = local_symbols.get(type_name)
+                if class_symbol and class_symbol.kind == "class":
+                    param_types[param_name] = class_symbol
+                    continue
+
+                # Check imports (with suffix matching)
+                if type_name in imports:
+                    module_name, original_name = imports[type_name]
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, original_name, resolver=resolver
+                    )
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+            # Handle attribute annotations: param: module.ClassName
+            elif isinstance(annotation, ast.Attribute) and isinstance(
+                annotation.value, ast.Name
+            ):
+                receiver_name = annotation.value.id
+                attr_name = annotation.attr
+                if receiver_name in module_imports:
+                    module_name = module_imports[receiver_name]
+                    class_symbol = _lookup_symbol_by_module(
+                        global_symbols, module_name, attr_name, resolver=resolver
+                    )
+                    if class_symbol and class_symbol.kind == "class":
+                        param_types[param_name] = class_symbol
+
+        return param_types
+
+    def _annotation_module_hint(annotation: ast.expr) -> str | None:
+        """WI-zilag: the external module a parameter annotation names, or ``None``.
+
+        The counterpart to :func:`_extract_param_types`, which resolves annotations to
+        IN-REPO class symbols. This one answers the same question for types the repo does
+        not define, so an annotated receiver reaches the I/O catalogue.
+
+        BINDING-CHECKED, and that is the whole design rather than a precaution. A minted
+        module hint is trusted downstream — it bypasses both ``gate_named_entry`` and the
+        ``ambiguous_names`` net by design (gating the hinted path was measured to destroy
+        61.5-87.2% of all reported boundaries for zero gain), so a wrong hint is a
+        confident false boundary AND a false taint sink, never silence.
+
+        Emitting the RAW annotation text instead was measured to produce confirmed false
+        boundaries: ``conn: Connection`` matched ``sqlite3.Connection.execute`` and minted
+        a database-zone taint sink, because ``_module_matches`` accepts an unqualified
+        reference as a component suffix. Resolved through its import binding the same
+        annotation yields ``sqlalchemy.engine.Connection``, which does not match.
+
+        * ``ast.Name`` (``p: Path``) → whatever an import binds that name to, via
+          :func:`_import_binding_for` — the same predicate INV-kipor's constructor gate
+          uses. An unbound name is a builtin or a first-party class and returns ``None``.
+        * ``ast.Attribute`` (``p: pathlib.Path``) → resolved only when the ROOT is a real
+          module import, so an alias expands (``import pathlib as pl`` → ``pl.Path``
+          becomes ``pathlib.Path``) and an unimported root is refused.
+        * Everything else — ``Optional[X]`` / ``X | None`` (no single type), forward-
+          reference strings, generics — returns ``None``. They cannot be pinned to one
+          module, which is the same line ``taint_refine``'s WI-dozon pinning draws.
+        """
+        return _binding_checked_type_hint(annotation, imports, module_imports)
+
+    def _extract_external_param_types(
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+        param_types: dict[str, Symbol],
+        owner: Symbol | None = None,
+        *,
+        position_offset: int = 0,
+    ) -> dict[str, str]:
+        """WI-zilag: parameters whose annotation names an external catalogued type.
+
+        Scoped to PARAMETERS deliberately. Measured over six Python repos: of 95,245
+        method-call edges carrying the ``external`` placeholder, 4,160 have a receiver
+        with a resolvable annotation and 63 actually reach the catalogue — and 96% of that
+        payload is this one shape. ``AnnAssign``, return-annotated factories, attribute
+        reads and generics contribute exactly zero, so routing them would add trust
+        surface for no recall.
+
+        ``param_types`` wins: a parameter already resolved to an in-repo class is
+        first-party and carries no catalogue meaning, so an in-file ``class Path`` is not
+        overridden by a same-named import.
+        """
+        external: dict[str, str] = {}
+        for arg in func_node.args.args + func_node.args.kwonlyargs:
+            if arg.annotation is None or arg.arg in param_types:
+                continue
+            hint = _annotation_module_hint(arg.annotation)
+            if hint is not None:
+                external[arg.arg] = hint
+        # INV-fibis residual: a receiver that arrives as a BARE parameter names
+        # no module, so `sock.sendall(x)` emitted the `external` placeholder and
+        # every consumer refused it as an untyped method call. The type is not
+        # inferable from the body — that is what makes this interprocedural —
+        # but the repository's own call sites carry it, and
+        # ``interprocedural_param_types`` holds the positions where every
+        # observed call site agreed. THE ANNOTATION WINS: the declaration is
+        # better evidence and it is binding-checked, so this only fills
+        # parameters the loop above left empty, and never overrides an in-repo
+        # class (``param_types``), which is first-party and carries no
+        # catalogue meaning.
+        # ``position_offset`` is how many of ``func_node``'s leading positional
+        # parameters the CALL SITE does not write. It is 0 for a plain function
+        # -- argument i is parameter i -- and 1 for an ``__init__`` reached
+        # through its class, where ``Client(sock)`` writes one argument and the
+        # parameter list is ``(self, sock)``. Subtracting it here, in the one
+        # place the index is consumed, is what keeps the hazard from spreading:
+        # a minted hint bypasses both ``gate_named_entry`` and the
+        # ``ambiguous_names`` net by design, so an off-by-one does not fail
+        # loudly -- it types the WRONG parameter, confidently. The negative
+        # positions this skips are exactly the unwritten ones (``self``).
+        if owner is not None and interprocedural_param_types:
+            positional = list(func_node.args.posonlyargs) + list(
+                func_node.args.args
+            )
+            for pos, arg in enumerate(positional):
+                if arg.arg in external or arg.arg in param_types:
+                    continue
+                if arg.annotation is not None:
+                    continue
+                call_site_pos = pos - position_offset
+                if call_site_pos < 0:
+                    continue
+                hint = interprocedural_param_types.get(
+                    (owner.id, call_site_pos),
+                )
+                if hint is not None:
+                    external[arg.arg] = hint
+        return external
+
+    return _extract_param_types, _annotation_module_hint, _extract_external_param_types
+
+
+def _class_name_counts(tree: ast.AST) -> dict[str, int]:
+    """Per-file class SHORT-NAME multiplicity (WI-supat D3), nested included."""
+    counts: dict[str, int] = {}
+    for _cnode in ast.walk(tree):
+        if isinstance(_cnode, ast.ClassDef):
+            counts[_cnode.name] = counts.get(_cnode.name, 0) + 1
+    return counts
+
+
+def _collect_class_field_maps(
+    tree: ast.AST,
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    module_imports: dict[str, str],
+    resolver: "SymbolResolver | None",
+    class_name_counts: dict[str, int],
+    interprocedural_param_types: dict[tuple[str, int], str] | None = None,
+) -> tuple[
+    dict[str, dict[str, Symbol]],
+    dict[str, frozenset[str]],
+    dict[str, dict[str, str]],
+]:
+    """Per-class ``__init__`` field types for one file, keyed by bare class name:
+    ``(field_types, own_field_names, external_field_types)``.
+
+    ``field_types`` is Symbol-valued (an in-repo class), ``external_field_types``
+    a module string (``sqlite3.Connection``) for a field the in-repo map cannot
+    hold; ``own_field_names`` is EVERY ``self.X`` target. Stamps ``meta["fields"]``
+    / ``meta["field_type_ids"]`` on the class symbol as a side effect (WI-hiziz,
+    WI-supat), which is idempotent.
+
+    INV-mumov (attribute-chain slice) moved this out of :func:`_extract_edges`,
+    where it ran per file and was consulted only for ``self.<field>``: a caller
+    in ANOTHER file holding an instance (``svc = Service(); svc.conn.execute``)
+    needs the map of a class that file never defines, and running per file at
+    edge time is order-dependent besides. :func:`analyze_python` now calls this
+    once per file up front and re-keys the results by class-symbol id, which is
+    also what makes a same-short-name class in two files unambiguous.
+    """
+    _extract_param_types, _annotation_module_hint, _extract_external_param_types = (
+        _make_param_type_helpers(
+            local_symbols, imports, global_symbols, module_imports, resolver,
+            interprocedural_param_types or {},
+        )
+    )
+    class_field_types: dict[str, dict[str, Symbol]] = {}
+    # WI-hiziz PR-3 (review): the NAMES of ALL __init__ ``self.X`` targets per
+    # class (typed or not), so the Site-3 emit can exclude an OWN field the
+    # child assigns from a factory / untyped param (``self.f = make_conn()``) —
+    # which ``class_field_types`` (typed-only) misses. An own field is never
+    # inherited, so excluding it prevents a confidently-wrong Site-3 resolution
+    # to a same-named PARENT field of a different type.
+    class_own_field_names: dict[str, frozenset[str]] = {}
+    #: INV-fibis recall half: the EXTERNAL counterpart to ``class_field_types``,
+    #: mapping class -> field -> catalogued module path. It exists because
+    #: ``class_field_types`` is ``Symbol``-valued and therefore, BY CONSTRUCTION,
+    #: can only ever hold an in-repo class. Locals have had both halves since
+    #: WI-fuvuj (``var_types`` / ``external_var_types``); fields had only the
+    #: first, so ``s = socket.socket(); s.sendall(x)`` reached the catalogue and
+    #: ``self.sock = socket.socket(); self.sock.sendall(x)`` did not -- two
+    #: spellings of one fact with only one of them visible.
+    #:
+    #: THIS SUPPLIES EVIDENCE; IT DOES NOT WIDEN A MATCHER. INV-nuhun established
+    #: that the sink/boundary lookup refuses an untyped method receiver twice
+    #: over, and that both refusals ARE the deliberate closure of INV-tapat and
+    #: INV-maluk. Nothing here touches that gate: it hands the gate the module
+    #: hint it has always asked for, which is the only sound way past it.
+    class_external_field_types: dict[str, dict[str, str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        init_method = None
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__":
+                init_method = item
+                break
+        if init_method is None:
+            continue
+        init_param_types = _extract_param_types(init_method)
+        # THE OWNER IS THE CLASS, NOT ``__init__``, because that is the symbol
+        # a caller names: ``Client(sock)`` resolves to the class, so that is the
+        # id the call-site index is keyed on. ``position_offset=1`` is the
+        # matching correction -- the argument the caller writes at 0 is the
+        # parameter ``__init__`` declares at 1, after ``self``.
+        #
+        # The class symbol is validated the same way it is before the
+        # ``meta["fields"]`` attachment below: ``local_symbols`` is last-write-
+        # wins, so a same-named method or function can shadow the class, and
+        # asking the index with a non-class id would silently read another
+        # symbol's argument types.
+        _init_owner = local_symbols.get(node.name)
+        if _init_owner is not None and _init_owner.kind != "class":
+            _init_owner = None
+        init_external_types = _extract_external_param_types(
+            init_method, init_param_types, _init_owner, position_offset=1,
+        )
+        field_types: dict[str, Symbol] = {}
+        external_field_types: dict[str, str] = {}
+        own_field_names: set[str] = set()
+        for stmt in ast.walk(init_method):
+            # WI-sajub: scan both ``self.x = v`` (Assign) and ``self.x: T = v`` /
+            # ``self.x: T`` (AnnAssign). The annotated form was previously skipped
+            # entirely, so an annotated own field was captured neither into
+            # own_field_names (leaving it eligible for a confidently-wrong Site-3
+            # hint to a same-named PARENT field of a different type) nor into
+            # field_types.
+            if isinstance(stmt, ast.Assign):
+                assign_targets: list[ast.expr] = list(stmt.targets)
+                assign_value: ast.expr | None = stmt.value
+            elif isinstance(stmt, ast.AnnAssign):
+                assign_targets = [stmt.target]
+                assign_value = stmt.value  # None for a bare ``self.x: T``
+            else:
+                continue
+            # The declared annotation of ``self.x: T = v``. Read here rather
+            # than inside the target loop because AnnAssign has exactly one
+            # target, and because the ANNOTATION IS THE BEST EVIDENCE available
+            # for the field -- the same precedence WI-zilag gives a parameter's
+            # annotation over any inference about it.
+            ann_expr = (
+                stmt.annotation if isinstance(stmt, ast.AnnAssign) else None
+            )
+            for target in assign_targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"
+                ):
+                    field_name = target.attr
+                    own_field_names.add(field_name)
+                    # Three shapes carry an external type, in precedence order.
+                    # Each mirrors a shape already trusted for a LOCAL, and each
+                    # reuses that shape's existing resolver rather than
+                    # re-deciding trust here -- ``_annotation_module_hint`` and
+                    # ``_external_constructor_type`` both carry the INV-kipor
+                    # binding check, so an in-file ``class Path`` is refused for
+                    # a field exactly as it is for a local.
+                    _ext_hint: str | None = None
+                    if ann_expr is not None:
+                        _ext_hint = _annotation_module_hint(ann_expr)
+                    if _ext_hint is None and isinstance(assign_value, ast.Name):
+                        _ext_hint = init_external_types.get(assign_value.id)
+                    if _ext_hint is None and isinstance(assign_value, ast.Call):
+                        _ext_hint = _external_constructor_type(
+                            assign_value, imports, module_imports,
+                        )
+                    if _ext_hint is not None:
+                        external_field_types[field_name] = _ext_hint
+                    # self.field = param where param has a type annotation
+                    if isinstance(assign_value, ast.Name) and assign_value.id in init_param_types:
+                        field_types[field_name] = init_param_types[assign_value.id]
+                    # self.field = ClassName()
+                    elif isinstance(assign_value, ast.Call):
+                        assigned_class = _resolve_call_target(
+                            assign_value, local_symbols, imports, global_symbols,
+                            module_imports, resolver
+                        )
+                        if assigned_class and assigned_class.kind == "class":
+                            field_types[field_name] = assigned_class
+        if own_field_names:
+            class_own_field_names[node.name] = frozenset(own_field_names)
+        # THE IN-REPO TYPE WINS, applied after the scan rather than during it so
+        # a later ``self.x = InRepoClass()`` still beats an earlier external
+        # guess about the same field. A first-party class is resolvable to a real
+        # symbol and carries no catalogue meaning, so letting an external hint
+        # stand beside it would only offer a worse answer to the same question.
+        external_field_types = {
+            _k: _v for _k, _v in external_field_types.items()
+            if _k not in field_types
+        }
+        if external_field_types:
+            class_external_field_types[node.name] = external_field_types
+        if field_types:
+            class_field_types[node.name] = field_types
+            # WI-hiziz PR-3 (Site 3): mirror java.py — attach
+            # {field: type_short_name} to the class symbol's meta["fields"] so
+            # inherited_calls._walk_parents_for_field can resolve a
+            # self.field.method() where ``field`` is declared on a PARENT.
+            # ``local_symbols`` IS the file's ``symbol_by_name``, so this mutates
+            # the same Symbol object emitted in the node list (shared reference).
+            # Only ADDS the "fields" key — a class's existing base_classes /
+            # decorators meta survives. ``_ft.name`` is the type's full name,
+            # matching the linker's ``class_ids_by_name`` keys.
+            _cls_sym = local_symbols.get(node.name)
+            # Only attach to a genuine class symbol: a same-name method/function
+            # that shadows the class in the last-write-wins ``local_symbols`` must
+            # not receive a spurious (inert) fields key (review finding). The
+            # same-name-CLASS clobber (two classes, one short name → recall loss,
+            # not a wrong edge) is a deferred id-keyed follow-up.
+            if _cls_sym is None or _cls_sym.kind != "class":  # pragma: no cover
+                continue
+            if _cls_sym.meta is None:
+                _cls_sym.meta = {}
+            _cls_sym.meta["fields"] = {
+                _fn: _ft.name for _fn, _ft in field_types.items()
+            }
+            # WI-supat (D3) PR-B: parallel {field: type_id} map so
+            # inherited_calls Site-3 can disambiguate a same-short-name field
+            # TYPE precisely instead of biasing to unresolved. Per-field gated by
+            # the SAME trustworthiness check as receiver_type_id (file-unique type
+            # name AND not import-shadowed — the field-type inference is the same
+            # bare-name local-first resolution); an untrustworthy entry is omitted
+            # so the linker keeps the safe field-type name+guard path. Only added
+            # when at least one field type is trustworthy (a java/legacy parent
+            # with no field_type_ids stays name-only, and the linker's
+            # ``.get("field_type_ids") or {}`` tolerates its absence).
+            _field_type_ids = {
+                _fn: _ft.id for _fn, _ft in field_types.items()
+                if _receiver_type_id_trustworthy(
+                    _ft, class_name_counts, imports, module_imports,
+                    local_symbols,
+                )
+            }
+            if _field_type_ids:
+                _cls_sym.meta["field_type_ids"] = _field_type_ids
+    return class_field_types, class_own_field_names, class_external_field_types
 
 
 def _extract_edges(
@@ -3609,6 +4013,14 @@ def _extract_edges(
     module_to_file_id: dict[str, str] | None = None,
     property_getter_by_path_name: dict[tuple[str, str], Symbol] | None = None,
     interprocedural_param_types: dict[tuple[str, int], str] | None = None,
+    class_maps: tuple[
+        dict[str, dict[str, Symbol]],
+        dict[str, frozenset[str]],
+        dict[str, dict[str, str]],
+    ] | None = None,
+    field_maps_by_class_id: tuple[
+        dict[str, dict[str, Symbol]], dict[str, dict[str, str]],
+    ] | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -3688,10 +4100,7 @@ def _extract_edges(
     # name+guard path. Counts ClassDef nodes (nested included) so a nested
     # namesake also trips the gate. The ENCLOSING id needs no such gate — it comes
     # from the authoritative method->class map, not a name lookup.
-    class_name_counts: dict[str, int] = {}
-    for _cnode in ast.walk(tree):
-        if isinstance(_cnode, ast.ClassDef):
-            class_name_counts[_cnode.name] = class_name_counts.get(_cnode.name, 0) + 1
+    class_name_counts = _class_name_counts(tree)
 
     edges: list[Edge] = []
 
@@ -4121,6 +4530,56 @@ def _extract_edges(
         """This block's import maps, bound to the module-level resolver."""
         return _external_constructor_type(call, imports, module_imports)
 
+    def _bind_project_class_fields(
+        prefix: str,
+        cls: "Symbol | None",
+        external_var_types: dict[str, str],
+        *,
+        hop: bool = True,
+    ) -> None:
+        """Bind ``<prefix>.<field>`` to the module ``cls`` typed that field with.
+
+        INV-mumov, attribute-chain slice. ``class_external_field_types[C]`` is
+        filled from ``C.__init__`` (``self.conn = sqlite3.connect(p)``) and
+        already reaches ``self.conn.execute()`` INSIDE ``C`` through the
+        ``self.<field>`` keys the FunctionDef arm writes; a caller holding an
+        instance of ``C`` in a local or parameter (``svc = Service();
+        svc.conn.execute(q)``) never asked that map, so its chain emitted the
+        ``external`` placeholder and a catalogued method-kind sink stayed
+        unmatchable. Same map, same namespaced key shape, written at the
+        BINDING site so a rebinding of ``prefix`` (any of the three typed
+        assignment arms, or an external one) replaces the stale paths first --
+        which is also why ``cls=None`` is a pure purge.
+
+        One ``hop`` through a project-class field (``app.svc.conn`` when
+        ``App.svc`` is a ``Service``) and no further. The repo-wide maps are
+        keyed by class-symbol id, so a class defined in another file (the
+        common case: ``from svc import Service``) and a same-short-name class
+        in two files both resolve exactly; only the single-file fallback
+        (``extract_nodes``) keys by bare name, and there a same-name collision
+        (``class_name_counts``) is refused the way WI-supat refuses the
+        receiver-type id, since the map could be the wrong twin's.
+        """
+        for stale in [k for k in external_var_types if k.startswith(prefix + ".")]:
+            del external_var_types[stale]
+        if cls is None:
+            return
+        if field_maps_by_class_id is not None:
+            _proj = field_maps_by_class_id[0].get(cls.id, {})
+            _ext = field_maps_by_class_id[1].get(cls.id, {})
+        elif class_name_counts.get(cls.name, 0) > 1:
+            return
+        else:
+            _proj = class_field_types.get(cls.name, {})
+            _ext = class_external_field_types.get(cls.name, {})
+        for _fld, _mod in _ext.items():
+            external_var_types[f"{prefix}.{_fld}"] = _mod
+        if hop:
+            for _fld, _fsym in _proj.items():
+                _bind_project_class_fields(
+                    f"{prefix}.{_fld}", _fsym, external_var_types, hop=False,
+                )
+
     def process_code_block(
         block_nodes: list[ast.AST],
         caller_symbol: Symbol,
@@ -4240,6 +4699,7 @@ def _extract_edges(
                             _external_constructor_module,
                         )
                         if derived is not None:
+                            _bind_project_class_fields(target.id, None, external_var_types)
                             external_var_types[target.id] = derived
                     if isinstance(target, ast.Name) and isinstance(node.value, ast.Call):
                         assigned_class = _resolve_call_target(
@@ -4249,6 +4709,9 @@ def _extract_edges(
                         )
                         if assigned_class and assigned_class.kind == "class":
                             var_types[target.id] = assigned_class
+                            _bind_project_class_fields(
+                                target.id, assigned_class, external_var_types,
+                            )
                         elif assigned_class and assigned_class.kind in ("function", "method"):
                             # Return type inference: if the function has a
                             # return type annotation pointing to a class,
@@ -4264,6 +4727,9 @@ def _extract_edges(
                                 )
                                 if ret_class:
                                     var_types[target.id] = ret_class
+                                    _bind_project_class_fields(
+                                        target.id, ret_class, external_var_types,
+                                    )
                         elif assigned_class is None:
                             # WI-fuvuj: in-repo resolution found no class. If
                             # the RHS is a known I/O constructor (open(...),
@@ -4281,6 +4747,7 @@ def _extract_edges(
                                     _external_constructor_module,
                                 )
                             if ext_module is not None:
+                                _bind_project_class_fields(target.id, None, external_var_types)
                                 external_var_types[target.id] = ext_module
 
             # WI-zilag: an ANNOTATED assignment (``d: Path = raw``) types its target
@@ -4294,6 +4761,7 @@ def _extract_edges(
             if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 ann_hint = _annotation_module_hint(node.annotation)
                 if ann_hint is not None:
+                    _bind_project_class_fields(node.target.id, None, external_var_types)
                     external_var_types[node.target.id] = ann_hint
 
             # Function reference in assignment RHS: callback = my_func
@@ -4424,160 +4892,14 @@ def _extract_edges(
                         external_var_types=external_var_types,
                     )
 
-    def _extract_param_types(
-        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
-    ) -> dict[str, Symbol]:
-        """Extract type information from function parameter annotations.
-
-        Handles simple annotations like:
-        - def f(session: Session) -> session maps to Session class
-        - def f(item: Item) -> item maps to Item class
-
-        Does not currently handle:
-        - Generic types: Optional[T], List[T], etc.
-        - String annotations: "Session"
-        """
-        param_types: dict[str, Symbol] = {}
-
-        for arg in func_node.args.args + func_node.args.kwonlyargs:
-            if arg.annotation is None:
-                continue
-
-            param_name = arg.arg
-            annotation = arg.annotation
-
-            # Handle simple name annotations: param: ClassName
-            if isinstance(annotation, ast.Name):
-                type_name = annotation.id
-
-                # Check local symbols first
-                class_symbol = local_symbols.get(type_name)
-                if class_symbol and class_symbol.kind == "class":
-                    param_types[param_name] = class_symbol
-                    continue
-
-                # Check imports (with suffix matching)
-                if type_name in imports:
-                    module_name, original_name = imports[type_name]
-                    class_symbol = _lookup_symbol_by_module(
-                        global_symbols, module_name, original_name, resolver=resolver
-                    )
-                    if class_symbol and class_symbol.kind == "class":
-                        param_types[param_name] = class_symbol
-
-            # Handle attribute annotations: param: module.ClassName
-            elif isinstance(annotation, ast.Attribute) and isinstance(
-                annotation.value, ast.Name
-            ):
-                receiver_name = annotation.value.id
-                attr_name = annotation.attr
-                if receiver_name in module_imports:
-                    module_name = module_imports[receiver_name]
-                    class_symbol = _lookup_symbol_by_module(
-                        global_symbols, module_name, attr_name, resolver=resolver
-                    )
-                    if class_symbol and class_symbol.kind == "class":
-                        param_types[param_name] = class_symbol
-
-        return param_types
-
-    def _annotation_module_hint(annotation: ast.expr) -> str | None:
-        """WI-zilag: the external module a parameter annotation names, or ``None``.
-
-        The counterpart to :func:`_extract_param_types`, which resolves annotations to
-        IN-REPO class symbols. This one answers the same question for types the repo does
-        not define, so an annotated receiver reaches the I/O catalogue.
-
-        BINDING-CHECKED, and that is the whole design rather than a precaution. A minted
-        module hint is trusted downstream — it bypasses both ``gate_named_entry`` and the
-        ``ambiguous_names`` net by design (gating the hinted path was measured to destroy
-        61.5-87.2% of all reported boundaries for zero gain), so a wrong hint is a
-        confident false boundary AND a false taint sink, never silence.
-
-        Emitting the RAW annotation text instead was measured to produce confirmed false
-        boundaries: ``conn: Connection`` matched ``sqlite3.Connection.execute`` and minted
-        a database-zone taint sink, because ``_module_matches`` accepts an unqualified
-        reference as a component suffix. Resolved through its import binding the same
-        annotation yields ``sqlalchemy.engine.Connection``, which does not match.
-
-        * ``ast.Name`` (``p: Path``) → whatever an import binds that name to, via
-          :func:`_import_binding_for` — the same predicate INV-kipor's constructor gate
-          uses. An unbound name is a builtin or a first-party class and returns ``None``.
-        * ``ast.Attribute`` (``p: pathlib.Path``) → resolved only when the ROOT is a real
-          module import, so an alias expands (``import pathlib as pl`` → ``pl.Path``
-          becomes ``pathlib.Path``) and an unimported root is refused.
-        * Everything else — ``Optional[X]`` / ``X | None`` (no single type), forward-
-          reference strings, generics — returns ``None``. They cannot be pinned to one
-          module, which is the same line ``taint_refine``'s WI-dozon pinning draws.
-        """
-        return _binding_checked_type_hint(annotation, imports, module_imports)
-
-    def _extract_external_param_types(
-        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
-        param_types: dict[str, Symbol],
-        owner: Symbol | None = None,
-        *,
-        position_offset: int = 0,
-    ) -> dict[str, str]:
-        """WI-zilag: parameters whose annotation names an external catalogued type.
-
-        Scoped to PARAMETERS deliberately. Measured over six Python repos: of 95,245
-        method-call edges carrying the ``external`` placeholder, 4,160 have a receiver
-        with a resolvable annotation and 63 actually reach the catalogue — and 96% of that
-        payload is this one shape. ``AnnAssign``, return-annotated factories, attribute
-        reads and generics contribute exactly zero, so routing them would add trust
-        surface for no recall.
-
-        ``param_types`` wins: a parameter already resolved to an in-repo class is
-        first-party and carries no catalogue meaning, so an in-file ``class Path`` is not
-        overridden by a same-named import.
-        """
-        external: dict[str, str] = {}
-        for arg in func_node.args.args + func_node.args.kwonlyargs:
-            if arg.annotation is None or arg.arg in param_types:
-                continue
-            hint = _annotation_module_hint(arg.annotation)
-            if hint is not None:
-                external[arg.arg] = hint
-        # INV-fibis residual: a receiver that arrives as a BARE parameter names
-        # no module, so `sock.sendall(x)` emitted the `external` placeholder and
-        # every consumer refused it as an untyped method call. The type is not
-        # inferable from the body — that is what makes this interprocedural —
-        # but the repository's own call sites carry it, and
-        # ``interprocedural_param_types`` holds the positions where every
-        # observed call site agreed. THE ANNOTATION WINS: the declaration is
-        # better evidence and it is binding-checked, so this only fills
-        # parameters the loop above left empty, and never overrides an in-repo
-        # class (``param_types``), which is first-party and carries no
-        # catalogue meaning.
-        # ``position_offset`` is how many of ``func_node``'s leading positional
-        # parameters the CALL SITE does not write. It is 0 for a plain function
-        # -- argument i is parameter i -- and 1 for an ``__init__`` reached
-        # through its class, where ``Client(sock)`` writes one argument and the
-        # parameter list is ``(self, sock)``. Subtracting it here, in the one
-        # place the index is consumed, is what keeps the hazard from spreading:
-        # a minted hint bypasses both ``gate_named_entry`` and the
-        # ``ambiguous_names`` net by design, so an off-by-one does not fail
-        # loudly -- it types the WRONG parameter, confidently. The negative
-        # positions this skips are exactly the unwritten ones (``self``).
-        if owner is not None and interprocedural_param_types:
-            positional = list(func_node.args.posonlyargs) + list(
-                func_node.args.args
-            )
-            for pos, arg in enumerate(positional):
-                if arg.arg in external or arg.arg in param_types:
-                    continue
-                if arg.annotation is not None:
-                    continue
-                call_site_pos = pos - position_offset
-                if call_site_pos < 0:
-                    continue
-                hint = interprocedural_param_types.get(
-                    (owner.id, call_site_pos),
-                )
-                if hint is not None:
-                    external[arg.arg] = hint
-        return external
+    (
+        _extract_param_types,
+        _annotation_module_hint,
+        _extract_external_param_types,
+    ) = _make_param_type_helpers(
+        local_symbols, imports, global_symbols, module_imports, resolver,
+        interprocedural_param_types,
+    )
 
     def _resolve_decorator_target(
         decorator: ast.expr,
@@ -4762,176 +5084,12 @@ def _extract_edges(
     # Pre-collect class field types for self.field.method() resolution (INV-014).
     # Scans __init__ methods for self.field = param (typed) and self.field = Class()
     # assignments, building a per-class map of field name -> type Symbol.
-    class_field_types: dict[str, dict[str, Symbol]] = {}
-    # WI-hiziz PR-3 (review): the NAMES of ALL __init__ ``self.X`` targets per
-    # class (typed or not), so the Site-3 emit can exclude an OWN field the
-    # child assigns from a factory / untyped param (``self.f = make_conn()``) —
-    # which ``class_field_types`` (typed-only) misses. An own field is never
-    # inherited, so excluding it prevents a confidently-wrong Site-3 resolution
-    # to a same-named PARENT field of a different type.
-    class_own_field_names: dict[str, frozenset[str]] = {}
-    #: INV-fibis recall half: the EXTERNAL counterpart to ``class_field_types``,
-    #: mapping class -> field -> catalogued module path. It exists because
-    #: ``class_field_types`` is ``Symbol``-valued and therefore, BY CONSTRUCTION,
-    #: can only ever hold an in-repo class. Locals have had both halves since
-    #: WI-fuvuj (``var_types`` / ``external_var_types``); fields had only the
-    #: first, so ``s = socket.socket(); s.sendall(x)`` reached the catalogue and
-    #: ``self.sock = socket.socket(); self.sock.sendall(x)`` did not -- two
-    #: spellings of one fact with only one of them visible.
-    #:
-    #: THIS SUPPLIES EVIDENCE; IT DOES NOT WIDEN A MATCHER. INV-nuhun established
-    #: that the sink/boundary lookup refuses an untyped method receiver twice
-    #: over, and that both refusals ARE the deliberate closure of INV-tapat and
-    #: INV-maluk. Nothing here touches that gate: it hands the gate the module
-    #: hint it has always asked for, which is the only sound way past it.
-    class_external_field_types: dict[str, dict[str, str]] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        init_method = None
-        for item in node.body:
-            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "__init__":
-                init_method = item
-                break
-        if init_method is None:
-            continue
-        init_param_types = _extract_param_types(init_method)
-        # THE OWNER IS THE CLASS, NOT ``__init__``, because that is the symbol
-        # a caller names: ``Client(sock)`` resolves to the class, so that is the
-        # id the call-site index is keyed on. ``position_offset=1`` is the
-        # matching correction -- the argument the caller writes at 0 is the
-        # parameter ``__init__`` declares at 1, after ``self``.
-        #
-        # The class symbol is validated the same way it is before the
-        # ``meta["fields"]`` attachment below: ``local_symbols`` is last-write-
-        # wins, so a same-named method or function can shadow the class, and
-        # asking the index with a non-class id would silently read another
-        # symbol's argument types.
-        _init_owner = local_symbols.get(node.name)
-        if _init_owner is not None and _init_owner.kind != "class":
-            _init_owner = None
-        init_external_types = _extract_external_param_types(
-            init_method, init_param_types, _init_owner, position_offset=1,
+    if class_maps is None:
+        class_maps = _collect_class_field_maps(
+            tree, local_symbols, imports, global_symbols, module_imports,
+            resolver, class_name_counts, interprocedural_param_types,
         )
-        field_types: dict[str, Symbol] = {}
-        external_field_types: dict[str, str] = {}
-        own_field_names: set[str] = set()
-        for stmt in ast.walk(init_method):
-            # WI-sajub: scan both ``self.x = v`` (Assign) and ``self.x: T = v`` /
-            # ``self.x: T`` (AnnAssign). The annotated form was previously skipped
-            # entirely, so an annotated own field was captured neither into
-            # own_field_names (leaving it eligible for a confidently-wrong Site-3
-            # hint to a same-named PARENT field of a different type) nor into
-            # field_types.
-            if isinstance(stmt, ast.Assign):
-                assign_targets: list[ast.expr] = list(stmt.targets)
-                assign_value: ast.expr | None = stmt.value
-            elif isinstance(stmt, ast.AnnAssign):
-                assign_targets = [stmt.target]
-                assign_value = stmt.value  # None for a bare ``self.x: T``
-            else:
-                continue
-            # The declared annotation of ``self.x: T = v``. Read here rather
-            # than inside the target loop because AnnAssign has exactly one
-            # target, and because the ANNOTATION IS THE BEST EVIDENCE available
-            # for the field -- the same precedence WI-zilag gives a parameter's
-            # annotation over any inference about it.
-            ann_expr = (
-                stmt.annotation if isinstance(stmt, ast.AnnAssign) else None
-            )
-            for target in assign_targets:
-                if (
-                    isinstance(target, ast.Attribute)
-                    and isinstance(target.value, ast.Name)
-                    and target.value.id == "self"
-                ):
-                    field_name = target.attr
-                    own_field_names.add(field_name)
-                    # Three shapes carry an external type, in precedence order.
-                    # Each mirrors a shape already trusted for a LOCAL, and each
-                    # reuses that shape's existing resolver rather than
-                    # re-deciding trust here -- ``_annotation_module_hint`` and
-                    # ``_external_constructor_type`` both carry the INV-kipor
-                    # binding check, so an in-file ``class Path`` is refused for
-                    # a field exactly as it is for a local.
-                    _ext_hint: str | None = None
-                    if ann_expr is not None:
-                        _ext_hint = _annotation_module_hint(ann_expr)
-                    if _ext_hint is None and isinstance(assign_value, ast.Name):
-                        _ext_hint = init_external_types.get(assign_value.id)
-                    if _ext_hint is None and isinstance(assign_value, ast.Call):
-                        _ext_hint = _external_constructor_type(
-                            assign_value, imports, module_imports,
-                        )
-                    if _ext_hint is not None:
-                        external_field_types[field_name] = _ext_hint
-                    # self.field = param where param has a type annotation
-                    if isinstance(assign_value, ast.Name) and assign_value.id in init_param_types:
-                        field_types[field_name] = init_param_types[assign_value.id]
-                    # self.field = ClassName()
-                    elif isinstance(assign_value, ast.Call):
-                        assigned_class = _resolve_call_target(
-                            assign_value, local_symbols, imports, global_symbols,
-                            module_imports, resolver
-                        )
-                        if assigned_class and assigned_class.kind == "class":
-                            field_types[field_name] = assigned_class
-        if own_field_names:
-            class_own_field_names[node.name] = frozenset(own_field_names)
-        # THE IN-REPO TYPE WINS, applied after the scan rather than during it so
-        # a later ``self.x = InRepoClass()`` still beats an earlier external
-        # guess about the same field. A first-party class is resolvable to a real
-        # symbol and carries no catalogue meaning, so letting an external hint
-        # stand beside it would only offer a worse answer to the same question.
-        external_field_types = {
-            _k: _v for _k, _v in external_field_types.items()
-            if _k not in field_types
-        }
-        if external_field_types:
-            class_external_field_types[node.name] = external_field_types
-        if field_types:
-            class_field_types[node.name] = field_types
-            # WI-hiziz PR-3 (Site 3): mirror java.py — attach
-            # {field: type_short_name} to the class symbol's meta["fields"] so
-            # inherited_calls._walk_parents_for_field can resolve a
-            # self.field.method() where ``field`` is declared on a PARENT.
-            # ``local_symbols`` IS the file's ``symbol_by_name``, so this mutates
-            # the same Symbol object emitted in the node list (shared reference).
-            # Only ADDS the "fields" key — a class's existing base_classes /
-            # decorators meta survives. ``_ft.name`` is the type's full name,
-            # matching the linker's ``class_ids_by_name`` keys.
-            _cls_sym = local_symbols.get(node.name)
-            # Only attach to a genuine class symbol: a same-name method/function
-            # that shadows the class in the last-write-wins ``local_symbols`` must
-            # not receive a spurious (inert) fields key (review finding). The
-            # same-name-CLASS clobber (two classes, one short name → recall loss,
-            # not a wrong edge) is a deferred id-keyed follow-up.
-            if _cls_sym is None or _cls_sym.kind != "class":  # pragma: no cover
-                continue
-            if _cls_sym.meta is None:
-                _cls_sym.meta = {}
-            _cls_sym.meta["fields"] = {
-                _fn: _ft.name for _fn, _ft in field_types.items()
-            }
-            # WI-supat (D3) PR-B: parallel {field: type_id} map so
-            # inherited_calls Site-3 can disambiguate a same-short-name field
-            # TYPE precisely instead of biasing to unresolved. Per-field gated by
-            # the SAME trustworthiness check as receiver_type_id (file-unique type
-            # name AND not import-shadowed — the field-type inference is the same
-            # bare-name local-first resolution); an untrustworthy entry is omitted
-            # so the linker keeps the safe field-type name+guard path. Only added
-            # when at least one field type is trustworthy (a java/legacy parent
-            # with no field_type_ids stays name-only, and the linker's
-            # ``.get("field_type_ids") or {}`` tolerates its absence).
-            _field_type_ids = {
-                _fn: _ft.id for _fn, _ft in field_types.items()
-                if _receiver_type_id_trustworthy(
-                    _ft, class_name_counts, imports, module_imports,
-                    local_symbols,
-                )
-            }
-            if _field_type_ids:
-                _cls_sym.meta["field_type_ids"] = _field_type_ids
+    class_field_types, class_own_field_names, class_external_field_types = class_maps
 
     # WI-gulot: resolve module-level function aliases (`f = g` where g is a
     # function/method, incl. an imported g). The LHS is extracted as a
@@ -4989,6 +5147,10 @@ def _extract_edges(
                 _process_decorators(caller_symbol, node.decorator_list)
                 # Extract types from parameter annotations
                 param_types = _extract_param_types(node)
+                # INV-mumov: the DECLARED parameters, captured before the
+                # class-field merge below adds bare field names -- a field
+                # path is bound only under a name the code can actually write.
+                _declared_params = dict(param_types)
                 # Merge class field types for self.field.method() resolution
                 if caller_symbol.kind == "method":
                     class_name = caller_symbol.name.split(".")[0]
@@ -5033,10 +5195,21 @@ def _extract_edges(
                 # variables; namespacing makes them structurally unable to
                 # collide instead of relying on an ordering that holds today.
                 if caller_symbol.kind == "method":
+                    _own_cls = caller_symbol.name.split(".")[0]
                     for _fld, _mod in class_external_field_types.get(
-                        caller_symbol.name.split(".")[0], {},
+                        _own_cls, {},
                     ).items():
                         _ext_var_types.setdefault(f"self.{_fld}", _mod)
+                    # INV-mumov: one hop further -- ``self.svc.conn`` when the
+                    # own field ``svc`` is itself a project class.
+                    for _fld, _fsym in class_field_types.get(_own_cls, {}).items():
+                        _bind_project_class_fields(
+                            f"self.{_fld}", _fsym, _ext_var_types, hop=False,
+                        )
+                # INV-mumov: an annotated parameter of a project class carries
+                # that class's typed fields under the parameter's name.
+                for _pname, _pcls in _declared_params.items():
+                    _bind_project_class_fields(_pname, _pcls, _ext_var_types)
                 process_code_block(
                     node.body, caller_symbol, param_types, stack=stack,
                     external_var_types=_ext_var_types,
@@ -5577,6 +5750,23 @@ def _imported_class_instance(bound: str | None) -> str | None:
     return bound if leaf[:1].isupper() else None
 
 
+def _dotted_receiver_name(expr: ast.expr) -> str | None:
+    """``svc.conn`` for ``Attribute(Name("svc"), "conn")``; ``None`` off a Name root.
+
+    The key shape :func:`_receiver_type` reads a FIELD PATH under. It is the
+    same namespaced form the INV-fibis merge writes for ``self.<field>``, so a
+    caller's ``svc.conn`` and the class's own ``self.conn`` are looked up
+    identically; a chain rooted at a call or a subscript has no stable name and
+    stays with the derivation resolver.
+    """
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute):
+        inner = _dotted_receiver_name(expr.value)
+        return None if inner is None else f"{inner}.{expr.attr}"
+    return None
+
+
 def _receiver_type(
     receiver: ast.expr,
     external_var_types: dict[str, str],
@@ -5584,9 +5774,13 @@ def _receiver_type(
 ) -> str | None:
     """THE single answer to "what external type does this receiver expression have?".
 
-    Three shapes carry a type, and this is the only place that enumerates them:
+    Four shapes carry a type, and this is the only place that enumerates them:
 
     * a bare ``ast.Name`` the tracker already typed (``p`` after ``p = Path(raw)``);
+    * a DOTTED FIELD PATH off a Name -- ``svc.conn`` after ``svc = Service()``,
+      ``self.conn`` inside ``Service`` -- keyed by :func:`_dotted_receiver_name`
+      and written by the walker's ``_bind_project_class_fields`` from the map
+      the class's own ``__init__`` filled (INV-mumov, attribute-chain slice);
     * an ``ast.Call`` that IS a recognized constructor (``Path(raw)``) — the chain
       ROOT, resolved through ``ctor_type`` so it inherits that resolver's INV-kipor
       binding check rather than re-implementing it; and
@@ -5614,6 +5808,10 @@ def _receiver_type(
     """
     if isinstance(receiver, ast.Name):
         return external_var_types.get(receiver.id)
+    if isinstance(receiver, ast.Attribute):
+        dotted = _dotted_receiver_name(receiver)
+        if dotted is not None and dotted in external_var_types:
+            return external_var_types[dotted]
     if isinstance(receiver, ast.Call) and ctor_type is not None:
         # A constructor call as the chain's root. ``ctor_type`` carries the same
         # binding check every other constructor row goes through, so a locally
@@ -6805,42 +7003,25 @@ def _process_call(
                     _encl_id = method_to_enclosing_class_id.get(caller_symbol.id)
                     if _encl_id is not None:
                         _site3_meta["enclosing_class_id"] = _encl_id
-                # INV-fibis recall half. INV-jujoh made this call EMIT at all;
-                # this is where it stops being anonymous. The module is carried
-                # in BOTH the dst id's module slot AND ``dst_ref`` for the reason
-                # WI-fuvuj gives at the local-variable branch above: the
-                # io-boundary CLI consumer drops ``dst_ref`` on serialize/reload
-                # and falls back to parsing the dst id, so one of the two alone
-                # is invisible to half the consumers.
-                #
-                # ``resolution_quality`` is stamped ONLY on the typed branch,
-                # honestly, per WI-javus -- the give-up branch below keeps saying
-                # nothing was inferred, because that is what happened.
-                _field_module = (external_var_types or {}).get(
-                    f"self.{field_name}",
-                )
-                _site3_ref = None
-                if _field_module is not None:
-                    _site3_meta["resolution_quality"] = "type_inferred"
-                    _site3_dst = (
-                        f"python:{_field_module}:0-0:{method_name}:unresolved"
-                    )
-                    _site3_ref = ExternalRef(
-                        lang="python",
-                        module_path=_field_module,
-                        name=method_name,
-                    )
-                else:
-                    _site3_dst = f"python:external:0-0:{method_name}:unresolved"
+                # INV-fibis recall half; INV-jujoh made this call EMIT at all.
+                # A TYPED own field no longer arrives here: the one receiver-type
+                # predicate answers ``self.<field>`` from the very key this
+                # branch used to read for itself (INV-mumov's dotted lookup), so
+                # the inline-receiver branch above emits it with the module in
+                # both the dst id and ``dst_ref``, exactly as it emits
+                # ``svc.conn.execute()`` for a caller in another file -- one
+                # answer, one emitter. What reaches this branch is the give-up
+                # shape, an inherited field or an own field the class never
+                # typed, and per WI-javus it keeps saying nothing was inferred,
+                # because that is what happened.
                 edges.append(Edge.create(
                     src=caller_symbol.id,
-                    dst=_site3_dst,
+                    dst=f"python:external:0-0:{method_name}:unresolved",
                     edge_type="calls",
                     line=call_node.lineno,
                     evidence_type="ast_call",
                     is_resolved=False,
                     meta=_site3_meta,
-                    dst_ref=_site3_ref,
                     origin=PASS_ID,
                     origin_run_id=run_id,
                 ))
@@ -7330,6 +7511,36 @@ def analyze_python(
     }
 
     # Second pass: extract edges with cross-file resolution
+    # INV-mumov: every class's ``__init__`` field types, once, BEFORE any file's
+    # edges, re-keyed by class-symbol id so ``svc.conn.execute()`` in a file
+    # that only imports ``Service`` binds through the class's own map. A
+    # same-short-name class twice in one file is dropped from the by-id maps
+    # (its per-file inference is last-write-wins, WI-supat D3).
+    _class_maps_by_file: dict[Path, tuple[
+        dict[str, dict[str, Symbol]],
+        dict[str, frozenset[str]],
+        dict[str, dict[str, str]],
+    ]] = {}
+    _field_types_by_class_id: dict[str, dict[str, Symbol]] = {}
+    _external_field_types_by_class_id: dict[str, dict[str, str]] = {}
+    for _cm_file, _cm_analysis in file_analyses.items():
+        if not isinstance(_cm_analysis.tree, ast.Module):  # pragma: no cover
+            continue
+        _cm_counts = _class_name_counts(_cm_analysis.tree)
+        _cm_maps = _collect_class_field_maps(
+            _cm_analysis.tree, _cm_analysis.symbol_by_name, _cm_analysis.imports,
+            global_symbols, _cm_analysis.module_imports, resolver, _cm_counts,
+            interprocedural_param_types,
+        )
+        _class_maps_by_file[_cm_file] = _cm_maps
+        for _cm_name in set(_cm_maps[0]) | set(_cm_maps[2]):
+            _cm_sym = _cm_analysis.symbol_by_name.get(_cm_name)
+            if _cm_sym is None or _cm_sym.kind != "class" or _cm_counts.get(_cm_name, 0) > 1:
+                continue
+            if _cm_name in _cm_maps[0]:
+                _field_types_by_class_id[_cm_sym.id] = _cm_maps[0][_cm_name]
+            if _cm_name in _cm_maps[2]:
+                _external_field_types_by_class_id[_cm_sym.id] = _cm_maps[2][_cm_name]
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
@@ -7359,6 +7570,10 @@ def analyze_python(
             method_to_enclosing_class_id=analysis.method_to_enclosing_class_id,
             module_to_file_id=module_to_file_id,
             interprocedural_param_types=interprocedural_param_types,
+            class_maps=_class_maps_by_file.get(py_file),
+            field_maps_by_class_id=(
+                _field_types_by_class_id, _external_field_types_by_class_id,
+            ),
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
