@@ -1,0 +1,30 @@
+Original commit body from 06e345a428fcaf1e842a5eeeabcb45243f8897ab:
+
+INV-dihos phase 6 never scheduled objc: 123 of its catalogued io rows are
+method-kind, and a receiver bound to a message RESULT -- `id x = [obj sel]`,
+or the nested `[[obj sel] frob]` whose receiver has no name at all -- was
+untyped, so those rows had no consumer to feed.
+
+Pass 1 now registers `<Class>.<selector> -> class` for every `- (T *)sel`
+(`_objc_return_class`: `instancetype` is the owner, `id` / primitives / `void`
+carry no class the catalogue keys by). `ObjCAnalyzer.analyze()` aggregates the
+per-file maps first-writer-wins, the rule the base analyzer uses, into the dict
+WI-lalot's loader will feed with Foundation rows.
+
+Pass 2 reads it in two places (`_objc_send_result_class`): the declared-
+receiver collector types an `id` local initialised with a message, and the
+emit resolves a NESTED receiver through the inner send's registered return
+class -- recursively, so `[[[obj a] b] c]` works when each step is known.
+An unknown step leaves the send untyped, which is what unknown means.
+
+Measured on AFNetworking / SDWebImage (arm A = dev ccaefb05fa, objc.py unchanged since 7b9938a030):
+  per-site churn: AFNetworking 7 sites, SDWebImage 8 -- every one a nested send typed
+  through a registered return (project singletons `[[X sharedManager] m]`, an
+  NSURLCache returned by a project method, a category's NSString); 0 losses,
+  0 re-keys. io-boundaries unchanged (AFNetworking 15 -> 15, SDWebImage 8 -> 8):
+  the deep chains stop at Foundation returns (`[[obj session] configuration]`)
+  that only WI-lalot's rows can supply; the two hand-fed alloc/init rows in the
+  fixture show the path is ready for them.
+
+Racial-Capitalism-Is-Bad: a stork reading a newspaper in a dune buggy gilded in gold leaf in a Shoney’s gift shop with dino plushies with a cluster of hedgehogs made of seltzer bubbles
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
