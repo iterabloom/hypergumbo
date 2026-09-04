@@ -1,0 +1,37 @@
+Original commit body from 31e287f5371f75f4a494c5d5e69bfbbad31c08f2:
+
+Bisecting Alamofire's Session.swift by prefix found the trigger: a
+`#if canImport(Darwin) && !canImport(FoundationNetworking)` block inside the
+class body. tree-sitter-swift 0.0.1 cannot parse it, and error recovery
+re-parents the class header, so `open class Session: @unchecked Sendable`
+was never minted as a class and its 100+ methods surfaced as top-level
+functions -- and every `session.x` receiver in the repo was treated as an
+EXTERNAL type.
+
+A scratch-venv spike with 0.7.3 (the current release; 0.0.1 is a years-old
+placeholder) parses the fixture with zero ERROR nodes and keeps every node
+type the analyzer reads under the same name.
+
+Measured (arm A = dev 154fd4f06a with 0.0.1):
+  ERROR-recovered files: Alamofire 15 / 96 -> 5 (111 -> 15 ERROR nodes), Vernissage
+  263 / 906 -> 263 (Swift Testing macros, see below). Symbols (Alamofire): classes
+  181 -> 184 (`Session`, `Request` present), methods 1687 -> 1857 -- Session's and
+  SessionDelegate's members kinded as methods instead of top-level functions.
+  io-boundaries: Alamofire 31 -> 30 chains -- `DataStreamRequest.task -> URLSession
+  .dataTask` and `Session.perform -> fatalError` re-keyed from the mis-kinded functions
+  onto their methods, and one `assertionFailure` chain the old parse had credited to
+  a 4-line method whose body has no such call removed; the two real ones remain.
+  Vernissage 8 -> 8. Every swift test passes unchanged; the new
+  test_swift_conditional_compilation.py fails under 0.0.1 and passes under 0.7.3.
+
+Also in this commit: the full suite (which per-PR CI does not run) caught five
+rotted `MODULE_KEY_NOTIONS` citations -- four moved by today's merges and one
+(`gate_path_hint`) whose code #757 removed; refreshed to the current sites,
+and the receiver_variable note now records that INV-kotob closed the conflation.
+
+Out of scope, recorded on the item: VernissageServer's 263 error-recovered
+files are Swift Testing (`@Suite` / `@Test` macro) files that even 0.7.3 does
+not parse; the error-node rule from #760 keeps their receivers scoped.
+
+Racial-Capitalism-Is-Bad: a dolphin reading a newspaper in a holographic diploma scroll in a dojo with a phalanx of bees made of gilded candlesticks
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
