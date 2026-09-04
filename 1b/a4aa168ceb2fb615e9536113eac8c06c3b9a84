@@ -1,0 +1,63 @@
+Original commit body from 3ed1a807d789af33f0886824b692728bfabfa748:
+
+`store.session().invalidateAndCancel()` names no receiver variable, so
+`_extract_call_target` reported the chain head and every such site took the
+`external` placeholder -- while the SAME call one binding apart
+(`let s = store.session(); s.invalidateAndCancel()`) has been typed through the
+return-type registry since PR #760. One catalogued sink, reachable in one
+spelling and unmatchable in the other.
+
+One walker now answers the receiver-expression family by mechanism rather than
+by example: a call result (recursively, so `a.b().c().d()` is walked), a
+constructor, a cast, a parenthesised expression, and any of those under `try` /
+`await`. A parenthesised tuple and a cast to a collection are not receiver types
+and stay untyped. `_swift_call_result_type` delegates to the same walker, so a
+chained or `try`-wrapped INITIALISER is typed by the one rule too.
+
+Reading every moved row back against Alamofire source found two producer defects
+this amplified, both fixed where the fact is registered rather than where it is
+read:
+
+  * `-> Self` was registered literally and put a module of `Self` on 76 sites --
+    a present-but-wrong hint, INV-kotob's defect under a new spelling. It names
+    the enclosing type, and now resolves to it.
+  * a generic PARAMETER return (`func pick<U>() -> U`) names nothing at a call
+    site and is refused. A constrained parameter's BOUND (`<V: Codable>`) is
+    still a real type.
+
+MEASURED, per call site, both arms in one process:
+
+  Alamofire         10,699 sites   330 changed   322 gains   0 losses   0 re-keys
+  VernissageServer  12,544 sites   114 changed   112 gains   0 losses   2 re-keys
+
+The 322 gains are 286 project types into `receiver_type_hint`, 21 external types
+into the module slot, and 8 calls that now resolve to project methods. Both
+Vernissage re-keys are a local shadowing a same-named parameter, which the
+per-function scope map cannot separate: one of the pair is corrected, the other
+regressed. A B1-vs-B2 read-back of the producer fixes finds 78 sites losing a
+module slot on Alamofire and all 78 are `Self` / `U` corrections -- non-Self/U
+losses: 0.
+
+io-boundaries are UNCHANGED on both (Alamofire 40 edges / 30 chains,
+VernissageServer 8 / 8). That is the honest negative result: the gains are
+overwhelmingly project types, which ADR-0051 keeps out of the module slot by
+design, and no external gain lands on a catalogued method-kind row these
+repositories call.
+
+Also restores coverage of the ERROR-node type-recovery path. Its fixture stopped
+reaching it when the grammar went 0.0.1 -> 0.7.3 (PR #763, which changed
+pyproject.toml and so never measured swift.py's coverage): 0.7.3 parses that
+class cleanly and the test still passed, because it asserts the class is FOUND
+and it is now found by the ordinary path. The path is not dead -- 246 of
+VernissageServer's 263 error-parsing files carry a type keyword in an ERROR node
+-- so it is pinned with the delta-debugged minimum of one of them.
+
+Residual filed as INV-vakar: an imported C function whose name is UpperCamelCase
+(`UTTypeCreatePreferredIdentifierForTag(...)?.takeRetainedValue()`) trips the
+analyzer's constructor-by-convention rule and puts a function name in the slot --
+4 sites on Alamofire, 0 on VernissageServer.
+
+Lab: ~/hypergumbo_lab_notebook/higob2_chained_09042026/
+
+Racial-Capitalism-Is-Bad: a jackalope practicing a flavor-pairing in a Triassic truck stop café with a squad of frogs made of egg yolks
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
