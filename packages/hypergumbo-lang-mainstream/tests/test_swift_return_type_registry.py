@@ -372,3 +372,68 @@ class TestRegistryEdges:
         )})
         asyncs = [e for e in edges if e.edge_type == "calls" and e.dst.endswith(":async:unresolved")]
         assert len(asyncs) == 2 and all(e.dst == "swift:DispatchQueue:0-0:async:unresolved" for e in asyncs), [e.dst for e in asyncs]
+
+
+class TestATypeNameOnlyValidInsideTheDeclaration:
+    """``Self`` and a generic parameter name a type only from inside the
+    declaration. Registering either LITERALLY put a meaningless module in the
+    slot -- read back on Alamofire, where every ``-> Self`` fluent builder
+    (76 chained sites) shipped ``swift:Self:0-0:<m>:unresolved``."""
+
+    def test_self_return_resolves_to_the_enclosing_type(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "selfret", {"a.swift": (
+            "import Foundation\n"
+            "class Request {\n"
+            "    func validate() -> Self { return self }\n"
+            "}\n"
+            "func go(r: Request) {\n"
+            "    r.validate().nosuchmethod()\n"
+            "}\n"
+        )})
+        edge = _call(edges, "nosuchmethod")
+        # Request is a PROJECT type: it rides in the hint, never the module.
+        assert edge.dst == "swift:external:0-0:nosuchmethod:unresolved"
+        assert (edge.meta or {}).get("receiver_type_hint") == "Request"
+
+    def test_a_generic_parameter_return_registers_nothing(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "gen", {"a.swift": (
+            "import Foundation\n"
+            "class Box {\n"
+            "    func pick<U>(_ f: Int) -> U { fatalError() }\n"
+            "}\n"
+            "func go(b: Box) {\n"
+            "    b.pick(1).nosuchmethod()\n"
+            "}\n"
+        )})
+        edge = _call(edges, "nosuchmethod")
+        assert edge.dst == "swift:external:0-0:nosuchmethod:unresolved"
+        assert "receiver_type_hint" not in (edge.meta or {})
+
+    def test_an_enclosing_type_parameter_registers_nothing(self, tmp_path: Path) -> None:
+        edges = _edges(tmp_path / "encgen", {"a.swift": (
+            "import Foundation\n"
+            "class Box<Element> {\n"
+            "    func first() -> Element { fatalError() }\n"
+            "}\n"
+            "func go(b: Box) {\n"
+            "    b.first().nosuchmethod()\n"
+            "}\n"
+        )})
+        assert "receiver_type_hint" not in (_call(edges, "nosuchmethod").meta or {})
+
+    def test_a_constrained_parameters_BOUND_is_still_a_real_type(
+        self, tmp_path: Path,
+    ) -> None:
+        """``<V: Codable>`` -- ``Codable`` is the bound, not the parameter name."""
+        edges = _edges(tmp_path / "bound", {"a.swift": (
+            "import Foundation\n"
+            "class Box {\n"
+            "    func pick<V: Codable>(_ f: Int) -> JSONDecoder { return JSONDecoder() }\n"
+            "}\n"
+            "func go(b: Box) {\n"
+            "    b.pick(1).nosuchmethod()\n"
+            "}\n"
+        )})
+        assert _call(edges, "nosuchmethod").dst == (
+            "swift:JSONDecoder:0-0:nosuchmethod:unresolved"
+        )
