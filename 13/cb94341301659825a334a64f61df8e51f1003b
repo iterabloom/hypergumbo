@@ -1,0 +1,87 @@
+Original commit body from 36922dc910a0188db9de9ae0c674fc6a6e400f19:
+
+`swift.py` resolved `recv.method(...)` on a typed receiver as
+`f"{type_name}.{callee_name}"` in the symbol tables — by BARE method name. Swift
+identifies a method by its labels, so `removeItem(at:)` and `removeItem(atPath:)`
+are different methods, and a project extension declaring one captured a call to
+the other: the catalogued Foundation boundary vanished behind a resolved edge to
+a member the call cannot compile against. PR #757 closed the static-vs-instance
+half of the same mis-binding; this is the label half.
+
+Verified live before the edit, with a label-compatible control in the same
+fixture:
+
+    extension FileManager { func removeItem(atPath p: String) -> Bool }
+    fm.removeItem(at: URL(...))   -> resolved to FileManager.removeItem   WRONG
+    fm.createFile(atPath: "/x")   -> resolved to FileManager.createFile   RIGHT
+
+THE FIRST IMPLEMENTATION WAS HALF THE SPECIFIED DESIGN AND THE MEASUREMENT SAID
+SO. The item specifies "key project members by name+labels where the signature is
+known, fall back to bare name only when the callee has ONE project overload". The
+first attempt did only the refusal, asking about whichever symbol survived
+`local_symbols[Type.method]`. Alamofire: 340 binds withdrawn, and classifying each
+against what the repository actually declares put 291 of them in OVERLOAD COLLAPSE
+— a compatible declaration existed, it just was not the one the by-name dict kept
+(`headers.index(of:)` refused because the survivor was `index(after:)`) — against
+49 genuinely false binds. Trading 291 true binds for 49 correct refusals is the
+wrong direction, so that version was reverted rather than shipped.
+
+What ships asks the question of EVERY overload. `register_symbol` is the one place
+they are all still visible: the base calls it for every symbol of every file
+before Pass 2, and swift's override then overwrites by `Type.method`, so by Pass 2
+all but one declaration's labels are gone. Accumulating them there lets
+`_swift_labels_admit_call` ask whether ANY declaration admits the call.
+
+`Symbol.meta["arg_labels"]` records what a declaration requires — the first
+`simple_identifier` of each `parameter`, with `_` recorded as `None` so an
+unlabelled call compares equal — carried as data rather than re-parsed from
+`signature`, whose parameter types contain commas. The map is cleared in
+`post_process`, because the analyzer is a module-level singleton and the base
+clears its own registries at the same point for the same reason.
+
+The refusal stays ONE-SIDED: it fires only on a label the CALL supplies that no
+declaration has. Every stricter direction loses true binds — a defaulted parameter
+is called with a subset of its labels, a trailing-closure call supplies no
+`value_arguments` at all, and a name with no recorded labels has nothing to
+compare.
+
+One correction to the filing, which named Alamofire's
+`Tests/FileManager+AlamofireTests.swift` as the live instance: both of that file's
+`removeItem` declarations are `static`, so #757 already covers them. The defect is
+real and reproduces on the minimal fixture; that named instance had already been
+closed by the sibling fix.
+
+MEASURED with the shipped rule, per call site, both arms in one process, and
+every changed row read back at source:
+
+  Alamofire         10,699 sites,  6 changed
+  VernissageServer  19,651 sites,  3 changed
+
+All 9 read back CORRECT and none is a lost true bind:
+
+  * 5 Alamofire refusals are a MIS-TYPED RECEIVER. `headers.index(of:)` and
+    `headers.remove(at:)` are Array methods — `index(of:)` is declared in
+    `extension [HTTPHeader]`, not in `HTTPHeaders` — and the receiver had been
+    typed `HTTPHeaders`, so `HTTPHeaders.index` (which only declares
+    `index(after:)`) was capturing them. `arrayEncoding.encode(_:atIndex:)` is
+    the same shape against a NESTED type.
+  * 3 VernissageServer refusals are one shape:
+    `application.services.statusesService.get(id:on:)`, whose receiver was typed
+    `Application`, had been binding to `Application.get(path:withVersion:)`.
+  * 1 Alamofire change is the item's own shape, on a real site:
+    `Tests/FileManager+AlamofireTests.swift:43` calls Foundation's
+    `createDirectory(atPath:withIntermediateDirectories:attributes:)` from
+    INSIDE a project `static func createDirectory(atPath:)`, and had been
+    binding to that project member. It now emits
+    `swift:FileManager:0-0:createDirectory:unresolved` — the catalogued
+    boundary, recovered from the extension that was shadowing it.
+
+io-boundaries are UNCHANGED on both (Alamofire 40 edges / 30 chains,
+VernissageServer 8 / 8): the recovered `createDirectory` site joins two that the
+catalogue already reached through other call sites, so the chain count does not
+move.
+
+Lab: ~/hypergumbo_lab_notebook/fatap_labels_09042026/
+
+Racial-Capitalism-Is-Bad: an octopus building a pillow lava mound shaped like dragon made of matzo shards in a time-traveling breakfast bar
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
