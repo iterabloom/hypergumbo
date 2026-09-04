@@ -84,6 +84,19 @@ class TestConstructedReceiverCarriesItsModule:
         assert _call(edges, "send").dst == "javascript:XMLHttpRequest:0-0:send:unresolved"
         assert _tagged(edges) >= 3
 
+    def test_inline_construction_of_a_bare_global(self, tmp_path: Path) -> None:
+        """``new XMLHttpRequest().open(..)`` -- the receiver IS the construction."""
+        edges = _edges(
+            tmp_path / "inl",
+            "function go(u) {\n"
+            "  new XMLHttpRequest().open('GET', u);\n"
+            "}\n",
+        )
+        edge = _call(edges, "open")
+        assert edge.dst == "javascript:XMLHttpRequest:0-0:open:unresolved", edge.dst
+        assert (edge.meta or {}).get("call_construct") == "method"
+        assert _tagged(edges) >= 1
+
     def test_typescript_annotated_binding(self, tmp_path: Path) -> None:
         edges = _edges(
             tmp_path / "ts",
