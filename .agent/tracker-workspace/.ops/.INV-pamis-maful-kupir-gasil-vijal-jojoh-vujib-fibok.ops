@@ -1,0 +1,34 @@
+- op: create  # 490e
+  at: '2026-09-04T03:02:51Z'  # 490e
+  by: agent  # 490e
+  actor: jgstern_agent  # 490e
+  clock: 1  # 490e
+  nonce: 490e  # 490e
+  data:  # 490e
+    kind: invariant  # 490e
+    title: "rust: an instance-method call on a receiver whose type the signature DECLARES (sock: &UdpSocket) emits no call edge, while the generic-parameter form does -- the catalogued net_send row is unreachable"  # 490e
+    status: violated  # 490e
+    priority: 2  # 490e
+    parent:  # 490e
+    tags:  # 490e
+    - rust  # 490e
+    - taint  # 490e
+    - analysis_quality  # 490e
+    - adr_0017  # 490e
+    isbefore: []  # 490e
+    duplicate_of: []  # 490e
+    not_duplicate_of: []  # 490e
+    pr_ref:  # 490e
+    description: "FILED 2026-09-03 as the residual of WI-nasuf when its two filed cells (kotlin,\njavascript) closed (PRs #753 and the kotlin PR). The observation is WI-nasuf's\n2026-08-23 note, verbatim in substance, and was never in that item's statement:\n\nTHE SHAPE, on io_primitives/rust.yaml's own row (net_send: std::net::UdpSocket\nmethods [send, send_to]):\n\n    pub fn exfiltrate(sock: &UdpSocket, payload: &[u8]) -> std::io::Result<usize> {\n        sock.send(payload)\n    }\n\nEMITS NO CALL EDGE AT ALL for `sock.send` -- the enclosing function's only\noutbound edge is a module_attr_ref to std.io from its RETURN TYPE. Identical in\nboth arms (tree-sitter and rust-analyzer/SCIP). POSITIVE CONTROL in the same\nrun: `fs::read_to_string(path)` emits `rust:std::fs:0-0:read_to_string:external_symbol`\nand the fs_read claim returns VIOLATED with 1 chain.\n\nWHY IT IS WORSE THAN THE KOTLIN / JAVASCRIPT CELLS. The receiver's type is\nnamed BY CONSTRUCTION -- `sock: &UdpSocket` is in the signature and UdpSocket\nis catalogued -- so there is no inference gap to blame: the analyzer has the\ntype in hand and emits nothing. And the GENERIC shape fares better: `pub fn\ndrain<W: Write>(w: &mut W, ..) { w.write_all(payload) }` DOES emit\n(`rust:external:0-0:write_all:external_symbol`, untyped but disclosable). So\nthe case where the type IS syntactically available produces nothing while the\ncase where it is NOT produces an edge -- an emission gap, not a resolution one.\n\nCONSEQUENCE: a net_send claim over such a crate cannot be violated, because the\nedge that would carry the violation does not exist; the run returns\ninconclusive for unrelated reasons (INV-pusin / INV-rilit), not because\nanything noticed the egress.\n\nNOT MEASURED: the two-step vs chained distinction for rust (only the two-step\nform was exercised); whether ANY rust instance-method call on an external type\nemits, or only the generic-parameter form; the corpus volume. Fixture:\n~/hypergumbo_lab_notebook/rust_fidelity_probe_08232026/. The rust rows that\nWI-titor / WI-papar typed (self.field receivers, var-rooted field chains, an\nFQN-spelled parameter type) show the SLOT can carry a type -- so the missing\npiece is the emission for a `&T`-annotated parameter receiver, or a denylist\n(`send`, `write`, `read`, `flush`, `recv`, ... are among the 77 names the rust\nanalyzer DECLINES to resolve -- nine of them are rust.yaml sinks, disclosed\nsince the verify-claims fidelity work). Read the denylist branch FIRST: the\ndeclared blindness there may be exactly this."  # 490e
+    fields:  # 490e
+      statement: "Every call site of a catalogued Rust I/O primitive on a receiver whose type is declared in the enclosing signature produces a calls edge that carries that type; measured on an authored fixture, sock.send(payload) with sock: &UdpSocket emits nothing at all in both backends while the fs_read control fires."  # 490e
+      root_cause: "Not read. Consistent with an emission gap in rust.py's method-call arm for an annotated-parameter receiver (the generic-parameter form emits an untyped edge), or with the 77-name resolution denylist (send, write, read, flush, recv among them) declining before any emit; the denylist branch is the first thing to read."  # 490e
+- op: update  # bbe0
+  at: '2026-09-04T03:03:42Z'  # bbe0
+  by: agent  # bbe0
+  actor: jgstern_agent  # bbe0
+  clock: 2  # bbe0
+  nonce: bbe0  # bbe0
+  set: {}  # bbe0
+  add:  # bbe0
+    not_duplicate_of: [WI-duroz-jajif-tatuk-tujit-nonir-vavof-johak-vabir]  # bbe0
