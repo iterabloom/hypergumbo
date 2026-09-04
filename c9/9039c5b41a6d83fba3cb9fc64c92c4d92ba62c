@@ -1,0 +1,36 @@
+Original commit body from eb6bdb3ce68f74b35464ccc33315b6d5533c9f70:
+
+The docstring-staleness playbook told the next reader three things that the
+2026-09-04 run found to be wrong or incomplete. Correcting them where they are
+loaded, not only in a notebook entry.
+
+1. THE ipc.py ARTIFACT EXPLAINS WHY A FILE APPEARS, NOT WHETHER IT DRIFTED.
+   The playbook records that a previous audit's own function-docstring fix
+   re-flags a file, and says to check whether that produced the flag. True, but
+   read as licence to skip it: `linkers/ipc.py` re-flagged AND carried four real
+   module-docstring drifts, the largest a promise the code never keeps --
+   `worker.postMessage(data) -> event_publishes` while POSTMESSAGE_PATTERN sets
+   an empty channel and the edge loop skips it, so no edge and no symbol are
+   ever emitted. Skipping on the artifact would have missed it twice running.
+
+2. RUF002 HAS A COMMENT TWIN, RUF003. The playbook warns about the ambiguous
+   multiplication sign in docstrings. The same gate fires on comments: this run
+   tripped RUF003 on a set-union sign in a new axis_meta_keys.py comment.
+
+3. A THIRD FAMILY THE SCAN CANNOT SEE: file:line CITATION ROT. A registry that
+   cites source it does not own by line number rots whenever ANY line is
+   inserted above the cited one -- no docstring edit, no blame-date change, so
+   no arm of check-docstring-drift can see it, exactly as with retired
+   vocabulary. It bit twice in one day: three citations from real code movement,
+   and a fourth from a pure module-docstring edit to cpp.py in another package.
+   The first breakage sat red on dev for a day because no test-selection arm
+   runs the guarding test when the CITED file changes. Added the one-loop check
+   to run after any bundle that changes line counts, and the INV-fogul pointer.
+
+Also adds the 2026-09-04 row to the calibration table (24 flagged / 18 real /
+75%) and its notebook pointer. The row is worth reading with the caveat the
+playbook already carries: the registry pass found drift in 7 files the scan
+flagged none of, so the flagged count measures the scan, not the tree.
+
+Racial-Capitalism-Is-Bad: a VHS jackrabbit building a craton shield shaped like rugelach crescent made of old recipe cards in a meteor-motif pizza parlor
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
