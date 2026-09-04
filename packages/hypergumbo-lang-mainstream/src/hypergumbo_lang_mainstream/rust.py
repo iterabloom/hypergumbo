@@ -2864,7 +2864,22 @@ def _extract_edges_from_file(
                                                 module_path=_fpath,
                                                 name=callee_name,
                                             )
-                                    if has_explicit_binding or callee_name not in _RUST_GENERIC_TRAIT_METHODS:
+                                    # INV-pamis: the denylist exists because a
+                                    # generic-trait NAME on an untypable receiver
+                                    # (``x.clone()``, ``v.into()``) cannot be bound
+                                    # honestly and emitting it blind bloated two
+                                    # crates' edges by 33-207%. A receiver whose
+                                    # type the signature DECLARES (``sock:
+                                    # &UdpSocket`` -> ``std::net::UdpSocket``) is the
+                                    # evidence the denylist lacks: ``sock.send`` on
+                                    # it is the catalogued net_send sink, emitted
+                                    # with the type in the slot. Untyped receivers
+                                    # keep the denylist and its disclosure.
+                                    if (
+                                        has_explicit_binding
+                                        or ext_ref is not None
+                                        or callee_name not in _RUST_GENERIC_TRAIT_METHODS
+                                    ):
                                         edges.append(make_unresolved_edge(
                                             "rust", current_function.id, unresolved_name,
                                             node.start_point[0] + 1, PASS_ID, run_id,
