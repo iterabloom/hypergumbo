@@ -1,0 +1,52 @@
+Original commit body from 74385b45b8bef8b51341b44099fa0d57540c99af:
+
+_unwind_attribute_chain returned None for any chain not rooted at a bare
+name -- items[i].startswith(x), f().x.y(), (a + b).c() -- and the
+emitting branch then emitted nothing, while the sibling branch for
+obj.attr.method() had emitted the `external` placeholder since PR #231.
+PR #254 kept that asymmetry deliberately and recorded its re-evaluation
+trigger: a consumer that distinguishes "no edge" from "an edge to an
+untyped receiver". The ADR-0017 section 3a walk is that consumer (no edge
+means no callees_at entry, so the walk records an escape where a section
+4 summary could have accounted for the step; INV-busis measured that at
+50.0% of call-node escape sites). The inline form now emits the same
+placeholder with the same call_construct stamp; the pinned asymmetry
+test flips and cites the trigger.
+
+Separately, only the I/O-catalogue constructor table typed a receiver,
+so `f = Fernet(key); f.decrypt(token)` carried `external` and
+`Fernet(key).decrypt(token)` carried nothing: the four shipped plaintext
+sources and four sanitizers, every one a Class.method row, were
+unreachable in both forms. A called name that an import binds and that
+is PascalCase is a construction (the convention WI-jubag already reads
+for `instantiates`), and the import IS the binding, so the instance is
+typed `<module>.<Class>` exactly: cryptography.fernet.Fernet reaches its
+row, `from decoy import Path` names decoy.Path (no row), an alias
+`from pathlib import Path as P` resolves through the binding (a recorded
+non-goal closed as a side effect), a project class is refused here and
+stays with in-repo resolution, and a lowercase callable types nothing.
+
+Measured, both arms in one process, per call site
+(~/hypergumbo_lab_notebook/luhug_pyroots_09032026/):
+  mitmproxy  22,320 -> 23,429 sites, 315 typed gains, 0 lost, 0 re-keys
+  poetry     15,345 -> 16,263 sites, 186 typed gains, 0 lost, 3 re-keys
+             (a constructor's concrete class over an annotated base)
+  pretix     69,755 -> 78,852 sites, 748 typed gains, 0 lost, 0 re-keys
+Escape-cause on hypergumbo's own tree: 21 call-node escape sites both
+arms; "no edge" 3 -> 2 (the Subscript-rooted argv[idx].startswith moved
+to the placeholder class), callees_at 106,534 -> 106,576, escapes
+245 -> 246 -- accounting moved, escapes did not; pretix's table is
+refused by the instrument on both arms (javascript has no call-node
+vocabulary, WI-nukut). io-boundaries on mitmproxy / poetry / meson:
+534 / 190 / 2,873 chains, byte-identical -- the newly typed modules
+(io.StringIO, zipfile.ZipFile, subprocess.Popen, ...) carry no rows.
+The crypto rows are reached on real code: mlflow utils/crypto.py:350
+and litellm app_crypto.py go from python:external:0-0:decrypt (no
+match) to ...aead.AESGCM.decrypt accepted by the production source
+matcher.
+
+Residual, stated: a PascalCase factory FUNCTION (tempfile.TemporaryFile)
+names itself as the type -- honest binding, reaches no row.
+
+Racial-Capitalism-Is-Bad: a bear building a hydrothermal vent shaped like fractal tree made of pumpernickel crumbs in a dino-bone BBQ pit
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
