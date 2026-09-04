@@ -216,10 +216,13 @@ class TestScopingUnderAnErrorRecoveredParse:
     treated as file-level, because error recovery re-parents declarations
     arbitrarily and a byte span under an ERROR proves nothing about scope (PR #760).
 
-    The fixture is the delta-debugged minimum of VernissageServer's
-    `ActivityPubService.swift`: tree-sitter-swift 0.7.3 cannot parse `try` inside an
-    `if` condition, so the `let` in the body is parented by the ERROR rather than by
-    the enclosing function.
+    The fixture uses `switch try await`, which tree-sitter-swift 0.7.3 cannot parse,
+    so the `let` in the body is parented by the ERROR rather than by the enclosing
+    function. It was `if let x = try await ...` -- the delta-debugged minimum of
+    VernissageServer's `ActivityPubService.swift` -- until INV-bisok's pre-parse
+    rewrite made that spelling parse; `switch` sits outside that rewrite's
+    `if`/`guard`/`while` line scope by design, so this keeps erroring and this branch
+    keeps an honest test rather than a pragma.
     """
 
     def test_a_declaration_under_an_error_node_still_types_its_receiver(
@@ -228,7 +231,8 @@ class TestScopingUnderAnErrorRecoveredParse:
         edges = _edges(tmp_path / "err", (
             "import Foundation\n"
             "func handle(svc: Store, id: Int) async throws {\n"
-            "    if let u = try await svc.find(id: id) {\n"
+            "    switch try await svc.find(id: id) {\n"
+            "    default:\n"
             "        let fm = FileManager.default\n"
             "        fm.removeItem(atPath: \"/tmp/x\")\n"
             "    }\n"

@@ -29,7 +29,14 @@ Uses TreeSitterAnalyzer base class for two-pass orchestration:
 
 The base class handles grammar checking, parser creation, file discovery,
 and result assembly. This module provides only the Swift-specific extraction
-logic.
+logic -- plus one override of ``parse_source``, because the shipped grammar
+LAGS the language: tree-sitter-swift 0.7.3 cannot parse a backtick raw
+identifier containing spaces (Swift 6.1's spelling for a test name) or ``try``
+inside an ``if`` / ``guard`` / ``while`` condition, and error recovery then
+re-parents whole type bodies. A file that already fails to parse is retried
+through a byte-length-preserving rewrite of exactly those two spellings, kept
+only when it strictly reduces ERROR nodes, so a parseable file is untouched
+(INV-bisok).
 
 Why This Design
 ---------------
@@ -48,6 +55,8 @@ modifier list of its own: enum cases, protocol requirements, and the
 route-marker symbols added in ``post_process``.
 """
 from __future__ import annotations
+
+import re
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, Iterator, Optional
@@ -2233,8 +2242,68 @@ def _extract_vapor_usage_contexts(
     return contexts, route_symbols
 
 
+_SWIFT_RAW_IDENTIFIER = re.compile(rb"`([^`\n]* [^`\n]*)`")
+_SWIFT_CONDITION_HEAD = re.compile(rb"^[ \t]*(?:\}[ \t]*)?(?:if|guard|while)\b")
+_SWIFT_TRY = re.compile(rb"\btry[?!]?")
+
+
+def _swift_count_errors(tree: "tree_sitter.Tree") -> int:
+    return sum(1 for n in iter_tree(tree.root_node) if n.type == "ERROR")
+
+
+def _swift_rewrite_unparseable(source: bytes) -> bytes:
+    """Rewrite, preserving byte length, the two Swift 6 spellings the grammar lags on.
+
+    INV-bisok. tree-sitter-swift 0.7.3 fails on:
+
+    1. a backtick RAW IDENTIFIER containing spaces -- Swift 6.1's spelling for a
+       test name, ``func `posts are returned for an anonymous user`()``. Every
+       space inside the backticks becomes an underscore, so the identifier keeps
+       its length, its position and a legible name.
+    2. ``try`` in an ``if`` / ``guard`` / ``while`` CONDITION --
+       ``if try await svc.check(x)``, ``if let c: [D] = try? await cache.get(k)``.
+       ``try`` marks an effect, not a callee, so blanking it inside a condition
+       line costs the analysis nothing it reads.
+
+    The item named the ``@Suite`` / ``@Test`` macro attributes as the trigger.
+    They parse clean under 0.7.3; these two are what error-recovery was choking on
+    (measured on VernissageServer: 263 of 906 files with ERROR nodes -> 5, and
+    10,364 ERROR nodes -> 19).
+    """
+    out = _SWIFT_RAW_IDENTIFIER.sub(
+        lambda m: b"`" + m.group(1).replace(b" ", b"_") + b"`", source,
+    )
+    lines = out.split(b"\n")
+    for i, line in enumerate(lines):
+        if _SWIFT_CONDITION_HEAD.match(line):
+            lines[i] = _SWIFT_TRY.sub(lambda m: b" " * len(m.group(0)), line)
+    return b"\n".join(lines)
+
+
 class SwiftAnalyzer(TreeSitterAnalyzer):
     """Swift language analyzer using tree-sitter-swift."""
+
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """Parse, and retry once through :func:`_swift_rewrite_unparseable`.
+
+        INV-bisok. The rewrite runs ONLY on a file that already fails to parse,
+        and its result is kept ONLY when it strictly reduces ERROR nodes, so a
+        file the grammar handles is never touched -- which is what keeps a
+        backtick or a ``try`` inside a STRING literal from being rewritten in
+        any file whose parse those bytes did not already break.
+        """
+        tree = parser.parse(source)
+        if not tree.root_node.has_error:
+            return source, tree
+        rewritten = _swift_rewrite_unparseable(source)
+        if rewritten == source:
+            return source, tree
+        retry = parser.parse(rewritten)
+        if _swift_count_errors(retry) < _swift_count_errors(tree):
+            return rewritten, retry
+        return source, tree
 
     lang = "swift"
     file_patterns: ClassVar[list[str]] = ["*.swift"]
