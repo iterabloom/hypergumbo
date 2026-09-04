@@ -53,3 +53,18 @@
   clock: 5  # ac21
   nonce: ac21  # ac21
   message: "Independently re-derived by measurement 0009 (WI-vapud), from the deferred-crossing register rather than from WI-zumoz. Starting from a different population and a different question, the SAME six rows came back inert: WebSocket.addEventListener/onclose/onmessage, EventSource.addEventListener/onmessage, BroadcastChannel.addEventListener. Fixture: idiom/js2 in ~/hypergumbo_lab_notebook/vapud_reach_08292026/, positive controls fs.readFileSync and http.createServer firing in the same run; the constructor-bound receiver produces a 'uses' edge with dst_ref=None and never a 'calls' edge, exactly as this item states. Two additions. (1) These six are ALSO ADR-0049 deferred crossings, so they sit in INV-kanuk's retag scope while being unreachable -- retagging them changes no output, and 0009 recommends they go last. (2) A DIFFERENT javascript gap turned up beside them and is filed separately as INV-zudos: 'process' is absent from JS_KNOWN_GLOBALS, so require-less process.on(...) emits no calls edge while process.stdin still fires through module_attr_ref. That is a named-global omission, not this item's constructor mechanism."  # ac21
+- op: update  # 2d26
+  at: '2026-09-04T01:32:48Z'  # 2d26
+  by: agent  # 2d26
+  actor: jgstern_agent  # 2d26
+  clock: 6  # 2d26
+  nonce: 2d26  # 2d26
+  set:  # 2d26
+    status: satisfied  # 2d26
+- op: discuss  # e220
+  at: '2026-09-04T01:32:48Z'  # e220
+  by: agent  # e220
+  actor: jgstern_agent  # e220
+  clock: 7  # e220
+  nonce: e220  # e220
+  message: "FIXED IN PR #753 (dev 82a973b69f). Root cause as filed: the member-call branch\nresolved a typed receiver only in-repo (Case 3) and emitted nothing on a miss;\n`new ns.Class()` recorded the bare class and dropped the namespace. Now:\n`JS_CONSTRUCTOR_TYPES` is derived from javascript.yaml (bare PascalCase\nmodules + dotted `ns.Class` rows; a leaf claimed twice -- Socket under net and\ndgram -- is decided by the namespace, never the leaf); `var_ctor_modules`\nbeside `var_types` holds the catalogue module of a constructed local; a typed\nreceiver whose in-repo lookup misses emits `make_unresolved_edge(module_hint=\n<ctor module>, receiver_type_hint=<class>, call_construct=\"method\")`; the\ninline `new X(..).m()` shape (the receiver IS the construction) goes through\nthe same `_constructed_module` rule. JS and TS (`.ts` emits under the\n`typescript` prefix), module and function scope. The eleven filed rows are\nreachable; property ASSIGNMENT (`ws.onmessage = cb`) is an assignment, not a\ncall, and is NOT claimed here -- measure it separately if the catalogue's\n`assignment` construct path is meant to fire.\nMEASURED: per call site, both arms in one process: mobx 15,188 -> 35,743 sites, plausible 3,054 -> 5,244 (5 XMLHttpRequest typed), workadventure 25,116 -> 54,672 (35 XMLHttpRequest + 8 WebSocket typed), 0 sites lost a type; plausible's one resolved->typed site is `xhr.open` leaving a wrong short-name in-repo binding for XMLHttpRequest.open. io-boundaries: mobx 60 -> 60, plausible 54 -> 59 (+5, all XMLHttpRequest egress, every site read back), workadventure 60 -> 78 (+17 XMLHttpRequest in Emscripten's doXHR loader inside minified wasm glue, +1 BroadcastChannel.postMessage in a service worker); 0 chains lost."  # e220
