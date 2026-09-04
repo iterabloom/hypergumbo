@@ -11,6 +11,14 @@ How It Works
 2. Extracts document structure (sections, titles)
 3. Extracts directives (function, class, module definitions)
 4. Extracts cross-references and toctree relationships
+5. Populates docstrings onto the symbols just extracted
+   (``populate_docstrings_from_tree``)
+
+Every symbol here is minted through ``make_doc_symbol_ids``, which issues
+``id`` and ``stable_id`` together. That pairing is the INV-dulah contract
+for documentation families: the ``id`` carries the span so two same-named
+sections stay distinct, while the ``stable_id`` survives the section moving
+down the file.
 
 Symbols Extracted
 -----------------

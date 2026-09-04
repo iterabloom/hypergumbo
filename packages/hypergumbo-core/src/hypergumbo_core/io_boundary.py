@@ -40,7 +40,11 @@ How It Works
 2. ``classify_call_in_catalog(...)`` is the production matcher: it resolves a
    call edge against the catalog via ``lookup_with_module``, applying
    module-hint filtering, FFI redirection, ``io_mode`` discrimination
-   (across every collapsed call site — INV-vukiv), and a
+   (across every collapsed call site — INV-vukiv), ``io_target_kind``
+   discrimination from the call site's own stamp (so a write that
+   discards, or one whose target is a pipe rather than a file, selects the
+   right row or none), a retry with the module qualifier stripped when the
+   name slot re-states it, and a
    short-name fallback gated on the destination not being a first-party
    callable. (``match_edge_to_primitive`` is a bare name-only lookup with no
    production caller — it exists for tests and ad-hoc probing. Do not reach

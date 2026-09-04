@@ -271,7 +271,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1393,
+                line=1404,
                 anchor='module_hint = ",".join(system_includes)',
                 note="The file's entire #include set joined into one slot.",
             ),

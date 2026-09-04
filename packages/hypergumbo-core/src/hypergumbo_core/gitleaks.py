@@ -29,16 +29,26 @@ Public surface
   then ``PATH``). Nothing is executed.
 - ``get_install_nag``: the message printed when the scan would run but
   the binary is missing.
+- ``get_gitleaks_path``: resolve the binary, ours first then ``PATH``.
+- ``format_secret_warning``: render findings for the user.
+- ``SecretFinding``: the per-finding record the above two exchange.
 
 Filesystem discipline
 ---------------------
 All fs-write operations route through ``hypergumbo_core.safety_zones``
 wrappers (``install_artifact_write_bytes`` / ``install_artifact_chmod``
 / ``install_artifact_unlink`` / ``install_artifact_copy`` /
-``cache_write``). The wrappers tag each write with its trust zone
-(``install_artifact`` / ``user_cache``) so the per-entry-point taint
-catalog can verify zone reachability claims without short-name sink
-overapproximation (Unreleased CHANGELOG / safety-claims work).
+``install_artifact_mkdir`` / ``cache_write`` / ``cache_mkdir`` /
+``tmp_artifact_dir``). The wrappers tag each write with its trust zone
+(``install_artifact`` / ``user_cache`` / ``tmp_artifact``) so the
+per-entry-point taint catalog can verify zone reachability claims without
+short-name sink overapproximation (Unreleased CHANGELOG / safety-claims work).
+
+Not a write, and the widest-reading thing this module does: the scan itself
+runs through ``repo_inspect_scan`` (WI-fasuv), the ``repo_inspection``
+SUBPROCESS zone rather than a filesystem one. It reads the whole analysed
+repository, so it is binned separately from the writes above and is the
+sink that matters most when reasoning about what this module can reach.
 
 The goal is safety by default without requiring a PhD to configure.
 """

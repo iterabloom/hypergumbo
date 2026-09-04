@@ -10,13 +10,18 @@ Key IR Classes
 - **AnalysisRun**: Provenance for an analysis pass execution. Its
   run_signature and repo_fingerprint are external provenance / PROV-DM
   fields with no internal consumers — hypergumbo never reads them back to
-  key or invalidate a cache (see the AnalysisRun "Readership note").
+  key or invalidate a cache (see the AnalysisRun "Readership note"). The
+  provenance group is four fields, not two: ``config_fingerprint`` and
+  ``pass_version`` sit alongside the run identifiers and participate in the
+  same cache-key question.
 - **Symbol**: Code elements (functions, classes) with location and identity
   hashes (stable_id, shape_id, fingerprint). The ``quality`` field is
   declared-but-empty — it has no producer (INV-nuzal) and is omitted from
   serialization when ``None``.
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
-  and edge_key for deduplication across passes. Edges carry a structured
+  and edge_key for deduplication across passes. ``confidence_source`` names
+  what produced the number and ``rank_score`` carries the ranking weight
+  (ADR-0039 rulings 2 and 3). Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
   colon-encoded id; consumers prefer ``dst_ref`` and fall back to
   colon-splitting ``dst`` for pre-0.7.2 cached JSON.

@@ -7,8 +7,9 @@ call :func:`try_analyze_with_rust_analyzer`. The helper returns
 ``(symbols, edges)`` on the happy path and ``None`` on any of the
 three fall-through conditions WI-nohah enumerates:
 
-1. ``rust-analyzer`` is not resolvable on ``PATH`` (no install, or
-   install in a dir we don't scan).
+1. ``rust-analyzer`` is not resolvable on ``PATH``
+   (:class:`RustAnalyzerNotInstalled` — no install, or an install in a
+   dir we don't scan).
 2. ``rust-analyzer scip`` exits non-zero / times out
    (:class:`RustAnalyzerInvocationFailed`), or the workspace does not
    produce an ``index.scip`` file (:class:`RustAnalyzerNoOutput` —
@@ -22,8 +23,19 @@ three fall-through conditions WI-nohah enumerates:
 
 Returning ``None`` is the contract — the caller (the analyzer-registry
 wrapper in ``analyzer.py``, which is shipped and passes a real ``log``) is
-responsible for the actual fall-through to ``rust.py``. Keeping the decision point pure lets the fall-through
-logic stay testable without mounting a real analyzer registry.
+responsible for the actual fall-through to ``rust.py``. Keeping the
+decision point narrow lets the fall-through logic stay testable without
+mounting a real analyzer registry. Any other :class:`RustAnalyzerError`
+falls to the base handler and degrades with its own message rather than
+escaping.
+
+Beyond the ``None``/``(symbols, edges)`` contract this module owns the
+degrade DIAGNOSTICS (WI-todon), whose whole purpose is that a silent
+fall-through is indistinguishable from a backend that simply did nothing.
+It logs once per ``(exception type, workspace)`` so a repeated failure in
+a multi-crate workspace does not bury the console, tails the child's
+stderr to a bounded length, recognises the SIGKILL/OOM shape and says so
+by name, and scopes each invocation to a ``tmp_artifact`` scratch dir.
 
 The ``invoke`` and ``translate`` callables are injectable so tests can
 exercise every failure mode without shelling out to a real

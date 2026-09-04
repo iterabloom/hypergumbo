@@ -7,9 +7,21 @@ This analyzer uses tree-sitter to parse Ruby files and extract:
 - Module declarations (module)
 - Method call relationships
 - Require/require_relative statements
-- Rails callback edges (before_action, after_action, around_action)
+- Rails callback edges. The recognised set is ``RAILS_CALLBACK_METHODS``,
+  which is wider than the three action callbacks it started with: the
+  ``_filter`` spellings, the model lifecycle callbacks, the transaction
+  callbacks (``after_commit``, ``after_create_commit``, ...) and
+  ``validate``. Block-style callbacks are picked up too.
 - ActiveRecord association edges (has_many, belongs_to, has_one)
 - Ruby delegate macro edges (delegate :method, to: :association)
+- Rails / Sinatra route symbols, including namespaces, resources and
+  member/collection blocks (``_extract_rails_routes``)
+- ``instantiates`` edges for ``.new`` (INV-kahig)
+- ``event_publishes`` edges for ActiveJob / Sidekiq enqueue calls
+- ``extends`` inheritance edges, and mixin declarations recorded as
+  ``meta["included_modules"]`` for the linker to resolve (WI-hatip)
+- ``field`` / ``variable`` data anchors (``_emit_ruby_data_symbols``,
+  WI-jusus)
 - Receiver-type tracking for variable-receiver calls
 - Method parameter filtering to prevent bare-identifier false positives
 

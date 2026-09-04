@@ -7,8 +7,15 @@ This analyzer uses tree-sitter to parse Kotlin files and extract:
 - Object declarations (object)
 - Interface declarations (interface)
 - Method declarations (inside classes/objects)
-- Annotations on classes, methods, and objects (meta.decorators)
+- Annotations on classes, methods, and objects (meta.decorators), which
+  also become ``decorated_by`` edges (``_extract_annotation_edges``)
+- Property declarations: a ``field`` Symbol for a class/object/interface
+  or enum-body property, a ``variable`` Symbol for a top-level one
+- Enum entries, one ``field`` Symbol each, named ``Color.RED`` (WI-dorop)
 - Function call relationships
+- ``extends`` / ``implements`` inheritance edges
+  (``_extract_inheritance_edges``)
+- ``references`` edges from callable references (``::``) and navigation
 - Import statements
 
 If tree-sitter with Kotlin support is not installed, the analyzer
@@ -22,6 +29,9 @@ How It Works
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
 4. Detect function calls and import statements
+5. Post-passes over the assembled result: per-file dataflow annotation
+   (ADR-0015 Tier 1), inheritance edges, annotation edges, and the
+   Gradle/Maven ``dependency_manifest`` from ``parse_jvm_dependencies``
 
 Why This Design
 ---------------
@@ -29,6 +39,19 @@ Why This Design
 - Uses tree-sitter-kotlin package for grammar
 - Two-pass allows cross-file call resolution
 - Same pattern as Go/Ruby/Rust/Elixir/Java/PHP/C analyzers for consistency
+
+Receiver typing (WI-nasuf). An instance-method call on an external
+receiver emits an edge that carries the receiver's DECLARED type rather
+than the receiver variable's name: ``_kt_declared_type`` reads the
+declaration, ``_kt_chain_root_constructor`` types a chain root bound to a
+constructor call, and ``_kt_receiver_module`` turns that type into the
+edge's ``module_hint`` (falling back to the ``external`` sentinel when it
+cannot). ``receiver_type_hint`` carries the project-local type key
+alongside it. This is what lets a catalogued method-kind I/O primitive be
+reached through a typed receiver — see ADR-0051 for why the module slot
+must name the static owner path and never the variable. Function-scoped
+``var_types`` shadowing keeps a rebound name from leaking its old type
+across scopes.
 
 Population of ``is_exported`` follows Kotlin's default-public rule: a
 declaration is exported unless its modifier list contains ``private``,

@@ -9,6 +9,10 @@ The log directory is dot-prefixed (invisible in normal directory listings)
 and gitignored.  Logs are append-only, human-readable, and safe to delete
 at any time — they're purely diagnostic.
 
+``write_log`` always ALSO mirrors each line to stderr, whether or not a
+file handle was opened.  A sync that cannot open its log still narrates
+itself; the file is the durable copy, not the only one.
+
 Garbage collection safety:
 - Only deletes files matching the exact ``sync-YYYY-MM-DD.log`` pattern.
 - Validates the date portion parses to a real date (rejects malformed names).
