@@ -44,7 +44,7 @@ Nine analyzers implement variable type inference. The original six (Python, Java
 
 | Analyzer | Constructor | Parameter | Field | Return | Chained | Scope |
 |----------|:-----------:|:---------:|:-----:|:------:|:-------:|:------|
-| Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py::_compute_shape_id`) | ✅ (`py.py`) | ❌ (Phase 4) | Method-scoped (`py.py::_compute_value_shape_id`) |
+| Python   | ✅ | ✅ | ✅ (`__init__` field scanning, `py.py::_compute_shape_id`; repo-wide by class-symbol id via `_collect_class_field_maps`, so a caller in another file types `obj.field.method()` — INV-mumov) | ✅ (`py.py`) | ❌ (Phase 4) | Method-scoped (`py.py::_compute_value_shape_id`) |
 | Java     | ✅ | ✅ | ✅ (`field_declaration`, `java.py::_extract_symbols`) | ✅ (`java.py::_extract_java_signature`, `1197-1210`) | ✅ (WI-gajuh: `method_return_type_registry` consumed at the assignment, typed-receiver and chained sites; values qualified through the declaring file's imports) | Method-scoped locals (declared / constructed / inferred, INV-vugon); fields and parameters file-scoped |
 | Kotlin   | ✅ | ✅ | Partial (constructor params = fields, `kotlin.py::_extract_kotlin_return_type_name`) | ✅ (`kotlin.py::_KOTLIN_MODIFIER_NODE_TYPES`) | ❌ (Phase 2) | File-scoped |
 | TypeScript | ✅ | ✅ | ❌ | ✅ (`js_ts.py::_extract_named_imports`, `2514-2528`) | ❌ (n/a, no INV-dihos signal yet) | File-scoped |
