@@ -613,13 +613,15 @@ def _objc_declared_receiver_types(
 ) -> list[tuple[int, int, dict[str, str]]]:
     """Per method / function body: ``(start_byte, end_byte, {receiver name: declared class})``.
 
-    WI-higob (objc). Two declaration shapes carry a receiver's class:
+    WI-higob (objc). Three declaration shapes carry a receiver's class:
     a typed parameter ``(NSFileManager *)fm`` (``method_parameter`` ->
-    ``type_identifier`` + trailing ``identifier``) and a local
+    ``type_identifier`` + trailing ``identifier``), a local
     ``NSFileManager *x = ...`` (``declaration`` -> ``type_identifier`` +
-    the identifier under its declarator). ``id obj`` has no
-    ``type_identifier`` and stays untyped. Last declaration wins within a
-    body, which is what a rebinding means in straight-line code.
+    the identifier under its declarator), and a fast-enumeration loop
+    ``for (NSString *p in paths)`` (``for_statement``, whose direct children
+    carry the same ``type_identifier`` + ``pointer_declarator`` pair).
+    ``id obj`` has no ``type_identifier`` and stays untyped. Last declaration
+    wins within a body, which is what a rebinding means in straight-line code.
     """
     spans: list[tuple[int, int, dict[str, str]]] = []
     for node in iter_tree(root):
@@ -632,10 +634,25 @@ def _objc_declared_receiver_types(
                 names = [c for c in sub.children if c.type == "identifier"]
                 if t is not None and names:
                     types[node_text(names[-1], source)] = node_text(t, source)
-            elif sub.type == "declaration":
+            elif sub.type in ("declaration", "for_statement"):
+                # WI-higob: `for (NSString *p in paths)` declares `p`'s class in
+                # exactly the shape a local declaration uses -- a direct
+                # `type_identifier` plus a `pointer_declarator` -- so it reads
+                # through the same branch. A C-style `for (int i = 0; ...)` wraps
+                # its own `declaration` child, which `iter_tree` reaches on its
+                # own, and contributes no direct `type_identifier` here.
                 t = next((c for c in sub.children if c.type == "type_identifier"), None)
+                # ...but ONLY the declarator binds in a fast-enumeration loop. The
+                # COLLECTION is also a direct `identifier` child of the
+                # `for_statement`, so accepting `identifier` here typed `paths`
+                # itself as `NSString` -- measured on AFNetworking, where
+                # `[paths count]` re-keyed from NSArray to NSString.
+                _binders = (
+                    ("pointer_declarator",) if sub.type == "for_statement"
+                    else ("init_declarator", "pointer_declarator", "identifier")
+                )
                 for c in sub.children:
-                    if c.type in ("init_declarator", "pointer_declarator", "identifier"):
+                    if c.type in _binders:
                         name = c if c.type == "identifier" else _first_descendant(c, "identifier")
                         if name is None:  # pragma: no cover - a declarator always names something
                             continue

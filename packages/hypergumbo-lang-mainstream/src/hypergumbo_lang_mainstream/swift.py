@@ -1581,6 +1581,30 @@ def _extract_edges_from_file(
                 )
             if vname and vtype:
                 _scope_for(node)[vname] = vtype
+        elif node.type in ("if_statement", "guard_statement"):
+            # WI-higob: `if let x = <expr>` / `guard let x = <expr>` bind a name
+            # to an expression whose type slice 2's walker already computes.
+            # The grammar lays the binding out flat -- `value_binding_pattern`,
+            # then the bound `simple_identifier`, then `=`, then the RHS -- so
+            # the RHS is the first named sibling after the `=`.
+            if find_child_by_type(node, "value_binding_pattern") is not None:
+                _kids = list(node.children)
+                _eq = next(
+                    (i for i, c in enumerate(_kids) if c.type == "="), None,
+                )
+                _name = find_child_by_type(node, "simple_identifier")
+                _rhs = next(
+                    (c for c in _kids[_eq + 1:] if c.is_named),
+                    None,
+                ) if _eq is not None else None
+                if _name is not None and _rhs is not None:
+                    declared_names.add(node_text(_name, source))
+                    _bt = _swift_receiver_expr_type(
+                        _rhs, source, _type_lookup_at(node),
+                        method_return_type_registry,
+                    )
+                    if _bt:
+                        _scope_for(node)[node_text(_name, source)] = _bt
         elif node.type == "parameter":
             # INV-fahub / WI-votar recall recovery: thread function/method
             # parameter types (previously dropped) into the receiver map so a
