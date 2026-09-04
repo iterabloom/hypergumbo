@@ -467,6 +467,70 @@ def _register_swift_field_type(
         analysis.class_field_types.setdefault(owner, {}).setdefault(vname, vtype)
 
 
+def _swift_parameter_labels(
+    node: "tree_sitter.Node", source: bytes,
+) -> list[str | None]:
+    """The ARGUMENT LABELS a declaration requires, in order.
+
+    INV-fatap. A Swift parameter carries an external label and an internal name:
+    ``removeItem(atPath p: String)`` is called ``removeItem(atPath:)``. The label
+    is the FIRST ``simple_identifier`` of the ``parameter`` node -- the only one
+    when the two coincide (``plain(x: Int)``) -- and ``_`` means the argument is
+    passed with no label at all, recorded as ``None`` so it compares equal to a
+    call that omits one.
+    """
+    labels: list[str | None] = []
+    for child in node.children:
+        if child.type == "parameter":
+            ids = [c for c in child.children if c.type == "simple_identifier"]
+            label = node_text(ids[0], source) if ids else None
+            labels.append(None if label == "_" else label)
+    return labels
+
+
+def _swift_call_argument_labels(
+    call: "tree_sitter.Node", source: bytes,
+) -> list[str | None]:
+    """The ARGUMENT LABELS a call site supplies, in order (``None`` where absent)."""
+    suffix = find_child_by_type(call, "call_suffix")
+    args = find_child_by_type(suffix, "value_arguments") if suffix is not None else None
+    labels: list[str | None] = []
+    for arg in (args.children if args is not None else []):
+        if arg.type == "value_argument":
+            label = find_child_by_type(arg, "value_argument_label")
+            labels.append(node_text(label, source) if label is not None else None)
+    return labels
+
+
+def _swift_labels_admit_call(
+    qualified_name: str,
+    call_labels: list[str | None],
+    label_sets: dict[str, list[tuple[str | None, ...]]],
+) -> bool:
+    """Whether ANY declaration of ``qualified_name`` admits a call with these labels.
+
+    INV-fatap. Swift identifies a method by its labels, so ``removeItem(at:)`` and
+    ``removeItem(atPath:)`` are different methods and a bare-name match is not
+    evidence of the callee. The question is asked of every OVERLOAD, not of the one
+    that survived ``local_symbols[Type.method]``: keyed by bare name, a second
+    declaration overwrites the first, and refusing on the survivor alone withdrew
+    291 TRUE binds on Alamofire against 49 false ones.
+
+    Refuses only on positive evidence -- a label the call supplies that no
+    declaration has. Everything else is admitted deliberately, because the
+    alternatives all lose true binds: a declaration with DEFAULTED parameters is
+    called with a subset of its labels, a trailing-closure call supplies no
+    ``value_arguments`` at all, and a name with no recorded labels has nothing to
+    compare.
+    """
+    declared = label_sets.get(qualified_name)
+    if not declared or not call_labels:
+        return True
+    return any(
+        all(label in candidate for label in call_labels) for candidate in declared
+    )
+
+
 def _extract_swift_signature(
     node: "tree_sitter.Node", source: bytes
 ) -> Optional[str]:
@@ -646,6 +710,10 @@ def _extract_symbols_from_file(
                     is_exported=any(m in modifiers for m in ("public", "open")),
                     qualified_name=_make_swift_qualified_name(type_ancestors, func_name),
                     cyclomatic_complexity=compute_cyclomatic_complexity(node, "swift"),
+                    # INV-fatap: the labels a call must supply to reach THIS
+                    # declaration. Carried as data rather than re-parsed from
+                    # ``signature``, whose parameter types contain commas.
+                    meta={"arg_labels": _swift_parameter_labels(node, source)},
                 )
                 analysis.symbols.append(symbol)
                 analysis.node_for_symbol[symbol.id] = node
@@ -1388,6 +1456,7 @@ def _extract_edges_from_file(
     import_aliases: dict[str, str],
     method_return_type_registry: dict[str, str] | None = None,
     field_type_registry: dict[str, dict[str, str]] | None = None,
+    arg_label_sets: dict[str, list[tuple[str | None, ...]]] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a file.
 
@@ -1402,6 +1471,8 @@ def _extract_edges_from_file(
     """
     if method_return_type_registry is None:
         method_return_type_registry = {}
+    if arg_label_sets is None:
+        arg_label_sets = {}
     if field_type_registry is None:
         field_type_registry = {}
     _caller_path = str(file_path)
@@ -1555,8 +1626,23 @@ def _extract_edges_from_file(
                     if receiver_hint and not resolved:
                         type_name = _type_of(receiver_hint, node) or receiver_hint
                         qualified_name = f"{type_name}.{callee_name}"
-                        if qualified_name in local_symbols and not _static_member_on_instance(
-                            receiver_hint, local_symbols[qualified_name], declared_names,
+                        # INV-fatap: a bare-name match is not evidence of the
+                        # callee. A project extension declaring
+                        # ``removeItem(atPath:)`` captured
+                        # ``fileManager.removeItem(at:)`` -- a call it cannot
+                        # compile against -- and the catalogued Foundation
+                        # boundary vanished behind a resolved edge.
+                        _labels_ok = _swift_labels_admit_call(
+                            qualified_name,
+                            _swift_call_argument_labels(node, source),
+                            arg_label_sets,
+                        )
+                        if (
+                            qualified_name in local_symbols
+                            and _labels_ok
+                            and not _static_member_on_instance(
+                                receiver_hint, local_symbols[qualified_name], declared_names,
+                            )
                         ):
                             callee = local_symbols[qualified_name]
                             edges.append(Edge.create(
@@ -1570,8 +1656,12 @@ def _extract_edges_from_file(
                                 meta={"call_construct": "function"},
                             ))
                             resolved = True
-                        elif qualified_name in global_symbols and not _static_member_on_instance(
-                            receiver_hint, global_symbols[qualified_name], declared_names,
+                        elif (
+                            qualified_name in global_symbols
+                            and _labels_ok
+                            and not _static_member_on_instance(
+                                receiver_hint, global_symbols[qualified_name], declared_names,
+                            )
                         ):
                             callee = global_symbols[qualified_name]
                             edges.append(Edge.create(
@@ -2312,6 +2402,12 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
     def __init__(self) -> None:
         super().__init__()
         self._pending_route_symbols: list[Symbol] = []
+        #: INV-fatap: ``Type.method`` -> every overload's argument-label tuple.
+        #: Filled in :meth:`register_symbol`, read in Pass 2, and cleared in
+        #: :meth:`post_process` so a second analysis in the same process does not
+        #: inherit the first one's declarations (the base clears its own
+        #: registries for the same reason).
+        self._arg_label_sets: dict[str, list[tuple[str | None, ...]]] = {}
 
     def extract_symbols_from_file(
         self, tree: "tree_sitter.Tree", source: bytes,
@@ -2332,7 +2428,18 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         """Register symbol by qualified name only.
 
         The ``NameResolver`` suffix index handles short-name lookups.
+
+        INV-fatap: this is also the one place every OVERLOAD is still visible.
+        The base calls it for every symbol of every file before Pass 2, and the
+        line below then overwrites by ``Type.method`` -- so by Pass 2 the label
+        sets of all but one declaration are gone. Accumulating them here lets the
+        label check ask "does ANY overload admit this call" rather than only
+        asking about whichever one survived, which is the difference between 49
+        correct refusals and 340 withdrawn binds on Alamofire.
         """
+        labels = (symbol.meta or {}).get("arg_labels")
+        if labels is not None:
+            self._arg_label_sets.setdefault(symbol.name, []).append(tuple(labels))
         global_symbols[symbol.name] = symbol
 
     def extract_edges_from_file(
@@ -2348,6 +2455,7 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
             local_symbols, global_symbols,
             run.execution_id, resolver, import_aliases,
             method_return_type_registry=self._method_return_type_registry,
+            arg_label_sets=self._arg_label_sets,
             field_type_registry=self._field_type_registry,
         )
 
@@ -2367,9 +2475,14 @@ class SwiftAnalyzer(TreeSitterAnalyzer):
         self, symbols: list[Symbol], edges: list[Edge],
         usage_contexts: list[UsageContext], run: "AnalysisRun",
     ) -> tuple[list[Symbol], list[Edge], list[UsageContext]]:
-        """Add stashed route symbols to the final result."""
+        """Add stashed route symbols to the final result, and reset per-run state."""
         symbols.extend(self._pending_route_symbols)
         self._pending_route_symbols = []
+        # INV-fatap: the analyzer is a module-level singleton, so the label map
+        # must not survive into the next repository's analysis (the base clears
+        # its field / return-type registries at the same point, for the same
+        # reason).
+        self._arg_label_sets = {}
         return symbols, edges, usage_contexts
 
 
