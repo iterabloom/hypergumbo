@@ -59,3 +59,25 @@
   clock: 6  # bf61
   nonce: bf61  # bf61
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a property of the call site: not the receiver's variable name\". NOTION THE SLOT CARRIES: receiver_variable (section call_site_property). ADR-0051 s2 is this item stated as principle; the module-key audit sized it (1,102 of 4,207 objc+swift refs, 26%, 266 distinct locals) and located objc's literal `module_path=receiver_name`. The conformant value -- the receiver TYPE -- already has a home in `receiver_type_hint`; WI-monul is the consumer half."  # bf61
+- op: discuss  # bb5a
+  at: '2026-09-04T03:02:56Z'  # bb5a
+  by: agent  # bb5a
+  actor: jgstern_agent  # bb5a
+  clock: 7  # bb5a
+  nonce: bb5a  # bb5a
+  message: "Sized 2026-09-03 (kotob_probe.py, ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/README.md): of the unresolved call_construct=method edges, Alamofire carries a lowercase receiver VARIABLE name in dst_ref.module_path on 1462 of 3501 (42%), VernissageServer on 2753 of 11014 (25%). The dst id's module slot is 'external' at all 2420 non-type Alamofire sites -- the variable rides only in dst_ref (swift.py gate_path_hint chain: receiver_type or import alias or receiver_hint or external); the swift:fm: id in the filing is a consumer re-rendering the id from dst_ref. Root cause confirmed at that one site. Fix shape: drop receiver_hint from the chain and write receiver_type into the id slot too (make_unresolved_edge), which will be done with WI-higob's swift half."  # bb5a
+- op: update  # 8ed1
+  at: '2026-09-04T05:18:50Z'  # 8ed1
+  by: agent  # 8ed1
+  actor: jgstern_agent  # 8ed1
+  clock: 8  # 8ed1
+  nonce: 8ed1  # 8ed1
+  set:  # 8ed1
+    status: satisfied  # 8ed1
+- op: discuss  # fe87
+  at: '2026-09-04T05:18:50Z'  # fe87
+  by: agent  # fe87
+  actor: jgstern_agent  # fe87
+  clock: 9  # fe87
+  nonce: fe87  # fe87
+  message: "Satisfied in PR #757 (dev 75f1373611). Root cause confirmed at one site: swift.py's `gate_path_hint = receiver_type or import_aliases.get(callee_name) or receiver_hint or \"external\"` — `receiver_hint` is the receiver VARIABLE. The dst id said `external` at the same site; the `swift:fm:` id in the filing is a consumer re-rendering the id from dst_ref. Behavioural evidence: (1) `kotob_probe.py` over every unresolved call_construct=method edge — Alamofire lowercase-variable dst_ref bucket 1462 → 0, VernissageServer 2753 → 0 (kotob_probe_A.json / kotob_probe_B.json); (2) tests in test_swift_receiver_type_in_module_slot.py assert the slot carries the TYPE for a declared parameter, an annotated local, a constructed local, a singleton local and an inline type head, and that an untyped local carries neither a module nor a dst_ref; (3) the filed repro shape (`let fm = FileManager.default; fm.fileExists`) now emits `swift:FileManager:0-0:fileExists:unresolved` with dst_ref.module_path `FileManager`. Measured (lab ~/hypergumbo_lab_notebook/higob_swiftobjc_09032026/): churn Alamofire 786 gains / 0 type losses / 9 Set<X>→Set re-keys / 5 resolved→typed (mis-bindings to test-only static extension members, un-bound), Vernissage 2236 gains / 0 losses / 1 re-key; io Alamofire 27→31 (6 real FileManager boundaries surfaced, 1 phantom Tier-2 URLSession.dataTask link gone), Vernissage 8→8 (3 lost in pass 1, all recovered). Three arm-B read-backs each found a shape (singleton locals, type heads, generics on project types, a static member captured by an instance call) — README passes 1-3. Two residuals filed: the Session.swift extraction miss and bare-name label-blind binding."  # fe87
