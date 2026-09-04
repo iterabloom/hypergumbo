@@ -1,0 +1,32 @@
+- op: create  # 7c13
+  at: '2026-09-04T19:37:50Z'  # 7c13
+  by: agent  # 7c13
+  actor: jgstern_agent  # 7c13
+  clock: 1  # 7c13
+  nonce: 7c13  # 7c13
+  data:  # 7c13
+    kind: work_item  # 7c13
+    title: "verify-claims --help restates the boundary vocabulary the validator derives from IO_BOUNDARY_TYPES; the two copies diverged by two values"  # 7c13
+    status: todo_hard  # 7c13
+    priority: 2  # 7c13
+    parent:  # 7c13
+    tags:  # 7c13
+    - cli  # 7c13
+    - docs_drift  # 7c13
+    - io_boundary  # 7c13
+    - axis  # 7c13
+    isbefore: []  # 7c13
+    duplicate_of: []  # 7c13
+    not_duplicate_of: []  # 7c13
+    pr_ref:  # 7c13
+    description: "FOUND 2026-09-04 by the docstring-staleness audit. The TEXT is fixed (PR #776); the\nDIVERGENCE that produced it is not, and will produce it again on the next vocabulary change.\n\nTHE SHAPE. `hypergumbo verify-claims --help` renders `verify_claims_epilog`, a hand-written\nstring in cli.py that enumerates the legal `boundary:` values and then asserts:\n\n    \"a boundary value outside the vocabulary above produces a clear error and exit code 2\"\n\nThe validator does not read that list. It derives its own answer from `IO_BOUNDARY_TYPES`\n(io_boundary_types.py) and prints a second, independently-generated enumeration in its error\nmessage. So one subcommand ships two vocabularies for one axis, and only one of them is\nattached to the registry that changes.\n\nMEASURED, behaviourally, before the text fix:\n\n    boundary: net_listen           -> ACCEPTED, rc 0    (absent from the help list)\n    boundary: command_launch       -> ACCEPTED, rc 0    (absent from the help list)\n    boundary: not_a_real_boundary  -> \"Error: unknown boundary ...; valid boundaries:\n                                      <all 19 enumerated>\"\n\nThe help listed 17. The validator knew 19. The two values the help had lost are exactly the\ntwo the axis gained since the epilog was last touched: `command_launch` (WI-javoh,\nIO_BOUNDARIES_SCHEMA_VERSION 2.1) and `net_listen` (WI-nosah, 2.2).\n\nWHY THIS IS THE ROOT CAUSE AND NOT THE SYMPTOM. Nothing about the stale text was a lapse of\nattention: an author adding a boundary value edits the registry, the catalogue rows and the\nconsumers, and has no reason to suspect a prose block in cli.py restates the same closed set.\nA restated vocabulary drifts by default and is only ever corrected by someone reading both\ncopies side by side, which is what the audit did and what no gate does.\n\nTHE FIX. Build the epilog's list from `IO_BOUNDARY_TYPES` at parser-construction time, the\nway the validator's error message already does, so the closed set has one home. The prose\naround it stays hand-written; only the enumeration is derived.\n\nSCOPE NOTE, so this is not over-fixed: the claim to make true is \"the enumeration is derived\",\nnot \"no help text may contain a list\". A worked example or an \"e.g.\" is fine and should stay.\n\nRELATED, CITE DO NOT FOLD: INV-rotup (META: CLI help text and README claims drift from current\nbehavior) is the class item for this failure and is `satisfied`. Its enforcement --\ntest_cli_docs_prose_gate.py -- covers a removed-feature denylist, README invocation parsing,\nand a committed FLAG matrix. None of those looks at the VALUES a flag's argument may take, so\nthis instance is outside the gate's scope rather than a gate that failed. See the discussion\nentry filed on INV-rotup the same day; whether that item's status survives the new shape is\nthe owner's call, not folded here."  # 7c13
+    fields: {}  # 7c13
+- op: update  # ea97
+  at: '2026-09-04T19:38:18Z'  # ea97
+  by: agent  # ea97
+  actor: jgstern_agent  # ea97
+  clock: 2  # ea97
+  nonce: ea97  # ea97
+  set: {}  # ea97
+  add:  # ea97
+    not_duplicate_of: [WI-vokiz-muhif-bagiv-tazuj-supon-padik-nudoj-pigij]  # ea97

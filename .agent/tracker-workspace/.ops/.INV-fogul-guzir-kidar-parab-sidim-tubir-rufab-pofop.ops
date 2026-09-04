@@ -1,0 +1,25 @@
+- op: create  # baae
+  at: '2026-09-04T19:59:56Z'  # baae
+  by: agent  # baae
+  actor: jgstern_agent  # baae
+  clock: 1  # baae
+  nonce: baae  # baae
+  data:  # baae
+    kind: invariant  # baae
+    title: "A cited emission site is keyed by file:line, so any edit ABOVE it rots the citation -- a docstring edit in another package turned dev red, and no slice selects the guarding test"  # baae
+    status: violated  # baae
+    priority: 2  # baae
+    parent:  # baae
+    tags:  # baae
+    - axis  # baae
+    - module_key  # baae
+    - ci  # baae
+    - docs_drift  # baae
+    isbefore: []  # baae
+    duplicate_of: []  # baae
+    not_duplicate_of: []  # baae
+    pr_ref:  # baae
+    description: "FOUND 2026-09-04, twice in one day, by two unrelated PRs.\n\nTHE MECHANIC. `MODULE_KEY_NOTIONS` (module_key_axis.py) cites the producer site that motivated\neach notion as an `EmissionSite(path, line, anchor)`, and\n`test_module_key_axis.py::test_every_cited_emission_site_still_exists` asserts that\n`lines[line - 1]` contains `anchor`. The test's own docstring gives the right reason for\nexisting: \"A citation that rots is worse than none -- it sends the next reader to a line that\nnow says something else.\"\n\nBut the LINE is not the citation's identity -- the ANCHOR is. The line is a hint, and it rots\non ANY edit above it, in that file, for any reason whatsoever. Measured, same day:\n\n  PR #776  three citations rotted (swift.py 1599->1855 and 1528->1784, objc.py 827->845)\n           from real CODE movement: the receiver-typing PRs #765/#768/#772 inserted helpers.\n  PR (C)   one citation rotted (cpp.py 1393->1404) from a pure MODULE-DOCSTRING EDIT in\n           hypergumbo-lang-mainstream -- prose, in another package, nowhere near the anchor.\n\nThe second is the one that makes this structural rather than housekeeping. A documentation-only\nchange to the top of a 1,800-line analyzer turned a green tree red in hypergumbo-core, and the\n\"failure\" carried no information: the anchor was intact, the code was intact, only the integer\nhad moved. That is a false-positive gate. It also costs a full 22-minute suite each time,\nbecause the failure surfaces only after the run.\n\nWHY IT WENT UNNOTICED FOR A DAY. Neither the local slice nor CI's selection ran this test for\nthe swift/objc PRs that broke it: a test guarding CITATIONS INTO another package's files is not\nselected by a change to those files. dev was red from 2026-09-04 until the staleness audit\nhappened to run the full suite. That is the same shape as the playbook's existing \"CI's\ncoverage selection is not the local slice's\", one level out.\n\nTHE FIX, and the reason it is not just \"keep re-pointing them\". Make the ANCHOR authoritative:\nthe test searches the file for the anchor and passes when it is found exactly once. Then a\ncitation can only fail when the anchor genuinely disappears -- which IS the signal the test\nwants -- and never when unrelated lines move. Keep `line` as a disambiguating hint for an\nanchor that legitimately appears more than once, and as the reader's jumping-off point, but\nhave it REGENERATED rather than hand-maintained. `test_cli_docs_prose_gate.py` already\nestablishes the pattern in this repo: a committed baseline plus\n`HYPERGUMBO_UPDATE_CLI_MATRIX=1` to refresh it.\n\nSCOPE. `MODULE_KEY_NOTIONS` is the instance that bit. Sweep for the shape before fixing: any\nregistry or doc structure that stores a `file:line` pointer into source it does not own has\nthe same defect, and the same test-selection blind spot.\n\nNOT DONE HERE: the sweep is not run, so the population is unsized."  # baae
+    fields:  # baae
+      statement: "A citation stored in one package that points into source owned by another must stay valid under any edit that does not touch the construct it names. Rotting on an unrelated insertion above the cited line is a false failure: it reports movement, not the loss the citation exists to detect."  # baae
+      root_cause: "EmissionSite identifies a site as (path, line) and treats `anchor` as an assertion checked AT that line rather than as the identity. test_every_cited_emission_site_still_exists compares lines[line - 1] against the anchor, so an insertion anywhere above the cited line fails even though the anchor is intact and unique in the file. The line is hand-maintained, so every such edit is a manual re-point, and the failure surfaces only after a full suite run. Compounding it, no test-selection arm runs this test for a change to the CITED file, so a rot can sit on dev unnoticed: it is selected by changes to module_key_axis.py, not by changes to swift.py / objc.py / cpp.py."  # baae
