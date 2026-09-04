@@ -3227,6 +3227,30 @@ class TreeSitterAnalyzer:
 
     # -- Template methods: symbol extraction (Pass 1) ----------------------
 
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """Parse one file's bytes, with the option to rewrite them first.
+
+        Template method. The default is one parse of the bytes as read, which is
+        what every analyzer wants; an analyzer whose grammar LAGS the language it
+        parses may override this to rewrite spellings the grammar cannot handle
+        (INV-bisok: tree-sitter-swift 0.7.3 against Swift 6.1). Two rules bind
+        such an override, and the base class states them here because they are
+        what make the hook safe rather than a licence to edit source:
+
+        1. **The rewrite must preserve byte length**, so every span the analyzer
+           reports still points at the real file. Substituting one character for
+           another is fine; deleting or inserting is not.
+        2. **The returned tree must be the tree of the returned bytes.** Pass 1
+           stores the source it was given and Pass 2 re-parses THAT, so returning
+           rewritten bytes with the original tree would desynchronise the passes.
+
+        Returns:
+            The bytes to record for this file, and their parse tree.
+        """
+        return source, parser.parse(source)
+
     def extract_symbols_from_file(
         self,
         tree: "tree_sitter.Tree",
@@ -4007,7 +4031,7 @@ class TreeSitterAnalyzer:
                 )
                 continue
 
-            tree = parser.parse(source)
+            source, tree = self.parse_source(parser, source)
             rel_path = str(source_file.relative_to(repo_root))
 
             analysis = self.extract_symbols_from_file(
