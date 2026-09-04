@@ -161,7 +161,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1599,
+                line=1855,
                 anchor="module_path=path_hint",
                 note=(
                     "The CORRECT shape, kept as the contrast case: the hint "
@@ -193,7 +193,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=827,
+                line=845,
                 anchor="_module: str | None = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
@@ -230,7 +230,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/swift.py"
                 ),
-                line=1528,
+                line=1784,
                 anchor="_module = _external_type or import_aliases.get(callee_name)",
                 note=(
                     "WAS the conflation in its purest form, and the single "

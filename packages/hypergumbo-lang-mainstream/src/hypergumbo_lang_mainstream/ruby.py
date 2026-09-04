@@ -20,12 +20,15 @@ How It Works
 ------------
 1. Check if tree-sitter-ruby is available
 2. If not available, return skipped result (not an error)
-3. Two-pass analysis:
+3. Multi-pass analysis — Ruby overrides ``analyze()`` because it needs
+   more than the standard two passes:
    - Pass 1: Parse all files, extract all symbols into global registry
    - Pass 2: Detect calls and resolve against global symbol registry
+   - Passes 2b / 2c / 2d and 3, plus a post-pass inheritance sweep
 4. Detect method calls and require statements
 5. Track variable types from constructor/factory calls (``var = Class.new``)
-   to resolve ``var.method`` → ``Class#method`` (typed_receiver_call evidence)
+   to resolve ``var.method`` → ``Class#method`` (``ast_call`` evidence
+   carrying ``meta["resolution_quality"] = "typed_receiver"``)
 6. Filter method parameters from bare-identifier handler to prevent
    false-positive edges from parameter references
 

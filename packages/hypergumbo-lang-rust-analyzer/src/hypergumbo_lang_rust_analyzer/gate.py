@@ -3,20 +3,27 @@
 
 The rust-analyzer backend is opt-in because SCIP indexing is ~10x slower
 than tree-sitter at every realistic size (WI-zakub §4). Activating it
-requires two conditions:
+requires an opt-in and an available binary.
 
-1. The user explicitly asked for it, either via the
-   ``HYPERGUMBO_RUST_ANALYZER`` environment variable (``"1"`` / ``"true"``
-   / ``"yes"``, case-insensitive) OR via the ``--backend rust-analyzer``
-   CLI flag (which the caller resolves to a string and passes in).
+1. The user explicitly asked for it. The three opt-in sources are ranked
+   TIERS, not interchangeable alternatives (ADR-0045 ruling 4): the
+   ``--backend rust-analyzer`` CLI flag outranks the
+   ``HYPERGUMBO_RUST_ANALYZER`` environment variable in both directions,
+   and a per-repo trust record (ADR-0045 ruling 7,
+   :mod:`hypergumbo_core.backend_trust`) is consulted last. Truthy env
+   values are :data:`hypergumbo_core.backend_selection.TRUTHY_VALUES`
+   (``"1"`` / ``"true"`` / ``"yes"`` / ``"on"``, case-insensitive).
 2. The ``rust-analyzer`` binary is resolvable on ``PATH``
    (:func:`hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available`).
 
-:func:`should_use_rust_analyzer_backend` is the single decision point.
-The function is pure — ``environ`` / ``is_available`` are injected so
-tests can exercise every branch without mutating ``os.environ`` or
-shelling out to ``shutil.which``. Production callers pass ``None`` for
-both and pick up :data:`os.environ` + the real availability check.
+:func:`should_use_rust_analyzer_backend` is this backend's decision point;
+the tier ORDERING and the truthy vocabulary themselves live in
+:mod:`hypergumbo_core.backend_selection`, shared with every other backend.
+``environ`` / ``is_available`` are injected so tests can exercise every branch
+without mutating ``os.environ`` or shelling out to ``shutil.which``; production
+callers pass ``None`` for both and pick up :data:`os.environ` + the real
+availability check. The function is NOT pure when ``repo_root`` is supplied —
+the trust tier reads a record from disk.
 
 The split between this module and :mod:`graceful_degrade` is
 intentional: graceful-degrade answers "the user asked; did it work?"

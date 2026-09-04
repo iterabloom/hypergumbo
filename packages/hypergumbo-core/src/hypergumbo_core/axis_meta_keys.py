@@ -70,11 +70,13 @@ The set-literal AST walker in
 :mod:`hypergumbo_core.axis_drift` is the wrong shape for meta keys —
 meta keys are accessed via ``meta["..."]`` *subscripts* and
 ``meta.get("...")`` *method calls*, not declared as set literals
-named ``*KEY*``. A subscript-access drift linter is a follow-on
-work item (filed at registry-establishment time); the registry
-without the linter is already useful as the canonical vocabulary
-for documentation, ADR cross-references, and the audit / fold
-trail.
+named ``*KEY*``. The subscript-access linter that was a follow-on work
+item at registry-establishment time has since shipped as
+:mod:`hypergumbo_core.meta_write_discipline` (driven by
+``scripts/check-meta-write-discipline``), and :func:`write_meta_key`
+enforces the same rule at runtime: an unregistered key raises. The
+registry remains the canonical vocabulary for documentation, ADR
+cross-references, and the audit / fold trail.
 
 Coverage scope
 --------------
@@ -179,9 +181,9 @@ class MetaKeySpec:
     # ``Edge.edge_type``, declare the two edge-type sets — ``applicable`` (a
     # ``None`` value means "missing data, fix the emitter") and ``na`` (a
     # ``None`` value means "the question does not arise"). Both stay ``None``
-    # for keys that apply uniformly. Only ``access_mode`` populates these today
-    # (its 17-type census, INV-tibob); the remaining canonical edge types are
-    # UNCLASSIFIED — deferred to the polyglot-census follow-up.
+    # for keys that apply uniformly. ``access_mode`` populated these first
+    # (its 17-type census, INV-tibob); the census is now COMPLETE (WI-pusuv) —
+    # every canonical edge type is classified, applicable plus na == 25.
     applicable_edge_types: frozenset[str] | None = None
     na_edge_types: frozenset[str] | None = None
     # INV-hazov: the arity answer. Defaults to ``unaudited`` so an omitted

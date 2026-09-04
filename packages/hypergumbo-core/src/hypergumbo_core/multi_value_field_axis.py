@@ -9,20 +9,24 @@ notice the rule applied. This module mechanizes the rule.
 What the linter does
 --------------------
 For each ``@dataclass``-decorated class in the configured "core files"
-list (``ir.py`` and ``datamodels.py`` by default), the linter walks
+list (``ir.py``, ``datamodels.py`` and ``io_boundary.py`` by default —
+see :data:`DEFAULT_CORE_FILES`), the linter walks
 every field annotation. For each field whose annotation is ``str``,
 ``Optional[str]``, ``str | None``, or a ``Literal[...]`` of strings,
 the linter requires a trailing source-line comment of the form
 ``# axis: <category>`` (optionally with extra text). The category must
 be one of:
 
-- A **known axis name** (``edge-type``, ``symbol-kind``,
+- A **known axis name** — see :func:`_known_axes` for the live set,
+  which as of ADR-0051 is eleven: ``edge-type``, ``symbol-kind``,
   ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
-  ``qualified-name``) — the field's value space is the legal set
-  returned by the axis's all-names function. ``language`` and
-  ``pass-id`` are derived from the analyzer/linker catalog
-  (:func:`hypergumbo_core.catalog`); the other five live in dedicated
-  ``*_types.py`` / ``*_origins.py`` / ``*_axis.py`` registry modules.
+  ``qualified-name``, ``io-boundary`` (ADR-0050), ``module-key``
+  (ADR-0051), ``entrypoint-kind`` and ``visibility``. The field's value
+  space is the legal set returned by the axis's all-names function.
+  ``language`` and ``pass-id`` are derived from the analyzer/linker
+  catalog (:func:`hypergumbo_core.catalog`); the rest live in dedicated
+  registry modules (``*_types.py`` / ``*_origins.py`` / ``*_axis.py``,
+  plus ``entrypoints.py`` and ``visibility.py``).
   The ``protocol-origin`` axis (ADR-0031) covers
   ``Symbol.protocol_origin`` values for synthetic stand-ins emitted by
   linkers that detect protocol patterns (Kafka, WebSocket, IPC, WASM,
@@ -107,8 +111,8 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     Imports are deferred so this module is importable from environments
     that don't have the catalog (and its transitive analyzer/linker
     registry walking) initialised. Each callable is invoked lazily by
-    :func:`check_axis_named` only when a field actually claims the
-    axis.
+    :func:`_check_field` (``known_axes[category]()``) only when a field
+    actually claims the axis.
     """
     from .edge_types import all_edge_type_names
     from .entrypoints import all_known_entrypoint_kinds

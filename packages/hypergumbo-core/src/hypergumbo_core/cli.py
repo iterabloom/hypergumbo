@@ -14,14 +14,17 @@ The CLI uses argparse with subcommands for different operations:
 - **Graph queries**: ``slice`` (subgraph from an entry point), ``search``,
   ``routes``, ``explain``, ``symbols``, ``compact``, ``io-boundaries``,
   ``verify-claims``, ``repeat-finder``, ``dead-code-maybe``, ``test-coverage``.
-- **Introspection**: ``catalog`` (analysis passes), ``config``,
-  ``cache-status`` / ``cache-clear``.
+- **Introspection**: ``catalog`` (analysis passes), ``catalog-inventory``,
+  ``config``, ``cache-status`` / ``cache-clear``.
 - **Setup**: ``build-grammars`` (Lean/Wolfram/Circom), ``install-gitleaks`` /
   ``uninstall-gitleaks``, ``install-rust-analyzer`` / ``uninstall-rust-analyzer``
   (SCIP-backed Rust backend, WI-dotud), ``install-embeddings`` /
-  ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``.
+  ``uninstall-embeddings``, ``add-extras`` / ``remove-extras``,
+  ``init-catalogs`` (scaffold the user catalogue channels, ADR-0047),
+  ``trust-backend`` (record a per-repo backend opt-in, ADR-0045).
 
-The authoritative set is the ``subcommands`` set in ``main()``.
+The authoritative set is derived from the parser itself —
+``_registered_subcommands(build_parser())`` — not a hand-maintained literal.
 
 When no subcommand is given, sketch mode is assumed. This makes the
 common case (`hypergumbo .`) as simple as possible.
@@ -10260,12 +10263,13 @@ Claims file format (YAML):
       text: No network sends      # required: human-readable description
       constraint:                 # one of two constraint shapes:
         # (a) boundary constraint (ADR-0016):
-        boundary: net_send        #   one of: env_read, host_info_read,
-        must_not_exist: true      #   external_potential, fs_read, fs_write,
-        # max_chains: 5           #   ipc_recv, ipc_send, logging, net_recv,
-                                  #   net_send, subprocess, db_read, db_write,
-                                  #   env_write, process_send,
-                                  #   browser_storage_read/write
+        boundary: net_send        #   one of: browser_storage_read/write,
+        must_not_exist: true      #   command_launch, db_read, db_write,
+        # max_chains: 5           #   env_read, env_write, external_potential,
+                                  #   fs_read, fs_write, host_info_read,
+                                  #   ipc_recv, ipc_send, logging, net_listen,
+                                  #   net_recv, net_send, process_send,
+                                  #   subprocess
         # (b) taint-flow constraint (ADR-0017):
         # taint_flow:
         #   source_taint: untrusted_input

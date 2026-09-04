@@ -1572,7 +1572,8 @@ def _extract_edges_from_tree(
     # identical dispatch tables (command dispatch, plugin registries, etc.).
     #
     # After detecting dispatch tables, scan function bodies for references
-    # to the dispatch table variable, creating uses_dispatch_table edges.
+    # to the dispatch table variable, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.
     dispatch_tables: dict[str, str] = {}  # variable name -> symbol ID
     for dt_node in iter_tree(tree.root_node):
         if dt_node.type != "init_declarator":
@@ -1636,7 +1637,8 @@ def _extract_edges_from_tree(
             dispatch_tables[array_name] = array_src_id
 
     # Scan function bodies for references to discovered dispatch table
-    # variables, creating uses_dispatch_table edges.
+    # variables, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.
     if dispatch_tables:
         str_path = str(file_path)
         for dt_node in iter_tree(tree.root_node):

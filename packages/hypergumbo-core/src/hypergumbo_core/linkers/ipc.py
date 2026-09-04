@@ -24,9 +24,13 @@ Electron IPC (main → renderer):
 - event.sender.send('channel', data)       -> event_publishes (channel_kind='ipc')
 
 Electron IPC (receive side — main and renderer):
-- ipcMain.on / .handle / .handleOnce       -> dropped (DEPRECATE-NO-FOLD per audit-findings 0002;
-- ipcRenderer.on / .once                      forward event_publishes captures the relationship,
-                                              and slice walks reverse direction natively)
+- ipcMain.on / .handle / .handleOnce       -> detected and used as the DST of the forward
+- ipcRenderer.on / .once                      edge; receive symbols are emitted. Only the
+                                              converse-direction edge is dropped
+                                              (DEPRECATE-NO-FOLD per audit-findings 0002:
+                                              forward event_publishes captures the
+                                              relationship, and slice walks reverse
+                                              direction natively)
 
 Electron contextBridge (preload → renderer):
 - contextBridge.exposeInMainWorld('ns', { method: () => ipcRenderer.invoke('ch') })
@@ -38,8 +42,11 @@ Electron contextBridge (preload → renderer):
   handler.
 
 Web Workers / postMessage:
-- worker.postMessage(data)                 -> event_publishes (channel_kind='ipc')
-- window.postMessage(data, origin)         -> event_publishes (channel_kind='ipc')
+- worker.postMessage(data)                 -> detected, but NO edge and NO symbol: the
+- window.postMessage(data, origin)            pattern names no channel, and the edge loop
+                                              skips a call whose channel is empty. Pairing
+                                              an unnamed postMessage with its listener needs
+                                              a channel the syntax does not carry.
 - addEventListener('message', handler)     -> dropped (per audit-findings 0002, as above)
 
 Channel Detection Strategy
@@ -60,7 +67,10 @@ How It Works
 4. Create edges linking files with matching channels/variables
 5. Detect contextBridge.exposeInMainWorld() wrappers in preload scripts,
    then scan other files for window.namespace.method() calls and create
-   bridge_invokes edges linking those calls to the IPC send symbols
+   canonical ``calls`` edges (``meta["bridge_kind"]="context_bridge"``; the
+   pre-fold edge type was ``bridge_invokes``) linking those calls to the IPC
+   send symbols. The same path also covers individually-exposed functions and
+   custom ``ipcInvoke`` / ``ipcSend`` wrappers
 
 Why This Design
 ---------------

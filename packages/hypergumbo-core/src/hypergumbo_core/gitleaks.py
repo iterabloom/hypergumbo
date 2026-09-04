@@ -25,7 +25,8 @@ Public surface
   for secrets. The cached path (WI-julir, UAT 2026-04-13 BUG-20) keys
   on a content hash and short-circuits repeated scans of identical
   output; useful when ``hypergumbo`` is invoked in tight CI loops.
-- ``is_gitleaks_available``: existence check + smoke test.
+- ``is_gitleaks_available``: existence check only (our install location,
+  then ``PATH``). Nothing is executed.
 - ``get_install_nag``: the message printed when the scan would run but
   the binary is missing.
 
