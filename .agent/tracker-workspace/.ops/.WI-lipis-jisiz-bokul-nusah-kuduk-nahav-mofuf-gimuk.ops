@@ -95,3 +95,19 @@
   clock: 11  # 0aa7
   nonce: 0aa7  # 0aa7
   message: "Tagged per the bakeoff-validation discipline: the third-deliverable entry carries a quantitative cohort claim (8 repos, both arms cold, added 2 / removed 0 / verdict-category moves 0, both added rows read back as TRUE). The direction is ADDITIVE, so validation should confirm the two new rows persist and that no repo outside the probe set gains a false fgets/hGetLine source -- NOT that a count went down. PR #681, dev 26d2995302."  # 0aa7
+- op: update  # f937
+  at: '2026-09-04T16:29:18Z'  # f937
+  by: agent  # f937
+  actor: jgstern_agent  # f937
+  clock: 12  # f937
+  nonce: f937  # f937
+  set: {}  # f937
+  remove:  # f937
+    tags: [awaits_bakeoff_validation]  # f937
+- op: discuss  # b614
+  at: '2026-09-04T16:29:19Z'  # b614
+  by: agent  # b614
+  actor: jgstern_agent  # b614
+  clock: 13  # b614
+  nonce: b614  # b614
+  message: "VALIDATED — tag stripped (2026-09-04 bakeoff-queue drain).\n\nThe tag carried an explicit direction: \"the direction is ADDITIVE, so validation should\nconfirm the two new rows persist and that no repo outside the probe set gains a false\nfgets/hGetLine source -- NOT that a count went down.\" Done exactly that, on six cold repos.\n\n17 wrapper-constructor source rows appear, on three repositories, and EVERY ONE was read\nback at source and is TRUE:\n\n    caddy      modules/caddyhttp/reverseproxy/fastcgi/client.go:219\n               `rb := bufio.NewReader(r)` -- the FastCGI response stream (network input)\n    gocryptfs  gocryptfs-xray/paths_ctlsock.go:33\n               `r := bufio.NewReader(os.Stdin)`\n    beads      x14, all `bufio.NewReader(os.Stdin)` in the interactive wizards\n               (init_contributor, init_team, doctor_fix, doctor_validate, init.go)\n\nZero FALSE sources on any repository, including the three with no population at all\n(hypergumbo, plausible, pretix). The additive claim holds and nothing outside the probe set\ngained a false one. Status unchanged (todo_hard -- the item's own work is not done; only its\nvalidation tag is discharged).\nArtifacts: ~/hypergumbo_lab_notebook/bakeoff_queue_09042026/PHASE4_RESULTS.md"  # b614

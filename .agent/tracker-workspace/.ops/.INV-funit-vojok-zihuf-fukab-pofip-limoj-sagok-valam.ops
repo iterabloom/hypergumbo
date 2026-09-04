@@ -30,3 +30,19 @@
   clock: 2  # ea91
   nonce: ea91  # ea91
   message: "CLOSURE RATIONALE. Fixed in dev 8b1a20cc1b. Satisfied on BEHAVIOURAL evidence\non the production path (verify-claims -> propagate_taint_ddg), not a proxy:\nthe idiomatic probe (def handler(f: Fernet): plain = f.decrypt(token); safe =\nf.encrypt(plain); os.remove(safe)) went verdict \"violated\"/precise/\nsanitized_flows=0 -> \"confirmed\"/sanitized_flows=1, with the barrier arm\nobserved firing (barrier_lines=frozenset({7}) -> False) under a wrapper on\n_ddg_taint_reaches. Shipped catalogue, no --taint-* overrides.\n\nNON-DESTRUCTION, on live data rather than only in a unit test: pretix is the\ncorpus's ONLY edge that reaches this gate (a bare `encrypt`, the one WI-fasub\nfound) and it stays REFUSED in both arms -- an untyped receiver still carries\nthe `external` placeholder, still yields no module, still cannot sanitize.\nINV-finoh's guarantee is preserved, not widened. A second test pins that a\ntyped receiver of the WRONG type (AESGCM.encrypt vs a registered\nFernet.encrypt) does not sanitize; it passed BEFORE the change and must stay\ngreen, so it is a guard rather than a regression test.\n\nTAG NOTE. awaits_bakeoff_validation is attached, but the quantitative claim\nbeing validated is a measured ZERO (corpus delta 0 in both directions across\npretix/hypergumbo/kserve/caddy). The queue entry exists to catch that delta\nbecoming NON-zero as receiver typing lands -- it is not awaiting confirmation\nof an improvement."  # ea91
+- op: update  # 9ca4
+  at: '2026-09-04T16:29:19Z'  # 9ca4
+  by: agent  # 9ca4
+  actor: jgstern_agent  # 9ca4
+  clock: 3  # 9ca4
+  nonce: 9ca4  # 9ca4
+  set: {}  # 9ca4
+  remove:  # 9ca4
+    tags: [awaits_bakeoff_validation]  # 9ca4
+- op: discuss  # 8ddd
+  at: '2026-09-04T16:29:19Z'  # 8ddd
+  by: agent  # 8ddd
+  actor: jgstern_agent  # 8ddd
+  clock: 4  # 8ddd
+  nonce: 8ddd  # 8ddd
+  message: "TRIPWIRE CHECKED AND HAS NOT FIRED — tag stripped (2026-09-04 bakeoff-queue drain).\n\nThis item's own tag note is the spec for its validation: \"the quantitative claim being\nvalidated is a measured ZERO (corpus delta 0 in both directions). The queue entry exists to\ncatch that delta becoming NON-zero as receiver typing lands -- it is not awaiting\nconfirmation of an improvement.\"\n\nReceiver typing HAS since landed, broadly: swift (INV-kotob, WI-higob slices 1-3), objc,\njava (INV-vugon/WI-gajuh), kotlin (WI-nasuf), python (INV-mumov), rust (INV-pamis,\nWI-papar) and go (WI-lalot). So the tripwire's condition has occurred and the delta was\nre-measured rather than assumed.\n\n`sanitized_flows = 0` on all six cold repos (gocryptfs, caddy, plausible, pretix, beads,\nhypergumbo). The field was verified PRESENT on the verdict object before the zero was\nbelieved -- a `.get()` returning 0 for an absent key is precisely how this check could lie,\nand this item's own thread records a near-miss of that shape.\n\nThe delta remains zero. Status stays satisfied.\nArtifacts: ~/hypergumbo_lab_notebook/bakeoff_queue_09042026/PHASE4_RESULTS.md"  # 8ddd
