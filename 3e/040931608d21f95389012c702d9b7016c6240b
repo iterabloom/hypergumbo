@@ -1,0 +1,103 @@
+Original commit body from ac5d010e01fb3632ac5dbf595c0db929be38407d:
+
+Every per-language return-type registry in the tree is built from ANALYSED
+DECLARATIONS: an analyzer fills `FileAnalysis.method_return_types` in Pass 1 and
+the aggregation hands it to Pass 2. A receiver bound to a LIBRARY call therefore
+cannot be typed at all — there is no declaration in the repository to register —
+and the 820 method-kind `io_primitives` rows across nine languages that need a
+typed receiver are unreachable however correct they are.
+
+WHY A SEPARATE FAMILY, not a `returns:` key on the io rows (WI-lalot's own
+ordering): it is a SIGNATURE fact, not an I/O fact, and one file whose declared
+job is "what boundary does this cross" should not also answer "what type does
+this return" — the shape INV-tutar cost 134 misclassified rows on; the CONSUMER
+is `var_types` in nine analyzers, which also feeds slice quality, centrality,
+dead code and taint; and one table shape serves nine languages where an
+io_primitives extension would be nine parallel additions able to drift.
+
+THE MERGE HAPPENS IN FOUR PLACES, NOT ONE. I wrote "one line in base.py" before
+checking, and the code says otherwise: `analyze_go` and `analyze_objc` are
+standalone functions with their own aggregations, and `java.py` builds its
+registry from `Symbol.meta["return_type"]` rather than from
+`FileAnalysis.method_return_types` at all. A name-based grep found three of the
+four — `objc.py` calls its variable `_method_return_types` — so the enumeration
+is by what the code DOES (`.method_return_types.items()`), not by variable name.
+All four merge with `setdefault` AFTER the analysed rows, so a declaration in the
+repository always beats a catalogue guess.
+
+GO ADDITIONALLY NEEDED A LOOKUP, not just a merge. Its registry is consulted for
+a BARE call (`makeConn()`) and for a method on a TYPED variable, but a
+package-qualified producer — `net.Listen(...)`, `exec.Command(...)` — takes the
+selector branch, where `net` is a package rather than a variable, so
+`func_vars.get("net")` is empty and the lookup never happens. The merge alone
+left `ln.Accept()` and `c.Start()` on the `external` sentinel, which is exactly
+the inertness this item was filed for. The registry itself is the gate for the
+new branch: an analysed go key is a bare function name or `Receiver.Method` with
+a conventionally capitalised Go type, so a hit on a lowercase `package.Func` key
+can only come from a library row.
+
+PYTHON'S SECOND HOME IS REMOVED RATHER THAN JOINED. `py.py`'s
+`TYPE_PRESERVING_MEMBERS` enumerated ten `pathlib.Path` members inline under a
+comment stating that the concept's home is the return-type registry and that the
+table existed only because "the types here ship no source for Pass 1 to parse".
+That catalogue now exists, so the table is DERIVED from it — a member whose
+declared return type IS its owner preserves the type — and the propagation rule
+in `_preserved_receiver_type` is untouched, because widening which receivers
+carry a type must not widen which members preserve it.
+
+THE USER CHANNEL IS READ, NOT MERELY DECLARED. The first version registered
+`library_signatures.d` in the registry and taught no loader to look at it — which
+is exactly the defect ADR-0047 ruling 3 was written about, where `io_primitives.d`
+was advertised to users while nothing scanned it. The registry's own gates caught
+it: `FAMILY_CONSEQUENCE` refuses an unregistered family and
+`test_declared_extensible_is_not_reported_as_readable` pins wired-vs-declared so a
+channel cannot silently claim to be usable. The loader now reads the channel
+through the shared `user_channel_files` helper whose docstring already anticipated
+a fourth caller, with a user row REPLACING a shipped one — the shipped catalogue
+is stdlib-only, so a collision means the user knows something about their own
+build that this file cannot.
+
+MEASURED, BOTH ARMS COLD, AND THE ITEM'S HEADLINE CLAIM DOES NOT SURVIVE IT.
+io-boundaries are IDENTICAL between arms on all five repositories:
+
+  caddy 299, gocryptfs 253, guacamole-client 93, AFNetworking 15, Alamofire 40
+
+Traced on a minimal fixture: `ln, _ := net.Listen(...); ln.Accept()` already
+produces a `net_recv` chain with NO library row, even though the analyzer emits
+`go:external:0-0:Accept`. Something downstream already recovers it, so the
+premise that these rows unlock otherwise-unmatchable catalogue rows is false for
+the stdlib rows shipped here. (A first A/B appeared to show the opposite; that
+run reused a cached behavior map because `io-boundaries` does not re-run the
+analyzer. Re-run cold, the arms are equal.)
+
+WHAT THE ROWS DO CHANGE is the analyzer's module slot, and every moved row was
+read back:
+
+  caddy      7,271 -> 7,314 typed slots;  43 sites external -> typed;  0 regressions
+  gocryptfs  3,734 -> 4,009 typed slots; 274 sites external -> typed;  0 regressions
+             (its `external` bucket drops 704 -> 429, a 39% reduction)
+
+    191  os        file.Truncate(0)                <- os.Create / os.OpenFile
+     81  os/exec   out, err = cmd.CombinedOutput()
+     19  net       conn.Close()                    <- net.Dial
+     17  os        defer f.Close()
+      5  os/exec   return cmd.Run()
+      2  io        stdinPipe.Close()               <- Cmd.StdinPipe
+
+Since the io counts do not move while 317 sites gain a real module, the
+classifier was ALREADY matching these by short name. So the gain is PRECISION,
+not recall: a match that rested on the name `Close` matching some catalogued
+`Close` now rests on the receiver's actual package. The recall claim in the
+filing is not supported by this cohort and is not repeated here.
+
+WHERE THE ITEM'S OWN INERT ROWS LIVE. Its discussion measured seven go framework
+rows as inert — gin.Engine.Run, fiber.App.Listen, echo.Echo.Start and the rest —
+every one entered through `gin.Default()` / `fiber.New()` / `echo.New()`. Those
+are THIRD-PARTY, and ADR-0047 puts third-party rows in community overlays rather
+than the shipped catalogue, so this half cannot move them by construction. The
+overlay is a separate follow-up, not folded in here.
+
+Lab: ~/hypergumbo_lab_notebook/lalot_libsigs_09042026/
+
+Racial-Capitalism-Is-Bad: a pumpkin spice fox competing with a frisbee trickster in a Jurassic pancake house made of mustard packets
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
