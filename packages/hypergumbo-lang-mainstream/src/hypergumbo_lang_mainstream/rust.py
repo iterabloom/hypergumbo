@@ -623,6 +623,15 @@ def _extract_qualified_var_type_paths(
     return paths
 
 
+#: Methods that project ``Result<T, E>`` / ``Option<T>`` to ``T``. WI-papar: a
+#: receiver reached through one of these IS the inner type, so the type walk steps
+#: through them rather than looking them up. Kept to the spellings that
+#: unambiguously yield ``T`` -- ``ok()`` yields ``Option<T>`` and is NOT here.
+_RUST_RESULT_PROJECTORS = frozenset({
+    "unwrap", "expect", "unwrap_or", "unwrap_or_else", "unwrap_or_default",
+})
+
+
 def _infer_type_from_rust_rhs(
     value_node: "tree_sitter.Node",
     source: bytes,
@@ -636,6 +645,38 @@ def _infer_type_from_rust_rhs(
     ``None`` (fail-open). Pulled out as a helper so the same logic can
     be reused at edge-extraction time if needed.
     """
+    # WI-papar: strip the wrappers that project `Result<T, E>` / `Option<T>`
+    # to `T`, because none of them changes WHICH type the receiver is.
+    #
+    #     File::create(p)?             try_expression   -- the form #595 left alone
+    #     File::create(p).unwrap()     a method call on the Result
+    #
+    # Both are the same mechanism and the second is the MORE common one: measured
+    # over ripgrep + bellman + tiktoken-rs, a receiver reached through
+    # `.unwrap()` / `.expect()` occurs 49 times against 29 for `?`. Handling only
+    # the syntax form would fix the rarer half of one mechanism, so the helper
+    # takes both -- and it takes them HERE, in the shared helper, because #595's
+    # shape-3 walker mirrors this function exactly and the two must not disagree
+    # about which node carries the type.
+    for _ in range(6):
+        if value_node.type == "parenthesized_expression" or value_node.type == "try_expression":
+            inner = next((c for c in value_node.children if c.is_named), None)
+            if inner is None:
+                return None  # pragma: no cover - a try/paren always wraps an expression
+            value_node = inner
+            continue
+        if value_node.type == "call_expression":
+            _fn = _find_child_by_field(value_node, "function")
+            if (
+                _fn is not None
+                and _fn.type == "field_expression"
+                and (_fld := _find_child_by_field(_fn, "field")) is not None
+                and node_text(_fld, source) in _RUST_RESULT_PROJECTORS
+                and (_recv := _find_child_by_field(_fn, "value")) is not None
+            ):
+                value_node = _recv
+                continue
+        break
     if value_node.type == "struct_expression":
         name_node = _find_child_by_field(value_node, "name")
         if name_node is not None:
@@ -2862,6 +2903,140 @@ def _extract_edges_from_file(
                                             ext_ref = ExternalRef(
                                                 lang="rust",
                                                 module_path=_fpath,
+                                                name=callee_name,
+                                            )
+                                    # WI-papar: the CHAINED receiver's type, when
+                                    # neither arm above found one.
+                                    # ``File::create(p)?.write_all(..)`` leaves no
+                                    # intermediate variable for the var_types
+                                    # walker, so the identifier arm cannot see it
+                                    # and the field arm does not apply. Strategy
+                                    # 1.9 above ALREADY inferred the type through
+                                    # ``_infer_type_from_rust_rhs`` and dropped it
+                                    # when the in-repo ``Type::method`` lookup
+                                    # missed -- which is exactly what an EXTERNAL
+                                    # type does. This is the same module-slot
+                                    # recovery the other two arms perform, applied
+                                    # to the type that inference already computed,
+                                    # and qualified the same way: a scoped type
+                                    # names its own module, a bare one needs the
+                                    # ``use`` alias that brought it in, so the slot
+                                    # carries ``std::fs::File`` rather than the
+                                    # bare ``File`` the helper returns.
+                                    #
+                                    # SAME NARROWNESS AS #595 AND WI-dizag: module
+                                    # SLOT only. ``has_explicit_binding`` is
+                                    # untouched, so which edges get emitted --
+                                    # including the generic-trait suppression
+                                    # below -- is byte-identical.
+                                    # TWO GUARDS, both found by reading the moved
+                                    # rows back rather than by reasoning.
+                                    #
+                                    # (a) THE CALL'S OWN CALLEE MUST NOT BE A
+                                    #     PROJECTOR. In `File::create(p).unwrap()`
+                                    #     the receiver of `unwrap` is the
+                                    #     `Result<File, E>`, not the `File`, so
+                                    #     carrying `std::fs::File` here attributes
+                                    #     `unwrap` to a type that does not declare
+                                    #     it. Measured: without this guard, 135 of
+                                    #     213 new ripgrep edges were exactly that.
+                                    #
+                                    # (b) THE RECEIVER MUST HAVE BEEN UNWRAPPED.
+                                    #     `File::create(p)` evaluates to a RESULT;
+                                    #     only `File::create(p)?` or
+                                    #     `File::create(p).unwrap()` evaluates to a
+                                    #     `File`. Nothing here knows whether a
+                                    #     library associated function is fallible,
+                                    #     so a RAW `Type::assoc()` receiver is
+                                    #     withheld -- the standing discipline is to
+                                    #     withhold, never pick-first.
+                                    _proj_call = callee_name in _RUST_RESULT_PROJECTORS
+                                    if (
+                                        ext_ref is None
+                                        and not has_explicit_binding
+                                        and is_method_call
+                                        and not _proj_call
+                                    ):
+                                        _cr = inner.child_by_field_name("value")
+                                        _unwrapped = False
+                                        if _cr is not None:
+                                            if _cr.type == "try_expression":
+                                                _unwrapped = True
+                                            elif _cr.type == "call_expression":
+                                                _cf = _find_child_by_field(_cr, "function")
+                                                if (
+                                                    _cf is not None
+                                                    and _cf.type == "field_expression"
+                                                ):
+                                                    _cfl = _find_child_by_field(_cf, "field")
+                                                    _unwrapped = (
+                                                        _cfl is not None
+                                                        and node_text(_cfl, source)
+                                                        in _RUST_RESULT_PROJECTORS
+                                                    )
+                                        if not _unwrapped:
+                                            _cr = None
+                                        _ct = (
+                                            _infer_type_from_rust_rhs(
+                                                _cr, source, _var_types,
+                                                getattr(
+                                                    analyzer,
+                                                    "_method_return_type_registry",
+                                                    None,
+                                                ) or {},
+                                            )
+                                            if _cr is not None
+                                            and _cr.type in (
+                                                "call_expression", "try_expression",
+                                            )
+                                            else None
+                                        )
+                                        # `_infer_type_from_rust_rhs` normalises a
+                                        # scoped path to a BARE name, so
+                                        # `std::fs::File::create(p)?` comes back as
+                                        # `File` and the written path is gone --
+                                        # the package-stripped hazard this item's
+                                        # own ADR-0051 annotation names. Recover it
+                                        # from the source the way #595's
+                                        # `_var_type_paths` does for annotations:
+                                        # a scoped callee names its own module.
+                                        _written = None
+                                        _inner_call = _cr
+                                        for _ in range(4):
+                                            if _inner_call is None:
+                                                break
+                                            if _inner_call.type == "try_expression":
+                                                _inner_call = next(
+                                                    (c for c in _inner_call.children
+                                                     if c.is_named), None,
+                                                )
+                                                continue
+                                            break
+                                        if (
+                                            _inner_call is not None
+                                            and _inner_call.type == "call_expression"
+                                        ):
+                                            _icf = _find_child_by_field(
+                                                _inner_call, "function",
+                                            )
+                                            if (
+                                                _icf is not None
+                                                and _icf.type == "scoped_identifier"
+                                            ):
+                                                _ip = _find_child_by_field(_icf, "path")
+                                                if _ip is not None:
+                                                    _written = node_text(_ip, source)
+                                        _cpath = (
+                                            _ct if _ct and "::" in _ct
+                                            else (use_aliases.get(_ct) if _ct else None)
+                                            or (_written if _written and "::" in _written
+                                                else None)
+                                        )
+                                        if _cpath and "::" in _cpath:
+                                            module_hint = _cpath
+                                            ext_ref = ExternalRef(
+                                                lang="rust",
+                                                module_path=_cpath,
                                                 name=callee_name,
                                             )
                                     # INV-pamis: the denylist exists because a
