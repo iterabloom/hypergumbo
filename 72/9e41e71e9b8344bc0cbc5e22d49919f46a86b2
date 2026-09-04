@@ -1,0 +1,51 @@
+Original commit body from 3a8389c8b0f11432b124f5411c3f20276939fec4:
+
+Two shapes the analyzers had the information for and were not reading.
+
+OBJECTIVE-C. `for (NSString *p in paths)` declares the binding's class in exactly
+the layout a local declaration uses — a direct `type_identifier` plus a
+`pointer_declarator` — and `_objc_declared_receiver_types` never looked inside a
+`for_statement`. The very next line's `NSFileManager *fm = ...` receiver was
+already typed, so this was one node type missing from a walk rather than a
+missing capability.
+
+SWIFT. `if let x = <expr>` / `guard let x = <expr>` take their RHS's type through
+the receiver-expression walker from #765. That also means `guard let task =
+mutableState.tasks.last as? URLSessionDownloadTask` reads the CAST and refines
+`task` from the collection annotation's `URLSessionTask` to what the code
+asserts. PR #760's read-back had attributed part of VernissageServer's residual
+losses to "guard-let-from-library bindings the file-wide leak matched by name" —
+the old leaky scope map typed these by accident and correct scoping took it away.
+This gives them back on a sound basis.
+
+A BUG IN THE FIRST VERSION, AND WHERE IT WAS HIDING. Reusing the declaration
+branch wholesale also accepted the loop's bare `identifier` child — which is the
+ITERATED COLLECTION. So `for (NSString *path in paths)` typed `paths` itself as
+`NSString`, and `[paths count]` re-keyed `NSArray -> NSString` on AFNetworking.
+The churn reported LOSSES n=0 for that run: the defect sat entirely in the RE-KEY
+column, which is where a wrong type hides, because the site still has an edge and
+only its target is false. Only the declarator binds now, with a regression test
+pinning both the binding and the collection.
+
+MEASURED, every changed row read back:
+
+  VernissageServer  228 changed  —  216 untyped -> typed, 9 hinted, 3 resolved
+  SDWebImage          8 changed  —  8 gains (NSURL ×4, NSString ×2, UIColor, NSOperation)
+  Alamofire          12 changed  —  4 gains, 4 resolved, 4 cast refinements
+  AFNetworking        1 changed  —  1 gain
+
+0 losses and 0 wrong re-keys on all four. io-boundaries unchanged (Alamofire
+40 edges / 30 chains, VernissageServer 8 / 8, AFNetworking 22 / 22, SDWebImage
+34 / 30) — the fourth consecutive item where filling the module slot buys
+precision rather than recall.
+
+STILL OPEN, FILED RATHER THAN GUESSED: swift `for s in xs` and
+`xs.forEach { s in }`, which need a collection's ELEMENT type.
+`_swift_bare_type` refuses `[T]` deliberately — a collection is not a receiver
+type — so element extraction is a NEW rule and must not arrive as a loosening of
+that one.
+
+Lab: ~/hypergumbo_lab_notebook/higob3_loops_09042026/
+
+Racial-Capitalism-Is-Bad: a harvest beetle painting a moth-eaten catalog in a cave-painted pancake griddle with a flock of parrots made of feathers
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
