@@ -18,8 +18,12 @@ How It Works
    propagates to the return value, mutates another parameter, or is
    sanitized.
 
-4. Functions without summaries use **default-conservative** behavior:
-   all parameters are assumed to flow to the return value.
+4. Functions without summaries are treated as UNKNOWN, not as propagating.
+   :func:`get_default_summary` expresses the conservative shape (every
+   parameter flows to the return value) but has no production caller —
+   applying it would make an empty catalogue change behaviour, which is the
+   opposite of what an empty catalogue should do. The one production consumer
+   is ``taint._summary_terminates``, a terminate/don't-terminate test.
 
 YAML Format
 -----------

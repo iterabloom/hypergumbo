@@ -27,7 +27,9 @@ them here with regex would create orphaned ``language="vue"`` symbols.
 
 Edges Extracted
 ---------------
-- **imports_component**: Links component usage to imported component paths
+- **imports**: Links component usage to imported component paths
+  (ADR-0023 §6 folded the former `imports_component` type into
+  canonical `imports`)
 
 Why This Design
 ---------------

@@ -606,7 +606,8 @@ def _extract_edges(
     #
     # After detecting dispatch tables, we also scan function bodies for
     # references to the dispatch table variable (e.g., get_builtin accessing
-    # commands[]), creating uses_dispatch_table edges to complete the chain:
+    # commands[]), creating `references` edges carrying
+    # meta.ref_construct='dispatch_table' to complete the chain:
     # cmd_main -> get_builtin -> commands[] -> cmd_add, cmd_commit, ...
     _func_symbols = {
         name: sym for name, sym in global_symbols.items()
@@ -725,7 +726,8 @@ def _extract_edges(
         ))
 
     # Scan function bodies for references to discovered dispatch table
-    # variables, creating uses_dispatch_table edges.  This connects
+    # variables, creating `references` edges carrying
+    # meta.ref_construct='dispatch_table'.  This connects
     # lookup functions (e.g., get_builtin) to the dispatch table variable,
     # completing the chain from the caller through to the dispatched targets.
     if dispatch_tables:

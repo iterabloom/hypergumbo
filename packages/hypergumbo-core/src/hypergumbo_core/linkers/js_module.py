@@ -9,16 +9,19 @@ This linker resolves those import paths to actual files on disk, creates
 `module_file` symbols for each resolved target, and creates two types of
 edges:
 
-1. `imports_module` - from the importing file symbol to the module_file
-   (file-level dependency)
+1. `imports` - from the importing file symbol to the module_file
+   (file-level dependency; ADR-0023 §6 Phase 3 folded the former
+   `imports_module` type away, and consumers recover that specialization
+   from `dst.kind in {module_file, file}`)
 2. `module_exports` - from the module_file to each function/method/class
    defined in that file (enabling cross-file reachability)
 
 Together these create a traversable path:
-  file_A --imports_module--> module_file_B --module_exports--> functionInB
+  file_A --imports--> module_file_B --module_exports--> functionInB
 
 For npm packages (bare/scoped imports like 'lodash', '@vue/test-utils'),
-the linker creates `npm_package` symbols and `imports_module` edges to them.
+the linker creates `npm_package` symbols and `imports` edges to them
+(recovered by `dst.kind == 'npm_package'`).
 
 Path Alias Resolution
 ---------------------
@@ -644,9 +647,9 @@ def link_js_modules(
 
     For each unresolved import edge:
     1. Relative imports (./foo, ../bar) → resolve to actual file, create
-       module_file symbol and imports_module + module_exports edges.
+       module_file symbol and imports + module_exports edges.
     2. npm packages (lodash, @vue/x) → create npm_package symbol and
-       imports_module edge.
+       imports edge.
     3. Dynamic imports (<dynamic:var>) → skip.
 
     Args:

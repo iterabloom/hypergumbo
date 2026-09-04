@@ -6,9 +6,12 @@ classified by boundary type. The closed set of catalog-declarable boundary
 tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
 db_read/db_write,
-process_send, logging, browser_storage_read/browser_storage_write); the
-synthesized ``external_potential`` and disclosed ``command_launch`` complete
-``KNOWN_IO_BOUNDARIES``. Catalogs are YAML files in the ``io_primitives/``
+process_send, logging, browser_storage_read/browser_storage_write, and
+``net_listen``); the synthesized ``external_potential`` and disclosed
+``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen`` sits on
+the ADR-0049 **deferred-crossing** axis: the call does not itself cross a
+boundary, it arranges for a later one, so it is disclosed rather than counted
+in the headline and shadows ``net_recv`` (``DEFERRED_CROSSING_SHADOWS``). Catalogs are YAML files in the ``io_primitives/``
 directory alongside this module.
 
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:

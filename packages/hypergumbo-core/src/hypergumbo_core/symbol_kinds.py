@@ -13,8 +13,11 @@ axis annotations (under the ``x-axis-of-values`` extension keyword).
 Consumers that need a subset of kinds (for example, a "callable kinds"
 filter) should call ``symbol_kinds_on_axis(...)`` rather than maintain
 their own hardcoded set; the property test in
-``tests/test_symbol_kinds.py`` enforces that every hardcoded set in the
-codebase whose name contains ``KIND`` is a subset of this registry.
+``packages/hypergumbo-core/tests/test_symbol_kinds.py`` enforces that every
+hardcoded set in the codebase whose name contains ``KIND`` is a subset of this
+registry, except for the names on :func:`find_axis_drift`'s explicit exclusion
+list (consumers that are deliberately not registry-derived, each carrying its
+own reason and, where one exists, the tracker ID that will remove it).
 
 Axis taxonomy (per ADR-0027 §1):
 
@@ -22,9 +25,18 @@ Axis taxonomy (per ADR-0027 §1):
   source-language syntactic construct the symbol represents (Cluster A
   in the WI-dumiz audit, plus the Cluster B/G/H promotions per the
   per-cluster audit-findings docs).
-- ``pending_classification`` — deferred for the residual Cluster B / G
-  values still on the registry; per-value verdicts arrive with each
-  cluster's audit-findings doc.
+- ``pending_classification`` — deferred values still on the registry:
+  the residual Cluster B / G members, the Cluster H shading/storage
+  qualifiers awaiting their audit, and ``operation``, deferred to v6
+  under id-format:F3. Per-value verdicts arrive with each cluster's
+  audit-findings doc.
+
+Beyond the axis taxonomy this module also owns the **type-family** surface
+(audit-findings 0018): :data:`TYPE_FAMILY_ABSTRACT` / :data:`TYPE_FAMILY_CONCRETE`,
+``SymbolKindSpec.type_family``, :data:`ABSTRACT_KIND_LANGUAGES`, the query
+helpers :func:`type_like_kind_names` / :func:`abstract_type_kind_names` /
+:func:`is_abstract_type`, and a second registry scanner,
+:func:`find_partial_abstract_family_literals`.
 
 The ``endpoint_shape`` axis was retired in PR #3633 (Phase 4b enum
 closure / WI-butol). All 71 deprecated values that occupied that axis

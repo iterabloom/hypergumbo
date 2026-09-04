@@ -11,8 +11,10 @@ Key IR Classes
   run_signature and repo_fingerprint are external provenance / PROV-DM
   fields with no internal consumers — hypergumbo never reads them back to
   key or invalidate a cache (see the AnalysisRun "Readership note").
-- **Symbol**: Code elements (functions, classes) with location, identity hashes
-  (stable_id, shape_id), and quality scores
+- **Symbol**: Code elements (functions, classes) with location and identity
+  hashes (stable_id, shape_id, fingerprint). The ``quality`` field is
+  declared-but-empty — it has no producer (INV-nuzal) and is omitted from
+  serialization when ``None``.
 - **Edge**: Relationships between symbols with confidence, evidence tracking,
   and edge_key for deduplication across passes. Edges carry a structured
   ``dst_ref: Optional[ExternalRef]`` sibling alongside the legacy ``dst``
@@ -21,8 +23,10 @@ Key IR Classes
 - **ExternalRef**: Frozen ``(lang, module_path, name)`` triple naming a
   call target outside the producer's translation unit. Aliased imports
   bind ``name`` to the imported symbol, not the local alias.
-- **UsageContext**: Per-call-site discrimination for resolved call edges
-  (e.g., direct vs reflective, decorator-wrapped, framework-mediated).
+- **UsageContext**: A context that gives a symbol semantic meaning through
+  how it is USED — ``kind`` is one of ``call`` / ``data_value`` / ``export`` /
+  ``macro``. It is matched by the YAML framework-pattern system and is not an
+  edge annotation.
 
 Provenance Fields
 -----------------

@@ -20,9 +20,9 @@ three fall-through conditions WI-nohah enumerates:
    ``rust-analyzer`` process, so treat it identically to failure
    mode 2.
 
-Returning ``None`` is the contract — the caller (WI-duzul Slice C's
-analyzer-registry wrapper) is responsible for the actual fall-through
-to ``rust.py``. Keeping the decision point pure lets the fall-through
+Returning ``None`` is the contract — the caller (the analyzer-registry
+wrapper in ``analyzer.py``, which is shipped and passes a real ``log``) is
+responsible for the actual fall-through to ``rust.py``. Keeping the decision point pure lets the fall-through
 logic stay testable without mounting a real analyzer registry.
 
 The ``invoke`` and ``translate`` callables are injectable so tests can
@@ -148,8 +148,8 @@ def try_analyze_with_rust_analyzer(
     injected in tests to simulate each failure shape without spawning
     a subprocess or constructing a SCIP fixture.
 
-    ``log`` defaults to a no-op; tests (and the future analyzer
-    registry wrapper) pass a real logger so the user sees one line
+    ``log`` defaults to a no-op; tests and the analyzer-registry wrapper
+    in ``analyzer.py`` pass a real logger so the user sees one line
     explaining why the backend degraded.
     """
     invoke_fn = invoke if invoke is not None else run_rust_analyzer_scip

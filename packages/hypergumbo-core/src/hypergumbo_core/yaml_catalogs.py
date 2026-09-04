@@ -3,15 +3,19 @@
 
 Hypergumbo's analysis pipeline reads several categories of YAML data alongside
 the Python source: framework patterns for symbol enrichment, per-language I/O
-primitive catalogs, dataflow classification rules, CFG node mappings, taint
-sources / sanitizers, and per-language function summaries. Each lives in its
-own subdirectory of this package, has its own loader, and is governed by its
-own ADR. This module is the single index over all of them.
+primitive catalogs and their community overlays, dataflow classification
+rules, CFG node mappings, taint sources / sanitizers, per-language function
+summaries, URL-folding rules, and library signatures. Each lives in its own
+subdirectory of this package and is indexed here; most have their own loader
+(``io_boundary`` and ``taint`` each serve two families) and most name a
+governing ADR (``adr`` is optional). This module is the single index over all
+of them.
 
 Why this exists. The catalog set grew organically — ``frameworks/`` landed in
 the initial pattern-system work, ``io_primitives/`` landed with ADR-0016, the
 ``dataflow_patterns/`` + ``cfg_nodes/`` + ``taint_*`` + ``function_summaries/``
-family landed across ADR-0015 / ADR-0017. With seven directories holding ~150
+family landed across ADR-0015 / ADR-0017, and ADR-0047 added the user-channel
+and community-overlay families. With ten registered directories holding 169
 YAML files there is no longer a single place to enumerate them. Without a
 registry, new categories drift in and out of documentation, generate-architecture
 counted only ``frameworks/``, and there was no drift-detection equivalent to the
@@ -20,10 +24,15 @@ canonical-registry / drift-linter pattern used for ``Edge.edge_type`` /
 
 How it works. ``YAML_CATALOGS`` is the source of truth — one ``CatalogSpec``
 per directory, naming the directory, the loader module that consumes it, the
-governing ADR, and a one-line purpose. ``enumerate_catalogs()`` walks the
+governing ADR (optional), and a one-line purpose — plus the ADR-0047 ruling-7
+extensibility fields ``user_channel`` / ``no_channel_reason`` and their
+``channel_scope`` / ``channel_gated`` qualifiers, which declare whether a
+category can be extended from a user's own config directory and, if not, why. ``enumerate_catalogs()`` walks the
 package root and pairs each registered spec with its actual ``*.yaml`` file
-count. ``validate_registry()`` returns drift findings (registered directories
-that are absent, on-disk YAML directories not yet registered); the companion
+count. ``validate_registry()`` returns drift findings — registered directories that
+are absent, on-disk YAML directories not yet registered, ruling-7 declaration
+incoherence, and derived-channel-name mismatches (:func:`_validate_user_channels`)
+— and accepts a ``catalogs=`` override for testing; the companion
 ``scripts/yaml-catalog-index --check`` mode exits non-zero on any finding.
 """
 

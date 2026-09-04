@@ -11,10 +11,18 @@ extending ``BaseOperator``, ``LoggedModel`` extending ``models.Model``,
 base. The intermediate is in-tree; ``MyClass.meta.base_classes`` lists
 only ``[AlloyDBWriteBaseOperator]``, not the ultimate framework base.
 
-This helper walks ``extends``/``implements`` edges from a class up
-through every reachable in-tree ancestor, collecting the raw base-class
-name strings that each ancestor's ``meta.base_classes`` records. The
-caller is responsible for normalization (``_short_base_name`` style).
+This helper walks the registry's inheritance family — :data:`INHERITANCE_EDGE_TYPES`,
+i.e. ``extends`` / ``implements`` / ``inherits``, not a local literal (INV-nosoz
+removed the two-member literal that silently omitted ``inherits``) — from a class
+up through every reachable in-tree ancestor, collecting the raw base-class name
+strings that each ancestor's ``meta.base_classes`` records. Callers may pass a
+different edge-type set (``includes``) and different ``meta_keys``
+(``interfaces``, for the JVM languages). The caller is responsible for
+normalization (``_short_base_name`` style).
+
+The module also exports the INV-zuhub short-name disambiguation pair
+:func:`build_short_name_collisions` / :func:`short_name_fallback`, and
+:func:`build_inheritance_index`.
 
 Why a shared helper instead of per-linker logic
 -----------------------------------------------
@@ -25,8 +33,10 @@ pathological cases) and the "edge index" build cost.
 
 Scope (WI-halat)
 ----------------
-Per the WI-halat acceptance criteria, this fix targets framework-
-dispatch linkers that consult ``meta.base_classes`` literally. The
+Per the WI-halat acceptance criteria, this fix originally targeted
+framework-dispatch linkers that consult ``meta.base_classes`` literally;
+the ``meta_keys`` parameter has since generalized it to any metadata key
+naming ancestors. The
 helper does not modify analyzer-emitted metadata; it produces a
 read-only ancestor-name set that consumers can fold into the existing
 matcher.

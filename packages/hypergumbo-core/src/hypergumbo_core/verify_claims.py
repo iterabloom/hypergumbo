@@ -78,13 +78,16 @@ Caveats
 -------
 A ``confirmed_with_caveats`` verdict carries a structured ``caveats`` list,
 built through one shared constructor so the text and JSON renderers disclose
-identically. Four kinds exist:
+identically. Nine ``CAVEAT_*`` constants exist, plus one unconstanted kind
+(``deferred_crossing``). The four longest-standing:
 
 - ``CAVEAT_USER_SUPPLIED_SANITIZER`` — the clean answer depends on a
-  sanitizer declared by the analysed repository rather than the shipped
-  catalogue. A shipped-catalogue sanitizer earns plain ``confirmed``.
-- ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose callee cannot be
-  resolved. This qualifies the verdict only when opacity is the *sole*
+  sanitizer, or a function summary, supplied by the analysed repository
+  rather than the shipped catalogue. A shipped-catalogue sanitizer earns
+  plain ``confirmed``.
+- ``CAVEAT_OPAQUE_BOUNDARY`` — named launch sites whose *launched program*
+  cannot be resolved. The callee is catalogued and resolved; what is opaque
+  is what it goes on to run. This qualifies the verdict only when opacity is the *sole*
   remaining blocker; beside an uncatalogued module the verdict stays
   ``inconclusive``, because the reader could not tell which gap produced
   the silence.
@@ -95,9 +98,14 @@ identically. Four kinds exist:
   catalogue declares for *this* boundary, through a receiver whose type the
   analysis could not determine (INV-fibis). Boundary-scoped, and it does NOT
   make coverage incomplete: it qualifies a verdict that is otherwise clean.
-  **Boundary claims only.** The taint arm has its own coverage gate and does
-  not consume this signal; whether a taint verdict should disclose the same
-  population is a separate question and is not answered here.
+  Both arms consume it: the boundary arm and, since INV-nuhun, the taint arm
+  (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
+  receivers it could not type.
+
+The remaining five — ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``,
+``CAVEAT_ANALYZER_METHOD_CALL_BLIND``, ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``,
+``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` and ``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` —
+are each documented at their own definition.
 
 A verdict may carry more than one kind at once.
 

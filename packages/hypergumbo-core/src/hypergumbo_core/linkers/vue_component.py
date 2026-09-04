@@ -1,24 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Infrastructure linker: Vue component for resolving cross-file component imports.
 
-The Vue analyzer creates `imports_component` edges with raw import paths
+The Vue analyzer creates `imports` edges with raw import paths
 (e.g., './Header.vue', '@/components/Button.vue') as their dst instead
 of Symbol IDs. This linker resolves those paths to actual file symbols,
 creating proper edges that connect Vue component composition graphs.
 
 How It Works
 ------------
-1. Scan all existing edges for `imports_component` type
+1. Scan all existing edges for `imports` carrying `meta['import_path']`
 2. For each, resolve the import path (relative, subdirectory, @ alias)
    to an actual .vue file on disk
 3. Create `component_file` symbols for each .vue file involved
-4. Create resolved `imports_component` edges from component_ref to
+4. Create resolved `imports` edges from component_ref to
    component_file symbols
 
 Why This Matters
 ----------------
 Without this linker, ALL Vue component_ref symbols are orphaned because
-their `imports_component` edges point to raw strings instead of Symbol IDs.
+their `imports` edges point to raw strings instead of Symbol IDs.
 On Chatwoot (1093 Vue component nodes), this caused 100% orphan rate.
 With this linker, component composition graphs become traversable.
 
@@ -128,7 +128,7 @@ def _resolve_import_path(
 def link_vue_components(ctx: LinkerContext) -> LinkerResult:
     """Resolve Vue component imports to symbol-to-symbol edges.
 
-    Finds all `imports_component` edges (created by the Vue analyzer with
+    Finds all `imports` edges (created by the Vue analyzer with
     raw import paths as dst), resolves the paths to actual .vue files,
     creates component_file symbols for each file, and creates proper edges.
 

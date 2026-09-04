@@ -23,8 +23,11 @@ function — it operates at the symbol level. Its findings are labeled
 DDG-backed analysis has LANDED and is not the only producer any more: for
 languages with def/use extractors, :func:`propagate_taint_ddg` (see
 ``ddg_build.py`` / ``taint_refine.py``) walks reaching-definitions and stamps
-``analysis_method="ddg"`` when it confirms a dependence, or ``"ddg_mixed"``
-when the walk ran without confirming one. So do NOT assume every finding
+``analysis_method="ddg"`` when it confirms a dependence, ``"ddg_mixed"``
+when it does not — which covers the walk running without confirming
+(``unconfirmed``, ``escaped``) *and* the walk never running at all
+(``not_attempted``) — and ``"structural"`` where the walk is unavailable for
+the language. So do NOT assume every finding
 carries ``analysis_method="structural"`` — see the field's own docs below for
 what each value licenses.
 
