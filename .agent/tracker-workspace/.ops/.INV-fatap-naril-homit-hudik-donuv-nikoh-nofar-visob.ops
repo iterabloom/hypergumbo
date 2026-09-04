@@ -23,3 +23,18 @@
     fields:  # ec21
       statement: "A call on a typed receiver MUST bind a project member only when the member is compatible with the call (argument labels, static-vs-instance); a bare-name match alone is not evidence of the callee."  # ec21
       root_cause: "swift.py resolves f'{type_name}.{callee_name}' in local_symbols / global_symbols by bare method name (~line 1150). PR #757 added the static-vs-instance guard (_static_member_on_instance); argument labels are still ignored, so a project extension instance method sharing a bare name with a Foundation method captures the call."  # ec21
+- op: update  # ce72
+  at: '2026-09-04T17:05:25Z'  # ce72
+  by: agent  # ce72
+  actor: jgstern_agent  # ce72
+  clock: 2  # ce72
+  nonce: ce72  # ce72
+  set:  # ce72
+    status: satisfied  # ce72
+- op: discuss  # 7cd9
+  at: '2026-09-04T17:05:25Z'  # 7cd9
+  by: agent  # 7cd9
+  actor: jgstern_agent  # 7cd9
+  clock: 3  # 7cd9
+  nonce: 7cd9  # 7cd9
+  message: "SATISFIED in PR #768, on behavioural evidence with a control in the same fixture.\n\nTHE FILED REPRO, verified live BEFORE the edit against the shipped analyzer:\n    extension FileManager { func removeItem(atPath p: String) -> Bool }\n    fm.removeItem(at: URL(...))   resolved=True -> FileManager.removeItem   WRONG\n    fm.createFile(atPath: \"/x\")   resolved=True -> FileManager.createFile   RIGHT (control)\nand after: the first is `swift:FileManager:0-0:removeItem:unresolved` (the catalogued\nboundary, no longer hidden behind a resolved edge), the control still binds.\n\nThe statement is met as written -- \"a call on a typed receiver MUST bind a project member\nonly when the member is compatible with the call (argument labels, static-vs-instance)\".\nLabels are now asked of EVERY overload, not of whichever symbol survived\n`local_symbols[Type.method]`; the first attempt asked only the survivor and withdrew 340\nAlamofire binds, of which 291 were overload collapse and only 49 genuinely false, so it was\nreverted rather than shipped.\n\nCORPUS EVIDENCE, every changed row read back at source: Alamofire 6 changed, VernissageServer\n3, ALL NINE CORRECT and none a lost true bind -- 5 mis-typed receivers (`headers.index(of:)`\nis an `extension [HTTPHeader]` method that `HTTPHeaders.index(after:)` was capturing), 3\n`application.services.statusesService.get(id:on:)` binding to\n`Application.get(path:withVersion:)`, and 1 recovery of Foundation's\n`createDirectory(atPath:withIntermediateDirectories:attributes:)` from the project extension\nthat was shadowing it.\n\nONE CORRECTION TO THE FILING, recorded so it is not re-derived: it named Alamofire's\n`Tests/FileManager+AlamofireTests.swift` as the live instance, but BOTH of that file's\n`removeItem` declarations are `static`, so PR #757 already covered them. The defect is real\nand reproduces on the minimal fixture; that named instance had already been closed by the\nsibling fix."  # 7cd9
