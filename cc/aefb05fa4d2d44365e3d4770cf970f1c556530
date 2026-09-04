@@ -1,0 +1,56 @@
+Original commit body from 05c67f3aaec86d566cc2b0fbae24e86ea2546f2c:
+
+INV-dihos phase 6 never scheduled swift: 100 of its 107 catalogued io rows are
+method-kind, and a receiver bound to a method-call RESULT (`let s =
+store.session()`) was untyped, so those rows had no consumer to feed.
+
+Pass 1 now registers `<Owner>.<func> -> T` for every `func ... -> T`
+(`_swift_return_type_name`: an optional is unwrapped, generic arguments are
+dropped, and a collection / tuple / closure type is refused -- the catalogue
+keys by bare receiver type). The base analyzer aggregates the per-file maps
+(first writer wins) into the registry java, kotlin and go already read, and
+WI-lalot's loader will feed library rows into the same dict.
+
+Pass 2 reads it at the binding (`_swift_call_result_type`): `store.session()`
+through the receiver's type, `Store.make()` through the type head, a bare
+`makeSession()` through the enclosing type and then the free function, with
+`try` / `await` wrappers unwrapped. An unknown callee leaves the local untyped,
+which is what an unknown result means.
+
+The registry fixture -- two functions each declaring `let s` -- exposed that
+swift's receiver map was FILE-scoped: a later `let s` overwrote the earlier
+one, and any function's parameter typed every same-named receiver in the file
+(right by naming convention when `task` is always a URLSessionTask, wrong when
+`request` is Alamofire's Request in one function and Foundation's URLRequest in
+another). Receiver types are now scoped to the declaring function by the exact
+parent chain (kotlin got a scope stack for the same bug; byte-span containment
+was tried first and broke on Session.swift, whose error-recovered parse has a
+function whose span swallows the class body), file-level declarations stay
+visible everywhere, and an optional annotation (`var task: URLSessionTask?`,
+`t: URLSessionTask?`) names its wrapped type -- the real declarations the leak
+had been standing in for. What the leak covered by luck and no declaration
+could -- `session.request(.get)` in a test whose `session` is `private var
+session: Session?` in BaseTestCase.swift, another file, one class up -- is now
+covered structurally: class-level properties join the base analyzer's
+repo-wide field-type registry (`FileAnalysis.class_field_types`, the interface
+python / java / rust already use), and a bare receiver no scope or file-level
+declaration types is looked up through the enclosing type and its
+`base_classes`. Error-recovered files (Session.swift, INV-bisok) get one rule:
+a declaration under an ERROR node is file-level, a lookup walks through them
+to its real function. (Bisecting Session.swift for that error found INV-bisok's
+root cause on the way: a `#if canImport(...)` block inside a class body is not
+parsed by tree-sitter-swift; recorded on the item, not fixed here.)
+
+Measured on Alamofire / VernissageServer (arm A = dev 7b9938a030):
+  per-site churn: Alamofire 331 / 10697 sites change -- 89 gain a type, 76 untyped
+  calls resolve to project methods through inherited properties, 43 re-keys,
+  105 lose a leak-given type (read back: `request` typed URLRequest where it is
+  Alamofire's Request; loop / closure receivers the leak matched by name; and
+  Session.swift's error-recovered parse, INV-bisok). Vernissage 226 / 12544 change
+  -- 72 gain, 137 lose leak-given types on `for`-loop and guard-let-from-library
+  bindings (the chained-receiver slice and WI-lalot's rows, both filed).
+  Loss history across the six read-backs: 190/137 -> 175/137 -> 145/161 ->
+  145/137 -> 105/137. io-boundaries unchanged: Alamofire 31 -> 31, Vernissage 8 -> 8.
+
+Racial-Capitalism-Is-Bad: a spectral opossum building a spiral staircase shaped like recipe book made of old recipe cards in a Jurassic pancake house
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
