@@ -106,12 +106,14 @@ DECLARATIONS.update({
         "real code uses.",
     ),
     "javascript": MethodCallEdgeDeclaration(
-        "javascript", False, "2026-08-23",
-        "WI-nasuf: emits NO call edge for `new net.Socket().write(d)` in "
-        "either shape. Positive control in the SAME fixture: the "
-        "MODULE-qualified `fs.createWriteStream(p)` emits and matches, so the "
-        "null is the method shape and not a broken harness. 51 of "
-        "javascript's 187 catalogued primitives (27%) are method-kind.",
+        "javascript", True, "2026-09-03",
+        "WI-nasuf / INV-misup, closed: an instance-method call on an untyped "
+        "receiver emits the `external` placeholder with `call_construct: "
+        "method`, and a `new`-constructed receiver (`ws = new WebSocket(u); "
+        "ws.send(x)`, `new net.Socket().write(d)`) carries the constructor's "
+        "catalogue module. Measured on the same fixture that recorded the "
+        "2026-08-23 blindness, plus mobx / plausible / workadventure "
+        "io-boundaries and per-site churn.",
     ),
 })
 
