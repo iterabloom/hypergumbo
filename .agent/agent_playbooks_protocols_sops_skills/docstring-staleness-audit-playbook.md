@@ -160,6 +160,16 @@ review. **Four** known measurement artifacts to watch for:
   not evidence of drift — check whether the previous run's own fix
   produced the flag.**
 
+  **But CHECK is not DISMISS — the artifact explains why a file APPEARS,
+  not whether it has drifted.** The 2026-09-04 run treated `linkers/ipc.py`
+  as the known artifact and audited it anyway. The module docstring had
+  four real drifts, the largest being a promise the code never keeps:
+  it advertised `worker.postMessage(data) -> event_publishes`, while
+  `POSTMESSAGE_PATTERN` sets `"channel": ""` and the edge loop does
+  `if not channel: continue` — no edge and no symbol, ever. Had the
+  artifact been used to skip the file, that finding would have been
+  missed twice running.
+
 ### Step 3 — parallel sub-agent semantic review
 
 For each file in the candidate pool, spawn a read-only sub-agent
@@ -256,9 +266,12 @@ subcommands).
           print("first line incomplete:", path)
   EOF
   ```
-- **Ruff rejects ambiguous Unicode in docstrings (RUF002).** Writing a
-  multiplication sign (`×`) in new prose fails the pre-commit gate; use
-  `x`. Em-dashes are fine and used throughout.
+- **Ruff rejects ambiguous Unicode in docstrings (RUF002) and in
+  COMMENTS (RUF003).** Writing a multiplication sign (`×`) in new
+  docstring prose fails the pre-commit gate; use `x`. The comment twin
+  fires on the same class of character — the 2026-09-04 run tripped
+  RUF003 on a set-union sign (`∪`) in a new `axis_meta_keys.py` comment;
+  write "plus". Em-dashes are fine and used throughout.
 - **Grep for verification, not `grep | head`.** Truncating the verifying
   grep is how the 2026-08-18 run reported a retired-name sweep as
   complete when 21 sites remained across 13 files. Count the hits, then
@@ -281,6 +294,7 @@ The thresholds `--window=120` and `--min-delta=90` were calibrated on
 |---|---:|---:|---:|---|
 | 2026-05-15 | 28 | 21 | 75% | #3749 (A+B+D), #3751, #3752 (C) |
 | 2026-08-18 | 45 | 41 | **91%** | #414 (A+B+D), #416 (C) |
+| 2026-09-04 | 24 | 18 | 75% | #776 (A+B+D), C bundle |
 
 The 2026-05-15 run also produced #3751 as a side-effect (widening the
 `verify-generated` window 5 → 15 commits). Its notebook entry is at
@@ -294,6 +308,43 @@ had just fixed: correcting a module docstring resets `ds`, so a fixed
 file drops out of the pool on its own. Post-merge re-run: **45 → 6
 flagged, with the clock-independent `[commits]` arm at zero**, and all
 six survivors verified as true negatives.
+
+### A third family the scan cannot see: `file:line` citation rot
+
+Found 2026-09-04, twice in one day, and it belongs beside the retired-vocabulary
+family above for the same structural reason. A registry that cites source it does
+not own by `file:line` — `MODULE_KEY_NOTIONS` in `module_key_axis.py` is the known
+instance — rots whenever ANY line is inserted above the cited one. That is not a
+docstring edit and moves no blame date, so no arm of `check-docstring-drift` can
+see it.
+
+Both failures in that run were self-inflicted by the audit's own neighbourhood:
+three citations rotted from the receiver-typing PRs' code movement (swift/objc),
+and a fourth rotted from a pure MODULE-DOCSTRING EDIT to `cpp.py` — prose, in a
+different package, nowhere near the anchor. Worse, no test-selection arm runs the
+guarding test when the *cited* file changes, so the first breakage sat red on `dev`
+for a day until the audit happened to run a full suite.
+
+**So: after any bundle that changes line counts, re-run the citation check before
+pushing.** It is one loop:
+
+```python
+from pathlib import Path
+from hypergumbo_core.module_key_axis import MODULE_KEY_NOTIONS
+for n in MODULE_KEY_NOTIONS:
+    for s in n.emission_sites:
+        lines = (Path('.') / s.path).read_text().splitlines()
+        if s.anchor not in lines[s.line - 1]:
+            print(n.name, s.path, s.line,
+                  "-> now at", [i + 1 for i, l in enumerate(lines) if s.anchor in l])
+```
+
+Tracked as INV-fogul (make the anchor authoritative and regenerate the line, the
+way `test_cli_docs_prose_gate.py` already regenerates its flag matrix).
+
+The 2026-09-04 run reviewed 24 files and found 18 with real drift, plus 7
+files the scan flagged NONE of (the registry pass). Its notebook entry is at
+`~/<repo>_lab_notebook/staleness_audit_09042026.md`.
 
 **A caveat to carry into any future run: the flagged count measures the
 scan, not the tree.** The two most consequential findings of the
