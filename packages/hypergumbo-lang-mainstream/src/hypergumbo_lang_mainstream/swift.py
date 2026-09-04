@@ -975,6 +975,25 @@ def _extract_symbols_from_file(
     return analysis
 
 
+def _static_member_on_instance(
+    receiver_hint: str, callee: Symbol, declared_names: set[str],
+) -> bool:
+    """True when ``callee`` is a ``static`` / ``class`` member but the receiver is an INSTANCE.
+
+    INV-kotob pass-3 read-back: once ``let fileManager = FileManager.default``
+    was typed, ``fileManager.removeItem(at:)`` bound by bare name to a test-only
+    ``static func removeItem(at:)`` in an extension of ``FileManager`` -- a
+    member an instance cannot call -- and the catalogued Foundation boundary
+    vanished behind a resolved edge. The receiver is an instance when it is a
+    declared variable or parameter, or spelled lowercase; a capitalised head
+    that is not declared (``FileManager.removeItem(atPath:)``) is the type
+    itself and may bind the static member.
+    """
+    if not any(m in ("static", "class") for m in (callee.modifiers or [])):
+        return False
+    return receiver_hint in declared_names or receiver_hint[:1].islower()
+
+
 def _extract_call_target(
     call_node: "tree_sitter.Node",
     source: bytes,
@@ -1080,6 +1099,19 @@ def _extract_var_type(node: "tree_sitter.Node", source: bytes) -> tuple[str | No
                 # Constructor calls start with uppercase
                 if ctor_name and ctor_name[0].isupper():
                     type_name = ctor_name
+        elif child.type == "navigation_expression" and type_name is None:
+            # INV-kotob: ``Type.member`` with a capitalised head and a
+            # lowercase member is a singleton (``FileManager.default``,
+            # ``URLSession.shared``) or an enum case (``Method.get``), and
+            # its value IS a ``Type``. A nested head (``A.b.c``) or a
+            # capitalised member (``String.Encoding``) is left untyped.
+            head = find_child_by_type(child, "simple_identifier")
+            suffix = find_child_by_type(child, "navigation_suffix")
+            member = find_child_by_type(suffix, "simple_identifier") if suffix else None
+            if head is not None and member is not None:
+                head_text = node_text(head, source)
+                if head_text[:1].isupper() and node_text(member, source)[:1].islower():
+                    type_name = head_text
 
     return (var_name, type_name)
 
@@ -1101,9 +1133,14 @@ def _extract_edges_from_file(
 
     # Build variable → type mapping for receiver type tracking (ADR-0017 §1c)
     var_types: dict[str, str] = {}
+    # INV-kotob: every declared NAME, typed or not, so a capitalised variable
+    # (``let AF = Session.default``) is never mistaken for a type reference.
+    declared_names: set[str] = set()
     for node in iter_tree(tree.root_node):
         if node.type == "property_declaration":
             vname, vtype = _extract_var_type(node, source)
+            if vname:
+                declared_names.add(vname)
             if vname and vtype:
                 var_types[vname] = vtype
         elif node.type == "parameter":
@@ -1113,6 +1150,8 @@ def _extract_edges_from_file(
             # ``client.foo()`` calls) resolves via the type-qualified path
             # instead of misbinding to an arbitrary same-named def below.
             pname, ptype = _swift_param_name_and_type(node, source)
+            if pname:
+                declared_names.add(pname)
             if pname and ptype:
                 var_types[pname] = ptype
 
@@ -1149,7 +1188,9 @@ def _extract_edges_from_file(
                     if receiver_hint and not resolved:
                         type_name = var_types.get(receiver_hint) or receiver_hint
                         qualified_name = f"{type_name}.{callee_name}"
-                        if qualified_name in local_symbols:
+                        if qualified_name in local_symbols and not _static_member_on_instance(
+                            receiver_hint, local_symbols[qualified_name], declared_names,
+                        ):
                             callee = local_symbols[qualified_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1162,7 +1203,9 @@ def _extract_edges_from_file(
                                 meta={"call_construct": "function"},
                             ))
                             resolved = True
-                        elif qualified_name in global_symbols:
+                        elif qualified_name in global_symbols and not _static_member_on_instance(
+                            receiver_hint, global_symbols[qualified_name], declared_names,
+                        ):
                             callee = global_symbols[qualified_name]
                             edges.append(Edge.create(
                                 src=current_function.id,
@@ -1201,34 +1244,49 @@ def _extract_edges_from_file(
                         receiver_type = (
                             var_types.get(receiver_hint) if receiver_hint else None
                         )
+                        # INV-kotob: the chain head ``FileManager`` in
+                        # ``FileManager.default.fileExists(...)`` is the TYPE
+                        # itself -- unless the file declares a variable of
+                        # that spelling (``let AF = Session.default``).
+                        if (
+                            receiver_type is None
+                            and receiver_hint
+                            and receiver_hint[:1].isupper()
+                            and receiver_hint not in declared_names
+                        ):
+                            receiver_type = receiver_hint
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
-                        # Preserve the WI-huzuv external dst_ref (module_path from
-                        # the receiver's known type / import alias / receiver name,
-                        # matching make_unresolved_edge) so a module-qualified
-                        # external call (`HelpersModule.doWork()`) keeps its
-                        # structured reference even while suppressed.
-                        #
-                        # THE OLD LAST CLAUSE HERE READ "`receiver_hint` is
-                        # non-None here, so the fallback is always a real
-                        # value". That stopped being true when INV-pirot
-                        # widened the guard above: a receiver EXPRESSION has no
-                        # spelling, so the chain can now exhaust. ``"external"``
-                        # is what ``make_unresolved_edge`` already writes for an
-                        # absent module hint, it matches the ``dst`` minted
-                        # three lines below, and ``_module_from_symbol_path``
-                        # returns "" for it -- so an untyped receiver keeps
-                        # yielding no module candidate and INV-finoh's refusal
-                        # is preserved rather than widened.
-                        gate_path_hint = (
-                            receiver_type
-                            or import_aliases.get(callee_name)
-                            or receiver_hint
-                            or "external"
+                        # The WI-huzuv structured dst_ref survives suppression
+                        # (a module-qualified `HelpersModule.doWork()` keeps its
+                        # import-alias module); an untyped receiver yields no
+                        # module candidate at all, so INV-finoh's refusal is
+                        # preserved rather than widened (INV-pirot: a receiver
+                        # EXPRESSION has no spelling and lands here too).
+                        # INV-kotob. The old chain here ended in ``receiver_hint``
+                        # -- the receiver's VARIABLE NAME -- so ``fm.fileExists``
+                        # shipped ``dst_ref.module_path == "fm"``: on Alamofire
+                        # 42% of unresolved method edges carried such a name, a
+                        # present-but-wrong hint that every consumer refuses
+                        # outright, while the dst id said ``external`` at the
+                        # same site. One answer now, written to both: the
+                        # receiver's TYPE when it is external (the catalogue keys
+                        # swift rows by bare type, ``FileManager``), an import
+                        # alias for a module-qualified call, else the ``external``
+                        # placeholder. A PROJECT type is a symbol, not a module;
+                        # it rides in ``receiver_type_hint`` only.
+                        _bare_type = receiver_type.split("<", 1)[0] if receiver_type else None
+                        _external_type = (
+                            _bare_type
+                            if _bare_type
+                            and _bare_type not in local_symbols
+                            and _bare_type not in global_symbols
+                            else None
                         )
+                        _module = _external_type or import_aliases.get(callee_name)
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=f"swift:external:0-0:{callee_name}:unresolved",
+                            dst=f"swift:{_module or 'external'}:0-0:{callee_name}:unresolved",
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
@@ -1238,9 +1296,9 @@ def _extract_edges_from_file(
                             meta=gate_meta,
                             dst_ref=ExternalRef(
                                 lang="swift",
-                                module_path=gate_path_hint,
+                                module_path=_module,
                                 name=callee_name,
-                            ),
+                            ) if _module else None,
                         ))
                         resolved = True
 
