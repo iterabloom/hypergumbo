@@ -23,3 +23,12 @@
     fields:  # baae
       statement: "A citation stored in one package that points into source owned by another must stay valid under any edit that does not touch the construct it names. Rotting on an unrelated insertion above the cited line is a false failure: it reports movement, not the loss the citation exists to detect."  # baae
       root_cause: "EmissionSite identifies a site as (path, line) and treats `anchor` as an assertion checked AT that line rather than as the identity. test_every_cited_emission_site_still_exists compares lines[line - 1] against the anchor, so an insertion anywhere above the cited line fails even though the anchor is intact and unique in the file. The line is hand-maintained, so every such edit is a manual re-point, and the failure surfaces only after a full suite run. Compounding it, no test-selection arm runs this test for a change to the CITED file, so a rot can sit on dev unnoticed: it is selected by changes to module_key_axis.py, not by changes to swift.py / objc.py / cpp.py."  # baae
+- op: update  # 3d6d
+  at: '2026-09-04T20:01:04Z'  # 3d6d
+  by: agent  # 3d6d
+  actor: jgstern_agent  # 3d6d
+  clock: 2  # 3d6d
+  nonce: 3d6d  # 3d6d
+  set: {}  # 3d6d
+  add:  # 3d6d
+    not_duplicate_of: [WI-zumud-nofos-mivap-zatid-bohag-mapoj-zoviv-rolam]  # 3d6d
