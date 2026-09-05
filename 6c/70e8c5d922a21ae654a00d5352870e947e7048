@@ -1,0 +1,13 @@
+Original commit body from 912a4900678049c22dcd02771c46c698d6fde399:
+
+After a session crash two orphaned processes were found holding per-user inotify instances (limit 128, and it was at 128/128): a 50-hour inotifywait -e close_write reparented to PID 1 after its bash parent took an untrapped SIGTERM, and a 26-hour sync-transcript.sh looping in Phase 1 for a transcript that never appeared because the crashed session never ran its session-end hook.
+
+Three mechanisms, each pinned by a test in tests/test_watcher_lifecycle.py (9 new tests, 30 in the file, 106 across the transcript/hook-parity files):
+1. Every inotifywait carries -t (TRANSCRIPT_WATCH_TIMEOUT, default 60 s) so a child orphaned by any parent death returns instead of never; a -t expiry resets backoff, syncs, and loops.
+2. The watch runs in the background under wait with TERM/INT/HUP trapped, so the handler reaps the child before exiting.
+3. launch-transcript-sync.sh names the owning harness process in TRANSCRIPT_OWNER_PID (from CLAUDE_PID, else the first non-shell ancestor); both phases check it every iteration by PID and /proc start time. An empty owner keeps the pre-contract behaviour.
+kill-transcript-sync.sh signals a watcher's children before the watcher, which also cleans up pre-fix watchers.
+
+Governance files under .agent/hooks — change approved by the owner in session; auto-pr without --gov per the standing ruling.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
