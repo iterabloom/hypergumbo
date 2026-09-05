@@ -31,6 +31,11 @@ SYNC_PID_FILE="$REPO_ROOT/.agent/.transcript-sync.${SESSION_ID}.pid"
 if [[ -f "$SYNC_PID_FILE" ]]; then
     SYNC_PID=$(cat "$SYNC_PID_FILE" 2>/dev/null || true)
     if [[ -n "$SYNC_PID" ]] && kill -0 "$SYNC_PID" 2>/dev/null; then
+        # Children first, while they are still its children: a pre-contract
+        # watcher's foreground inotifywait is reparented to PID 1 the instant
+        # its bash dies, and then holds an inotify instance until the source
+        # file is next written — for a dead session, forever.
+        pkill -TERM -P "$SYNC_PID" 2>/dev/null || true
         kill "$SYNC_PID" 2>/dev/null || true
     fi
     rm -f "$SYNC_PID_FILE"
@@ -65,6 +70,7 @@ while IFS= read -r line; do
         }
     }' <<< "$line")
     if [[ -n "$proc_sid" && "$proc_sid" == "$SESSION_ID" ]]; then
+        pkill -TERM -P "$pid" 2>/dev/null || true
         kill "$pid" 2>/dev/null || true
     fi
 done < <(pgrep -af 'sync-transcript\.sh' 2>/dev/null || true)
