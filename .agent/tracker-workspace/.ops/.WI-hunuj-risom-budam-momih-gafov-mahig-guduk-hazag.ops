@@ -1,0 +1,37 @@
+- op: create  # e88f
+  at: '2026-09-05T23:33:48Z'  # e88f
+  by: agent  # e88f
+  actor: jgstern_agent  # e88f
+  clock: 1  # e88f
+  nonce: e88f  # e88f
+  data:  # e88f
+    kind: work_item  # e88f
+    title: "Session-bus/keyring daemons leaked by gh auth token exhausted the per-user inotify limit; transcript watchers outlived their sessions (session crash 2026-09-05)"  # e88f
+    status: todo_hard  # e88f
+    priority: 2  # e88f
+    parent:  # e88f
+    tags:  # e88f
+    - agent_infrastructure  # e88f
+    - hooks  # e88f
+    - transcript_pipeline  # e88f
+    isbefore: []  # e88f
+    duplicate_of: []  # e88f
+    not_duplicate_of: []  # e88f
+    pr_ref: '#782'  # e88f
+    description: "CLASS: a process the harness or a hook starts must not outlive the session that started it, and a resource with a per-user cap (inotify instances, 128) must not be consumed by processes nobody owns.\n\nWHAT HAPPENED (2026-09-05). The Claude Code session crashed at 05:46Z, idle, three minutes after a turn ended. Diagnosis found the per-user inotify instance limit at 128/128 — `inotify_init` returned EMFILE (\"Too many open files\") from inside the next session, and that session's harness process held zero inotify instances, i.e. its file watching had failed at startup. Node crashes on exactly that error when it tries to watch a file. dmesg was not readable; the harness left no log; this is the only abnormal condition found and it is chronic — the journal shows \"Cannot initialize inotify\" since at least Aug 1.\n\nTWO LEAKS held the 128:\n(1) 126 instances: orphaned `dbus-daemon --session` processes (265 alive, each paired with a `gnome-keyring-daemon`, all reparented to PID 1, accumulating 13–73/day since the Aug 29 boot; 404 spawned since Aug 28). Every one was spawned by `gh auth token` (295× `--hostname github.com`, 107× bare): the box is headless with no session bus and gh had NO stored credential (~/.config/gh absent, `gh auth status` exit 1), so each call reached for the OS keyring over D-Bus, autolaunched a bus + keyring daemon, and left both running forever. The caller is the harness itself (two pairs appear at every session start, 12 s before the first transcript entry; no repo hook or script invokes `gh auth token`). Sessions in ~/ethical.superintelligence produced most of them by volume — via the harness, not that repo's code.\n(2) 2 instances: hypergumbo's own transcript watcher. A 50-hour `inotifywait -e close_write` with PPID 1 (its bash took an untrapped SIGTERM and died, leaving the untimed foreground child) and a 26-hour sync-transcript.sh in Phase 1 for a source that never appeared (the crashed session never ran its session-end hook).\n\nFIXES.\n- Machine (owner-authorised): killed the 530 orphan processes by explicit PID (list in the session scratchpad); `gh auth login --with-token --insecure-storage` from .env so gh never touches the keyring — first with the token then in .env, which resolved to josh-iterabloom (the human), then re-done after the owner minted a PAT on the jgstern-agent account and replaced HG_GITHUB_TOKEN; the human account was logged out of gh's store. Positive control: `gh auth token`, `gh auth status`, `gh api user`, `gh pr list` each spawn nothing (before the fix one call spawned one pair). Note: HG_GITHUB_TOKEN had been the human's token — every PR the agent opened via auto-pr showed as created by josh-iterabloom (e.g. #779); git pushes were already jgstern-agent via SSH. PR #782 was the first merged as jgstern-agent (push+maintain, no admin).\n- Repo: PR #782 — every inotifywait carries -t (TRANSCRIPT_WATCH_TIMEOUT, default 60 s); the watch runs under `wait` with TERM/INT/HUP trapped so the handler reaps the child; launch-transcript-sync.sh names the owner in TRANSCRIPT_OWNER_PID (CLAUDE_PID, else first non-shell ancestor) and both phases check it every iteration by PID and /proc start time; kill-transcript-sync.sh signals children before the watcher. Nine tests in tests/test_watcher_lifecycle.py.\n\nVERIFIED AFTER: inotify instances in use 1/128; `inotify_init` succeeds; 1 real session bus (sddm's), 0 keyring daemons; both pre-fix watcher orphans killed by PID.\n\nRESIDUAL / NOT DONE: the harness process of the diagnosing session still holds 0 watchers (needs a restart to be fully clean). The leak trigger is external to this repo (the harness calling gh on a box with no stored credential); the repo has no guard that would have surfaced 128/128 or an unauthenticated gh at session start — see the sibling proposal item. `fs.inotify.max_user_instances` remains 128 (root needed to raise). Session 82cef451's watcher had no source transcript at all — why that session produced none is unexplained."  # e88f
+    fields: {}  # e88f
+- op: update  # ee93
+  at: '2026-09-05T23:33:53Z'  # ee93
+  by: agent  # ee93
+  actor: jgstern_agent  # ee93
+  clock: 2  # ee93
+  nonce: ee93  # ee93
+  set:  # ee93
+    status: done  # ee93
+- op: discuss  # c205
+  at: '2026-09-05T23:33:53Z'  # c205
+  by: agent  # c205
+  actor: jgstern_agent  # c205
+  clock: 3  # c205
+  nonce: c205  # c205
+  message: "Closed on PR #782 (merged 2026-09-05 as jgstern-agent, dev 6c70e8c5d9) plus the owner-authorised machine fixes recorded in the description. Behavioural evidence: (a) pre-fix, one `gh auth token` call spawned one dbus+keyring pair (measured before/after counts); post-fix four gh commands spawned zero. (b) `inotify_init` EMFILE before, fd 3 after. (c) Nine lifecycle tests: 8/9 red before the hook change, 30/30 green after; the 106 tests across the transcript and hook-parity files pass. (d) The two pre-fix orphans (PIDs 3124970, 4135171) killed by PID; instances in use 128 -> 1. Root cause fixed, not worked around: the watcher now has an owner and a bounded child; gh has a credential. The item stays a record of the environment-side cause because no repo change can prevent a harness from calling gh on a box without a credential — that is the proposal filed alongside."  # c205
