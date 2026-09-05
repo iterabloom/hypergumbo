@@ -249,8 +249,46 @@ done
 shopt -u nullglob
 
 # ---------------------------------------------------------------------------
+# Name the OWNER of this watcher — the harness process whose session it
+# mirrors — so the watcher can exit on its own when that process is gone
+# (sync-transcript.sh, "Lifetime contract"). Precedence: an explicit
+# TRANSCRIPT_OWNER_PID; the PID Claude Code exports to its hooks as
+# CLAUDE_PID; else the first ancestor of this script that is not a shell,
+# which for every vendor wrapper in .agent/hooks/<vendor>/ is the CLI process
+# itself. Empty when nothing can be determined — the watcher then keeps the
+# pre-contract behaviour and relies on the session-end hook alone.
+# ---------------------------------------------------------------------------
+resolve_owner_pid() {
+    if [[ -n "${TRANSCRIPT_OWNER_PID:-}" ]]; then
+        echo "$TRANSCRIPT_OWNER_PID"
+        return 0
+    fi
+    if [[ -n "${CLAUDE_PID:-}" ]]; then
+        echo "$CLAUDE_PID"
+        return 0
+    fi
+    local p="$PPID" comm
+    while [[ -n "$p" && "$p" -gt 1 ]]; do
+        comm="$(ps -o comm= -p "$p" 2>/dev/null | tr -d ' ')"
+        case "$comm" in
+            bash|sh|dash|zsh|ksh|nohup|setsid|timeout)
+                p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" ;;
+            "")
+                echo ""
+                return 0 ;;
+            *)
+                echo "$p"
+                return 0 ;;
+        esac
+    done
+    echo ""
+}
+OWNER_PID="$(resolve_owner_pid)"
+
+# ---------------------------------------------------------------------------
 # Launch the watcher in the background (survives hook exit).
 # ---------------------------------------------------------------------------
-nohup "$SCRIPT_DIR/sync-transcript.sh" "$SRC" "$DEST" "$SESSION_ID" \
+TRANSCRIPT_OWNER_PID="$OWNER_PID" \
+    nohup "$SCRIPT_DIR/sync-transcript.sh" "$SRC" "$DEST" "$SESSION_ID" \
     </dev/null >/dev/null 2>&1 &
 disown

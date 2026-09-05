@@ -1174,3 +1174,314 @@ class TestSyncTranscript:
             )
         finally:
             _cleanup_proc(proc)
+
+
+# ---------------------------------------------------------------------------
+# A watcher must not outlive the session that launched it (2026-09-05).
+#
+# Two orphans were found live on the production box after a session crash:
+# an ``inotifywait -e close_write`` with PPID 1, 50 hours old, waiting on a
+# transcript that would never be written again (its bash parent had been
+# killed and, having no ``-t``, the child never returned); and a whole
+# sync-transcript.sh, 26 hours old, looping in Phase 1 for a source file that
+# never appeared, because the session-end hook that would have killed it
+# never ran. Each held one of the 128 per-user inotify instances. The fix has
+# three parts and each is pinned below: every watch is time-bounded, a
+# trapped signal reaps the child before exiting, and the watcher checks that
+# its OWNER process is still alive on every loop iteration.
+# ---------------------------------------------------------------------------
+
+
+def _fake_inotifywait_timeout(tmp_path: Path, log: Path) -> Path:
+    """A stand-in ``inotifywait`` whose every call records its argv, waits a
+    little, and exits 2 — the code real inotifywait returns when ``-t`` fires."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir(exist_ok=True)
+    fake = bindir / "inotifywait"
+    fake.write_text(
+        "#!/bin/bash\n"
+        f"echo \"$*\" >> {log}\n"
+        "sleep 0.2\n"
+        "exit 2\n",
+    )
+    fake.chmod(0o755)
+    return bindir
+
+
+def _fake_inotifywait_blocking(tmp_path: Path, child_pid_file: Path) -> Path:
+    """A stand-in ``inotifywait`` that records its PID and then blocks for a
+    long time, like a real watch on a file nobody writes to."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir(exist_ok=True)
+    fake = bindir / "inotifywait"
+    fake.write_text(
+        "#!/bin/bash\n"
+        f"echo $$ > {child_pid_file}\n"
+        "exec sleep 30\n",
+    )
+    fake.chmod(0o755)
+    return bindir
+
+
+def _wait_for_file(path: Path, timeout: float = 5.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if path.exists() and path.read_text().strip():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+class TestWatcherOutlivesSession:
+    def _start_watcher(
+        self, tmp_path: Path, bindir: Path, *, src_exists: bool = True,
+        extra_env: dict[str, str] | None = None, sid: str = "owner-test",
+    ) -> tuple[subprocess.Popen, Path]:
+        shared = _isolate_shared_scripts(tmp_path)
+        agent_dir = tmp_path / ".agent"
+        src = tmp_path / "src.jsonl"
+        if src_exists:
+            src.write_text('{"type":"user","message":"hello"}\n')
+        dest = agent_dir / f".current_session_transcript.{sid}.jsonl"
+        env = os.environ.copy()
+        env["PATH"] = f"{bindir}:{env['PATH']}"
+        env.pop("TRANSCRIPT_OWNER_PID", None)
+        env.update(extra_env or {})
+        proc = subprocess.Popen(
+            ["bash", str(shared / "sync-transcript.sh"), str(src), str(dest), sid],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+        )
+        return proc, src
+
+    def test_phase2_watch_is_time_bounded(self, tmp_path: Path) -> None:
+        """The close_write watch must carry ``-t``: a watcher that is SIGKILLed
+        (or whose bash parent dies for any reason) then orphans a child that
+        returns within the bound instead of never. The bound is configurable
+        so this test does not wait a minute."""
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        proc, src = self._start_watcher(
+            tmp_path, bindir, extra_env={"TRANSCRIPT_WATCH_TIMEOUT": "7"},
+        )
+        try:
+            for _ in range(60):
+                lines = [ln for ln in log.read_text().splitlines() if str(src) in ln]
+                if len(lines) >= 2:
+                    break
+                time.sleep(0.1)
+            assert lines, "Phase-2 inotifywait never invoked on the source file"
+            for ln in lines:
+                argv = ln.split()
+                assert "-t" in argv and argv[argv.index("-t") + 1] == "7", (
+                    f"close_write watch is unbounded: {ln!r}"
+                )
+        finally:
+            _cleanup_proc(proc)
+
+    def test_sigterm_reaps_the_child_watch(self, tmp_path: Path) -> None:
+        """SIGTERM to the watcher must take the blocked ``inotifywait`` down
+        with it, promptly. The 50-hour orphan was exactly a child that
+        survived its parent's SIGTERM."""
+        child_pid_file = tmp_path / "child.pid"
+        bindir = _fake_inotifywait_blocking(tmp_path, child_pid_file)
+        proc, _ = self._start_watcher(tmp_path, bindir)
+        try:
+            assert _wait_for_file(child_pid_file), "child watch never started"
+            child_pid = int(child_pid_file.read_text().strip())
+            assert _proc_alive(child_pid)
+            proc.terminate()
+            assert _wait_proc_dead(proc, 3.0), "watcher ignored SIGTERM"
+            assert _wait_dead(child_pid, 3.0), (
+                "child inotifywait outlived its parent — this is the orphan"
+            )
+        finally:
+            _cleanup_proc(proc)
+            if child_pid_file.exists():
+                try:
+                    os.kill(int(child_pid_file.read_text().strip()), 9)
+                except (OSError, ValueError):
+                    pass
+
+    def test_exits_when_owner_dies_in_phase2(self, tmp_path: Path) -> None:
+        """With TRANSCRIPT_OWNER_PID set, the watcher exits on its own within
+        one watch timeout of the owner disappearing — no session-end hook
+        required. This is the case the crash left behind."""
+        owner = subprocess.Popen(["sleep", "30"])
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        proc, _ = self._start_watcher(
+            tmp_path, bindir,
+            extra_env={"TRANSCRIPT_OWNER_PID": str(owner.pid), "TRANSCRIPT_WATCH_TIMEOUT": "1"},
+        )
+        try:
+            time.sleep(0.7)
+            assert _proc_alive(proc.pid), "watcher died while its owner was alive"
+            owner.kill()
+            owner.wait(timeout=2)
+            assert _wait_proc_dead(proc, 4.0), (
+                "watcher kept running after its owning session died"
+            )
+            assert proc.returncode == 0
+        finally:
+            _cleanup_proc(proc)
+            _cleanup_proc(owner)
+
+    def test_exits_when_owner_dies_in_phase1(self, tmp_path: Path) -> None:
+        """Phase 1 (source not yet created) must also watch the owner. The
+        26-hour orphan was a Phase-1 loop for a file that never appeared."""
+        owner = subprocess.Popen(["sleep", "30"])
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        proc, src = self._start_watcher(
+            tmp_path, bindir, src_exists=False,
+            extra_env={"TRANSCRIPT_OWNER_PID": str(owner.pid)},
+        )
+        try:
+            time.sleep(0.7)
+            assert not src.exists()
+            assert _proc_alive(proc.pid), "watcher died while its owner was alive"
+            owner.kill()
+            owner.wait(timeout=2)
+            assert _wait_proc_dead(proc, 4.0), (
+                "Phase-1 watcher kept waiting after its owning session died"
+            )
+        finally:
+            _cleanup_proc(proc)
+            _cleanup_proc(owner)
+
+    def test_refuses_to_start_for_a_dead_owner(self, tmp_path: Path) -> None:
+        dead = subprocess.Popen(["true"])
+        dead.wait(timeout=2)
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        proc, _ = self._start_watcher(
+            tmp_path, bindir, extra_env={"TRANSCRIPT_OWNER_PID": str(dead.pid)},
+        )
+        try:
+            assert _wait_proc_dead(proc, 3.0)
+            assert proc.returncode == 0
+        finally:
+            _cleanup_proc(proc)
+
+    def test_no_owner_means_legacy_behaviour(self, tmp_path: Path) -> None:
+        """Without an owner PID the watcher must still run (other vendors'
+        hooks may not be able to name one)."""
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        proc, _ = self._start_watcher(tmp_path, bindir)
+        try:
+            time.sleep(1.0)
+            assert _proc_alive(proc.pid)
+        finally:
+            _cleanup_proc(proc)
+
+
+class TestLauncherNamesTheOwner:
+    def _launch(
+        self, tmp_path: Path, env_overrides: dict[str, str], drop: tuple[str, ...],
+    ) -> tuple[int, dict[str, str]]:
+        shared = _isolate_shared_scripts(tmp_path)
+        log = tmp_path / "argv.log"
+        log.write_text("")
+        bindir = _fake_inotifywait_timeout(tmp_path, log)
+        src = tmp_path / "src.jsonl"
+        src.write_text('{"type":"user","message":"hello"}\n')
+        sid = "launch-owner"
+        env = os.environ.copy()
+        env["PATH"] = f"{bindir}:{env['PATH']}"
+        env["REPO_ROOT"] = str(tmp_path)
+        for k in drop:
+            env.pop(k, None)
+        env.update(env_overrides)
+        result = subprocess.run(
+            ["bash", str(shared / "launch-transcript-sync.sh"), str(src), sid],
+            capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        pid_file = tmp_path / ".agent" / f".transcript-sync.{sid}.pid"
+        assert _wait_for_file(pid_file), "launcher did not start a watcher"
+        wpid = int(pid_file.read_text().strip())
+        environ = Path(f"/proc/{wpid}/environ").read_bytes().split(b"\0")
+        wenv = dict(e.decode(errors="replace").split("=", 1) for e in environ if b"=" in e)
+        return wpid, wenv
+
+    def test_owner_pid_comes_from_the_harness_variable(self, tmp_path: Path) -> None:
+        """Claude Code exports CLAUDE_PID to hooks; the launcher must hand it to
+        the watcher as TRANSCRIPT_OWNER_PID."""
+        owner = subprocess.Popen(["sleep", "30"])
+        wpid = None
+        try:
+            wpid, wenv = self._launch(
+                tmp_path, {"CLAUDE_PID": str(owner.pid)}, drop=("TRANSCRIPT_OWNER_PID",),
+            )
+            assert wenv.get("TRANSCRIPT_OWNER_PID") == str(owner.pid)
+        finally:
+            _cleanup_proc(owner)
+            if wpid and _proc_alive(wpid):
+                os.kill(wpid, 15)
+                _wait_dead(wpid, 3.0)
+
+    def test_owner_pid_falls_back_to_first_non_shell_ancestor(self, tmp_path: Path) -> None:
+        """Vendors that export no PID still get an owner: the first ancestor of
+        the launcher that is not a shell. From this test that is the test
+        process itself."""
+        wpid = None
+        try:
+            wpid, wenv = self._launch(
+                tmp_path, {}, drop=("TRANSCRIPT_OWNER_PID", "CLAUDE_PID"),
+            )
+            assert wenv.get("TRANSCRIPT_OWNER_PID") == str(os.getpid())
+        finally:
+            if wpid and _proc_alive(wpid):
+                os.kill(wpid, 15)
+                _wait_dead(wpid, 3.0)
+
+
+class TestKillScriptReapsChildren:
+    def test_kill_script_takes_the_child_watch_down_too(self, tmp_path: Path) -> None:
+        """A pre-fix watcher whose bash parent is killed leaves its foreground
+        ``inotifywait`` alive with PPID 1. The kill script must signal the
+        watcher's children BEFORE the watcher, while they are still its
+        children."""
+        shared = _isolate_shared_scripts(tmp_path)
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(exist_ok=True)
+        sid = "kill-children"
+        child_pid_file = tmp_path / "child.pid"
+        fake_dir = tmp_path / "fake-bin"
+        fake_dir.mkdir(exist_ok=True)
+        fake = fake_dir / "sync-transcript.sh"
+        fake.write_text(
+            "#!/bin/bash\n"
+            "sleep 60 &\n"
+            f"echo $! > {child_pid_file}\n"
+            "wait\n",
+        )
+        fake.chmod(0o755)
+        proc = subprocess.Popen(
+            [str(fake), str(tmp_path / "src"), str(tmp_path / "dest"), sid],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            assert _wait_for_file(child_pid_file)
+            child_pid = int(child_pid_file.read_text().strip())
+            (agent_dir / f".transcript-sync.{sid}.pid").write_text(str(proc.pid))
+            result = subprocess.run(
+                ["bash", str(shared / "kill-transcript-sync.sh"), str(tmp_path), sid],
+                capture_output=True, text=True, timeout=30,
+            )
+            assert result.returncode == 0, result.stderr
+            assert _wait_proc_dead(proc, 3.0)
+            assert _wait_dead(child_pid, 3.0), "kill script orphaned the child"
+        finally:
+            _cleanup_proc(proc)
+            if child_pid_file.exists():
+                try:
+                    os.kill(int(child_pid_file.read_text().strip()), 9)
+                except (OSError, ValueError):
+                    pass

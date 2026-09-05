@@ -3,7 +3,9 @@
 # sync-transcript.sh — Long-running watcher that mirrors a session transcript
 # to a per-session, vendor-agnostic location inside the repo.
 #
-# Launched in background by session-start hooks; killed by session-end hooks.
+# Launched in background by session-start hooks; killed by session-end hooks,
+# and exits on its own when the OWNER process named in TRANSCRIPT_OWNER_PID is
+# gone (see "Lifetime contract" below).
 # Uses inotifywait to watch the source JSONL for close_write events and
 # incrementally filters new lines into the per-session destination. The
 # downstream hook (on_transcript_change.sh / poll-transcript-change.sh)
@@ -54,6 +56,81 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ---------------------------------------------------------------------------
+# Lifetime contract (2026-09-05): a watcher must not outlive the session that
+# launched it, and no child of the watcher may outlive the watcher.
+#
+# Two orphans were found live after a session crash, each holding one of the
+# 128 per-user inotify instances: an `inotifywait -e close_write` with PPID 1
+# and no `-t`, 50 hours into a wait on a transcript nobody would write again
+# (its bash parent took a SIGTERM it did not trap, died at once, and left the
+# foreground child behind); and a whole watcher 26 hours into Phase 1 for a
+# source that never appeared, because the crashed session never ran its
+# session-end hook. Three mechanisms close both:
+#   1. every inotifywait carries -t, so a child orphaned by ANY parent death
+#      returns within TRANSCRIPT_WATCH_TIMEOUT seconds instead of never;
+#   2. the watch runs in the background under `wait`, so a trapped
+#      TERM/INT/HUP interrupts it and the handler kills the child before
+#      exiting (a foreground child defers the trap until it returns — which,
+#      for an unbounded watch, was never);
+#   3. the launcher names the OWNER process (the harness) in
+#      TRANSCRIPT_OWNER_PID and both phases check it on every iteration — by
+#      PID and, when /proc is readable, by start time, so a recycled PID does
+#      not keep a dead session's watcher alive.
+# An empty TRANSCRIPT_OWNER_PID (a vendor hook that cannot name one) keeps the
+# pre-contract behaviour: the session-end hook is then the only terminator.
+# ---------------------------------------------------------------------------
+OWNER_PID="${TRANSCRIPT_OWNER_PID:-}"
+WATCH_TIMEOUT="${TRANSCRIPT_WATCH_TIMEOUT:-60}"
+
+# Start time (clock ticks since boot) of a PID, or "" when /proc is not
+# readable. Field 22 of /proc/PID/stat; the comm field before it may contain
+# spaces, so strip through the closing paren first.
+proc_start() {
+    if [[ ! -r "/proc/$1/stat" ]]; then
+        echo ""
+        return 0
+    fi
+    sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $20}'
+}
+OWNER_START=""
+if [[ -n "$OWNER_PID" ]]; then
+    OWNER_START="$(proc_start "$OWNER_PID")"
+fi
+
+owner_alive() {
+    if [[ -z "$OWNER_PID" ]]; then
+        return 0
+    fi
+    kill -0 "$OWNER_PID" 2>/dev/null || return 1
+    if [[ -z "$OWNER_START" ]]; then
+        return 0
+    fi
+    [[ "$(proc_start "$OWNER_PID")" == "$OWNER_START" ]]
+}
+
+WATCH_CHILD=""
+on_signal() {
+    if [[ -n "$WATCH_CHILD" ]]; then
+        kill "$WATCH_CHILD" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap on_signal TERM INT HUP
+
+# Run inotifywait in the background and wait on it (mechanism 2). Returns the
+# child's exit code: 0 event, 2 timeout, anything else failure.
+watch() {
+    local rc=0
+    inotifywait -qq "$@" 2>/dev/null &
+    WATCH_CHILD=$!
+    wait "$WATCH_CHILD" || rc=$?
+    WATCH_CHILD=""
+    return "$rc"
+}
+
+owner_alive || exit 0
+
 # Backoff bounds for the degraded path below. A failure path with no delay
 # is what turned a resource shortage into a CPU meltdown (see Phase 2).
 WATCH_BACKOFF_MIN=1
@@ -73,8 +150,9 @@ fi
 # the first message is sent in the session).
 SRC_DIR="$(dirname "$SRC")"
 while [[ ! -f "$SRC" ]]; do
+    owner_alive || exit 0
     rc=0
-    inotifywait -qq -t 5 -e create "$SRC_DIR" 2>/dev/null || rc=$?
+    watch -t 5 -e create "$SRC_DIR" || rc=$?
     # rc 2 is the -t timeout firing, which IS the pacing we asked for.
     # rc 1 means inotify itself is unavailable and returns instantly — the
     # `|| true` this replaces swallowed that into a tight spin.
@@ -143,9 +221,19 @@ harden_transcript_file "$DEST" "$STATE_FILE"
 # a worse watch, not no watch — and widen the interval while it keeps
 # failing, resetting the moment a real watch succeeds.
 while true; do
+    owner_alive || exit 0
     rc=0
-    inotifywait -qq -e close_write "$SRC" 2>/dev/null || rc=$?
+    watch -t "$WATCH_TIMEOUT" -e close_write "$SRC" || rc=$?
     if [[ $rc -eq 0 ]]; then
+        backoff=$WATCH_BACKOFF_MIN
+        do_sync || true
+        continue
+    fi
+    # rc 2 is -t expiring with no event. Not a failure: reset the backoff,
+    # sync anyway (closes the microsecond re-arm gap between watches), and
+    # let the loop re-check the owner. The timeout is what bounds a child
+    # orphaned by a parent death the trap never saw (SIGKILL, OOM).
+    if [[ $rc -eq 2 ]]; then
         backoff=$WATCH_BACKOFF_MIN
         do_sync || true
         continue
