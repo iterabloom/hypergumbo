@@ -1,0 +1,11 @@
+Original commit body from 4c3c034031734bb54cd8df2bdfecbefae3b2e958:
+
+WI-lavut (INV-tabaf's other half). A shipped catalogue's `module_completeness` grant turns the same gate off as an overlay's and was disclosed nowhere: `catalog_provenance` was built from overlay files, not from the run.
+
+- Shape (b): the grants a verdict RESTED ON — modules called into, unclassified by any row, declared examined by a grant — collected in the gate's own walk (`_adjudicate_external_modules`, shared with the unknown set), carried as `BoundaryCoverage.load_bearing_grants`, emitted as `catalog_provenance.load_bearing_grants` (JSON) and a `the coverage gate PASSED these modules on completeness grants` block (text).
+- Disclosure only; controls pin that no verdict category moves. measured at the branch tip on four cohort repos with cold caches -- express, pm2, winston from the javascript cohort and httpx from the python cohort: 16 of 16 per-claim verdicts identical to each cohort's own prior arm; the block lists 25 python grants on httpx, 5 javascript + 4 python on pm2, 4 javascript on winston, and none on express, whose granted-module calls are all rowed and whose node:-spelled import edges are a separate emission defect, filed; instrument and read-back in lavut_grants_09062026/
+- Docs: VERIFY-CLAIMS-SCOPE.md says the shipped catalogues make the same claim and the run names the ones a clean verdict stood on.
+
+Tracker: WI-lavut closed after merge. Measuring on express surfaced a separate emission defect (the js analyzer strips the `node:` scheme on call slots but not on the import edge of the same require, so the exact enumeration predicate withholds on `node:path`/`node:http`/`node:querystring`); filed as its own work item in the closure batch, with the family pointer on WI-jokij.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
