@@ -42,3 +42,10 @@
   clock: 4  # 1bf9
   nonce: 1bf9  # 1bf9
   message: "2026-06-10 design-interview ruling (ADR-0036, merged in PR #4181): the linter/validator now has a concrete target grammar — anchored 5-slot node.id, colon-free lang/span/name/kind, colon-tolerant path, parse from both ends, kind slot == node.kind, enumerated sentinels. Implement the static-AST linter and Edge.id schema-validator extension against that grammar once the ADR PR merges."  # 1bf9
+- op: discuss  # 7662
+  at: '2026-09-06T20:06:09Z'  # 7662
+  by: agent  # 7662
+  actor: jgstern_agent  # 7662
+  clock: 5  # 7662
+  nonce: '7662'  # 7662
+  message: "SCHEDULED 2026-09-06 by owner ruling (INV-kurup re-scope, walk-through item 4): appended to the arc tail (WI-nazos), held behind INV-busis by isbefore. This is the structural fix for INV-kurup's class -- an identifier slot filled by an emission path that never consulted the grammar -- which produced WI-dovog, WI-fiham and the css hash ids in one day."  # 7662

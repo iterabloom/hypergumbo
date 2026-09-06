@@ -113,3 +113,18 @@
   set: {}  # ef29
   remove:  # ef29
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # ef29
+- op: update  # f39b
+  at: '2026-09-06T20:06:09Z'  # f39b
+  by: agent  # f39b
+  actor: jgstern_agent  # f39b
+  clock: 14  # f39b
+  nonce: f39b  # f39b
+  set:  # f39b
+    title: "META: identifier-bearing fields are canonical BY CONSTRUCTION — emission-boundary linter + validator sub-checks (WI-vodin, WI-popak, WI-dipim) close it; INV-dulah keeps the per-limb ledger"  # f39b
+- op: discuss  # 5c88
+  at: '2026-09-06T20:06:09Z'  # 5c88
+  by: agent  # 5c88
+  actor: jgstern_agent  # 5c88
+  clock: 15  # 5c88
+  nonce: 5c88  # 5c88
+  message: "OWNER RULING 2026-09-06 (walk-through item 4): re-scope ACCEPTED as recommended. Re-titled to \"canonical BY CONSTRUCTION\"; stays P2 because WI-vodin (the emission-boundary linter that retires the class rather than its instances -- three fresh instances on 09-06 alone) is SCHEDULED: appended to the arc tail behind INV-busis. INV-dulah keeps the per-limb ledger; WI-popak / WI-dipim stay the validator sub-checks at P3."  # 5c88

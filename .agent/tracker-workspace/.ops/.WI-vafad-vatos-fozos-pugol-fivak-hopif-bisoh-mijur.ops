@@ -20,3 +20,39 @@
     pr_ref:  # 6fa2
     description: "ORIGIN. Owner ruling 2026-09-06 (walk-through item 3): INV-nular is RE-SCOPED\nto a dated declared blindness (direction mechanically checked; kinds\nadjudicated for the swept strata; the remainder name-bound and unverified,\ndisclosed with its count). This item DRAINS that remainder. Owner on the\ndesign below: \"that sounds good\"; priority P2; position AFTER THE ARC.\n\nSCOPE. Every rowed name in the shipped io_primitives catalogues and shipped\noverlays whose kind has not been adjudicated against source. At dev\n278d1c5fed the shipped catalogues alone hold 622 entries / 2,312 names (356\nentries with a written rationale). THE INSTRUMENT RE-TAKES THE COUNT AT RUN\nTIME; this number is context, not the denominator (a hand-restated closed\nset drifts).\n\nWHY THIS SHAPE. Needles in a haystack: the seven kind families found so far\ncame from ~100 adjudications by syntactic strata that demonstrably\nunder-collect. The project's own pattern for this is the docstring-staleness\naudit: a MECHANICAL pass produces a ranked candidate pool, PARALLEL read-only\nsub-agents classify it, a verifier reads the flags. The twenty-pass\n\"never parallel\" rule does not apply: it protects a shared discovery ledger,\nand a pool fixed up front has no such dependency.\n\nTHE HARD CONDITION. A worker verdict from MEMORY (\"gethostbyname is a\nnetwork receive because I know it is\") is the catalogue's own defect at one\nremove -- kind asserted by name -- and is how an instrument manufactures\nevidence. EVERY verdict cites an artifact: the function's source (path:line)\nor its documentation page, reachable ONLY within ALLOWED_WEBSITES.md.\nReachable: python and rust std on disk; go, erlang/otp, elixir, nodejs,\nopenjdk, ghc, scala, kotlin via raw.githubusercontent.com. NOT reachable:\nApple Foundation/AppKit (developer.apple.com is off the allowlist) -- the\nobjc and swift entries (61 at tip) land in a REFUSED bucket, reported, not\nadjudicated. A verdict without a citation is discarded by the rubric.\n\nMETHOD, five layers, in order:\n  1. PROBE FIRST, NO MODEL. For every rowed name read the source and scan for\n     I/O reach the way the WI-dupok probe_py.py / WI-lutuh / WI-nolut\n     probe.js instruments do (syscalls, descriptors, sockets, open, internal\n     bindings; NATIVE refuses; never grants). Bucket each row:\n     SIGNAL-CONSISTENT (signal matches the declared kind's medium and\n     direction), SIGNAL-MISMATCH, NO-SIGNAL, NATIVE/UNREADABLE. Only\n     MISMATCH and NO-SIGNAL enter the pool. The pool size per bucket per\n     language is the FIRST number reported.\n  2. PARALLEL WORKERS (general-purpose sub-agents, model=sonnet) over the\n     pool, chunked by language and module. Label set = the io-boundary\n     registry values + NONE (not I/O) + UNDECIDABLE_BY_ARGUMENT (the\n     INV-zumin dual-row shape) -- not three labels (a verdict on three\n     labels is a coin). TWO workers per chunk, one primed to REFUTE the row.\n     Each verdict: row, declared kind, proposed label, citation, one-sentence\n     mechanism. Disagreements go up.\n  3. BLIND POSITIVE CONTROLS, pre-registered before the first verdict: the\n     historical wrong rows at their pre-fix SHAs (haskell IORef/STRef db_*,\n     c socket/bind/listen net_recv, javascript path.* fs_read, erlang\n     io_lib:format logging, the WI-budiv Phoenix response rows) planted in\n     the pool unlabeled, plus known-correct rows for the false-flag rate. A\n     worker that misses a plant is discarded and its chunk re-run.\n  4. VERIFIER (the orchestrator or an opus sub-agent) reads ONLY flagged rows\n     and disagreements, against the same citations.\n  5. OUTPUT = A CANDIDATE LIST, NOT CATALOGUE EDITS: per language, each\n     candidate with its evidence, worker agreement and verifier verdict,\n     filed under the lab notebook AND summarised on this item. Each accepted\n     candidate becomes its OWN fix item and pays ADR-0049 ruling 3 there: a\n     represented-crossing proof at the FINDING level, per language, both\n     arms cold, every moved verdict read back; the direction guard; never\n     pin a removal. That closure work is bounded by hypergumbo runtime, not\n     reading, and does not parallelise across model workers -- the sweep\n     accelerates DISCOVERY, not closure.\n\nPRE-REGISTRATION. The probe, rubric, plants and pool builder are committed\nIN-REPO (scripts/, tested) and the PLAN.md is written with the plants and\nthe bucket rules BEFORE any verdict exists (LIVE rules 14, 20). An\nuncommitted instrument's defects cannot be fixed, only re-encountered.\n\nCLOSURE (behavioural, not proxy): the candidate list delivered; the plants\nall recovered by the surviving workers; the census re-run stating N of M\nnames adjudicated and the INV-nular disclosure count updated to it; the\nREFUSED bucket named with its reason. Fix items filed for every accepted\ncandidate, each with its own ruling-3 obligation.\n\nSEQUENCING. After the arc: INV-busis isbefore INV-nular (the re-scope, which\nis cheap and declares the remainder) isbefore this item. Not a recall item;\nawaits_bakeoff_validation belongs on the fix items if they move findings."  # 6fa2
     fields: {}  # 6fa2
+- op: update  # ed68
+  at: '2026-09-06T19:57:23Z'  # ed68
+  by: agent  # ed68
+  actor: jgstern_agent  # ed68
+  clock: 2  # ed68
+  nonce: ed68  # ed68
+  set: {}  # ed68
+  add:  # ed68
+    not_duplicate_of: [WI-sobig-hutih-luziv-bokag-hiruz-zahot-gahog-gizap]  # ed68
+- op: update  # ac6f
+  at: '2026-09-06T19:57:23Z'  # ac6f
+  by: agent  # ac6f
+  actor: jgstern_agent  # ac6f
+  clock: 3  # ac6f
+  nonce: ac6f  # ac6f
+  set: {}  # ac6f
+  add:  # ac6f
+    not_duplicate_of: [WI-vokiz-muhif-bagiv-tazuj-supon-padik-nudoj-pigij]  # ac6f
+- op: update  # 5cf4
+  at: '2026-09-06T19:57:23Z'  # 5cf4
+  by: agent  # 5cf4
+  actor: jgstern_agent  # 5cf4
+  clock: 4  # 5cf4
+  nonce: 5cf4  # 5cf4
+  set: {}  # 5cf4
+  add:  # 5cf4
+    not_duplicate_of: [INV-hazov-jovoj-bomon-fifin-lifom-dofir-muzan-bubuh]  # 5cf4
+- op: update  # 9a3c
+  at: '2026-09-06T19:57:23Z'  # 9a3c
+  by: agent  # 9a3c
+  actor: jgstern_agent  # 9a3c
+  clock: 5  # 9a3c
+  nonce: 9a3c  # 9a3c
+  set: {}  # 9a3c
+  add:  # 9a3c
+    not_duplicate_of: [INV-zosun-vuhod-vimos-dofaf-tokug-nahab-bulop-kizav]  # 9a3c
