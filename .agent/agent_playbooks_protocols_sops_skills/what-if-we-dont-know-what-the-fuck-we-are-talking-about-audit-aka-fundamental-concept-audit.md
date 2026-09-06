@@ -929,6 +929,50 @@ runs can find prior work:
   the recorder guards the second, nothing yet guards the first. Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-module-key_09012026.md`.
 
+- **2026-09-06 — the TAINT LABEL (`TaintSource.taint_label` ×
+  `AUTO_SOURCE_LABEL_MAP` × `TaintFlowConstraint.source_taint`).** Trigger:
+  cadence (75 commits vs. threshold 72) plus signal 1 — the WI-dozul DNS ruling
+  made that morning exposed one leak on the label; suspect nominated by the
+  agent, chosen by the owner; run on dev `278d1c5fed`. Hypothesis:
+  `untrusted_input` names two facts — an outside party controls the value's
+  BYTES, and an outside party merely CHOSE it from a constrained set — and every
+  claim, sink and precision number treats them as one. **Outcome: confirmed,
+  narrowly.** Inventory: seven labels, DERIVED not listed (`all_source_labels`,
+  INV-todas); 324 catalogue names mint `untrusted_input` (net_recv 89, ipc_recv
+  148, db_read 87); read one by one, **24 (7.4%) are choice-shaped** — `accept`
+  ×10 (a peer address, seven languages), erlang `inet` DNS ×7, exit status ×7
+  (`os.wait*`, `Child.wait/try_wait`). Producers: six literal/assignment sites,
+  zero helper/f-string/dict (five-shape trace run). Consumers: ONE equality
+  (verify_claims.py:4621), no hardcoded sets. Pair 1 content-vs-choice: **T1, T2,
+  T4 fire** — the property is derivable from nothing the row carries (`net_recv`
+  holds `recv` and `accept`; `ipc_recv` holds `check_output` and `os.wait`), the
+  minting map reads the label as the APEX ("the far side had a say", ADR-0049
+  ruling 1's letter) while every claim reads the PEER ("the command-injection
+  question", generic-taint-claims.yaml:56-59). Verdict **DOCUMENT now, PROPERTY
+  later, no label split (WI-vazal), no boundary split (WI-dozul)**: the spec's
+  label paragraph now states what the label asserts and does not; the per-row
+  `value_shape` attribute is recorded on WI-gohok as the SOURCE-side half of its
+  open "computed-into vs selects" mechanism, judged first on T2's pre-registered
+  DNS delta. Pair 2 exit status: `os.wait*` / `Child.wait` mint on eight bits
+  while `call` / `check_call` / `system` / `Run` / `Command::status` do not —
+  INV-lozat's thread had already called it "a disagreement with two shipped rows
+  rather than an oversight" and nothing was filed → **KEEP, FILE**: WI-lanos,
+  sequenced behind WI-dozul under the same rule and the same measurement.
+  Adjacent: **`TaintSink.trust_level` is a documented knob nothing reads** —
+  cli.py:5985 promises "raising `trust_level` on a sink that is safe in context",
+  65 of 66 literal sites say `untrusted`, the one `trusted` (test_taint.py:3043)
+  tests merge precedence only, zero attribute reads in src → WI-lukoz (P2,
+  implement-with-disclosure or deprecate the promise). `sink_zone` vs the write
+  boundary: T1 fires for the built-in nine (surjective map, `ipc_send` +
+  `process_send` → `ipc`) but the zone axis is the CLAIM-facing vocabulary and
+  holds project-local values with no boundary — **KEEP**, trigger written.
+  Vocabulary validation (labels, zones), sanitizer-label disjointness,
+  `confidence`/`analysis_method`: clean or audited this week elsewhere. Harm is
+  UNMEASURED (no adjudicated finding in 0006/0010/0012 roots at a choice-shaped
+  source); the measurement is T2's. Recorded with `scripts/concept-audit-record
+  taint-label` the same hour. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
