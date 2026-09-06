@@ -1,0 +1,22 @@
+- op: create  # 47c2
+  at: '2026-09-06T20:19:48Z'  # 47c2
+  by: agent  # 47c2
+  actor: jgstern_agent  # 47c2
+  clock: 1  # 47c2
+  nonce: 47c2  # 47c2
+  data:  # 47c2
+    kind: work_item  # 47c2
+    title: "TaintSink.trust_level is a documented knob nothing reads: cli help promises 'raising trust_level on a sink that is safe in context', no consumer exists -- implement (exclude + disclose) or deprecate the promise"  # 47c2
+    status: todo_hard  # 47c2
+    priority: 2  # 47c2
+    parent:  # 47c2
+    tags:  # 47c2
+    - taint  # 47c2
+    - verify_claims  # 47c2
+    - analysis_quality  # 47c2
+    isbefore: []  # 47c2
+    duplicate_of: []  # 47c2
+    not_duplicate_of: []  # 47c2
+    pr_ref:  # 47c2
+    description: "FOUND by the 2026-09-06 taint-label concept audit\n(~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md, Pair 3).\n\nTHE PROMISE. cli.py:5985 (verify-claims help): the project-local catalogue\nextension point supports \"raising `trust_level` on a sink that is safe in\ncontext\". TaintSink.trust_level is documented (taint.py:185, e.g. \"untrusted\",\n\"semi-trusted\"); ADR-0017's zone table assigns Trusted / Semi-trusted /\nUntrusted as if the level discriminated.\n\nTHE FACT. Nothing reads it. Whole-tree grep of packages/hypergumbo-core/src\nfor an attribute read of trust_level: zero. The only non-literal touch is the\nYAML parse at taint.py:1499 (default \"unknown\"). 65 of the 66 literal sites say\n\"untrusted\"; the one \"trusted\" (test_taint.py:3043) tests only that a user\noverride REPLACES the auto sink by (module, name, kind), not that the level\nchanges any finding or verdict. A user who declares `trust_level: trusted` on\na sink gets identical findings. A documented control with no effect is the\nfalse-all-clear direction in prose form.\n\nTWO DISCHARGES, pick one:\n  (a) IMPLEMENT: a finding whose sink carries trust_level \"trusted\" is\n      EXCLUDED and DISCLOSED (the WI-bifob `excluded_flows` shape, a new\n      bucket), never silently dropped; \"semi-trusted\" left undefined until a\n      claim needs it. Recommended: the schema, the ADR and the help text all\n      promise it.\n  (b) DEPRECATE: delete the sentence at cli.py:5985, mark the field reserved\n      in the TaintSink docstring and the ADR-0017 table, keep parsing it.\nEither way a test that sets \"trusted\" on a sink and asserts the OBSERVED\nverdict (a) moves with disclosure or (b) provably does not move and the help\nno longer says it will.\n\nBehavioural closure evidence: a live verify-claims run over a fixture with a\nuser sink catalogue setting trust_level: trusted, before/after."  # 47c2
+    fields: {}  # 47c2

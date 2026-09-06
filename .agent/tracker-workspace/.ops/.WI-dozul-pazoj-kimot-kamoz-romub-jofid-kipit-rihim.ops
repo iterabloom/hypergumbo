@@ -61,3 +61,12 @@
   clock: 6  # 7eca
   nonce: 7eca  # 7eca
   message: "Re-titled 2026-09-06 now that the ruling is made; appended to the arc tail (WI-nazos) behind INV-busis by owner ruling (\"everything behind the arc is append to the end of the arc\"). Content of the work unchanged from the ruling entry above."  # 7eca
+- op: update  # 9316
+  at: '2026-09-06T20:19:56Z'  # 9316
+  by: agent  # 9316
+  actor: jgstern_agent  # 9316
+  clock: 7  # 9316
+  nonce: '9316'  # 9316
+  set: {}  # 9316
+  add:  # 9316
+    isbefore: [WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip]  # 9316

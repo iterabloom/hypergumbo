@@ -1,0 +1,22 @@
+- op: create  # a27c
+  at: '2026-09-06T20:19:52Z'  # a27c
+  by: agent  # a27c
+  actor: jgstern_agent  # a27c
+  clock: 1  # a27c
+  nonce: a27c  # a27c
+  data:  # a27c
+    kind: work_item  # a27c
+    title: "Exit status minted as untrusted_input at os.wait*/Child.wait but not at call/check_call/system/Run/Command::status: one value, two verdicts (INV-lozat's acknowledged disagreement) -- reconcile under the WI-dozul rule after T2's delta"  # a27c
+    status: todo_hard  # a27c
+    priority: 3  # a27c
+    parent:  # a27c
+    tags:  # a27c
+    - taint  # a27c
+    - catalogue  # a27c
+    - io_boundary  # a27c
+    isbefore: []  # a27c
+    duplicate_of: []  # a27c
+    not_duplicate_of: []  # a27c
+    pr_ref:  # a27c
+    description: "FOUND by the 2026-09-06 taint-label concept audit\n(~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md, Pair 2), and\nalready named in INV-lozat's own thread as \"a disagreement with two shipped\nrows rather than an oversight\" -- acknowledged, never filed.\n\nTHE TWO VERDICTS ON ONE VALUE. An exit status is eight bits the child chose.\n  python.yaml:698-699  os.wait / waitpid / wait3 / wait4 / waitid -> ipc_recv\n      (\"Reaping a child collects its exit status - data received from\n      another process\") -> MINTS untrusted_input.\n  rust.yaml:456-461    std::process::Child.wait / try_wait -> ipc_recv,\n      citing the python row.\n  python.yaml:751-753  subprocess.call / check_call stay launch-only (\"return\n      a returncode\"); INV-lozat: \"eight bits the program chose is not the\n      child's message\" -- likewise os.system, Cmd.Run, Command::status,\n      rawSystem, callProcess. -> mint NOTHING.\n\nTHE RULE THAT DECIDES IT is the one WI-dozul was ruled on today: a value the\nfar side CHOSE from a constrained set is still a transfer under ADR-0049\nruling 1 (accept's peer address; a DNS answer), it mints, and the claims'\nhonesty is kept by the value-shape property (WI-gohok's mechanism, source\nside) and by MEASUREMENT (the 0003 marginal delta, awaits_bakeoff_validation).\nUnder that rule the CONSISTENT fix is the omission side: row call /\ncheck_call / system / Run / Command::status as ipc_recv `simultaneous: true`\nbeside their subprocess row, as check_output already is. Under INV-lozat's\nreading the fix is the removal side: drop the wait rows (ADR-0049 ruling 3:\nrepresented crossing -- the child's BYTES stay represented by check_output /\nwait_with_output / Command::output). This item does not pick; the cost is the\nsame kind WI-dozul's is (a source at every subprocess.call in the corpus; 54\nsubprocess.run in beads alone), so it is SEQUENCED BEHIND WI-dozul (T2 of the\narc tail) and decided on T2's delta: if forward-lookup flows read majority\nnot-useful there, this family goes the removal way; otherwise the omission\nway, measured the same way. Either way: parity across python / rust / go /\nhaskell / elixir; every moved row read back; never pin a removal.\n\nPositive control for closure: one `subprocess.call(cmd)` fixture and one\n`os.waitpid` fixture through the production CLI, cold cache, asserting the\nSAME verdict for the same value on both."  # a27c
+    fields: {}  # a27c
