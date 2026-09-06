@@ -1710,3 +1710,26 @@ def test_function_overloads_get_distinct_stable_ids(tmp_path: Path) -> None:
     assert len(mints) == 2
     assert mints[0].stable_id is not None
     assert mints[0].stable_id != mints[1].stable_id
+
+
+class TestSolidityImportDstIsCanonical:
+    """INV-dulah, lang-slot limb: an ``import`` edge's dst is a canonical
+    5-slot id, not the bare path (which finalize's 4-part fallback put in the
+    LANG slot). Mirrors the js/ts import-edge shape."""
+
+    def test_plain_and_named_import_dsts(self, temp_repo: Path) -> None:
+        (temp_repo / "Token.sol").write_text("""
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "./ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+contract Token {}
+""")
+        result = analyze_solidity(temp_repo)
+        dsts = sorted(e.dst for e in result.edges if e.edge_type == "imports")
+        assert dsts == [
+            "solidity:./ERC20.sol:0-0:module:module",
+            "solidity:@openzeppelin/contracts/token/ERC20/IERC20.sol:0-0:module:module",
+        ]

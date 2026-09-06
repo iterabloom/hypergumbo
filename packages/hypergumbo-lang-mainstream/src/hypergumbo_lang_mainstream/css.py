@@ -160,10 +160,14 @@ def _process_css_tree(
                 # the per-import Symbol was redundant with the imports Edge.
                 # Producer now emits only the Edge (src=file_symbol_id is
                 # independent of any dropped Symbol id).
+                # INV-dulah (lang-slot limb): a bare ``@import`` path is not
+                # an id -- finalize's 4-part fallback put it in the LANG slot.
+                # Same shape as the js/ts import edge (module name in the path
+                # slot, the ``module`` name/kind pair).
                 edges.append(
                     Edge.create(
                         src=file_symbol_id,
-                        dst=import_path,
+                        dst=f"css:{import_path}:0-0:module:module",
                         edge_type="imports",
                         line=start_line,
                         confidence=1.0,

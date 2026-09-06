@@ -577,9 +577,12 @@ def _extract_edges_from_tree(
                 continue
             import_path, aliases = _extract_import_aliases(node, source)
             if import_path:
+                # INV-dulah (lang-slot limb): the bare import path is not an
+                # id -- finalize's 4-part fallback put it in the LANG slot.
+                # Same shape as the js/ts import edge.
                 edge = Edge.create(
                     src=file_id,
-                    dst=import_path,
+                    dst=f"solidity:{import_path}:0-0:module:module",
                     edge_type="imports",
                     line=node.start_point[0] + 1,
                     confidence=0.95,
