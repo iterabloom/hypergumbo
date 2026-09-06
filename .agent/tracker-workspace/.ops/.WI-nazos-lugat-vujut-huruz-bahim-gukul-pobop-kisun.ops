@@ -116,3 +116,10 @@
   clock: 14  # a862
   nonce: a862  # a862
   message: "STAGE 3 PROGRESS 2026-09-06: WI-dovog DONE (PR #798; abi/tauri synthetic srcs carry the host file's language). Next: WI-komun (named-global rows -> functions:, A/B read back), then WI-dupok, WI-lavut."  # a862
+- op: discuss  # eae3
+  at: '2026-09-06T13:25:55Z'  # eae3
+  by: agent  # eae3
+  actor: jgstern_agent  # eae3
+  clock: 15  # eae3
+  nonce: eae3  # eae3
+  message: "STAGE 3 PROGRESS 2026-09-06: WI-komun DONE (PR #800). Both gate rungs the js-leg A/B found are closed. Next on the arc: WI-dupok (python leg), then WI-lavut."  # eae3
