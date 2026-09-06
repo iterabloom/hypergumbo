@@ -91,3 +91,10 @@
   clock: 10  # 6ac2
   nonce: 6ac2  # 6ac2
   message: "CORRECTION to the preceding entry: three backticked terms were eaten by shell\ncommand-substitution when that note was posted (the tracker stored what bash\nhanded it). Edit-mode is human-gated, so the repair is here rather than in\nplace. The three damaged sentences read, in full:\n\n  * \"Measurement 0008 refuted that (removal can act only on `unconfirmed`; it\n    is 0 in every repository, 0 of 28 running walks, and reproduced today on\n    jaeger).\"\n\n  * \"A measurement showing `unconfirmed` is NOT ~0 among walks that composition\n    makes run.\"\n\n  * \"If INV-karud's `ddg` bypass is re-opened for any reason, option 2's\n    marginal cost drops to roughly the §4a build alone and the trade changes.\"\n\nNothing else in that entry was affected -- the loss is exactly the three words\n`unconfirmed` (twice) and `ddg` (once), each of which had been the subject of\nits sentence, which is why the sentences read as broken rather than merely\nwrong."  # 6ac2
+- op: discuss  # d130
+  at: '2026-09-06T11:27:05Z'  # d130
+  by: agent  # d130
+  actor: jgstern_agent  # d130
+  clock: 11  # d130
+  nonce: d130  # d130
+  message: "CONSUMER RECORDED, 2026-09-06 (WI-baran): tmux's sendmsg/recvmsg sites (compat/imsg-buffer.c) take the socket descriptor as a function PARAMETER; the AF_UNIX socket()/socketpair() calls are two functions up (client.c:122, server.c:123, proc.c:364). The same-function stamp abstains there, so measurement 0012's tmux VACUOUS deduction survives WI-baran. A parameter-to-argument summary that carries io_target_kind from the caller's binding to the callee's parameter is what would move it -- the read-side twin of the shape INV-fumod (a) closed \"fixed in principle\" against this item."  # d130
