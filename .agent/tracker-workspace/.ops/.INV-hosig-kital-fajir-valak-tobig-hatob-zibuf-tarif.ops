@@ -75,3 +75,19 @@
   clock: 7  # 405c
   nonce: 405c  # 405c
   message: "Re-measured 2026-07-30 on a fresh self-survey: di-resolution-linker analyzed 0 files, ran 3394ms, emitted 0 edges. The premise HOLDS and the cost is slightly WORSE than the filed 2550ms.\n\nSibling measurement for context (same survey, recorded on INV-bikaj): 67 of 95 passes emit 0 edges; the dominant one is subprocess-linker at 991 files / 15947ms / 0 edges. di-resolution is the second-largest pure-overhead pass. Both are activation-gate shaped rather than correctness bugs."  # 405c
+- op: update  # 779c
+  at: '2026-09-06T20:06:54Z'  # 779c
+  by: agent  # 779c
+  actor: jgstern_agent  # 779c
+  clock: 8  # 779c
+  nonce: 779c  # 779c
+  set: {}  # 779c
+  add:  # 779c
+    duplicate_of: [INV-bikaj-mizug-gahoh-mofij-pigut-funaj-zijab-rivil]  # 779c
+- op: discuss  # d5d2
+  at: '2026-09-06T20:06:54Z'  # d5d2
+  by: agent  # d5d2
+  actor: jgstern_agent  # d5d2
+  clock: 9  # d5d2
+  nonce: d5d2  # d5d2
+  message: "FOLDED 2026-09-06 into INV-bikaj-mizug-gahoh-mofij-pigut-funaj-zijab-rivil as its named instance, by owner ruling on INV-nanon's re-scope (walk-through item 4). Same defect, one pass: a framework linker that runs with its patterns absent. Status unchanged (invariants have no wont_do); the duplicate_of link removes it from `ready`. The fix lands under INV-bikaj via INV-hujog's declaration mechanism."  # d5d2

@@ -306,3 +306,10 @@
   set: {}  # aab6
   remove:  # aab6
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # aab6
+- op: discuss  # b5b7
+  at: '2026-09-06T20:06:55Z'  # b5b7
+  by: agent  # b5b7
+  actor: jgstern_agent  # b5b7
+  clock: 40  # b5b7
+  nonce: b5b7  # b5b7
+  message: "OWNER RULING 2026-09-06 (walk-through item 4): the proposed next pass is ACCEPTED -- (1) re-run the item's own pretix repro with the generic claims and check the two d3 sites (d3.v6.js `log` as console.log LOGGING; d3-dispatch `get` as http.get NETWORK) for absence; (2) one live cross-category sanitizer barrier check for clause (b). Then violated -> pending_validation with 0013 as the validation. SEQUENCING: piggybacked on the first Phase 6 recall PR's 0003 measurement run, which surveys pretix anyway (linub_pyshapes census cohort) -- inside Phase 6, no extra cost, no arc edge."  # b5b7
