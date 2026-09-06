@@ -1,0 +1,22 @@
+- op: create  # fa92
+  at: '2026-09-06T14:29:33Z'  # fa92
+  by: agent  # fa92
+  actor: jgstern_agent  # fa92
+  clock: 1  # fa92
+  nonce: fa92  # fa92
+  data:  # fa92
+    kind: work_item  # fa92
+    title: "java: encryption.yaml carries ONE java sanitizer row (javax.crypto.Cipher.doFinal) -- add the plaintext->ciphertext and key_material->derived_key rows and count same-function sanitizer sites on a real java repo, which is what re-ranks WI-gotun"  # fa92
+    status: todo_hard  # fa92
+    priority: 3  # fa92
+    parent:  # fa92
+    tags:  # fa92
+    - taint  # fa92
+    - catalogue  # fa92
+    - java  # fa92
+    isbefore: []  # fa92
+    duplicate_of: []  # fa92
+    not_duplicate_of: []  # fa92
+    pr_ref:  # fa92
+    description: "Residual of WI-gotun (2026-09-06), filed on that item's own 08-25 recommendation: \"ADD SANITIZER ROWS TO java.yaml, which needs no extractor and raises the ceiling this item would then be able to collect. If that is done first, re-rank this item.\"\n\nTHE STATE. taint_sanitizers/encryption.yaml is one shared catalogue with per-language rows under each transform:\n  plaintext -> ciphertext : python 4 (Fernet.encrypt, AESGCM/AESCCM/ChaCha20Poly1305.encrypt), rust 2, typescript 1, go 1, java 1 (javax.crypto.Cipher.doFinal)\n  key_material -> derived_key : typescript 2, rust 1, java 0\nverify-claims reports catalog_sanitizers=1 for java in every dataflow_coverage row. So the same-function sanitizer credit -- the one precision benefit a java def/use extractor would collect (WI-gotun) -- is bounded by whether javax.crypto.Cipher.doFinal appears in the same function as a source.\n\nCANDIDATE ROWS, each to be read against the ADR-0017 sanitizer contract (the function's OUTPUT is safe for the prohibited zone) before it lands -- a wrong sanitizer row is a false all-clear, the opposite direction from a wrong source:\n  plaintext -> ciphertext:  javax.crypto.Cipher.update (the streaming half of doFinal; output is ciphertext), javax.crypto.CipherOutputStream.write (encrypts on write -- but its OUTPUT goes to the wrapped stream, so the sanitizer is the constructor's relationship, not the write; adjudicate), javax.crypto.SealedObject (constructor seals the object). NOT java.security.MessageDigest.digest (a digest is not ciphertext; if hashing is a sanitizer at all it is a different transform nobody has declared) and NOT Signature.sign.\n  key_material -> derived_key: javax.crypto.SecretKeyFactory.generateSecret, javax.crypto.KeyAgreement.generateSecret, javax.crypto.KDF (Java 24+, if the catalogue's audited version has it).\nThird-party (BouncyCastle, Tink, Jasypt) belongs in a community overlay (ADR-0047), not here.\n\nMEASURE, the gap WI-gotun's 08-25 entry names: how many same-function sanitizer sites a real java repo contains. The corpus has java (curriculum_repos/netty and others): count call sites of the candidate rows that share a function with a catalogued source. That number is what re-ranks WI-gotun; if it is near zero, the extractor stays parked and this item still improves the java sanitizer catalogue's honesty."  # fa92
+    fields: {}  # fa92
