@@ -1,0 +1,11 @@
+Original commit body from 60a16b74c8651794aabe4fdf0a78af0a7016374a:
+
+WI-komun (found by WI-nolut's A/B). javascript.yaml declared the named globals console, localStorage, sessionStorage, navigator, one `fs` row and a duplicate Deno row under `methods:`; the analyzer resolves their calls with the module slot and no construct, the classifier matches them, and `method_starved_modules` withheld every clean verdict over a repository that logs.
+
+- The rows move to `functions:` (the kind was the misdeclaration); the gate is not loosened, and the class receivers keep their method rows as the control.
+- Tests: row kinds, classifier parity, "a repo that only logs is not starved", and the WebSocket control.
+- A/B (11 repos, 4 claims, cold): 0/44 categories moved; the five held claims changed reason to the next honest rung (uncatalogued third-party modules; opaque launches). Nothing became confirmed.
+
+Tracker: WI-komun closed after merge. `process.on`/`process.send` stay on WI-kikar.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
