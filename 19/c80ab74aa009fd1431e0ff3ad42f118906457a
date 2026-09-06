@@ -1,0 +1,29 @@
+Original commit body from fc5d97a9a2d8ce9a1a74c157e7c9a0adfcb85db3:
+
+TF-IDF cosine on each item's masked full text, top-k neighbours, and
+Jarvis-Patrick clustering (an edge only where two items are in each
+other's top-k and share at least `--shared` of those neighbours), ranked
+by mean pairwise cosine. Pure standard library: the vectorizer reproduces
+scikit-learn's TfidfVectorizer(sublinear_tf=True, min_df=2, max_df=0.8)
+and the neighbour search is an inverted index. The vocabulary and IDF are
+fitted on every non-deleted item; only the selected items (non-resolved
+statuses by default; --status, --all) are clustered. 332 open items
+against a 2059-item fit: 2.4 s.
+
+Defaults k=6, shared=3 come from a parameter sweep on the tracker (308
+clusters, largest 17, 12.5% of within-cluster pairs being declared links
+against 0.04% chance; k>=10 chains into one giant component). The method
+is the outcome of the 2026-09-04..06 lab-notebook investigation: TF-IDF
+cosine beat a dense embedding model, BM25 and BMX at recovering declared
+families, and plain top-k neighbours matched or beat a NeighborNet port,
+its 96-seed block ensemble with a group-level consensus, and average /
+complete linkage at equal pair budgets in about a second. The module
+docstring of clusters.py records the chain of evidence.
+
+Tests: sklearn semantics of the vectorizer checked by hand, neighbour
+ordering and tie-breaks, Jarvis-Patrick on hand-built neighbour lists,
+end-to-end on a two-family corpus, and the subcommand's scope, filters,
+JSON and text output; 100% coverage; mypy strict ratchet unchanged.
+
+Racial-Capitalism-Is-Bad: a scarecrow made of VHS tape riding a surface of holographic panels in a raptor-run fried chicken counter with a conclave of turtles made of smoked salmon
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
