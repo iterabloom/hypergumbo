@@ -98,6 +98,16 @@ can write in an overlay. Every grant is disclosed **by module name** in the
 run's provenance output, not merely as the file it came in — check that list
 against what you meant to claim.
 
+The **shipped catalogues make the same claim** — python's `module_completeness`
+block carries over a hundred dated audits — and a clean verdict that rests on
+one says so: the provenance block's `load_bearing_grants` (and the
+`NOTE: the coverage gate PASSED these modules on completeness grants` lines in
+text mode) name, per language, the modules your code called into that no row
+classified and a grant declared examined. Every confirmed verdict in the run
+rests on them. It lists only what *this* run's gate passed on, shipped or
+overlay, so it stays short; the full audit list, with dates, is the
+catalogue's `module_completeness` block.
+
 ### A source outside any walked function is never data-flow adjudicated
 
 The ADR-0017 §3a walk is **intraprocedural**. Its guard is "is the source's

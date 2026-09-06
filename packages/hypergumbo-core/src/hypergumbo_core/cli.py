@@ -6548,7 +6548,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         "taint_sources": (cli_sources, claims_sources),
         "taint_sinks": (cli_sinks, claims_sinks),
         "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
-    }, () if getattr(args, "no_default_overlays", False) else languages)
+    }, () if getattr(args, "no_default_overlays", False) else languages,
+       load_bearing=coverage.load_bearing_grants)
 
     # Output
     if _read_view_wants_json(args):
