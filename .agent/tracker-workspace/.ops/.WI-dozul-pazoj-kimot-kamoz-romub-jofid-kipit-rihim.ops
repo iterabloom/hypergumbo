@@ -1,0 +1,31 @@
+- op: create  # 476a
+  at: '2026-09-06T14:27:54Z'  # 476a
+  by: agent  # 476a
+  actor: jgstern_agent  # 476a
+  clock: 1  # 476a
+  nonce: 476a  # 476a
+  data:  # 476a
+    kind: work_item  # 476a
+    title: "RULING NEEDED: a DNS lookup (socket.getaddrinfo / gethostbyname, net.LookupHost, ToSocketAddrs, getaddrinfo) returns resolver-chosen data and is rowed in no catalogue -- net_recv (ADR-0049's question), host_info_read, or a deferred-crossing shape"  # 476a
+    status: todo_hard  # 476a
+    priority: 2  # 476a
+    parent:  # 476a
+    tags:  # 476a
+    - taint  # 476a
+    - catalogue  # 476a
+    - vocabulary  # 476a
+    - needs_human_review  # 476a
+    isbefore: []  # 476a
+    duplicate_of: []  # 476a
+    not_duplicate_of: []  # 476a
+    pr_ref:  # 476a
+    description: "Escalated 2026-09-06 from WI-dupok (python completeness, third leg): the vocabulary has no ruling for a DNS lookup, and no catalogue rows one.\n\nTHE QUESTION. socket.gethostbyname / gethostbyaddr / getaddrinfo / getfqdn (python), net.LookupHost / LookupIP (go), std::net::ToSocketAddrs (rust), getaddrinfo (c) send a name over the network and return an answer the RESOLVER chose. ADR-0049's one question -- does the call return a value whose content the FAR SIDE chose? -- says yes, so by the ruling's letter these are net_recv and MINT untrusted_input. But a resolver answer is an address, not a payload; a program that then connects to it is already rowed at the connect; and host_info_read (\"a description of the host, may not be a secret\") is the other candidate. No catalogue rows any of them today (grep: zero rows across go/rust/c/python), so the silence is uniform and the question is unasked, not answered.\n\nWHY IT BLOCKS A GRANT. python's `socket` module cannot be granted complete while four of its module-level functions perform a network exchange with no row and no ruling; the same holds for go's net package and any future audit of c's netdb. WI-dupok refused `socket` on this ground and rowed the rest of its module-level surface (create_connection net_send, create_server net_listen).\n\nOWNER'S CALL (LIVE §2: when the record is silent, escalate): (a) net_recv -- consistent with ADR-0049's question; every DNS lookup mints untrusted_input; a resolver-poisoning threat model is exactly what that expresses; (b) host_info_read -- an address is a description, not data; (c) a new deferred-crossing shape beside net_listen (ADR-0049's axis) -- the lookup is setup for a later transfer. Whichever is ruled, the rows land in all four catalogues in one PR with the parity test."  # 476a
+    fields: {}  # 476a
+- op: update  # 0cf4
+  at: '2026-09-06T14:27:58Z'  # 0cf4
+  by: agent  # 0cf4
+  actor: jgstern_agent  # 0cf4
+  clock: 2  # 0cf4
+  nonce: 0cf4  # 0cf4
+  set:  # 0cf4
+    status: needs_human_review  # 0cf4

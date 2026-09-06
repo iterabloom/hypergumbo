@@ -100,3 +100,10 @@
   clock: 12  # 4576
   nonce: '4576'  # 4576
   message: "SECOND LEG LANDED 2026-09-06 (WI-nolut, PR #794): javascript granted for path, url, zlib, timers/promises, stream/promises, crypto, fs, fs/promises (both spellings), process; readline and http withheld with reasons. The node probe (jsleg_completeness_09062026/probe.js) is the third mechanical instrument beside the python importlib probe and the rust-src probe. Third leg (python, WI-dupok) is next on the arc."  # 4576
+- op: discuss  # fa0b
+  at: '2026-09-06T14:27:59Z'  # fa0b
+  by: agent  # fa0b
+  actor: jgstern_agent  # fa0b
+  clock: 13  # fa0b
+  nonce: fa0b  # fa0b
+  message: "THIRD LEG LANDED 2026-09-06 (WI-dupok, PR #802): python rows for the 08-24 working set and 44 grants; refusals written (tkinter, socket pending the DNS ruling WI-dozul-pazoj-kimot-kamoz-romub-jofid-kipit-rihim, ssl partial, unittest.mock, multiprocessing's Manager surface). All three legs of the rust -> javascript -> python order are now shipped."  # fa0b
