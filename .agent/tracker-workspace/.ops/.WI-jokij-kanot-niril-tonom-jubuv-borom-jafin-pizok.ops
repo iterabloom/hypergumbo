@@ -66,3 +66,19 @@
   set: {}  # 4fc1
   remove:  # 4fc1
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 4fc1
+- op: update  # 5f9c
+  at: '2026-09-06T20:06:08Z'  # 5f9c
+  by: agent  # 5f9c
+  actor: jgstern_agent  # 5f9c
+  clock: 8  # 5f9c
+  nonce: 5f9c  # 5f9c
+  set:  # 5f9c
+    priority: 3  # 5f9c
+    title: "The `external` sentinel is the honest cell for untyped-receiver calls; per-analyzer emission gaps are the hinted-external residue (973 edges, 1.7% of the None cohort: javascript 935, typescript 37, java 1)"  # 5f9c
+- op: discuss  # c3bd
+  at: '2026-09-06T20:06:08Z'  # c3bd
+  by: agent  # c3bd
+  actor: jgstern_agent  # c3bd
+  clock: 9  # c3bd
+  nonce: c3bd  # c3bd
+  message: "OWNER RULING 2026-09-06 (walk-through item 4): the 09-06 re-scope is ACCEPTED as recommended. Re-titled to the honest-cell statement; P2 -> P3 (owner-authorised). The 973 hinted-external edges (javascript 935, typescript 37, java 1) are per-analyzer follow-ups, not a family fix; not appended to the arc."  # c3bd
