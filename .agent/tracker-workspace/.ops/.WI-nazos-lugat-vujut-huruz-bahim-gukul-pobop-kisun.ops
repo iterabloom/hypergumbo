@@ -109,3 +109,10 @@
   clock: 13  # ce30
   nonce: ce30  # ce30
   message: "STAGE 3 PROGRESS 2026-09-06: WI-nolut (javascript completeness leg) DONE in PR #794, WI-jojaf (INV-nular F7) DONE in the same PR; residual WI-vihop-kimab-zovad-duzik-maduv-tonoj-nurol-zofoz filed in Phase 6 behind INV-linub. THE A/B MOVED NOTHING and named the two rungs that hold every clean javascript verdict: WI-dovog-jikos-gijud-hukin-kohik-sihof-juvor-rusas (solidity-abi-linker mints typescript-labelled synthetic srcs; WI-mital's family) and WI-komun-lajas-hufuv-fuhoz-hipab-sabub-pijag-digoj (console/localStorage rows declared methods: while the analyzer resolves named globals function-shaped). Both are Phase-5 residue in the arc's own sense (a clean verdict unreachable) and are placed BEFORE WI-dupok with isbefore edges. Next on the arc: WI-dovog-jikos-gijud-hukin-kohik-sihof-juvor-rusas, WI-komun-lajas-hufuv-fuhoz-hipab-sabub-pijag-digoj, then WI-dupok, WI-lavut."  # ce30
+- op: discuss  # a862
+  at: '2026-09-06T13:03:06Z'  # a862
+  by: agent  # a862
+  actor: jgstern_agent  # a862
+  clock: 14  # a862
+  nonce: a862  # a862
+  message: "STAGE 3 PROGRESS 2026-09-06: WI-dovog DONE (PR #798; abi/tauri synthetic srcs carry the host file's language). Next: WI-komun (named-global rows -> functions:, A/B read back), then WI-dupok, WI-lavut."  # a862
