@@ -283,6 +283,7 @@ env_read:
     notes: "WI-jupaf: `cmd` was REMOVED from this list. os:cmd/1 is the BEAM shell-out, not an environment read — it was swept in with the rest of the os module and now lives under `subprocess:` below. It is removed rather than ALSO declared there, because a multi-boundary primitive is resolved by YAML row order (INV-zumin), which would make the correct declaration live or inert depending on where it was pasted."
   - module: application
     functions: [get_env, get_all_env, get_key, get_all_key]
+    notes: "Application config reads. Ruled and kept under env_read with elixir's Application.get_env (INV-nular, 2026-09-06): the boundary means 'may carry a credential', and application config is where runtime.exs / sys.config put credentials. The full ruling is on the elixir row."
   - module: init
     functions: [get_argument, get_arguments, get_plain_arguments]
 

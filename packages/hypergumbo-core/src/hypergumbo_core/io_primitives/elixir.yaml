@@ -229,7 +229,18 @@ env_read:
     notes: "Elixir System env + process info reads"
   - module: Application
     functions: [get_env, fetch_env, "fetch_env!", get_all_env]
-    notes: "Application config reads (compile-time + runtime)"
+    notes: >-
+      Application config reads (compile-time + runtime). RULED AND KEPT
+      (INV-nular, 2026-09-06, on measurement 0006's own adjudication):
+      env_read means "may carry a credential", not "reads the process
+      environment" -- the same definition that split runtime.GOOS out into
+      host_info_read and kept argv in. Application config is filled from
+      config/runtime.exs, typically by System.get_env, and plausible's
+      `Application.get_env(:plausible, :paddle)` is a payments provider's
+      credentials on its face. Re-deducting the row would report LESS on
+      catalogue membership alone, the false-all-clear direction. Parity:
+      erlang `application:get_env` and java `System.getProperty` sit under
+      the same boundary for the same reason.
 
 # INV-tutar: host DESCRIPTION reads. Split out of env_read because
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
