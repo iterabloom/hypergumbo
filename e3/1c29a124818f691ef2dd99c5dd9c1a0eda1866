@@ -1,0 +1,14 @@
+Original commit body from 54e16ec93fd1ef6c50d09741fb8a68ef0e9e5019:
+
+WI-nolut (WI-lutuh's second leg) and WI-jojaf (INV-nular F7). javascript.yaml declared zero `module_completeness` grants, so no node module could be an examined negative. A mechanical probe over node v20's builtins (`jsleg_completeness_09062026/probe.js`, never grants) found `fs/promises` wholly unrowed, 91 unrowed `fs` exports, unrowed `process` readers, and that `path`'s seven rows carry no signal: pure string arithmetic declared `fs_read`.
+
+- 76 rows added (fs, fs.promises, process); 9 deleted (`path.*`, python `os.path.abspath` / `posixpath.abspath`) with notes at the sites.
+- 10 dated grants: path, url, zlib, timers/promises, stream/promises, crypto (python entropy precedent, pinned), fs, fs/promises (both spellings), process. readline and http withheld with reasons in the yaml.
+- Catalogue promoted `in_progress` -> `provenance_declared` (nodejs.org/api, 20.19).
+- javascript becomes a mode-producing language: `_MODE_ARGUMENT_POSITIONS` (flags at positional 1), `stamp_io_mode_from_call` reads `string_fragment`, `js_ts.py` stamps `io_mode`; `fs.open(p, 'w')` tags `fs_write`.
+- 75 tests in `test_javascript_module_completeness.py`, 22 in `test_js_io_mode_emission.py`.
+- A/B on eleven javascript corpus repositories, cold caches, four claims: 0 of 44 verdict categories moved. Every surviving `inconclusive` is held by a rung the grants do not reach: a `console` method-shape withholding (express, ioredis, winston: the rows are `methods:` and the analyzer emits the calls without a method construct, so the coverage gate withholds while the classifier tags them — filed), and languages with no catalogue (vue, ruby, php/powershell, solidity — and `typescript` named as having none although it aliases javascript's, filed). The F7 deletion moved no NO-FSREAD verdict because every cohort repo reads files elsewhere. The positive control is the gate test: a call into a granted module now reaches `coverage.complete`, which no javascript call could before.
+
+Tracker: WI-nolut and WI-jojaf closed after merge; the `fs.promises.<fn>` member-chain reach gap is filed in Phase 6.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
