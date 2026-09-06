@@ -20,3 +20,21 @@
     pr_ref:  # 55bf
     description: "Found by WI-baran's arm-A census (2026-09-06). fluent-bit: 116 of its 162 sendto/send/recv call edges RESOLVE to one in-repo function -- lib/wasm-micro-runtime-WAMR-2.4.1/core/shared/platform/nuttx/nuttx_platform.c:258-264 `sendto` (and 8 to linux-sgx/sgx_socket.c) -- because the C resolver binds a call by NAME to any same-named in-repo definition, and a vendored platform shim defines the libc names. Every `sendto(fd, ..)` in fluent-bit's own sources is therefore a call INTO a NuttX compatibility wrapper that the build never compiles on Linux, and none of those 116 sites reaches the I/O catalogue (a resolved edge is not classified).\n\nTWO CONSEQUENCES. (1) io-boundaries and taint miss every socket send/receive in fluent-bit's own code: a false all-clear on a network claim over a log-shipping daemon. (2) The call graph is wrong in the way INV-mozas names for erlang/go -- a source anchored to a symbol that does not contain it -- but here the mechanism is resolution, not anchoring: name-only lookup with no scope, include or build-target evidence.\n\nWHAT DECIDES IT, candidates (not designed here): a definition under a vendored/third-party path (lib/, third_party/, vendor/, a directory carrying its own LICENSE) should not capture calls from first-party files by bare name; or a libc name (the names c.yaml catalogues) should resolve in-repo only when the calling file includes the defining header or the definition is in the same build target. rust's analyzer already declines name-only resolution for ubiquitous names (SUPPRESSED_METHOD_NAMES); C has the ambiguous_names list on the CATALOGUE side but the resolver ignores it.\n\nMEASURE FIRST: count, per corpus C repo, call edges resolved to a definition under a vendored path from a file outside it, by callee name. If the population is fluent-bit-only, a repo-shape fix is the wrong layer."  # 55bf
     fields: {}  # 55bf
+- op: update  # 503a
+  at: '2026-09-06T11:28:39Z'  # 503a
+  by: agent  # 503a
+  actor: jgstern_agent  # 503a
+  clock: 2  # 503a
+  nonce: 503a  # 503a
+  set: {}  # 503a
+  add:  # 503a
+    not_duplicate_of: [WI-kapak-fiban-gijal-rinof-jafaf-kalut-kitor-zuhib]  # 503a
+- op: update  # 312f
+  at: '2026-09-06T11:28:47Z'  # 312f
+  by: agent  # 312f
+  actor: jgstern_agent  # 312f
+  clock: 3  # 312f
+  nonce: 312f  # 312f
+  set: {}  # 312f
+  add:  # 312f
+    not_duplicate_of: [WI-vihof-tidah-folif-gibup-logat-fason-hujaz-gipiv]  # 312f

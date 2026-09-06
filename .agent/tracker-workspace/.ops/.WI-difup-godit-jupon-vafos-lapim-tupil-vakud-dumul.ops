@@ -20,3 +20,12 @@
     pr_ref:  # 48a0
     description: "Phase 6 recall. Residual of WI-lunav (closed 2026-09-06 with all eight builder rows kept).\n\nTHE MEASUREMENT THAT MAKES THIS AN ITEM (WI-lunav step 1, servant, per-arm cache, 2026-08-28). Removing Network.HTTP.Client.newManager -- a connection-pool constructor that transmits nothing at call time, with every stdlib executor (httpLbs, httpBS, httpNoBody, responseOpen, withResponse) separately rowed -- collapsed HOSTSECRET-NO-NETWORK violated(3) -> inconclusive(0) and UNTRUSTED-NO-NETWORK violated(3) -> inconclusive(0). Reason: servant's example clients reach the network through withClientM / the `client` combinator, which is NOT catalogued, so once newManager goes there is no rowed sink left in those functions and the crossing is represented nowhere.\n\nTHE WORK. (1) A community overlay (ADR-0047: third-party rows are overlays, never the stdlib catalogue) rowing servant-client's executors -- runClientM, withClientM, the actions `client` derives -- with the ADR-0049 question answered per row (does the call return a value the far side chose? yes => net_recv; the request it transmits => net_send). (2) Re-run the WI-lunav newManager A/B on servant with the overlay loaded: the licence for removing the builder row is that BOTH claims keep violated(3) with the crossing now represented at the executor. (3) Only then decide the newManager row. The other seven builder rows carry payload, credentials or SNI by signature (WI-lunav (B)) and are not candidates regardless.\n\nMEASURED THROUGH THE TAINT PATH: marginal precision, awaits_bakeoff_validation. Instrument: ~/hypergumbo_lab_notebook/lunav_newmanager_08282026/."  # 48a0
     fields: {}  # 48a0
+- op: update  # 58e6
+  at: '2026-09-06T11:27:46Z'  # 58e6
+  by: agent  # 58e6
+  actor: jgstern_agent  # 58e6
+  clock: 2  # 58e6
+  nonce: '58e6'  # 58e6
+  set: {}  # 58e6
+  add:  # 58e6
+    not_duplicate_of: [INV-tabaf-vaniz-rorin-pidup-punif-mimid-damod-zavit]  # 58e6

@@ -1,0 +1,22 @@
+- op: create  # b3b7
+  at: '2026-09-06T12:23:09Z'  # b3b7
+  by: agent  # b3b7
+  actor: jgstern_agent  # b3b7
+  clock: 1  # b3b7
+  nonce: b3b7  # b3b7
+  data:  # b3b7
+    kind: work_item  # b3b7
+    title: "javascript: the fs.promises.<fn> member chain (and dns/stream/readline/timers .promises) resolves to an untyped receiver and never reaches the fs.promises rows; require('fs/promises') does"  # b3b7
+    status: todo_hard  # b3b7
+    priority: 3  # b3b7
+    parent:  # b3b7
+    tags:  # b3b7
+    - taint  # b3b7
+    - catalogue  # b3b7
+    - javascript  # b3b7
+    isbefore: []  # b3b7
+    duplicate_of: []  # b3b7
+    not_duplicate_of: []  # b3b7
+    pr_ref:  # b3b7
+    description: "Found 2026-09-06 while landing WI-nolut (javascript module_completeness). Phase 6 recall, INV-linub's class (a catalogued call site that cannot reach its row for want of receiver evidence), held behind INV-linub.\n\nTHE GAP, measured on a fixture through analyze_javascript + classify_call (jsleg_completeness_09062026 / scratchpad jsfx):\n  require('fs/promises').readFile(p)            -> javascript:fs/promises:0-0:readFile:unresolved   CLASSIFIES (fs_read/fs.promises.readFile)\n  import {readFile} from 'node:fs/promises'     -> same                                            CLASSIFIES\n  fs.promises.readFile(p)   (fs = require('fs')) -> javascript:external:0-0:readFile:unresolved  call_construct: method   NONE\n  require('fs').promises.writeFile(p, x)        -> javascript:external:0-0:writeFile:unresolved  method                   NONE\nThe member CHAIN `<module>.promises.<fn>` -- the documented pre-ESM spelling, still common -- resolves to an untyped receiver, so the fs.promises rows (now 27, granted complete) are unreachable through it. INV-misup's constructed-receiver fix does not cover a module-object property chain.\n\nTHE FIX SHAPE, not designed here: in js_ts.py's member-call resolution, when the receiver expression is `<ident>.promises` and `<ident>` is bound to require('fs') / import of a catalogued module, emit the module slot `fs/promises` (the same slot the direct require emits), so the existing rows classify. Check the analogues (LIVE rule 4): `dns.promises`, `stream.promises`, `readline.promises`, `timers.promises` are the same shape in node's API.\n\nMEASURED THROUGH THE TAINT PATH (INV-linub): fs_read mints nothing, fs_write is a sink, so the finding delta is on the sink side; marginal precision, awaits_bakeoff_validation."  # b3b7
+    fields: {}  # b3b7
