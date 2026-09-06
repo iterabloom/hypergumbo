@@ -66,3 +66,12 @@
   clock: 7  # 1bd7
   nonce: 1bd7  # 1bd7
   message: "[Wave-0 pending-validation sweep] INV-hujog: Pass.depends_on schema + validator present but not integrated into runtime\n\n**Status:** violated — Phase 1 (schema + validator function) is complete, but Phase 2 (runtime wire-up into run_behavior_map) is missing.\n\n**Evidence:**\n- Schema: packages/hypergumbo-core/src/hypergumbo_core/catalog.py:89 — Pass.depends_on: List[List[str]] field present\n- Validator: packages/hypergumbo-core/src/hypergumbo_core/catalog.py:188 — validate_pass_dependencies() function fully implemented\n- Population: All 59 linkers have depends_on= declarations in @register_linker decorator (58 populated, 1 empty for containment Infrastructure pass)\n- Tests: packages/hypergumbo-core/tests/test_catalog.py:399-509 — 11 test cases in TestValidatePassDependencies, all passing\n- **Integration: MISSING** — grep across packages/hypergumbo-core/src/ finds zero callers of validate_pass_dependencies outside tests\n- run_behavior_map() in cli.py:7679 — no import of validate_pass_dependencies, no config-time pass filtering based on depends_on\n\n**Root cause:** Phase 2 wire-up deferred. The tracker discussion (2026-05-30T09:51:52Z) explicitly notes: \"Phase 2 wire-up of validate_pass_dependencies into run_behavior_map config-time filtering is still missing.\"\n\n**Consequence:** Users can disable prerequisite analyzers (e.g., --no-python) without config-time error; linkers run but produce silently-degraded output. The invariant requires activation gating at config time."  # 1bd7
+- op: update  # 7413
+  at: '2026-09-06T20:06:55Z'  # 7413
+  by: agent  # 7413
+  actor: jgstern_agent  # 7413
+  clock: 8  # 7413
+  nonce: '7413'  # 7413
+  set: {}  # 7413
+  add:  # 7413
+    isbefore: [INV-bikaj-mizug-gahoh-mofij-pigut-funaj-zijab-rivil]  # 7413
