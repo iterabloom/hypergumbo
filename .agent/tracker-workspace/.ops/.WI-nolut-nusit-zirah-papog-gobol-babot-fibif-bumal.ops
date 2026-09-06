@@ -1,0 +1,31 @@
+- op: create  # 1404
+  at: '2026-09-06T11:26:13Z'  # 1404
+  by: agent  # 1404
+  actor: jgstern_agent  # 1404
+  clock: 1  # 1404
+  nonce: '1404'  # 1404
+  data:  # 1404
+    kind: work_item  # 1404
+    title: "javascript: author module_completeness for the node-builtin working set (13 modules: process, fs, url, crypto, path, readline, http, fs/promises, stream/promises, zlib, timers/promises ...) -- the second leg of WI-lutuh's rust -> javascript -> python order"  # 1404
+    status: todo_hard  # 1404
+    priority: 2  # 1404
+    parent:  # 1404
+    tags:  # 1404
+    - catalogue  # 1404
+    - javascript  # 1404
+    - verify_claims  # 1404
+    isbefore: []  # 1404
+    duplicate_of: []  # 1404
+    not_duplicate_of: []  # 1404
+    pr_ref:  # 1404
+    description: "Phase 5 residue, the second leg of WI-lutuh's recommended order (rust -> javascript -> python; PR #573 shipped the rust leg, 20 grants). The arc-finishing order (WI-nazos, 2026-09-06) asked whether this leg had been filed; it had not. Precedes WI-dupok (the python leg), per the same order.\n\nWHAT AN ENTRY MEANS (WI-dupok's wording, which binds here too): a module_completeness entry is the claim \"I audited this module and every I/O primitive it exposes is enumerated in the boundary sections above, so an unmatched call into it is provably not I/O\". It is the single grant of confirmability under INV-buzab's gate, and it is DISCLOSED per module by the catalog_provenance completeness_grants block (INV-tabaf) -- WI-lavut asks whether shipped grants should be disclosed the same way; land that question before or with this.\n\nTHE WORKING SET, from the 2026-08-24 scope audit (~/hypergumbo_lab_notebook/lutuh_scope_08242026/, raw.json by_lang.javascript filtered to node builtinModules): 13 modules in the audit's count, 11 named by the extraction on 2026-09-06 -- process (5 repos), url (4), fs (3), crypto (3), path (2), readline (2), http (1), fs/promises, stream/promises, zlib, timers/promises (1 each). The remaining 12 of javascript's 13 corpus repos are blocked by GLOBAL (browser globals -- document, navigator, window -- a module-slot fact, not a completeness one) and 8 by THIRDPARTY, so this leg flips 0 of 13 repos to a clean verdict on its own (RELIABLE.txt: javascript stdlib-only repos 0/13). It is NECESSARY AND NOT SUFFICIENT, as WI-lutuh said of every leg.\n\nTHE BAR IS NOT MET BY READING (WI-lutuh: 5 of 32 python verdicts written from memory were wrong, every one on the false-all-clear side). The mechanical probe for node is available locally -- `node -e \"require('module').builtinModules\"` plus the module's own exported names -- and the audit of each module must be recorded with its date in the entry (`retrieved:`), the way rust.yaml's 20 grants are. `process` is the hard one: it is a global as much as a module, carries env (env_read), argv, stdin/stdout/stderr, exit, cwd/chdir, kill -- most of which javascript.yaml already rows; the audit is whether EVERY I/O-bearing member is rowed. `path` and `url` are pure and should be cheap complete grants; `fs`/`fs/promises` are the largest surface.\n\nA/B on the javascript corpus repos with the same instrument as the rust leg (lutuh_grants_08272026/ab.sh, compare.py): every verdict that changes category read back; `removed>0` requires the read-back."  # 1404
+    fields: {}  # 1404
+- op: update  # 3694
+  at: '2026-09-06T11:26:17Z'  # 3694
+  by: agent  # 3694
+  actor: jgstern_agent  # 3694
+  clock: 2  # 3694
+  nonce: '3694'  # 3694
+  set: {}  # 3694
+  add:  # 3694
+    isbefore: [WI-dupok-tubas-bihib-juhip-lirof-vubin-fupob-padup]  # 3694

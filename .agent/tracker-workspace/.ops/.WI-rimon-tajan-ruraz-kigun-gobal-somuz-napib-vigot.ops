@@ -1,0 +1,22 @@
+- op: create  # 55bf
+  at: '2026-09-06T11:26:09Z'  # 55bf
+  by: agent  # 55bf
+  actor: jgstern_agent  # 55bf
+  clock: 1  # 55bf
+  nonce: 55bf  # 55bf
+  data:  # 55bf
+    kind: work_item  # 55bf
+    title: "c: name-only resolution binds first-party calls to a vendored platform shim -- fluent-bit resolves 116 of 162 sendto/recv sites into a NuttX compatibility file, so none reaches the catalogue"  # 55bf
+    status: todo_hard  # 55bf
+    priority: 3  # 55bf
+    parent:  # 55bf
+    tags:  # 55bf
+    - c  # 55bf
+    - call_graph  # 55bf
+    - io_boundary  # 55bf
+    isbefore: []  # 55bf
+    duplicate_of: []  # 55bf
+    not_duplicate_of: []  # 55bf
+    pr_ref:  # 55bf
+    description: "Found by WI-baran's arm-A census (2026-09-06). fluent-bit: 116 of its 162 sendto/send/recv call edges RESOLVE to one in-repo function -- lib/wasm-micro-runtime-WAMR-2.4.1/core/shared/platform/nuttx/nuttx_platform.c:258-264 `sendto` (and 8 to linux-sgx/sgx_socket.c) -- because the C resolver binds a call by NAME to any same-named in-repo definition, and a vendored platform shim defines the libc names. Every `sendto(fd, ..)` in fluent-bit's own sources is therefore a call INTO a NuttX compatibility wrapper that the build never compiles on Linux, and none of those 116 sites reaches the I/O catalogue (a resolved edge is not classified).\n\nTWO CONSEQUENCES. (1) io-boundaries and taint miss every socket send/receive in fluent-bit's own code: a false all-clear on a network claim over a log-shipping daemon. (2) The call graph is wrong in the way INV-mozas names for erlang/go -- a source anchored to a symbol that does not contain it -- but here the mechanism is resolution, not anchoring: name-only lookup with no scope, include or build-target evidence.\n\nWHAT DECIDES IT, candidates (not designed here): a definition under a vendored/third-party path (lib/, third_party/, vendor/, a directory carrying its own LICENSE) should not capture calls from first-party files by bare name; or a libc name (the names c.yaml catalogues) should resolve in-repo only when the calling file includes the defining header or the definition is in the same build target. rust's analyzer already declines name-only resolution for ubiquitous names (SUPPRESSED_METHOD_NAMES); C has the ambiguous_names list on the CATALOGUE side but the resolver ignores it.\n\nMEASURE FIRST: count, per corpus C repo, call edges resolved to a definition under a vendored path from a file outside it, by callee name. If the population is fluent-bit-only, a repo-shape fix is the wrong layer."  # 55bf
+    fields: {}  # 55bf
