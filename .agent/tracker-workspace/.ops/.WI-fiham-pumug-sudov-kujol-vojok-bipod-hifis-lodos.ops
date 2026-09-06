@@ -1,0 +1,22 @@
+- op: create  # 2fab
+  at: '2026-09-06T15:02:53Z'  # 2fab
+  by: agent  # 2fab
+  actor: jgstern_agent  # 2fab
+  clock: 1  # 2fab
+  nonce: 2fab  # 2fab
+  data:  # 2fab
+    kind: work_item  # 2fab
+    title: "javascript import edges keep the node: scheme the call edges strip, so the coverage gate withholds on a spelling of modules it classifies"  # 2fab
+    status: todo_hard  # 2fab
+    priority: 3  # 2fab
+    parent:  # 2fab
+    tags:  # 2fab
+    - analysis_quality  # 2fab
+    - module_key  # 2fab
+    - verify_claims  # 2fab
+    isbefore: []  # 2fab
+    duplicate_of: []  # 2fab
+    not_duplicate_of: []  # 2fab
+    pr_ref:  # 2fab
+    description: "FOUND 2026-09-06 measuring WI-lavut on express (curriculum_repos/express, cold cache, branch tip of PR #806). Filed, not fixed: WI-lavut is disclosure and this is emission.\n\nWHAT. The javascript analyzer strips the `node:` scheme from a CALL's module slot (js_ts.py:392-413, \"node:fs -> fs, the Node 16+ canonical form for built-ins\") but leaves it on the IMPORT edge it emits for the same require/import: express carries 100 import edges shaped `javascript:node:path:0-0:module:external_symbol` with dst_ref.module_path == \"node:path\" (node:path 32, node:assert 31, node:buffer 13, node:http 6, node:async_hooks 6, node:fs 5), and zero call edges spelled that way. One require, two spellings, and every consumer keyed on the module slot sees a different module on the import than on the calls.\n\nWHAT IT COSTS. verify-claims' uncatalogued-module gate walks imports as well as calls (_COVERAGE_CALL_EDGE_TYPES) and asks module_io_is_enumerated, which is EXACT by design (INV-buzab/INV-zubuh): `path` is granted, `node:path` is not, so express's gate reports node:http, node:path, node:querystring as unknown and withholds NO-FSWRITE and NO-SUBPROC on a spelling of modules whose calls it classifies fine. classify_call(`node:child_process`, exec) is also None, so an analyzer that ever left the scheme on a call slot would lose the subprocess sink outright; today only the import edge does. winston shows the same on node:fs/promises (2 import edges).\n\nWHERE. The same kind of leak WI-jokij/WI-gudak are about (Phase 7: one target, two module spellings). The fix belongs at the js analyzer's import-edge emission, normalising the module slot AND dst_ref.module_path the way the call path already does -- not at the predicate (ir.py:740's docstring names `node:fs/promises` as a canonical module_path, so the catalogue side is ambiguous; ADR-0051 decides which spelling is canonical, and whichever it is, the import edge and the call edge must agree).\n\nMEASURE BEFORE FIXING: count import-vs-call module-slot disagreements per module across the js cohort (jsleg_completeness_09062026/sample.tsv); after the fix express's unknown list should lose the three node: entries and NO-FSWRITE should move from inconclusive only if nothing else withholds it (mime-types, body-parser, proxy-addr, statuses are third-party and stay unknown, so it will NOT move -- the honest expectation is \"three fewer unknowns, no verdict move\")."  # 2fab
+    fields: {}  # 2fab
