@@ -42,6 +42,7 @@ Why This Design
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -563,6 +564,10 @@ def _extract_edges(
             # produced, keyed on the call node rather than a line, because two
             # calls can share a line.
             _kind = _c_stream_target_kind(node, source)
+            if _kind is None:
+                # WI-baran: a socket transfer's descriptor, by the family the
+                # descriptor was created with -- the same hop, one table over.
+                _kind = _c_socket_target_kind(node, source)
             if _kind is not None:
                 for _edge in edges[_edges_before_call:]:
                     _edge.meta = dict(_edge.meta or {})
@@ -969,6 +974,174 @@ def _c_stream_target_kind(
         return None
     rhs = _c_binding_rhs(call_node, source, bare)
     return None if rhs is None else _c_classify_stream_text(rhs)
+
+
+#: Which ARGUMENT of a socket transfer carries the descriptor (WI-baran).
+#:
+#: All six take it FIRST, unlike the stdio table above, and the table keeps
+#: that table's shape anyway so the two lookups read alike and a seventh
+#: name with a different position has a place to go. ``connect`` is absent
+#: on purpose: it transmits nothing but the connection (ADR-0049's deferred
+#: shape) and stays single-rowed in ``c.yaml``.
+_C_SOCKET_FD_INDEX: dict[str, int] = {
+    "send": 0, "sendto": 0, "sendmsg": 0,
+    "recv": 0, "recvfrom": 0, "recvmsg": 0,
+}
+
+#: Address families whose endpoint is ANOTHER PROCESS on this host (a
+#: ``pipe`` target kind: ``ipc_send`` / ``ipc_recv``) ...
+_C_LOCAL_SOCKET_FAMILIES: frozenset[str] = frozenset({
+    "AF_UNIX", "AF_LOCAL", "PF_UNIX", "PF_LOCAL",
+})
+#: ... and whose endpoint is THE NETWORK (``net_stream``). Everything else --
+#: ``PF_NETLINK`` and ``PF_PACKET`` talk to the kernel, ``AF_VSOCK`` to a
+#: hypervisor, a variable to nobody the analyzer can name -- is neither, and
+#: a call over it stamps nothing rather than guessing: INV-zumin's one answer
+#: or none, and the catalogue's ``abstains_to`` row keeps today's answer.
+_C_NETWORK_SOCKET_FAMILIES: frozenset[str] = frozenset({
+    "AF_INET", "AF_INET6", "PF_INET", "PF_INET6",
+})
+
+#: Calls whose RESULT is a connected descriptor of the LISTENER's family.
+_C_ACCEPTORS: frozenset[str] = frozenset({"accept", "accept4"})
+
+
+def _c_call_head_and_first_arg(text: str) -> Optional[tuple[str, str]]:
+    """``("socket", "AF_UNIX")`` for ``socket(AF_UNIX, SOCK_STREAM, 0)``; None
+    when *text* is not a plain ``identifier(...)`` call.
+
+    Only the FIRST argument is cut out, at depth zero, so ``socket(PF_PACKET,
+    SOCK_RAW, htons(ETH_P_ALL))`` yields ``PF_PACKET`` and not the ``htons``
+    call's inside.
+    """
+    stripped = text.strip()
+    open_idx = stripped.find("(")
+    if open_idx <= 0 or not stripped.endswith(")"):
+        return None
+    head = stripped[:open_idx].strip()
+    if not head.isidentifier():
+        return None
+    depth = 0
+    first: list[str] = []
+    for ch in stripped[open_idx + 1:-1]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            break
+        first.append(ch)
+    return head, "".join(first).strip()
+
+
+def _c_socketpair_binds(
+    call_node: "tree_sitter.Node", source: bytes, name: str,
+) -> bool:
+    """Whether a ``socketpair(.., .., .., name)`` call precedes *call_node* in
+    its function.
+
+    ``socketpair`` fills an ARRAY through its fourth argument, so the pair is
+    never the value of an assignment and :func:`_c_binding_rhs` cannot see
+    it; the call itself is the binding. Textual line order, enclosing
+    function only, the same limits as the helper it stands beside.
+    """
+    body = _c_enclosing_body(call_node)
+    if body is None:
+        return False
+    use_line = call_node.start_point[0]
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type != "call_expression" or current.start_point[0] >= use_line:
+            continue
+        func = current.child_by_field_name("function")
+        args = current.child_by_field_name("arguments")
+        if func is None or args is None or node_text(func, source) != "socketpair":
+            continue
+        actual = [c for c in args.children if c.is_named]
+        if len(actual) >= 4 and node_text(actual[3], source).strip() == name:
+            return True
+    return False
+
+
+def _c_classify_socket_text(
+    text: str, call_node: "tree_sitter.Node", source: bytes, depth: int,
+) -> Optional[str]:
+    """``io_target_kind`` for an expression that PRODUCES a socket descriptor.
+
+    ``socket(FAMILY, ..)`` answers from the family alone. ``accept(l, ..)`` /
+    ``accept4`` answer with the family of ``l`` -- one more hop through
+    :func:`_c_socket_kind_of_expression`, and only from depth zero, so an
+    accept of an accept is not chased. ONE PLACE, for the reason
+    :func:`_c_classify_stream_text` is: an inline producer and a resolved
+    binding cannot drift into disagreeing about what ``socket`` is.
+    """
+    parsed = _c_call_head_and_first_arg(text)
+    if parsed is None:
+        return None
+    head, first = parsed
+    if head == "socket":
+        if first in _C_LOCAL_SOCKET_FAMILIES:
+            return "pipe"
+        if first in _C_NETWORK_SOCKET_FAMILIES:
+            return "net_stream"
+        return None
+    if head in _C_ACCEPTORS and depth == 0:
+        return _c_socket_kind_of_expression(first, call_node, source, depth=1)
+    return None
+
+
+def _c_socket_kind_of_expression(
+    arg_text: str, call_node: "tree_sitter.Node", source: bytes, depth: int = 0,
+) -> Optional[str]:
+    """``io_target_kind`` for a descriptor-valued expression at *call_node*.
+
+    Inline producer first; then ``sv[0]`` / ``sv[1]`` against a preceding
+    ``socketpair(.., sv)``; then a bare identifier through its last binding.
+    Anything else -- a parameter, a struct field, an arithmetic expression --
+    is None, and None is an answer (the ``abstains_to`` row).
+    """
+    direct = _c_classify_socket_text(arg_text, call_node, source, depth)
+    if direct is not None:
+        return direct
+    bare = arg_text.strip()
+    element = re.fullmatch(r"(\w+)\[[01]\]", bare)
+    if element is not None:
+        return "pipe" if _c_socketpair_binds(call_node, source, element.group(1)) else None
+    if not bare.isidentifier():
+        return None
+    rhs = _c_binding_rhs(call_node, source, bare)
+    return None if rhs is None else _c_classify_socket_text(rhs, call_node, source, depth)
+
+
+def _c_socket_target_kind(
+    call_node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``io_target_kind`` for a socket send/recv call, or None to stay silent.
+
+    WI-baran. Where the descriptor was created decides the boundary -- INV-vaduk's
+    rule for ``unistd.read`` / ``write``, applied one hop back through the
+    descriptor variable -- and where it cannot be recovered the call classifies
+    exactly as before (``c.yaml`` declares ``abstains_to: net_*``). Measured on
+    324 corpus sites before building: the descriptor is a bare identifier at
+    222, a struct field at 77, a ``socketpair`` element at 10; tmux's own two
+    sites, the instance that filed the item, pass it as a parameter and abstain
+    here.
+    """
+    func_node = call_node.child_by_field_name("function")
+    if func_node is None or func_node.type != "identifier":
+        return None
+    index = _C_SOCKET_FD_INDEX.get(node_text(func_node, source))
+    if index is None:
+        return None
+    args = call_node.child_by_field_name("arguments")
+    if args is None:  # pragma: no cover - a call always carries arguments
+        return None
+    actual = [c for c in args.children if c.is_named]
+    if index >= len(actual):
+        return None
+    return _c_socket_kind_of_expression(node_text(actual[index], source), call_node, source)
 
 
 _C_STDIO_GLOBALS: dict[str, str] = {
