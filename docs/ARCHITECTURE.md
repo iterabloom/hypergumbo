@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **320** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 88 core, 4 CLI, 33 tracker)
-- **44551** symbols (functions, classes, methods)
-- **177480** edges by type:
-  - calls: 102673
-  - contains: 40990
-  - imports: 13710
-  - instantiates: 11275
-  - references: 5960
-  - module_attr_ref: 1434
-  - other: 1438
+- **321** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 88 core, 4 CLI, 34 tracker)
+- **44887** symbols (functions, classes, methods)
+- **178733** edges by type:
+  - calls: 103341
+  - contains: 41310
+  - imports: 13837
+  - instantiates: 11310
+  - references: 6058
+  - module_attr_ref: 1437
+  - other: 1440
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 44551 Symbols + 177480 Edges + UsageContexts           │
+│  Output: 44887 Symbols + 178733 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,20 +272,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9579.6 | ir.py |
-| `len` | external_symbol | 7377.0 | <external> |
-| `write_text` | external_symbol | 6431.0 | <external> |
+| `len` | external_symbol | 7395.0 | <external> |
+| `write_text` | external_symbol | 6456.0 | <external> |
 | `Span` | class | 6416.2 | ir.py |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `get` | external_symbol | 2897.0 | <external> |
+| `get` | external_symbol | 2913.0 | <external> |
 | `Edge.create` | method | 2395.6 | ir.py |
-| `load_catalog` | function | 2193.1 | io_boundary.py |
-| `next` | external_symbol | 2118.0 | <external> |
+| `load_catalog` | function | 2287.8 | io_boundary.py |
+| `next` | external_symbol | 2120.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `str` | external_symbol | 2021.0 | <external> |
+| `str` | external_symbol | 2046.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `Path` | external_symbol | 1902.0 | <external> |
-| `main` | function | 1615.6 | cli.py |
-| `append` | external_symbol | 1561.0 | <external> |
+| `Path` | external_symbol | 1916.0 | <external> |
+| `main` | function | 1677.1 | cli.py |
+| `append` | external_symbol | 1572.0 | <external> |
 
 ## Pattern System
 
@@ -872,6 +872,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.annotations`**: Annotation data model for TUI screenshot annotations (ADR-0020).
 - **`hypergumbo_tracker.cache`**: SQLite per-tier read cache for the hypergumbo tracker.
 - **`hypergumbo_tracker.cli`**: CLI entry points for hypergumbo-tracker.
+- **`hypergumbo_tracker.clusters`**: Predicted clusters of tracker items: TF-IDF cosine, top-k neighbour...
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
 - **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
@@ -907,8 +908,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 82d9bd4f87ea
-  commit_count: 7099
+  commit: 24ba73f4e29c
+  commit_count: 7131
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
