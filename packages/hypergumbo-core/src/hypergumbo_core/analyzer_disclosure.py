@@ -48,15 +48,27 @@ stops firing on its own and no invariant changes colour. That is the point of
 declaring rather than blocking: under a CAPABILITY-phrased bar, teaching kotlin
 to emit these edges would have read as a mass NEW violation, because those
 sinks would suddenly become visible-but-untyped. LIVE.md rule 19.
+
+THREE SHAPES LIVE HERE, kept apart because their remedies differ.
+:data:`DECLARATIONS` is a whole construct an analyzer cannot see (fix: build
+the edges). :data:`SUPPRESSED_METHOD_NAMES` is named methods an analyzer
+deliberately drops (policy: stays). :data:`CONSTRUCT_BLIND_ROWS` is a
+catalogued row that source reaches by a construct which is NOT A CALL, so no
+analyzer emits an edge for it at all (fix: emit a registration edge, which is
+recall work). Each is dated, each fails closed in its own way, and each is
+derived against the shipped catalogue at render time where it can be.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 __all__ = [
+    "CONSTRUCT_BLIND_ROWS",
     "DECLARATIONS",
     "SUPPRESSED_METHOD_NAMES",
+    "ConstructBlindRows",
     "MethodCallEdgeDeclaration",
+    "construct_blind_catalogued_sinks",
     "emits_external_method_call_edges",
     "method_call_blind_languages",
     "suppressed_catalogued_sinks",
@@ -250,3 +262,79 @@ def suppressed_catalogued_sinks(language: str, catalog: object) -> set[str]:
         if getattr(p, "kind", None) == "method"
     }
     return names & SUPPRESSED_METHOD_NAMES.get(language, frozenset())
+
+
+@dataclass(frozen=True)
+class ConstructBlindRows:
+    """Catalogued METHOD-kind rows a language's analyzer can never reach,
+    because the source construct that uses them is not a call — dated, with
+    the measurement behind it.
+
+    ``rows`` are ``module.name`` keys spelled as the catalogue spells them;
+    ``construct`` names what a reader would grep for. Evidence is required
+    for the reason it is on :class:`MethodCallEdgeDeclaration`: an undated,
+    unsourced entry is a guess, and a guess here silences a disclosure.
+    """
+
+    language: str
+    construct: str
+    rows: frozenset[str]
+    measured: str
+    evidence: str
+
+
+#: Rows keyed on a construct the analyzer emits no edge for (WI-zumoz).
+#:
+#: THE THIRD SHAPE, kept apart from the two above because its remedy is a
+#: third thing. A whole-construct blindness is fixed by building the edges
+#: (WI-nasuf); a suppressed name is a policy that stays (WI-bakak). Here the
+#: construct is NOT A CALL: ``ws.onmessage = handler`` is a property
+#: assignment that registers a receive callback, and no analyzer emits a call
+#: edge for an assignment. The rows are correct library facts — the browser
+#: WebSocket / SSE receive surface short of ``addEventListener`` — and they
+#: stay, because an inert row costs no precision and claims no coverage
+#: (INV-buzab; javascript's catalogue is ``in_progress``), while deleting them
+#: would file an analyzer limitation in a library catalogue. What they carry
+#: is the specification of what should match once a registration edge exists,
+#: which is recall work and is measured through the taint path (INV-linub).
+#:
+#: DERIVED AGAINST THE CATALOGUE AT RENDER TIME by
+#: :func:`construct_blind_catalogued_sinks`, so a deleted row leaves the
+#: disclosure on its own; a declared row the catalogue does not carry fails
+#: ``test_construct_blind_disclosure.py``.
+CONSTRUCT_BLIND_ROWS: dict[str, ConstructBlindRows] = {
+    "javascript": ConstructBlindRows(
+        "javascript",
+        "property assignment (`ws.onmessage = handler`)",
+        frozenset({
+            "WebSocket.onmessage", "WebSocket.onclose", "EventSource.onmessage",
+        }),
+        "2026-09-06",
+        "WI-zumoz. Measured 2026-08-28, when the mechanism was masked by "
+        "INV-misup (a `new`-constructed receiver never resolved; #753 fixed "
+        "it), and re-measured 2026-09-06 on the fixed analyzer: "
+        "`ws.addEventListener('message', cb)` on the same receiver reaches "
+        "the catalogue; `ws.onmessage = cb`, `ws.onclose = cb` and "
+        "`es.onmessage = cb` emit no edge. Fixture "
+        "~/hypergumbo_lab_notebook/zumoz_probe_08282026/fx2; pinned by "
+        "test_js_ts_instance_method_calls.py::TestHandlerAssignmentEmitsNoEdge.",
+    ),
+}
+
+
+def construct_blind_catalogued_sinks(language: str, catalog: object) -> set[str]:
+    """Declared construct-unreachable rows that ``catalog`` actually declares
+    as METHOD-kind sinks, as ``module.name`` keys.
+
+    The intersection IS the disclosure: a row the catalogue no longer carries
+    hides nothing and is not reported, and an undeclared language reports
+    nothing — a caveat that is always there is discounted by its reader.
+    """
+    declared = CONSTRUCT_BLIND_ROWS.get(language)
+    if declared is None:
+        return set()
+    keys = {
+        f"{p.module}.{p.name}" for p in getattr(catalog, "primitives", ())
+        if getattr(p, "kind", None) == "method"
+    }
+    return keys & declared.rows

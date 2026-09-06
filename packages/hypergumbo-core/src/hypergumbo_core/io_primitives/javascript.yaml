@@ -166,7 +166,11 @@ net_recv:
       error event is specified to carry no information -- deliberately, so a
       cross-origin failure cannot leak why -- so it receives nothing, while
       net_recv is an auto-derived taint SOURCE. onmessage and addEventListener
-      carry the real receive.
+      carry the real receive. REACH: `onmessage` is assigned, not called
+      (`es.onmessage = handler`), and the analyzer emits no edge for an
+      assignment, so that row is declared unreachable in
+      analyzer_disclosure.CONSTRUCT_BLIND_ROWS and disclosed on a clean
+      verdict (WI-zumoz); addEventListener is a call and is reached.
   - module: WebSocket
     methods: [addEventListener, onmessage, onclose]
     notes: >-
@@ -175,7 +179,11 @@ net_recv:
       specified to carry none, so both were minting untrusted_input at a
       connection-lifecycle callback. `onclose` is KEPT and the distinction is
       the point -- a CloseEvent carries `code` and `reason`, both chosen by the
-      peer, so it genuinely receives peer-controlled data.
+      peer, so it genuinely receives peer-controlled data. REACH: `onmessage`
+      and `onclose` are assigned, not called (`ws.onmessage = handler`), and
+      the analyzer emits no edge for an assignment, so both rows are declared
+      unreachable in analyzer_disclosure.CONSTRUCT_BLIND_ROWS and disclosed
+      on a clean verdict (WI-zumoz); addEventListener is a call and is reached.
 
 subprocess:
   - module: child_process

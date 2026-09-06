@@ -102,10 +102,11 @@ identically. Nine ``CAVEAT_*`` constants exist, plus one unconstanted kind
   (``_ARM_TAINT``, ``untyped_receiver_sink_zones``), which discloses the sink
   receivers it could not type.
 
-The remaining five — ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``,
+The remaining six — ``CAVEAT_UNKNOWN_RECEIVER_SCOPE``,
 ``CAVEAT_ANALYZER_METHOD_CALL_BLIND``, ``CAVEAT_ANALYZER_SUPPRESSED_METHODS``,
-``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` and ``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` —
-are each documented at their own definition.
+``CAVEAT_ANALYZER_CONSTRUCT_BLIND``, ``CAVEAT_SINK_BEFORE_SOURCE_ONLY`` and
+``CAVEAT_HIGHER_FIDELITY_AVAILABLE`` — are each documented at their own
+definition.
 
 A verdict may carry more than one kind at once.
 
@@ -513,6 +514,22 @@ CAVEAT_ANALYZER_METHOD_CALL_BLIND = "analyzer_method_call_blind"
 #: for nothing.
 CAVEAT_ANALYZER_SUPPRESSED_METHODS = "analyzer_suppressed_methods"
 
+#: A clean verdict rests on a language whose catalogue declares rows that
+#: source reaches by a construct which is NOT A CALL, so its analyzer emits no
+#: edge for them at all (WI-zumoz).
+#:
+#: THE THIRD SHAPE. Its two siblings above are a whole call construct the
+#: analyzer cannot see, and named methods it declines to resolve. This one is
+#: ``ws.onmessage = handler``: a property ASSIGNMENT that registers a receive
+#: callback, matched by nothing because nothing is called. The rows —
+#: ``WebSocket.onmessage`` / ``onclose``, ``EventSource.onmessage``, the
+#: browser WebSocket / SSE receive surface short of ``addEventListener`` —
+#: are correct and stay; the remedy is a registration edge, which is recall
+#: work, so until it lands the gap is declared
+#: (``analyzer_disclosure.CONSTRUCT_BLIND_ROWS``) and derived against the
+#: shipped catalogue at render time.
+CAVEAT_ANALYZER_CONSTRUCT_BLIND = "analyzer_construct_blind"
+
 #: A higher-fidelity analyzer for a language in this repository is INSTALLED on
 #: this machine and was not used (WI-lagod).
 #:
@@ -830,6 +847,37 @@ def _analyzer_suppressed_methods_caveat(
             "type a name-only match binds unrelated calls together — so a "
             "call to one of them on an untypable receiver was neither "
             "adjudicated nor individually disclosed: " + "; ".join(parts) + "."
+        ),
+    }
+
+
+def _analyzer_construct_blind_caveat(
+    entries: dict[str, list[str]],
+) -> dict[str, Any]:
+    """The one place the construct-unreachable-row disclosure is built.
+
+    NAMES THE ROWS AND THE CONSTRUCT, because for a row nobody CALLS the
+    reader's grep target is the construct (``ws.onmessage =``), not a method
+    name, and the date says how stale the declaration may be.
+    """
+    from .analyzer_disclosure import CONSTRUCT_BLIND_ROWS
+
+    parts = [
+        f"{lang} ({', '.join(sorted(rows))}; reached by "
+        f"{CONSTRUCT_BLIND_ROWS[lang].construct}; declared "
+        f"{CONSTRUCT_BLIND_ROWS[lang].measured})"
+        for lang, rows in sorted(entries.items())
+    ]
+    return {
+        "kind": CAVEAT_ANALYZER_CONSTRUCT_BLIND,
+        "entries": sorted(entries),
+        "detail": (
+            "This verdict is closed-world over the constructs the analysis "
+            "emits call edges for. Some rows the I/O catalogue declares as "
+            "sinks are reached in source by a construct that is not a call, "
+            "for which the analyzer emits no edge — so a use of one of them "
+            "was neither adjudicated nor individually disclosed: "
+            + "; ".join(parts) + "."
         ),
     }
 
@@ -1178,6 +1226,12 @@ class BoundaryCoverage:
     #: own denylist, which now lives in ``analyzer_disclosure`` so there is one
     #: copy) with the shipped catalogue.
     suppressed_sink_methods: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> the ``module.name`` rows its catalogue declares as
+    #: METHOD-kind sinks that source reaches by a construct the analyzer emits
+    #: no edge for (WI-zumoz). A declaration intersected with the shipped
+    #: catalogue, for the same reason as its two neighbours: the construct
+    #: left no edge to read.
+    construct_blind_sinks: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> pass IDs behind its call edges (WI-lagod). Carried here for
     #: the reason every field on this object is: one computation site the
     #: verdict paths share, so a caller cannot forget it.
@@ -3444,6 +3498,7 @@ def compute_boundary_coverage(
     # to languages whose catalogue actually declares method-kind sinks, because
     # a language that catalogues none cannot be hurt by not seeing them.
     from .analyzer_disclosure import (
+        construct_blind_catalogued_sinks,
         method_call_blind_languages,
         suppressed_catalogued_sinks,
     )
@@ -3470,6 +3525,12 @@ def compute_boundary_coverage(
         for lang, catalog in catalogs.items()
         if lang in supported_languages
         and (hidden := suppressed_catalogued_sinks(lang, catalog))
+    }
+    coverage.construct_blind_sinks = {
+        lang: sorted(hidden)
+        for lang, catalog in catalogs.items()
+        if lang in supported_languages
+        and (hidden := construct_blind_catalogued_sinks(lang, catalog))
     }
     coverage.method_call_blind_languages = method_call_blind_languages(
         supported_languages,
@@ -3886,6 +3947,11 @@ def _verify_claim_uncredited(
                 _analyzer_suppressed_methods_caveat(
                     coverage.suppressed_sink_methods,
                 ),
+            )
+        if coverage.construct_blind_sinks:
+            out = _merge_caveat(
+                out,
+                _analyzer_construct_blind_caveat(coverage.construct_blind_sinks),
             )
         if coverage.higher_fidelity_available:
             out = _merge_caveat(
@@ -4687,6 +4753,13 @@ def _verify_taint_claim_uncredited(
                     caveats,
                     _analyzer_suppressed_methods_caveat(
                         coverage.suppressed_sink_methods,
+                    ),
+                )
+            if coverage.construct_blind_sinks:
+                caveats = _merge_caveat(
+                    caveats,
+                    _analyzer_construct_blind_caveat(
+                        coverage.construct_blind_sinks,
                     ),
                 )
             if coverage.higher_fidelity_available:
