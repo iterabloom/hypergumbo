@@ -29,3 +29,12 @@
   set: {}  # b2d1
   add:  # b2d1
     tags: [io_boundary, verify_claims, catalogue, recall]  # b2d1
+- op: update  # 6e27
+  at: '2026-09-06T10:19:48Z'  # 6e27
+  by: agent  # 6e27
+  actor: jgstern_agent  # 6e27
+  clock: 3  # 6e27
+  nonce: '6e27'  # 6e27
+  set: {}  # 6e27
+  add:  # 6e27
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 6e27

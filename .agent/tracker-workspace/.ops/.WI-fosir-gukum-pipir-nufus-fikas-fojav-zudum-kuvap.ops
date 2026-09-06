@@ -52,3 +52,21 @@
   clock: 5  # f4b3
   nonce: f4b3  # f4b3
   message: "DONE. PR #603, dev e40b7df4ac. Took the \"ranking is cheapest\" direction this\nitem recommended.\n\nFIX. _rank_modules_for_disclosure sorts third-party first, alphabetical within\neach group, applied before truncation at both module-list sites (uncatalogued\nmodules and method-starved modules). On the item's own fixture -- ten stdlib\nmodules plus requests -- `requests` now leads the list instead of sitting in\nthe \"+7 more\".\n\nNOT applied to opaque launch SITES: those are commands and paths, not modules,\nso is_stdlib_module has nothing to say about them and asking would invent an\norder rather than reveal one.\n\nON USING is_stdlib_module AT ALL, since LIVE.md flags it as RECOGNITION not\nprovenance and it cost a P0 (INV-buzab). That failure was using it to decide\nwhether a module had been EXAMINED. This is a DISPLAY ORDER: no verdict\nchanges, the count is unchanged, the full list stays in the caveat's machine\nsurface. Its failure mode also points the right way -- a stdlib module the\nrecogniser has not enumerated sorts as third-party, and the unfamiliar name is\nexactly the one a reader most needs to see. Pinned as a test.\n\nREFACTOR: the \"a, b, c (+N more)\" rendering was written out three times, each\nrepeating the cap arithmetic; now one helper, so the three disclosures cannot\ndrift in how they say it."  # f4b3
+- op: update  # 81be
+  at: '2026-09-06T09:32:08Z'  # 81be
+  by: agent  # 81be
+  actor: jgstern_agent  # 81be
+  clock: 6  # 81be
+  nonce: 81be  # 81be
+  set:  # 81be
+    fields:  # 81be
+      status:  # 81be
+      priority:  # 81be
+      tags:  # 81be
+- op: discuss  # b0d9
+  at: '2026-09-06T09:32:08Z'  # b0d9
+  by: agent  # b0d9
+  actor: jgstern_agent  # b0d9
+  clock: 7  # b0d9
+  nonce: b0d9  # b0d9
+  message: "RE-VERIFIED 2026-09-06 on dev f36a715bfb, at the owner's request, with the\nitem's OWN repro re-run live rather than the closing note re-read.\n\nFIXTURE: app/main.py imports 14 stdlib modules and calls requests.post;\napp/extra.py adds 9 more stdlib modules (bisect, calendar, colorsys, decimal,\ndifflib, fractions, graphlib, heapq, string) so the 5-name cap has to evict\nsomething. `hypergumbo verify-claims --claims\ndocs/example-claims/generic-taint-claims.yaml --no-default-overlays`, fresh\nXDG_CACHE_HOME:\n\n  could not classify (requests, calendar, colorsys, decimal,\n                      difflib.SequenceMatcher (+5 more))\n\n`requests` leads. Under the pre-fix plain sort the five shown would have been\nthe alphabetically-early stdlib names and `requests` would have been inside\n\"(+5 more)\" -- the filed defect. 14 tests in\ntest_verify_claims_disclosure_legibility.py pass through smart-test, mypy\nratchet clean.\n\nOBSERVED, NOT THIS ITEM: the gate now blames CALLS, not modules, so on the\noriginal 10-stdlib fixture only 3 names are unclassified today and the cap\nnever bites; it took 9 more uncatalogued modules to reach it. The fix is\nexercised less often than when filed, and still correct when it is.\n\nCLEANUP: removed the custom keys `status`, `priority`, `tags` that the create\nop had written through --field (INV-varil shape (a)); the top-level values\nwere already correct, so nothing about the item's state changed."  # b0d9

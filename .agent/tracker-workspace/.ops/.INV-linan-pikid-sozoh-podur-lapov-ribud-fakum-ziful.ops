@@ -22,3 +22,21 @@
     fields:  # ec73
       statement: "A custom field key that no kind schema declares must not land without a trace: it is refused at write time, or failed by a validator that a gate actually runs."  # ec73
       root_cause: "Store.add checks only that required schema keys are present and Store.update runs no schema check; validation.py reports an unknown key as a WARNING and only when the kind declares a fields_schema; the three CI workflows run scripts/tracker validate without --strict so warnings pass; work_item declares no fields_schema, which KindConfig documents as accepting arbitrary keys with no validation."  # ec73
+- op: update  # 662b
+  at: '2026-09-06T08:54:11Z'  # 662b
+  by: agent  # 662b
+  actor: jgstern_agent  # 662b
+  clock: 2  # 662b
+  nonce: 662b  # 662b
+  set: {}  # 662b
+  add:  # 662b
+    not_duplicate_of: [INV-varil-povuk-jizoz-jafah-kanoz-buduk-nazas-murut]  # 662b
+- op: update  # 0c21
+  at: '2026-09-06T08:54:38Z'  # 0c21
+  by: agent  # 0c21
+  actor: jgstern_agent  # 0c21
+  clock: 3  # 0c21
+  nonce: 0c21  # 0c21
+  set: {}  # 0c21
+  add:  # 0c21
+    not_duplicate_of: [INV-rifof-fiduz-juvot-jodug-kabun-tosob-nutor-mokiz, WI-hukoh-bakob-gidij-nibag-puvaz-fadil-kizor-kitan]  # 0c21
