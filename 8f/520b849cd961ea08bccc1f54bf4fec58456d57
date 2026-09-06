@@ -1,0 +1,12 @@
+Original commit body from 2a12035f10f900e6422a9de9b4f4036223e042b5:
+
+WI-dupok, the python leg of WI-lutuh's rust → javascript → python order. 41 stdlib module strings still reached the coverage gate uncatalogued (08-24 scope audit, 11 repos). Rows first (glob, mimetypes, filecmp, sysconfig, pprint, traceback, cProfile/pstats, xml.dom, unittest, doctest, optparse, codecs.open, ctypes, multiprocessing.Process/Pool, socket.create_connection/create_server, and ssl, which had zero rows), then 44 dated grants citing the probe's verdict (`dupok_python_09062026/probe_py.py`).
+
+- Refused with reasons in the yaml: tkinter, socket (DNS functions unruled — escalated), ssl (partial), unittest.mock, multiprocessing's Manager/shared_memory/connection.
+- Survey rules applied: caller-opened-object reads are the caller's I/O; writes into one are rowed (json.dump's precedent).
+- Tests: `test_python_completeness_third_leg.py` (rows classify, grants enumerated, refusals withheld, dated, gate reachable).
+- A/B (5 python repos, 4 claims, cold): 0/20 categories moved; the rows show as recall in chain counts (django fs_read 606→638, subprocess 23→24; hypergumbo 2016→2026; poetry 205→208; httpx 7→9). Gate test is the positive control.
+
+Tracker: WI-dupok closed after merge; the DNS ruling filed for the owner.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
