@@ -35,3 +35,12 @@
   clock: 3  # c205
   nonce: c205  # c205
   message: "Closed on PR #782 (merged 2026-09-05 as jgstern-agent, dev 6c70e8c5d9) plus the owner-authorised machine fixes recorded in the description. Behavioural evidence: (a) pre-fix, one `gh auth token` call spawned one dbus+keyring pair (measured before/after counts); post-fix four gh commands spawned zero. (b) `inotify_init` EMFILE before, fd 3 after. (c) Nine lifecycle tests: 8/9 red before the hook change, 30/30 green after; the 106 tests across the transcript and hook-parity files pass. (d) The two pre-fix orphans (PIDs 3124970, 4135171) killed by PID; instances in use 128 -> 1. Root cause fixed, not worked around: the watcher now has an owner and a bounded child; gh has a credential. The item stays a record of the environment-side cause because no repo change can prevent a harness from calling gh on a box without a credential — that is the proposal filed alongside."  # c205
+- op: update  # 5dd5
+  at: '2026-09-05T23:35:10Z'  # 5dd5
+  by: agent  # 5dd5
+  actor: jgstern_agent  # 5dd5
+  clock: 4  # 5dd5
+  nonce: 5dd5  # 5dd5
+  set: {}  # 5dd5
+  add:  # 5dd5
+    not_duplicate_of: [WI-kahoj-bomas-vokuf-podoz-nihoh-nibos-tigal-mufag]  # 5dd5

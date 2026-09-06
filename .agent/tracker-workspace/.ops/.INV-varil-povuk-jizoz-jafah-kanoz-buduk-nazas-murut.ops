@@ -1,0 +1,33 @@
+- op: create  # c9e2
+  at: '2026-09-06T08:45:05Z'  # c9e2
+  by: agent  # c9e2
+  actor: jgstern_agent  # c9e2
+  clock: 1  # c9e2
+  nonce: c9e2  # c9e2
+  data:  # c9e2
+    kind: invariant  # c9e2
+    title: "tracker --field / --add-field accept core attribute names as custom keys (status, priority, tags, description, isbefore...), so one fact gets two homes; 12 of 2128 items affected"  # c9e2
+    status: violated  # c9e2
+    priority: 2  # c9e2
+    parent:  # c9e2
+    tags:  # c9e2
+    - tracker  # c9e2
+    - cli_input_boundary  # c9e2
+    - data_integrity  # c9e2
+    isbefore: []  # c9e2
+    duplicate_of: []  # c9e2
+    not_duplicate_of: []  # c9e2
+    pr_ref:  # c9e2
+    description: "FOUND 2026-09-06 while answering \"what is the status of WI-fosir\": the item\nshows `fields.status: todo_hard` under a top-level `status: done`.\n\nMECHANISM, read from the source. `_cmd_add` and `_cmd_update` in\npackages/hypergumbo-tracker/src/hypergumbo_tracker/cli.py parse `--field\nkey=value` by splitting on the first `=` and storing the key verbatim in the\ncustom-fields dict. Neither checks the key against the item's core attribute\nnames (status, priority, tags, title, kind, parent, isbefore, pr_ref,\ndescription, id, tier). `--add-field` takes the same path. The store validates\ntop-level update names against _UPDATABLE_FIELDS, which is why the bad\nTOP-LEVEL write is impossible while the bad CUSTOM write is silent. No test in\npackages/hypergumbo-tracker/tests asserts either acceptance or rejection.\n\nWHY IT IS BAD, not cosmetic: one fact gets two homes and the second silently\nwins for any consumer that reads the custom dict, while the first wins for\n`show`, `ready` and `list`. Which home a reader sees depends on the code path,\nnot on the data.\n\nTHE POPULATION, enumerated over all 2128 items (scripts/tracker --json list;\ncustom-dict keys intersected with the core names), 12 items in three shapes:\n\n  (a) status + priority + tags written at CREATION through --field instead of\n      the dedicated flags; a later update fixed the top level and left the\n      custom keys behind:\n        INV-vaduk INV-dabov INV-toguh WI-dupok WI-fosir\n      Harm: display noise; `show` prints the real status first.\n  (b) description in the custom dict, core description EMPTY:\n        INV-muhij WI-joruz WI-nubik WI-kanor WI-furim\n      Harm: `show` prints it as `fields.description`; any consumer reading\n      only the core description slot sees these five items as blank. The\n      `clusters` subcommand is unaffected because it also reads string-valued\n      custom fields.\n  (c) a single stray key:\n        INV-hazov (pr_ref)  WI-mifag (isbefore = \"\" -- the `--field isbefore=`\n        incident LIVE.md sec 2 already records; the value is the empty\n        string, so it gates nothing).\n      Harm: a NON-empty custom isbefore would not gate `ready`. None exists\n      today; the shape permits one.\n\nWHAT DISCHARGES THIS. Two parts, both in the tracker package (not governance):\n  1. Reject at the parser: `--field` and `--add-field` refuse any key in the\n     core set with an error naming the dedicated flag (`--field status=x` ->\n     \"use --status\"). Same list in both parsers, sourced from one constant so\n     the two cannot drift. One test per parser per rejected key class, plus a\n     test that an ordinary key still passes.\n  2. Clean the twelve: (a) remove the three keys via --remove-field; (b) move\n     the description into the core slot (`--description-file` from the custom\n     value) then remove the custom key; (c) remove the stray keys. Each\n     cleanup is a tracker op on the item and should be batched in one\n     setsid'd script with a log (~12 ops).\n  Then re-run the enumeration above and assert 0 of N, with N stated.\n\nNOT covered by INV-liram (required fields_schema keys at creation) or WI-lorip\n(the partial-update flags); neither touches key NAMES."  # c9e2
+    fields:  # c9e2
+      statement: "A custom field key on a tracker item must never equal a core attribute name; --field and --add-field must reject such keys and name the dedicated flag."  # c9e2
+      root_cause: "_cmd_add and _cmd_update split --field key=value on the first '=' and store the key verbatim into the custom dict with no check against the core attribute set; _UPDATABLE_FIELDS validation covers only top-level writes."  # c9e2
+- op: update  # 6349
+  at: '2026-09-06T08:45:20Z'  # 6349
+  by: agent  # 6349
+  actor: jgstern_agent  # 6349
+  clock: 2  # 6349
+  nonce: '6349'  # 6349
+  set: {}  # 6349
+  add:  # 6349
+    not_duplicate_of: [INV-vazuh-bitad-loruh-gunut-hakuf-juzit-dagoh-mulok, WI-bikod-juhab-tohap-bovoj-fadiz-zujuh-lamod-fuzop]  # 6349
