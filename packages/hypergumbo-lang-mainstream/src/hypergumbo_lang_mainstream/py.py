@@ -688,9 +688,16 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 #   * ``self.save()``/``self.delete()`` in a class that DIRECTLY extends
 #     ``models.Model`` — the ORM instance-write surface.
 # The read/write split lives in the catalog (python.yaml keyed on method name);
-# the producer only needs the recognition set. Deferred (share the same
-# instance/return-type-inference need, out of scope here): ``instance.save()`` on
-# a typed local, SQLAlchemy ``Session.*``, and transitive Model bases.
+# the producer only needs the recognition set. The CHAINED hop --
+# ``Order.objects.filter(...).exists()``, ``qs = Order.objects.filter(...);
+# qs.delete()`` -- is typed since INV-mumov's Phase 6 PR 1: the result of a
+# QuerySet-returning member on the ``.objects`` root carries this module (see
+# ``_preserved_receiver_type`` and the django rows in
+# ``library_signatures/python.yaml``). Still deferred (a different need --
+# instance/return-type inference): ``instance.save()`` on a typed local,
+# SQLAlchemy ``Session.*``, transitive Model bases, and reverse-relation
+# managers (``self.orga.events.create()``: 1,901 pretix sites, needs a
+# project-wide ``related_name`` index).
 DJANGO_ORM_MODULE = "django.db.models"
 DJANGO_ORM_MANAGER_METHODS = frozenset({
     # reads (classified db_read in python.yaml)
@@ -5858,6 +5865,24 @@ def _preserved_receiver_type(
     """
     hint = _receiver_type(receiver, external_var_types, ctor_type)
     if hint is None:
+        # INV-mumov (Phase 6 PR 1): WI-sozoj's marker as a chain ROOT. The
+        # ``.objects`` receiver itself is NOT typed -- typing it would put
+        # ``django.db.models`` in the module slot of a project-defined manager
+        # method (``Order.objects.create_user()``), a false owner path under
+        # ADR-0051 -- but the RESULT of a QuerySet-returning member on it is a
+        # QuerySet, and from there the rows in ``library_signatures/python.yaml``
+        # carry the type hop by hop. Bounded exactly as WI-sozoj bounds its
+        # emission: the same ``.objects`` marker, a closed member set (the yaml),
+        # and ``get``/``first``/``create`` excluded because they return a Model
+        # instance, which is a project class and carries no module. Measured on
+        # pretix (the 2026-09-06 derivability census): 942 chained sites lost the
+        # type at the second hop for want of this line.
+        if (
+            isinstance(receiver, ast.Attribute)
+            and receiver.attr == "objects"
+            and member in TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, ())
+        ):
+            return DJANGO_ORM_MODULE
         return None
     return hint if member in TYPE_PRESERVING_MEMBERS.get(hint, ()) else None
 

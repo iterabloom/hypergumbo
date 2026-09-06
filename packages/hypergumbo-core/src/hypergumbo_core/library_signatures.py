@@ -73,8 +73,9 @@ def load_library_signatures(lang: str) -> dict[str, str]:
     merely declared: ADR-0047 ruling 3 exists because ``io_primitives.d`` was
     advertised to users while nothing scanned it, and declaring a channel that no
     loader consults repeats exactly that. A user row for the same key replaces the
-    shipped one — the shipped catalogue is stdlib-only, so a collision means the
-    user knows something about their own build that this file cannot.
+    shipped one — a collision means the user knows something about their own
+    build that this file cannot (the shipped rows are stdlib plus, since
+    INV-mumov's Phase 6 PR 1, the Django QuerySet API).
     """
     from hypergumbo_core.catalogue_home import user_channel_files
 
