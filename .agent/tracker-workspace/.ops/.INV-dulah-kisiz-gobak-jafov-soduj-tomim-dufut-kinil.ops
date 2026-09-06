@@ -249,3 +249,12 @@
   clock: 30  # b1e3
   nonce: b1e3  # b1e3
   message: "LANG-SLOT LIMB, REMAINING PRODUCERS FILED 2026-09-06 as WI-bufar-pokam-bitug-horuv-jinuk-nugaj-pipol-gadih: json_config defines_target (156 edges on the 28-survey fleet count), make depends_on (118), jsonnet imports + its 3-slot file ids (5), astro (4), svelte (1). The limb closes when WI-bufar-pokam-bitug-horuv-jinuk-nugaj-pipol-gadih lands and dulah_objc_09062026/fleet_langslot.py reads 0 on the same surveys."  # b1e3
+- op: update  # 16d7
+  at: '2026-09-06T15:46:01Z'  # 16d7
+  by: agent  # 16d7
+  actor: jgstern_agent  # 16d7
+  clock: 31  # 16d7
+  nonce: 16d7  # 16d7
+  set: {}  # 16d7
+  remove:  # 16d7
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 16d7
