@@ -1,0 +1,13 @@
+Original commit body from 8fd00d7bc0aa5539421ca1db43e4ebddd003ffbd:
+
+WI-baran (INV-nular's c member, measurement 0012). `sys/socket` send*/recv* were `net_*` unconditionally; tmux, which opens no AF_INET socket anywhere, reported `sendmsg` over its AF_UNIX pair as a network send.
+
+- `c.yaml`: the six rows dual (`net_*` + `ipc_*`), `call_site_undecidable`, `abstains_to: net_*`; `connect` single-rowed; stale `unistd.write` note rewritten.
+- `c.py`: `_c_socket_target_kind` stamps `io_target_kind` from the descriptor's origin (`socket(FAMILY, ..)`, `socketpair` element, one `accept` hop) -- `pipe` / `net_stream` / nothing.
+- A/B on 12 C repos, 324 sites: 27 stamped, 3 moved `net_recv -> ipc_recv` (haproxy, passt), 0 removed, every moved row read back. tmux's own instance abstains (parameter descriptor; WI-famig).
+- 31 analyzer tests + 7 catalogue tests.
+- Second commit: `Application.get_env` / `application:get_env` ruled and kept under `env_read` on measurement 0006's adjudication (INV-nular's last unruled instance), notes only.
+
+Tracker: WI-baran closed with the A/B after merge; two census residuals filed.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
