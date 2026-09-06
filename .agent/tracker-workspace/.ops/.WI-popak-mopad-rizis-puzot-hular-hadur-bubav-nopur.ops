@@ -1,0 +1,22 @@
+- op: create  # 97d5
+  at: '2026-09-06T15:43:17Z'  # 97d5
+  by: agent  # 97d5
+  actor: jgstern_agent  # 97d5
+  clock: 1  # 97d5
+  nonce: 97d5  # 97d5
+  data:  # 97d5
+    kind: work_item  # 97d5
+    title: "css analyzer mints hash-shaped 3-slot symbol ids and sources its import edges from one, so every css id trips id_format under --include-docs and no @import edge reaches the survey"  # 97d5
+    status: todo_hard  # 97d5
+    priority: 3  # 97d5
+    parent:  # 97d5
+    tags:  # 97d5
+    - analysis_quality  # 97d5
+    - axis  # 97d5
+    - css  # 97d5
+    isbefore: []  # 97d5
+    duplicate_of: []  # 97d5
+    not_duplicate_of: []  # 97d5
+    pr_ref:  # 97d5
+    description: "FOUND 2026-09-06 while closing INV-dulah's lang-slot limb (PR #808), driving `run_survey(include_docs=True)` on a three-file css fixture. Filed, not fixed: that PR fixed the bare `@import` dst at the analyzer and pinned it there; these two are upstream of it in the css analyzer and neither is a lang-slot problem.\n\n(1) EVERY css SYMBOL ID IS HASH-SHAPED. The css analyzer mints `css:sha256:<16 hex>` -- 3 colon slots -- for selectors AND for the file symbol it uses as an edge src (`css.py` `_make_sym...`, the `file_symbol_id` at ~419). The validator flags each as id_format `wrong_field_count (expected at least 5, got 3)`: 1 violation for a one-selector file, 3 for three. ADR-0036 Ruling 1 grammar is `<language>:<path>:<start>-<end>:<name>:<kind>`; a content hash in the path slot with no span/name/kind is the same class of escape INV-dulah tracks, just a different slot. This only surfaces under `--include-docs` (css is doc-family filtered by default), which is why the fleet-wide id_format 0 never saw it -- the same silence INV-dulah's 2026-07-30 entry warned about for the doc family.\n\n(2) css IMPORT EDGES NEVER REACH THE SURVEY. `analyze_css_files` emits `imports` edges with src = that hash-shaped file symbol; the survey's node list carries `css:site.css:1-1:file:file` instead (the file node the pipeline makes), the hash src matches no surviving node, and the edges are dropped: analyzer 2 import edges, pipeline 0, with or without the imported files present (measured both ways). So a css `@import` graph is invisible to every consumer, and the INV-dulah pipeline gate could not drive css without its non-vacuity guard failing for this reason.\n\nFIX SHAPE (one change covers both): mint css symbol ids through make_symbol_id / make_file_id like every other analyzer (path, span, name, kind), and source the import edge from the file id the pipeline keeps. The content-hash id was a dedupe device (identical selectors across files collapse); if that property is wanted, keep it in stable_id, not in the id grammar. Measure: the fixture's analyzer-vs-pipeline edge counts agree and id_format drops to 0 under include_docs; then the INV-dulah pipeline gate (test_import_dst_ids_are_canonical.py) gains a css case."  # 97d5
+    fields: {}  # 97d5
