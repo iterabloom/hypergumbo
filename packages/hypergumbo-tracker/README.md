@@ -112,6 +112,7 @@ tracker records `by: agent` on each operation, and human-only commands
 ```bash
 htrac ready                    # What should I work on?
 htrac check-messages           # Any unread human messages?
+htrac clusters                 # Predicted clusters of the open items (TF-IDF kNN)
 htrac update :1 --status in_progress   # Claim the top item
 htrac add --kind work_item --title "Add Dart analyzer" --priority 1
 htrac update INV-lusab --status done --note "Fixed in PR #42"

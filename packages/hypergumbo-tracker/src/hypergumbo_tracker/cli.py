@@ -21,6 +21,7 @@ Entry points:
   - **Sync and setup:** sync, init, setup, fork-setup, migrate
   - **Surfaces:** tui, serve, textconv
   - **Agent governance:** count-todos, hash-todos, guidance
+  - **Analysis:** clusters (predicted clusters of open items; see clusters.py)
 - textconv_main(): Git textconv driver that reads an ops file and outputs
   one-line-per-field compiled state.
 
@@ -45,6 +46,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from hypergumbo_tracker.clusters import (
+    DEFAULT_K, DEFAULT_SHARED, compute_clusters, id_pattern_for,
+)
 from hypergumbo_tracker.models import (
     CompiledItem,
     DiscussionEntry,
@@ -1799,6 +1803,76 @@ def _cmd_guidance(args: argparse.Namespace, ts: TrackerSet) -> int:
         return EXIT_USER_ERROR
 
 
+def _cmd_clusters(args: argparse.Namespace, ts: TrackerSet) -> int:
+    """Handle 'clusters' subcommand — predicted clusters of the open items.
+
+    TF-IDF cosine on masked item text, mutual top-k neighbours sharing at
+    least `shared` neighbours (Jarvis-Patrick), ranked by mean pairwise cosine;
+    the vectorizer is fitted on every non-deleted item so the IDF is stable
+    while only the selected items are clustered. Rationale and the measurements
+    behind the defaults: the module docstring of clusters.py.
+    """
+    tiers_to_check: list[Tier]
+    if ts.config.scope == "workspace":
+        tiers_to_check = [Tier.WORKSPACE, Tier.STEALTH]
+    else:
+        tiers_to_check = list(Tier)
+    fit_items: list[CompiledItem] = []
+    for t in tiers_to_check:
+        for item in ts._tier_stores[t]._compile_all():
+            if item.status != "deleted":
+                item.tier = t
+                fit_items.append(item)
+    if args.all:
+        items = list(fit_items)
+    elif args.status:
+        wanted = {st for st in args.status.split(",") if st}
+        items = [i for i in fit_items if i.status in wanted]
+    else:
+        resolved = set(ts.config.resolved_statuses)
+        items = [i for i in fit_items if i.status not in resolved]
+    clusters = compute_clusters(
+        items, fit_items, id_pattern=id_pattern_for(ts.config), k=args.k, shared=args.shared,
+    )
+    clusters = [c for c in clusters if len(c.item_ids) >= args.min_size]
+    if args.limit:
+        clusters = clusters[: args.limit]
+    by_id = {i.id: i for i in items}
+
+    def members(cluster_ids: list[str]) -> list[CompiledItem]:
+        return sorted((by_id[i] for i in cluster_ids), key=lambda i: (i.priority, i.id))
+
+    if args.json:
+        payload: dict[str, Any] = {
+            "k": args.k, "shared": args.shared, "items": len(items), "fit_items": len(fit_items),
+            "clusters": [
+                {
+                    "rank": rank, "size": len(c.item_ids),
+                    "mean_similarity": round(c.mean_similarity, 4),
+                    "members": [
+                        {"id": m.id, "kind": m.kind, "status": m.status,
+                         "priority": m.priority, "title": m.title}
+                        for m in members(c.item_ids)
+                    ],
+                }
+                for rank, c in enumerate(clusters, 1)
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return EXIT_SUCCESS
+    if not clusters:
+        print(f"(no clusters)  {len(items)} item(s) considered; k={args.k}, shared={args.shared}")
+        return EXIT_SUCCESS
+    covered = sum(len(c.item_ids) for c in clusters)
+    print(f"{len(clusters)} cluster(s) over {covered} of {len(items)} item(s)  "
+          f"(k={args.k}, shared={args.shared}; fit on {len(fit_items)} items)")
+    for rank, c in enumerate(clusters, 1):
+        print(f"\n#{rank}  size {len(c.item_ids)}  mean similarity {c.mean_similarity:.2f}")
+        for m in members(c.item_ids):
+            print(f"    {m.id}  [{m.status}]  {m.title}")
+    return EXIT_SUCCESS
+
+
 def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
     """Handle 'check-messages' subcommand — show items with unread human messages."""
     tiers_to_check: list[Tier]
@@ -2706,6 +2780,21 @@ def _build_parser() -> argparse.ArgumentParser:
     p_checkmsg.add_argument("--autolimit", type=int, default=None,
                             help="Limit to last N unread messages per item")
 
+    # --- clusters ---
+    p_clusters = sub.add_parser("clusters",
+                                help="Predicted clusters of open items (TF-IDF cosine kNN, Jarvis-Patrick)")
+    p_clusters.add_argument("--k", type=int, default=DEFAULT_K,
+                            help=f"neighbours per item (default {DEFAULT_K})")
+    p_clusters.add_argument("--shared", type=int, default=DEFAULT_SHARED,
+                            help=f"shared neighbours required for an edge (default {DEFAULT_SHARED})")
+    p_clusters.add_argument("--status", default=None,
+                            help="comma-separated statuses to cluster (default: every non-resolved status)")
+    p_clusters.add_argument("--all", action="store_true", default=False,
+                            help="cluster every non-deleted item, resolved ones included")
+    p_clusters.add_argument("--min-size", dest="min_size", type=int, default=2,
+                            help="drop clusters smaller than this (default 2)")
+    p_clusters.add_argument("--limit", type=int, default=None, help="show only the top N clusters")
+
     # --- init ---
     sub.add_parser("init", help="Initialize tracker directory structure")
     sub.add_parser(
@@ -3582,6 +3671,7 @@ def main(argv: list[str] | None = None) -> None:
         "hash-todos": _cmd_hash_todos,
         "guidance": _cmd_guidance,
         "check-messages": _cmd_check_messages,
+        "clusters": _cmd_clusters,
         "cache-rebuild": _cmd_cache_rebuild,
         "reconcile-reset": _cmd_reconcile_reset,
         "fork-setup": _cmd_fork_setup,
