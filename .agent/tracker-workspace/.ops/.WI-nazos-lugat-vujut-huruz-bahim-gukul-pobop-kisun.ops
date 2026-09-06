@@ -151,3 +151,10 @@
   clock: 19  # eedd
   nonce: eedd  # eedd
   message: "PHASE 7 PROGRESS 2026-09-06: WI-gudak DONE (resolved by INV-kotob, re-verified on SwiftyJSON: 0 ids with two module_paths, 0 variable names in the slot). INV-dulah's lang-slot limb: 3 of 8 producers closed (PR #808: objc/css/solidity; Mantle id_format 44 -> 0); a fleet count found five more producers (json_config, make, jsonnet, astro, svelte), filed; the item stays violated. Remaining on the arc: WI-jokij (cohort re-measure at tip in progress, jokij_dstref_09062026/), INV-sadah, INV-karud, re-scope INV-kurup/INV-nanon."  # eedd
+- op: discuss  # 61e5
+  at: '2026-09-06T15:45:18Z'  # 61e5
+  by: agent  # 61e5
+  actor: jgstern_agent  # 61e5
+  clock: 20  # 61e5
+  nonce: '61e5'  # 61e5
+  message: "PHASE 7 STAGE REPORT 2026-09-06 (dev 87104c6281): WI-gudak DONE; INV-dulah lang-slot limb CLOSED (PR #808); INV-sadah SATISFIED on its own repro at tip (WI-kabif's refuting walk fell the S2 objection); WI-jokij RE-SCOPED with the recoverable-subset measurement (the sentinel is the honest cell for untyped-receiver calls); INV-karud re-checked clause by clause against the tip and 0012; INV-kurup / INV-nanon re-scoped against their drained populations with owner proposals. Phase 7's arc edges onto INV-linub: the resolved sources stop blocking on their own; the re-scoped items (WI-jokij, INV-karud, INV-kurup, INV-nanon) stay open and their edges are REMOVED below so Phase 6 recall (INV-linub, unblocked 09-06 on 0012) is next per the arc."  # 61e5

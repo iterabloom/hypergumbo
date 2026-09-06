@@ -242,3 +242,10 @@
   clock: 29  # d549
   nonce: d549  # d549
   message: "CSS LIMB FILED 2026-09-06 as WI-popak-mopad-rizis-puzot-hular-hadur-bubav-nopur (found by PR #808's pipeline gate): css symbol ids are content hashes with 3 slots, and its @import edges are orphaned at the src end and never reach the survey. Not a lang-slot problem; a slot-count one. It only shows under --include-docs, the same silence the doc-family entry of 2026-07-30 warned about."  # d549
+- op: discuss  # b1e3
+  at: '2026-09-06T15:44:06Z'  # b1e3
+  by: agent  # b1e3
+  actor: jgstern_agent  # b1e3
+  clock: 30  # b1e3
+  nonce: b1e3  # b1e3
+  message: "LANG-SLOT LIMB, REMAINING PRODUCERS FILED 2026-09-06 as WI-bufar-pokam-bitug-horuv-jinuk-nugaj-pipol-gadih: json_config defines_target (156 edges on the 28-survey fleet count), make depends_on (118), jsonnet imports + its 3-slot file ids (5), astro (4), svelte (1). The limb closes when WI-bufar-pokam-bitug-horuv-jinuk-nugaj-pipol-gadih lands and dulah_objc_09062026/fleet_langslot.py reads 0 on the same surveys."  # b1e3
