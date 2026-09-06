@@ -340,6 +340,11 @@ def stamp_io_mode_from_call(
         return
     content = find_child_by_type(args[spec.position], "string_content")
     if content is None:
+        # tree-sitter-javascript spells a string literal's text
+        # ``string_fragment`` where C and python spell it ``string_content``
+        # (WI-nolut). Read here, in the one producer, rather than in a copy.
+        content = find_child_by_type(args[spec.position], "string_fragment")
+    if content is None:
         # Not a string literal at all — a variable, a macro, a concatenation.
         return
     mode = node_text(content, source)

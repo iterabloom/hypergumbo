@@ -2977,6 +2977,17 @@ _MODE_ARGUMENT_POSITIONS: dict[str, dict[str, ModeArgument]] = {
         "FileIO": ModeArgument(position=1, keyword="mode"),
     },
     "c": {"fopen": ModeArgument(position=1)},
+    # WI-nolut (2026-09-06): node's ``fs.open(path, flags[, mode], cb)`` /
+    # ``fs.openSync(path, flags)`` / ``fs.promises.open(path, flags)`` put the
+    # catalogue's "mode" -- the FLAGS string, 'r' / 'w' / 'a+' / 'wx' -- at
+    # positional 1, with no keyword form. ``fs.promises.open`` shares the
+    # ``open`` entry, the way gzip.open shares python's. typescript reaches
+    # this table as javascript's ALIAS (``_CATALOG_ALIASES``), resolved in
+    # :func:`mode_argument_for` beside the parent hop.
+    "javascript": {
+        "open": ModeArgument(position=1),
+        "openSync": ModeArgument(position=1),
+    },
 }
 
 
@@ -2987,6 +2998,7 @@ def mode_argument_for(language: str, short_name: str) -> Optional[ModeArgument]:
     the condition the parity test refuses when the catalogue also declares the
     primitive mode-discriminated.
     """
+    language = _CATALOG_ALIASES.get(language, language)
     table = _MODE_ARGUMENT_POSITIONS.get(language)
     if table is None:
         parent = _CATALOG_PARENTS.get(language)

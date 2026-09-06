@@ -203,9 +203,12 @@ class TestTaggingRefusesAFirstPartyDefinition:
         assert tag_io_boundaries(edges, {"go": load_catalog("go")}) == 0
 
     def test_alias_binding_is_still_tagged(self) -> None:
-        """express's ``var dirname = path.dirname`` — a TRUE positive that a blanket
-        first-party refusal would have deleted."""
-        edges = [_edge("javascript:/abs/view.js:25-25:dirname:variable")]
+        """``var readFileSync = fs.readFileSync`` — a TRUE positive that a blanket
+        first-party refusal would have deleted. (This fixture was express's
+        ``var dirname = path.dirname`` until INV-nular F7 deleted the ``path``
+        rows: path arithmetic is not I/O, so that alias no longer names a
+        primitive and the fs alias carries the same shape.)"""
+        edges = [_edge("javascript:/abs/view.js:25-25:readFileSync:variable")]
         assert tag_io_boundaries(edges, {"javascript": load_catalog("javascript")}) == 1
 
 

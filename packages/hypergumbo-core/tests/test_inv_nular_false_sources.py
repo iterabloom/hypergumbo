@@ -1086,9 +1086,10 @@ ADJACENCY_RATIONALISATION = re.compile(
 #: measurement. python's ``urllib.request.Request`` under ``net_send`` is the
 #: same family but does NOT trip this gate -- its note states the defect
 #: plainly instead of rationalising it -- and is filed as WI-gihif.
-ADJACENCY_KNOWN_UNFIXED = {
-    ("javascript", "path"),
-}
+ADJACENCY_KNOWN_UNFIXED: set[tuple[str, str]] = set()
+# ("javascript", "path") left this set on 2026-09-06: INV-nular F7 / WI-jojaf
+# deleted the row whose note rationalised "not I/O but commonly precede
+# fs_read", and the module is now a completeness grant.
 
 
 class TestAdjacencyIsNotACrossing:

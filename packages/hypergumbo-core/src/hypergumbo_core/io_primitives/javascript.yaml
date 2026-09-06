@@ -5,12 +5,14 @@
 # Third-party packages (express, axios, etc.) trace through these.
 # Also used for TypeScript (same runtime primitives).
 language: javascript
-# Plan C, PR B / INV-titih: partial catalog. Promotion to
-# ``status: provenance_declared`` requires adding ``stdlib_provenance``
-# (see ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES in io_boundary.py) — a
-# citation check only; coverage is claimed per-module via
-# ``module_completeness``.
-status: in_progress
+# WI-nolut (2026-09-06): promoted from ``in_progress``. The promotion is a
+# citation check only (ALLOWED_PROVENANCE_HOSTNAME_SUFFIXES); coverage is
+# claimed per module via ``module_completeness`` at the end of this file,
+# and only the modules audited there are examined negatives.
+status: provenance_declared
+stdlib_provenance:
+  source_url: https://nodejs.org/api/
+  version: "20.19"
 
 # Method/function names that are too generic to match without module context.
 # Node.js uses the same names across many modules and user code.
@@ -54,12 +56,30 @@ ambiguous_names:
 
 fs_read:
   - module: fs
-    functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, accessSync, access, readlinkSync, readlink, realpathSync, realpath]
+    functions: [readFileSync, readFile, readdirSync, readdir, statSync, stat, lstatSync, lstat, existsSync, exists, accessSync, access, readlinkSync, readlink, realpathSync, realpath,
+                open, openSync, openAsBlob, read, readSync, readv, readvSync, fstat, fstatSync, statfs, statfsSync, opendir, opendirSync, createReadStream, watch, watchFile]
+    notes: >-
+      WI-nolut (2026-09-06): the second list is the audit's addition -- every
+      fs export whose source reaches the binding on the read side (probe:
+      jsleg_completeness_09062026/probe_fs.out). `open` is ALSO declared under
+      fs_write, python's builtins.open shape: one row per direction, the mode
+      seam owns it, and because the javascript analyzer stamps no io_mode yet
+      an unstamped open keeps THIS first-declared row. The fd-taking family
+      (read/readv/fstat) reads a descriptor fs.open returned; a socket fd
+      reaches node code through net.Socket, not fs.read, so no ipc/net twin
+      is declared. `close`/`closeSync` are deliberately absent (INV-nular F4:
+      a lifecycle call transfers nothing). `unwatchFile` likewise.
   - module: fs.promises
-    functions: [readFile, readdir, stat, lstat, access, readlink, realpath]
-  - module: path
-    functions: [resolve, join, dirname, basename, extname, relative, normalize]
-    notes: "Path operations are not I/O but commonly precede fs_read"
+    functions: [readFile, readdir, stat, lstat, access, readlink, realpath, open, opendir, statfs, watch]
+  - module: process
+    functions: [dlopen]
+    notes: "WI-nolut: loads a native addon from a PATH -- a filesystem read of the given file, before any code runs."
+  # `path` rows REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): join, dirname,
+  # basename, extname, relative, normalize and resolve are string arithmetic
+  # and touch no file; the row's own note said "not I/O" and declared fs_read
+  # anyway, so every path.join counted as an EXAMINED filesystem read.
+  # resolve reads process.cwd(), which is rowed on process where it is
+  # performed. The module is granted complete below.
   # Deno runtime API
   - module: Deno
     functions: [readFile, readTextFile, readDir, stat, lstat, readLink, realPath, open]
@@ -68,9 +88,20 @@ fs_read:
     methods: [readFile, readTextFile, readDir, stat, lstat]
 fs_write:
   - module: fs
-    functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile]
+    functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile,
+                open, openSync, write, writeSync, writev, writevSync, fchmod, fchmodSync, fchown, fchownSync, fdatasync, fdatasyncSync, fsync, fsyncSync, ftruncate, ftruncateSync,
+                futimes, futimesSync, lchown, lchownSync, lutimes, lutimesSync, link, linkSync, symlink, symlinkSync, truncate, truncateSync, utimes, utimesSync,
+                mkdtemp, mkdtempSync, rm, rmSync, cp, cpSync]
+    notes: >-
+      WI-nolut (2026-09-06): the second list is the audit's addition -- every
+      fs export whose source reaches the binding on the write side, including
+      the fd-taking family (write/writev/fchmod/fchown/fsync/ftruncate/futimes)
+      and the metadata writes (link/symlink/utimes/lutimes/lchown/truncate).
+      `open` here is the write half of its dual declaration (see fs_read).
+      `cp` reads and writes; declared on the write side, the direction that
+      creates the crossing, following copyFile.
   - module: fs.promises
-    functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm]
+    functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm, open, cp, lchmod, lchown, link, lutimes, mkdtemp, symlink, truncate, utimes]
   - module: fs
     methods: [createWriteStream]
   # Deno runtime API
@@ -219,6 +250,11 @@ env_read:
 # AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, and
 # calling runtime.GOOS or platform.system a host SECRET made every
 # host-secret-* claim count description reads as secret flows.
+env_write:
+  - module: process
+    functions: [chdir]
+    notes: "WI-nolut: changes the process's working directory, python's os.chdir precedent (env_write)."
+
 host_info_read:
   - module: Date
     functions: [now]
@@ -236,14 +272,18 @@ host_info_read:
   - module: performance
     attributes: [timeOrigin]
   - module: process
-    functions: [hrtime, uptime]
+    functions: [hrtime, uptime, getuid, geteuid, getgid, getegid, getgroups, cpuUsage, memoryUsage, resourceUsage, constrainedMemory, availableMemory, umask]
+    notes: >-
+      WI-nolut (2026-09-06): the uid/gid getters, resource-usage readers and
+      umask() read the host's description of this process (INV-tutar's
+      class); none is a secret and none is a file.
   - module: os
     functions: [uptime]
     notes: >-
       Machine uptime is host information by the same argument that puts a
       monotonic clock in scope.
   - module: process
-    attributes: [platform, arch, version, cwd]
+    attributes: [platform, arch, version, cwd, pid, ppid, execPath, title, versions, release]
   - module: os
     functions: [hostname, platform, arch, release, type, cpus, totalmem, freemem, homedir, tmpdir, userInfo]
   - module: navigator
@@ -284,6 +324,9 @@ ipc_recv:
   - module: process
     attributes: [stdin]
   - module: process
+    functions: [openStdin]
+    notes: "WI-nolut: deprecated alias that returns process.stdin -- the same standard-input read."
+  - module: process
     # Quote "on" so YAML 1.1 doesn't parse it as boolean True. Without
     # the quotes, the auto-derived TaintSource for process.on lands
     # with name=True, which trips `if "." in src.name` in
@@ -303,3 +346,67 @@ logging:
   - module: process
     attributes: [stdout, stderr]
     notes: "Node stdio writes; terminal / log output, not an IPC channel"
+
+# WI-nolut (2026-09-06): module_completeness grants for the node builtins the
+# corpus reaches (WI-lutuh's second leg). Each is a POSITIVE dated declaration
+# that every I/O primitive the module exposes is rowed above, reached by the
+# mechanical probe in ~/hypergumbo_lab_notebook/jsleg_completeness_09062026/
+# (probe.js: exports one level deep, function source scanned for binding
+# reach and I/O surface; a NONE verdict is a candidate, never a grant) and
+# then adjudicated with the source in view. Matching is exact: `fs` does not
+# vouch for `fs/promises`, so both are declared, under both spellings the
+# analyzer emits (`require('fs/promises')` -> fs/promises; the rows use
+# fs.promises).
+#
+# DELIBERATELY WITHHELD, and why:
+#   readline   its I/O is the STREAM passed to createInterface (process.stdin
+#              in the common case, a file in others), INV-zumin class (b);
+#              the javascript analyzer has no io_target_kind stamp, so a row
+#              would mint untrusted_input over every file-backed reader and a
+#              grant would call a stdin read a non-read. Withheld: a call
+#              into readline keeps a verdict inconclusive.
+#   http       `new http.Server()` / `new http.Agent()` are constructors the
+#              catalogue does not key, so the surface is not fully enumerated.
+#   net, dns, child_process, os, https, dgram, tls, worker_threads, cluster
+#              not audited in this leg.
+module_completeness:
+  - module: path
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "String arithmetic on paths; the seven fs_read rows were deleted (INV-nular F7). resolve/format flagged on cwd()/native code: cwd is rowed on process, format is string formatting."
+  - module: url
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "42 pure functions; the two probe signals are the literal 'http:' in the legacy Url.parse source. No descriptor, no binding reach."
+  - module: zlib
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Compression and decompression over buffers and streams; 37 functions, 125 constants, no binding reach to a descriptor."
+  - module: timers/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "setTimeout/setImmediate/setInterval/scheduler as promises; no signal."
+  - module: stream/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pipeline/finished as promises; no signal. The streams they join carry their own rows."
+  - module: crypto
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "95 probe signals, every one [kHandle] -- a native crypto object handle, not a descriptor. randomBytes/randomUUID/getRandomValues draw OS entropy through the binding and are granted on the recorded python precedent (secrets/random/uuid): seeding belongs to the row of the module that PERFORMS it, not the consumer's surface; the same reasoning rust's HashMap grant cites. If python's grants ever go, this one loses its basis."
+  - module: fs
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "91 unrowed exports with binding reach were rowed above (open/read/write/fstat/symlink/link/truncate/utimes/rm/cp/watch/opendir and the fd family). Declared exclusions: close/closeSync/unwatchFile (lifecycle, INV-nular F4); the ReadStream/WriteStream/Dir/Dirent/Stats classes constructed directly (the catalogue keys calls; createReadStream/createWriteStream/opendir are rowed); constants and _toUnixTimestamp."
+  - module: fs/promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The 13 unrowed exports with binding reach (open, opendir, statfs, watch, cp, lchmod, lchown, link, lutimes, mkdtemp, symlink, truncate, utimes) were rowed above under fs.promises; this entry is the slash spelling the analyzer emits for require('fs/promises') and import from 'node:fs/promises'."
+  - module: fs.promises
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The dotted spelling the rows use; same audit as fs/promises."
+  - module: process
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "23 unrowed exports with a signal: the uid/gid getters, cpuUsage/memoryUsage/resourceUsage/constrainedMemory/availableMemory and umask rowed host_info_read; openStdin ipc_recv; chdir env_write; dlopen fs_read. Declared NOT I/O: exit/reallyExit/abort/kill/_kill (process control, no boundary in this vocabulary), binding/_rawDebug/_debug*/_fatalException/_getActive* (internal), nextTick/emitWarning/hrtime.bigint (no crossing)."
