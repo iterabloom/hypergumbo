@@ -158,3 +158,17 @@
   clock: 20  # 61e5
   nonce: '61e5'  # 61e5
   message: "PHASE 7 STAGE REPORT 2026-09-06 (dev 87104c6281): WI-gudak DONE; INV-dulah lang-slot limb CLOSED (PR #808); INV-sadah SATISFIED on its own repro at tip (WI-kabif's refuting walk fell the S2 objection); WI-jokij RE-SCOPED with the recoverable-subset measurement (the sentinel is the honest cell for untyped-receiver calls); INV-karud re-checked clause by clause against the tip and 0012; INV-kurup / INV-nanon re-scoped against their drained populations with owner proposals. Phase 7's arc edges onto INV-linub: the resolved sources stop blocking on their own; the re-scoped items (WI-jokij, INV-karud, INV-kurup, INV-nanon) stay open and their edges are REMOVED below so Phase 6 recall (INV-linub, unblocked 09-06 on 0012) is next per the arc."  # 61e5
+- op: discuss  # 38a4
+  at: '2026-09-06T15:50:17Z'  # 38a4
+  by: agent  # 38a4
+  actor: jgstern_agent  # 38a4
+  clock: 21  # 38a4
+  nonce: 38a4  # 38a4
+  message: "PHASE 6 OPENED 2026-09-06 with a scoping census, not a PR: the receiver shapes behind python's 27,687 sentinel method-call edges (pretix + kserve) are on INV-mumov; the catalogued names on them are name collisions (get/save/post/create), so the first L3 slice is chosen by TYPE DERIVABILITY (next census) and measured by the taint-path delta per 0003, carrying awaits_bakeoff_validation. Phase 7's edges onto INV-linub are all removed;  now leads with INV-linub."  # 38a4
+- op: discuss  # 165b
+  at: '2026-09-06T15:50:44Z'  # 165b
+  by: agent  # 165b
+  actor: jgstern_agent  # 165b
+  clock: 22  # 165b
+  nonce: 165b  # 165b
+  message: "CORRECTION to the entry above: its last sentence lost a word to shell quoting and should read \"the tracker ready queue now leads with INV-linub\" (Phase 6 is the next arc stage; the Phase 7 sources no longer block it)."  # 165b
