@@ -97,3 +97,19 @@
   clock: 11  # dd79
   nonce: dd79  # dd79
   message: "INSTANCE 2026-09-06 (WI-dovog): six linkers -- solidity_abi, tauri_ipc, message_dispatch, crypto_flow, yjs_crdt, wasm_bindgen, and grpc's client-pattern label -- wrote the LITERAL \"typescript\" into the language slot of every synthetic call-site id they minted, whatever the host file's extension, while the Symbol's language field was None (ADR-0031 Class B). A downstream reader that takes the id's first segment as a language claim (verify_claims' languages_with_calls) then withheld every claim over openzeppelin-contracts. Fixed at the emitters with js_ts_language_from_path; the reader-side guard (origin-keyed, per WI-mital) is WI-dovog's residual. This is the shape this META item names: an identifier slot filled by an emission path that never consulted the grammar's meaning for that slot."  # dd79
+- op: discuss  # 0c8e
+  at: '2026-09-06T15:45:17Z'  # 0c8e
+  by: agent  # 0c8e
+  actor: jgstern_agent  # 0c8e
+  clock: 12  # 0c8e
+  nonce: 0c8e  # 0c8e
+  message: "RE-SCOPED 2026-09-06 against what the population has drained to (arc stage 5; status stays violated, umbrella unchanged in kind).\n\nTHE node.id MEMBER, per the 2026-07-02 sequencing: Phase 1 core train DONE (WI-pubiv, WI-jopil), fast-follows DONE (WI-kugaj, WI-zugob), enforcement: WI-bovoh DONE, WI-popak and WI-dipim todo_soft P3, WI-vodin todo_hard P2 (the AST linter that would make this umbrella hold by construction). Closure item INV-dulah: THREE of its enumerated limbs drained (route kind-slot, linker name-slot constants, doc-family slot order) and today the LANG-slot limb (PR #808: objc/css/solidity import dsts were bare paths; Mantle id_format 44 -> 0); what remains under it is WI-banod T1's five stable_id = symbol_id config-family sites (todo_soft P3), the two scheme-gated kind-slot xfails (pony/robot), and a css limb filed today (hash-shaped 3-slot symbol ids; @import edges orphaned) that only shows under --include-docs.\n\nINSTANCES THIS SUMMER, all of the same shape the statement names -- a slot carrying something that is not its declared value: WI-dovog (literal `typescript` in the lang slot of six linkers' synthetic ids, 09-06), WI-fiham (javascript `node:` scheme kept on import-edge ids and stripped on call ids, 09-06), the css hash ids. Every one was found by a consumer misreading the slot, not by the validator: id_format 0 is fleet-silent on doc-family analyzers (filtered by default) and on synthetic ids whose slot values are well-formed but false.\n\nWHAT THE UMBRELLA STILL OWNS. (1) Enforcement at the emission boundary is the statement's own words and is exactly the undone half: WI-vodin (static linter on Symbol(id=f\"...\") and Edge.id) is the item that would retire the class rather than its instances; WI-popak/WI-dipim are the validator's round-trip/sentinel sub-checks. (2) The other identifier-bearing fields (Edge.id, stable_id schemes) were \"scoped-open\" in the sequencing and have no member item; the umbrella is their only home. PROPOSAL for the owner: re-title the umbrella to \"identifier-bearing fields are canonical BY CONSTRUCTION -- linter + validator sub-checks (WI-vodin, WI-popak, WI-dipim) close it\", and let INV-dulah keep the per-limb ledger; P2 stays only if WI-vodin is scheduled, else P3 with the three enforcement items."  # 0c8e
+- op: update  # ef29
+  at: '2026-09-06T15:45:19Z'  # ef29
+  by: agent  # ef29
+  actor: jgstern_agent  # ef29
+  clock: 13  # ef29
+  nonce: ef29  # ef29
+  set: {}  # ef29
+  remove:  # ef29
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # ef29
