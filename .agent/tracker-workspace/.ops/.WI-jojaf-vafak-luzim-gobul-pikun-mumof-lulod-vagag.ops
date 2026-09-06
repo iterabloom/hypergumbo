@@ -1,0 +1,32 @@
+- op: create  # 4da6
+  at: '2026-09-06T11:27:00Z'  # 4da6
+  by: agent  # 4da6
+  actor: jgstern_agent  # 4da6
+  clock: 1  # 4da6
+  nonce: 4da6  # 4da6
+  data:  # 4da6
+    kind: work_item  # 4da6
+    title: "INV-nular F7: pure path arithmetic rowed as fs_read -- javascript path.{join,basename,dirname,extname,normalize,relative,resolve} (7 rows), python os.path.abspath / posixpath.abspath (2 rows); a path.join counts as an EXAMINED filesystem read"  # 4da6
+    status: todo_hard  # 4da6
+    priority: 3  # 4da6
+    parent:  # 4da6
+    tags:  # 4da6
+    - taint  # 4da6
+    - catalogue  # 4da6
+    - javascript  # 4da6
+    - python  # 4da6
+    isbefore: []  # 4da6
+    duplicate_of: []  # 4da6
+    not_duplicate_of: []  # 4da6
+    pr_ref:  # 4da6
+    description: "INV-nular member, found 2026-09-06 while sizing the javascript completeness leg: PURE PATH ARITHMETIC ROWED AS A FILESYSTEM READ. Swept by mechanism across all fifteen catalogues (load_catalog, names in {join, basename, dirname, extname, normalize, relative, resolve, abspath, normpath, split, ...} under fs_*):\n\n  javascript  path.basename, path.dirname, path.extname, path.join, path.normalize, path.relative, path.resolve   fs_read   7 rows\n  python      os.path.abspath, posixpath.abspath                                                                  fs_read   2 rows\n  NOT members, checked and kept: pathlib.Path.resolve (follows symlinks -- a real fs read), xml.etree.ElementTree.parse (reads a file), go filepath.Walk/WalkDir/Glob (traverse the fs).\n\nWHY IT IS A KIND ERROR AND NOT A NIT. path.join and friends touch no file: they are string operations (path.resolve and abspath read process.cwd() / os.getcwd(), a host_info_read at most, and read nothing about the path they return). fs_read mints no taint, so the cost is not a false taint flow; it is (1) io-boundaries reporting a filesystem-read chain at every path.join in a repository, and (2) INV-buzab's gate: a CLASSIFIED call counts as EXAMINED, so a program whose only \"I/O\" is path arithmetic classifies as a program with filesystem reads and can never be told apart from one. The 08-28 sweep's strata (constructors, handle names, lifecycle callbacks, adjacency) did not include \"string helper on a path-shaped name\", which is a fifth syntactic proxy the root cause predicts and the sweep did not run.\n\nTHE FIX IS DELETION WITH A NOTE at the deletion site (F1/F2's pattern, #602), then the javascript `path` module becomes a COMPLETE module_completeness grant with zero rows -- which is exactly the entry the javascript leg (the sibling item filed the same day) must author, so land the two together or this first. A/B on the javascript and python corpus repos: fs_read chain counts and every verdict that changes category read back; the removal direction is live (`removed>0`), so every removed chain is listed."  # 4da6
+    fields: {}  # 4da6
+- op: update  # 9c90
+  at: '2026-09-06T11:27:04Z'  # 9c90
+  by: agent  # 9c90
+  actor: jgstern_agent  # 9c90
+  clock: 2  # 9c90
+  nonce: 9c90  # 9c90
+  set: {}  # 9c90
+  add:  # 9c90
+    isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 9c90
