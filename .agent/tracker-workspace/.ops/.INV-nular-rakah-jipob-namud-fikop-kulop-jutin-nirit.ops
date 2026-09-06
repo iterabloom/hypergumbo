@@ -163,3 +163,26 @@
   clock: 21  # 7d4e
   nonce: 7d4e  # 7d4e
   message: "KIND-SLOT MEMBER SHIPPED 2026-09-06 (WI-komun, PR #800): javascript's named-global rows (console, localStorage, sessionStorage, navigator, Deno) were declared methods: while the analyzer resolves them function-shaped; the classifier matched them and the coverage gate withheld. The rows' kind moved to functions:. Same root cause as the boundary-slot families -- a row slot asserted by name, never checked against what the analyzer emits."  # 7d4e
+- op: discuss  # c0e3
+  at: '2026-09-06T19:48:13Z'  # c0e3
+  by: agent  # c0e3
+  actor: jgstern_agent  # c0e3
+  clock: 22  # c0e3
+  nonce: c0e3  # c0e3
+  message: "OWNER RULING, 2026-09-06 (walk-through item 3 of 5). On the 09-06 escalation\n(\"full ~2900-row sweep vs re-scope to a dated declared blindness\"), the\nowner: \"your recommendation sounds good to me.\" RULED: RE-SCOPE.\n\nWHAT THE RE-SCOPE IS (to be implemented, not done in this entry):\n  1. Rewrite the statement to what is TRUE and ENFORCED at tip: every row's\n     DIRECTION is mechanically checked in CI (the direction guard, exempt by\n     the `simultaneous` property); kinds are ADJUDICATED for the swept\n     strata (F1 in-process cells, F2 setup/handles, F3 query builders, F4\n     lifecycle callbacks, F5 responses, F6/F7 adjacency, the kind-slot\n     family WI-komun, the c socket family WI-baran, the six named\n     instances); the REMAINDER is name-bound and unverified, stated with\n     the count. Shipped catalogues at tip (no overlays): 622 entries /\n     2,312 names, 356 entries (57%) carrying a written rationale.\n  2. Disclose the remainder where ADR-0047 already puts catalogue\n     provenance in front of the user (the verify-claims provenance block /\n     io-boundaries header): \"rows bind name to kind by provenance citation;\n     N of M names adjudicated; direction mechanically checked; the rest\n     unverified\" -- dated, user-visible, per the arc's exit criterion.\n  3. Then `satisfied` ON THE REWRITTEN STATEMENT, with the item's own\n     positive control (the direction guard fires on a planted\n     opposite-direction row; the disclosure renders in text and JSON).\n  4. A P3 SWEEP item for the unverified remainder with a WRITTEN RE-OPEN\n     TRIGGER (a bakeoff or measurement surfaces a new kind family). Its\n     METHOD is probe-first, not a 2,312-name read: the WI-dupok / WI-lutuh\n     probe shape (read the rowed function's SOURCE for I/O signal; never\n     grants; refuses NATIVE) run over every rowed module produces a ranked\n     candidate pool of rows with no I/O signal, and only the pool is read\n     by a person or a model. The owner has asked whether the pool's\n     semantic review can be parallelised across cheaper sub-agent workers\n     with a stronger verifier; that design question is OPEN on this entry\n     and is answered on the sweep item when it is filed.\n\nSequencing: off-arc, after Phase 6 / INV-busis unless the owner says\notherwise. Status stays `violated` until the re-scope ships; nothing on the\narc waits on it. Housekeeping from the same walk: WI-tunod is being checked\nagainst WI-jojaf (#794) as a possible stale twin before any fold."  # c0e3
+- op: update  # aa04
+  at: '2026-09-06T19:55:45Z'  # aa04
+  by: agent  # aa04
+  actor: jgstern_agent  # aa04
+  clock: 23  # aa04
+  nonce: aa04  # aa04
+  set: {}  # aa04
+  add:  # aa04
+    isbefore: [WI-vafad-vatos-fozos-pugol-fivak-hopif-bisoh-mijur]  # aa04
+- op: discuss  # fde8
+  at: '2026-09-06T19:55:45Z'  # fde8
+  by: agent  # fde8
+  actor: jgstern_agent  # fde8
+  clock: 24  # fde8
+  nonce: fde8  # fde8
+  message: "OWNER, 2026-09-06, on the sweep design (probe-first pool, parallel source-citing sonnet workers with blind plants, verifier, candidate list only): 'that sounds good yes i would put it after the arc (or after everything in the arc that it would not bear on), P2'. FILED as WI-vafad-vatos-fozos-pugol-fivak-hopif-bisoh-mijur at P2 with the design as pre-registration seed. Edges: INV-busis isbefore this item (the re-scope waits for the arc to close; it bears on nothing left in the arc -- Phase 6 / INV-busis measure by hand-adjudicated 0003 deltas, which a kind-wrong row cannot flip) and this item isbefore WI-vafad-vatos-fozos-pugol-fivak-hopif-bisoh-mijur (re-scope first, then the drain). The re-scope itself is this item's next actionable step when the edge lifts."  # fde8
