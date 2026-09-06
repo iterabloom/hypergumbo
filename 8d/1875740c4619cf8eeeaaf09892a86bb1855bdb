@@ -1,0 +1,11 @@
+Original commit body from 068e68f619682362da1936735bb956034a0dd5c4:
+
+INV-dulah, lang-slot limb (the 2026-08-24 entry). objc, css and solidity emitted an `imports` edge whose dst was the bare import path; finalize's 4-part fallback rendered it with the path in the lang slot and `<unknown>` in the path slot, and the validator flagged each as `non_canonical_language_prefix` -- the entire id_format residual on Mantle.
+
+- objc: `objc:<header>:0-0:header:header` (cpp's include shape); css and solidity: `<lang>:<path>:0-0:module:module` (the js/ts import shape).
+- Pinned per analyzer and through `run_survey` + validator (no `<unknown>` slot, id_format 0, non-vacuity guard on the import edges).
+- Measured on Mantle (whole_bunch_of_repos/Mantle, cold cache, before/after arms in dulah_objc_09062026/): id_format 44 -> 0, `<unknown>`-slot nodes 44 -> 0, 44 canonical `objc:<header>:0-0:header:external_symbol` boundary nodes in their place, 156 objc import edges and the 587-node / 858-edge totals unchanged. The pipeline gate drives objc and solidity; css is fixed and pinned at the analyzer only, because its import edges never reach the survey and its symbol ids are hash-shaped (3 slots) -- a separate css limb, filed.
+
+Tracker: INV-dulah limb entry after merge (status stays violated on its other two limbs); WI-gudak closed on its own re-run repro in the same batch.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
