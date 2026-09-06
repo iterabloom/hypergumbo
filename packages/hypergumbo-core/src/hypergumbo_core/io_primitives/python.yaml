@@ -174,8 +174,8 @@ fs_read:
   - module: os.path
     functions: [islink, lexists, getctime, samefile]
   - module: posixpath
-    functions: [exists, isfile, isdir, islink, lexists, getsize, getmtime, getatime, getctime, realpath, abspath, samefile]
-    notes: "posixpath IS os.path on POSIX; a call addressed through this name must classify identically."
+    functions: [exists, isfile, isdir, islink, lexists, getsize, getmtime, getatime, getctime, realpath, samefile]
+    notes: "posixpath IS os.path on POSIX; a call addressed through this name must classify identically. `abspath` REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): it normalises against os.getcwd() and touches no file; realpath, which follows symlinks, stays."
   - module: gzip
     functions: [open, GzipFile]
     notes: "Dual-classified: mode-dependent, like builtins.open."
@@ -215,7 +215,8 @@ fs_read:
   - module: os
     functions: [listdir, scandir, stat, access, readlink, walk]
   - module: os.path
-    functions: [exists, isfile, isdir, getsize, getmtime, getatime, realpath, abspath]
+    functions: [exists, isfile, isdir, getsize, getmtime, getatime, realpath]
+    notes: "`abspath` REMOVED (INV-nular F7, WI-jojaf, 2026-09-06): string arithmetic against os.getcwd(), no file touched; realpath stays."
   - module: shutil
     functions: [which, disk_usage]
   - module: importlib.resources

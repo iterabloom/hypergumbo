@@ -1216,7 +1216,7 @@ class TestCatalogStatus:
         # from this list. The catalogs still pending audit must continue to
         # declare status=in_progress.
         for lang in (
-            "c", "elixir", "go", "haskell", "java", "javascript",
+            "c", "elixir", "go", "haskell", "java",
             "kotlin", "objc", "scala", "swift",
         ):
             catalog = load_catalog(lang)

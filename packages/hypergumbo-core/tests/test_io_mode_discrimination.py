@@ -282,6 +282,24 @@ class TestModeArgumentResolution:
             "c", "fopen",
         )
 
+    def test_javascript_declares_the_flags_position(self) -> None:
+        """WI-nolut: node's flags string sits at positional 1, no keyword."""
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        for name in ("open", "openSync"):
+            spec = mode_argument_for("javascript", name)
+            assert spec is not None, name
+            assert (spec.position, spec.keyword) == (1, None)
+
+    def test_an_alias_language_answers_through_its_target(self) -> None:
+        """typescript is javascript's ALIAS (one catalogue, one table), which
+        is a different relation from cpp's PARENT hop and resolved beside it."""
+        from hypergumbo_core.io_boundary import mode_argument_for
+
+        assert mode_argument_for("typescript", "open") == mode_argument_for(
+            "javascript", "open",
+        )
+
     def test_a_language_with_no_table_and_no_parent_is_none(self) -> None:
         from hypergumbo_core.io_boundary import mode_argument_for
 

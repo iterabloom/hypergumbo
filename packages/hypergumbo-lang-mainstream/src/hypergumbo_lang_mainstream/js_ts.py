@@ -93,6 +93,7 @@ from hypergumbo_core.analyze.base import (
     TreeSitterAnalyzer,
     defer_bare_method_call,
     emit_module_attribute_refs,
+    stamp_io_mode_from_call,
     symbols_by_path_index,
     symbols_for_path,
     make_symbol_id,
@@ -4912,6 +4913,9 @@ def _extract_edges(
 
         # Call expressions
         elif node.type == "call_expression":
+            # WI-nolut: the edges THIS call produces start here, so the io_mode
+            # stamp at the end of the branch decorates exactly them.
+            _edges_before_call = len(edges)
             func_node = None
             args_node = None
             for child in node.children:
@@ -5631,6 +5635,14 @@ def _extract_edges(
                                 evidence_type="ast_call_direct",
                                 meta={"framework_dispatch": "middleware_chain"},
                             ))
+
+            # WI-nolut: fs.open / openSync / fs.promises.open are dual
+            # fs_read + fs_write and settled by the FLAGS string at positional
+            # 1; the one shared producer reads it off the parse tree, keyed on
+            # this call node, over the edges the branch above emitted for it.
+            stamp_io_mode_from_call(
+                edges, _edges_before_call, node, source, lang,
+            )
 
         # new ClassName() or new namespace.ClassName()
         elif node.type == "new_expression":
