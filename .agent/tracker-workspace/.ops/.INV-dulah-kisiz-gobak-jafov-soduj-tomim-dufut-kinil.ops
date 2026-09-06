@@ -219,3 +219,12 @@
   clock: 26  # 2c54
   nonce: 2c54  # 2c54
   message: "NEW LIVE LIMB MEASURED 2026-08-24, filed here rather than as a new item because\nthis is the standing umbrella for \"node.id format escapes documented grammar\"\nand the limb is squarely inside that scope.\n\nTHE LANG SLOT CARRIES A HEADER PATH on objc/C boundary nodes:\n\n  Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol\n  objc/runtime:<unknown>:0-0:objc/runtime:external_symbol\n  stdio:<unknown>:0-0:stdio:external_symbol\n\nADR-0036 Ruling 1 requires the lang slot to be colon-free AND a member of the\nlanguage catalog. These carry an #include path, and the node's own\nSymbol.language is null. The validator classifies every one as\nnon_canonical_language_prefix.\n\nMEASURED on unmodified upstream Mantle, merged dev @f21a8e67ba:\n  id_format violations   115 -> 44 after PR #515\n  of the 44 remaining    44 are non_canonical_language_prefix (100%)\n  of the 44 remaining     0 are on an objc external SELECTOR node\n\nSo this limb is now the ENTIRE id_format residual on that repo. It was\npreviously masked by the larger empty-name-slot cohort that #515 removed.\n\nRELATION TO INV-divuf, stated so the two are not conflated: INV-divuf was the\nNAME-slot half (an objc selector ends in a colon, so the name slot parsed\nempty, boundary nodes collapsed, and the caveat could not name what it had\nfailed to examine). That is satisfied as of #515. This is the LANG-slot half,\na different producer and a different slot, and #515 neither fixed nor caused it\n-- the count fell only because the other cohort left.\n\nNOT INVESTIGATED: which producer mints these (the <unknown> path sentinel says\nthey route through _parse_dangling_id's <5-part fallback, i.e. an id that was\nnever 5-slot to begin with); whether the same shape appears in C/C++ repos\nbeyond Mantle; and whether Symbol.language being null is a consequence of the\nbad lang slot or an independent gap."  # 2c54
+- op: update  # 7111
+  at: '2026-09-06T10:20:33Z'  # 7111
+  by: agent  # 7111
+  actor: jgstern_agent  # 7111
+  clock: 27  # 7111
+  nonce: '7111'  # 7111
+  set: {}  # 7111
+  add:  # 7111
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 7111
