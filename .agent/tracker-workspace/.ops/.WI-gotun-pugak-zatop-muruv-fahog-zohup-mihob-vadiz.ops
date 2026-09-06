@@ -43,3 +43,19 @@
   set: {}  # 69ef
   add:  # 69ef
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 69ef
+- op: discuss  # 55ba
+  at: '2026-09-06T14:30:20Z'  # 55ba
+  by: agent  # 55ba
+  actor: jgstern_agent  # 55ba
+  clock: 5  # 55ba
+  nonce: 55ba  # 55ba
+  message: "ARC STAGE 4, 2026-09-06 -- the \"OR a dated declared blindness\" branch is the one that is shipped, re-verified live today, so this item's arc obligation is met without building the extractor.\n\nBEHAVIOURAL EVIDENCE at dev tip, production CLI, cold cache, a one-file java fixture (System.getenv -> FileWriter.write; scratchpad gotun/fx): verify-claims --json carries\n  dataflow_coverage.languages[java] = {\"dataflow_capable\": false, \"blockers\": [\"atomic_statement\", \"def_use_extractor\", \"ddg_spec\"], \"cfg_mapping\": true, \"catalog_sinks\": 69, \"catalog_sources\": 48, \"catalog_sanitizers\": 1}\nNO-FSWRITE violated (1 fs_write chain: the flow is FOUND, labelled structural), SECRET-FS inconclusive on the uncatalogued-module rung. The silence the arc order forbids (\"ship the extractor or a dated declared blindness; silence stays banned\") does not exist: every java verdict names the gap per blocker, machine-readably, on both arms.\n\nWHAT THE EXTRACTOR STILL BUYS, unchanged from the 08-25 amendment: PRECISION -- java can never be `adjudicated`, so the same-function sanitizer arm never credits a java barrier (encrypt-then-write in one function reports a violation python suppresses). Its ceiling is bounded by encryption.yaml's ONE java row (javax.crypto.Cipher.doFinal); python has four rows. The item's own recommendation stands: add java sanitizer rows FIRST, then re-rank this item, because its payoff scales with that catalogue. Filed as WI-buvob-zaluz-tizin-rotih-hihob-hiluk-jujan-tiham, isbefore this item.\n\nSCHEDULING: the arc edge `WI-gotun isbefore INV-linub` existed to keep java-side recall from preceding a java disclosure. The disclosure is shipped; holding INV-linub's class behind an unbuilt precision extractor no longer serves that purpose, so the edge is REMOVED here and the removal recorded on WI-nazos. This item stays todo_hard at its priority, re-scoped to the precision payoff: build JavaDefUseExtractor when the sanitizer catalogue makes the same-function credit worth collecting, and measure it on a real java repo's same-function sanitizer sites (the gap the 08-25 entry names as unmeasured)."  # 55ba
+- op: update  # 272a
+  at: '2026-09-06T14:30:20Z'  # 272a
+  by: agent  # 272a
+  actor: jgstern_agent  # 272a
+  clock: 6  # 272a
+  nonce: 272a  # 272a
+  set: {}  # 272a
+  remove:  # 272a
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 272a

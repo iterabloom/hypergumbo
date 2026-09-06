@@ -36,3 +36,10 @@
   set: {}  # fa0f
   add:  # fa0f
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # fa0f
+- op: discuss  # 259b
+  at: '2026-09-06T15:01:49Z'  # 259b
+  by: agent  # 259b
+  actor: jgstern_agent  # 259b
+  clock: 4  # 259b
+  nonce: 259b  # 259b
+  message: "FAMILY INSTANCE, javascript, filed 2026-09-06 as  while measuring WI-lavut: the js analyzer strips the node: scheme on call slots (js_ts.py:392-413) but not on the import edge for the same require (express: 100 import edges spelled node:path/node:assert/node:buffer/node:http, zero calls), so one target carries two module spellings and the exact enumeration predicate withholds on the import spelling."  # 259b

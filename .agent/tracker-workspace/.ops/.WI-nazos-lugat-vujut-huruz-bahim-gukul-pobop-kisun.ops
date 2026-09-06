@@ -130,3 +130,17 @@
   clock: 16  # 388a
   nonce: 388a  # 388a
   message: "STAGE 3 PROGRESS 2026-09-06: WI-dupok DONE (PR #802). Remaining in the Phase 5 residue: WI-lavut (shipped-grant disclosure). Then WI-gotun."  # 388a
+- op: discuss  # ea1a
+  at: '2026-09-06T14:30:21Z'  # ea1a
+  by: agent  # ea1a
+  actor: jgstern_agent  # ea1a
+  clock: 17  # ea1a
+  nonce: ea1a  # ea1a
+  message: "STAGE 4 RESOLVED 2026-09-06 without a build: WI-gotun's 'or a dated declared blindness' branch is SHIPPED (verify-claims dataflow_coverage.languages[java] names every blocker; re-verified live at tip), so the arc's no-silence obligation is met; the extractor is re-scoped to bounded precision work behind WI-buvob-zaluz-tizin-rotih-hihob-hiluk-jujan-tiham (java sanitizer rows, isbefore WI-gotun) and the arc edge WI-gotun -> INV-linub is REMOVED (its purpose, holding java-side recall behind a java disclosure, is served). Next on the arc: Phase 7 -- WI-jokij + WI-gudak, INV-sadah, INV-karud, INV-dulah's lang-slot limb, then re-scope INV-kurup / INV-nanon."  # ea1a
+- op: discuss  # 04ca
+  at: '2026-09-06T15:01:49Z'  # 04ca
+  by: agent  # 04ca
+  actor: jgstern_agent  # 04ca
+  clock: 18  # 04ca
+  nonce: 04ca  # 04ca
+  message: "STAGE 3 CLOSED 2026-09-06: WI-lavut DONE (PR #806). The Phase 5 residue is drained (js leg, python leg, the two gate rungs, shipped-grant disclosure). WI-gotun's arc requirement was met earlier today by the dated declared blindness (its extractor half stays open behind WI-buvob). Next on the arc: Phase 7 -- WI-jokij + WI-gudak, then INV-sadah, INV-karud, INV-dulah lang-slot limb, re-scope INV-kurup/INV-nanon."  # 04ca
