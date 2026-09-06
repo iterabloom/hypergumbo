@@ -46,7 +46,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 if TYPE_CHECKING:
     pass
@@ -254,9 +254,14 @@ def link_message_dispatch(
                 continue
             seen_edges.add(dedup)
 
-            lang = "typescript" if write.api == "js_dispatch" else "rust"
-            pub_id = f"{lang}:{write.file_path}:{write.line}:0:{write.channel}:message_sender"
-            sub_id = f"{lang}:{read.file_path}:{read.line}:0:{read.channel}:message_handler"
+            # WI-dovog: each site carries ITS OWN file's language (ADR-0031
+            # Class B via js_ts_language_from_path). The single `lang` taken
+            # from the WRITE site's api kind minted `typescript:` ids for every
+            # .js site and gave a .ts read the write's language.
+            pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "js_dispatch" else "rust"
+            sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
+            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:message_sender"
+            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:message_handler"
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -276,7 +281,7 @@ def link_message_dispatch(
                     name=write.channel,
                     path=write.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=pub_lang,
                     protocol_origin="message_dispatch",
                     span=Span(
                         start_line=write.line, end_line=write.line,
@@ -308,7 +313,7 @@ def link_message_dispatch(
                     name=read.channel,
                     path=read.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=sub_lang,
                     protocol_origin="message_dispatch",
                     span=Span(
                         start_line=read.line, end_line=read.line,

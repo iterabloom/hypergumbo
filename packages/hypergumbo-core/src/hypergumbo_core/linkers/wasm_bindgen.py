@@ -61,7 +61,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("wasm-bindgen-linker")
 
@@ -258,7 +258,9 @@ def link_wasm_bindgen(
             except ValueError:
                 pass
 
-            src_id = f"typescript:{rel_path}:0-0:{import_name}:wasm_import"
+            # WI-dovog: the importing file's language, not a literal.
+            host_language = js_ts_language_from_path(Path(rel_path))
+            src_id = f"{host_language}:{rel_path}:0-0:{import_name}:wasm_import"
 
             # Create synthetic Symbol node for the wasm import so the
             # slicer's BFS can traverse through it. Without this node,
@@ -278,7 +280,7 @@ def link_wasm_bindgen(
                     name=import_name,
                     path=rel_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=host_language,
                     protocol_origin="wasm",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,

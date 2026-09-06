@@ -2674,3 +2674,25 @@ class TestTransitiveStructEmbedding:
         result = link_grpc(tmp_path, existing_symbols=[leaf_struct, check])
         impl_edges = [e for e in result.edges if e.edge_type == "implements" and (e.meta or {}).get("protocol") == "grpc"]
         assert any(check.id == e.src for e in impl_edges)
+
+
+class TestATsClientPatternCarriesTheHostFileLanguage:
+    """WI-dovog: ``_scan_ts_file`` labelled every client pattern
+    ``language="typescript"`` whatever the file's extension, so a ``.js`` gRPC
+    client became a typescript symbol. The same emission-path literal as the
+    synthetic-src family, fixed with it; here the node census and the id agree
+    either way, so this never withheld a verdict."""
+
+    def test_a_js_client_is_javascript(self) -> None:
+        from hypergumbo_core.linkers.grpc import _scan_ts_file
+
+        patterns = _scan_ts_file(Path("src/client.js"), "const client = new UserServiceClient('localhost:50051');\n")
+        assert patterns, "the client pattern must still be detected"
+        assert {p.language for p in patterns} == {"javascript"}
+
+    def test_a_ts_client_is_typescript(self) -> None:
+        from hypergumbo_core.linkers.grpc import _scan_ts_file
+
+        patterns = _scan_ts_file(Path("src/client.ts"), "const client = new UserServiceClient('localhost:50051');\n")
+        assert patterns
+        assert {p.language for p in patterns} == {"typescript"}

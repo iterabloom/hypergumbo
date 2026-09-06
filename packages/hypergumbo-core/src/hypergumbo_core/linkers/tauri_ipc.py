@@ -77,7 +77,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("tauri-ipc-linker")
 
@@ -635,7 +635,11 @@ def link_tauri_ipc(
             except ValueError:
                 pass
 
-            src_id = f"typescript:{rel_path}:0-0:{cmd_name}:ipc_publisher"
+            # WI-dovog: the host file's language, not a literal -- ADR-0031
+            # Class B via js_ts_language_from_path; a .js frontend minted
+            # `typescript:` ids with no typescript node behind them.
+            host_language = js_ts_language_from_path(Path(rel_path))
+            src_id = f"{host_language}:{rel_path}:0-0:{cmd_name}:ipc_publisher"
 
             # Create synthetic Symbol node for the IPC publisher so the
             # slicer's BFS can traverse through it. Without this node,
@@ -657,7 +661,7 @@ def link_tauri_ipc(
                     name=cmd_name,
                     path=rel_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=host_language,
                     protocol_origin="tauri_ipc",
                     span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                     origin=PASS_ID,
@@ -762,8 +766,9 @@ def link_tauri_ipc(
                     continue
                 seen_caller_edges.add(dedup_key)
 
+                caller_language = js_ts_language_from_path(Path(rel_path))
                 caller_id = (
-                    f"typescript:{rel_path}:0-0:{func_name}:ipc_caller"
+                    f"{caller_language}:{rel_path}:0-0:{func_name}:ipc_caller"
                 )
 
                 if caller_id not in seen_caller_ids:
@@ -784,7 +789,7 @@ def link_tauri_ipc(
                         name=func_name,
                         path=rel_path,
                         language=None,
-                        discovery_language="typescript",
+                        discovery_language=caller_language,
                         protocol_origin="tauri_ipc",
                         span=Span(
                             start_line=0, end_line=0,
@@ -867,7 +872,8 @@ def link_tauri_ipc(
                     seen_event_edges.add(dedup)
 
                     src_id = f"rust:{rust_path}:0-0:{event_name}:event_emitter"
-                    dst_id = f"typescript:{ts_path}:0-0:{event_name}:event_listener"
+                    listener_language = js_ts_language_from_path(Path(ts_path))
+                    dst_id = f"{listener_language}:{ts_path}:0-0:{event_name}:event_listener"
 
                     # Create synthetic symbols for emitter and listener
                     if src_id not in seen_publisher_ids:
@@ -915,7 +921,7 @@ def link_tauri_ipc(
                             name=event_name,
                             path=ts_path,
                             language=None,
-                            discovery_language="typescript",
+                            discovery_language=listener_language,
                             protocol_origin="tauri_ipc",
                             span=Span(start_line=0, end_line=0, start_col=0, end_col=0),
                             origin=PASS_ID,

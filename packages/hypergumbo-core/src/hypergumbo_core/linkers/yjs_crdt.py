@@ -60,7 +60,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 if TYPE_CHECKING:
     pass
@@ -397,8 +397,12 @@ def link_yjs_crdt(
                 continue
             seen_edges.add(dedup)
 
-            pub_id = f"typescript:{write.file_path}:{write.line}:0:{write.channel}:crdt_publisher"
-            sub_id = f"typescript:{read.file_path}:{read.line}:0:{read.channel}:crdt_subscriber"
+            # WI-dovog: each site carries ITS OWN file's language (ADR-0031
+            # Class B via js_ts_language_from_path), not a literal.
+            pub_lang = js_ts_language_from_path(Path(write.file_path))
+            sub_lang = js_ts_language_from_path(Path(read.file_path))
+            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:crdt_publisher"
+            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:crdt_subscriber"
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -415,7 +419,7 @@ def link_yjs_crdt(
                     name=write.channel,
                     path=write.file_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=pub_lang,
                     protocol_origin="yjs_crdt",
                     span=Span(
                         start_line=write.line, end_line=write.line,
@@ -446,7 +450,7 @@ def link_yjs_crdt(
                     name=read.channel,
                     path=read.file_path,
                     language=None,
-                    discovery_language="typescript",
+                    discovery_language=sub_lang,
                     protocol_origin="yjs_crdt",
                     span=Span(
                         start_line=read.line, end_line=read.line,

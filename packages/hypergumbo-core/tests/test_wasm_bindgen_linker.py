@@ -918,3 +918,33 @@ class TestWasmDynamicLoading:
         assert len(wasm_load_edges) == 1
         wasm_module_syms = [s for s in result.symbols if s.kind == "module" and s.meta and s.meta.get("compilation_target") == "wasm"]
         assert len(wasm_module_syms) == 1
+
+
+class TestTheImportStandInCarriesTheHostFileLanguage:
+    """WI-dovog: the TS-side ``wasm_import`` stand-in was minted with the
+    literal ``typescript:`` prefix and ``discovery_language="typescript"`` for
+    every importing file; a ``.js`` importer put ``typescript`` into
+    verify-claims' languages-with-calls with no typescript node behind it."""
+
+    def test_a_js_importer_mints_javascript_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.wasm_bindgen import link_wasm_bindgen
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        js_file = tmp_path / "app.js"
+        js_file.write_text("import { greet } from './pkg/my_module';")
+        js_sym = _make_js_sym("main", path=str(js_file), language="javascript")
+        result = link_wasm_bindgen(tmp_path, [js_sym], [rust_sym])
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "javascript", result.edges[0].src
+        stand_ins = [s for s in result.symbols if s.id == result.edges[0].src]
+        assert stand_ins and stand_ins[0].discovery_language == "javascript"
+
+    def test_a_ts_importer_still_mints_typescript_ids(self, tmp_path: Path) -> None:
+        from hypergumbo_core.linkers.wasm_bindgen import link_wasm_bindgen
+
+        rust_sym = _make_rust_sym("greet", annotations=[{"name": "wasm_bindgen"}])
+        ts_file = tmp_path / "app.ts"
+        ts_file.write_text("import { greet } from './pkg/my_module';")
+        result = link_wasm_bindgen(tmp_path, [_make_js_sym("main", path=str(ts_file))], [rust_sym])
+        assert result.edges
+        assert result.edges[0].src.split(":", 1)[0] == "typescript"
