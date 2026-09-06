@@ -39,3 +39,26 @@
   set: {}  # 8ddc
   add:  # 8ddc
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 8ddc
+- op: update  # e914
+  at: '2026-09-06T12:25:47Z'  # e914
+  by: agent  # e914
+  actor: jgstern_agent  # e914
+  clock: 4  # e914
+  nonce: e914  # e914
+  set: {}  # e914
+  add:  # e914
+    not_duplicate_of: [INV-kunot-hozal-radip-tumol-higap-dozob-visur-pukud]  # e914
+- op: discuss  # 5cdb
+  at: '2026-09-06T12:40:35Z'  # 5cdb
+  by: agent  # 5cdb
+  actor: jgstern_agent  # 5cdb
+  clock: 5  # 5cdb
+  nonce: 5cdb  # 5cdb
+  message: "SCOPED 2026-09-06, read-only, pre-registered before the fix.\n\nTHE SATISFACTION RULE (verify_claims.method_starved_modules): a module whose rows include kind `method` is \"called\" when an edge's dst module slot names it, and \"satisfied\" only when the edge's call_construct is one of the module's declared kinds (or the callee is one of its function-kind names). A named-global call carries NO call_construct, so a module whose rows are all `methods:` is called and never satisfied -> starved -> the verdict is withheld. Converting the rows to `functions:` takes the module out of the method-keyed set entirely (no starvation question) and the classifier already matches by module hint regardless of kind (taint._lookup_named_entry line ~45 and lookup_with_module's qualified-name branch), so both consumers agree after the change.\n\nWHAT THE ANALYZER EMITS TODAY, fixture through analyze_javascript + classify_call (scratchpad jsglob):\n  console.log(x)               javascript:console:0-0:log:unresolved             construct None   => logging/console.log        MATCHES\n  localStorage.setItem(k, x)   javascript:localStorage:0-0:setItem:unresolved    construct None   => browser_storage_write     MATCHES\n  sessionStorage.getItem(k)    javascript:sessionStorage:0-0:getItem:unresolved  construct None   => browser_storage_read      MATCHES\n  navigator.sendBeacon(u, x)   javascript:navigator:0-0:sendBeacon:unresolved    construct None   => net_send                  MATCHES\n  process.on('message', cb)    javascript:external:0-0:on:unresolved             construct method => None                      DOES NOT MATCH\n  process.send(x)              javascript:external:0-0:send:unresolved           construct method => None                      DOES NOT MATCH\nSo the row-kind fix is exactly right for console, localStorage, sessionStorage, navigator (and Deno, by the same shape -- verify). `process.on` / `process.send` are a DIFFERENT defect: the analyzer resolves `process` as a named global for attributes (process.env, process.argv classify) but a member CALL on it lands in the untyped-receiver path with the `external` placeholder, so ipc_recv:process.on and ipc_send:process.send are unreachable rows whatever their kind -- INV-linub's class (a catalogued call site that cannot reach its row for want of receiver evidence). File that separately; do not fold it into the kind change.\n\nTHE A/B THIS NEEDS: the js-leg cohort (jsleg_completeness_09062026/arm.sh, 11 repos, 4 claims, cold): express NO-FSWRITE / NO-SUBPROC, ioredis NO-SUBPROC, winston NO-NET / NO-SUBPROC are the withheld claims this rung holds. Each one that moves inconclusive -> confirmed is read back against the repository's real console/storage/network use, because that is the false-all-clear direction; a move to the NEXT rung (uncatalogued third-party modules, method-starvation on a real class) is the expected honest outcome."  # 5cdb
+- op: discuss  # 3acc
+  at: '2026-09-06T12:41:11Z'  # 3acc
+  by: agent  # 3acc
+  actor: jgstern_agent  # 3acc
+  clock: 6  # 3acc
+  nonce: 3acc  # 3acc
+  message: "The process.on / process.send reach gap named in the scoping entry is filed as WI-kikar (Phase 6, behind INV-linub); this item keeps the row-kind change for console / localStorage / sessionStorage / navigator / Deno only."  # 3acc

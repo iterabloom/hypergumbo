@@ -1,0 +1,22 @@
+- op: create  # 683c
+  at: '2026-09-06T12:40:56Z'  # 683c
+  by: agent  # 683c
+  actor: jgstern_agent  # 683c
+  clock: 1  # 683c
+  nonce: 683c  # 683c
+  data:  # 683c
+    kind: work_item  # 683c
+    title: "javascript: process.on / process.send resolve to the external placeholder with a method construct while console/localStorage/navigator member calls carry their module slot, so the two rowed process IPC methods are unreachable"  # 683c
+    status: todo_hard  # 683c
+    priority: 3  # 683c
+    parent:  # 683c
+    tags:  # 683c
+    - taint  # 683c
+    - catalogue  # 683c
+    - javascript  # 683c
+    isbefore: []  # 683c
+    duplicate_of: []  # 683c
+    not_duplicate_of: []  # 683c
+    pr_ref:  # 683c
+    description: "Found 2026-09-06 while scoping WI-komun. Phase 6 recall, INV-linub's class in javascript (a catalogued call site that cannot reach its row for want of receiver evidence), held behind INV-linub.\n\nTHE GAP, fixture through analyze_javascript + classify_call (scratchpad jsglob):\n  process.env / process.argv          attribute reads    -> javascript:process:... CLASSIFY (env_read)\n  process.on('message', cb)           member CALL        -> javascript:external:0-0:on:unresolved    call_construct: method   -> NONE\n  process.send(x)                     member CALL        -> javascript:external:0-0:send:unresolved  call_construct: method   -> NONE\nwhile console.log / localStorage.setItem / navigator.sendBeacon -- member calls on other NAMED GLOBALS -- resolve with the module slot filled (javascript:console:0-0:log:unresolved) and classify. So `process` is treated as a named global for attribute access but not for member calls: the two rowed process methods (ipc_recv: process.on for the fork channel, ipc_send: process.send) are unreachable whatever their row kind, and the child-process IPC surface of every node program is invisible to io-boundaries and taint.\n\nTHE FIX SHAPE, not designed here: in js_ts.py's member-call resolution, `process` belongs in the same named-global set that gives console / localStorage / navigator their module slot (JS_KNOWN_GLOBALS or its member-call twin -- find where console is admitted and process is not; LIVE rule 4: check the other node globals rowed as methods: Deno). Then `process.on` / `process.send` emit javascript:process:0-0:on:unresolved and the existing rows match; the rows' kind question belongs to WI-komun.\n\nMEASURED THROUGH THE TAINT PATH (INV-linub): ipc_recv mints untrusted_input and ipc_send is a sink, so both sides add findings; marginal precision on the new findings, awaits_bakeoff_validation on the PR."  # 683c
+    fields: {}  # 683c
