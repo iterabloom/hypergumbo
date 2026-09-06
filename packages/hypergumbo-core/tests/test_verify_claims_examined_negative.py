@@ -418,11 +418,17 @@ class TestOnePredicateWithNoSecondHome:
 
         # Read each CALLER's own body, so a reformat cannot silently pass and a
         # caller that grew its own copy of either rule fails.
+        # WI-lavut moved the gate's walk into _adjudicate_external_modules so
+        # the load-bearing-grant set shares its iteration; the gate is the
+        # wrapper plus the walk, so the chain is asserted link by link.
+        assert "_adjudicate_external_modules" in inspect.getsource(
+            verify_claims._uncatalogued_external_modules,
+        ), "the coverage gate no longer delegates to the shared walk"
         bodies = {
             "Filter 2": inspect.getsource(io_boundary._compute_external_potential),
             "tagger": inspect.getsource(io_boundary.tag_io_boundaries),
             "coverage gate": inspect.getsource(
-                verify_claims._uncatalogued_external_modules,
+                verify_claims._adjudicate_external_modules,
             ),
         }
         assert "module_io_is_enumerated" in bodies["Filter 2"], (

@@ -1232,6 +1232,18 @@ class BoundaryCoverage:
     #: catalogue, for the same reason as its two neighbours: the construct
     #: left no edge to read.
     construct_blind_sinks: dict[str, list[str]] = field(default_factory=dict)
+    #: Language -> the modules this analysis called into, that no row
+    #: classified, and that a ``module_completeness`` grant -- shipped
+    #: catalogue or overlay -- declared an EXAMINED negative (WI-lavut). The
+    #: grants the uncatalogued-module gate PASSED on, and so the grants every
+    #: confirmed verdict in the run rests on; collected in the same walk that
+    #: computes the unknown set so the two cannot disagree. Run-level, like
+    #: the gate: a run whose verdicts are all violated or withheld still
+    #: lists what the gate passed, because the reader who then rows the
+    #: withholding module gets a confirmed verdict resting on exactly these.
+    #: Not the whole grant list, which is 121 modules for python and would be
+    #: the always-there disclosure a reader discounts.
+    load_bearing_grants: dict[str, list[str]] = field(default_factory=dict)
     #: Language -> pass IDs behind its call edges (WI-lagod). Carried here for
     #: the reason every field on this object is: one computation site the
     #: verdict paths share, so a caller cannot forget it.
@@ -1598,6 +1610,7 @@ _PROVENANCE_KINDS: tuple[str, ...] = (
 def catalog_provenance(
     layers: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
     shipped_default_languages: "Optional[Iterable[str]]" = None,
+    load_bearing: "Optional[Mapping[str, Sequence[str]]]" = None,
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -1691,11 +1704,22 @@ def catalog_provenance(
                 "provenance": overlay.provenance,
                 "retrieved": overlay.retrieved,
             })
+    # WI-lavut: the only RUN-DERIVED key in this block. ``completeness_grants``
+    # above lists what the overlay FILES vouch for; this lists what THIS
+    # verdict rested on, shipped catalogue and overlay alike -- the modules the
+    # gate declared examined negatives because a grant said so. Empty when the
+    # caller has no coverage to hand (older callers) and when nothing was
+    # load-bearing, so the key is always present and a consumer can rely on it.
+    bearing = [
+        {"language": lang, "modules": sorted(mods)}
+        for lang, mods in sorted((load_bearing or {}).items()) if mods
+    ]
     return {
         "user_supplied": any_user,
         "layers": out,
         "completeness_grants": grants,
         "shipped_default": shipped,
+        "load_bearing_grants": bearing,
     }
 
 
@@ -1778,6 +1802,30 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
         lines.append(
             "  classify still counts as unexamined, so no claim is confirmed "
             "on their strength.",
+        )
+    bearing = provenance.get("load_bearing_grants") or []
+    if bearing:
+        # WI-lavut. Rendered whether or not anything was user-supplied: a
+        # shipped catalogue's grant turns the same gate off as an overlay's,
+        # and until this block a clean verdict resting on one said nothing.
+        lines.append("")
+        lines.append(
+            "NOTE: the coverage gate PASSED these modules on completeness "
+            "grants -- the analysis called into them,",
+        )
+        lines.append(
+            "  no row classified the call, and a dated audit declared the "
+            "module fully enumerated, so the unmatched",
+        )
+        lines.append(
+            "  call counts as an EXAMINED negative (closed-world). Every "
+            "confirmed verdict above rests on them:",
+        )
+        for row in bearing:
+            lines.append(f"    {row['language']}: {', '.join(row['modules'])}")
+        lines.append(
+            "  A wrong entry here is a false all-clear; the audits are dated in "
+            "the catalogue's module_completeness block.",
         )
     if not provenance.get("user_supplied"):
         return lines
@@ -2874,11 +2922,49 @@ def _uncatalogued_external_modules(
     # function's residual depends on. Adding a seventh home is how the drift
     # WI-ribuz files gets one entry longer. Imported inside the function because
     # ``taint`` is heavy and only this one path needs it.
+    unknown, _vouched = _adjudicate_external_modules(
+        raw_edges, catalogs, first_party_packages,
+    )
+    return sorted(unknown)
+
+
+def load_bearing_grants(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+    first_party_packages: frozenset[str] = frozenset(),
+) -> dict[str, list[str]]:
+    """Language -> modules a completeness grant declared examined for THIS run.
+
+    WI-lavut. The same walk as :func:`_uncatalogued_external_modules` -- one
+    iteration, one predicate -- keeping the modules the gate let through at
+    ``if disjuncts and not unenumerated``. A grant that no call reached is not
+    load-bearing and is not listed; a call a row classified was examined by the
+    row and is not listed either.
+    """
+    _unknown, vouched = _adjudicate_external_modules(
+        raw_edges, catalogs, first_party_packages,
+    )
+    return {lang: sorted(mods) for lang, mods in sorted(vouched.items()) if mods}
+
+
+def _adjudicate_external_modules(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+    first_party_packages: frozenset[str] = frozenset(),
+) -> tuple[set[str], dict[str, set[str]]]:
+    """``(unknown, vouched)`` over one walk of the external call sites.
+
+    Extracted from :func:`_uncatalogued_external_modules` when WI-lavut needed
+    the complementary set: two walks sharing ``classify_call`` but not the
+    iteration is INV-motos's shape (two callers, one predicate, different
+    populations), so the split point is inside the loop, not beside it.
+    """
     from .taint import _module_from_symbol_path
 
     analyzed = _analyzed_modules(raw_edges)
     examined_reads = _classified_scoped_reads(raw_edges, catalogs)
     unknown: set[str] = set()
+    vouched: dict[str, set[str]] = {}
     for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
         module = _module_from_symbol_path(dst)
         if not module:
@@ -2983,6 +3069,16 @@ def _uncatalogued_external_modules(
             )
         ]
         if disjuncts and not unenumerated:
+            # WI-lavut: a grant just declared this call an examined negative.
+            # Record the spelling the catalogue matched, under the catalogue's
+            # own language (an alias resolves to its target here, as it does
+            # for the rows).
+            for spellings in disjuncts:
+                matched = next(
+                    (s for s in spellings if catalog.module_io_is_enumerated(s)),
+                    spellings[-1],
+                )
+                vouched.setdefault(catalog.language, set()).add(matched)
             continue
         if len(disjuncts) > 1:
             for spellings in unenumerated:
@@ -3022,7 +3118,7 @@ def _uncatalogued_external_modules(
         if _is_first_party_package(module, first_party_packages):
             continue
         unknown.add(module)
-    return sorted(unknown)
+    return unknown, vouched
 
 
 def untyped_receiver_sites(
@@ -3520,6 +3616,9 @@ def compute_boundary_coverage(
         if lang in supported_languages
         and _BACKEND_PASS_IDS.get(backend, backend) not in _ran
     }
+    coverage.load_bearing_grants = load_bearing_grants(
+        raw_edges, catalogs, frozenset(first_party_packages or ()),
+    )
     coverage.suppressed_sink_methods = {
         lang: sorted(hidden)
         for lang, catalog in catalogs.items()
