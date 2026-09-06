@@ -172,3 +172,10 @@
   clock: 22  # 165b
   nonce: 165b  # 165b
   message: "CORRECTION to the entry above: its last sentence lost a word to shell quoting and should read \"the tracker ready queue now leads with INV-linub\" (Phase 6 is the next arc stage; the Phase 7 sources no longer block it)."  # 165b
+- op: discuss  # 6c3a
+  at: '2026-09-06T20:07:42Z'  # 6c3a
+  by: agent  # 6c3a
+  actor: jgstern_agent  # 6c3a
+  clock: 23  # 6c3a
+  nonce: 6c3a  # 6c3a
+  message: "ARC TAIL, owner ruling 2026-09-06 (walk-through of owner-decision items): \"everything we are putting 'behind the arc' is actually just 'append to the end of the arc'\". Appended after INV-busis, held by isbefore edges FROM INV-busis (fan-out, the Phase 7 carrier pattern; order below is the written order, as Phase 7's was):\n  T1 INV-nular RE-SCOPE (statement rewrite, disclosure, satisfied on the new statement; cheap)\n  T2 WI-dozul  DNS rows in python/go/c/js (+ rust str row, erlang inet sort), buzab fixture repoint, socket grant, 0003 delta + awaits_bakeoff_validation\n  T3 WI-vodin  emission-boundary id linter (retires INV-kurup's class)\n  T4 INV-linan + INV-varil  tracker custom-key gate (three tiers keyed on normalisation, --force in the similar tier only), 12-item cleanup, --strict CI, one config\n  T5 WI-vafad  INV-nular remainder sweep (probe-first pool -> parallel source-citing sonnet workers with blind plants -> verifier -> candidate list)\n  T6 INV-hujog -> INV-bikaj  INV-nanon's mechanism (declare needs; record skipped passes with a reason); cost item, last\nInside Phase 6, not appended: INV-karud's next pass rides the first recall PR's pretix measurement. Not on the arc: WI-jokij (P3 residue), INV-kurup/INV-nanon umbrellas (re-titled; their members are the tail items). Order rationale: ruled-and-cheap first; the tracker gate before the sweep because the sweep files many items; the cost item last. Exit unchanged: after T6, PROPOSE releasing this carrier; the release is the owner's."  # 6c3a
