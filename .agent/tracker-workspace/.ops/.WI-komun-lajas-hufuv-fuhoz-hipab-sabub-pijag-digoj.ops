@@ -1,0 +1,41 @@
+- op: create  # bb78
+  at: '2026-09-06T12:23:58Z'  # bb78
+  by: agent  # bb78
+  actor: jgstern_agent  # bb78
+  clock: 1  # bb78
+  nonce: bb78  # bb78
+  data:  # bb78
+    kind: work_item  # bb78
+    title: "javascript.yaml declares console / localStorage / sessionStorage rows as methods: while the analyzer resolves these named globals function-shaped, so the coverage gate withholds 'method-shaped (console) but no method call edge' on calls the classifier already matched"  # bb78
+    status: todo_hard  # bb78
+    priority: 2  # bb78
+    parent:  # bb78
+    tags:  # bb78
+    - taint  # bb78
+    - catalogue  # bb78
+    - javascript  # bb78
+    - verify_claims  # bb78
+    isbefore: []  # bb78
+    duplicate_of: []  # bb78
+    not_duplicate_of: []  # bb78
+    pr_ref:  # bb78
+    description: "Found 2026-09-06 by the WI-nolut A/B: express NO-FSWRITE / NO-SUBPROC, ioredis NO-SUBPROC and winston NO-NET / NO-SUBPROC stay inconclusive in both arms with the reason \"the analysis calls into 1 module(s) whose catalogued I/O is method-shaped (console) but produced no method call edge for any of them\" (ioredis: console, localStorage).\n\nTHE TWO CONSUMERS DISAGREE ABOUT THE SAME CALL. `console.log(x)` is emitted by the javascript analyzer as `javascript:console:0-0:log:unresolved` with NO call_construct (a member call on a NAMED GLOBAL resolves like a module function, exactly as `fs.readFileSync` does), and classify_call tags it logging/console.log -- the row matches. But javascript.yaml declares console's rows under `methods:`, and method_starved_modules (verify_claims.py) asks, per declared KIND, whether the analyzer handed the catalogue a call shape it could match: method-kind rows need a method-construct edge, none arrived, so the module is \"starved\" and the verdict is withheld -- while the classifier had already matched every one of those calls. The same holds for localStorage / sessionStorage (`methods: [setItem, getItem, ...]`, matched as named globals -- WI-zumoz's probe saw localStorage.setItem MATCH).\n\nWHICH SIDE IS WRONG. The catalogue's `methods:` kind means \"called on an instance whose type must be known\"; a named global object (console, localStorage, sessionStorage, document, window, navigator, process) is resolved by NAME with the module slot filled, which is the function-shaped path. So the rows' KIND is the misdeclaration (INV-nular's class, in the kind slot rather than the boundary slot), and the fix is to declare those rows `functions:` -- after checking the gate's other consumer, taint's _lookup_named_entry, agrees, and after an A/B: this MOVES verdicts in the false-all-clear direction (inconclusive -> confirmed on express/winston/ioredis if no later rung holds), so every moved claim is read back against the repository's real console/storage use before the change ships. Alternative, rejected unless the A/B says otherwise: teach method_starved_modules that a module-slotted call satisfies a method row -- that would loosen the gate for every language, not just for named globals.\n\nSweep by mechanism before shipping (LIVE rule 4): every javascript.yaml `methods:` row whose module is a browser/node named global rather than a class."  # bb78
+    fields: {}  # bb78
+- op: update  # 8ff2
+  at: '2026-09-06T12:24:02Z'  # 8ff2
+  by: agent  # 8ff2
+  actor: jgstern_agent  # 8ff2
+  clock: 2  # 8ff2
+  nonce: 8ff2  # 8ff2
+  set: {}  # 8ff2
+  add:  # 8ff2
+    isbefore: [WI-dupok-tubas-bihib-juhip-lirof-vubin-fupob-padup]  # 8ff2
+- op: update  # 8ddc
+  at: '2026-09-06T12:24:03Z'  # 8ddc
+  by: agent  # 8ddc
+  actor: jgstern_agent  # 8ddc
+  clock: 3  # 8ddc
+  nonce: 8ddc  # 8ddc
+  set: {}  # 8ddc
+  add:  # 8ddc
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 8ddc

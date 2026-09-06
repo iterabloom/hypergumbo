@@ -30,3 +30,18 @@
   set: {}  # 9c90
   add:  # 9c90
     isbefore: [INV-nular-rakah-jipob-namud-fikop-kulop-jutin-nirit]  # 9c90
+- op: update  # aa65
+  at: '2026-09-06T12:24:04Z'  # aa65
+  by: agent  # aa65
+  actor: jgstern_agent  # aa65
+  clock: 3  # aa65
+  nonce: aa65  # aa65
+  set:  # aa65
+    status: done  # aa65
+- op: discuss  # d2aa
+  at: '2026-09-06T12:24:04Z'  # d2aa
+  by: agent  # d2aa
+  actor: jgstern_agent  # d2aa
+  clock: 4  # d2aa
+  nonce: d2aa  # d2aa
+  message: "DONE 2026-09-06 in PR #794 (with WI-nolut, as the item asked): the seven javascript path.* rows and python's os.path.abspath / posixpath.abspath deleted, notes at the deletion sites, `path` granted complete. Mechanically confirmed before deletion: probe.js read NO signal on all seven (probe_v0.out \"ROWED with NO signal (6): join, dirname, basename, extname, relative, normalize\"; resolve flagged only on process.cwd()). Pinned: test_javascript_module_completeness.py::TestF7PurePathArithmeticIsNoLongerARead (classify_call returns None for each; realpath control still fs_read). A/B in the WI-nolut entry: the NO-FSREAD claim is where this deletion shows."  # d2aa
