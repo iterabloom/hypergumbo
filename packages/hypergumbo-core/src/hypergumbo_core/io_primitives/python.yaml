@@ -60,6 +60,7 @@ ambiguous_names:
   - close         # file.close vs any .close()
   - send          # socket.send vs generator.send, queue.send
   - recv          # socket.recv vs multiprocessing.Pipe.recv
+  - exit          # optparse.OptionParser.exit vs builtin exit(); WI-dupok 2026-09-06 -- a bare exit() is the builtin, the row matches only with the module hint
   - get           # requests.get vs dict.get, queue.get
   - post          # requests.post vs any .post()
   - put           # requests.put vs dict.__setitem__, queue.put
@@ -157,6 +158,58 @@ ambiguous_names:
 
 fs_read:
   # ---------------------------------------------------------------
+  # 2026-09-06 WI-dupok, third completeness leg. Rows found by the python
+  # probe (~/hypergumbo_lab_notebook/dupok_python_09062026/probe_py.py:
+  # public members one level deep, source scanned for open( / os. /
+  # sys.std* / socket signals; NATIVE refuses) over the 41 stdlib module
+  # strings the 08-24 scope audit found uncatalogued, then read at the
+  # flagged member. Reads from a CALLER-OPENED object are not rowed (the
+  # open is the caller's I/O, tomllib's rule); a path argument is.
+  - module: glob
+    functions: [glob, iglob]
+    notes: "Walks directories (os.scandir) for the pattern; escape() is pure and unrowed."
+  - module: mimetypes
+    functions: [init, read_mime_types, guess_type]
+    notes: "init/read_mime_types open the system mime.types files; guess_type triggers init on first use. The MimeTypes class's read/readfp are the same surface."
+  - module: mimetypes.MimeTypes
+    methods: [read, readfp]
+  - module: filecmp
+    functions: [cmp, cmpfiles]
+    notes: "stat + read of both files; dircmp is the class form."
+  - module: filecmp.dircmp
+    methods: [report, report_partial_closure, report_full_closure]
+  - module: sysconfig
+    functions: [get_config_h_filename, get_makefile_filename, is_python_build, get_config_vars, get_config_var]
+    notes: "Stat and read the build's config files; get_platform reads os.environ (env_read row)."
+  - module: pstats.Stats
+    methods: [load_stats]
+    notes: "Reads a stats file by path; dump_stats is the write and sits under fs_write with cProfile's run / runctx / Profile.dump_stats."
+  - module: xml.dom.minidom
+    functions: [parse]
+    notes: "parse(path) opens the path (parseString is pure; parse of a caller-opened object is the caller's read, tomllib's rule) -- the ElementTree precedent."
+  - module: unittest.TestLoader
+    methods: [discover]
+    notes: "Walks the start directory for test modules."
+  - module: optparse.Values
+    methods: [read_file, read_module]
+  - module: doctest
+    functions: [testfile]
+    notes: "Opens the named file; DocFileTest/DocFileSuite build cases over the same open."
+  - module: codecs
+    functions: [open]
+    notes: "codecs.open(path, mode) opens a path, builtins.open's shape: fs_read AND fs_write, settled by io_mode (python's producer knows codecs.open's mode sits at positional 1 like open)."
+  - module: ctypes
+    functions: [CDLL, PyDLL, OleDLL, WinDLL]
+    notes: "A shared object is loaded from a PATH (dlopen) -- a filesystem read that then runs foreign code; INV-buzab's own live false confirm. cdll.LoadLibrary is the method form."
+  - module: ctypes.cdll
+    methods: [LoadLibrary]
+  - module: ctypes.util
+    functions: [find_library]
+    notes: "Searches the library path on disk (and shells out to ldconfig / gcc on some platforms -- disclosed here, rowed as the read)."
+  - module: ssl.SSLContext
+    methods: [load_cert_chain, load_verify_locations, load_dh_params, load_default_certs]
+    notes: "Read certificate / key material from paths (or the system store)."
+  # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
   # self-survey, or a peer required so its module's completeness entry
@@ -235,6 +288,17 @@ fs_read:
       module-filter path (untyped receivers stay suppressed by ambiguous_names).
 
 fs_write:
+  # 2026-09-06 WI-dupok (see the fs_read block for the method).
+  - module: codecs
+    functions: [open]
+    notes: "The write half of codecs.open's dual declaration; see fs_read."
+  - module: cProfile
+    functions: [run, runctx]
+    notes: "Write the profile to the optional filename argument; Profile.dump_stats is the method form. WRITE only -- an earlier draft also declared these fs_read, which the mode-parity gate refused: a dual row with no mode argument is a mode-decided primitive no analyzer can settle."
+  - module: cProfile.Profile
+    methods: [dump_stats]
+  - module: pstats.Stats
+    methods: [dump_stats]
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -390,6 +454,16 @@ db_write:
 net_send:
   - module: socket.socket
     methods: [send, sendto, sendall, sendmsg, connect, connect_ex]
+  # 2026-09-06 WI-dupok: the ssl module had ZERO rows (INV-buzab named it as a
+  # live false confirm). SSLSocket wraps socket.socket; its own methods are
+  # the surface a program calls.
+  - module: socket
+    functions: [create_connection]
+    notes: "Connects to the address (and resolves it); the module-level twin of socket.socket.connect."
+  - module: ssl.SSLSocket
+    methods: [send, sendall, sendto, sendmsg, write, connect, connect_ex, do_handshake]
+  - module: ssl.SSLObject
+    methods: [write, do_handshake]
   - module: http.client.HTTPConnection
     methods: [request, putrequest, endheaders, send]
   - module: http.client.HTTPSConnection
@@ -421,6 +495,14 @@ net_send:
 net_recv:
   - module: socket.socket
     methods: [recv, recvfrom, recv_into, recvmsg, accept]
+  - module: ssl.SSLSocket
+    methods: [recv, recvfrom, recv_into, recvfrom_into, recvmsg, recvmsg_into, read, accept]
+    notes: "2026-09-06 WI-dupok. accept returns the peer's connection (peer-chosen, as socket.socket.accept)."
+  - module: ssl.SSLObject
+    methods: [read]
+  - module: ssl
+    functions: [get_server_certificate]
+    notes: "Connects and returns the certificate the far side presented -- content the far side chose (ADR-0049)."
   - module: ftplib.FTP
     methods: [retrbinary, retrlines]
   - module: asyncio.StreamReader
@@ -430,6 +512,9 @@ net_recv:
 # in a scope it does not name; net_listen mints no taint and shadows net_recv,
 # so the crossing is DISCLOSED rather than either minted or silently dropped.
 net_listen:
+  - module: socket
+    functions: [create_server]
+    notes: "2026-09-06 WI-dupok. SETUP (ADR-0049): binds and listens, returns the listening socket; the bytes arrive through socket.socket.accept / recv, which stay net_recv."
   - module: http.server.HTTPServer
     methods: [serve_forever, handle_request]
     notes: >-
@@ -466,8 +551,39 @@ ipc_send:
     methods: [put, put_nowait]
   - module: multiprocessing.Pipe
     methods: [send, send_bytes]
+  - module: multiprocessing.Process
+    methods: [kill, terminate]
+    notes: "2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess."
 
 logging:
+  # 2026-09-06 WI-dupok: writers to sys.stdout / sys.stderr by default
+  # (python's print precedent). A stream argument the caller supplies is
+  # the caller's I/O; the default is what makes these rows.
+  - module: pprint
+    functions: [pprint, pp]
+  - module: pprint.PrettyPrinter
+    methods: [pprint]
+  - module: traceback
+    functions: [print_tb, print_exception, print_exc, print_last, print_stack, print_list]
+  - module: traceback.TracebackException
+    methods: [print]
+  - module: pstats.Stats
+    methods: [print_stats, print_callers, print_callees]
+  - module: unittest
+    functions: [main]
+    notes: "The runner writes results to stderr; TextTestRunner.run is the class form."
+  - module: unittest.TextTestRunner
+    methods: [run]
+  - module: doctest
+    functions: [testmod, run_docstring_examples]
+    notes: "Reports to stdout; testfile is rowed fs_read for its open and reports the same way."
+  - module: doctest.DocTestRunner
+    methods: [run, summarize]
+  - module: optparse.OptionParser
+    methods: [print_help, print_usage, print_version, error, exit]
+    notes: "help/usage/version to stdout, error/exit to stderr (argparse's twins)."
+  - module: cProfile.Profile
+    methods: [print_stats]
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -592,6 +708,12 @@ ipc_recv:
     methods: [recv, recv_bytes]
 
 subprocess:
+  - module: multiprocessing.Process
+    methods: [start]
+    notes: "2026-09-06 WI-dupok: forks or spawns the child (Popen in the spawn context); the launch site of every multiprocessing worker."
+  - module: multiprocessing
+    functions: [Pool]
+    notes: "Pool's constructor starts its workers."
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -657,6 +779,12 @@ subprocess:
     notes: "Unix only"
 
 env_read:
+  - module: sysconfig
+    functions: [get_platform]
+    notes: "2026-09-06 WI-dupok: reads os.environ (MACOSX_DEPLOYMENT_TARGET and friends)."
+  - module: xml.dom
+    functions: [getDOMImplementation]
+    notes: "2026-09-06 WI-dupok: consults os.environ (PYTHON_DOM) to pick an implementation."
   - module: os.environ
     functions: [get, keys, items, values, copy]
     notes: "INV-ponad slot family: a method call on the mapping carries os.environ as its module slot, where the parent's attribute row cannot reach. The mutation half sits under env_write. `functions:`, NOT `methods:` - the analyzer emits these attribute-chain calls with NO method construct (call_construct=None on every one in the self-survey), and a methods: kind starves the method-starvation gate exactly as tokenizers.Tokenizer did (its own row carries the same lesson)."
@@ -1519,3 +1647,208 @@ module_completeness:
       public-callable rule the whole audit applies, and is the import
       statement's callable form -- no catalogue models an import as I/O;
       importlib's refusal above is the related open question.
+
+  # ---------------------------------------------------------------------
+  # 2026-09-06 WI-dupok, third completeness leg (WI-lutuh's order: rust ->
+  # javascript -> python). Working set: the 41 stdlib module strings the
+  # 08-24 scope audit found uncatalogued across 11 corpus repos. Probe:
+  # ~/hypergumbo_lab_notebook/dupok_python_09062026/probe_py.py (public
+  # members one level deep, source scanned; NATIVE refuses; never grants).
+  # Rows above were added FIRST for every SIGNAL member that opens a path,
+  # writes a default stream, launches, or signals; then these grants.
+  #
+  # REFUSED, with reasons (a grant list is only as good as its refusals):
+  #   tkinter        4031 members; GUI I/O to a display server -- out of this
+  #                  leg's scope; the display is an I/O boundary the vocabulary
+  #                  does not name.
+  #   socket         module functions gethostbyname / gethostbyaddr /
+  #                  getaddrinfo / getfqdn perform a DNS query that returns
+  #                  data the resolver chose; whether that is net_recv
+  #                  (ADR-0049's question says yes) or host_info_read is
+  #                  UNRULED in every catalogue -- escalated; the module stays
+  #                  ungranted until ruled. socket.socket's rows stand.
+  #   ssl            rowed above but SSLContext.wrap_socket / SSLSocket's
+  #                  descriptor plumbing (fileno, makefile) and the
+  #                  MemoryBIO surface were not read one by one; PARTIAL,
+  #                  not granted.
+  #   unittest.mock  patches module state; 10 probe signals in its
+  #                  os.environ / open patch helpers -- not read; not granted.
+  #   multiprocessing  rowed above; Manager / shared_memory / connection
+  #                  (Listener, Client: a socket surface) were not read --
+  #                  PARTIAL, not granted.
+  - module: errno
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Constants only; the probe found no callable member."
+  - module: xml
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Namespace package; no member of its own. xml.etree.ElementTree carries its rows and grant; xml.dom.minidom's parse is rowed above."
+  - module: xml.etree
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Namespace package; ElementTree is the surface and is granted separately."
+  - module: xml.dom
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "getDOMImplementation reads os.environ (rowed env_read); the rest is the DOM object model, in-process."
+  - module: xml.dom.minidom
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "parse(path) rowed fs_read; parseString is pure; the 47 probe signals are Node.writexml / toprettyxml writing to a CALLER-supplied writer (the caller's I/O, tomllib's rule)."
+  - module: glob
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "glob / iglob rowed fs_read; escape, has_magic, translate are string work."
+  - module: mimetypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "init / read_mime_types / guess_type rowed fs_read (the mime.types files); guess_extension / guess_all_extensions / add_type consult the loaded tables in memory."
+  - module: mimetypes.MimeTypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "read / readfp rowed; the rest is table lookup."
+  - module: filecmp
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "cmp / cmpfiles rowed fs_read; clear_cache is in-memory; dircmp is granted on its own."
+  - module: filecmp.dircmp
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The report* methods print to stdout and phase* stat/listdir the two trees -- the constructor's directories are the reads, rowed on the report methods a program calls; every phase runs under them."
+  - module: sysconfig
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Config-file stats rowed fs_read, get_platform rowed env_read; get_paths / get_scheme_names / parse_config_h are in-memory over the loaded values."
+  - module: pprint
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pprint / pp rowed logging; pformat / saferepr / isreadable / isrecursive return strings."
+  - module: pprint.PrettyPrinter
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "pprint rowed logging; pformat and the format hooks return strings."
+  - module: traceback
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "The print_* family rowed logging; format_* / extract_* / walk_* return data. FrameSummary reads source lines through linecache -- a read of the running program's own source, the same class as inspect.getsource, which the 08-15 audit refused for inspect and this audit treats the same way: NOT a grant blocker, disclosed here."
+  - module: traceback.TracebackException
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "print rowed logging; format / format_exception_only return data."
+  - module: threading
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "In-process concurrency: the probe's three signals are list.remove in Condition.wait/notify and a docstring mention of sys.stderr in Thread.__init__ (excepthook writes to stderr through the traceback module, whose print rows carry it)."
+  - module: cProfile
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run / runctx rowed for their optional output file; Profile.dump_stats / print_stats rowed on the class; enable / disable / create_stats are in-process."
+  - module: cProfile.Profile
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "dump_stats rowed fs_write, print_stats rowed logging; the rest is in-process."
+  - module: pstats.Stats
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "load_stats / dump_stats rowed, print_* rowed logging; sort_stats / strip_dirs / add are in-memory."
+  - module: pstats
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Module-level: SortKey, f8, func_strip_path are string work; Stats is granted on its own."
+  - module: struct
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented (probe: NATIVE only); pack / unpack / calcsize are byte arithmetic with no descriptor or path argument, per the module documentation."
+  - module: binascii
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; binary/ASCII conversions over buffers."
+  - module: operator
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; operator functions over in-memory objects."
+  - module: marshal
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; dump / load take a CALLER-opened file object (tomllib's rule, the json precedent), dumps / loads are bytes."
+  - module: zlib
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented; compression over buffers and streaming objects; no descriptor or path."
+  - module: decimal
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "C-implemented arithmetic; getcontext / setcontext are thread-local state."
+  - module: enum
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Class machinery; the probe's 160 NATIVE members are the metaclass and descriptor slots."
+  - module: string
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Template / Formatter / the constants; string work."
+  - module: atexit
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "register / unregister record callbacks for interpreter exit; the callbacks' I/O is theirs."
+  - module: queue
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "In-process queues (Queue, LifoQueue, PriorityQueue, SimpleQueue); the multiprocessing.Queue that crosses a process is rowed and is a different module."
+  - module: pickle
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "dump rowed fs_write (writes INTO a caller-opened object, the json.dump precedent); load reads a caller-opened object (the open is the caller's); dumps / loads are bytes. Unpickling runs code from the data -- a trust question the taint labels carry, not a boundary."
+  - module: codecs
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "codecs.open rowed fs_read + fs_write; encode / decode / lookup / register and the incremental codecs are in-memory; StreamReader / StreamWriter wrap a caller-supplied stream."
+  - module: ctypes
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "CDLL / PyDLL / OleDLL / WinDLL and cdll.LoadLibrary rowed fs_read (a shared object loaded from a path); the foreign functions a loaded library exposes are outside any catalogue -- the disclosure is the load row. The type constructors, byref, cast, sizeof, Structure are in-memory."
+  - module: ctypes.util
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "find_library rowed fs_read."
+  - module: optparse
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "OptionParser's print_* / error / exit rowed logging, Values.read_file / read_module rowed fs_read; HelpFormatter reads COLUMNS from os.environ for width (a description, not a secret) -- disclosed here."
+  - module: optparse.OptionParser
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "See optparse."
+  - module: optparse.Values
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "read_file / read_module rowed fs_read."
+  - module: doctest
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "testfile rowed fs_read, testmod / run_docstring_examples and DocTestRunner.run / summarize rowed logging; DocTestFinder / DocTestParser are in-memory over source the caller loaded (getsource through inspect, the traceback/inspect class above)."
+  - module: doctest.DocTestRunner
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run / summarize rowed logging."
+  - module: unittest
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "main rowed logging (the runner writes to stderr), TestLoader.discover rowed fs_read + fs_write, TextTestRunner.run rowed logging; TestCase's assert* / setUp / tearDown are in-process. unittest.mock is NOT granted (see the refusals)."
+  - module: unittest.TestLoader
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "discover rowed; loadTestsFrom* import already-loaded modules."
+  - module: unittest.TextTestRunner
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "run rowed logging."
+  - module: multiprocessing.Process
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "start rowed subprocess, kill / terminate rowed ipc_send; join / is_alive / exitcode wait on or read the child's state (os.waitpid) -- a process-state read of a child THIS process launched, the same class as os.getpid on the 08-15 os grant -- disclosed here."
+  - module: multiprocessing.Pool
+    completeness: complete
+    retrieved: "2026-09-06"
+    notes: "Constructor rowed subprocess (starts the workers); map / apply / imap dispatch over the rowed multiprocessing.Queue / Pipe."

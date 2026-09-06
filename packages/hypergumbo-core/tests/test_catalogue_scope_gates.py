@@ -283,9 +283,24 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "those four, plus `django.db.models` — a documented, "
             "test-enforced carve-out of 29 rows that the owner ruled moves "
             "into the overlays with everything else, so that the rule has no "
-            "exceptions left to cite."
+            "exceptions left to cite. ADDED 2026-09-06 (WI-dupok, the third "
+            "completeness leg): cProfile, codecs, ctypes, doctest, filecmp, "
+            "glob, mimetypes, multiprocessing, optparse, pprint, pstats, "
+            "socket (module level), ssl, sysconfig, traceback, unittest, "
+            "xml.dom and their rowed classes -- every one a CPython stdlib "
+            "module (sys.stdlib_module_names on 3.12), rowed from the python "
+            "probe over the 08-24 scope audit's working set."
         ),
         modules=frozenset({
+            "cProfile", "cProfile.Profile", "codecs", "ctypes", "ctypes.cdll",
+            "ctypes.util", "doctest", "doctest.DocTestRunner", "filecmp",
+            "filecmp.dircmp", "glob", "mimetypes", "mimetypes.MimeTypes",
+            "multiprocessing", "multiprocessing.Process", "optparse.OptionParser",
+            "optparse.Values", "pprint", "pprint.PrettyPrinter", "pstats.Stats",
+            "socket", "ssl", "ssl.SSLContext", "ssl.SSLObject", "ssl.SSLSocket",
+            "sysconfig", "traceback", "traceback.TracebackException", "unittest",
+            "unittest.TestLoader", "unittest.TextTestRunner", "xml.dom",
+            "xml.dom.minidom",
             "argparse", "argparse.ArgumentParser", "asyncio",
             "asyncio.StreamReader", "asyncio.StreamWriter", "base64",
             "builtins", "contextlib", "csv", "datetime.date",

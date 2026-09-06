@@ -155,6 +155,30 @@ SOCKET_CONNECT_EDGES = [
      "dst": "python:os:0-0:os.O_WRONLY:external_symbol", "type": "module_attr_ref"},
 ]
 
+#: 2026-09-06 (WI-dupok, the third completeness leg): ``ctypes`` GRADUATED --
+#: CDLL / cdll.LoadLibrary / find_library are rowed fs_read and the module is
+#: granted -- and ``socket.create_connection`` is rowed net_send. Both were the
+#: fixtures here, and both now classify, which is the fix these tests asked
+#: for (the same graduation the os fixtures went through above). The
+#: PRINCIPLES are unchanged and repointed: Arm 1 at ``termios`` (no rows, no
+#: grant, a terminal is real I/O), Arm 2 at ``socket.gethostbyname`` (a DNS
+#: lookup at the module slot of a partially-catalogued module whose DNS
+#: functions are UNRULED -- WI-dupok escalated the ruling). The graduated
+#: fixtures stay as the positive controls below.
+#: ``termios.tcgetattr(fd)`` reads terminal state from a descriptor.
+TERMIOS_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:termios:0-0:termios:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:probe:function",
+     "dst": "python:termios:0-0:tcgetattr:external_symbol", "type": "calls"},
+]
+#: ``socket.gethostbyname(host)`` -- a DNS lookup at the module slot.
+SOCKET_GETHOSTBYNAME_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:socket:0-0:socket:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:leak:function",
+     "dst": "python:socket:0-0:gethostbyname:external_symbol", "type": "calls"},
+]
 #: The negative control that already worked. If this one ever stops blocking,
 #: the fix went the wrong way and every assertion above passes vacuously.
 REQUESTS_EDGES = [
@@ -177,16 +201,17 @@ class TestNameRecognitionIsNotExamination:
 
     @pytest.mark.parametrize(
         ("module", "edges"),
-        [("telnetlib", TELNET_EDGES), ("ssl", SSL_EDGES), ("ctypes", CTYPES_EDGES)],
+        [("telnetlib", TELNET_EDGES), ("ssl", SSL_EDGES), ("termios", TERMIOS_EDGES)],
     )
     def test_rowless_stdlib_module_cannot_support_a_clean_verdict(
         self, module: str, edges: list[dict],
     ) -> None:
         coverage = _coverage(edges)
         assert coverage.complete is False, (
-            f"{module} carries no catalogue row and no completeness flag, so "
-            f"'no chains found' means 'none I could see'. Confirming here is "
-            f"the INV-buzab false all-clear."
+            f"{module} carries no completeness flag (telnetlib and termios no "
+            f"row at all; ssl rows for its sockets but not for "
+            f"create_default_context), so 'no chains found' means 'none I "
+            f"could see'. Confirming here is the INV-buzab false all-clear."
         )
         assert module in coverage.reason, (
             f"the reason must NAME {module} so the gap is actionable; got: "
@@ -200,7 +225,7 @@ class TestRowPresenceIsNotEnumeration:
     @pytest.mark.parametrize(
         ("what", "edges"),
         [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
-         ("socket.create_connection", SOCKET_CONNECT_EDGES)],
+         ("socket.gethostbyname", SOCKET_GETHOSTBYNAME_EDGES)],
     )
     def test_partially_catalogued_module_cannot_support_a_clean_verdict(
         self, what: str, edges: list[dict],
@@ -215,6 +240,20 @@ class TestRowPresenceIsNotEnumeration:
             f"test_verify_claims_uncatalogued_module_coverage."
         )
         assert "socket" in coverage.reason
+
+
+class TestTheGraduatedFixturesNowClassify:
+    """The positive controls WI-dupok created: the fixtures that used to pin
+    the false all-clear now reach the catalogue, which is what rowing them
+    was for. If either regresses, a row or a grant went missing."""
+
+    def test_ctypes_cdll_is_rowed_and_the_module_is_granted(self) -> None:
+        coverage = _coverage(CTYPES_EDGES)
+        assert coverage.complete is True, coverage.reason
+
+    def test_socket_create_connection_is_rowed(self) -> None:
+        coverage = _coverage(SOCKET_CONNECT_EDGES)
+        assert coverage.complete is True, coverage.reason
 
 
 class TestTheControlsThatMakeTheAboveMeanSomething:

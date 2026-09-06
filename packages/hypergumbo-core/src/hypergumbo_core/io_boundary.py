@@ -426,6 +426,9 @@ HIGH_RISK_PRIMITIVES: frozenset[str] = frozenset({
     "subprocess.getoutput", "subprocess.getstatusoutput",
     "os.posix_spawn", "os.posix_spawnp", "os.startfile",
     "asyncio.create_subprocess_exec", "asyncio.create_subprocess_shell",
+    # WI-dupok (2026-09-06): multiprocessing launches its workers -- a fork or
+    # a spawn(Popen) per Process.start(), and Pool() starts a set at once.
+    "multiprocessing.Process.start", "multiprocessing.Pool",
     # INV-bofab: help() pages through pydoc.pipepager, which is
     # subprocess.Popen(shell=True) over the environment's pager on a tty.
     # A launch is a launch; the invariant above admits no "but it is only
