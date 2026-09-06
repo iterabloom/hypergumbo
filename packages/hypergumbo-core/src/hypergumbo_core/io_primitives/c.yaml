@@ -87,7 +87,29 @@ fs_write:
 
 net_send:
   - module: sys/socket
-    functions: [connect, send, sendto, sendmsg]
+    functions: [connect]
+    notes: >-
+      connect() transmits nothing but the connection itself -- ADR-0049's
+      deferred shape -- and stays single-rowed; WI-baran left it out of the
+      family-decided pair below on purpose.
+  - module: sys/socket
+    functions: [send, sendto, sendmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: >-
+      WI-baran (INV-nular, measurement 0012): a send over an AF_UNIX or
+      socketpair descriptor is process-local IPC, not a network send -- tmux
+      opens no AF_INET socket anywhere and was reported as one. The socket
+      FAMILY decides, fixed where the descriptor was created (INV-vaduk's
+      rule for unistd.read/write, one hop back through the descriptor
+      variable): c.py stamps io_target_kind `pipe` (AF_UNIX / AF_LOCAL /
+      socketpair, and accept() over such a listener) or `net_stream`
+      (AF_INET / AF_INET6), and the ipc_send twin is selected on `pipe`. An
+      unstamped call -- a parameter, a struct field, a kernel-family socket
+      -- keeps THIS row (abstains_to), so nothing that classified before the
+      stamp existed moves without one. REACH: bare `send` is in
+      ambiguous_names and never classifies without a module hint; sendto and
+      sendmsg do.
   - module: unistd
     functions: [write]
     boundary_ruling: call_site_undecidable
@@ -95,7 +117,18 @@ net_send:
 
 net_recv:
   - module: sys/socket
-    functions: [accept, recv, recvfrom, recvmsg]
+    functions: [recv, recvfrom, recvmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: >-
+      WI-baran: the receive twin of the send/sendto/sendmsg rule under
+      net_send -- a recv over an AF_UNIX or socketpair descriptor is
+      ipc_recv, selected on a `pipe` stamp; unstamped keeps this row. Both
+      rows mint a taint SOURCE, so the stamp moves a source between zones
+      rather than adding or removing one. REACH: bare `recv` is in
+      ambiguous_names; recvfrom and recvmsg classify.
+  - module: sys/socket
+    functions: [accept]
     notes: >-
       socket/bind/listen REMOVED (INV-nular, WI-dosov): socket() creates an
       endpoint, bind() names it, listen() marks it passive. None receives
@@ -148,12 +181,22 @@ host_info_read:
     functions: [getcwd, gethostname, getuid, getgid, getpid]
 
 ipc_send:
+  - module: sys/socket
+    functions: [send, sendto, sendmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_send
+    notes: "WI-baran: the process-local twin of the net_send row, selected when the descriptor's family is AF_UNIX / AF_LOCAL or it came from socketpair(). The rule is written on the net_send row."
   - module: unistd
     functions: [write]
     boundary_ruling: call_site_undecidable
-    notes: "write(STDOUT_FILENO, ...) or write(STDERR_FILENO, ...). INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call and the fd's nature is established where it was opened."
+    notes: "write() over a pipe or an AF_UNIX socket descriptor (a `pipe` stamp). NOT the standard streams: write(STDOUT_FILENO, ...) is terminal output, `logging` under WI-dutah, and the earlier text of this note that called it an ipc_send was the stale sibling INV-nular's 2026-09-03 entry disclosed. INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call and the fd's nature is established where it was opened."
 
 ipc_recv:
+  - module: sys/socket
+    functions: [recv, recvfrom, recvmsg]
+    boundary_ruling: call_site_undecidable
+    abstains_to: net_recv
+    notes: "WI-baran: the process-local twin of the net_recv row, selected on a `pipe` stamp. The rule is written on the net_send row."
   - module: stdio
     attributes: [stdin]
   - module: stdio

@@ -243,3 +243,49 @@ class TestTheFallbackRowIsTheClassifiersRow:
         assert ("m", "plain", "function") not in target_kind_fallback_boundaries(
             self._catalog(None),
         )
+
+
+class TestTheCSocketFamilyRows:
+    """WI-baran: ``sys/socket`` send*/recv* are dual (network + IPC), the
+    descriptor's FAMILY decides, and an unstamped call keeps today's answer
+    (``abstains_to: net_*``), so nothing that classified before moves without
+    a stamp."""
+
+    def test_unstamped_sendmsg_is_still_a_network_sink(self, derived):
+        assert _sink(
+            derived, "c:sys/socket:0-0:sendmsg:unresolved", lang="c",
+        ) == "network"
+
+    def test_sendmsg_stamped_pipe_is_an_ipc_sink(self, derived):
+        """The item's own instance, once the stamp can reach it: a sendmsg
+        over an AF_UNIX pair is process-local."""
+        assert _sink(
+            derived, "c:sys/socket:0-0:sendmsg:unresolved", ["pipe"], lang="c",
+        ) == "ipc"
+
+    def test_sendto_stamped_net_stream_stays_a_network_sink(self, derived):
+        assert _sink(
+            derived, "c:sys/socket:0-0:sendto:unresolved", ["net_stream"], lang="c",
+        ) == "network"
+
+    def test_unstamped_recvmsg_still_mints_a_network_receive(self, derived):
+        assert _source(
+            derived, "c:sys/socket:0-0:recvmsg:unresolved", lang="c",
+        ) == "net_recv"
+
+    def test_recvfrom_stamped_pipe_mints_an_ipc_receive(self, derived):
+        assert _source(
+            derived, "c:sys/socket:0-0:recvfrom:unresolved", ["pipe"], lang="c",
+        ) == "ipc_recv"
+
+    def test_connect_is_untouched(self, derived):
+        """``connect`` transmits nothing but the connection (ADR-0049's
+        deferred shape) and stays single-rowed."""
+        assert _sink(
+            derived, "c:sys/socket:0-0:connect:unresolved", lang="c",
+        ) == "network"
+
+    def test_cpp_inherits_the_dual_rows(self, derived):
+        assert _sink(
+            derived, "cpp:sys/socket:0-0:sendmsg:unresolved", ["pipe"], lang="cpp",
+        ) == "ipc"
