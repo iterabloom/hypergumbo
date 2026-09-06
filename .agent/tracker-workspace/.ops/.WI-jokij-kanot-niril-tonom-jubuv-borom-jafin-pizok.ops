@@ -27,3 +27,12 @@
   clock: 2  # 6d90
   nonce: 6d90  # 6d90
   message: "PREREQUISITE SHIPPED (PR #207, dev d1116cc1af). Raising external-id module coverage would, before that PR, have been actively harmful for Rust: taint truncated every colon-bearing module to its first component and _lookup_named_entry rejects on a mismatched module, so the 396 rust edges that currently arrive via the `external` sentinel (and therefore match) would have started carrying std::fs and been REFUSED - taking rust from 45 matched sinks to zero. The path slot now has one right-anchored parser, so that trap is closed and this item is safe to work. It is still the right item: 24,889 of 62,861 unresolved taint call edges carry no dst_ref, all of them explained by the sentinel, and the per-language spread (typescript 96.9 percent, swift 16.2 percent) is the evidence that this is an emission convention rather than a property of the languages."  # 6d90
+- op: update  # fa0f
+  at: '2026-09-06T10:20:31Z'  # fa0f
+  by: agent  # fa0f
+  actor: jgstern_agent  # fa0f
+  clock: 3  # fa0f
+  nonce: fa0f  # fa0f
+  set: {}  # fa0f
+  add:  # fa0f
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # fa0f

@@ -35,3 +35,12 @@
   clock: 3  # fc41
   nonce: fc41  # fc41
   message: "ADR-0051 annotation (WI-virav; annotate only -- no fold, no closure, no re-prioritisation). CLAUSE VIOLATED: \"not a property of the call site: not the receiver's variable name\". NOTION THE SLOT CARRIES: receiver_variable (`dict`, `invalidJson`, `jsonString`) -- swift's instance of INV-kotob seen at the dst_ref level, where ONE symbol id carries DIFFERENT module_paths on different edges. That is the axiom's \"static owner path\" failing in the other direction: a key that varies per call site is a call-site property by construction."  # fc41
+- op: update  # a0fd
+  at: '2026-09-06T10:20:32Z'  # a0fd
+  by: agent  # a0fd
+  actor: jgstern_agent  # a0fd
+  clock: 4  # a0fd
+  nonce: a0fd  # a0fd
+  set: {}  # a0fd
+  add:  # a0fd
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # a0fd

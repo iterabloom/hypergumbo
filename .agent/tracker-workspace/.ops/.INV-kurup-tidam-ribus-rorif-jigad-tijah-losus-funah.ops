@@ -81,3 +81,12 @@
   clock: 9  # 2990
   nonce: '2990'  # 2990
   message: "ADR-0036 node.id member — sequencing set 2026-07-02 (hold lifted, standalone, patch bump, Option B). Order: Phase 0 prep (register meta.reference_syntax, fix slot-order doc comments, freeze baseline) -> Phase 1 core atomic train (WI-pubiv + WI-jopil, one PR) -> fast-follows (WI-kugaj, WI-zugob, npm_package/tsconfig) -> enforcement (WI-bovoh regex-scope gap, WI-popak advisory->error + ratchet baseline to 0, WI-dipim Ruling-3 sentinel, WI-vodin AST linter) -> closure (INV-dulah, then this umbrella's node.id member; other identifier-field members e.g. Edge.id stay scoped-open). isbefore edges wired on the fold items."  # 2990
+- op: update  # 9397
+  at: '2026-09-06T10:20:34Z'  # 9397
+  by: agent  # 9397
+  actor: jgstern_agent  # 9397
+  clock: 10  # 9397
+  nonce: '9397'  # 9397
+  set: {}  # 9397
+  add:  # 9397
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 9397
