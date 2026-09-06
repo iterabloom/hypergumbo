@@ -733,9 +733,19 @@ def _extract_edges_from_file(
                 import_path = _extract_import_path(node, source)
                 if import_path:
                     line = node.start_point[0] + 1
+                    # INV-dulah (lang-slot limb). The dst used to be the bare
+                    # header path, and a bare path is not an id: finalize's
+                    # 4-part fallback rendered it with the PATH in the lang
+                    # slot and ``<unknown>`` in the path slot
+                    # (``Foundation/Foundation.h:<unknown>:0-0:...``), and the
+                    # validator flagged every one as
+                    # non_canonical_language_prefix -- the whole id_format
+                    # residual on Mantle (44 of 44). Same shape as cpp's
+                    # include edge: lang, header path, empty span, the
+                    # ``header`` name/kind pair.
                     edges.append(Edge.create(
                         src=file_id,
-                        dst=import_path,
+                        dst=f"objc:{import_path}:0-0:header:header",
                         edge_type="imports",
                         line=line,
                         evidence_type="import_statement",

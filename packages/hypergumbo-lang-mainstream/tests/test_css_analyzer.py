@@ -9,6 +9,8 @@ Tests verify that the analyzer correctly extracts:
 - @font-face declarations
 """
 
+from pathlib import Path
+
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import PASS_VERSION
 from hypergumbo_core import __version__
@@ -38,8 +40,9 @@ def test_analyze_import(tmp_path):
     import_edges = [e for e in result.edges if e.edge_type == "imports"]
     assert len(import_edges) >= 2
     targets = [e.dst for e in import_edges]
-    assert "base.css" in targets
-    assert "theme.css" in targets
+    # INV-dulah: the dst is a canonical id, not the bare path.
+    assert "css:base.css:0-0:module:module" in targets
+    assert "css:theme.css:0-0:module:module" in targets
 
 def test_analyze_import_edges(tmp_path):
     """Test that import edges are created."""
@@ -51,7 +54,7 @@ def test_analyze_import_edges(tmp_path):
     assert len(result.edges) >= 1
     import_edges = [e for e in result.edges if e.edge_type == "imports"]
     assert len(import_edges) >= 1
-    assert import_edges[0].dst == "variables.css"
+    assert import_edges[0].dst == "css:variables.css:0-0:module:module"
 
 def test_analyze_css_variable(tmp_path):
     """Test detection of CSS custom properties."""
@@ -299,3 +302,25 @@ def test_skipped_when_grammar_unavailable(tmp_path):
 
     assert result.skipped is True
     assert "not available" in result.skip_reason
+
+
+class TestCssImportDstIsCanonical:
+    """INV-dulah, lang-slot limb: an ``@import`` edge's dst is a canonical
+    5-slot id, not the bare path (which finalize's 4-part fallback put in the
+    LANG slot). Mirrors the js/ts import-edge shape."""
+
+    def test_string_import_dst(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.css import analyze_css_files
+
+        (tmp_path / "a.css").write_text('@import "base.css";\n.x { color: red; }\n')
+        result = analyze_css_files(tmp_path)
+        dsts = [e.dst for e in result.edges if e.edge_type == "imports"]
+        assert dsts == ["css:base.css:0-0:module:module"]
+
+    def test_url_import_dst(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_mainstream.css import analyze_css_files
+
+        (tmp_path / "a.css").write_text('@import url("theme/dark.css");\n')
+        result = analyze_css_files(tmp_path)
+        dsts = [e.dst for e in result.edges if e.edge_type == "imports"]
+        assert dsts == ["css:theme/dark.css:0-0:module:module"]
