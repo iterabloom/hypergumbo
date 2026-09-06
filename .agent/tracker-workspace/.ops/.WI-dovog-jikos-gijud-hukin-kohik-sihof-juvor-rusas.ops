@@ -21,3 +21,21 @@
     pr_ref:  # 0e4f
     description: "Found 2026-09-06 by the WI-nolut A/B (jsleg_completeness_09062026/compare.out): openzeppelin-contracts NO-NET stays inconclusive in both arms with the reason \"language(s) solidity, typescript made calls but have no I/O catalog\". typescript DOES have a catalogue (javascript's, by alias, and verify-claims keys it under both names). The survey (out/new/openzeppelin-contracts/cache/.../survey.json) shows why the rung fires anyway:\n\n  nodes by language:      javascript 7128, solidity 5047, (none) 1802, bash 58 ...   -- NO typescript node\n  call edges by src prefix: javascript 14668, TYPESCRIPT 6689, solidity 4338, bash 75\n  sample: typescript:docs/templates/helpers.js:6-6:abi_call:replace:dbc0c4db1788 -> solidity:contracts/utils/Arrays.sol:507-513:Arrays.replace:method   origin: solidity-abi-linker\n\nThe solidity-abi-linker mints `calls` edges whose SRC id carries the language slot `typescript` for a `.js` file, keyed on a synthetic `abi_call` node that does not exist in the node set. verify-claims derives `languages` from NODES (cli.py, the catalogue map) and `languages_with_calls` from EDGE SRC PREFIXES (verify_claims.py ~3628), so a language that appears only on linker-minted edges lands in `languages_with_calls - set(catalogs)` and every boundary and taint claim over the repository is withheld. That is WI-mital's family exactly (build_target's toml src did the same to every Rust crate; fixed by is_synthetic_build_target_call) with a second linker as the emitter -- the pattern INV-kurup names, an identifier-bearing slot filled from an emission path that does not follow the grammar.\n\nEMISSION SITE: linkers/solidity_abi.py:206-208 -- `syn_id = f\"typescript:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:...\"` -- the language slot is a LITERAL, written for every call site whatever the file's extension (helpers.js above). WI-mital's remedy (is_synthetic_build_target_call, verify_claims.py) identifies the synthetic edge by its ORIGIN, not its language, for the reason its docstring gives (a config-format language CAN call: Dockerfile RUN); the same predicate shape -- origin in the set of linkers that mint synthetic srcs -- generalises here, or better, one predicate: a call edge whose src is not a node of the graph is not a language making calls.\n\nTWO DEFECTS, one item: (1) the language slot is WRONG on its face -- helpers.js is javascript, and the linker wrote typescript; (2) a synthetic src with no node behind it is counted as a language \"making calls\". Fix (2) structurally, the way WI-mital did: a linker-minted call edge whose src is not a node in the graph must not add its language to languages_with_calls (a shared predicate, not a per-linker exemption list); fix (1) at the linker. Measure on openzeppelin (6689 edges) and on any repo the solidity-abi-linker touches; the read-back is the NO-NET verdict moving off this rung to whatever holds it next."  # 0e4f
     fields: {}  # 0e4f
+- op: update  # 8de2
+  at: '2026-09-06T12:24:02Z'  # 8de2
+  by: agent  # 8de2
+  actor: jgstern_agent  # 8de2
+  clock: 2  # 8de2
+  nonce: 8de2  # 8de2
+  set: {}  # 8de2
+  add:  # 8de2
+    isbefore: [WI-dupok-tubas-bihib-juhip-lirof-vubin-fupob-padup]  # 8de2
+- op: update  # 86dd
+  at: '2026-09-06T12:24:03Z'  # 86dd
+  by: agent  # 86dd
+  actor: jgstern_agent  # 86dd
+  clock: 3  # 86dd
+  nonce: 86dd  # 86dd
+  set: {}  # 86dd
+  add:  # 86dd
+    isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 86dd
