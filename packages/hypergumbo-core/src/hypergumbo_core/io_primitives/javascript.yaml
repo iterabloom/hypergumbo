@@ -83,15 +83,20 @@ fs_read:
   # Deno runtime API
   - module: Deno
     functions: [readFile, readTextFile, readDir, stat, lstat, readLink, realPath, open]
-    notes: "Deno runtime file read operations"
-  - module: Deno
-    methods: [readFile, readTextFile, readDir, stat, lstat]
+    notes: >-
+      Deno runtime file read operations. WI-komun (2026-09-06): a duplicate
+      `methods:` row for five of these names was REMOVED -- Deno is a named
+      global, the analyzer resolves `Deno.readFile(p)` with the module slot
+      filled and no method construct (typescript:Deno:0-0:readFile:unresolved),
+      and a method-kind row on a module the analyzer never calls as a method
+      made the coverage gate report the module "method-shaped but no method
+      call edge" on calls the classifier had already matched.
 fs_write:
   - module: fs
     functions: [writeFileSync, writeFile, mkdirSync, mkdir, unlinkSync, unlink, rmdirSync, rmdir, renameSync, rename, copyFileSync, copyFile, chmodSync, chmod, chownSync, chown, appendFileSync, appendFile,
                 open, openSync, write, writeSync, writev, writevSync, fchmod, fchmodSync, fchown, fchownSync, fdatasync, fdatasyncSync, fsync, fsyncSync, ftruncate, ftruncateSync,
                 futimes, futimesSync, lchown, lchownSync, lutimes, lutimesSync, link, linkSync, symlink, symlinkSync, truncate, truncateSync, utimes, utimesSync,
-                mkdtemp, mkdtempSync, rm, rmSync, cp, cpSync]
+                mkdtemp, mkdtempSync, rm, rmSync, cp, cpSync, createWriteStream]
     notes: >-
       WI-nolut (2026-09-06): the second list is the audit's addition -- every
       fs export whose source reaches the binding on the write side, including
@@ -102,8 +107,10 @@ fs_write:
       creates the crossing, following copyFile.
   - module: fs.promises
     functions: [writeFile, mkdir, unlink, rmdir, rename, copyFile, chmod, chown, appendFile, rm, open, cp, lchmod, lchown, link, lutimes, mkdtemp, symlink, truncate, utimes]
-  - module: fs
-    methods: [createWriteStream]
+  # `fs.createWriteStream` moved into the fs functions list above (WI-komun,
+  # 2026-09-06): fs is a module object, the call resolves function-shaped, and
+  # a lone `methods:` row put fs in the method-keyed set the coverage gate
+  # starves on a `fs.createWriteStream(p)` call.
   # Deno runtime API
   - module: Deno
     functions: [writeFile, writeTextFile, mkdir, remove, rename, chmod, chown, truncate, create]
@@ -118,19 +125,24 @@ fs_write:
 # moved per WI-lokuv, reads moved per WI-kanir-huzuj.)
 browser_storage_write:
   - module: localStorage
-    methods: [setItem, removeItem, clear]
-    notes: "Browser localStorage write"
+    functions: [setItem, removeItem, clear]
+    notes: >-
+      Browser localStorage write. WI-komun (2026-09-06): `functions:`, not
+      `methods:` -- localStorage is a NAMED GLOBAL, and the analyzer resolves
+      `localStorage.setItem(k, v)` as javascript:localStorage:0-0:setItem with
+      no method construct, the same shape as fs.readFileSync; a method-kind
+      row here matched in the classifier but starved the coverage gate.
   - module: sessionStorage
-    methods: [setItem, removeItem, clear]
-    notes: "Browser sessionStorage write"
+    functions: [setItem, removeItem, clear]
+    notes: "Browser sessionStorage write (named global; see localStorage)"
 
 browser_storage_read:
   - module: localStorage
-    methods: [getItem, key, length]
-    notes: "Browser localStorage read"
+    functions: [getItem, key, length]
+    notes: "Browser localStorage read (named global; see the write row)"
   - module: sessionStorage
-    methods: [getItem, key, length]
-    notes: "Browser sessionStorage read"
+    functions: [getItem, key, length]
+    notes: "Browser sessionStorage read (named global; see localStorage)"
   - module: indexedDB
     functions: [open, databases]
     notes: "Browser IndexedDB read"
@@ -168,8 +180,8 @@ net_send:
     functions: [fetch]
     notes: "Browser window.fetch (same as global fetch)"
   - module: navigator
-    methods: [sendBeacon]
-    notes: "Browser navigator.sendBeacon for analytics/telemetry"
+    functions: [sendBeacon]
+    notes: "Browser navigator.sendBeacon for analytics/telemetry. WI-komun: navigator is a named global; the call resolves with the module slot and no method construct, so the row is function-kind."
   - module: XMLHttpRequest
     methods: [send, open, setRequestHeader]
     notes: "Browser XHR"
@@ -337,8 +349,15 @@ ipc_recv:
 logging:
   # Browser + Node share console.* (WI-banaf)
   - module: console
-    methods: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
-    notes: "Universal console logging (browser + Node)"
+    functions: [log, info, warn, error, debug, trace, dir, table, group, groupEnd, time, timeEnd]
+    notes: >-
+      Universal console logging (browser + Node). WI-komun (2026-09-06):
+      `functions:`, not `methods:` -- console is a named global and
+      `console.log(x)` resolves as javascript:console:0-0:log with no method
+      construct. As a method-kind module, console starved
+      method_starved_modules on every repository that logs (express, winston,
+      ioredis in the WI-nolut A/B), withholding NO-FSWRITE / NO-SUBPROC /
+      NO-NET verdicts the classifier had already adjudicated.
   # WI-dutah: process.{stdout,stderr} are terminal output, not IPC.
   # Same threat-model logic as Python sys.{stdout,stderr} (WI-tolif).
   # process.send stays in ipc_send (real fork-channel) and process.stdin
