@@ -1,0 +1,10 @@
+Original commit body from 4b781a03fabeb256fd26004a8ccc37fd8c912150:
+
+WI-dovog (found by WI-nolut's A/B; WI-mital's family). The solidity-abi linker minted every synthetic call site with the literal `typescript:` id prefix and `discovery_language="typescript"`, whatever the file's extension; verify-claims reads languages-with-calls from the id prefix and its catalogue map from node languages, so openzeppelin-contracts (6,689 such edges from `.js` files, 0 typescript nodes) withheld every claim as "typescript has no I/O catalog".
+
+- Six linkers minted the literal (solidity-abi, tauri-ipc ×3, message-dispatch, crypto-flow, yjs-crdt, wasm-bindgen, grpc's client label); all take the host language from `js_ts_language_from_path` (ADR-0031 Class B), pinned per extension with `.ts` controls.
+- openzeppelin-contracts, cleared caches: NO-NET reason "solidity, typescript" → "solidity"; 0 typescript-prefixed edges of any type after (6,727 before). Category unchanged (solidity holds the rung next).
+
+Tracker: WI-dovog closed after merge; the gate-side origin-keyed guard stays on the item as its residual.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
