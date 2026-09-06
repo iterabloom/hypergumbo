@@ -1,0 +1,23 @@
+- op: create  # e47d
+  at: '2026-09-06T11:26:04Z'  # e47d
+  by: agent  # e47d
+  actor: jgstern_agent  # e47d
+  clock: 1  # e47d
+  nonce: e47d  # e47d
+  data:  # e47d
+    kind: work_item  # e47d
+    title: "c: bare send/recv never reach the catalogue -- ambiguous_names with no module slot from #include; 156 of 324 corpus socket sites classify as nothing (INV-linub's class in C)"  # e47d
+    status: todo_hard  # e47d
+    priority: 2  # e47d
+    parent:  # e47d
+    tags:  # e47d
+    - taint  # e47d
+    - catalogue  # e47d
+    - c  # e47d
+    - io_boundary  # e47d
+    isbefore: []  # e47d
+    duplicate_of: []  # e47d
+    not_duplicate_of: []  # e47d
+    pr_ref:  # e47d
+    description: "Found by WI-baran's arm-A census (2026-09-06, ~/hypergumbo_lab_notebook/baran_sockets_09062026/summarize_A.py). Phase 6 recall, INV-linub's class in C: a catalogued call site that cannot reach its row for want of module evidence.\n\nTHE GAP. c.yaml lists `send` and `recv` under ambiguous_names (\"socket send vs project-local send()\"), and the C analyzer fills no module slot from #include, so every bare call is `c:external:0-0:send:unresolved` and gate_named_entry refuses it (io_boundary.py: `if ambiguous_names and name in ambiguous_names: return None`). On the twelve-repo corpus 156 of 324 send*/recv* sites classify as NOTHING in either arm: dbus-broker 15/17, haproxy 28/48, passt 23/43, torsocks 3/7, libvfio-user 4/6, guacamole-server 4/7, firejail 7/23. sendto/sendmsg/recvfrom/recvmsg reach the catalogue; send/recv do not. The WI-baran stamp lands on them (16 `pipe` stamps on bare send/recv in arm B) and moves nothing, because there is no classification to move.\n\nTHE GUARD IS RIGHT AS A GUARD: a project-local `send()` exists (fluent-bit's vendored nuttx shim is the live example, see the sibling item), and name-only matching would credit it. What is missing is the EVIDENCE that lifts the ambiguity: the file `#include <sys/socket.h>` and the repository defines no function named send. That is receiver/module evidence, the same shape as INV-misup's `new`-constructed receiver and WI-nasuf's declared types -- resolvable at the analyzer, not at the catalogue.\n\nTHE FIX SHAPE, not designed here: c.py records the file's system includes and, for a call to a name that is in ambiguous_names, stamps the module slot (`c:sys/socket:0-0:send:unresolved`) when <sys/socket.h> is included and the resolver finds no in-repo definition of that name. Then the existing qualified-name path classifies it and the ambiguity guard is never reached. Same for unistd read/write/close (also in ambiguous_names) -- check the analogues before shipping (LIVE rule 4).\n\nMEASURED THROUGH THE TAINT PATH (INV-linub 2026-09-04): this ADDS sources (recv is net_recv/ipc_recv) and sinks; marginal precision on the new findings, awaits_bakeoff_validation on the PR."  # e47d
+    fields: {}  # e47d
