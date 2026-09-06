@@ -44,3 +44,18 @@
   set: {}  # a0fd
   add:  # a0fd
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # a0fd
+- op: update  # e5b1
+  at: '2026-09-06T15:43:16Z'  # e5b1
+  by: agent  # e5b1
+  actor: jgstern_agent  # e5b1
+  clock: 5  # e5b1
+  nonce: e5b1  # e5b1
+  set:  # e5b1
+    status: done  # e5b1
+- op: discuss  # c940
+  at: '2026-09-06T15:43:16Z'  # c940
+  by: agent  # c940
+  actor: jgstern_agent  # c940
+  clock: 6  # c940
+  nonce: c940  # c940
+  message: "DONE 2026-09-06 -- RESOLVED BY INV-kotob's swift receiver fix (swift.py \"INV-kotob\" block at the unresolved-call emission site), re-verified behaviourally on this item's OWN repro, not inferred from the sibling.\n\nREPRO RE-RUN. `hypergumbo survey` of whole_bunch_of_repos/SwiftyJSON at dev tip b980bcc412 (cold cache; instrument and read-back in hypergumbo_lab_notebook/gudak_swift_09062026/). Of 421 unresolved swift call edges:\n  ids carrying more than one dst_ref.module_path       0   (was: swift:JSONSerialization:0-0:data:external_symbol carrying 'invalidJson' AND 'jsonString')\n  module_path values equal to 'dict' / 'invalidJson' / 'jsonString' / 'description'   0 / 0 / 0 / 0\n  module_path values that are lowercase-initial identifiers (the variable-name shape)   0\n  module_path values present                           31, every one a TYPE (JSONSerialization 8, NSNumber 5, Bundle 4, String 4, JSONEncoder 3, JSONDecoder 3, ...)\n\nWHAT THE FIX DID, which is the item's own \"obvious alternative\": the receiver's TYPE when it is external, an import alias for a module-qualified call, else NO dst_ref (the documented unidentified-reference cell) -- the receiver VARIABLE is never written to the field any more. The cost is visible and correct: swift's dst_ref coverage on this repo is 7.4% (31/421), below the 16.2% this family's parent WI-jokij recorded on 2026-08-04, because the present-but-wrong 42% is now absent rather than wrong. That residual (390 edges whose module slot is the `external` sentinel) is WI-jokij's per-analyzer recoverability question, not this item's contract violation, and stays there.\n\nCONTRACT NOW HOLDS on the measured population: module_path is a property of the target (a type or module), constant per symbol id."  # c940
