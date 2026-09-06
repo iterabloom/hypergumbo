@@ -53,6 +53,7 @@ each with a `kind`. These are the kinds the tool can emit:
 | `unknown_receiver_scope` | The scope statement for the whole verdict: a clean result is **closed-world over the receivers the analysis could type**, reported with a count, a denominator and the distinct method names. Unlike the row above it is not boundary-scoped, because matching a method *name* against a catalogue is exactly what an untyped receiver makes meaningless. |
 | `analyzer_method_call_blind` | The verdict rests on a language whose analyzer **cannot see external instance-method calls at all**. Declared, not inferred. |
 | `analyzer_suppressed_methods` | The verdict rests on a language whose analyzer deliberately declines to model some method names, and the catalogue declares some of those names as I/O sinks. |
+| `analyzer_construct_blind` | The verdict rests on a language whose catalogue declares rows that source reaches by a construct which is **not a call** (`ws.onmessage = handler`), so the analyzer emits no edge for them at all. Declared and dated, and derived against the shipped catalogue at render time, so the rows named are the ones your catalogue actually carries. |
 | `higher_fidelity_available` | A higher-fidelity analyzer for a language in this repository is **installed on this machine and was not used** (e.g. rust-analyzer without `--backend rust-analyzer`). |
 
 ## What a clean verdict does not mean
