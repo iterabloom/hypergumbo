@@ -90,3 +90,10 @@
   set: {}  # 9397
   add:  # 9397
     isbefore: [INV-linub-nokij-gibim-rovok-moros-gural-domip-rimof]  # 9397
+- op: discuss  # dd79
+  at: '2026-09-06T13:03:05Z'  # dd79
+  by: agent  # dd79
+  actor: jgstern_agent  # dd79
+  clock: 11  # dd79
+  nonce: dd79  # dd79
+  message: "INSTANCE 2026-09-06 (WI-dovog): six linkers -- solidity_abi, tauri_ipc, message_dispatch, crypto_flow, yjs_crdt, wasm_bindgen, and grpc's client-pattern label -- wrote the LITERAL \"typescript\" into the language slot of every synthetic call-site id they minted, whatever the host file's extension, while the Symbol's language field was None (ADR-0031 Class B). A downstream reader that takes the id's first segment as a language claim (verify_claims' languages_with_calls) then withheld every claim over openzeppelin-contracts. Fixed at the emitters with js_ts_language_from_path; the reader-side guard (origin-keyed, per WI-mital) is WI-dovog's residual. This is the shape this META item names: an identifier slot filled by an emission path that never consulted the grammar's meaning for that slot."  # dd79

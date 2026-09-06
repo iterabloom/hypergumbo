@@ -156,3 +156,10 @@
   clock: 20  # 33c0
   nonce: 33c0  # 33c0
   message: "F7 SHIPPED 2026-09-06 (PR #794, WI-jojaf): pure path arithmetic rowed as fs_read -- 7 javascript rows + 2 python rows deleted. The same PR (WI-nolut) added 76 javascript rows and 10 grants after a mechanical probe of the node builtins, i.e. the audit found its rows by SOURCE rather than by name -- the direction this item's root cause asks for. Family count: seven."  # 33c0
+- op: discuss  # 7d4e
+  at: '2026-09-06T13:21:49Z'  # 7d4e
+  by: agent  # 7d4e
+  actor: jgstern_agent  # 7d4e
+  clock: 21  # 7d4e
+  nonce: 7d4e  # 7d4e
+  message: "KIND-SLOT MEMBER SHIPPED 2026-09-06 (WI-komun, PR #800): javascript's named-global rows (console, localStorage, sessionStorage, navigator, Deno) were declared methods: while the analyzer resolves them function-shaped; the classifier matched them and the coverage gate withheld. The rows' kind moved to functions:. Same root cause as the boundary-slot families -- a row slot asserted by name, never checked against what the analyzer emits."  # 7d4e

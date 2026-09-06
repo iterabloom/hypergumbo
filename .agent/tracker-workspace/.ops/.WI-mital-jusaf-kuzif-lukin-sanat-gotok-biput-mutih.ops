@@ -50,3 +50,10 @@
   clock: 5  # 2e69
   nonce: '2e69'  # 2e69
   message: "Fixed and merged in PR #653 (dev e13c23818f). BEHAVIOURAL EVIDENCE, this item's own repro re-run on the merged tree: mini-redis, same claims file, same survey -- BEFORE 7/7 inconclusive every one naming toml; AFTER 7/7 inconclusive with ZERO naming toml, all seven now naming the next rung (12 uncatalogued Rust crates). The item's statement is that a Cargo [[bin]] declaration is counted as a call by a language that cannot make one, withholding every claim; that no longer happens. Closing on that, NOT on 'the gate is clean' -- the verdicts are still inconclusive and this removed a FALSE withholding rather than buying a clean verdict. Fixed by a fourth route: neither (a) (refuted -- retyping reopens the gap build_target.py exists to close), nor (c), nor the obvious 'config languages cannot call' rule (refuted before shipping -- 17 non-analyzable languages HAVE analyzers, so exempting the language would stop withholding on a real Dockerfile RUN curl). Keys on what MINTED the edge instead, which covers the 'manifest' pseudo-language for free. Residual asked in the description and NOT claimed: go.mod was not checked, because no go.mod-sourced call edge was found to check against."  # 2e69
+- op: discuss  # dceb
+  at: '2026-09-06T13:03:06Z'  # dceb
+  by: agent  # dceb
+  actor: jgstern_agent  # dceb
+  clock: 6  # dceb
+  nonce: dceb  # dceb
+  message: "SECOND LINKER IN THIS FAMILY, 2026-09-06 (WI-dovog, PR #798): six linkers (solidity_abi, tauri_ipc, message_dispatch, crypto_flow, yjs_crdt, wasm_bindgen, grpc) minted synthetic srcs or pattern labels with a literal typescript language slot; openzeppelin-contracts withheld every claim as 'typescript has no I/O catalog'. Fixed at the emitters; your docstring's origin-keyed guard is the residual on WI-dovog."  # dceb

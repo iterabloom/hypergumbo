@@ -62,3 +62,18 @@
   clock: 6  # 3acc
   nonce: 3acc  # 3acc
   message: "The process.on / process.send reach gap named in the scoping entry is filed as WI-kikar (Phase 6, behind INV-linub); this item keeps the row-kind change for console / localStorage / sessionStorage / navigator / Deno only."  # 3acc
+- op: update  # 1ef6
+  at: '2026-09-06T13:21:48Z'  # 1ef6
+  by: agent  # 1ef6
+  actor: jgstern_agent  # 1ef6
+  clock: 7  # 1ef6
+  nonce: 1ef6  # 1ef6
+  set:  # 1ef6
+    status: done  # 1ef6
+- op: discuss  # ca47
+  at: '2026-09-06T13:21:48Z'  # ca47
+  by: agent  # ca47
+  actor: jgstern_agent  # ca47
+  clock: 8  # ca47
+  nonce: ca47  # ca47
+  message: "DONE 2026-09-06 (PR #800). Rows for console (12), localStorage (6), sessionStorage (6), navigator (1) and fs.createWriteStream (1) moved `methods:` -> `functions:`; Deno's duplicate `methods:` row (5 names already declared as functions) deleted. Method-kind modules left: the six class receivers plus `process` (its two rows are unreachable for a different reason, WI-kikar, and are not touched). The gate is NOT loosened: WebSocket/XMLHttpRequest/net.Socket/dgram.Socket/EventSource/BroadcastChannel keep their method rows (pinned as the control in test_named_global_row_kinds.py::TestAClassReceiverStillStarves). Classifier parity pinned for every moved row.\n\nA/B (jsleg_completeness_09062026/compare_arms.py new_pre_komun -> new_komun; 11 repos, 4 claims, cold caches):\n0 of 44 verdict categories moved. The five claims this rung held all changed REASON to the next honest rung: express NO-FSWRITE / NO-SUBPROC and winston NO-NET / NO-SUBPROC -> \"makes calls into 9 module(s) that the I/O catalog could not classify (assert, body-parser, document, mime-types, node:http ... / assert, hock, logform, os, rimraf ...)\"; ioredis NO-SUBPROC -> \"launches an external program at 3 call site(s) (docker, npm, sleep)\" (the opaque-launch rung, a TRUE withholding). No verdict became confirmed -- nothing silenced. The read-back is the reason string. compare_komun.out in jsleg_completeness_09062026/.\n  OBSERVED, not this item: express's uncatalogued list names `node:http` and winston's names `os` -- `os` has rows (host_info_read) and `http` has rows, so those are REACH names rather than missing rows: the `node:` prefix survives into the module slot somewhere (js_ts.py strips it for imports), and `os` reaching the uncatalogued list wants a look. Filed as WI-sapuv-jilop-lofip-zadop-saban-laduv-satiz-linav.\n\nNot folded in: process.on / process.send (WI-kikar, Phase 6) -- the analyzer sends those to the external placeholder, a reach defect not a kind defect."  # ca47
