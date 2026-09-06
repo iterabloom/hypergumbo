@@ -1,0 +1,12 @@
+Original commit body from f0a4e89f90b314162967f949568801946353276d:
+
+WI-zumoz. `javascript.yaml` declares `WebSocket.onmessage`, `WebSocket.onclose` and `EventSource.onmessage` as method-kind `net_recv` rows; browser code assigns them (`ws.onmessage = handler`), no analyzer emits a call edge for an assignment, so the rows never classify and a clean verdict had nothing to disclose. Re-measured on dev f235da6704 after INV-misup (#753): `addEventListener` on the same `new`-constructed receiver reaches the catalogue, the three assignments emit nothing.
+
+- `analyzer_disclosure.CONSTRUCT_BLIND_ROWS`: the third declaration shape (dated, evidence, derived against the shipped catalogue at render time).
+- `verify_claims`: caveat kind `analyzer_construct_blind` on the boundary and the taint arm; `BoundaryCoverage.construct_blind_sinks`.
+- Rows stay; REACH pointer on the two yaml rows; docs row; changelog.
+- Pinned by two tests that fail the day the assignment starts emitting.
+
+Tracker: closes WI-zumoz; the registration-edge residual is filed in Phase 6 after merge.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
