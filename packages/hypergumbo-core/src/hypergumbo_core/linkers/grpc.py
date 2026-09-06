@@ -93,7 +93,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("grpc-linker")
 
@@ -424,7 +424,9 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
             service_name=service_name,
             line=line_num,
             file_path=str(file_path),
-            language="typescript",
+            # WI-dovog: the file's own language, not a literal -- a .js
+            # client is javascript.
+            language=js_ts_language_from_path(file_path),
         ))
 
     return patterns

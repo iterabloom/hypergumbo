@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._text_filters import read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -279,9 +279,14 @@ def link_crypto_flow(
                 continue
             seen_edges.add(dedup)
 
-            lang = "typescript" if write.api == "webcrypto" else "rust"
-            pub_id = f"{lang}:{write.file_path}:{write.line}:0:{write.channel}:crypto_producer"
-            sub_id = f"{lang}:{read.file_path}:{read.line}:0:{read.channel}:crypto_consumer"
+            # WI-dovog: each site carries ITS OWN file's language (ADR-0031
+            # Class B via js_ts_language_from_path). The single `lang` taken
+            # from the WRITE site's api kind minted `typescript:` ids for every
+            # .js site and gave a .ts read the write's language.
+            pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "webcrypto" else "rust"
+            sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "webcrypto" else "rust"
+            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:crypto_producer"
+            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:crypto_consumer"
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
@@ -302,7 +307,7 @@ def link_crypto_flow(
                     name=write.channel,
                     path=write.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=pub_lang,
                     protocol_origin="crypto_flow",
                     span=Span(
                         start_line=write.line, end_line=write.line,
@@ -335,7 +340,7 @@ def link_crypto_flow(
                     name=read.channel,
                     path=read.file_path,
                     language=None,
-                    discovery_language=lang,
+                    discovery_language=sub_lang,
                     protocol_origin="crypto_flow",
                     span=Span(
                         start_line=read.line, end_line=read.line,

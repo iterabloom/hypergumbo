@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
+from ._text_filters import js_ts_language_from_path
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -202,19 +203,27 @@ def link_solidity_abi(
         if not targets:
             continue  # pragma: no cover - should not happen given known_names filter
 
-        # Create synthetic call-site node
+        # Create synthetic call-site node. WI-dovog: the id's language slot and
+        # discovery_language come from the HOST FILE, the way ADR-0031 Class B
+        # prescribes and database_query / graphql_resolver / event_sourcing /
+        # ipc already do. The literal "typescript" this carried put
+        # `typescript` into verify-claims' languages-with-calls for every .js
+        # call site with no typescript node behind it, and every claim over
+        # openzeppelin-contracts was withheld as "typescript has no I/O
+        # catalog" (WI-mital's family).
+        host_language = js_ts_language_from_path(Path(rel_path))
         syn_id_input = f"abi_call:{rel_path}:{line_num}:{func_name}"
         syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
-        syn_id = f"typescript:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:{syn_hash}"
+        syn_id = f"{host_language}:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:{syn_hash}"
 
         # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call
-        # site discovered in a JS/TS file. Was LITERAL-HOST ("typescript").
+        # site discovered in a JS/TS file.
         syn_sym = Symbol(
             id=syn_id,
             name=f"abi_call:{func_name}",
             kind="call_site",
             language=None,
-            discovery_language="typescript",
+            discovery_language=host_language,
             protocol_origin="solidity_abi",
             path=rel_path,
             span=Span(

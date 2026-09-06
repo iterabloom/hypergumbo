@@ -366,3 +366,49 @@ class TestRegistryIntegration:
         assert len(result.edges) == 1
         assert result.edges[0].edge_type == "calls"
         assert (result.edges[0].meta or {}).get("call_kind") == "abi"
+
+
+class TestTheSyntheticNodeCarriesTheHostFileLanguage:
+    """WI-dovog. The synthetic call-site id's language slot, and the Symbol's
+    ``discovery_language``, come from the HOST FILE (``js_ts_language_from_path``,
+    the helper ADR-0031 Class B names and database_query / graphql_resolver /
+    event_sourcing / ipc already use), not from the literal ``"typescript"``
+    the linker was born with.
+
+    WHY IT MATTERS BEYOND TIDINESS. verify-claims derives the languages that
+    "made calls" from the src id's first segment, and its catalogue map from
+    the NODES' languages. A literal ``typescript:`` on a call site found in a
+    ``.js`` file -- openzeppelin-contracts, 6689 such edges, 0 typescript
+    nodes -- put ``typescript`` in the former and nowhere in the latter, and
+    every boundary and taint claim over the repository was withheld as
+    "typescript made calls but has no I/O catalog". WI-mital's family.
+    ``language`` itself stays ``None`` (Class B).
+    """
+
+    @pytest.mark.parametrize("filename,expected", [
+        ("scripts/deploy.js", "javascript"),
+        ("scripts/deploy.mjs", "javascript"),
+        ("scripts/deploy.jsx", "javascript"),
+        ("scripts/deploy.ts", "typescript"),
+        ("scripts/deploy.tsx", "typescript"),
+    ])
+    def test_id_slot_and_discovery_language_follow_the_file(
+        self, tmp_path: Path, filename: str, expected: str,
+    ) -> None:
+        from hypergumbo_core.linkers.solidity_abi import link_solidity_abi
+
+        sol_func = _make_sol_sym("transfer")
+        ts_func = _make_ts_sym("deploy")
+        src = tmp_path / filename
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("await token.transfer(to, amount);\n")
+
+        result = link_solidity_abi(tmp_path, [ts_func], [sol_func])
+        assert len(result.symbols) == 1 and len(result.edges) == 1
+        syn = result.symbols[0]
+        assert syn.id.split(":", 1)[0] == expected, syn.id
+        assert syn.discovery_language == expected
+        assert syn.language is None
+        assert syn.protocol_origin == "solidity_abi"
+        assert result.edges[0].src == syn.id
+        assert result.edges[0].src.split(":", 1)[0] == expected
