@@ -32,3 +32,36 @@ signatures:
   sqlite3.Connection.cursor: sqlite3.Cursor
   sqlite3.Connection.execute: sqlite3.Cursor
   sqlite3.Cursor.execute: sqlite3.Cursor
+  # django ORM (INV-mumov, Phase 6 PR 1). The QuerySet API members that return a
+  # QuerySet, keyed on the module the io catalogue rows this API under
+  # (python.yaml keys ``django.db.models`` + method name), so the type PRESERVES
+  # across a chain -- ``Order.objects.filter(...).exclude(...).exists()`` -- through
+  # TYPE_PRESERVING_MEMBERS exactly as pathlib.Path does. The chain ROOT
+  # (``<x>.objects.<member>()``) is WI-sozoj's marker, recognised in
+  # ``_preserved_receiver_type``; this file only says which members keep the type.
+  # NOT here, deliberately: get / first / last / earliest / latest (a Model
+  # instance: a project class, no module), count / exists / aggregate (scalars),
+  # in_bulk (a dict), iterator (a generator), raw (RawQuerySet), and every write.
+  # The first framework rows in this file; the io catalogue's python.yaml has
+  # rowed django.db.models since WI-sozoj, so this is the same standing.
+  django.db.models.filter: django.db.models
+  django.db.models.exclude: django.db.models
+  django.db.models.all: django.db.models
+  django.db.models.order_by: django.db.models
+  django.db.models.annotate: django.db.models
+  django.db.models.alias: django.db.models
+  django.db.models.select_related: django.db.models
+  django.db.models.prefetch_related: django.db.models
+  django.db.models.values: django.db.models
+  django.db.models.values_list: django.db.models
+  django.db.models.distinct: django.db.models
+  django.db.models.none: django.db.models
+  django.db.models.using: django.db.models
+  django.db.models.only: django.db.models
+  django.db.models.defer: django.db.models
+  django.db.models.select_for_update: django.db.models
+  django.db.models.reverse: django.db.models
+  django.db.models.extra: django.db.models
+  django.db.models.union: django.db.models
+  django.db.models.intersection: django.db.models
+  django.db.models.difference: django.db.models

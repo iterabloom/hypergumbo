@@ -327,3 +327,109 @@ class TestAttributeChainReceiverEmitsACallEdge:
             if e.edge_type in ("calls", "unresolved_external_call")
         }
         assert "python:django.db.models:0-0:create:unresolved" in dsts
+
+
+class TestQuerySetChainPropagation:
+    """INV-mumov, Phase 6 PR 1: the RESULT of ``<Model>.objects.<queryset-method>()``
+    carries the ORM module, so the NEXT hop matches too.
+
+    WI-sozoj typed the first hop (``Order.objects.filter(...)``) and nothing after
+    it, so ``Order.objects.filter(...).exists()`` lost the type at ``.exists()`` --
+    942 sentinel method edges on pretix rooted at ``<Model>.objects``, 976 of the
+    1,625 ORM-chain edges on names the F3 gate refuses today (the 2026-09-06
+    derivability census on INV-mumov). The root rule lives in
+    ``_preserved_receiver_type`` beside the constructor root; which members return
+    a QuerySet is DATA (``library_signatures/python.yaml``), so the chained hops
+    propagate through ``TYPE_PRESERVING_MEMBERS`` exactly as ``pathlib.Path`` does.
+    A Model-returning hop (``get``/``first``/``create``) deliberately does not
+    propagate: its value is a project class, which carries no module.
+    """
+
+    _MODEL = (
+        "from django.db import models\n"
+        "\n"
+        "class Order(models.Model):\n"
+        "    pass\n"
+        "\n"
+    )
+
+    def test_inline_chained_call_is_module_qualified(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def view():\n"
+            "    return Order.objects.filter(active=True).exists()\n"
+        )
+        dsts = _orm_dsts(analyze_python(tmp_path).edges)
+        assert "python:django.db.models:0-0:filter:unresolved" in dsts  # WI-sozoj, unchanged
+        assert "python:django.db.models:0-0:exists:unresolved" in dsts
+
+    def test_bound_queryset_variable_is_typed(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def purge():\n"
+            "    qs = Order.objects.filter(active=False)\n"
+            "    qs.delete()\n"
+        )
+        dsts = _orm_dsts(analyze_python(tmp_path).edges)
+        assert "python:django.db.models:0-0:delete:unresolved" in dsts
+
+    def test_two_hop_chain_propagates(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def view():\n"
+            "    return Order.objects.filter(a=1).exclude(b=2).order_by('c').count()\n"
+        )
+        dsts = _orm_dsts(analyze_python(tmp_path).edges)
+        for member in ("filter", "exclude", "order_by", "count"):
+            assert f"python:django.db.models:0-0:{member}:unresolved" in dsts, member
+
+    def test_model_returning_hop_does_not_propagate(self, tmp_path: Path) -> None:
+        """``get`` returns a Model INSTANCE -- a project class, no module -- so the
+        ``.save()`` after it stays where WI-sozoj deliberately left instance
+        writes on typed locals: out of scope, disclosed, not mis-tagged."""
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def touch():\n"
+            "    Order.objects.get(pk=1).save()\n"
+        )
+        dsts = _orm_dsts(analyze_python(tmp_path).edges)
+        assert "python:django.db.models:0-0:get:unresolved" in dsts
+        assert "python:django.db.models:0-0:save:unresolved" not in dsts
+
+    def test_untyped_receiver_with_queryset_method_name_stays_external(
+        self, tmp_path: Path
+    ) -> None:
+        """No ``.objects`` root, no type: a ``.filter(...).exists()`` on a parameter
+        is the by-name rule INV-nular warns about and is NOT shipped here."""
+        (tmp_path / "app.py").write_text(
+            "def view(d):\n"
+            "    return d.filter(x=1).exists()\n"
+        )
+        assert _orm_dsts(analyze_python(tmp_path).edges) == []
+
+    def test_inline_and_bound_forms_agree(self, tmp_path: Path) -> None:
+        """The one-predicate parity WI-zilag pinned for pathlib, on the ORM root."""
+        (tmp_path / "inline.py").write_text(
+            self._MODEL + "def a():\n    return Order.objects.filter(x=1).values_list('id')\n"
+        )
+        (tmp_path / "bound.py").write_text(
+            self._MODEL + "def b():\n    qs = Order.objects.filter(x=1)\n    return qs.values_list('id')\n"
+        )
+        result = analyze_python(tmp_path)
+        by_file = {}
+        for e in result.edges:
+            if e.edge_type == "calls" and ":django.db.models:" in e.dst:
+                by_file.setdefault(Path(e.src.split(":")[1]).name, set()).add(e.dst.split(":")[3])
+        assert by_file.get("inline.py") == by_file.get("bound.py") == {"filter", "values_list"}
+
+    def test_queryset_returning_members_are_derived_from_the_signature_rows(self) -> None:
+        from hypergumbo_lang_mainstream.py import DJANGO_ORM_MODULE, TYPE_PRESERVING_MEMBERS
+
+        members = TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, frozenset())
+        assert {
+            "filter", "exclude", "all", "order_by", "annotate", "select_related",
+            "prefetch_related", "values", "values_list", "distinct",
+        } <= members, sorted(members)
+        # These return a Model instance, a scalar, or write -- never a QuerySet.
+        assert not ({"get", "first", "last", "create", "count", "exists", "delete",
+                     "update", "aggregate", "get_or_create"} & members)
