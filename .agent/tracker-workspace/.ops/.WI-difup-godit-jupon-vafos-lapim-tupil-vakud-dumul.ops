@@ -1,0 +1,22 @@
+- op: create  # 48a0
+  at: '2026-09-06T10:54:12Z'  # 48a0
+  by: agent  # 48a0
+  actor: jgstern_agent  # 48a0
+  clock: 1  # 48a0
+  nonce: 48a0  # 48a0
+  data:  # 48a0
+    kind: work_item  # 48a0
+    title: "haskell: servant's client executors (client / withClientM / runClientM) are not catalogued, so the newManager builder row is the only rowed sink in servant's client functions and cannot be re-adjudicated for removal"  # 48a0
+    status: todo_hard  # 48a0
+    priority: 3  # 48a0
+    parent:  # 48a0
+    tags:  # 48a0
+    - taint  # 48a0
+    - catalogue  # 48a0
+    - haskell  # 48a0
+    isbefore: []  # 48a0
+    duplicate_of: []  # 48a0
+    not_duplicate_of: []  # 48a0
+    pr_ref:  # 48a0
+    description: "Phase 6 recall. Residual of WI-lunav (closed 2026-09-06 with all eight builder rows kept).\n\nTHE MEASUREMENT THAT MAKES THIS AN ITEM (WI-lunav step 1, servant, per-arm cache, 2026-08-28). Removing Network.HTTP.Client.newManager -- a connection-pool constructor that transmits nothing at call time, with every stdlib executor (httpLbs, httpBS, httpNoBody, responseOpen, withResponse) separately rowed -- collapsed HOSTSECRET-NO-NETWORK violated(3) -> inconclusive(0) and UNTRUSTED-NO-NETWORK violated(3) -> inconclusive(0). Reason: servant's example clients reach the network through withClientM / the `client` combinator, which is NOT catalogued, so once newManager goes there is no rowed sink left in those functions and the crossing is represented nowhere.\n\nTHE WORK. (1) A community overlay (ADR-0047: third-party rows are overlays, never the stdlib catalogue) rowing servant-client's executors -- runClientM, withClientM, the actions `client` derives -- with the ADR-0049 question answered per row (does the call return a value the far side chose? yes => net_recv; the request it transmits => net_send). (2) Re-run the WI-lunav newManager A/B on servant with the overlay loaded: the licence for removing the builder row is that BOTH claims keep violated(3) with the crossing now represented at the executor. (3) Only then decide the newManager row. The other seven builder rows carry payload, credentials or SNI by signature (WI-lunav (B)) and are not candidates regardless.\n\nMEASURED THROUGH THE TAINT PATH: marginal precision, awaits_bakeoff_validation. Instrument: ~/hypergumbo_lab_notebook/lunav_newmanager_08282026/."  # 48a0
+    fields: {}  # 48a0

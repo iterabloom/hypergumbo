@@ -417,3 +417,30 @@
   clock: 54  # 3701
   nonce: '3701'  # 3701
   message: "GATE LIFTED 2026-09-06, owner ruling on WI-nazos (the campaign carrier),\nverbatim: \"phase 6 is unblocked.\" Ruled on measurement 0012: useful precision\n30.9% pooled / 28.0% unweighted against the <=25% band that 0006's 24.1% had\ntripped. This item and its class (INV-mumov L3, INV-gijis, INV-tanom,\nINV-suril, WI-nakut's java half) may proceed. Standing method rule unchanged:\neach recall PR ships its marginal precision measurement and carries\nawaits_bakeoff_validation. The 2026-09-04 entries above already say how an L3\nfix under this class must be measured -- through the taint path, not\nio-boundaries chain counts."  # 3701
+- op: update  # 7bc9
+  at: '2026-09-06T10:21:16Z'  # 7bc9
+  by: agent  # 7bc9
+  actor: jgstern_agent  # 7bc9
+  clock: 55  # 7bc9
+  nonce: 7bc9  # 7bc9
+  set: {}  # 7bc9
+  add:  # 7bc9
+    isbefore: [INV-busis-povul-butun-kosut-tozik-jarok-vokaz-vomur]  # 7bc9
+- op: update  # baf8
+  at: '2026-09-06T10:54:17Z'  # baf8
+  by: agent  # baf8
+  actor: jgstern_agent  # baf8
+  clock: 56  # baf8
+  nonce: baf8  # baf8
+  set: {}  # baf8
+  add:  # baf8
+    isbefore: [WI-dosuh-zizur-jutun-lobir-pahug-rokom-puzat-sanof]  # baf8
+- op: update  # 3f5c
+  at: '2026-09-06T10:54:17Z'  # 3f5c
+  by: agent  # 3f5c
+  actor: jgstern_agent  # 3f5c
+  clock: 57  # 3f5c
+  nonce: 3f5c  # 3f5c
+  set: {}  # 3f5c
+  add:  # 3f5c
+    isbefore: [WI-difup-godit-jupon-vafos-lapim-tupil-vakud-dumul]  # 3f5c

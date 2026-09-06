@@ -1,0 +1,22 @@
+- op: create  # c7ea
+  at: '2026-09-06T10:54:08Z'  # c7ea
+  by: agent  # c7ea
+  actor: jgstern_agent  # c7ea
+  clock: 1  # c7ea
+  nonce: c7ea  # c7ea
+  data:  # c7ea
+    kind: work_item  # c7ea
+    title: "javascript: emit a registration edge for an event-handler property assignment on a constructed receiver (ws.onmessage = h) so the three CONSTRUCT_BLIND_ROWS become reachable"  # c7ea
+    status: todo_hard  # c7ea
+    priority: 3  # c7ea
+    parent:  # c7ea
+    tags:  # c7ea
+    - taint  # c7ea
+    - catalogue  # c7ea
+    - javascript  # c7ea
+    isbefore: []  # c7ea
+    duplicate_of: []  # c7ea
+    not_duplicate_of: []  # c7ea
+    pr_ref:  # c7ea
+    description: "Phase 6 recall (INV-linub's class, one level over: here the CALL CONSTRUCT never exists rather than the receiver evidence). Residual of WI-zumoz, which shipped the dated declared blindness instead.\n\nTHE GAP. javascript.yaml rows WebSocket.onmessage, WebSocket.onclose and EventSource.onmessage are method-kind net_recv rows that source reaches only by assignment (`ws.onmessage = handler`); the analyzer emits a call edge only for a call, so the rows never classify. Declared in analyzer_disclosure.CONSTRUCT_BLIND_ROWS[\"javascript\"] (2026-09-06) and disclosed on a clean verdict as `analyzer_construct_blind`. addEventListener on the same receiver DOES reach the catalogue since #753 (INV-misup).\n\nTHE FIX SHAPE, not designed here. In js_ts.py, an assignment_expression whose left is a member_expression on a receiver the INV-misup path can type (a `new`-constructed catalogued global) and whose property is one the catalogue rows emits an edge to `<Module>:0-0:<prop>:unresolved` stamped call_construct: assignment. The catalogue side already matches that construct -- WI-zumoz's 08-28 probe fed classify_call an \"assignment\" construct and all three rows matched. In the SAME change, remove the CONSTRUCT_BLIND_ROWS entry; two pins fail otherwise (test_js_ts_instance_method_calls.py::TestHandlerAssignmentEmitsNoEdge, test_construct_blind_disclosure.py::TestTheDeclarationMatchesTheAnalyzer).\n\nWHAT THE SOURCE MINTS, and the question to answer before the edge is worth emitting. net_recv is an auto-derived taint source; the peer-controlled value is the handler's PARAMETER (ev.data, ev.code), not a return value. Whether the taint engine credits a callback parameter from a registration edge decides whether this buys a FINDING or only a named site in the disclosure. If only the latter, say so on the item and stop.\n\nMEASURED THROUGH THE TAINT PATH (INV-linub, 2026-09-04): marginal precision on the new findings, awaits_bakeoff_validation on the PR. Not io-boundaries chain counts."  # c7ea
+    fields: {}  # c7ea
