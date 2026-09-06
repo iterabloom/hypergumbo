@@ -1,0 +1,35 @@
+Original commit body from 811e61072f8412a54825894ef7587ea067b2166c:
+
+The cadence hook fired at 75 commits (threshold 72) and the owner chose the
+taint LABEL as the suspect, the same morning the WI-dozul DNS ruling exposed
+one leak on it. Suspicion, written before looking: `untrusted_input` names
+two facts -- an outside party controls the value's BYTES, and an outside
+party merely CHOSE it from a constrained set -- and every claim, sink and
+precision number treats them as one.
+
+Confirmed, narrowly. The seven labels are derived, not listed
+(all_source_labels, INV-todas). 324 catalogue names mint `untrusted_input`;
+read one by one, 24 (7.4%) are choice-shaped: accept's peer address in seven
+languages, erlang's `inet` DNS answers, and the exit status collected by
+os.wait* / Child.wait. The minting map reads the label as ADR-0049 ruling 1's
+fact ("the far side had a say"); the generic claim text reads it as
+injection ("the command-injection question"). The property that separates
+them is derivable from nothing the row or the finding carries. Verdict:
+DOCUMENT now, PROPERTY later -- no label split (WI-vazal), no boundary split
+(WI-dozul); the per-row value_shape attribute is the source-side half of
+WI-gohok's open computed-into-vs-selects mechanism and is recorded there.
+
+Shipped here: the spec's "Built-in taint labels" paragraph now says the list
+is derived and states what the label asserts and does not; the playbook's
+running example list gains the audit; the audit is recorded
+(scripts/concept-audit-record taint-label, audits_run 15); CHANGELOG bullet.
+
+Filed, not chased: WI-lukoz (TaintSink.trust_level is a documented knob
+nothing reads -- cli.py:5985 promises it, zero attribute reads in src),
+WI-lanos (an exit status mints at os.wait* but not at call/check_call --
+INV-lozat's acknowledged disagreement, sequenced behind WI-dozul).
+
+Write-up: ~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md
+
+Racial-Capitalism-Is-Bad: a hyena djing in a yield-optimizing drone swarm in a fern-filled breakfast nook with a band of robots made of sour cream dollops
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
