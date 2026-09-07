@@ -1,0 +1,34 @@
+- op: create  # c820
+  at: '2026-09-07T10:53:41Z'  # c820
+  by: agent  # c820
+  actor: jgstern_agent  # c820
+  clock: 1  # c820
+  nonce: c820  # c820
+  data:  # c820
+    kind: invariant  # c820
+    title: "ADR-0017 taint walk advances along dispatches_to, a reachability edge: a sink inside a model method is paired with every function that merely mentions the class (33 of 33 class hops, 20 false findings on pretix)"  # c820
+    status: violated  # c820
+    priority: 2  # c820
+    parent:  # c820
+    tags:  # c820
+    - taint  # c820
+    - adr_0017  # c820
+    - analysis_quality  # c820
+    - io_boundary  # c820
+    isbefore: []  # c820
+    duplicate_of: []  # c820
+    not_duplicate_of: []  # c820
+    pr_ref:  # c820
+    description: "FOUND 2026-09-07 by measurement 0016 (WI-gamas, Phase 6 PR 4), whose subject arm placed a `db_write` sink inside Django model `save`/`delete` overrides for the first time and made this shape visible at scale. The defect is NOT in that change and predates it; what the change did was supply a sink in a position that the walk's edge selection reaches wrongly.\n\nTHE SHAPE, with the exact numbers (instruments: ~/hypergumbo_lab_notebook/mumov_instwrite_09072026/classhop_check.txt, RESULTS_ROUND1.md, and the two arms' ledgers):\n  class-node hops traversed by ALL flows in the round-1 subject arm   33\n  of those, on a class->method pair carrying `dispatches_to`          33  (100%)\n  class->method pairs carrying ONLY `contains` -- never traversed  16,010\n  situations where EVERY flow crosses a class node: baseline 0 of 122, subject 31 of 169\n\nTWO SITES READ AT SOURCE SHOW THE PAIRING IS WRONG, NOT MERELY UNPROVEN:\n  * pretix/base/payment.py:717 -- the `instantiates` edge is `InvoiceAddress()`, a NO-ARGUMENT constructor on the branch where the primary key is absent. The tainted value is not passed into it at all, yet the walk reports a flow from the read to `InvoiceAddress.save`.\n  * pretix/control/views/subevents.py:485 -- `SubEventItem(subevent=..., item=i)` DOES take the read value, but the sink the walk then reaches is `SubEventItem.delete`, a method this code never calls. The walk lands on an arbitrary ORM method of the class.\n\nCOST, measured: 20 of the 47 situations round 1 added were this shape, and 11 further situations that already existed had their representative re-keyed onto it. Every one is a false positive under measurement 0001's rubric. The consequence for the project was immediate and concrete: WI-gamas's `super().save()` rule is CORRECT at the site (61 sites read back with 0 wrong-type) and had to be WITHHELD from the shipped PR because its finding-level yield through this walk was 3 true against 20 false.\n\nWHAT IS NOT ESTABLISHED. (1) Whether the walk crosses OTHER non-value edges -- `contains` is exonerated on this corpus by the 16,010 untraversed pairs, but `extends`, `references` and `decorated_by` were not tested. (2) The volume outside pretix; this is one Django repository, chosen because it is the only one in the Phase 6 cohort. (3) Whether removing `dispatches_to` from the walk's edge set would lose any TRUE finding -- the 33 hops must be re-adjudicated after a fix, not assumed to be all false; the fix therefore needs its own before/after on the same two arms.\n\nTHE FIX SHAPE, not designed here: the walk's edge predicate (`_is_taint_call_edge` and whatever admits a node's successors) should admit only edge types that carry a value -- calls and dataflow -- and refuse reachability/containment types by NAME rather than by accident. Check the analogues before shipping (LIVE rule 4): every linker that emits a non-call edge between symbols is a candidate, and the axis registry already enumerates the edge types."  # c820
+    fields:  # c820
+      statement: "The ADR-0017 taint walk advances from a source to a sink only along edges that can CARRY A VALUE. A reachability or containment edge -- one that says a symbol is related to another without saying that a value passes between them -- is not such an edge, and a flow reported through one is a false positive by construction."  # c820
+      root_cause: "LOCALIZED AND MEASURED. The walk consumes the django-orm-dispatch linker's `dispatches_to` edge (class -> the model's ORM methods) as if it were a call carrying the source value. Combined with an `instantiates` edge into the same class node, that yields the path shape `function --instantiates--> Class --dispatches_to--> Class.<save|delete>`, which terminates at whatever ORM method the linker attached to the class -- including a method the function never calls. Measured on pretix (measurement 0016, round 1): 33 of 33 class-node hops traversed by the walk sat on a pair carrying `dispatches_to`, while the 16,010 `class -> method` pairs carrying only `contains` were never crossed, so `contains` is NOT implicated and `dispatches_to` is. WI-sozoj's own code documents `dispatches_to` as an \"orthogonal reachability concern\" belonging to the dispatch linker, which is exactly the claim the walk contradicts by reading it as dataflow."  # c820
+- op: update  # e180
+  at: '2026-09-07T10:53:49Z'  # e180
+  by: agent  # e180
+  actor: jgstern_agent  # e180
+  clock: 2  # e180
+  nonce: e180  # e180
+  set: {}  # e180
+  add:  # e180
+    isbefore: [WI-sihoh-buron-tupis-najul-vugol-zafaf-damog-hadop]  # e180
