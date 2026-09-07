@@ -736,8 +736,26 @@ def _kt_receiver_module(type_name: str, imports: dict[str, str]) -> str | None:
     is left alone rather than written in bare (a simple name in the slot
     asserts a module that does not exist), and no implicit-package guess is
     made here: kotlin auto-imports ``kotlin.*`` / ``kotlin.io.*`` /
-    ``java.lang.*``, and the catalogue's kotlin rows are all explicitly
-    imported JDK / kotlin.io types, so a closed list buys nothing yet.
+    ``java.lang.*``.
+
+    THE REASON RECORDED FOR THAT LAST CLAUSE WAS "the catalogue's kotlin rows
+    are all explicitly imported JDK / kotlin.io types, so a closed list buys
+    nothing yet". THAT PREMISE IS FALSE, measured 2026-09-07 by counting the
+    catalogue: 22 of 186 kotlin rows (11.8%) live on an auto-imported module,
+    including the ``env_read`` sources (``System.getProperty`` / ``getenv`` /
+    ``getProperties``) and the ``subprocess`` sinks (``Runtime.exec``,
+    ``ProcessBuilder.start`` / ``command``). Confirmed on emission through the
+    production analyzer: ``System.getenv(...)`` in a kotlin file emits
+    ``kotlin:external:0-0:getenv:unresolved`` and classifies as NOTHING, with
+    ``println`` classifying in the same run as a control. scala is worse at
+    57 of 184 rows (31.0%).
+
+    A closed list therefore buys 22 rows, not nothing -- but it is NOT the same
+    fix java took (INV-suril), and the difference is why this is filed rather
+    than patched here: java keeps the receiver in the name (``System.getenv``)
+    and needed only the module slot, whereas kotlin DROPS the receiver and
+    emits the bare method, so the receiver identity is gone from the edge
+    before any slot could be written. Tracked as its own item.
     """
     if type_name in imports:
         return imports[type_name]
