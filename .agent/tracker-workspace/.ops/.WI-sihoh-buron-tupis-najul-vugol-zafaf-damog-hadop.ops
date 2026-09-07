@@ -1,0 +1,24 @@
+- op: create  # 8845
+  at: '2026-09-07T10:53:45Z'  # 8845
+  by: agent  # 8845
+  actor: jgstern_agent  # 8845
+  clock: 1  # 8845
+  nonce: '8845'  # 8845
+  data:  # 8845
+    kind: work_item  # 8845
+    title: "Django: type super().save()/super().delete() inside a model override (the write chokepoint, 61 pretix sites, correct at the site) -- BUILT AND MEASURED, withheld behind the dispatches_to walk defect"  # 8845
+    status: todo_hard  # 8845
+    priority: 3  # 8845
+    parent:  # 8845
+    tags:  # 8845
+    - taint  # 8845
+    - python  # 8845
+    - analyzer  # 8845
+    - receiver_typing  # 8845
+    - phase6  # 8845
+    isbefore: []  # 8845
+    duplicate_of: []  # 8845
+    not_duplicate_of: []  # 8845
+    pr_ref:  # 8845
+    description: "Residual of WI-gamas (Phase 6 PR 4), BUILT AND MEASURED BEFORE BEING WITHHELD -- this item is not a proposal, it is a finished rule waiting on a blocker. Full record: measurement 0016 and ~/hypergumbo_lab_notebook/mumov_instwrite_09072026/RESULTS_ROUND1.md.\n\nWHY IT IS WORTH HAVING. On a real Django project the ORM instance write is usually NOT at `x.save()`. Measured on pretix (write_scan.py): of the 306 `save`/`delete` sites whose receiver resolves to a model, 215 (70%) call a `save` the project OVERRIDES -- so that call correctly resolves to the project's own method and is not an I/O primitive at all -- and 56 of pretix's 66 `save` overrides and 20 of its 49 `delete` overrides then call `super().<m>()`. That `super()` call is the CHOKEPOINT every upstream write funnels through, and it emitted the bare `external` placeholder.\n\nTHE RULE, as built and tested: `super().save()` / `super().delete()` lexically inside a class in `DjangoRelationIndex.model_ids` carries `django.db.models`, REFUSED when a project base in the lineage defines that method (there the call reaches that base's own override, whose own `super()` call carries the write, so one logical write is counted once -- 2 of pretix's 63 sites, `OrderPosition` and `CartPosition` over `AbstractPosition`). The two-argument `super(Cls, self)` form is refused deliberately: it names the class the MRO starts AFTER, which need not be the lexically enclosing one, so the base-override test would be asked of the wrong class. Implementation shape (all of it was written, reviewed and reverted in one commit): `_is_super_call`, `_DjangoReceiverOracle.super_write_owner`, `DjangoRelationIndex.defines_in_bases` + a `class_methods` map, one emission branch in `_process_call`, and a `super()` arm in `instance_class` so the manager path and the write path answer `super()` the same way.\n\nTHE CAPABILITY IS CORRECT. Measurement 0016's RC3 read every `django.db.models` save/delete marker edge in the whole pretix production survey back against source through an INDEPENDENT bare-name scan: 61 `super()` sites typed, 0 wrong-type, 0 violations.\n\nWHY IT IS WITHHELD, and the exact trade. Typing it puts a taint SINK inside a model method, and the ADR-0017 walk reaches any such method from any function that merely mentions the class by crossing the django-orm-dispatch linker's `dispatches_to` edge (filed separately as the blocking invariant). Measured on pretix:\n    the lineage + typed-receiver rules alone     24 new situations   16 TP /  8 FP  = 66.7% correct\n    plus this rule                               47 new situations   19 TP / 28 FP  = 40.4% correct\nThree true findings for twenty false ones. Shipping it today would publish 20 false findings to buy 3 true ones, so it does not ship.\n\nRE-OPEN TRIGGER, written now so this is a deferral and not a drop: when the walk stops advancing along `dispatches_to`, restore the rule from the WI-gamas branch history and RE-MEASURE it on the same two arms (pretix subject, kserve control) -- do NOT quote the 3-against-20 figure as its precision, because that number was taken THROUGH the defect and says nothing about what the rule buys on a fixed walk."  # 8845
+    fields: {}  # 8845
