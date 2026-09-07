@@ -1,0 +1,21 @@
+Original commit body from 0331b0bf3ac0538cf758081f7c28697b42b508fc:
+
+Two arms, baseline asserted (root rule 0 / Django rows 0, restored 1 / 21),
+isolated caches. kserve, the control: 63 -> 63, nothing moved, nothing lost.
+pretix: 99 -> 139 situations, 40 new, 0 gone, 31 with a moved representative
+(the 29 "removed" rows were re-keys of surviving situations -- the collapse
+representative is not an identity).
+
+The 40 new situations, read at the cited lines: 28 are a lazy QuerySet
+combinator written back (`filter(...).delete()`) -- TRUE by the 0001 rubric,
+VACUOUS: KIND-MISDECLARED under ADR-0046, because the source reads nothing;
+that is ADR-0049's deferred row, kept by WI-lunav until an executing read was
+represented on the chain, which this change now does, so its removal is
+licensed under ruling 3 and filed next. 7 are real: a row re-read under
+select_for_update and written into a new one. 5 are false: the value does
+not travel. 87.5% correct, 17.5% useful on the delta; 58.3% useful once the
+lazy rows are fixed. INV-karud's pretix repro re-ran on the subject arm and
+passed.
+
+Racial-Capitalism-Is-Bad: a pumpkin spice salamander building a hot spring terrace shaped like skyscraper made of braided challah in a museum
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
