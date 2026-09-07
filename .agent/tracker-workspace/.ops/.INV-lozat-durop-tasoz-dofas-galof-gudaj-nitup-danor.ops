@@ -45,3 +45,10 @@
   clock: 4  # f2c5
   nonce: f2c5  # f2c5
   message: "CLOSED BY PR #669, dev 95cc1521b4. Behavioural evidence, not a proxy: the item's own repro re-run through the production CLI on a fresh cache goes confirmed_with_caveats -> violated with [origins: 3 ipc_recv], and the fail-closed control {boundary: subprocess, must_not_exist: true} reports 3 chains in BOTH arms. Artifacts: ~/hypergumbo_lab_notebook/lozat_subprocess_return_08312026/ (README first -- it names the three findings that are still false and why)."  # f2c5
+- op: discuss  # 8b72
+  at: '2026-09-06T20:20:41Z'  # 8b72
+  by: agent  # 8b72
+  actor: jgstern_agent  # 8b72
+  clock: 5  # 8b72
+  nonce: 8b72  # 8b72
+  message: "2026-09-06, taint-label concept audit (~/hypergumbo_lab_notebook/\nconcept-audit-taint-label_09062026.md, Pair 2): the disagreement this thread\nrecorded -- os.wait* / Child.wait(try_wait) minting untrusted_input on an exit\nstatus while call / check_call / system / Run / Command::status mint nothing --\nnow has an item, filed as the WI named in the reply below, sequenced behind\nWI-dozul (T2 of the arc tail) because the rule that decides it (is a far-side\nCHOICE a transfer?) is the rule WI-dozul was ruled on today and its cost is\nmeasured the same way. No row moves here.\n\nThe item: WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip."  # 8b72
