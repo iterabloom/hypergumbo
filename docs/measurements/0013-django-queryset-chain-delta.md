@@ -7,6 +7,23 @@
 **Claims:** [`docs/example-claims/generic-taint-claims.yaml`](../example-claims/generic-taint-claims.yaml)
 **Tracker:** `INV-mumov` (the change under test, Phase 6 PR 1 of the INV-linub class), the 2026-09-06 derivability census on that item, `WI-lunav` (the lazy-combinator rows this measurement makes fixable)
 
+## Frame
+
+Machine-readable per ADR-0048 §A3. **This record is a marginal delta, not a
+population measurement, and does not enter the 0006 series** (0003's shape,
+under the gate that 0003 predates): the population is every situation one
+change ADDED or REMOVED on one repository, adjudicated in full, so F2's
+allocation and F3's seed have nothing to govern and the keys say so.
+
+- unit: the SITUATION (claim, source function — INV-karud's collapse record), with the row count beside it (74 added / 29 removed rows = 40 new / 0 gone situations, 31 with a moved representative)
+- allocation: CENSUS of the delta, NOT an M x R draw — all 40 new situations on the subject repository read at source; one subject (pretix, the Phase 6 cohort's only Django repository) and one control (kserve, expected and observed 0 moved)
+- seed: no draw was made, so none was seeded — the population is every situation the change touched
+- cohort: pretix (subject) and kserve (control), the two python repositories the 2026-09-06 derivability census on INV-mumov ran on; qualification rule = the census that chose the slice, not a random draw
+- claim_set: `docs/example-claims/generic-taint-claims.yaml`, the seven generic claims, verbatim; every one of the 40 new situations is on `untrusted-input-no-database`
+- rubric: measurement 0001's, verbatim (F6), including its tie-break ("taint flows through in-program computation, not through an external resource selected by the tainted value"), plus ADR-0046's two VACUOUS classes for the usefulness label (CONFIGURED-ACTION, KIND-MISDECLARED)
+- analyzer_sha: subject ddb9a02404 (the implementation commit; arm B ran on the working tree whose runtime files that commit captured unchanged); baseline = the three runtime files checked out at the merge base 4f555a6fa9, ASSERTED in `armA.log` before the run (root rule 0, Django signature rows 0) and after the restore (1, 21)
+- language_scope: python is the only language the change can affect and the only language in scope for the claim; the two repositories' other languages ran and are reported unmoved, not measured-at-zero — kserve's 63 situations span its go/python content and none moved
+
 ## The question
 
 INV-mumov's Phase 6 PR 1 lets the RESULT of `<Model>.objects.<queryset-method>()`
