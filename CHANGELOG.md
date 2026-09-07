@@ -100,6 +100,20 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
 
 ### Fixed
 - **A transcript watcher can no longer outlive the session that launched it, and a killed watcher no longer orphans its `inotifywait`.** After a session crash two orphans were found holding per-user inotify instances: a 50-hour `inotifywait -e close_write` reparented to PID 1 after its bash took an untrapped SIGTERM, and a 26-hour watcher looping in Phase 1 for a transcript that never appeared, because the crashed session never ran its session-end hook. Every watch now carries `-t` (`TRANSCRIPT_WATCH_TIMEOUT`, default 60 s) so a child orphaned by any parent death returns instead of waiting forever; the watch runs under `wait` with TERM/INT/HUP trapped so the handler reaps the child before exiting; and `launch-transcript-sync.sh` names the owning harness process in `TRANSCRIPT_OWNER_PID` (from `CLAUDE_PID`, else the first non-shell ancestor), which both phases check on every iteration by PID and by `/proc` start time. `kill-transcript-sync.sh` signals a watcher's children before the watcher, which also cleans up pre-fix watchers. Nine lifecycle tests pin each mechanism.
+- **java: `java.lang` statics reach their catalogue rows without a wildcard import**
+  (INV-suril). JLS 7.3 imports `java.lang.*` into every compilation unit, but the
+  capitalised-static-receiver branch was gated on the file carrying a wildcard, so a
+  file with only single-type imports left the module slot `external` — which in turn
+  blocked `strip_redundant_module_qualifier`, so the callee also kept its `System.`
+  prefix and the catalogue key was unreachable from both directions at once. 15 of 142
+  java rows (10.6%) live in `java.lang`, including the `env_read` sources and the
+  `subprocess` sinks. Measured (0017): cassandra loses **459 edges** to this against
+  **446** that classify in the whole repository; the fix adds 21 situations across three
+  java repositories and loses none, retires **8 blindness caveats** on jenkins, and its
+  9.5% adjudicated precision is a disclosed FLOOR because java still has no def/use
+  extractor (WI-gotun). The same shape in kotlin (22 of 186 rows) and scala (57 of 184)
+  is enumerated and filed, and kotlin.py's docstring claim that a closed implicit-package
+  list "buys nothing yet" is corrected in place.
 - **An `#import` / `@import` / Solidity `import` edge's dst is a canonical id, so the lang slot no longer carries a header path (INV-dulah, lang-slot limb).** Three analyzers -- objc, css, solidity -- emitted the import edge's dst as the BARE import path, and a bare path is not an id: finalize's 4-part fallback rendered it with the path in the lang slot and `<unknown>` in the path slot (`Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol`), which the validator flagged as `non_canonical_language_prefix` -- the entire id_format residual on Mantle (44 of 44). objc now emits cpp's include shape (`objc:<header>:0-0:header:header`), css and solidity the js/ts import shape (`<lang>:<path>:0-0:module:module`); pinned per analyzer and through the production pipeline (`run_survey` + validator). Measured on Mantle (whole_bunch_of_repos/Mantle, cold cache, before/after arms in dulah_objc_09062026/): id_format 44 -> 0, `<unknown>`-slot nodes 44 -> 0, 44 canonical `objc:<header>:0-0:header:external_symbol` boundary nodes in their place, 156 objc import edges and the 587-node / 858-edge totals unchanged. The pipeline gate drives objc and solidity; css is fixed and pinned at the analyzer only, because its import edges never reach the survey and its symbol ids are hash-shaped (3 slots) -- a separate css limb, filed.
 
 #### Call edges the analyzers never emitted
