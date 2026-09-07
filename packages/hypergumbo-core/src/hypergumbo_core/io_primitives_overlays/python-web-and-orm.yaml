@@ -130,3 +130,11 @@ db_write:
     methods: [create, bulk_create, update, bulk_update, delete,
               get_or_create, update_or_create, save]
     notes: "Django ORM Manager/instance write surface (type-verified receiver)"
+  - module: django.db.models
+    methods: [add, remove, clear, set]
+    notes: >-
+      WI-gulaz: the RelatedManager's own write surface -- ``order.items.add(item)``
+      / ``.remove(item)`` / ``.clear()`` / ``.set([...])`` on a reverse-FK or
+      many-to-many manager, each a row write the far side keeps. Reached only
+      through the python analyzer's relation index (a manager root it owns);
+      ``.objects`` has no ``add``, and the producer does not emit one for it.

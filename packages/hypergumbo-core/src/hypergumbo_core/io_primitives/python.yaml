@@ -105,6 +105,12 @@ ambiguous_names:
   - remove        # os.remove vs list.remove, set.remove
   - update        # django.db.models.update vs dict.update, set.update
   - values        # django.db.models.values vs dict.values
+  # WI-gulaz (2026-09-07): the RelatedManager write rows the python-web-and-orm
+  # overlay added. Flagged by the same mechanical test the day they landed.
+  # Both are reached only through the analyzer's relation index, which puts
+  # the django.db.models hint on the edge, so the bare forms stay refused.
+  - add           # django.db.models.add (RelatedManager) vs set.add
+  - set           # django.db.models.set (RelatedManager) vs builtins.set()
   # 2026-08-15 stdlib climb. Two populations, one lesson. The first six were
   # flagged mechanically by test_ambiguous_names_completeness (dict-method
   # collisions on the new os.environ rows). The rest were flagged by a LIVE
