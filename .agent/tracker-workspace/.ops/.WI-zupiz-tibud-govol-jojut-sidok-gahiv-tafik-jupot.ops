@@ -1,0 +1,22 @@
+- op: create  # f44f
+  at: '2026-09-07T05:23:32Z'  # f44f
+  by: agent  # f44f
+  actor: jgstern_agent  # f44f
+  clock: 1  # f44f
+  nonce: f44f  # f44f
+  data:  # f44f
+    kind: work_item  # f44f
+    title: "DjangoRelationIndex registration gaps: OneToOneField reverse accessor as an instance (3 pretix sites) and the default <concrete>_set accessor of an FK declared on an abstract base (27 sites)"  # f44f
+    status: todo_hard  # f44f
+    priority: 3  # f44f
+    parent:  # f44f
+    tags:  # f44f
+    - python  # f44f
+    - analyzer  # f44f
+    - receiver_typing  # f44f
+    isbefore: []  # f44f
+    duplicate_of: []  # f44f
+    not_duplicate_of: []  # f44f
+    pr_ref:  # f44f
+    description: "Filed 2026-09-07 from WI-gulaz, which registers no reverse accessor for a `OneToOneField`: the reverse side (`Event.twin = OneToOneField(\"self\", related_name=\"twin_of\")` -> `event.twin_of`) is a MODEL INSTANCE, not a manager, so it is neither a manager root nor (today) a typed instance. Pinned by `test_a_one_to_one_reverse_accessor_is_an_instance_not_a_manager`. pretix declares 17 OneToOneFields; the scan found 3 call sites on an O2O reverse accessor.\n\nWHAT TO BUILD. Register the O2O reverse accessor beside the forward field in `relation_fields` (target class -> accessor -> declaring class) so `event.twin_of.<accessor>` types through the same forward-hop rule. Small; do it with the FK-forward-into-Site-3 item so the field map carries both directions in one change.\n\nSECOND REGISTRATION GAP, found by measurement 0015's refutation check: Django names the DEFAULT accessor of an FK declared on an ABSTRACT base after each CONCRETE subclass (`AbstractPosition.subevent = ForeignKey(SubEvent)` -> `SubEvent.orderposition_set` AND `SubEvent.cartposition_set`), while the index names it `abstractposition_set` after the declaring class -- so `self.orderposition_set.exists()` in `SubEvent.allow_delete` (event.py:1714) is not typed. 27 pretix sites use `orderposition_set` / `cartposition_set` outside migrations. Precision-safe (nothing wrong is typed). Fix: when the declaring class is abstract (a `class Meta: abstract = True` body, or a class only ever used as a base), register the default accessor once per concrete project subclass found through `project_bases`; a `related_name` given on the abstract base keeps its `%(class)s` refusal."  # f44f
+    fields: {}  # f44f
