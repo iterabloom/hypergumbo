@@ -1,0 +1,23 @@
+- op: create  # dbfd
+  at: '2026-09-07T11:37:25Z'  # dbfd
+  by: agent  # dbfd
+  actor: jgstern_agent  # dbfd
+  clock: 1  # dbfd
+  nonce: dbfd  # dbfd
+  data:  # dbfd
+    kind: work_item  # dbfd
+    title: "javascript: a call to an UNRESOLVED BARE NAME emits no edge of any type (join(p) / readFileSync(p)), so it reaches no catalogue row and leaves the ADR-0017 walk an escape site"  # dbfd
+    status: todo_hard  # dbfd
+    priority: 3  # dbfd
+    parent:  # dbfd
+    tags:  # dbfd
+    - taint  # dbfd
+    - javascript  # dbfd
+    - analyzer  # dbfd
+    - adr_0017  # dbfd
+    isbefore: []  # dbfd
+    duplicate_of: []  # dbfd
+    not_duplicate_of: []  # dbfd
+    pr_ref:  # dbfd
+    description: "FOUND 2026-09-07 while re-verifying INV-gijis at tip (dev c7e0d943b9). Instrument: ~/hypergumbo_lab_notebook/gijis_recheck_09072026/ (fx/d.js, probe.py).\n\nTHE GAP, measured through production analyze_javascript. A call to a bare name that is NOT defined in the file emits NO EDGE OF ANY TYPE:\n    function bareUnresolvedNames(p) {\n      const a = join(p, 'x');       // -> no edge\n      const b = readFileSync(p);    // -> no edge\n      const c = normalize(p);       // -> no edge\n    }\nZero edges from that function, of any edge_type. The CONTROL in the same run: `helper(p)` where `helper` IS defined in the file resolves to a first-party edge, and `fs.readFileSync(p)` / `console.log(x)` / `obj.writeThing(p)` all emit. So this is a per-shape decline, not a broken fixture.\n\nWHY IT MATTERS, in the two directions this project has already paid for once. (1) RECALL: an imported-then-destructured primitive is ordinary JS (`const {readFile} = require('fs/promises'); readFile(p)`), and this shape reaches no catalogue row because there is no edge to classify -- the same false-negative INV-mumov filed for python attribute chains, which #231 closed by emitting the `external` placeholder. (2) THE ADR-0017 WALK: a call with no edge has no `callees_at` entry, so the section-3a walk cannot ask whether the callee consumes the value and records an ESCAPE instead -- INV-busis's measured mechanism, where 50.0% of call-node escape sites had no edge.\n\nNOT MEASURED, and this is why the item is filed rather than fixed: the SIZE of the population on real repositories. INV-gijis's own numbers (4,872 JS/TS call edges across 3 repos) count edges that EXIST, so they cannot size a shape that emits none; a census must count call EXPRESSIONS in the AST and subtract the emitted ones. Do that before sizing the fix.\n\nTHE DIRECTION WARNING, inherited from #231's write-up and applicable verbatim: emitting the placeholder gives `callees_at` entries, which lets `_use_site_terminates` start returning True at those sites, which produces MORE False verdicts from the walk, and since PR #214 a False earns `sanitized` and a sanitized flow is DROPPED. So this fix can SUPPRESS as well as add. Measure on findings, both signs, per the 0003 method.\n\nRELATED, NOT DUPLICATE: INV-gijis is about the call_construct FIELD on edges that exist; WI-nasuf (closed) was about instance-method receivers, which now DO emit. This is the bare-name shape neither covers."  # dbfd
+    fields: {}  # dbfd
