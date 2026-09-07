@@ -1,0 +1,23 @@
+- op: create  # 118d
+  at: '2026-09-07T05:23:27Z'  # 118d
+  by: agent  # 118d
+  actor: jgstern_agent  # 118d
+  clock: 1  # 118d
+  nonce: 118d  # 118d
+  data:  # 118d
+    kind: work_item  # 118d
+    title: "Forward ForeignKey/OneToOne fields feed the Site-3 project field map (self.order.mark_paid resolves; 131 pretix sites) -- one home with DjangoRelationIndex.relation_fields"  # 118d
+    status: todo_hard  # 118d
+    priority: 3  # 118d
+    parent:  # 118d
+    tags:  # 118d
+    - python  # 118d
+    - analyzer  # 118d
+    - receiver_typing  # 118d
+    - call_graph  # 118d
+    isbefore: []  # 118d
+    duplicate_of: []  # 118d
+    not_duplicate_of: []  # 118d
+    pr_ref:  # 118d
+    description: "Filed 2026-09-07 from WI-gulaz. That PR reads a Django model's forward `ForeignKey` / `OneToOneField` class-body fields into `DjangoRelationIndex.relation_fields` (`Payment.order -> Order`) and consults them ONLY through the manager oracle (`self.order.payments`, `payment.order.event.items`). The same fact belongs in the project class field map (`class_field_types[C][field] -> Symbol`) that WI-hiziz Site 3 resolves `self.<field>.<method>()` against -- `self.order.mark_paid()` would then resolve to `Order.mark_paid`, a call-graph edge that today is an unresolved external `mark_paid`. Kept out of WI-gulaz so that PR's measurement priced one mechanism (manager typing) and not two (manager typing + a call-graph resolution change with its own precision profile).\n\nThe 2026-09-06 derivability census sized this as S4 \"Django relation field -> model\": 131 pretix sites, payoff cell \"project class -> no module (precision)\".\n\nWHAT TO BUILD. Feed `relation_fields` into `_collect_class_field_maps`'s output for model classes (the by-class-id maps in `analyze_python`'s pre-pass), gated by the same WI-supat trust rules the constructor-typed fields use. Measure the call-graph delta (resolved edges added, and whether any resolves to the wrong same-short-name class) and the taint delta separately.\n\nONE FACT, ONE HOME: when this lands, `relation_fields` should be read FROM the field map rather than kept as a second map, or the two will drift."  # 118d
+    fields: {}  # 118d
