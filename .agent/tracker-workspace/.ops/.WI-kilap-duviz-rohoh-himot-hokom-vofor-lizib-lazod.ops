@@ -1,0 +1,24 @@
+- op: create  # d321
+  at: '2026-09-07T22:51:12Z'  # d321
+  by: agent  # d321
+  actor: jgstern_agent  # d321
+  clock: 1  # d321
+  nonce: d321  # d321
+  data:  # d321
+    kind: work_item  # d321
+    title: "kotlin and scala never resolve a static receiver through their implicitly-imported packages, so 22 of 186 kotlin rows and 57 of 184 scala rows are unreachable -- INV-suril's shape, with the receiver DROPPED rather than kept"  # d321
+    status: todo_hard  # d321
+    priority: 2  # d321
+    parent:  # d321
+    tags:  # d321
+    - taint  # d321
+    - catalogue  # d321
+    - io_boundary  # d321
+    - kotlin  # d321
+    - scala  # d321
+    isbefore: []  # d321
+    duplicate_of: []  # d321
+    not_duplicate_of: []  # d321
+    pr_ref:  # d321
+    description: "Found 2026-09-07 while fixing INV-suril's java half; filed rather than chased\n(the java fix is one PR and this is two more analyzers). INV-linub's class in\nkotlin and scala: a catalogued call site that cannot reach its row because the\nmodule slot is a placeholder.\n\nTHE MECHANISM, identical in kind to INV-suril's java half. Each of these\nlanguages imports some packages into every compilation unit without the source\nwriting anything: java.lang under JLS 7.3 (which kotlin and scala BOTH inherit\non the JVM), plus kotlin.* / kotlin.io.* for kotlin and scala.Predef._ / scala._\nfor scala. Neither analyzer resolves a static receiver through those implicit\npackages, so the call carries `external` and never reaches its row.\n\nMEASURED ON THE CATALOGUE (rows that live on an auto-imported module):\n    kotlin   22 of 186 rows (11.8%)\n    scala    57 of 184 rows (31.0%)   -- scala's catalogue merges java's parent\nBoth include env_read (System.getProperty / getenv / getProperties) and\nsubprocess (Runtime.exec, ProcessBuilder.start / command), so the loss is on\nthe taint SOURCE and SINK sides, not only in the io-boundary map.\n\nMEASURED ON EMISSION (fixture through the production analyzer + classify_call,\n~/hypergumbo_lab_notebook/suril_09072026/fxkt, fxsc):\n    kotlin:external:0-0:getenv:unresolved            cc=method  -> NONE\n    kotlin:external:0-0:currentTimeMillis:unresolved cc=method  -> NONE\n    kotlin:external:0-0:exec:unresolved              cc=method  -> NONE\n    scala:external:0-0:getenv:unresolved             cc=method  -> NONE\n    scala:external:0-0:currentTimeMillis:unresolved  cc=method  -> NONE\n    scala:external:0-0:exec:unresolved               cc=method  -> NONE\nPOSITIVE CONTROL in the same run: kotlin's `println` classifies (logging), so\nthe instrument sees what is there.\n\nNOTE THE SHAPE DIFFERS FROM JAVA'S and the fix must not be copied blindly. java\nkeeps the receiver in the name (`System.getenv`); kotlin and scala DROP it and\nemit the bare method (`getenv`). So java needed only a module slot -- the\nexisting `strip_redundant_module_qualifier` then did the rest -- whereas here\nthe receiver identity is GONE from the edge entirely and has to be recovered\nbefore a slot can be written.\n\nA DATED DECLARATION IN SHIPPED CODE IS NOW FALSE, and that is the reason this\nis P2 rather than P3. `kotlin.py` (~line 737) records: \"no implicit-package\nguess is made here: kotlin auto-imports kotlin.* / kotlin.io.* / java.lang.*,\nand the catalogue's kotlin rows are all explicitly imported JDK / kotlin.io\ntypes, so a closed list buys nothing yet.\" The premise is refuted by the 22-row\ncount above; the comment is corrected in INV-suril's PR (a comment-only edit,\nso the correction ships with the finding rather than waiting on the fix).\n\nMEASURE BOTH DIRECTIONS BEFORE LANDING, as INV-suril did: a closed implicit-\npackage list ADDS matches, and the FP risk is a project class of the same name.\njava's answer was that `class_resolver` claims such a name first, verified on\ntwo fixtures; kotlin and scala need their own check, not java's."  # d321
+    fields: {}  # d321

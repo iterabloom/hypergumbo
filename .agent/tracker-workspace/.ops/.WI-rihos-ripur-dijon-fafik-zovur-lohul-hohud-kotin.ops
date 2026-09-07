@@ -1,0 +1,22 @@
+- op: create  # 30a7
+  at: '2026-09-07T22:51:16Z'  # 30a7
+  by: agent  # 30a7
+  actor: jgstern_agent  # 30a7
+  clock: 1  # 30a7
+  nonce: 30a7  # 30a7
+  data:  # 30a7
+    kind: work_item  # 30a7
+    title: "a CLOCK read is catalogued host_info_read and mints host_description: currentTimeMillis/nanoTime are 408 of cassandra's 459 recovered java.lang edges and 5 of jenkins' 20 new situations, all false positives"  # 30a7
+    status: todo_hard  # 30a7
+    priority: 3  # 30a7
+    parent:  # 30a7
+    tags:  # 30a7
+    - taint  # 30a7
+    - catalogue  # 30a7
+    - analysis_quality  # 30a7
+    isbefore: []  # 30a7
+    duplicate_of: []  # 30a7
+    not_duplicate_of: []  # 30a7
+    pr_ref:  # 30a7
+    description: "Found 2026-09-07 by measurement 0017's adjudication (INV-suril's java.lang fix).\nFiled, not chased: changing a catalogue boundary inside a recall PR would\nlaunder a catalogue judgement through a fix.\n\nTHE ROWS. `java.lang.System.currentTimeMillis` and `java.lang.System.nanoTime`\nare catalogued `host_info_read`, which auto-derives the `host_description` taint\nlabel (INV-tutar separated host_description from host_secret precisely so an\nambient read that CANNOT carry a credential is labelled apart from one that\ncan). `java.lang.Runtime.freeMemory` / `maxMemory` / `totalMemory` /\n`availableProcessors` are the same boundary and the same question.\n\nTHE QUESTION. A CLOCK is not a host DESCRIPTION. `host_info_read`'s own\ndefinition in the generic-claims file is \"a host DESCRIPTION or identity read --\nruntime.GOOS, os.uname, navigator.platform, pwd.getpwnam\". A monotonic counter\nidentifies nothing about the host; two machines return indistinguishable values,\nand the value carries no fact a reader would want a claim about. Whether it\nshould mint a taint source AT ALL is the open part.\n\nWHY IT IS NOT COSMETIC -- MEASURED, not asserted (0017):\n  jenkins    5 of the 20 new situations are clock-to-network pairings\n             (`currentTimeMillis` -> HttpURLConnection.connect / URL.\n             openConnection / HttpClient.send / Socket.getOutputStream), and\n             all five are FALSE POSITIVES on read-back.\n  cassandra  currentTimeMillis x285 + nanoTime x123 = 408 of the 459 edges the\n             java.lang fix recovers there, i.e. the clock reads DOMINATE that\n             repository's new findings 8:1 over the env_read ones.\nSo a taint run on a java-heavy repository is now mostly reporting flows that\nbegin at a clock.\n\nTHIS IS INV-nular'S FAMILY -- a primitive's semantics asserted by name rather\nthan checked -- and it must NOT be folded into WI-gohok's configured-action\nexclusion. WI-gohok's owner ruling (2026-08-27) is explicit that vacuity which\nis a BUG gets FIXED rather than excluded, and cites exactly this shape (the\nshellcheck Haskell IORef class) as the thing not to launder.\n\nNOT DECIDED HERE, and both directions have a cost: dropping the rows loses a\nreal signal on repos where a timestamp genuinely reaches a sink argument\n(a filename, a cache key); keeping them keeps the 8:1 noise. A third option --\ngive the clock reads their own boundary, distinct from both host_info_read and\nhost_secret -- is a new axis value and goes through ADR-0024's scaffolding.\nCheck the analogues before deciding (LIVE rule 4): python `time.time` /\n`time.monotonic`, go `time.Now`, rust `Instant::now`, js `Date.now` /\n`performance.now` -- whatever is decided must be decided for all of them, and\n`java.time.LocalDate.now` is ALREADY catalogued and already produced a\nstructural false positive in 0017's BASELINE arm (jenkins B6)."  # 30a7
+    fields: {}  # 30a7
