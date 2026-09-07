@@ -1,0 +1,24 @@
+- op: create  # b962
+  at: '2026-09-07T02:32:16Z'  # b962
+  by: agent  # b962
+  actor: jgstern_agent  # b962
+  clock: 1  # b962
+  nonce: b962  # b962
+  data:  # b962
+    kind: work_item  # b962
+    title: "Django reverse-relation managers and custom manager names carry django.db.models (INV-mumov candidate 2): a project-wide related_name index types <instance>.<related_name>, and a class-level Manager attribute types <Model>.<manager> like .objects"  # b962
+    status: todo_hard  # b962
+    priority: 2  # b962
+    parent:  # b962
+    tags:  # b962
+    - taint  # b962
+    - python  # b962
+    - analyzer  # b962
+    - receiver_typing  # b962
+    - phase6  # b962
+    isbefore: []  # b962
+    duplicate_of: []  # b962
+    not_duplicate_of: []  # b962
+    pr_ref:  # b962
+    description: "INV-mumov's candidate 2, filed as its own item on 2026-09-07 after WI-fasap\n(Phase 6 PR 2) so `tracker ready` carries the arc's next step.\n\nTHE POPULATION. The 2026-09-06 derivability census on INV-mumov sized the\nREVERSE-RELATION MANAGER at 1,901 pretix sites: `self.order.payments.create(...)`,\n`gc.transactions.create(...)`, `event.seats.select_related(...)`,\n`o.positions.annotate(...)`, `self.scheduledmail_set.prefetch_related(...)`.\nNone is typed today -- the receiver is `<instance>.<related_name>`, not the\n`.objects` marker -- so the writes they perform are invisible (two of\nmeasurement 0013's five false positives had their REAL write there) and the\nreads they perform are invisible too (measurement 0014's read-back: the\niteration `for s in event.seats.select_related(...)` in generate_seats, the\n`Exists()` subqueries over `o.positions` in sendmail, all untyped).\n\nA SECOND, SMALLER GAP SURFACED BY THE SAME READ-BACK: custom manager NAMES.\npretix's soft-delete pattern is `Checkin.all.filter(...)`,\n`OrderPosition.all.filter(...)`, `OrderFee.all.filter(...)` -- a Manager\nattribute not called `objects`. The WI-sozoj marker keys on the literal\n`.objects`, so `qs = Checkin.all.filter(...); for ci in qs:` emits neither the\ncombinator nor the `__iter__` evaluation (control/views/checkin.py:614).\n\nWHAT TO BUILD. A project-wide index of `related_name` declarations\n(ForeignKey / ManyToManyField / OneToOneField kwargs, plus Django's default\n`<model>_set`) so that `<x>.<related_name>` on a receiver typed as a Model\ninstance -- or on `self` inside a models.Model subclass -- carries\n`django.db.models` as a RelatedManager; and a recognition of class-level\nManager attributes (`all = SoftDeleteManager()`, `objects = ...`) so a\n`<Model>.<manager>` root is typed like `.objects`. Both are producer changes\nin py.py under the WI-sozoj admission criteria (a real distinctive namespace,\na type-verified receiver, a closed method set); the io classification stays\nin the overlay.\n\nMEASUREMENT. A recall PR: 0003-method delta on pretix against measurement\n0014's subject ledger, every added situation read at source under 0001 /\nADR-0046; awaits_bakeoff_validation. Refutation condition to pre-register: an\nattribute named like a related_name on a NON-model receiver must not be typed\n(the census's `<x>.objects` false-owner note applies here twice over)."  # b962
+    fields: {}  # b962
