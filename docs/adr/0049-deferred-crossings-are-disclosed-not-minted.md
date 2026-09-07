@@ -254,6 +254,42 @@ the repository's own suite: four `test_taint_recall_corpus.py` fixtures used
 launch rows as their untrusted-input source and were re-pointed at genuine
 transfers, with every assertion holding unchanged.
 
+**The database family has its twin, and ruling 3 was applied with both halves
+in one change (WI-fasap, 2026-09-07).** `db_compose` is the second
+`deferred_crossing` value: catalogue-declarable, absent from
+`AUTO_SOURCE_LABEL_MAP`, disclosed in its own `db_compose_edges` count outside
+the headline (`IO_BOUNDARIES_SCHEMA_VERSION` 2.3), and shadowing `db_read`
+through `DEFERRED_CROSSING_SHADOWS`. It is deliberately not named `db_query`:
+that string is already the database-query linker's `call_kind` and means a
+call that *executes* a query. The twenty-one Django QuerySet combinators —
+ruling 4's Lazy row, kept under `db_read` by INV-nular F3 because "the
+execution is an implicit `__iter__` with no call site to catalogue" — moved
+to it, and the licence was measurement [0013](../measurements/0013-django-queryset-chain-delta.md):
+28 of the 40 situations chain typing added were `Model.objects.filter(...).delete()`,
+a source that observes nothing. **The retag alone would have deleted real
+reads**, which is 0010's HANDLE finding again: a pre-estimate over the same
+ledger found 62 pretix situations resting only on lazy sources, and a text scan
+classed at least 12 of them as the QuerySet *evaluated in the scope that
+composed it* (`for o in qs:`, `list(Model.objects.filter(...))`,
+`for i in qs[:n]`). So the represented-crossing half is a producer change:
+`py.py` now emits a `calls` edge to `django.db.models.__iter__` (`__aiter__`
+for the async forms) at a `for`, a comprehension and the materialising builtins
+(`list`/`tuple`/`set`/`frozenset`/`sorted`/`dict`/`enumerate`, refused when the
+name is rebound), and `__getitem__` at an index subscript, with a slice
+propagating the type instead; the overlay rows those three under `db_read`.
+What the shadow discloses is the remaining case — a QuerySet returned, handed
+to a form or a paginator — whose evaluation no call site in the composing
+scope represents. The INV-buzab three-row table (open work 5) is in
+`test_deferred_crossing_boundary.py::TestTheDatabaseThreeRowTable`, with one
+honest wrinkle: the Django rows ship in the community overlay, whose rows are
+`unvouched` under ADR-0047, so on the shipped tree a Django program's
+boundary claims are `inconclusive` before clause 3 is consulted; the table is
+run on a vouched copy, the population (a user's own overlay) for which the
+shadow is the first line rather than the second. The other Lazy members of the
+family (`TypedQuery.getResultStream`, `EntityManager.getReference`,
+`sqlite3.Connection.iterdump`, the `NSURLSession` task rows) did NOT move: the
+Django licence does not transfer, and each needs its own ruling-3 proof.
+
 ## Open work — sequencing and the evidence bar
 
 Filed as tracker items, in order. **No row moves until 1–3 are done.**

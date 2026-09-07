@@ -2321,10 +2321,19 @@ class TestDjangoOrmIoBoundary:
 
     def test_catalog_classifies_manager_read_methods(self) -> None:
         catalog = load_catalog("python")
-        for method in ("filter", "get", "all", "count", "exists"):
+        for method in ("get", "count", "exists", "__iter__", "__getitem__"):
             hit = catalog.lookup_with_module(method, "django.db.models")
             assert hit is not None, method
             assert hit.boundary == "db_read", method
+
+    def test_catalog_classifies_lazy_combinators_as_composition(self) -> None:
+        """WI-fasap: ``filter`` / ``all`` compose a query and read nothing --
+        a deferred crossing, disclosed and never minted (ADR-0049)."""
+        catalog = load_catalog("python")
+        for method in ("filter", "all", "order_by", "select_related"):
+            hit = catalog.lookup_with_module(method, "django.db.models")
+            assert hit is not None, method
+            assert hit.boundary == "db_compose", method
 
     def test_catalog_classifies_write_methods(self) -> None:
         catalog = load_catalog("python")
@@ -2341,7 +2350,8 @@ class TestDjangoOrmIoBoundary:
         assert catalog.lookup_with_module("get", "external") is None
         assert catalog.lookup_with_module("delete", "external") is None
 
-    def test_tags_manager_filter_as_db_read(self) -> None:
+    def test_tags_manager_filter_as_db_compose(self) -> None:
+        """Was ``db_read`` until WI-fasap; the tag moved, the match did not."""
         catalog = load_catalog("python")
         edge = self._make_edge(
             src="python:/app/views.py:10-12:view:function",
@@ -2349,8 +2359,21 @@ class TestDjangoOrmIoBoundary:
         )
         count = tag_io_boundaries([edge], {"python": catalog})
         assert count == 1
-        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_boundary"] == "db_compose"
         assert edge.meta["io_primitive"] == "django.db.models.filter"
+
+    def test_tags_queryset_evaluation_as_db_read(self) -> None:
+        """WI-fasap: the ``__iter__`` call site py.py emits at a ``for`` over a
+        QuerySet is the read the combinators were standing in for."""
+        catalog = load_catalog("python")
+        edge = self._make_edge(
+            src="python:/app/views.py:10-12:view:function",
+            dst="python:django.db.models:0-0:__iter__:unresolved",
+        )
+        count = tag_io_boundaries([edge], {"python": catalog})
+        assert count == 1
+        assert edge.meta["io_boundary"] == "db_read"
+        assert edge.meta["io_primitive"] == "django.db.models.__iter__"
 
     def test_tags_manager_create_as_db_write(self) -> None:
         catalog = load_catalog("python")
@@ -3254,13 +3277,14 @@ class TestIoBoundariesEnvelopeSchema:
     """
 
     def test_io_boundaries_schema_version_constant_pinned(self) -> None:
-        """The exported constant pins ``2.2`` (bumped from 2.1 by WI-nosah /
-        ADR-0049: the new net_listen_edges disclosure key for deferred
+        """The exported constant pins ``2.3`` (bumped from 2.2 by WI-fasap /
+        ADR-0049: the db_compose_edges disclosure key, the database twin of
+        net_listen; 2.2 was WI-nosah's net_listen_edges for deferred
         crossings; 2.1 was WI-javoh's command_launch_edges; 2.0 was
         WI-huhit/WI-foduh — total_io_edges redefined to real categories +
         external_potential_edges).
         """
-        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.2", (
+        assert IO_BOUNDARIES_SCHEMA_VERSION == "2.3", (
             "io-boundaries schema_version is a wire-format contract. "
             "Do NOT change the value without bumping it deliberately "
             "AND updating the inline schema docs + CHANGELOG."
@@ -3281,7 +3305,8 @@ class TestIoBoundariesEnvelopeSchema:
         # this lock-set; the CLI integration test below covers it.
         expected_keys = {
             "schema_version", "total_io_edges", "external_potential_edges",
-            "command_launch_edges", "net_listen_edges", "boundaries",
+            "command_launch_edges", "net_listen_edges", "db_compose_edges",
+            "boundaries",
         }
         assert set(d.keys()) == expected_keys, (
             f"Unexpected top-level keys in BoundaryMap.to_dict(): "

@@ -716,10 +716,12 @@ def _deferred_crossing_caveat(
         "entries": list(sites),
         "detail": (
             f"{len(sites)} call site(s) ({where}) open a {boundary} channel "
-            f"whose data arrives in a scope the call does not name — a server "
-            f"launch, registration or subscription. The runtime delivers to a "
-            f"handler, not to the caller, so this analysis cannot examine what "
-            f"arrives; a clean {boundary} result does not cover it."
+            f"whose data arrives at a point the call does not name — a server "
+            f"launch, registration or subscription, or a query composed here "
+            f"and evaluated elsewhere. The data reaches a handler or a later "
+            f"evaluation, not this call's return value, so this analysis "
+            f"cannot examine what arrives; a clean {boundary} result does not "
+            f"cover it."
         ),
     }
 

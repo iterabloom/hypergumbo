@@ -39,12 +39,16 @@ Remove a builder ONLY when the executor is SEPARATELY ROWED, so the read is
 still represented somewhere. JPA rows ``TypedQuery.getResultList`` and
 ``Statement.executeQuery``; Ecto rows ``Ecto.Repo.all``. Both pass.
 
-DJANGO FAILS THAT TEST AND IS DELIBERATELY KEPT. A Django ``QuerySet`` is lazy,
-so ``filter``/``all``/``order_by`` issue nothing -- but the execution is an
-IMPLICIT ``__iter__`` with NO CALL SITE TO CATALOGUE. There is no executor row
-to carry the read, so removing the lazy methods would not relocate the read, it
-would delete it. Pinned below as a control, because the naive reading of this
-item would strip them.
+DJANGO FAILED THAT TEST AND WAS DELIBERATELY KEPT -- UNTIL WI-fasap. A Django
+``QuerySet`` is lazy, so ``filter``/``all``/``order_by`` issue nothing -- but
+the execution was an IMPLICIT ``__iter__`` with NO CALL SITE TO CATALOGUE, so
+removing the lazy methods would not have relocated the read, it would have
+deleted it. The python analyzer now emits that evaluation as a
+``django.db.models.__iter__`` / ``__aiter__`` / ``__getitem__`` call site, and
+the combinators moved to ``db_compose`` -- ADR-0049's disclosure boundary for
+the database: absent from ``AUTO_SOURCE_LABEL_MAP``, shadowing ``db_read``.
+Pinned below in BOTH directions, because a retag that lost the evaluation row
+would satisfy the removal half and still delete the read.
 
 DIRECTION. Every removal here REPORTS LESS, which per the standing discipline
 needs more evidence than a change that reports more. The evidence is that each
@@ -121,8 +125,9 @@ def _rows(lang):
     the row to an overlay, and a "deliberately kept" control now says what it
     means -- that the crossing is still REPRESENTED, not that it sits in one
     particular file. Django's lazy QuerySet is the case that makes the
-    difference concrete: its rows moved to an overlay, and the reason they are
-    kept (no executor row exists to carry the read) is untouched by the move.
+    difference concrete: its rows moved to an overlay, and the WI-fasap retag
+    of the combinators to ``db_compose`` is asserted against the merged view
+    exactly as the JPA removal is.
     """
     return list(load_catalog(lang).primitives)
 
@@ -441,15 +446,26 @@ def test_statement_preparation_is_kept_and_not_folded_in() -> None:
 @pytest.mark.parametrize(
     "meth", ("filter", "all", "exclude", "order_by", "distinct",
              "values", "annotate", "select_related"))
-def test_django_lazy_queryset_methods_are_deliberately_kept(meth: str) -> None:
-    """THE CONTROL THAT COSTS SOMETHING. These are builders by the same
-    definition that removes JPA's and Ecto's -- a Django QuerySet is lazy and
-    ``filter()`` issues nothing. They stay because the rule is not "does this
-    call issue SQL" but "is the read still represented after the removal", and
-    Django executes through an IMPLICIT ``__iter__`` with no call site to
-    catalogue. There is no executor row to relocate the read to, so removing
-    these would delete it rather than move it."""
-    assert _has("python", "db_read", "django.db.models", meth)
+def test_django_lazy_queryset_methods_compose_and_do_not_read(meth: str) -> None:
+    """THE CONTROL THAT COST SOMETHING, released by WI-fasap. These are
+    builders by the same definition that removes JPA's and Ecto's -- a Django
+    QuerySet is lazy and ``filter()`` issues nothing. They stayed under
+    ``db_read`` because the rule is "is the read still represented after the
+    removal", and Django executes through an IMPLICIT ``__iter__`` that had no
+    call site. It has one now (the test below), so the rows are what they are:
+    a deferred crossing, on ``db_compose`` -- disclosed, never minted."""
+    assert not _has("python", "db_read", "django.db.models", meth)
+    assert _has("python", "db_compose", "django.db.models", meth)
+
+
+def test_the_queryset_evaluation_still_carries_the_read() -> None:
+    """CONTROL, and the licence for the retag above (ADR-0049 ruling 3): the
+    read did not disappear, it is rowed at the call that performs it -- the
+    evaluation the python analyzer emits at a ``for`` / comprehension / index /
+    ``list()`` over a typed QuerySet, and the executing reads on the chain."""
+    for name in ("__iter__", "__aiter__", "__getitem__",
+                 "get", "first", "count", "exists", "iterator"):
+        assert _has("python", "db_read", "django.db.models", name), name
 
 
 # ----------------------------------------------------------------------

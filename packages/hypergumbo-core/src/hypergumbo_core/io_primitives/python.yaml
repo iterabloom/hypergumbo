@@ -419,11 +419,14 @@ db_read:
   - module: shelve
     functions: [open]
     notes: "Persistent dict backed by dbm (module-hint-disambiguated open)"
-  # WI-sozoj: Django ORM Manager/QuerySet READ surface. Latent — fires only
-  # when py.py types the receiver via the ``.objects`` Manager marker
-  # (module-filter path, never the short-name gate). ``get``/``all``/etc. are
-  # ambiguous by short name (dict.get, list.count); the ``django.db.models``
-  # module hint disambiguates. See the type-verified carve-out note above.
+  # WI-sozoj: Django ORM Manager/QuerySet READ surface -- the rows live in the
+  # ``python-web-and-orm`` overlay (ADR-0047). Latent — fires only when py.py
+  # types the receiver via the ``.objects`` Manager marker (module-filter
+  # path, never the short-name gate). ``get``/``all``/etc. are ambiguous by
+  # short name (dict.get, list.count); the ``django.db.models`` module hint
+  # disambiguates. See the type-verified carve-out note above. Since WI-fasap
+  # the lazy combinators (``filter``/``all``/``order_by``...) are ``db_compose``
+  # there, and the evaluation (``__iter__``/``__getitem__``) is the read.
 
 db_write:
   # ---------------------------------------------------------------

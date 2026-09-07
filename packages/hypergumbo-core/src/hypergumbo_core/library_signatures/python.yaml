@@ -65,3 +65,9 @@ signatures:
   django.db.models.union: django.db.models
   django.db.models.intersection: django.db.models
   django.db.models.difference: django.db.models
+  # WI-fasap (Phase 6 PR 2): the SLICE form of subscription. ``qs[:n]`` returns
+  # another lazy QuerySet, so the ``for`` over it is the read; the INDEX form
+  # (``qs[0]``) evaluates and is emitted by py.py as a ``__getitem__`` CALL SITE
+  # the overlay rows under db_read. One name, two AST shapes, split at the
+  # producer -- this row serves only the slice.
+  django.db.models.__getitem__: django.db.models

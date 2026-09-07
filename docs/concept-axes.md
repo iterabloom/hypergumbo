@@ -502,6 +502,7 @@ The call is correctly classified and the analysis cannot see past it, so it does
 
 The call ARRANGES a crossing it does not itself perform — exactly what the axiom's second clause excludes from `data_crossing`, which is why it is a section rather than a violation. Each value shadows the data boundary it makes unexaminable.
 
+- **`db_compose`** — Compose a query that has run nothing -- Django's QuerySet combinators (filter / exclude / order_by / ...), ADR-0049 ruling 4's Lazy row. The read happens when the query is EVALUATED (iterated, indexed, materialised), and the python analyzer emits that evaluation as its own db_read call site (WI-fasap); where the evaluation is in a scope this call does not name (a QuerySet returned, handed to a form or a paginator) the read is invisible, which is what the shadow over db_read discloses. DISCLOSED, NEVER MINTED, for net_listen's reason. NOT named `db_query`: that string is the database_query linker's call_kind and names a call that EXECUTES a query -- the opposite reading.
 - **`net_listen`** — Bind or accept: the call ARRANGES inbound network data to arrive somewhere it does not name, and returns no such data itself. DISCLOSED, NEVER MINTED (ADR-0049). Its shadow over net_recv is required, not optional -- since INV-buzab a classified call is what `examined` means, so a tag that mints nothing would still count as an examined negative and hand verify-claims a green tick over live ingress.
 
 ### `speculative` — synthesised uncertainty

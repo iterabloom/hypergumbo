@@ -495,3 +495,239 @@ class TestTheGoRetag:
         coverage = compute_boundary_coverage([LISTEN_EDGE], {"go"}, cats)
         verdict = verify_claim(_claim("net_recv"), BoundaryMap(), coverage)
         assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
+
+
+# ---------------------------------------------------------------------------
+# WI-fasap: the DATABASE twin -- ``db_compose`` shadows ``db_read``
+# ---------------------------------------------------------------------------
+
+#: Captured from ``hypergumbo survey`` over a two-function Django fixture
+#: (``Order.objects.filter(active=False).delete()`` and ``for o in
+#: Order.objects.filter(active=True):``), not composed by hand.
+COMPOSE_EDGE = {
+    "src": "python:app.py:8-9:purge:function",
+    "dst": "python:django.db.models:0-0:filter:external_symbol",
+    "type": "calls",
+    "line": 9,
+}
+#: The evaluation call site py.py emits at the ``for`` -- the read itself.
+EVALUATION_EDGE = {
+    "src": "python:app.py:12-14:export:function",
+    "dst": "python:django.db.models:0-0:__iter__:external_symbol",
+    "type": "calls",
+    "line": 13,
+}
+
+#: The ``django.db.models`` rows that carried ``db_read`` BEFORE the retag,
+#: written out rather than derived, for the reason ``GO_DEFERRED_ROWS`` gives.
+DJANGO_PRE_RETAG_READ_ROWS: frozenset[str] = frozenset({
+    "all", "filter", "exclude", "get", "count", "exists", "first", "last",
+    "values", "values_list", "annotate", "aggregate", "order_by", "distinct",
+    "none", "iterator", "earliest", "latest", "in_bulk",
+    "select_related", "prefetch_related",
+})
+#: The executing reads, which MUST stay: each returns rows, a row, or a scalar
+#: the database chose -- plus the three evaluation dunders WI-fasap added.
+DJANGO_READ_ROWS: frozenset[str] = frozenset({
+    "get", "count", "exists", "first", "last", "aggregate", "earliest",
+    "latest", "in_bulk", "iterator", "__iter__", "__aiter__", "__getitem__",
+})
+
+
+def _python_catalog_with_the_combinators_reading():
+    """The shipped python catalogue as it stood BEFORE WI-fasap: every
+    ``db_compose`` row forced back to ``db_read``. The falsifiability control
+    for the assertions below, exactly as :func:`_go_catalog_without_deferrals`
+    is for the net family."""
+    cat = load_catalog("python")
+    prims = [
+        replace(p, boundary="db_read") if p.boundary == "db_compose" else p
+        for p in cat.primitives
+    ]
+    assert not any(p.boundary == "db_compose" for p in prims)
+    assert any(p.boundary == "db_compose" for p in cat.primitives), (
+        "the shipped python catalogue carries no db_compose row, so this "
+        "control is controlling for nothing -- WI-fasap's retag has been reverted"
+    )
+    return replace(cat, primitives=prims)
+
+
+class TestTheDatabaseTwinVocabulary:
+    """``db_compose`` carries net_listen's three clauses and nothing more."""
+
+    def test_it_is_catalog_declarable_and_declared_last(self) -> None:
+        assert "db_compose" in CATALOG_BOUNDARY_TYPES
+        assert "db_compose" in KNOWN_IO_BOUNDARIES
+        # Declared LAST so first-declared-wins resolution of every existing
+        # row is untouched by the addition.
+        assert CATALOG_BOUNDARY_TYPES[-1] == "db_compose"
+
+    def test_clause_1_it_mints_no_taint(self) -> None:
+        assert "db_compose" not in AUTO_SOURCE_LABEL_MAP
+
+    def test_clause_2_it_is_disclosed_not_headlined(self) -> None:
+        assert "db_compose" in _DISCLOSED_ONLY_BOUNDARIES
+
+    def test_clause_3_the_shadow_is_scoped_to_db_read(self) -> None:
+        assert "db_compose" not in OPAQUE_BOUNDARIES
+        assert DEFERRED_CROSSING_SHADOWS["db_compose"] == "db_read"
+
+    def test_it_is_not_named_db_query(self) -> None:
+        """``db_query`` is the database_query linker's ``call_kind`` and names
+        a call that EXECUTES a query -- the opposite of this value. One string
+        with two readings on two axes is the INV-tutar shape."""
+        assert "db_query" not in KNOWN_IO_BOUNDARIES
+
+
+class TestTheDatabaseTwinCatalogueQuery:
+
+    def test_a_combinator_shadows_db_read(self) -> None:
+        cat = load_catalog("python")
+        assert cat.deferred_crossings("django.db.models", "filter") == frozenset({"db_read"})
+        assert cat.deferred_crossings("django.db.models", "select_for_update") == frozenset({"db_read"})
+
+    def test_an_executing_read_shadows_nothing(self) -> None:
+        """The counter-control: the reads survived the retag and must keep
+        shadowing nothing, or the family took ``get`` with it."""
+        cat = load_catalog("python")
+        for name in ("get", "exists", "iterator", "__iter__", "__getitem__"):
+            assert cat.deferred_crossings("django.db.models", name) == frozenset(), name
+
+    def test_sites_are_grouped_under_db_read(self) -> None:
+        cats = {"python": load_catalog("python")}
+        assert deferred_crossing_sites([COMPOSE_EDGE, EVALUATION_EDGE], cats) == {
+            "db_read": ["django.db.models.filter"],
+        }
+
+    def test_no_sites_when_the_combinators_read(self) -> None:
+        """FALSIFIABILITY CONTROL."""
+        cats = {"python": _python_catalog_with_the_combinators_reading()}
+        assert deferred_crossing_sites([COMPOSE_EDGE, EVALUATION_EDGE], cats) == {}
+
+
+def _vouched(cat):
+    """The catalogue as a USER overlay would present it: every row vouched.
+
+    The Django rows ship in the community overlay, and ADR-0047 stamps a
+    default overlay's rows ``unvouched`` -- they add detections and never
+    license an all-clear, so on the shipped tree a Django program's boundary
+    claims are ``inconclusive`` before clause 3 is ever consulted (pinned
+    below). A user's own ``io_primitives.d`` rows ARE vouched, and that is
+    the population for which the shadow is the FIRST line of defence rather
+    than the second. Vouching the shipped rows isolates the mechanism under
+    test without inventing a row.
+    """
+    return replace(cat, primitives=[replace(p, unvouched=False) for p in cat.primitives])
+
+
+class TestTheDatabaseThreeRowTable:
+    """ADR-0016's table for ``db_compose`` (ADR-0049 open work 5, INV-buzab).
+    The MIDDLE ROW is again the reason the shadow is not optional."""
+
+    def _verdict(self, *, shipped: bool, claim_boundary: str = "db_read"):
+        cat = load_catalog("python") if shipped else _python_catalog_with_the_combinators_reading()
+        cats = {"python": _vouched(cat)}
+        coverage = compute_boundary_coverage([COMPOSE_EDGE], {"python"}, cats)
+        return verify_claim(_claim(claim_boundary), BoundaryMap(), coverage)
+
+    def test_on_the_shipped_tree_the_community_gate_reaches_first(self) -> None:
+        """WHAT SHIPS TODAY, so the mechanism tests below are not mistaken for
+        it: the overlay's rows are unvouched (ADR-0047), the module is reported
+        as unexamined, and the verdict is withheld outright -- while the
+        disclosure clause 3 needs is computed all the same, ready for the
+        vouched case."""
+        cats = {"python": load_catalog("python")}
+        coverage = compute_boundary_coverage([COMPOSE_EDGE], {"python"}, cats)
+        verdict = verify_claim(_claim("db_read"), BoundaryMap(), coverage)
+        assert verdict.verdict == "inconclusive", verdict.verdict
+        assert "django.db.models" in (coverage.reason or "")
+        assert coverage.deferred_crossing_sites == {"db_read": ["django.db.models.filter"]}
+
+    def test_row_2_tagged_and_shadowed_qualifies_the_all_clear(self) -> None:
+        verdict = self._verdict(shipped=True)
+        assert verdict.verdict == "confirmed_with_caveats", verdict.verdict
+        cav = next(c for c in verdict.caveats if c["kind"] == "deferred_crossing")
+        assert cav["entries"] == ["django.db.models.filter"]
+        assert cav["boundary"] == "db_read"
+        assert "does not name" in cav["detail"]
+        assert "evaluated elsewhere" in cav["detail"]
+
+    def test_row_2_control_without_the_shadow_it_is_a_false_all_clear(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """THE CONTROL THAT COSTS SOMETHING: a query builder that merely mints
+        nothing would hand ``verify-claims`` a bare ``confirmed`` over a
+        database the program reads through a QuerySet it returns to a caller."""
+        monkeypatch.setattr(io_boundary, "DEFERRED_CROSSING_SHADOWS", {})
+        verdict = self._verdict(shipped=True)
+        assert verdict.verdict == "confirmed", verdict.verdict
+        assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
+
+    def test_row_3_the_shadow_does_not_reach_an_unrelated_boundary(self) -> None:
+        verdict = self._verdict(shipped=True, claim_boundary="fs_write")
+        assert verdict.verdict == "confirmed", verdict.verdict
+        assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
+
+    def test_before_the_retag_the_combinator_was_a_read_and_shadowed_nothing(self) -> None:
+        """WHAT THE RETAG BOUGHT, stated as a difference: on the pre-retag
+        catalogue the same edge is a ``db_read`` row -- it minted a source AND
+        counted as examined, and no disclosure was raised."""
+        verdict = self._verdict(shipped=False)
+        assert verdict.verdict == "confirmed", verdict.verdict
+        assert not any(c["kind"] == "deferred_crossing" for c in verdict.caveats)
+
+
+class TestTheDjangoRetag:
+    """WI-fasap: which rows moved, which stayed, and that nothing was dropped."""
+
+    def _rows(self, boundary: str) -> frozenset[str]:
+        cat = load_catalog("python")
+        return frozenset(p.name for p in cat.primitives
+                         if p.module == "django.db.models" and p.boundary == boundary)
+
+    def test_the_compose_rows_are_exactly_the_type_preserving_members(self) -> None:
+        """ONE FACT, ONE HOME. "Lazy" and "returns a QuerySet" are the same
+        statement about the same members, so the ``db_compose`` rows are pinned
+        EQUAL to the signature table's ``django.db.models`` members in both
+        directions. Dunders are excepted with a stated reason: ``__getitem__``
+        serves the SLICE form in the signature table and the INDEX form under
+        ``db_read``, split at the producer by AST shape."""
+        from hypergumbo_core.library_signatures import load_library_signatures
+
+        preserving = {
+            key.rpartition(".")[2]
+            for key, ret in load_library_signatures("python").items()
+            if key.startswith("django.db.models.") and ret == "django.db.models"
+            and not key.rpartition(".")[2].startswith("__")
+        }
+        assert self._rows("db_compose") == preserving
+        assert len(preserving) == 21
+
+    def test_the_executing_reads_stayed(self) -> None:
+        assert self._rows("db_read") == DJANGO_READ_ROWS
+
+    def test_nothing_was_dropped_on_the_way(self) -> None:
+        """Every pre-retag ``db_read`` row is still rowed somewhere. A retag
+        that lost a row would satisfy the two tests above and still be a
+        recall regression."""
+        assert DJANGO_PRE_RETAG_READ_ROWS <= self._rows("db_compose") | self._rows("db_read")
+
+    def test_a_shipped_evaluation_site_is_a_db_read_chain_and_the_combinator_is_not(self) -> None:
+        """END TO END on the shipped catalogue over the two captured edges: the
+        ``for`` reads, the ``filter`` composes, and a "no database read" claim
+        over the composing function alone comes back QUALIFIED, not granted."""
+        from hypergumbo_core.io_boundary import tag_io_boundaries
+        from dataclasses import dataclass
+        from typing import Any
+
+        @dataclass
+        class _E:
+            src: str
+            dst: str
+            edge_type: str
+            meta: dict[str, Any] | None = None
+
+        cats = {"python": load_catalog("python")}
+        edges = [_E(e["src"], e["dst"], e["type"]) for e in (COMPOSE_EDGE, EVALUATION_EDGE)]
+        assert tag_io_boundaries(edges, cats) == 2
+        assert [e.meta["io_boundary"] for e in edges] == ["db_compose", "db_read"]

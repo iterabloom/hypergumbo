@@ -25,6 +25,8 @@ these tests assert the emitted edge shape, not the boundary tag.
 
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_lang_mainstream.py import (
     _class_directly_extends_django_model,
     analyze_python,
@@ -433,3 +435,169 @@ class TestQuerySetChainPropagation:
         # These return a Model instance, a scalar, or write -- never a QuerySet.
         assert not ({"get", "first", "last", "create", "count", "exists", "delete",
                      "update", "aggregate", "get_or_create"} & members)
+
+
+class TestQuerySetEvaluationCallSites:
+    """WI-fasap (Phase 6 PR 2): the IMPLICIT evaluation of a lazy QuerySet gets a
+    call site.
+
+    A Django QuerySet reads nothing when it is built -- ``filter``/``all``/
+    ``order_by`` compose a query -- and reads when it is EVALUATED: iterated,
+    sliced by index, materialised by ``list()``. ``test_inv_nular_false_sources``
+    kept the lazy combinators under ``db_read`` for years on exactly that point:
+    "the execution is an IMPLICIT ``__iter__`` with NO CALL SITE TO CATALOGUE".
+    ADR-0049 ruling 3 licenses moving the combinators to a disclosure boundary
+    only once the read is represented where it happens, so this class is the
+    first half of that change: py.py emits a ``calls`` edge to
+    ``django.db.models.__iter__`` / ``__aiter__`` / ``__getitem__`` at the
+    evaluation site, and the overlay rows those names under ``db_read``.
+
+    Producer identity only, as with every other WI-sozoj marker: the boundary
+    classification stays in the catalogue.
+    """
+
+    _MODEL = (
+        "from django.db import models\n"
+        "\n"
+        "class Order(models.Model):\n"
+        "    pass\n"
+        "\n"
+    )
+
+    def _eval_edges(self, tmp_path: Path):
+        return [
+            e for e in analyze_python(tmp_path).edges
+            if e.edge_type == "calls" and ":django.db.models:" in e.dst
+            and e.dst.split(":")[3].startswith("__")
+        ]
+
+    def test_for_loop_over_an_inline_queryset_calls_iter(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def export():\n"
+            "    for o in Order.objects.filter(active=True):\n"
+            "        print(o)\n"
+        )
+        [edge] = self._eval_edges(tmp_path)
+        assert edge.dst == "python:django.db.models:0-0:__iter__:unresolved"
+        assert edge.line == 7
+        assert edge.is_resolved is False
+        assert edge.dst_ref is not None
+        assert (edge.dst_ref.module_path, edge.dst_ref.name) == ("django.db.models", "__iter__")
+        assert edge.meta["call_construct"] == "protocol"
+        assert edge.meta["framework_dispatch"] == "django_orm"
+        assert edge.meta["resolution_quality"] == "type_inferred"
+
+    def test_for_loop_over_a_bound_queryset_calls_iter(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def export():\n"
+            "    qs = Order.objects.filter(active=True).order_by('pk')\n"
+            "    for o in qs:\n"
+            "        print(o)\n"
+        )
+        assert [e.dst.split(":")[3] for e in self._eval_edges(tmp_path)] == ["__iter__"]
+
+    def test_async_for_calls_aiter(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "async def export():\n"
+            "    async for o in Order.objects.all():\n"
+            "        print(o)\n"
+        )
+        assert [e.dst.split(":")[3] for e in self._eval_edges(tmp_path)] == ["__aiter__"]
+
+    def test_comprehension_over_a_queryset_calls_iter(self, tmp_path: Path) -> None:
+        """Both the first generator (evaluated in the ENCLOSING scope) and a
+        later one (evaluated inside the comprehension's own scope) are reads."""
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def ids():\n"
+            "    return [(a.pk, b.pk) for a in Order.objects.all() for b in Order.objects.none()]\n"
+        )
+        edges = self._eval_edges(tmp_path)
+        assert {e.dst.split(":")[3] for e in edges} == {"__iter__"}
+        assert all(e.line == 7 for e in edges)
+
+    @pytest.mark.parametrize(
+        "builtin", ("list", "tuple", "set", "frozenset", "sorted", "dict", "enumerate"),
+    )
+    def test_materialising_builtin_calls_iter(self, tmp_path: Path, builtin: str) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def snapshot():\n"
+            f"    return {builtin}(Order.objects.values_list('pk', 'name'))\n"
+        )
+        assert [e.dst.split(":")[3] for e in self._eval_edges(tmp_path)] == ["__iter__"]
+
+    def test_a_rebound_builtin_name_is_refused(self, tmp_path: Path) -> None:
+        """INV-kipor's rule, applied here: the arm ASSERTS ``list`` is the
+        builtin, so a name the enclosing scope rebound must not reach it."""
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def snapshot(list):\n"
+            "    return list(Order.objects.all())\n"
+        )
+        assert self._eval_edges(tmp_path) == []
+
+    def test_an_imported_name_shadowing_a_builtin_is_refused(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            "from mylib import sorted\n"
+            + self._MODEL
+            + "def snapshot():\n"
+            "    return sorted(Order.objects.all())\n"
+        )
+        assert self._eval_edges(tmp_path) == []
+
+    def test_index_subscript_calls_getitem(self, tmp_path: Path) -> None:
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def newest():\n"
+            "    return Order.objects.order_by('-pk')[0]\n"
+        )
+        [edge] = self._eval_edges(tmp_path)
+        assert edge.dst == "python:django.db.models:0-0:__getitem__:unresolved"
+        assert edge.line == 7
+
+    def test_slice_subscript_reads_nothing_but_keeps_the_type(self, tmp_path: Path) -> None:
+        """``qs[:n]`` returns another lazy QuerySet -- no read, no ``__getitem__``
+        edge -- and the ``for`` over it is the read (``send_invoices_to_organizer``
+        in pretix is exactly this shape)."""
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def batch(n):\n"
+            "    qs = Order.objects.filter(sent=False)\n"
+            "    for o in qs[:n]:\n"
+            "        print(o)\n"
+        )
+        assert [e.dst.split(":")[3] for e in self._eval_edges(tmp_path)] == ["__iter__"]
+
+    def test_untyped_iterables_emit_nothing(self, tmp_path: Path) -> None:
+        """No ``.objects`` root, no type: a parameter that happens to be a
+        QuerySet is the by-name rule INV-nular refuses, and a plain list is
+        not a database."""
+        (tmp_path / "app.py").write_text(
+            "def a(queryset, items):\n"
+            "    for o in queryset.filter(x=1):\n"
+            "        print(o)\n"
+            "    for i in items:\n"
+            "        print(i)\n"
+            "    return list(items), items[0], [i for i in items]\n"
+        )
+        assert self._eval_edges(tmp_path) == []
+
+    def test_a_model_instance_is_not_iterated(self, tmp_path: Path) -> None:
+        """``get`` returns a Model, not a QuerySet; iterating its attribute is
+        not an ORM evaluation this analyzer can see."""
+        (tmp_path / "app.py").write_text(
+            self._MODEL
+            + "def lines():\n"
+            "    for line in Order.objects.get(pk=1).lines:\n"
+            "        print(line)\n"
+        )
+        assert self._eval_edges(tmp_path) == []
+
+    def test_getitem_is_a_type_preserving_member_for_the_slice_form(self) -> None:
+        from hypergumbo_lang_mainstream.py import DJANGO_ORM_MODULE, TYPE_PRESERVING_MEMBERS
+
+        assert "__getitem__" in TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, frozenset())

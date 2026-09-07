@@ -83,13 +83,47 @@ net_listen:
     functions: [run_app]
     notes: "aiohttp web server"
 
+# WI-fasap (ADR-0049 ruling 4's Lazy row, licensed by measurement 0013). A
+# QuerySet combinator COMPOSES a query and reads nothing: ``filter``, ``all``,
+# ``order_by`` return another lazy QuerySet, and the read happens when the
+# result is EVALUATED. These rows sat under ``db_read`` for as long as the
+# evaluation had no call site to catalogue (``test_inv_nular_false_sources``
+# F3, the deliberately-kept control), and minted ``untrusted_input`` at
+# ``WebHookCall.objects.filter(...).delete()`` -- 28 of the 40 situations
+# measurement 0013 adjudicated, every one a source that observes nothing.
+# The python analyzer now emits the evaluation (``for`` / comprehension /
+# index / ``list()``) as a ``__iter__`` / ``__aiter__`` / ``__getitem__`` call
+# site, rowed under db_read below, so the combinators can be what they are:
+# a deferred crossing, DISCLOSED (their own ``db_compose_edges`` count, a
+# shadow that qualifies a clean ``db_read`` verdict) and never minted.
+#
+# THE MEMBERSHIP IS THE SIGNATURE TABLE'S. Every ``django.db.models`` member
+# that returns ``django.db.models`` in ``library_signatures/python.yaml`` is
+# a row here and nothing else is (dunders excepted -- ``__getitem__`` serves
+# the slice form there and the index form under db_read); a test pins the
+# equality in both directions, because "lazy" and "type-preserving" are one
+# fact about the same twenty-one members and two hand-kept lists would drift.
+db_compose:
+  - module: django.db.models
+    methods: [all, filter, exclude, values, values_list, annotate, alias,
+              order_by, distinct, none, select_related, prefetch_related,
+              using, only, defer, select_for_update, reverse, extra,
+              union, intersection, difference]
+    notes: "Django ORM QuerySet combinators -- compose a lazy query, read nothing (type-verified receiver)"
+
 db_read:
   - module: django.db.models
-    methods: [all, filter, exclude, get, count, exists, first, last,
-              values, values_list, annotate, aggregate, order_by, distinct,
-              none, iterator, earliest, latest, in_bulk,
-              select_related, prefetch_related]
-    notes: "Django ORM Manager/QuerySet query surface (type-verified receiver)"
+    methods: [get, count, exists, first, last, aggregate, earliest, latest,
+              in_bulk, iterator]
+    notes: "Django ORM executing reads: each returns rows, a row, or a scalar the database chose (type-verified receiver)"
+  - module: django.db.models
+    methods: [__iter__, __aiter__, __getitem__]
+    notes: >-
+      WI-fasap: the EVALUATION of a lazy QuerySet, emitted by the python
+      analyzer at a ``for`` / comprehension / materialising builtin
+      (``__iter__``, ``__aiter__`` for the async forms) and at an index
+      subscript (``__getitem__``; a slice composes another QuerySet and is not
+      emitted). This is where a composed query actually reads.
 
 db_write:
   - module: django.db.models
