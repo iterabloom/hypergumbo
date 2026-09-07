@@ -485,3 +485,10 @@
   clock: 62  # 750e
   nonce: 750e  # 750e
   message: "PHASE 6 PR 1 SHIPPED 2026-09-07 (INV-mumov: QuerySet chain propagation), measured by docs/measurements/0013: on pretix +40 situations / 0 lost / kserve control 0 moved; 87.5% correct, 17.5% useful, the gap being 28 situations on a lazy QuerySet combinator source -- ADR-0049's deferred row, which the same change makes removable under ruling 3 (filed as WI-fasap-zizoh-marov-lihob-jahuf-rosiv-tupuz-dusog, next in Phase 6). The class rule held: measured through the taint path, every added situation read at source."  # 750e
+- op: discuss  # 3552
+  at: '2026-09-07T05:22:37Z'  # 3552
+  by: agent  # 3552
+  actor: jgstern_agent  # 3552
+  clock: 63  # 3552
+  nonce: '3552'  # 3552
+  message: "PHASE 6 PR 3 SHIPPED 2026-09-07 (WI-gulaz: Django reverse-relation managers + custom manager names via a project-wide relation index; instance binding for a manager's get/create/first; RelatedManager writes rowed), measured by docs/measurements/0015: pretix +27 situations / 0 lost / kserve control 0 moved; 66.7% correct, 66.7% useful (18 real fetched-row -> write pairs; 9 false: 4 check-argument at two hops, 5 structural pairings whose real carrier is an untyped instance .save() -- both filed). The class rule held again: measured through the taint path, every added situation read at source, and a pre-registered refutation checked on the production survey (0 wrong-type of 3,362 marker edges)."  # 3552

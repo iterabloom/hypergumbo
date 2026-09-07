@@ -1,0 +1,24 @@
+- op: create  # f47c
+  at: '2026-09-07T05:22:37Z'  # f47c
+  by: agent  # f47c
+  actor: jgstern_agent  # f47c
+  clock: 1  # f47c
+  nonce: f47c  # f47c
+  data:  # f47c
+    kind: work_item  # f47c
+    title: "Django test setUp fields carry the model instance (1,155 pretix sites): read setUp/setUpTestData into the class field map and inherit it through project bases"  # f47c
+    status: todo_hard  # f47c
+    priority: 3  # f47c
+    parent:  # f47c
+    tags:  # f47c
+    - taint  # f47c
+    - python  # f47c
+    - analyzer  # f47c
+    - receiver_typing  # f47c
+    - phase6  # f47c
+    isbefore: []  # f47c
+    duplicate_of: []  # f47c
+    not_duplicate_of: []  # f47c
+    pr_ref:  # f47c
+    description: "Filed 2026-09-07 from WI-gulaz's pre-build shape scan (~/hypergumbo_lab_notebook/gulaz_relmgr_09072026/shape_scan.txt), the largest population that PR deliberately left: 1,155 pretix call sites of the form `self.<field>.<accessor>.<orm method>(...)` where the field was assigned in a test class's `setUp` / `setUpTestData` (own class 476, inherited from a base test class 679) from `<Model>.objects.create(...)` -- `self.orga = Organizer.objects.create(...)` then `self.orga.events.create(...)`. Every one is under `src/tests/`.\n\nWHY IT IS INVISIBLE. `_collect_class_field_maps` reads a class's OWN `__init__` only. A field assigned in `setUp` is not read, and a field assigned in a BASE class's `setUp` is not inherited (the field maps are per own class; WI-hiziz Site 3 walks parents for typed fields but the map itself has nothing for setUp). WI-gulaz's instance binding (`x = <Model>.objects.get/create(...)` -> `var_types[x]`) handles the LOCAL form; the field form needs the same binding written into the class field map from setUp-family methods, plus inheritance of that map through project bases.\n\nWHAT TO BUILD. (1) Extend the field-map collector to read `self.<f> = <expr>` in `setUp`, `setUpTestData` (`cls.<f>`), `setUpClass` and `__init__`, binding a Model instance through the same `_DjangoReceiverOracle.instance_from_call` rule the walker uses for locals. (2) Inherit the resulting map through resolved project bases (one level at least; pretix's base test classes are one level deep). (3) Measure with 0003's method against measurement 0015's ledger. Note that test-sourced flows are EXCLUDED from taint verdicts by default (WI-bifob), so the payoff is in the io-boundary map and in `--include-non-production-sources`, not in default verdicts -- say so in the measurement's frame before running it.\n\nRefutation to pre-register: a base class's setUp field must not be attributed to a subclass that REASSIGNS the field to a different model."  # f47c
+    fields: {}  # f47c

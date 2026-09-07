@@ -263,3 +263,17 @@
   set: {}  # 5094
   add:  # 5094
     isbefore: [WI-fasap-zizoh-marov-lihob-jahuf-rosiv-tupuz-dusog]  # 5094
+- op: discuss  # 0571
+  at: '2026-09-07T02:33:10Z'  # 0571
+  by: agent  # 0571
+  actor: jgstern_agent  # 0571
+  clock: 34  # 0571
+  nonce: '0571'  # 0571
+  message: "Phase 6 PR 2 (WI-fasap, PR #820) landed: the 28 vacuous situations measurement 0013 attributed to lazy combinators are gone (measurement 0014: 44 removed on pretix, 33 vacuous / 11 deferred / 0 in-scope reads lost; the 7 useful select_for_update(...).get() flows remain). Candidate 2 is now its own item: WI-gulaz-kuval-kohit-torad-bajah-duviz-rugob-nahos (reverse-relation managers + custom manager names such as pretix's Model.all, both surfaced again by 0014's read-back)."  # 0571
+- op: discuss  # a328
+  at: '2026-09-07T05:22:37Z'  # a328
+  by: agent  # a328
+  actor: jgstern_agent  # a328
+  clock: 35  # a328
+  nonce: a328  # a328
+  message: "Phase 6 PR 3 landed (WI-gulaz, candidate 2 of the 2026-09-06 census): the reverse-relation manager and the custom manager name are typed through a project-wide DjangoRelationIndex, the manager's instance-returning calls bind their target to the model, and the RelatedManager's add/remove/clear/set are rowed db_write. Measurement 0015: pretix +27 situations / 0 lost, kserve 0 moved, 66.7% correct / 66.7% useful, 0 wrong-type on a refutation check over the whole production survey (3,362 marker edges). The census's 1,901 setUp-field sites are NOT reached (field maps read __init__ only; all under src/tests; filed as its own item with the mechanism), nor the loop variable of a for over a QuerySet (150; filed). Remaining candidates in this item's class are unchanged."  # a328

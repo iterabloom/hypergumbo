@@ -22,3 +22,38 @@
     pr_ref:  # b962
     description: "INV-mumov's candidate 2, filed as its own item on 2026-09-07 after WI-fasap\n(Phase 6 PR 2) so `tracker ready` carries the arc's next step.\n\nTHE POPULATION. The 2026-09-06 derivability census on INV-mumov sized the\nREVERSE-RELATION MANAGER at 1,901 pretix sites: `self.order.payments.create(...)`,\n`gc.transactions.create(...)`, `event.seats.select_related(...)`,\n`o.positions.annotate(...)`, `self.scheduledmail_set.prefetch_related(...)`.\nNone is typed today -- the receiver is `<instance>.<related_name>`, not the\n`.objects` marker -- so the writes they perform are invisible (two of\nmeasurement 0013's five false positives had their REAL write there) and the\nreads they perform are invisible too (measurement 0014's read-back: the\niteration `for s in event.seats.select_related(...)` in generate_seats, the\n`Exists()` subqueries over `o.positions` in sendmail, all untyped).\n\nA SECOND, SMALLER GAP SURFACED BY THE SAME READ-BACK: custom manager NAMES.\npretix's soft-delete pattern is `Checkin.all.filter(...)`,\n`OrderPosition.all.filter(...)`, `OrderFee.all.filter(...)` -- a Manager\nattribute not called `objects`. The WI-sozoj marker keys on the literal\n`.objects`, so `qs = Checkin.all.filter(...); for ci in qs:` emits neither the\ncombinator nor the `__iter__` evaluation (control/views/checkin.py:614).\n\nWHAT TO BUILD. A project-wide index of `related_name` declarations\n(ForeignKey / ManyToManyField / OneToOneField kwargs, plus Django's default\n`<model>_set`) so that `<x>.<related_name>` on a receiver typed as a Model\ninstance -- or on `self` inside a models.Model subclass -- carries\n`django.db.models` as a RelatedManager; and a recognition of class-level\nManager attributes (`all = SoftDeleteManager()`, `objects = ...`) so a\n`<Model>.<manager>` root is typed like `.objects`. Both are producer changes\nin py.py under the WI-sozoj admission criteria (a real distinctive namespace,\na type-verified receiver, a closed method set); the io classification stays\nin the overlay.\n\nMEASUREMENT. A recall PR: 0003-method delta on pretix against measurement\n0014's subject ledger, every added situation read at source under 0001 /\nADR-0046; awaits_bakeoff_validation. Refutation condition to pre-register: an\nattribute named like a related_name on a NON-model receiver must not be typed\n(the census's `<x>.objects` false-owner note applies here twice over)."  # b962
     fields: {}  # b962
+- op: update  # b57d
+  at: '2026-09-07T02:33:09Z'  # b57d
+  by: agent  # b57d
+  actor: jgstern_agent  # b57d
+  clock: 2  # b57d
+  nonce: b57d  # b57d
+  set: {}  # b57d
+  add:  # b57d
+    isbefore: [INV-busis-povul-butun-kosut-tozik-jarok-vokaz-vomur]  # b57d
+- op: update  # ab20
+  at: '2026-09-07T02:33:09Z'  # ab20
+  by: agent  # ab20
+  actor: jgstern_agent  # ab20
+  clock: 3  # ab20
+  nonce: ab20  # ab20
+  set: {}  # ab20
+  add:  # ab20
+    isbefore: [WI-ribiz-nabop-boris-zafil-mohak-kihan-tabup-nolam]  # ab20
+- op: update  # f785
+  at: '2026-09-07T05:22:36Z'  # f785
+  by: agent  # f785
+  actor: jgstern_agent  # f785
+  clock: 4  # f785
+  nonce: f785  # f785
+  set:  # f785
+    status: done  # f785
+  add:  # f785
+    tags: [awaits_bakeoff_validation]  # f785
+- op: discuss  # 46ec
+  at: '2026-09-07T05:22:37Z'  # 46ec
+  by: agent  # 46ec
+  actor: jgstern_agent  # 46ec
+  clock: 5  # 46ec
+  nonce: 46ec  # 46ec
+  message: "Shipped as Phase 6 PR 3: PR #823, on dev as 17da6af2e9 (+ cc32664aea, the CI-coverage test pin). Both halves of the item: a project-wide DjangoRelationIndex (reverse FK / M2M accessors incl. <model>_set, forward FK/O2O fields as instances, class-level *Manager()/as_manager()/from_queryset()() attributes on VERIFIED model classes, resolved project bases walked for ownership; string targets by local class, import, then UNIQUE repo-wide short name) and a per-block oracle feeding the SAME predicate the .objects marker uses for the chain root rule and the emission (the manager itself stays untyped). Plus, needed by the row to reach its own population: x = <manager>[.qs hops].get/create/first/last/earliest/latest(...) binds var_types[x] to the model (tuple get_or_create too), and add/remove/clear/set rowed db_write (835 pretix sites; a parity test pins producer set == rows; add/set added to python.yaml ambiguous_names by INV-mivud's completeness test).\n\nSized before the design (gulaz_relmgr_09072026/shape_scan.txt): 5,441 pretix accessor call sites -- 782 reachable through the instance binding, 434 through a related manager's create/get, 116 on self, 74 annotated params, 41 self.<fk>; 1,155 setUp fields and 150 loop variables deliberately LEFT and filed; 73 custom-manager sites.\n\nMEASUREMENT 0015 (docs/measurements/0015-django-related-manager-delta.md; baseline = 0014's arm C, asserted equal to dev's runtime): kserve 0 moved; pretix 95 -> 122 situations, 27 NEW / 0 GONE, no verdict moved; every new situation read at source: 18 TP (a fetched row written back through its own manager or method: gc.transactions.create, inv.team.members.add, order.refunds.create, Checkin.all rows into LogEntry bulk_create), 9 FP (4 a fetched row used only as a CHECK argument two hops away; 5 a structural pairing whose real carrier is an untyped instance .save()/.delete() on a loop variable), 0 vacuous, 0 wrong-type -> 66.7% correct, 66.7% useful (ADR-0046). Refutation check on the production survey: 3,362 marker edges, 0 typed receivers whose class does not own the accessor; the serializer-field / @property population carries no Django edge.\n\nResiduals filed as their own items: setUp fields (1,155), loop-variable typing (150), forward FK fields into the Site-3 field map (131), index registration gaps (O2O reverse instance; abstract-base default <concrete>_set, 27 sites), QuerySet-returning @property (pretix OrderPosition.checkins). awaits_bakeoff_validation."  # 46ec

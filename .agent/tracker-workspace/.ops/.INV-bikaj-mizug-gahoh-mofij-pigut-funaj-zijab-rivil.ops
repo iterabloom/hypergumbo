@@ -152,3 +152,12 @@
   clock: 18  # 567d
   nonce: 567d  # 567d
   message: "2026-09-06, owner ruling on INV-nanon's re-scope: INV-hosig (di-resolution 2550 ms for 0 edges) is folded here as this item's named instance. Prerequisite INV-hujog (Pass.requires) isbefore this item. Both appended to the END of the arc tail behind INV-busis. Re-measured at tip (nanon_passes_09062026/): 618 pass executions on 8 repos, 529 emitted 0, 71 analysed files and cost 11.7 s of 258 s (4.5%); gitignore 8 repos, message-queue-linker 6, database-query-linker 6, graphql-resolver-linker 5, http-linker 5, ipc-linker 4."  # 567d
+- op: update  # 829e
+  at: '2026-09-07T02:33:09Z'  # 829e
+  by: agent  # 829e
+  actor: jgstern_agent  # 829e
+  clock: 19  # 829e
+  nonce: 829e  # 829e
+  set: {}  # 829e
+  add:  # 829e
+    isbefore: [WI-tunog-gazot-zobot-sukuz-habuv-lazos-kufor-nigun]  # 829e
