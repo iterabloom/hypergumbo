@@ -694,6 +694,13 @@ def _wildcard_candidate_slot(
     including ``System.currentTimeMillis`` x28 and ``System.nanoTime``, both
     catalogued ``host_info_read`` and both lost.
 
+    ALSO SERVES THE FILE WITH NO WILDCARD AT ALL (INV-suril). With an empty
+    ``wildcard_imports`` the loop below yields exactly one candidate,
+    ``java.lang.<name>``, which is what JLS 7.3 says is in scope there -- the
+    rule is unconditional and never required a wildcard. The caller admits only
+    a name in the closed :data:`_JAVA_LANG_TYPES` list on that path, so the
+    single candidate is always one the source really does have in scope.
+
     EMITS THE DISJUNCTION THE SITUATION ACTUALLY IS, reusing the comma-joined
     slot contract cpp has used since INV-funuf — ``_module_hint_candidates``
     splits on commas and asks an ANY question over the disjuncts, and
@@ -2717,14 +2724,59 @@ def _extract_edges(
                                     module_path=explicit_fq_module,
                                     name=method_name,
                                 )
+                            # INV-suril: the SAME JLS 7.3 rule, in the file
+                            # that carries no wildcard at all. INV-hahak fixed
+                            # java.lang for a wildcard-bearing file because the
+                            # slot is built here and this branch was gated on
+                            # ``wildcard_imports`` being non-empty. A file with
+                            # only single-type imports -- the style every java
+                            # linter enforces -- took no branch, so a static
+                            # call on an implicitly imported class kept the
+                            # ``external`` placeholder AND its ``System.``
+                            # prefix, and ``strip_redundant_module_qualifier``
+                            # could not fire either: it compares the name's head
+                            # against the module slot, and a placeholder matches
+                            # nothing. Measured on cassandra (6,090 files): 459
+                            # edges lost this way -- currentTimeMillis x285,
+                            # nanoTime x123, getProperty x29, getenv x16,
+                            # getProperties x6 -- against 446 java calls that
+                            # classify in the entire repository. Three of the
+                            # five are ``env_read``, so the loss reaches the
+                            # taint SOURCE side and not only the io map.
+                            #
+                            # THE CLOSED JLS LIST IS WHAT MAKES IT SAFE. Only a
+                            # name in :data:`_JAVA_LANG_TYPES` takes the new
+                            # disjunct, so an unqualifiable ``Helper.doThing()``
+                            # still gets NO module rather than a guessed one
+                            # (INV-fazim). The wildcard path is left exactly as
+                            # it was: widening its guard would be an unmeasured
+                            # behaviour change riding along with a recall fix.
+                            #
+                            # NO PROJECT-CLASS GUARD HERE, AND THAT IS MEASURED
+                            # RATHER THAN ASSUMED. One was written and removed:
+                            # a repo defining its own ``System`` never reaches
+                            # this branch at all, because ``class_resolver``
+                            # claims the name first and emits a RESOLVED edge --
+                            # verified on two fixtures, the class in the calling
+                            # package and in a different one. So the guard was
+                            # unreachable. It would also have been wrong in the
+                            # second case if it ever did run: ``app.P`` calling
+                            # ``System.currentTimeMillis()`` without importing
+                            # ``other.System`` means java.lang's, by JLS 6.5.
                             elif (
                                 receiver_name
                                 and receiver_name != "this"
                                 and receiver_name[:1].isupper()
-                                and wildcard_imports
+                                and (
+                                    wildcard_imports
+                                    or receiver_name in _JAVA_LANG_TYPES
+                                )
                             ):
+                                # ``or []`` is the INV-suril case spelled out:
+                                # no wildcards, so java.lang is the only
+                                # candidate the helper yields.
                                 wildcard_module = _wildcard_candidate_slot(
-                                    wildcard_imports, receiver_name,
+                                    wildcard_imports or [], receiver_name,
                                 )
                                 module = wildcard_module
                                 ext_ref = ExternalRef(

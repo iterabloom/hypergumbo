@@ -146,12 +146,24 @@ def test_a_repo_local_class_under_a_wildcard_still_matches_nothing():
     assert _classify(src, "Helper.writeString") is None
 
 
-def test_no_wildcard_is_unchanged():
+def test_no_wildcard_gets_a_single_candidate_not_a_disjunction():
+    """INV-hahak's blast-radius fence, RE-POINTED at what it was protecting.
+
+    As written for INV-hahak this asserted ``slot in (None, "external")`` under
+    the name ``test_no_wildcard_is_unchanged`` -- an UNCHANGED-ness claim about
+    that fix's scope, with no rationale recorded and no assertion that the
+    external placeholder was CORRECT. It was not: INV-suril is the item saying
+    so, and JLS 7.3 does not condition the implicit import on a wildcard being
+    present. What the fence was really guarding is that a wildcard file's
+    comma-joined DISJUNCTION must not leak into a file that has no wildcard --
+    there is nothing there to disjoin. That is what it now pins.
+    """
     src = (
         "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
     )
     slot = _module_slot_for(src, "System.currentTimeMillis")
-    assert slot in (None, "external")
+    assert slot == "java.lang.System"
+    assert "," not in slot, "no wildcards means exactly one candidate"
 
 
 @pytest.mark.parametrize("cls", ["String", "Integer", "Math", "Thread"])
@@ -259,3 +271,106 @@ def test_candidate_slot_preserves_wildcard_source_order():
         "javax.net.ssl.System,java.io.System,java.security.System,"
         "java.lang.System"
     )
+
+
+# ---------------------------------------------------------------------------
+# INV-suril: the same JLS 7.3 rule, in the file that carries NO wildcard.
+#
+# INV-hahak fixed java.lang for a file with a wildcard import, because the slot
+# is built by ``_wildcard_candidate_slot`` and that branch is gated on
+# ``wildcard_imports`` being non-empty. A file with only single-type imports --
+# the style every java linter enforces -- takes no branch at all, so a static
+# call on an implicitly imported class keeps the ``external`` placeholder and
+# its ``System.`` prefix, and ``strip_redundant_module_qualifier`` cannot fire
+# because the module slot it compares against is a placeholder.
+#
+# MEASURED, not feared: cassandra (6,090 java files) loses 459 edges this way --
+# System.currentTimeMillis x285, System.nanoTime x123, System.getProperty x29,
+# System.getenv x16, System.getProperties x6 -- against 446 java calls that
+# classify in the whole repository. Three of those five are ``env_read``, which
+# mints untrusted_input, so the loss is on the taint SOURCE side and not only in
+# the io-boundary map. sherpa-onnx, the repo INV-suril was filed from, loses 6.
+# ---------------------------------------------------------------------------
+
+_NO_IMPORTS_SYSTEM = (
+    "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
+)
+
+
+def test_java_lang_resolves_when_the_file_has_no_wildcard_import():
+    """JLS 7.3 does not require a wildcard; it is unconditional."""
+    slot = _module_slot_for(_NO_IMPORTS_SYSTEM, "System.currentTimeMillis")
+    assert slot == "java.lang.System"
+
+
+def test_the_catalogued_row_is_reached_with_no_wildcard_present():
+    prim = _classify(_NO_IMPORTS_SYSTEM, "System.currentTimeMillis")
+    assert prim is not None
+    assert prim.boundary == "host_info_read"
+    assert (prim.module, prim.name) == ("java.lang.System", "currentTimeMillis")
+
+
+def test_an_env_read_taint_source_is_reached_with_no_wildcard_present():
+    """The half of the loss that reaches taint rather than only the io map."""
+    src = (
+        "public class P { void f() { String p = System.getenv(\"PATH\"); } }\n"
+    )
+    prim = _classify(src, "System.getenv")
+    assert prim is not None
+    assert prim.boundary == "env_read"
+
+
+def test_a_single_type_import_still_wins_over_the_implicit_package():
+    """JLS 7.5.1: a single-type import shadows the implicit one."""
+    src = (
+        "import com.example.System;\n"
+        "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
+    )
+    slot = _module_slot_for(src, "System.currentTimeMillis")
+    assert slot == "com.example.System"
+
+
+def test_a_project_class_of_the_same_name_is_not_sent_to_java_lang():
+    """THE REFUTATION CELL. A project's own ``System`` is not java.lang's.
+
+    The mechanism that holds this is NOT a guard in the java.lang branch -- one
+    was written for it and removed as unreachable. ``class_resolver`` claims a
+    project class name before the branch runs and emits a RESOLVED edge, so the
+    branch never sees it. The cell stays because the GUARANTEE is what matters
+    and the mechanism could move; if a future change makes the resolver defer,
+    this is what fails.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        pathlib.Path(d, "System.java").write_text(
+            "package demo;\n"
+            "public class System { public static long currentTimeMillis() "
+            "{ return 0L; } }\n"
+        )
+        pathlib.Path(d, "P.java").write_text(
+            "package demo;\n"
+            "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
+        )
+        res = analyze_java(pathlib.Path(d))
+        slots = [
+            (e.dst_ref.module_path if getattr(e, "dst_ref", None) else None)
+            for e in res.edges
+            if e.edge_type == "calls" and "currentTimeMillis" in e.dst
+        ]
+    assert "java.lang.System" not in slots, (
+        "a project class must not be attributed to the JDK: "
+        f"slots={slots}"
+    )
+
+
+def test_a_capitalised_receiver_outside_java_lang_is_still_left_alone():
+    """INV-fazim / INV-dijor: an unqualifiable name gets NO module, not a guess.
+
+    The closed JLS list is what makes the branch above safe; without it this
+    would write ``java.lang.Helper`` and any catalogue row ending in ``.Helper``
+    would match it.
+    """
+    src = (
+        "public class P { void f() { Helper.doThing(); } }\n"
+    )
+    slot = _module_slot_for(src, "Helper.doThing")
+    assert slot is None or "java.lang" not in slot
