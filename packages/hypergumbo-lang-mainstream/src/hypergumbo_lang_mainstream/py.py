@@ -702,11 +702,26 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # :class:`DjangoRelationIndex`, a project-wide index of relation declarations
 # consulted by the same two consumers the ``.objects`` marker has; the same
 # change binds ``x = <manager>.get(...)`` to the model instance it returns.
+# The INSTANCE WRITE is typed since WI-gamas (Phase 6 PR 4) wherever the
+# relation index resolves the receiver to a MODEL -- ``self`` in a class that
+# is a model TRANSITIVELY (WI-sozoj typed 2 sites in all of pretix, because it
+# required one DIRECT dotted ``models.Model`` base), a local bound from a
+# manager or a constructor, an annotated parameter.
+# DELIBERATELY NOT TYPED, and this is not an oversight:
+# ``super().save()`` / ``super().delete()`` inside a model's own override,
+# which on a real Django project is where the write actually is (pretix: 215 of
+# 306 typed sites call a ``save`` the project overrides, and 56 of its 66
+# overrides then call ``super().save()``). Typing it is CORRECT at the site --
+# measurement 0016 read 61 such sites back against source with 0 wrong-type --
+# but it puts a taint SINK inside a model method, and the ADR-0017 walk reaches
+# any such method from any function that merely mentions the class, by crossing
+# the django-orm-dispatch linker's ``dispatches_to`` edge. Measured: 3 true
+# findings against 20 false ones. Withheld until that walk is fixed; see the
+# tracker item filed with 0016.
 # Still deferred (a different need -- instance/return-type inference):
-# ``instance.save()`` on a typed local, SQLAlchemy ``Session.*``, transitive
-# Model bases for the instance write, fields assigned in a test's ``setUp``
-# (1,155 pretix sites, every one under ``src/tests``), and the loop variable
-# of a ``for`` over a QuerySet.
+# SQLAlchemy ``Session.*``, fields assigned in a test's ``setUp`` (1,155
+# pretix sites, every one under ``src/tests``), and the loop variable of a
+# ``for`` over a QuerySet.
 DJANGO_ORM_MODULE = "django.db.models"
 DJANGO_ORM_MANAGER_METHODS = frozenset({
     # reads (db_read) and lazy combinators (db_compose, WI-fasap) -- the
@@ -4145,7 +4160,11 @@ class DjangoRelationIndex:
     class_by_id: dict[str, Symbol] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
-        return bool(self.related_managers or self.manager_names)
+        # ``model_ids`` COUNTS. A Django app whose models declare no relation
+        # and no custom manager still needs the lineage for the instance-write
+        # rules (WI-gamas); without this clause ``analyze_python`` would pass
+        # ``None`` and every one of them would silently not apply.
+        return bool(self.related_managers or self.manager_names or self.model_ids)
 
     def _lineage(self, cls: Symbol) -> Iterator[Symbol]:
         """``cls`` then its project bases, breadth-first, each once."""
@@ -4500,6 +4519,20 @@ class _DjangoReceiverOracle:
             return None
         owner = self.instance_class(expr.value)
         return self.index.accessor_model(owner, expr.attr) if owner is not None else None
+
+    def model_instance(self, expr: ast.expr) -> Symbol | None:
+        """The Django MODEL class ``expr`` is an instance of, or ``None``.
+
+        The gate on the ORM instance-write re-key (WI-gamas). ``model_ids`` is
+        the repo-wide lineage -- a ``models.Model`` base, a
+        ``django.db.models`` field, or a project base that is one -- so a
+        class that is a model only TRANSITIVELY (``Order(LoggedModel)``)
+        answers here where WI-sozoj's direct-dotted-base test refused.
+        A ``ModelForm`` declares ``forms.CharField``, is not in ``model_ids``,
+        and keeps its untyped ``save`` (the pre-registered refutation cell).
+        """
+        cls = self.instance_class(expr)
+        return cls if cls is not None and cls.id in self.index.model_ids else None
 
     def instance_from_call(self, call: ast.Call, *, unpacked: bool) -> Symbol | None:
         """The model instance ``call`` returns, walking QuerySet-returning hops
@@ -6864,6 +6897,35 @@ def _receiver_type_id_trustworthy(
     return True
 
 
+def _is_django_model_instance(
+    receiver: ast.expr,
+    oracle: "_DjangoReceiverOracle | None",
+    enclosing_class: str | None,
+    local_symbols: dict[str, Symbol],
+) -> bool:
+    """Does ``receiver`` denote an instance of a Django MODEL? (WI-gamas)
+
+    The gate on the ORM instance-write re-key. Asked of the relation index
+    first, through the oracle, which resolves ``self``, a Name the walker
+    typed, and a forward-relation hop, and tests the result against the
+    repo-wide model lineage.
+
+    :func:`_class_directly_extends_django_model` remains as the FALLBACK, for
+    the ``self`` receiver only, because the index is absent for a repository
+    with no Django model at all and skips a class whose short name is not
+    unique in its file. Removing it would silently narrow WI-sozoj's shipped
+    behaviour on exactly those files.
+    """
+    if oracle is not None and oracle.model_instance(receiver) is not None:
+        return True
+    return (
+        isinstance(receiver, ast.Name)
+        and receiver.id == "self"
+        and enclosing_class is not None
+        and _class_directly_extends_django_model(enclosing_class, local_symbols)
+    )
+
+
 def _class_directly_extends_django_model(
     class_short_name: str,
     local_symbols: dict[str, Symbol],
@@ -7669,11 +7731,17 @@ def _process_call(
                     or "receiver_type_hint" in unresolved_meta
                 ):
                     unresolved_meta["resolution_quality"] = "type_inferred"
-                # WI-sozoj: a ``self.save()``/``self.delete()`` whose enclosing
-                # class DIRECTLY extends django ``models.Model`` is an ORM
-                # instance write — re-key the dst to ``django.db.models`` so
-                # io-boundary classifies it db_write. This reads only the
-                # ``enclosing_class`` the self-branch above already stamped
+                # WI-sozoj: a ``self.save()``/``self.delete()`` on a django
+                # model instance is an ORM instance write — re-key the dst to
+                # ``django.db.models`` so io-boundary classifies it db_write.
+                # WI-gamas widened the receiver from ``self`` to ANY receiver
+                # the relation index can resolve to a model instance (a local
+                # bound from a manager or a constructor, an annotated
+                # parameter), and the model test from one DIRECT dotted base to
+                # the index's repo-wide lineage. It fires on the UNRESOLVED
+                # branch only, so a project-defined ``save`` still wins its
+                # first-party edge and is never re-keyed. The fallback path
+                # reads only the ``enclosing_class`` the self-branch stamped
                 # (present exclusively for the ``self`` receiver, and only when
                 # the method stayed unresolved) and leaves that INV-fahub /
                 # WI-noham / WI-supat receiver-hint chain untouched — additive,
@@ -7681,11 +7749,12 @@ def _process_call(
                 # module-qualified dst_ref survives serialization for the
                 # io-boundary CLI consumer (which reparses the dst id).
                 _orm_dst_ref: ExternalRef | None = None
-                if (
-                    attr_name in DJANGO_ORM_INSTANCE_WRITE_METHODS
-                    and unresolved_meta.get("enclosing_class") is not None
-                    and _class_directly_extends_django_model(
-                        unresolved_meta["enclosing_class"], local_symbols
+                if attr_name in DJANGO_ORM_INSTANCE_WRITE_METHODS and (
+                    _is_django_model_instance(
+                        func.value,
+                        django_oracle,
+                        unresolved_meta.get("enclosing_class"),
+                        local_symbols,
                     )
                 ):
                     dst_id = f"python:{DJANGO_ORM_MODULE}:0-0:{attr_name}:unresolved"
