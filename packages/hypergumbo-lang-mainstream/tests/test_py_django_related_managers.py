@@ -125,6 +125,10 @@ VIEWS = '''\
 from models import Event, Order, OrderPosition, Organizer
 
 
+def helper():
+    pass
+
+
 def seats(request, organizer: Organizer):
     ev = Event.objects.get(pk=1)
     for s in ev.seats.all():
@@ -152,6 +156,7 @@ def seats(request, organizer: Organizer):
     ev.foo.seats.count()
     request.thing.seats.create(number=2)
     make().seats.create(number=3)
+    helper.all.filter(x=1)
 '''
 
 
@@ -449,6 +454,11 @@ class TestTheRefutationCondition:
         )
         edges = _edges(tmp_path, {"models.py": MODELS, "views.py": views})
         assert _slot_at(edges, 4, "filter") == "external"
+
+    def test_a_local_function_is_not_a_class_root(self, project_edges: list[Edge]) -> None:
+        """``helper.all.filter(...)`` where ``helper`` is a same-file FUNCTION: a
+        bare name bound to anything but a class is refused as a manager root."""
+        assert _slot_at(project_edges, _line_of(VIEWS, "helper.all.filter(x=1)"), "filter") == "external"
 
     def test_a_manager_name_on_a_non_model_class_is_refused(self, tmp_path: Path) -> None:
         views = (
