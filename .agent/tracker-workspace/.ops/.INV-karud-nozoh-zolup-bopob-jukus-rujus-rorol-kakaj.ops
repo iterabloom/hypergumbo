@@ -313,3 +313,10 @@
   clock: 40  # b5b7
   nonce: b5b7  # b5b7
   message: "OWNER RULING 2026-09-06 (walk-through item 4): the proposed next pass is ACCEPTED -- (1) re-run the item's own pretix repro with the generic claims and check the two d3 sites (d3.v6.js `log` as console.log LOGGING; d3-dispatch `get` as http.get NETWORK) for absence; (2) one live cross-category sanitizer barrier check for clause (b). Then violated -> pending_validation with 0013 as the validation. SEQUENCING: piggybacked on the first Phase 6 recall PR's 0003 measurement run, which surveys pretix anyway (linub_pyshapes census cohort) -- inside Phase 6, no extra cost, no arc edge."  # b5b7
+- op: discuss  # 9475
+  at: '2026-09-07T00:10:52Z'  # 9475
+  by: agent  # 9475
+  actor: jgstern_agent  # 9475
+  clock: 41  # 9475
+  nonce: '9475'  # 9475
+  message: "NEXT-PASS ITEM (1) RE-RUN 2026-09-07 on measurement 0013's subject arm (pretix, generic claims, cold, tip + Phase 6 PR 1): ZERO pretix flows touch a d3 file or symbol; 3 flows are JavaScript-rooted and none is d3. The 2026-08-01 bare-name attributions (d3.v6.js `log` as console.log LOGGING; d3-dispatch `get` as http.get NETWORK) are absent on the item's OWN population, so (a1) now holds there as well as on caddy. Item (2), one live cross-category sanitizer barrier check for clause (b), is STILL NOT RUN. Status stays violated until (2) runs; then violated -> pending_validation with the next population-level precision measurement as the validation (0013 is a marginal delta, not that measurement)."  # 9475

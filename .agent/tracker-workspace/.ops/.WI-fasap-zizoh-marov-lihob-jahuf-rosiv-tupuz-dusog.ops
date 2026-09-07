@@ -1,0 +1,23 @@
+- op: create  # 8f9a
+  at: '2026-09-07T00:10:46Z'  # 8f9a
+  by: agent  # 8f9a
+  actor: jgstern_agent  # 8f9a
+  clock: 1  # 8f9a
+  nonce: 8f9a  # 8f9a
+  data:  # 8f9a
+    kind: work_item  # 8f9a
+    title: "Lazy Django QuerySet combinators (filter/exclude/all/order_by/select_related/prefetch_related/values/values_list/distinct/annotate) mint untrusted_input from db_read though they read nothing: 28 of 40 situations Phase 6 PR 1 added are this shape; ADR-0049 ruling 3's licence is now met -- move them to a disclosure boundary"  # 8f9a
+    status: todo_hard  # 8f9a
+    priority: 2  # 8f9a
+    parent:  # 8f9a
+    tags:  # 8f9a
+    - taint  # 8f9a
+    - catalogue  # 8f9a
+    - python  # 8f9a
+    - io_boundary  # 8f9a
+    isbefore: []  # 8f9a
+    duplicate_of: []  # 8f9a
+    not_duplicate_of: []  # 8f9a
+    pr_ref:  # 8f9a
+    description: "FOUND by measurement 0013 (docs/measurements/0013-django-queryset-chain-delta.md),\nthe marginal-precision delta of INV-mumov's Phase 6 PR 1 (QuerySet chain typing):\n28 of the 40 situations the change added to pretix sit on a SOURCE that reads\nnothing -- `WebHookCall.objects.filter(datetime__lte=...).delete()`,\n`Voucher.objects.filter(pk=...).update(...)`, `mails = ScheduledMail.objects.all();\nmails.filter(...).update(...)`. The QuerySet is the receiver of the write, so the\n0001 rubric calls the flow TRUE; ADR-0046 calls it VACUOUS: KIND-MISDECLARED,\nbecause python.yaml files the lazy QuerySet combinators -- filter, exclude, all,\norder_by, select_related, prefetch_related, values, values_list, distinct,\nannotate -- under `db_read`, and `db_read` mints `untrusted_input`. They read\nnothing at the call: ADR-0049 ruling 4's own table names \"Django's QuerySet\ncombinators\" as the Lazy / unexecuted DEFERRED CROSSING, and WI-lunav KEPT the\nrows under ruling 3 (\"removal is licensed only against a represented\ncrossing\") because no executing read was reachable on a chained receiver.\n\nTHE LICENCE CONDITION IS NOW MET. Phase 6 PR 1 types the chain, so the reads\nthat execute -- get / first / last / exists / count / earliest / latest /\niterator / in_bulk / aggregate on `<Model>.objects.<lazy>(...)` -- are\nrepresented as sources where the value actually arrives. Ruling 3's two halves\nland together: the executing reads (shipped) and the retag (this item).\n\nWHAT TO DO. Move the ten lazy combinators out of the MINTING boundary. Two\nroutes, to be decided on ADR-0049's own terms, not here:\n  (a) a disclosure boundary for the database family, the twin of net_listen\n      (absent from AUTO_SOURCE_LABEL_MAP, its own count, held out of the\n      headline, SHADOWING db_read so a clean database verdict over a query\n      builder is qualified rather than granted) -- new vocabulary, ADR-0024\n      four artifacts, the honest analogue of what ADR-0049 did for net;\n  (b) delete the rows -- ADR-0049 \"Alternatives rejected\" refused this for\n      the net family as unrepresented ingress; here the ingress IS\n      represented by the executing reads, but a query builder still opens a\n      crossing a clean verdict must not grant, so (a) is the recommendation.\nEither way parity across the ORM catalogues that share the shape\n(python-web-and-orm overlay's SQLAlchemy Query combinators; elixir Ecto.Repo\nlazy combinators ADR-0049 already names).\n\nMEASUREMENT: re-run 0013's two arms after the retag; the pre-registered\npositive control is that the 28 L-class situations DISAPPEAR and the 7 R-TP\nsituations REMAIN (the same instrument, `mumov_qschain_09062026/`); every\nremoved situation read back. INV-buzab three-row check for the disclosure\nboundary (ADR-0049 open work 5). Carries awaits_bakeoff_validation.\n\nNot a recall item; a precision fix in the arc's Phase 6, next after PR 1."  # 8f9a
+    fields: {}  # 8f9a
