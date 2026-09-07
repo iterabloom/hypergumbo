@@ -49,7 +49,7 @@ than a comment someone has to keep true.
 
 THE SECTIONS, and why headline membership is NOT one of them
 ------------------------------------------------------------
-Four axes partition the nineteen values:
+Four axes partition the twenty values:
 
 ``data_crossing``     the axiom's canonical section. Data crosses the process
                       boundary at this call site, in a named direction.
@@ -65,16 +65,17 @@ Four axes partition the nineteen values:
 Headline membership (``total_io_edges``) cuts ACROSS that partition and is
 therefore PER-VALUE METADATA, not a section. ``subprocess`` is the value that
 proves it: it is opaque AND curated, so it counts in the headline, while
-``external_potential``, ``command_launch`` and ``net_listen`` are disclosed and
-excluded. An axis query would have to special-case exactly one value, which is
+``external_potential``, ``command_launch``, ``net_listen`` and ``db_compose``
+are disclosed and excluded. An axis query would have to special-case exactly one value, which is
 the shape ADR-0024's fold-residue discipline says to put on the spec instead.
 
 KNOWN GAPS, stated rather than left for the next reader to rediscover
 --------------------------------------------------------------------
-1. ADR-0016's "controlled vocabulary" table documents NINE of these nineteen.
+1. ADR-0016's "controlled vocabulary" table documents NINE of these twenty.
    ``env_write``, ``db_read``, ``db_write``, ``process_send``, ``logging``,
    ``browser_storage_read``, ``browser_storage_write``, ``net_listen``,
-   ``external_potential`` and ``command_launch`` are absent from it. The
+   ``db_compose``, ``external_potential`` and ``command_launch`` are absent
+   from it. The
    vocabulary grew and its documentation did not, which is the drift INV-tafig
    describes; the descriptions below are sourced from the shipped catalogue
    rows and the consumer code, not from that table.
@@ -366,6 +367,26 @@ IO_BOUNDARY_TYPES: Final[tuple[IoBoundarySpec, ...]] = (
             "what `examined` means, so a tag that mints nothing would still "
             "count as an examined negative and hand verify-claims a green tick "
             "over live ingress."
+        ),
+    ),
+    IoBoundarySpec(
+        name="db_compose",
+        axis=AXIS_DEFERRED_CROSSING,
+        direction=DIRECTION_INBOUND,
+        catalog_declarable=True,
+        counts_in_headline=False,
+        description=(
+            "Compose a query that has run nothing -- Django's QuerySet "
+            "combinators (filter / exclude / order_by / ...), ADR-0049 ruling "
+            "4's Lazy row. The read happens when the query is EVALUATED "
+            "(iterated, indexed, materialised), and the python analyzer emits "
+            "that evaluation as its own db_read call site (WI-fasap); where the "
+            "evaluation is in a scope this call does not name (a QuerySet "
+            "returned, handed to a form or a paginator) the read is invisible, "
+            "which is what the shadow over db_read discloses. DISCLOSED, NEVER "
+            "MINTED, for net_listen's reason. NOT named `db_query`: that string "
+            "is the database_query linker's call_kind and names a call that "
+            "EXECUTES a query -- the opposite reading."
         ),
     ),
     # ------------------------------------------------------------------

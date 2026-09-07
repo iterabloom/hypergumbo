@@ -683,8 +683,10 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # homonym stays invisible rather than mis-tagged:
 #   * ``<Model>.objects.<method>()`` — the Manager/QuerySet query API. ``.objects``
 #     is Django's Manager-descriptor convention; the chained receiver emits no
-#     edge otherwise (measured). Catches reads (filter/get/all/...) AND
-#     Manager-position writes (create/bulk_create/update/...).
+#     edge otherwise (measured). Catches reads (get/exists/count/...), the
+#     lazy combinators (filter/all/order_by/... -- ``db_compose`` since
+#     WI-fasap: composed, not read) AND Manager-position writes
+#     (create/bulk_create/update/...).
 #   * ``self.save()``/``self.delete()`` in a class that DIRECTLY extends
 #     ``models.Model`` — the ORM instance-write surface.
 # The read/write split lives in the catalog (python.yaml keyed on method name);
@@ -700,7 +702,8 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # project-wide ``related_name`` index).
 DJANGO_ORM_MODULE = "django.db.models"
 DJANGO_ORM_MANAGER_METHODS = frozenset({
-    # reads (classified db_read in python.yaml)
+    # reads (db_read) and lazy combinators (db_compose, WI-fasap) -- the
+    # overlay decides which is which; the producer only recognises the marker
     "all", "filter", "exclude", "get", "count", "exists", "first", "last",
     "values", "values_list", "annotate", "aggregate", "order_by", "distinct",
     "none", "iterator", "earliest", "latest", "in_bulk",
@@ -710,6 +713,26 @@ DJANGO_ORM_MANAGER_METHODS = frozenset({
     "get_or_create", "update_or_create",
 })
 DJANGO_ORM_INSTANCE_WRITE_METHODS = frozenset({"save", "delete"})
+# WI-fasap (Phase 6 PR 2): the builtins that EVALUATE a lazy QuerySet by
+# iterating it. A QuerySet reads nothing when it is composed (``filter`` /
+# ``order_by`` / ``all`` -- ADR-0049's "Lazy / unexecuted" row) and reads when
+# it is evaluated: a ``for`` over it, a comprehension, an index subscript, or one
+# of these materialising builtins. Each such site emits a ``calls`` edge to
+# ``django.db.models.__iter__`` (``__aiter__`` for the async forms,
+# ``__getitem__`` for an index) so the read has a CALL SITE the catalogue can
+# row under ``db_read`` -- the missing half ``test_inv_nular_false_sources``
+# named when it kept the combinators under ``db_read`` ("an IMPLICIT
+# ``__iter__`` with NO CALL SITE TO CATALOGUE"), and the represented crossing
+# ADR-0049 ruling 3 requires before the combinators move to ``db_compose``.
+# Only the FIRST positional argument is typed, and the name must still be the
+# builtin (INV-kipor: a rebound or imported ``list`` is refused). Scalar
+# consumers (``len``, ``bool``, ``any``, ``sum``) are deliberately absent: they
+# return a count or a truth value, the branch-condition shape measurement 0001's
+# tie-break excludes, and ``count()`` / ``exists()`` already carry it where a
+# program spells it as a call.
+DJANGO_ORM_EVALUATING_BUILTINS = frozenset({
+    "list", "tuple", "set", "frozenset", "sorted", "dict", "enumerate",
+})
 # DIRECT ``models.Model`` bases only, dotted form only — the unambiguous Django
 # idiom (``class Order(models.Model)``). A transitive base or a bare ``Model``
 # degrades to invisible (INV-tapat precision-safe: a missed ORM write, never a
@@ -4647,6 +4670,52 @@ def _extract_edges(
             else frozenset()
         )
 
+        def _emit_orm_evaluation(
+            expr: ast.expr,
+            dunder: str,
+            lineno: int,
+            ext_types: dict[str, str],
+        ) -> None:
+            """WI-fasap: a CALL SITE for the implicit evaluation of a lazy QuerySet.
+
+            A ``for`` over ``Order.objects.filter(...)``, a comprehension, an
+            index subscript or ``list(qs)`` is where Django runs the query --
+            Python calls ``__iter__`` / ``__aiter__`` / ``__getitem__`` on the
+            receiver -- yet none of them is an ``ast.Call`` the walker would
+            emit. Without this edge the read has no call site, which is the
+            reason the lazy combinators had to stay under ``db_read`` and mint
+            a source at a call that reads nothing (28 of measurement 0013's 40
+            new situations). Typed through the ONE receiver predicate
+            (``_receiver_type``): a parameter that happens to hold a QuerySet
+            is refused exactly as it is for ``.filter()`` by name.
+
+            ``call_construct="protocol"``: the construct is a language protocol
+            invoked by syntax, not a spelled method call, and ``taint.py``'s F3
+            gate keys on ``"method"`` to mean "an untyped receiver with no
+            evidence" -- this edge has evidence, so it must not wear that label.
+            """
+            hint = _receiver_type(expr, ext_types, _external_constructor_module)
+            if hint != DJANGO_ORM_MODULE:
+                return
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{dunder}:unresolved",
+                edge_type="calls",
+                line=lineno,
+                evidence_type="ast_call",
+                is_resolved=False,
+                meta={
+                    "call_construct": "protocol",
+                    "framework_dispatch": "django_orm",
+                    "resolution_quality": "type_inferred",
+                },
+                dst_ref=ExternalRef(
+                    lang="python", module_path=DJANGO_ORM_MODULE, name=dunder
+                ),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+
         for node in block_nodes:
             # INV-ruluv: skip a directly-body-nested def/class. It is processed
             # independently by the ast.walk(tree) loop with its OWN caller_symbol
@@ -4660,6 +4729,16 @@ def _extract_edges(
                 node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
             ):
                 continue
+
+            # WI-fasap: the iterable of a ``for`` is an EVALUATION of a lazy
+            # QuerySet -- the read itself, in the scope that composed the query.
+            if isinstance(node, (ast.For, ast.AsyncFor)):
+                _emit_orm_evaluation(
+                    node.iter,
+                    "__aiter__" if isinstance(node, ast.AsyncFor) else "__iter__",
+                    node.lineno,
+                    external_var_types,
+                )
 
             # INV-ruluv: a comprehension / lambda is its OWN binding scope. Prune
             # ``var_types`` of the names it binds before recursing into its
@@ -4681,6 +4760,16 @@ def _extract_edges(
                     [node.generators[0].iter], caller_symbol, var_types,
                     stack=stack, external_var_types=external_var_types,
                 )
+                # WI-fasap: every generator's iterable is an evaluation -- the
+                # first under the enclosing scope's types, the rest under the
+                # comprehension's own pruned scope, the same split as the walk.
+                for _gi, _gen in enumerate(node.generators):
+                    _emit_orm_evaluation(
+                        _gen.iter,
+                        "__aiter__" if _gen.is_async else "__iter__",
+                        node.lineno,
+                        external_var_types if _gi == 0 else _pruned_ext,
+                    )
                 for _part in _comprehension_scope_nodes(node):
                     process_code_block(
                         [_part], caller_symbol, _pruned_vt,
@@ -4825,6 +4914,24 @@ def _extract_edges(
                     class_name_counts=class_name_counts,
                 )
                 _stamp_io_mode(edges, _edges_before_call, node)
+                # WI-fasap: ``list(qs)`` and its peers evaluate the QuerySet.
+                # The name must still BE the builtin: an import or a binding in
+                # any enclosing frame refuses it (INV-kipor, the same guard the
+                # bare-builtin arm of ``_process_call`` spells out).
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in DJANGO_ORM_EVALUATING_BUILTINS
+                    and node.args
+                    and node.func.id not in imports
+                    and node.func.id not in (
+                        frozenset().union(*(f.local_names for f in stack.frames))
+                        if stack is not None and stack.frames
+                        else frozenset()
+                    )
+                ):
+                    _emit_orm_evaluation(
+                        node.args[0], "__iter__", node.lineno, external_var_types,
+                    )
                 # Function references in call arguments: map(transform, items)
                 for arg in node.args:
                     if isinstance(arg, ast.Name):
@@ -4907,6 +5014,14 @@ def _extract_edges(
                 for elt in node.elts:
                     if isinstance(elt, ast.Name):
                         _emit_function_ref(elt, caller_symbol, stack=stack)
+
+            # WI-fasap: an INDEX subscript evaluates the QuerySet (``qs[0]``);
+            # a SLICE composes another one and is handled as a derivation in
+            # ``_derived_receiver_module`` instead.
+            if isinstance(node, ast.Subscript) and not isinstance(node.slice, ast.Slice):
+                _emit_orm_evaluation(
+                    node.value, "__getitem__", node.lineno, external_var_types,
+                )
 
             # Recurse into child nodes (but not into nested function defs —
             # those get their own caller_symbol in the outer FunctionDef loop).
@@ -5670,6 +5785,15 @@ def _derived_receiver_module(
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
         return _preserved_receiver_type(
             value.func.value, value.func.attr, external_var_types, ctor_type,
+        )
+    if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Slice):
+        # WI-fasap: a SLICE is a derivation (``qs[:n]`` is another lazy
+        # QuerySet), keyed as the ``__getitem__`` member so the signature table
+        # decides which types survive it -- pathlib has no such row, Django
+        # does. An INDEX subscript is not a derivation but an evaluation; the
+        # walker emits it as a ``__getitem__`` call site instead.
+        return _preserved_receiver_type(
+            value.value, "__getitem__", external_var_types, ctor_type,
         )
     return None
 

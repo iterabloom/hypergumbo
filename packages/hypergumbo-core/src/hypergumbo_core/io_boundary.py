@@ -6,13 +6,14 @@ classified by boundary type. The closed set of catalog-declarable boundary
 tags is ``CATALOG_BOUNDARY_TYPES`` below (fs_read/fs_write, net_send/net_recv,
 ipc_recv/ipc_send, env_read/host_info_read/env_write, subprocess,
 db_read/db_write,
-process_send, logging, browser_storage_read/browser_storage_write, and
-``net_listen``); the synthesized ``external_potential`` and disclosed
-``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen`` sits on
-the ADR-0049 **deferred-crossing** axis: the call does not itself cross a
-boundary, it arranges for a later one, so it is disclosed rather than counted
-in the headline and shadows ``net_recv`` (``DEFERRED_CROSSING_SHADOWS``). Catalogs are YAML files in the ``io_primitives/``
-directory alongside this module.
+process_send, logging, browser_storage_read/browser_storage_write,
+``net_listen`` and ``db_compose``); the synthesized ``external_potential`` and
+disclosed ``command_launch`` complete ``KNOWN_IO_BOUNDARIES``. ``net_listen``
+and ``db_compose`` sit on the ADR-0049 **deferred-crossing** axis: the call
+does not itself cross a boundary, it arranges for a later one, so each is
+disclosed rather than counted in the headline and shadows its data boundary
+(``net_recv`` / ``db_read``; ``DEFERRED_CROSSING_SHADOWS``). Catalogs are YAML
+files in the ``io_primitives/`` directory alongside this module.
 
 Beyond the catalogue itself, this module owns the whole ADR-0016 pipeline:
 
@@ -112,7 +113,7 @@ if TYPE_CHECKING:
 #     (1.0 -> 2.0).
 #   - Changes to ``BoundaryMapEntry.to_dict()`` / ``IoChain.to_dict()``
 #     shape are part of this same contract — they share the version.
-IO_BOUNDARIES_SCHEMA_VERSION: str = "2.2"  # WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
+IO_BOUNDARIES_SCHEMA_VERSION: str = "2.3"  # WI-fasap/ADR-0049: db_compose_edges added (the database twin of net_listen). 2.2: WI-nosah/ADR-0049: net_listen_edges added (deferred crossings disclosed, excluded from total_io_edges, shadowing net_recv). 2.1: WI-javoh command_launch_edges added. 2.0: WI-huhit/WI-foduh total_io_edges redefined + external_potential_edges added
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +203,12 @@ _DISCLOSED_ONLY_BOUNDARIES: frozenset[str] = disclosed_only_names()
 # strictly worse than leaving the false source in place.
 DEFERRED_CROSSING_SHADOWS: dict[str, str] = {
     "net_listen": "net_recv",
+    # WI-fasap: a composed-but-unevaluated query. The python analyzer emits
+    # the in-scope evaluation (``for``, index, ``list()``) as its own
+    # ``db_read`` call site, so what the shadow discloses is the OTHER case --
+    # a QuerySet handed to a scope this call does not name, whose read no
+    # call site represents.
+    "db_compose": "db_read",
 }
 
 # Boundaries whose classification records that the analysis CANNOT SEE PAST the
@@ -3224,6 +3231,9 @@ class BoundaryMap:
     #: would understate the surface while folding it into ``total_io_edges``
     #: would claim it as verified I/O. Neither is true; it gets its own number.
     net_listen_edges: int = 0
+    #: Chain count of the ``db_compose`` bucket (WI-fasap) -- the database twin
+    #: of ``net_listen``, disclosed for the same reason.
+    db_compose_edges: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-friendly dict.
@@ -3240,6 +3250,7 @@ class BoundaryMap:
             "external_potential_edges": self.external_potential_edges,
             "command_launch_edges": self.command_launch_edges,
             "net_listen_edges": self.net_listen_edges,
+            "db_compose_edges": self.db_compose_edges,
             "boundaries": {
                 k: v.to_dict() for k, v in sorted(self.entries.items())
             },
@@ -3593,33 +3604,33 @@ def compute_boundary_map(
             leaf_callers=leaf_callers,
             entry_points_per_leaf=entry_points_per_leaf,
         )
-    ep_edges = (
-        len(entries["external_potential"].chains)
-        if "external_potential" in entries
-        else 0
-    )
-    cl_edges = (
-        len(entries["command_launch"].chains)
-        if "command_launch" in entries
-        else 0
-    )
-    nl_edges = (
-        len(entries["net_listen"].chains)
-        if "net_listen" in entries
-        else 0
-    )
     bmap = BoundaryMap(
         entries=entries,
         total_io_edges=sum(
             len(e.chains) for k, e in entries.items()
             if k not in _DISCLOSED_ONLY_BOUNDARIES
         ),
-        external_potential_edges=ep_edges,
-        command_launch_edges=cl_edges,
-        net_listen_edges=nl_edges,
+        external_potential_edges=disclosed_chain_count(entries, "external_potential"),
+        command_launch_edges=disclosed_chain_count(entries, "command_launch"),
+        net_listen_edges=disclosed_chain_count(entries, "net_listen"),
+        db_compose_edges=disclosed_chain_count(entries, "db_compose"),
     )
 
     return bmap
+
+
+def disclosed_chain_count(
+    entries: Mapping[str, BoundaryMapEntry], boundary: str,
+) -> int:
+    """Chain count of one DISCLOSED-ONLY bucket, zero when the bucket is absent.
+
+    One helper for the four ``*_edges`` disclosure fields rather than four
+    copies of the same conditional: the fourth copy (``db_compose``, WI-fasap)
+    is where a hand-written ``if "net_listen" in entries`` pasted under a new
+    name would have counted the wrong bucket, and ``cmd_io_boundaries``
+    rebuilds the envelope with the same four fields on its filtered path.
+    """
+    return len(entries[boundary].chains) if boundary in entries else 0
 
 
 def compute_leaf_rollups(

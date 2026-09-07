@@ -5353,6 +5353,7 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
             from .io_boundary import (
                 IO_BOUNDARIES_SCHEMA_VERSION,
                 _DISCLOSED_ONLY_BOUNDARIES,
+                disclosed_chain_count,
             )
 
             # INV-pubom (amended, WI-huhit/WI-foduh): total_io_edges is the
@@ -5364,34 +5365,25 @@ def cmd_io_boundaries(args: argparse.Namespace) -> int:
                 for k, e in filtered_entries.items()
                 if k not in _DISCLOSED_ONLY_BOUNDARIES
             )
-            filtered_ep = (
-                len(filtered_entries["external_potential"].chains)
-                if "external_potential" in filtered_entries
-                else 0
-            )
-            filtered_cl = (
-                len(filtered_entries["command_launch"].chains)
-                if "command_launch" in filtered_entries
-                else 0
-            )
             # ADR-0049. THIS PATH REBUILDS THE ENVELOPE BY HAND, so a new
             # disclosed-only bucket has to be added in BOTH homes or the two
             # JSON paths disagree — the INV-pubom drift, caught here by the
-            # envelope key-lock test rather than in the field.
-            filtered_nl = (
-                len(filtered_entries["net_listen"].chains)
-                if "net_listen" in filtered_entries
-                else 0
-            )
+            # envelope key-lock test rather than in the field. The count itself
+            # comes from the one helper ``BoundaryMap`` uses (WI-fasap).
             output = {
                 # PR-B: pin the io-boundaries envelope schema_version on
                 # the filtered path too; the unfiltered path inherits it
                 # from ``BoundaryMap.to_dict``.
                 "schema_version": IO_BOUNDARIES_SCHEMA_VERSION,
                 "total_io_edges": filtered_total,
-                "external_potential_edges": filtered_ep,
-                "command_launch_edges": filtered_cl,
-                "net_listen_edges": filtered_nl,
+                "external_potential_edges": disclosed_chain_count(
+                    filtered_entries, "external_potential"),
+                "command_launch_edges": disclosed_chain_count(
+                    filtered_entries, "command_launch"),
+                "net_listen_edges": disclosed_chain_count(
+                    filtered_entries, "net_listen"),
+                "db_compose_edges": disclosed_chain_count(
+                    filtered_entries, "db_compose"),
                 "boundaries": {
                     k: v.to_dict() for k, v in sorted(filtered_entries.items())
                 },
@@ -10269,8 +10261,8 @@ Claims file format (YAML):
         # max_chains: 5           #   env_read, env_write, external_potential,
                                   #   fs_read, fs_write, host_info_read,
                                   #   ipc_recv, ipc_send, logging, net_listen,
-                                  #   net_recv, net_send, process_send,
-                                  #   subprocess
+                                  #   db_compose, net_recv, net_send,
+                                  #   process_send, subprocess
         # (b) taint-flow constraint (ADR-0017):
         # taint_flow:
         #   source_taint: untrusted_input

@@ -193,7 +193,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/objc.py"
                 ),
-                line=845,
+                line=855,
                 anchor="_module: str | None = receiver_name",
                 note=(
                     "Reads as a receiver-variable site and is not: it is "
