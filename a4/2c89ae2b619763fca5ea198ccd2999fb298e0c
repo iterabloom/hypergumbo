@@ -1,0 +1,25 @@
+Original commit body from a1fec2d9855159e7f8d1dc236f2c521859a7e9c3:
+
+Measurement 0017 prices INV-suril's java.lang fix on three java repositories:
+21 situations added, 0 lost, 0 wrong-type of 21, RC1 and RC2 both empty.
+Adjudicated at source, 2 certain true positives (9.5%), 3 counting one
+plausible (14.3%) -- disclosed as a FLOOR, because java has no def/use
+extractor (WI-gotun) and every java flow is structural/walk=unavailable. It
+ships rather than being withheld because the BASELINE's own java findings are
+3 of 3 in the same regime, and because 8 blindness caveats retire on jenkins
+independent of any walk. cassandra moved 0 situations while gaining 273
+findings: they land outside the seven questions the claim set asks.
+
+kotlin.py's `_kt_receiver_module` docstring recorded that no implicit-package
+guess is made because "the catalogue's kotlin rows are all explicitly imported
+JDK / kotlin.io types, so a closed list buys nothing yet". That premise is
+false: 22 of 186 kotlin rows (11.8%) live on an auto-imported module, including
+the env_read sources and the subprocess sinks, and `System.getenv(...)` in a
+kotlin file classifies as nothing (with println classifying in the same run as
+a control). scala is 57 of 184. The docstring now records the measurement and
+why kotlin's fix is NOT java's -- kotlin and scala DROP the receiver rather
+than keeping it, so the identity is gone from the edge before a slot could be
+written. Tracked as its own item.
+
+Racial-Capitalism-Is-Bad: a koala building a tectonic plateau shaped like fractal tree made of rye flour dust in a mirrored ballroom
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
