@@ -1,0 +1,41 @@
+- op: create  # eaec
+  at: '2026-09-07T20:51:00Z'  # eaec
+  by: agent  # eaec
+  actor: jgstern_agent  # eaec
+  clock: 1  # eaec
+  nonce: eaec  # eaec
+  data:  # eaec
+    kind: work_item  # eaec
+    title: "the SELECTS role on a sink argument: a content-shaped value that only NAMES the resource the sink acts on (the caddy config-to-os.Chmod shape) -- WI-gohok's sink half, needs an owner design decision"  # eaec
+    status: todo_hard  # eaec
+    priority: 2  # eaec
+    parent:  # eaec
+    tags:  # eaec
+    - taint  # eaec
+    - measurement  # eaec
+    - analysis_quality  # eaec
+    - adr_0017  # eaec
+    isbefore: []  # eaec
+    duplicate_of: []  # eaec
+    not_duplicate_of: []  # eaec
+    pr_ref:  # eaec
+    description: "WI-gohok's SINK HALF, filed 2026-09-07 on the owner's directive to integrate\nthe open owner-facing questions into the arc. Sits at the arc tail (T9), after\nthe source half (the sibling value_shape item), which it composes with.\nNEEDS AN OWNER DESIGN DECISION before implementation -- see THE QUESTION below.\n\nTHE SHAPE, in the owner's own case. caddy reads its config from stdin\n(`caddy run --config -`); that config names a log file; the bytes flow\ncmd/main.go:164 io.ReadAll(os.Stdin) -> caddy.Load -> changeConfig ->\nStrictUnmarshalJSON -> BaseLog.WriterRaw -> ctx.LoadModule ->\nFileWriter.Filename -> filewriter.go:239 os.Chmod(fw.Filename, mode). Every hop\ncitable in caddy's own source, the module constructor pinned by RegisterModule\nand a literal module ID, the field write by a json struct tag. It is a TRUE\nPOSITIVE under the 0001 rubric and it is uninformative: caddy's config IS a\nprogram for the filesystem, so \"untrusted input reached os.Chmod\" tells a\nreader nothing they did not know from running the binary.\n\nWHY THE SOURCE HALF DOES NOT COVER IT. The source here is stdin -- genuinely\ncontent-shaped, the far side authored the bytes. The SELECTS property is\nacquired at the SINK: the value ends up as the argument that NAMES THE RESOURCE\nthe sink acts on rather than as payload computed into what the sink does.\nvalue_shape cannot see this; it needs the sink-argument role.\n\nSIZE, such as it is. Measurement 0006 found at least 6 of 38 surviving true\npositives (15.8%) have a sink whose tainted argument is a path the value merely\nselects (jaeger#2, jaeger#6, ArkLib#2, ArkLib#3, ArkLib#4, kamaraflow#4). That\nis a FLOOR, not an estimate: bash redirect situations are excluded because the\nrecord does not say whether the tainted value was the redirect TARGET or the\nwritten BYTES. Independently, 0006's pass-4 refuters applied the computation\ntie-break to the analogous open-handle shape (jaeger#0, ArkLib#0, ArkLib#1)\nwithout being told to, which is evidence the distinction is legible to a\ncareful reader from the record alone. On 0005 the class is worth 10.6% -> 7.9%\non the row rate; on a config-heavy repo it could dominate, and would then\nreport a precision IMPROVEMENT that is purely a statement about how much config\nthat repo has.\n\nTHE QUESTION FOR THE OWNER, which is why this is filed rather than built.\nWhere does the argument role live, and who computes it? Three shapes, not\ncosted:\n  (i) A CATALOGUE PROPERTY ON THE SINK ROW -- name which parameter position(s)\n      of a sink are resource-naming (os.Chmod arg 0, os.MkdirAll arg 0,\n      exec.Command arg 0 vs its argv tail). Cheapest, purely declarative,\n      but it is per-row work across the whole sink catalogue and it is\n      wrong for sinks whose danger genuinely IS the path (path traversal).\n  (ii) A PER-FINDING ROLE COMPUTED AT THE WALK -- record which argument the\n      tainted value reached. Truthful per finding, needs the walk to carry\n      argument identity it does not carry today, and is unavailable for the\n      structural (non-DDG) majority.\n  (iii) NEITHER -- publish the useful-precision number using the source half\n      alone, and disclose the sink half as a named, dated blindness in the\n      measurement frame.\n(iii) is a legitimate outcome and would let WI-gohok's second number ship\nwithout this item; it is listed so the item cannot be read as a commitment to\nbuild (i) or (ii).\n\nTHE CONSTRAINT THAT SURVIVES WHICHEVER IS CHOSEN, from the owner's 2026-08-27\namendment: the exclusion is STRUCTURAL, by the shape of the path, never a\nper-case judgement of how interesting a finding is. And the exclusion must not\nabsorb INV-nular's vacuity-that-is-a-bug (the shellcheck Haskell IORef class),\nwhich gets fixed rather than excluded."  # eaec
+    fields: {}  # eaec
+- op: update  # 64dd
+  at: '2026-09-07T20:52:08Z'  # 64dd
+  by: agent  # 64dd
+  actor: jgstern_agent  # 64dd
+  clock: 2  # 64dd
+  nonce: 64dd  # 64dd
+  set: {}  # 64dd
+  add:  # 64dd
+    isbefore: [WI-jivih-rolok-botug-pumig-finub-nusin-tinuk-nukib]  # 64dd
+- op: update  # 035f
+  at: '2026-09-07T20:52:32Z'  # 035f
+  by: agent  # 035f
+  actor: jgstern_agent  # 035f
+  clock: 3  # 035f
+  nonce: 035f  # 035f
+  set: {}  # 035f
+  remove:  # 035f
+    isbefore: [WI-jivih-rolok-botug-pumig-finub-nusin-tinuk-nukib]  # 035f
