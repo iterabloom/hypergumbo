@@ -21,7 +21,7 @@ allocation and F3's seed have nothing to govern and the keys say so.
 - cohort: pretix (subject) and kserve (control), the two python repositories the 2026-09-06 derivability census on INV-mumov ran on; qualification rule = the census that chose the slice, not a random draw
 - claim_set: `docs/example-claims/generic-taint-claims.yaml`, the seven generic claims, verbatim; every one of the 40 new situations is on `untrusted-input-no-database`
 - rubric: measurement 0001's, verbatim (F6), including its tie-break ("taint flows through in-program computation, not through an external resource selected by the tainted value"), plus ADR-0046's two VACUOUS classes for the usefulness label (CONFIGURED-ACTION, KIND-MISDECLARED)
-- analyzer_sha: subject ddb9a02404 (the implementation commit; arm B ran on the working tree whose runtime files that commit captured unchanged); baseline = the three runtime files checked out at the merge base 4f555a6fa9, ASSERTED in `armA.log` before the run (root rule 0, Django signature rows 0) and after the restore (1, 21)
+- analyzer_sha: subject c6cc2aeaae (the implementation commit as it sits on dev; its pre-merge spelling ddb9a02404 is not reachable from dev — arm B ran on the working tree whose runtime files that commit captured unchanged); baseline = the three runtime files checked out at the merge base 4f555a6fa9, ASSERTED in `armA.log` before the run (root rule 0, Django signature rows 0) and after the restore (1, 21)
 - language_scope: python is the only language the change can affect and the only language in scope for the claim; the two repositories' other languages ran and are reported unmoved, not measured-at-zero — kserve's 63 situations span its go/python content and none moved
 
 ## The question
