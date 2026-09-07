@@ -695,11 +695,18 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # qs.delete()`` -- is typed since INV-mumov's Phase 6 PR 1: the result of a
 # QuerySet-returning member on the ``.objects`` root carries this module (see
 # ``_preserved_receiver_type`` and the django rows in
-# ``library_signatures/python.yaml``). Still deferred (a different need --
-# instance/return-type inference): ``instance.save()`` on a typed local,
-# SQLAlchemy ``Session.*``, transitive Model bases, and reverse-relation
-# managers (``self.orga.events.create()``: 1,901 pretix sites, needs a
-# project-wide ``related_name`` index).
+# ``library_signatures/python.yaml``). The REVERSE-RELATION manager
+# (``order.payments.create()``, ``event.sponsors.add(s)``, ``self.seat_set``)
+# and a class-level manager under another name (pretix's soft-delete
+# ``Checkin.all.filter()``) are typed since WI-gulaz (Phase 6 PR 3) through
+# :class:`DjangoRelationIndex`, a project-wide index of relation declarations
+# consulted by the same two consumers the ``.objects`` marker has; the same
+# change binds ``x = <manager>.get(...)`` to the model instance it returns.
+# Still deferred (a different need -- instance/return-type inference):
+# ``instance.save()`` on a typed local, SQLAlchemy ``Session.*``, transitive
+# Model bases for the instance write, fields assigned in a test's ``setUp``
+# (1,155 pretix sites, every one under ``src/tests``), and the loop variable
+# of a ``for`` over a QuerySet.
 DJANGO_ORM_MODULE = "django.db.models"
 DJANGO_ORM_MANAGER_METHODS = frozenset({
     # reads (db_read) and lazy combinators (db_compose, WI-fasap) -- the
@@ -713,6 +720,40 @@ DJANGO_ORM_MANAGER_METHODS = frozenset({
     "get_or_create", "update_or_create",
 })
 DJANGO_ORM_INSTANCE_WRITE_METHODS = frozenset({"save", "delete"})
+# WI-gulaz (INV-mumov candidate 2): the RelatedManager's OWN write surface --
+# ``order.items.add(item)`` / ``.remove(item)`` / ``.clear()`` / ``.set([...])``
+# on a reverse-FK or many-to-many manager. Not a Manager method: ``.objects``
+# has no ``add``, so the set is recognised only at a root the relation index
+# owns (``_DjangoReceiverOracle.manager_root`` == ``"related"``). Rowed
+# ``db_write`` in the overlay; a parity test pins the two so a hand-restated
+# set cannot drift (measured on pretix before this change: 835 call sites,
+# 768 of them ``add``, none catalogued).
+DJANGO_RELATED_MANAGER_WRITE_METHODS = frozenset({"add", "remove", "clear", "set"})
+# The manager members that return ONE MODEL INSTANCE -- the binding site of
+# ``x = Order.objects.get(...)`` / ``x = order.payments.create(...)``. Phase 6
+# PR 1 excluded them from the signature table because the instance is a
+# PROJECT class and carries no module; the relation index gives that class a
+# consumer (its accessors), so the walker now binds ``var_types[x]`` to it.
+# The tuple-returning pair binds through the first element of an UNPACKING
+# target only (``obj, created = ...get_or_create(...)``).
+DJANGO_ORM_INSTANCE_RETURNING_METHODS = frozenset({
+    "get", "create", "first", "last", "earliest", "latest",
+})
+DJANGO_ORM_INSTANCE_TUPLE_METHODS = frozenset({"get_or_create", "update_or_create"})
+# The relation-field constructors the index reads, by the dotted path the
+# file's imports bind the callee to (``models.ForeignKey`` under
+# ``from django.db import models``; the bare or aliased forms resolve to the
+# same string). ``fk`` and ``o2o`` type the FORWARD field as an instance of
+# the target; ``fk`` and ``m2m`` declare a manager on the target under
+# ``related_name`` (or Django's default ``<model>_set``); ``m2m`` is a manager
+# on the declaring side too. An ``o2o`` reverse accessor is an INSTANCE, not a
+# manager, and is deliberately not registered here (filed).
+DJANGO_RELATION_CONSTRUCTORS: dict[str, str] = {
+    "ForeignKey": "fk", "OneToOneField": "o2o", "ManyToManyField": "m2m",
+}
+DJANGO_RELATION_FIELD_OWNERS = frozenset({
+    "django.db.models", "django.db.models.fields.related",
+})
 # WI-fasap (Phase 6 PR 2): the builtins that EVALUATE a lazy QuerySet by
 # iterating it. A QuerySet reads nothing when it is composed (``filter`` /
 # ``order_by`` / ``all`` -- ADR-0049's "Lazy / unexecuted" row) and reads when
@@ -4044,6 +4085,446 @@ def _collect_class_field_maps(
     return class_field_types, class_own_field_names, class_external_field_types
 
 
+@dataclass
+class DjangoRelationIndex:
+    """Project-wide index of Django relation accessors and manager attributes,
+    keyed by class-symbol id (WI-gulaz, INV-mumov candidate 2).
+
+    WHY IT EXISTS. Django's reverse-relation manager is declared on the OTHER
+    side of the relation: ``order.payments`` is a manager because
+    ``Payment.order = ForeignKey(Order, related_name="payments")`` says so, in
+    a file the caller of ``order.payments.create(...)`` need never import. A
+    per-file analysis cannot see it, which is why WI-sozoj's marker was the
+    literal ``.objects`` and every other manager stayed invisible: on pretix
+    5,441 call sites on a related-name-like accessor and 73 on a custom
+    manager name (``Checkin.all``), none typed, 835 of them the
+    RelatedManager's own write surface (``add`` / ``remove`` / ``clear`` /
+    ``set``) that no catalogue row could reach.
+
+    Built ONCE per repository in :func:`analyze_python`'s pre-pass, beside the
+    class field maps and for the same reason (a class defined in another file;
+    order independence), by :func:`_collect_django_relation_index`. Consulted
+    through :class:`_DjangoReceiverOracle`, which adds the per-block context
+    (``var_types``, the enclosing class) the index itself does not hold.
+
+    * ``related_managers[C][accessor]`` -- the model whose instances the
+      manager on a ``C`` instance yields: a reverse FK accessor
+      (``related_name`` or Django's default ``<model>_set``), a reverse M2M
+      accessor, or a forward M2M field. A ``OneToOneField`` reverse accessor is
+      an INSTANCE, not a manager, and is deliberately absent (filed).
+    * ``relation_fields[C][field]`` -- the target model a forward ``ForeignKey``
+      / ``OneToOneField`` field on ``C`` holds an instance of, so
+      ``self.order.payments`` types through two declared hops.
+    * ``manager_names[C]`` -- class-level attributes of a Django MODEL assigned
+      from a manager constructor (``all = ScopedManager(...)``,
+      ``objects = TeamQuerySet.as_manager()``, ``Manager.from_queryset(QS)()``),
+      ``objects`` itself excluded (it stays the syntactic marker).
+    * ``project_bases[C]`` -- the resolved in-repo bases, because ownership
+      WALKS them: an accessor declared through ``ForeignKey("self",
+      related_name="addons")`` on an abstract base is owned by every concrete
+      subclass, and a manager declared on an abstract base is inherited.
+    * ``model_ids`` -- the classes verified to be Django models (a
+      ``models.Model`` base, a ``django.db.models`` field, or a project base
+      that is one), the gate on ``manager_names`` and on the ``.objects``
+      instance binding: a non-model class with an attribute called ``all`` or
+      ``objects`` is refused.
+
+    THE REFUTATION CONDITION, pre-registered before the index existed: an
+    accessor-like attribute on a receiver whose resolved class does NOT own it
+    must not be typed. That is a property of the lookup, not a filter: a
+    serializer field named ``meta_properties``, a ``@property`` that returns a
+    QuerySet (pretix's ``OrderPosition.checkins``), an untyped root, all miss
+    the index and keep the ``external`` slot.
+    """
+
+    related_managers: dict[str, dict[str, Symbol]] = field(default_factory=dict)
+    relation_fields: dict[str, dict[str, Symbol]] = field(default_factory=dict)
+    manager_names: dict[str, set[str]] = field(default_factory=dict)
+    project_bases: dict[str, list[Symbol]] = field(default_factory=dict)
+    model_ids: set[str] = field(default_factory=set)
+    class_by_id: dict[str, Symbol] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.related_managers or self.manager_names)
+
+    def _lineage(self, cls: Symbol) -> Iterator[Symbol]:
+        """``cls`` then its project bases, breadth-first, each once."""
+        seen: set[str] = set()
+        queue = [cls]
+        while queue:
+            current = queue.pop(0)
+            if current.id in seen:
+                continue
+            seen.add(current.id)
+            yield current
+            queue.extend(self.project_bases.get(current.id, ()))
+
+    def accessor_model(self, cls: Symbol, name: str) -> Symbol | None:
+        """The model ``<cls instance>.<name>`` yields when it is a manager."""
+        for owner in self._lineage(cls):
+            hit = self.related_managers.get(owner.id, {}).get(name)
+            if hit is not None:
+                return hit
+        return None
+
+    def relation_target(self, cls: Symbol, name: str) -> Symbol | None:
+        """The model ``<cls instance>.<name>`` IS when it is a forward FK / O2O field."""
+        for owner in self._lineage(cls):
+            hit = self.relation_fields.get(owner.id, {}).get(name)
+            if hit is not None:
+                return hit
+        return None
+
+    def is_manager_name(self, cls: Symbol, name: str) -> bool:
+        return any(
+            name in self.manager_names.get(owner.id, ())
+            for owner in self._lineage(cls)
+        )
+
+
+def _dotted_import_binding(
+    expr: ast.expr,
+    imports: dict[str, tuple[str, str]],
+    module_imports: dict[str, str],
+) -> str | None:
+    """The dotted path an expression NAMES through this file's imports.
+
+    ``models.ForeignKey`` under ``from django.db import models`` is
+    ``django.db.models.ForeignKey``; ``ForeignKey`` under ``from
+    django.db.models import ForeignKey`` is the same string; ``dm.ForeignKey``
+    under ``import django.db.models as dm`` too. A chain whose root no import
+    binds -- a local class, a builtin, a variable -- returns ``None``, which
+    is what keeps an in-repo ``class ForeignKey`` out of the relation index.
+    """
+    parts: list[str] = []
+    node = expr
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    root = _import_binding_for(node.id, imports, module_imports)
+    if root is None:
+        return None
+    return ".".join([root, *reversed(parts)])
+
+
+def _django_relation_shape(callee: str | None) -> str | None:
+    """``"fk"`` / ``"o2o"`` / ``"m2m"`` for a relation-field constructor path
+    (the shape of the relation, not a ``Symbol.kind``)."""
+    if callee is None:
+        return None
+    owner, _, leaf = callee.rpartition(".")
+    if owner not in DJANGO_RELATION_FIELD_OWNERS:
+        return None
+    return DJANGO_RELATION_CONSTRUCTORS.get(leaf)
+
+
+def _is_django_manager_constructor(call: ast.Call, callee: str | None) -> bool:
+    """Whether a class-body ``x = <call>`` builds a Django Manager.
+
+    Three spellings, none of them type-checked against Django's source (the
+    library is not analysed): the constructor's NAME ends in ``Manager``
+    (``models.Manager()``, ``ScopedManager(...)``, a project
+    ``VisibleOnlyManager()``), ``<QuerySet>.as_manager()``, or
+    ``Manager.from_queryset(<QuerySet>)()``. The rule is admitted because the
+    class it applies to is separately verified to be a Django model
+    (:attr:`DjangoRelationIndex.model_ids`) and the emission it licenses is
+    bounded to the closed ORM method set -- the same two guards WI-sozoj put
+    around ``.objects``.
+    """
+    func = call.func
+    leaf = callee.rpartition(".")[2] if callee else (
+        func.id if isinstance(func, ast.Name)
+        else func.attr if isinstance(func, ast.Attribute)
+        else ""
+    )
+    if leaf.endswith("Manager"):
+        return True
+    if isinstance(func, ast.Attribute) and func.attr == "as_manager":
+        return True
+    return (
+        isinstance(func, ast.Call)
+        and isinstance(func.func, ast.Attribute)
+        and func.func.attr == "from_queryset"
+    )
+
+
+def _collect_django_relation_index(
+    file_analyses: dict[Path, FileAnalysis],
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> DjangoRelationIndex:
+    """Build the :class:`DjangoRelationIndex` for a repository.
+
+    One pass over every parsed file's class bodies
+    (:func:`_index_django_relations_in_file`), then a fixed point over the
+    resolved project bases so a class whose base is a model is a model
+    (``Order(LoggedModel)``), and manager names are kept on models only.
+    """
+    index = DjangoRelationIndex()
+    classes_by_short_name: dict[str, dict[str, Symbol]] = {}
+    for _fa in file_analyses.values():
+        for _sym in _fa.symbols:
+            if _sym.kind == "class":
+                classes_by_short_name.setdefault(_sym.name, {})[_sym.id] = _sym
+    for analysis in file_analyses.values():
+        if not isinstance(analysis.tree, ast.Module):  # pragma: no cover - always ast.parse output
+            continue
+        _index_django_relations_in_file(
+            index, analysis.tree, analysis, global_symbols, resolver, classes_by_short_name,
+        )
+    changed = True
+    while changed:
+        changed = False
+        for cls_id, bases in index.project_bases.items():
+            if cls_id not in index.model_ids and any(b.id in index.model_ids for b in bases):
+                index.model_ids.add(cls_id)
+                changed = True
+    index.manager_names = {
+        cls_id: names for cls_id, names in index.manager_names.items()
+        if cls_id in index.model_ids
+    }
+    return index
+
+
+def _index_django_relations_in_file(
+    index: DjangoRelationIndex,
+    tree: ast.Module,
+    analysis: FileAnalysis,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+    classes_by_short_name: dict[str, dict[str, Symbol]],
+) -> None:
+    """One file's class bodies into ``index`` (the per-file half of
+    :func:`_collect_django_relation_index`).
+
+    A relation field's TARGET is resolved the way Django resolves it, in the
+    declaring file: a Name through that file's imports (or its own classes),
+    an ``mod.Cls`` attribute through a module import, ``"self"`` to the
+    declaring class, and a string ``"X"`` / ``"app.X"`` to the local class
+    ``X``, else the imported ``X``, else the ONE class named ``X`` in the
+    whole repository -- two candidates refuse, since guessing would attach
+    accessors to the wrong twin (the WI-supat rule). ``related_name="+"``
+    (no reverse accessor) and a ``%(class)s`` / ``%(app_label)s``
+    placeholder (an abstract base whose concrete names this pass does not
+    expand) register nothing.
+
+    A class whose short name occurs twice in its file is skipped, exactly as
+    the class field maps skip it: ``symbol_by_name`` is last-write-wins and
+    the id could be the wrong twin's.
+    """
+    counts = _class_name_counts(tree)
+    local_symbols = analysis.symbol_by_name
+    imports = analysis.imports
+    module_imports = analysis.module_imports
+
+    def _class_named(name: str) -> Symbol | None:
+        sym = local_symbols.get(name)
+        if sym is not None:
+            if sym.kind == "class" and counts.get(name, 0) == 1:
+                return sym
+            return None
+        if name in imports:
+            module, original = imports[name]
+            found = _lookup_symbol_by_module(
+                global_symbols, module, original, resolver=resolver,
+            )
+            return found if found is not None and found.kind == "class" else None
+        return None
+
+    def _class_expr(expr: ast.expr, owner: Symbol) -> Symbol | None:
+        if isinstance(expr, ast.Name):
+            return _class_named(expr.id)
+        if (
+            isinstance(expr, ast.Attribute)
+            and isinstance(expr.value, ast.Name)
+            and expr.value.id in module_imports
+        ):
+            found = _lookup_symbol_by_module(
+                global_symbols, module_imports[expr.value.id], expr.attr,
+                resolver=resolver,
+            )
+            return found if found is not None and found.kind == "class" else None
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            if expr.value == "self":
+                return owner
+            short = expr.value.rpartition(".")[2]
+            local = _class_named(short)
+            if local is not None:
+                return local
+            candidates = classes_by_short_name.get(short, {})
+            if len(candidates) == 1:
+                return next(iter(candidates.values()))
+        return None
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        owner = local_symbols.get(node.name)
+        if owner is None or owner.kind != "class" or counts.get(node.name, 0) != 1:
+            continue
+        index.class_by_id[owner.id] = owner
+        bases = [
+            base for base in (_class_expr(b, owner) for b in node.bases)
+            if base is not None
+        ]
+        if bases:
+            index.project_bases[owner.id] = bases
+        if any(
+            base in DJANGO_MODEL_BASES
+            for base in ((owner.meta or {}).get("base_classes") or [])
+        ):
+            index.model_ids.add(owner.id)
+        for stmt in node.body:
+            if not (
+                isinstance(stmt, ast.Assign)
+                and len(stmt.targets) == 1
+                and isinstance(stmt.targets[0], ast.Name)
+                and isinstance(stmt.value, ast.Call)
+            ):
+                continue
+            attr = stmt.targets[0].id
+            call = stmt.value
+            callee = _dotted_import_binding(call.func, imports, module_imports)
+            if callee is not None and callee.startswith("django.db.models."):
+                # Any ``django.db.models`` field or manager on the body
+                # verifies the class as a model.
+                index.model_ids.add(owner.id)
+            relation = _django_relation_shape(callee)
+            if relation is None:
+                if _is_django_manager_constructor(call, callee) and attr != "objects":
+                    index.manager_names.setdefault(owner.id, set()).add(attr)
+                continue
+            target_expr: ast.expr | None = call.args[0] if call.args else next(
+                (kw.value for kw in call.keywords if kw.arg == "to"), None,
+            )
+            target = _class_expr(target_expr, owner) if target_expr is not None else None
+            if target is None:
+                continue
+            if relation in ("fk", "o2o"):
+                index.relation_fields.setdefault(owner.id, {})[attr] = target
+            if relation == "o2o":
+                continue
+            if relation == "m2m":
+                index.related_managers.setdefault(owner.id, {})[attr] = target
+            related_name = next(
+                (
+                    kw.value.value for kw in call.keywords
+                    if kw.arg == "related_name"
+                    and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, str)
+                ),
+                None,
+            )
+            if related_name == "+" or (related_name is not None and "%(" in related_name):
+                continue
+            accessor = related_name or f"{node.name.lower()}_set"
+            index.related_managers.setdefault(target.id, {})[accessor] = owner
+
+
+class _DjangoReceiverOracle:
+    """The per-code-block half of the Django manager question.
+
+    :class:`DjangoRelationIndex` knows which CLASSES own which accessors; this
+    object knows which EXPRESSIONS in the current block denote an instance of
+    which class -- ``self`` (the enclosing class), a Name the walker typed
+    (``var_types``: a constructor, an annotated parameter, an instance the
+    method below bound), and a forward relation field on either
+    (``self.order``, ``order.event``), recursively, one declared hop at a
+    time. Built once per block so it shares the block's live ``var_types``.
+
+    It is passed DOWN into :func:`_receiver_type` as the ``manager_root``
+    callable, the way ``ctor_type`` is, rather than read from a global:
+    the answer depends on block state.
+    """
+
+    __slots__ = ("enclosing_class", "index", "resolve_class_name", "var_types")
+
+    def __init__(
+        self,
+        index: DjangoRelationIndex,
+        var_types: dict[str, Symbol],
+        enclosing_class: Symbol | None,
+        resolve_class_name: Callable[[str], Symbol | None],
+    ) -> None:
+        self.index = index
+        self.var_types = var_types
+        self.enclosing_class = enclosing_class
+        self.resolve_class_name = resolve_class_name
+
+    def instance_class(self, expr: ast.expr) -> Symbol | None:
+        """The project class ``expr`` is an INSTANCE of, or ``None``."""
+        if isinstance(expr, ast.Name):
+            if expr.id == "self":
+                return self.enclosing_class
+            return self.var_types.get(expr.id)
+        if isinstance(expr, ast.Attribute):
+            owner = self.instance_class(expr.value)
+            if owner is None:
+                return None
+            return self.index.relation_target(owner, expr.attr)
+        return None
+
+    def _class_root(self, expr: ast.expr) -> Symbol | None:
+        """A bare Name that denotes a project CLASS (not a typed instance)."""
+        if not isinstance(expr, ast.Name) or expr.id == "self" or expr.id in self.var_types:
+            return None
+        return self.resolve_class_name(expr.id)
+
+    def manager_root(self, expr: ast.expr) -> str | None:
+        """``"related"`` for ``<instance>.<accessor>``, ``"manager"`` for
+        ``<Model>.<manager>``, else ``None``."""
+        if not isinstance(expr, ast.Attribute):  # pragma: no cover - both callers narrow to Attribute first
+            return None
+        cls = self._class_root(expr.value)
+        if cls is not None:
+            return "manager" if self.index.is_manager_name(cls, expr.attr) else None
+        owner = self.instance_class(expr.value)
+        if owner is not None and self.index.accessor_model(owner, expr.attr) is not None:
+            return "related"
+        return None
+
+    def manager_model(self, expr: ast.expr) -> Symbol | None:
+        """The model whose instances the manager at ``expr`` yields: the class
+        for ``<Model>.objects`` / ``<Model>.<manager>`` (a verified model
+        only), the accessor's model for a related manager."""
+        if not isinstance(expr, ast.Attribute):
+            return None
+        cls = self._class_root(expr.value)
+        if cls is not None:
+            if cls.id in self.index.model_ids and (
+                expr.attr == "objects" or self.index.is_manager_name(cls, expr.attr)
+            ):
+                return cls
+            return None
+        owner = self.instance_class(expr.value)
+        return self.index.accessor_model(owner, expr.attr) if owner is not None else None
+
+    def instance_from_call(self, call: ast.Call, *, unpacked: bool) -> Symbol | None:
+        """The model instance ``call`` returns, walking QuerySet-returning hops
+        back to the manager root: ``Order.objects.filter(...).first()`` and
+        ``order.payments.get(...)`` both bind; ``Order.LABELS.get(k)`` does not."""
+        func = call.func
+        if not isinstance(func, ast.Attribute):
+            return None
+        members = (
+            DJANGO_ORM_INSTANCE_TUPLE_METHODS if unpacked
+            else DJANGO_ORM_INSTANCE_RETURNING_METHODS
+        )
+        if func.attr not in members:
+            return None
+        root: ast.expr = func.value
+        preserving = TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, ())
+        while (
+            isinstance(root, ast.Call)
+            and isinstance(root.func, ast.Attribute)
+            and root.func.attr in preserving
+        ):
+            root = root.func.value
+        return self.manager_model(root)
+
+
 def _extract_edges(
     tree: ast.AST,
     local_symbols: dict[str, Symbol],
@@ -4070,6 +4551,7 @@ def _extract_edges(
     field_maps_by_class_id: tuple[
         dict[str, dict[str, Symbol]], dict[str, dict[str, str]],
     ] | None = None,
+    django_index: DjangoRelationIndex | None = None,
 ) -> list[Edge]:
     """Extract call and instantiation edges from an AST.
 
@@ -4150,6 +4632,24 @@ def _extract_edges(
     # namesake also trips the gate. The ENCLOSING id needs no such gate — it comes
     # from the authoritative method->class map, not a name lookup.
     class_name_counts = _class_name_counts(tree)
+
+    def _resolve_class_name(name: str) -> Symbol | None:
+        """The project CLASS a bare name denotes in this file, for the Django
+        oracle's ``<Model>.<manager>`` root: the file's own class (file-unique
+        short name, WI-supat D3), else the import-bound one. A name bound to
+        anything else -- a function, a variable -- is not a class root."""
+        sym = local_symbols.get(name)
+        if sym is not None:
+            if sym.kind == "class" and class_name_counts.get(name, 0) == 1:
+                return sym
+            return None
+        if name in imports:
+            _module, _original = imports[name]
+            found = _lookup_symbol_by_module(
+                global_symbols, _module, _original, resolver=resolver,
+            )
+            return found if found is not None and found.kind == "class" else None
+        return None
 
     edges: list[Edge] = []
 
@@ -4669,6 +5169,21 @@ def _extract_edges(
             and "." in (caller_symbol.qualified_name or "")
             else frozenset()
         )
+        # WI-gulaz: the Django manager oracle for THIS block, sharing its live
+        # ``var_types`` so an instance bound below is a manager root after.
+        # ``None`` on a repository with no relation declarations, which keeps
+        # the single-file ``extract_nodes`` path and every non-Django tree on
+        # exactly the code path they had.
+        _oracle: _DjangoReceiverOracle | None = None
+        if django_index:
+            _oracle = _DjangoReceiverOracle(
+                django_index, var_types,
+                django_index.class_by_id.get(
+                    method_to_enclosing_class_id.get(caller_symbol.id, ""),
+                ),
+                _resolve_class_name,
+            )
+        _manager_root = _oracle.manager_root if _oracle is not None else None
 
         def _emit_orm_evaluation(
             expr: ast.expr,
@@ -4694,7 +5209,9 @@ def _extract_edges(
             gate keys on ``"method"`` to mean "an untyped receiver with no
             evidence" -- this edge has evidence, so it must not wear that label.
             """
-            hint = _receiver_type(expr, ext_types, _external_constructor_module)
+            hint = _receiver_type(
+                expr, ext_types, _external_constructor_module, _manager_root,
+            )
             if hint != DJANGO_ORM_MODULE:
                 return
             edges.append(Edge.create(
@@ -4800,6 +5317,32 @@ def _extract_edges(
             # Track variable assignments for type inference
             # e.g., stub = EmailServiceStub(channel) -> var_types['stub'] = EmailServiceStub
             if isinstance(node, ast.Assign):
+                # WI-gulaz: a MODEL INSTANCE returned by a manager --
+                # ``o = Order.objects.get(...)``, ``p = order.payments.create(...)``,
+                # ``obj, made = ....get_or_create(...)`` -- binds the target to the
+                # project class the way a constructor does, so its accessors are
+                # manager roots below. Before the generic Call branch, which
+                # cannot resolve a chained callee and would leave the name untyped.
+                if _oracle is not None and isinstance(node.value, ast.Call):
+                    for target in node.targets:
+                        _bound = (
+                            target if isinstance(target, ast.Name)
+                            else target.elts[0]
+                            if isinstance(target, ast.Tuple) and target.elts
+                            and isinstance(target.elts[0], ast.Name)
+                            else None
+                        )
+                        if _bound is None:
+                            continue
+                        _model = _oracle.instance_from_call(
+                            node.value, unpacked=isinstance(target, ast.Tuple),
+                        )
+                        if _model is not None:
+                            var_types[_bound.id] = _model
+                            external_var_types.pop(_bound.id, None)
+                            _bind_project_class_fields(
+                                _bound.id, _model, external_var_types,
+                            )
                 for target in node.targets:
                     if isinstance(target, ast.Name) and not isinstance(
                         node.value, ast.Call,
@@ -4811,7 +5354,7 @@ def _extract_edges(
                         # loosening that branch's guard.
                         derived = _derived_receiver_module(
                             node.value, external_var_types,
-                            _external_constructor_module,
+                            _external_constructor_module, _manager_root,
                         )
                         if derived is not None:
                             _bind_project_class_fields(target.id, None, external_var_types)
@@ -4859,7 +5402,7 @@ def _extract_edges(
                                 # different question from "does this PRESERVE a type".
                                 ext_module = _derived_receiver_module(
                                     node.value, external_var_types,
-                                    _external_constructor_module,
+                                    _external_constructor_module, _manager_root,
                                 )
                             if ext_module is not None:
                                 _bind_project_class_fields(target.id, None, external_var_types)
@@ -4912,6 +5455,7 @@ def _extract_edges(
                     own_field_names=_own_field_names,
                     method_to_enclosing_class_id=method_to_enclosing_class_id,
                     class_name_counts=class_name_counts,
+                    django_oracle=_oracle,
                 )
                 _stamp_io_mode(edges, _edges_before_call, node)
                 # WI-fasap: ``list(qs)`` and its peers evaluate the QuerySet.
@@ -5750,6 +6294,7 @@ def _derived_receiver_module(
     value: ast.expr,
     external_var_types: dict[str, str],
     ctor_type: Callable[[ast.Call], "str | None"] | None = None,
+    manager_root: Callable[[ast.expr], "str | None"] | None = None,
 ) -> str | None:
     """The type an expression yields when it DERIVES from an already-typed receiver.
 
@@ -5777,14 +6322,21 @@ def _derived_receiver_module(
     caller that has no import context. The :data:`TYPE_PRESERVING_MEMBERS` allowlist
     still gates which members propagate, so widening the ROOT does not widen the
     propagation rule.
+
+    ``manager_root`` (WI-gulaz) is the same kind of parameter for the Django
+    manager root: the per-block :class:`_DjangoReceiverOracle` that knows
+    which ``<instance>.<accessor>`` / ``<Model>.<manager>`` expressions the
+    project's relation index owns. Threaded, not global, because the answer
+    depends on the block's ``var_types`` and enclosing class.
     """
     if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
         return _preserved_receiver_type(
-            value.left, "__truediv__", external_var_types, ctor_type,
+            value.left, "__truediv__", external_var_types, ctor_type, manager_root,
         )
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute):
         return _preserved_receiver_type(
             value.func.value, value.func.attr, external_var_types, ctor_type,
+            manager_root,
         )
     if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Slice):
         # WI-fasap: a SLICE is a derivation (``qs[:n]`` is another lazy
@@ -5793,7 +6345,7 @@ def _derived_receiver_module(
         # does. An INDEX subscript is not a derivation but an evaluation; the
         # walker emits it as a ``__getitem__`` call site instead.
         return _preserved_receiver_type(
-            value.value, "__getitem__", external_var_types, ctor_type,
+            value.value, "__getitem__", external_var_types, ctor_type, manager_root,
         )
     return None
 
@@ -5921,6 +6473,7 @@ def _receiver_type(
     receiver: ast.expr,
     external_var_types: dict[str, str],
     ctor_type: Callable[[ast.Call], "str | None"] | None = None,
+    manager_root: Callable[[ast.expr], "str | None"] | None = None,
 ) -> str | None:
     """THE single answer to "what external type does this receiver expression have?".
 
@@ -5969,9 +6522,35 @@ def _receiver_type(
         # Falling through to the derivation resolver keeps ``Path(x).joinpath("y")``
         # working, where the root is a call but not itself a constructor.
         return ctor_type(receiver) or _derived_receiver_module(
-            receiver, external_var_types, ctor_type,
+            receiver, external_var_types, ctor_type, manager_root,
         )
-    return _derived_receiver_module(receiver, external_var_types, ctor_type)
+    return _derived_receiver_module(
+        receiver, external_var_types, ctor_type, manager_root,
+    )
+
+
+def _is_django_manager_root(
+    receiver: ast.expr,
+    manager_root: Callable[[ast.expr], "str | None"] | None,
+) -> bool:
+    """THE one answer to "is this expression a Django manager?".
+
+    Two markers, one predicate, because the chain root rule in
+    :func:`_preserved_receiver_type` and the emission in :func:`_process_call`
+    must agree or a chain types where its root did not emit (or the reverse):
+
+    * the literal ``.objects`` attribute -- WI-sozoj's syntactic marker, kept
+      exactly as it was (no index needed, any root); and
+    * an expression the block's :class:`_DjangoReceiverOracle` resolves to an
+      accessor the relation index owns (``order.payments``, ``self.seat_set``,
+      ``event.sponsors``) or to a class-level manager under another name
+      (``Checkin.all``) -- WI-gulaz.
+    """
+    if not isinstance(receiver, ast.Attribute):
+        return False
+    if receiver.attr == "objects":
+        return True
+    return manager_root is not None and manager_root(receiver) is not None
 
 
 def _preserved_receiver_type(
@@ -5979,6 +6558,7 @@ def _preserved_receiver_type(
     member: str,
     external_var_types: dict[str, str],
     ctor_type: Callable[[ast.Call], "str | None"] | None = None,
+    manager_root: Callable[[ast.expr], "str | None"] | None = None,
 ) -> str | None:
     """``member``'s return type when invoked on ``receiver``, if it is the same type.
 
@@ -5987,7 +6567,7 @@ def _preserved_receiver_type(
     type must not widen which members preserve it, so :data:`TYPE_PRESERVING_MEMBERS`
     gates this half and nothing else.
     """
-    hint = _receiver_type(receiver, external_var_types, ctor_type)
+    hint = _receiver_type(receiver, external_var_types, ctor_type, manager_root)
     if hint is None:
         # INV-mumov (Phase 6 PR 1): WI-sozoj's marker as a chain ROOT. The
         # ``.objects`` receiver itself is NOT typed -- typing it would put
@@ -6000,11 +6580,12 @@ def _preserved_receiver_type(
         # and ``get``/``first``/``create`` excluded because they return a Model
         # instance, which is a project class and carries no module. Measured on
         # pretix (the 2026-09-06 derivability census): 942 chained sites lost the
-        # type at the second hop for want of this line.
+        # type at the second hop for want of this line. WI-gulaz widened the
+        # ROOT to the relation index's managers through the one predicate; the
+        # member set is unchanged.
         if (
-            isinstance(receiver, ast.Attribute)
-            and receiver.attr == "objects"
-            and member in TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, ())
+            member in TYPE_PRESERVING_MEMBERS.get(DJANGO_ORM_MODULE, ())
+            and _is_django_manager_root(receiver, manager_root)
         ):
             return DJANGO_ORM_MODULE
         return None
@@ -6509,6 +7090,7 @@ def _process_call(
     own_field_names: frozenset[str] = frozenset(),
     method_to_enclosing_class_id: dict[str, str] | None = None,
     class_name_counts: dict[str, int] | None = None,
+    django_oracle: "_DjangoReceiverOracle | None" = None,
 ) -> None:
     """Process a single call expression and emit appropriate edges.
 
@@ -6754,11 +7336,33 @@ def _process_call(
         # non-Django ``.objects.x()`` stays invisible. This chained receiver
         # (``func.value`` is itself an ``ast.Attribute``) emits no edge in any
         # branch below (measured), so this is net-new emission, not a re-key.
+        #
+        # WI-gulaz: the same emission at the relation index's managers --
+        # ``order.payments.create(...)``, ``event.sponsors.add(s)``,
+        # ``Checkin.all.filter(...)`` -- through the one manager-root
+        # predicate the chain rule uses, so a root that types its chain also
+        # emits. A RELATED manager additionally takes its own write surface
+        # (``add`` / ``remove`` / ``clear`` / ``set``); ``.objects`` and a
+        # class-level manager do not, since a Manager has no ``add``.
+        _manager_root_here = (
+            django_oracle.manager_root if django_oracle is not None else None
+        )
+        _root_kind: str | None = None
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute):
+            if func.value.attr == "objects":
+                _root_kind = "objects"
+            elif _manager_root_here is not None:
+                _root_kind = _manager_root_here(func.value)
         if (
             isinstance(func, ast.Attribute)
-            and isinstance(func.value, ast.Attribute)
-            and func.value.attr == "objects"
-            and func.attr in DJANGO_ORM_MANAGER_METHODS
+            and _root_kind is not None
+            and (
+                func.attr in DJANGO_ORM_MANAGER_METHODS
+                or (
+                    _root_kind == "related"
+                    and func.attr in DJANGO_RELATED_MANAGER_WRITE_METHODS
+                )
+            )
         ):
             _orm_method = func.attr
             edges.append(Edge.create(
@@ -6783,7 +7387,7 @@ def _process_call(
             isinstance(func, ast.Attribute)
             and not isinstance(func.value, ast.Name)
             and _receiver_type(
-                func.value, external_var_types, _ctor_type_here,
+                func.value, external_var_types, _ctor_type_here, _manager_root_here,
             ) is not None
         ):
             # WI-zilag: an INLINE expression receiver — ``(d / "f").write_text(x)``,
@@ -6808,7 +7412,7 @@ def _process_call(
             # and emitting an untyped edge for those is what PR #231 measured at
             # zero moved findings.
             ext_module = _receiver_type(
-                func.value, external_var_types, _ctor_type_here,
+                func.value, external_var_types, _ctor_type_here, _manager_root_here,
             )
             edges.append(Edge.create(
                 src=caller_symbol.id,
@@ -7709,6 +8313,13 @@ def analyze_python(
                 _field_types_by_class_id[_cm_sym.id] = _cm_maps[0][_cm_name]
             if _cm_name in _cm_maps[2]:
                 _external_field_types_by_class_id[_cm_sym.id] = _cm_maps[2][_cm_name]
+    # WI-gulaz: the Django relation index, once per repository, for the same
+    # reason the field maps are built here -- the declaring file is not the
+    # calling file. ``None`` when the repository declares no relation, so a
+    # non-Django tree takes exactly the path it took before.
+    _django_index: DjangoRelationIndex | None = _collect_django_relation_index(
+        file_analyses, global_symbols, resolver,
+    ) or None
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
@@ -7742,6 +8353,7 @@ def analyze_python(
             field_maps_by_class_id=(
                 _field_types_by_class_id, _external_field_types_by_class_id,
             ),
+            django_index=_django_index,
         )
         # ADR-0015: annotate edges with access_mode from Python AST context.
         # Pass source + python.yaml config so library_patterns (e.g. .append,
