@@ -196,12 +196,28 @@ net_recv:
   - module: dns
     functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
     notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24."
+  # DOTTED, matching `fs.promises` beside it, and MEASURED rather than assumed
+  # (2026-09-08). The analyzer emits `dns/promises` with a SLASH for
+  # `require('dns/promises')` and `import ... from 'node:dns/promises'`, and
+  # `normalize_module_separators` folds `/` into `.` before matching, so the dotted row
+  # catches both spellings and renders consistently with its fs sibling.
+  # WHAT NO KEY CATCHES: `require('dns').promises` and
+  # `import {promises} from 'dns'` emit the `external` SENTINEL, which yields
+  # an empty catalogue key by design -- an analyzer limit, not a catalogue one,
+  # and a row cannot be spelled around it.
   - module: dns.promises
     functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
-    notes: "The promise form of the same surface (node: dns/promises)."
+    notes: "The promise form of the same surface. Reached through require('dns/promises') / import from 'node:dns/promises' (the / folds to . at match time); the member-access spellings resolve to the external sentinel and reach no row."
+  # INERT ON ARRIVAL, AND SAID SO RATHER THAN COUNTED -- the rust
+  # ToSocketAddrs treatment. `new Resolver()` binds a local whose type the
+  # javascript analyzer does not infer, so `r.resolve4(h)` emits
+  # `javascript:external:0-0:resolve4:external_symbol` and reaches nothing.
+  # Measured, not assumed (2026-09-08). The rows stay because an inert row
+  # costs no precision and claims no coverage, and they start classifying the
+  # day the analyzer types a constructed instance (WI-tuzaf's family).
   - module: dns.Resolver
     methods: [resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
-    notes: "The same queries through an explicit Resolver instance."
+    notes: "The same queries through an explicit Resolver instance. INERT until the analyzer types a constructed receiver; written for correctness, not counted as coverage."
   - module: http
     functions: [createServer]
   - module: https
