@@ -1,0 +1,22 @@
+- op: create  # 86e9
+  at: '2026-09-08T02:36:15Z'  # 86e9
+  by: agent  # 86e9
+  actor: jgstern_agent  # 86e9
+  clock: 1  # 86e9
+  nonce: '86e9'  # 86e9
+  data:  # 86e9
+    kind: work_item  # 86e9
+    title: "java drops the OUTER token of a field-access receiver, so System.out never reaches its catalogued ipc_send row"  # 86e9
+    status: todo_hard  # 86e9
+    priority: 2  # 86e9
+    parent:  # 86e9
+    tags:  # 86e9
+    - java  # 86e9
+    - io_boundary  # 86e9
+    - analysis_quality  # 86e9
+    isbefore: []  # 86e9
+    duplicate_of: []  # 86e9
+    not_duplicate_of: []  # 86e9
+    pr_ref:  # 86e9
+    description: "FOUND while closing WI-nakut's java half (PR #833, measurement 0018), and filed\nrather than folded in because it is a RECALL gap in the module slot, not a\nnaming defect in the name slot.\n\nTHE SHAPE. For `System.out.println(x)` java's `method_invocation` handler takes\nthe receiver from a `field_access` node and keeps ONLY THE FIELD:\n\n    fa_field = object_node.child_by_field_name(\"field\")   # -> \"out\"\n    receiver_name = _node_text(fa_field, source)          # \"out\"\n\nThe outer token `System` is discarded unless\n`_fully_qualified_type_reference` recognises the whole chain as a package path,\nwhich it does not for `System.out`. So the module slot stays the `external`\nplaceholder and nothing downstream can recover the owner.\n\nWHY IT MATTERS. `io_primitives/java.yaml` catalogues `java.lang.System` with\n`attributes: [out, err]` under `ipc_send` and `attributes: [in]` under\n`ipc_recv` -- the only ipc rows java has. A `System.out.println` call site\ntherefore reaches no ipc_send row, and a clean `ipc_send` verdict over a program\nthat writes to stdout is granted rather than qualified.\n\nSIZED, on the pre-change analyzer census (2026-09-07, `census.py` /\n`census2.py` in ~/hypergumbo_lab_notebook/nakut_java_09072026/):\n\n    cassandra     out.println x383\n    jenkins       out.println x125\n    sherpa-onnx   out.println x50   (plus out.printf x136 on sherpa)\n\nWI-nakut MADE THIS VISIBLE RATHER THAN CAUSING IT. Before that change the name\nslot read `out.println`, which named neither the receiver chain nor the callee;\nit now reads `println`, which is correct and still unqualified. The fix belongs\nin the MODULE slot: when a field_access receiver's outer token resolves through\n`_qualify_receiver_type` (`System` is in `_JAVA_LANG_TYPES`), the slot should\ncarry `java.lang.System` and the attribute row should be reachable.\n\nNOT MEASURED: whether any ipc_send/ipc_recv verdict actually flips on a real\nrepository, or whether `System.out` writes should count as ipc_send at all for\na CLI program -- the row exists and says they do, and this item does not\nrelitigate it."  # 86e9
+    fields: {}  # 86e9
