@@ -2483,12 +2483,69 @@ def _extract_edges(
 
                     # Emit unresolved external edge when no resolution strategy succeeded
                     if not edge_added:
-                        # Use qualified name when receiver is known
-                        unresolved_name = (
-                            f"{receiver_name}.{method_name}"
-                            if receiver_name and receiver_name != "this"
-                            else method_name
-                        )
+                        # WI-nakut (java half): THE NAME SLOT NAMES THE CALLEE.
+                        # This used to glue the receiver IDENTIFIER on when one
+                        # was available -- ``u.mkdirs`` rather than ``mkdirs``,
+                        # ``out.println`` rather than ``println`` -- so every
+                        # consumer that asks a catalogue about a name got a
+                        # string no catalogue has ever keyed. ADR-0050/0051 rule
+                        # a receiver VARIABLE out of the MODULE slot; this is the
+                        # same category error one slot over, and the receiver's
+                        # own evidence already has homes that are not the name:
+                        # ``receiver_type_hint``, ``inherited_field_receiver``,
+                        # ``enclosing_class``.
+                        #
+                        # PARITY, MEASURED. One fixture per language, same
+                        # construct (an untypable local receiver calling a
+                        # catalogued method), through the shipped survey
+                        # 2026-09-07: go ``Write``, kotlin ``write``, python
+                        # ``sendall``, rust ``write_all``, scala ``write`` --
+                        # and java ``u.write``. java was also inconsistent with
+                        # ITSELF: the static-import and typed-receiver branches
+                        # below already shortened, the explicit-FQ and
+                        # ``java.lang`` branches kept the prefix and left
+                        # ``strip_redundant_module_qualifier`` to remove it
+                        # downstream, and the placeholder case kept it with
+                        # nothing anywhere able to remove it. The slot's content
+                        # was a function of WHICH BRANCH FIRED.
+                        #
+                        # NO VERDICT CAN MOVE, and the guard is one this file
+                        # already argues at length rather than a new claim.
+                        # ``receiver_name`` is assigned only inside
+                        # ``if object_node is not None``, so every edge this
+                        # shortens carries ``call_construct="method"``;
+                        # ``gate_named_entry`` opens with
+                        # ``if call_construct == "method": return None`` for
+                        # EVERY kind, and ``_register_sanitizer_callers``
+                        # refuses an unresolved bare-name sanitizer match on the
+                        # same stamp -- which is exactly the PHANTOM BARRIER
+                        # ``make_unresolved_edge``'s docstring names as the
+                        # hazard of "a name-shortening improvement". Both
+                        # directions are pinned as refutation cells in
+                        # ``test_java_unresolved_callee_name.py``.
+                        #
+                        # WHAT IT BUYS (2026-09-07, three repositories): edges
+                        # whose short name IS a catalogued method-kind row, and
+                        # so become attributable to a boundary by the
+                        # boundary-scoped ``untyped_receiver`` caveat --
+                        # sherpa-onnx 10/4 names/3 boundaries, jenkins 974/43/9
+                        # over 650 already matching, cassandra 4,708/53/10 over
+                        # 4,953. It also corrects a quieter falsehood: the
+                        # UNSCOPED caveat prints a distinct-method COUNT, and the
+                        # prefixed spellings inflated it 29% / 102% / 176% --
+                        # cassandra reported 22,584 distinct methods where there
+                        # are 8,191, ``get`` alone printed as 427 "methods".
+                        #
+                        # NO CAPITALISATION EXEMPTION, AND THAT IS MEASURED. One
+                        # was considered on the theory that a Capitalised
+                        # receiver names a TYPE rather than a variable, and the
+                        # data refutes it: jenkins' capitalised bucket is
+                        # SCREAMING_CASE static FIELDS -- ``ALL.getName``,
+                        # ``CONFIG.getName``, ``BAD_FILTERS.get``,
+                        # ``DESCRIPTOR.get``, ``INSTANCE.add`` -- receiver
+                        # variables by every criterion that matters, and the
+                        # exemption would have discarded 51% of the win there.
+                        unresolved_name = method_name
                         # WI-hudud: bare call (no receiver) whose name was
                         # brought into scope by ``import static X.method``.
                         # Look up the static-import source module and emit
@@ -2596,7 +2653,9 @@ def _extract_edges(
                                 name=method_name,
                             )
                             module = static_imports[method_name]
-                            unresolved_name = method_name
+                            # ``unresolved_name`` is already ``method_name``
+                            # (WI-nakut): the name slot names the callee in
+                            # EVERY branch, so this branch no longer restates it.
                         else:
                             # Use import path as module hint when available
                             module = (
@@ -2655,11 +2714,12 @@ def _extract_edges(
                             # direction.
                             #
                             # ``call_construct="method"`` is NOT decoration and
-                            # must not be dropped. Naming the type also SHORTENS
-                            # the callee from ``w.doFinal`` to ``doFinal``, and
+                            # must not be dropped. The callee is the SHORT NAME
+                            # ``doFinal`` -- unconditionally since WI-nakut, and
+                            # only in this branch before it -- and
                             # ``_register_sanitizer_callers`` matches sanitizers
                             # on the SHORT NAME while never consulting the module
-                            # hint. Without this flag the shortening alone made
+                            # hint. Without this flag the short name alone made
                             # ``com.example.Widget.doFinal`` bind the catalogued
                             # ``javax.crypto.Cipher.doFinal`` — a PHANTOM BARRIER,
                             # which earns `sanitized` and DELETES a real flow
@@ -2692,7 +2752,11 @@ def _extract_edges(
                                 ) is not None
                             ):
                                 module = typed_module
-                                unresolved_name = method_name
+                                # ``unresolved_name`` is already ``method_name``
+                                # (WI-nakut) and this branch's own restatement is
+                                # gone with it, for the same reason the
+                                # ``call_construct`` one below went: one fact,
+                                # one home.
                                 # ``call_construct="method"`` is set once, above,
                                 # for every receiver-bearing call; this branch's
                                 # own assignment was removed as a second home for
@@ -2732,11 +2796,18 @@ def _extract_edges(
                             # only single-type imports -- the style every java
                             # linter enforces -- took no branch, so a static
                             # call on an implicitly imported class kept the
-                            # ``external`` placeholder AND its ``System.``
-                            # prefix, and ``strip_redundant_module_qualifier``
-                            # could not fire either: it compares the name's head
-                            # against the module slot, and a placeholder matches
-                            # nothing. Measured on cassandra (6,090 files): 459
+                            # ``external`` placeholder AND (as java's name slot
+                            # then did) its ``System.`` prefix, and
+                            # ``strip_redundant_module_qualifier`` could not fire
+                            # either: it compares the name's head against the
+                            # module slot, and a placeholder matches nothing.
+                            # THE PREFIX HALF IS HISTORY SINCE WI-nakut -- the
+                            # name slot now carries ``currentTimeMillis`` alone,
+                            # so this branch's module is matched on the FIRST
+                            # catalogue pass rather than through that retry, and
+                            # the placeholder half above is the whole of what
+                            # this branch still fixes.
+                            # Measured on cassandra (6,090 files): 459
                             # edges lost this way -- currentTimeMillis x285,
                             # nanoTime x123, getProperty x29, getenv x16,
                             # getProperties x6 -- against 446 java calls that
