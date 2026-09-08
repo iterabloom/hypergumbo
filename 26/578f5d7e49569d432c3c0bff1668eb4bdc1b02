@@ -1,0 +1,61 @@
+Original commit body from d317aecfa6913bb5ac65fadfcee2d2e258024732:
+
+A DNS lookup returns a value whose content the far side chose, which is
+ADR-0049's question, so `socket.gethostbyname` / `getaddrinfo` / `getnameinfo`
+(python), `net.Lookup*` and `net.Resolver`'s methods (go), `netdb.*` and the
+`_r` variants (c) and the `dns` / `dns.promises` surface (javascript) now carry
+`net_recv` and mint `untrusted_input`. A resolver-poisoning threat model is
+exactly what that expresses.
+
+THE RULING WAS DECIDED BY PARITY, NOT BY THE ADR IN THE ABSTRACT. erlang had
+rowed the same family under `net_recv` since 2026-05-24, so the real choice was
+parity-with-erlang versus retag-erlang. The item's premise ("zero rows across
+go/rust/c/python") grepped four catalogues; the answer was in the fifth.
+
+THE GRANT WAS THE REAL WORK. Granting `socket` module completeness on the six
+DNS rows alone would declare the REST of the module boundary-free, so all 35
+module-level callables were adjudicated and nine more needed rows:
+`host_info_read` x8, `send_fds` / `recv_fds` as `ipc_send` / `ipc_recv`, and
+`sethostname` under `env_write` with the row saying it is the wrong home.
+
+THREE ERLANG ROWS SORTED OUT, AND THE REMOVAL IS PROVED RATHER THAN ARGUED.
+`inet:gethostname` / `getservbyname` / `getservbyport` move to
+`host_info_read`. Both arms produce the IDENTICAL evidence row
+(`inet.gethostname [erlang:hostleak.erl:4-6:leak/0:function] -> os.cmd`); only
+the label moves. Proof in `RESULT-removal.md`.
+
+REACH WAS MEASURED PER SPELLING, NOT ASSUMED. javascript's callback surface
+classifies end to end; the promise rows are keyed dotted because
+`normalize_module_separators` folds `/` into `.`. `dns.Resolver` (14 rows) and
+rust `ToSocketAddrs` (1) are INERT ON ARRIVAL — a constructed or untyped
+receiver hits the `external` sentinel — and now DECLARE that on the row so a
+reader does not count them as coverage.
+
+MEASUREMENT 0019, PRE-REGISTERED: 6 situations added, 0 removed, 0 verdicts
+moved, and 0 OF 6 ARE CORRECT. Every one read back against source. The
+deliverable is WHERE they came from: 5 of 6 are in c, which has no def/use
+extractor, so every c finding is `structural` and a structural walk pairs any
+source with any sink reachable in one function. Python's zero across 12 call
+sites is a TRUE NEGATIVE, asserted not inferred — a fixture reports
+`gethostbyname -> subprocess.run` at confidence `precise`.
+
+THE PRE-REGISTERED RE-OPEN TRIGGER'S CONDITION FIRES AND ITS PREMISE DOES NOT,
+so it is REPORTED, NOT EXECUTED. It anticipated findings that were correct but
+not useful; these are not correct, for a reason unrelated to forward-vs-reverse.
+Filing a boundary audit on this number would attribute to the ROW a defect that
+belongs to the WALK.
+
+THEN THE IMPLIED REMEDY WAS PRICED, AND IT IS NOT REMOVAL. Six fixtures (three
+flow shapes x c and python) show python — with the FULL extractor — reporting
+the same co-located and discarded-at-source shapes, with
+`flows_removed_by_walk` 0 in BOTH languages. `dataflow_scope`'s docstring states
+why: the walk removes only on `unconfirmed`, and that class is measured-EMPTY
+on this measurement's own cohort. 0019's table already carried the refutation —
+the vault false positive is in GO, which HAS an extractor, labelled
+`ddg_mixed`. 0019 is amended in place; what the gap costs c is TRIAGE, filed as
+WI-himob and ranked below its java twin WI-gotun.
+
+Tests: 6431 passed on the slice; 26,538 on the full tree for the catalogue
+commit. mypy ratchet clean at 669.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
