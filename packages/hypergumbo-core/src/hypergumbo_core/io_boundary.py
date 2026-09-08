@@ -2225,6 +2225,122 @@ def in_progress_languages(languages: Iterable[str]) -> list[str]:
     })
 
 
+def kind_assertion_census(
+    languages: Iterable[str],
+    *,
+    include_default_overlays: bool = True,
+) -> dict[str, Any]:
+    """How many name-to-boundary assertions a run rests on, and how many of
+    them the catalogue argues for (INV-nular).
+
+    WHAT A ROW ACTUALLY ASSERTS. ``fs_read: [{module: glob, functions:
+    [glob]}]`` says "the name ``glob.glob`` crosses the filesystem-read
+    boundary". Nothing checks that the named primitive performs that
+    operation, and seven families of rows where it did not have been swept out
+    -- in-process cells declared ``db_read``, socket setup declared
+    ``net_recv``, query builders declared ``db_read``, constructors declared
+    ``net_send``, path arithmetic declared ``fs_read``. The remainder is
+    name-bound and unverified, and the 2026-09-06 ruling is that it is
+    DISCLOSED rather than read.
+
+    THE COUNT IS DERIVED HERE RATHER THAN WRITTEN DOWN, WHICH IS THE WHOLE
+    DESIGN. That ruling was made against "622 entries / 2,312 names". A check
+    one day later reproduced 2,312 names exactly and returned 773 entries;
+    counting ``(boundary, module)`` groups through this loader gives 563.
+    Three defensible readings of "entry", three numbers, one unchanged
+    catalogue -- so "entry" is not a unit and a literal would have shipped
+    whichever reading its author held that afternoon. NAMES is the unit that
+    survived contact, and it is recomputed on every run.
+
+    THE UNIT IS THE ASSERTION, NOT THE PRIMITIVE. ``builtins.open`` is
+    declared under ``fs_read`` and ``fs_write``; those are two claims about
+    what it does, each separately wrong-able, so the key is
+    ``(module, name, boundary, kind)``. Deduplication across ``languages``
+    matters for the same reason it matters in ``load_catalog``: scala inherits
+    java's rows, and summing per-language totals would count one assertion
+    twice for a repository that happens to contain both.
+
+    THE KEY CARRIES NO LANGUAGE, AND THAT WAS MEASURED RATHER THAN ASSUMED.
+    Every large cross-language overlap in the shipped catalogues is a DECLARED
+    parent edge, so collapsing it is the intent: java/kotlin/scala 142 keys
+    each way, c/cpp 107, elixir/erlang 278 -- all four pairs are in
+    ``_CATALOG_PARENTS``. What remains is 7 keys of incidental collision in the
+    whole corpus (``time.time`` and ``time.clock_gettime`` under
+    ``host_info_read`` in both c and python, ``os.getenv`` / ``os.putenv`` /
+    ``os.unsetenv`` in erlang and python, ``os.type`` in elixir and
+    javascript), 0.3% of 2,312, and each of those really is the same primitive
+    under the same boundary reached from two languages. A language-qualified
+    key would fix nothing and would break the parent case the test suite pins.
+
+    COMMUNITY-OVERLAY ROWS ARE COUNTED APART, ON ADR-0047's OWN REASONING.
+    Ruling 6 gave them a third provenance state -- shipped by hypergumbo,
+    vouched for by nobody -- because collapsing them into either neighbour
+    misstates them. 426 of them carry ``notes``, 91%, so folding them into
+    "carries a written rationale" would offer, as evidence that a kind was
+    argued for, prose attached to rows the tool declines to stand behind. They
+    are reported in their own key and excluded from both shipped totals.
+
+    ``notes`` IS A PROXY AND THE CALLER MUST SAY SO. It records that somebody
+    wrote a reason down; it does NOT record that the row was adjudicated by
+    the F1-F7 sweep, which is not written per row anywhere. The two sets are
+    different sizes and neither contains the other. Reporting the first while
+    naming the second would be exactly this item's own failure mode -- a name
+    credited for a property nothing checked.
+
+    Args:
+        languages: the languages this run analysed. Unsupported ones (no
+            catalogue file and no alias reaching one) contribute nothing and
+            are absent from the reported ``languages``, so the denominator
+            never counts a language that had no rows to offer.
+        include_default_overlays: mirrors :func:`load_catalog`. False when the
+            caller passed ``--no-default-overlays``, in which case there is no
+            community layer to report.
+
+    Returns:
+        ``{"languages": [...], "names": int, "names_with_rationale": int,
+        "community_overlay_names": int}``.
+    """
+    covered: list[str] = []
+    shipped: dict[tuple[str, str, str, str], bool] = {}
+    community: set[tuple[str, str, str, str]] = set()
+    for lang in sorted(set(languages)):
+        catalog = load_catalog(lang, include_defaults=include_default_overlays)
+        if not catalog.is_supported:
+            # WI-gofah's flag, not the object: the missing-file fallback is a
+            # populated-looking catalogue with zero primitives, so a census
+            # that trusted the object would report the language as covered.
+            continue
+        covered.append(lang)
+        for prim in catalog.primitives:
+            key = (prim.module, prim.name, prim.boundary, prim.kind)
+            # ``unvouched`` IS THE STAMP, NOT A THING TO RE-DERIVE. The first
+            # cut of this loaded each catalogue TWICE and set-differenced the
+            # keys to find the community rows -- which agreed with the flag on
+            # every language (elixir 144, go 53, haskell 82, python 109, swift
+            # 38) and was still the wrong instrument: the merge already records
+            # the answer per row (ADR-0047), and a second derivation of a
+            # stamped fact is a second home for it, free to drift the first
+            # time the merge rules change.
+            if prim.unvouched:
+                community.add(key)
+                continue
+            # ANY row arguing for the assertion counts it argued-for: the same
+            # name can be reached through a parent catalogue whose row carries
+            # the prose and a child row that does not.
+            shipped[key] = shipped.get(key, False) or bool(prim.notes)
+    # A key present in BOTH tiers is a shipped assertion, not a community one:
+    # the vouched row displaces the unvouched one at merge, and counting it in
+    # both buckets would inflate the community line with rows the run never
+    # rested on.
+    community -= set(shipped)
+    return {
+        "languages": covered,
+        "names": len(shipped),
+        "names_with_rationale": sum(1 for argued in shipped.values() if argued),
+        "community_overlay_names": len(community),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Edge matching
 # ---------------------------------------------------------------------------
