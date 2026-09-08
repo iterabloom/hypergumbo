@@ -139,6 +139,24 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
   exemption (sparing `Foo.bar` on the theory that it names a type) was considered and
   refuted on the data: jenkins' capitalised bucket is SCREAMING_CASE static fields.
   Measured in 0018.
+- **The method-call-recovery linker no longer picks a class hint that contradicts the
+  receiver type the producer declared (found by the WI-nakut measurement).** The linker's
+  premise is that the class hint IS the receiver -- `CliRunner().run(args)`, one expression
+  in two edges -- and nothing checked it, because `parse_unresolved_name` reads the id's
+  name slot verbatim and an id says nothing about a receiver. Java's variable-receiver
+  calls reached the linker for the first time when their name slot stopped carrying the
+  receiver, and the A/B caught what that produced: on sherpa-onnx all nine newly-recovered
+  rows are `audio.getSampleRate()` resolved to `OfflineTts.getSampleRate`, where `audio` is
+  a `GeneratedAudio`, six classes in the repository declare `getSampleRate`, and the
+  line-proximity tiebreaker chose the class the enclosing method happened to instantiate.
+  The evidence to refuse was already stamped on the edge -- `receiver_type_hint` reads
+  `GeneratedAudio` on the wrong rows and `OfflineStream` / `AudioTagging` on the right ones
+  -- so a contradicting hint is now dropped from the candidate set rather than re-ranked,
+  and a caller whose only hint disagrees recovers nothing. As wide as the evidence and no
+  wider: an edge with no stamp is unchanged, which is the WI-gigoz shape the linker was
+  built for. Short names are compared on both sides (a stamp may be qualified, a class
+  symbol may be nested), pinned by a test, because comparing the spellings as given would
+  read like a working guard while disabling the linker.
 - **An `#import` / `@import` / Solidity `import` edge's dst is a canonical id, so the lang slot no longer carries a header path (INV-dulah, lang-slot limb).** Three analyzers -- objc, css, solidity -- emitted the import edge's dst as the BARE import path, and a bare path is not an id: finalize's 4-part fallback rendered it with the path in the lang slot and `<unknown>` in the path slot (`Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol`), which the validator flagged as `non_canonical_language_prefix` -- the entire id_format residual on Mantle (44 of 44). objc now emits cpp's include shape (`objc:<header>:0-0:header:header`), css and solidity the js/ts import shape (`<lang>:<path>:0-0:module:module`); pinned per analyzer and through the production pipeline (`run_survey` + validator). Measured on Mantle (whole_bunch_of_repos/Mantle, cold cache, before/after arms in dulah_objc_09062026/): id_format 44 -> 0, `<unknown>`-slot nodes 44 -> 0, 44 canonical `objc:<header>:0-0:header:external_symbol` boundary nodes in their place, 156 objc import edges and the 587-node / 858-edge totals unchanged. The pipeline gate drives objc and solidity; css is fixed and pinned at the analyzer only, because its import edges never reach the survey and its symbol ids are hash-shaped (3 slots) -- a separate css limb, filed.
 
 #### Call edges the analyzers never emitted
