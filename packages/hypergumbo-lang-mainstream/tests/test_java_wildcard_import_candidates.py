@@ -42,18 +42,30 @@ def _analyze(src: str):
         return list(edges)
 
 
-def _module_slot_for(src: str, callee_suffix: str) -> str | None:
+def _name_slot(dst: str) -> str:
+    """The dst's NAME slot.
+
+    WI-nakut removed the receiver prefix from it, so the selector these helpers
+    take is the method's OWN name (``currentTimeMillis``) rather than the
+    receiver-qualified spelling (``System.currentTimeMillis``) java used to
+    write there. Matched as the whole slot rather than as a suffix, so
+    ``writeString`` cannot also select a hypothetical ``xwriteString``.
+    """
+    return dst.split(":")[-2]
+
+
+def _module_slot_for(src: str, callee: str) -> str | None:
     for e in _analyze(src):
-        if e.edge_type == "calls" and e.dst.endswith(f"{callee_suffix}:unresolved"):
+        if e.edge_type == "calls" and _name_slot(e.dst) == callee:
             dr = getattr(e, "dst_ref", None)
             return dr.module_path if dr else None
     return None
 
 
-def _classify(src: str, callee_suffix: str):
+def _classify(src: str, callee: str):
     cats = {"java": IB.load_catalog("java")}
     for e in _analyze(src):
-        if e.edge_type == "calls" and e.dst.endswith(f"{callee_suffix}:unresolved"):
+        if e.edge_type == "calls" and _name_slot(e.dst) == callee:
             dr = getattr(e, "dst_ref", None)
             ref = ExternalRef(
                 lang="java", module_path=dr.module_path, name=dr.name,
@@ -73,14 +85,14 @@ _WILDCARD_SYSTEM = (
 
 def test_java_lang_is_a_candidate_under_any_wildcard():
     """JLS 7.3: java.lang.* is implicitly imported, so it is always in scope."""
-    slot = _module_slot_for(_WILDCARD_SYSTEM, "System.currentTimeMillis")
+    slot = _module_slot_for(_WILDCARD_SYSTEM, "currentTimeMillis")
     assert slot is not None
     assert "java.lang.System" in slot.split(",")
 
 
 def test_the_catalogued_row_is_reached_under_a_wildcard():
     """The measured loss: 28 sites in jedis alone."""
-    prim = _classify(_WILDCARD_SYSTEM, "System.currentTimeMillis")
+    prim = _classify(_WILDCARD_SYSTEM, "currentTimeMillis")
     assert prim is not None
     assert prim.boundary == "host_info_read"
     assert (prim.module, prim.name) == ("java.lang.System", "currentTimeMillis")
@@ -93,7 +105,7 @@ def test_every_wildcard_is_a_candidate_not_just_the_first():
         "public class P { void f(String s) throws Exception "
         "{ Files.writeString(Path.of(\"/x\"), s); } }\n"
     )
-    slot = _module_slot_for(src, "Files.writeString")
+    slot = _module_slot_for(src, "writeString")
     assert slot is not None
     parts = slot.split(",")
     assert "java.io.Files" in parts
@@ -107,7 +119,7 @@ def test_the_class_in_the_second_wildcard_now_reaches_its_row():
         "public class P { void f(String s) throws Exception "
         "{ Files.writeString(Path.of(\"/x\"), s); } }\n"
     )
-    prim = _classify(src, "Files.writeString")
+    prim = _classify(src, "writeString")
     assert prim is not None and prim.boundary == "fs_write"
 
 
@@ -118,7 +130,7 @@ def test_a_correct_single_wildcard_still_resolves():
         "public class P { void f(String s) throws Exception "
         "{ Files.writeString(Path.of(\"/x\"), s); } }\n"
     )
-    assert _classify(src, "Files.writeString").boundary == "fs_write"
+    assert _classify(src, "writeString").boundary == "fs_write"
 
 
 def test_an_explicit_import_still_wins_over_a_wildcard():
@@ -128,7 +140,7 @@ def test_an_explicit_import_still_wins_over_a_wildcard():
         "public class P { void f(String s) throws Exception "
         "{ Files.writeString(Path.of(\"/x\"), s); } }\n"
     )
-    slot = _module_slot_for(src, "Files.writeString")
+    slot = _module_slot_for(src, "writeString")
     assert slot == "java.nio.file.Files", "explicit import is evidence, not a guess"
 
 
@@ -143,7 +155,7 @@ def test_a_repo_local_class_under_a_wildcard_still_matches_nothing():
         "import java.io.*;\n"
         "public class P { void f() { Helper.writeString(); } }\n"
     )
-    assert _classify(src, "Helper.writeString") is None
+    assert _classify(src, "writeString") is None
 
 
 def test_no_wildcard_gets_a_single_candidate_not_a_disjunction():
@@ -161,7 +173,7 @@ def test_no_wildcard_gets_a_single_candidate_not_a_disjunction():
     src = (
         "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
     )
-    slot = _module_slot_for(src, "System.currentTimeMillis")
+    slot = _module_slot_for(src, "currentTimeMillis")
     assert slot == "java.lang.System"
     assert "," not in slot, "no wildcards means exactly one candidate"
 
@@ -194,7 +206,7 @@ def test_a_fully_qualified_call_site_is_not_overridden_by_a_wildcard():
         "public class P { void f(String s) throws Exception "
         "{ java.nio.file.Files.writeString(java.nio.file.Path.of(\"/x\"), s); } }\n"
     )
-    slot = _module_slot_for(src, "Files.writeString")
+    slot = _module_slot_for(src, "writeString")
     assert slot == "java.nio.file.Files"
 
 
@@ -204,7 +216,7 @@ def test_the_fully_qualified_call_site_reaches_its_row():
         "public class P { void f(String s) throws Exception "
         "{ java.nio.file.Files.writeString(java.nio.file.Path.of(\"/x\"), s); } }\n"
     )
-    assert _classify(src, "Files.writeString").boundary == "fs_write"
+    assert _classify(src, "writeString").boundary == "fs_write"
 
 
 def test_an_instance_field_chain_is_not_read_as_a_package_path():
@@ -299,12 +311,12 @@ _NO_IMPORTS_SYSTEM = (
 
 def test_java_lang_resolves_when_the_file_has_no_wildcard_import():
     """JLS 7.3 does not require a wildcard; it is unconditional."""
-    slot = _module_slot_for(_NO_IMPORTS_SYSTEM, "System.currentTimeMillis")
+    slot = _module_slot_for(_NO_IMPORTS_SYSTEM, "currentTimeMillis")
     assert slot == "java.lang.System"
 
 
 def test_the_catalogued_row_is_reached_with_no_wildcard_present():
-    prim = _classify(_NO_IMPORTS_SYSTEM, "System.currentTimeMillis")
+    prim = _classify(_NO_IMPORTS_SYSTEM, "currentTimeMillis")
     assert prim is not None
     assert prim.boundary == "host_info_read"
     assert (prim.module, prim.name) == ("java.lang.System", "currentTimeMillis")
@@ -315,7 +327,7 @@ def test_an_env_read_taint_source_is_reached_with_no_wildcard_present():
     src = (
         "public class P { void f() { String p = System.getenv(\"PATH\"); } }\n"
     )
-    prim = _classify(src, "System.getenv")
+    prim = _classify(src, "getenv")
     assert prim is not None
     assert prim.boundary == "env_read"
 
@@ -326,7 +338,7 @@ def test_a_single_type_import_still_wins_over_the_implicit_package():
         "import com.example.System;\n"
         "public class P { void f() { long t = System.currentTimeMillis(); } }\n"
     )
-    slot = _module_slot_for(src, "System.currentTimeMillis")
+    slot = _module_slot_for(src, "currentTimeMillis")
     assert slot == "com.example.System"
 
 
@@ -372,5 +384,5 @@ def test_a_capitalised_receiver_outside_java_lang_is_still_left_alone():
     src = (
         "public class P { void f() { Helper.doThing(); } }\n"
     )
-    slot = _module_slot_for(src, "Helper.doThing")
+    slot = _module_slot_for(src, "doThing")
     assert slot is None or "java.lang" not in slot

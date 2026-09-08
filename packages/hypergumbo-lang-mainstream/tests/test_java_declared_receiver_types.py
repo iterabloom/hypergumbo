@@ -7,7 +7,11 @@ or the return type of a resolved in-repo method — and never read the
 declaration itself. So ``OutputStream o = sock.getOutputStream(); o.write(b)``
 emitted ``java:external:0-0:o.write:unresolved``: the receiver's type sat in
 the source, one token to the left, and the analyzer glued the VARIABLE NAME
-into the callee instead. On guacamole-client that was 315 typed bindings out
+into the callee instead. (The gluing is gone since WI-nakut and the assertions
+below read ``:write:``; what these tests pin is the MODULE slot, which is what
+INV-vugon is about. An untyped receiver still yields the ``external``
+placeholder -- it just no longer spells the variable into the name.)
+On guacamole-client that was 315 typed bindings out
 of ~2,180, with 1,210 call-initialised locals, 358 catch parameters and 163
 for-each variables never typed. Java DECLARES its types; every one of those
 declarations is stronger evidence than any inference.
@@ -265,7 +269,7 @@ public class X {
 }
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "write")
-        assert edge.dst == "java:external:0-0:o.write:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:write:unresolved", edge.dst
 
 
 class TestCatchAndForEachBindings:
@@ -305,7 +309,7 @@ public class C {
 }
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "getMessage")
-        assert edge.dst == "java:external:0-0:e.getMessage:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:getMessage:unresolved", edge.dst
 
     def test_try_with_resources_declaration_is_typed(self, tmp_path: Path) -> None:
         """``try (RandomAccessFile f = new RandomAccessFile(p, "rw"))`` binds ``f``.
@@ -367,7 +371,7 @@ public class Lam {
 """)
         edges = analyze_java(tmp_path).edges
         assert _unresolved(edges, "delete").dst == "java:java.io.File:0-0:delete:unresolved"
-        assert _unresolved(edges, "exists").dst == "java:external:0-0:g.exists:unresolved"
+        assert _unresolved(edges, "exists").dst == "java:external:0-0:exists:unresolved"
 
     def test_for_each_variable_is_typed_and_reaches_the_catalogue(
         self, tmp_path: Path,
@@ -497,7 +501,7 @@ public class Child extends Base {
 }
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "run")
-        assert edge.dst == "java:external:0-0:helper.run:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:run:unresolved", edge.dst
         assert (edge.meta or {}).get("receiver_type_hint") is None
         assert (edge.meta or {}).get("inherited_field_receiver") == "helper"
 
@@ -622,7 +626,7 @@ public class O {
         assert _unresolved(edges, "hashCode").dst == (
             "java:java.lang.Object:0-0:hashCode:unresolved"
         )
-        assert _unresolved(edges, "read").dst == "java:external:0-0:in.read:unresolved"
+        assert _unresolved(edges, "read").dst == "java:external:0-0:read:unresolved"
 
     def test_a_type_parameter_is_never_a_java_lang_class(self, tmp_path: Path) -> None:
         """``<T> void m(T x) { x.run(); }`` -- ``T`` is in no package at all."""
@@ -636,8 +640,8 @@ public class G<E> {
 }
 """)
         edges = analyze_java(tmp_path).edges
-        assert _unresolved(edges, "run").dst == "java:external:0-0:x.run:unresolved"
-        assert _unresolved(edges, "go").dst == "java:external:0-0:field.go:unresolved"
+        assert _unresolved(edges, "run").dst == "java:external:0-0:run:unresolved"
+        assert _unresolved(edges, "go").dst == "java:external:0-0:go:unresolved"
 
     def test_a_bare_type_under_a_wildcard_import_names_the_wildcard_package(
         self, tmp_path: Path,
@@ -693,7 +697,7 @@ public class Outer {
 }
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "pong")
-        assert edge.dst == "java:external:0-0:e.pong:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:pong:unresolved", edge.dst
         assert (edge.meta or {}).get("receiver_type_hint") == "Outer.Entry"
 
     def test_inline_fully_qualified_type_is_its_own_module(self, tmp_path: Path) -> None:
@@ -807,7 +811,7 @@ public class M4 {
 """)
         edge = _unresolved(analyze_java(tmp_path).edges, "send")
         assert (edge.meta or {}).get("receiver_type_hint") == "Client"
-        assert edge.dst == "java:external:0-0:c.send:unresolved", edge.dst
+        assert edge.dst == "java:external:0-0:send:unresolved", edge.dst
 
     def test_a_chain_on_a_bare_or_static_in_repo_call_is_typed(
         self, tmp_path: Path,

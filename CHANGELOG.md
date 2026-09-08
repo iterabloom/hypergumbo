@@ -114,6 +114,31 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
   extractor (WI-gotun). The same shape in kotlin (22 of 186 rows) and scala (57 of 184)
   is enumerated and filed, and kotlin.py's docstring claim that a closed implicit-package
   list "buys nothing yet" is corrected in place.
+- **java: an unresolved call's name slot names the CALLEE, not the receiver it was called
+  through (WI-nakut, java half).** java glued the receiver identifier into the name --
+  `java:external:0-0:u.mkdirs:unresolved` rather than `mkdirs`, `out.println` rather than
+  `println` -- so every consumer that asks a catalogue about a name got a string no
+  catalogue has ever keyed. Measured parity, one fixture per language on the same
+  construct: go, kotlin, python, rust and scala all emit the bare method name; java was
+  the only outlier, and was inconsistent with itself (two of its five branches already
+  shortened, two left `strip_redundant_module_qualifier` to do it downstream, and the
+  placeholder case had nothing anywhere able to do it). Two disclosures were wrong as a
+  result. The boundary-scoped `untyped_receiver` caveat matches the callee name against
+  method-kind catalogue rows and so could never fire for java at all, leaving a clean java
+  verdict able to say only "N of M method call sites had an untypable receiver" and never
+  which boundary those names are catalogued for: on jenkins 974 edges over 43 names across
+  9 boundaries become attributable (over 650 already matching), on cassandra 4,708 over 53
+  across 10. And the unscoped `unknown_receiver_scope` caveat prints a distinct-method
+  COUNT, which the receiver spellings inflated by 29% / 102% / 176% on sherpa-onnx /
+  jenkins / cassandra -- cassandra reported 22,584 distinct methods where there are 8,191,
+  with `get` alone printed as 427 separate "methods". No verdict moves, and the guard is
+  the one already in the tree rather than a new argument: every edge this shortens carries
+  `call_construct="method"`, `gate_named_entry` refuses a method-construct call with no
+  module hint for every kind, and `_register_sanitizer_callers` refuses on the same stamp,
+  so neither a new classification nor a phantom barrier is reachable. A capitalisation
+  exemption (sparing `Foo.bar` on the theory that it names a type) was considered and
+  refuted on the data: jenkins' capitalised bucket is SCREAMING_CASE static fields.
+  Measured in 0018.
 - **An `#import` / `@import` / Solidity `import` edge's dst is a canonical id, so the lang slot no longer carries a header path (INV-dulah, lang-slot limb).** Three analyzers -- objc, css, solidity -- emitted the import edge's dst as the BARE import path, and a bare path is not an id: finalize's 4-part fallback rendered it with the path in the lang slot and `<unknown>` in the path slot (`Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol`), which the validator flagged as `non_canonical_language_prefix` -- the entire id_format residual on Mantle (44 of 44). objc now emits cpp's include shape (`objc:<header>:0-0:header:header`), css and solidity the js/ts import shape (`<lang>:<path>:0-0:module:module`); pinned per analyzer and through the production pipeline (`run_survey` + validator). Measured on Mantle (whole_bunch_of_repos/Mantle, cold cache, before/after arms in dulah_objc_09062026/): id_format 44 -> 0, `<unknown>`-slot nodes 44 -> 0, 44 canonical `objc:<header>:0-0:header:external_symbol` boundary nodes in their place, 156 objc import edges and the 587-node / 858-edge totals unchanged. The pipeline gate drives objc and solidity; css is fixed and pinned at the analyzer only, because its import edges never reach the survey and its symbol ids are hash-shaped (3 slots) -- a separate css limb, filed.
 
 #### Call edges the analyzers never emitted
