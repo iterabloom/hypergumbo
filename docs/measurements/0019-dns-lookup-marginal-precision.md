@@ -141,3 +141,52 @@ redis at 23 MB in 85 s, and I extrapolated LINEARLY IN SIZE to ~60 min for
 over 40x the time for 8x the bytes. Honestly re-extrapolated, six repositories
 across two arms was 9-18 hours against an 8-hour ceiling. The amended cohort
 trades size for DNS density and cost 39 + 39 minutes for both arms.
+
+## SAME-DAY CORRECTION: the remedy this measurement implies was priced, and it is not removal
+
+Added 2026-09-08, before this record shipped, by pricing its own implied remedy
+instead of resting on it. Instrument: `~/hypergumbo_lab_notebook/c_defuse_09082026/`
+(`RESULT.md`, six fixtures — three flow shapes x c and python, each a separate
+repo and a separate run so every verdict is attributable).
+
+**Nothing in the Result or attribution sections above changes.** The 6
+situations, the 0-of-6 adjudication, the worked `_anetTcpServer` example and the
+trigger ruling all stand. What changes is what a reader should conclude the fix
+IS.
+
+**The natural reading of the table above — build c a def/use extractor and these
+five false positives go away — is FALSE, and this record should not be cited for
+it.** Measured: for the co-located-non-flow and discarded-at-source shapes,
+python (full extractor) and c (none) both report the finding, both at
+`approximate` confidence, and `flows_removed_by_walk` is **0 in both**. The
+extractor changes the METHOD LABEL (`ddg` / `ddg_mixed` / `structural`) and not
+the reported population.
+
+The mechanism is documented in `dataflow_scope`'s module docstring rather than
+discovered here: the walk only ever SUBTRACTS, and only on `unconfirmed` —
+`escaped` is ignorance and removes nothing. That docstring records the removal
+class as measured-EMPTY on **this measurement's own 11-repo cohort** (0
+unconfirmed / 14 escaped / 139 not_attempted). It activates as escape sites
+close, which the arc schedules last (INV-busis).
+
+**This measurement's own table already carried the counter-evidence, and the
+first read of it missed the inference: the vault false positive is in `go`,
+which HAS an extractor, and it is labelled `ddg_mixed`.** A row that says
+"extractor: yes" beside "correct: NO" is the whole refutation, and it was
+printed here before it was understood.
+
+So the attribution "five of six are in the one language that cannot prove
+dependence" is a CORRELATION whose causal story this cohort does not establish.
+The competing explanation is a corpus property, not an analyzer one — c code
+co-locating resolver calls with `printf` more often than python co-locates them
+with `subprocess` — and it is not measured.
+
+**What the missing extractor demonstrably costs c is TRIAGE, not precision.**
+In python a reader separates `ddg` (dependence proven) from `ddg_mixed`
+(unproven) from `structural` (the walk had nothing to say). In c every finding
+is `structural` because it is the only reachable branch, so the label carries
+zero bits; a c reader filtering on `analysis_method == "ddg"` gets an empty set,
+always. Filed as `WI-himob` with this evidence, ranked BELOW its java twin
+`WI-gotun`: `dataflow_coverage` names FOUR blockers for c against java's three
+(there is no `cfg_nodes/c.yaml`), and c's `catalog_sanitizers` is **0** against
+java's 1, so c is more work for a benefit bounded strictly lower.
