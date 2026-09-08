@@ -111,6 +111,12 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
         modules=frozenset({
             "dirent", "spawn", "stdio", "stdlib", "sys/socket", "sys/stat",
             "sys/time", "sys/times", "sys/wait", "time", "unistd",
+            # 2026-09-08 WI-dozul. <netdb.h> is POSIX.1-2008 (and its
+            # getaddrinfo/getnameinfo pair is RFC 3493), sitting beside
+            # <sys/socket.h> which is already on this line. It carries the
+            # resolver surface, so admitting it is the same decision that
+            # admitted the socket API rather than a new one.
+            "netdb",
         }),
     ),
     "cpp": Scope(
@@ -174,6 +180,9 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "bufio", "crypto/tls", "filepath", "fmt", "io", "io/ioutil",
             "log", "log/slog", "net", "net/http", "net/smtp", "os",
             "os/exec", "runtime", "syscall", "testing", "time",
+            # 2026-09-08 WI-dozul: the receiver-qualified rows for net's own
+            # Resolver type, listed in full like their siblings below.
+            "net.Resolver",
             # Receiver-qualified method rows are listed in full rather than
             # derived by stripping a trailing capitalised segment. A rule
             # would silently admit `grpc.ClientConn`; an enumeration makes
@@ -245,6 +254,11 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "https", "indexedDB", "localStorage", "navigator", "net",
             "net.Socket", "os", "path", "performance", "process",
             "sessionStorage", "window",
+            # 2026-09-08 WI-dozul. `dns` is a Node CORE module -- the same
+            # tier as `net`, `dgram` and `http` already on this line -- with
+            # `dns/promises` and the `dns.Resolver` class as its two other
+            # spellings of the same surface. Nothing here comes through npm.
+            "dns", "dns.promises", "dns.Resolver",
         }),
     ),
     "kotlin": Scope(

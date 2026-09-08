@@ -4876,13 +4876,19 @@ class TestStdlibModulesAndFilter2:
         # Long-tail non-stdlib should be absent.
         assert not cat.is_stdlib_module("requests")
         # Closed-world flags: math since May, os since the 2026-08-15
-        # stdlib climb (full I/O surface rowed + dated audit). The
-        # counterexample keeping the assertion honest is now a module
-        # that is genuinely NOT enumerated: socket carries rows and no
-        # audit, and third-party requests carries neither.
+        # stdlib climb (full I/O surface rowed + dated audit), socket
+        # since 2026-09-08 (WI-dozul: the DNS ruling discharged the reason
+        # WI-dupok withheld it, and all 35 module-level callables were
+        # adjudicated). The counterexample keeping the assertion honest
+        # has to be a module that is genuinely NOT enumerated, so it moved
+        # to `ssl` -- rowed for its sockets, never read one by one, and
+        # independently pinned as WITHHELD in
+        # test_python_completeness_third_leg.py. Third-party requests
+        # carries neither rows nor an audit.
         assert cat.module_io_is_enumerated("math")
         assert cat.module_io_is_enumerated("os")
-        assert not cat.module_io_is_enumerated("socket")
+        assert cat.module_io_is_enumerated("socket")
+        assert not cat.module_io_is_enumerated("ssl")
         assert not cat.module_io_is_enumerated("requests")
 
     def test_filter_2_skips_only_when_module_hint_is_present(self) -> None:

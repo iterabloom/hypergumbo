@@ -173,11 +173,46 @@ TERMIOS_EDGES = [
      "dst": "python:termios:0-0:tcgetattr:external_symbol", "type": "calls"},
 ]
 #: ``socket.gethostbyname(host)`` -- a DNS lookup at the module slot.
+#: 2026-09-08 (WI-dozul): GRADUATED. The six resolver functions are rowed
+#: ``net_recv`` and ``socket`` is granted, so this fixture moved to the
+#: positive controls below and Arm 2 repointed. THIRD REPOINT OF THIS ARM --
+#: ``os`` graduated, then ``ctypes`` and ``socket.create_connection``, now the
+#: rest of ``socket`` -- which is the arm working, not failing: it holds a
+#: module the catalogue has NOT finished, and the catalogue keeps finishing
+#: them. :func:`test_the_arm_2_fixtures_are_still_the_shape_arm_2_needs` below
+#: fails with the reason spelled out the next time one graduates, so the fourth
+#: repoint costs a rename rather than a re-derivation.
 SOCKET_GETHOSTBYNAME_EDGES = [
     {"src": "python:main.py:1-1:file:file",
      "dst": "python:socket:0-0:socket:external_symbol", "type": "imports"},
     {"src": "python:main.py:4-5:leak:function",
      "dst": "python:socket:0-0:gethostbyname:external_symbol", "type": "calls"},
+]
+
+#: ARM 2, MEMBER 1 (2026-09-08). ``dbm.whichdb(filename)`` OPENS the file and
+#: reads its magic bytes to decide which dbm implementation wrote it -- real
+#: filesystem I/O. ``dbm`` carries exactly one row (``dbm.open``, fs_read) and
+#: no completeness grant, which is precisely the shape this arm needs: some
+#: rows, not all, no grant.
+DBM_WHICHDB_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:dbm:0-0:dbm:external_symbol", "type": "imports"},
+    {"src": "python:main.py:4-5:probe:function",
+     "dst": "python:dbm:0-0:whichdb:external_symbol", "type": "calls"},
+]
+
+#: ARM 2, MEMBER 2 (2026-09-08). ``multiprocessing.Manager()`` STARTS A SERVER
+#: PROCESS and returns a proxy that talks to it over a socket -- real IPC.
+#: ``multiprocessing`` carries one row (``Pool``) and no grant; its Queue /
+#: Pipe / Process surfaces are catalogued as their own modules, so they do not
+#: vouch for this one.
+MULTIPROCESSING_MANAGER_EDGES = [
+    {"src": "python:main.py:1-1:file:file",
+     "dst": "python:multiprocessing:0-0:multiprocessing:external_symbol",
+     "type": "imports"},
+    {"src": "python:main.py:4-5:fan_out:function",
+     "dst": "python:multiprocessing:0-0:Manager:external_symbol",
+     "type": "calls"},
 ]
 #: The negative control that already worked. If this one ever stops blocking,
 #: the fix went the wrong way and every assertion above passes vacuously.
@@ -224,22 +259,49 @@ class TestRowPresenceIsNotEnumeration:
 
     @pytest.mark.parametrize(
         ("what", "edges"),
-        [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
-         ("socket.gethostbyname", SOCKET_GETHOSTBYNAME_EDGES)],
+        [("dbm.whichdb", DBM_WHICHDB_EDGES),
+         ("multiprocessing.Manager", MULTIPROCESSING_MANAGER_EDGES)],
     )
     def test_partially_catalogued_module_cannot_support_a_clean_verdict(
         self, what: str, edges: list[dict],
     ) -> None:
         coverage = _coverage(edges)
+        module = what.split(".")[0]
         assert coverage.complete is False, (
             f"{what} is real I/O through a module the catalogue only partially "
-            f"enumerates. Presence of SOME socket rows must not vouch for the "
-            f"rest (INV-zubuh). If socket has graduated the way os did, repoint "
-            f"this at the current partially-catalogued module — the principle "
-            f"also lives on a fixture catalogue in "
+            f"enumerates. Presence of SOME {module} rows must not vouch for the "
+            f"rest (INV-zubuh). If {module} has graduated the way os and socket "
+            f"did, repoint this at the current partially-catalogued module — "
+            f"the principle also lives on a fixture catalogue in "
             f"test_verify_claims_uncatalogued_module_coverage."
         )
-        assert "socket" in coverage.reason
+        assert module in coverage.reason
+
+    @pytest.mark.parametrize("module", ["dbm", "multiprocessing"])
+    def test_the_arm_2_fixtures_are_still_the_shape_arm_2_needs(
+        self, module: str,
+    ) -> None:
+        """THE GUARD ON THE FIXTURE ITSELF, added 2026-09-08 after the third
+        repoint of this arm.
+
+        Arm 2 needs a module that is PARTIALLY rowed and NOT granted. Both
+        halves can stop being true without anyone touching this file — a
+        completeness pass grants the module, or the last row is removed — and
+        when that happens the test above fails with a message about I/O
+        coverage, which is not the reason. This one fails with the reason.
+        """
+        catalog = load_catalog("python")
+        rowed = {p.name for p in catalog.primitives if p.module == module}
+        assert rowed, (
+            f"{module} has no rows left, so it can no longer demonstrate that "
+            f"SOME rows do not vouch for the rest. Repoint arm 2."
+        )
+        assert module not in catalog.module_completeness, (
+            f"{module} has been GRANTED completeness, so its unmatched calls "
+            f"are examined negatives by design and it can no longer serve as "
+            f"arm 2. Repoint arm 2 at a module that is partially rowed and "
+            f"ungranted, and move this fixture to the graduated controls."
+        )
 
 
 class TestTheGraduatedFixturesNowClassify:
@@ -253,6 +315,22 @@ class TestTheGraduatedFixturesNowClassify:
 
     def test_socket_create_connection_is_rowed(self) -> None:
         coverage = _coverage(SOCKET_CONNECT_EDGES)
+        assert coverage.complete is True, coverage.reason
+
+    @pytest.mark.parametrize(
+        ("what", "edges"),
+        [("socket.getaddrinfo", SOCKET_GETADDRINFO_EDGES),
+         ("socket.gethostbyname", SOCKET_GETHOSTBYNAME_EDGES)],
+    )
+    def test_the_resolver_calls_are_rowed_and_socket_is_granted(
+        self, what: str, edges: list[dict],
+    ) -> None:
+        """WI-dozul, 2026-09-08. These two WERE arm 2 until the owner ruled
+        that a DNS lookup is ``net_recv`` and the grant WI-dupok withheld on
+        that ruling was discharged. Kept as positive controls exactly as
+        ``ctypes`` and ``create_connection`` were: the fixture that pinned the
+        false all-clear now pins the fix."""
+        coverage = _coverage(edges)
         assert coverage.complete is True, coverage.reason
 
 

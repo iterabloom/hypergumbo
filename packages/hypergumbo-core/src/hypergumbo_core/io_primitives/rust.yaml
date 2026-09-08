@@ -316,6 +316,16 @@ net_recv:
   # binding creates a listener/socket and receives nothing, while net_recv is
   # an auto-derived taint source. accept / incoming / read / recv / recv_from
   # below carry the real receive.
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # WRITTEN FOR CORRECTNESS, INERT ON ARRIVAL, AND SAID SO RATHER THAN COUNTED.
+  # `ToSocketAddrs` is a TRAIT, and the call that matters is `"host:port"
+  # .to_socket_addrs()` on a str -- a trait method on a receiver the analyzer
+  # cannot type (WI-tuzaf), so this row classifies nothing today. It is here so
+  # the catalogue is not silent about a resolver call while four other languages
+  # row it, not as coverage: the parity test deliberately does not list rust.
+  - module: std::net::ToSocketAddrs
+    methods: [to_socket_addrs]
+    notes: "Resolves a host:port string through the system resolver and yields the addresses it chose (ADR-0049). INERT until WI-tuzaf gives trait methods on untyped receivers a resolvable owner; written, not counted as coverage."
   - module: std::net::TcpListener
     methods: [accept, incoming]
   - module: std::net::TcpStream

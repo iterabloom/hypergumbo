@@ -236,6 +236,18 @@ net_send:
     functions: [Connect, Sendto, Sendmsg]
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # The resolver chooses the answer, so ADR-0049's question is answered yes and
+  # these mint untrusted_input. LookupPort and the Resolver methods are here
+  # too: a Resolver is the same query through an explicit resolver object.
+  # net.Interfaces / net.InterfaceAddrs are NOT here -- they enumerate the
+  # LOCAL host's interfaces and query no name server.
+  - module: net
+    functions: [LookupHost, LookupIP, LookupAddr, LookupCNAME, LookupMX, LookupNS, LookupTXT, LookupSRV, LookupPort]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24. LookupPort reads the local services table in the pure-Go resolver but goes to getaddrinfo under cgo, so it stays with its family rather than being split on a build tag."
+  - module: net.Resolver
+    methods: [LookupHost, LookupIP, LookupIPAddr, LookupAddr, LookupCNAME, LookupMX, LookupNS, LookupTXT, LookupSRV, LookupPort, LookupNetIP]
+    notes: "The same queries through an explicit resolver."
   - module: net.Listener
     methods: [Accept]
     notes: >-

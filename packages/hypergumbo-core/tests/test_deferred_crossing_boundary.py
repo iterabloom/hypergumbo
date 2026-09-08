@@ -125,6 +125,19 @@ GO_TRANSFER_ROWS: frozenset[tuple[str, str]] = frozenset({
     ("bufio.Reader", "ReadSlice"), ("bufio.Reader", "Read"),
     ("bufio.Scanner", "Scan"), ("bufio.Scanner", "Text"),
     ("bufio.Scanner", "Bytes"),
+    # 2026-09-08 WI-dozul. A DNS lookup returns the answer the RESOLVER chose,
+    # so it is a transfer by ADR-0049's question and belongs on this side of
+    # the pin rather than with the setup rows above -- the same verdict that
+    # keeps ``accept`` here while ``bind`` and ``listen`` went to net_listen.
+    ("net", "LookupHost"), ("net", "LookupIP"), ("net", "LookupAddr"),
+    ("net", "LookupCNAME"), ("net", "LookupMX"), ("net", "LookupNS"),
+    ("net", "LookupTXT"), ("net", "LookupSRV"), ("net", "LookupPort"),
+    ("net.Resolver", "LookupHost"), ("net.Resolver", "LookupIP"),
+    ("net.Resolver", "LookupIPAddr"), ("net.Resolver", "LookupAddr"),
+    ("net.Resolver", "LookupCNAME"), ("net.Resolver", "LookupMX"),
+    ("net.Resolver", "LookupNS"), ("net.Resolver", "LookupTXT"),
+    ("net.Resolver", "LookupSRV"), ("net.Resolver", "LookupPort"),
+    ("net.Resolver", "LookupNetIP"),
     # Genuine transfers: each returns data chosen by the far side.
     ("net.Listener", "Accept"), ("net.Conn", "Read"),
     ("syscall", "Accept"), ("syscall", "Accept4"),
@@ -440,7 +453,9 @@ class TestTheGoRetag:
         moved = {(p.module, p.name) for p in cat.primitives
                  if p.boundary in ("net_listen", "net_recv")}
         assert moved == GO_DEFERRED_ROWS | GO_TRANSFER_ROWS
-        assert len(moved) == 42  # 31 + WI-suhug's 11 bufio net_recv rows
+        # 31 + WI-suhug's 11 bufio net_recv rows + WI-dozul's 20 resolver rows
+        # (net.Lookup* 9, net.Resolver.Lookup* 11).
+        assert len(moved) == 62
 
     def test_the_f2_predicate_now_comes_back_empty_for_go(self) -> None:
         """INV-kanuk's own repro, and it is EMPTY NOW -- which it was not.

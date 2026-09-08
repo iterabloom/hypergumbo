@@ -116,6 +116,13 @@ net_send:
     notes: "write() on a socket fd. INV-vaduk: exactly one of fs_write/ipc_send/net_send is true per call; the fd's nature is established where it was opened, not here. This net_* row is the speculative one -- the fs_* row is never wrong. (INV-nular: these were TWO `notes:` keys on one row, so PyYAML kept the second and discarded this rationale at load; the catalogue loader now refuses duplicate keys.)"
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # netdb's resolver surface. unistd.gethostname stays under host_info_read --
+  # it reads the LOCAL host's name from the kernel and queries no name server,
+  # and that split is the precedent the erlang sort in the same change follows.
+  - module: netdb
+    functions: [getaddrinfo, getnameinfo, gethostbyname, gethostbyaddr, gethostbyname_r, gethostbyaddr_r, getipnodebyname, getipnodebyaddr]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24. The _r variants write the answer through an out-parameter rather than returning it, which ADR-0049 covers explicitly (a value written into a caller-visible location). getservbyname/getservbyport are NOT here: they read /etc/services."
   - module: sys/socket
     functions: [recv, recvfrom, recvmsg]
     boundary_ruling: call_site_undecidable
