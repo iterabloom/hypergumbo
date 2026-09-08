@@ -6541,7 +6541,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         "taint_sinks": (cli_sinks, claims_sinks),
         "taint_sanitizers": (cli_sanitizers, claims_sanitizers),
     }, () if getattr(args, "no_default_overlays", False) else languages,
-       load_bearing=coverage.load_bearing_grants)
+       load_bearing=coverage.load_bearing_grants,
+       # INV-nular. `languages` UNCONDITIONALLY, unlike the argument above:
+       # --no-default-overlays suppresses the COMMUNITY layer, not the shipped
+       # catalogue, so the run still rests on base rows and still owes the
+       # count. The flag is passed on separately so the community line is
+       # dropped rather than reported as zero-from-a-layer-that-was-loaded.
+       catalog_languages=languages,
+       include_default_overlays=not getattr(args, "no_default_overlays", False))
 
     # Output
     if _read_view_wants_json(args):

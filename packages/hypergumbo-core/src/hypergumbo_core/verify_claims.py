@@ -226,6 +226,17 @@ from .paths import classify_test_file, is_migration_file
 # BEHAVIOURAL change disclosed in the changelog rather than a schema one. The
 # version moves when the ENVELOPE moves.
 #
+# NOR DOES A NEW KEY INSIDE ``catalog_provenance``, and that is worth stating
+# because three have now arrived without one — ``completeness_grants``
+# (INV-tabaf), ``load_bearing_grants`` (WI-lavut) and ``kind_adjudication``
+# (INV-nular) — so the convention was being followed without ever being
+# written, which is how a convention drifts into a disagreement. The reasoning
+# is the caveat-kind paragraph's: the shape a consumer parses is unchanged, and
+# every key is always present whether or not it has anything to report, so
+# reading one that a consumer does not know about is the same non-event as
+# reading a caveat kind it does not know about. A key that CHANGED the meaning
+# of an existing one would be a different matter and would bump.
+#
 # 2.2 adds the per-verdict ``analysis_fidelity`` map — language -> the pass IDs
 # that produced the CALL edges this verdict rests on (WI-lagod). Additive: a 2.1
 # consumer ignoring it still reads a correct verdict. It is a version change and
@@ -1648,6 +1659,8 @@ def catalog_provenance(
     layers: "Mapping[str, tuple[Sequence[Path], Sequence[Path]]]",
     shipped_default_languages: "Optional[Iterable[str]]" = None,
     load_bearing: "Optional[Mapping[str, Sequence[str]]]" = None,
+    catalog_languages: "Optional[Iterable[str]]" = None,
+    include_default_overlays: bool = True,
 ) -> dict[str, Any]:
     """Record which catalogues a verdict was computed against (INV-zosun).
 
@@ -1706,11 +1719,16 @@ def catalog_provenance(
 
     Returns:
         ``{"user_supplied": bool, "layers": {kind: {"cli": [...],
-        "claims_file": [...]}}, "completeness_grants": [...]}`` — paths as
-        strings, exactly as the user wrote them, so a reader can find the file;
-        one grant record per overlay that vouched for at least one module.
+        "claims_file": [...]}}, "completeness_grants": [...],
+        "kind_adjudication": {...}}`` — paths as strings, exactly as the user
+        wrote them, so a reader can find the file; one grant record per overlay
+        that vouched for at least one module; and
+        :func:`~.io_boundary.kind_assertion_census` over ``catalog_languages``,
+        which is how much of what the rows ASSERT has been argued for in
+        writing. Every key is always present, so a consumer never reads a
+        missing one as zero.
     """
-    from .io_boundary import default_overlays
+    from .io_boundary import default_overlays, kind_assertion_census
 
     out: dict[str, dict[str, list[str]]] = {}
     any_user = False
@@ -1751,12 +1769,25 @@ def catalog_provenance(
         {"language": lang, "modules": sorted(mods)}
         for lang, mods in sorted((load_bearing or {}).items()) if mods
     ]
+    # INV-nular. The three keys above answer "whose rows were these?"; this one
+    # answers a question none of them touch -- how much of what the rows ASSERT
+    # has been checked. A row binds a NAME to a boundary KIND, and being a
+    # shipped, vouched-for, non-user-supplied row says nothing about whether the
+    # named primitive performs that boundary operation. Seven families where it
+    # did not are gone; the remainder is disclosed here rather than swept
+    # (owner ruling 2026-09-06), and the count is DERIVED on every run because
+    # the same figure restated by hand drifted 622 -> 773 in a day.
+    census = kind_assertion_census(
+        catalog_languages or (),
+        include_default_overlays=include_default_overlays,
+    )
     return {
         "user_supplied": any_user,
         "layers": out,
         "completeness_grants": grants,
         "shipped_default": shipped,
         "load_bearing_grants": bearing,
+        "kind_adjudication": census,
     }
 
 
@@ -1816,6 +1847,64 @@ def render_catalog_provenance_text(provenance: dict[str, Any]) -> list[str]:
     is unchanged.
     """
     lines: list[str] = []
+    # INV-nular, FIRST because it is the most general fact on the page: it is
+    # true of every row the run loaded, where the blocks below are each about
+    # some subset (community rows, grant-bearing rows, user rows). Rendered
+    # unconditionally when the run had any rows at all -- the disclosure
+    # obligation is hypergumbo's own, the same reason ADR-0047 ruling 6 renders
+    # the community-overlay note without waiting to be asked.
+    census = provenance.get("kind_adjudication") or {}
+    names = int(census.get("names") or 0)
+    if names:
+        argued = int(census.get("names_with_rationale") or 0)
+        community = int(census.get("community_overlay_names") or 0)
+        lines.append("")
+        lines.append(
+            "NOTE: a catalogue row binds a primitive NAME to a boundary KIND "
+            "by citation; nothing",
+        )
+        lines.append(
+            "  checks that the named primitive performs that operation. "
+            "Behind these verdicts:",
+        )
+        lines.append(
+            f"    {names} name-to-boundary assertions, {argued} under an entry "
+            f"that argues the kind in",
+        )
+        lines.append(
+            f"    writing, {names - argued} name-bound and UNVERIFIED.",
+        )
+        if community:
+            lines.append(
+                f"    {community} more come from community overlays and are "
+                f"unverified by construction.",
+            )
+        lines.append(
+            "  A written rationale is what the catalogue RECORDS. It is not "
+            "the same set as",
+        )
+        lines.append(
+            "  \"semantically adjudicated\", which no row records, so the "
+            "figure is a floor on",
+        )
+        lines.append(
+            "  scrutiny and not a measure of it (INV-nular).",
+        )
+        lines.append(
+            "  Enforced mechanically: a name whose DIRECTION contradicts its "
+            "boundary fails CI, though",
+        )
+        lines.append(
+            "  only for names that state a direction at all; a primitive under "
+            "several boundaries",
+        )
+        lines.append(
+            "  declares WHY (mode / simultaneous / call-site-undecidable / a "
+            "stated open question);",
+        )
+        lines.append(
+            "  and one stream-gated in both directions is refused at load.",
+        )
     shipped = provenance.get("shipped_default") or []
     if shipped:
         # ADR-0047 ruling 6. Rendered even when nothing was user-supplied,
