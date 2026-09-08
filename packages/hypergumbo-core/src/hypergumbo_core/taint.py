@@ -60,10 +60,13 @@ from typing import (
     Union,
 )
 
+import re
+
 import yaml
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
+from .symbol_kinds import type_like_kind_names
 from .io_boundary import (
     _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
     call_site_modes,
@@ -2290,6 +2293,81 @@ TAINT_CALL_EDGE_TYPES = call_family_edge_types() | frozenset({
 })
 
 
+#: The edge type whose value-carrying-ness depends on what emitted it.
+DISPATCH_EDGE_TYPE: Final[str] = "dispatches_to"
+
+#: The span slot of an ADR-0036 node id: ``{start}-{end}``, third from the
+#: right. Used as the ANCHOR that confirms a string really is a 5-slot id
+#: before its last slot is read as a kind.
+_ID_SPAN_SLOT = re.compile(r"^\d+-\d+$")
+
+
+def _id_kind_slot(symbol_id: str) -> Optional[str]:
+    r"""The ``kind`` slot of an ADR-0036 node id, or ``None`` if there is none.
+
+    The grammar is ``{lang}:{path}:{start}-{end}:{name}:{kind}`` and only the
+    PATH slot is colon-tolerant, so parsing is anchored from the RIGHT: kind is
+    the last slot, name the second-to-last, span the third-from-last. The span
+    is checked against ``\d+-\d+`` as the anchor rather than trusting a slot
+    count, because a colon-bearing path (Rust's ``std::cmp`` module ids) makes
+    the count vary.
+
+    Returns ``None`` — never a guess — for anything that does not parse, which
+    is what makes the caller FAIL OPEN. A synthetic stand-in, the ``external``
+    sentinel and any id predating the grammar all land here, and an edge whose
+    source cannot be identified must keep its old meaning rather than be
+    silently deleted from the walk.
+    """
+    parts = symbol_id.split(":")
+    if len(parts) < 5 or not _ID_SPAN_SLOT.match(parts[-3]):
+        return None
+    return parts[-1]
+
+
+def _dispatch_edge_carries_a_value(edge: dict[str, Any]) -> bool:
+    """Whether a ``dispatches_to`` edge moves a value, or only reachability.
+
+    INV-zuhig put ``dispatches_to`` in :data:`TAINT_CALL_EDGE_TYPES` because a
+    framework dispatcher really does hand data to the handler it invokes:
+    ``argparse_dispatch`` emits from the enclosing FUNCTION of a
+    ``set_defaults(func=cmd_x)`` registration to ``cmd_x``, and without it every
+    framework-dispatched handler was unmintable and 18 self-proof confirms were
+    vacuous. That ruling stands and this predicate preserves it.
+
+    INV-putug found the other half. Five linkers — ``django_orm_dispatch``,
+    ``airflow_framework_dispatch``, ``jackson_dispatch``, ``rust_trait_dispatch``
+    and ``_third_party_bases`` — emit from a TYPE to the framework-called
+    methods of that type, which says "the framework may call these on instances
+    of this class", not "a value passes from here to there". A type node holds
+    no value; an instance does. Consumed as dataflow it yields the path
+    ``function --instantiates--> Class --dispatches_to--> Class.save``, which
+    terminates at whatever ORM method the linker attached — including one the
+    function never calls. Measured on pretix: 33 of 33 class-node hops the walk
+    traversed sat on such a pair, the 16,010 ``contains``-only pairs were never
+    crossed, and 20 of the 47 situations that round added were this shape.
+
+    THE DISCRIMINATOR IS THE SOURCE NODE'S KIND, NOT THE EMITTING LINKER, and
+    that distinction is load-bearing: ``di_resolution`` emits from an interface
+    METHOD and ``type_hierarchy`` from a parent METHOD, both ordinary virtual
+    dispatch that does carry a value. A linker-name blocklist would take those
+    with it.
+
+    The vocabulary comes from :func:`type_like_kind_names` rather than a literal
+    tuple. Its own docstring records audit 0018 finding 26 hand-written copies
+    of that set across 24 vocabularies, five of which silently omitted
+    ``protocol``; a restated set here would be the 27th and would drift the day
+    a language adds a type kind.
+
+    The edges themselves are NOT deleted. They are correct as reachability, and
+    ``django_orm_dispatch``'s own code calls that an "orthogonal reachability
+    concern" — removing them would file this defect in the wrong artifact and
+    take the architecture consumers with it. Only the taint walk's reading of
+    them changes.
+    """
+    kind = _id_kind_slot(edge.get("src", ""))
+    return kind is None or kind not in type_like_kind_names()
+
+
 def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     """True if *edge* (a behavior-map edge dict) carries taint like a call.
 
@@ -2298,8 +2376,17 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     audit-findings 0016) — the one place taint recognizes the folded form,
     so gRPC taint propagation is preserved without demoting or over-
     including structural ``implements`` edges.
+
+    One narrowing (INV-putug): a ``dispatches_to`` edge out of a TYPE node is
+    reachability, not dataflow — see :func:`_dispatch_edge_carries_a_value`.
+    It lives here rather than in ``_build_adjacency`` on the same "one rule,
+    one home" reasoning the dispatch membership itself was added under, so the
+    minting, adjacency and sanitizer-registration surfaces cannot disagree
+    about what a dispatch edge means.
     """
     etype = edge.get("type", "")
+    if etype == DISPATCH_EDGE_TYPE and not _dispatch_edge_carries_a_value(edge):
+        return False
     return etype in TAINT_CALL_EDGE_TYPES or is_grpc_rpc_implementation(
         etype, edge.get("meta")
     )
