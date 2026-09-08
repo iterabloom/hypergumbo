@@ -138,7 +138,12 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
   so neither a new classification nor a phantom barrier is reachable. A capitalisation
   exemption (sparing `Foo.bar` on the theory that it names a type) was considered and
   refuted on the data: jenkins' capitalised bucket is SCREAMING_CASE static fields.
-  Measured in 0018.
+  [Measurement 0018](docs/measurements/0018-java-callee-name-slot-delta.md) is the
+  three-arm A/B: **34 claim evaluations across two repositories, zero verdicts moved in
+  either direction**, no other language moved, and the boundary half is shown end to end
+  on the shipped CLI (`distinct method(s): u.mkdirs` becomes a scoped caveat naming
+  `fs_write` at `src/App.java:10 mkdirs()`). A cross-language parity gate over the
+  existing per-language disclosure fixtures pins the invariant for the next analyzer.
 - **The method-call-recovery linker no longer picks a class hint that contradicts the
   receiver type the producer declared (found by the WI-nakut measurement).** The linker's
   premise is that the class hint IS the receiver -- `CliRunner().run(args)`, one expression
@@ -156,7 +161,13 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
   wider: an edge with no stamp is unchanged, which is the WI-gigoz shape the linker was
   built for. Short names are compared on both sides (a stamp may be qualified, a class
   symbol may be nested), pinned by a test, because comparing the spellings as given would
-  read like a working guard while disabling the linker.
+  read like a working guard while disabling the linker. Measured in 0018: on jenkins the
+  guard removes 347 recoveries, **262 of which predate this PR** -- the pre-registered
+  "may only remove what this PR introduced" clause was refuted and was the wrong test,
+  since a seeded sample of 12 of those 262 is **12 of 12 false resolutions**
+  (`map.put("A","a")` recovered to `EnvVars.put` on a `TreeMap`, `w.flush()` to
+  `AtomicFileWriter.flush` on a `PrintWriter`, `while (!tmp.exists())` to
+  `FilePath.exists` on a `java.io.File`).
 - **An `#import` / `@import` / Solidity `import` edge's dst is a canonical id, so the lang slot no longer carries a header path (INV-dulah, lang-slot limb).** Three analyzers -- objc, css, solidity -- emitted the import edge's dst as the BARE import path, and a bare path is not an id: finalize's 4-part fallback rendered it with the path in the lang slot and `<unknown>` in the path slot (`Foundation/Foundation.h:<unknown>:0-0:Foundation/Foundation.h:external_symbol`), which the validator flagged as `non_canonical_language_prefix` -- the entire id_format residual on Mantle (44 of 44). objc now emits cpp's include shape (`objc:<header>:0-0:header:header`), css and solidity the js/ts import shape (`<lang>:<path>:0-0:module:module`); pinned per analyzer and through the production pipeline (`run_survey` + validator). Measured on Mantle (whole_bunch_of_repos/Mantle, cold cache, before/after arms in dulah_objc_09062026/): id_format 44 -> 0, `<unknown>`-slot nodes 44 -> 0, 44 canonical `objc:<header>:0-0:header:external_symbol` boundary nodes in their place, 156 objc import edges and the 587-node / 858-edge totals unchanged. The pipeline gate drives objc and solidity; css is fixed and pinned at the analyzer only, because its import edges never reach the survey and its symbol ids are hash-shaped (3 slots) -- a separate css limb, filed.
 
 #### Call edges the analyzers never emitted

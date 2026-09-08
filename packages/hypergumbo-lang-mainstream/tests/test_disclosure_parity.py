@@ -451,3 +451,85 @@ def test_explicit_this_receiver_carries_call_construct(
         f"declaring type is external and unknown, so the sanitizer guard has "
         f"nothing to refuse on (INV-pirot). metas: {[e.meta for e in external]}"
     )
+
+
+#: The receiver IDENTIFIER in each :data:`FIXTURES` source, so the parity gate
+#: below can name what must NOT appear in the callee's name slot. Kept beside
+#: the fixtures rather than parsed out of them: a regex over java source is a
+#: second thing to get wrong, and this file's own history is that a fixture
+#: detail nobody wrote down produced a wrong headline.
+FIXTURE_RECEIVERS: dict[str, str] = {
+    "java": "u",
+    "scala": "f",
+    "swift": "fm",
+    "objc": "fm",
+    "rust": "w",
+    "python": "p",
+    "go": "c",
+}
+
+
+def test_every_parity_language_declares_its_receiver_identifier() -> None:
+    """A fixture added later must declare its receiver or the gate below is
+    silently inert for it — the one-of-N shape this file already paid for."""
+    assert set(FIXTURE_RECEIVERS) == set(FIXTURES), (
+        f"FIXTURE_RECEIVERS and FIXTURES disagree: "
+        f"{set(FIXTURE_RECEIVERS) ^ set(FIXTURES)}"
+    )
+
+
+@pytest.mark.parametrize("lang", sorted(FIXTURES))
+def test_the_name_slot_names_the_callee_not_the_receiver(
+    lang: str, tmp_path: Path,
+) -> None:
+    """The unresolved dst's name slot must not carry the receiver identifier.
+
+    THE THIRD ARM OF THE SAME RULE, and the one java failed. The two arms above
+    ask whether the disclosure can FIRE for a language; this asks whether what
+    it fires with is a name any catalogue has keyed. Both boundary-scoped
+    consumers — ``verify_claims.untyped_receiver_sites`` and
+    ``untyped_receiver_sink_zones`` — match the callee name against catalogue
+    rows keyed WITHOUT a receiver, so a language that glues one on reaches a
+    clean verdict, counts the sites, and can never say which boundary they are
+    catalogued for.
+
+    Measured 2026-09-07 with these very fixtures: go, kotlin, python, rust and
+    scala emitted the bare method name and java emitted ``u.write`` (WI-nakut,
+    measurement 0018). The gate exists so the next analyzer to arrive cannot
+    reintroduce it silently.
+
+    ASSERTED AS "DOES NOT START WITH ``<receiver>.``" RATHER THAN "CONTAINS NO
+    DOT", because a dot in the name slot is not by itself wrong: ADR-0036
+    sanitizes ``:`` to ``.``, so an Objective-C selector legitimately renders as
+    ``writeToFile.atomically.`` and a blanket dot ban would fail objc for being
+    correct.
+    """
+    module, entry, filename, source = FIXTURES[lang]
+    receiver = FIXTURE_RECEIVERS[lang]
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source)
+    if lang == "rust":
+        (tmp_path / "Cargo.toml").write_text(
+            '[package]\nname = "p"\nversion = "0.1.0"\nedition = "2021"\n'
+        )
+
+    analyze = getattr(importlib.import_module(module), entry)
+    result = analyze(tmp_path)
+
+    external = [
+        e for e in result.edges
+        if e.edge_type in ("calls", "instantiates")
+        and e.dst.split(":")[-1] in ("external_symbol", "unresolved")
+    ]
+    assert external, f"{lang}: no external call edge emitted at all"
+    glued = [
+        e for e in external
+        if e.dst.split(":")[-2].startswith(f"{receiver}.")
+    ]
+    assert not glued, (
+        f"{lang}: the callee name slot carries the receiver identifier "
+        f"{receiver!r}, so no catalogue can key it and the boundary-scoped "
+        f"untyped_receiver caveat cannot fire (WI-nakut). "
+        f"dsts: {[e.dst for e in glued]}"
+    )
