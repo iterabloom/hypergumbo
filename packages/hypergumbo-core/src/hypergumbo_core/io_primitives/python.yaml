@@ -502,6 +502,17 @@ net_send:
   # INV-miniz / Plan C / stop-stripping plan PRs for the rationale.
 
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # ADR-0049's question -- does the call return a value whose content the FAR
+  # SIDE chose? -- is answered by the resolver, not by this process, so these
+  # mint untrusted_input and a resolver-poisoning threat model is exactly what
+  # that expresses. erlang has rowed the same family under net_recv since
+  # 2026-05-24 (WI-tukif); rowing python to match is parity, not a new opinion.
+  # NOT HERE, deliberately: gethostname (the LOCAL host's name, host_info_read,
+  # as c files it) and the services-table readers.
+  - module: socket
+    functions: [gethostbyname, gethostbyname_ex, gethostbyaddr, getaddrinfo, getnameinfo, getfqdn]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose. getfqdn calls gethostbyaddr; getnameinfo is the reverse direction. gethostname is NOT here: it reads the local hostname from the kernel and sits under host_info_read."
   - module: socket.socket
     methods: [recv, recvfrom, recv_into, recvmsg, accept]
   - module: ssl.SSLSocket
@@ -553,6 +564,13 @@ ipc_send:
   # resolve INV-ponad: the parent's attribute row speaks about REFERENCE
   # edges, these speak about CALL edges on the attribute object.
   # ---------------------------------------------------------------
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. SCM_RIGHTS
+  # descriptor passing works only over AF_UNIX, so unlike the generic
+  # socket.socket.sendmsg beside it the family here is KNOWN and the row can
+  # say ipc rather than defer to a call-site stamp.
+  - module: socket
+    functions: [send_fds]
+    notes: "sendmsg with SCM_RIGHTS -- AF_UNIX only, so the boundary is decided, not call-site-undecidable. The payload is a file descriptor: a capability handed to another process."
   - module: os
     functions: [kill, killpg]
     notes: "Signalling another process."
@@ -686,6 +704,13 @@ ipc_recv:
       for a bare input(), because BUILTIN_CONSTRUCTOR_NAMES is a hardcoded
       frozenset({"open"}) rather than the catalogue-derived set that item's
       root_cause describes -- so this row alone does not make the call visible.
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. The receive half of
+  # SCM_RIGHTS descriptor passing; see send_fds under ipc_send. Mints
+  # untrusted_input, which is the point -- a descriptor arriving from another
+  # process is a capability this program did not choose.
+  - module: socket
+    functions: [recv_fds]
+    notes: "recvmsg with SCM_RIGHTS -- AF_UNIX only, so the boundary is decided, not call-site-undecidable."
   - module: sys.stdin
     functions: [read, readline, readlines]
     notes: "INV-ponad slot family; consistent with the sys attribute row in this section. functions:, not methods: - see the os.environ note."
@@ -871,6 +896,14 @@ host_info_read:
     functions: [system, node, release, version, machine, processor, python_version]
   - module: locale
     functions: [getlocale, getdefaultlocale, getpreferredencoding]
+  # 2026-09-08 WI-dozul. The LOCAL half of socket's lookup surface, rowed
+  # because the module_completeness grant below makes SILENCE mean "this call
+  # crosses no boundary" -- so an unrowed host read under a grant is a false
+  # all-clear, the expensive direction. None of these queries a name server;
+  # the six that do are under net_recv.
+  - module: socket
+    functions: [gethostname, getservbyname, getservbyport, getprotobyname, if_nameindex, if_nametoindex, if_indextoname, has_dualstack_ipv6]
+    notes: "gethostname reads the local hostname from the kernel (c files unistd.gethostname the same way, and platform.node is the same fact one module over). getservbyname/getservbyport/getprotobyname read /etc/services and /etc/protocols -- LOCAL system tables, the pwd/grp precedent in this section. if_* enumerate the host's network interfaces. has_dualstack_ipv6 probes a kernel capability, as platform.system does."
 
 env_write:
   # 2026-08-15 stdlib climb - this catalogue's first env_write section
@@ -884,6 +917,15 @@ env_write:
   - module: contextlib
     functions: [chdir]
     notes: "The survey probe's catch: contextlib.chdir mutates process state."
+  # 2026-09-08 WI-dozul, from the socket-grant enumeration. sethostname mutates
+  # the MACHINE's name, not this process's state -- a stronger fact than its
+  # neighbours here, and env_write is the closest value the vocabulary has. A
+  # `host_info_write` twin of host_info_read would be its honest home; that is a
+  # new registry value and goes through an ADR-0024 family audit, not a row.
+  # Rowed rather than left silent because the grant makes silence a claim.
+  - module: socket
+    functions: [sethostname]
+    notes: "Privileged mutation of the host's name. See the comment above on why it is filed here."
 
 stdlib_modules:
   # BEGIN generated by scripts/refresh-stdlib-modules python
@@ -1548,6 +1590,33 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       connect rowed under db_read.
+  # 2026-09-08 WI-dozul. WI-dupok WITHHELD this grant on 2026-09-06 for a
+  # stated reason -- four module-level functions performed a network exchange
+  # with no row and no ruling -- and the 2026-09-06 owner ruling supplies the
+  # ruling, so the reason is discharged. Granted only after enumerating all 35
+  # module-level callables against the live module (dir(socket) +
+  # introspection, not recall), because a grant makes SILENCE mean "this call
+  # crosses no boundary" and an unrowed I/O function under a grant is a false
+  # all-clear.
+  - module: socket
+    completeness: complete
+    retrieved: "2026-09-08"
+    notes: >-
+      All 35 module-level callables adjudicated. ROWED: the six resolver
+      functions (net_recv); create_connection (net_send); create_server
+      (net_listen); gethostname / getservbyname / getservbyport /
+      getprotobyname / if_nameindex / if_nametoindex / if_indextoname /
+      has_dualstack_ipv6 (host_info_read -- local kernel and system-table
+      reads, the pwd/grp precedent); send_fds / recv_fds (ipc_send / ipc_recv,
+      SCM_RIGHTS over AF_UNIX); sethostname (env_write, the nearest value the
+      vocabulary has for a privileged mutation of the MACHINE's name). NOT
+      ROWED, each for a stated reason: socket / socketpair / fromfd / dup /
+      close (descriptor lifecycle -- the F2 family creates a handle and
+      transfers nothing); htonl / htons / ntohl / ntohs / inet_aton /
+      inet_ntoa / inet_ntop / inet_pton / CMSG_LEN / CMSG_SPACE (pure
+      conversions); getdefaulttimeout / setdefaulttimeout (process-local
+      setting). The socket CLASS's own methods are catalogued separately under
+      module socket.socket and are not covered by this module-level grant.
   - module: sqlite3.Connection
     completeness: complete
     retrieved: "2026-08-15"

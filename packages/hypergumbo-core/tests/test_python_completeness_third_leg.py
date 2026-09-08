@@ -107,9 +107,15 @@ GRANTED = [
     "doctest", "doctest.DocTestRunner", "unittest", "unittest.TestLoader", "unittest.TextTestRunner",
     "multiprocessing.Process", "multiprocessing.Pool",
 ]
+#: 2026-09-08 (WI-dozul): ``socket`` GRADUATED off this list. Its withholding
+#: reason -- "DNS resolvers unruled: net_recv or host_info_read" -- was
+#: discharged by the owner ruling of 2026-09-06 (net_recv), and the grant went
+#: in only after all 35 module-level callables were adjudicated against the
+#: live module. It is asserted below with its own date rather than folded into
+#: GRANTED, because GRANTED is this leg's dated cohort and socket is not one of
+#: them: a grant that borrowed 2026-09-06 would misdate its own audit.
 WITHHELD = [
     ("tkinter", "GUI I/O to a display; out of scope"),
-    ("socket", "DNS resolvers unruled: net_recv or host_info_read"),
     ("ssl", "rowed but not read one by one; PARTIAL"),
     ("unittest.mock", "patches module state; not read"),
     ("multiprocessing", "Manager / shared_memory / connection not read"),
@@ -125,6 +131,31 @@ class TestTheGrants:
     @pytest.mark.parametrize("module,why", WITHHELD)
     def test_is_not_enumerated(self, module: str, why: str) -> None:
         assert not CATALOGS["python"].module_io_is_enumerated(module), (module, why)
+
+    def test_socket_graduated_on_its_own_date_and_carries_its_reason(
+        self,
+    ) -> None:
+        """The withheld reason was discharged, not waived (WI-dozul).
+
+        This leg REFUSED socket on 2026-09-06 with a specific reason, and the
+        refusal was right at the time. Asserting the grant here, dated
+        separately, keeps the discharge visible: a reader of this file can see
+        both that it was withheld and why it stopped being.
+        """
+        import datetime as _d
+
+        path = (pathlib.Path(io_boundary.__file__).parent / "io_primitives"
+                / "python.yaml")
+        entries = {e["module"]: e
+                   for e in yaml.safe_load(path.read_text())["module_completeness"]}
+        entry = entries["socket"]
+        assert entry["completeness"] == "complete"
+        assert _d.date.fromisoformat(str(entry["retrieved"])) == _d.date(2026, 9, 8)
+        assert "35 module-level callables" in entry["notes"], (
+            "the grant must name the enumeration it rests on -- a grant makes "
+            "silence mean 'crosses no boundary', so the audit is the evidence"
+        )
+        assert CATALOGS["python"].module_io_is_enumerated("socket")
 
     def test_every_new_entry_is_dated_today_and_carries_its_verdict(self) -> None:
         path = pathlib.Path(io_boundary.__file__).parent / "io_primitives" / "python.yaml"

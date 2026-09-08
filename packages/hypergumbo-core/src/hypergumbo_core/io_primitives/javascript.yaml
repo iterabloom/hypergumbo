@@ -186,6 +186,22 @@ net_send:
     methods: [send, open, setRequestHeader]
     notes: "Browser XHR"
 net_recv:
+  # 2026-09-06 owner ruling (WI-dozul): A DNS LOOKUP IS A NETWORK RECEIVE.
+  # WI-nolut's node-builtin probe left `dns` unaudited, so javascript is the
+  # fifth language in the parity set rather than the fourth. Callback, promise
+  # and Resolver forms are the same query three ways; node's own docs split
+  # dns.lookup (which uses the OS resolver, getaddrinfo) from dns.resolve*
+  # (which queries the configured name servers directly) -- both reach a
+  # resolver and both return an answer this process did not choose.
+  - module: dns
+    functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "DNS resolution -- queries a name server and returns the answer it chose (ADR-0049: content the far side chose). Parity with erlang's inet rows, which have carried net_recv since 2026-05-24."
+  - module: dns.promises
+    functions: [lookup, lookupService, resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "The promise form of the same surface (node: dns/promises)."
+  - module: dns.Resolver
+    methods: [resolve, resolve4, resolve6, resolveAny, resolveCname, resolveCaa, resolveMx, resolveNaptr, resolveNs, resolvePtr, resolveSoa, resolveSrv, resolveTxt, reverse]
+    notes: "The same queries through an explicit Resolver instance."
   - module: http
     functions: [createServer]
   - module: https
