@@ -1,0 +1,67 @@
+Original commit body from bd2f0e8a868e3624679cb6b88c89c4fbf1842e31:
+
+Closes the java half of WI-nakut. Three commits: the producer fix, a linker
+guard the measurement forced, and the measurement record.
+
+## 1. The name slot of an unresolved java call names the CALLEE
+
+java glued the receiver identifier into it — `java:external:0-0:u.mkdirs:unresolved`
+rather than `mkdirs`, `out.println` rather than `println` — so every consumer that
+asks a catalogue about a name got a string no catalogue has ever keyed.
+
+**Parity, measured.** One fixture per language, same construct, through the shipped
+survey: go `Write`, kotlin `write`, python `sendall`, rust `write_all`, scala
+`write` — and java `u.write`. java was also inconsistent with itself: two of its five
+emit branches already shortened, two left `strip_redundant_module_qualifier` to do it
+downstream, and the placeholder case had nothing anywhere able to. The slot's content
+was a function of which resolution branch fired.
+
+**Two shipped disclosures were wrong.** The boundary-scoped `untyped_receiver` caveat
+matches the callee name against method-kind catalogue rows, so it could never fire for
+java — match-as-written is **0** on all three sizing repositories. And the unscoped
+`unknown_receiver_scope` caveat prints a distinct-method COUNT that the receiver
+spellings inflated **29% / 102% / 176%**: cassandra reported 22,584 distinct methods
+where there are 8,191, with `get` alone printed as **427** separate "methods".
+
+**No verdict can move**, and the guard is one the tree already argues: every edge this
+shortens carries `call_construct="method"`, `gate_named_entry` refuses a
+method-construct call with no module hint for every kind, and
+`_register_sanitizer_callers` refuses on the same stamp. Both directions are pinned as
+refutation cells.
+
+**No capitalisation exemption, and that is measured.** Sparing `Foo.bar` on the theory
+that it names a type was refuted on the data: jenkins' capitalised bucket is
+SCREAMING_CASE static fields (`ALL.getName`, `CONFIG.getName`, `DESCRIPTOR.get`).
+
+## 2. A class hint that contradicts the declared receiver type recovers nothing
+
+Found by the measurement, not by reading. Java's variable-receiver calls reached the
+`method-call-recovery` linker for the first time — it reads the id's name slot verbatim
+— and it resolved them wrongly. On sherpa-onnx **all nine** newly-recovered rows are
+`audio.getSampleRate()` resolved to `OfflineTts.getSampleRate`, where `audio` is a
+`GeneratedAudio` that declares `getSampleRate` itself and six classes in the repository
+declare it.
+
+The evidence to refuse was already stamped: `receiver_type_hint` reads `GeneratedAudio`
+on the wrong rows and `OfflineStream` / `AudioTagging` on the right ones. A contradicting
+hint is now dropped from the candidate set. As wide as the evidence and no wider — an
+edge with no stamp is unchanged, which is the WI-gigoz shape the linker was built for.
+
+## 3. Measurement 0018
+
+Three asserted arms by blob, two java repositories, plus a shipped-CLI fixture for the
+one cell they cannot reach (every boundary claim on both is violated or inconclusive,
+and a caveat attaches only on a clean path).
+
+- **34 claim evaluations, zero verdicts moved**, in either direction; no other language moved.
+- The scoped caveat now attributes **974 edges / 43 names / 9 boundaries** on jenkins over 650 already matching.
+- End to end on the CLI: `distinct method(s): u.mkdirs` becomes a scoped caveat naming `fs_write` at `src/App.java:10 mkdirs()`.
+- **A pre-registered clause was refuted and was the wrong test.** The guard removes 262 recoveries that predate this PR; a seeded sample of 12 is **12 of 12 false resolutions** (`map.put("A","a")` → `EnvVars.put` on a `TreeMap`, `w.flush()` → `AtomicFileWriter.flush` on a `PrintWriter`).
+
+A cross-language parity gate pins the invariant for the next analyzer; verified
+non-vacuous by restoring baseline `java.py`, where it fails for java alone.
+
+26 existing assertions across three java test files are re-pointed and one test
+re-titled. 10,807 tests pass, 100% coverage on changed files, ratchet clean.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
