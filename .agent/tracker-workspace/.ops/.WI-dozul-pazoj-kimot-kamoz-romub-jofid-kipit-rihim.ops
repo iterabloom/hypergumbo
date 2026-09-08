@@ -70,3 +70,27 @@
   set: {}  # 9316
   add:  # 9316
     isbefore: [WI-lanos-busoj-lativ-minud-buton-vuviv-jihit-bumip]  # 9316
+- op: update  # a4c8
+  at: '2026-09-08T20:45:23Z'  # a4c8
+  by: agent  # a4c8
+  actor: jgstern_agent  # a4c8
+  clock: 8  # a4c8
+  nonce: a4c8  # a4c8
+  set:  # a4c8
+    status: done  # a4c8
+- op: discuss  # d539
+  at: '2026-09-08T20:45:23Z'  # d539
+  by: agent  # d539
+  actor: jgstern_agent  # d539
+  clock: 9  # d539
+  nonce: d539  # d539
+  message: "DONE. Shipped in PR #839 (merged dev 26578f5d7e). Rows in python / go / c /\njavascript, erlang parity by sort, rust inert-on-arrival, `socket` granted,\nINV-buzab arm 2 repointed, measurement 0019 published.\n\nTHIS ITEM'S OWN FILED REPRO, RE-RUN AT THE MERGE COMMIT rather than cited from\nthe measurement. The item's premise was \"grep: zero rows across\ngo/rust/c/python\". Through the production loader now:\n\n  python 6, go 20, c 7, rust 1  -- the four the item grepped, 34 rows where it\n  found zero -- plus javascript 46 and erlang 4, 84 total; and\n  AUTO_SOURCE_LABEL_MAP['net_recv'] == 'untrusted_input', so they mint.\n\nBEHAVIOURAL EVIDENCE beyond the row census: measurement 0019 ran the production\nCLI over an 11-repository cohort in two blob-asserted arms with a pre-registered\ncanary, and six fixtures ran the production CLI per spelling. A python fixture\nreports `socket.gethostbyname -> subprocess.run` at confidence `precise`.\n\nTHE MEASUREMENT IS A WELL-ATTRIBUTED NEGATIVE, and that is the deliverable:\n6 situations added, 0 removed, 0 verdicts moved, 0 OF 6 CORRECT, every one read\nback against source. Five of six are in c, where no def/use extractor exists.\n\nTHE PRE-REGISTERED RE-OPEN TRIGGER FIRED ON ITS CONDITION AND NOT ITS PREMISE,\nso it was REPORTED, NOT EXECUTED (LIVE section 2). It anticipated findings that\nwere correct but not useful; these are not correct, for a reason unrelated to\nforward-versus-reverse -- a reverse lookup in c would pair identically, and a\nforward lookup in python paired nothing. Filing an ADR-0024 boundary audit on\nthat number would attribute to the ROW a defect belonging to the WALK.\n\nAND THE IMPLIED REMEDY WAS PRICED BEFORE IT WAS FILED, which changed what got\nfiled. Six fixtures (three flow shapes x c and python): python, WITH the full\nextractor, reports the same co-located and discarded-at-source shapes, and\n`flows_removed_by_walk` is 0 in BOTH languages. The extractor changes the METHOD\nLABEL, not the population. 0019's own table already carried the refutation --\nthe vault false positive is in GO, which HAS an extractor, labelled `ddg_mixed`\n-- and 0019 is amended in place saying so. What the gap costs c is TRIAGE, filed\nas WI-himob-huhis-dimoh-dudam-bijuv-bozum-zusaz-tinig.\n\nThe rows are correct as catalogue rows and the ruling is unaffected: a resolver\nchooses the answer. Nothing here argues for removing them.\n\nTagged awaits_bakeoff_validation: 0019 is a quantitative claim on a cohort, so\nthe queue owns whether it reproduces.\n\nSHIPPING NOTE, recorded because the cause is reusable. The first pipeline for\nthis branch died mid-run: the runner dropped off the LAN during a UPS fault\nwhose window was 07:30-16:15 EDT, against a push at 07:09 EDT. pytest cleared\nthe nine fast steps, reached 24% of 6,434 items across 8 workers, and then\nemitted nothing for 9.5 hours -- no traceback, no summary, no terminal status\n-- so the commit status sat on `pending` forever. Woodpecker does not revisit a\nrun whose runner is gone, so the fix was a fresh SHA (an empty commit, which the\nrebase merge then dropped, leaving no noise in history). The freeze lands inside\nthe first 21 minutes of the outage, which is what rules OUT the competing\nexplanation of a genuinely hanging test in that band; the tree had already\npassed 26,538 tests locally. `merge-pr 839 --wait-for-ci` then went green and\nmerged on the first attempt."  # d539
+- op: update  # 3b9f
+  at: '2026-09-08T20:46:19Z'  # 3b9f
+  by: agent  # 3b9f
+  actor: jgstern_agent  # 3b9f
+  clock: 10  # 3b9f
+  nonce: 3b9f  # 3b9f
+  set: {}  # 3b9f
+  add:  # 3b9f
+    tags: [awaits_bakeoff_validation]  # 3b9f
