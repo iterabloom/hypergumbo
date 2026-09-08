@@ -1305,6 +1305,30 @@ _ALLOWED_CONSTRAINT_KEYS: frozenset[str] = frozenset(
 _ALLOWED_TAINT_FLOW_KEYS: frozenset[str] = frozenset(
     {"source_taint", "prohibited_sink_zone", "allowed_sanitizers"},
 )
+#: The sub-keys :func:`load_extra_catalog_paths` actually consumes (INV-sisod).
+#:
+#: THE ONE NESTED BLOCK WI-bopoz LEFT UNGUARDED, and the omission was
+#: fail-open. ``extra_catalogs`` is listed in ``_ALLOWED_TOP_LEVEL_KEYS`` above,
+#: so the block itself was accepted and nothing looked inside it: an unknown
+#: sub-key was silently discarded and the run continued as though the project
+#: had declared nothing. Measured on the shipped CLI over one 2-file repository,
+#: one claim, one catalogue file, the ONLY difference being the key name —
+#: ``sources:`` gave ``violated`` (rc 1) and ``taint_sources:`` gave
+#: ``confirmed_with_caveats`` (rc 3), with no warning of any kind.
+#:
+#: The typo is the one the documentation invites: ``verify-claims --help``
+#: introduces this block by naming the FLAGS (``--taint-sources`` /
+#: ``--taint-sinks`` / ``--taint-sanitizers``) and never the sub-keys, and
+#: promises four lines later that "an unknown field name ... produces a clear
+#: error and exit code 2 (not a silent pass)".
+#:
+#: DROPPING SANITIZERS IS SAFE; DROPPING SOURCES OR SINKS IS NOT. Fewer
+#: sanitizers means more violations. Fewer sources or sinks means a claim the
+#: repository's own catalogue would have violated comes back clean, which is
+#: the false-all-clear direction.
+_ALLOWED_EXTRA_CATALOG_KEYS: frozenset[str] = frozenset(
+    {"sources", "sinks", "sanitizers", "io_primitives"},
+)
 
 
 def _did_you_mean(value: str, vocabulary) -> str:
@@ -1371,6 +1395,17 @@ def load_extra_catalog_paths(
     declares project-local knowledge — the boundary arm was simply never
     given a key in it, even though ADR-0017 established the pattern for
     the taint arm.
+
+    STILL LENIENT, AND NOW THAT IS SAFE. This function tolerates a missing
+    key, a non-list value and a non-string entry, and its tests pin that.
+    It was documented as leniency the caller would compensate for, and no
+    caller did: an ``extra_catalogs:`` block misspelled or mis-shaped in any
+    of those three ways was discarded in silence, turning a measured
+    ``violated`` into a clean verdict (INV-sisod). :func:`load_claims` now
+    rejects all three through :func:`_validate_extra_catalogs`, and it runs
+    FIRST on the same file, so by the time this function sees the block the
+    shapes it tolerates cannot reach it from the CLI. The leniency is kept
+    rather than duplicated: one home for the check, one home for the read.
     """
     content = path.read_text(encoding="utf-8")
     data = yaml.safe_load(content) or {}
@@ -2011,6 +2046,57 @@ def _parse_claim(entry: object, index: int) -> Claim:
     )
 
 
+def _validate_extra_catalogs(extras: object, path: Path) -> None:
+    """Raise :class:`ClaimsFileError` if an ``extra_catalogs:`` block would be
+    silently discarded (INV-sisod).
+
+    THREE SHAPES, ALL PREVIOUSLY SILENT, ALL MEASURED ON THE SHIPPED CLI as
+    turning one repository's ``violated`` (rc 1) into ``confirmed_with_caveats``
+    (rc 3): an unknown sub-key, a scalar where a path list belongs, and a
+    non-string entry inside the list. The CONTROL is what made the gap sharp —
+    the same catalogue under the CORRECT key with a path that does not exist
+    DOES fail (``Taint catalog path not found``, rc 2). hypergumbo checked that
+    a declared catalogue EXISTS and never checked that a declaration was
+    UNDERSTOOD.
+
+    HERE RATHER THAN IN :func:`load_extra_catalog_paths`, whose docstring
+    already delegated this decision ("the CLI layer decides whether to fail
+    hard; parsing is lenient") to something nobody had built. This is where the
+    other four allowlists run; it runs FIRST on the same file (``cli.py`` calls
+    :func:`load_claims` before :func:`load_extra_catalog_paths`); and the
+    lenient parse stays lenient, so its tests are untouched.
+
+    ``None`` is accepted for a sub-key, because ``sanitizers:`` with nothing
+    after it is how a YAML author writes "none of these" and the loader has
+    always read it that way.
+    """
+    if extras is None:
+        return
+    if not isinstance(extras, dict):
+        raise ClaimsFileError(
+            f"'extra_catalogs:' must be a mapping of "
+            f"{'/'.join(sorted(_ALLOWED_EXTRA_CATALOG_KEYS))} to path lists, "
+            f"got {type(extras).__name__}: {path}",
+        )
+    _reject_unknown_keys(
+        extras.keys(), _ALLOWED_EXTRA_CATALOG_KEYS, where="extra_catalogs",
+    )
+    for key, raw in extras.items():
+        if raw is None:
+            continue
+        if not isinstance(raw, list):
+            raise ClaimsFileError(
+                f"'extra_catalogs.{key}:' must be a list of catalog paths, "
+                f"got {type(raw).__name__}: {path}",
+            )
+        for index, entry in enumerate(raw):
+            if not isinstance(entry, str):
+                raise ClaimsFileError(
+                    f"'extra_catalogs.{key}[{index}]' must be a path string, "
+                    f"got {type(entry).__name__}: {path}",
+                )
+
+
 def load_claims(path: Path) -> list[Claim]:
     """Load and validate security claims from a YAML file.
 
@@ -2070,6 +2156,7 @@ def load_claims(path: Path) -> list[Claim]:
     _reject_unknown_keys(
         data.keys(), _ALLOWED_TOP_LEVEL_KEYS, where="top-level",
     )
+    _validate_extra_catalogs(data.get("extra_catalogs"), path)
 
     raw_claims = data.get("claims")
     if raw_claims is None:

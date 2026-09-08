@@ -20,6 +20,7 @@ from hypergumbo_core.verify_claims import (
     TaintFlowConstraint,
     compute_boundary_coverage,
     load_claims,
+    _ALLOWED_EXTRA_CATALOG_KEYS,
     load_extra_catalog_paths,
     verify_claim,
     verify_claims,
@@ -2452,3 +2453,136 @@ class TestCaveatMergeSemantics:
         first = [_opaque_boundary_caveat(["subprocess.run"])]
         out = _merge_caveat(first, _opaque_boundary_caveat(["subprocess.run"]))
         assert out is first
+
+
+class TestExtraCatalogsIsValidated:
+    """A declaration that is not understood must be REPORTED, not discarded
+    (INV-sisod).
+
+    WHAT WAS BROKEN, on the shipped CLI, one 2-file repository, one claim, one
+    catalogue file, the ONLY difference being the key name:
+
+        extra_catalogs: {sources: [cat/sources.yaml]}         -> violated,  rc 1
+        extra_catalogs: {taint_sources: [cat/sources.yaml]}   -> confirmed,  rc 3
+        extra_catalogs: {sources: cat/sources.yaml}           -> confirmed,  rc 3
+        extra_catalogs: {sources: [{path: cat/sources.yaml}]} -> confirmed,  rc 3
+
+    No warning in any of the three. The CONTROL is what makes it sharp: the same
+    file under the CORRECT key with a path that does not exist DOES fail
+    (``Error: Taint catalog path not found``, rc 2). hypergumbo checked that a
+    declared catalogue EXISTS and never checked that a declaration was
+    UNDERSTOOD.
+
+    WHY THE TYPO IS PREDICTABLE. ``verify-claims --help`` says "A top-level
+    ``extra_catalogs:`` key may declare project-local taint catalogs (see
+    --taint-sources/--taint-sinks/--taint-sanitizers)" — it names the FLAGS and
+    never the sub-keys — and promises four lines later that "an unknown field
+    name ... produces a clear error and exit code 2 (not a silent pass)".
+
+    THE FAIL-OPEN DIRECTION IS SOURCES AND SINKS. Dropping declared SANITIZERS
+    yields more violations, which is safe; dropping declared SOURCES or SINKS
+    yields fewer, and a claim the repository's own catalogue would have violated
+    comes back clean.
+
+    VALIDATED HERE RATHER THAN IN :func:`load_extra_catalog_paths`, whose
+    docstring already delegated ("the CLI layer decides whether to fail hard;
+    parsing is lenient") to a decision nobody had built. This is where the other
+    four allowlists run, it runs FIRST on the same path (``cli.py`` calls
+    ``load_claims`` at 6007 and ``load_extra_catalog_paths`` at 6201), and the
+    lenient-parse tests above keep passing unchanged — which is the signal that
+    this is the right layer.
+    """
+
+    def test_an_unknown_sub_key_is_rejected_with_a_hint(
+        self, tmp_path: Path,
+    ) -> None:
+        """The measured case, and the hint matters: ``taint_sources`` is what
+        the help text's flag names lead a reader to write."""
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  taint_sources: [cat/sources.yaml]\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "taint_sources" in str(exc.value)
+        assert "Did you mean" in str(exc.value)
+        assert "sources" in str(exc.value)
+
+    def test_a_scalar_where_a_path_list_is_expected_is_rejected(
+        self, tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources: cat/sources.yaml\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "sources" in str(exc.value)
+        assert "list" in str(exc.value)
+
+    def test_a_non_string_path_entry_is_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sinks:\n"
+            "    - {path: cat/sinks.yaml}\n"
+        )
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "sinks" in str(exc.value)
+
+    def test_extra_catalogs_must_be_a_mapping(self, tmp_path: Path) -> None:
+        path = tmp_path / "claims.yaml"
+        path.write_text("claims: []\nextra_catalogs: [a, b]\n")
+        with pytest.raises(ClaimsFileError) as exc:
+            load_claims(path)
+        assert "extra_catalogs" in str(exc.value)
+
+    def test_a_well_formed_block_still_loads(self, tmp_path: Path) -> None:
+        """CONTROL. Every documented sub-key, and the shapes a real claims file
+        uses — an absent key, an explicitly empty list, and ``null``, which the
+        lenient parser has always accepted and must keep accepting."""
+        path = tmp_path / "claims.yaml"
+        path.write_text(
+            "claims: []\n"
+            "extra_catalogs:\n"
+            "  sources: [taint/s.yaml]\n"
+            "  sinks: []\n"
+            "  sanitizers:\n"
+            "  io_primitives: [overlays/o.yaml]\n"
+        )
+        assert load_claims(path) == []
+        sources, sinks, sanitizers, io_prims = load_extra_catalog_paths(path)
+        assert sources == [tmp_path / "taint/s.yaml"]
+        assert sinks == []
+        assert sanitizers == []
+        assert io_prims == [tmp_path / "overlays/o.yaml"]
+
+    def test_no_extra_catalogs_block_is_still_fine(self, tmp_path: Path) -> None:
+        """CONTROL: the overwhelmingly common shape must not start raising."""
+        path = tmp_path / "claims.yaml"
+        path.write_text("claims: []\n")
+        assert load_claims(path) == []
+
+    def test_the_allowlist_is_exactly_what_the_loader_reads(self) -> None:
+        """ONE FACT, TWO HOMES — so pin them together. The allowlist and the
+        keys :func:`load_extra_catalog_paths` actually consumes are written in
+        two places, and a key added to one and not the other is either a
+        silently-ignored declaration (the defect above) or a rejected valid one.
+        """
+        import inspect
+
+        source = inspect.getsource(load_extra_catalog_paths)
+        read = {
+            key for key in ("sources", "sinks", "sanitizers", "io_primitives")
+            if f'extras.get("{key}")' in source
+        }
+        assert read == set(_ALLOWED_EXTRA_CATALOG_KEYS), (
+            f"loader reads {sorted(read)}, allowlist permits "
+            f"{sorted(_ALLOWED_EXTRA_CATALOG_KEYS)}"
+        )
