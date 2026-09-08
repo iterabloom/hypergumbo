@@ -1,0 +1,21 @@
+- op: create  # 2797
+  at: '2026-09-08T05:53:10Z'  # 2797
+  by: agent  # 2797
+  actor: jgstern_agent  # 2797
+  clock: 1  # 2797
+  nonce: '2797'  # 2797
+  data:  # 2797
+    kind: work_item  # 2797
+    title: "INV-nular's swept-family register drifted: two F6s, two F7s, and 'seven families' is short by five"  # 2797
+    status: todo_soft  # 2797
+    priority: 3  # 2797
+    parent:  # 2797
+    tags:  # 2797
+    - catalogue  # 2797
+    - documentation  # 2797
+    isbefore: []  # 2797
+    duplicate_of: []  # 2797
+    not_duplicate_of: []  # 2797
+    pr_ref:  # 2797
+    description: "INV-nular's family register drifted: two F6s, two F7s, and a count that is short by five.\n\nFound while writing the INV-nular re-scope statement (T1, 2026-09-08), by trying to enumerate the swept families from the record and finding the record disagrees with itself.\n\n    packages/hypergumbo-core/tests/test_inv_nular_false_sources.py:671\n        \"# F6 -- an INPUT declared as an OUTPUT, found by a systematic direction sweep\"\n    packages/hypergumbo-core/tests/test_inv_nular_false_sources.py:1066\n        \"# F6 -- ADJACENCY IS NOT A CROSSING (measurement 0006's sensitivity S1)\"\n\nTwo different families, same number, same file. Separately, that file's F7 is the Network.Wai response constructors (line 811), while INV-nular's 2026-09-06 discussion entry says \"F7 SHIPPED 2026-09-06 (PR #794, WI-jojaf): pure path arithmetic rowed as fs_read\" -- a third family under the same label. And the phrase \"the swept strata (F1..F7)\" that the 2026-09-06 owner ruling and every later summary use implies seven, where naming them by mechanism gives twelve: in-process cells, connection setup, query builders, lifecycle callbacks/close, Phoenix/Plug responses, the direction sweep, Wai response constructors, adjacency, path arithmetic, the row-KIND family (WI-komun), the c socket family (WI-baran), the go writer-argument family (WI-suhug).\n\nTHIS IS THE PROJECT'S OWN RULE 10 LANDING ON ITS OWN BOOKKEEPING -- a hand-restated closed set drifts by default (WI-jizil). The register was restated in a test file, in tracker prose and in a changelog summary, and the three copies disagree.\n\nCOST, so it is priced rather than assumed: it is documentation only -- no gate reads an F-number and no behaviour depends on one. It cost one wrong draft of the INV-nular statement, caught before it shipped because the families were re-derived from the file rather than copied from the prose.\n\nWHAT IS ASKED, and what is deliberately NOT. Do NOT renumber: the numbers are cited from at least three places (the test file, INV-nular's discussion, CHANGELOG) and renumbering fixes the labels by breaking the citations. Instead, give the file ONE register -- a module-level list naming each family by MECHANISM with its number(s) as they were historically used, the duplicates called out as duplicates -- and have the section headers point at it. A test that the register's entries match the section headers present in the file would keep it from drifting again, which is the only part of this that is worth more than an edit."  # 2797
+    fields: {}  # 2797
