@@ -449,3 +449,95 @@ class TestParseUnresolvedNamePublic:
             parse_unresolved_name,
         )
         assert parse_unresolved_name is _parse_unresolved_name
+
+
+class TestTheHintMustNotContradictTheDeclaredReceiver:
+    """A class hint that DISAGREES with the edge's own ``receiver_type_hint``
+    is evidence against the recovery, not permission to guess (INV-nakut-guard).
+
+    FOUND BY MEASUREMENT, not by reading. WI-nakut stopped java gluing the
+    receiver identifier into an unresolved call's name slot, which was the only
+    reason this linker had never seen java's variable-receiver calls: it reads
+    ``parts[-2]`` verbatim, so ``audio.getSampleRate`` matched no class member
+    and ``getSampleRate`` matches six. The A/B measured 9 newly-recovered rows
+    on sherpa-onnx and 241 on jenkins, and reading them back against source
+    found the failure this guard closes:
+
+        float d = audio.getSamples().length / (float) audio.getSampleRate();
+
+    ``audio`` is a ``GeneratedAudio``; the enclosing ``main`` also instantiates
+    ``OfflineTts``; six classes in that repository declare ``getSampleRate``;
+    and the line-proximity tiebreaker chose ``OfflineTts``. The edge itself
+    carried ``receiver_type_hint="GeneratedAudio"`` the whole time -- the
+    evidence to refuse was already stamped and nothing read it.
+
+    THE GUARD IS ONLY AS WIDE AS THE EVIDENCE. An edge with no stamp is
+    unchanged, which is the WI-gigoz shape this linker was built for
+    (``CliRunner().run()`` has no receiver variable to declare a type for), and
+    every language that stamps nothing keeps exactly the behaviour it had.
+    """
+
+    @staticmethod
+    def _fixture(declared: str | None) -> tuple[list[Symbol], list[Edge]]:
+        """``main`` instantiates ``Tts`` and calls ``m()`` on something else.
+
+        Both classes declare ``m``; only ``Tts`` is a class hint.
+        """
+        main = _sym("k:App.kt:5-9:main:function", "main", "function",
+                    start=5, end=9)
+        tts = _sym("k:Tts.kt:1-30:Tts:class", "Tts", "class", path="Tts.kt",
+                   start=1, end=30)
+        tts_m = _sym("k:Tts.kt:10-20:Tts.m:method", "Tts.m", "method",
+                     path="Tts.kt", start=10, end=20)
+        audio = _sym("k:Audio.kt:1-30:Audio:class", "Audio", "class",
+                     path="Audio.kt", start=1, end=30)
+        audio_m = _sym("k:Audio.kt:10-20:Audio.m:method", "Audio.m", "method",
+                       path="Audio.kt", start=10, end=20)
+        meta = {"call_construct": "method"}
+        if declared is not None:
+            meta["receiver_type_hint"] = declared
+        call = Edge.create(
+            src=main.id, dst="kotlin:external:0-0:m:unresolved",
+            edge_type="calls", line=7, origin="test",
+            evidence_type="ast_method_unresolved", origin_run_id="test",
+            meta=meta,
+        )
+        edges = [
+            _edge(main.id, tts.id, "calls", line=7),
+            _edge(tts.id, tts_m.id, "contains", line=10),
+            _edge(audio.id, audio_m.id, "contains", line=10),
+            call,
+        ]
+        return [main, tts, tts_m, audio, audio_m], edges
+
+    def test_a_contradicting_hint_recovers_nothing(self) -> None:
+        """The measured failure: the receiver is declared ``Audio`` and the
+        only class hint is ``Tts``."""
+        symbols, edges = self._fixture("Audio")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert result.edges == [], [e.dst for e in result.edges]
+
+    def test_an_agreeing_hint_still_recovers(self) -> None:
+        """CONTROL, and the majority of the measured population: ``wi.leave()``
+        where ``wi`` is declared ``WaitingItem`` and ``WaitingItem`` is the
+        hint. The guard must cost these nothing."""
+        symbols, edges = self._fixture("Tts")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+    def test_an_unstamped_edge_is_unchanged(self) -> None:
+        """CONTROL: the WI-gigoz shape this linker exists for, and every
+        language that stamps no receiver type."""
+        symbols, edges = self._fixture(None)
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]
+
+    def test_the_declared_type_is_compared_on_its_SHORT_name(self) -> None:
+        """A stamped type may be qualified (``java.io.File``) while a class
+        symbol's name is its short form, so the comparison is short-to-short.
+        Asserted rather than assumed: comparing the qualified spelling against
+        a short class name refuses EVERY recovery, which would read as "the
+        guard works" while actually disabling the linker."""
+        symbols, edges = self._fixture("com.example.Tts")
+        result = link_method_call_recovery(_ctx(symbols, edges))
+        assert [e.dst for e in result.edges] == ["k:Tts.kt:10-20:Tts.m:method"]

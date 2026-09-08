@@ -33,6 +33,12 @@ A single post-analysis pass, language-agnostic. For each caller N:
      class has a ``contains`` child symbol whose short name matches
      ``unresolved_name``. If yes, emit a synthetic
      ``calls -> Class.method`` edge.
+  3a. Drop any hint that CONTRADICTS a ``receiver_type_hint`` the producer
+     stamped on the unresolved edge. The premise of step 1 is that the class
+     hint IS the receiver; a producer that named a different type for the
+     receiver has already refuted that, and ``audio.getSampleRate()`` in a
+     method that separately instantiates ``OfflineTts`` is the measured case
+     (WI-nakut). No stamp means no second opinion and nothing changes.
   4. Disambiguate by line proximity when multiple classes match.
   5. Skip if the caller already has a direct ``calls`` edge to the
      resolved method (no duplicates).
@@ -124,6 +130,36 @@ _short_name = short_name
 _parse_unresolved_name = parse_unresolved_name
 
 
+def _declared_receiver_type(edge: Edge) -> str | None:
+    """The receiver type the PRODUCER declared for this call, if it declared one.
+
+    ``receiver_type_hint`` is the analyzer's statement about the receiver's
+    type; it is stamped whenever a producer could infer one and is absent
+    otherwise, so ``None`` means "no second opinion", never "any type".
+    """
+    value = (edge.meta or {}).get("receiver_type_hint")
+    return value if isinstance(value, str) and value else None
+
+
+def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
+    """Does this class hint name the type the producer declared for the receiver?
+
+    COMPARED ON SHORT NAMES IN BOTH DIRECTIONS. A stamped type may be qualified
+    (``java.io.File``, ``com.example.Tts``) while a class symbol carries its own
+    short name, and a class symbol may itself be nested (``Queue.WaitingItem``)
+    while the stamp is the bare ``WaitingItem``. Comparing the spellings as
+    given would refuse almost every recovery, which reads exactly like a working
+    guard while actually disabling the linker -- so both sides are reduced and
+    the reduction is pinned by a test.
+
+    Takes a ``Symbol`` rather than an optional one, because a hint edge is
+    admitted only when ``hint.dst in class_ids`` and ``class_ids`` is a subset
+    of ``sym_by_id``'s keys -- so a missing-symbol branch here would be dead
+    code, and the coverage gate said so.
+    """
+    return member_short_name(hint_class.name) == member_short_name(declared)
+
+
 @register_linker(
     "method-call-recovery-linker",
     priority=35,  # After containment (12) + inheritance (15); before rollups.
@@ -179,9 +215,48 @@ def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
             continue
         already_resolved = resolved_targets[caller_id]
         for name, ucall in unresolved_for_caller:
+            # A DECLARED RECEIVER TYPE IS EVIDENCE AGAINST A HINT THAT
+            # DISAGREES WITH IT, not a detail to ignore (WI-nakut).
+            #
+            # This linker's premise is that the class hint IS the receiver --
+            # ``CliRunner().run(args)``, where the constructor edge and the
+            # unresolved call name two halves of one expression. Nothing
+            # checked that premise, because for most producers there was no
+            # second opinion available: ``parse_unresolved_name`` reads the id's
+            # name slot and the id says nothing about the receiver.
+            #
+            # java stamps one. Measured on sherpa-onnx after WI-nakut let
+            # java's variable-receiver calls reach this linker at all:
+            #
+            #   float d = audio.getSamples().length / (float) audio.getSampleRate();
+            #
+            # ``audio`` is a ``GeneratedAudio``, the enclosing ``main`` also
+            # instantiates ``OfflineTts``, SIX classes in that repository
+            # declare ``getSampleRate``, and the line-proximity tiebreaker below
+            # chose ``OfflineTts`` -- nine times, in nine example files. The
+            # edge carried ``receiver_type_hint="GeneratedAudio"`` throughout.
+            #
+            # REFUSING RATHER THAN RE-RANKING. A contradicting hint is dropped
+            # from the candidate set, so a caller whose only hint disagrees
+            # recovers NOTHING and the dangling edge stays dangling -- which is
+            # the honest answer, and the same direction ``taint.py`` takes for a
+            # sanitizer ("a typed receiver of the wrong type is evidence AGAINST
+            # this sanitizer, not permission to assume it").
+            #
+            # AS WIDE AS THE EVIDENCE AND NO WIDER. With no stamp nothing
+            # changes, which keeps the WI-gigoz shape this linker was built for
+            # (a constructor receiver has no variable to declare a type for) and
+            # every language that stamps nothing. A stamp naming a type the
+            # repository does not contain also recovers nothing, correctly: a
+            # receiver declared as a library type is not a project class.
+            declared = _declared_receiver_type(ucall)
             # Find candidate (class_hint_edge, method_symbol) pairs.
             candidates: list[tuple[Edge, Symbol]] = []
             for hint in hints:
+                if declared is not None and not _hint_agrees_with_declared(
+                    sym_by_id[hint.dst], declared,
+                ):
+                    continue
                 method = class_methods.get(hint.dst, {}).get(name)
                 if method is not None:
                     candidates.append((hint, method))
