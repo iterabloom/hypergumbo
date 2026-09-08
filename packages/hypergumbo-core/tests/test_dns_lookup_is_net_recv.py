@@ -119,6 +119,74 @@ def test_the_lookups_mint_untrusted_input() -> None:
     assert AUTO_SOURCE_LABEL_MAP.get("net_recv") == "untrusted_input"
 
 
+class TestReachWasMeasuredNotAssumed:
+    """PRESENCE IS NOT REACHABILITY, and the javascript half of this change is
+    where that bit.
+
+    Three claims here, each MEASURED end to end on a fixture rather than read
+    off the row, because a row that classifies nothing looks identical to one
+    that classifies everything until you run it.
+
+    ==================================== ==========================
+    source spelling                      emitted module slot
+    ==================================== ==========================
+    ``require('dns/promises')``          ``dns/promises``
+    ``import .. 'node:dns/promises'``    ``dns/promises``
+    ``require('dns').promises``          ``external`` (sentinel)
+    ``import {promises} from 'dns'``     ``external`` (sentinel)
+    ``new Resolver(); r.resolve4(h)``    ``external`` (sentinel)
+    ==================================== ==========================
+
+    A DETOUR WORTH RECORDING, because it is this project's own rule 5 landing
+    on me. The member-access fixture produced no chain, I concluded the rows
+    were mis-keyed, and re-keyed them to the slash spelling. That was wrong:
+    ``normalize_module_separators`` folds ``/`` into ``.`` before matching, so the dotted
+    key already caught both subpath spellings, and the fixture had failed for a
+    DIFFERENT reason -- the sentinel. A fixture that fails for reason B while
+    you are testing hypothesis A will happily confirm A. The revert is in the
+    history; the lesson is that the second fixture (``require('dns/promises')``)
+    is what distinguishes the two causes, and it is the one that should have
+    been run first.
+    """
+
+    def test_the_promise_rows_use_the_same_spelling_as_their_fs_sibling(
+        self,
+    ) -> None:
+        """Dotted, like ``fs.promises``. The ``/`` folds to ``.`` at match
+        time, so the dotted key catches ``require('dns/promises')`` and renders
+        consistently; a slash key would work but would be the only one of its
+        kind in the file."""
+        from hypergumbo_core.io_boundary import normalize_module_separators
+
+        catalog = load_catalog("javascript", include_defaults=False)
+        rows = {p.name for p in catalog.primitives if p.module == "dns.promises"}
+        assert "resolve4" in rows
+        assert normalize_module_separators("dns/promises") == "dns.promises"
+        assert {p.module for p in catalog.primitives
+                if p.module.startswith("fs.prom")} == {"fs.promises"}
+
+    def test_the_callback_surface_is_the_reachable_one(self) -> None:
+        """The plain ``dns`` rows classify -- verified on a fixture where
+        ``dns.resolve4(h, cb)`` produced a ``net_recv`` chain carrying
+        ``primitive: dns.resolve4``. These are the javascript rows this change
+        counts as coverage."""
+        catalog = load_catalog("javascript", include_defaults=False)
+        plain = {p.name for p in catalog.primitives if p.module == "dns"}
+        assert {"lookup", "resolve", "resolve4", "reverse"} <= plain
+
+    def test_the_resolver_class_rows_declare_themselves_inert(self) -> None:
+        """``new Resolver()`` binds a local the analyzer does not type, so
+        ``r.resolve4(h)`` emits the external sentinel and reaches nothing.
+        Measured, not assumed. The rows stay -- an inert row costs no precision
+        and claims no coverage -- but they must SAY they are inert, the rust
+        ``ToSocketAddrs`` treatment, or a reader counting rows counts them as
+        coverage."""
+        catalog = load_catalog("javascript", include_defaults=False)
+        rows = [p for p in catalog.primitives if p.module == "dns.Resolver"]
+        assert rows
+        assert all("INERT" in p.notes for p in rows)
+
+
 class TestTheLocalLookupsAreNotNetworkReceives:
     """The other half of the sort: three erlang rows that never queried a name
     server, moved out of ``net_recv`` in the same pass.
