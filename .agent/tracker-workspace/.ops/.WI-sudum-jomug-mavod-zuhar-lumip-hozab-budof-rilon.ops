@@ -1,0 +1,22 @@
+- op: create  # c1eb
+  at: '2026-09-08T02:36:19Z'  # c1eb
+  by: agent  # c1eb
+  actor: jgstern_agent  # c1eb
+  clock: 1  # c1eb
+  nonce: c1eb  # c1eb
+  data:  # c1eb
+    kind: work_item  # c1eb
+    title: "method-call-recovery still guesses by line proximity when no receiver type is stamped, and the guard's cross-language effect is unmeasured"  # c1eb
+    status: todo_hard  # c1eb
+    priority: 3  # c1eb
+    parent:  # c1eb
+    tags:  # c1eb
+    - linker  # c1eb
+    - analysis_quality  # c1eb
+    - measurement  # c1eb
+    isbefore: []  # c1eb
+    duplicate_of: []  # c1eb
+    not_duplicate_of: []  # c1eb
+    pr_ref:  # c1eb
+    description: "FILED FROM MEASUREMENT 0018, which added a guard to the method-call-recovery\nlinker and in doing so measured how much of that linker's output is a guess.\n\nWHAT THE GUARD COVERS. PR #833 stops the linker choosing a class hint that\nCONTRADICTS the `receiver_type_hint` the producer stamped on the unresolved\nedge. On jenkins that removed 347 recoveries, 262 of which predate the PR; a\nseeded sample of 12 of those 262 read back against source is 12 of 12 FALSE\nresolutions (`map.put(\"A\",\"a\")` recovered to `EnvVars.put` on a `TreeMap`,\n`w.flush()` to `AtomicFileWriter.flush` on a `PrintWriter`, `while\n(!tmp.exists())` to `FilePath.exists` on a `java.io.File`).\n\nWHAT IT DOES NOT COVER, and this item is those three things:\n\n(1) THE UNSTAMPED POPULATION. With no `receiver_type_hint` the guard does\n    nothing and the choice is still `min(abs(hint.line - call.line))` over\n    every class hint in the caller that happens to contain a method of that\n    name. That is the WI-gigoz shape the linker was built for\n    (`CliRunner().run(args)`, where the hint IS the receiver) plus everything\n    else that looks like it. Its false-positive rate is UNMEASURED.\n\n(2) THE 250 UNREAD REMOVALS. 12 of the 262 pre-existing removals were\n    adjudicated. The other 250 are unread, and the claim measurement 0018\n    makes is about the sample, in those words.\n\n(3) THE OTHER SEVEN STAMPING LANGUAGES. python, js/ts, kotlin, scala, objc,\n    swift and d_lang all stamp `receiver_type_hint`, so the guard can change\n    their recoveries too. The only evidence it does not is that none of\n    sherpa-onnx's nine non-java languages moved between the arms, plus a\n    10,807-test suite. No repository in that cohort exercises a contradicting\n    hint in one of those languages.\n\nA REASONABLE NEXT STEP, not a decision: run the same three-arm diff on a\npython-heavy and a kotlin-heavy repository, count first-party edges the guard\nremoves, and read a seeded sample. If the removals are false there too the\nguard is a cross-language precision gain and should be said so in the\nchangelog; if any are correct, the guard needs the inheritance carve-out it\ndeliberately does not have today (a hint that is a SUBCLASS of the declared\ntype is currently treated as a contradiction)."  # c1eb
+    fields: {}  # c1eb

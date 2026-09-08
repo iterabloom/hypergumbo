@@ -1,0 +1,24 @@
+- op: create  # 0ffc
+  at: '2026-09-08T02:54:45Z'  # 0ffc
+  by: agent  # 0ffc
+  actor: jgstern_agent  # 0ffc
+  clock: 1  # 0ffc
+  nonce: 0ffc  # 0ffc
+  data:  # 0ffc
+    kind: invariant  # 0ffc
+    title: "A claims-file extra_catalogs: block is silently discarded on an unknown sub-key, a scalar, or a non-string entry -- and the drop turns a violated claim into a clean verdict"  # 0ffc
+    status: violated  # 0ffc
+    priority: 1  # 0ffc
+    parent:  # 0ffc
+    tags:  # 0ffc
+    - verify_claims  # 0ffc
+    - taint  # 0ffc
+    - validation  # 0ffc
+    isbefore: []  # 0ffc
+    duplicate_of: []  # 0ffc
+    not_duplicate_of: []  # 0ffc
+    pr_ref:  # 0ffc
+    description: "Every declaration a claims file makes must either take effect or be reported. Today an `extra_catalogs:` block is silently discarded in three shapes, each of which turns a real `violated` into a clean verdict: an unknown sub-key (`taint_sources:` instead of `sources:`), a scalar where a list is expected (`sources: cat/x.yaml`), and a non-string list entry. Measured on the shipped CLI 2026-09-07, one 2-file repository, one claim, one catalogue file, the ONLY difference being the key name:\n\n    extra_catalogs: {sources: [cat/sources.yaml]}        -> violated, rc 1\n    extra_catalogs: {taint_sources: [cat/sources.yaml]}  -> confirmed_with_caveats, rc 3\n    extra_catalogs: {sources: cat/sources.yaml}          -> confirmed_with_caveats, rc 3\n    extra_catalogs: {sources: [{path: cat/sources.yaml}]} -> confirmed_with_caveats, rc 3\n\nNo warning is printed in any of the three. The CONTROL is what makes this sharp: the same file under the CORRECT key with a path that does not exist DOES fail -- `Error: Taint catalog path not found`, rc 2. So hypergumbo checks that a declared catalogue EXISTS and does not check that a declaration was UNDERSTOOD."  # 0ffc
+    fields:  # 0ffc
+      statement: "Every declaration a claims file makes must either take effect or be reported. Today an `extra_catalogs:` block is silently discarded in three shapes, each of which turns a real `violated` into a clean verdict: an unknown sub-key (`taint_sources:` instead of `sources:`), a scalar where a list is expected (`sources: cat/x.yaml`), and a non-string list entry. Measured on the shipped CLI 2026-09-07, one 2-file repository, one claim, one catalogue file, the ONLY difference being the key name:\n\n    extra_catalogs: {sources: [cat/sources.yaml]}        -> violated, rc 1\n    extra_catalogs: {taint_sources: [cat/sources.yaml]}  -> confirmed_with_caveats, rc 3\n    extra_catalogs: {sources: cat/sources.yaml}          -> confirmed_with_caveats, rc 3\n    extra_catalogs: {sources: [{path: cat/sources.yaml}]} -> confirmed_with_caveats, rc 3\n\nNo warning is printed in any of the three. The CONTROL is what makes this sharp: the same file under the CORRECT key with a path that does not exist DOES fail -- `Error: Taint catalog path not found`, rc 2. So hypergumbo checks that a declared catalogue EXISTS and does not check that a declaration was UNDERSTOOD."  # 0ffc
+      root_cause: "`verify_claims.load_extra_catalog_paths` reads `data.get(\"extra_catalogs\")` and then `extras.get(\"sources\"/\"sinks\"/\"sanitizers\"/\"io_primitives\")`, and its `_resolve_rel` helper returns `[]` for anything that is not a list and skips any entry that is not a str. Nothing else looks at the block.\n\nWI-bopoz built exactly the mechanism this needs -- `_reject_unknown_keys(observed, allowed, where=...)` with a difflib did-you-mean hint -- and wired it to four allowlists: `_ALLOWED_TOP_LEVEL_KEYS`, `_ALLOWED_CLAIM_KEYS`, `_ALLOWED_CONSTRAINT_KEYS`, `_ALLOWED_TAINT_FLOW_KEYS`. `extra_catalogs` appears in the FIRST of those as an allowed top-level key and there is no allowlist for what is inside it. It is the ONE nested block in the claims schema with no allowlist -- provable by enumeration against the four constants above.\n\nWHY THE TYPO IS PREDICTABLE RATHER THAN CARELESS. The user-facing `verify-claims --help` says: \"A top-level `extra_catalogs:` key may declare project-local taint catalogs (see --taint-sources/--taint-sinks/--taint-sanitizers; WI-votan).\" It names the FLAGS and never the sub-keys, so a reader who follows it writes `taint_sources:`. The same help block promises, four lines later, that \"an unknown field name ... produces a clear error and exit code 2 (not a silent pass)\". That promise is false for this block. (Found by making exactly this mistake while running INV-busis' declared-sanitizer arm; the arm's pre-registered control caught it, and a run without such a control would have published a confident zero.)\n\nFAIL-OPEN DIRECTION. Dropping declared SANITIZERS produces more violations, which is safe. Dropping declared SOURCES or SINKS produces fewer -- a claim the repository's own catalogue would have violated comes back clean. That is the false-all-clear direction."  # 0ffc
