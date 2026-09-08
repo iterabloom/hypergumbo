@@ -1,0 +1,61 @@
+Original commit body from 9f15d6b05462d2b9b9e87d4d620dd31f8847c6fc:
+
+Closes INV-sisod. Found while running INV-busis's declared-sanitizer arm, by
+making exactly this mistake.
+
+## What was broken
+
+`extra_catalogs` is listed in the top-level allowlist WI-bopoz built, so the
+block itself was accepted and **nothing looked inside it**. Three shapes were
+dropped without a word: an unknown sub-key, a scalar where a path list belongs,
+and a non-string list entry.
+
+Measured on the shipped CLI — one 2-file repository, one claim, one catalogue
+file, the **only** difference being the key name:
+
+| claims file | before | after |
+|---|---|---|
+| `extra_catalogs: {sources: [cat/sources.yaml]}` | violated, rc 1 | violated, rc 1 *(unchanged)* |
+| `extra_catalogs: {taint_sources: [...]}` | **confirmed_with_caveats, rc 3** | Error + `Did you mean: sources?`, rc 2 |
+| `extra_catalogs: {sources: cat/sources.yaml}` | **confirmed_with_caveats, rc 3** | Error, rc 2 |
+| `extra_catalogs: {sources: [{path: ...}]}` | **confirmed_with_caveats, rc 3** | Error, rc 2 |
+| missing path under the correct key *(control)* | Error, rc 2 | Error, rc 2 *(unchanged)* |
+
+**The control is what makes it sharp.** The same catalogue under the correct key
+with a path that does not exist *does* fail. hypergumbo checked that a declared
+catalogue **exists** and never checked that a declaration was **understood**.
+
+**The typo is the one the documentation invites.** `verify-claims --help`
+introduces this block by naming the flags (`--taint-sources` / `--taint-sinks` /
+`--taint-sanitizers`) and never the sub-keys — and promises four lines later
+that "an unknown field name ... produces a clear error and exit code 2 (not a
+silent pass)".
+
+**Fail-open direction.** Dropping declared *sanitizers* yields more violations
+and is safe. Dropping declared *sources* or *sinks* yields fewer, and a claim
+the repository's own catalogue would have violated comes back clean.
+
+## The fix, and why at this layer
+
+At `load_claims`, where the other four allowlists already run, and which
+`cli.py` calls **before** `load_extra_catalog_paths` on the same file — so the
+error surfaces first, with the existing difflib did-you-mean hint.
+
+`load_extra_catalog_paths` **stays lenient** and its two leniency tests are
+untouched. Its docstring already delegated the hard failure to a caller ("the
+CLI layer decides whether to fail hard; parsing is lenient") — a decision nobody
+had built. This is that caller finally existing. One home for the check, one for
+the read, and a parity test pins the allowlist against the keys the loader
+actually reads, so a key added to one and not the other cannot pass.
+
+## How it was found
+
+INV-busis's declared-sanitizer arm declared its catalogue under
+`taint_sanitizers:`; the run printed a confident zero; and the arm's
+pre-registered control ("barrier_walks must be > 0 in the declared arm — if it
+is still 0 the declaration did not reach the arm") caught it. A run without such
+a control would have published that zero as a result.
+
+2,995 tests pass, 100% coverage on the changed file, ratchet clean.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
