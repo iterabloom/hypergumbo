@@ -83,6 +83,36 @@ Why This Design
 
 Population of ``is_exported`` follows Go's lexical case rule: identifiers
 starting with an uppercase letter are exported (public).
+
+DECLARED BLINDNESS — ``call_construct`` IS A CONSTANT ON GO (INV-tanom).
+Every emit site above stamps ``meta={"call_construct": "method"}`` on any
+SELECTOR-expression call, and Go writes a package-qualified free function with
+the same syntax as a value-receiver method: ``http.Get(u)`` and ``c.Get(u)``
+are byte-identical in (name, module_hint, call_construct). The field therefore
+records the SYNTAX, not the construct its name promises, and on Go it carries
+no information at all.
+
+DO NOT KEY A PREDICATE ON IT TO SEPARATE A FUNCTION ROW FROM A METHOD ROW.
+It is a constant; such a predicate cannot work, and one was proposed and
+refuted on exactly that ground.
+
+THIS IS DELIBERATE, NOT UNNOTICED, AND IT IS DECLARED RATHER THAN FIXED
+BECAUSE THE FIX WAS MEASURED TO BUY NOTHING. Sized 2026-09-09 over 14 Go
+repositories (10 of them vendored) and 72,396 unresolved ``cc=method`` call
+edges that carry NO module slot — the only population io-boundary ever reads
+this field for, since the F3 gate consults it exclusively on the no-module
+path. The shape that would make the mis-stamp cost something — a
+package-qualified free function reaching that path — occurred ZERO times, and
+the reason is structural rather than lucky: a package qualifier always names an
+import in the file's own import block, so the module slot is always fillable,
+and only value receivers reach the branch. Per-repo table and the four
+instrument defects found while establishing it (each of which INFLATED the
+count before being fixed) are in
+``~/hypergumbo_lab_notebook/tanom_sizing_09092026/RESULT.md``.
+
+INV-tanom stays VIOLATED: the field genuinely does not mean what it is named,
+and a zero cost today is not a satisfied invariant. What changed is that the
+debt is now priced, and priced at zero for the current consumer.
 """
 from __future__ import annotations
 
