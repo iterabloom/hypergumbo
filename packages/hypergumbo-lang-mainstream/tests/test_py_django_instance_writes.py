@@ -12,22 +12,16 @@ bare ``external`` sentinel. On a real Django project the ORM write is therefore
 not usually at ``x.save()``; it is at the ``super().save()`` inside the
 override, the CHOKEPOINT every upstream call funnels through.
 
-Two rules, one mechanism -- the model lineage the relation index already
+Three rules, one mechanism -- the model lineage the relation index already
 computes (``model_ids``, transitive through resolved project bases):
 
-* ``self.save()`` in a class that is a model TRANSITIVELY. WI-sozoj required
-  one DIRECT dotted ``models.Model`` base and so typed 2 sites in all of
-  pretix.
+* ``super().save()`` / ``super().delete()`` inside a model class carries
+  ``django.db.models``, REFUSED when a project base defines that method (the
+  write is typed at that base's own ``super()`` call instead, so one logical
+  write is counted once).
+* ``self.save()`` in a class that is a model TRANSITIVELY.
 * ``X.save()`` where X is an instance of a model class, on the unresolved
   branch only, so a project-defined method still wins the edge.
-
-A THIRD rule was built, measured and WITHHELD: ``super().save()`` inside a
-model's own override, which is where the write actually is on a real Django
-project. Typing it is correct at the site (measurement 0016 read 61 such sites
-back with 0 wrong-type) but it puts a taint sink inside a model method, and the
-ADR-0017 walk reaches any such method from any function that merely mentions
-the class by crossing a ``dispatches_to`` edge -- 3 true findings against 20
-false ones. It returns when that walk is fixed.
 
 THE REFUTATION CONDITION, pre-registered before the code: a ``ModelForm`` and a
 serializer also carry ``save()``, and neither is an ORM write. The index marks a
@@ -113,6 +107,16 @@ class Order(Journal):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)  # OVERRIDE_SUPER_SAVE
+
+    def newest_payment(self):
+        return super().payments.first()  # SUPER_ACCESSOR
+
+
+class Payment(Journal):
+    """Gives ``Order`` a reverse-relation manager to reach through ``super()``."""
+
+    order = models.ForeignKey(Order, related_name="payments", on_delete=models.CASCADE)
+
 
 '''
 
@@ -212,6 +216,44 @@ def app(tmp_path: Path) -> list[Edge]:
     })
 
 
+class TestSuperIsTheWriteChokepoint:
+    def test_super_save_in_a_model_class_carries_the_orm_module(self, app):
+        line = _line_of(MODELS, "BASE_SUPER_SAVE")
+        assert _slot_at(app, line, "save") == DJANGO_ORM_MODULE
+
+    def test_super_delete_in_a_model_class_carries_the_orm_module(self, app):
+        line = _line_of(MODELS, "BASE_SUPER_DELETE")
+        assert _slot_at(app, line, "delete") == DJANGO_ORM_MODULE
+
+    def test_super_save_is_refused_when_a_project_base_defines_it(self, app):
+        """One logical write, counted once: ``Order.save``'s ``super().save()``
+        reaches ``LoggedModel.save``, whose own ``super()`` call is the write."""
+        line = _line_of(MODELS, "OVERRIDE_SUPER_SAVE")
+        assert _slot_at(app, line, "save") == "external"
+
+    def test_super_save_in_a_non_model_class_is_not_typed(self, app):
+        line = _line_of(FORMS, "FORM_SUPER_SAVE")
+        assert _slot_at(app, line, "save") == "external"
+
+    def test_super_reaches_a_relation_manager_as_the_same_instance(self, app):
+        """``super()`` denotes the same INSTANCE; only method lookup moves up
+        the MRO. The receiver resolver therefore answers it once, for the
+        manager path and the write path alike -- two spellings of one fact
+        would be free to disagree."""
+        line = _line_of(MODELS, "SUPER_ACCESSOR")
+        assert _slot_at(app, line, "first") == DJANGO_ORM_MODULE
+
+    def test_the_super_write_edge_is_stamped_as_django_dispatch(self, app):
+        line = _line_of(MODELS, "BASE_SUPER_SAVE")
+        edge = next(
+            e for e in app
+            if e.line == line and e.dst.split(":")[3] == "save"
+        )
+        assert edge.meta["framework_dispatch"] == "django_orm"
+        assert edge.dst_ref is not None
+        assert edge.dst_ref.module_path == DJANGO_ORM_MODULE
+
+
 class TestTheLineageIsWalked:
     def test_self_save_in_a_transitively_derived_model_carries_the_orm_module(self, app):
         line = _line_of(STAMPED, "SELF_SAVE_TRANSITIVE")
@@ -276,6 +318,32 @@ def test_the_write_method_set_is_the_two_django_instance_writes():
 
 
 class TestTheNarrowingsAreDeliberate:
+    def test_the_explicit_two_argument_super_is_refused(self, tmp_path):
+        """``super(Cls, self).save()`` names the class the MRO starts AFTER,
+        which need not be the lexically enclosing one, so the
+        "does a project base define it" test would be asked of the wrong
+        class. Refused rather than guessed."""
+        src = (
+            "from django.db import models\n"
+            "\n"
+            "\n"
+            "class Doc(models.Model):\n"
+            "    body = models.TextField()\n"
+            "\n"
+            "    def save(self, *args, **kwargs):\n"
+            "        super(Doc, self).save(*args, **kwargs)  # EXPLICIT\n"
+        )
+        edges = _edges(tmp_path / "x", {"__init__.py": "", "m.py": src})
+        assert _slot_at(edges, _line_of(src, "EXPLICIT"), "save") == "external"
+
+    def test_super_outside_any_class_is_refused(self, tmp_path):
+        src = (
+            "def loose():\n"
+            "    super().save()  # LOOSE\n"
+        )
+        edges = _edges(tmp_path / "y", {"__init__.py": "", "m.py": src})
+        assert _slot_at(edges, _line_of(src, "LOOSE"), "save") == "external"
+
     def test_a_typed_non_model_receiver_is_not_an_orm_write(self, tmp_path):
         """The receiver's type is known and is NOT a model: the rule must ask
         the lineage, not merely whether a type was derivable."""
