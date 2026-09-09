@@ -1,0 +1,23 @@
+- op: create  # 6e25
+  at: '2026-09-09T19:09:57Z'  # 6e25
+  by: agent  # 6e25
+  actor: jgstern_agent  # 6e25
+  clock: 1  # 6e25
+  nonce: '6e25'  # 6e25
+  data:  # 6e25
+    kind: work_item  # 6e25
+    title: "elixir: a module-qualified call binds by BARE NAME to a first-party symbol -- Logger.error hits a code-generator template, Logger.info hits a defp in another module (WI-zuvik's guard is a substring test)"  # 6e25
+    status: todo_hard  # 6e25
+    priority: 2  # 6e25
+    parent:  # 6e25
+    tags:  # 6e25
+    - taint  # 6e25
+    - io_boundary  # 6e25
+    - analysis_quality  # 6e25
+    - elixir  # 6e25
+    isbefore: []  # 6e25
+    duplicate_of: []  # 6e25
+    not_duplicate_of: []  # 6e25
+    pr_ref:  # 6e25
+    description: "FILED 2026-09-09 from WI-kurug (T0a of INV-linub's drain). Record and\ninstruments: ~/hypergumbo_lab_notebook/t0_sizing_09092026/kurug/ (PLAN.md\npre-registered before any number existed, eligible.py, ADJUDICATION.md,\nRESULT.md).\n\nMEASURED ON phoenix-framework, in files the analyzer demonstrably read:\n\n  Logger.error  10 sites  ->  elixir:priv/templates/phx.gen.json/\n                              changeset_json.ex:10-14:error:function\n  Logger.info    3 sites  ->  elixir:lib/phoenix/endpoint/cowboy2_adapter.ex:\n                              119-122:Phoenix.Endpoint.Cowboy2Adapter.info:function\n\nBoth targets are PROVABLY WRONG, not merely unmatched:\n  * changeset_json.ex is a CODE-GENERATOR TEMPLATE under priv/templates. Its\n    `error/1` is not code phoenix runs.\n  * Cowboy2Adapter's `info/2` is a **defp** -- a PRIVATE function, which Elixir\n    does not permit to be called from another module at all. An edge asserting\n    a cross-module call to a defp cannot be right under any repository.\n\nMECHANISM, read in packages/hypergumbo-lang-common/src/hypergumbo_lang_common/\nelixir.py::_handle_dot_call (not inferred):\n\n    module_dot = f\"{module_name}.\"\n    module_known = any(module_dot in k for k in global_symbols)\n    if module_known:\n        lookup_result = resolver.lookup(func_name, path_hint=path_hint)\n\n`any(module_dot in k ...)` is a SUBSTRING test, though the comment directly\nabove it describes a prefix-COMPONENT test (\"no global symbol key contains the\nmodule name as a prefix component\"). phoenix defines `Phoenix.Logger` at\nlib/phoenix/logger.ex:1, so `\"Logger.\"` is a substring of a first-party key, the\nEXTERNAL module Logger is misjudged as first-party, and the resolver then binds\nby BARE NAME with only a path hint.\n\nWHY SOME ROWS ESCAPE, which is the diagnostic: Logger.warning (10),\nLogger.debug (3), Logger.log (7), Logger.configure (1) and Logger.disable (2)\nall produce the CORRECT `elixir:Logger:0-0:<fn>:external_symbol`. They escape\nonly because phoenix defines no first-party function of those names, so\n`lookup_result.found` is False and the call falls through to the unresolved\nbranch. The discriminator between a right edge and a wrong one is therefore\nwhether the project happens to define a same-named function -- LIVE.md's\nlandmine \"a symbol emitted for the first time changes resolution wherever its\nname appears\", firing here on symbols that were already there.\n\nRELATION TO WI-zuvik (done, PR #2013): that item filed exactly this class\n(Plug.Builder.compile -> Phoenix.Digester.compile) and this guard IS its fix.\nThe fix is INCOMPLETE, not absent. Per INV-rotup a satisfied/done item violated\nby a shape its gate never covered gets a discussion entry rather than a\nunilateral reopen, and that entry is filed on WI-zuvik pointing here.\n\nWHY THIS IS AN INV-linub INSTANCE: the statement requires a call site of a\ncatalogued I/O primitive to produce an edge carrying enough receiver evidence\nto reach its catalogue entry. The module IS written at the call site and IS\ndiscarded. Logger.error/info are catalogued elixir rows; they reach nothing.\n\nDIRECTION: fixing this REMOVES false call edges as well as adding true ones, so\nit moves the taint walk in both directions and must be measured on findings at\nL4, not on edge counts at L2 (INV-linub's own rule).\n\nNOT IN SCOPE HERE: the separate `:atom.function` emission gap, filed separately."  # 6e25
+    fields: {}  # 6e25
