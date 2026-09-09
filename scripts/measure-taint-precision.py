@@ -158,6 +158,7 @@ def _is_external(parsed: dict[str, Any]) -> bool:
 # --------------------------------------------------------------------------
 def run_verify_claims(
     repo: Path, claims: Path, no_collapse: bool = False,
+    include_non_production: bool = False,
 ) -> dict[str, Any]:
     """Drive production's own `verify-claims` in-process, cap lifted.
 
@@ -187,9 +188,19 @@ def run_verify_claims(
         )
 
     parser = build_parser()
-    args = parser.parse_args(
-        ["verify-claims", str(repo), "--claims", str(claims), "--json"]
-    )
+    argv = ["verify-claims", str(repo), "--claims", str(claims), "--json"]
+    if include_non_production:
+        # WI-zamud: taint verdicts EXCLUDE a test-sourced flow by default
+        # (WI-bifob). Every Phase 6 receiver-typing PR before this one changed
+        # a population in application code, so the default arm could see it and
+        # this flag was never needed. WI-zamud's whole population is under
+        # ``src/tests/``, so on the default arm its true effect and no effect at
+        # all are the same number -- which is not a result, it is a blind
+        # instrument. Passing production's own flag is the only way to put that
+        # population in front of the same estimator; the arm it produces is
+        # reported as a SEPARATE arm, never pooled with a default-mode figure.
+        argv.append("--include-non-production-sources")
+    args = parser.parse_args(argv)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = cmd_verify_claims(args)
@@ -297,7 +308,15 @@ def cmd_collect(args: argparse.Namespace) -> int:
     print(f"[collect] evidence limit raised to {EVIDENCE_LIMIT:,} for this run")
 
     print(f"[collect] collapse={'OFF (pair unit)' if args.no_collapse else 'ON (situation unit)'}")
-    payload = run_verify_claims(repo, claims, no_collapse=args.no_collapse)
+    print(
+        "[collect] sources="
+        + ("ALL (test/fixture INCLUDED — WI-bifob default lifted)"
+           if args.include_non_production_sources else "production only")
+    )
+    payload = run_verify_claims(
+        repo, claims, no_collapse=args.no_collapse,
+        include_non_production=args.include_non_production_sources,
+    )
 
     verdict_map = {
         v.get("claim_id"): v.get("verdict") for v in payload.get("verdicts", [])
@@ -1158,7 +1177,13 @@ def cmd_packet(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
+    """The CLI surface, split out of ``main`` so a test can assert an option
+    EXISTS without running a measurement. An arm script can only pass a flag
+    the parser declares, so "the function accepts the argument" is not evidence
+    the arm is reachable -- that gap is exactly how the non-production-source
+    arm stayed unbuildable while the underlying flag had shipped in production
+    for months."""
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1175,6 +1200,14 @@ def main(argv: list[str] | None = None) -> int:
         help="disable INV-karud's situation collapse so each record is one "
              "source->sink PAIR — the 0001/0004 row unit, adjudicable on its "
              "own terms instead of apportioned from a situation label",
+    )
+    p_collect.add_argument(
+        "--include-non-production-sources", action="store_true",
+        help="lift WI-bifob's default exclusion of test/fixture-sourced flows, "
+             "by passing production's own flag through. Required to measure a "
+             "population that lives in test code (WI-zamud); the resulting arm "
+             "is NOT comparable to a default-mode arm and must be reported "
+             "separately, never pooled",
     )
     p_collect.set_defaults(func=cmd_collect)
 
@@ -1205,6 +1238,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_packet.set_defaults(func=cmd_packet)
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))
 
