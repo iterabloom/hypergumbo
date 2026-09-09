@@ -1,0 +1,9 @@
+Original commit body from cc0769d8a14e571bd84f73bfd482869c8bc9ac1c:
+
+WI-bavuz (PR #843) removed the quadratic that made measurement 0020's arms cost 35-46 minutes each. The python analyzer pass on the same repository goes 1700.0s -> 95.1s with byte-identical output, and pretix's whole-survey wall goes 1914.8s -> 342.95s.
+
+NOTHING IN 0020'S RESULTS CHANGES — its arms ran on the pre-fix analyzer, and the situation counts, the 22 removed / 2 added, the 33 -> 0 class hops and every adjudication are unaffected by run duration.
+
+What changes is the COST MODEL a future reader takes from the record. 0020 quotes those timings as a reason its cohort is one Django repository; planning a cohort from them now over-estimates by ~5x. That is the SAFE direction, which is precisely why it would go uncorrected by default. A pre-registered record corrects its cost model in writing rather than letting the next design be sized against a figure that no longer holds — the same discipline as 0019's cohort amendment.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
