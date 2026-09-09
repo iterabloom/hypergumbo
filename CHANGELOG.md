@@ -112,6 +112,31 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
 - **`MetaKeySpec` gains `per_call_site`**, and a collapsed edge no longer reports one call site's fact as the whole relationship's: a per-site key whose collapsed sites disagree is removed and its distinct values move to `<key>_values`, mirroring `call_lines`. Declared: `io_mode`, `call_arg_shape`, and bash's `redirect_target`, `redirect_target_resolved` and `env_var`. A function that opens a path for read and then for write had reported `fs_read` only — the truncating write vanished, and a `must_not_exist: fs_write` claim confirmed on it (the ADR-0033 false-confirm class, reached through the edge collapse); both fs boundaries are now reported.
 
 ### Fixed
+- **objc: a `self.<property>` receiver no longer desynchronises the message
+  parse** (WI-garar stage 1). `_extract_message_selector`,
+  `_extract_message_receiver` and the emit site's nested-receiver typing each
+  decided independently which child of a `message_expression` is the receiver,
+  and all three assumed it is either a bare `identifier` or a nested
+  `message_expression`. `self.<prop>` parses to a `field_expression`, which none
+  handled, so the first identifier — the SELECTOR — was consumed as the receiver:
+  the name slot ended up holding an ARGUMENT
+  (`[self.session dataTaskWithRequest:req]` → `objc:external:0-0:req:unresolved`),
+  a no-argument selector emitted NO EDGE AT ALL, and an uppercase first keyword
+  was written into the module slot as a class that does not exist (INV-fazim).
+  `_message_receiver_node()` now answers "which child is the receiver" once and
+  the three sites ask it, so the extractors agree by construction rather than by
+  copies of one assumption. Measured (0025) across four objc repos: **787 call
+  sites gain a correct selector, 380 of which emitted no edge at all before**
+  (old names included mangled concatenations like `dictionaryValueerror:` and
+  bare literals like `YES`), and **20 false-positive module slots are removed** —
+  `GET` 12, `POST` 4, `HEAD`/`PATCH`/`PUT`/`DELETE` 1 each, all from
+  `[self.sessionManager GET:…]`. Recall is deliberately UNCHANGED (catalogue
+  primitives flat at 12/19/1/0): the F3 gate refuses a method-kind row for an
+  untyped method call however correct its name is, so a correct name is necessary
+  and not sufficient — typing `self.<prop>` is stage 2. The closed-world caveat
+  ratio worsens (AFNetworking 47.5% → 52.4% untypable) because 380 previously
+  invisible sends join the denominator; the honest reading is that the prior
+  estimate of the blind spot was too flattering.
 - **scala: a typed receiver's external type reaches the module slot, so Scala's
   method-kind catalogue rows are reachable for the first time** (WI-sigog,
   INV-linub L3). `scala.py`'s external method-call branch already inferred the
