@@ -1,0 +1,42 @@
+Original commit body from 863501f36f1ba8ba784a31b9035ad0c90ef96d2a:
+
+INV-tanom asked a question its own instrument could not answer. Go's `call_construct` is a constant — `http.Get(u)` (a package-qualified free function) and `c.Get(u)` (a value-receiver method) are byte-identical in (name, module_hint, call_construct) — but does the shape that would make that COST anything ever actually occur?
+
+io-boundary's F3 gate reads the field **only** on the no-module path. A mis-stamped free function is inert wherever the module slot is filled. So the item costs something if and only if a package-qualified free function reaches that path.
+
+## It does not, across 14 repositories
+
+    repo                noModuleMethod  COSTLY      repo              noModuleMethod  COSTLY
+    alertmanager                  2229       0      cert-manager                7503       0
+    gvisor-tap-vsock               288       0      argo-cd                    18147       0
+    buildah                       1697       0      compose-go                   121       0
+    distribution                  1849       0      moby                       11440       0
+    docker-cli                    3752       0      beads                       9254       0
+    containerd                    8581       0      keda                        3639       0
+    containers-storage            1416       0      coredns                     2480       0
+    TOTAL                                                                     72,396       0
+
+Ten of the fourteen carry a `vendor/` tree — the condition the item named as most likely to produce the costly shape. The zero is **structural, not lucky**: a package qualifier always names an import in the file's own import block, so the module slot is always fillable, and only value receivers reach the no-module branch. Accounting is complete rather than residual (alertmanager's 2,229 = 1,817 value + 392 chained + 173 field + 24 unrecoverable + 5 ambiguous + 0 package-qualified); the unknown cell is 1.3% and is reported as the bound on the zero.
+
+## The decision, and it is overrulable
+
+**Do not fix the emitter.** Zero measured benefit over 14 repositories, against a real regression surface in a field several consumers read.
+
+**Do declare the blindness where it will be met.** `go.py`'s module docstring now states that the field is a constant on Go, that no predicate may be keyed on it to separate a function row from a method row, that this is deliberate rather than unnoticed, and what the sizing was. That closes the forward hazard the item correctly identified — "any FUTURE predicate keyed on call_construct ... is keyed on a constant and cannot work" — without paying for a fix that buys nothing.
+
+**INV-tanom stays VIOLATED.** It reproduces, and a zero cost today is not a satisfied invariant. Sizing is not closure.
+
+## Four instrument defects, every one inflating toward "live defect"
+
+Each was caught by reading the flagged sites at source instead of publishing the count:
+
+1. **Line collision** — an edge carries a line, not a column, and `attribute.String("...", a.Fingerprint().String())` emits two `String` edges on one line. Cost: 5 of the first 6 hits. This is **WI-divin biting a second consumer within hours of being filed**.
+2. **A forward line window**, added to cut an 18% "unrecoverable" rate — it manufactured **both** surviving hits (the edge at `notify_test.go:502` is `err.Error()`; the window reached line 504's `require.Error`). Cost: 100% of the finding that would have been published. Reverted to the edge's own line; the unrecoverable rate is now reported as a bound rather than engineered away.
+3. **Field/package name collision** — `cp.time.Sub(prev)`, `tc.encoding.NewEncoder()`. The tell was readable: `time.Sub` is not a free function in Go at all.
+4. **The control's own denominator** — it assumed module-filled implies package-qualified and thresholded the rate at 50%, so coredns "failed" at 40.4%. Reading twelve coredns sites shows go.py fills the slot from the receiver's inferred *type* too, so the rate measured call mix (40–90%) and never measured the matcher. Replaced with an absolute test, because the risk a control guards here is a **false zero**. The evidence the old metric was invalid is those twelve sites and is independent of coredns's result — which is what separates this from rationalising away a failed control.
+
+Docstring + changelog only; no behaviour change. 789 Go tests pass, ratchet 669.
+
+Instruments and the per-repo detail: `~/hypergumbo_lab_notebook/tanom_sizing_09092026/` (`RESULT.md`, `INSTRUMENT_DEFECTS.md`, `split.py`, `control_check.py`, `cohort.sh`).
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
