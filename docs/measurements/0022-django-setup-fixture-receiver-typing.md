@@ -52,7 +52,8 @@ Machine-readable per ADR-0048 §A3.
     VACUOUS          29
     WRONG-TYPE        0
 
-    edge reach: distinct (src,dst) django.db.models pairs 6,105 -> 6,861 (+756)
+    edge reach: django.db.models CALL SITES 10,422 -> 11,869  (+1,447, 0 gone)
+                distinct (src,dst) pairs      6,105 -> 6,861  (+756)
 
 **The pre-registered ship criterion was ≥ 50% correct. Observed 30.8%. It
 FAILED, and the entire 95% confidence interval lies below the bar.** That is
@@ -121,14 +122,28 @@ worse than none.
 
 ## Confounds and disclosures
 
-1. **110 edges "disappeared" and none was a loss.** `calls` edges are
-   deduplicated by `(src, dst)` with the LINE discarded — verified in both arms
-   (76,635 edges / 76,635 distinct pairs; zero pairs carrying two lines). A
-   site that newly gains `django.db.models` collides with a site the same
-   function had already typed. All 110 of 110 survive under the same
-   `(src, dst)` at another line; **0 true losses**. This understated the
-   rule's own edge-level gain by 12.7% until it was identified, and it is a
-   pre-existing defect, filed separately.
+1. **CORRECTED 2026-09-09, after publication: the "110 disappeared edges"
+   were an artifact of THIS RECORD'S OWN INSTRUMENT, not a property of the IR.**
+   The first version of this section said `calls` edges are "deduplicated by
+   `(src, dst)` with the LINE discarded" and filed that as a pre-existing
+   defect. **That is wrong.** `ir.deduplicate_edges` preserves every collapsed
+   call site in `meta["call_lines"]` — 18,075 of pretix's `calls` edges carry
+   it, recording 59,806 sites, 41,731 of them beyond their survivor — and the
+   ABSENCE of the key is a documented contract meaning "exactly one site, at
+   `edge.line`". `diffsurvey.py` keyed on `edge.line` and never read
+   `call_lines`, so it saw a collision where the IR had recorded both sites.
+
+   Re-derived by reading the field the contract intends:
+
+       django.db.models CALL SITES   B 10,422 -> S 11,869   NEW 1,447  GONE 0
+
+   So the edge-level result is nearly DOUBLE what was first published (+1,447
+   sites, not +756 pairs) and there were never any removals to explain. The
+   `(src, dst)` pair count of +756 is retained above because it is a real
+   figure of a different unit, not because the two are alternatives.
+
+   The only genuine bound is `_CALL_LINES_CAP = 50`, which 36 pretix edges
+   reach and which `ir.py` documents at the point it applies.
 2. **The precision figure is machine-assisted.** The classifier was
    hand-verified 6/6 against source on a seeded sample and is insensitive to a
    receiver-contamination variant (identical 60/135 under both). It is not a
