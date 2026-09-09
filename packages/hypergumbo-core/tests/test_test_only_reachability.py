@@ -206,7 +206,8 @@ class TestGatedCohort:
     def test_methods_are_counted_but_never_gated(self) -> None:
         """Measured, not stylistic: a method's call-graph identity is its SHORT
         name, so ``Store.add`` cannot be told from ``set.add`` until receiver
-        typing lands (INV-linub). Gating ~200 unadjudicable rows would make the
+        typing lands (WI-nanom, not INV-linub). Gating ~200 unadjudicable rows
+        would make the
         baseline the rubber stamp this item's own ruling forbids.
         """
         symbols = [
