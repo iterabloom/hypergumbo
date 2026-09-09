@@ -112,6 +112,28 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
 - **`MetaKeySpec` gains `per_call_site`**, and a collapsed edge no longer reports one call site's fact as the whole relationship's: a per-site key whose collapsed sites disagree is removed and its distinct values move to `<key>_values`, mirroring `call_lines`. Declared: `io_mode`, `call_arg_shape`, and bash's `redirect_target`, `redirect_target_resolved` and `env_var`. A function that opens a path for read and then for write had reported `fs_read` only — the truncating write vanished, and a `must_not_exist: fs_write` claim confirmed on it (the ADR-0033 false-confirm class, reached through the edge collapse); both fs boundaries are now reported.
 
 ### Fixed
+- **objc: a `self.<property>` receiver carries the class its `@property`
+  declares** (WI-garar stage 2). The declared type was always in the tree, one
+  node from the name `_extract_property_name` already read, and was discarded.
+  The map is GLOBAL because ObjC declares properties in the `@interface` and
+  implements methods in the `@implementation`, routinely in different files. This
+  is the half that can move recall: stage 1 corrected 787 selectors and moved it
+  by exactly zero, because the F3 gate refuses a method-kind row for an untyped
+  method call however correct its name is. Measured (0026): CocoaLumberjack gains
+  three catalogue rows end to end (`NSFileManager.contentsOfDirectoryAtPath:error:`,
+  `NSFileManager.setAttributes:ofItemAtPath:error:`,
+  `NSPersistentStoreCoordinator.removePersistentStore:error:`) and AFNetworking's
+  untypable receivers fall 110 sites to 46.3%, below its 47.5% from before stage
+  1. Deliberately narrow, both boundaries pinned by sentinel controls: the chain
+  root must be `self`, and the lookup is keyed on the declaring class only, so an
+  inherited property is not resolved through the base chain. **The pre-registered
+  headline prediction was REFUTED and the cause is a different component**:
+  AFNetworking's `net_recv` rows stayed unreached because
+  `AFURLSessionManager.h` is one of 72 of 387 objc files (18.6%) that
+  tree-sitter fails to parse, so its `@property` never becomes a node at all
+  (filed as WI-lafom). A false positive in this change's own first cut — taking
+  the FIRST `type_identifier`, so the `IBOutlet` macro was written into the module
+  slot as a class — was caught by the arm and fixed to take the last.
 - **objc: a `self.<property>` receiver no longer desynchronises the message
   parse** (WI-garar stage 1). `_extract_message_selector`,
   `_extract_message_receiver` and the emit site's nested-receiver typing each
