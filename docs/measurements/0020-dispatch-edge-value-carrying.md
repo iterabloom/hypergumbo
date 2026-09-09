@@ -157,3 +157,27 @@ sites, 0 wrong-type on a whole-survey read-back) withheld because its yield
 through this defect was 3 true against 20 false. Those 20 are the population
 this fix removes. Re-landing it is a SEPARATE PR with its own measurement;
 folding it in here would make neither number attributable.
+
+## COST-MODEL CORRECTION (2026-09-09): the arm timings here are obsolete by ~5x
+
+This record's arms cost 35-46 minutes each on pretix, and that figure is quoted
+above as a reason the cohort is one Django repository. **That cost was a defect,
+not a property of the work**, and it has since been fixed.
+
+WI-bavuz found that `symbol_resolution._ensure_suffix_index` rebuilt a
+whole-registry index on every fresh `SymbolResolver`, and `lookup_symbol`
+constructs one per call — O(lookups x registry), both factors growing with file
+count. Shipped in PR #843. On the same repository, cold cache, the python
+analyzer pass goes **1700.0 s -> 95.1 s (17.9x)** with nodes and edges
+byte-identical, and per-file cost across a 4x file range goes from 5.70x to
+0.77x — flat. Whole-survey wall on pretix: **1914.8 s -> 342.95 s**.
+
+**Nothing in this measurement's RESULTS changes.** The arms ran on the pre-fix
+analyzer, the situation counts and adjudications are unaffected by how long the
+runs took, and the 22/2/33-to-0 figures stand as measured.
+
+What changes is the COST MODEL a future reader would take from here. Planning a
+cohort from these timings now over-estimates by roughly 5x. That is the SAFE
+direction, but a pre-registered record corrects its cost model in writing rather
+than letting the next design be sized against a number that no longer holds --
+the same discipline that made 0019's cohort amendment honest.
