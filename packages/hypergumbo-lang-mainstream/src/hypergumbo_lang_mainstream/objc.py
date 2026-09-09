@@ -163,6 +163,14 @@ class FileAnalysis:
     #: (``instancetype`` resolved to the class), keyed the way every other
     #: analyzer's return-type registry is, so WI-lalot's loader can feed it.
     method_return_types: dict[str, str] = field(default_factory=dict)
+    #: WI-garar stage 2: ``<Class>.<property>`` -> the bare class the
+    #: ``@property`` declares. Aggregated across pass 1 the way
+    #: ``method_return_types`` is, because ObjC declares properties in the
+    #: ``@interface`` and implements methods in the ``@implementation`` and
+    #: those are idiomatically DIFFERENT FILES -- AFNetworking declares
+    #: ``session`` in ``AFURLSessionManager.h`` and sends ``[self.session …]``
+    #: from the ``.m``, so a per-file map resolves neither.
+    property_types: dict[str, str] = field(default_factory=dict)
 
 
 def _extract_class_name(node: "tree_sitter.Node", source: bytes) -> str | None:
@@ -281,6 +289,63 @@ def _extract_property_name(node: "tree_sitter.Node", source: bytes) -> str | Non
                     elif decl_child.type == "identifier":
                         return node_text(decl_child, source)
     return None  # pragma: no cover
+
+
+def _extract_property_type(node: "tree_sitter.Node", source: bytes) -> str | None:
+    """The declared class of a ``property_declaration``, or ``None``.
+
+    WI-garar stage 2. The type sits one node from the name
+    :func:`_extract_property_name` already reads and was simply discarded::
+
+        property_declaration
+          @property  property_attributes_declaration
+          struct_declaration
+            type_identifier(NSURLSession)      <- this
+            struct_declarator -> pointer_declarator -> identifier(session)
+
+    ``None`` for a property whose type is not a plain class name -- ``id``, a
+    block type, a primitive -- which is the honest answer rather than a guess:
+    an unqualifiable name in the module slot asserts a type that does not exist
+    (INV-fazim).
+    """
+    struct_decl = find_child_by_type(node, "struct_declaration")
+    if struct_decl is None:  # pragma: no cover - a property always declares one
+        return None
+    type_node = find_child_by_type(struct_decl, "type_identifier")
+    return node_text(type_node, source) if type_node is not None else None
+
+
+def _self_property_type(
+    receiver: "tree_sitter.Node | None",
+    source: bytes,
+    enclosing_class: str | None,
+    property_types: dict[str, str],
+) -> str | None:
+    """The declared class of a ``self.<property>`` receiver, or ``None``.
+
+    WI-garar stage 2, and it is deliberately narrow in two ways that the tests
+    pin as sentinel controls rather than leave implicit:
+
+    * the chain root must be ``self``. ``other.prop`` would need ``other``
+      typed first, which is a different (and more speculative) inference.
+    * the lookup is keyed on the DECLARING class only, so a property inherited
+      from a superclass is not resolved. Walking the base chain has its own
+      false-positive surface -- a subclass may redeclare -- and belongs to a
+      change that can measure it.
+    """
+    if receiver is None or receiver.type != "field_expression":
+        return None
+    if enclosing_class is None:  # pragma: no cover - a send sits in a method
+        return None
+    root = next((c for c in receiver.children if c.type == "identifier"), None)
+    if root is None or node_text(root, source) != "self":
+        return None
+    field = next(
+        (c for c in receiver.children if c.type == "field_identifier"), None,
+    )
+    if field is None:  # pragma: no cover - a field_expression always names one
+        return None
+    return property_types.get(f"{enclosing_class}.{node_text(field, source)}")
 
 
 def _is_class_method(node: "tree_sitter.Node") -> bool:  # pragma: no cover - unused
@@ -471,6 +536,13 @@ def _extract_symbols_from_file(
                     shape_id=_analyzer.compute_shape_id(node),
                 )
                 analysis.symbols.append(symbol)
+                # WI-garar stage 2: keep the DECLARED CLASS too, keyed the way
+                # the call site can ask for it.
+                _prop_type = _extract_property_type(node, source)
+                if _prop_type is not None and current_class:
+                    analysis.property_types.setdefault(
+                        f"{current_class}.{prop_name}", _prop_type,
+                    )
 
     return analysis
 
@@ -742,6 +814,7 @@ def _extract_edges_from_file(
     run: AnalysisRun,
     project_classes: frozenset[str] = frozenset(),
     method_return_types: dict[str, str] | None = None,
+    property_types: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract edges from a file using global symbol knowledge.
 
@@ -759,6 +832,7 @@ def _extract_edges_from_file(
 
     tree = parser.parse(source)
     _registry = method_return_types or {}
+    _properties = property_types or {}
     _recv_spans = _objc_declared_receiver_types(tree.root_node, source, _registry)
 
     for node in iter_tree(tree.root_node):
@@ -887,12 +961,23 @@ def _extract_edges_from_file(
                                 and _recv_node.type == "message_expression"
                                 else None
                             )
-                            _declared = (
-                                _objc_send_result_class(
+                            if _inner is not None:
+                                _declared = _objc_send_result_class(
                                     _inner, source,
-                                    _objc_receiver_types_at(_recv_spans, node), _registry,
-                                ) if _inner is not None else None
-                            )
+                                    _objc_receiver_types_at(_recv_spans, node),
+                                    _registry,
+                                )
+                            else:
+                                # WI-garar stage 2: ``self.<property>``. Stage 1
+                                # made this reachable by identifying the
+                                # receiver; the class it declares is what the F3
+                                # gate needs, since a correct selector alone
+                                # never matches a method-kind row
+                                # (INV-tapat / INV-maluk).
+                                _declared = _self_property_type(
+                                    _recv_node, source, _enclosing_type,
+                                    _properties,
+                                )
                         else:
                             _declared = (
                                 _objc_receiver_type(_recv_spans, node, receiver_name)
@@ -1037,11 +1122,19 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
         # the analysed ones, so an in-repo declaration always wins.
         for _key, _ret in load_library_signatures("objc").items():
             _method_return_types.setdefault(_key, _ret)
+        # WI-garar stage 2: the property-type map is GLOBAL for the same
+        # reason `_method_return_types` is -- the declaration and the call site
+        # are routinely in different files. First writer wins.
+        _property_types: dict[str, str] = {}
+        for analysis in file_analyses.values():
+            for _key, _ptype in analysis.property_types.items():
+                _property_types.setdefault(_key, _ptype)
         for objc_file, analysis in file_analyses.items():
             edges = _extract_edges_from_file(
                 objc_file, parser, analysis.methods_by_name, method_resolver, run,
                 project_classes=_project_classes,
                 method_return_types=_method_return_types,
+                property_types=_property_types,
             )
             all_edges.extend(edges)
 
