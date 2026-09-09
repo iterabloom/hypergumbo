@@ -58,6 +58,8 @@ _HEADER = '''\
 @interface Client : NSObject
 @property (readonly, nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSFileHandle *handle;
+@property (strong, nonatomic) IBOutlet NSFileHandle *outletHandle;
+@property (strong, nonatomic) NSDictionary<NSString *, id> *generic;
 @end
 
 @interface Derived : Client
@@ -77,6 +79,14 @@ _IMPL = '''\
 
 - (void)writeIt:(NSData *)d {
     [self.handle writeData:d];
+}
+
+- (void)viaOutlet:(NSData *)d {
+    [self.outletHandle writeData:d];
+}
+
+- (void)viaGeneric {
+    [self.generic count];
 }
 
 @end
@@ -140,6 +150,8 @@ def _line_of(needle: str) -> int:
 LINE_RECV = _line_of("dataTaskWithURL:url]")
 LINE_SEND = _line_of("dataTaskWithRequest:req]")
 LINE_WRITE = _line_of("[self.handle writeData:d]")
+LINE_OUTLET = _line_of("[self.outletHandle writeData:d]")
+LINE_GENERIC = _line_of("[self.generic count]")
 LINE_INHERITED = [i for i, ln in enumerate(_IMPL.split("\n"), start=1)
                   if "dataTaskWithURL:url]" in ln][1]
 LINE_IVAR = _line_of("[self->_ivarHandle writeData:d]")
@@ -217,6 +229,31 @@ class TestTheCatalogueIsReached:
         assert prim is not None
         assert prim.qualified_name == "NSFileHandle.writeData:"
         assert prim.boundary == "fs_write"
+
+
+class TestAMacroIsNotAType:
+    """Caught on corpus, not in a fixture: the first cut took the FIRST
+    ``type_identifier`` and wrote ``IBOutlet`` -- a macro -- into the module slot
+    as though it named a class (1 edge on AFNetworking, 3 on CocoaLumberjack).
+    An unqualifiable name in the slot asserts a type that does not exist
+    (INV-fazim), so this is a false positive, not cosmetic noise."""
+
+    def test_a_macro_before_the_type_is_skipped(
+        self, tmp_path: Path, objc_available: None,
+    ) -> None:
+        edge, prim = _boundary(tmp_path, LINE_OUTLET)
+        assert "IBOutlet" not in edge.dst, edge.dst
+        assert edge.dst == "objc:NSFileHandle:0-0:writeData::unresolved", edge.dst
+        assert prim is not None and prim.boundary == "fs_write"
+
+    def test_a_generic_type_abstains_rather_than_guessing(
+        self, tmp_path: Path, objc_available: None,
+    ) -> None:
+        """``NSDictionary<NSString *, id>`` yields NO bare ``type_identifier``.
+        Abstaining is correct: there is no honest simple name to write."""
+        edge, prim = _boundary(tmp_path, LINE_GENERIC)
+        assert edge.dst.split(":")[1] == "external", edge.dst
+        assert prim is None
 
 
 class TestTheDeclaredScopeIsNotExceeded:
