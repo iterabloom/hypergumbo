@@ -467,6 +467,27 @@ def _get_enclosing_function(
     return None  # pragma: no cover - defensive
 
 
+_C_AMBIGUOUS_CACHE: frozenset[str] | None = None
+
+
+def _c_ambiguous_names() -> frozenset[str]:
+    """The short names ``c.yaml`` declares too generic to match without module
+    context, read from the shipped catalogue rather than restated here.
+
+    A hand-copied list is a second home for one fact and drifts by default
+    (LIVE rule 10): the day someone adds ``poll`` to ``ambiguous_names`` the
+    copy keeps yesterday's answer and nothing errors. ``py_deps.py`` sets the
+    precedent for a language package reading the catalogue directly. Cached
+    because it is consulted once per unresolved call site.
+    """
+    global _C_AMBIGUOUS_CACHE
+    if _C_AMBIGUOUS_CACHE is None:
+        from hypergumbo_core.io_boundary import load_catalog
+
+        _C_AMBIGUOUS_CACHE = frozenset(load_catalog("c").ambiguous_names or ())
+    return _C_AMBIGUOUS_CACHE
+
+
 def _extract_edges(
     tree: "tree_sitter.Tree",
     source: bytes,
@@ -488,6 +509,45 @@ def _extract_edges(
 
     edges: list[Edge] = []
     _caller_path = str(file_path)
+
+    # WI-lajus: pre-collect system ``#include`` headers so the unresolved-call
+    # emit path can attribute a bare call to the file's include set. C has no
+    # namespaces, so ``c.yaml`` lists send/recv/read/write/open/close under
+    # ``ambiguous_names`` and ``gate_named_entry`` refuses them outright with no
+    # module evidence -- correctly, since a project-local ``send()`` exists in
+    # the wild (fluent-bit's vendored nuttx shim). The evidence that lifts the
+    # ambiguity is the file's own include set, and it is only consulted below on
+    # the branch where the repo-wide resolver found NO in-repo definition, so a
+    # project that defines its own ``send`` never reaches the stamp.
+    #
+    # THE STAMP IS RESTRICTED TO ``ambiguous_names`` AND THAT RESTRICTION IS
+    # LOAD-BEARING, measured rather than assumed. A module hint SUPPRESSES the
+    # permissive short-name fallback, so stamping every unresolved call makes
+    # PARTIAL evidence worse than none: a file that reaches ``fprintf``
+    # transitively through a quoted project header carries a slot naming only
+    # unrelated system headers, the module filter refuses it, and a row that
+    # used to match stops matching. Measured on qemu-dtc while building this:
+    # stamping unconditionally moved stdio.fclose 5 -> 2, stdio.fopen 1 -> 0,
+    # stdio.fprintf 35 -> 34 and stdio.fputc 6 -> 5. Names outside
+    # ``ambiguous_names`` never needed the hint -- they already match by short
+    # name -- so they keep the ``external`` sentinel and the fallback.
+    #
+    # THE MECHANISM IS PARITY, NOT A NEW DESIGN: cpp.py has stamped the
+    # comma-joined include set since WI-rupik / WI-mafik, and
+    # _module_hint_candidates (INV-funuf) already splits the slot on commas and
+    # normalises ``stdio.h`` to the ``stdio`` spelling c.yaml declares. C --
+    # whose catalogue cpp INHERITS -- was the only one not supplying it.
+    system_includes: list[str] = []
+    for _n in iter_tree(tree.root_node):
+        if _n.type == "preproc_include":
+            for _child in _n.children:
+                if _child.type != "system_lib_string":
+                    continue
+                # Strip the angle brackets: ``<unistd.h>`` -> ``unistd.h``.
+                _hdr = node_text(_child, source).strip("<>")
+                if _hdr and _hdr not in system_includes:
+                    system_includes.append(_hdr)
+    _include_hint = ",".join(system_includes) if system_includes else None
 
     for node in iter_tree(tree.root_node):
         # Function calls: func_name(...)
@@ -519,9 +579,22 @@ def _extract_edges(
                         )
                         edges.append(edge)
                     else:
+                        # WI-lajus: the include set is the module evidence.
+                        # Semantics is "this call could be from any of the
+                        # included headers"; _module_hint_candidates splits on
+                        # commas and asks ANY. Absent an include set the slot
+                        # stays the ``external`` sentinel -- a missing input
+                        # must not read as a resolved one.
+                        _hint = (
+                            _include_hint
+                            if _include_hint
+                            and callee_name in _c_ambiguous_names()
+                            else "external"
+                        )
                         edges.append(make_unresolved_edge(
                             "c", current_function.id, callee_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
+                            module_hint=_hint,
                         ))
 
                 # Callback argument detection: bare identifiers in the
