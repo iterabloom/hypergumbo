@@ -32,3 +32,34 @@
   set: {}  # e180
   add:  # e180
     isbefore: [WI-sihoh-buron-tupis-najul-vugol-zafaf-damog-hadop]  # e180
+- op: discuss  # 5300
+  at: '2026-09-09T00:54:08Z'  # 5300
+  by: agent  # 5300
+  actor: jgstern_agent  # 5300
+  clock: 3  # 5300
+  nonce: '5300'  # 5300
+  message: "Merged as PR #841, dev SHA 3ba0fda0859d."  # 5300
+- op: update  # dc7f
+  at: '2026-09-09T00:54:52Z'  # dc7f
+  by: agent  # dc7f
+  actor: jgstern_agent  # dc7f
+  clock: 4  # dc7f
+  nonce: dc7f  # dc7f
+  set:  # dc7f
+    status: pending_validation  # dc7f
+- op: discuss  # 699e
+  at: '2026-09-09T00:54:52Z'  # 699e
+  by: agent  # 699e
+  actor: jgstern_agent  # 699e
+  clock: 5  # 699e
+  nonce: 699e  # 699e
+  message: "FIXED AND MEASURED. Shipped in PR #841 (merged dev 3ba0fda085), measurement 0020.\nStatus pending_validation, not satisfied, and tagged awaits_bakeoff_validation --\nthe reasons are below and they are deliberate.\n\nTHE FIX. A `dispatches_to` edge whose SOURCE node is a type\n(`type_like_kind_names()`) is reachability, not dataflow. It lives in\n`_is_taint_call_edge` on the same \"one rule, one home\" reasoning the dispatch\nmembership was added under, and it FAILS OPEN on any id that does not parse\nagainst ADR-0036's span anchor.\n\nNOT A REVERT OF INV-zuhig, and that was checked rather than assumed. Five\nlinkers emit class-sourced dispatch, but `di_resolution` emits from an interface\nMETHOD and `type_hierarchy` from a parent METHOD -- ordinary virtual dispatch\nthat a linker-name blocklist would have wrongly caught. A separate two-arm\nself-proof shows INV-zuhig preserved field-for-field: 18/18 same verdicts, 28\ncredited flows both arms, findings_total 333 both, zero claims moved.\n\nTHE FIRST MEASUREMENT DESIGN MEASURED AN EMPTY POPULATION, and this item's own\ntext is why it should have been caught at pre-registration. On the shipped tree\nthe fix moves NOTHING (0 removed, 0 added, class-node hops 0), because the defect\nneeds a sink INSIDE a model method and WI-sihoh's rule was WITHHELD. This item\nsays the shape was \"made visible at scale\" by round 1's arm; the plan predicted a\nDECREASE anyway.\n\nHARNESS ARMS priced it on the population it exists for, pinning py.py to\n359880a105 in BOTH arms (common-mode, not shipped). Arm X reproduces measurement\n0016 round 1 EXACTLY -- 184 flows, 33 class-node hops -- which validates the\nharness against an independent run from another day.\n\n  pretix  183 -> 163 situations, 22 removed / 2 added, net -20\n  hops    33 -> 0\n  kserve  62 -> 62, control unmoved\n\nNet -20 matches this thread's own attribution of \"20 of the 47 situations round 1\nadded were this shape\".\n\nTHE RE-ADJUDICATION THIS ITEM DEMANDED (\"the 33 hops must be re-adjudicated after\na fix, not assumed to be all false\") WAS DONE, three ways, and it was the right\ninstruction: **11 of the 33 were NOT false and were KEPT.** `generate_invoice`\ngenuinely takes the tainted order, constructs `Invoice(order=order, ...)` and\nreaches `Invoice.save` through the annotated `build_invoice`, so the finding\nsurvives by its honest route. The fix deletes the dishonest PATH to a finding,\nnot the finding. 22 + 11 = 33 closes the accounting.\n\nOf the 22 removed: all 22 crossed a class node (ZERO collateral); none of the 22\nsource functions calls the named sink anywhere in its body; and the two sites\nthis item named read false at source (a no-argument `InvoiceAddress()` never\nsaved; a `SubEventItem.delete` this code never calls). 0 of 22 correct.\n\nWHY pending_validation RATHER THAN satisfied. The statement is about the walk in\ngeneral and this prices ONE edge type on ONE repository in ONE language. The\nfour sibling linkers (airflow, jackson, rust_trait, _third_party_bases) are\ncovered by unit test only. The bakeoff queue owns whether the -20 reproduces.\n\nRESIDUAL FILED: WI-kakup-bojus-dijak-burif-somuv-namul-rapuf-majur -- this item's own \"not established\" list, reshaped\nby reading the code. `extends`, `references` and `decorated_by` CANNOT be crossed\nat all: TAINT_CALL_EDGE_TYPES is {calls, dispatches_to, instantiates,\nmodule_attr_ref}, so they are excluded by construction rather than untested. What\nIS open is a GUARD making that permanent, and the `instantiates` question this\nfix exposes -- after it, a class node is a dead end, but `instantiates` still\nmodels a value entering a TYPE where only an INSTANCE can hold one."  # 699e
+- op: update  # 13ca
+  at: '2026-09-09T00:54:53Z'  # 13ca
+  by: agent  # 13ca
+  actor: jgstern_agent  # 13ca
+  clock: 6  # 13ca
+  nonce: 13ca  # 13ca
+  set: {}  # 13ca
+  add:  # 13ca
+    tags: [awaits_bakeoff_validation]  # 13ca

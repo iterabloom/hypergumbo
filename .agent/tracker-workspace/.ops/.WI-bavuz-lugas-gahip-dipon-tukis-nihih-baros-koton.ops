@@ -1,0 +1,22 @@
+- op: create  # f993
+  at: '2026-09-09T01:05:07Z'  # f993
+  by: agent  # f993
+  actor: jgstern_agent  # f993
+  clock: 1  # f993
+  nonce: f993  # f993
+  data:  # f993
+    kind: work_item  # f993
+    title: "The python analyzer pass is 87.5% of analysis time and its PER-FILE cost is 7.1x higher on pretix than kserve at 1.17x the node yield — possible superlinearity in project size"  # f993
+    status: todo_soft  # f993
+    priority: 3  # f993
+    parent:  # f993
+    tags:  # f993
+    - performance  # f993
+    - analysis_quality  # f993
+    - measurement  # f993
+    isbefore: []  # f993
+    duplicate_of: []  # f993
+    not_duplicate_of: []  # f993
+    pr_ref:  # f993
+    description: "FOUND 2026-09-08 while answering \"why does pretix take so long\", and MEASURED\nrather than reasoned. Artifacts: `~/hypergumbo_lab_notebook/py_scaling_09092026/`\n(PLAN.md pre-registered, kserve.survey.json, curve.sh).\n\nTHE PYTHON ANALYZER PASS IS THE COST, and it is not close. From pretix's\n`analysis_runs` (90 passes):\n\n    python       1692.3 s   87.5%   1199 files\n    javascript    152.3 s    7.9%    180 files\n    html           28.5 s    1.5%    459 files\n    ~60 linkers    ~40   s   ~2%\n\nThe Django-specific linkers this was first attributed to -- django_orm_dispatch\nand friends, over a class-method graph 0016 measured at 896 dispatch pairs and\n16,010 contains pairs -- cost about **5 seconds**. That hypothesis is REFUTED.\n\nIT IS NOT REPO SIZE. pretix is 119 MB and takes 2745 s end to end; kserve is\n199 MB and takes 175 s. The BIGGER repository runs 16x faster. (This is the\nstanding \"never extrapolate cost from repo size\" rule producing another\ninstance.)\n\nIT IS NOT PER-FILE CONTENT DENSITY EITHER, which is the part that makes this a\npossible defect rather than a fact about Django. Both numbers now MEASURED from\n`analysis_runs`, same instrument, cold cache:\n\n    repo     python pass   files   s/file   nodes/file\n    pretix     1692.3 s     1199    1.411      17.8\n    kserve      107.1 s      542    0.198      15.2\n\n**7.1x the per-file cost for 1.17x the per-file node yield, at 2.2x the file\ncount.** If per-file cost scaled as N^k, these two points give k ~= 2.5, i.e.\nTOTAL cost ~ N^3.5 -- but two points across two repositories cannot separate\nproject SIZE from code STYLE, so that exponent is an arithmetic consequence of\nthe pair, NOT a measurement.\n\nWHAT IS RUNNING NOW, and why the design is this one: a WITHIN-REPO curve on\npretix at `--max-files` 150 / 300 / 600 / 1200, same tree, cold cache each,\nwhich controls for style completely. Its confound is that `--max-files`\ntruncates to an ORDERED PREFIX (the standing rule: never extrapolate from an\nordered prefix), so the pre-registered CONTROL is to report nodes/file and\nedges/file at every N beside s/file. s/file rising while nodes/file stays flat\nleaves scaling in N as the surviving explanation; the two rising together means\nthe prefix is unrepresentative and the design failed.\n\nPRE-REGISTERED READINGS. SUPERLINEAR = s/file rises >1.5x from N=150 to N=1200\nwith nodes/file flat. LINEAR = s/file roughly constant, in which case\npretix-vs-kserve is a CONTENT difference, there is no scaling defect, and this\nitem closes as a measured \"not a defect\". INCONCLUSIVE = nodes/file moves with\ns/file, needing a random-sample subsetter instead of a prefix.\n\nWHY IT MATTERS EVEN IF THE ABSOLUTE COST IS TOLERABLE. DEEP mode exists to test\n20-200 MB repositories, and a measurement arm on pretix costs ~35-46 minutes per\narm -- 0020 spent about three hours on four arms, and the 8-hour experiment\nceiling is reached by roughly a six-repository two-arm design. If per-file cost\ngrows with project size, the ceiling binds on repository COUNT much sooner than\na size-based estimate predicts, which is exactly the extrapolation error that\ncost measurement 0019 its first cohort.\n\nNOT MEASURED: which part of the python analyzer scales. This measures the PASS,\nnot its internals; a profile is the next instrument if the reading is\nSUPERLINEAR. Nothing here covers other languages -- go on kserve is 0.086\ns/file, but that is one repository and not the subject."  # f993
+    fields: {}  # f993
