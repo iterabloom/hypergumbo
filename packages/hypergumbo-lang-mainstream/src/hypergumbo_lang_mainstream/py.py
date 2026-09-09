@@ -703,21 +703,22 @@ TYPE_PRESERVING_MEMBERS: dict[str, frozenset[str]] = _derive_type_preserving_mem
 # consulted by the same two consumers the ``.objects`` marker has; the same
 # change binds ``x = <manager>.get(...)`` to the model instance it returns.
 # The INSTANCE WRITE is typed since WI-gamas (Phase 6 PR 4) wherever the
-# relation index resolves the receiver to a MODEL -- ``self`` in a class that
-# is a model TRANSITIVELY (WI-sozoj typed 2 sites in all of pretix, because it
-# required one DIRECT dotted ``models.Model`` base), a local bound from a
-# manager or a constructor, an annotated parameter.
-# DELIBERATELY NOT TYPED, and this is not an oversight:
-# ``super().save()`` / ``super().delete()`` inside a model's own override,
-# which on a real Django project is where the write actually is (pretix: 215 of
-# 306 typed sites call a ``save`` the project overrides, and 56 of its 66
-# overrides then call ``super().save()``). Typing it is CORRECT at the site --
-# measurement 0016 read 61 such sites back against source with 0 wrong-type --
-# but it puts a taint SINK inside a model method, and the ADR-0017 walk reaches
-# any such method from any function that merely mentions the class, by crossing
-# the django-orm-dispatch linker's ``dispatches_to`` edge. Measured: 3 true
-# findings against 20 false ones. Withheld until that walk is fixed; see the
-# tracker item filed with 0016.
+# relation index resolves the receiver to a model -- ``self`` in a class that
+# is a model TRANSITIVELY, a local bound from a manager or a constructor, an
+# annotated parameter.
+# ``super().save()`` / ``super().delete()`` inside an override is typed since
+# WI-sihoh, and on a real Django project that is where the write actually is
+# (pretix: 215 of 306 typed sites call a ``save`` the project overrides; 56 of
+# its 66 overrides then call ``super().save()``). It was BUILT WITH WI-gamas
+# AND WITHHELD FROM IT, which is why it arrives one PR later than the rules
+# above: the rule is correct AT THE SITE (measurement 0016 read 61 such sites
+# back against source with 0 wrong-type), but it puts a taint SINK inside a
+# model method, and the ADR-0017 walk then reached that method from any
+# function that merely MENTIONED the class, by crossing a ``dispatches_to``
+# edge. INV-putug fixed that walk (PR #841) and measurement 0021 is the
+# re-measurement the deferral required. The 3-true-against-20-false figure
+# recorded on the deferral is NOT this rule's precision -- it was taken
+# THROUGH the defect.
 # Still deferred (a different need -- instance/return-type inference):
 # SQLAlchemy ``Session.*``, fields assigned in a test's ``setUp`` (1,155
 # pretix sites, every one under ``src/tests``), and the loop variable of a
@@ -4138,6 +4139,10 @@ class DjangoRelationIndex:
       WALKS them: an accessor declared through ``ForeignKey("self",
       related_name="addons")`` on an abstract base is owned by every concrete
       subclass, and a manager declared on an abstract base is inherited.
+    * ``class_methods[C]`` -- the methods ``C``'s own body defines, read by
+      :meth:`defines_in_bases` so a ``super().save()`` whose next project base
+      overrides ``save`` is NOT counted as the write (the write is typed at
+      that base's own ``super()`` call, so one logical write is counted once).
     * ``model_ids`` -- the classes verified to be Django models (a
       ``models.Model`` base, a ``django.db.models`` field, or a project base
       that is one), the gate on ``manager_names`` and on the ``.objects``
@@ -4158,6 +4163,7 @@ class DjangoRelationIndex:
     project_bases: dict[str, list[Symbol]] = field(default_factory=dict)
     model_ids: set[str] = field(default_factory=set)
     class_by_id: dict[str, Symbol] = field(default_factory=dict)
+    class_methods: dict[str, set[str]] = field(default_factory=dict)
 
     def __bool__(self) -> bool:
         # ``model_ids`` COUNTS. A Django app whose models declare no relation
@@ -4198,6 +4204,16 @@ class DjangoRelationIndex:
         return any(
             name in self.manager_names.get(owner.id, ())
             for owner in self._lineage(cls)
+        )
+
+    def defines_in_bases(self, cls: Symbol, name: str) -> bool:
+        """True iff a PROJECT BASE of ``cls`` -- not ``cls`` itself -- defines
+        ``name``, so ``super().<name>()`` inside ``cls`` reaches that base's
+        override rather than Django's own (WI-gamas)."""
+        return any(
+            name in self.class_methods.get(owner.id, ())
+            for base in self.project_bases.get(cls.id, ())
+            for owner in self._lineage(base)
         )
 
 
@@ -4384,6 +4400,12 @@ def _index_django_relations_in_file(
         if owner is None or owner.kind != "class" or counts.get(node.name, 0) != 1:
             continue
         index.class_by_id[owner.id] = owner
+        methods = {
+            stmt.name for stmt in node.body
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        if methods:
+            index.class_methods[owner.id] = methods
         bases = [
             base for base in (_class_expr(b, owner) for b in node.bases)
             if base is not None
@@ -4442,6 +4464,16 @@ def _index_django_relations_in_file(
             index.related_managers.setdefault(target.id, {})[accessor] = owner
 
 
+def _is_super_call(expr: ast.expr) -> bool:
+    """``super()`` -- the receiver of the Django override's own write."""
+    return (
+        isinstance(expr, ast.Call)
+        and isinstance(expr.func, ast.Name)
+        and expr.func.id == "super"
+        and not expr.args
+    )
+
+
 class _DjangoReceiverOracle:
     """The per-code-block half of the Django manager question.
 
@@ -4478,6 +4510,11 @@ class _DjangoReceiverOracle:
             if expr.id == "self":
                 return self.enclosing_class
             return self.var_types.get(expr.id)
+        if _is_super_call(expr):
+            # ``super()`` denotes the SAME instance as ``self``; only the
+            # method lookup starts further up the MRO. One home, so the
+            # manager path and the write path cannot disagree about it.
+            return self.enclosing_class
         if isinstance(expr, ast.Attribute):
             owner = self.instance_class(expr.value)
             if owner is None:
@@ -4533,6 +4570,22 @@ class _DjangoReceiverOracle:
         """
         cls = self.instance_class(expr)
         return cls if cls is not None and cls.id in self.index.model_ids else None
+
+    def super_write_owner(self, method: str) -> Symbol | None:
+        """The model class whose ``super().<method>()`` IS the ORM write.
+
+        ``None`` when the enclosing class is not a model, and when a PROJECT
+        base defines ``method``: there the call reaches that base's override,
+        whose own ``super()`` call carries the write, so counting both would
+        report one logical write twice (measured on pretix: 2 of 63 sites,
+        ``OrderPosition`` / ``CartPosition`` over ``AbstractPosition``).
+        """
+        cls = self.enclosing_class
+        if cls is None or cls.id not in self.index.model_ids:
+            return None
+        if self.index.defines_in_bases(cls, method):
+            return None
+        return cls
 
     def instance_from_call(self, call: ast.Call, *, unpacked: bool) -> Symbol | None:
         """The model instance ``call`` returns, walking QuerySet-returning hops
@@ -7441,6 +7494,54 @@ def _process_call(
                 },
                 dst_ref=ExternalRef(
                     lang="python", module_path=DJANGO_ORM_MODULE, name=_orm_method
+                ),
+                origin=PASS_ID,
+                origin_run_id=run_id,
+            ))
+        elif (
+            isinstance(func, ast.Attribute)
+            and func.attr in DJANGO_ORM_INSTANCE_WRITE_METHODS
+            and _is_super_call(func.value)
+            and django_oracle is not None
+            and django_oracle.super_write_owner(func.attr) is not None
+        ):
+            # WI-sihoh: ``super().save()`` / ``super().delete()`` inside a
+            # Django model is THE ORM WRITE, and on a real project it is where
+            # the write actually is. Built with WI-gamas and WITHHELD from it
+            # until INV-putug stopped the walk crossing ``dispatches_to`` out
+            # of a type node; measurement 0021 is the re-measurement that
+            # deferral required. Measured on pretix: of the 306
+            # ``x.save()`` sites whose receiver resolves to a model, 215 call a
+            # ``save`` the project OVERRIDES -- so that call correctly resolves
+            # to the project's own method and is not an I/O primitive at all --
+            # and 56 of the 66 ``save`` overrides then call ``super().save()``,
+            # which reached this function's last branch and emitted the bare
+            # ``external`` placeholder. So the write chokepoint of an entire
+            # Django codebase was invisible: a false NEGATIVE on a write
+            # primitive, which auto-derives a taint sink.
+            #
+            # ``super()`` receives no ``func.value`` Name, so it never reached
+            # the receiver-typing branches below; the enclosing class comes from
+            # the oracle, which holds the lexical class for this block.
+            # ``super_write_owner`` refuses when a PROJECT BASE defines the
+            # method -- there the call lands on that base's override and the
+            # write is typed at ITS ``super()`` call instead, so one logical
+            # write is counted once.
+            _super_write = func.attr
+            edges.append(Edge.create(
+                src=caller_symbol.id,
+                dst=f"python:{DJANGO_ORM_MODULE}:0-0:{_super_write}:unresolved",
+                edge_type="calls",
+                line=call_node.lineno,
+                evidence_type="ast_call",
+                is_resolved=False,
+                meta={
+                    "call_construct": "method",
+                    "framework_dispatch": "django_orm",
+                    "resolution_quality": "type_inferred",
+                },
+                dst_ref=ExternalRef(
+                    lang="python", module_path=DJANGO_ORM_MODULE, name=_super_write
                 ),
                 origin=PASS_ID,
                 origin_run_id=run_id,
