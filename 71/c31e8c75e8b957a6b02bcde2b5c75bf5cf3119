@@ -1,0 +1,49 @@
+Original commit body from 1d702ab23e99fd3a705237977bb8bdbb53786458:
+
+WI-zamud, INV-mumov's largest remaining limb. A Django test class builds its fixture in `setUp` / `setUpTestData`, not `__init__`, and `_collect_class_field_maps` reads `__init__` and nothing else — so `self.orga = Organizer.objects.create(...)` typed nothing and every chain hanging off it dead-ended at the `external` sentinel.
+
+## What shipped
+
+`DjangoRelationIndex.instance_field_types`, filled by `_collect_django_setup_fields` — a pass that runs AFTER the relation index (typing a manager call needs it) and iterates to a fixed point, so a fixture built in layers resolves without hand-ordering the scan. `fixture_field_model` walks the project bases at LOOKUP, which is what makes the inherited case work (679 of the 1,155 filed sites consume a fixture their base test class built). The DECLARED relation is consulted first and this map only on a miss, so a real `ForeignKey` cannot be shadowed by a same-named fixture field. `_make_class_name_resolver` is extracted so the walker and the new pass share one definition rather than drifting.
+
+Also fixes a +3 mypy strict-ratchet regression this change introduced; ratchet back to 669.
+
+## The result, and the criterion it failed
+
+Measurement [0022](docs/measurements/0022-django-setup-fixture-receiver-typing.md), two source modes reported separately and never pooled:
+
+    pretix prod  149 -> 149   NEW 0     PREDICTED — the default arm is blind
+    pretix all   613 -> 837   NEW 224 GONE 0
+    kserve       unmoved in both modes
+    edge reach   +756 distinct (src,dst) ORM pairs, 0 true losses
+    refutation   0 violations over 692 independently verified sites
+
+    TRUE POSITIVE   60   30.8%   95% CI 24.7% .. 37.6%
+    FALSE POSITIVE 135
+    VACUOUS         29    WRONG-TYPE 0
+
+**The pre-registered ship criterion was >=50% correct. Observed 30.8%, with the entire 95% CI below the bar. It FAILED, and this PR ships anyway.** That is stated first rather than buried, and it is flagged on the tracker item so it can be overruled.
+
+The case: (1) the DEFAULT arm is byte-for-byte unmoved, so the precision figure's blast radius is an opt-in flag; (2) the rule is refutation-clean — it types receivers correctly, and the precision figure measures the WALK (all 224 findings are `structural`/`walk_verdict=unavailable`, 152 at hops=0), which is measurement 0019's finding restated; (3) the arm's OWN ambient precision is 24.2% [16.7–33.7] by the same classifier, statistically indistinguishable from 30.8% (z=1.16, p=0.25). The 50% bar had been carried over from DEFAULT-arm precedents (0013 87.5%, 0015 66.7%, 0016 72.7%, 0021 56.3%) and applied to an arm on which no measurement had ever been taken. The bar was mis-specified in my own pre-registration — established by measurement, not by argument, and not the same thing as the rule clearing it.
+
+## Instrument change
+
+`measure-taint-precision.py collect` gains `--include-non-production-sources`, passed through to production's own parser, and `build_arg_parser` is split out of `main` so a test can assert the arm is reachable from the COMMAND LINE — an option no arm script can pass is not an instrument. Every prior Phase 6 PR moved application code, so no measurement had ever needed that arm; on this population "the rule works" and "the rule does nothing" were the same number without it.
+
+## Tests
+
+13 new. **5 carried Red signal**; the refutation cells passed VACUOUSLY before the rule existed and are load-bearing only after it — said plainly rather than counted as 13/13. One test PINS a known gap instead of asserting a fix: it asserts `self.orga.save()` does NOT reach the catalogue, AND that the same field one accessor hop on DOES — so it proves the binding exists and only the write branch cannot read it. That assertion flips when WI-kufok lands.
+
+## Filed, not chased
+
+* **WI-mojaz (P2)** — the `--include-non-production-sources` arm is ~76% false positives (24.2% correct, n=120 seeded). Larger than this item, and measured for the first time here. Its first task is to find out why python test code yields 100% structural findings when python HAS a def/use extractor — explicitly not to assume 0019's cause.
+* **WI-kufok** — the ORM instance-write re-key is confined to a bare-NAME receiver, so `self.order.save()` never reaches the catalogue whatever typed it. Verified PRE-EXISTING on a declared `ForeignKey` with no test class involved. ~1,110 pretix sites.
+* **WI-divin** — `calls` edge identity discards the LINE (76,635 edges / 76,635 distinct `(src,dst)`, zero pairs carrying two lines, in BOTH arms). Cause of 110 apparent removals, all verified to be dedup collisions with 0 true losses; understated this measurement's own gain by 12.7%.
+
+## Two corrections to the item's own filing
+
+Its filed 1,155 **undercounts** it: that census requires an accessor hop and structurally excludes ~1,110 direct instance writes on the same fields. And `__init__` was declined despite the build note asking for it, on data — 1 class, 1 field, 0 chain sites on pretix. Worth testing because an `__init__` population would live in application code and be visible on the default arm, which would have changed the framing.
+
+The pre-registered population check FIRED its stop condition (3,026 vs the filed 1,155) and was reconciled over three rounds rather than waved through; file scope then agreed exactly at 767 = 767.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
