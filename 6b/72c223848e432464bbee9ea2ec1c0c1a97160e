@@ -1,0 +1,38 @@
+Original commit body from 0fb2cc373dde19b991cf4d30227e655662ca9ff8:
+
+INV-linub carried a hand-built exposure table dated 2026-08-06 that ranked
+languages by METHOD-KIND SHARE alone and concluded "c/cpp/elixir/erlang/haskell:
+0% method-kind -- NOT at risk from this class". WI-lajus falsified that for C a
+month later: 156 of 324 corpus socket sites classify as nothing, through
+ambiguous names carrying no module slot from #include -- a route needing no
+method-kind rows at all. A hand-restated closed set drifts by default, so the
+table is now REGENERATED rather than remembered.
+
+The census reads production's own load_catalog (never the YAML -- overlays and
+merges make a direct parse a second home for one fact) and splits every shipped
+catalogue by route:
+
+  R1  method-kind row              -> needs the RECEIVER'S TYPE
+  R2  name in the catalogue's own
+      ambiguous_names              -> needs MODULE CONTEXT (F3 refuses it
+                                      without, deliberately: str.replace must
+                                      not match Path.replace)
+
+A dual row is not a third problem -- receiver typing fixes it, because typing
+the receiver is what fills the module slot. The genuinely distinct population is
+R2-only: function-kind, ambiguous-named, no receiver to type. All five languages
+the old table dismissed are exactly that.
+
+Two guards the prototype needed and this file keeps: both the per-row and the
+per-distinct-qualified-name count are named (the prototype reported C's R2 as
+16 in one place and 22 in another, and one number would have recreated the
+second silent home), and a catalogue declaring no ambiguous_names is
+distinguished from one declaring an empty list, with an unknown language raising
+rather than returning a well-formed row of zeros.
+
+Tests pin the properties the falsified table lacked: C reads at-risk despite
+zero method-kind rows, every dismissed language reads at-risk, kotlin reproduces
+the old table's own control, and the census covers every shipped catalogue.
+
+Racial-Capitalism-Is-Bad: a spectral raccoon building a marble fountain shaped like dragon made of bagel chips
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
