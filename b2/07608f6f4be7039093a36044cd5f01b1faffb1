@@ -1,0 +1,71 @@
+Original commit body from aa4db68bdc93f617cea55d4a9c680554cd98da12:
+
+`_ensure_suffix_index` builds a whole-registry index — for each of R keys, split
+the module and join every one of its D suffixes — and cached it on the RESOLVER.
+`lookup_symbol` constructs a fresh resolver per call, so the index was rebuilt
+per lookup: O(lookups × registry), and both factors grow with file count.
+
+FOUND BY MEASUREMENT, NOT BY READING. A within-repo curve on pretix
+(`--max-files` 150/300/600/1200, cold cache each, sequential) showed the python
+analyzer pass superlinear in FILE COUNT: per-file cost 0.249 s → 1.418 s from
+N=300 to N=1200, **5.70× for 4× the files**. The ordered-prefix confound is
+refuted by the data rather than assumed away — nodes/file FELL to 0.75× while
+cost rose, so the later files are sparser, not harder.
+
+A PROFILE AT N=300 vs N=600 NAMED THE FUNCTION rather than the symptom:
+
+    symbol_resolution.py:325(_ensure_suffix_index)  40.1s → 269.9s   6.73×
+      — 229.8s of the 376s total increase: 61% of ALL growth
+    SymbolResolver.__init__                         5,827 → 16,065 calls
+    lookup_symbol (one-off wrapper)                 5,826 → 16,064 calls
+    str.join                                        89M → 570M (6.37×)
+    py.py:440(_lookup_symbol_by_module)             680s cumulative of a 936s run
+
+`__init__` and `lookup_symbol` track each other TO WITHIN ONE CALL — that one
+being py.py's single legitimate resolver — so every `lookup_symbol` call was
+rebuilding the whole index.
+
+CACHED ON REGISTRY IDENTITY RATHER THAN THREADING A PARAMETER, deliberately.
+`_lookup_symbol_by_module` already takes an optional `resolver` and all nine
+py.py call sites pass it, yet **46% of calls at N=600 still arrived with None**,
+because six functions in the chain default it and forward. An optional argument
+whose omission costs 6.7× is a footgun; making the fast path the default removes
+it for the next caller too. Both docstrings already gave the advice that a
+mechanism now enforces.
+
+THREE LOAD-BEARING DESIGN POINTS, documented in the code:
+  * The cache holds a STRONG reference to the registry. A plain dict cannot be
+    weakly referenced and the key is `id(registry)`; holding it alive is what
+    stops that id being recycled onto another object and served a foreign index.
+    LRU-bounded at 4 (one registry per analysis run).
+  * The staleness check is `len()`, O(1) BY NECESSITY — an O(R) validity check
+    run per lookup would reintroduce the O(L×R) cost being removed.
+  * `clear_indexes()` now evicts the shared entry, or the next resolver over the
+    same registry would read back the index the caller asked to discard.
+
+MEASURED AFTER, same curve, same repo, cold cache:
+
+    N       before     after   speedup   s/file before → after
+    150      63.3s     26.9s     2.36×   0.422 → 0.179
+    300      74.7s     30.7s     2.43×   0.249 → 0.102
+    600     287.0s     47.8s     6.01×   0.478 → 0.080
+   1200    1700.0s     95.1s    17.88×   1.418 → 0.079
+
+**Nodes and edges are IDENTICAL at every N** (21302/21302 and 113106/113106 at
+N=1200), so this is a pure speedup and not a resolution change that got faster by
+resolving less. Per-file cost N=300 → N=1200 was 5.70× and is now **0.77× —
+flat**, slightly decreasing as fixed costs amortise. The speedup GROWS with N
+(2.36× → 17.88×), the signature of removing a superlinear term rather than
+shaving a constant. pretix now costs 0.079 s/file, below kserve's pre-fix 0.198.
+
+Whole-survey wall on pretix: **1914.8s → 342.95s**. A measurement arm that cost
+35–46 minutes now costs under ten, which is what the 8-hour experiment ceiling
+binds against in DEEP mode.
+
+SCOPE HELD TO WHAT WAS MEASURED: `NameResolver` / `ListNameResolver` have their
+own index builders and were measured NEAR-FREE (0.0 s) on this profile, so they
+are deliberately untouched.
+
+Whole tree green: 26,570 passed. mypy ratchet clean.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
