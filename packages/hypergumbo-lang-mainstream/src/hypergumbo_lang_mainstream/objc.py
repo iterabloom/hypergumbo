@@ -311,8 +311,19 @@ def _extract_property_type(node: "tree_sitter.Node", source: bytes) -> str | Non
     struct_decl = find_child_by_type(node, "struct_declaration")
     if struct_decl is None:  # pragma: no cover - a property always declares one
         return None
-    type_node = find_child_by_type(struct_decl, "type_identifier")
-    return node_text(type_node, source) if type_node is not None else None
+    # THE LAST ``type_identifier``, NOT THE FIRST. A property may carry a MACRO
+    # where a type would sit -- ``@property (strong) IBOutlet UIImageView *v;``
+    # parses to TWO ``type_identifier`` children, ``IBOutlet`` then
+    # ``UIImageView`` -- and taking the first wrote the macro into the module
+    # slot as though it were a class. Measured on corpus before this line
+    # existed: ``IBOutlet`` was newly claimed as a module 1x on AFNetworking and
+    # 3x on CocoaLumberjack. The type adjacent to the declarator is the type.
+    # ``IBInspectable`` and the ``__weak`` / ``__block`` qualifiers take the
+    # same shape.
+    type_nodes = [
+        c for c in struct_decl.children if c.type == "type_identifier"
+    ]
+    return node_text(type_nodes[-1], source) if type_nodes else None
 
 
 def _self_property_type(
