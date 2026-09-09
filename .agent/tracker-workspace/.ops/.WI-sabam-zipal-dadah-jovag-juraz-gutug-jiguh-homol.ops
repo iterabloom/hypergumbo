@@ -1,0 +1,21 @@
+- op: create  # 5ccf
+  at: '2026-09-09T21:32:21Z'  # 5ccf
+  by: agent  # 5ccf
+  actor: jgstern_agent  # 5ccf
+  clock: 1  # 5ccf
+  nonce: 5ccf  # 5ccf
+  data:  # 5ccf
+    kind: work_item  # 5ccf
+    title: "scala: the external METHOD-call branch hand-rolls Edge.create instead of make_unresolved_edge, losing the ADR-0036 lossless callee_name home and ADR-0037 dst_ref derivation"  # 5ccf
+    status: todo_hard  # 5ccf
+    priority: 3  # 5ccf
+    parent:  # 5ccf
+    tags:  # 5ccf
+    - analysis_quality  # 5ccf
+    - scala  # 5ccf
+    isbefore: []  # 5ccf
+    duplicate_of: []  # 5ccf
+    not_duplicate_of: []  # 5ccf
+    pr_ref:  # 5ccf
+    description: "FILED 2026-09-09 from WI-sigog's implementation.\n\nscala.py's external METHOD-call branch hand-rolls `Edge.create` where every\nsibling analyzer -- and both of scala.py's own other unresolved-edge sites, 20\nand 90 lines below it -- calls the shared `make_unresolved_edge`. The branch is\nthe odd one out in its own file.\n\nWHAT THE BYPASS COSTS, both of which WI-sigog then had to re-implement by hand:\n\n  * `meta[\"callee_name\"]`, the ADR-0036 ruling-1 LOSSLESS HOME FOR THE NAME.\n    The id's name slot is deliberately lossy, and consumers are instructed to\n    read the name from elsewhere and never re-derive it from the id. For this\n    branch there is no elsewhere. This is the INV-divuf / WI-nakut defect that\n    made an Objective-C selector appear NOWHERE in the output.\n  * the ADR-0037 ruling-2 `dst_ref` derivation, including the WI-huzuv rule that\n    a `dst_ref` is withheld when the module is the `external` sentinel.\n\nWHY IT WAS NOT FOLDED INTO WI-sigog: `make_unresolved_edge` stamps\n`evidence_type=\"ast_call_direct\"` (confidence 0.50) and this branch deliberately\nstamps `ast_call` (0.40) as INV-fahub/WI-bihit bias-to-unresolved. Adopting the\nhelper therefore RE-PRICES 40,970 edges on sbt+lila alone, and bundling a\nconfidence move into a recall fix makes the A/B unattributable -- so WI-sigog\nkept `Edge.create` and its own test pins 0.40 explicitly.\n\nTHE QUESTION THIS ITEM MUST ANSWER FIRST, before any code: is the 0.40 still\nwanted now that the branch carries a receiver TYPE for some of its edges? A\ntyped external method call has strictly more evidence than an untyped one and\nthey are currently priced identically. Either answer is fine; it needs deciding\nrather than inheriting."  # 5ccf
+    fields: {}  # 5ccf

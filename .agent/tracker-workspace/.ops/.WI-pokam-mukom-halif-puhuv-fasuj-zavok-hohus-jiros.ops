@@ -1,0 +1,23 @@
+- op: create  # ae6f
+  at: '2026-09-09T21:32:06Z'  # ae6f
+  by: agent  # ae6f
+  actor: jgstern_agent  # ae6f
+  clock: 1  # ae6f
+  nonce: ae6f  # ae6f
+  data:  # ae6f
+    kind: work_item  # ae6f
+    title: "scala: only 5-10% of external method calls carry an inferred receiver type at all -- var_types is fed by three syntactic shapes while Scala infers almost everything"  # ae6f
+    status: todo_hard  # ae6f
+    priority: 2  # ae6f
+    parent:  # ae6f
+    tags:  # ae6f
+    - taint  # ae6f
+    - io_boundary  # ae6f
+    - analysis_quality  # ae6f
+    - scala  # ae6f
+    isbefore: []  # ae6f
+    duplicate_of: []  # ae6f
+    not_duplicate_of: []  # ae6f
+    pr_ref:  # ae6f
+    description: "FILED 2026-09-09 from WI-sigog's A/B (record:\n~/hypergumbo_lab_notebook/sigog_scala_slot_09092026/, PLAN.md pre-registered\nbefore any A-arm number existed).\n\nWI-sigog fixed the DISCARD: scala.py inferred the receiver's type and then\nhardcoded `external` into the module slot, so 0 of 40,970 external method-call\nedges were typed. Measuring the ceiling for that fix exposed a SECOND and much\nlarger defect sitting UPSTREAM of it, which that fix does not touch.\n\nMEASURED ON THE PRE-CHANGE (B) ARM, two independent repositories:\n\n    repo   scala external method-call edges   carrying receiver_type_hint\n    sbt                            10,985       1,106      10.1%\n    lila                           29,985       1,426       4.8%\n\n**About 90-95% of Scala external method calls carry NO inferred receiver type at\nall.** The module slot cannot be filled for them by any downstream change,\nbecause there is nothing to put in it. 10.1% / 4.8% is therefore the hard\nceiling on WI-sigog's fix, and on any method-kind catalogue matching in Scala.\n\nWHY var_types IS SO THIN. `_extract_edges_from_file` populates it from exactly\nthree shapes: function/method parameter annotations, `val x = new Foo()`, and\n`val x: Foo = f()` plus `class C(val svc: Service)`. Scala's type inference is\npervasive and idiomatic code writes almost none of these -- `val x = mk()`,\nfor-comprehension binders, lambda parameters, chained receivers\n(`a.b().c()`), and every `def` return type the caller never annotates are all\nuntyped here.\n\nONE CONFIRMED MECHANISM, cheap and separable: an INLINE-QUALIFIED annotation\nproduces no hint at all. `val b: java.io.File = mk(); b.createNewFile()` emits\n`meta` with NO `receiver_type_hint`, because the val branch calls\n`find_child_by_type(node, \"type_identifier\")` and a qualified type is not a\n`type_identifier` node. Verified on a 12-line probe 2026-09-09; the sibling\n`val a: File` on the line above DOES get a hint. This is a parse-shape miss, not\nan inference problem, and it is the first thing to fix here.\n\nTHE OTHER SHAPES ARE INFERENCE and are correspondingly harder: typing\n`val x = mk()` needs the return type of `mk`, which is the return-type registry\nobjc and swift already have (`_objc_return_type_registry` /\n`swift_return_type_registry`). That is the WI-dizag-A / WI-garar shape one\nlanguage over, and it is why this is filed as its own item rather than folded\ninto WI-sigog.\n\nDO NOT close this on WI-sigog's evidence. WI-sigog's closure is about the SLOT;\nthis item is about the HINT, and its own closure needs the hinted share to move\non corpus, measured the same way (the covariate scan is\n`sigog_scala_slot_09092026/` -- the `ceiling` computation in PLAN.md section 2)."  # ae6f
+    fields: {}  # ae6f
