@@ -1,0 +1,23 @@
+- op: create  # 1cc6
+  at: '2026-09-09T06:48:22Z'  # 1cc6
+  by: agent  # 1cc6
+  actor: jgstern_agent  # 1cc6
+  clock: 1  # 1cc6
+  nonce: 1cc6  # 1cc6
+  data:  # 1cc6
+    kind: work_item  # 1cc6
+    title: "calls edge identity discards the LINE: two calls to one target in a function are ONE edge with an arbitrary line (understated 0022's own gain by 12.7%)"  # 1cc6
+    status: todo_hard  # 1cc6
+    priority: 3  # 1cc6
+    parent:  # 1cc6
+    tags:  # 1cc6
+    - edges  # 1cc6
+    - ir  # 1cc6
+    - analyzer  # 1cc6
+    - measurement  # 1cc6
+    isbefore: []  # 1cc6
+    duplicate_of: []  # 1cc6
+    not_duplicate_of: []  # 1cc6
+    pr_ref:  # 1cc6
+    description: "Found 2026-09-09 during measurement 0022, and verified PRE-EXISTING (present identically in the baseline arm at dev 560dee9426).\n\nA `calls` edge is deduplicated by `(src, dst)` with the LINE discarded. Proven on pretix, both arms:\n\n    arm B: 76,635 calls edges, 76,635 distinct (src,dst), pairs carrying >1 line: 0\n    arm S: 76,604 calls edges, 76,604 distinct (src,dst), pairs carrying >1 line: 0\n\nTwo calls to the same target inside one function are ONE edge, and the survivor carries one ARBITRARY line among the collapsed sites.\n\nTHREE CONSEQUENCES.\n\n1. A function calling `Model.objects.create()` five times contributes ONE edge. Anywhere edges are used to COUNT call sites, the count is an undercount by an unknown factor.\n2. Any line-keyed A/B under-reports its own gains. Measurement 0022 hit this directly: 110 of 866 newly-typed sites (12.7%) appeared as \"GONE\" because they collided with a site the same function had already typed. All 110 were verified to survive under the same `(src,dst)` at another line -- 0 true losses -- but the delta read as a regression until the mechanism was identified, and a less careful reading would have filed a phantom regression or withheld a correct rule.\n3. A consumer reading `line` off a `calls` edge to a popular target is reading one arbitrary occurrence with no way to know it. That is a silently-wrong answer, not a missing one.\n\nWORKED EXAMPLE (pretix, src/tests/base/test_models.py, method at 619-633):\n\n    line 620  q1 = self.event.quotas.create(...)     arm B: external:create\n    line 624  order = Order.objects.create(...)      arm B: django.db.models:create\n\nIn B the two dsts differ, so both edges survive. In S line 620 correctly gains `django.db.models`, its dst becomes identical to 624's, and the pair collapses to one edge carrying line 620. Line 624 \"disappears\" with no information lost.\n\nWHAT TO DECIDE (not prejudged here): whether edge identity should include the line, or whether a collapsed edge should carry an occurrence COUNT and/or the full line list. Including the line multiplies `calls` edge volume by the average call-site multiplicity, which is a real cost and needs measuring before it is chosen. LIVE rule 11 already says a collapse representative is not an identity; this is that rule with a measured price attached.\n\nEVIDENCE: `~/hypergumbo_lab_notebook/zamud_setupfields_09092026/DEDUP_FINDING.md`, and docs/measurements/0022 \"Confounds and disclosures\" item 1."  # 1cc6
+    fields: {}  # 1cc6
