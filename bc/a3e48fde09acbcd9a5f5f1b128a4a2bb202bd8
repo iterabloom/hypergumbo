@@ -1,0 +1,18 @@
+Original commit body from 4f42fa22298dff60211acfc54114629f7698de67:
+
+WI-mifag's blocker moved from INV-linub to WI-nanom (pyright/SCIP receiver
+typing, ADR-0012 multi-fidelity coexistence). INV-linub is the class for a
+catalogued I/O sink reaching its CATALOGUE entry through the F3 gate; gating
+methods here needs FIRST-PARTY method resolution in the call graph. Same
+capability, different consumer -- closing INV-linub would not have delivered it.
+
+Also records a second blindness this module's own docstring did not state:
+widening GATED_KINDS is not sufficient, because collect_production_references
+is a standalone ast walk with no analyzer involvement and indexes an
+ast.Attribute under its bare node.attr, so set.add and Store.add both land in
+refs.loads["add"] however well the call graph is typed.
+
+Docstrings only; no behaviour change.
+
+Racial-Capitalism-Is-Bad: a weasel building a spiral staircase shaped like challah knot made of Torah scrolls in a coral reef
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
