@@ -1086,15 +1086,90 @@ def _extract_edges_from_file(
                         )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
+                        # WI-sigog / INV-linub L3: the receiver TYPE this branch
+                        # has just inferred must also reach the MODULE SLOT, not
+                        # only ``meta``. The two slots answer different questions
+                        # and both need an answer: ``receiver_type_hint`` is read
+                        # by the Tier-2 ``inherited_calls`` linker, which resolves
+                        # PROJECT-INTERNAL symbols, while the module segment of
+                        # the dst is what ``_lookup_named_entry`` /
+                        # ``gate_named_entry`` read on the EXTERNAL surface.
+                        # Hardcoding ``external`` here left the second one
+                        # permanently unanswered, and that is fatal rather than
+                        # lossy: the F3 gate opens with
+                        # ``if call_construct == "method": return None``, so with
+                        # no module hint a method call matches NOTHING — not a
+                        # method-kind entry, not even a function-kind one.
+                        # Measured 2026-09-09 on sbt + lila: 0 of 40,970 external
+                        # method-call edges carried a receiver type and 0 of 164
+                        # method-kind catalogue rows were reached through Scala's
+                        # own edges. Scala emitted every one of those calls and
+                        # stamped ``call_construct`` correctly; only the slot was
+                        # a constant.
+                        #
+                        # THIS IS VERBATIM THE JAVA DEFECT PR #227 FIXED, one
+                        # language over (:func:`java._qualify_receiver_type`);
+                        # java measures 65.0% typed on killbill since. The
+                        # discipline that PR established is kept here: the slot
+                        # only ever carries a path THE FILE ITSELF DECLARES. An
+                        # unqualifiable type is left alone rather than written in
+                        # bare, because a simple name in the module slot asserts a
+                        # module that does not exist and can collide with a
+                        # catalogued entry of the same short name (INV-fazim).
+                        # A project class needs no special case: it reaches
+                        # ``import_aliases`` only when the file imports it by
+                        # path, and that path IS its static owner path
+                        # (ADR-0050/0051); a bare one misses and keeps the
+                        # sentinel.
+                        #
+                        # ``call_construct="method"`` above is NOT decoration and
+                        # must not be dropped now that the slot is filled.
+                        # ``_register_sanitizer_callers`` refuses an unresolved
+                        # call unless it carries receiver evidence and reads that
+                        # evidence from THIS slot -- its docstring notes the
+                        # placeholder "still yields no module, and is still
+                        # refused" -- so filling it is precisely what makes
+                        # barrier registration reachable for Scala for the first
+                        # time. A registered barrier earns ``sanitized`` and DROPS
+                        # the flow (#214), so the flag is what stops a first-party
+                        # ``doFinal`` from binding ``javax.crypto.Cipher.doFinal``
+                        # and deleting a real one.
+                        #
+                        # WILDCARDS ARE OUT OF SCOPE HERE, NOT OVERLOOKED.
+                        # ``import java.io._`` parses to ``namespace_wildcard``,
+                        # which ``_extract_import_hints`` does not record as a
+                        # type hint, so such a receiver keeps the sentinel. Java
+                        # writes the comma-joined disjunction of its wildcard
+                        # packages into the slot; that is not free, because an
+                        # UNENUMERATED disjunct withholds every verdict under
+                        # INV-zimud's ALL-gate. Measured on the same corpus, the
+                        # shape is also rare in Scala -- 199/4,314 import lines in
+                        # sbt (4.6%) and 5/6,674 in lila (0.07%) -- so the
+                        # explicit-import path below carries the population.
+                        typed_module = (
+                            import_aliases.get(receiver_type)
+                            if receiver_type else None
+                        )
                         edges.append(Edge.create(
                             src=current_function.id,
-                            dst=f"scala:external:0-0:{callee_name}:unresolved",
+                            dst=(
+                                f"scala:{typed_module or 'external'}"
+                                f":0-0:{callee_name}:unresolved"
+                            ),
                             edge_type="calls",
                             line=node.start_point[0] + 1,
                             evidence_type="ast_call",
                             is_resolved=False,
                             origin=PASS_ID,
                             origin_run_id=run_id,
+                            dst_ref=(
+                                ExternalRef(
+                                    lang="scala",
+                                    module_path=typed_module,
+                                    name=callee_name,
+                                )
+                                if typed_module else None
+                            ),
                             meta=gate_meta,
                         ))
                     elif not edge_added and callee_name in local_symbols:
