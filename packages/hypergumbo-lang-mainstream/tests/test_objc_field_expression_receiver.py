@@ -140,9 +140,10 @@ class TestTheSelectorReachesTheNameSlot:
         # this test re-derived it from the id and read '' against a dst that was
         # already correct, which would have read as the fix not working.
         assert (got[0].meta or {}).get("callee_name") == "dataTaskWithRequest:"
-        assert got[0].dst == (
-            "objc:external:0-0:dataTaskWithRequest::unresolved"
-        ), got[0].dst
+        # The MODULE slot is stage 2's business (`session` is a declared
+        # `NSURLSession` property); this test is about the NAME slot, which used
+        # to hold the argument `req`.
+        assert got[0].dst.endswith(":dataTaskWithRequest::unresolved"), got[0].dst
 
     def test_simple_selector_survives(
         self, tmp_path: Path, objc_available: None,
@@ -153,7 +154,7 @@ class TestTheSelectorReachesTheNameSlot:
         got = _by_line(tmp_path)[LINE_SIMPLE]
         assert len(got) == 1, [e.dst for e in got]
         assert (got[0].meta or {}).get("callee_name") == "closeFile"
-        assert got[0].dst == "objc:external:0-0:closeFile:unresolved", got[0].dst
+        assert got[0].dst.endswith(":closeFile:unresolved"), got[0].dst
 
 
 class TestTheCollidingLocalNoLongerTypesTheReceiver:
@@ -171,8 +172,12 @@ class TestTheCollidingLocalNoLongerTypesTheReceiver:
             f"receiver is self.session, an NSURLSession"
         )
         assert (edge.meta or {}).get("receiver_type_hint") != "NSFileHandle"
-        assert edge.dst == "objc:external:0-0:writeData::unresolved", edge.dst
         assert (edge.meta or {}).get("callee_name") == "writeData:"
+        # Since stage 2 this site is typed from the DECLARED property rather
+        # than left at the sentinel, which makes the point more sharply: the
+        # module is now the receiver's real class, and still not the colliding
+        # local's.
+        assert edge.dst == "objc:NSURLSession:0-0:writeData::unresolved", edge.dst
 
     def test_the_borrowed_module_did_not_classify_a_boundary(
         self, tmp_path: Path, objc_available: None,
@@ -187,6 +192,9 @@ class TestTheCollidingLocalNoLongerTypesTheReceiver:
         assert prim is None, (
             f"self.session writeData: classified as {prim.qualified_name!r}"
         )
+        # Still None, for a BETTER reason than before: the module now names
+        # NSURLSession, which has no `writeData:` row, rather than the
+        # NSFileHandle it borrowed from a same-named local, which does.
 
 
 class TestTheTypedLocalControlIsUnmoved:
