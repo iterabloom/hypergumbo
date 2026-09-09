@@ -1,0 +1,21 @@
+- op: create  # 3c45
+  at: '2026-09-09T19:14:40Z'  # 3c45
+  by: agent  # 3c45
+  actor: jgstern_agent  # 3c45
+  clock: 1  # 3c45
+  nonce: 3c45  # 3c45
+  data:  # 3c45
+    kind: work_item  # 3c45
+    title: "io-boundaries: a command_launch boundary reports BINARY control-character blobs and an EMPTY STRING as primitive names (sbt) -- user-facing output, and an empty name matches anything on short-name lookup"  # 3c45
+    status: todo_hard  # 3c45
+    priority: 2  # 3c45
+    parent:  # 3c45
+    tags:  # 3c45
+    - io_boundary  # 3c45
+    - analysis_quality  # 3c45
+    isbefore: []  # 3c45
+    duplicate_of: []  # 3c45
+    not_duplicate_of: []  # 3c45
+    pr_ref:  # 3c45
+    description: "FILED 2026-09-09, incidental to WI-kurug / WI-fasoz. Record:\n~/hypergumbo_lab_notebook/t0_sizing_09092026/.\n\nsbt's io-boundaries output carries a `command_launch` boundary whose\n`primitives_used` contains BINARY CONTROL-CHARACTER BLOBS:\n\n    '\\x06\\x16\\x1e\\x066\\x06VF\\x06Q'\n    '\\x1e\\x0ez4'\n    '5\\x0e*Р3'\n    ''                      <- also an EMPTY STRING\n\nalongside legitimate shell command names (awk, base64, basename, cat, curl,\ncut, cygpath). Of sbt's 70 reported primitives, 50 are bare names and these are\namong them.\n\nWHY IT IS A DEFECT AND NOT COSMETIC:\n  * `primitives_used` is USER-FACING output. A primitive named with control\n    characters is not something a developer or an agent can act on, and an\n    EMPTY-STRING primitive name will match sloppily anywhere a consumer tests\n    membership by short name.\n  * It means something is decoding non-source bytes as a command. sbt vendors\n    binary launcher artifacts; the command-launch detector appears to be\n    reading them. Whatever the path, a binary blob should never survive to a\n    primitive name.\n  * The empty string is the more dangerous of the two: `\"\" in used` and short-\n    name matching against `\"\"` are the shapes that silently score a row as\n    reached.\n\nMEASURED, not reported second-hand: found while reading sbt's own iob.json\nduring WI-fasoz, and it is the reason that item's instrument dropped bare-name\nmatching in favour of qualified names only.\n\nSCOPE: the fix is a validity gate on command names at whatever point\n`command_launch` extracts them -- reject empty, reject non-printable. Whether\nthe upstream decode should also be prevented is the second question and needs\nthe actual file identified; sbt is the reproducer.\n\nNOT AN INV-linub INSTANCE. Filed separately because it is a data-hygiene defect\nin the boundary reporter, not a receiver-evidence failure, and folding it into\nthe drain would misreport that drain's size."  # 3c45
+    fields: {}  # 3c45

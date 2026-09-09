@@ -1,0 +1,22 @@
+- op: create  # fc28
+  at: '2026-09-09T19:14:44Z'  # fc28
+  by: agent  # fc28
+  actor: jgstern_agent  # fc28
+  clock: 1  # fc28
+  nonce: fc28  # fc28
+  data:  # fc28
+    kind: work_item  # fc28
+    title: "cpp and elixir catalogues carry duplicate/mis-homed rows for one primitive (stat under both unistd and sys/stat, :httpc.request twice) -- a reached call reads as partly unreached and every per-row denominator is inflated"  # fc28
+    status: todo_hard  # fc28
+    priority: 3  # fc28
+    parent:  # fc28
+    tags:  # fc28
+    - io_boundary  # fc28
+    - catalogue  # fc28
+    - analysis_quality  # fc28
+    isbefore: []  # fc28
+    duplicate_of: []  # fc28
+    not_duplicate_of: []  # fc28
+    pr_ref:  # fc28
+    description: "FILED 2026-09-09, incidental to WI-kurug. Record:\n~/hypergumbo_lab_notebook/t0_sizing_09092026/kurug/RESULT.md.\n\nTwo catalogues carry the SAME primitive as two separate rows under different\nmodule spellings, and one call site then scores against one row while the other\nreads as unreached.\n\n  cpp     `stat` appears as BOTH `unistd.stat` AND `sys/stat.stat`.\n          On modsecurity, `if (stat(arg.c_str(), &buffer) == 0)` at\n          tools/rules-check/rules-check.cc:66 REACHES `unistd.stat`, leaving\n          `sys/stat.stat` reading as a miss at the same call site.\n          The C standard declares `stat()` in <sys/stat.h>, NOT <unistd.h>, so\n          the row that matched is the mis-homed one and the correct row is the\n          one recorded as unreached.\n  cpp     `sys/socket.recv`, `sys/socket.send` and `unistd.read` are each\n          present MORE THAN ONCE as raw rows (which is why cpp's raw-row R2\n          count of 22 exceeds its distinct-qualified-name count).\n  elixir  `:httpc.request` and `httpc.request` are BOTH present -- the same OTP\n          function with and without the atom colon. One call site scores\n          against both.\n\nWHY IT MATTERS BEYOND TIDINESS: any per-row reach or coverage measurement over\nthese catalogues is denominator-inflated, and a duplicated row makes a REACHED\ncall look partly unreached. This item exists because it cost exactly that\nduring WI-kurug -- cpp's only apparent R2 \"miss\" turned out to be this, and\nmistaking it for a reach failure would have added cpp to INV-linub's drain\nwrongly.\n\n`scripts/measure-catalogue-exposure.py` already reports raw-row and\ndistinct-qualified-name counts side by side, precisely so this cannot recur\nsilently; it was landed for that reason on 2026-09-09. This item is the\nunderlying data defect that made the two counts differ.\n\nSCOPE: decide per duplicate pair whether it is (a) a genuine mis-homing to\ncorrect (cpp `stat`), (b) two legitimate spellings of one primitive that should\nbe one row with an alias (elixir httpc), or (c) an accidental repeat to delete\n(the repeated cpp socket rows). NOT an INV-linub instance -- this is L1\ncatalogue content, which INV-linub explicitly sequences as a separate axis."  # fc28
+    fields: {}  # fc28
