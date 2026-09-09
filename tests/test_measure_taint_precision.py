@@ -130,3 +130,54 @@ class TestTheWalkDisclosureSurvivesCollection:
         rows = collector.flows_from_payload(_payload(), "tmux")
         assert rows[0]["walk_verdict"] is None
         assert rows[0]["walk_blocked_by"] is None
+
+
+class TestTheNonProductionSourceArmIsReachable:
+    """WI-zamud: a population that lives entirely in test code is invisible to
+    every arm this collector could previously produce.
+
+    ``verify-claims`` excludes test/fixture-sourced flows by default
+    (WI-bifob), and ``run_verify_claims`` hardcoded its argv, so the flag that
+    lifts that exclusion could not be reached at all. On such a population the
+    collector's "no new situations" and "the rule does nothing" are the same
+    number -- a blind instrument, not a null result. The flag is passed through
+    to PRODUCTION's parser rather than reinterpreted here, which is the same
+    discipline the surrounding function already documents.
+    """
+
+    def _capture_argv(self, collector: ModuleType, monkeypatch, **kwargs):
+        seen: dict[str, object] = {}
+
+        def fake_cmd(args):
+            seen["args"] = args
+            print("{}")
+            return 0
+
+        import hypergumbo_core.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "cmd_verify_claims", fake_cmd)
+        collector.run_verify_claims(Path("/repo"), Path("/claims.yaml"), **kwargs)
+        return seen["args"]
+
+    def test_the_flag_is_off_by_default(
+        self, collector: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        args = self._capture_argv(collector, monkeypatch)
+        assert args.include_non_production_sources is False
+
+    def test_the_flag_reaches_productions_own_parser(
+        self, collector: ModuleType, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        args = self._capture_argv(
+            collector, monkeypatch, include_non_production=True,
+        )
+        assert args.include_non_production_sources is True
+
+    def test_collect_exposes_the_flag(self, collector: ModuleType) -> None:
+        """The arm is reachable from the COMMAND LINE, not just the function --
+        an option no arm script can pass is not an instrument."""
+        parser = collector.build_arg_parser()
+        args = parser.parse_args([
+            "collect", "--repo", "/r", "--out", "/o",
+            "--include-non-production-sources",
+        ])
+        assert args.include_non_production_sources is True

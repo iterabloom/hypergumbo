@@ -4164,6 +4164,37 @@ class DjangoRelationIndex:
     model_ids: set[str] = field(default_factory=set)
     class_by_id: dict[str, Symbol] = field(default_factory=dict)
     class_methods: dict[str, set[str]] = field(default_factory=dict)
+    #: WI-zamud: ``instance_field_types[C][field]`` -- the model class that a
+    #: field assigned in ``C``'s ``setUp`` / ``setUpTestData`` / ``setUpClass``
+    #: holds an instance of. A Django TEST class builds its fixture there, not
+    #: in ``__init__``, so ``_collect_class_field_maps`` (which reads
+    #: ``__init__`` and nothing else) types none of it, and every chain hanging
+    #: off it dead-ends at the ``external`` slot. Measured on pretix at filing:
+    #: 1,155 accessor-hop call sites on such a field, plus ~1,110 direct
+    #: instance writes (``self.order.save()``) that the filing's census shape
+    #: never counted.
+    #:
+    #: SEPARATE FROM ``relation_fields`` ON PURPOSE. That map holds a DECLARED
+    #: schema relation -- a ``ForeignKey`` the model class states -- and is
+    #: evidence about the repository. This one holds an INFERRED binding from a
+    #: fixture method body, which is weaker evidence about one test class. They
+    #: are read in that order (declared first, inferred only on a miss) so a
+    #: real relation can never be shadowed by a same-named fixture field.
+    instance_field_types: dict[str, dict[str, Symbol]] = field(default_factory=dict)
+
+    def fixture_field_model(self, cls: Symbol, name: str) -> Symbol | None:
+        """The model ``<cls instance>.<name>`` is when a setUp-family method
+        bound it. Walks the project bases, which is what makes the INHERITED
+        case work -- 679 of the 1,155 filed sites consume a fixture their base
+        test class built, and the lineage walk is the same one
+        :meth:`accessor_model` and :meth:`relation_target` already use, so a
+        deep test-mixin chain resolves without a second inheritance rule.
+        """
+        for owner in self._lineage(cls):
+            hit = self.instance_field_types.get(owner.id, {}).get(name)
+            if hit is not None:
+                return hit
+        return None
 
     def __bool__(self) -> bool:
         # ``model_ids`` COUNTS. A Django app whose models declare no relation
@@ -4285,6 +4316,40 @@ def _is_django_manager_constructor(call: ast.Call, callee: str | None) -> bool:
     )
 
 
+def _make_class_name_resolver(
+    local_symbols: dict[str, Symbol],
+    imports: dict[str, tuple[str, str]],
+    global_symbols: dict[tuple[str, str], Symbol],
+    class_name_counts: dict[str, int],
+    resolver: "SymbolResolver | None",
+) -> Callable[[str], Symbol | None]:
+    """The project CLASS a bare name denotes in one file.
+
+    Extracted from ``_extract_edges``'s ``_resolve_class_name`` closure when
+    WI-zamud's setUp pre-pass needed the SAME rule: it runs before any block
+    walk, so it cannot reach that closure, and a second copy of "which names
+    are class roots" would be a second home for one fact -- the two would
+    drift, and the pre-pass's answer would silently win wherever it bound a
+    field. One definition, two callers.
+    """
+
+    def _resolve(name: str) -> Symbol | None:
+        sym = local_symbols.get(name)
+        if sym is not None:
+            if sym.kind == "class" and class_name_counts.get(name, 0) == 1:
+                return sym
+            return None
+        if name in imports:
+            _module, _original = imports[name]
+            found = _lookup_symbol_by_module(
+                global_symbols, _module, _original, resolver=resolver,
+            )
+            return found if found is not None and found.kind == "class" else None
+        return None
+
+    return _resolve
+
+
 def _collect_django_relation_index(
     file_analyses: dict[Path, FileAnalysis],
     global_symbols: dict[tuple[str, str], Symbol],
@@ -4321,6 +4386,136 @@ def _collect_django_relation_index(
         if cls_id in index.model_ids
     }
     return index
+
+
+#: The methods a Django/unittest test class builds its fixture in (WI-zamud).
+#: ``setUp`` runs per test, ``setUpTestData`` / ``setUpClass`` once per class
+#: and bind on ``cls``; ``asyncSetUp`` is IsolatedAsyncioTestCase's. An
+#: ORDINARY helper method is deliberately absent: a field first assigned in
+#: ``_make_order()`` is not a class-level fixture, and inheriting it into every
+#: subclass would be a confidently-wrong answer rather than a missing one.
+DJANGO_SETUP_METHODS = frozenset({
+    "setUp", "setUpTestData", "setUpClass", "asyncSetUp",
+})
+
+
+def _collect_django_setup_fields(
+    file_analyses: dict[Path, "FileAnalysis"],
+    index: DjangoRelationIndex,
+    global_symbols: dict[tuple[str, str], Symbol],
+    resolver: "SymbolResolver | None",
+) -> None:
+    """Bind ``self.<f>`` / ``cls.<f>`` assigned in a setUp-family method to the
+    Django model the right-hand side yields, into ``index.instance_field_types``.
+
+    WHY A SEPARATE PASS. ``_collect_class_field_maps`` reads ``__init__`` and
+    resolves ``ClassName()``; neither reaches a test fixture, whose field is
+    assigned in ``setUp`` from ``Organizer.objects.create(...)`` -- a MANAGER
+    call, which only :class:`DjangoRelationIndex` can type. That index is built
+    after the field maps, so this runs after IT rather than widening a
+    collector that cannot see what it would need.
+
+    WHY A FIXED POINT. A fixture is usually built in layers --
+    ``self.orga = Organizer.objects.create(...)`` then
+    ``self.event = self.orga.events.create(...)`` -- so the second assignment
+    is typeable only once the first has been recorded. Iterating to a fixed
+    point (bounded, since each round can only ADD bindings) resolves a chain of
+    any depth without ordering the scan by hand. The same shape already types
+    ``model_ids`` in :func:`_collect_django_relation_index`.
+
+    NO INHERITANCE IS APPLIED HERE. The map stays per-declaring-class and
+    :meth:`DjangoRelationIndex.fixture_field_model` walks the lineage at
+    lookup, so a subclass that REASSIGNS a base's fixture field to a different
+    model wins on its own entry -- the pre-registered refutation cell -- rather
+    than being merged with the base's answer at build time, which would make
+    the two indistinguishable.
+    """
+    units: list[tuple[
+        Symbol,
+        list[ast.FunctionDef | ast.AsyncFunctionDef],
+        Callable[[str], Symbol | None],
+    ]] = []
+    for analysis in file_analyses.values():
+        if not isinstance(analysis.tree, ast.Module):  # pragma: no cover - always ast.parse output
+            continue
+        counts = _class_name_counts(analysis.tree)
+        resolve_name = _make_class_name_resolver(
+            analysis.symbol_by_name, analysis.imports, global_symbols,
+            counts, resolver,
+        )
+        for node in ast.walk(analysis.tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            sym = analysis.symbol_by_name.get(node.name)
+            # A same-short-name class in one file is last-write-wins in
+            # ``symbol_by_name``, so its map could be the wrong twin's --
+            # refused exactly as WI-supat refuses the receiver-type id.
+            if sym is None or sym.kind != "class" or counts.get(node.name, 0) > 1:
+                continue
+            setups = [
+                m for m in node.body
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and m.name in DJANGO_SETUP_METHODS
+            ]
+            if setups:
+                units.append((sym, list(setups), resolve_name))
+    if not units:
+        return
+    changed = True
+    rounds = 0
+    # Four rounds bounds a fixture chain four hops deep. Each round can only
+    # add bindings, so the loop terminates on ``changed`` in practice; the
+    # count is the guard against a pathological tree, not the normal exit.
+    while changed and rounds < 4:
+        changed = False
+        rounds += 1
+        for sym, setups, resolve_name in units:
+            # ``cls`` denotes the test class inside ``setUpTestData`` /
+            # ``setUpClass`` exactly as ``self`` does in ``setUp``; seeding it
+            # into ``var_types`` lets ONE oracle answer both without inspecting
+            # decorators. The dict is shared by reference with the oracle, so a
+            # local bound below is a manager root for the statements after it.
+            var_types: dict[str, Symbol] = {"cls": sym}
+            oracle = _DjangoReceiverOracle(index, var_types, sym, resolve_name)
+            for method in setups:
+                assigns = sorted(
+                    (n for n in ast.walk(method) if isinstance(n, ast.Assign)),
+                    key=lambda n: n.lineno,
+                )
+                for stmt in assigns:
+                    if not isinstance(stmt.value, ast.Call):
+                        continue
+                    for target in stmt.targets:
+                        # ``self.o, created = ...get_or_create()`` -- the tuple
+                        # form binds the FIRST element only, which is the
+                        # instance; the second is a bool. Sliced rather than
+                        # indexed so the degenerate ``() = f()`` yields no slot
+                        # and needs no unreachable guard of its own.
+                        unpacked = isinstance(target, ast.Tuple)
+                        slots = (
+                            target.elts[:1]
+                            if isinstance(target, ast.Tuple) else [target]
+                        )
+                        model = oracle.instance_from_call(
+                            stmt.value, unpacked=unpacked,
+                        )
+                        if model is None:
+                            continue
+                        for slot in slots:
+                            if isinstance(slot, ast.Name):
+                                var_types[slot.id] = model
+                            elif (
+                                isinstance(slot, ast.Attribute)
+                                and isinstance(slot.value, ast.Name)
+                                and slot.value.id in ("self", "cls")
+                            ):
+                                fields = index.instance_field_types.setdefault(
+                                    sym.id, {},
+                                )
+                                if fields.get(slot.attr) is not model:
+                                    fields[slot.attr] = model
+                                    changed = True
+
 
 
 def _index_django_relations_in_file(
@@ -4519,7 +4714,14 @@ class _DjangoReceiverOracle:
             owner = self.instance_class(expr.value)
             if owner is None:
                 return None
-            return self.index.relation_target(owner, expr.attr)
+            # DECLARED RELATION FIRST, inferred fixture binding only on a miss
+            # (WI-zamud). A ``ForeignKey`` the model states outranks a binding
+            # inferred from a test's setUp body, so a fixture field that happens
+            # to share a name with a real relation cannot shadow it.
+            declared = self.index.relation_target(owner, expr.attr)
+            if declared is not None:
+                return declared
+            return self.index.fixture_field_model(owner, expr.attr)
         return None
 
     def _class_root(self, expr: ast.expr) -> Symbol | None:
@@ -4719,23 +4921,12 @@ def _extract_edges(
     # from the authoritative method->class map, not a name lookup.
     class_name_counts = _class_name_counts(tree)
 
-    def _resolve_class_name(name: str) -> Symbol | None:
-        """The project CLASS a bare name denotes in this file, for the Django
-        oracle's ``<Model>.<manager>`` root: the file's own class (file-unique
-        short name, WI-supat D3), else the import-bound one. A name bound to
-        anything else -- a function, a variable -- is not a class root."""
-        sym = local_symbols.get(name)
-        if sym is not None:
-            if sym.kind == "class" and class_name_counts.get(name, 0) == 1:
-                return sym
-            return None
-        if name in imports:
-            _module, _original = imports[name]
-            found = _lookup_symbol_by_module(
-                global_symbols, _module, _original, resolver=resolver,
-            )
-            return found if found is not None and found.kind == "class" else None
-        return None
+    #: The file's class-root rule (file-unique short name, WI-supat D3; else
+    #: the import-bound class), shared with WI-zamud's setUp pre-pass through
+    #: :func:`_make_class_name_resolver` rather than restated here.
+    _resolve_class_name = _make_class_name_resolver(
+        local_symbols, imports, global_symbols, class_name_counts, resolver,
+    )
 
     edges: list[Edge] = []
 
@@ -8490,6 +8681,13 @@ def analyze_python(
     _django_index: DjangoRelationIndex | None = _collect_django_relation_index(
         file_analyses, global_symbols, resolver,
     ) or None
+    # WI-zamud: the test-fixture half, AFTER the relation index because typing
+    # ``self.orga = Organizer.objects.create(...)`` needs the manager rule the
+    # index carries. A repository with no Django models never reaches it.
+    if _django_index is not None:
+        _collect_django_setup_fields(
+            file_analyses, _django_index, global_symbols, resolver,
+        )
     all_symbols: list[Symbol] = []
     all_edges: list[Edge] = []
     all_usage_contexts: list[UsageContext] = []
