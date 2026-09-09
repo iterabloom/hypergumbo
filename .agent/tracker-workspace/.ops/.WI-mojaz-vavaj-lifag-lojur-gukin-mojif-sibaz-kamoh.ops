@@ -1,0 +1,23 @@
+- op: create  # fc8b
+  at: '2026-09-09T06:49:16Z'  # fc8b
+  by: agent  # fc8b
+  actor: jgstern_agent  # fc8b
+  clock: 1  # fc8b
+  nonce: fc8b  # fc8b
+  data:  # fc8b
+    kind: work_item  # fc8b
+    title: "The --include-non-production-sources arm is ~76% false positives (24.2% correct, n=120 seeded): every situation examined is structural/walk-unavailable though python HAS a def/use extractor"  # fc8b
+    status: todo_hard  # fc8b
+    priority: 2  # fc8b
+    parent:  # fc8b
+    tags:  # fc8b
+    - taint  # fc8b
+    - walk  # fc8b
+    - precision  # fc8b
+    - measurement  # fc8b
+    isbefore: []  # fc8b
+    duplicate_of: []  # fc8b
+    not_duplicate_of: []  # fc8b
+    pr_ref:  # fc8b
+    description: "Measured for the first time on 2026-09-09 (measurement 0022), because until that record's instrument change no measurement could reach this arm at all.\n\n`verify-claims --include-non-production-sources` lifts WI-bifob's default exclusion of test/fixture-sourced flows. On pretix that arm carries 613 situations at dev 560dee9426. Scored against measurement 0001's rubric by the 0022 classifier on a seeded random sample (seed 20260909, n=120):\n\n    TRUE POSITIVE   23 / 95 = 24.2%   95% CI 16.7% .. 33.7%\n    FALSE POSITIVE  72\n    vacuous         18   unresolved-by-classifier 7\n\n**Roughly three of every four situations on this arm are false positives**, against DEFAULT-arm precedents of 87.5% (0013), 72.7% (0016), 66.7% (0015) and 56.3% (0021) correct.\n\nWHY, as far as 0022 could establish: every one of the 224 situations 0022 examined in detail carries `analysis_method = structural` and `walk_verdict = \"unavailable\"` -- the tool's own statement that NO DATAFLOW WALK RAN -- and 152 of 224 are `hops = 0`, where the entire \"flow\" is that one test function contains both an ORM read and an ORM write. The dominant false-positive shape is a trailing `assert` on `<manager>.get(...)` paired with a `create(...)` earlier in the same function.\n\nThat is consistent with the walk having no def/use information for this code and therefore pairing any source with any sink inside a function -- the same mechanism measurement 0019 identified for c (`registered_def_use_languages()` omits it). Here the language IS python, which HAS a def/use extractor, so the reason must be established rather than assumed. THAT IS THE FIRST THING TO DO ON THIS ITEM: find out why python test code yields 100% structural findings when python is a def/use language. Do not assume it is the same cause as 0019.\n\nWHY IT MATTERS BEYOND THIS ARM: the flag is user-facing and documented as the way to see test-sourced flows. A user who turns it on gets a population that is ~76% wrong, with no indication in the output that the findings are unwalked -- except `walk_verdict`, which measurement 0006 already showed adjudicators do not see because packet builders dropped it.\n\nNOT WI-zamud's to fix. WI-zamud's own 224 new situations score 30.8% [24.7 .. 37.6], statistically INDISTINGUISHABLE from this ambient 24.2% (difference +6.6 pp, z = 1.16, p = 0.25) -- it neither improves nor dilutes the arm it joins.\n\nEVIDENCE: docs/measurements/0022-django-setup-fixture-receiver-typing.md; `~/hypergumbo_lab_notebook/zamud_setupfields_09092026/` (`adjudicate.py`, `adjudication_baseline.json`, `RESULT.md`)."  # fc8b
+    fields: {}  # fc8b
