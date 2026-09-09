@@ -1,0 +1,22 @@
+- op: create  # 0295
+  at: '2026-09-09T04:56:41Z'  # 0295
+  by: agent  # 0295
+  actor: jgstern_agent  # 0295
+  clock: 1  # 0295
+  nonce: '0295'  # 0295
+  data:  # 0295
+    kind: work_item  # 0295
+    title: "awaits_bakeoff_validation has no bucket for a fix that is INERT BY CONSTRUCTION until a gated sibling lands"  # 0295
+    status: needs_human_review  # 0295
+    priority: 3  # 0295
+    parent:  # 0295
+    tags:  # 0295
+    - process  # 0295
+    - governance  # 0295
+    - bakeoff  # 0295
+    isbefore: []  # 0295
+    duplicate_of: []  # 0295
+    not_duplicate_of: []  # 0295
+    pr_ref:  # 0295
+    description: "The `awaits_bakeoff_validation` lifecycle has three buckets (per the tagging-discipline playbook): moved -> strip the tag; no_move -> file an untagged regression sub-item; inconclusive -> keep the tag. A fix that is INERT BY CONSTRUCTION until a gated sibling lands fits none of them, and processing it under the existing rules manufactures a false finding.\n\nCONCRETE INSTANCE, which is why this is filed rather than theorised. INV-putug (PR #841) refuses a `dispatches_to` edge out of a type node. On the shipped tree it moves NOTHING -- measurement 0020 recorded 0 removed, 0 added, 0 class-node hops -- and that is CORRECT and PREDICTED, not a regression: the defect needs a taint SINK inside a model method, and the rule that creates that sink (WI-sihoh) was withheld behind INV-putug itself. So INV-putug's `no_move` would have been filed as a regression sub-item under the current rules, against a fix that is demonstrably right.\n\nMeasurement 0021 broke that by landing the sink and observing the fix on a live population (class-node hops 0 with 67 newly typed sinks sitting inside classes carrying 896 refusable edges). But the process gap remains for the next such pair.\n\nPROPOSED FOURTH BUCKET: `inert_pending_sibling` -- no_move is expected, the reason is recorded on the item, and the tag stays until the sibling lands rather than converting into a regression item. Requires naming the sibling at tagging time, so it cannot be used as a general excuse for a null result.\n\nScoped as a playbook change (.agent/agent_playbooks_protocols_sops_skills/bakeoff-validation-tagging-discipline.md), which is NOT a governance file, but the AGENTS.md essentialization that references it IS -- so the AGENTS.md half needs human approval and must not be self-merged."  # 0295
+    fields: {}  # 0295
