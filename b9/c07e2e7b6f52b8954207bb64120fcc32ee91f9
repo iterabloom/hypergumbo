@@ -1,0 +1,44 @@
+Original commit body from 91e131afb75d0affbb8f15ef0da5d1e2c3c0c0f6:
+
+Restores the Django `super().save()` / `super().delete()` ORM write rule that WI-gamas built and withheld, and ships it with the re-measurement its deferral required.
+
+## Why it was withheld, and why it returns now
+
+On a real Django project the ORM instance write is usually not at `x.save()`. Of pretix's 306 typed save/delete sites, 215 (70%) call a `save` the project OVERRIDES, and 56 of its 66 overrides then call `super().save()` — the chokepoint every upstream write funnels through, which emitted the bare `external` placeholder. That is a false NEGATIVE on a write primitive.
+
+The rule was correct at the site but was withheld from PR #826 because the ADR-0017 walk reached any model method from any function that merely mentioned the class, by crossing a `dispatches_to` edge out of a type node: 3 true findings against 20 false ones. Its deferral carried a written re-open trigger — "when the walk stops advancing along `dispatches_to`, restore the rule and RE-MEASURE it on the same two arms" — and INV-putug (PR #841) fired it.
+
+Ported rather than checked out: dev's `py.py` carried a doc comment recording the withholding that the branch lacked, so a wholesale checkout would have silently reverted it.
+
+## Measurement 0021
+
+Two arms differing ONLY in this rule, both carrying INV-putug's fix. Markers asserted at BEGIN and END of each arm, with a control marker present in both.
+
+    pretix   situations 133 -> 149   16 NEW, 0 GONE
+    kserve   58 -> 58                control unmoved
+
+    TRUE POSITIVE     9   56.3%     (8 / 50.0% under the strict reading of one site)
+    FALSE POSITIVE    7   43.8%
+    VACUOUS           0
+    WRONG-TYPE        0
+
+All 16 read at source in full function bodies. The pre-registered ship bar (>= 50% correct, zero wrong-type, PC1 holds) is met under BOTH readings of the one judgement call, so the decision does not rest on it.
+
+**It ships AT the bar, not above it.** 50.0% is below every shipped precedent in this family (0013 87.5%, 0015 66.7%, 0016 72.7%). The case rests on the direction — a false negative on a write primitive is the expensive direction for a security tool — and on the capability being independently verified, not on the finding rate. The seven remaining false positives are ordinary adjudication misses (control dependence in a retry loop, read-after-write, discarded `select_for_update` lock reads), all filed elsewhere.
+
+## Controls
+
+- **PC2 (capability).** 61 `super()` sites typed, **0 violations across all 136 marker edges** on a whole-survey read-back against a stdlib-only bare-name index sharing no code with the analyzer. Three routes agree on 61: the analyzer, that scan, and a hand calculation recorded before the arm reported. The 14 `super().save` sites in NON-model classes stayed `external`.
+- **PC1 (the walk).** Class-node hops in the subject arm: **0**. Round 1 read **33** with this same rule present and the defect live.
+- **PC1b**, added to the pre-registration before any arm ran, because an empty population produces the same zero as a working fix: **896** `dispatches_to` edges out of a type node across 440 classes, with **67** of the newly typed sinks inside one. The shape existed and the walk declined to cross it — making this the first live-population observation of INV-putug's fix, which 0020 could only price with harness arms.
+
+## Disclosures
+
+- **The pre-registered prediction was wrong.** It assumed round 1's eight "ordinary" false positives belonged to the other rules; seven of the eight are `super()`-sink or lock-read sites that exist only when this rule is present. Recorded in the measurement rather than dropped.
+- **The direction check substituted its observable.** `collect` records no `sanitized` count and a suppressed flow leaves the ledger by construction, so counting a field that does not exist would have returned 0 and read as "no suppression". Four named observables were fixed before the arms ran; all moved up or stayed flat (`flow_count` 148 -> 164, `findings_total` 724 -> 750, 0 GONE, kserve identical), so the declared-sanitizer arm was not run and that is the recorded reason.
+- **The 23 pair-level removals are re-keys, not losses** — 0 situations vanished; each still exists reporting a different sink.
+- **External validity.** Every precision number in this family rests on ONE Django application. Filed as WI-kibud, now cheap: the harness ran 5.2x faster than round 1 on identical work (pretix collect 1,937s -> 370s), an independent replication of WI-bavuz.
+
+Tests: 4722 passed, ratchet clean, changed source files at 100% coverage.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
