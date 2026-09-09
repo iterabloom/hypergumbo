@@ -1,0 +1,23 @@
+- op: create  # 8d5d
+  at: '2026-09-09T17:57:46Z'  # 8d5d
+  by: agent  # 8d5d
+  actor: jgstern_agent  # 8d5d
+  clock: 1  # 8d5d
+  nonce: 8d5d  # 8d5d
+  data:  # 8d5d
+    kind: work_item  # 8d5d
+    title: "c: open/close are in ambiguous_names but have NO catalogue row, so they can never classify at any quality of module evidence (11 sites on qemu-dtc alone)"  # 8d5d
+    status: todo_hard  # 8d5d
+    priority: 3  # 8d5d
+    parent:  # 8d5d
+    tags:  # 8d5d
+    - taint  # 8d5d
+    - catalogue  # 8d5d
+    - c  # 8d5d
+    - io_boundary  # 8d5d
+    isbefore: []  # 8d5d
+    duplicate_of: []  # 8d5d
+    not_duplicate_of: []  # 8d5d
+    pr_ref:  # 8d5d
+    description: "FILED 2026-09-09 while landing WI-lajus. `open` and `close` are listed in\nc.yaml's `ambiguous_names` -- \"fcntl open vs project-local open()\", \"unistd\nclose vs project-local close()\" -- but c.yaml contains NO CATALOGUE ROW for\neither. Grep for a `functions:` list naming them returns nothing.\n\nCONSEQUENCE: they can never classify, at any quality of module evidence. Being\nin `ambiguous_names` without a row is inert twice over -- the guard withholds a\nmatch that no row could have produced anyway.\n\nMEASURED: qemu-dtc calls `open(` 6 times and `close(` 5 times at source\n(counted directly, not from the survey). After WI-lajus both now carry a\ncorrect `sys/socket.h,unistd.h,...` module slot and still reach nothing,\nbecause there is no row on the other side. WI-lajus's own arm reported\n`unistd.read`, `unistd.write` and `sys/stat.stat` as newly reaching on the same\nrepo, so the mechanism works -- these two have no destination.\n\nTHIS IS AN L1 CATALOGUE GAP, NOT AN L3/L4 ONE, which is why it is separate from\nWI-lajus. INV-linub's chain is L1 catalogue -> L2 emission -> L3 evidence ->\nL4 gate, and completeness and reachability MULTIPLY: perfect receiver evidence\nagainst an absent row returns exactly zero.\n\nFIRST TASK: decide the boundary for each. `open` is fs_read or fs_write\ndepending on flags (O_RDONLY / O_WRONLY / O_RDWR), which is an\nargument-conditioned read -- INV-zumin class (b) rules that shape gets DUAL rows\nnarrowed by a stamped `io_target_kind`, so check that ruling before inventing a\nthird answer. `close` is a lifecycle call and ADR-0049 may rule it DEFERRED\nrather than a boundary at all: a close returns no value whose content the far\nside chose. A dated declared decision is an acceptable outcome for `close`;\nsilence is not.\n\nCHECK THE ANALOGUES BEFORE SHIPPING (LIVE rule 4): the same question applies to\nevery other name in `ambiguous_names` -- enumerate which of them have rows and\nwhich do not, rather than fixing these two and leaving the class."  # 8d5d
+    fields: {}  # 8d5d
