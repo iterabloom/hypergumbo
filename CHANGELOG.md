@@ -112,6 +112,32 @@ Second, **the analyzers emit call edges they never emitted, and the catalogue be
 - **`MetaKeySpec` gains `per_call_site`**, and a collapsed edge no longer reports one call site's fact as the whole relationship's: a per-site key whose collapsed sites disagree is removed and its distinct values move to `<key>_values`, mirroring `call_lines`. Declared: `io_mode`, `call_arg_shape`, and bash's `redirect_target`, `redirect_target_resolved` and `env_var`. A function that opens a path for read and then for write had reported `fs_read` only — the truncating write vanished, and a `must_not_exist: fs_write` claim confirmed on it (the ADR-0033 false-confirm class, reached through the edge collapse); both fs boundaries are now reported.
 
 ### Fixed
+- **scala: a typed receiver's external type reaches the module slot, so Scala's
+  method-kind catalogue rows are reachable for the first time** (WI-sigog,
+  INV-linub L3). `scala.py`'s external method-call branch already inferred the
+  receiver's type into `var_types` and already stamped it as
+  `meta["receiver_type_hint"]` for the Tier-2 `inherited_calls` linker — then
+  emitted a HARDCODED `dst=scala:external:0-0:<callee>:unresolved`, so the type
+  never reached the slot `_lookup_named_entry` / `gate_named_entry` read. That is
+  fatal rather than lossy: the F3 gate opens with
+  `if call_construct == "method": return None`, so a method call with no module
+  hint matches nothing at all. Measured (0024) across sbt and lila: **0 of 40,970**
+  external method-call edges carried a receiver type and **0 of 164** method-kind
+  rows were reached through Scala's own edges. This is verbatim the java defect
+  PR #227 fixed one language over, and it keeps that PR's discipline — the slot
+  only ever carries a path the file itself declares, and an unqualifiable type is
+  left alone rather than written in bare (INV-fazim). After: sbt 595/11,032
+  (5.39%) and lila 317/30,019 (1.06%) typed, **13 and 1** newly reached
+  method-kind rows, all **14/14 correct** on a census read-back against source.
+  No claim verdict moved and no sanitizer barrier registered (the hazard the fix
+  opens, since filling the slot is what makes `_register_sanitizer_callers`
+  reachable for Scala at all); what moved is the closed-world disclosure —
+  untypable receivers 95.98% → 90.91% on sbt and 98.57% → 97.80% on lila, with
+  the `host_fs` untyped-call caveat dropping 450 → 416 sites. Two controls with
+  no Scala (killbill, java; modsecurity, cpp) produce byte-identical
+  verify-claims output. The ceiling is disclosed rather than implied: only 10.1%
+  / 4.8% of these edges carry a receiver-type hint at all, so the remaining
+  ~90–95% are a separate and larger `var_types` gap, filed as its own item.
 - **A transcript watcher can no longer outlive the session that launched it, and a killed watcher no longer orphans its `inotifywait`.** After a session crash two orphans were found holding per-user inotify instances: a 50-hour `inotifywait -e close_write` reparented to PID 1 after its bash took an untrapped SIGTERM, and a 26-hour watcher looping in Phase 1 for a transcript that never appeared, because the crashed session never ran its session-end hook. Every watch now carries `-t` (`TRANSCRIPT_WATCH_TIMEOUT`, default 60 s) so a child orphaned by any parent death returns instead of waiting forever; the watch runs under `wait` with TERM/INT/HUP trapped so the handler reaps the child before exiting; and `launch-transcript-sync.sh` names the owning harness process in `TRANSCRIPT_OWNER_PID` (from `CLAUDE_PID`, else the first non-shell ancestor), which both phases check on every iteration by PID and by `/proc` start time. `kill-transcript-sync.sh` signals a watcher's children before the watcher, which also cleans up pre-fix watchers. Nine lifecycle tests pin each mechanism.
 - **java: `java.lang` statics reach their catalogue rows without a wildcard import**
   (INV-suril). JLS 7.3 imports `java.lang.*` into every compilation unit, but the
