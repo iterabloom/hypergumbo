@@ -1,0 +1,24 @@
+- op: create  # dc73
+  at: '2026-09-09T18:12:35Z'  # dc73
+  by: agent  # dc73
+  actor: jgstern_agent  # dc73
+  clock: 1  # dc73
+  nonce: dc73  # dc73
+  data:  # dc73
+    kind: work_item  # dc73
+    title: "objc: a self.<property> receiver is never typed, so 2,290 external method edges carry the 'external' sentinel and AFNetworking reaches ZERO net_recv rows (INV-linub L3; rust WI-dizag shape A is the precedent)"  # dc73
+    status: todo_hard  # dc73
+    priority: 2  # dc73
+    parent:  # dc73
+    tags:  # dc73
+    - taint  # dc73
+    - io_boundary  # dc73
+    - analysis_quality  # dc73
+    - objc  # dc73
+    - receiver_typing  # dc73
+    isbefore: []  # dc73
+    duplicate_of: []  # dc73
+    not_duplicate_of: []  # dc73
+    pr_ref:  # dc73
+    description: "FILED 2026-09-09 from WI-robit's census. Record:\n~/hypergumbo_lab_notebook/robit_objc_09092026/RESULT.md.\n\nTHE SHAPE, isolated by contrast within the same corpus and the same run:\n\n  TYPED    [handle writeData:data]                    NSFileHandle *handle\n           reaches NSFileHandle.writeData:            a LOCAL, type written\n  UNTYPED  [self.session dataTaskWithRequest:request]  @property (readwrite,\n           reaches nothing                             nonatomic, strong)\n                                                       NSURLSession *session\n\nobjc types locals whose type is written in the declaration, and class-name\nreceivers ([NSFileManager defaultManager]). It does NOT consult an @property /\nivar declaration to type a `self.<name>` receiver, so every such call arrives\nwith the `external` sentinel in the module slot and gate_named_entry refuses it\n-- correctly, per INV-tapat: an untyped method call must not match a\nmethod-kind entry.\n\nSIZE: 2,290 external method-construct edges carry the `external` slot across\nAFNetworking / CocoaLumberjack / fmdb / Mantle, against 2,308 that ARE typed --\nso objc sits at 50.2% receiver typing on external calls and this item is the\nother half. Per repo: AFNetworking 792 untyped (52.6% typed), CocoaLumberjack\n835 (53.8%), fmdb 574 (35.6%), Mantle 89 (60.8%).\n\nCONSEQUENCE ON REAL CODE: AFNetworking -- an HTTP client -- reaches net_send\nbut ZERO net_recv rows, because its NSURLSession task creation goes through\n`self.session`. objc's catalogue has 9 net_recv rows, all NSURLSession.\n\nTHIS IS A PRECEDENTED SHAPE WITH TWO SIBLING FIXES, WHICH IS THE REASON TO\nEXPECT IT TO BE CHEAP:\n  rust    WI-dizag shape A -- self.field, closed by resolve_receiver_type\n  python  INV-mumov / WI-zamud -- self.<attr> receivers, worked twice\nRead both before designing. WI-dizag's own closure note records that shape B\n(var-rooted field chains) measured a corpus finding-delta of ZERO on spacedrive\nand shipped as a correct-by-construction ceiling; the same outcome is possible\nhere and would be an acceptable, publishable result.\n\nDO NOT ASSUME THE PAYOFF. WI-robit's census found 21.6% of objc's method rows\nalready reaching, so this item's population is the residual, not the whole\nsurface. Measure through the taint path (INV-linub 2026-09-04), not on edge\ncounts: 0012 and WI-nonad both record an emission-side win that moved zero\nfindings.\n\nFIRST TASK: confirm the mechanism at source before building. Read where objc.py\nrecords declared types today (it clearly does, for locals) and establish\nwhether @property declarations are parsed at all, or parsed and not indexed by\nreceiver name. Those are different fixes."  # dc73
+    fields: {}  # dc73
