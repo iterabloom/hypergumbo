@@ -1,0 +1,25 @@
+- op: create  # 8c36
+  at: '2026-09-09T16:56:14Z'  # 8c36
+  by: agent  # 8c36
+  actor: jgstern_agent  # 8c36
+  clock: 1  # 8c36
+  nonce: 8c36  # 8c36
+  data:  # 8c36
+    kind: work_item  # 8c36
+    title: "java/scala/swift: INV-linub's 'OK in both forms' verdict rests on FIXTURE evidence only (WI-nasuf 2026-08-05) at 90-100% combined exposure -- confirm or refute on corpus"  # 8c36
+    status: todo_hard  # 8c36
+    priority: 2  # 8c36
+    parent:  # 8c36
+    tags:  # 8c36
+    - taint  # 8c36
+    - io_boundary  # 8c36
+    - analysis_quality  # 8c36
+    - java  # 8c36
+    - scala  # 8c36
+    - swift  # 8c36
+    isbefore: []  # 8c36
+    duplicate_of: []  # 8c36
+    not_duplicate_of: []  # 8c36
+    pr_ref:  # 8c36
+    description: "FILED 2026-09-09 from INV-linub phase 1. Record:\n~/hypergumbo_lab_notebook/linub_enumeration_09092026/.\n\nINV-linub's ANALYZER STATUS block records java, scala and swift as \"emit and\nmatch in BOTH forms OK\". That verdict rests ENTIRELY on WI-nasuf's fixture\nmeasurement of 2026-08-05 -- a real pipeline and production\n_match_propagation_entry, but a FIXTURE, with an in-fixture positive control.\nIt has never been confirmed on corpus.\n\nWHY THAT IS THIN AT THESE EXPOSURES (measured 2026-09-09, all rows):\n    java    142 rows   R1-only 104   R2-only  3   dual 35   neither  0\n    scala   184 rows   R1-only 112   R2-only  5   dual 48   neither 15\n    swift   107 rows   R1-only  93   R2-only  0   dual  7   neither  7\njava's combined at-risk share is 100% of its rows and scala's is 90%. A fixture\npass at 100% exposure is the weakest evidence in the table carrying the\nstrongest claim.\n\nTHE PRECEDENT THAT MAKES THIS WORTH DOING rather than assuming: WI-nasuf's own\nkotlin work found FIVE separate defects during per-site read-back on okhttp that\nthe fixture arm had not surfaced -- nested-class keying, file-scoped var_types\nleaking across functions, chain-root constructor typing, dotted constructors at\nthe root of longer chains, and newline-bearing navigation text failing\nisidentifier(). Every one was found by reading real sites, not fixtures. There\nis no reason to expect java/scala/swift to be different in kind.\n\nSCOPE: confirm-or-refute on corpus, one repository per language. This is a\nCONFIRMATION item, and a clean result is a publishable negative that upgrades\nthree cells of INV-linub's table from fixture evidence to behavioural evidence\n-- which is what closure-evidence discipline requires before INV-linub can be\nsatisfied on those languages anyway.\n\nNOT IN SCOPE: fixing anything found. File the residual."  # 8c36
+    fields: {}  # 8c36

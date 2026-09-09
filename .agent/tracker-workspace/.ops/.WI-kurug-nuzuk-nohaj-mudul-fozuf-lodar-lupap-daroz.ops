@@ -1,0 +1,23 @@
+- op: create  # d865
+  at: '2026-09-09T16:56:18Z'  # d865
+  by: agent  # d865
+  actor: jgstern_agent  # d865
+  clock: 1  # d865
+  nonce: d865  # d865
+  data:  # d865
+    kind: work_item  # d865
+    title: "SIZE the ambiguous-name route on cpp/elixir/erlang/haskell: 218 R2-only rows the old exposure table called 'NOT at risk', status 'not blind' which is neither pass nor fail (C is confirmed failing under WI-lajus)"  # d865
+    status: todo_hard  # d865
+    priority: 2  # d865
+    parent:  # d865
+    tags:  # d865
+    - taint  # d865
+    - io_boundary  # d865
+    - analysis_quality  # d865
+    - catalogue  # d865
+    isbefore: []  # d865
+    duplicate_of: []  # d865
+    not_duplicate_of: []  # d865
+    pr_ref:  # d865
+    description: "FILED 2026-09-09 from INV-linub phase 1. Record and instruments:\n~/hypergumbo_lab_notebook/linub_enumeration_09092026/ (PLAN.md pre-registered\nbefore any number existed, census.py, analyze.py, RESULT.md).\n\nINV-linub's 2026-08-06 exposure table said \"c/cpp/elixir/erlang/haskell: 0%\nmethod-kind -- NOT at risk from this class.\" Phase 1 falsified that for all\nfive. The table is now two-dimensional on the item. C's cell is CONFIRMED\nFAILING and already filed as WI-lajus. THIS ITEM IS THE OTHER FOUR, and it is a\nSIZING item -- their status today is \"not blind\", which is weaker than a pass\nand weaker than a failure.\n\nMEASURED (all rows, via production load_catalog; R2-only = function-kind rows\nwhose name is in the catalogue's own ambiguous_names, so L4 refuses them without\nmodule context, and receiver typing cannot reach them at any quality):\n    elixir  529 rows   R2-only 133   reached 12/134 on phoenix-framework\n    erlang  278 rows   R2-only  59   reached 14/60  on rebar3\n    cpp     121 rows   R2-only  16   reached  4/22  on modsecurity\n    haskell 276 rows   R2-only  10   reached  1/10  on servant\n\nWHY THEY MAY ALL BE FINE, stated first because it is the likelier outcome:\nelixir and erlang write the module AT THE CALL SITE by convention (File.read,\n:file.read_file), so the module_hint disjunct of INV-linub's statement is\nsatisfied by construction, exactly as it is for go's package qualifiers (see\nINV-tanom, where that disjunct silently carried the requirement). If so, these\nfour are PASSES via a route the class did not anticipate, and the correct output\nis a dated positive declaration, not a fix.\n\nWHY IT IS NOT SAFE TO ASSUME THAT: C proves the same catalogue shape can be\ntotally blind. On qemu-dtc, fopen/fread/fwrite reach their rows while\nopen/write/close/read reach nothing, the only difference being ambiguous-name\nmembership. And \"reached 12 of 134\" is NOT a 122-row failure -- a row can be\nunreached because the repo never calls it. The reach census cannot tell those\napart, which is precisely why this item exists.\n\nFIRST TASK, and it is cheap: for each of the four, take the R2-only rows the\ncorpus repo DOES call (established from source, not from the survey) and check\nwhether each reaches its entry. That is the qemu-dtc within-repo contrast --\npositive and negative control in one file, one run -- applied to four more\nlanguages. Only then decide fix vs dated declaration, per language.\n\nDO NOT fold this into WI-lajus. C is confirmed failing and needs a fix; these\nfour are unmeasured and may need nothing. Same route, different evidentiary\nstate."  # d865
+    fields: {}  # d865

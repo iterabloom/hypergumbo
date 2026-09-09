@@ -1,0 +1,23 @@
+- op: create  # bced
+  at: '2026-09-09T16:56:09Z'  # bced
+  by: agent  # bced
+  actor: jgstern_agent  # bced
+  clock: 1  # bced
+  nonce: bced  # bced
+  data:  # bced
+    kind: work_item  # bced
+    title: "objc: INV-linub's largest UNEXAMINED cell -- 123 of 131 catalogue rows are method-kind (94%, 3rd-highest R1 exposure) with no filed item and no corpus measurement anywhere"  # bced
+    status: todo_hard  # bced
+    priority: 2  # bced
+    parent:  # bced
+    tags:  # bced
+    - taint  # bced
+    - io_boundary  # bced
+    - analysis_quality  # bced
+    - objc  # bced
+    isbefore: []  # bced
+    duplicate_of: []  # bced
+    not_duplicate_of: []  # bced
+    pr_ref:  # bced
+    description: "FILED 2026-09-09 from INV-linub phase 1 (the enumeration rebuild). Record and\ninstruments: ~/hypergumbo_lab_notebook/linub_enumeration_09092026/.\n\nobjc is the LARGEST UNEXAMINED CELL in INV-linub's class and it has been sitting\nin the exposure table since 2026-08-06 without anyone returning to it.\n\nMEASURED 2026-09-09 over the shipped catalogue via production's own\nload_catalog:\n    objc   131 rows   R1-only 123 (94%)   R2-only 0   dual 0   neither 6\nThat is the THIRD-HIGHEST receiver-typing exposure of any language, behind only\nkotlin (143) and scala (112), both of which have shipped fixes. objc has:\n  * NO filed tracker item for the receiver-typing cell,\n  * NO corpus measurement of whether its method rows are reachable,\n  * an entry in INV-linub's own ANALYZER STATUS block reading \"NOT MEASURED\".\nWI-nasuf's 2026-08-05 fixture measurement covered java/scala/swift/python/\nkotlin/javascript and did NOT cover objc.\n\nobjc is a PURE receiver-syntax cell: R2-only is 0, so the ambiguous-name route\nthat dominates c/cpp/elixir/erlang/haskell does not apply. Whatever is or is not\nwrong here is INV-linub's original mechanism, undiluted.\n\nTHIS IS A SIZING ITEM, NOT A FIX ITEM, and it should stay one until it reports.\nINV-linub's own go entry (2026-08-10) set this precedent -- \"SIZE IT BEFORE\nBUILDING IT\" -- and INV-tanom is the cautionary case for what happens when a\ncell is assumed costly and turns out to cost zero.\n\nFIRST TASK: measure whether objc method-kind rows are reachable on a real\nObjective-C repository. The instrument already exists in shape --\nscripts/measure-catalogue-reach.py generates a call site per catalogue entry and\nasks production whether a boundary comes back -- but it has NO objc emitter\ntoday (it supports python/go/javascript/typescript/java only), so an emitter is\nthis item's first deliverable. Read that file's header before writing one: it\nrecords that fixture SHAPE dominated the answer by 35x for javascript, and that\na generated-file marker silently zeroed the first Go run.\n\nREPORTS: R1 rows reached / R1 rows total on at least one objc corpus repo, with\na positive control in the same run."  # bced
+    fields: {}  # bced
