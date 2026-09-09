@@ -1,0 +1,23 @@
+- op: create  # cead
+  at: '2026-09-09T21:32:16Z'  # cead
+  by: agent  # cead
+  actor: jgstern_agent  # cead
+  clock: 1  # cead
+  nonce: cead  # cead
+  data:  # cead
+    kind: work_item  # cead
+    title: "scala: _extract_import_hints drops wildcard imports and mis-registers the package's last segment as a type hint; Scala's implicit imports are not modelled"  # cead
+    status: todo_hard  # cead
+    priority: 3  # cead
+    parent:  # cead
+    tags:  # cead
+    - taint  # cead
+    - io_boundary  # cead
+    - analysis_quality  # cead
+    - scala  # cead
+    isbefore: []  # cead
+    duplicate_of: []  # cead
+    not_duplicate_of: []  # cead
+    pr_ref:  # cead
+    description: "FILED 2026-09-09 from WI-sigog's implementation.\n\n`_extract_import_hints` in scala.py maps a short type name to the path the file\ndeclares for it, and WI-sigog made that map the source of the external\nmethod-call module slot. Two defects in that extractor now have a consumer.\n\n(1) A WILDCARD IMPORT CONTRIBUTES NO TYPE HINT. `import java.io._` parses to\n`import_declaration > identifier(java) . identifier(io) . namespace_wildcard(_)`.\nThe extractor's fallback branch (`if identifiers and not has_selectors`) treats\nthe LAST identifier as the imported short name, so:\n\n    import java.nio.file._   ->   hints[\"file\"] = \"java.nio.file\"\n\nwhich is both a MISSING hint for every type the wildcard actually imports and a\nWRONG hint registered under the package's own last segment. Verified on a probe\n2026-09-09. A receiver typed `File` under `import java.io._` keeps the\n`external` sentinel; a receiver typed `file` would be handed `java.nio.file`.\n\nJava handles the analogous case by writing the comma-joined disjunction of the\nfile's wildcard packages into the slot (`_qualify_receiver_type`, INV-hahak's\n\"ANY\" contract). That is deliberately NOT free here and is why this is filed\nrather than folded into WI-sigog: an UNENUMERATED disjunct withholds every\nverdict under INV-zimud's ALL-gate, which is exactly how WI-lajus relabelled 15\nC verdicts the same day. Whoever takes this must measure the withholding\ndirection, not just the recall direction.\n\nSIZED, so the priority is honest: wildcard imports are RARE in the measured\nScala corpus -- 199 of 4,314 import lines in sbt (4.6%) and 5 of 6,674 in lila\n(0.07%). The wrong-hint half is a correctness bug regardless of volume; the\nmissing-hint half is a small recall gain.\n\n(2) SCALA'S IMPLICIT IMPORTS ARE NOT MODELLED. Every Scala file implicitly\nimports `java.lang._`, `scala._` and `scala.Predef._`, so those types appear in\nNO import statement and get no path. They are the top of the hint histogram:\nsbt `String` 189, `Thread` 25; lila `String` 162, `Boolean` 90. Java models the\nequivalent JLS 7.3 rule with an explicit `_JAVA_LANG_TYPES` allowlist, which is\nthe shape to copy -- an allowlist, never \"capitalised, so send it to\njava.lang\". Expected I/O value is LOW (String/Boolean/Thread methods are not\ncatalogued sinks), so this half is recall-neutral and mostly buys correctness."  # cead
+    fields: {}  # cead
