@@ -1,0 +1,23 @@
+- op: create  # 64a5
+  at: '2026-09-09T19:13:15Z'  # 64a5
+  by: agent  # 64a5
+  actor: jgstern_agent  # 64a5
+  clock: 1  # 64a5
+  nonce: 64a5  # 64a5
+  data:  # 64a5
+    kind: work_item  # 64a5
+    title: "scala: ZERO of 40,970 external method-call edges carry a receiver type (sbt + lila) and 0/164 method rows reach -- INV-linub's 'OK in both forms' verdict for scala was fixture-only and is refuted on corpus"  # 64a5
+    status: todo_hard  # 64a5
+    priority: 1  # 64a5
+    parent:  # 64a5
+    tags:  # 64a5
+    - taint  # 64a5
+    - io_boundary  # 64a5
+    - analysis_quality  # 64a5
+    - scala  # 64a5
+    isbefore: []  # 64a5
+    duplicate_of: []  # 64a5
+    not_duplicate_of: []  # 64a5
+    pr_ref:  # 64a5
+    description: "FILED 2026-09-09 from WI-fasoz (T0a of INV-linub's drain). Record and\ninstrument: ~/hypergumbo_lab_notebook/t0_sizing_09092026/fasoz/ (PLAN.md\npre-registered before any number existed, typed_share.py, RESULT.md).\n\nTHIS REFUTES INV-linub'S RECORDED VERDICT FOR SCALA. That item's ANALYZER\nSTATUS block reads \"java, scala, swift -- emit and match in BOTH forms OK\",\nresting entirely on WI-nasuf's 2026-08-05 FIXTURE measurement. On corpus, scala\ndoes not match in either form.\n\nMEASURED, TWO INDEPENDENT REPOSITORIES:\n\n    repo   size    scala external method-call edges   typed   sentinel\n    sbt     36 MB                           10,985       0     10,985\n    lila   185 MB                           29,985       0     29,985\n    TOTAL                                   40,970       0     40,970   0.0%\n\n**Zero out of 40,970.** Not a low share -- none. Every dst reads\n`scala:external:0-0:<name>:external_symbol` with a null `dst_ref.module_path`,\n`java.nio.file.Files.readAllBytes` included.\n\nMETHOD-KIND ROWS REACHED THROUGH SCALA'S OWN EDGES: 0 / 164 on both repos.\n\nIO-BOUNDARY CHAINS BY EDGE LANGUAGE, which is the same fact from the other end:\n    sbt    bash 215, java 35, c 1,                       scala   0\n    lila   typescript 255, javascript 64, bash 37,\n           python 31,                                    scala   1\nA Scala build tool with 330 .scala files and a large Scala web application\nbetween them contribute ONE boundary chain through scala edges.\n\nNOT A REPO ARTIFACT: scala EMITS the method calls -- 40,970 of them, correctly\nstamped `call_construct: \"method\"` -- it simply never types the receiver. The\nemission half works; the receiver-evidence half is absent.\n\nEXPOSURE: scala's combined R1+R2 at-risk share is 90% of its 184 catalogue rows\n(R1-only 112, dual 48). The receiver-typing route carries almost the entire\nscala catalogue, and there is no second disjunct: unlike go (package\nqualifiers), erlang (call-site modules) or C since WI-lajus (`#include`), scala\nhas 5 R2-only rows and nothing else to fall back on.\n\nWHY THE FIXTURE SAID OTHERWISE is not yet diagnosed and is the first task here.\nWI-nasuf's arm used the real pipeline and production\n`_match_propagation_entry`, so the fixture presumably wrote the receiver type\nexplicitly (`val f: File = ...`), which is exactly the form scala code least\noften uses -- scala's type inference is pervasive. java, measured the same day\non the same instrument, came back 65.0% typed, so the instrument is not what\nproduces the zero.\n\nCAUTION FROM THE SAME MEASUREMENT: an earlier run of this instrument credited\nscala with reaching 14 method rows. That was java's reach inside the same\nrepository, matched through catalogue rows the two languages SHARE\n(`java.io.File.exists` is in both). Attribution must come from each chain's own\n`io_edge_dst` language prefix. Anyone re-measuring this cell will hit the same\ntrap: sbt and lila both contain non-scala source.\n\nDIRECTION WARNING per INV-linub's rule: this is a false-NEGATIVE fix, but more\ntyped receivers feed more resolved callees, which feeds 7a sanitizer\nregistration, where a registered barrier earns `sanitized` and DROPS a flow\n(#214). Measure at L4 on findings in both directions. WI-lajus, the same day,\nis the live case: its typed-receiver win moved 15 of 21 claim verdicts toward\nwithholding."  # 64a5
+    fields: {}  # 64a5

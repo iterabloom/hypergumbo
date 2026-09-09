@@ -1,0 +1,23 @@
+- op: create  # b69b
+  at: '2026-09-09T19:11:06Z'  # b69b
+  by: agent  # b69b
+  actor: jgstern_agent  # b69b
+  clock: 1  # b69b
+  nonce: b69b  # b69b
+  data:  # b69b
+    kind: work_item  # b69b
+    title: "elixir: an atom-module call (:ets.insert, :httpc.request) emits NO call edge -- _handle_dot_call returns early when the dot node has no alias child, hiding every OTP module an Elixir project uses"  # b69b
+    status: todo_hard  # b69b
+    priority: 2  # b69b
+    parent:  # b69b
+    tags:  # b69b
+    - taint  # b69b
+    - io_boundary  # b69b
+    - analysis_quality  # b69b
+    - elixir  # b69b
+    isbefore: []  # b69b
+    duplicate_of: []  # b69b
+    not_duplicate_of: []  # b69b
+    pr_ref:  # b69b
+    description: "FILED 2026-09-09 from WI-kurug (T0a of INV-linub's drain). Record:\n~/hypergumbo_lab_notebook/t0_sizing_09092026/kurug/RESULT.md.\n\nElixir calls Erlang modules with an ATOM module -- `:ets.insert(t, {k, v})`,\n`:httpc.request(...)`. On phoenix-framework these call sites produce NO CALL\nEDGE AT ALL. Not an untyped edge, not a misbound edge: zero edges carry these\ndestinations.\n\nMEASURED, in files the analyzer demonstrably read:\n    :ets.insert     7 sites   lib/phoenix/config.ex:23 and others\n    :ets.lookup     2 sites   lib/phoenix/endpoint.ex:542, config.ex:49\n    :ets.new        2 sites   lib/phoenix/config.ex:133\n    :ets.info       1 site    lib/phoenix/config.ex:52\n    :ets.delete     1 site    lib/phoenix/config.ex:162\n    :httpc.request  2 sites   installer/lib/mix/tasks/phx.new.ex:593,\n                              lib/mix/tasks/phx.gen.release.ex:352\nAll six rows are catalogued elixir primitives. All are in `ambiguous_names`,\nbut ambiguity is IRRELEVANT here -- the F3 gate never sees an edge to refuse.\n\nMECHANISM, read in elixir.py::_handle_dot_call: it begins\n\n    alias_node = find_child_by_type(dot_node, \"alias\")\n    func_id_node = find_child_by_type(dot_node, \"identifier\")\n    if alias_node is None or func_id_node is None:\n        return\n\nAn atom-module call has no `alias` child -- `:ets` parses as an atom, not an\nalias -- so the handler returns before emitting anything. The unresolved-edge\nfallback at the end of that function is never reached.\n\nWHY THIS MATTERS BEYOND SIX ROWS: `:ets` is Erlang's in-memory table store and\n`:httpc` is OTP's HTTP client, so this is a real I/O surface, and the\n`:module.function` form is the ONLY way to call any Erlang/OTP module from\nElixir. Every OTP module an Elixir project touches is invisible by the same\nmechanism -- `:file`, `:gen_tcp`, `:crypto`, `:os`. The six rows measured here\nare what phoenix-framework happens to call, not the size of the surface.\n\nWHY THIS IS AN INV-linub INSTANCE: L2. The statement requires the call site to\nPRODUCE a call edge; it produces none, so no amount of receiver evidence\ndownstream can help. Per this class's own rule an L2-only fix measures as a win\nat the analyzer and can move zero findings, so this must be measured at L4 on\nfindings.\n\nDISTINCT FROM the sibling item filed the same day (module-qualified call binds\nby bare name to a first-party symbol): that one emits a WRONG edge from a\ncorrectly-parsed alias call; this one emits NO edge because the node shape is\nnot recognised. Same file, same function, different branch, different fix."  # b69b
+    fields: {}  # b69b
