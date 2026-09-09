@@ -1,0 +1,24 @@
+- op: create  # 3bfb
+  at: '2026-09-09T04:56:37Z'  # 3bfb
+  by: agent  # 3bfb
+  actor: jgstern_agent  # 3bfb
+  clock: 1  # 3bfb
+  nonce: 3bfb  # 3bfb
+  data:  # 3bfb
+    kind: work_item  # 3bfb
+    title: "Django receiver-typing precision rests on ONE application repo: run django/ as a second subject"  # 3bfb
+    status: todo_soft  # 3bfb
+    priority: 3  # 3bfb
+    parent:  # 3bfb
+    tags:  # 3bfb
+    - taint  # 3bfb
+    - python  # 3bfb
+    - measurement  # 3bfb
+    - phase6  # 3bfb
+    - external_validity  # 3bfb
+    isbefore: []  # 3bfb
+    duplicate_of: []  # 3bfb
+    not_duplicate_of: []  # 3bfb
+    pr_ref:  # 3bfb
+    description: "Every precision number in the Django receiver-typing family (measurements 0013, 0015, 0016, 0021) rests on ONE Django APPLICATION: pretix. kserve is the control and shows the changes do not leak outside Django, but a control cannot show that the rates generalise to a second Django application, and nothing in the family has shown that.\n\nA second Django repository IS in the corpus and was not being used: /home/jgstern_agent/whole_bunch_of_repos/django (86 MB, Django itself). Crude comparable scan (`def save(self` + 3 lines, counting `super().save(`): pretix 29, django 11. The careful count on pretix is 56 of 66 overrides, so this scan undercounts by roughly half; the point is the ratio, not the absolute. django carries real population, not a token amount.\n\nWHY IT IS A WEAKER SUBJECT THAN IT LOOKS, AND STILL WORTH RUNNING: Django's own source is the FRAMEWORK, not an application built on it. It defines `Model.save` rather than calling it, and most of its model definitions live under `tests/`. That makes it a genuinely different position for the rules to be exercised in -- useful as an external-validity check, and a poor substitute for a second real application.\n\nTHE COST OBJECTION IS GONE. Round 1's two arms cost ~2.2 hours of wall clock, which is why a third repository was never added. Measured 2026-09-09 on measurement 0021's arms: pretix collect 1,937 s -> 370 s (5.2x), kserve 172 s -> 104 s, after WI-bavuz. An arm is now ~12-15 minutes.\n\nSIZED: reuse 0021's arm.sh with one repo added; no new instrument. Report (a) how many `super()` write sites type, (b) whether an independent bare-name read-back finds any wrong-type, (c) the finding-level delta. Full note: ~/hypergumbo_lab_notebook/sihoh_superwrite_09092026/EXTERNAL_VALIDITY.md"  # 3bfb
+    fields: {}  # 3bfb
