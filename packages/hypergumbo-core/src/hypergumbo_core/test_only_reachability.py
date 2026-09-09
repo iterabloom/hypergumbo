@@ -22,10 +22,25 @@ splits 585 functions / 204 methods on the self-tree, and the method half cannot
 be adjudicated today: a method's identity in the call graph is its SHORT name,
 so ``Store.add`` is indistinguishable from ``set.add`` and ``Pattern.matches``
 scores hundreds of hits off ``re``'s ``.matches``. Deciding a method needs
-receiver typing, which is INV-linub's open work. Including them would put ~100
+receiver typing, which is WI-nanom's open work -- pyright/SCIP under ADR-0012
+multi-fidelity coexistence. It is NOT INV-linub's, which this docstring claimed
+until 2026-09-09: that class is about a catalogued I/O sink reaching its
+CATALOGUE entry through the F3 gate, where this needs FIRST-PARTY method
+resolution in the call graph. Same capability, different consumer, and closing
+INV-linub would not have delivered it. Including them would put ~100
 unadjudicable rows in a frozen baseline, and *"a rubber-stamped ratchet is worse
 than none"* is this item's governing constraint. Methods are therefore counted
 and reported, never gated.
+
+THE DEMOTION ARM IS BLIND THE SAME WAY, INDEPENDENTLY, so widening
+``GATED_KINDS`` alone would not be enough. ``collect_production_references``
+below is a standalone ``ast`` walk with no analyzer involvement, and it indexes
+an ``ast.Attribute`` under its bare ``node.attr`` -- so ``set.add`` and
+``Store.add`` both land in ``refs.loads["add"]`` no matter how well the call
+graph is typed. Typing the call graph is necessary and not sufficient: the
+reference index needs types too, which means either sourcing production
+references from the analyzer's IR instead of this second parse, or letting an
+external type oracle attribute them here. WI-mifag owns both halves.
 
 THE DEMOTION ARM, AND WHY IT IS NOT OPTIONAL. Three reference mechanisms are
 invisible to a ``calls``/``instantiates`` edge set, and each produced a
