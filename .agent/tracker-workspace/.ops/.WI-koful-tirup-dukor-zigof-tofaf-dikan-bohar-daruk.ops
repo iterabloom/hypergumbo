@@ -1,0 +1,23 @@
+- op: create  # a294
+  at: '2026-09-09T23:41:56Z'  # a294
+  by: agent  # a294
+  actor: jgstern_agent  # a294
+  clock: 1  # a294
+  nonce: a294  # a294
+  data:  # a294
+    kind: work_item  # a294
+    title: "objc: three receiver shapes stay untyped after WI-garar stage 2 -- an inherited property, a plain ivar, and a property on a non-self receiver"  # a294
+    status: todo_hard  # a294
+    priority: 3  # a294
+    parent:  # a294
+    tags:  # a294
+    - objc  # a294
+    - analysis_quality  # a294
+    - io_boundary  # a294
+    - receiver_typing  # a294
+    isbefore: []  # a294
+    duplicate_of: []  # a294
+    not_duplicate_of: []  # a294
+    pr_ref:  # a294
+    description: "FILED 2026-09-09 as WI-garar stage 2's declared residual. Each shape below is\ncurrently pinned by a SENTINEL CONTROL in\npackages/hypergumbo-lang-mainstream/tests/test_objc_property_receiver_typing.py,\nso any widening is attributable to the change that does it rather than\ndiscovered later.\n\nStage 2 types a `self.<property>` receiver from the class's own `@property`\ndeclaration. Three receiver shapes are deliberately left at the `external`\nsentinel:\n\n(1) AN INHERITED PROPERTY. The lookup is keyed on the DECLARING class only, so\n`Derived` sending `[self.session …]` for a `session` declared on `Client` is not\nresolved. Walking the base chain needs `class_bases` (already computed in\n`ObjCAnalyzer.analyze` for `parent_base_classes`, not threaded to the edge pass)\nand carries its own false-positive surface: a subclass may REDECLARE a property\nwith a different type, and the nearest declaration must win. Probably the\nlargest of the three by volume; unmeasured.\n\n(2) A PLAIN IVAR. `@implementation Foo { NSFileHandle *_h; }` is not a\n`property_declaration`, so `[self->_h writeData:…]` and `[_h writeData:…]` stay\nuntyped. Cheap to add -- it is a sibling extractor over the ivar declaration\nlist -- and it is the older ObjC idiom, so its share should rise on older code.\n\n(3) A PROPERTY ON ANOTHER OBJECT. `[peer.session …]` requires `peer` typed\nfirst, which is a chained-receiver inference rather than a lookup. This is the\nsame shape as rust WI-dizag's shape B, which measured a corpus finding-delta of\nZERO and shipped as a correct-by-construction ceiling -- so the honest\nexpectation here is low payoff, and that is worth knowing BEFORE building it.\n\nORDER, and the reason it is not obvious: (2) is cheapest, (1) is probably\nlargest, (3) is probably worthless. But NONE of them should be sized on\nAFNetworking until WI-lafom is understood -- 18.6% of objc files in the corpus\nfail to parse, so a per-shape census run today has a denominator that varies\nper repository by an unknown amount. Measure the shapes on CocoaLumberjack and\nMantle (73.7% / 100% property-node reach) or fix the disclosure first."  # a294
+    fields: {}  # a294
