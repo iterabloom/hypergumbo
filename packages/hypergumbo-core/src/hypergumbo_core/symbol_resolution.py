@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -95,6 +96,77 @@ class LookupResult:
     def is_ambiguous(self) -> bool:
         """Whether multiple candidates were found."""
         return len(self.candidates) > 1
+
+
+#: How many registries keep a cached index. One registry per analysis run is
+#: the norm, so this only needs to cover a handful of concurrent analyses; the
+#: cache holds a STRONG reference to each registry (see ``_registry_indexes``),
+#: so an unbounded cache would pin every registry a long-lived process ever saw.
+_INDEX_CACHE_MAX = 4
+
+
+@dataclass
+class _RegistryIndexes:
+    """The lazily-built indexes for ONE registry, shared across resolvers.
+
+    ``registry`` is a STRONG reference and that is load-bearing, not an
+    oversight: the cache is keyed on ``id(registry)``, and a plain ``dict``
+    cannot be weakly referenced. Holding the registry alive is what stops its
+    id being recycled onto a different object and served a foreign index. The
+    cost is bounded by :data:`_INDEX_CACHE_MAX`.
+
+    ``size`` is the registry's length when the indexes were built. It is the
+    staleness check, and it is ``len()`` — O(1) — deliberately: the whole point
+    of the cache is to stop per-lookup work proportional to the registry, so a
+    validity check that walks the keys would reintroduce the very cost being
+    removed (an O(R) check over L lookups is still O(L*R)).
+    """
+
+    registry: dict[tuple[str, str], Symbol]
+    size: int
+    suffix: dict[str, list[tuple[str, str]]] | None = None
+    name: dict[str, list[tuple[str, str]]] | None = None
+
+
+_INDEX_CACHE: "OrderedDict[int, _RegistryIndexes]" = OrderedDict()
+
+
+def _registry_indexes(
+    registry: dict[tuple[str, str], Symbol],
+) -> _RegistryIndexes:
+    """The index holder for *registry*, creating and LRU-evicting as needed.
+
+    Returns a fresh holder when the registry is unseen, when its id belongs to a
+    different object, or when its length has changed since the indexes were
+    built — so a grown or shrunk registry is reindexed rather than answered
+    from a stale index.
+    """
+    key = id(registry)
+    entry = _INDEX_CACHE.get(key)
+    if (
+        entry is not None
+        and entry.registry is registry
+        and entry.size == len(registry)
+    ):
+        _INDEX_CACHE.move_to_end(key)
+        return entry
+    entry = _RegistryIndexes(registry=registry, size=len(registry))
+    _INDEX_CACHE[key] = entry
+    _INDEX_CACHE.move_to_end(key)
+    while len(_INDEX_CACHE) > _INDEX_CACHE_MAX:
+        _INDEX_CACHE.popitem(last=False)
+    return entry
+
+
+def clear_registry_index_cache() -> None:
+    """Drop every cached registry index.
+
+    For tests, and for a caller that has mutated a registry in a way ``len()``
+    cannot see (adding one key while removing another). Ordinary code does not
+    need it — nothing in this repository mutates a registry after building a
+    resolver over it.
+    """
+    _INDEX_CACHE.clear()
 
 
 class SymbolResolver:
@@ -336,15 +408,26 @@ class SymbolResolver:
         if self._suffix_index is not None:
             return
 
-        self._suffix_index = {}
-        for module, name in self.registry.keys():
-            parts = module.split(".")
-            # Generate all suffixes (including the full module name)
-            for i in range(len(parts)):
-                suffix = ".".join(parts[i:])
-                if suffix not in self._suffix_index:
-                    self._suffix_index[suffix] = []
-                self._suffix_index[suffix].append((module, name))
+        # WI-bavuz: the index describes the REGISTRY, so it is cached against
+        # the registry rather than against this resolver. ``lookup_symbol``
+        # builds a fresh resolver per call, so a resolver-local index was
+        # rebuilt per lookup: O(lookups x registry), both factors growing with
+        # file count. Measured on pretix, N=300 -> N=600: this function's own
+        # time 40.1s -> 269.9s (6.73x for 2x the files), 61% of all growth,
+        # with SymbolResolver.__init__ called 5,827 -> 16,065 times tracking
+        # lookup_symbol to within the one legitimate resolver.
+        entry = _registry_indexes(self.registry)
+        if entry.suffix is None:
+            index: dict[str, list[tuple[str, str]]] = {}
+            for module, name in self.registry.keys():
+                parts = module.split(".")
+                # Generate all suffixes (including the full module name)
+                for i in range(len(parts)):
+                    index.setdefault(".".join(parts[i:]), []).append(
+                        (module, name)
+                    )
+            entry.suffix = index
+        self._suffix_index = entry.suffix
 
     def _ensure_name_index(self) -> None:
         """Build name index lazily on first use.
@@ -355,11 +438,14 @@ class SymbolResolver:
         if self._name_index is not None:
             return
 
-        self._name_index = {}
-        for module, name in self.registry.keys():
-            if name not in self._name_index:
-                self._name_index[name] = []
-            self._name_index[name].append((module, name))
+        # Shared on the same terms as the suffix index (WI-bavuz).
+        entry = _registry_indexes(self.registry)
+        if entry.name is None:
+            index: dict[str, list[tuple[str, str]]] = {}
+            for module, name in self.registry.keys():
+                index.setdefault(name, []).append((module, name))
+            entry.name = index
+        self._name_index = entry.name
 
     def clear_indexes(self) -> None:
         """Clear cached indexes.
@@ -369,6 +455,10 @@ class SymbolResolver:
         """
         self._suffix_index = None
         self._name_index = None
+        # The indexes are shared per registry (WI-bavuz), so clearing only this
+        # resolver's attributes would leave the next resolver over the same
+        # registry reading the very index the caller asked to discard.
+        _INDEX_CACHE.pop(id(self.registry), None)
 
 
 class NameResolver:
