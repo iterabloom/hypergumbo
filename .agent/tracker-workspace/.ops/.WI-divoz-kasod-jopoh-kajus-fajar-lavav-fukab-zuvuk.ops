@@ -20,3 +20,19 @@
     pr_ref:  # 0295
     description: "The `awaits_bakeoff_validation` lifecycle has three buckets (per the tagging-discipline playbook): moved -> strip the tag; no_move -> file an untagged regression sub-item; inconclusive -> keep the tag. A fix that is INERT BY CONSTRUCTION until a gated sibling lands fits none of them, and processing it under the existing rules manufactures a false finding.\n\nCONCRETE INSTANCE, which is why this is filed rather than theorised. INV-putug (PR #841) refuses a `dispatches_to` edge out of a type node. On the shipped tree it moves NOTHING -- measurement 0020 recorded 0 removed, 0 added, 0 class-node hops -- and that is CORRECT and PREDICTED, not a regression: the defect needs a taint SINK inside a model method, and the rule that creates that sink (WI-sihoh) was withheld behind INV-putug itself. So INV-putug's `no_move` would have been filed as a regression sub-item under the current rules, against a fix that is demonstrably right.\n\nMeasurement 0021 broke that by landing the sink and observing the fix on a live population (class-node hops 0 with 67 newly typed sinks sitting inside classes carrying 896 refusable edges). But the process gap remains for the next such pair.\n\nPROPOSED FOURTH BUCKET: `inert_pending_sibling` -- no_move is expected, the reason is recorded on the item, and the tag stays until the sibling lands rather than converting into a regression item. Requires naming the sibling at tagging time, so it cannot be used as a general excuse for a null result.\n\nScoped as a playbook change (.agent/agent_playbooks_protocols_sops_skills/bakeoff-validation-tagging-discipline.md), which is NOT a governance file, but the AGENTS.md essentialization that references it IS -- so the AGENTS.md half needs human approval and must not be self-merged."  # 0295
     fields: {}  # 0295
+- op: update  # b662
+  at: '2026-09-09T05:07:38Z'  # b662
+  by: agent  # b662
+  actor: jgstern_agent  # b662
+  clock: 2  # b662
+  nonce: b662  # b662
+  set: {}  # b662
+  add:  # b662
+    not_duplicate_of: [WI-sivuz-bahuv-halug-jitaf-jubuj-fokug-livaf-dupod]  # b662
+- op: discuss  # 410e
+  at: '2026-09-09T05:07:38Z'  # 410e
+  by: agent  # 410e
+  actor: jgstern_agent  # 410e
+  clock: 3  # 410e
+  nonce: 410e  # 410e
+  message: "SimHash flagged WI-sivuz at 5 bits, the closest of nine lexical neighbours. Read the pair: WI-sivuz is taint-precision ADJUDICATION methodology (a pre-registered sampling package, done, PR #286); this item is the awaits_bakeoff_validation TAG LIFECYCLE having no bucket for an inert-by-construction fix. Shared vocabulary (pre-registered, precision, taint, measurement), different subject. Marked not-duplicate to stop the warning recurring."  # 410e

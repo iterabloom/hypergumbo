@@ -70,3 +70,34 @@
   clock: 7  # 1f5a
   nonce: 1f5a  # 1f5a
   message: "FIRST LIVE-POPULATION OBSERVATION OF THIS FIX, obtained by measurement 0021 (WI-sihoh).\n\nMeasurement 0020 could only price this fix with HARNESS ARMS pinning py.py, because on the shipped tree the fix moves nothing: the defect needs a taint SINK inside a model method, and the rule creating that sink was WI-sihoh, withheld behind this item. 0021 landed that rule and measured the fix where its population actually exists.\n\n  class-node hops traversed, arm S (rule present, fix present)     0\n  the same count in measurement 0016 round 1 (rule present,\n      defect live)                                                33\n  `dispatches_to` edges out of a TYPE node in the subject survey  896\n      django-orm-dispatch-linker                                  861\n      django-third-party-dispatch-linker                           35\n  distinct classes carrying one                                   440\n  newly typed ORM write sinks INSIDE such a class                  67\n\nTHE LAST TWO LINES ARE THE POINT. A hop count of 0 is satisfied just as well by an empty population as by a working fix, so a pre-registered control (PC1b) was added -- before any arm ran -- to distinguish them. 67 sinks sat behind 896 refusable edges and the walk crossed none of them. That is \"the walk declined to cross\", not \"there was nothing to cross\".\n\nThe canary itself was validated before use by replaying it against 0016 round 1, where it reads exactly 33.\n\nNO STATUS CHANGE YET, DELIBERATELY. The population described above exists on the WI-sihoh branch, not on dev. Once that PR merges the population is on dev permanently and this item can move to `satisfied` citing this evidence. Proposing that now would be closing on a population that is not in the shipped tree.\n\nSCOPE CORRECTION TO SOMETHING I NEARLY ASSERTED. It is tempting to say this item's population \"cannot exist\" without WI-sihoh. That is wrong and the numbers above refute it: the EDGE population is 896 and present on dev today. What is absent without WI-sihoh is a SINK positioned behind those edges, so the fix is inert ON FINDINGS rather than unexercised. Presence is not reachability (LIVE rule 9). The circularity is also scoped to the pretix/kserve pair: 18 linkers emit `dispatches_to`, and on another cohort a class-sourced edge may already sit in front of a catalogued sink, which would validate this item with no help from WI-sihoh. That is unmeasured and is this item's own open question (2). Full analysis: ~/hypergumbo_lab_notebook/sihoh_superwrite_09092026/DEADLOCK.md"  # 1f5a
+- op: update  # adbf
+  at: '2026-09-09T05:07:20Z'  # adbf
+  by: agent  # adbf
+  actor: jgstern_agent  # adbf
+  clock: 8  # adbf
+  nonce: adbf  # adbf
+  set:  # adbf
+    status: satisfied  # adbf
+- op: discuss  # 225c
+  at: '2026-09-09T05:07:20Z'  # 225c
+  by: agent  # 225c
+  actor: jgstern_agent  # 225c
+  clock: 9  # 225c
+  nonce: 225c  # 225c
+  message: "SATISFIED 2026-09-09 on BEHAVIOURAL evidence, with this item's OWN filed repro re-run on the shipped tree.\n\nWHY IT COULD NOT CLOSE BEFORE. This item's finding-level effect is INERT until a taint sink sits behind the edges it refuses, and the rule that creates that sink (WI-sihoh) was withheld behind this very item. Measurement 0020 could therefore only price the fix on harness arms pinning py.py. WI-sihoh merged as PR #846, so the population now exists on dev and the repro is runnable.\n\nTHE TREE THE EVIDENCE WAS TAKEN ON IS dev, VERIFIED BY BLOB, not asserted. Measurement 0021's subject arm is commit 14d01fde7f; `git diff 14d01fde7f origin/dev` over the two files this item depends on is EMPTY, and the blobs match: py.py 9eb1d14fc3cb, taint.py 0e62e420f265. So the arm's numbers are measurements of dev's behaviour.\n\nTHIS ITEM'S OWN FILED REPRO, RE-RUN (its description names both sites explicitly):\n    pretix/base/payment.py:717     (the no-argument `InvoiceAddress()` constructor)   0 flows\n    pretix/control/views/subevents.py:485  (`SubEventItem.delete`, never called)      0 flows\n    class-node hops across ALL 164 pretix flows                                        0\n    the same count in measurement 0016 round 1, same rule present, defect live        33\n\nAND THE ZERO IS EVIDENCE, NOT AN EMPTY POPULATION -- the distinction this item's own \"WHAT IS NOT ESTABLISHED\" clause demands. Pre-registered control PC1b, added before any arm ran, measured on the subject survey: 896 `dispatches_to` edges out of a TYPE node (861 django-orm-dispatch, 35 django-third-party-dispatch) across 440 classes, with 67 of the newly typed ORM write sinks sitting INSIDE such a class. The shape exists, the sinks are positioned where the defect fired, and the walk crossed none of them.\n\nThe hop counter itself was validated before use by replaying it against 0016 round 1, where it reads exactly 33.\n\nWHAT THIS DOES NOT ESTABLISH, carried forward from the item's own clause (2) rather than quietly dropped. Volume outside pretix is still unmeasured. 18 linkers emit `dispatches_to`; on this corpus only the two Django ones emit it from a TYPE node, and type-hierarchy (2,197) and route-handler (567) emit from methods and are correctly untouched. Clause (1) is now partly answered: `contains` was already exonerated, and the 896/2,197/567 split shows the fix lands on exactly the class-sourced population and nothing else. `extends`, `references` and `decorated_by` remain untested and are not claimed.\n\nThe `awaits_bakeoff_validation` tag is discharged by this measurement rather than by a bakeoff, because a default bakeoff on the shipped tree cannot see this fix -- which is the process gap filed as WI-divoz."  # 225c
+- op: update  # fcb6
+  at: '2026-09-09T05:07:38Z'  # fcb6
+  by: agent  # fcb6
+  actor: jgstern_agent  # fcb6
+  clock: 10  # fcb6
+  nonce: fcb6  # fcb6
+  set: {}  # fcb6
+  remove:  # fcb6
+    tags: [awaits_bakeoff_validation]  # fcb6
+- op: discuss  # e059
+  at: '2026-09-09T05:07:38Z'  # e059
+  by: agent  # e059
+  actor: jgstern_agent  # e059
+  clock: 11  # e059
+  nonce: e059  # e059
+  message: "awaits_bakeoff_validation STRIPPED. Discharged by measurement 0021's live-population evidence, not by a bakeoff, and the distinction matters: a default bakeoff on the shipped tree could not have seen this fix at all, because its finding-level effect was inert until WI-sihoh supplied a sink behind the refused edges. Filing this item's correct and predicted no_move as a regression sub-item -- what the tag's lifecycle prescribes -- would have manufactured a false finding. That process gap is filed as WI-divoz (needs_human_review, since the fix touches AGENTS.md)."  # e059
