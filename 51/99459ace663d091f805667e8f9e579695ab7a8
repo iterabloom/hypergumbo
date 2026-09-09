@@ -1,0 +1,40 @@
+Original commit body from b9017e981176057cf1f003a345f2e0846f05e7c8:
+
+**WI-divin is refuted and closed `wont_do` the same day I filed it.** Asked to tackle it, I checked its premise against the shipped code first, and the premise is false.
+
+## What the item claimed, and what the code does
+
+WI-divin: "a `calls` edge is deduplicated by `(src, dst)` with the LINE discarded" — so collapsed call sites are unrecoverable, edge counts undercount by an unknown factor, and a consumer reading `line` "has no way to know" it is one arbitrary occurrence.
+
+`ir.deduplicate_edges` already does the opposite, and says so in bold in its own docstring: **"The collapsed call sites are preserved, not discarded."** The survivor gains `meta["call_lines"]`, the sorted union of every collapsed site. `_absorb_call_site` unions the lines *and* every registry-declared per-call-site meta key (`per_call_site_keys()`) — a discipline INV-vukiv already paid for. And the ABSENCE of the key is a documented contract meaning "exactly one site, at `edge.line`" — which is precisely the "way to know" the item asserted did not exist. There are 59 references to it across five core test files.
+
+Measured on the very survey the item was filed from (pretix, arm B):
+
+    18,075 of 76,635 `calls` edges carry meta["call_lines"]
+    59,806 sites recorded — 41,731 beyond their survivors
+
+The information I claimed was destroyed was sitting in the file I was reading.
+
+## So the defect was the instrument, and the corrected number is better
+
+`diffsurvey.py` keyed on `edge.line` and never read `call_lines`. Re-derived through the documented field:
+
+    django.db.models CALL SITES   B 10,422 -> S 11,869   NEW 1,447   GONE 0
+
+against the **+756 pairs / "110 apparent removals"** measurement 0022 published. The corrected edge-level result is **nearly double the published gain, with no removals to explain at all** — the "110 disappeared edges" never existed as a phenomenon.
+
+Corrected in three places: the measurement record's Result and its confound item 1, the measurements README row, and the CHANGELOG entry. Retracted text is **replaced, not struck through**, per the standing rule.
+
+The one genuine bound is `_CALL_LINES_CAP = 50`, which 36 pretix edges reach and which `ir.py` documents at the point it applies. It does not resurrect the item.
+
+## What I should have done
+
+LIVE rule 1: the fix may already exist — grep the shipped code **and the target file's own header** before filing. The answer was in the docstring of the function I was theorising about. Rule 2 is the companion and names this exact failure: an item is usually right that something is broken and wrong about which part, *including an item I filed hours ago*.
+
+## Residual filed, scoped correctly this time
+
+**WI-jigov** — an edge locates to a LINE, not a column, so two calls with the same callee NAME on one line are indistinguishable to a consumer joining an edge back to source. Different mechanism from dedup; it is what actually bit two of my instruments today (5 of INV-tanom's first 6 hits, and a share of 0022's 1,677 failed line/name joins). The item states plainly that this may be working as intended — a line is the natural granularity for the primary consumers — and that adding a column is a schema change needing its own sizing, held to the same discipline as INV-tanom. It also carries an explicit instruction not to close it by pointing at `call_lines`, since conflating the two is what made WI-divin wrong.
+
+Docs only; no behaviour change.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
