@@ -506,3 +506,30 @@
   clock: 65  # 5d7a
   nonce: 5d7a  # 5d7a
   message: "THE ESCAPE-CLOSING FAMILY'S SUPPRESSION SIGN IS NOW MEASURED, and it is\nnon-zero. Recorded here because this item is a member of that family and its\nown record still reads as though the effect is zero.\n\nINV-busis' declared-sanitizer arm ran 2026-09-07 (dev f57e589a21; full record\n~/hypergumbo_lab_notebook/busis_suppression_09072026/). The five-repo\n\"barrier_walks = 0\" that the family's zero rests on was measuring the DEFAULT\nSANITIZER CATALOGUE, not the code path. With nine ordinary laundering functions\ndeclared under `extra_catalogs: sanitizers:`, barrier walks go 0 -> 4\n(alertmanager), 0 -> 122 (beads), 0 -> 6 (kserve). And with a population, the\nceiling arm (`_use_site_terminates` -> True, every escape closed at once) MOVES\nFINDINGS for the first time: on beads it converts 77 section 3a walks and ONE\nbarrier walk from None to False, and the run goes\n\n    violated 6 / sanitized 351 / evidence 230\n -> violated 6 / sanitized 352 / evidence 225\n\n`violated_claims` is unchanged everywhere, exactly as the section 3a predicate\n(`walk_result is True`) requires. What moves is the barrier arm, where a False\nearns `sanitized` and a sanitized flow is DROPPED from the claim's violation set\n(#214).\n\nWHAT THIS MEANS FOR WORK ON THIS ITEM: closing escape sites is not free and its\nonly reachable effect on findings today is to DELETE them. A change in this\nfamily should ship with its own declared-sanitizer suppression arm, not with a\ndefault-catalogue run that reports the catalogue's zero as the change's zero.\n\nCAVEAT CARRIED: three repositories, two languages, and a sanitizer set chosen to\nCREATE population (`fmt.Sprintf` does not neutralise untrusted input). The\nMAGNITUDE is an artefact of the declaration; the DIRECTION and the existence of\nan effect are the interpretable parts. A project that declares no sanitizers\nstill gets zero."  # 5d7a
+- op: update  # b515
+  at: '2026-09-09T08:51:22Z'  # b515
+  by: agent  # b515
+  actor: jgstern_agent  # b515
+  clock: 66  # b515
+  nonce: b515  # b515
+  set: {}  # b515
+  remove:  # b515
+    isbefore: [INV-mumov-linig-pidaf-mujab-jihig-dakaj-ribik-vugoz]  # b515
+- op: update  # 97b8
+  at: '2026-09-09T08:51:22Z'  # 97b8
+  by: agent  # 97b8
+  actor: jgstern_agent  # 97b8
+  clock: 67  # 97b8
+  nonce: 97b8  # 97b8
+  set: {}  # 97b8
+  remove:  # 97b8
+    isbefore: [WI-lajus-mobod-ganom-vozig-rudus-mamih-jabup-gidag]  # 97b8
+- op: update  # 701d
+  at: '2026-09-09T08:51:23Z'  # 701d
+  by: agent  # 701d
+  actor: jgstern_agent  # 701d
+  clock: 68  # 701d
+  nonce: 701d  # 701d
+  set: {}  # 701d
+  remove:  # 701d
+    isbefore: [WI-dosuh-zizur-jutun-lobir-pahug-rokom-puzat-sanof]  # 701d
