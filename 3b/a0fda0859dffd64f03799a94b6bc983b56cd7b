@@ -1,0 +1,60 @@
+Original commit body from 337e4a43bbe8fa28e16dbdceea98ca572277cb0c:
+
+The ADR-0017 taint walk consumed `django_orm_dispatch`'s `dispatches_to` edge —
+class → the model's ORM methods — as if it carried a value, yielding
+`function --instantiates--> Class --dispatches_to--> Class.save`, which lands on
+whatever ORM method the linker attached to the class, including one the function
+never calls. A `dispatches_to` edge whose SOURCE node is a type is now
+reachability, not dataflow.
+
+NOT A REVERT OF INV-zuhig, which is satisfied at P1 and put the edge type in the
+walk deliberately — without it no framework-dispatched handler could mint and 18
+self-proof confirms were vacuous. The cases differ structurally:
+`argparse_dispatch` emits from the enclosing FUNCTION of a
+`set_defaults(func=cmd_x)` registration to a handler genuinely invoked with the
+data; `django_orm_dispatch` emits from a CLASS. A type node holds no value; an
+instance does.
+
+THE DISCRIMINATOR IS THE SOURCE NODE'S KIND, NOT THE EMITTING LINKER. Five
+linkers emit class-sourced dispatch, but two that look class-shaped are not:
+`di_resolution` emits from an interface METHOD and `type_hierarchy` from a parent
+METHOD, both ordinary virtual dispatch. A linker-name blocklist would have taken
+those with it. The vocabulary is `type_like_kind_names()`, whose docstring
+records audit 0018 finding 26 hand-written copies of that set across 24
+vocabularies, five omitting `protocol`.
+
+FAILS OPEN: an id that does not parse against ADR-0036's span anchor keeps its
+old meaning. The edges are NOT deleted — they are correct as reachability, and
+`django_orm_dispatch` calls that an orthogonal concern; removing them would file
+the defect in the wrong artifact.
+
+MEASUREMENT 0020, and the first result is that the FIRST DESIGN MEASURED AN
+EMPTY POPULATION. On the shipped tree the fix is INERT (0 moved, 0 class hops)
+because the defect needs a sink INSIDE a model method and WI-sihoh's rule was
+withheld. The pre-registration predicted a decrease on a population INV-putug's
+own text describes as absent; that is recorded as the design error it was.
+
+Harness arms restore the population by pinning `py.py` to `359880a105` in BOTH
+arms (common-mode, NOT shipped). Arm X reproduces 0016 round 1 exactly — 184
+flows, 33 class-node hops.
+
+  pretix  183 -> 163 situations, 22 removed / 2 added, net -20
+  hops    33 -> 0
+  kserve  62 -> 62, control unmoved
+
+Net -20 matches 0016's independent attribution of 20 situations to this shape.
+
+R1 DOES NOT FIRE, checked three ways. All 22 removals crossed a class node (zero
+collateral); no source function's body calls the named sink at all; and the two
+sites read at source are a no-argument `InvoiceAddress()` never saved and a
+`SubEventItem.delete` never called.
+
+THE INFORMATIVE HALF IS WHAT SURVIVED: 11 of the 33 class-hop flows were KEPT,
+because `generate_invoice` really does take the tainted order and reach
+`Invoice.save` through the annotated `build_invoice`. The fix deletes the
+dishonest path to a finding, not the finding. 22 + 11 = 33.
+
+Whole tree green at 26,560 on the code change; 4,578 on the slice for the docs.
+mypy ratchet clean.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
