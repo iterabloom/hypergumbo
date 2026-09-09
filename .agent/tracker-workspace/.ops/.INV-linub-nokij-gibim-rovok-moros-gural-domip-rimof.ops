@@ -533,3 +533,55 @@
   set: {}  # 701d
   remove:  # 701d
     isbefore: [WI-dosuh-zizur-jutun-lobir-pahug-rokom-puzat-sanof]  # 701d
+- op: update  # dc4e
+  at: '2026-09-09T08:52:06Z'  # dc4e
+  by: agent  # dc4e
+  actor: jgstern_agent  # dc4e
+  clock: 69  # dc4e
+  nonce: dc4e  # dc4e
+  set: {}  # dc4e
+  remove:  # dc4e
+    isbefore: [WI-vihop-kimab-zovad-duzik-maduv-tonoj-nurol-zofoz]  # dc4e
+- op: update  # 43ed
+  at: '2026-09-09T08:52:06Z'  # 43ed
+  by: agent  # 43ed
+  actor: jgstern_agent  # 43ed
+  clock: 70  # 43ed
+  nonce: 43ed  # 43ed
+  set: {}  # 43ed
+  remove:  # 43ed
+    isbefore: [WI-kikar-kodob-duvol-mufak-susud-najov-fonuk-juhus]  # 43ed
+- op: update  # aa9c
+  at: '2026-09-09T08:52:07Z'  # aa9c
+  by: agent  # aa9c
+  actor: jgstern_agent  # aa9c
+  clock: 71  # aa9c
+  nonce: aa9c  # aa9c
+  set: {}  # aa9c
+  remove:  # aa9c
+    isbefore: [WI-difup-godit-jupon-vafos-lapim-tupil-vakud-dumul]  # aa9c
+- op: discuss  # a82d
+  at: '2026-09-09T08:52:39Z'  # a82d
+  by: agent  # a82d
+  actor: jgstern_agent  # a82d
+  clock: 72  # a82d
+  nonce: a82d  # a82d
+  message: "GRAPH CORRECTION 2026-09-09: six outbound isbefore edges stripped. This item no\nlonger BLOCKS its own live instances. Owner-authorised after a walk-through of\nwhat the edges were doing.\n\nWHY THE EDGES EXISTED. The class was filed to answer one chokepoint question --\n\"do the declining per-analyzer branches share one shape?\" -- and to stop anyone\nshipping an L2-only fix that measures as a win at the analyzer and moves zero\nfindings. Blocking the instances enforced that: no instance gets fixed until the\nclass has framed how to measure it.\n\nWHY THEY ARE SPENT. Both halves of that purpose are discharged.\n\n1. THE CHOKEPOINT QUESTION IS ANSWERED, AND THE ANSWER IS *NO*. Python's\n   declining branches DID share one shape (entry 2026-08-09). Go's are the MIRROR\n   image -- python broke INLINE and worked ASSIGNED, go the reverse -- so \"a\n   python-shaped fix would not have transferred\" (2026-08-10). Rust is a third\n   shape again, breaking at L3 with 219 method-construct edges emitted and 92.7%\n   carrying the `external` placeholder (2026-08-26). The branches do NOT share\n   one shape; each language is its own. That is this class's deliverable and it\n   is recorded. A class that has nothing left to tell an instance before the\n   instance is worked should not be holding it in the queue.\n\n2. THE MEASUREMENT RULE IS PERMANENT AND DEMONSTRATED. \"Measure at L4, on\n   findings, not at L2 on edges\" is in this item's own root_cause and description,\n   was corroborated from both directions (PR #231's L2-only fix moved ZERO\n   findings; PR #254's L2+L3 fix moved 125 boundary chains / +260 typed edges),\n   and has since governed four shipped instance PRs (#750 java, #752 python,\n   #753 javascript, #755 kotlin). It does not need a graph edge to survive.\n\nNET EFFECT. This item becomes a LEDGER, not a GATE: it closes when the languages\ndrain, and it gates nothing meanwhile. The five live counterexamples now surface\nin `ready` on their own merits -- INV-mumov (python), WI-lajus (C, 156 of 324\ncorpus socket sites classify as nothing), WI-dosuh / WI-vihop / WI-kikar\n(javascript). WI-difup was stripped for a different reason: it is L1 catalogue\ncompleteness on haskell FUNCTION-kind rows (servant's client executors) and was\nnever an instance of a receiver-syntax class at all.\n\nTWO EDGES DELIBERATELY KEPT, against the initial proposal to strip all eight:\n\n  * INV-busis -- NOT a class member, but this edge is the one surviving wired\n    constraint from the arc's BINDING paragraph (\"--add-isbefore INV-busis on\n    INV-linub (1 edge)\"), and it correctly encodes the written arc order, where\n    INV-busis follows the Phase 6 recall stage. Stripping it would delete the\n    arc's only enforced ordering constraint. It is scheduling, not gating.\n  * WI-mifag -- a genuine prerequisite dependency rather than a class gate. Its\n    own title states the dependency: deciding a test-only-reachability exclusion\n    \"needs receiver typing (INV-linub), so the bare short name cannot tell\n    Store.add from set.add\". It is a CONSUMER of this fix and cannot be worked\n    before it. Surfacing it would surface something undoable.\n\nThe four edges to already-resolved items (WI-makij, WI-nasuf, WI-zilag,\nINV-fibis) were left alone; they are inert.\n\nWHAT CLOSING THIS ITEM NOW REQUIRES, unchanged by any of the above: drain\nWI-lajus + the three javascript items + INV-mumov, then RE-MEASURE THE CLASS AS A\nCLASS through the taint path -- it has never been measured as a class since its\ninstances started landing. Per closure-evidence discipline the statement is\nbehavioural (\"an edge carries enough receiver evidence for\n_match_propagation_entry to return that entry\"), so satisfaction needs\nbehavioural proof per language, not a proxy. Rust is fully drained (INV-pamis,\nWI-dizag shapes A/B, WI-lalot shape C). Go remains VIOLATED BY CHOICE under\nINV-tanom -- sized, priced at zero, converted to a dated declared blindness --\nand a disclosure is NOT satisfaction; do not close this item on it."  # a82d
+- op: update  # aa7f
+  at: '2026-09-09T08:57:32Z'  # aa7f
+  by: agent  # aa7f
+  actor: jgstern_agent  # aa7f
+  clock: 73  # aa7f
+  nonce: aa7f  # aa7f
+  set: {}  # aa7f
+  remove:  # aa7f
+    isbefore: [INV-busis-povul-butun-kosut-tozik-jarok-vokaz-vomur]  # aa7f
+- op: update  # d2e4
+  at: '2026-09-09T09:02:00Z'  # d2e4
+  by: agent  # d2e4
+  actor: jgstern_agent  # d2e4
+  clock: 74  # d2e4
+  nonce: d2e4  # d2e4
+  set: {}  # d2e4
+  remove:  # d2e4
+    isbefore: [WI-mifag-vunus-vosug-ratam-fomij-voguz-nizad-tamir]  # d2e4
