@@ -491,6 +491,42 @@ def _extract_import_path(node: "tree_sitter.Node", source: bytes) -> str | None:
     return None  # pragma: no cover
 
 
+_MESSAGE_PUNCTUATION = frozenset({"[", "]", ":", "comment"})
+
+
+def _message_receiver_node(
+    node: "tree_sitter.Node",
+) -> "tree_sitter.Node | None":
+    """The child of a ``message_expression`` that IS the receiver.
+
+    WI-garar. ONE fact with ONE home. Three places needed to know which child is
+    the receiver and each decided for itself: the selector extractor skipped
+    "the first ``identifier``", the receiver extractor returned it, and the
+    emit site looked for a ``message_expression`` child to type a nested
+    receiver from. All three encoded the same unstated assumption -- that a
+    receiver is either a bare identifier or a nested send -- so every other
+    receiver shape desynchronised the parse in a DIFFERENT way at each site.
+
+    The grammar flattens a message send, receiver first::
+
+        message_expression
+          [  <receiver>  identifier(sel) : <arg>  identifier(sel2) : <arg2>  ]
+
+    so the receiver is simply the first child that is not the opening bracket.
+    Measured on AFNetworking's 2,729 sends, the receiver is an ``identifier``
+    70.0% of the time, a ``field_expression`` (``self.session``) 15.7%, a nested
+    ``message_expression`` 11.8%, and a subscript / call / string-literal /
+    cast expression in the remaining 2.4%. Only the first and third were handled.
+
+    Returns ``None`` for a malformed send with nothing but punctuation.
+    """
+    for child in node.children:
+        if child.type in _MESSAGE_PUNCTUATION:
+            continue
+        return child
+    return None  # pragma: no cover - a send always has a receiver
+
+
 def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | None:
     """Extract the selector from a message_expression.
 
@@ -507,28 +543,31 @@ def _extract_message_selector(node: "tree_sitter.Node", source: bytes) -> str | 
     have a single identifier after the receiver with no colon.
     """
     parts: list[str] = []
-    seen_receiver = False
+    receiver = _message_receiver_node(node)
     children = node.children
 
     for i, child in enumerate(children):
-        if child.type == "identifier":
-            if not seen_receiver:
-                # First identifier is the receiver — skip it
-                seen_receiver = True
-                continue
-            # Check if NEXT sibling is ":"
-            next_child = children[i + 1] if i + 1 < len(children) else None
-            if next_child is not None and next_child.type == ":":
-                # Keyword part: identifier before ":"
-                parts.append(node_text(child, source) + ":")
-            elif not parts:
-                # Simple message (no colons) like [obj doSomething]
-                parts.append(node_text(child, source))
-            # Otherwise it's an argument identifier — skip
-        elif child.type == "message_expression":
-            # Nested message like [[obj alloc] init] — receiver is another message
-            if not seen_receiver:
-                seen_receiver = True
+        # WI-garar: skip the receiver BY NODE IDENTITY. This used to skip "the
+        # first ``identifier`` child", which silently assumed the receiver IS an
+        # identifier. For every other receiver shape the first identifier is the
+        # SELECTOR, so it was consumed as the receiver and the first ARGUMENT
+        # was returned as the selector -- ``[self.session dataTaskWithRequest:req]``
+        # yielded ``req``. Asking the one helper which child is the receiver
+        # makes the two extractors agree by construction instead of by two
+        # copies of the same assumption.
+        if child is receiver:
+            continue
+        if child.type != "identifier":
+            continue
+        # Check if NEXT sibling is ":"
+        next_child = children[i + 1] if i + 1 < len(children) else None
+        if next_child is not None and next_child.type == ":":
+            # Keyword part: identifier before ":"
+            parts.append(node_text(child, source) + ":")
+        elif not parts:
+            # Simple message (no colons) like [obj doSomething]
+            parts.append(node_text(child, source))
+        # Otherwise it's an argument identifier — skip
 
     if parts:
         return "".join(parts)
@@ -549,12 +588,10 @@ def _extract_message_receiver(node: "tree_sitter.Node", source: bytes) -> str | 
     ``module_path`` of the structured ``dst_ref``. Lowercase receivers
     (``self``, ``super``, local vars) get no ``dst_ref``.
     """
-    for child in node.children:
-        if child.type == "identifier":
-            return node_text(child, source)
-        if child.type == "message_expression":
-            return None
-    return None  # pragma: no cover - defensive
+    receiver = _message_receiver_node(node)
+    if receiver is not None and receiver.type == "identifier":
+        return node_text(receiver, source)
+    return None
 
 
 def _get_enclosing_method_objc(
@@ -836,8 +873,19 @@ def _extract_edges_from_file(
                         if receiver_name is None:
                             # WI-higob: a NESTED receiver ``[[obj make] frob]``
                             # -- the inner send's registered return class.
-                            _inner = next(
-                                (c for c in node.children if c.type == "message_expression"), None,
+                            # WI-garar: the RECEIVER position, not "any
+                            # ``message_expression`` child". An ARGUMENT can be a
+                            # message send (``[a f:[b g]]``), and typing the
+                            # receiver from an argument's return class is the
+                            # same desynchronisation this item fixes one slot
+                            # over. Harmless before only because a
+                            # ``field_expression`` receiver never reached here.
+                            _recv_node = _message_receiver_node(node)
+                            _inner = (
+                                _recv_node
+                                if _recv_node is not None
+                                and _recv_node.type == "message_expression"
+                                else None
                             )
                             _declared = (
                                 _objc_send_result_class(
