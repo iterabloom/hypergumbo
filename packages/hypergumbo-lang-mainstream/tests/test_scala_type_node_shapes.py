@@ -208,3 +208,87 @@ class TestTheDisciplineIsKept:
         assert hits, "no method edge emitted"
         assert hits[0].dst.split(":")[1] == "external"
         assert (hits[0].meta or {}).get("receiver_type_hint") == "Mystery"
+
+
+class TestTheImplicitImportDenylist:
+    """A generic base this change would INVENT is refused when it is a name
+    Scala imports implicitly.
+
+    MEASURED, and the measurement is the whole justification. Without this,
+    `val m: Map[String, X]` contributes the base `Map`, which cannot qualify --
+    there is no import line to look it up in -- so it adds nothing to the module
+    slot and reaches only the bare short-name bind. On sbt that produced 44
+    bindings of a standard-library `Map[K,V]` to the PROJECT's `Map.get` in
+    `sbt/SessionVar.scala`: 24% of every edge the change newly resolved, and
+    exactly the "arbitrary same-named internal def" funnel this file's external
+    branch refuses for untyped receivers.
+
+    THE COST IS ZERO WHERE IT COUNTS. Denying them drops the HINTED share
+    (28.07% -> 23.43% on sbt) and leaves the MODULE-SLOT share alone
+    (18.07% -> 18.19%, marginally up) -- because an unqualifiable name never
+    filled a slot in the first place. The item's own acceptance metric is the
+    hinted share, so that metric would have preferred the WORSE version.
+    """
+
+    def test_a_generic_over_an_implicit_import_name_is_refused(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "M.scala").write_text(
+            "package demo\n\nobject M {\n  def mk() = ???\n"
+            "  def run(): Unit = {\n    val m: Map[String, Int] = mk()\n"
+            "    m.get(\"k\")\n  }\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        assert not result.skipped
+        hits = [e for e in result.edges
+                if (e.meta or {}).get("call_construct") == "method"
+                and not e.is_resolved]
+        assert hits, "no method edge emitted"
+        assert (hits[0].meta or {}).get("receiver_type_hint") is None
+        assert hits[0].dst.split(":")[1] == "external"
+
+    def test_an_explicitly_annotated_bare_name_is_untouched(
+        self, tmp_path: Path,
+    ) -> None:
+        """Scoped to the base this change INVENTS from a type argument. A bare
+        `val x: Map = ...` is the pre-existing INV-fahub / WI-bihit population --
+        the programmer wrote that name -- and narrowing it is a separate change
+        with its own measurement."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "N.scala").write_text(
+            "package demo\n\nobject N {\n  def mk() = ???\n"
+            "  def run(): Unit = {\n    val m: Map = mk()\n"
+            "    m.get(\"k\")\n  }\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        assert not result.skipped
+        hits = [e for e in result.edges
+                if (e.meta or {}).get("call_construct") == "method"
+                and not e.is_resolved]
+        assert hits, "no method edge emitted"
+        assert (hits[0].meta or {}).get("receiver_type_hint") == "Map"
+
+    def test_a_qualified_generic_over_an_implicit_name_still_qualifies(
+        self, tmp_path: Path,
+    ) -> None:
+        """`scala.collection.immutable.Map[K,V]` is not the ambiguous case: the
+        file spells the path, so there is nothing to collide with."""
+        from hypergumbo_lang_mainstream.scala import analyze_scala
+
+        (tmp_path / "Q.scala").write_text(
+            "package demo\n\nobject Q {\n  def mk() = ???\n"
+            "  def run(): Unit = {\n"
+            "    val m: scala.collection.immutable.Map[String, Int] = mk()\n"
+            "    m.get(\"k\")\n  }\n}\n"
+        )
+        result = analyze_scala(tmp_path)
+        assert not result.skipped
+        hits = [e for e in result.edges
+                if (e.meta or {}).get("call_construct") == "method"
+                and not e.is_resolved]
+        assert hits, "no method edge emitted"
+        assert (hits[0].meta or {}).get("receiver_type_hint") == \
+            "scala.collection.immutable.Map"
