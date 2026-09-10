@@ -20,3 +20,27 @@
     pr_ref:  # b3b7
     description: "Found 2026-09-06 while landing WI-nolut (javascript module_completeness). Phase 6 recall, INV-linub's class (a catalogued call site that cannot reach its row for want of receiver evidence), held behind INV-linub.\n\nTHE GAP, measured on a fixture through analyze_javascript + classify_call (jsleg_completeness_09062026 / scratchpad jsfx):\n  require('fs/promises').readFile(p)            -> javascript:fs/promises:0-0:readFile:unresolved   CLASSIFIES (fs_read/fs.promises.readFile)\n  import {readFile} from 'node:fs/promises'     -> same                                            CLASSIFIES\n  fs.promises.readFile(p)   (fs = require('fs')) -> javascript:external:0-0:readFile:unresolved  call_construct: method   NONE\n  require('fs').promises.writeFile(p, x)        -> javascript:external:0-0:writeFile:unresolved  method                   NONE\nThe member CHAIN `<module>.promises.<fn>` -- the documented pre-ESM spelling, still common -- resolves to an untyped receiver, so the fs.promises rows (now 27, granted complete) are unreachable through it. INV-misup's constructed-receiver fix does not cover a module-object property chain.\n\nTHE FIX SHAPE, not designed here: in js_ts.py's member-call resolution, when the receiver expression is `<ident>.promises` and `<ident>` is bound to require('fs') / import of a catalogued module, emit the module slot `fs/promises` (the same slot the direct require emits), so the existing rows classify. Check the analogues (LIVE rule 4): `dns.promises`, `stream.promises`, `readline.promises`, `timers.promises` are the same shape in node's API.\n\nMEASURED THROUGH THE TAINT PATH (INV-linub): fs_read mints nothing, fs_write is a sink, so the finding delta is on the sink side; marginal precision, awaits_bakeoff_validation."  # b3b7
     fields: {}  # b3b7
+- op: discuss  # 3460
+  at: '2026-09-10T18:49:39Z'  # 3460
+  by: agent  # 3460
+  actor: jgstern_agent  # 3460
+  clock: 2  # 3460
+  nonce: '3460'  # 3460
+  message: "Merged as PR #894, dev SHA b845d1f60951."  # 3460
+- op: update  # 607a
+  at: '2026-09-10T18:50:33Z'  # 607a
+  by: agent  # 607a
+  actor: jgstern_agent  # 607a
+  clock: 3  # 607a
+  nonce: 607a  # 607a
+  set:  # 607a
+    status: done  # 607a
+  add:  # 607a
+    tags: [awaits_bakeoff_validation]  # 607a
+- op: discuss  # 87a1
+  at: '2026-09-10T18:50:33Z'  # 87a1
+  by: agent  # 87a1
+  actor: jgstern_agent  # 87a1
+  clock: 4  # 87a1
+  nonce: 87a1  # 87a1
+  message: "DONE — merged as PR #894, dev b845d1f60951. Closed on the FILED ROW under the\n2026-09-10 drain criterion (owner ruling c): a T0b cell drains on CORRECTNESS —\nright, zero losses, rows read back against source — with no per-cell primitive\ndelta required.\n\nEVIDENCE (record: ~/hypergumbo_lab_notebook/vihop_js_09102026/, 18 files):\n  +303 edges reach a catalogue row — podman-desktop 53->127, vscode 12->151,\n  nextjs 276->366 — with `calls_total` IDENTICAL in all three repos, so the\n  change RE-LABELS edges and mints none. One survey PER ARM, because an analyzer\n  change moves the survey.\n\nTHE ONE ANOMALY, ATTRIBUTED RATHER THAN WAVED THROUGH. 24 of nextjs's 90 new\nbindings had previously resolved to `CacheFs.mkdir` — an INTERFACE DECLARATION\nin an unrelated file, reached by Case 4's low-confidence short-name path. They\nare a PRECISION gain, not a theft from a correct binding. A count that moves\nwhen it shouldn't is the first thing to attribute.\n\nTHE FILING NAMED FOUR SPELLINGS; THERE WERE FIVE. The ESM default import\n(`import fs from 'fs'`) was equally broken and is the one Next.js actually uses.\nAll five are covered. This is the third cell today where probing the family\nfound more than the item named.\n\nTAGGED `awaits_bakeoff_validation` per the tagging discipline: the +303 figure is\na raw candidate-count delta attributed to the change, which is a quantitative\nbakeoff claim. It resolves when a DEEP cycle reproduces the movement. NOTE the\nqueue-level problem this joins: 14 items now carry the tag and the last DEEP\ncycle ran 2026-07-17, ~55 days stale.\n\nNO RESIDUAL FILED — the allowlist (`fs`, `dns`, `stream`, `readline`, `timers`)\nis deliberate and bounded, not a partial fix: it is what stops the rule minting\n`<anything>/promises` for any object that happens to have a `promises` property,\nand its rejection path is covered by test."  # 87a1
