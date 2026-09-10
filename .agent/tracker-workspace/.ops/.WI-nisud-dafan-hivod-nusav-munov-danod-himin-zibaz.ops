@@ -1,0 +1,30 @@
+- op: create  # 165c
+  at: '2026-09-10T22:10:19Z'  # 165c
+  by: agent  # 165c
+  actor: jgstern_agent  # 165c
+  clock: 1  # 165c
+  nonce: 165c  # 165c
+  data:  # 165c
+    kind: work_item  # 165c
+    title: "javascript callback registrations emit  where python emits , so EVERY callback-parameter taint source is inert — addEventListener classifies as net_recv and yields zero findings while both controls fire"  # 165c
+    status: todo_hard  # 165c
+    priority: 2  # 165c
+    parent:  # 165c
+    tags:  # 165c
+    - taint  # 165c
+    - javascript  # 165c
+    - analyzer  # 165c
+    isbefore: []  # 165c
+    duplicate_of: []  # 165c
+    not_duplicate_of: []  # 165c
+    pr_ref:  # 165c
+    description: "Every callback-registration taint source in javascript is INERT, including the\nspellings that already classify correctly. The classification is fine; the WALK\ncannot enter the handler.\n\nMEASURED 2026-09-10 (record: ~/hypergumbo_lab_notebook/dosuh_js_09102026/), found\nwhile answering WI-dosuh's gating question.\n\n  io-boundaries:  net_recv, 2 chains on WebSocket.addEventListener  -- correct\n  verify-claims:  untrusted-input-no-subprocess violated,\n                  evidence_count 2, flow_origins {\"ipc_recv\": 2}\n                  -- ZERO from net_recv, while BOTH controls fire, including the\n                  control placed INSIDE the same arrow function\n\nTHE MECHANISM. The analyzer emits a `references` edge from the enclosing function\nto the callback symbol:\n\n    references  viaAddEventListener:function -> _cb_addEventListener@33:function\n    calls       _cb_addEventListener@33:function -> child_process:0-0:exec\n\n`TAINT_CALL_EDGE_TYPES` is {calls, dispatches_to, instantiates, module_attr_ref}.\n`references` is absent, so by L5 -- the walk advances only along VALUE-CARRYING\nedges -- the walk never enters the handler. The source is attributed to the\nENCLOSING function, the sink lives in the CALLBACK, and nothing value-carrying\njoins them.\n\nTHE SIBLING LANGUAGE ALREADY SOLVED THIS. python's `argparse_dispatch` emits\n`dispatches_to` from the ENCLOSING FUNCTION of a `set_defaults(func=cmd_x)`\nregistration to `cmd_x`. INV-zuhig put `dispatches_to` in TAINT_CALL_EDGE_TYPES\nfor exactly this reason -- taint.py's own words: \"a framework dispatcher really\ndoes hand data to the handler it invokes ... without it every framework-dispatched\nhandler was unmintable and 18 self-proof confirms were vacuous\". javascript emits\n`references` where python emits `dispatches_to`.\n\nSCOPE -- ENUMERATE ROUTES, NOT MEMBERS. This is not a WebSocket question. The same\nshape covers every js registration that hands a peer-controlled value to a\ncallback: addEventListener on any catalogued receiver, `process.on('message', h)`\n(ipc_recv, newly reachable since WI-kikar), server request handlers, stream\n`.on('data', h)`. Before fixing, enumerate which registrations exist and which\nargument position is the handler; do NOT special-case addEventListener.\n\nTHE DIRECTION QUESTION THAT MUST BE ANSWERED FIRST, because this fix is\nEXPANSIVE. INV-putug narrowed `dispatches_to` after finding that an edge out of a\nTYPE node is reachability rather than dataflow, and that reading it as dataflow\nproduced 20 of 47 spurious situations on pretix. A registration edge out of a\nFUNCTION node is the argparse shape, which INV-zuhig ruled DOES carry a value --\nbut that must be measured on the js corpus both ways (findings added AND\nprecision on them), not assumed from the python precedent.\n\nRELATED: WI-dosuh (emit the edge so `ws.onmessage = h` classifies) is the\nCLASSIFICATION half and is correct-but-inert on its own; this item is the half\nthat would make either spelling produce a finding."  # 165c
+    fields: {}  # 165c
+- op: update  # a23b
+  at: '2026-09-10T22:10:37Z'  # a23b
+  by: agent  # a23b
+  actor: jgstern_agent  # a23b
+  clock: 2  # a23b
+  nonce: a23b  # a23b
+  set:  # a23b
+    title: "javascript callback registrations emit a references edge where python emits dispatches_to, so EVERY callback-parameter taint source is inert — addEventListener classifies as net_recv and yields zero findings while both controls fire"  # a23b
