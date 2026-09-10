@@ -1,0 +1,21 @@
+- op: create  # 01ab
+  at: '2026-09-10T19:13:05Z'  # 01ab
+  by: agent  # 01ab
+  actor: jgstern_agent  # 01ab
+  clock: 1  # 01ab
+  nonce: 01ab  # 01ab
+  data:  # 01ab
+    kind: work_item  # 01ab
+    title: "bakeoff-deep run's code-hash skip guard does not check that the previous run produced output, so a crashed run poisons the session and every later run exits 0 reporting 'Previous results' for a directory containing zero files"  # 01ab
+    status: todo_hard  # 01ab
+    priority: 2  # 01ab
+    parent:  # 01ab
+    tags:  # 01ab
+    - bakeoff  # 01ab
+    - tooling  # 01ab
+    isbefore: []  # 01ab
+    duplicate_of: []  # 01ab
+    not_duplicate_of: []  # 01ab
+    pr_ref:  # 01ab
+    description: "`bakeoff-deep run` skips a cohort when `state.hypergumbo_code_hash` is unchanged,\nWITHOUT checking that the previous run at that hash produced any output. A run\nthat CRASHED therefore poisons its session: the hash was recorded, empty output\ndirectories exist, and every subsequent `run` in that workdir reports\n\n  Skipping: hypergumbo code unchanged (hash 71be9c869e531b66)\n  Previous results: <workdir>/out/cohort-001/iter-001\n\nwhen `find <that dir> -type f` returns ZERO files.\n\nREPRODUCED 2026-09-10, immediately downstream of WI-havit: the crash WI-havit\ndescribes (FileNotFoundError in `get_dir_size`) happened AFTER `os.makedirs(repo_out)`,\nso it left `out/cohort-001/iter-001/django/` present and empty. Re-running after\nthe WI-havit fix landed skipped instead of running, and reported success (rc=0).\n\nWHY THIS IS THE DANGEROUS SHAPE RATHER THAN AN ANNOYANCE: the skip exits 0 and\nprints a line that reads like a result. An agent scripting `run` -> `diagnose`\n-> `reflect` gets a green run, then diagnoses an empty directory. A zero and a\nmissing input must not look the same, and here they do.\n\nNOTE the adjacent guard that IS correct: the `--all`/`--some` batch path checks\n`os.path.isdir(out_dir) and os.listdir(out_dir)` -- i.e. it checks for actual\nCONTENT -- and prints a long, emphatic warning about not deleting results. The\nsingle-cohort path checks only the hash. So the right predicate already exists in\nthe same function; it is simply not the one the single-cohort path uses.\n\nFIX DIRECTION (not yet implemented): the hash check should be conjoined with the\nsame non-empty-output check the batch path already performs, so a crashed or\nempty iteration re-runs rather than being mistaken for a completed one. Keep the\nexisting \"create a new session\" guidance for the case where output genuinely\nexists.\n\nWORKAROUND IN USE MEANWHILE: create a fresh session rather than deleting the\nempty iteration directory -- the tool's own guidance, and it avoids any chance of\nerasing real artifacts."  # 01ab
+    fields: {}  # 01ab

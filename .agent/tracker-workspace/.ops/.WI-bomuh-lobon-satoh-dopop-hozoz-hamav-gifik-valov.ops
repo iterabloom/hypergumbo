@@ -1,0 +1,22 @@
+- op: create  # 50e7
+  at: '2026-09-10T21:53:53Z'  # 50e7
+  by: agent  # 50e7
+  actor: jgstern_agent  # 50e7
+  clock: 1  # 50e7
+  nonce: '50e7'  # 50e7
+  data:  # 50e7
+    kind: work_item  # 50e7
+    title: "javascript.yaml rows process.cwd as an attribute but Node's process.cwd() is a function, so 135 corpus call sites are correctly slotted and still unmatchable — and the attribute-vs-callable mis-kind is probably not unique to it"  # 50e7
+    status: todo_hard  # 50e7
+    priority: 2  # 50e7
+    parent:  # 50e7
+    tags:  # 50e7
+    - catalogue  # 50e7
+    - javascript  # 50e7
+    - taint  # 50e7
+    isbefore: []  # 50e7
+    duplicate_of: []  # 50e7
+    not_duplicate_of: []  # 50e7
+    pr_ref:  # 50e7
+    description: "`javascript.yaml` rows `process.cwd` as `kind: attribute` (host_info_read). In\nNode it is a FUNCTION: `process.cwd()` returns the current working directory.\nThere is no attribute `process.cwd` to read.\n\nCONSEQUENCE, MEASURED 2026-09-10 on the js corpus while shipping WI-kikar: once\n`process` became a recognised runtime global, **135 `process.cwd()` call sites\nacross vscode / nextjs / podman-desktop are correctly slotted as\n`javascript:process:0-0:cwd:unresolved` and STILL cannot match**, because a CALL\ndoes not match an attribute-kind row. It is the single largest member in the\n\"slotted but unreachable\" bucket — larger than `process.nextTick` (110) and\n`process.exit` (91), both of which are genuinely unrowed rather than mis-rowed.\n\nSo this is not an absent row that someone should add; it is a WRONG row that\nlooks present. `io-boundaries` and taint both see nothing, and the catalogue\nreports a row exists.\n\nWHY IT IS FILED SEPARATELY rather than fixed inside WI-kikar: changing a row's\nKIND is a catalogue change with its own direction question (does host_info_read\non cwd mint, disclose, or neither under ADR-0049?), and WI-kikar's change is an\nanalyzer-side slot fix with a measured, theft-free result. Folding a catalogue\nedit into it would put two different kinds of claim behind one measurement.\n\nSWEEP BEFORE FIXING (LIVE rule 4 — a named instance is the tip of a family):\nthis was found by enumerating members, not by reading the catalogue, so the\nright first step is to check EVERY `attribute`-kind row in javascript.yaml\nagainst whether the member is callable in the runtime, and the same question for\nthe other languages' catalogues. `process.cwd` is one instance; the mechanism\n(an attribute row for something that is only ever called) is not obviously\nunique to it. Related: WI-fovub (duplicate / mis-homed catalogue rows in cpp and\nelixir) is the same family from a different direction.\n\nREPRO:\n  python3 -c \"\n  import sys; sys.path.insert(0,'packages/hypergumbo-core/src')\n  from hypergumbo_core.io_boundary import load_catalog\n  print([(p.kind,p.name) for p in load_catalog('javascript').primitives\n         if p.module=='process' and p.name=='cwd'])\"\n  -> [('attribute', 'cwd')]"  # 50e7
+    fields: {}  # 50e7
