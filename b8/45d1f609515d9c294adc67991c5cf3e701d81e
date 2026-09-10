@@ -1,0 +1,37 @@
+Original commit body from d2ce0180ae21904c27cd7eca2dd1d75526e7c8b7:
+
+WI-vihop: a `fs.promises.<fn>(...)` call now reaches the `fs/promises` catalogue
+rows instead of stopping at a bare `fs` module or a short-name guess.
+
+THE GAP. The analyzer resolved `fs.<fn>` and `require('fs/promises').<fn>`, but the
+member chain `fs.promises.<fn>` — the idiomatic spelling — fell through: the receiver
+is a `member_expression`, not an identifier, so no namespace lookup fired and the
+edge never named the promises submodule.
+
+THE FIX. `_promises_submodule` recognises `<ns>.promises` where `<ns>` is a name bound
+by an ESM namespace import, an ESM default import, or a CJS `require(...)`, and emits
+`<module>/promises` when the base module is one that actually has a promises submodule
+(`fs`, `dns`, `stream`, `readline`, `timers`). The allowlist is the point: without it
+the rule would mint `<anything>/promises` for any object with a `promises` property.
+
+PROBE FIRST, THEN FIX. The item listed four spellings. A fifth — the ESM default
+import `import fs from 'fs'` — was equally broken, and it is the one Next.js actually
+uses. All five are covered.
+
+MEASURED, three repos, one survey per arm (an analyzer change moves the survey):
+  +303 edges reach a catalogue row — podman-desktop 53->127, vscode 12->151,
+  nextjs 276->366 — with `calls_total` IDENTICAL in all three, so this RE-LABELS
+  edges and mints none.
+
+ATTRIBUTION OF THE ONE ANOMALY. 24 of nextjs's 90 were previously bound to
+`CacheFs.mkdir` — an INTERFACE DECLARATION in an unrelated file, matched by Case 4's
+low-confidence short-name path. Those are a PRECISION gain, not a theft from a
+correct binding.
+
+Tests: 11 new in test_js_promises_submodule_chain.py, including the allowlist
+rejection. Full suite green, 100% coverage on the changed file, mypy strict ratchet
+clean at 669.
+
+Record: ~/hypergumbo_lab_notebook/vihop_js_09102026/
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
