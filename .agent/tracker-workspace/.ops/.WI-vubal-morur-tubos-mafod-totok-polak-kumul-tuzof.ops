@@ -1,0 +1,20 @@
+- op: create  # 67bc
+  at: '2026-09-10T22:53:51Z'  # 67bc
+  by: agent  # 67bc
+  actor: jgstern_agent  # 67bc
+  clock: 1  # 67bc
+  nonce: 67bc  # 67bc
+  data:  # 67bc
+    kind: work_item  # 67bc
+    title: "a function identifier assigned to a property emits no edge, so the registration is absent from the slice"  # 67bc
+    status: todo_hard  # 67bc
+    priority: 3  # 67bc
+    parent:  # 67bc
+    tags:  # 67bc
+    - javascript  # 67bc
+    isbefore: []  # 67bc
+    duplicate_of: []  # 67bc
+    not_duplicate_of: []  # 67bc
+    pr_ref:  # 67bc
+    description: "MEASURED 2026-09-10 on the production path while verifying WI-dosuh's\ninertness prediction (~/hypergumbo_lab_notebook/dosuh_family_09102026/).\n\n    const { exec } = require('child_process');\n    function handle(ev) { exec('ls ' + ev.data); }\n    function setup(url) {\n      const ws = new WebSocket(url);\n      ws.onmessage = handle;      // <-- `handle` gets NO edge from `setup`\n    }\n\nThe whole survey contains exactly two relevant edges:\n\n    calls  app.js:handle -> child_process:exec\n    calls  app.js:setup  -> WebSocket:onmessage\n\nThere is no edge of ANY type from `setup` to `handle`. The registration is\ninvisible: nothing in the graph records that `setup` handed `handle` to the\nsocket.\n\nWHY THAT IS THE ODD ONE OUT. js_ts.py already emits a `references` edge for a\nfunction identifier in the two sibling positions:\n  - an object-literal property value (the `pair` branch: {onClick: handleClick})\n  - an anonymous callback argument (_emit_anon_callback_reference_edges, WI-zavad)\nAn identifier assigned to a property is the same relationship in a third\nspelling, and it emits nothing.\n\nWHAT IT COSTS TODAY. Nothing in taint -- `references` is not in\nTAINT_CALL_EDGE_TYPES, so even the two positions that DO emit are inert. The\ncost is in the SLICE: a forward slice from `setup` cannot show that `handle`\nruns, and a reverse slice from `handle` cannot show who registered it. For a\nreader asking \"what happens when a message arrives\", that is the answer, and\nit is absent.\n\nRELATIONSHIP TO WI-nisud. WI-nisud proposes a `dispatches_to` edge (the edge\ntype python's argparse_dispatch already emits) so the taint walk can ENTER a\nhandler. This item is smaller and different: it says the relationship should\nbe in the graph AT ALL. If WI-nisud lands as `dispatches_to` for this\nposition, it subsumes this item -- and that is the preferred outcome, since a\n`references` edge here would then have to be upgraded rather than added.\nFILE IT ANYWAY, because the two can be decided separately and the missing\nedge is a slice defect on its own, independent of any taint decision.\n\nNOT YET CHECKED: whether the other assignment-shaped registrations\n(`el.onclick = fn`, `module.exports = fn`, `obj.handler = fn` on a\nproject object) have the same hole. They are the same node type, so they\nprobably do; verify before sizing."  # 67bc
+    fields: {}  # 67bc

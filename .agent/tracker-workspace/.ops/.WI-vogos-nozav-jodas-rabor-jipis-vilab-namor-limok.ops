@@ -1,0 +1,21 @@
+- op: create  # 4875
+  at: '2026-09-10T22:49:39Z'  # 4875
+  by: agent  # 4875
+  actor: jgstern_agent  # 4875
+  clock: 1  # 4875
+  nonce: '4875'  # 4875
+  data:  # 4875
+    kind: work_item  # 4875
+    title: "decide the ADR-0049 net_listen retag for JavaScript now that ruling 3 no longer blocks it"  # 4875
+    status: todo_hard  # 4875
+    priority: 2  # 4875
+    parent:  # 4875
+    tags:  # 4875
+    - javascript  # 4875
+    - taint  # 4875
+    isbefore: []  # 4875
+    duplicate_of: []  # 4875
+    not_duplicate_of: []  # 4875
+    pr_ref:  # 4875
+    description: "UNBLOCKED 2026-09-10, NOT DECIDED. This item exists because a documented\nreason for NOT doing something stopped being true, and a reason that expires\nsilently is how a hold becomes permanent by accident.\n\nWHAT THE SPEC SAID. ADR-0049 moved server-LAUNCH rows from net_recv to\nnet_listen in four languages and held two back. The JavaScript hold read:\n\n  \"JavaScript's entire reachable net_recv surface is\n   {http,https,net}.createServer and Deno.listen; what would survive the move\n   -- WebSocket.onmessage and its peers -- is INV-misup-unreachable, so moving\n   them would relocate the receive to nothing, which ruling 3 forbids.\"\n\nRuling 3 forbids relocating a crossing to nothing. With the WebSocket/SSE\nreceive surface unreachable, retagging createServer would have left JavaScript\nwith NO reachable net_recv at all -- a false all-clear generator.\n\nWHY THAT IS NO LONGER TRUE, IN TWO STEPS.\n  1. INV-misup (#753) typed a `new`-constructed receiver, so\n     ws.addEventListener('message', cb) reaches WebSocket.addEventListener\n     (net_recv). This alone already retired the premise; the spec sentence was\n     not updated at the time.\n  2. WI-dosuh (2026-09-10) emitted the registration edge for the property\n     ASSIGNMENT spelling, so WebSocket.onmessage, WebSocket.onclose and\n     EventSource.onmessage are reachable too, and the CONSTRUCT_BLIND_ROWS\n     declaration recording their unreachability was removed.\n\nVerified, not assumed: `const ws = new WebSocket(u); ws.addEventListener(...)`\nand `ws.onmessage = h` both tag net_recv on the current tree\n(~/hypergumbo_lab_notebook/dosuh_family_09102026/).\n\nWHAT THIS ITEM IS. Decide whether {http,https,net}.createServer and\nDeno.listen move to net_listen. It is NOT a foregone conclusion and must not\nbe taken on the strength of the unblocking alone -- ADR-0049 ruling 1 asks\nwhether the call returns, to its own caller, a value whose content the far\nside chose, and that question has to be asked of each row.\n\nWHAT THE EVIDENCE BAR IS. Measurement 0010 set the precedent for the four\nlanguages that moved: adjudicate the family's LIVE findings and show the\nlaunch-rooted ones are false. Repeat that on JavaScript. Do not substitute a\nshape argument for adjudicated findings -- 0010's own lesson is that shape\ndoes not predict worth (bufio.NewReader(os.Stdin) fails the same ruling-1\ntest as ListenAndServe and produces TRUE, useful findings).\n\nCOUNTERWEIGHT TO WEIGH EXPLICITLY. Reachable is not the same as reached. The\nWebSocket surface being reachable in a fixture does not establish that a real\nJavaScript repo's receives are represented after the move. Measure the\nsurviving net_recv chain count per repo in both arms; if a repo goes to zero,\nruling 3 still bites for that repo.\n\nSPEC IS ALREADY CORRECTED to say the premise expired and the decision is open\n(docs/hypergumbo-spec.md, the ADR-0049 auto-derivation section). No catalogue\nrow was moved."  # 4875
+    fields: {}  # 4875
