@@ -1,0 +1,22 @@
+- op: create  # 4f03
+  at: '2026-09-10T09:51:36Z'  # 4f03
+  by: agent  # 4f03
+  actor: jgstern_agent  # 4f03
+  clock: 1  # 4f03
+  nonce: 4f03  # 4f03
+  data:  # 4f03
+    kind: work_item  # 4f03
+    title: "python -m hypergumbo_core.cli exits 0 printing nothing (no __main__ guard) — a wrong invocation reports success"  # 4f03
+    status: todo_soft  # 4f03
+    priority: 3  # 4f03
+    parent:  # 4f03
+    tags:  # 4f03
+    - cli  # 4f03
+    - usability  # 4f03
+    - analysis_quality  # 4f03
+    isbefore: []  # 4f03
+    duplicate_of: []  # 4f03
+    not_duplicate_of: []  # 4f03
+    pr_ref:  # 4f03
+    description: "FILED 2026-09-10, found while building INV-mumov's verify-claims measurement.\n\nWHAT IT IS. `packages/hypergumbo-core/src/hypergumbo_core/cli.py` has no\n`if __name__ == \"__main__\":` block, so\n\n    python -m hypergumbo_core.cli verify-claims <repo> --claims ... --format json\n\nimports the module, runs NO command, and **exits 0 with empty stdout and empty\nstderr**. The package ships a real `__main__.py`, so `python -m hypergumbo_core`\nis the correct module form and the `.cli` form is the trap.\n\nWHY IT MATTERS. This is the WI-dolaf family: an invocation that is wrong in a\nway the tool reports as SUCCESS. A JSON-consuming pipeline reads the empty\nstdout as \"no findings\" rather than \"you invoked it wrong\", and rc=0 confirms\nit. A zero and a missing result must not look the same.\n\nCOST, MEASURED. One full measurement arm (~6 minutes of survey plus the\nverify-claims call) recorded as a silent zero. It would have been all four arms\nif the driver had not been cross-checked against a direct console-script run\nthat returned rc=1 and 261 KB of JSON on the same input.\n\nPROPOSED FIX, either is fine and both are small:\n  (a) add a `__main__` guard to `cli.py` delegating to `main()`, so the form\n      works; or\n  (b) add one that exits non-zero naming `python -m hypergumbo_core`, so the\n      form fails loudly.\n\n(b) is arguably better: it keeps ONE documented module entry point instead of\ntwo, and the whole defect is that a second spelling silently did nothing.\n\nCHECK THE FAMILY BEFORE FIXING. Any other module in the tree that a reader\nmight plausibly `-m` and that defines a `main()` without a guard has the same\nproperty. Sweep by mechanism (a module defining `main` with no\n`if __name__ == \"__main__\"`), not by name."  # 4f03
+    fields: {}  # 4f03
