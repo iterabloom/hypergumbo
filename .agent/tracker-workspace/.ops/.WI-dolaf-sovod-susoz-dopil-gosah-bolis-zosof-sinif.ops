@@ -1,0 +1,38 @@
+- op: create  # 98f3
+  at: '2026-09-10T05:00:57Z'  # 98f3
+  by: agent  # 98f3
+  actor: jgstern_agent  # 98f3
+  clock: 1  # 98f3
+  nonce: 98f3  # 98f3
+  data:  # 98f3
+    kind: work_item  # 98f3
+    title: "AGENTS.md documents 'tracker show <ID> --json' which exits 2; the usage error is indistinguishable from a missing item on stdout"  # 98f3
+    status: todo_soft  # 98f3
+    priority: 3  # 98f3
+    parent:  # 98f3
+    tags:  # 98f3
+    - tracker  # 98f3
+    - governance  # 98f3
+    - devex  # 98f3
+    isbefore: []  # 98f3
+    duplicate_of: []  # 98f3
+    not_duplicate_of: []  # 98f3
+    pr_ref:  # 98f3
+    description: "AGENTS.md:82 (always-loaded governance text) documents an invocation that exits 2:\n\n    scripts/tracker show <ID> --json      # usage error, exit 2\n\nThe working form puts the global flag before the subcommand:\n\n    scripts/tracker --json show <ID>\n\nWHY IT COSTS MORE THAN A TYPO. Both of the two ways to get this wrong --\nwrong flag position, and running the CLI from outside the repo root -- write\ntheir diagnostic to STDERR and produce nothing on STDOUT. Any verification\nloop that pipes stdout to a JSON parser and discards stderr therefore renders\n\"I invoked the CLI wrong\" and \"that item does not exist\" IDENTICALLY. Observed\ntwice in two consecutive sessions: a 13-ID and a 42-ID status sweep both\nreturned a full column of false UNRESOLVED. This is LIVE.md rule 5 (\"a zero and\na missing input must not look the same\") reproduced by the instrument the rule\nwas written about.\n\nTWO PARTS, SEPARABLE:\n\n(a) DOC. Correct AGENTS.md:82 to the working form. Governance file, so it\n    needs the owner's standing governance pre-approval or an explicit ack.\n    One line.\n\n(b) STRUCTURAL, and the part that actually stops the recurrence. Make the\n    failure loud on the STDOUT side, so a stdout-only consumer cannot read a\n    usage error as an absent item. Options, cheapest first:\n      - accept the trailing --json form as an alias (argparse: add --json to\n        the subparsers as well as the top-level parser), which removes the\n        flag-position hazard entirely rather than documenting around it;\n      - and/or emit a JSON error object on stdout with a nonzero exit when\n        --json is in effect, so a parser sees {\"error\": ...} not empty input.\n    The alias is the smaller change and kills the larger share of the hazard;\n    the wrong-cwd case still exits nonzero with empty stdout and would need the\n    second option.\n\nDISCOVERED: 2026-09-10, verifying LIVE.md's roster claims at session start.\nNOT a blocker for any arc cell -- filed so it is not relearned a third time."  # 98f3
+    fields: {}  # 98f3
+- op: update  # c745
+  at: '2026-09-10T05:01:16Z'  # c745
+  by: agent  # c745
+  actor: jgstern_agent  # c745
+  clock: 2  # c745
+  nonce: c745  # c745
+  set: {}  # c745
+  add:  # c745
+    not_duplicate_of: [WI-vokiz-muhif-bagiv-tazuj-supon-padik-nudoj-pigij]  # c745
+- op: discuss  # 738a
+  at: '2026-09-10T05:01:16Z'  # 738a
+  by: agent  # 738a
+  actor: jgstern_agent  # 738a
+  clock: 3  # 738a
+  nonce: 738a  # 738a
+  message: "Filed while verifying LIVE.md's roster claims at session start. Reproduced live this session: a 13-ID status sweep piping stdout to a JSON parser returned 13 false UNRESOLVED, because argparse wrote its usage error to stderr and my loop had 2>/dev/null. Same symptom the prior session attributed to a wrong cwd -- both causes produce empty stdout, so the earlier diagnosis may have been the other half of the same hazard. Marked not-duplicate-of WI-vokiz (SimHash 8 bits, but that item is tree_sitter Node.text guarding -- unrelated)."  # 738a
