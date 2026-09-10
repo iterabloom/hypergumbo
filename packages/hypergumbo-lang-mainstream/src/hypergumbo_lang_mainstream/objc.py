@@ -23,6 +23,7 @@ Three-pass analysis:
 
 from __future__ import annotations
 
+import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -411,7 +412,7 @@ def _extract_symbols_from_file(
     except (OSError, IOError):  # pragma: no cover
         return analysis
 
-    tree = parser.parse(source)
+    source, tree = _objc_parse_source(parser, source)
 
     for node in iter_tree(tree.root_node):
         if node.type in ("class_interface", "class_implementation"):
@@ -841,7 +842,7 @@ def _extract_edges_from_file(
     except (OSError, IOError):  # pragma: no cover
         return edges
 
-    tree = parser.parse(source)
+    source, tree = _objc_parse_source(parser, source)
     _registry = method_return_types or {}
     _properties = property_types or {}
     _recv_spans = _objc_declared_receiver_types(tree.root_node, source, _registry)
@@ -1027,6 +1028,91 @@ def _extract_edges_from_file(
     return edges
 
 
+#: ``NS_ASSUME_NONNULL_BEGIN`` / ``_END``. Harmless in isolation -- the grammar
+#: reads a lone one as an expression -- but WRAPPING a declaration it breaks the
+#: parse, and every modern Apple-style header wraps its declarations in a pair.
+_OBJC_ASSUME_NONNULL = re.compile(rb"\bNS_ASSUME_NONNULL_(?:BEGIN|END)\b")
+
+#: ``NS_ENUM`` / ``NS_OPTIONS`` / ``NS_CLOSED_ENUM``. A leading ``typedef`` is part
+#: of the match and is CONSUMED: ``typedef enum S { ... };`` is a typedef with no
+#: declarator and yields a MISSING ``type_identifier`` -- a NEW parse failure
+#: inside the fix for parse failures, which is what the first draft shipped.
+#: ``enum S { ... };`` parses clean and keeps the tag name.
+_OBJC_NS_ENUM = re.compile(
+    rb"(?:\btypedef\s+)?\bNS_(?:ENUM|OPTIONS|CLOSED_ENUM)\s*\(\s*"
+    rb"[A-Za-z_][A-Za-z0-9_ *]*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)"
+)
+
+
+def _objc_rewrite_unparseable(source: bytes) -> bytes:
+    """Rewrite, preserving byte length, the two Apple SDK macros the grammar lags on.
+
+    WI-lafom. tree-sitter-objc 3.0.2 does not preprocess, so a macro that expands
+    to syntax is a syntax error to it. There is no newer grammar to bump to --
+    3.0.0 / 3.0.1 / 3.0.2 are all that is published -- so the fix is INV-bisok's
+    route, a pre-parse rewrite behind :meth:`TreeSitterAnalyzer.parse_source`.
+
+    Only two macros earn a rule, and both were confirmed by parsing a MINIMAL
+    SNIPPET with and without them rather than by reading the source at the first
+    ERROR node's line. That line is where error recovery re-parented TO, and
+    reading it as the cause is what gave INV-bisok's residual half a root cause
+    that later had to be withdrawn. ``nullable``, generics, block properties,
+    ``NS_DESIGNATED_INITIALIZER``, ``NS_SWIFT_NAME`` and a LONE
+    ``NS_ASSUME_NONNULL_BEGIN`` all parse with zero ERROR nodes.
+
+    Two further rules were measured on the four-repository ObjC corpus and are
+    deliberately absent:
+
+    * Apple's availability macros by name (``API_AVAILABLE``, ``NS_DEPRECATED``,
+      ...) recover ZERO further files and move zero nodes any consumer reads.
+    * Blanking any ``SHOUTY(...)`` before a ``;`` recovers two more files but
+      SHEDS 17 real ``property_declaration`` nodes. A count bought by shrinking
+      the denominator is pure loss.
+    """
+    out = _OBJC_ASSUME_NONNULL.sub(lambda m: b" " * len(m.group(0)), source)
+
+    def _enum(match: "re.Match[bytes]") -> bytes:
+        replacement = b"enum " + match.group(1)
+        padding = len(match.group(0)) - len(replacement)
+        if padding < 0:  # pragma: no cover - `enum X` is always the shorter form
+            return match.group(0)
+        return replacement + b" " * padding
+
+    return _OBJC_NS_ENUM.sub(_enum, out)
+
+
+def _objc_count_errors(tree: "tree_sitter.Tree") -> int:
+    return sum(1 for n in iter_tree(tree.root_node) if n.type == "ERROR")
+
+
+def _objc_parse_source(
+    parser: "tree_sitter.Parser", source: bytes,
+) -> "tuple[bytes, tree_sitter.Tree]":
+    """Parse, and retry once through :func:`_objc_rewrite_unparseable`.
+
+    Guarded twice, which is what makes the hook safe rather than a licence to
+    edit source: the rewrite runs ONLY on a file that already fails to parse, and
+    its result is kept ONLY when it strictly reduces ERROR nodes. So a file the
+    grammar handles is byte-identical through here -- which is what stops a macro
+    NAME inside a string, a comment or a ``#define`` from being rewritten in any
+    file whose parse those bytes did not already break.
+
+    Both ObjC passes call this, and both use the bytes it returns. They must:
+    Pass 2 re-reads the file and re-parses it, so a rewrite applied in Pass 1
+    alone would desynchronise the two passes' spans.
+    """
+    tree = parser.parse(source)
+    if not tree.root_node.has_error:
+        return source, tree
+    rewritten = _objc_rewrite_unparseable(source)
+    if rewritten == source:
+        return source, tree
+    retry = parser.parse(rewritten)
+    if _objc_count_errors(retry) < _objc_count_errors(tree):
+        return rewritten, retry
+    return source, tree
+
+
 class ObjCAnalyzer(TreeSitterAnalyzer):
     """Objective-C analyzer using tree-sitter-objc.
 
@@ -1038,6 +1124,17 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
     lang = "objc"
     file_patterns: ClassVar[list[str]] = ["*.m", "*.mm", "*.h"]
     grammar_module = "tree_sitter_objc"
+
+    def parse_source(
+        self, parser: "tree_sitter.Parser", source: bytes,
+    ) -> "tuple[bytes, tree_sitter.Tree]":
+        """The base-class hook, so the contract holds for any caller that uses it.
+
+        ``analyze()`` is overridden here and its two passes call
+        :func:`_objc_parse_source` directly, so this override exists to keep the
+        template method and the ObjC passes from being two homes for one fact.
+        """
+        return _objc_parse_source(parser, source)
 
     def analyze(
         self,
