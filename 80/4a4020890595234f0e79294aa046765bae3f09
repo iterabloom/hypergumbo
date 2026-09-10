@@ -1,0 +1,34 @@
+Original commit body from ef3460f738c8b190844de11082fa884d50e5f572:
+
+`ws.onmessage = handler` is the browser receive surface short of `addEventListener`, and it is a property assignment, not a call. Every branch of `js_ts.py`'s member-call cascade keys on a `call_expression`, so the assignment emitted nothing at all — not a low-confidence edge, not the `external` placeholder — and the catalogue rows `WebSocket.onmessage`, `WebSocket.onclose` and `EventSource.onmessage` were unreachable by any spelling. The limitation was DECLARED in `analyzer_disclosure.CONSTRUCT_BLIND_ROWS` rather than fixed; that declaration is removed and the dict ships empty, its machinery kept and tested against an injected declaration.
+
+## Scope was set by parity with the call path, not by the construct
+
+Each receiver spelling was asked twice — once as `ws.send(x)`, once as `ws.onmessage = h`. Four resolve to a catalogue module for a CALL and emitted nothing for an ASSIGNMENT (const+new, a TypeScript-declared parameter, inline `new WebSocket(u).onmessage = h`, module scope); those four are this change's work. Three resolve for NEITHER — receiver-typing gaps predating this construct, filed rather than fixed here (WI-ponid, WI-vipos) and pinned as known gaps so they cannot be mistaken for this change's failures. The two constructs now share one receiver lookup, `_named_receiver_module`.
+
+`||=` and `??=` register by the same mechanism and are covered. The property must be one the catalogue rows, derived the way `_derive_js_constructor_types` derives its set, so `ws.binaryType = 'blob'` stays out of the graph and `onopen` — removed deliberately by INV-nular — is not silently re-added.
+
+## The inertness prediction is REFUTED, and recorded as such
+
+This was ruled and built as correct-but-inert: taint must also ENTER the handler, and the enclosing-function-to-callback edge is `references`, not in `TAINT_CALL_EDGE_TYPES`. That holds for `addEventListener`, whose callback is minted its own symbol with the sink behind that uncrossable edge. **An assignment RHS is minted no symbol at all**, so an inline handler's body is attributed to the enclosing function, source and sink land on one node, and the structural arm reports the flow:
+
+```
+untrusted-input-no-subprocess   violated   origins={'net_recv': 1}
+  WebSocket.onmessage [app.js:viaAssignment] -> child_process.exec
+```
+
+It is a TRUE finding — network bytes reach a shell. A named handler (`ws.onmessage = handle`) stays inert as predicted. The structural arm's co-location imprecision was probed separately and fires for `addEventListener` identically, so it is not introduced here. Minting a symbol on the assignment side would reproduce the defect WI-nisud exists to remove, so it is deliberately not done; the structure is pinned by a test.
+
+## Re-pointed, not stricken
+
+Two pins asserting the old behaviour are OVERTURNED with rationale in their docstrings. The spec's ADR-0049 paragraph and `test_inv_nular_false_sources.py`'s JavaScript hold docstring both rested on these rows being unreachable — the latter named this exact trigger ("when INV-misup closes, this test is what asks whether the exemption still has a reason"). The rows are NOT moved; that needs measurement 0010's adjudication repeated on JavaScript, filed as WI-vogos.
+
+Also re-points two `module_key_axis` citations whose line numbers this change shifted, and corrects a stale count in one of their notes.
+
+## Verification
+
+full suite 26,752 passed / 100% coverage · root `tests/` 1,775 passed · mainstream isolation 100% · core isolation 100% · mypy ratchet clean at 669.
+
+Residuals filed: WI-ponid, WI-vipos, WI-vogos, WI-vubal, WI-gajat.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
