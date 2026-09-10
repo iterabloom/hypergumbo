@@ -609,7 +609,7 @@ PLAYBOOKS = [
      "upgrades like pending_validation->violated apply directly), (4) emit a dominant-"
      "invariant-family meta-analysis table (DATA + proposals, human prioritizes). Phase 0 "
      "stamps the precise start timestamp into a lab notebook entry BEFORE any work, pins repo "
-     "HEAD, and FREEZES a `tracker list --json` snapshot every worker reads (never the live "
+     "HEAD, and FREEZES a `tracker --json list` snapshot every worker reads (never the live "
      "tracker). Subagents deepen per-item investigations (read via `tracker show`, NEVER .ops; "
      "read source at the pinned HEAD). Orchestrator<->worker communication is a blackboard: "
      "an APPEND-ONLY corrections.md (workers re-read before each item — the live-steering "

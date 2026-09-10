@@ -261,7 +261,10 @@ YAML-backed structured tracker. These rules govern correct tool usage in any \
 repo that adopts the tracker.
 
 **Agent Context Protection:** Always use `scripts/tracker show <ID>` or \
-`scripts/tracker show <ID> --json` to read tracker item state. Always refuse \
+`scripts/tracker --json show <ID>` to read tracker item state. `--json` is a \
+GLOBAL flag and goes BEFORE the subcommand; the trailing form exits 2 with a \
+usage error on stderr and empty stdout, which a JSON consumer misreads as a \
+missing item. Always refuse \
 to read files ending in `.ops`. These are internal operation logs that will \
 pollute your context window with historical data you don't need. The CLI \
 compiles ops into current state — that's what you want.
