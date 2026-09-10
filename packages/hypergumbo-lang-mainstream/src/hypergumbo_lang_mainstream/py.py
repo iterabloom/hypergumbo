@@ -4708,23 +4708,40 @@ def _assigned_names(block_nodes: list[ast.AST]) -> set[str]:
     for node in block_nodes:
         for sub in ast.walk(node):
             targets: list[ast.expr] = []
+            # ONLY value bindings whose RHS the walker evaluated and declined
+            # to type. A ``for`` target, a comprehension target and a ``with``
+            # target are NOT included: the walker never types those, so their
+            # presence would mean "we never look here", not "we looked and
+            # failed" — and refusing on them costs real model instances
+            # (``for event in qs: event.seats.filter(...)``).
             if isinstance(sub, ast.Assign):
                 targets = list(sub.targets)
             elif isinstance(sub, (ast.AnnAssign, ast.AugAssign)):
                 targets = [sub.target]
-            elif isinstance(sub, (ast.For, ast.AsyncFor)):
-                targets = [sub.target]
-            elif isinstance(sub, ast.withitem):
-                targets = [sub.optional_vars] if sub.optional_vars is not None else []
-            elif isinstance(sub, ast.comprehension):
-                targets = [sub.target]
             elif isinstance(sub, ast.NamedExpr):
                 targets = [sub.target]
             for tgt in targets:
-                for leaf in ast.walk(tgt):
-                    if isinstance(leaf, ast.Name):
-                        names.add(leaf.id)
+                names.update(_bound_names(tgt))
     return names
+
+
+def _bound_names(target: ast.expr) -> set[str]:
+    """The names a target expression actually BINDS.
+
+    ``d[k] = v`` binds neither ``d`` nor ``k``; ``a.b = v`` binds neither ``a``
+    nor ``b``. Walking the whole target subtree and taking every ``Name`` leaf
+    collected those too, so ``self._cache[item, subevent] = x`` registered
+    ``self``, ``item`` and ``subevent`` as assigned and refused ``item``, a
+    plain parameter, at its next use.
+    """
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {n for elt in target.elts for n in _bound_names(elt)}
+    if isinstance(target, ast.Starred):
+        return _bound_names(target.value)
+    # Subscript / Attribute mutate an existing object; they bind nothing.
+    return set()
 
 
 def _is_super_call(expr: ast.expr) -> bool:
@@ -4848,14 +4865,41 @@ class _DjangoReceiverOracle:
             # is evidence; only "never had an input" is silence.
             return True
         if isinstance(expr, ast.Name):
+            if expr.id == "self":
+                # We are always inside SOME class; reaching here means the
+                # enclosing class did not resolve. Tried and failed.
+                return True
+            # ASYMMETRY, DELIBERATE AND MEASURED: this consults
+            # ``assigned_names`` while the Attribute branch below does not, so
+            # ``device.events`` is refused when ``device`` was assigned while
+            # ``device.organizer.events`` is allowed. The check exists for one
+            # failure class -- a Name bound to a NON-model (``label =
+            # Order.LABELS.get("a")``) -- which is always one hop. Propagating
+            # it down deeper chains costs 99 sites on pretix to catch a shape
+            # nobody has observed, and "assigned but untyped" is weak evidence:
+            # the walker types very few bindings, so most of them mean nothing.
+            # Compounding a weak signal across hops would refuse on silence.
             return expr.id in self.assigned_names and expr.id not in self.var_types
         if isinstance(expr, ast.Attribute):
-            if isinstance(expr.value, ast.Name) and expr.value.id == "self":
-                # ``self.<field>`` inside a class whose symbol did not resolve
-                # (an ambiguous short name, say): the field map was consulted
-                # and gave nothing, so this is a failure, not an absence.
-                return self.enclosing_class is None or self.instance_class(expr.value) is not None
-            return self.instance_class(expr.value) is not None
+            # Reached only when ``instance_class(expr)`` already returned None.
+            # If the OWNER one hop up resolved, the relation was looked up on a
+            # known class and was absent: evidence against. ``self.ex`` lands
+            # here and is handled by this same rule, since
+            # ``instance_class(Name("self"))`` is the enclosing class.
+            if self.instance_class(expr.value) is not None:
+                return True
+            # A chain of ANY depth rooted at ``self`` whose enclosing class did
+            # not resolve (an ambiguous short name, say): the field map was
+            # consulted and gave nothing, so this is a failure and not an
+            # absence, at every hop and not only the first.
+            base: ast.expr = expr
+            while isinstance(base, ast.Attribute):
+                base = base.value
+            return (
+                isinstance(base, ast.Name)
+                and base.id == "self"
+                and self.enclosing_class is None
+            )
         return False
 
     def manager_model(self, expr: ast.expr) -> Symbol | None:
@@ -5527,6 +5571,7 @@ def _extract_edges(
         var_types: dict[str, Symbol] | None = None,
         stack: ScopeStack | None = None,
         external_var_types: dict[str, str] | None = None,
+        assigned_names: "set[str] | None" = None,
     ) -> None:
         """Process AST nodes within a code block, tracking variable types.
 
@@ -5566,6 +5611,13 @@ def _extract_edges(
         # ``None`` on a repository with no relation declarations, which keeps
         # the single-file ``extract_nodes`` path and every non-Django tree on
         # exactly the code path they had.
+        # Computed ONCE per block and threaded into every recursion below, so a
+        # nested level sees the block's bindings rather than an empty set
+        # derived from its own one-node slice (INV-hovoj).
+        _assigned = (
+            assigned_names if assigned_names is not None
+            else _assigned_names(block_nodes)
+        )
         _oracle: _DjangoReceiverOracle | None = None
         if django_index:
             _oracle = _DjangoReceiverOracle(
@@ -5574,7 +5626,7 @@ def _extract_edges(
                     method_to_enclosing_class_id.get(caller_symbol.id, ""),
                 ),
                 _resolve_class_name,
-                _assigned_names(block_nodes),
+                _assigned,
             )
         _manager_root = _oracle.manager_root if _oracle is not None else None
 
@@ -5669,6 +5721,7 @@ def _extract_edges(
                 process_code_block(
                     [node.generators[0].iter], caller_symbol, var_types,
                     stack=stack, external_var_types=external_var_types,
+                    assigned_names=_assigned,
                 )
                 # WI-fasap: every generator's iterable is an evaluation -- the
                 # first under the enclosing scope's types, the rest under the
@@ -5684,6 +5737,7 @@ def _extract_edges(
                     process_code_block(
                         [_part], caller_symbol, _pruned_vt,
                         stack=stack, external_var_types=_pruned_ext,
+                        assigned_names=_assigned,
                     )
                 continue
 
@@ -5700,10 +5754,12 @@ def _extract_edges(
                     process_code_block(
                         [_dflt], caller_symbol, var_types,
                         stack=stack, external_var_types=external_var_types,
+                        assigned_names=_assigned,
                     )
                 process_code_block(
                     [node.body], caller_symbol, _pruned_vt,
                     stack=stack, external_var_types=_pruned_ext,
+                    assigned_names=_assigned,
                 )
                 continue
 
@@ -5968,6 +6024,7 @@ def _extract_edges(
                         [child], caller_symbol, var_types,
                         stack=stack,
                         external_var_types=external_var_types,
+                        assigned_names=_assigned,
                     )
 
     (
