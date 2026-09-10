@@ -305,3 +305,79 @@
   set:  # c2fc
     fields:  # c2fc
       root_cause: "A use site the section 3a walk cannot adjudicate has no callee recorded at that line, so no function summary can resolve it.\n\nMEASURED CAUSES of the call-node escapes (S8, 2026-08-10, dev ecb954eb05, 26 sites, positive control passing -- 595,736 edges offered / 317,528 accepted / 69 summary entries / 29,301 callees_at entries, no stage empty):\n  1   no call edge emitted at all (INV-foluz)                     13   50.0%\n  4a  summary key present, absent from the catalogue              8    30.8%\n  3a  receiver untyped, 'external' placeholder (INV-linub)        4    15.4%\n  3b  resolved and provenance-gated (CORRECT, WI-zumud)           1     3.8%\n\n*** NOT ADR-0017 SECTION 7B. *** This field previously read: \"field write, container subscript, closure capture ... requires field-sensitivity/alias analysis, which ADR-0017 section 7b explicitly excludes.\" That attribution is withdrawn. Container subscript has measured ZERO in every run. Capture-mediated closure -- the one shape section 7b actually forbids -- has appeared exactly once (3 sites, all Go func-literals in caddy, 0 in Python) and measured 0 on the 2026-08-10 population. Field write measured 0 there too. The section 7b ruling was priced down and set aside four times and then refuted by its categories being empty; it is not the binding constraint and does not need to be asked.\n\n*** THE BINDING CONSTRAINT IS STRUCTURAL, NOT SHAPE-RELATED -- BUT ITS SECOND LEG HOLDS ONLY UNDER THE DEFAULT SANITIZER CATALOGUE (corrected 2026-08-17). *** The per-repo barrier-arm zeros recorded below were measuring the CATALOGUE, not the code path: the built-in sanitizer catalogue expresses exactly two transforms, so a flow under any other label cannot be reported sanitized and the arm is unreachable BY CONSTRUCTION. A/B on alertmanager, one binary, one variable changed: default catalogue 34 walks / 0 barrier; + 9 ordinary laundering functions as sanitizers 55 walks / 21 barrier. So for a project that declares its own sanitizers -- what --taint-sanitizers and extra_catalogs exist for -- escape reclassification CAN move findings, and it moves them toward SUPPRESSION (a barrier False earns sanitized and drops the flow, #214). The FIRST leg is untouched: the section 3a arm tests is True, so False and None still collapse there, and a production walk returning False was, when this was written, unobserved -- CORRECTED 2026-09-07: it happens (beads 1 of 553 on 2026-09-02; alertmanager 1, beads 78, kserve 1 under the ceiling arm on 2026-09-07). The conclusion is unaffected: False and None are still indistinguishable at `is True`. Read the zeros below as the population they were measured on. The section 3a arm tests `is True`, so False and None collapse there. The barrier arm is the only consumer of a False, and it ran 0 times on every measured repo (hypergumbo 36 walks / 36 3a / 0 barrier; pretix 35/35/0; prometheus 7/7/0; alertmanager 3/3/0). So NO escape reclassification -- section 7a field sensitivity, expression-read reclassification, anything converting an escape into an accounted-for step -- can add or delete a finding today. Section 3a returned False on 0 of 68 walks WHEN MEASURED; that zero no longer holds (see the correction above) and it never mattered, because the section 3a arm cannot tell False from None.\n\nCAVEAT CARRIED, not buried: the all-zero shape reading is one repo, Python, 70 paths. Shape counts move with the corpus and Go has shown closure captures once. The structural finding above does not depend on shape counts and is what actually decides this.\n\n*** THE BARRIER ARM'S ZERO IS A PROPERTY OF THE DEFAULT CATALOGUE, AND THE DECLARED-SANITIZER ARM RAN 2026-09-07. *** Barrier walks, default -> declared (nine ordinary laundering functions under `extra_catalogs: sanitizers:`): alertmanager 0 -> 4, beads 0 -> 122, kserve 0 -> 6. And with a population the ceiling arm MOVES FINDINGS for the first time: on beads it converts 77 section 3a walks and ONE barrier walk from None to False, and the run goes violated 6 / sanitized 351 / evidence 230 -> violated 6 / sanitized 352 / evidence 225. So the escape-closing family's only reachable effect on findings is SUPPRESSION -- deleting them -- and it is no longer zero. INV-foluz's 'measure both signs before building' now has a measured sign. Magnitude is an artefact of the declaration; direction and existence are the interpretable parts. Full record: ~/hypergumbo_lab_notebook/busis_suppression_09072026/."  # c2fc
+- op: update  # eb0e
+  at: '2026-09-10T02:49:53Z'  # eb0e
+  by: agent  # eb0e
+  actor: jgstern_agent  # eb0e
+  clock: 39  # eb0e
+  nonce: eb0e  # eb0e
+  set: {}  # eb0e
+  remove:  # eb0e
+    isbefore: [WI-vodin-jugin-kugib-fizab-sobun-sivub-tohim-guzat]  # eb0e
+- op: update  # 6ff3
+  at: '2026-09-10T02:49:53Z'  # 6ff3
+  by: agent  # 6ff3
+  actor: jgstern_agent  # 6ff3
+  clock: 40  # 6ff3
+  nonce: 6ff3  # 6ff3
+  set: {}  # 6ff3
+  remove:  # 6ff3
+    isbefore: [INV-linan-pikid-sozoh-podur-lapov-ribud-fakum-ziful]  # 6ff3
+- op: update  # a0a2
+  at: '2026-09-10T02:49:53Z'  # a0a2
+  by: agent  # a0a2
+  actor: jgstern_agent  # a0a2
+  clock: 41  # a0a2
+  nonce: a0a2  # a0a2
+  set: {}  # a0a2
+  remove:  # a0a2
+    isbefore: [INV-varil-povuk-jizoz-jafah-kanoz-buduk-nazas-murut]  # a0a2
+- op: update  # 9347
+  at: '2026-09-10T02:49:54Z'  # 9347
+  by: agent  # 9347
+  actor: jgstern_agent  # 9347
+  clock: 42  # 9347
+  nonce: '9347'  # 9347
+  set: {}  # 9347
+  remove:  # 9347
+    isbefore: [INV-hujog-vamon-zafon-mikik-pisah-tanor-pumah-rogij]  # 9347
+- op: update  # 1f4b
+  at: '2026-09-10T02:49:54Z'  # 1f4b
+  by: agent  # 1f4b
+  actor: jgstern_agent  # 1f4b
+  clock: 43  # 1f4b
+  nonce: 1f4b  # 1f4b
+  set: {}  # 1f4b
+  remove:  # 1f4b
+    isbefore: [INV-bikaj-mizug-gahoh-mofij-pigut-funaj-zijab-rivil]  # 1f4b
+- op: discuss  # 0d6a
+  at: '2026-09-10T02:52:28Z'  # 0d6a
+  by: agent  # 0d6a
+  actor: jgstern_agent  # 0d6a
+  clock: 44  # 0d6a
+  nonce: 0d6a  # 0d6a
+  message: "OWNER RULING 2026-09-09, and it is the first human entry on this thread in 24. Three\nquestions were put; all three answered:\n\n  1. DROP THE FIVE isbefore EDGES. Done in this batch: INV-busis no longer blocks\n     WI-vodin (T3), INV-linan + INV-varil (T4), INV-hujog + INV-bikaj (T6). Four of\n     the five surfaced in `tracker ready` immediately; INV-bikaj stays held by\n     INV-hujog, which is T6's own internal order and intended. The two remaining\n     edges point at INV-nular (satisfied) and WI-dozul (done) and are inert.\n     RATIONALE AS PUT: T1/T2 shipped THROUGH this gate while the item was violated\n     and nothing broke, and the five targets -- an emission-boundary id linter, a\n     tracker custom-key gate, a pass-declaration mechanism -- have no technical\n     dependency on taint refutation. The edges encoded running ORDER, not\n     dependency, and their only live effect was hiding five actionable items from\n     `ready`.\n\n  2. OPTION (c): ACCEPT CONFIRM-ONLY PERMANENTLY, RETIRE THE REMOVAL GOAL, update\n     INV-sadah and WI-kabif to match. Options (a) narrow-the-domain, (b)\n     field-sensitivity lite and (d) the Joern over-taint model are declined.\n     RATIONALE AS PUT: the 2026-09-07 declared-sanitizer arm on this thread showed\n     the escape-closing family's only reachable effect on findings is to DELETE\n     them, and hypergumbo cannot verify that a declared sanitizer sanitizes\n     anything -- that arm only had a population because `fmt.Sprintf` was declared\n     a sanitizer, which it is not. (b) and (d) therefore buy suppression capacity,\n     not recall.\n\n  3. ONE declared-sanitizer suppression arm at T0c over the DRAINED SET, not nine\n     per-cell arms. Supersedes this thread's 2026-09-07 \"should not ship without\n     its own declared-sanitizer suppression arm\" as applied per-cell: that\n     requirement was an agent recommendation, never ruled, and it measures a\n     family-level catalogue property that nine repetitions would re-measure.\n     Recorded on INV-linub, which is T0c.\n\nTWO STALE CONSEQUENCE CLAIMS IN THIS ITEM'S OWN description, found while executing\nthe ruling and corrected here rather than left to mislead:\n  * \"INV-sadah stays violated\" -- IT IS SATISFIED (2026-09-06, on its own filed\n    repro re-run).\n  * \"WI-kabif stays todo_hard\" -- IT IS DONE (PR #716, 2026-09-02).\nThat matters for what (c) means. The removal MECHANISM is not missing: WI-kabif\ngranted section 3a removal authority, `INCLUSION_DECIDED_BY` moved to\n`call_graph_reachability_minus_ddg_refutation` on 2026-09-02, and a refuted flow\nis removed on the production path with a non-vacuity floor. What is inert is\nremoval IN PRACTICE -- `flows_removed_by_walk` is 0 on every repo measured here,\nbecause escapes block the walk before it can refute. So (c) retires the goal of\nWIDENING refutation until it fires; it does not remove the capability.\n\nWHAT (c) SHIPS, so this is a declared blindness and not a tracker-only decision.\nThe arc's EXIT requires a family close on behavioural evidence or convert to a\nDATED, USER-VISIBLE declared blindness. The user-visible half has a measured gap:\n`dataflow_coverage` emits `flows_removed_by_walk: 0` and rolls findings up by\nanalysis method, but `ddg_mixed` collapses THREE walk verdicts -- taint.py:327\nrecords the split as 0 unconfirmed / 14 escaped / 139 not_attempted -- so a reader\nCANNOT tell \"the walk ran and refuted nothing\" from \"the walk never got to look\".\nThose have opposite meanings for a security reader on identical evidence, which is\nthe exact argument dataflow_scope.py's own docstring was written to make about\n\"0 precise findings\". The disclosure is missing on its own field. Fix: emit the\nwalk-verdict breakdown alongside the removal count, in both json and text."  # 0d6a
+- op: update  # 67e8
+  at: '2026-09-10T03:43:28Z'  # 67e8
+  by: agent  # 67e8
+  actor: jgstern_agent  # 67e8
+  clock: 45  # 67e8
+  nonce: '67e8'  # 67e8
+  set:  # 67e8
+    fields:  # 67e8
+      statement: "hypergumbo's taint analysis is CONFIRM-ONLY IN PRACTICE, and its own output says so. ADR-0017 section 3a's removal capability exists and fires on an 'unconfirmed' walk, but the escape sites that would give it a population are not being closed -- retired by owner ruling 2026-09-09 (ADR-0052), because 66.7-90.6% of blocked-walk sites have no callee at the line at all and no function summary can ever reach them.\n\nTHE INVARIANT IS NOW A DISCLOSURE REQUIREMENT, and the original refutation requirement is WITHDRAWN rather than met: every verify-claims run must publish dataflow_coverage.walk_verdicts beside flows_removed_by_walk, so a reader can tell a walk that adjudicated and refuted nothing from one that never got to look. Only 'unconfirmed' can remove a flow, and the analysis_method rollup collapses three other verdicts into ddg_mixed and a fourth into structural, so without the breakdown a zero is uninterpretable.\n\nORIGINAL STATEMENT, withdrawn 2026-09-09 and kept here so the thread is readable: 'For the ADR-0017 section 3a walk to license removing a flow, every point at which it loses track of a tainted value must be attributable to a callee whose summary says the taint terminates.' That is false, will remain false, and is no longer being pursued."  # 67e8
+- op: update  # 7660
+  at: '2026-09-10T03:43:58Z'  # 7660
+  by: agent  # 7660
+  actor: jgstern_agent  # 7660
+  clock: 46  # 7660
+  nonce: '7660'  # 7660
+  set:  # 7660
+    status: satisfied  # 7660
+- op: discuss  # 0688
+  at: '2026-09-10T03:43:58Z'  # 0688
+  by: agent  # 0688
+  actor: jgstern_agent  # 0688
+  clock: 47  # 0688
+  nonce: '0688'  # 0688
+  message: "SATISFIED 2026-09-09 ON THE RE-SCOPED STATEMENT, dev 33d3ea7116, PR #875. The\nORIGINAL statement is WITHDRAWN, not met -- said plainly because \"satisfied\" on\nan invariant whose original text is false and will stay false is exactly the\nfalse-satisfaction shape INV-nufob was closed on. This follows the arc's own T1\npattern for INV-nular: statement rewrite -> user-visible disclosure of the\nunverified remainder -> satisfied on the NEW statement.\n\nBEHAVIOURAL EVIDENCE FOR THE NEW STATEMENT, which is a disclosure requirement, so\nthe evidence is the disclosure appearing in a live run rather than a proxy:\n\n  hypergumbo survey packages/hypergumbo-core --out self.json\n  hypergumbo verify-claims --claims docs/example-claims/generic-taint-claims.yaml \\\n      --input self.json                                      # exit 1, a failing claim\n\n  Data-flow coverage (ADR-0017 §3a) for the 1 analyzed language(s) ...\n    python  sources 162, sinks 331  data-flow machinery wired: yes\n    Taint findings by analysis method (224 total): 224 structural.\n    Flows REMOVED by the walk this run: 0.\n    §3a walk verdicts for those findings: confirmed 0, escaped 0, mixed 0,\n      not_attempted 0, unavailable 224, unconfirmed 0, unrecorded 0.\n    Only an 'unconfirmed' verdict can REMOVE a flow ... a removal count of 0\n      beside a large 'escaped' or 'not_attempted' count means the walk did not\n      get to look -- NOT that it looked and found nothing. Closing those escapes\n      is a RETIRED goal (INV-busis, 2026-09-09) ...\n\nTHE FIRST RUN PAID FOR THE CHANGE. `unavailable 224 of 224` on hypergumbo's own\nrepository: the DDG builds 177,518 edges here (verified directly against\n_build_ddg_for_verify_claims) and covers NONE of the 224 flows' source functions.\nBefore this the output said `wired: yes`, `224 structural`, `0 removed` -- three\nlines from which a reader would reasonably conclude the walk had run and found\nnothing to remove. It had not run on a single flow. That gap is now stated.\n\nWHY THIS IS NOT A PROCESS PROXY. The closure does not rest on \"the measurement is\ncomplete\" or on a validator being clean. It rests on a user-visible behavioural\nchange verified in a live production run, plus the two facts that made the\nretirement the right call and are themselves measurements rather than opinions:\nmeasurement 0007 (ZERO of 153 ddg_mixed rows across 11 repositories rest on a walk\nthat ran and established no dependence) and the 2026-09-07 declared-sanitizer arm\n(the family's only reachable effect on findings is suppression).\n\nSHIPPED IN #875: ADR-0052; `count_walk_verdicts` + the `walk_verdicts` block in\njson and text; VERIFY_CLAIMS_SCHEMA_VERSION 2.2 -> 2.3; ADR-0017's Status line\ncorrected (it still said §3a \"never decides inclusion\", false since PR #716) and\nits §3a/§7a pointers added; the spec's \"activate as escape sites close\" corrected.\n\nTWO THINGS DELIBERATELY LEFT OPEN, so nobody reads this closure as wider than it\nis. (1) ADR-0017 §7a is NOT superseded -- its propagation design and its RECALL\nvalue are untouched; what was declined is this item's option (b), which proposed\nrepurposing §7a as an escape-closing device. (2) The two remaining isbefore edges\nfrom this item point at INV-nular (satisfied) and WI-dozul (done) and are inert;\nthe owner's ruling named the five OPEN targets and those are dropped.\n\nRE-OPEN TRIGGER, written rather than implied (ADR-0052 carries it too): revisit if\nEITHER a corpus measurement reports a non-trivial `unconfirmed` population -- walks\nthat ran, exhausted every route and found no dependence, the cell 0007 found empty\n-- OR hypergumbo gains a way to VERIFY that a declared sanitizer sanitizes, which\nis what makes options (b) and (d) fail-open today."  # 0688
