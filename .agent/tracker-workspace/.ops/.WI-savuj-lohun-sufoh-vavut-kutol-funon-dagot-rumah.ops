@@ -1,0 +1,22 @@
+- op: create  # 4fe8
+  at: '2026-09-10T11:46:10Z'  # 4fe8
+  by: agent  # 4fe8
+  actor: jgstern_agent  # 4fe8
+  clock: 1  # 4fe8
+  nonce: 4fe8  # 4fe8
+  data:  # 4fe8
+    kind: work_item  # 4fe8
+    title: "ADR-0051 module-key citations rot invisibly: the test pins file:line but slice --files cannot see a line-number coupling"  # 4fe8
+    status: todo_soft  # 4fe8
+    priority: 3  # 4fe8
+    parent:  # 4fe8
+    tags:  # 4fe8
+    - tooling  # 4fe8
+    - ci  # 4fe8
+    - module_key  # 4fe8
+    isbefore: []  # 4fe8
+    duplicate_of: []  # 4fe8
+    not_duplicate_of: []  # 4fe8
+    pr_ref:  # 4fe8
+    description: "FILED 2026-09-10, found RED ON DEV while running the full suite for PR #890.\n\nWHAT IT IS. `module_key_axis.MODULE_KEY_NOTIONS` cites each notion's producer\nsite by `file:line` plus a quoted anchor, and\n`test_every_cited_emission_site_still_exists` asserts the cited LINE still\ncontains the anchor. Three citations had rotted:\n\n    swift.py 1855 -> 1900   anchor \"module_path=path_hint\"\n    swift.py 1784 -> 1829   anchor \"_module = _external_type or import_aliases.get(callee_name)\"\n    objc.py   855 -> 1015   anchor \"_module: str | None = receiver_name\"\n\nThey rotted when #877 (WI-dodop) and #872 (WI-lafom) edited those files. Both PRs\nwent green. Re-pointed in PR #890 because no PR can go green without it.\n\nTHE STRUCTURAL PART, which is why this is filed rather than just fixed. The test\ndepends on those files' LINE NUMBERS, not on their imports. `hypergumbo slice\n--files` selects tests by dependency, and a line-number coupling is invisible to\nit -- so editing swift.py does NOT select this test, and the PR that breaks it\npasses. The twice-daily full-suite is the only thing that runs it, and this\nbreakage survived from #872/#877 until now, which says that signal is not being\nread, or not quickly.\n\nA CITATION THAT ROTS IS WORSE THAN NONE is the test's own stated rationale, and\nit is right; the problem is that nothing PREVENTS the rot, and the one gate that\ndetects it is unreachable from the change that causes it.\n\nOPTIONS, none obviously best -- decide before building:\n  (a) anchor-only: assert the anchor appears ANYWHERE in the file and report the\n      line it was found at. Removes the coupling entirely; loses the \"sends the\n      reader to the right line\" guarantee the test was written for.\n  (b) keep the pin, add a `--fix` that re-points citations from their anchors, so\n      the repair is mechanical rather than manual.\n  (c) keep the pin, and make the pre-commit hook run this test whenever any CITED\n      FILE is staged -- which is the coupling made explicit, at the one moment\n      the information exists.\n(c) is the smallest change that closes the loop at the point of breakage; (b)\ncomposes with it.\n\nCHECK THE FAMILY. Any other test that pins a `file:line` into a file it does not\nimport has the same invisibility to the slice. Sweep by mechanism -- a literal\nline number beside a path -- not by name."  # 4fe8
+    fields: {}  # 4fe8
