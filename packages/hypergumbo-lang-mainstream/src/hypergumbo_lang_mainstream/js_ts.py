@@ -925,6 +925,80 @@ def _derive_js_constructor_types() -> dict[str, str]:
 #: ``{constructor key: module}`` -- see :func:`_derive_js_constructor_types`.
 JS_CONSTRUCTOR_TYPES: dict[str, str] = _derive_js_constructor_types()
 
+
+def _derive_js_assignable_rows() -> dict[str, frozenset[str]]:
+    """``{catalogue module: property names it rows}`` for method-kind rows.
+
+    WI-dosuh. A handler REGISTRATION (``ws.onmessage = h``) is a property
+    assignment, and the emitter needs to know which properties on a
+    catalogued receiver are worth an edge. Emitting for every property write
+    would put plain data assignments (``ws.binaryType = 'arraybuffer'``) into
+    the graph as ``calls`` edges, asserting a call that never happens; asking
+    the catalogue instead means the emitted set IS the matchable set, so the
+    construct adds reach without adding false positives.
+
+    DERIVED, NOT LISTED, for the reason :func:`_derive_js_constructor_types`
+    is: a row added to ``javascript.yaml`` tomorrow becomes reachable with no
+    code change here, and a row REMOVED stops being emitted. ``onopen`` and
+    ``onerror`` were removed from ``WebSocket`` deliberately (INV-nular --
+    connection-lifecycle callbacks carrying no peer data), and a hand-listed
+    set would have quietly re-added them.
+
+    THE SHIPPED CATALOGUE, THOUGH, NOT A RUNTIME ONE. This is evaluated once
+    at import, so a project-local OVERLAY row (ADR-0047) is not emitted for,
+    even though ``io-boundaries`` would classify it if an edge existed. The
+    same is true of ``_derive_js_constructor_types`` beside it, so the two
+    agree; it is a limit of both, recorded rather than left to be discovered.
+    Filed as WI-gajat.
+
+    NOT FILTERED TO HANDLER-SHAPED NAMES. ``WebSocket.send`` is method-kind
+    and assignable in principle (``ws.send = wrapper``), which is
+    monkey-patching rather than registration -- but the catalogue is the thing
+    that knows what the row means, and a second name-shape heuristic here
+    would be a rule the catalogue could not correct.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    rows: dict[str, set[str]] = {}
+    for p in load_catalog("javascript").primitives:
+        if p.kind == "method" and p.module and p.name:
+            rows.setdefault(p.module, set()).add(p.name)
+    return {m: frozenset(n) for m, n in rows.items()}
+
+
+#: ``{module: catalogued property names}`` -- see :func:`_derive_js_assignable_rows`.
+JS_ASSIGNABLE_ROWS: dict[str, frozenset[str]] = _derive_js_assignable_rows()
+
+
+def _named_receiver_module(
+    obj_name: str,
+    var_types: dict[str, str],
+    var_ctor_modules: dict[str, str],
+) -> str | None:
+    """The catalogue module a NAMED receiver carries, or ``None``.
+
+    THE ONE PLACE THIS LOOKUP LIVES, because two constructs now need it: the
+    member-call cascade (``ws.send(x)``) and the handler-assignment branch
+    (``ws.onmessage = h``). They were about to hold two copies of the same
+    two-step rule, and a copy that drifted would let a receiver resolve for a
+    call and not for an assignment on the very next line -- the "one fact, two
+    homes" shape this codebase has paid for repeatedly.
+
+    THE TWO STEPS, in order. A receiver bound by construction is already in
+    ``var_ctor_modules`` (INV-misup). A receiver whose type was DECLARED --
+    a TypeScript parameter or annotation -- sits in ``var_types`` holding a
+    bare class name, and is promoted here when that name is a catalogued
+    constructor: java's INV-vugon rule, the declaration is evidence. The
+    promotion is a WRITE into ``var_ctor_modules`` and is deliberately kept,
+    so the second and later uses of the same receiver skip the lookup.
+
+    Returns ``None`` for a project class or an unknown library class, which is
+    what keeps a fictional module out of the slot.
+    """
+    if obj_name not in var_ctor_modules and var_types.get(obj_name) in JS_CONSTRUCTOR_TYPES:
+        var_ctor_modules[obj_name] = JS_CONSTRUCTOR_TYPES[var_types[obj_name]]
+    return var_ctor_modules.get(obj_name)
+
 # Bare global functions (called as ``fn(...)``, not ``obj.fn(...)``) that the
 # io-boundary catalog recognises. ``fetch`` is the global network primitive
 # (Node 18+ and browsers); unlike the JS_KNOWN_GLOBALS member receivers it is
@@ -5450,27 +5524,24 @@ def _extract_edges(
                         # annotation types already land) only when the bare
                         # name IS a catalogued constructor, so a project class
                         # never lands a module here.
-                        if (
-                            not edge_added
-                            and obj_name
-                            and obj_name not in var_ctor_modules
-                            and var_types.get(obj_name) in JS_CONSTRUCTOR_TYPES
-                        ):
-                            var_ctor_modules[obj_name] = JS_CONSTRUCTOR_TYPES[
-                                var_types[obj_name]
-                            ]
-                        if (
-                            not edge_added
-                            and obj_name
-                            and obj_name in var_ctor_modules
-                        ):
-                            _ctor_module = var_ctor_modules[obj_name]
+                        # WI-dosuh: the two-step lookup moved into
+                        # ``_named_receiver_module`` so the handler-assignment
+                        # branch resolves receivers by the SAME rule; the
+                        # behaviour here is unchanged.
+                        _ctor_module: str | None = None
+                        _ctor_hint: str | None = None
+                        if not edge_added and obj_name:
+                            _ctor_module = _named_receiver_module(
+                                obj_name, var_types, var_ctor_modules,
+                            )
+                            _ctor_hint = var_types.get(obj_name)
+                        if _ctor_module is not None:
                             edges.append(make_unresolved_edge(
                                 lang, current_function.id, method_name,
                                 node.start_point[0] + 1 + line_offset,
                                 PASS_ID, run.execution_id,
                                 module_hint=_ctor_module,
-                                receiver_type_hint=var_types.get(obj_name),
+                                receiver_type_hint=_ctor_hint,
                                 call_construct="method",
                             ))
                             edge_added = True
@@ -5831,6 +5902,88 @@ def _extract_edges(
                             else:
                                 var_ctor_modules.pop(var_name, None)
                             break
+
+        # WI-dosuh: handler REGISTRATION by property assignment.
+        #
+        # ``ws.onmessage = h`` is the browser receive surface short of
+        # ``addEventListener``, and it is not a call, so every branch of the
+        # member-call cascade above -- all of which key on a
+        # ``call_expression`` -- missed it and the catalogue rows
+        # ``WebSocket.onmessage``, ``WebSocket.onclose`` and
+        # ``EventSource.onmessage`` were unreachable. The limitation was
+        # DECLARED (``analyzer_disclosure.CONSTRUCT_BLIND_ROWS``) rather than
+        # fixed; this branch is the fix, and that declaration goes with it.
+        #
+        # ``augmented_assignment_expression`` covers ``||=`` and ``??=``,
+        # which register a handler by the same mechanism under a different
+        # operator; leaving them out would be a blind spot needing its own
+        # disclosure.
+        #
+        # THE VALUE IS NOT READ. A registration is a registration whether the
+        # handler is a name, a function expression or an arrow, and the row is
+        # chosen by the receiver and the property. ``ws.onmessage = null``
+        # (deregistration) therefore emits too: it names the same boundary,
+        # and it cannot become a finding, because the taint walk enters a
+        # handler through the handler symbol and ``null`` has none.
+        #
+        # WHAT THIS DOES NOT DO: produce a security finding. Classification is
+        # half; taint must also ENTER the handler, and the
+        # enclosing-function-to-callback edge is ``references``, which is not
+        # in ``TAINT_CALL_EDGE_TYPES``. That half is WI-nisud.
+        elif node.type in (
+            "assignment_expression", "augmented_assignment_expression",
+        ):
+            _lhs = node.child_by_field_name("left")
+            _prop_node = (
+                _lhs.child_by_field_name("property")
+                if _lhs is not None and _lhs.type == "member_expression"
+                else None
+            )
+            if (
+                _lhs is not None
+                and _prop_node is not None
+                and _prop_node.type == "property_identifier"
+            ):
+                _obj_node = _lhs.child_by_field_name("object")
+                _prop_name = _node_text(_prop_node, source)
+                _recv_module: str | None = None
+                _recv_hint: str | None = None
+                if _obj_node is not None and _obj_node.type == "identifier":
+                    # Resolved by the SAME helper the call cascade uses, so a
+                    # receiver that types for ``ws.send(x)`` types for
+                    # ``ws.onmessage = h`` on the next line.
+                    _recv_name = _node_text(_obj_node, source)
+                    _recv_module = _named_receiver_module(
+                        _recv_name, var_types, var_ctor_modules,
+                    )
+                    _recv_hint = var_types.get(_recv_name)
+                elif _obj_node is not None and _obj_node.type == "new_expression":
+                    # ``new WebSocket(u).onmessage = h`` -- the receiver IS the
+                    # construction, as in the inline member-call form.
+                    _recv_module = _new_expression_module(
+                        _obj_node, source, namespace_imports,
+                    )
+                # THE PROPERTY MUST BE ONE THE CATALOGUE ROWS. Emitting for
+                # every property write would put ``ws.binaryType = 'blob'``
+                # in the graph as a ``calls`` edge, asserting a call that
+                # never happens; the catalogue-derived set makes the emitted
+                # set the matchable set.
+                if _recv_module is not None and _prop_name in JS_ASSIGNABLE_ROWS.get(
+                    _recv_module, frozenset(),
+                ):
+                    current_function = _get_enclosing_function(
+                        node, source, file_path, global_symbols,
+                        symbol_by_position, line_offset,
+                    ) or module_symbol
+                    if current_function is not None:
+                        edges.append(make_unresolved_edge(
+                            lang, current_function.id, _prop_name,
+                            node.start_point[0] + 1 + line_offset,
+                            PASS_ID, run.execution_id,
+                            module_hint=_recv_module,
+                            receiver_type_hint=_recv_hint,
+                            call_construct="assignment",
+                        ))
 
         # Object literal function references: {onClick: handleClick}
         # AST: pair → property_identifier : identifier

@@ -288,38 +288,29 @@ class ConstructBlindRows:
 #: THE THIRD SHAPE, kept apart from the two above because its remedy is a
 #: third thing. A whole-construct blindness is fixed by building the edges
 #: (WI-nasuf); a suppressed name is a policy that stays (WI-bakak). Here the
-#: construct is NOT A CALL: ``ws.onmessage = handler`` is a property
-#: assignment that registers a receive callback, and no analyzer emits a call
-#: edge for an assignment. The rows are correct library facts — the browser
-#: WebSocket / SSE receive surface short of ``addEventListener`` — and they
-#: stay, because an inert row costs no precision and claims no coverage
-#: (INV-buzab; javascript's catalogue is ``in_progress``), while deleting them
-#: would file an analyzer limitation in a library catalogue. What they carry
-#: is the specification of what should match once a registration edge exists,
-#: which is recall work and is measured through the taint path (INV-linub).
+#: construct is NOT A CALL at all, so there is no edge to withhold or admit —
+#: the source form simply has no representation in the graph.
 #:
-#: DERIVED AGAINST THE CATALOGUE AT RENDER TIME by
-#: :func:`construct_blind_catalogued_sinks`, so a deleted row leaves the
-#: disclosure on its own; a declared row the catalogue does not carry fails
-#: ``test_construct_blind_disclosure.py``.
-CONSTRUCT_BLIND_ROWS: dict[str, ConstructBlindRows] = {
-    "javascript": ConstructBlindRows(
-        "javascript",
-        "property assignment (`ws.onmessage = handler`)",
-        frozenset({
-            "WebSocket.onmessage", "WebSocket.onclose", "EventSource.onmessage",
-        }),
-        "2026-09-06",
-        "WI-zumoz. Measured 2026-08-28, when the mechanism was masked by "
-        "INV-misup (a `new`-constructed receiver never resolved; #753 fixed "
-        "it), and re-measured 2026-09-06 on the fixed analyzer: "
-        "`ws.addEventListener('message', cb)` on the same receiver reaches "
-        "the catalogue; `ws.onmessage = cb`, `ws.onclose = cb` and "
-        "`es.onmessage = cb` emit no edge. Fixture "
-        "~/hypergumbo_lab_notebook/zumoz_probe_08282026/fx2; pinned by "
-        "test_js_ts_instance_method_calls.py::TestHandlerAssignmentEmitsNoEdge.",
-    ),
-}
+#: EMPTY SINCE 2026-09-10, AND THAT IS THE MECHANISM WORKING. Its one entry
+#: declared javascript's handler-assignment blindness — ``ws.onmessage = h``
+#: reaching ``WebSocket.onmessage``, ``WebSocket.onclose`` and
+#: ``EventSource.onmessage``, none of which any analyzer could see. WI-dosuh
+#: built the registration edge (``js_ts.py``, the
+#: ``assignment_expression`` branch), so the declaration was removed in the
+#: same change: a disclosure that outlives the limitation it discloses
+#: teaches a reader to discount every disclosure in the file.
+#:
+#: THE MACHINERY STAYS, AND IS STILL TESTED (against an injected declaration
+#: in ``test_construct_blind_disclosure.py``, since there is no shipped one
+#: to test against). Emptiness here is a claim about today's analyzers, not
+#: about the shape: any language can acquire a catalogued row reached only by
+#: a construct its analyzer does not model, and the next one to find one adds
+#: an entry rather than rebuilding the disclosure path. What an entry must
+#: carry is unchanged — dated, evidenced, and DERIVED against the catalogue at
+#: render time by :func:`construct_blind_catalogued_sinks`, so a deleted row
+#: leaves the disclosure on its own and a declared row the catalogue does not
+#: carry fails its test.
+CONSTRUCT_BLIND_ROWS: dict[str, ConstructBlindRows] = {}
 
 
 def construct_blind_catalogued_sinks(language: str, catalog: object) -> set[str]:
