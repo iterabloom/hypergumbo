@@ -43,3 +43,10 @@
   clock: 4  # cfb5
   nonce: cfb5  # cfb5
   message: "Merged as PR #880, dev SHA a76dd23d344e."  # cfb5
+- op: discuss  # 7a8b
+  at: '2026-09-10T06:16:29Z'  # 7a8b
+  by: agent  # 7a8b
+  actor: jgstern_agent  # 7a8b
+  clock: 5  # 7a8b
+  nonce: 7a8b  # 7a8b
+  message: "DOC HALF SHIPPED, PR #880 (merged, dev a76dd23d34). Corrected six surfaces, not one: AGENTS.md:82 (a hand copy -- it is NOT inside the managed block, so htrac setup was not rewriting it); setup.py MANAGED_BLOCK_CONTENT, which ships the same error into ADOPTING repos; ADR-0013 x3; the tracker-hygiene playbook x4, one of them a RUNNABLE './scripts/tracker list --json > corpus.json' that would have exited 2 and left that sweep's workers reading an empty corpus; and on_transcript_change.py's injected playbook summary. Guard: tests/test_tracker_json_flag_documented.py -- anchors on --json still being registered once ahead of add_subparsers (so this item's structural half RELAXES the guard rather than silently voiding it), forbids the trailing form per BACKTICK SPAN rather than per line (prose explaining the hazard names both orders in one sentence; a line-level regex flagged my own fix and forced a reword), and REQUIRES AGENTS.md to show the working form, since a forbid-only guard is satisfiable by deleting the documentation. The guard earned itself on first run, finding a THIRD ADR-0013 occurrence two hand greps had called clean: the second sweep piped through 'grep -v \\.ops' to drop op-log paths, and the offending line's own text ends 'files ending in `.ops`' -- 3 matches unfiltered, 2 filtered, sweep exited 0 printing nothing. STAYS OPEN on part (b), the structural half: accept the trailing form as an argparse alias and/or emit a JSON error object on stdout under --json, so a parser sees {\"error\": ...} instead of empty input. That is what removes the hazard rather than documenting around it. Sibling defect in the same string constant filed separately as WI-mudov (holding/wontfix), deliberately not folded in -- stale enum, different mechanism."  # 7a8b
