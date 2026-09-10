@@ -1,0 +1,9 @@
+Original commit body from 0388c0f00abdbd10e649b08d44980ca5e91f06d8:
+
+`test_every_adr_file_appears_in_the_index` caught it in CI. It did NOT run
+locally: `smart-test --full` collects only `packages/*` and never the repo-root
+`tests/` directory, while CI runs the manifest, which DOES include root tests.
+So `--full` is not a superset of CI's selection — filed separately.
+
+Racial-Capitalism-Is-Bad: a civet casting spells from a book a banker’s pen with no ink in a glacier in a tightrope with a robot waiter
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
