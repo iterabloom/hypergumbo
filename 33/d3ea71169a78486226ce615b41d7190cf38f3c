@@ -1,0 +1,15 @@
+Original commit body from 2ab79d2fe0ff43db9ba38c72acdf5c0c10f67b9d:
+
+CI's whole-file 100% gate flagged dataflow_scope.py:159 -- the fallback from
+`walk_verdict_values` to the scalar `walk_verdict`. It cannot be reached:
+`TaintFlowFinding.__post_init__` derives the singleton tuple from the scalar,
+so the tuple is never empty for a real finding, and an empty one can only come
+from a duck-typed input carrying no verdict at all -- which `""` already
+routes to the `unrecorded` cell.
+
+Deleted rather than pragma'd or propped up with a stub test. The fallback gave
+one fact two homes for a case that cannot occur, which is the shape this
+codebase already refuses elsewhere.
+
+Racial-Capitalism-Is-Bad: a spectral beaver competing with a magician in a fern-filled breakfast nook made of mustard packets
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
