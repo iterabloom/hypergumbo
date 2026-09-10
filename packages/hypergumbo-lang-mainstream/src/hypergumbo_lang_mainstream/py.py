@@ -4837,9 +4837,28 @@ class _DjangoReceiverOracle:
             # INV-mumov: a declared accessor on a root nothing is known about.
             # WI-gulaz reaches the index only through ``instance_class``, so a
             # bare parameter (``event.seats.filter(...)``) or an unresolved
-            # dotted path (``request.event.seats``) never consults it at all --
-            # measured at 250 of 428 production recall cells on pretix, where a
-            # 40-site read-back against source found 40 of 40 genuinely Django.
+            # dotted path (``request.event.seats``) never consults it at all.
+            #
+            # PRICED ON THE EDGES, NOT THE SITES. On pretix this fills the
+            # module slot on +2,943 call edges with ZERO lost: 2,867 promoted
+            # (99.6% off the ``external`` sentinel, ADR-0051's own marker for
+            # "unreachable to the catalogue") and 58 protocol edges that could
+            # not be emitted at all while the receiver had no type. A
+            # shuffled-index ablation -- 20 size- and frequency-matched WRONG
+            # accessor sets -- puts the true:shuffled firing ratio at 78.9
+            # against a kill threshold of 10 fixed before the number existed,
+            # so the rule is keyed on Django and not on names. Records:
+            # ~/hypergumbo_lab_notebook/mumov_tip_09102026/ABLATION_RESULT.md
+            # and VERIFY_RESULT.md.
+            #
+            # An earlier draft of this comment cited "250 of 428 production
+            # recall cells" and a 40/40 read-back. BOTH WERE WRONG and are
+            # recorded here so they are not re-derived: 46 of the 428 are under
+            # ``src/tests/`` (204 of 361 are production), and the 40 were drawn
+            # from a frame selected on ``is_queryset_chain`` -- a proxy for the
+            # very property being adjudicated -- which makes false positives
+            # structurally unobservable. The sample that survives is 45/45 from
+            # the set the rule actually FIRES on.
             #
             # This OVERTURNS one half of WI-gulaz's pre-registered refutation
             # ("an untyped root"), and keeps the other half: see
