@@ -1,0 +1,79 @@
+Original commit body from f44354466e6ddaac23de48560a3bfea33ef04a7b:
+
+`--json` is registered on the tracker's top-level parser, ahead of
+`add_subparsers`, so `scripts/tracker --json show <ID>` works and the trailing
+`scripts/tracker show <ID> --json` exits 2.
+
+AGENTS.md:82 — the always-loaded governance text every agent reads before
+anything else — documented the trailing form. LIVE.md's landmine list carried
+the correct form, so the two contradicted each other and the wrong one was
+read first.
+
+**Why this was worth more than a typo fix.** Both ways of getting the
+invocation wrong (flag position, and running the CLI outside the repo root)
+write their diagnostic to stderr and leave stdout empty. A caller that pipes
+stdout into a JSON parser and discards stderr therefore cannot distinguish
+"you invoked the CLI wrong" from "that item does not exist". Two consecutive
+sessions produced full columns of false `UNRESOLVED` that way — a 13-ID sweep
+and a 42-ID sweep.
+
+## What changed
+
+Six documentation surfaces, all the same defect:
+
+- `AGENTS.md:82` — the hand-maintained copy (it is *not* inside the managed
+  block, so `htrac setup` was not the thing rewriting it).
+- `packages/hypergumbo-tracker/src/hypergumbo_tracker/setup.py` —
+  `MANAGED_BLOCK_CONTENT`, which `htrac setup` injects into **adopting repos'**
+  AGENTS.md. Same wrong form, shipped outward.
+- `docs/adr/0013-structured-tracker.md` — three occurrences.
+- `.agent/.../tracker-hygiene-dedup-meta-analysis-playbook.md` — four, one of
+  which is a **runnable** `./scripts/tracker list --json > corpus.json`. That
+  would have exited 2 and left an empty `corpus.json` behind, which the sweep's
+  workers then read as an empty tracker.
+- `.agent/hooks/_shared/on_transcript_change.py` — the playbook summary the
+  hook injects into agent context.
+
+## The guard
+
+`tests/test_tracker_json_flag_documented.py`, in the shape of the existing
+`test_hg_github_token_documented.py` rot-guard (pure file reads, no source
+import, so it neither contributes nor consumes package coverage):
+
+1. **Anchor** — `--json` is still registered exactly once, ahead of
+   `add_subparsers`. If WI-dolaf's structural half lands and the subparsers
+   start accepting `--json`, the trailing form becomes valid; this test then
+   fails and says to relax the guard, rather than the guard silently becoming
+   wrong.
+2. **Forbid** — no documentation surface shows the trailing form. Scanning is
+   per **backtick code span**, not per line: prose explaining the hazard names
+   both orders in one sentence, and a line-level regex cannot tell that from a
+   real bad invocation. (I hit exactly that and had to reword AGENTS.md so it
+   states the rule without quoting the broken literal.)
+3. **Require** — AGENTS.md positively shows the working form. A forbid-only
+   guard is satisfiable by deleting the documentation.
+
+**The guard earned itself immediately**: it found a third ADR-0013 occurrence
+that two hand greps had reported clean. The second sweep piped through
+`grep -v '\.ops'` to drop tracker op-log paths — and the offending line's own
+text ends `...files ending in \`.ops\`.`, so the noise filter deleted the
+finding and the sweep exited 0 printing nothing. 3 matches unfiltered, 2
+filtered.
+
+## Scope
+
+Documentation only; no behaviour change. WI-dolaf stays **open** on its
+structural half — accepting the trailing form as an argparse alias, and/or
+emitting a JSON error object on stdout so a parser sees `{"error": ...}`
+instead of empty input. That is the fix that removes the hazard rather than
+documenting around it, and it is not in this PR.
+
+Not fixed here, filed separately: the same `MANAGED_BLOCK_CONTENT` documents
+`holding` (deprecated) and `wontfix` (never a status; the resolved set is
+`done` / `wont_do` / `deleted`). Different mechanism — stale enum, not flag
+position.
+
+Governance files touched (`AGENTS.md`, `.agent/**`); owner approved this
+change and `auto-pr` without `--gov` in-session.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
