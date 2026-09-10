@@ -1280,6 +1280,7 @@ def _swift_receiver_expr_type(
     source: bytes,
     type_of: "Callable[[str], str | None]",
     registry: dict[str, str],
+    field_of: "Callable[[str], str | None] | None" = None,
 ) -> str | None:
     """The TYPE an expression evaluates to, or ``None`` when nothing names it.
 
@@ -1291,6 +1292,22 @@ def _swift_receiver_expr_type(
     receiver type the catalogue knows and yields ``None``, as does a cast to a
     collection (``o as! [String]``) -- ``_swift_bare_type`` is the one rule for
     which spellings are receiver types.
+
+    WI-dodop adds the ``self.<property>`` head. ``self`` parses as
+    ``self_expression`` rather than ``simple_identifier``, so
+    ``_extract_call_target`` collects nothing into ``receiver_parts`` and
+    reports ``receiver_hint=None`` -- writing ``self.`` in front of a property
+    destroyed the hint for the IDENTICAL call (``db.write(x)`` typed,
+    ``self.db.write(x)`` not). 393 of 1,913 classified untyped vapor sites.
+
+    ``field_of`` and NOT ``type_of`` for that case, and the distinction is
+    load-bearing: ``_type_of`` consults scoped locals and ``var_types`` BEFORE
+    falling through to ``_inherited_field_type``, but ``self.db`` means the
+    FIELD whatever a local happens to be called. Resolving it through
+    ``type_of`` would stamp a confidently wrong type on a shadowed name -- and
+    ``method_call_recovery`` step 3a treats a stamped ``receiver_type_hint`` as
+    grounds to REFUTE a class hint, so a wrong stamp does not merely fail to
+    help, it DELETES a correct recovery.
     """
     while node is not None:
         if node.type in ("try_expression", "await_expression", "tuple_expression"):
@@ -1309,7 +1326,24 @@ def _swift_receiver_expr_type(
                 if cast_to is not None else None
             )
         if node.type == "call_expression":
-            return _swift_call_type(node, source, type_of, registry)
+            return _swift_call_type(node, source, type_of, registry, field_of)
+        if node.type == "navigation_expression":
+            head = node.children[0] if node.children else None
+            if (
+                field_of is not None
+                and head is not None
+                and head.type == "self_expression"
+            ):
+                suffix = find_child_by_type(node, "navigation_suffix")
+                ident = (
+                    find_child_by_type(suffix, "simple_identifier")
+                    if suffix is not None else None
+                )
+                if ident is not None:
+                    return field_of(node_text(ident, source))
+            # A non-self head, or a deeper chain, names no type here. Silence
+            # rather than a guess: an unearned stamp is ACTED ON downstream.
+            return None
         return None
     return None
 
@@ -1319,6 +1353,7 @@ def _swift_call_type(
     source: bytes,
     type_of: "Callable[[str], str | None]",
     registry: dict[str, str],
+    field_of: "Callable[[str], str | None] | None" = None,
 ) -> str | None:
     """The TYPE a ``call_expression`` evaluates to, or ``None``.
 
@@ -1342,6 +1377,7 @@ def _swift_call_type(
         if owner is None and receiver_hint is None:
             owner = _swift_receiver_expr_type(
                 _swift_nav_receiver(call, source), source, type_of, registry,
+                field_of,
             )
         if owner is None:
             return None
@@ -1555,6 +1591,14 @@ def _extract_edges_from_file(
             return _type_of(nm, decl)
         return _lookup
 
+    def _field_lookup_at(decl: "tree_sitter.Node") -> "Callable[[str], str | None]":
+        # WI-dodop. The FIELD resolver, deliberately NOT ``_type_lookup_at``:
+        # ``self.db`` names the enclosing type's property whatever a local in
+        # scope is called, and ``_type_of`` would answer with the local.
+        def _lookup(nm: str) -> str | None:
+            return _inherited_field_type(nm, decl)
+        return _lookup
+
     def _type_of(name: str, n: "tree_sitter.Node") -> str | None:
         for key in _function_ancestors(n, through_errors=True):
             types = _scoped_types.get(key)
@@ -1752,6 +1796,7 @@ def _extract_edges_from_file(
                             receiver_type = _swift_receiver_expr_type(
                                 _swift_nav_receiver(node, source), source,
                                 _type_lookup_at(node), method_return_type_registry,
+                                _field_lookup_at(node),
                             )
                         if receiver_type:
                             gate_meta["receiver_type_hint"] = receiver_type
