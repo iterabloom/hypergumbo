@@ -4164,6 +4164,10 @@ class DjangoRelationIndex:
     model_ids: set[str] = field(default_factory=set)
     class_by_id: dict[str, Symbol] = field(default_factory=dict)
     class_methods: dict[str, set[str]] = field(default_factory=dict)
+    #: Lazily materialised union of every declared accessor name, for
+    #: :meth:`declares_accessor_anywhere`. Not an input; derived from
+    #: ``related_managers`` on first use.
+    _accessor_names: "set[str] | None" = field(default=None, repr=False, compare=False)
     #: WI-zamud: ``instance_field_types[C][field]`` -- the model class that a
     #: field assigned in ``C``'s ``setUp`` / ``setUpTestData`` / ``setUpClass``
     #: holds an instance of. A Django TEST class builds its fixture there, not
@@ -4230,6 +4234,32 @@ class DjangoRelationIndex:
             if hit is not None:
                 return hit
         return None
+
+    def declares_accessor_anywhere(self, name: str) -> bool:
+        """Does ANY project model declare ``name`` as a relation accessor?
+
+        The class-keyed lookups above answer "does THIS class own it?", which
+        needs the root's class. This one drops that requirement deliberately,
+        for the single case in :meth:`_DjangoReceiverOracle.manager_root` where
+        nothing at all is known about the root: the MODULE slot needs only
+        "a Django manager", never which model, so the owner is not required to
+        fill it. ``manager_model`` keeps the class-keyed rule, so the instance
+        binding is unaffected and no model is stamped from this answer.
+
+        Derived, not stored: ``related_managers`` is built once per repository
+        in a pre-pass and never mutated afterwards, and the set is materialised
+        on first use. In a non-Django repository it is empty, which is why this
+        rule cannot fire there at all.
+        """
+        cached = self._accessor_names
+        if cached is None:
+            cached = {
+                accessor
+                for owned in self.related_managers.values()
+                for accessor in owned
+            }
+            object.__setattr__(self, "_accessor_names", cached)
+        return name in cached
 
     def is_manager_name(self, cls: Symbol, name: str) -> bool:
         return any(
@@ -4659,6 +4689,44 @@ def _index_django_relations_in_file(
             index.related_managers.setdefault(target.id, {})[accessor] = owner
 
 
+def _assigned_names(block_nodes: list[ast.AST]) -> set[str]:
+    """Bare names ASSIGNED anywhere in this block, however they were assigned.
+
+    Feeds :meth:`_DjangoReceiverOracle._refuted_by_a_known_owner`, which needs
+    to tell "the walker typed nothing because it had nothing to go on" (a
+    parameter) from "the walker looked at the binding and declined" (``label =
+    Order.LABELS.get("a")``, ``o3 = qs.first()``). Only the first may fall
+    through to the name-only accessor rule; the second is a refusal already
+    made, and re-deciding it by name would silently overturn it.
+
+    Deliberately order-independent and over-inclusive: a single pre-pass over
+    the whole block, every binding form, no attempt to respect flow. Being
+    over-inclusive here costs REACH and never costs precision, which is the
+    safe direction for a gate.
+    """
+    names: set[str] = set()
+    for node in block_nodes:
+        for sub in ast.walk(node):
+            targets: list[ast.expr] = []
+            if isinstance(sub, ast.Assign):
+                targets = list(sub.targets)
+            elif isinstance(sub, (ast.AnnAssign, ast.AugAssign)):
+                targets = [sub.target]
+            elif isinstance(sub, (ast.For, ast.AsyncFor)):
+                targets = [sub.target]
+            elif isinstance(sub, ast.withitem):
+                targets = [sub.optional_vars] if sub.optional_vars is not None else []
+            elif isinstance(sub, ast.comprehension):
+                targets = [sub.target]
+            elif isinstance(sub, ast.NamedExpr):
+                targets = [sub.target]
+            for tgt in targets:
+                for leaf in ast.walk(tgt):
+                    if isinstance(leaf, ast.Name):
+                        names.add(leaf.id)
+    return names
+
+
 def _is_super_call(expr: ast.expr) -> bool:
     """``super()`` -- the receiver of the Django override's own write."""
     return (
@@ -4685,7 +4753,7 @@ class _DjangoReceiverOracle:
     the answer depends on block state.
     """
 
-    __slots__ = ("enclosing_class", "index", "resolve_class_name", "var_types")
+    __slots__ = ("assigned_names", "enclosing_class", "index", "resolve_class_name", "var_types")
 
     def __init__(
         self,
@@ -4693,11 +4761,18 @@ class _DjangoReceiverOracle:
         var_types: dict[str, Symbol],
         enclosing_class: Symbol | None,
         resolve_class_name: Callable[[str], Symbol | None],
+        assigned_names: "set[str] | None" = None,
     ) -> None:
         self.index = index
         self.var_types = var_types
         self.enclosing_class = enclosing_class
         self.resolve_class_name = resolve_class_name
+        #: Names ASSIGNED in this block. A name here but absent from
+        #: ``var_types`` is one the walker looked at and declined to type,
+        #: which is evidence AGAINST — categorically unlike a parameter the
+        #: walker never had an input for. Defaults empty so a caller that does
+        #: not supply it loses precision, never gains reach.
+        self.assigned_names = assigned_names or set()
 
     def instance_class(self, expr: ast.expr) -> Symbol | None:
         """The project class ``expr`` is an INSTANCE of, or ``None``."""
@@ -4741,7 +4816,47 @@ class _DjangoReceiverOracle:
         owner = self.instance_class(expr.value)
         if owner is not None and self.index.accessor_model(owner, expr.attr) is not None:
             return "related"
+        if owner is None and not self._refuted_by_a_known_owner(expr.value):
+            # INV-mumov: a declared accessor on a root nothing is known about.
+            # WI-gulaz reaches the index only through ``instance_class``, so a
+            # bare parameter (``event.seats.filter(...)``) or an unresolved
+            # dotted path (``request.event.seats``) never consults it at all --
+            # measured at 250 of 428 production recall cells on pretix, where a
+            # 40-site read-back against source found 40 of 40 genuinely Django.
+            #
+            # This OVERTURNS one half of WI-gulaz's pre-registered refutation
+            # ("an untyped root"), and keeps the other half: see
+            # :meth:`_refuted_by_a_known_owner`. The name must be one THIS
+            # project declares, so the rule is silent in a repository with no
+            # Django models rather than merely unlikely to fire.
+            return "related" if self.index.declares_accessor_anywhere(expr.attr) else None
         return None
+
+    def _refuted_by_a_known_owner(self, expr: ast.expr) -> bool:
+        """Is there positive evidence AGAINST treating ``expr`` as a model instance?
+
+        ``ev.foo`` where ``ev`` IS an ``Event`` and ``Event`` declares no
+        ``foo``: the owner resolved and the relation was looked up and absent.
+        That is evidence against, and it is categorically different from
+        ``event`` -- an untyped parameter, about which nothing is known either
+        way. Only the latter may fall through to the name-only rule; loosening
+        the former would be the false-all-clear direction (a gate may be
+        tightened on silence, never opened on it).
+        """
+        if isinstance(expr, ast.Call):
+            # A call the resolver already declined to type. "Tried and failed"
+            # is evidence; only "never had an input" is silence.
+            return True
+        if isinstance(expr, ast.Name):
+            return expr.id in self.assigned_names and expr.id not in self.var_types
+        if isinstance(expr, ast.Attribute):
+            if isinstance(expr.value, ast.Name) and expr.value.id == "self":
+                # ``self.<field>`` inside a class whose symbol did not resolve
+                # (an ambiguous short name, say): the field map was consulted
+                # and gave nothing, so this is a failure, not an absence.
+                return self.enclosing_class is None or self.instance_class(expr.value) is not None
+            return self.instance_class(expr.value) is not None
+        return False
 
     def manager_model(self, expr: ast.expr) -> Symbol | None:
         """The model whose instances the manager at ``expr`` yields: the class
@@ -5459,6 +5574,7 @@ def _extract_edges(
                     method_to_enclosing_class_id.get(caller_symbol.id, ""),
                 ),
                 _resolve_class_name,
+                _assigned_names(block_nodes),
             )
         _manager_root = _oracle.manager_root if _oracle is not None else None
 
