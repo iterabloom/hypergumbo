@@ -391,8 +391,20 @@ fs_write:
 # (never the short-name gate) — no ``dict.get()`` false positive. Admission
 # criterion for any future framework datastore entry (the "principled
 # stopping point"): (a) keyed to a real, distinctive module namespace,
-# (b) matched only via a type-verified receiver / qualified name — never a
-# bare ambiguous short name, (c) a bounded, closed method set. Self-throttled
+# (b) matched only via a MODULE-QUALIFIED dst — never a bare ambiguous short
+# name, (c) a bounded, closed method set.
+#
+# (b) USED TO SAY "type-verified receiver", AND THAT IS NO LONGER ACCURATE
+# (ADR-0053). The module-filter property it protects is unchanged — every one
+# of these rows still fires only on a ``django.db.models``-qualified dst, so a
+# ``dict.get()`` still cannot reach them. What changed is how that qualified
+# dst is reached: INV-mumov also fills it from a relation-accessor NAME the
+# project's own models declare, with nothing known about the receiver's root.
+# That is an INFERENCE, not a verification, and it is 78.9:1 against a
+# frequency-matched wrong index rather than certain. Edges so filled carry
+# ``resolution_quality="accessor_name"`` and ``verify-claims`` discloses them
+# on any clean verdict they touch, so the weaker provenance is visible to a
+# reader rather than hidden behind a module name that looks verified. Self-throttled
 # by the per-framework receiver-typing cost (SQLAlchemy is deferred, not
 # free). Do NOT add ``django.db.models`` to ``stdlib_modules`` /
 # ``stdlib_module_completeness`` — it is third-party (would mis-suppress

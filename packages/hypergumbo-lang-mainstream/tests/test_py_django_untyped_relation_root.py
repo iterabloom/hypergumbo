@@ -100,6 +100,15 @@ def _line_of(src: str, needle: str) -> int:
     raise AssertionError(needle)
 
 
+def _rq_at(edges: "list[Edge]", line: int, name: str) -> "str | None":
+    """``meta.resolution_quality`` of the ORM edge at ``line`` for ``name``."""
+    for e in edges:
+        dst = e.dst if isinstance(e.dst, str) else ""
+        if e.line == line and dst.split(":")[3:4] == [name] and DJANGO_ORM_MODULE in dst:
+            return (e.meta or {}).get("resolution_quality")
+    raise AssertionError(f"no ORM edge for {name!r} at line {line}")
+
+
 def _slot_at(edges: list[Edge], line: int, method: str) -> str | None:
     hits = [
         e for e in edges
@@ -252,3 +261,106 @@ class TestEveryContraryEvidenceBranch:
         read is silence, and silence is what the name-only rule is for."""
         line = _line_of(BINDINGS, 'cache["k"].seats.filter(row=5)')
         assert _slot_at(binding_edges, line, "exists") == DJANGO_ORM_MODULE
+
+
+class TestTheProvenanceStamp:
+    """``resolution_quality`` must SAY which of the two paths filled the slot.
+
+    THE CONSUMER SIDE OF THIS CANNOT PIN IT. ``verify_claims``' fixture builds
+    edges by hand -- it has to, since CI tests packages in isolation -- and that
+    file's own header warns that a hand-built fixture is how you come to test a
+    shape the producer never emits. This class is the other half of that pact:
+    it asserts the shape the consumer's fixture assumes, against the real
+    producer, so the two cannot drift apart silently.
+
+    WHY THE DISTINCTION IS WORTH A FIELD. Both paths write the same MODULE slot,
+    so nothing downstream can tell them apart from the ``dst``. Only the second
+    rests on a name, and a clean security verdict that goes quiet because of the
+    second is quieter on weaker evidence.
+    """
+
+    def test_an_untyped_root_is_stamped_accessor_name(self, tmp_path: Path) -> None:
+        views = "def f(thing):\n    thing.seats.filter(x=1)\n"
+        edges = _edges(tmp_path, {"models.py": MODELS, "views.py": views})
+        assert _rq_at(edges, 2, "filter") == "accessor_name"
+
+    def test_a_typed_instance_root_keeps_type_inferred(self, tmp_path: Path) -> None:
+        """A resolved class owned the accessor: the pre-existing answer, unchanged.
+
+        If this ever reported ``accessor_name`` the caveat would fire on every
+        ORM edge in a Django repo and the disclosure would be noise.
+        """
+        views = (
+            "from models import Event\n"
+            "\n"
+            "def f():\n"
+            "    ev = Event.objects.get(pk=1)\n"
+            "    ev.seats.filter(x=1)\n"
+        )
+        edges = _edges(tmp_path, {"models.py": MODELS, "views.py": views})
+        assert _rq_at(edges, 5, "filter") == "type_inferred"
+
+    def test_an_objects_root_keeps_type_inferred(self, tmp_path: Path) -> None:
+        """``.objects`` is WI-sozoj's syntactic marker -- no index, no name rule."""
+        views = (
+            "from models import Event\n"
+            "\n"
+            "def f():\n"
+            "    Event.objects.filter(x=1)\n"
+        )
+        edges = _edges(tmp_path, {"models.py": MODELS, "views.py": views})
+        assert _rq_at(edges, 4, "filter") == "type_inferred"
+
+
+class TestTheEmptyIndexGuarantee:
+    """In a repository with no Django models the rule cannot fire AT ALL.
+
+    NOT "is unlikely to" -- CANNOT. ``declares_accessor_anywhere`` is derived
+    from ``related_managers``, which a non-Django repository leaves empty, so
+    the name set is empty and every lookup is False. This is the property that
+    makes the rule safe to ship globally rather than behind a flag, and it is
+    the reason the pre-registered "measure FPs on a non-Django repo" control was
+    VACUOUS: the oracle is never constructed there, so the answer is provably
+    zero and tests nothing. Pinned here as a property of the code instead.
+    """
+
+    def test_the_same_source_types_nothing_without_models(self, tmp_path: Path) -> None:
+        """The DISCRIMINATING pair: identical call source, models.py present or
+        absent. A test that only showed the absent case could pass on a rule
+        that never fires at all."""
+        views = "def f(thing):\n    thing.seats.filter(x=1)\n"
+        with_models = _edges(tmp_path / "a", {"models.py": MODELS, "views.py": views})
+        without = _edges(tmp_path / "b", {"views.py": views})
+        assert _slot_at(with_models, 2, "filter") == DJANGO_ORM_MODULE
+        assert _slot_at(without, 2, "filter") == "external"
+
+    def test_an_empty_index_answers_false_for_every_name(self) -> None:
+        from hypergumbo_lang_mainstream.py import DjangoRelationIndex
+        index = DjangoRelationIndex()
+        assert not index.declares_accessor_anywhere("seats")
+        assert not index.declares_accessor_anywhere("objects")
+        assert not index.declares_accessor_anywhere("")
+
+
+class TestTheOracleLessPath:
+    """A repository that uses `.objects` but declares NO models has no oracle.
+
+    `.objects` is WI-sozoj's SYNTACTIC marker — it needs no index and works on
+    any root — so a chain can carry the ORM module into the inline-expression
+    emitter while `DjangoRelationIndex` is falsy and no oracle was ever built.
+    The provenance callable is `None` there, and the answer must be the
+    pre-existing `type_inferred`: no accessor name was consulted, so claiming
+    one would be a false provenance on an edge the name rule never touched.
+    """
+
+    def test_an_objects_chain_without_models_is_type_inferred(
+        self, tmp_path: Path,
+    ) -> None:
+        views = (
+            "from elsewhere import Order\n"
+            "\n"
+            "def f():\n"
+            "    Order.objects.filter(x=1).exclude(y=2)\n"
+        )
+        edges = _edges(tmp_path, {"views.py": views})
+        assert _rq_at(edges, 4, "exclude") == "type_inferred"

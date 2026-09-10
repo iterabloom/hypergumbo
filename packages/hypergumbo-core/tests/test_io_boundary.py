@@ -216,8 +216,15 @@ class TestLoadCatalog:
         # cannot false-tag. Any OTHER third-party db module is STILL forbidden —
         # this guards the boundary against untyped short-name ORM creep. A new
         # framework datastore entry must meet the criterion (a real distinctive
-        # module namespace + a type-verified receiver + a bounded method set) and
+        # module namespace + a MODULE-QUALIFIED dst + a bounded method set) and
         # be added to the allow-list below deliberately.
+        #
+        # "type-verified receiver" WAS THE OLD SPELLING OF THAT CRITERION and is
+        # no longer accurate (ADR-0053): the qualified dst is now ALSO reached by
+        # inferring the receiver from a relation-accessor name the project's own
+        # models declare. The property this test actually guards -- module-
+        # filtered, never short-name -- is unchanged, which is why the assertion
+        # below is on MODULE NAMES and needs no edit.
         catalog = load_catalog("python")
         _STDLIB_DB_MODULE_ROOTS = ("sqlite3", "dbm", "shelve")
         _TYPE_VERIFIED_DB_MODULES = ("django.db.models",)
