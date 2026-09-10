@@ -149,3 +149,25 @@ class TestItStaysSilentWhenItDoesNotKnow:
         hits = [e for e in edges if e.dst.endswith(":doThing:unresolved")]
         for e in hits:
             assert (e.meta or {}).get("receiver_type_hint") is None
+
+    def test_a_DEEPER_self_chain_is_not_guessed_at(self, tmp_path) -> None:
+        """`self.a.b.method()` — the receiver is `self.a.b`, not `self.<prop>`.
+
+        112 of the 1,913 classified vapor sites are a chain off a
+        navigation_expression. Resolving one needs the type of `self.a` first
+        and then a member lookup on THAT type, which this slice does not do.
+        The honest answer is no stamp: `method_call_recovery` step 3a treats a
+        stamped `receiver_type_hint` as grounds to REFUTE a class hint, so a
+        guess here would delete a correct recovery somewhere else.
+        """
+        edges = _edges(tmp_path, (
+            "import Foundation\n"
+            "class Inner { let session: URLSession = URLSession.shared }\n"
+            "class Outer {\n"
+            "    let inner: Inner = Inner()\n"
+            "    func go() { self.inner.session.invalidateAndCancel() }\n"
+            "}\n"
+        ))
+        e = _call(edges, "invalidateAndCancel")
+        assert e.dst.startswith("swift:external:"), e.dst
+        assert (e.meta or {}).get("receiver_type_hint") is None
