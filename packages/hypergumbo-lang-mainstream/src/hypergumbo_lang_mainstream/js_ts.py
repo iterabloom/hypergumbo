@@ -385,6 +385,68 @@ def _get_parser_for_file(file_path: Path) -> Optional["tree_sitter.Parser"]:
         return parser
 
 
+#: Node modules that publish a ``promises`` sub-namespace, which is ALSO
+#: importable as ``<mod>/promises``. Node's own documented set.
+#:
+#: WHY AN ALLOWLIST RATHER THAN "any ``<ident>.<prop>``". A general rule would
+#: emit ``axios/defaults`` for ``axios.defaults.get()`` -- a module that does not
+#: exist, which is exactly what INV-fazim refuses: a slot must name a path that
+#: is real, not one assembled from whatever property happened to be written.
+#: Every name here has a real ``<mod>/promises`` twin, so the slot is TRUE
+#: whether or not the catalogue currently carries rows for it (today: ``fs`` 31,
+#: ``dns`` 16; the other three have none and are included because the SLOT is
+#: correct regardless, and rows added later then work with no further change).
+_JS_PROMISES_SUBMODULE_PARENTS = frozenset({
+    "fs", "dns", "stream", "readline", "timers",
+})
+
+
+def _promises_submodule(
+    obj_node: "tree_sitter.Node",
+    source: bytes,
+    namespace_imports: "dict[str, str] | None",
+) -> "str | None":
+    """``<mod>/promises`` for a receiver spelled ``<mod>.promises``, else ``None``.
+
+    WI-vihop. Node's promise API has two spellings and only the direct one
+    worked: ``require('fs/promises').readFile`` reached the catalogue while
+    ``fs.promises.readFile`` -- the documented pre-ESM form, still common -- fell
+    to the ``external`` placeholder, because ``obj_name`` upstream is set only
+    for a bare ``identifier`` and ``fs.promises`` is a ``member_expression``.
+
+    THREE BINDINGS, ONE ANSWER, because ``_extract_namespace_imports`` already
+    binds all three the same way: ``const fs = require('fs')``, ``import fs from
+    'fs'`` and ``import * as fs from 'node:fs'``. The ESM default form is NOT in
+    WI-vihop's filed list and was equally broken. The inline
+    ``require('fs').promises`` is read straight off the call.
+
+    THE SLOT SPELLING IS THE ONE THE DIRECT REQUIRE ALREADY EMITS
+    (``fs/promises``), reused rather than re-invented; production classifies
+    both it and the dotted form to the same rows, and two spellings of one fact
+    drift the first time either is edited.
+    """
+    prop = None
+    base = None
+    for child in obj_node.children:
+        if child.type == "property_identifier":
+            prop = _node_text(child, source)
+        elif child.is_named and child.type not in ("optional_chain", "comment"):
+            base = child
+    if prop != "promises" or base is None:
+        return None
+    module = None
+    if base.type == "identifier" and namespace_imports:
+        module = namespace_imports.get(_node_text(base, source))
+    elif base.type == "call_expression":
+        module = _require_module_string(base, source)
+    if module is None:
+        return None
+    module = _normalize_import_module_hint(module)
+    if module not in _JS_PROMISES_SUBMODULE_PARENTS:
+        return None
+    return f"{module}/promises"
+
+
 def _normalize_import_module_hint(module: str) -> str:
     """Normalise an import path to a module hint usable in symbol IDs.
 
@@ -5398,6 +5460,38 @@ def _extract_edges(
                                 call_construct="method",
                             ))
                             edge_added = True
+
+                        # WI-vihop: node's ``promises`` sub-namespace reached
+                        # as a member CHAIN (``fs.promises.readFile(p)``). The
+                        # cases above all key on ``obj_name``, which is set only
+                        # for a bare identifier, so a two-hop receiver skipped
+                        # every one of them and landed on the placeholder --
+                        # leaving 31 catalogued ``fs.promises`` rows and 16
+                        # ``dns.promises`` rows unreachable through the spelling
+                        # node's own documentation uses.
+                        if (
+                            not edge_added
+                            and obj_node is not None
+                            and obj_node.type == "member_expression"
+                        ):
+                            _prom = _promises_submodule(
+                                obj_node, source, namespace_imports,
+                            )
+                            if _prom is not None:
+                                edges.append(Edge.create(
+                                    src=current_function.id,
+                                    dst=(
+                                        f"{lang}:{_prom}:0-0:"
+                                        f"{method_name}:unresolved"
+                                    ),
+                                    edge_type="calls",
+                                    line=node.start_point[0] + 1 + line_offset,
+                                    origin=PASS_ID,
+                                    origin_run_id=run.execution_id,
+                                    evidence_type="ast_method_inferred",
+                                    is_resolved=False,
+                                ))
+                                edge_added = True
 
                         # INV-misup, inline form: ``new net.Socket().write(d)``
                         # -- the receiver IS the construction.
