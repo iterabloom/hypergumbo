@@ -1074,6 +1074,18 @@ _OBJC_AVAILABILITY = re.compile(
 )
 
 
+def _objc_blank(match: "re.Match[bytes]") -> bytes:
+    """Replace a match with spaces, KEEPING ITS NEWLINES.
+
+    Byte length alone is not enough. tree-sitter derives a node's row from the
+    newlines before it, so blanking a macro that spans lines -- and
+    ``API_DEPRECATED("msg",\n ios(9, 13))`` does -- preserves every byte offset
+    and still shifts every following line number up. Every span the analyzer
+    reports after that point would name the wrong line in the real file.
+    """
+    return bytes(b if b == 0x0A else 0x20 for b in match.group(0))
+
+
 def _objc_rewrite_unparseable(source: bytes) -> bytes:
     """Rewrite, preserving byte length, the two Apple SDK macros the grammar lags on.
 
@@ -1102,17 +1114,22 @@ def _objc_rewrite_unparseable(source: bytes) -> bytes:
     ``property_declaration`` nodes, and a count bought by shrinking the
     denominator is pure loss.
     """
-    out = _OBJC_ASSUME_NONNULL.sub(lambda m: b" " * len(m.group(0)), source)
+    out = _OBJC_ASSUME_NONNULL.sub(_objc_blank, source)
 
     def _enum(match: "re.Match[bytes]") -> bytes:
         replacement = b"enum " + match.group(1)
         padding = len(match.group(0)) - len(replacement)
         if padding < 0:  # pragma: no cover - `enum X` is always the shorter form
             return match.group(0)
-        return replacement + b" " * padding
+        # The newlines a multi-line `NS_ENUM(\n  NSInteger, S)` spans are put
+        # back, for the reason :func:`_objc_blank` states.
+        newlines = match.group(0).count(b"\n")
+        if newlines > padding:  # pragma: no cover - the pad is 20+ bytes wide
+            return match.group(0)
+        return replacement + b" " * (padding - newlines) + b"\n" * newlines
 
     out = _OBJC_NS_ENUM.sub(_enum, out)
-    return _OBJC_AVAILABILITY.sub(lambda m: b" " * len(m.group(0)), out)
+    return _OBJC_AVAILABILITY.sub(_objc_blank, out)
 
 
 def _objc_count_errors(tree: "tree_sitter.Tree") -> int:
