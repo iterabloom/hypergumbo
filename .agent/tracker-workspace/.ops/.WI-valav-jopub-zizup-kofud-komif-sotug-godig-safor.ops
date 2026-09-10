@@ -1,0 +1,23 @@
+- op: create  # 6111
+  at: '2026-09-10T08:51:30Z'  # 6111
+  by: agent  # 6111
+  actor: jgstern_agent  # 6111
+  clock: 1  # 6111
+  nonce: '6111'  # 6111
+  data:  # 6111
+    kind: work_item  # 6111
+    title: "python: DjangoRelationIndex misses @property-wrapped related managers (Order.fees alone = +32 ORM edges on pretix)"  # 6111
+    status: todo_hard  # 6111
+    priority: 2  # 6111
+    parent:  # 6111
+    tags:  # 6111
+    - python  # 6111
+    - analyzer  # 6111
+    - analysis_quality  # 6111
+    - module_key  # 6111
+    isbefore: []  # 6111
+    duplicate_of: []  # 6111
+    not_duplicate_of: []  # 6111
+    pr_ref:  # 6111
+    description: "FILED 2026-09-10, found by INV-mumov's shuffled-index ablation while it was\ntesting something else (record: ~/hypergumbo_lab_notebook/mumov_tip_09102026/\nABLATION_RESULT.md, p3_shuffled_hits.json, p3b.json).\n\nWHAT IT IS. `DjangoRelationIndex` populates `related_managers` from declared\n`related_name=` and the reverse-accessor convention. It does not see a related\nmanager reached through a PROPERTY. pretix `src/pretix/base/models/orders.py:425`:\n\n    @property\n    def fees(self):\n        \"\"\"Related manager for all non-canceled fees. Use ``all_fees`` instead\n        if you want canceled positions as well.\"\"\"\n        return self.all_fees(manager='objects')\n\nThe docstring says outright that it is a related manager. The index does not\ncarry `fees`, so `order.fees.all()` does not resolve through the accessor path.\n\nHOW IT WAS FOUND, AND WHY THAT MATTERS. The ablation replaced the real accessor\nset with a size- and frequency-matched WRONG set, expecting a near-zero floor.\nThe floor was +37.3 edges, and its largest contributor was `fees` -- which the\nshuffle drew by accident and which is genuinely Django. Isolating it on seed 0,\nexactly additive:\n\n    SHUF0                +40\n    SHUF0 minus `fees`   +8     <- the actual noise floor\n    `fees` alone         +32    <- CORRECT edges the real index misses\n\nSo ONE property-wrapped manager in ONE repo is worth +32 ORM-slot call edges.\nThis is a recall gap in the index itself, independent of INV-mumov's rule, and\nit is present with or without that rule.\n\nSIZE IT BEFORE FIXING IT. `fees` is one property found by accident; the family\nis \"a property whose body returns a manager or queryset\". Enumerate the family\non pretix and django before designing: a property returning\n`self.<related>(manager=...)`, returning `self.<related>.filter(...)`, returning\na `Manager` attribute, or returning `objects`-rooted chain. A one-dimensional\nframe cannot predict its own counterexamples.\n\nPRECISION DIRECTION. Widening the index widens what `declares_accessor_anywhere`\nanswers True for, which is finding-GENERATING on the security path (`external`\nwithholds a FINDING, not an all-clear). A property whose body does NOT return a\nmanager must not be indexed -- adjudicate on the RETURN EXPRESSION, not on the\nname.\n\nPRICE ON THE MODULE SLOT, NOT THE TYPED SHARE, and remember a filled slot is\nnecessary, not sufficient (L5)."  # 6111
+    fields: {}  # 6111
