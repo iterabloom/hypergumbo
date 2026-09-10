@@ -240,18 +240,31 @@ class TestUntypedReceiverEmitsThePlaceholder:
         assert emits_external_method_call_edges("javascript") is True
 
 
-class TestHandlerAssignmentEmitsNoEdge:
-    """WI-zumoz. ``ws.onmessage = handler`` is a property ASSIGNMENT, not a
-    call, so no call edge exists for the method-kind rows ``WebSocket.onmessage``,
-    ``WebSocket.onclose`` and ``EventSource.onmessage`` to match. The
-    limitation is DECLARED in ``hypergumbo_core.analyzer_disclosure``
-    (``CONSTRUCT_BLIND_ROWS``, dated, disclosed on a clean verdict). This test
-    pins it so it cannot change silently: when the analyzer starts emitting a
-    registration edge for the assignment it fails, and the declaration must
-    flip in the same change.
+class TestHandlerAssignmentEmitsARegistrationEdge:
+    """OVERTURNED 2026-09-10 (WI-dosuh), deliberately and with its predecessor
+    kept in view.
+
+    This class used to be ``TestHandlerAssignmentEmitsNoEdge``, and it pinned
+    the opposite: ``ws.onmessage = handler`` is a property ASSIGNMENT, not a
+    call, so no call edge existed for ``WebSocket.onmessage``,
+    ``WebSocket.onclose`` or ``EventSource.onmessage`` to match, and the
+    limitation was DECLARED in ``analyzer_disclosure.CONSTRUCT_BLIND_ROWS``
+    rather than fixed. Its docstring named its own falsifier -- "when the
+    analyzer starts emitting a registration edge for the assignment it fails,
+    and the declaration must flip in the same change" -- and that is exactly
+    what happened: ``js_ts.py`` now emits the registration edge, and the
+    javascript entry in ``CONSTRUCT_BLIND_ROWS`` was removed in the same
+    change.
+
+    IT IS FLIPPED, NOT DELETED, because the fixture is the same one WI-zumoz
+    measured on 2026-08-28 and 2026-09-06, and a reader who finds this
+    behaviour surprising should land on the history rather than on nothing.
+    The construct's full spelling coverage lives in
+    ``test_js_ts_handler_assignment.py``; this keeps the original four-line
+    fixture honest at its original site.
     """
 
-    def test_assignment_emits_nothing_while_the_call_on_the_same_receiver_emits(
+    def test_the_assignments_and_the_call_all_reach_the_catalogue(
         self, tmp_path: Path,
     ) -> None:
         edges = _edges(
@@ -266,5 +279,10 @@ class TestHandlerAssignmentEmitsNoEdge:
             "}\n",
         )
         calls = {e.dst for e in edges if e.edge_type == "calls"}
-        assert calls == {"javascript:WebSocket:0-0:addEventListener:unresolved"}, calls
-        assert _tagged(edges) == 1
+        assert calls == {
+            "javascript:WebSocket:0-0:addEventListener:unresolved",
+            "javascript:WebSocket:0-0:onmessage:unresolved",
+            "javascript:WebSocket:0-0:onclose:unresolved",
+            "javascript:EventSource:0-0:onmessage:unresolved",
+        }, calls
+        assert _tagged(edges) == 4

@@ -329,7 +329,7 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=6224,
+                line=6485,
                 anchor='"process": "process",',
                 note=(
                     "The identity mapping that puts a global's own name into "
@@ -341,9 +341,14 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/js_ts.py"
                 ),
-                line=799,
+                line=870,
                 anchor="JS_KNOWN_GLOBALS",
-                note="The nine globals treated as addressable owners.",
+                note=(
+                    "The globals treated as addressable owners — 11 as of "
+                    "2026-09-10, hand-maintained rather than derived, for "
+                    "the reason its own block comment gives: the catalogue "
+                    "records no field saying how a module is reached."
+                ),
             ),
         ),
     ),

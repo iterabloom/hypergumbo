@@ -37,8 +37,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from hypergumbo_core.analyzer_disclosure import (
     CONSTRUCT_BLIND_ROWS,
+    ConstructBlindRows,
     construct_blind_catalogued_sinks,
 )
 from hypergumbo_core.io_boundary import (
@@ -59,6 +62,37 @@ from hypergumbo_core.verify_claims import (
 
 _THREE = {"WebSocket.onmessage", "WebSocket.onclose", "EventSource.onmessage"}
 
+#: The declaration these tests run against.
+#:
+#: INJECTED, NOT SHIPPED, SINCE 2026-09-10. ``CONSTRUCT_BLIND_ROWS`` was
+#: emptied when WI-dosuh built the handler-assignment edge, so javascript's
+#: entry -- the only one there has ever been -- is gone. The DISCLOSURE PATH
+#: it fed is general and still live: any language can acquire a catalogued row
+#: reached only by a construct its analyzer does not model, and when one does,
+#: the next author needs this path already proven rather than resurrected from
+#: a commit. So the tests below declare their own subject and inject it.
+#:
+#: IT KEEPS THE REAL VALUES on purpose. Same three rows, same construct
+#: string, same date -- the shipped catalogue really does carry
+#: ``WebSocket.onmessage`` et al as method-kind ``net_recv`` rows, so the
+#: derivation step (declaration INTERSECT catalogue) is exercised against a
+#: real catalogue and not a fixture that agrees with itself.
+_INJECTED = ConstructBlindRows(
+    "javascript",
+    "property assignment (`ws.onmessage = handler`)",
+    frozenset(_THREE),
+    "2026-09-06",
+    "WI-zumoz, retired by WI-dosuh 2026-09-10. Retained here as the test "
+    "subject for the disclosure path, which has no shipped declaration to "
+    "exercise it.",
+)
+
+
+@pytest.fixture()
+def declared(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Install ``_INJECTED`` as javascript's declaration for one test."""
+    monkeypatch.setitem(CONSTRUCT_BLIND_ROWS, "javascript", _INJECTED)
+
 
 def _method_keys(catalog: IoBoundaryCatalog) -> set[str]:
     return {
@@ -72,16 +106,19 @@ class TestTheDeclaration:
         """A declaration naming a row the catalogue no longer carries is a
         stale claim about nothing; the derivation below would hide it, so it
         is caught here instead."""
-        for lang, decl in CONSTRUCT_BLIND_ROWS.items():
+        for lang, decl in {**CONSTRUCT_BLIND_ROWS,
+                           "javascript": _INJECTED}.items():
             missing = decl.rows - _method_keys(load_catalog(lang))
             assert not missing, (lang, missing)
 
     def test_every_declaration_carries_a_date_and_evidence(self) -> None:
-        for decl in CONSTRUCT_BLIND_ROWS.values():
+        for decl in [*CONSTRUCT_BLIND_ROWS.values(), _INJECTED]:
             assert decl.measured and decl.evidence and decl.construct, decl
             assert decl.rows, decl
 
-    def test_javascript_names_the_three_handler_rows(self) -> None:
+    def test_javascript_names_the_three_handler_rows(
+        self, declared: None,
+    ) -> None:
         found = construct_blind_catalogued_sinks(
             "javascript", load_catalog("javascript"),
         )
@@ -95,7 +132,7 @@ class TestTheDeclaration:
         ) == set()
 
     def test_a_declared_row_the_catalogue_does_not_carry_is_not_reported(
-        self,
+        self, declared: None,
     ) -> None:
         """DERIVED, NOT LISTED: the disclosure follows the catalogue, so a
         user overlay that deletes the rows silences it without editing
@@ -106,13 +143,30 @@ class TestTheDeclaration:
 
 
 class TestTheDeclarationMatchesTheAnalyzer:
-    def test_the_assignments_emit_nothing_and_the_call_emits(
+    """OVERTURNED 2026-09-10 (WI-dosuh). This class held THE PIN, and the pin
+    named its own falsifier: "when this fails because the assignments started
+    emitting an edge, the analyzer gained the construct: flip the javascript
+    entry in ``CONSTRUCT_BLIND_ROWS`` in the same change." The analyzer gained
+    the construct, and the entry was not flipped but REMOVED -- with the
+    javascript one gone, the dict is empty.
+
+    SO THE PIN NOW POINTS THE OTHER WAY, and it is still the same pin: the
+    declaration must match the analyzer. Before, that meant "declared blind,
+    and measurably blind". Now it means "no declaration, and measurably not
+    blind" -- if a future change breaks the assignment edge, this fails and
+    says the disclosure has to come back.
+    """
+
+    def test_no_language_declares_a_construct_blindness(self) -> None:
+        """The removal itself, asserted. A declaration that outlives its
+        limitation is worse than none: it trains a reader to discount every
+        caveat the verdict carries."""
+        assert CONSTRUCT_BLIND_ROWS == {}
+
+    def test_the_assignments_emit_and_so_does_the_call(
         self, tmp_path: Path,
     ) -> None:
-        """THE PIN. When this fails because the assignments started emitting
-        an edge, the analyzer gained the construct: flip the javascript entry
-        in ``CONSTRUCT_BLIND_ROWS`` in the same change, and measure the new
-        findings through the taint path (INV-linub)."""
+        """The measurement the removal rests on, on WI-zumoz's own fixture."""
         from hypergumbo_lang_mainstream.js_ts import analyze_javascript
 
         root = tmp_path / "ws"
@@ -129,10 +183,15 @@ class TestTheDeclarationMatchesTheAnalyzer:
         )
         edges = analyze_javascript(root).edges
         calls = {e.dst for e in edges if e.edge_type == "calls"}
-        assert calls == {"javascript:WebSocket:0-0:addEventListener:unresolved"}, calls
+        assert calls == {
+            "javascript:WebSocket:0-0:addEventListener:unresolved",
+            "javascript:WebSocket:0-0:onmessage:unresolved",
+            "javascript:WebSocket:0-0:onclose:unresolved",
+            "javascript:EventSource:0-0:onmessage:unresolved",
+        }, calls
         assert tag_io_boundaries(
             edges, {"javascript": load_catalog("javascript")},
-        ) == 1
+        ) == 4
 
 
 def _catalog(language: str, *names: str) -> IoBoundaryCatalog:
@@ -173,7 +232,9 @@ def _edges(language: str) -> list[dict]:
 
 
 class TestTheVerdict:
-    def test_a_clean_javascript_verdict_is_not_bare(self) -> None:
+    def test_a_clean_javascript_verdict_is_not_bare(
+        self, declared: None,
+    ) -> None:
         """THE POINT. The three rows are declared unreachable AND catalogued,
         so ``ws.onmessage = h`` emits nothing and the verdict had nothing to
         disclose."""
@@ -204,7 +265,9 @@ class TestTheVerdict:
         assert verdict.verdict == "confirmed"
         assert verdict.caveats == []
 
-    def test_a_declared_row_absent_from_the_catalogue_is_silent(self) -> None:
+    def test_a_declared_row_absent_from_the_catalogue_is_silent(
+        self, declared: None,
+    ) -> None:
         """SECOND CONTROL, on the other axis: the declaration names rows, and
         a catalogue without them has nothing hidden."""
         coverage = compute_boundary_coverage(
@@ -215,7 +278,7 @@ class TestTheVerdict:
         assert verdict.verdict == "confirmed"
         assert verdict.caveats == []
 
-    def test_the_taint_arm_carries_it_too(self) -> None:
+    def test_the_taint_arm_carries_it_too(self, declared: None) -> None:
         """INV-nuhun's asymmetry: disclosing on the boundary arm and staying
         silent on the taint arm about the SAME unseen construct."""
         coverage = compute_boundary_coverage(

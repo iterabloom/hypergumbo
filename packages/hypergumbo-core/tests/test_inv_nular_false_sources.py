@@ -976,21 +976,40 @@ class TestServerLaunchIsADeferredCrossing:
     def test_javascript_did_not_move_and_the_reason_was_measured(
         self, mod: str, name: str,
     ) -> None:
-        """JAVASCRIPT IS HELD BACK, and not by omission.
+        """JAVASCRIPT IS HELD BACK -- but AS OF 2026-09-10 NO LONGER BY THE
+        REASON THIS TEST WAS WRITTEN TO CARRY.
 
-        Its entire REACHABLE `net_recv` surface is these rows. What would
-        survive the move -- `WebSocket.onmessage`, `EventSource.onmessage` and
-        their `addEventListener` peers -- is INV-misup-unreachable: a
-        constructor-bound receiver (`ws = new WebSocket(url)`) never resolves,
-        so the call becomes a `uses` edge and matches no row. Moving these four
-        would relocate JavaScript's inbound-network representation to NOTHING,
-        which ADR-0049 ruling 3 forbids.
+        THE ORIGINAL REASONING, kept because it is what `F2_EXEMPT` documents:
+        JavaScript's entire REACHABLE `net_recv` surface was these rows, since
+        what would survive the move -- `WebSocket.onmessage`,
+        `EventSource.onmessage` and their `addEventListener` peers -- was
+        INV-misup-unreachable (a constructor-bound receiver `ws = new
+        WebSocket(url)` never resolved, so the call matched no row). Moving
+        these four would have relocated JavaScript's inbound-network
+        representation to NOTHING, which ADR-0049 ruling 3 forbids. It was not
+        taken on authority: an idiomatic JS server probe run for measurement
+        0010 reported exactly two `net_recv` chains, both `createServer`, and
+        zero from the WebSocket handler.
 
-        That is `F2_EXEMPT`'s documented reasoning, and it is not taken on
-        authority here: an idiomatic JS server probe run for measurement 0010
-        reported exactly two `net_recv` chains, both `createServer`, and zero
-        from the WebSocket handler. When INV-misup closes, this test is what
-        asks whether the exemption still has a reason."""
+        THE TRIGGER THIS DOCSTRING NAMED HAS FIRED. It said "when INV-misup
+        closes, this test is what asks whether the exemption still has a
+        reason." INV-misup closed in #753, which made
+        `ws.addEventListener('message', cb)` reach its row; WI-dosuh then
+        emitted the registration edge for the assignment spelling, so
+        `WebSocket.onmessage`, `WebSocket.onclose` and `EventSource.onmessage`
+        are reachable too, and the `CONSTRUCT_BLIND_ROWS` declaration that
+        recorded their unreachability is gone. Verified on the production path
+        (`~/hypergumbo_lab_notebook/dosuh_family_09102026/`): both spellings
+        tag `net_recv`, and the assignment spelling reaches a live
+        `untrusted-input-no-subprocess` finding.
+
+        SO THE ASSERTION STAYS AND THE REASON CHANGES. The rows have not
+        moved, and this test still pins that they have not -- but the ground
+        is now "the retag has not been ADJUDICATED yet", which is the Phoenix
+        bar below, not "there would be nothing left to relocate to". Deciding
+        it needs measurement 0010's adjudication repeated on JavaScript, on a
+        per-repo basis, since reachable in a fixture is not reached in a repo.
+        Filed as WI-vogos. Do not move these rows by editing this test."""
         assert _has("javascript", "net_recv", mod, name)
 
     @pytest.mark.parametrize("name", ("get", "post", "resources", "scope"))
