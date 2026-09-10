@@ -4824,15 +4824,42 @@ class _DjangoReceiverOracle:
 
     def manager_root(self, expr: ast.expr) -> str | None:
         """``"related"`` for ``<instance>.<accessor>``, ``"manager"`` for
-        ``<Model>.<manager>``, else ``None``."""
+        ``<Model>.<manager>``, else ``None``.
+
+        KIND ONLY. :meth:`manager_root_provenance` answers the second question --
+        how the answer was reached -- and every caller here wants only the kind,
+        so widening this signature would make several call sites unpack a tuple
+        they never read.
+        """
+        return self.manager_root_provenance(expr)[0]
+
+    def manager_root_provenance(self, expr: ast.expr) -> tuple[str | None, str | None]:
+        """``(kind, provenance)`` -- :meth:`manager_root`'s answer, plus HOW it
+        was reached: ``"typed_root"`` when a resolved class owned the accessor or
+        manager, ``"accessor_name"`` when nothing was known about the root and
+        the answer came from the accessor NAME alone. ``None`` when the kind is.
+
+        THE DISTINCTION IS LOAD-BEARING, NOT DECORATIVE. Both paths fill the same
+        MODULE slot, so nothing downstream can tell them apart from the ``dst``
+        -- and only the second rests on a name. A clean security verdict that
+        stops disclosing an untyped receiver *because of the second* is a quieter
+        verdict on weaker evidence, which is the false-all-clear direction. So
+        the provenance is stamped on ``resolution_quality``, the registered axis
+        for a resolution MECHANISM (INV-tadup added ``chained_return_type`` there
+        for exactly this reason, after it was smuggled through
+        ``call_construct``), and :func:`accessor_name_receiver_sites` in
+        ``verify_claims`` reads it back to keep the disclosure alive.
+        """
         if not isinstance(expr, ast.Attribute):  # pragma: no cover - both callers narrow to Attribute first
-            return None
+            return None, None
         cls = self._class_root(expr.value)
         if cls is not None:
-            return "manager" if self.index.is_manager_name(cls, expr.attr) else None
+            if self.index.is_manager_name(cls, expr.attr):
+                return "manager", "typed_root"
+            return None, None
         owner = self.instance_class(expr.value)
         if owner is not None and self.index.accessor_model(owner, expr.attr) is not None:
-            return "related"
+            return "related", "typed_root"
         if owner is None and not self._refuted_by_a_known_owner(expr.value):
             # INV-mumov: a declared accessor on a root nothing is known about.
             # WI-gulaz reaches the index only through ``instance_class``, so a
@@ -4865,8 +4892,10 @@ class _DjangoReceiverOracle:
             # :meth:`_refuted_by_a_known_owner`. The name must be one THIS
             # project declares, so the rule is silent in a repository with no
             # Django models rather than merely unlikely to fire.
-            return "related" if self.index.declares_accessor_anywhere(expr.attr) else None
-        return None
+            if self.index.declares_accessor_anywhere(expr.attr):
+                return "related", "accessor_name"
+            return None, None
+        return None, None
 
     def _refuted_by_a_known_owner(self, expr: ast.expr) -> bool:
         """Is there positive evidence AGAINST treating ``expr`` as a model instance?
@@ -6998,6 +7027,40 @@ def _receiver_type(
     )
 
 
+def _orm_resolution_quality(
+    receiver: ast.expr,
+    manager_root_provenance: "Callable[[ast.expr], tuple[str | None, str | None]] | None",
+) -> str:
+    """``resolution_quality`` for an edge whose module slot is the Django ORM.
+
+    ONE DEFINITION FOR BOTH METHOD-CONSTRUCT ORM EMITTERS. The manager-method
+    emitter and the WI-zilag inline-expression emitter can each reach
+    :data:`DJANGO_ORM_MODULE` through the accessor-NAME path, and a disclosure
+    that covers one of them is worse than none: the consumer
+    (``verify_claims.accessor_name_receiver_sites``) would read a partial list
+    as the whole population and a clean verdict would go quiet on the half that
+    was missed. Two spellings of one fact drift on first edit (L53), so there is
+    exactly one here.
+
+    ``"accessor_name"`` means the slot was filled from a name THIS project's
+    models declare while nothing at all was known about the root.
+    ``"type_inferred"`` means a resolved class owned it -- the pre-existing
+    answer, unchanged, which is why every other ORM edge keeps the value it had.
+
+    PROTOCOL EDGES ARE OUT OF SCOPE HERE BY CONSTRUCTION, not by omission:
+    they carry ``call_construct="protocol"``, and every consumer of this
+    disclosure filters on ``"method"`` because that is what "a receiver was
+    there" means.
+    """
+    if manager_root_provenance is None:
+        return "type_inferred"
+    return (
+        "accessor_name"
+        if manager_root_provenance(receiver)[1] == "accessor_name"
+        else "type_inferred"
+    )
+
+
 def _is_django_manager_root(
     receiver: ast.expr,
     manager_root: Callable[[ast.expr], "str | None"] | None,
@@ -7845,6 +7908,11 @@ def _process_call(
         _manager_root_here = (
             django_oracle.manager_root if django_oracle is not None else None
         )
+        # Bound SEPARATELY rather than by widening ``_manager_root_here``: that
+        # name is also handed to ``_receiver_type`` below, which wants the kind.
+        _manager_prov_here = (
+            django_oracle.manager_root_provenance if django_oracle is not None else None
+        )
         _root_kind: str | None = None
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute):
             if func.value.attr == "objects":
@@ -7873,7 +7941,9 @@ def _process_call(
                 meta={
                     "call_construct": "method",
                     "framework_dispatch": "django_orm",
-                    "resolution_quality": "type_inferred",
+                    "resolution_quality": _orm_resolution_quality(
+                        func.value, _manager_prov_here,
+                    ),
                 },
                 dst_ref=ExternalRef(
                     lang="python", module_path=DJANGO_ORM_MODULE, name=_orm_method
@@ -7969,7 +8039,14 @@ def _process_call(
                 is_resolved=False,
                 meta={
                     "call_construct": "method",
-                    "resolution_quality": "type_inferred",
+                    # Only an ORM slot can have been filled from an accessor
+                    # NAME; every other module here came from a typed root, and
+                    # asking otherwise would stamp a Django provenance on a
+                    # pathlib receiver.
+                    "resolution_quality": (
+                        _orm_resolution_quality(func.value, _manager_prov_here)
+                        if ext_module == DJANGO_ORM_MODULE else "type_inferred"
+                    ),
                 },
                 dst_ref=ExternalRef(
                     lang="python", module_path=ext_module or "", name=func.attr,

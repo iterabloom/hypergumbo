@@ -475,7 +475,15 @@ _BASE_META_KEYS: Final[tuple[MetaKeySpec, ...]] = (
                 "'chained_return_type' (Go: the receiver's type came from a "
                 "chained call's return type) — it named a resolution MECHANISM "
                 "and was being smuggled through ``call_construct``, which is "
-                "the syntactic-construct axis."),
+                "the syntactic-construct axis. INV-mumov added 'accessor_name' "
+                "(Python/Django: the module slot was filled from a relation- "
+                "accessor NAME this project's models declare, with NOTHING "
+                "known about the root) for the same reason — it was shipping "
+                "as 'type_inferred', indistinguishable from a receiver typed "
+                "off a resolved class, and the difference is load-bearing: "
+                "``verify_claims.accessor_name_receiver_sites`` reads it back "
+                "so a CLEAN security verdict stays qualified instead of going "
+                "silent about calls whose typing rests on a name."),
     # ------------------------------------------------------------------
     # Edge.meta — protocol / bridge / dispatch vocabularies (predates
     # the axis-registry pattern; PROTOCOL_KINDS and BRIDGE_KINDS in

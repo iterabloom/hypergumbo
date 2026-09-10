@@ -109,13 +109,13 @@ db_compose:
               order_by, distinct, none, select_related, prefetch_related,
               using, only, defer, select_for_update, reverse, extra,
               union, intersection, difference]
-    notes: "Django ORM QuerySet combinators -- compose a lazy query, read nothing (type-verified receiver)"
+    notes: "Django ORM QuerySet combinators -- compose a lazy query, read nothing (module-qualified receiver; see ADR-0053 on how that module is reached)"
 
 db_read:
   - module: django.db.models
     methods: [get, count, exists, first, last, aggregate, earliest, latest,
               in_bulk, iterator]
-    notes: "Django ORM executing reads: each returns rows, a row, or a scalar the database chose (type-verified receiver)"
+    notes: "Django ORM executing reads: each returns rows, a row, or a scalar the database chose (module-qualified receiver; see ADR-0053)"
   - module: django.db.models
     methods: [__iter__, __aiter__, __getitem__]
     notes: >-
@@ -129,7 +129,7 @@ db_write:
   - module: django.db.models
     methods: [create, bulk_create, update, bulk_update, delete,
               get_or_create, update_or_create, save]
-    notes: "Django ORM Manager/instance write surface (type-verified receiver)"
+    notes: "Django ORM Manager/instance write surface (module-qualified receiver; see ADR-0053)"
   - module: django.db.models
     methods: [add, remove, clear, set]
     notes: >-

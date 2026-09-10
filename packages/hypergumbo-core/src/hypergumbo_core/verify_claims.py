@@ -448,6 +448,28 @@ CAVEAT_DISPLACED_SHIPPED_ENTRY = "displaced_shipped_entry"
 #: honest; it does not make the analysis see further.
 CAVEAT_UNTYPED_RECEIVER = "untyped_receiver"
 
+#: The receiver WAS typed -- but from a declared relation-accessor NAME, with
+#: nothing known about the root (``resolution_quality="accessor_name"``, stamped
+#: by ``hypergumbo_lang_mainstream.py._orm_resolution_quality``).
+#:
+#: WHY THIS EXISTS AND WHY IT IS NOT THE SIBLING ABOVE. Typing such a receiver
+#: REMOVES the site from :func:`untyped_receiver_sites`, so a clean verdict that
+#: used to disclose "I could not type N receivers" would fall silent about
+#: exactly the calls whose typing rests on a name rather than on a resolved
+#: class. That is the false-all-clear direction -- a gate may be tightened on
+#: silence, never opened on it -- and the recall gain is not a reason to take
+#: the disclosure away with it. So the qualification is not dropped, it is made
+#: MORE precise: "typed from a declared accessor name, not from a typed root".
+#:
+#: MEASURED, and the measurement is why this is a caveat rather than a refusal.
+#: A shuffled-index ablation over pretix (20 size- and frequency-matched WRONG
+#: accessor sets) puts the rule's true:shuffled firing ratio at 78.9 against a
+#: kill threshold of 10 fixed before the number existed, so the name-keying is
+#: overwhelmingly right and refusing it would cost 2,943 correctly-slotted edges
+#: for a rare error. Being right is not the same as being VERIFIED, and this
+#: says which one the reader is getting.
+CAVEAT_ACCESSOR_NAME_RECEIVER = "accessor_name_receiver"
+
 #: A clean boundary verdict is CLOSED-WORLD over the receivers the analysis could
 #: type, and this says so with a count and a denominator (INV-fibis, unscoped half).
 #:
@@ -813,6 +835,62 @@ def _untyped_receiver_caveat(
             f"{_UNTYPED_CONSEQUENCE[arm]}."
         ),
     }
+
+
+def _accessor_name_receiver_caveat(
+    boundary: str, sites: list[str], scope: tuple[int, int] = (0, 0),
+) -> dict[str, Any]:
+    """The one place the accessor-name-receiver disclosure is built.
+
+    SAYS WHAT IS KNOWN AND WHAT IS NOT, which is the whole difference from its
+    sibling. The receiver's type is not unknown here -- it was inferred, and the
+    sentence says from WHAT, because "typed" and "typed from a name" support
+    different amounts of trust and a reader deciding whether to act on a clean
+    verdict needs the second one spelled out.
+    """
+    if len(sites) <= _MAX_REPORTED_UNTYPED_SITES:
+        where = ", ".join(sites)
+    else:
+        names = sorted({_site_method(s) for s in sites})
+        more = len(names) - _MAX_REPORTED_UNTYPED_SITES
+        suffix = f" (+{more} more)" if more > 0 else ""
+        shown = ", ".join(names[:_MAX_REPORTED_UNTYPED_SITES])
+        where = (
+            f"{len(names)} distinct method(s): {shown}{suffix}; "
+            f"the full site list is in this caveat's `entries`"
+        )
+    return {
+        "kind": CAVEAT_ACCESSOR_NAME_RECEIVER,
+        # CARRIED, NOT RE-DERIVED, for the reason the sibling gives:
+        # ``_merge_caveat`` re-renders a widened entry list and can only do so
+        # for a caveat that says what it is about.
+        "boundary": boundary,
+        "entries": list(sites),
+        "scope": list(scope),
+        "detail": (
+            f"The claim holds everywhere the analysis could see. At "
+            f"{len(sites)} call site(s) — {where} — a method the {boundary} "
+            f"catalogue declares is called on a receiver whose type was "
+            f"inferred from a declared relation-accessor NAME rather than from "
+            f"a resolved class, so this verdict rests on that inference being "
+            f"right about those receivers." + _scope_clause(scope)
+        ),
+    }
+
+
+def _scope_clause(scope: tuple[int, int]) -> str:
+    """" Across the analysis, N of M ..." — the denominator, or nothing.
+
+    A count without one is unactionable, and a denominator of zero is not a
+    ratio; both cases render no clause rather than a misleading fraction.
+    """
+    typed, total = scope
+    if not total or not typed:
+        return ""
+    return (
+        f" Across the whole analysis {typed} of {total} method-call receivers "
+        f"were typed this way."
+    )
 
 
 def _analyzer_method_call_blind_caveat(
@@ -1211,6 +1289,19 @@ class BoundaryCoverage:
     #: wrong answer. The unscoped version of the sibling signal was measured on
     #: 2026-08-11 and recorded DO NOT BUILD IT.
     deferred_crossing_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: Boundary -> call sites reaching a catalogued method for it through a
+    #: receiver typed from a relation-accessor NAME (see
+    #: :data:`CAVEAT_ACCESSOR_NAME_RECEIVER`). The COMPLEMENT of
+    #: :attr:`untyped_receiver_sites`: typing such a receiver removes it from
+    #: that map, and without this one the disclosure would shrink every time the
+    #: analyzer got better at inferring. Populated on EVERY coverage result and
+    #: keyed by boundary, for the same fail-closed reasons as its sibling.
+    accessor_name_receiver_sites: dict[str, list[str]] = field(default_factory=dict)
+    #: ``(accessor-name-typed sites, method call sites)`` over the WHOLE
+    #: analysis, unscoped by boundary -- the denominator its boundary-keyed
+    #: sibling above structurally cannot supply. Populated on EVERY coverage
+    #: result for the same fail-closed reason as the rest of this family.
+    accessor_name_receiver_scope: tuple[int, int] = (0, 0)
     #: ``(untyped sites, method call sites, distinct method names)`` over the
     #: WHOLE analysis, unscoped by boundary (INV-fibis). Its sibling above
     #: answers "which calls did it see but not adjudicate FOR THIS BOUNDARY";
@@ -3430,6 +3521,63 @@ def _untyped_receiver_call_sites(
                _call_site_label(edge), catalog)
 
 
+def accessor_name_receiver_sites(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> dict[str, list[str]]:
+    """Call sites reaching a catalogued METHOD through a receiver typed from a
+    relation-accessor NAME, grouped by the boundary that method is catalogued
+    for. The complement of :func:`untyped_receiver_sites`.
+
+    THE TWO POPULATIONS ARE DISJOINT BY CONSTRUCTION, which is the point. A
+    receiver typed by name has a NAMED module in its ``dst``, so
+    :func:`_untyped_receiver_call_sites` skips it at its first filter -- it is no
+    longer untyped. Without this function those sites simply disappear from the
+    disclosure, and the clean verdict gets quieter every time the analyzer gets
+    better at guessing. Same three filters as the sibling, for the same reasons:
+    the producer's own ``call_construct == "method"`` (a protocol edge asserts no
+    receiver), method-KIND catalogue rows only (a function-kind primitive is not
+    reached through a receiver at all), and every boundary a name is catalogued
+    under rather than the first (INV-zumin's row-order masking).
+
+    KEYED BY BOUNDARY for the reason the 2026-08-11 measurement recorded DO NOT
+    BUILD THE UNSCOPED VERSION: the catalogued method names include ``get`` /
+    ``read`` / ``close``, so an unscoped signal downgrades every boundary on
+    every repo and says nothing.
+
+    EVERY BOUNDARY THE NAME IS CATALOGUED UNDER -- NOT THE ONE THE ``dst`` NAMES,
+    AND THIS IS THE CRUX. It is tempting to scope the lookup to the module in
+    the ``dst`` (``django.db.models``), since unlike an untyped receiver this
+    edge does name one. That would be exactly wrong, and it would also make this
+    disclosure unreachable: a ``db_read`` claim is VIOLATED by the very chain
+    that would qualify it, so the caveat could never fire and would be a
+    disclosure nothing reads.
+
+    The module in the ``dst`` is the INFERENCE, and the inference is the thing
+    that might be wrong -- that is the whole reason this caveat exists. If the
+    name-typing is mistaken, ``thing.seats`` is not a Django manager at all: it
+    could be a dict, where ``.get`` is no I/O, or a ``requests.Session``, where
+    ``.get`` is a ``net_send``. So a clean ``net_send`` verdict is qualified by
+    these sites precisely BECAUSE the analysis believes they are ORM reads and
+    could be believing it wrongly. Scoping to the believed module would assume
+    the answer.
+    """
+    grouped: dict[str, set[str]] = {}
+    for edge, dst, catalog in _external_call_sites(raw_edges, catalogs):
+        meta = edge.get("meta") or {}
+        if meta.get("resolution_quality") != "accessor_name":
+            continue
+        if meta.get("call_construct") != "method":
+            continue
+        name = symbol_name_slot(dst)
+        for boundary in {
+            pr.boundary for pr in catalog.lookup_all(name)
+            if pr.kind == "method" and pr.name == name
+        }:
+            grouped.setdefault(boundary, set()).add(_call_site_label(edge))
+    return {b: sorted(sites) for b, sites in sorted(grouped.items())}
+
+
 def untyped_receiver_sink_zones(
     raw_edges: list[dict[str, Any]],
     catalogs: dict[str, IoBoundaryCatalog],
@@ -3529,6 +3677,41 @@ def unknown_receiver_scope(
         # "distinct method(s): ." on the shipped CLI.
         names.add(_callee_name(edge))
     return sites, total, sorted(names)
+
+
+def accessor_name_receiver_scope(
+    raw_edges: list[dict[str, Any]],
+    catalogs: dict[str, IoBoundaryCatalog],
+) -> tuple[int, int]:
+    """``(accessor-name-typed sites, method call sites)`` for the whole analysis.
+
+    THE SECOND CONSUMER OF ``resolution_quality="accessor_name"``, and the one
+    that makes the first ACTIONABLE. The boundary-scoped caveat says WHICH calls
+    rest on a name; this says HOW MUCH of the analysis does. "17 sites" is a
+    number nobody can act on; "17 of 4,206 method-call receivers" tells a reader
+    whether this verdict leans on the inference or merely touches it.
+
+    THE DENOMINATOR IS COMMENSURABLE WITH THE NUMERATOR BY CONSTRUCTION, exactly
+    as :func:`unknown_receiver_scope`'s is: both count method-construct call
+    sites in a language that HAS a catalogue, so a polyglot repo cannot dilute
+    the ratio with calls nothing could have adjudicated. A bare ``open()``
+    counts in neither -- it asserts no receiver.
+    """
+    total = 0
+    sites = 0
+    for edge in raw_edges:
+        if edge.get("type") not in _CALL_SITE_EDGE_TYPES:
+            continue
+        meta = edge.get("meta") or {}
+        if meta.get("call_construct") != "method":
+            continue
+        parts = edge.get("dst", "").split(":")
+        if len(parts) < 5 or catalogs.get(parts[0]) is None:
+            continue
+        total += 1
+        if meta.get("resolution_quality") == "accessor_name":
+            sites += 1
+    return sites, total
 
 
 def _callee_name(edge: dict[str, Any]) -> str:
@@ -3779,6 +3962,12 @@ def compute_boundary_coverage(
         frozenset(first_party_packages or ()),
     )
     coverage.untyped_receiver_sites = untyped_receiver_sites(raw_edges, catalogs)
+    coverage.accessor_name_receiver_sites = accessor_name_receiver_sites(
+        raw_edges, catalogs,
+    )
+    coverage.accessor_name_receiver_scope = accessor_name_receiver_scope(
+        raw_edges, catalogs,
+    )
     coverage.unknown_receiver_scope = unknown_receiver_scope(raw_edges, catalogs)
     coverage.deferred_crossing_sites = deferred_crossing_sites(
         raw_edges, catalogs,
@@ -4186,6 +4375,12 @@ def _verify_claim_uncredited(
     # ``.get`` out of a ``net_send`` verdict — the mis-fire the 2026-08-11
     # measurement caught, and the reason the unscoped DOWNGRADE was refused.
     untyped = coverage.untyped_receiver_sites.get(claim.constraint_boundary) or []
+    # Read HERE, beside its sibling, and consumed only on the clean paths: the
+    # two are complements over one population and reading them in one place is
+    # what stops a later edit disclosing one and staying silent on the other.
+    accessor_named = (
+        coverage.accessor_name_receiver_sites.get(claim.constraint_boundary) or []
+    )
     # ADR-0049 clause 3, scoped by the claim's own boundary for the same
     # reason the line above is: a listen site must not reach an fs_write
     # claim. Read here so it rides the ONE clean-caveat builder below and
@@ -4221,6 +4416,18 @@ def _verify_claim_uncredited(
             out = _merge_caveat(
                 out,
                 _untyped_receiver_caveat(claim.constraint_boundary, untyped),
+            )
+        if accessor_named:
+            # IMMEDIATELY AFTER ITS COMPLEMENT. A site moves from that list to
+            # this one when the analyzer learns to type it, and adjacency here
+            # is what makes that a change of SENTENCE rather than a change of
+            # silence.
+            out = _merge_caveat(
+                out,
+                _accessor_name_receiver_caveat(
+                    claim.constraint_boundary, accessor_named,
+                    coverage.accessor_name_receiver_scope,
+                ),
             )
         if _scope_sites:
             out = _merge_caveat(
