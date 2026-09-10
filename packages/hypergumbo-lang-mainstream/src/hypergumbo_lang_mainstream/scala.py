@@ -215,6 +215,34 @@ def _extract_annotation_info(
     return {"name": name, "args": args, "kwargs": kwargs}
 
 
+#: Types Scala imports IMPLICITLY -- ``scala.Predef._``, ``scala._``,
+#: ``java.lang._`` -- which therefore appear in NO import line.
+#:
+#: WHY A GENERIC BASE IS DENIED WHEN IT IS ONE OF THESE, measured rather than
+#: argued. Widening type extraction to ``generic_type`` makes ``val m:
+#: Map[String, X]`` contribute the base ``Map``. That name cannot qualify --
+#: there is no import to look it up in -- so it adds NOTHING to the module slot.
+#: What it does instead is reach the bare short-name bind, which is the funnel
+#: this file's own external branch refuses for untyped receivers ("confidently
+#: bind to an arbitrary same-named internal def"). On sbt that produced 44
+#: bindings of a standard-library ``Map[K,V]`` to the PROJECT's
+#: ``sbt/SessionVar.scala`` ``Map.get`` -- 24% of every edge the change newly
+#: resolved. lila showed 0, because lila happens to define no such collider;
+#: that is luck, not safety.
+#:
+#: SCOPED TO THE GENERIC BASE, DELIBERATELY. An explicitly ANNOTATED bare
+#: ``val x: Map = ...`` is untouched: the programmer wrote that name, it is the
+#: pre-existing INV-fahub / WI-bihit population, and narrowing it is a separate
+#: change with its own measurement. This denies only names this change would
+#: newly INVENT from a type argument.
+_SCALA_IMPLICIT_IMPORT_TYPES = frozenset({
+    "Map", "List", "Set", "Seq", "Vector", "Array", "Option", "Some", "Either",
+    "Left", "Right", "Iterable", "Iterator", "Stream", "Range", "String",
+    "Int", "Long", "Boolean", "Double", "Float", "Char", "Byte", "Short",
+    "Unit", "Any", "AnyRef", "AnyVal", "Nothing", "Null", "Throwable",
+    "Exception", "Error", "Thread", "Class", "Object", "Tuple2", "Function1",
+})
+
 #: The type-node kinds a declared Scala type can take. ``type_identifier`` is
 #: the bare one every extraction site used to look for exclusively; the other
 #: two were invisible, which cost the hint entirely (WI-pokam).
@@ -223,7 +251,7 @@ _SCALA_TYPE_NODES = ("type_identifier", "stable_type_identifier", "generic_type"
 
 def _qualify_scala_receiver(
     receiver_type: "str | None",
-    import_aliases: dict,
+    import_aliases: "dict[str, str]",
 ) -> "str | None":
     """The module-slot path for a receiver type, or ``None`` to keep the sentinel.
 
@@ -251,7 +279,7 @@ def _qualify_scala_receiver(
     """
     if not receiver_type:
         return None
-    imported = import_aliases.get(receiver_type)
+    imported: "str | None" = import_aliases.get(receiver_type)
     if imported:
         return imported
     return receiver_type if "." in receiver_type else None
@@ -291,8 +319,13 @@ def _declared_type_name(parent: "tree_sitter.Node", source: bytes) -> "str | Non
             return node_text(child, source)
         if child.type == "generic_type":
             base = _declared_type_name(child, source)
-            if base is not None:
+            # A base this change INVENTED from a type argument is refused when
+            # it is an implicitly-imported name: it cannot qualify, so its only
+            # reachable effect is a short-name mis-bind. See
+            # :data:`_SCALA_IMPLICIT_IMPORT_TYPES` for the measurement.
+            if base is not None and base not in _SCALA_IMPLICIT_IMPORT_TYPES:
                 return base
+            return None
     return None
 
 
