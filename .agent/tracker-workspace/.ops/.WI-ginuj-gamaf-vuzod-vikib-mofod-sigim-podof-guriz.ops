@@ -1,0 +1,22 @@
+- op: create  # e94b
+  at: '2026-09-10T11:45:47Z'  # e94b
+  by: agent  # e94b
+  actor: jgstern_agent  # e94b
+  clock: 1  # e94b
+  nonce: e94b  # e94b
+  data:  # e94b
+    kind: work_item  # e94b
+    title: "smart-test --full collects only packages/* and never the repo-root tests/ — a green local 'full' run does not predict CI"  # e94b
+    status: todo_hard  # e94b
+    priority: 2  # e94b
+    parent:  # e94b
+    tags:  # e94b
+    - tooling  # e94b
+    - ci  # e94b
+    - usability  # e94b
+    isbefore: []  # e94b
+    duplicate_of: []  # e94b
+    not_duplicate_of: []  # e94b
+    pr_ref:  # e94b
+    description: "FILED 2026-09-10, found by a CI failure on PR #890 after a LOCAL `--full` run\nhad gone green over 26,702 tests.\n\nWHAT IT IS. `smart-test --full` collects only `packages/*`. It never collects the\nrepo-root `tests/` directory. CI runs `.ci/affected-tests.txt`, which DOES include\nroot tests. So the local \"full\" gate is NOT a superset of what CI runs, and a\ngreen `--full` does not predict a green CI.\n\nMEASURED on the PR #890 tree, same manifest, same tree:\n\n    test file                        in local --full run   in CI manifest\n    tests/test_adr_readme_index_sync           0                 1     <- failed CI\n    tests/test_smart_test                      0                 1\n    tests/test_auto_pr                         0                 0\n    tests/test_agent_supervisor                0                 0\n    tests/test_check_audit_cadence             0                 0\n\n    root dirs collected by --full: packages/hypergumbo-{core,lang-common,\n    lang-extended,lang-mainstream,lang-rust-analyzer,tracker}  -- and nothing else.\n\nCOST. One CI cycle (~6 min) plus a fix-and-repush, on a failure (`ADRs on disk but\nabsent from the README index: ['0053']`) that the local gate holds the test for\nand simply did not run.\n\nWHY IT IS THE SAME FAMILY AS WI-dolaf AND WI-burol. The command's own name says\n\"full\". A gate that is named for totality and is silently partial is a wrong\ninstrument that exits 0 -- the reader has no signal that anything was skipped.\n\nTWO SEPARABLE FIXES, and they are not equivalent:\n  (a) make `--full` collect the repo-root `tests/` directory, so the name is\n      true; and/or\n  (b) have `--full` PRINT what it collected and what it skipped, so a partial\n      run cannot look like a total one.\n(b) is worth doing even if (a) lands, because the next divergence will not be\nthis one.\n\nSIZE THE FAMILY FIRST. `tests/` is the directory found by this failure; check\nwhether any OTHER path in the manifest is outside `packages/*` before assuming\none directory is the whole gap."  # e94b
+    fields: {}  # e94b
