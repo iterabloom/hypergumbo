@@ -1,0 +1,35 @@
+- op: create  # 9589
+  at: '2026-09-10T07:20:58Z'  # 9589
+  by: agent  # 9589
+  actor: jgstern_agent  # 9589
+  clock: 1  # 9589
+  nonce: '9589'  # 9589
+  data:  # 9589
+    kind: invariant  # 9589
+    title: "process_code_block rebuilds the Django receiver oracle per recursion level with EMPTY context, so 'no evidence' is manufactured at depth — safe only while every rule fires on positive evidence"  # 9589
+    status: violated  # 9589
+    priority: 2  # 9589
+    parent:  # 9589
+    tags:  # 9589
+    - python  # 9589
+    - analyzer  # 9589
+    - receiver_typing  # 9589
+    - taint  # 9589
+    isbefore: []  # 9589
+    duplicate_of: []  # 9589
+    not_duplicate_of: []  # 9589
+    pr_ref:  # 9589
+    description: "`process_code_block` RECURSES into child nodes, and each recursion builds a NEW\n`_DjangoReceiverOracle` from that level's arguments. Traced on a 6-line probe:\n\n    block_nodes=['Assign','Assign','Expr']  -> assigned={'o3','qs'}   <- real block\n    block_nodes=['Name']                    -> assigned={}\n    block_nodes=['Call']                    -> assigned={}\n    block_nodes=['Attribute']               -> assigned={}            <- emission happens HERE\n    ... 26 constructions for one function\n\nAt the depth where the emission for `o3.payment_set.count()` is actually\ndecided, BOTH `var_types` and any block-derived context are EMPTY. The oracle\nthere cannot distinguish \"this name was never bound\" from \"this name was bound\nthree levels up\".\n\nWHY IT HAS BEEN HARMLESS SO FAR, AND WHY THAT IS ABOUT TO STOP. Every rule in\nthis area fires on POSITIVE evidence: `instance_class` must resolve, or\n`accessor_model` must hit. Under those rules the information loss at depth is\nconservative — the deep oracle knows nothing, so it refuses, and refusing is the\nsafe direction. The architecture has therefore never been stressed.\n\n**It stops being harmless the moment any rule fires on the ABSENCE of evidence**,\nbecause this walker MANUFACTURES absence at depth. Concretely, the INV-mumov\nuntyped-root rule (a declared relation accessor on a root nothing is known\nabout) was implemented with a guard that refuses when the name was assigned in\nthis block but left untyped — `label = Order.LABELS.get(\"a\")` then\n`label.payment_set.count()`, a dict value that must not become a Django manager.\nThe guard is correct and it is DEFEATED: at depth `assigned_names` is empty, so\nthe dict value reads as an untouched parameter and gets typed.\n\nSO THIS BLOCKS THE UNTYPED-ROOT SLICE. Not because the slice is wrong — 250 of\n428 pretix production recall cells turn on it, 40 of 40 sampled genuinely Django\n(`~/hypergumbo_lab_notebook/mumov_tip_09102026/ROOTCHECK_RESULT.md`) — but\nbecause no absence-triggered rule can be made safe until absence is real.\n\nWHAT TO BUILD. Thread the block's context down through the recursion instead of\nrebuilding it empty: one oracle per BLOCK, reused by the nested calls, or an\nexplicit context parameter carried through all six `process_code_block` call\nsites (5669, 5684, 5700, 5704, 5967, 6291). Then a deep refusal means \"looked\nand found nothing\" rather than \"was never told\".\n\nREFUTATION TO PRE-REGISTER for that work: threading context must not CHANGE any\ncurrently-passing behaviour, since every existing rule is positive-evidence and\nshould be indifferent to it. A diff in the shipped corpus numbers means some\nrule was silently depending on the depth amnesia, and that dependency is the\nfinding.\n\nFOUND 2026-09-10 while implementing the untyped-root rule. Traced, not inferred:\nthe 26-construction trace above is from a live run."  # 9589
+    fields:  # 9589
+      statement: "A receiver-typing predicate evaluated at any AST depth sees the same block context (var_types, assigned names, enclosing class) the block's top level sees, so an absence of evidence at depth means the evidence is genuinely absent rather than merely out of scope."  # 9589
+      root_cause: "process_code_block recurses into child nodes and constructs a new _DjangoReceiverOracle at each level from that level's arguments; nested levels receive neither the block's var_types nor its assignment set. Traced at 26 constructions for one 6-line function, of which only the first carries block context."  # 9589
+- op: update  # a9db
+  at: '2026-09-10T08:01:51Z'  # a9db
+  by: agent  # a9db
+  actor: jgstern_agent  # a9db
+  clock: 2  # a9db
+  nonce: a9db  # a9db
+  set:  # a9db
+    title: "A DERIVED per-block context recomputed at each recursion level manufactures absence at depth — absence-triggered rules then read a narrowing as evidence"  # a9db
+    fields:  # a9db
+      root_cause: "CORRECTED 2026-09-10, see discussion. The original root_cause claimed nested process_code_block levels receive neither the block's var_types nor its assignment set. The var_types half is FALSE: var_types is passed BY REFERENCE at every recursion site (py.py:5965-5971, 5669, 5684, 5700, 5704); two independent traces found 53 and 43 oracle constructions sharing ONE var_types identity. The true defect is narrower and was introduced by the WIP itself: _assigned_names(block_nodes) is DERIVED at construction (py.py:5578) rather than accepted as a threaded parameter, so it alone is rebuilt empty at depth. The general invariant worth keeping is that any derived per-block context has this failure mode, and that the walker legitimately NARROWS scope at comprehension/lambda boundaries (_prune_shadowed, py.py:5665-5667) where an absence-triggered rule reads the narrowing as evidence."  # a9db
