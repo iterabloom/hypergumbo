@@ -1,0 +1,73 @@
+Original commit body from df492f6e765f97ce65d22558b2e36ffd7455f695:
+
+WI-kikar: Node's `process` and `performance` are runtime globals, so their member
+calls carry a module slot instead of the `external` sentinel.
+
+THE GAP. `process.on('message', h)` and `process.send(x)` resolved to
+`javascript:external:0-0:on:unresolved` while `console.log`,
+`localStorage.setItem` and `navigator.sendBeacon` — member calls on other named
+globals — resolved with their slot filled. `process` was missing from
+`JS_KNOWN_GLOBALS`, the set the Case-3b member-call fallback consults for a
+receiver that needs no import. `external` is ADR-0051's marker for *unreachable
+to the catalogue*: a false negative by construction.
+
+THE FILING NAMED TWO ROWS. THE PROBE FOUND EIGHT CALLS ACROSS TWO GLOBALS.
+The break is in the member-call path, not the row kind, so the FUNCTION-kind
+rows on `process` broke identically — `hrtime`, `uptime`, `getuid`,
+`memoryUsage`, `chdir`, `openStdin` (33 rows in all, across ipc_recv, ipc_send,
+host_info_read, env_write, fs_read). And `performance.now()` is a SECOND global
+with the same shape, absent from the filing entirely. Enumerating every
+method/function-kind module in `javascript.yaml` against its resolution route
+found exactly these two with no route at all.
+
+MEASURED — vscode / nextjs / podman-desktop, one arm per committed blob, blob
+asserted before each. Identity keyed on `(src, line, callee)`, deliberately NOT
+on the `dst` the change modifies, so a re-labelled edge is the same edge in both
+arms; key sets asserted equal per repo.
+
+  repo             calls OFF   calls ON   moved
+  vscode              10,459     10,459      41
+  nextjs             285,110    285,110     832
+  podman-desktop         502        502      19
+
+  calls_total IDENTICAL in all three — re-labels, mints nothing.
+  892 promotions, and EVERY ONE came off `external`. ZERO thefts.
+      external -> process     450
+      external -> performance 442   (nearly half, from the global not filed)
+
+THE ZERO-THEFT NUMBER IS THE ONE THAT MATTERED. Case 3b fires only where nothing
+else resolved the call, so a promotion from an already-resolved project symbol
+would have been a regression wearing a recall figure's clothes — WI-vihop had
+exactly that shape, 24 edges bound to an interface declaration. Diffing both
+ways and grouping by the OLD slot is what separates them.
+
+892 IS THE PROMOTION COUNT; 278 IS THE RECALL FIGURE. 278 land on an actual
+catalogue row (`performance.now` 212, `process.on` 23, `process.hrtime` 20,
+`process.getuid` 10, `process.chdir` 5, `process.send` 4, ...). The other 614 are
+correctly slotted members the catalogue does not row. Stated so the larger number
+is not read as recall. Twelve on-row sites read back against source; all genuine.
+
+REFUTATION HALF. `process` is an ordinary identifier. Three tests pin that a
+named import, `const process = new Worker(...)`, and
+`import * as performance from 'perf_hooks'` all still refuse the global slot —
+Case 3b's existing `named_imports` / `var_types` / namespace-elif guards are what
+make adding a name to the set safe, and they now cover the new names too.
+
+A DOC LIE REMOVED. The set claimed to "mirror the module names used in
+javascript.yaml". It did not, and that is how this drifted. It cannot be DERIVED
+the way `_derive_js_constructor_types` derives its own, because the catalogue
+records no field saying how a module is REACHED (global vs import vs
+constructor) — filed as WI-nukub rather than guessed at with a heuristic, since
+guessing wrong in the global direction emits the fictional modules INV-fazim
+refuses. Also filed: WI-bomuh, `process.cwd` rowed as an attribute though Node's
+`process.cwd()` is a function — 135 sites now correctly slotted and still
+unmatchable.
+
+NOT ESTABLISHED HERE: the taint-path measurement the item asks for (ipc_recv
+mints, ipc_send is a sink). This prices REACHABILITY, not findings, so the PR
+carries `awaits_bakeoff_validation`.
+
+smart-test 8592 passed, 14 xfailed; mypy strict ratchet clean.
+Record: ~/hypergumbo_lab_notebook/kikar_js_09102026/
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
