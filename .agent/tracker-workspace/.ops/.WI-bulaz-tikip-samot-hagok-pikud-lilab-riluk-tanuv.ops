@@ -1,0 +1,23 @@
+- op: create  # 5d9c
+  at: '2026-09-10T01:28:24Z'  # 5d9c
+  by: agent  # 5d9c
+  actor: jgstern_agent  # 5d9c
+  clock: 1  # 5d9c
+  nonce: 5d9c  # 5d9c
+  data:  # 5d9c
+    kind: work_item  # 5d9c
+    title: "every tree-sitter analyzer discards has_error, so a file whose parse died is indistinguishable from a file that declares nothing"  # 5d9c
+    status: todo_hard  # 5d9c
+    priority: 2  # 5d9c
+    parent:  # 5d9c
+    tags:  # 5d9c
+    - objc  # 5d9c
+    - swift  # 5d9c
+    - analysis_quality  # 5d9c
+    - io_boundary  # 5d9c
+    isbefore: []  # 5d9c
+    duplicate_of: []  # 5d9c
+    not_duplicate_of: []  # 5d9c
+    pr_ref:  # 5d9c
+    description: "FILED 2026-09-09 from WI-lafom, which closed the objc half of this and left the\ndisclosure half untouched by design. Record:\ndocs/measurements/0027-objc-macro-parse-recovery.md, and\n~/hypergumbo_lab_notebook/lafom_objc_parse_09092026/.\n\n`tree.root_node.has_error` is available on every tree every tree-sitter analyzer\nparses, and NOTHING READS IT. A file whose parse died is indistinguishable, to\nevery downstream consumer, from a file that genuinely declares nothing: the\ngrammar's error recovery produces an ABSENCE, not an error, and the run exits 0.\n\nTHE POPULATION IS NOT HYPOTHETICAL AND IS NOT ONE LANGUAGE:\n\n  objc    38 of 387 files (9.8%) still fail AFTER WI-lafom's rewrite -- 74\n          (19.1%) before it. Residual family: a bare, argument-less project\n          macro in a declaration-attribute position (`DD_SENDABLE`,\n          `NS_STRING_ENUM`, `QuickSpecBegin`).\n  swift    5 residual files on VernissageServer and 5 on Alamofire under\n          INV-bisok, by the identical mechanism (grammar lag, error recovery,\n          silent).\n\nWHAT A CONSUMER CANNOT CURRENTLY LEARN. A `verify-claims` verdict computed over\na repository where a tenth of the files failed to parse is a CLOSED-WORLD verdict\nwith an undisclosed hole. ADR-0048 and the `unsupported_taint_languages` caveat\nexist to prevent exactly this shape for whole LANGUAGES; neither covers whole\nFILES. `analysis_fidelity` (WI-lagod) answers \"which passes ran\", which is a\ndifferent question -- a pass that ran over an unparsed file ran.\n\nWHY IT IS NOT MERELY COSMETIC, measured on the objc corpus during WI-lafom:\nrecovering the parse moved symbols +133 / +59 / +160 on three repositories and\ntook AFNetworking's reached primitives 12 -> 21. So an unparsed file is not a\nrounding error in the denominator; it is a double-digit share of what the\nanalyzer would otherwise find, varying per repository in a way nothing reports.\n\nSHAPE OF THE WORK, not yet decided:\n  1. Count it. The analyzer knows, per file, whether the tree carried an ERROR\n     node and whether a rewrite was applied. `AnalysisResult` has nowhere to put\n     that today.\n  2. Carry it. A new field on a core dataclass triggers the ADR-0024 field-axis\n     declaration requirement, and surfacing it in the `verify-claims` envelope is\n     a machine-surface change (schema version).\n  3. Disclose it. Most likely a caveat kind, raised ONLY WHERE IT DISCRIMINATES\n     -- the rule the sanitizer and opaque-boundary caveats already follow.\n\nTHE FORTRAN TRAP, which must be checked BEFORE any gate is keyed on this:\n`fortran.py`'s module docstring records that the bundled tree_sitter_fortran\ngrammar sets `has_error` on VALID declarations, so a `has_error` gate silently\ndrops them. `has_error` is also True for a MISSING node with ZERO ERROR nodes\n(observed 305 times on the objc corpus before WI-lafom, 98 after). So the right\nobservable is probably an ERROR-node COUNT plus a MISSING count, per language,\nNOT the boolean -- and whichever is chosen must be calibrated per grammar."  # 5d9c
+    fields: {}  # 5d9c

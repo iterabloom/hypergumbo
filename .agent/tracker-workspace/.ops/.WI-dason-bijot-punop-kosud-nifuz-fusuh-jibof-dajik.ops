@@ -1,0 +1,22 @@
+- op: create  # 1de0
+  at: '2026-09-10T01:28:33Z'  # 1de0
+  by: agent  # 1de0
+  actor: jgstern_agent  # 1de0
+  clock: 1  # 1de0
+  nonce: 1de0  # 1de0
+  data:  # 1de0
+    kind: work_item  # 1de0
+    title: "objc: the project_classes guard covers one of the two module-slot branches, so 583 of 3300 typed slots name a first-party class"  # 1de0
+    status: todo_hard  # 1de0
+    priority: 2  # 1de0
+    parent:  # 1de0
+    tags:  # 1de0
+    - objc  # 1de0
+    - analysis_quality  # 1de0
+    - io_boundary  # 1de0
+    isbefore: []  # 1de0
+    duplicate_of: []  # 1de0
+    not_duplicate_of: []  # 1de0
+    pr_ref:  # 1de0
+    description: "FILED 2026-09-09 from WI-lafom's A/B, which made it MEASURABLE for the first\ntime. Record: docs/measurements/0027-objc-macro-parse-recovery.md.\n\nobjc.py's emit site has two branches that fill the module slot, and only one of\nthem is guarded:\n\n    if receiver_name and receiver_name[0].isupper():\n        _module = receiver_name                     # <-- NO GUARD\n    elif _declared is not None and _declared not in project_classes:\n        _module = _declared                         # <-- guarded\n\nSo `[FMStatement alloc]`, `[DDLog log:...]`, `[AFSecurityPolicy defaultPolicy]`\nput a FIRST-PARTY class name in the module slot, which asserts an external module\nthat does not exist -- INV-fazim's shape, one construct over. The guard exists\nprecisely to stop that on the other branch (WI-higob).\n\nMEASURED on the four-repository objc corpus, AFTER WI-lafom (a `project_classes`\nset that is complete enough to tell first-party from external, which is what made\nthis visible at all):\n\n    repo               typed slots   first-party   non-class   share\n    AFNetworking             1243           181           0    14.6%\n    CocoaLumberjack          1371           309          89    29.0%\n    fmdb                      474            70           0    14.8%\n    Mantle                    212            23           0    10.8%\n    TOTAL                    3300           583          89    20.4%\n\nWorst offenders: DDLog 116, AFSecurityPolicy 62, FMDatabase 43, DDTTYLogger 29,\nAFHTTPSessionManager 17, MTLValueTransformer 16, DDOSLogger 15, DDLogMessage 15.\n\nA SECOND, SMALLER SHAPE on the guarded branch: `__auto_type` reaches the slot 89\ntimes on CocoaLumberjack. It is a C type-inference KEYWORD, not a class, so it\npasses `not in project_classes` trivially and names a module that cannot exist.\n`id`, `instancetype` and `Class` are the same family and did not occur here.\n\nPRE-EXISTING -- present in BOTH arms of WI-lafom's A/B, so not caused by that\nchange, only exposed by it.\n\nWHY IT MATTERS: a filled module slot is what F3 matches a method-kind catalogue\nrow against (INV-tapat / INV-maluk). A slot naming a first-party class cannot\nmatch any catalogue row, so the immediate cost is not a false MATCH but a false\nDISCLOSURE: these 672 edges are counted as \"typed\" in every objc receiver-typing\nmeasurement (0025, 0026 and 0027 included), so the reported typed share is\ninflated by 20.4 points corpus-wide and 29.0 on CocoaLumberjack. The\nuntypable-receiver caveat's denominator carries the same error.\n\nFIX SHAPE: apply the `project_classes` guard to the uppercase branch too, and\nreject a known non-class type spelling on the declared branch. Both are local.\nTHE MEASUREMENT MUST BE RE-RUN AFTERWARDS: it will make every published objc\ntyped-share number FALL, and that fall is a correction, not a regression."  # 1de0
+    fields: {}  # 1de0
