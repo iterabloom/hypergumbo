@@ -2,7 +2,7 @@
 # ADR-0017: Taint-Zone Dataflow Analysis
 
 Date: 2026-03-22
-Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS, **confirm-only** (two production call sites; raises confidence, never decides inclusion); **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
+Status: Partially superseded by ADR-0037 (§3a dst-string sink machinery), ADR-0038 (dest_access_mode reliance), ADR-0052 (§3a removal-COVERAGE ambition retired — the removal capability itself stays in force; §7a untouched); core STRUCTURAL taint analysis in force. Per-subsection implementation state, re-measured 2026-08-26 on dev `daafb0abb1` — the single "measured 2026-08-02" verdict this line used to carry had gone stale in five places (INV-lataj), and it collapsed two different failure modes into one phrase: **§3a** DDG walk RUNS and, since 2026-09-02 (WI-kabif, PR #716), ADJUDICATES — it REMOVES a flow whose walk returns `unconfirmed`; the "never decides inclusion" this line carried until 2026-09-09 was stale from that date. **Confirm-only IN PRACTICE** (ADR-0052): removal is implemented but measurement 0007 found the `unconfirmed` population EMPTY on an 11-repo corpus, and growing it is a retired goal; **§3c–3d** mixed-coverage verdicts LIVE; **§4b** declared summaries LIVE (declared terminating entries reach `_use_site_terminates`; no count is pinned here — this catalogue's size moved 33 → 108 → 113 across two edits in two days, and `taint.py`'s own docstring already carries a stale "38" for exactly that reason); **§4a** inferred summaries IMPLEMENTED BUT UNWIRED (`infer_summary`, zero production callers — and the shipped dataclass lacks the `param_to_calls` / `param_to_param` this subsection specifies, WI-famig); **§7a** field-sensitivity lite IMPLEMENTED BUT UNWIRED (`is_field_tainted`, zero production callers). "Not implemented" tells a reader to WRITE it; "implemented but unwired" tells them to WIRE it — those are different jobs, so the two are named separately here. See Phased Implementation for anchor commits
 
 > Amended in place — see the 2026-06-11 amendment banner below and the inline pointer markers in §3a and the "Interaction with ADR-0015 `access_mode` metadata" subsection.
 
@@ -547,6 +547,13 @@ transforms:
 
 #### 3a. On native DDG (primary path)
 
+> §3a's removal-COVERAGE ambition — closing the walk's escape sites so refutation
+> fires at scale — is RETIRED by [ADR-0052](0052-taint-refutation-is-confirm-only.md).
+> The removal CAPABILITY described below stays in force and is unchanged; what is
+> retired is the goal of growing the coverage it needs. In practice the walk is
+> confirm-only: measurement 0007 found ZERO of 153 `ddg_mixed` rows across 11
+> repositories resting on a walk that ran and established no dependence.
+>
 > **PARTIALLY IMPLEMENTED — the walk RUNS, and since 2026-09-02 it ADJUDICATES.**
 > Stated up front rather than as a trailing note, because a fragment read of the
 > numbered steps below would otherwise be indistinguishable from a description
@@ -874,7 +881,13 @@ Verdicts become more precise:
 
 #### 7a. Included capabilities (with precision limits)
 
-- **Field-sensitivity lite (Phase 2).** While full alias analysis is excluded (see §7b), *direct* field access on tainted objects is common enough — especially in CRDT-heavy code — that ignoring it produces unacceptable false positive rates. Phase 2 includes a limited form of field sensitivity: taint propagates through `.` member access and method returns on tainted receivers. Specifically:
+> STILL UNWIRED, and NOT superseded. `is_field_tainted` has zero production
+> callers. [ADR-0052](0052-taint-refutation-is-confirm-only.md) declined
+> INV-busis's option (b), which proposed repurposing this section as an
+> escape-CLOSING device so §3a could refute more often; it decided nothing about
+> the propagation design below, whose recall value remains an open question.
+>
+> - **Field-sensitivity lite (Phase 2).** While full alias analysis is excluded (see §7b), *direct* field access on tainted objects is common enough — especially in CRDT-heavy code — that ignoring it produces unacceptable false positive rates. Phase 2 includes a limited form of field sensitivity: taint propagates through `.` member access and method returns on tainted receivers. Specifically:
   - If `x` is tainted, then `x.field`, `x.method()`, and `x[key]` inherit `x`'s taint.
   - If `obj.field = tainted_value`, then `obj.field` is tainted but `obj.other_field` is not (field-level granularity for direct writes).
   - Aliased references (`y = x; y.field`) propagate taint through the assignment chain (covered by reaching definitions), but indirect aliasing (`container.get("key")` returning the same object as a different `container.get("key")` call) is not tracked.

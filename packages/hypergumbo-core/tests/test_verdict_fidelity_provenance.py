@@ -275,6 +275,16 @@ class TestTheEnvelope:
     def test_the_version_moved(self) -> None:
         """The envelope gains a per-verdict key, so the version moves — the
         rule this module's own header states: the version moves when the
-        ENVELOPE moves."""
+        ENVELOPE moves.
+
+        **THIS TEST HAS FIRED, WHICH IS THE POINT OF IT.** It pinned ``2.2``
+        for WI-lagod's ``analysis_fidelity``. ADR-0052 added ``walk_verdicts``
+        inside ``dataflow_coverage`` and bumped to ``2.3`` on this same rule —
+        a key that makes an EXISTING key (``flows_removed_by_walk``) readable
+        changes how that key must be interpreted, which is the carve-out the
+        module header describes. Re-pointed, not relaxed: the assertion is
+        still an equality on one literal, so the next envelope change comes
+        back through here rather than sliding past a ``>=``.
+        """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.2"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.3"
