@@ -1,0 +1,22 @@
+- op: create  # dcab
+  at: '2026-09-10T21:54:21Z'  # dcab
+  by: agent  # dcab
+  actor: jgstern_agent  # dcab
+  clock: 1  # dcab
+  nonce: dcab  # dcab
+  data:  # dcab
+    kind: work_item  # dcab
+    title: "JS_KNOWN_GLOBALS is hand-maintained and cannot be derived because the catalogue does not record how a module is REACHED (global vs import vs constructor) — a third runtime global rowed tomorrow fails silently the way process and performance did"  # dcab
+    status: todo_hard  # dcab
+    priority: 2  # dcab
+    parent:  # dcab
+    tags:  # dcab
+    - catalogue  # dcab
+    - javascript  # dcab
+    - axis  # dcab
+    isbefore: []  # dcab
+    duplicate_of: []  # dcab
+    not_duplicate_of: []  # dcab
+    pr_ref:  # dcab
+    description: "`JS_KNOWN_GLOBALS` in `js_ts.py` is the set of receivers the Case-3b member-call\nfallback will type without an import (`console.log`, `localStorage.setItem`,\n`navigator.sendBeacon`). It is HAND-MAINTAINED, and until 2026-09-10 its comment\nclaimed it \"mirrors the module names used in javascript.yaml\". It did not, and\nhad not for some time. That false claim is what WI-kikar cost: `process` carried\n33 catalogue rows and every `process.<m>()` call landed on the `external`\nsentinel, ADR-0051's own marker for *unreachable to the catalogue*. `performance`\nwas a second instance found only by enumerating the catalogue by hand.\n\nTHE FIX THAT IS NOT AVAILABLE, AND WHY. The function immediately below it,\n`_derive_js_constructor_types`, DERIVES its set from the catalogue precisely so\n\"a row added tomorrow is reachable without a code change\". This set cannot do\nthe same today: **the catalogue does not record which of its modules are runtime\nGLOBALS and which require an import**, and that distinction is the entire\ncontent of the set. Enumerated 2026-09-10, the 23 lowercase modules with\nmethod/function rows split:\n\n  GLOBAL, no import      console, localStorage, sessionStorage, document,\n                         navigator, window, caches, indexedDB, process,\n                         performance          (+ Deno, PascalCase)\n  IMPORT REQUIRED        fs, fs.promises, dns, dns.promises, os, net, http,\n                         https, child_process, dgram\n  constructor (dotted)   net.Socket, dgram.Socket, dns.Resolver\n  bare global function   fetch  (its own set, JS_KNOWN_GLOBAL_CALLS)\n\nNothing in the row data separates column 1 from column 2. A heuristic would\nhave to guess, and guessing wrong in the GLOBAL direction is the false-positive\ndirection: it would type `fs.readFile` on any object called `fs`, which is\nexactly the fictional-module emission INV-fazim refuses.\n\nWHAT WOULD ACTUALLY CLOSE IT: a per-module field in the catalogue schema saying\nhow a module is REACHED (`global` / `import` / `constructor`), which\n`_derive_js_constructor_types` could then also consult instead of inferring\n\"constructor\" from PascalCase-and-not-in-the-hand-list. That is a schema change\nplus a sweep of every language catalogue, so it is filed rather than folded into\nWI-kikar.\n\nMEANWHILE the comment in `js_ts.py` states the real constraint (\"ADDING A ROW\nFOR A NEW GLOBAL MEANS ADDING THE NAME HERE TOO\") instead of the false mirror\nclaim, and `test_js_ts_runtime_globals.py::TestTheSetTracksTheCatalogue` pins\nthe linkage for `process` and `performance` specifically. Neither is a general\nguard: a THIRD global rowed tomorrow fails silently the same way, and that is\nthe gap this item names.\n\nNOTE the parallel already solved elsewhere in the same file: python's\n`EXTERNAL_CONSTRUCTOR_TYPES` and js's `JS_CONSTRUCTOR_TYPES` are both derived.\nThe reach-mechanism field is what this set needs to join them."  # dcab
+    fields: {}  # dcab
