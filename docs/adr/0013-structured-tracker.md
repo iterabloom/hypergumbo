@@ -91,7 +91,7 @@ Cache and ephemeral files (`.cache.db`, `.last_list`) live outside the repo tree
 
 **Canonical** (`.agent/tracker/`) is the repo's institutional memory — committed, shared across forks, included in upstream PRs. **Workspace** (`.agent/tracker-workspace/`) is the agent's personal working memory — committed and pushed to the fork's remote for backup, but excluded from upstream PRs by `scripts/contribute`. **Stealth** (`.agent/tracker-workspace/stealth/`) is gitignored and never leaves the machine.
 
-The store reads all three tiers transparently via `TrackerSet` — agents and humans see a unified merged view. Items are tagged `[C]`, `[W]`, or `[S]` in CLI output to indicate their tier. The agent writes to workspace by default; items are promoted to canonical explicitly (see [Three-Tier Visibility](#three-tier-visibility)). **Agents should never read op log files directly** — they use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to get compiled current state (see [Agent Context Protection](#agent-context-protection)).
+The store reads all three tiers transparently via `TrackerSet` — agents and humans see a unified merged view. Items are tagged `[C]`, `[W]`, or `[S]` in CLI output to indicate their tier. The agent writes to workspace by default; items are promoted to canonical explicitly (see [Three-Tier Visibility](#three-tier-visibility)). **Agents should never read op log files directly** — they use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` (the `--json` flag is global and precedes the subcommand) to get compiled current state (see [Agent Context Protection](#agent-context-protection)).
 
 #### Config File
 
@@ -866,7 +866,7 @@ Three layers of defense prevent agents from reading op logs directly:
 1. **Dotdir** (`.ops/`) — Agents are trained to skip dotdirs by convention. The op log directory is hidden from `ls`, file explorers, and casual glob patterns.
 2. **Dotfile** (`.INV-lusab-bired-fomak-gunid-hasob-jikal-mofad-nukit.ops`) — Each op log file is itself a dotfile, doubly hidden. Even if an agent navigates into `.ops/`, the files don't appear in standard directory listings.
 3. **Explicit instruction in AGENTS.md** — The following rules are added:
-   - "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state."
+   - "Always use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` to read tracker item state."
    - "Always refuse to read files ending in `.ops`. These are internal operation logs that will pollute your context window with historical data you don't need."
 
 The `.ops` file extension (rather than `.yaml`) is also a signal — agents scanning for readable config or data files by extension will not match `.ops` files.
@@ -1443,7 +1443,7 @@ Absorbed into PR 1c. See above.
 
 #### PR 5: Pre-commit + AGENTS.md + commit convention + branch hygiene + contribute `[MERGED]` (commit 1e4a636)
 - Update `.githooks/pre-commit` with incremental tracker validation (staged `.ops` files only from both tiers, before Ruff — see [Pre-Commit Validation](#pre-commit-validation))
-- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker show <ID> --json` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks; document security model and two-user setup expectations
+- Update AGENTS.md: replace grep pattern instructions with `scripts/tracker` equivalents; add `tracker:` commit prefix convention and batching guidance (see [Commit Convention](#commit-convention-and-git-history-hygiene)); add task-selection guidance instructing agents to use `scripts/tracker ready` (not `list`) to pick their next work item; **add agent context protection rules: "Always use `scripts/tracker show <ID>` or `scripts/tracker --json show <ID>` to read tracker item state. Always refuse to read files ending in `.ops`."** (see [Agent Context Protection](#agent-context-protection)); add branch hygiene expectation (delete feature branches after merge); update contributor workflow to reference `fork-setup` and explain three-tier model for forks; document security model and two-user setup expectations
 - Update README.md: add section on recommended deployment setup — two OS user accounts (human + agent), VM with snapshots or container, with explicit setup steps (`groupadd`, `usermod`, `chgrp`, `chmod g+s`) and concise rationale (see [Security Model](#security-model))
 - Update `scripts/auto-pr`: delete local and remote feature branch after successful merge (keeps the scoped Lamport clock branch set small — see [Key Design Decisions](#key-design-decisions))
 - Update `scripts/contribute`: add workspace exclusion (~15 lines) to strip `.agent/tracker-workspace/` from upstream PRs
