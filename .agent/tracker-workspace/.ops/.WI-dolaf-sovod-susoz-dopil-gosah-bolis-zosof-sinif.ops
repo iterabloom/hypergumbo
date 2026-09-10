@@ -36,3 +36,10 @@
   clock: 3  # 738a
   nonce: 738a  # 738a
   message: "Filed while verifying LIVE.md's roster claims at session start. Reproduced live this session: a 13-ID status sweep piping stdout to a JSON parser returned 13 false UNRESOLVED, because argparse wrote its usage error to stderr and my loop had 2>/dev/null. Same symptom the prior session attributed to a wrong cwd -- both causes produce empty stdout, so the earlier diagnosis may have been the other half of the same hazard. Marked not-duplicate-of WI-vokiz (SimHash 8 bits, but that item is tree_sitter Node.text guarding -- unrelated)."  # 738a
+- op: discuss  # cfb5
+  at: '2026-09-10T05:33:53Z'  # cfb5
+  by: agent  # cfb5
+  actor: jgstern_agent  # cfb5
+  clock: 4  # cfb5
+  nonce: cfb5  # cfb5
+  message: "Merged as PR #880, dev SHA a76dd23d344e."  # cfb5
