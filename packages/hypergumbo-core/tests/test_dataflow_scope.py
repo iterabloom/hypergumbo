@@ -20,10 +20,34 @@ from hypergumbo_core.dataflow_scope import (
     INCLUSION_DECIDED_BY,
     LanguageDataflowScope,
     compute_dataflow_scope,
+    count_walk_verdicts,
     dataflow_scope_dict,
     render_dataflow_scope_text,
 )
-from hypergumbo_core.taint import load_builtin_taint_catalog
+from hypergumbo_core.taint import (
+    WALK_VERDICTS,
+    TaintFlowFinding,
+    load_builtin_taint_catalog,
+)
+
+
+def _finding(verdict: str, values: tuple = ()) -> TaintFlowFinding:
+    """A real ``TaintFlowFinding``, not a stand-in.
+
+    L53: when a production classification exists for the thing you are
+    counting, counting it yourself IS the bug. ``__post_init__`` derives
+    ``walk_verdict_values`` from the scalar when the tuple is empty, and that
+    derivation is precisely what the mixed-row test is about -- a hand-rolled
+    stub would let the test pass while production disagreed.
+    """
+    return TaintFlowFinding(
+        taint_label="untrusted_input",
+        source_symbol="s", source_primitive="p",
+        sink_symbol="k", sink_primitive="q",
+        sink_zone="z", sanitized=False,
+        confidence="approximate", analysis_method="ddg_mixed",
+        walk_verdict=verdict, walk_verdict_values=values,
+    )
 
 
 def _row(**kw) -> LanguageDataflowScope:
@@ -239,3 +263,119 @@ class TestEmittedShape:
     def test_text_is_empty_when_nothing_was_analyzed(self) -> None:
         """No taint-capable language means no scope to publish, not a blank header."""
         assert render_dataflow_scope_text([], {}) == []
+
+
+class TestWalkVerdictDisclosure:
+    """INV-busis / ADR (c): make ``flows_removed_by_walk: 0`` readable.
+
+    This module's founding argument is that "0 precise findings" is unreadable
+    without scope, because "looked everywhere and found nothing" and "was
+    structurally incapable of looking" have opposite consequences for a
+    security reader on identical evidence. That argument was never applied to
+    this module's OWN removal count. ``flows_removed_by_walk: 0`` sits beside a
+    ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
+    THREE walk verdicts -- ``taint.py`` records a production split of 0
+    ``unconfirmed`` / 14 ``escaped`` / 139 ``not_attempted`` -- so a reader
+    cannot tell a walk that adjudicated and refuted nothing from a walk that
+    never got to look. Only ``unconfirmed`` can remove a flow.
+
+    The owner retired the removal GOAL on 2026-09-09 (INV-busis option (c)):
+    escapes will not be chased until refutation fires at scale. Retiring a goal
+    without disclosing its consequence is how a limitation becomes a silent
+    one, so the breakdown ships as the user-visible half of that decision.
+    """
+
+    def test_a_unanimous_row_is_counted_under_its_verdict(self) -> None:
+        counts = count_walk_verdicts([
+            _finding("escaped"), _finding("escaped"), _finding("confirmed"),
+        ])
+        assert counts["escaped"] == 2
+        assert counts["confirmed"] == 1
+
+    def test_every_verdict_key_is_always_present(self) -> None:
+        """Zeros are emitted, so an absent key never reads as 'not applicable'.
+
+        The module's own convention, stated for ``sanitizer_scope``: "a
+        disclosure that appears only when it has something to say teaches a
+        consumer to treat its absence as 'not applicable' rather than 'zero'".
+        """
+        counts = count_walk_verdicts([])
+        # EXACT, not a subset: adding a verdict to taint's vocabulary without
+        # teaching this breakdown about it would silently dump the new cell
+        # into ``unrecorded``, and the disclosure would read as complete while
+        # hiding it. That is the R16 pattern this module already uses for
+        # ``INCLUSION_DECIDED_BY`` -- a declared claim with a test on it, so it
+        # cannot quietly outlive its truth.
+        assert set(counts) == set(WALK_VERDICTS) | {"mixed", "unrecorded"}
+        assert set(counts.values()) == {0}
+
+    def test_a_MIXED_row_is_not_attributed_to_its_first_member(self) -> None:
+        """The whole reason ``walk_verdict_values`` exists (INV-muhij A).
+
+        On a collapsed row the scalar is ``grp[0]``'s, and measured on beads
+        63.9% of groups holding a ``sink_before_source`` member are NOT
+        unanimous. Counting the scalar would publish a clean, plausible,
+        entirely wrong breakdown -- and would do it in the direction that
+        flatters the tool, since a row standing for one confirmed and three
+        escaped members would read as fully adjudicated.
+        """
+        row = _finding("confirmed", values=("confirmed", "escaped"))
+        counts = count_walk_verdicts([row])
+        assert counts["mixed"] == 1
+        assert counts["confirmed"] == 0, (
+            "a mixed row was attributed to grp[0]'s scalar"
+        )
+
+    def test_a_row_with_no_recorded_verdict_is_counted_not_dropped(self) -> None:
+        """``""`` is a real cell (a finding deserialized from an older map).
+
+        Dropping it would make the breakdown fail to sum to the finding total,
+        which is the one arithmetic a reader can check.
+        """
+        counts = count_walk_verdicts([_finding("")])
+        assert counts["unrecorded"] == 1
+
+    def test_the_breakdown_sums_to_the_number_of_findings(self) -> None:
+        findings = [
+            _finding("confirmed"), _finding("escaped"), _finding(""),
+            _finding("unconfirmed", values=("unconfirmed", "confirmed")),
+        ]
+        assert sum(count_walk_verdicts(findings).values()) == len(findings)
+
+    def test_dict_publishes_the_breakdown(self) -> None:
+        out = dataflow_scope_dict(
+            [_row(language="python")], {"ddg_mixed": 2},
+            walk_verdicts=count_walk_verdicts([
+                _finding("escaped"), _finding("not_attempted"),
+            ]),
+        )
+        assert out["walk_verdicts"]["escaped"] == 1
+        assert out["walk_verdicts"]["not_attempted"] == 1
+        assert out["walk_verdicts"]["unconfirmed"] == 0
+
+    def test_dict_publishes_the_breakdown_even_when_not_supplied(self) -> None:
+        """Shape stability: the key is present on every run, like its siblings."""
+        out = dataflow_scope_dict([_row()], {"ddg": 1})
+        assert "walk_verdicts" in out
+        assert out["walk_verdicts"]["confirmed"] == 0
+
+    def test_text_says_only_unconfirmed_can_remove(self) -> None:
+        """The text reader gets it too -- a json-only disclosure is half shipped."""
+        lines = render_dataflow_scope_text(
+            [_row(language="python")], {"ddg_mixed": 140},
+            flows_removed_by_walk=0,
+            walk_verdicts=count_walk_verdicts(
+                [_finding("escaped")] * 14 + [_finding("not_attempted")] * 139
+            ),
+        )
+        blob = "\n".join(lines)
+        assert "unconfirmed" in blob
+        assert "escaped 14" in blob
+        assert "not_attempted 139" in blob
+        # The point of the line: 0 removals beside 139 not_attempted is NOT
+        # evidence the walk looked and found nothing.
+        assert "did not get to look" in blob
+
+    def test_text_still_renders_with_no_breakdown_supplied(self) -> None:
+        lines = render_dataflow_scope_text([_row()], {"ddg": 1})
+        assert any("Flows REMOVED" in line for line in lines)

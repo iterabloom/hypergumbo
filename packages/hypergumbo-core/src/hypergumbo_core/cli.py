@@ -6179,6 +6179,11 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # read its absence as "not applicable".
     sanitizer_scope: "SanitizerScope | None" = None
     findings_by_method: dict[str, int] = {}
+    # INV-busis: same contract as ``sanitizer_scope`` above and initialised for
+    # the same reason -- the assignment below is inside the taint block, and
+    # both emit sites run whether or not that block did. ``None`` renders as
+    # the zero-filled breakdown, so the key is present on every run.
+    walk_verdict_counts: "dict[str, int] | None" = None
 
     from .taint import (
         TaintCatalogError,
@@ -6467,6 +6472,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         from .dataflow_scope import (
             compute_dataflow_scope,
             compute_sanitizer_scope,
+            count_walk_verdicts,
         )
         dataflow_rows = compute_dataflow_scope(taint_catalog, per_lang_sinks)
         # INV-karud (b)'s scope: what the sanitizer catalogue can express at
@@ -6475,6 +6481,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for finding in (taint_findings or []):
             _method = getattr(finding, "analysis_method", "") or "structural"
             findings_by_method[_method] = findings_by_method.get(_method, 0) + 1
+        # INV-busis. The finer axis of the same population: ``ddg_mixed`` above
+        # collapses three walk verdicts and only one of them (``unconfirmed``)
+        # can remove a flow, so ``flows_removed_by_walk`` is uninterpretable
+        # without this. Same denominator, deliberately -- both count findings
+        # the propagators produced, post-collapse.
+        walk_verdict_counts = count_walk_verdicts(taint_findings or [])
 
     # Verify claims
     _blind_reason, _blind_opaque = _taint_blind_reason(
@@ -6570,6 +6582,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                 "dataflow_coverage": dataflow_scope_dict(
                     dataflow_rows, findings_by_method, sanitizer_scope,
                     flows_removed_by_walk=len(refuted_flows),
+                    walk_verdicts=walk_verdict_counts,
                 ),
                 # INV-zosun: which catalogues this verdict rested on. Always
                 # present, like dataflow_coverage above, so `user_supplied:
@@ -6633,6 +6646,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
         for line in render_dataflow_scope_text(
             dataflow_rows, findings_by_method, sanitizer_scope,
             flows_removed_by_walk=len(refuted_flows),
+            walk_verdicts=walk_verdict_counts,
         ):
             print(line)
 

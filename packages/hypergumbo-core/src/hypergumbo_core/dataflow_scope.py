@@ -60,6 +60,28 @@ adds no flow that reachability did not already report, and it removes only on
 misreading INV-sadah exists for, and it has been made twice in this
 repository's own history: a surviving ``ddg`` flow was included by
 reachability and merely corroborated by the walk.
+
+WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM — III, and it is the argument at
+the top of this docstring applied to this module's OWN removal count.
+``flows_removed_by_walk`` is published beside a ``findings_by_analysis_method``
+rollup in which ``ddg_mixed`` collapses THREE walk verdicts and ``structural``
+covers a fourth (``unavailable`` — the walk ran but the DDG held no reaching-def
+data for that flow's source function). Only ``unconfirmed`` can remove a flow.
+So a bare ``0`` could mean "the walk adjudicated every flow and refuted none" or
+"the walk never got to look at any of them", which is the same pair of opposite
+meanings on identical evidence that this module exists to prevent for "0 precise
+findings". :func:`count_walk_verdicts` publishes the finer axis so the zero is
+readable; MEASURED on hypergumbo's own repository the first time it ran, the
+answer was ``unavailable 224`` out of 224 — the DDG built 177,518 edges and
+covered none of the flows' source functions, a fact the previous output had no
+way to state.
+
+That gap is now a DECLARED limitation rather than a work item: the owner retired
+the goal of closing §3a's escape sites on 2026-09-09 (INV-busis option (c)),
+because most of them are not calls at all and no function summary can ever reach
+them. The capability is untouched — §3a still removes a flow it refutes — but
+the coverage it would need to fire at scale is not being pursued, and a reader
+is told so in the emitted record rather than discovering it from a zero.
 """
 from __future__ import annotations
 
@@ -68,6 +90,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .cfg import get_def_use_extractor, load_cfg_mapping
 from .ddg_build import registered_ddg_languages
+from .taint import WALK_VERDICTS
 
 #: What decided that a reported flow is a flow, as opposed to what raised its
 #: confidence afterwards. See the module docstring — this is a declared
@@ -81,6 +104,64 @@ INCLUSION_DECIDED_BY = "call_graph_reachability_minus_ddg_refutation"
 #: ``INCLUSION_DECIDED_BY``, this is a declared property with a test on it, so
 #: the claim cannot quietly outlive its truth (R16).
 COVERAGE_GRANULARITY = "language"
+
+#: Buckets in :func:`count_walk_verdicts` that are not one of taint's five
+#: verdicts. ``mixed`` is a COLLAPSED row whose members disagreed: the scalar
+#: ``walk_verdict`` is ``grp[0]``'s, and measured on beads 63.9% of groups
+#: holding a ``sink_before_source`` member are not unanimous, so attributing
+#: such a row to its first member would publish a clean, plausible, entirely
+#: wrong breakdown — and in the flattering direction, since a row standing for
+#: one confirmed and three escaped members would read as fully adjudicated.
+#: ``unrecorded`` catches a finding whose verdict is ``""`` (deserialized from
+#: a map written before the field existed) or a value this module does not
+#: know; it is counted rather than dropped so the breakdown sums to the
+#: finding count, which is the one arithmetic a reader can check.
+WALK_VERDICT_MIXED = "mixed"
+WALK_VERDICT_UNRECORDED = "unrecorded"
+
+
+def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
+    """Break taint findings down by WHAT THE §3a WALK RETURNED.
+
+    WHY THIS EXISTS, and it is this module's own founding argument turned on
+    its own field. ``flows_removed_by_walk: 0`` is published beside a
+    ``findings_by_analysis_method`` rollup in which ``ddg_mixed`` collapses
+    THREE verdicts — ``taint`` records a production split of 0 ``unconfirmed``
+    / 14 ``escaped`` / 139 ``not_attempted``. Only ``unconfirmed`` can remove a
+    flow. So a reader looking at a zero could not tell "the walk adjudicated
+    and refuted nothing" from "the walk never got to look", which is exactly
+    the pair of opposite meanings on identical evidence that this module was
+    written to prevent for ``0 precise findings``.
+
+    IT IS ALSO A DECLARED BLINDNESS, not a gap awaiting work. INV-busis
+    measured that most points where the walk loses a tainted value are not
+    calls at all (66.7-90.6%), so no function summary can ever close them, and
+    the owner RETIRED the goal of closing them on 2026-09-09 (option (c):
+    accept confirm-only permanently). Retiring a goal without publishing its
+    consequence is how a limitation becomes a silent one — hence this.
+
+    Counts ROWS, on the same denominator as ``findings_by_analysis_method``:
+    both describe findings the propagators produced, post-collapse.
+    """
+    counts: dict[str, int] = dict.fromkeys(sorted(WALK_VERDICTS), 0)
+    counts[WALK_VERDICT_MIXED] = 0
+    counts[WALK_VERDICT_UNRECORDED] = 0
+    for finding in findings:
+        values = tuple(getattr(finding, "walk_verdict_values", ()) or ())
+        distinct = set(values)
+        if len(distinct) > 1:
+            counts[WALK_VERDICT_MIXED] += 1
+            continue
+        # Empty tuple only for a duck-typed input; a real finding's
+        # ``__post_init__`` derives the singleton from the scalar.
+        verdict = next(iter(distinct), None)
+        if verdict is None:
+            verdict = getattr(finding, "walk_verdict", "") or ""
+        if verdict in counts and verdict != WALK_VERDICT_MIXED:
+            counts[verdict] += 1
+        else:
+            counts[WALK_VERDICT_UNRECORDED] += 1
+    return counts
 
 #: Which analysis methods honour a sanitizer called in the SAME function as the
 #: taint source. Deciding that needs statement ordering inside the seed
@@ -321,6 +402,7 @@ def dataflow_scope_dict(
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
     flows_removed_by_walk: int = 0,
+    walk_verdicts: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -344,6 +426,15 @@ def dataflow_scope_dict(
         # produced, with no number a reader could check. ``findings_total``
         # counts what SURVIVED, so the two together say what the walk did.
         "flows_removed_by_walk": flows_removed_by_walk,
+        # INV-busis. What makes the number ABOVE readable: only ``unconfirmed``
+        # can remove a flow, so a zero beside a large ``escaped`` /
+        # ``not_attempted`` count means the walk never got to look. Always
+        # present and fully zero-filled, for the same reason as every other key
+        # here. See :func:`count_walk_verdicts`.
+        "walk_verdicts": dict(
+            walk_verdicts if walk_verdicts is not None
+            else count_walk_verdicts(())
+        ),
         # Always present, like every other key here: a disclosure that appears
         # only when it has something to say teaches a consumer to treat its
         # absence as "not applicable" rather than "zero".
@@ -358,6 +449,7 @@ def render_dataflow_scope_text(
     findings_by_analysis_method: Mapping[str, int],
     sanitizer_scope: SanitizerScope | None = None,
     flows_removed_by_walk: int = 0,
+    walk_verdicts: Mapping[str, int] | None = None,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -404,6 +496,24 @@ def render_dataflow_scope_text(
         "Counted separately from the total above, which counts survivors — a "
         "removal a reader cannot see is the failure mode this number exists "
         "to prevent."
+    )
+    verdicts = dict(
+        walk_verdicts if walk_verdicts is not None else count_walk_verdicts(())
+    )
+    lines.append(
+        "  §3a walk verdicts for those findings: "
+        + ", ".join(f"{name} {count}" for name, count in sorted(verdicts.items()))
+        + "."
+    )
+    lines.append(
+        "  Only an 'unconfirmed' verdict can REMOVE a flow: 'escaped' and "
+        "'not_attempted' are ignorance, not absence of dependence. So a "
+        "removal count of 0 beside a large 'escaped' or 'not_attempted' count "
+        "means the walk did not get to look — NOT that it looked and found "
+        "nothing. Closing those escapes is a RETIRED goal (INV-busis, "
+        "2026-09-09): most of them are not calls at all, so no function "
+        "summary can close them. This is a declared limitation, not work in "
+        "progress."
     )
     lines.append(
         f"  Coverage is reported per {COVERAGE_GRANULARITY}: 'wired' means the "

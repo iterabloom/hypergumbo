@@ -266,7 +266,25 @@ from .paths import classify_test_file, is_migration_file
 # valid — each is a member of its own set — so a consumer reading
 # ``sink_primitive`` reads one of the primitives the row names rather than a
 # field that vanished.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.2"
+# 2.3 adds ``walk_verdicts`` inside ``dataflow_coverage`` — the §3a walk's own
+# result for every finding (``confirmed`` / ``unconfirmed`` / ``escaped`` /
+# ``not_attempted`` / ``unavailable``, plus ``mixed`` for a collapsed row whose
+# members disagreed and ``unrecorded``). See ADR-0052.
+#
+# THIS IS THE BORDERLINE CASE THE catalog_provenance PARAGRAPH ABOVE DESCRIBES,
+# and it is called out rather than decided silently. By that rule it would NOT
+# bump: the key is always present, always zero-filled, and a 2.2 consumer that
+# ignores it still reads a correct verdict. It bumps anyway, on 2.2's own
+# precedent — a key that makes an EXISTING key interpretable is a version
+# change, because the existing key was being read wrongly without it.
+# ``flows_removed_by_walk: 0`` was reasonably read as "the walk adjudicated
+# these flows and found nothing to remove". It usually means the walk never got
+# to look: only ``unconfirmed`` can remove a flow, and measurement 0007 found
+# ZERO ``unconfirmed`` rows across 11 repositories while 90.8% of the population
+# rested on a walk that never ran. A consumer's correct reading of an unchanged
+# key therefore changes, which is what the "changed the meaning of an existing
+# one" carve-out is for.
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.3"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
