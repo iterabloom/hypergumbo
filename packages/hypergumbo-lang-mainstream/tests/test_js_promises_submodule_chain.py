@@ -139,3 +139,20 @@ class TestTheDisciplineIsKept:
         slots = [e.dst.split(":")[1] for e in result.edges
                  if e.edge_type == "calls" and isinstance(e.dst, str)]
         assert "mystery/promises" not in slots
+
+    def test_a_promises_chain_on_a_non_node_module_invents_nothing(
+        self, tmp_path: Path,
+    ) -> None:
+        """The property IS ``promises``, but the parent is not a node module
+        that has a ``promises`` twin. ``axios/promises`` does not exist, so the
+        allowlist refuses it — the branch the ``axios.defaults`` case above
+        cannot reach, because that one exits at the property check."""
+        from hypergumbo_lang_mainstream.js_ts import analyze_javascript
+
+        (tmp_path / "w.js").write_text(
+            "const axios = require('axios');\naxios.promises.get('u');\n"
+        )
+        result = analyze_javascript(tmp_path)
+        slots = [e.dst.split(":")[1] for e in result.edges
+                 if e.edge_type == "calls" and isinstance(e.dst, str)]
+        assert "axios/promises" not in slots
