@@ -1,0 +1,111 @@
+Original commit body from 4374229b71074b46ce5793e11fbb746c0dd8eae0:
+
+WI-pokam's cheap, separable half. A Scala receiver's declared type now survives a
+QUALIFIED or GENERIC type node, and a generic base Scala imports implicitly is
+refused because the measurement showed it buying mis-binds.
+
+## The item named one shape; a probe found three, and they are one bug
+
+`scala.py` read a declared type with `find_child_by_type(node,
+"type_identifier")`, which names ONLY a bare type. Tree-sitter gives a qualified
+type its own node kind (`stable_type_identifier`) and a generic applied type
+another (`generic_type`). Pairs differing in exactly one thing:
+
+| shape | before |
+|---|---|
+| `val x: File` | hint `File` |
+| `val x: java.io.File` | **none** |
+| `val x = new File("p")` | hint `File` |
+| `val x = new java.io.File("p")` | **none** |
+| `val x: Buffer` | hint `Buffer` |
+| `val x: Buffer[String]` | **none** |
+
+So it is **not** the annotation path: `new` loses it identically, though the item
+lists `val x = new Foo()` among the shapes that WORK — a fix scoped to the
+annotation branch would have left it broken *and looked like a fix*. And a
+GENERIC APPLIED type is not in the filing at all, while `List[X]` / `Option[X]` /
+`Future[X]` are pervasive in idiomatic Scala.
+
+Four sites each called `find_child_by_type(..., "type_identifier")` themselves;
+they now share ONE walk, because sharing a predicate is not enough when callers
+can still walk different populations (INV-motos).
+
+## Results
+
+Baselines re-derived on this tree rather than quoted — the denominator has moved
+since the filing (sbt 10,985 → 16,018 external method edges).
+
+| repo | metric | baseline | shipped | delta |
+|---|---|---|---|---|
+| sbt | hinted share | 9.03% | **23.43%** | **+14.4 pp**, 2.6× |
+| sbt | module-slot share | 4.63% | **18.19%** | **+13.6 pp**, 3.9× |
+| lila | hinted share | 4.50% | **8.02%** | **+3.5 pp**, 1.8× |
+| lila | module-slot share | 0.89% | **3.99%** | **+3.1 pp**, 4.5× |
+
+`calls_total` is **identical** in both repos (sbt 30,132, lila 68,853) — nothing
+lost. The edges that left the unresolved population became RESOLVED project
+bindings: INV-fahub / WI-bihit's type-qualified recall recovery.
+
+## The measurement changed the change
+
+The first version scored **higher** on the item's own acceptance metric — 28.07%
+hinted on sbt. Sampling the edges it newly RESOLVED showed why that was bad: four
+of twelve were `.get` on a standard-library `Map[K,V]` binding to the PROJECT's
+`Map.get` in `sbt/SessionVar.scala`. Counted rather than left as an impression:
+**44 of 185 newly-resolved edges on sbt (24%)** bound to an implicitly-imported
+name — the "arbitrary same-named internal def" funnel this file's external branch
+already refuses for untyped receivers.
+
+`Map` / `List` / `Set` / `Option` come from `scala.Predef._` and appear in NO
+import line, so a generic base of that name misses `import_aliases`, adds nothing
+to the module slot, and reaches only the short-name bind. Denying it:
+
+| | hinted | slot | mis-binds |
+|---|---|---|---|
+| sbt, first version | 28.07% | 18.07% | **44 (24%)** |
+| sbt, shipped | 23.43% | **18.19%** | **0** |
+
+**The slot share rose.** An unqualifiable name never filled a slot, so the
+refusal costs nothing where the catalogue is actually reached — and **the item's
+own acceptance metric would have preferred the worse version.** A hint is
+necessary, not sufficient (L5); here it was actively misleading as a target.
+
+Scoped to a base this change INVENTS from a type argument. An explicitly
+annotated bare `val x: Map = ...` is untouched — the programmer wrote that name,
+it is the pre-existing INV-fahub population, and narrowing it is a separate
+change with its own measurement.
+
+## A pre-registered prediction, refuted
+
+I predicted generics would contribute more than qualified names on BOTH repos.
+
+    repo   qualified   generic
+    sbt          213     2,180    generic dominates, 10.2x
+    lila       1,068       284    QUALIFIED dominates, 3.8x
+
+The two repos have opposite idioms, and a single-repo run would have "confirmed"
+whichever one I happened to run.
+
+## Two of my own instruments were wrong, and arithmetic caught both
+
+The first attribution pass filtered on `call_construct` BEFORE checking
+`is_resolved`, so an edge that became resolved looked like a disappearance — a
+gain and a regression are opposite stories and it could not tell them apart. And
+`decompose.py` RE-IMPLEMENTED the shipped type walk instead of calling it,
+drifting the moment the denylist landed and surfacing as a **negative**
+contribution. It now feeds the SHIPPED function a filtered view of a node's
+children and asserts its OFF arm reproduces the published baseline (1,446 /
+1,712) exactly before any decomposition is reported.
+
+## Scope
+
+WI-pokam's larger half — inferring `val x = mk()` from the return type of `mk`,
+the return-type-registry shape objc and swift already have — is untouched and
+stays open. The item does not close on this.
+
+Record: `~/hypergumbo_lab_notebook/pokam_scala_09102026/` (FIX_PLAN.md
+pre-registered before any corpus number existed; PROBE_RESULT.md, RESULT.md).
+
+8,314 tests pass, 100% coverage on changed files, mypy ratchet clean at 669.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
