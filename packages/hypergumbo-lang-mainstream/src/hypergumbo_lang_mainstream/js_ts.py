@@ -850,14 +850,23 @@ JS_BUILTIN_NAMES: set[str] = {
 }
 
 # Browser/runtime globals that may be called as ``obj.method()`` without an
-# explicit import. Mirrors the module names used in
-# ``hypergumbo-core/src/hypergumbo_core/io_primitives/javascript.yaml`` so
-# the io-boundaries layer can tag the resulting unresolved-call edges.
-# Only includes names actually used in the bare-global ``Object.method()``
-# pattern — constructor-style globals (WebSocket, XMLHttpRequest,
-# EventSource, BroadcastChannel) are typically ``new``'d first and reach
-# io-boundaries through the instance path, not this fallback.
+# explicit import, so the io-boundaries layer can tag the resulting
+# unresolved-call edges. Constructor-style globals (WebSocket, XMLHttpRequest,
+# EventSource, BroadcastChannel) are deliberately absent: they are ``new``'d
+# first and reach io-boundaries through the instance path (INV-misup).
 # See WI-pinop / WI-banaf / WI-vurop (UAT 2026-04-13 BUG-09a).
+#
+# THIS SET IS HAND-MAINTAINED AND HAS DRIFTED FROM THE CATALOGUE BEFORE.
+# It once claimed to "mirror the module names used in javascript.yaml"; it did
+# not, and WI-kikar is what that cost — ``process`` carries 33 catalogue rows
+# and every ``process.<m>()`` call landed on the ``external`` sentinel, which
+# is ADR-0051's marker for *unreachable to the catalogue*. The neighbouring
+# ``_derive_js_constructor_types`` derives its set FROM the catalogue for
+# exactly this reason, and this one cannot yet do the same: the catalogue does
+# not record which of its modules are GLOBALS (``process``, ``performance``)
+# and which require an import (``fs``, ``dns``, ``os``, ``child_process``),
+# and that distinction is the whole content of this set. Filed as a residual.
+# Until then: ADDING A ROW FOR A NEW GLOBAL MEANS ADDING THE NAME HERE TOO.
 JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "console",        # logging (console.log/info/warn/error/debug/trace)
     "localStorage",   # fs_read/fs_write (getItem, setItem, removeItem, clear)
@@ -868,6 +877,11 @@ JS_KNOWN_GLOBALS: frozenset[str] = frozenset({
     "Deno",           # Deno runtime (readFile, writeFile, connect, listen, ...)
     "caches",         # Service Worker CacheStorage (open, match, has, keys)
     "indexedDB",      # Browser IndexedDB (open, databases)
+    # Node globals — no import required, which is what Case 3b is for (WI-kikar).
+    "process",        # ipc_recv/ipc_send (on, send), host_info_read (hrtime,
+                      # uptime, getuid, memoryUsage), env_write (chdir),
+                      # ipc_recv (openStdin) — 33 rows, all previously external
+    "performance",    # host_info_read (now); Node 16+ and browsers
 })
 
 def _derive_js_constructor_types() -> dict[str, str]:
