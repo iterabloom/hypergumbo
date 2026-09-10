@@ -482,6 +482,27 @@ def compute_hypergumbo_code_hash() -> str:
     return h.hexdigest()[:16]  # Short hash is sufficient
 
 
+def _pool_repo_path(pool_path: str, repo_name: str) -> str:
+    """Resolve a cohort repo name to its on-disk path.
+
+    WI-favav parity, extended by WI-havit: cohort SELECTION resolves nested pool
+    repos via ``pool_utils.resolve_repo_path`` (which descends one level into
+    collection subdirs, e.g. ``ALL_REPOS/whole_bunch_of_repos/<repo>``), so every
+    downstream consumer must use the SAME resolver. A bare
+    ``os.path.join(pool_path, repo_name)`` misses a repo living one level down.
+    In the run loop that surfaced as ``get_dir_size`` raising FileNotFoundError;
+    in the reflect scripts it is quieter and worse -- the agent is handed a source
+    path that does not exist.
+
+    Falls back to the naive join so a genuinely-missing repo still errors where it
+    errored before, rather than passing ``None`` downstream.
+    """
+    return (
+        pool_utils.resolve_repo_path(pool_path, repo_name)
+        or os.path.join(pool_path, repo_name)
+    )
+
+
 def get_dir_size(path: str) -> int:
     """Get directory size in bytes."""
     total = 0
@@ -1977,7 +1998,7 @@ def _run_cohort_repos(repos: list, pool_path: str, out_dir: str, workdir: str = 
     Returns 0 on success (individual repo failures are logged but not fatal).
     """
     for repo_name in repos:
-        repo_path = os.path.join(pool_path, repo_name)
+        repo_path = _pool_repo_path(pool_path, repo_name)
         repo_out = os.path.join(out_dir, repo_name)
         os.makedirs(repo_out, exist_ok=True)
 
