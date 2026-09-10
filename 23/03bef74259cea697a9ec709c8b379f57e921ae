@@ -1,0 +1,51 @@
+Original commit body from 00f22a87b7b7626a936e61f6735df388495165d1:
+
+WI-havit: every bakeoff script that turns a cohort repo NAME into a PATH now goes
+through the shared resolver.
+
+THE BUG. `bakeoff-deep run --pool ~/ALL_REPOS` -- the documented usage, and the
+only pool on the lab machine -- died with FileNotFoundError for any repo living
+one level down in a collection subdir:
+
+  $ ./scripts/bakeoff-deep cohort --repos django
+    django   56.3MB  6915 files       <- SELECTION resolves it, and stores the path
+  $ ./scripts/bakeoff-deep run
+    FileNotFoundError: '/home/jgstern_agent/ALL_REPOS/django'   <- RUN re-derives it
+
+Cohort metadata already held `"path": ".../whole_bunch_of_repos/django"`.
+`_run_cohort_repos` discarded it and rebuilt a weaker one.
+
+THE INVARIANT: a path already resolved by the shared resolver must not be
+re-derived downstream. Selection and run must agree BY CONSTRUCTION.
+
+THE FIX ALREADY EXISTED IN THE SIBLING. WI-favav added `_pool_repo_path` to
+`bakeoff-broad` for this exact symptom; `bakeoff-deep` already imports the
+resolver and cites WI-favav in its selection path. Only the run path missed it.
+
+ENUMERATED THE FAMILY INSTEAD OF PATCHING THE LINE THAT FAILED -- three more
+sites, and the worst is inside `bakeoff-deep cycle`:
+
+  scripts/bakeoff-deep:1980          run loop            <- crashed
+  scripts/bakeoff-deep-reflect:893   reflect prompts     <- SILENT
+  scripts/bakeoff-broad-reflect:688  reflect prompts     <- SILENT
+  both reflect scripts               agent-facing guidance string
+
+The reflect sites do not crash. They hand the reflect agent a source path that
+does not exist, so a cycle can select and analyse repos correctly and then
+verdict them on absence. A crash is the good failure mode.
+
+TESTS SPLIT PER SCRIPT ON PURPOSE. A single family-wide file passed locally and
+would have passed CI here, then never run again -- the top-level test map selects
+root tests by name prefix and no name maps to four scripts. Its own guard
+(`test_top_level_test_map.py`) caught it. Naming each file after the script it
+covers was the honest fix; `KNOWN_UNREACHABLE` exists for tests the mapper
+structurally cannot claim, which is not this. Each copy carries the family-wide
+enumeration check, so touching any one script re-runs it across all four.
+
+smart-test 258 passed; root suite 1775 passed; mypy strict ratchet clean at 669.
+
+Found while setting up the directed DEEP cycle for the INV-mumov bakeoff
+validation -- the one-repo mini trial required before a full experiment failed in
+one second, which is what that rule is for.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
