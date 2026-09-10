@@ -1087,32 +1087,42 @@ def _objc_blank(match: "re.Match[bytes]") -> bytes:
 
 
 def _objc_rewrite_unparseable(source: bytes) -> bytes:
-    """Rewrite, preserving byte length, the two Apple SDK macros the grammar lags on.
+    """Rewrite the three macro families tree-sitter-objc cannot parse.
 
     WI-lafom. tree-sitter-objc 3.0.2 does not preprocess, so a macro that expands
     to syntax is a syntax error to it. There is no newer grammar to bump to --
-    3.0.0 / 3.0.1 / 3.0.2 are all that is published -- so the fix is INV-bisok's
-    route, a pre-parse rewrite behind :meth:`TreeSitterAnalyzer.parse_source`.
+    3.0.0 / 3.0.1 / 3.0.2 are all that is published, upstream's last substantive
+    commit is 2024-12-16 and its NS_OPTIONS bug has been open since 2025-02-25 --
+    so the fix is INV-bisok's route, a pre-parse rewrite behind
+    :meth:`TreeSitterAnalyzer.parse_source`.
 
-    Only two macros earn a rule, and both were confirmed by parsing a MINIMAL
-    SNIPPET with and without them rather than by reading the source at the first
-    ERROR node's line. That line is where error recovery re-parented TO, and
-    reading it as the cause is what gave INV-bisok's residual half a root cause
-    that later had to be withdrawn. ``nullable``, generics, block properties,
-    ``NS_DESIGNATED_INITIALIZER``, ``NS_SWIFT_NAME`` and a LONE
-    ``NS_ASSUME_NONNULL_BEGIN`` all parse with zero ERROR nodes.
+    Every rule here was confirmed by parsing a MINIMAL SNIPPET with and without
+    the construct, never by reading the source at the first ERROR node's line.
+    That line is where error recovery re-parented TO, and reading it as the cause
+    is what gave INV-bisok's residual half a root cause that later had to be
+    withdrawn -- and what put ``@property (class, ...)`` on this item's suspect
+    list until isolation cleared it. ``nullable``, generics, block properties,
+    ``NS_DESIGNATED_INITIALIZER``, ``NS_SWIFT_NAME``, ``FOUNDATION_EXPORT`` and a
+    LONE ``NS_ASSUME_NONNULL_BEGIN`` all parse with ZERO ERROR nodes.
 
-    A third rule blanks availability / deprecation attributes. It is priced on
-    ERROR NODES rather than on whole files, because the file count is the wrong
-    unit here: it moves 39 -> 38 while ERROR nodes fall 1094 -> 265, and a file
-    with two ERROR nodes in one corner has all its other method bodies back.
-    ``property_declaration`` 486 -> 491 and ``class_interface`` 346 -> 349, so it
-    sheds nothing.
+    Rules are priced on ERROR NODES, not on whole files, because the file count
+    is the wrong unit and hid the availability rule once already: it moves
+    39 -> 38 files while ERROR nodes fall 1094 -> 265, and a file with two ERROR
+    nodes in one corner has all its other method bodies back. Across the three
+    shipped rules, ERROR files go 74 -> 38 of 387, ERROR nodes 1687 -> 265,
+    ``property_declaration`` 436 -> 491 and ``class_interface`` 322 -> 349, with
+    no count falling anywhere.
 
     One rule was measured and is deliberately ABSENT: blanking any
     ``SHOUTY(...)`` before a ``;`` recovers two more files but SHEDS 17 real
     ``property_declaration`` nodes, and a count bought by shrinking the
     denominator is pure loss.
+
+    What remains unparsed after this is one characterised family, filed rather
+    than chased: a BARE, argument-less project macro in a declaration-attribute
+    position (``DD_SENDABLE``, ``NS_STRING_ENUM``, ``QuickSpecBegin``). Every
+    rule here blanks a macro APPLIED TO ARGUMENTS, whose extent the parens
+    delimit exactly; a bare identifier has no such delimiter.
     """
     out = _OBJC_ASSUME_NONNULL.sub(_objc_blank, source)
 
