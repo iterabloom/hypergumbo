@@ -215,6 +215,87 @@ def _extract_annotation_info(
     return {"name": name, "args": args, "kwargs": kwargs}
 
 
+#: The type-node kinds a declared Scala type can take. ``type_identifier`` is
+#: the bare one every extraction site used to look for exclusively; the other
+#: two were invisible, which cost the hint entirely (WI-pokam).
+_SCALA_TYPE_NODES = ("type_identifier", "stable_type_identifier", "generic_type")
+
+
+def _qualify_scala_receiver(
+    receiver_type: "str | None",
+    import_aliases: dict,
+) -> "str | None":
+    """The module-slot path for a receiver type, or ``None`` to keep the sentinel.
+
+    WI-sigog's discipline, unchanged: the slot only ever carries a path THE FILE
+    ITSELF DECLARES. A bare name is looked up in the file's imports and left
+    alone when it misses, because a simple name in the module slot asserts a
+    module that does not exist and can collide with a catalogued entry of the
+    same short name (INV-fazim).
+
+    WI-pokam adds ONE case to "declares": an INLINE QUALIFICATION. ``val b:
+    java.io.File`` states the path at the use site, which is the same fact
+    ``import java.io.File`` states at the top of the file — and it is precisely
+    the case where there is NO import line to consult, so the alternative is not
+    a safer answer but no answer. Nothing is invented and nothing is looked up:
+    the name qualifies to itself.
+
+    THE KNOWN IMPRECISION, named rather than discovered later. Scala also writes
+    a PATH-DEPENDENT type in type position (``val x: someObj.Inner``), which
+    parses to the same ``stable_type_identifier`` node. That would put
+    ``someObj.Inner`` in the slot, which is not a module. It is bounded rather
+    than unbounded: a dotted name is far less collision-prone than the bare name
+    INV-fazim refused, and a path that names nothing simply matches no catalogue
+    row. The corpus share of the shape is measured rather than assumed — see
+    ``~/hypergumbo_lab_notebook/pokam_scala_09102026/``.
+    """
+    if not receiver_type:
+        return None
+    imported = import_aliases.get(receiver_type)
+    if imported:
+        return imported
+    return receiver_type if "." in receiver_type else None
+
+
+def _declared_type_name(parent: "tree_sitter.Node", source: bytes) -> "str | None":
+    """The NAME of the type declared as a direct child of ``parent``, or ``None``.
+
+    THE ONE PLACE A DECLARED TYPE IS NAMED. Every site that wanted a type used
+    to call ``find_child_by_type(parent, "type_identifier")`` itself, which named
+    ONLY a bare type; a qualified type (``java.io.File``) parses to
+    ``stable_type_identifier`` and a generic applied type (``Buffer[String]``) to
+    ``generic_type``, so four sites independently returned ``None`` for both.
+    Sharing the PREDICATE is not enough when callers can still walk different
+    populations (INV-motos), so this shares the WALK as well.
+
+    WHAT EACH SHAPE CONTRIBUTES, and the two are deliberately different:
+
+    * ``stable_type_identifier`` contributes the FULL DOTTED NAME. An inline
+      qualification IS the static owner path (ADR-0050/0051), spelled by the file
+      at the use site, and it is the one case where there is no import line to
+      consult — so nothing is invented and nothing needs looking up.
+    * ``generic_type`` contributes its BASE, recursively: the receiver's methods
+      live on ``Buffer``, not on ``Buffer[String]``, and the type argument is not
+      the receiver. ``java.util.List[String]`` therefore yields
+      ``java.util.List`` and qualifies by the clause above.
+
+    A tuple type, a function type and a wildcard yield ``None`` — deliberately,
+    not by omission: none of them names a single owner a catalogue row could be
+    keyed to, and INV-fazim's rule is that an unqualifiable type is left alone
+    rather than written in bare.
+    """
+    for child in parent.children:
+        if child.type == "type_identifier":
+            return node_text(child, source)
+        if child.type == "stable_type_identifier":
+            return node_text(child, source)
+        if child.type == "generic_type":
+            base = _declared_type_name(child, source)
+            if base is not None:
+                return base
+    return None
+
+
 def _extract_annotations_scala(
     node: "tree_sitter.Node", source: bytes,
 ) -> list[dict[str, object]]:
@@ -896,12 +977,10 @@ def _extract_param_types_scala(
             for subchild in child.children:
                 if subchild.type == "parameter":
                     param_name = None
-                    param_type = None
                     for pc in subchild.children:
                         if pc.type == "identifier" and param_name is None:
                             param_name = node_text(pc, source)
-                        elif pc.type == "type_identifier" and param_type is None:
-                            param_type = node_text(pc, source)
+                    param_type = _declared_type_name(subchild, source)
                     if param_name and param_type:
                         param_types[param_name] = param_type
     return param_types
@@ -958,16 +1037,16 @@ def _extract_edges_from_file(
             var_node = find_child_by_type(node, "identifier")
             if var_node:
                 inst_node = find_child_by_type(node, "instance_expression")
-                if inst_node is not None:
-                    type_node = find_child_by_type(inst_node, "type_identifier")
-                else:
-                    # Annotated val: the type_identifier is a direct child
-                    # (`val f: Foo = …` → val_definition > type_identifier).
-                    type_node = find_child_by_type(node, "type_identifier")
-                if type_node is not None:
-                    var_types[node_text(var_node, source)] = node_text(
-                        type_node, source,
-                    )
+                # WI-pokam: BOTH paths through ``_declared_type_name``, because a
+                # qualified or generic type was invisible to BOTH. The `new`
+                # branch is listed in WI-pokam among the shapes that work; it
+                # loses ``new java.io.File("p")`` exactly as the annotation
+                # branch loses ``val b: java.io.File``.
+                type_name = _declared_type_name(
+                    inst_node if inst_node is not None else node, source,
+                )
+                if type_name is not None:
+                    var_types[node_text(var_node, source)] = type_name
 
         # Track class-constructor parameter types: `class C(val svc: Service)`.
         # A constructor-param receiver (`svc.process()`) is typed and must
@@ -976,11 +1055,9 @@ def _extract_edges_from_file(
         # (pre-order DFS), so var_types is populated in time.
         elif node.type == "class_parameter":
             pname_node = find_child_by_type(node, "identifier")
-            ptype_node = find_child_by_type(node, "type_identifier")
-            if pname_node is not None and ptype_node is not None:
-                var_types[node_text(pname_node, source)] = node_text(
-                    ptype_node, source,
-                )
+            ptype_name = _declared_type_name(node, source)
+            if pname_node is not None and ptype_name is not None:
+                var_types[node_text(pname_node, source)] = ptype_name
 
         elif node.type == "call_expression":
             current_function = _get_enclosing_function(node, source, local_symbols)
@@ -1146,9 +1223,8 @@ def _extract_edges_from_file(
                         # shape is also rare in Scala -- 199/4,314 import lines in
                         # sbt (4.6%) and 5/6,674 in lila (0.07%) -- so the
                         # explicit-import path below carries the population.
-                        typed_module = (
-                            import_aliases.get(receiver_type)
-                            if receiver_type else None
+                        typed_module = _qualify_scala_receiver(
+                            receiver_type, import_aliases,
                         )
                         edges.append(Edge.create(
                             src=current_function.id,
