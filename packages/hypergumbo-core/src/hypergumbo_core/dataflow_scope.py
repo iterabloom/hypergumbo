@@ -152,11 +152,14 @@ def count_walk_verdicts(findings: Iterable[Any]) -> dict[str, int]:
         if len(distinct) > 1:
             counts[WALK_VERDICT_MIXED] += 1
             continue
-        # Empty tuple only for a duck-typed input; a real finding's
-        # ``__post_init__`` derives the singleton from the scalar.
-        verdict = next(iter(distinct), None)
-        if verdict is None:
-            verdict = getattr(finding, "walk_verdict", "") or ""
+        # ``next(..., "")`` rather than a fallback to the scalar: a real
+        # finding's ``__post_init__`` derives the singleton, so an empty tuple
+        # reaches here only from a duck-typed input that carries no verdict at
+        # all -- and ``""`` is exactly the ``unrecorded`` cell below. Reading
+        # the scalar as a second source would give one fact two homes for a
+        # case that cannot occur, and CI's whole-file coverage gate is what
+        # surfaced it as unreachable.
+        verdict = next(iter(distinct), "")
         if verdict in counts and verdict != WALK_VERDICT_MIXED:
             counts[verdict] += 1
         else:
