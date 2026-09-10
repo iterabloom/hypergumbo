@@ -122,6 +122,32 @@ class TestTheRewriteItself:
         src = b'- (void)go API_DEPRECATED("x", ios(9, 13));\n'
         assert _objc_rewrite_unparseable(src) == b"- (void)go                                ;\n"
 
+    def test_a_multi_line_attribute_keeps_its_newlines(self) -> None:
+        """Byte length alone is NOT enough, and this is the case that shows it.
+
+        tree-sitter derives a node's row from the newlines before it, so blanking
+        a macro that spans lines preserves every byte offset and still shifts
+        every FOLLOWING line number up by one. Every span the analyzer reported
+        after that point would name the wrong line in the real file.
+        """
+        src = (b'- (void)go API_DEPRECATED("msg",\n'
+               b'                          ios(9, 13));\n'
+               b"@interface A : NSObject\n@end\n")
+        out = _objc_rewrite_unparseable(src)
+        assert len(out) == len(src)
+        assert out.count(b"\n") == src.count(b"\n")
+        assert out.split(b"\n")[2] == b"@interface A : NSObject"
+
+    def test_a_multi_line_ns_enum_keeps_its_newlines(self) -> None:
+        src = b"typedef NS_ENUM(\n    NSInteger,\n    Status) {\n    A = 0,\n};\n"
+        out = _objc_rewrite_unparseable(src)
+        assert len(out) == len(src)
+        assert out.count(b"\n") == src.count(b"\n")
+        assert out.startswith(b"enum Status")
+        # The brace still opens on the line it opens on in the real file.
+        assert src.split(b"\n")[2].endswith(b"{")
+        assert out.split(b"\n")[2].endswith(b"{")
+
     def test_a_file_with_neither_macro_is_returned_unchanged(self) -> None:
         src = b"@interface A : NSObject\n@property (nonatomic) int n;\n@end\n"
         assert _objc_rewrite_unparseable(src) == src
