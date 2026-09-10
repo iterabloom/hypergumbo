@@ -15,6 +15,21 @@ Node types handled:
 - preproc_include: #import statements
 - message_expression: [receiver message] method calls
 
+Pre-parse rewrite (WI-lafom):
+tree-sitter-objc does not preprocess, so an Apple SDK macro that expands to
+syntax is a syntax error to it, and its error recovery falls back to C: a
+``@property`` under a ``NS_ASSUME_NONNULL_BEGIN`` becomes ``@`` plus a C
+``function_declarator``, and no ``property_declaration`` node is produced at all.
+Measured over four real ObjC repositories, that cost 74 of 387 files. There is no
+newer grammar to bump to -- 3.0.2 is the newest published and upstream is dormant
+-- so :func:`_objc_parse_source` retries a failing file through a
+byte-length-preserving rewrite of the two macro families that actually break the
+parse (``NS_ASSUME_NONNULL_BEGIN``/``_END`` in the wrapping position, and
+``NS_ENUM``/``NS_OPTIONS``/``NS_CLOSED_ENUM``), keeping the result only when it
+strictly reduces ERROR nodes. **Both passes below go through it and both use the
+bytes it returns**: Pass 2 re-reads and re-parses the file, so rewriting in Pass 1
+alone would desynchronise the two passes' spans.
+
 Three-pass analysis:
 - Pass 1: Extract all symbols from all files and collect methods into a global registry
 - Pass 1.5: Propagate each class's base_classes into its methods' meta['parent_base_classes'] (so .m @implementation methods inherit the .h @interface bases for framework pattern matching)
@@ -1044,6 +1059,21 @@ _OBJC_NS_ENUM = re.compile(
 )
 
 
+#: Availability / deprecation attribute macros, matched PREFIX-TOLERANTLY. The
+#: first version of this rule listed Apple's names exactly -- ``API_AVAILABLE``,
+#: ``NS_DEPRECATED`` and so on -- and scored ZERO recovered files, which is what
+#: a name search over an incomplete vocabulary looks like: it does not error, it
+#: returns clean. AFNetworking spells its own wrapper ``AF_API_AVAILABLE``, and
+#: that one macro is 820 of ``AFURLSessionManager.m``'s 822 ERROR nodes -- the
+#: file holding every ``[self.session dataTaskWithRequest:…]`` call site the
+#: item was filed about.
+_OBJC_AVAILABILITY = re.compile(
+    rb"\b(?:[A-Z][A-Z0-9_]*_)?"
+    rb"(?:API|NS)_(?:AVAILABLE|UNAVAILABLE|DEPRECATED)[A-Z0-9_]*"
+    rb"\s*\((?:[^()]|\([^()]*\))*\)"
+)
+
+
 def _objc_rewrite_unparseable(source: bytes) -> bytes:
     """Rewrite, preserving byte length, the two Apple SDK macros the grammar lags on.
 
@@ -1060,14 +1090,17 @@ def _objc_rewrite_unparseable(source: bytes) -> bytes:
     ``NS_DESIGNATED_INITIALIZER``, ``NS_SWIFT_NAME`` and a LONE
     ``NS_ASSUME_NONNULL_BEGIN`` all parse with zero ERROR nodes.
 
-    Two further rules were measured on the four-repository ObjC corpus and are
-    deliberately absent:
+    A third rule blanks availability / deprecation attributes. It is priced on
+    ERROR NODES rather than on whole files, because the file count is the wrong
+    unit here: it moves 39 -> 38 while ERROR nodes fall 1094 -> 265, and a file
+    with two ERROR nodes in one corner has all its other method bodies back.
+    ``property_declaration`` 486 -> 491 and ``class_interface`` 346 -> 349, so it
+    sheds nothing.
 
-    * Apple's availability macros by name (``API_AVAILABLE``, ``NS_DEPRECATED``,
-      ...) recover ZERO further files and move zero nodes any consumer reads.
-    * Blanking any ``SHOUTY(...)`` before a ``;`` recovers two more files but
-      SHEDS 17 real ``property_declaration`` nodes. A count bought by shrinking
-      the denominator is pure loss.
+    One rule was measured and is deliberately ABSENT: blanking any
+    ``SHOUTY(...)`` before a ``;`` recovers two more files but SHEDS 17 real
+    ``property_declaration`` nodes, and a count bought by shrinking the
+    denominator is pure loss.
     """
     out = _OBJC_ASSUME_NONNULL.sub(lambda m: b" " * len(m.group(0)), source)
 
@@ -1078,7 +1111,8 @@ def _objc_rewrite_unparseable(source: bytes) -> bytes:
             return match.group(0)
         return replacement + b" " * padding
 
-    return _OBJC_NS_ENUM.sub(_enum, out)
+    out = _OBJC_NS_ENUM.sub(_enum, out)
+    return _OBJC_AVAILABILITY.sub(lambda m: b" " * len(m.group(0)), out)
 
 
 def _objc_count_errors(tree: "tree_sitter.Tree") -> int:

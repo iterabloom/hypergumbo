@@ -17,7 +17,14 @@ is what is installed. So this takes INV-bisok's route -- a rewrite behind
 fails to parse, and its result is kept ONLY when it strictly reduces ERROR nodes, so a
 file the grammar handles is byte-identical through the hook.
 
-The rewrite CONSUMES a leading ``typedef``. Rewriting ``typedef NS_ENUM(NSInteger, S)``
+A third rule blanks availability / deprecation attributes PREFIX-TOLERANTLY. Its
+first version listed Apple's names exactly and recovered zero files -- a name search
+over an incomplete vocabulary does not error, it returns clean. AFNetworking spells
+its own wrapper ``AF_API_AVAILABLE``, and that single macro is 820 of
+``AFURLSessionManager.m``'s 822 ERROR nodes: the file holding every
+``[self.session dataTaskWithRequest:…]`` call site the item was filed about.
+
+The NS_ENUM rule CONSUMES a leading ``typedef``. Rewriting ``typedef NS_ENUM(NSInteger, S)``
 to ``typedef enum S`` -- the first draft -- is a typedef with no declarator, which
 yields a MISSING ``type_identifier``: a new parse failure inside the fix for parse
 failures. ``enum S`` plus padding is what parses.
@@ -87,6 +94,33 @@ class TestTheRewriteItself:
     def test_ns_enum_without_a_leading_typedef_still_rewrites(self) -> None:
         out = _objc_rewrite_unparseable(b"NS_ENUM(NSInteger, S) x;\n")
         assert out == b"enum S                x;\n"
+
+    def test_an_availability_attribute_is_blanked_whatever_its_prefix(self) -> None:
+        """The first version of this rule listed Apple's names EXACTLY and scored zero.
+
+        A name search over an incomplete vocabulary does not error, it returns
+        clean. AFNetworking spells its wrapper ``AF_API_AVAILABLE``, and that one
+        macro is 820 of ``AFURLSessionManager.m``'s 822 ERROR nodes.
+        """
+        src = b"typedef void (^B)(NSURLSession *s) AF_API_AVAILABLE(ios(10), macosx(10.12));\n"
+        out = _objc_rewrite_unparseable(src)
+        assert len(out) == len(src)
+        assert b"AF_API_AVAILABLE" not in out
+        assert out.startswith(b"typedef void (^B)(NSURLSession *s)")
+        assert out.rstrip().endswith(b";")
+
+    def test_the_apple_spellings_are_covered_by_the_same_rule(self) -> None:
+        for name in (b"API_AVAILABLE", b"API_UNAVAILABLE", b"API_DEPRECATED",
+                     b"NS_AVAILABLE_IOS", b"NS_DEPRECATED_MAC"):
+            src = b"- (void)go " + name + b"(ios(10));\n"
+            out = _objc_rewrite_unparseable(src)
+            assert name not in out, name
+            assert len(out) == len(src)
+
+    def test_a_nested_paren_group_inside_the_attribute_is_consumed(self) -> None:
+        """``API_DEPRECATED("msg", ios(9, 13))`` -- one level of nesting."""
+        src = b'- (void)go API_DEPRECATED("x", ios(9, 13));\n'
+        assert _objc_rewrite_unparseable(src) == b"- (void)go                                ;\n"
 
     def test_a_file_with_neither_macro_is_returned_unchanged(self) -> None:
         src = b"@interface A : NSObject\n@property (nonatomic) int n;\n@end\n"
