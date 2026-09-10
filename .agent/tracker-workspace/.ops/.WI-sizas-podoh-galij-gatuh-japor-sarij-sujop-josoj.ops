@@ -1,0 +1,21 @@
+- op: create  # 6d98
+  at: '2026-09-10T04:35:13Z'  # 6d98
+  by: agent  # 6d98
+  actor: jgstern_agent  # 6d98
+  clock: 1  # 6d98
+  nonce: 6d98  # 6d98
+  data:  # 6d98
+    kind: work_item  # 6d98
+    title: "swift: bare self.<method>() and deeper self.a.b chains carry no receiver type (496 sites; bare-self fills NO module slot and perturbs method_call_recovery)"  # 6d98
+    status: todo_hard  # 6d98
+    priority: 3  # 6d98
+    parent:  # 6d98
+    tags:  # 6d98
+    - swift  # 6d98
+    - analysis_quality  # 6d98
+    isbefore: []  # 6d98
+    duplicate_of: []  # 6d98
+    not_duplicate_of: []  # 6d98
+    pr_ref:  # 6d98
+    description: "FILED 2026-09-10 from WI-dodop (PR #877 / measurement 0028), DELIBERATELY LEFT\nOUT of that PR rather than overlooked. Two shapes, one decision.\n\n  384 sites (20.1% of vapor's classified untyped)   `self.<method>()`\n  112 sites ( 5.9%)                                 `self.a.b.<method>()`\n\nWHY `self.<method>()` WAS EXCLUDED, and it is NOT a free win. Its receiver is the\nENCLOSING TYPE, which is a PROJECT type. INV-kotob refuses a project type in the\nmodule slot on purpose (\"a PROJECT type is a symbol, not a module; it rides in\nreceiver_type_hint only\"), so typing these moves them from \"no type\" to \"typed\nand rightly refused\" and fills ZERO module slots -- it reaches no catalogue row\n(L5). The gain would be a more accurate `receiver_type_hint`, which is real but\nis not what the drain is for.\n\nAND IT IS NOT COST-FREE. `method_call_recovery` step 3a treats a stamped\n`receiver_type_hint` as grounds to REFUTE a class hint. Stamping 384 new hints\ntherefore CHANGES which synthetic `calls -> Class.method` edges that linker\nemits, in the deleting direction, for a population whose module slot cannot move.\nThat is a measurable regression surface with no slot-side payoff, so it needs its\nown before/after on recovered-edge counts -- not a fold-in.\n\nWHY THE DEEPER CHAIN WAS EXCLUDED. `self.a.b.method()`'s receiver is `self.a.b`.\nResolving it needs the type of `self.a` and THEN a member lookup on that type --\na second resolution step the shipped slice does not have. A guess is worse than\nsilence for the step-3a reason above. `test_a_DEEPER_self_chain_is_not_guessed_at`\npins the current no-stamp behaviour so a future change is deliberate.\n\nWHAT WOULD DECIDE IT. Measure, on the same four-repo corpus PR #877 used:\n  (a) how many `self.a.b` heads resolve at all once `self.a` is typed (the\n      deeper-chain half CAN fill a slot, unlike the bare-self half);\n  (b) the delta in `method_call_recovery` synthetic edges from stamping the\n      bare-self 384, in both directions.\nIf (b) is a net loss of correct recovered edges, the bare-self half should be\ndeclared a dated blindness rather than built."  # 6d98
+    fields: {}  # 6d98

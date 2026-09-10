@@ -1,0 +1,22 @@
+- op: create  # 7c77
+  at: '2026-09-10T04:34:50Z'  # 7c77
+  by: agent  # 7c77
+  actor: jgstern_agent  # 7c77
+  clock: 1  # 7c77
+  nonce: 7c77  # 7c77
+  data:  # 7c77
+    kind: work_item  # 7c77
+    title: "swift: 938 untyped receivers carry a NAME that _type_of cannot resolve (49.0% of untyped sites, the largest bucket)"  # 7c77
+    status: todo_hard  # 7c77
+    priority: 2  # 7c77
+    parent:  # 7c77
+    tags:  # 7c77
+    - swift  # 7c77
+    - analysis_quality  # 7c77
+    - io_boundary  # 7c77
+    isbefore: []  # 7c77
+    duplicate_of: []  # 7c77
+    not_duplicate_of: []  # 7c77
+    pr_ref:  # 7c77
+    description: "FILED 2026-09-10 from WI-dodop (PR #877 / measurement 0028). THE LARGER HALF of\nswift's untyped receivers, left untouched by the self.<property> fix.\n\nMEASURED, vapor, 1,913 classified untyped method-call sites (record:\n~/hypergumbo_lab_notebook/dodop_swift_09102026/):\n\n    938  49.0%  receiver_hint PRESENT, `_type_of` RAN and returned None   <- THIS\n    393  20.5%  self.<property>.<method>()   -- FIXED by PR #877\n    384  20.1%  self.<method>()              -- separate item\n    112   5.9%  chain off a navigation_expression\n     86   4.5%  literals, call() result, tuples, super, ...\n\nThis is the LARGEST single bucket and it refuted WI-dodop's pre-registered P4,\nwhich predicted the self family would dominate.\n\nWHAT IT IS. `x.method()` where `x` is a lowercase simple_identifier -- a local, a\nparameter, or an implicit-self property -- and swift's `_type_of` cannot name its\ntype. `_type_of` consults, in order: `_scoped_types` (per-function), `var_types`,\nthen `_inherited_field_type`. Something in that chain is missing the declaration,\nand WHICH is not yet known -- that is the first step, not a fix.\n\nDO NOT ASSUME IT IS ONE CAUSE. WI-dodop's own history is a headline that pooled\npopulations twice (16.5% pooled slot-filled with correctly-refused; the untyped\n2,832 pooled hint-absent with hint-present). Size the 938 by WHY `_type_of`\nfailed before designing anything: no declaration in scope, a declaration whose\ntype annotation is absent (`let x = foo()`), a closure parameter, a `guard let`\nrebinding, a tuple destructuring, an `if case let` binding.\n\nPRICE ON THE MODULE SLOT, NEVER THE TYPED SHARE. A PROJECT type is typed and then\ncorrectly REFUSED (INV-kotob), so the share moves where the slot does not; on\nthis same corpus the share rose 368 where the slot rose 252. And a filled slot is\nnecessary, not sufficient (L5): measurement 0025 moved 787 correct objc names and\nrecall by ZERO, so the acceptance number is PRIMITIVES REACHED.\n\nDIRECTION WARNING: more typed receivers feed sanitizer registration and a\nregistered barrier earns `sanitized` and DROPS a flow (ADR-0052 recorded that the\nescape-closing family's only reachable effect on findings today is suppression).\nMeasure at L4 in BOTH directions."  # 7c77
+    fields: {}  # 7c77
