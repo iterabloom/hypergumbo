@@ -159,3 +159,96 @@ class TestTheRefutationConditionThatSurvives:
     ) -> None:
         line = _line_of(VIEWS, "request.thing.helper.count()")
         assert _slot_at(project_edges, line, "count") == "external"
+
+
+AMBIG = '''\
+from models import Event
+
+
+class Thing:
+    def m(self):
+        self.seats.filter(row=1).exists()
+
+
+class Thing:
+    def m2(self):
+        self.seats.filter(row=2).exists()
+'''
+
+BINDINGS = '''\
+from models import Event
+
+
+def make():
+    pass
+
+
+def bindings(param):
+    ann: int = make()
+    ann.seats.filter(row=1).exists()
+    aug = 0
+    aug += 1
+    aug.seats.filter(row=2).exists()
+    if (walrus := make()):
+        walrus.seats.filter(row=3).exists()
+    *star, last = make()
+    star.seats.filter(row=4).exists()
+    cache = {}
+    cache["k"].seats.filter(row=5).exists()
+'''
+
+
+class TestEveryContraryEvidenceBranch:
+    """One test per rung of ``_refuted_by_a_known_owner`` and ``_bound_names``.
+
+    Each asserts the SLOT, so a rung that stops firing shows up as a changed
+    classification rather than as a coverage number.
+    """
+
+    @pytest.fixture(scope="class")
+    def ambig_edges(self, tmp_path_factory: pytest.TempPathFactory) -> list[Edge]:
+        return _edges(tmp_path_factory.mktemp("ambig"), {"models.py": MODELS, "views.py": AMBIG})
+
+    @pytest.fixture(scope="class")
+    def binding_edges(self, tmp_path_factory: pytest.TempPathFactory) -> list[Edge]:
+        return _edges(tmp_path_factory.mktemp("bind"), {"models.py": MODELS, "views.py": BINDINGS})
+
+    def test_bare_self_under_an_unresolved_class_is_refused(
+        self, ambig_edges: list[Edge]
+    ) -> None:
+        """Two classes share a short name, so the enclosing class does not
+        resolve. ``self`` is never an absence — we are always inside SOME
+        class — so failing to resolve it is a failure, and the accessor
+        beyond it must not be trusted."""
+        line = _line_of(AMBIG, "self.seats.filter(row=1)")
+        assert _slot_at(ambig_edges, line, "exists") == "external"
+
+    def test_an_annotated_assignment_binds_its_target(
+        self, binding_edges: list[Edge]
+    ) -> None:
+        line = _line_of(BINDINGS, "ann.seats.filter(row=1)")
+        assert _slot_at(binding_edges, line, "exists") == "external"
+
+    def test_an_augmented_assignment_binds_its_target(
+        self, binding_edges: list[Edge]
+    ) -> None:
+        line = _line_of(BINDINGS, "aug.seats.filter(row=2)")
+        assert _slot_at(binding_edges, line, "exists") == "external"
+
+    def test_a_walrus_binds_its_target(self, binding_edges: list[Edge]) -> None:
+        line = _line_of(BINDINGS, "walrus.seats.filter(row=3)")
+        assert _slot_at(binding_edges, line, "exists") == "external"
+
+    def test_a_starred_target_binds_its_name(self, binding_edges: list[Edge]) -> None:
+        line = _line_of(BINDINGS, "star.seats.filter(row=4)")
+        assert _slot_at(binding_edges, line, "exists") == "external"
+
+    def test_a_subscript_root_is_not_contrary_evidence(
+        self, binding_edges: list[Edge]
+    ) -> None:
+        """``cache["k"]`` is neither a Call, a Name nor an Attribute, so nothing
+        was tried and nothing failed — it falls through to the name rule. This
+        pins the final fallthrough as a DECISION, not an oversight: a subscript
+        read is silence, and silence is what the name-only rule is for."""
+        line = _line_of(BINDINGS, 'cache["k"].seats.filter(row=5)')
+        assert _slot_at(binding_edges, line, "exists") == DJANGO_ORM_MODULE
