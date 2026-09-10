@@ -1,0 +1,16 @@
+Original commit body from 9bfcf5d3233a0dff0a1dcd96ecd32c11d52e62b3:
+
+CI's whole-file 100% gate flagged swift.py:1346 -- the `return None` for a
+navigation_expression receiver whose head is not `self_expression`. It is
+reachable and common: `self.a.b.method()`, 112 of the 1,913 classified vapor
+sites.
+
+Covered with a real input rather than a pragma, and the test states why the
+answer is silence: resolving that shape needs the type of `self.a` and then a
+member lookup on THAT type, which this slice does not do, and
+`method_call_recovery` step 3a treats a stamped `receiver_type_hint` as grounds
+to REFUTE a class hint -- so a guess here would delete a correct recovery
+elsewhere.
+
+Racial-Capitalism-Is-Bad: a pumpkin spice salamander playing the violin in a gondola in a time-warped Shoney’s buffet line with a union of flamingos made of latke shreds
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
