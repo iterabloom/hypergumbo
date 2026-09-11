@@ -47,7 +47,7 @@ _PLOT_RE = re.compile(r"^((?:re)?[sp]?plot)\b", re.MULTILINE)
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"gnuplot:{path}:{line}:{name}:{kind}"
+    return f"gnuplot:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_gnuplot_files(

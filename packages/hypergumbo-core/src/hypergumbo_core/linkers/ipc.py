@@ -506,7 +506,10 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     created_symbol_ids: set[str] = set()
 
     def _make_symbol_id(pattern: IpcPattern, channel: str) -> str:
-        return f"ipc:{pattern.file_path}:{pattern.line}:{pattern.type}:{channel}"
+        return (
+            f"ipc:{pattern.file_path}:{pattern.line}-{pattern.line}"
+            f":{pattern.type}:{channel}"
+        )
 
     def _ensure_symbol(pattern: IpcPattern, channel: str) -> str:
         """Create symbol for IPC endpoint if not already created."""
@@ -660,8 +663,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
                 # Create synthetic bridge caller symbol
                 caller_id = (
-                    f"ipc:bridge_caller:{rel_path}:{call_line}"
-                    f":{namespace}.{method_name}"
+                    f"ipc:{rel_path}:{call_line}-{call_line}"
+                    f":{namespace}.{method_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role
@@ -768,7 +771,8 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                     pass
 
                 caller_id = (
-                    f"ipc:bridge_caller:{rel_path}:{call_line}:{func_name}"
+                    f"ipc:{rel_path}:{call_line}-{call_line}"
+                    f":{func_name}:bridge_caller"
                 )
                 if caller_id not in created_symbol_ids:
                     # ADR-0027 Phase 3 / audit-findings 0013: framework-role

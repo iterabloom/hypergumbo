@@ -187,7 +187,11 @@ def link_annotations(
             continue
 
         for pub in pub_sites:
-            pub_id = f"{pub.file_path}:{pub.line}:{channel}:annotated_publisher"
+            pub_lang = language_from_path(Path(pub.file_path)) or "unknown"
+            pub_id = (
+                f"{pub_lang}:{pub.file_path}:{pub.line}-{pub.line}"
+                f":{channel}:annotated_publisher"
+            )
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
                 result_symbols.append(Symbol(
@@ -223,7 +227,11 @@ def link_annotations(
                 ))
 
             for sub in sub_sites:
-                sub_id = f"{sub.file_path}:{sub.line}:{channel}:annotated_subscriber"
+                sub_lang = language_from_path(Path(sub.file_path)) or "unknown"
+                sub_id = (
+                    f"{sub_lang}:{sub.file_path}:{sub.line}-{sub.line}"
+                    f":{channel}:annotated_subscriber"
+                )
                 if sub_id not in seen_sym_ids:
                     seen_sym_ids.add(sub_id)
                     result_symbols.append(Symbol(
@@ -333,7 +341,11 @@ def link_annotations(
         # ``confidence <= 0.5`` with the ``disambiguation_fallback`` flag.
         is_fallback = len(target_syms) > 1
 
-        disp_id = f"{disp.file_path}:{disp.line}:{target_name}:annotated_dispatcher"
+        disp_lang = language_from_path(Path(disp.file_path)) or "unknown"
+        disp_id = (
+            f"{disp_lang}:{disp.file_path}:{disp.line}-{disp.line}"
+            f":{target_name}:annotated_dispatcher"
+        )
         if disp_id not in seen_sym_ids:
             seen_sym_ids.add(disp_id)
             result_symbols.append(Symbol(

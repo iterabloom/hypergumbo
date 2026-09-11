@@ -37,7 +37,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
 from hypergumbo_core.discovery import find_files
-from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from hypergumbo_core.ir import (
+    AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
+    sanitize_id_name_segment,
+)
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 
@@ -46,9 +49,16 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    """Generate a unique symbol ID."""
-    key = f"css:{path}:{line}:{name}:{kind}"
-    return f"css:sha256:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+    """Generate a unique symbol ID.
+
+    WI-vodin: this returned ``css:sha256:<digest>`` -- three segments, which
+    ADR-0036's five-slot grammar cannot parse at all, so a css symbol's id
+    carried no language, path, span, name or kind a reader or a linker could
+    recover. The digest was buying uniqueness that the location-based form
+    already provides; the name slot is sanitized because a css selector may
+    contain a colon (``a:hover``) and a colon there shifts every anchor.
+    """
+    return f"css:{path}:{line}-{line}:{sanitize_id_name_segment(name)}:{kind}"
 
 
 def _make_edge_id(src: str, dst: str, edge_type: str) -> str:

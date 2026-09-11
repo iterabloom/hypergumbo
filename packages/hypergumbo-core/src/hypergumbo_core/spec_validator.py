@@ -168,6 +168,10 @@ _WIRED_CHECKS: tuple[dict[str, str], ...] = (
     {"check": "id_format", "validator_class": "id_format",
      "description": "Symbol.id matches the canonical lang:path:span:name:kind "
                     "grammar."},
+    {"check": "edge_id_format", "validator_class": "id_format",
+     "description": "Edge.id matches the edge:sha256:<16hex> content-digest "
+                    "scheme -- its OWN grammar, not Symbol.id's five-slot one "
+                    "(WI-vodin)."},
     {"check": "stable_id_format", "validator_class": "id_format",
      "description": "Symbol.stable_id matches the sha256:<16hex> scheme."},
     {"check": "id_roundtrip", "validator_class": "id_format",
@@ -260,6 +264,7 @@ def validate_ir(
     violations.extend(_check_stable_id_per_file_uniqueness(symbols))
     violations.extend(_check_verdict_enum_completeness())
     violations.extend(_check_id_format(symbols))
+    violations.extend(_check_edge_id_format(edges))
     violations.extend(_check_stable_id_format(symbols))
     violations.extend(_check_id_roundtrip(symbols))
     violations.extend(_check_origin_run_id_fk(symbols, edges, analysis_runs))
@@ -1810,6 +1815,51 @@ def _check_id_format(symbols: Iterable[Any]) -> list[ValidationViolation]:
                 f"Symbol.id does not match the canonical schema: "
                 f"{problem}. Use make_symbol_id(...) from analyze/base.py "
                 "rather than constructing IDs with f-strings."
+            ),
+        ))
+    return violations
+
+
+#: ``Edge.id``'s canonical shape — a content digest, NOT the five-slot node
+#: grammar. Minted at ``ir.py``'s ``edge:sha256:{edge_hash}`` and copied into
+#: roughly fifteen per-language ``_make_edge_id`` helpers.
+_CANONICAL_EDGE_ID_PATTERN = re.compile(r"^edge:sha256:[0-9a-f]{16}$")
+
+
+def _check_edge_id_format(edges: Iterable[Any]) -> list[ValidationViolation]:
+    """ID-format conformance for ``Edge.id`` (WI-vodin, Phase 6 PR1 carry-over).
+
+    THE DEFERRED ITEM ASKED FOR THE WRONG GRAMMAR AND THIS IS THE CORRECTION.
+    Its wording was to scan ``Edge.id`` "for the same canonical shape it
+    enforces on ``Symbol.id``". Measured against a live survey before
+    implementing: every one of apollo-server's 18,283 edge ids is
+    ``edge:sha256:<16hex>``, so the five-slot node grammar would have reported
+    a 100% violation rate on every repository hypergumbo has ever analysed —
+    a validator that fires on everything says nothing.
+
+    ``Edge.id`` and ``Symbol.id`` are counterparts in ROLE (per-instance
+    identity, as against the structural ``edge_key`` / ``stable_id`` pair) and
+    NOT in shape. So the discipline transfers and the pattern does not: an id
+    the factory guarantees, checked against what the factory actually mints.
+    """
+    violations: list[ValidationViolation] = []
+    for edge in edges:
+        edge_id = getattr(edge, "id", None)
+        if edge_id is None or not isinstance(edge_id, str):
+            continue
+        if _CANONICAL_EDGE_ID_PATTERN.match(edge_id):
+            continue
+        violations.append(ValidationViolation(
+            severity="error",
+            validator_class="id_format",
+            field_name="Edge.id",
+            record_id=edge_id,
+            observed=edge_id,
+            expected="edge:sha256:<16 lowercase hex>",
+            message=(
+                "Edge.id does not match the canonical schema. Mint it through "
+                "the edge-id factory rather than constructing it inline; the "
+                "shape is a content digest, not a node id."
             ),
         ))
     return violations

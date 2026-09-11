@@ -48,7 +48,7 @@ _BUILTIN_BLOCKS = frozenset({"if", "unless", "each", "with", "else"})
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"handlebars:{path}:{line}:{name}:{kind}"
+    return f"handlebars:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_handlebars_files(

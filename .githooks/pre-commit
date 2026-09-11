@@ -404,6 +404,29 @@ else
     echo -e "${YELLOW}skipped (no core dataclass file staged)${NC}"
 fi
 
+# --- ID-construction discipline (WI-vodin, ADR-0034 §"Enforcement") ---
+# A node or edge id is MINTED, never hand-spelled. The runtime spec-validator
+# classifies a malformed id only for ids a given run produced, so a linker that
+# fires on one file type stays unchecked until someone surveys that file type;
+# this reads the producers instead. Runs whenever any package source is staged,
+# because any of them can construct a Symbol or an Edge.
+echo -n "  ID construction... "
+if git diff --cached --name-only | grep -qE "^packages/.*/src/.*\.py$"; then
+    ID_LOG="/tmp/.id-construction.$$"
+    if scripts/check-id-construction > "$ID_LOG" 2>&1; then
+        echo -e "${GREEN}\u2713${NC}"
+        rm -f "$ID_LOG"
+    else
+        echo -e "${RED}\u2717${NC}"
+        echo ""
+        cat "$ID_LOG"
+        rm -f "$ID_LOG"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}skipped (no package source staged)${NC}"
+fi
+
 # Producer-side axis coherence (L3) — gates the producer surface for
 # all three sibling axes (Edge.evidence_type, Symbol.kind,
 # Edge.edge_type) at once. Catches the silent-bug shape that L1 misses:

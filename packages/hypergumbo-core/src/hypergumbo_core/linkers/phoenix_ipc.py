@@ -279,7 +279,10 @@ def link_phoenix_ipc(repo_root: Path) -> PhoenixLinkResult:
     created_symbol_ids: set[str] = set()
 
     def _make_symbol_id(pattern: PhoenixPattern, event: str) -> str:
-        return f"phoenix:{pattern.file_path}:{pattern.line}:{pattern.type}:{event}"
+        return (
+            f"phoenix:{pattern.file_path}:{pattern.line}-{pattern.line}"
+            f":{pattern.type}:{event}"
+        )
 
     def _ensure_symbol(pattern: PhoenixPattern, event: str) -> str:
         """Create symbol for Phoenix endpoint if not already created."""

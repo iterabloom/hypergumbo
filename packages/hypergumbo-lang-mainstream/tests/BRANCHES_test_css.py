@@ -33,9 +33,22 @@ class TestCSSHelperFunctions:
     """Branch coverage for helper functions."""
 
     def test_make_symbol_id_format(self) -> None:
-        """Test symbol ID format."""
+        """A css symbol id is the canonical five-slot node id (WI-vodin).
+
+        This used to pin ``css:sha256:<digest>`` — three segments, which
+        ADR-0036's grammar cannot parse at all, so every css symbol id tripped
+        the ``id_format`` validator and the pipeline dropped css ``imports``
+        edges as orphans (``test_import_dst_ids_are_canonical`` excludes css in
+        as many words for exactly that reason). The digest was buying
+        uniqueness the location-based form already provides.
+        """
         symbol_id = _make_symbol_id("styles/main.css", 10, "--primary-color", "variable")
-        assert symbol_id.startswith("css:sha256:")
+        assert symbol_id == "css:styles/main.css:10-10:--primary-color:variable"
+
+    def test_make_symbol_id_sanitizes_a_colon_bearing_selector(self) -> None:
+        """``a:hover`` in the NAME slot would shift every right-anchored slot."""
+        symbol_id = _make_symbol_id("styles/main.css", 3, "a:hover", "rule")
+        assert symbol_id == "css:styles/main.css:3-3:a.hover:rule"
 
     def test_make_edge_id_format(self) -> None:
         """Test edge ID is deterministic."""

@@ -58,7 +58,7 @@ _STATE_RE = re.compile(r"""^\s*state\s+["']([^"']+)["']\s+as\s+(\w+)""", re.MULT
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"mermaid:{path}:{line}:{name}:{kind}"
+    return f"mermaid:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_mermaid_files(

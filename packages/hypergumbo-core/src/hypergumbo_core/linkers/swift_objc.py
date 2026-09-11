@@ -39,7 +39,7 @@ class SwiftObjCLinkerResult:
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
     """Generate location-based ID."""
-    return f"swift-objc:{path}:{line}:{name}:{kind}"
+    return f"swift_objc:{path}:{line}-{line}:{name}:{kind}"
 
 
 def _find_swift_files(root: Path) -> list[Path]:
@@ -193,7 +193,7 @@ def _extract_bridging_header_imports(
     symbols: list[Symbol] = []
     edges: list[Edge] = []
     rel_path = str(file_path)
-    file_id = f"swift-objc:{rel_path}:1:file:file"
+    file_id = f"swift_objc:{rel_path}:1-1:file:file"
 
     try:
         content = read_masked_source(file_path, encoding="utf-8", errors="replace")

@@ -260,8 +260,14 @@ def link_message_dispatch(
             # .js site and gave a .ts read the write's language.
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "js_dispatch" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "js_dispatch" else "rust"
-            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:message_sender"
-            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:message_handler"
+            pub_id = (
+                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
+                f":{write.channel}:message_sender"
+            )
+            sub_id = (
+                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
+                f":{read.channel}:message_handler"
+            )
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)
