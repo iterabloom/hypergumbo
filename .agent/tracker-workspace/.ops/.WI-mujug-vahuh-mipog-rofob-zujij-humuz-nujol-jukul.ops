@@ -1,0 +1,20 @@
+- op: create  # f540
+  at: '2026-09-11T00:14:11Z'  # f540
+  by: agent  # f540
+  actor: jgstern_agent  # f540
+  clock: 1  # f540
+  nonce: f540  # f540
+  data:  # f540
+    kind: work_item  # f540
+    title: "audit the sibling fold-residue meta keys receiver and resolution_quality"  # f540
+    status: todo_hard  # f540
+    priority: 3  # f540
+    parent:  # f540
+    tags:  # f540
+    - taint  # f540
+    isbefore: []  # f540
+    duplicate_of: []  # f540
+    not_duplicate_of: []  # f540
+    pr_ref:  # f540
+    description: "FROM audit-findings 0019's adjacent-concept sweep (Step 5). Audit 0012\n(2026-05-05) created three sibling fold-residue keys in one migration --\n`call_construct`, `receiver`, `resolution_quality` (plus `visibility`). 0019\naudited the first. These are the other two, and neither has a guard of any kind.\n\n--- meta[\"receiver\"] -- CONFIRMED LEAK, 9 values, 1 consumer read ---\n\nTwo axes in one field:\n  SYNTACTIC SHAPE of the receiver expression: qualified (4), field_chain (4),\n    bare (2)\n  RESOLUTION OUTCOME for the receiver: typed_var (2), typed_field (2),\n    stdlib (2), generic (2), external (1), constant_external (1)\n\n`external` is a RESOLUTION STATUS -- precisely what `remote_external` and\n`application_external` were EJECTED from call_construct for naming\n(test_axis_meta_keys.py:411, INV-tadup). The leak was folded out of one sibling\nkey in that migration and is sitting live in the other. `constant_external`\npacks two facts into one token (constant-ness AND externality).\n\n`external` is also the ADR-0051 sentinel word for \"unreachable to the\ncatalogue\", which means the same token means different things in the module slot\nand here -- check that before reusing it.\n\n--- meta[\"resolution_quality\"] -- MINOR, document only, 6 values, 3 reads ---\n\n`typed` (1) and `typed_receiver` (3) are near-synonyms with no recorded\nboundary. `recovery` and `chained_return_type` name MECHANISMS; `ambiguous` and\n`type_inferred` name QUALITY. Milder than receiver because a mechanism arguably\nIS the quality signal here, and ADR-0053 recently made this key load-bearing for\na user-facing disclosure -- so the remedy is a documented boundary (which value\nanswers which question), not a fold.\n\n--- meta[\"visibility\"] -- NULL RESULT, no action ---\n\nOne value (`unexported`), two consumer reads, unambiguous. Recorded so the next\nauditor does not re-derive it.\n\nWHAT TO DO. Run the four leakage tests per value on `receiver` and file a\nverdict table as a sibling audit-findings doc. Expect the split above to hold,\nbut the per-value producer trace has NOT been run -- 0019 counted emit sites and\nread the vocabulary; it did not trace each `receiver` value to its producer, so\ndo not treat the shape-vs-outcome split above as a verdict.\n\nWHY THIS IS WORTH DOING NOW rather than at the next cadence: fold-residue keys\nare where the previous audit put everything that did not fit, and nothing audits\nthem on a schedule. 0019 found its field had admitted three off-axis values over\nfour months with a denylist that could not see them coming. These two keys have\nno guard at all."  # f540
+    fields: {}  # f540
