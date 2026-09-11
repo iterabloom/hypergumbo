@@ -1,0 +1,43 @@
+Original commit body from 6061b6d95b6e2322c5c3875c2452139c2150ce04:
+
+Arc T0c — the front of the remaining arc, and the two arms INV-linub owed.
+
+The owner's 2026-09-10 ruling split the drain criterion: a **cell** drains on correctness, while **this ledger** carries the demand that the drain moved a user-visible answer, shown **once** over the drained set. The 2026-09-09 ruling added one declared-sanitizer suppression arm over the same set. This publishes both, as measurement 0029, with the pre-registration and its five dated addenda in the lab record.
+
+## Arm B — did the drain move user-visible answers?
+
+**Six of seven drained languages reached a primitive they had not reached before; elixir moved two claim verdicts (`inconclusive` → `violated`); ZERO primitives were lost anywhere.**
+
+Six rows are **inherited** from each cell's own live A/B; one — javascript — was measured here, because WI-vihop states in as many words that its cell closed "with no per-cell primitive [delta]". The table carries **per-row provenance** rather than presenting seven rows of equal standing.
+
+The javascript arm (workadventure, 254 MB, whole-tree A/B pinned in two git worktrees): 5 distinct `(language, kind, primitive)` triples gained, **0 lost**, `host-description-no-network` evidence 4 → 7 — evidence moving within a verdict that was already `violated`, which is **not** a verdict change and is not counted as one. Four of four distinct new primitives read back against source and correct.
+
+**One finding against the catalogue rather than the analyzer:** the `process.on` row's own note reads `process.on('message', ...) for IPC from parent`, but the row matches any event name, and both live sites are `unhandledRejection` / `uncaughtException`. The emission is right; the row over-matches, so one of the five reaches `ipc_recv` on evidence that does not support it. Filed separately.
+
+**No-leakage control (pre-registered, could have failed):** `modsecurity` — zero `.js`/`.ts`, `.ex`/`.exs`, `.hs` — is byte-identical through both arms (md5-equal `io.json` and `vc.json`).
+
+## Arm A — what a declared sanitizer does to the drained set
+
+    metric              A control   B ceiling   |  NO DECLARATION
+    barrier walks / F        5/0         5/0    |       0/0
+    sanitized flows          158         158    |         0
+    violated claims            7           7    |         7
+    evidence                 202         201    |       204
+
+**Two things had been conflated under "suppression".** A *declaration* suppresses heavily — seven declared python functions take pretix from 0 to 158 sanitized flows. **The drain does not**: inside the declared arm, closing every §3a escape site at once moves `sanitized_flows` and `violated_claims` by **0**, at a cost of one evidence item. Arm B is a *ceiling*, so that is a proof about the whole family — no INV-linub member can suppress a finding through this channel.
+
+That answers the 2026-09-07 concern that escape-closing work's "only reachable effect on findings today is to delete them", and answers it with an instrument demonstrably able to see suppression: the same instrument measured 158 units of it one column over.
+
+**The pre-registered control was not falsifiable as written and was replaced before its reading was used** (addendum 2): `barrier_walks > 0` is satisfiable by the built-in catalogue alone. The no-declaration arm makes it a *difference* — 5 against 0 barrier walks, 158 against 0 sanitized flows.
+
+**The misspelling trap the 2026-09-09 ruling warned about is closed**, verified live rather than restated: `taint_sanitizers:` now exits 2 with a did-you-mean. INV-sisod closed it after the ruling was written.
+
+## An ops fact worth more than its own result
+
+`PYTHONPATH` pointing at a git worktree fully overrides an editable install — the `.pth` files are plain path entries, not meta-path finders — for both `python -c` and the installed console script. An arm run that way **cannot** pick up an edit made in the main tree while it runs, which retires the `git checkout <sha> -- <files>` dance for arms run this way.
+
+## What this does not establish
+
+Not a precision claim. `n_effective` per language row is one repository (two for scala and objc). Arm A is pretix alone; apollo-server produced **no walks** and is excluded from the denominator rather than folded in as a zero. `nextjs` was launched as the javascript subject **twice** and stopped both times — ~40 minutes of CPU, 3.1 GB RSS, no survey — which is recorded in the addenda and filed as its own performance item, not omitted.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
