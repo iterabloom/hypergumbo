@@ -1,6 +1,6 @@
 {
-  "last_audit_sha": "657bcd413104228a2158db1a5b10e413723266e6",
-  "last_audit_iso_date": "2026-09-06T16:19:47.911600-04:00",
-  "suspect_domain": "taint-label",
-  "audits_run": 15
+  "last_audit_sha": "3a8aed78899ba71b6a2fc49c62014d4659d3570a",
+  "last_audit_iso_date": "2026-09-10T20:18:04.941754-04:00",
+  "suspect_domain": "call_construct",
+  "audits_run": 16
 }

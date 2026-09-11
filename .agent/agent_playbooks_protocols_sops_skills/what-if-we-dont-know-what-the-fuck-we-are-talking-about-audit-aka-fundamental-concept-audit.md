@@ -973,6 +973,56 @@ runs can find prior work:
   taint-label` the same hour. Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-taint-label_09062026.md`.
 
+- **2026-09-10 — `Edge.meta["call_construct"]`, the fold-residue key's own
+  value family. AUDIT A FOLD TARGET: it is where the last audit put everything
+  that did not fit, and nothing audits it.** Suspect nominated because WI-dosuh
+  added a value and *no consumer read it*. **The nomination's own inventory was
+  wrong and that is the first lesson**: a grep for the `call_construct=` kwarg
+  found 4 values and concluded "nobody is looking at this field", while the
+  `meta={"call_construct": …}` dict-literal form holds **126 of 140 emit
+  sites** — Step 4.5's point arrived at the hard way, on the *inventory* rather
+  than on a verdict. True inventory: 12 values, all with live producers (five-
+  shape trace: literal kwarg, dict-literal, assignment-to-Name at
+  `haskell.py:504`, zero f-string, zero dict-subscript), so **no verdict rests
+  on "no producer"**. Consumers: **15 comparison sites, every one `== "method"`**
+  — 10 of 12 values never branched on, and `py.py:7051` says so outright.
+  Verdicts **10 CANONICAL / 2 DEPRECATE-NO-FOLD**: `macro` (erlang.py:562)
+  restates `evidence_type="macro_expansion"` on a second axis — the exact
+  rationale recorded for ejecting `interface_dispatch` — and tree-sitter
+  expanded nothing there, so no source construct exists to name; `macro_body`
+  (rust.py:3123) names *where* the call was found, with no uniform fold target
+  because the extracted callee is variously `Self::`-qualified, `::`-qualified
+  or bare (T4). **SILENT BUG:** `verify_claims.py:3908` membership-tests a
+  `call_construct` value against `module_kinds`, built from `catalog.primitives`
+  and therefore holding `IoPrimitive.kind` values — vocabulary exactly
+  `{function, method}`. Two tokens coincide; the other ten can never satisfy the
+  gate, so the method-starvation route silently dies for elixir, erlang,
+  haskell, ocaml, rust, dart, csharp and javascript. **The self-implicating
+  verdict is the load-bearing one:** `assignment`, added by the auditor hours
+  earlier, is CANONICAL *only under an amended axiom* — the registry's own
+  defence of `constructor` (INV-kahig) already establishes the key describes the
+  construct that produced a call-family edge, not "the syntax of a call", so the
+  axiom is one word too narrow and the amendment ships with the verdict rather
+  than after it. **Enforcement finding: INV-tadup is a DENYLIST** (four ejected
+  values, with a positive control) — right for regression, blind to a value it
+  has never seen, which is how `assignment` shipped through every gate in the
+  repo unreviewed. Adjacent: **`meta["receiver"]` CONFIRMED LEAK** — 9 values
+  splitting into syntactic shape (`qualified`, `field_chain`, `bare`) and
+  resolution outcome (`typed_var`, `stdlib`, `external`, `constant_external`),
+  where `external` is the very thing `remote_external` was ejected from
+  `call_construct` for naming: *the leak was folded out of one sibling key and
+  left live in the other*. `resolution_quality` mixes quality and mechanism with
+  near-synonyms `typed`/`typed_receiver` → DOCUMENT. `visibility` **null result,
+  recorded** so nobody re-derives it. → WI-dapap (axiom, gate, allowlist, two
+  drops), WI-mujug (the sibling keys). **Filed as a SURVEY, not an audit-findings
+  doc, and the reason is a finding**: `validate_against_registry` requires a
+  per-value registry the axis does not have, so the format correctly refuses to
+  check it — conversion trigger written into the document. The cadence recorder
+  could not see `docs/surveys/` either; that was fixed rather than `--force`d,
+  since a recorded audit with no discoverable write-up is the one outcome the
+  gate exists to prevent. Full write-up:
+  `docs/surveys/call-construct-value-family-audit.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
