@@ -1,0 +1,21 @@
+- op: create  # 839b
+  at: '2026-09-10T23:58:38Z'  # 839b
+  by: agent  # 839b
+  actor: jgstern_agent  # 839b
+  clock: 1  # 839b
+  nonce: 839b  # 839b
+  data:  # 839b
+    kind: work_item  # 839b
+    title: "measure the corpus-level recall and precision impact of the js handler-assignment construct"  # 839b
+    status: todo_hard  # 839b
+    priority: 2  # 839b
+    parent:  # 839b
+    tags:  # 839b
+    - javascript  # 839b
+    - taint  # 839b
+    isbefore: []  # 839b
+    duplicate_of: []  # 839b
+    not_duplicate_of: []  # 839b
+    pr_ref:  # 839b
+    description: "UNMEASURED, AND FILED RATHER THAN ASSUMED EITHER WAY.\n\nWI-dosuh (PR #903) made `ws.onmessage = h` emit a registration edge, and the\nconstruct turned out NOT to be inert: on a fixture it produces a live\n`untrusted-input-no-subprocess` violation, correctly. What was NEVER measured is\nwhat it does to a real corpus.\n\nWHY THAT MATTERS IN BOTH DIRECTIONS.\n  - RECALL: WebSocket/SSE handler assignment is the ordinary spelling in browser\n    code. Every site was previously invisible. How many are there, and how many\n    reach a sink?\n  - PRECISION: the inline-handler spelling collapses the handler body into the\n    enclosing function, so ANY sink in that function co-locates with the source\n    on the structural arm. On a fixture the co-location FP fires for\n    addEventListener identically, so it is pre-existing — but \"pre-existing\n    shape\" is not \"same volume\". This change adds a new population of sources\n    that the shape can act on, and the added volume is unknown.\n\nWHAT TO MEASURE. An A/B over the analyzer change (a survey per arm — an analyzer\nchange MOVES the survey, so io-boundaries/verify-claims alone are not enough),\none session and one XDG_CACHE_HOME per arm, subject blob asserted at BEGIN and\nEND. Report per repo:\n  1. count of `call_construct: assignment` edges emitted;\n  2. how many reach a catalogue row (the RECALL figure) vs how many are merely\n     slotted — these are DIFFERENT numbers and conflating them is the WI-kikar\n     892-vs-278 error;\n  3. `calls_total` in both arms — it must be identical, since this only ADDS\n     edges and takes nothing from an already-resolved symbol;\n  4. verify-claims verdict deltas, and for EVERY new finding, adjudicate it\n     against source as true or false. Do not report a finding count alone.\n\nCOHORT. The JS repos already in the pool: vscode, nextjs, podman-desktop. Note\nthese are Node-heavy; the WebSocket/EventSource surface is a BROWSER surface, so\na null result on this cohort may reflect cohort choice rather than the change.\nSay so explicitly if it comes back near zero, and consider whether a\nbrowser-facing repo belongs in the pool.\n\nDO NOT CLOSE THIS BY RE-RUNNING A GREEN DEEP CYCLE. DEEP band metrics are\nhealthy-range metrics, not deltas; a green cycle validates nothing here."  # 839b
+    fields: {}  # 839b
