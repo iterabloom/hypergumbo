@@ -577,6 +577,8 @@ def _cmd_add(args: argparse.Namespace, ts: TrackerSet) -> int:
             fields[k] = v
         kwargs["fields"] = fields
 
+    if getattr(args, "force_field_key", False):
+        kwargs["force_field_key"] = True
     item_id = ts.add(kind=args.kind, title=args.title, tier=tier, **kwargs)
     # Catalog maintenance: stamp last_used (and seed created_on for first
     # sight) on every tag this op affixed. Failure mode this guards
@@ -832,6 +834,7 @@ def _cmd_update(args: argparse.Namespace, ts: TrackerSet) -> int:
             set_fields=set_fields or None,
             add_fields=add_fields or None,
             remove_fields=remove_fields or None,
+            force_field_key=getattr(args, "force_field_key", False),
         )
 
     # Catalog maintenance: stamp last_used on every tag this op
@@ -2648,6 +2651,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_add.add_argument("--pr-ref", dest="pr_ref", help="PR reference")
     p_add.add_argument("--field", action="append", help="Field key=value (repeatable)")
+    p_add.add_argument(
+        "--force-field-key", action="store_true",
+        help="Allow a custom --field key that differs from a DECLARED field "
+             "only in spelling. Never allows a core attribute name.",
+    )
     p_add.add_argument("--tier", choices=["canonical", "workspace", "stealth"],
                         default=None, help="Target tier (default: workspace)")
 
@@ -2690,6 +2698,11 @@ def _build_parser() -> argparse.ArgumentParser:
                            help="Field key=value (REPLACES entire fields dict — use --add-field for partial)")
     p_update.add_argument("--add-field", action="append", dest="add_field",
                            help="Add/update a single field key=value (repeatable, preserves other fields)")
+    p_update.add_argument(
+        "--force-field-key", action="store_true",
+        help="Allow a custom --field key that differs from a DECLARED field "
+             "only in spelling. Never allows a core attribute name.",
+    )
     p_update.add_argument("--remove-field", action="append", dest="remove_field",
                            help="Remove a field by key (repeatable)")
     p_update.add_argument("--note", help="Add a discussion note (shorthand for discuss)")
