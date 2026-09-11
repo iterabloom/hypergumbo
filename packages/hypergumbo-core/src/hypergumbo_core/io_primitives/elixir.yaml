@@ -6,6 +6,20 @@
 # (via _CATALOG_PARENTS) so Erlang stdlib (`file`, `gen_tcp`, `ets`,
 # `logger`, etc.) is covered for the atom-access path.
 #
+# THAT LAST SENTENCE WAS TRUE OF THE ROWS AND FALSE OF THE PATH UNTIL
+# 2026-09-10 (WI-kigub). The parent rows were here and reachable by nothing:
+# `elixir.py::_handle_dot_call` required the dot node to carry an `alias`
+# child, an atom module parses as `atom`, and so `:ets.insert(...)` emitted
+# no call edge of any kind — the catalogue was never handed anything it could
+# match. On phoenix-framework the atom path now reaches 25 OTP modules and
+# `db_read` / `db_write` appear as boundary kinds that repository had never
+# reached. The module slot is emitted WITHOUT the leading colon, which is what
+# makes these rows matchable: `_module_matches` is component-aware and does no
+# colon stripping, so `ets` matches and `:ets` matches nothing. The one row
+# below still spelled `:httpc` is a mis-homed duplicate of erlang.yaml's
+# `httpc` (same `net_send` boundary, so it changes no verdict) and belongs to
+# WI-fovub, not here.
+#
 # Elixir idiom uses its own wrappers over Erlang: `File` for filesystem,
 # `IO` for console/streams, `System` for process/env, `Logger` for logs.
 #

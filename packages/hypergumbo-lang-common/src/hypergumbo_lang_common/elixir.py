@@ -5,7 +5,18 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
 - Module declarations (defmodule)
 - Function declarations (def/defp)
 - Macro declarations (defmacro/defmacrop)
-- Function call relationships
+- Function call relationships, in BOTH module-qualified receiver syntaxes:
+  an ``alias`` receiver for an Elixir module (``Logger.error``) and an
+  ``atom`` receiver for an Erlang/OTP one (``:ets.insert``). The atom form
+  is not a stylistic variant — it is the ONLY way Elixir can call OTP at
+  all, so ``:ets``, ``:file``, ``:gen_tcp``, ``:crypto`` and ``:httpc``
+  are reachable through no other spelling (WI-kigub). Its module slot is
+  emitted WITHOUT the leading colon, matching both the catalogue's rows
+  and what the erlang analyzer emits for the same OTP modules. Four other
+  receiver shapes the grammar puts in the same position are deliberately
+  refused and pinned as such: a variable (``mod.fun()``), a module
+  attribute (``@attr.thing()``), a quoted atom (``:"Elixir.Foo".bar()``)
+  and an anonymous call (``f.()``, which has no named callee at all).
 - Import relationships (use/import). ``alias`` produces NO edge — it is
   collected only as a hint for call disambiguation.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
@@ -1270,19 +1281,59 @@ def _handle_dot_call(
     the global symbol registry.  The *evidence_type* parameter allows callers
     (such as the pipe-operator handler) to supply a more specific tag.
     """
-    # Extract module alias and function name from dot node
+    # Extract the receiver and function name from the dot node.
+    #
+    # WI-kigub: the receiver is an ``alias`` for an Elixir module
+    # (``Logger.error``) but an ``atom`` for an Erlang/OTP one
+    # (``:ets.insert``), and the atom form is the ONLY way Elixir can reach
+    # OTP at all. Requiring an ``alias`` here returned before emitting
+    # anything, so every OTP module a project touches -- ``:ets``, ``:file``,
+    # ``:gen_tcp``, ``:crypto``, ``:httpc`` -- produced no call edge of any
+    # kind. Shapes the grammar puts here that are still refused, deliberately:
+    # a variable receiver (``mod.fun()``), a module attribute
+    # (``@attr.thing()``), a quoted atom (``:"Elixir.Foo".bar()``) and an
+    # anonymous call (``f.()``, which has no named callee at all).
     alias_node = find_child_by_type(dot_node, "alias")
+    atom_node = find_child_by_type(dot_node, "atom")
     func_id_node = find_child_by_type(dot_node, "identifier")
-    if alias_node is None or func_id_node is None:
+    if func_id_node is None:
         return
 
-    module_name = node_text(alias_node, source)
     func_name = node_text(func_id_node, source)
 
     # Find the enclosing function (caller)
     current_function = _get_enclosing_function(call_node, source, local_symbols)
     if current_function is None:
         return
+
+    if alias_node is None:
+        # Nested rather than folded into one compound guard so the atom is
+        # NARROWED here: `alias_node is None and atom_node is None` does not
+        # tell mypy that reaching this branch means `atom_node` is a Node.
+        if atom_node is None:
+            return
+        # An atom module is an OTP module BY CONSTRUCTION, so it goes straight
+        # to the unresolved fallback and never touches the first-party
+        # resolution branches below. That is a correctness requirement, not a
+        # shortcut: those branches end in a ``any(module_dot in k ...)``
+        # SUBSTRING test, and ``"ets."`` is a substring of any project key such
+        # as ``Foo.Sockets.insert``, so routing atoms through them would bind
+        # ``:ets.insert`` to a first-party function.
+        #
+        # The leading colon is STRIPPED. ``_module_matches`` is component-aware
+        # and does no colon stripping, so a module slot of ``:ets`` matches the
+        # catalogue's ``ets`` row not at all -- the edge would exist and reach
+        # nothing. Stripping is also the cross-language parity answer: the
+        # erlang analyzer, calling these same OTP modules, emits
+        # ``erlang:ets:0-0:insert:function``.
+        _emit_unresolved_dot_edge(
+            call_node, current_function,
+            node_text(atom_node, source).lstrip(":"), func_name,
+            edges, run_id,
+        )
+        return
+
+    module_name = node_text(alias_node, source)
 
     # Build the fully-qualified function name: Module.func_name
     qualified_name = f"{module_name}.{func_name}"
@@ -1354,11 +1405,32 @@ def _handle_dot_call(
     # → ``S.upcase``), surface the underlying module in the dst so
     # downstream consumers see ``String`` not ``S``. Populate dst_ref
     # with the canonical (module, name).
-    canonical_module = alias_hints.get(module_name, module_name)
-    dst_id = f"elixir:{canonical_module}:0-0:{func_name}:unresolved"
+    _emit_unresolved_dot_edge(
+        call_node, current_function,
+        alias_hints.get(module_name, module_name), func_name, edges, run_id,
+    )
+
+
+def _emit_unresolved_dot_edge(
+    call_node: "tree_sitter.Node",
+    current_function: Symbol,
+    canonical_module: str,
+    func_name: str,
+    edges: list[Edge],
+    run_id: str,
+) -> None:
+    """Emit the cross-module fallback edge for a dot call.
+
+    Shared by the alias path (``Logger.error``, after alias expansion) and the
+    atom path (``:ets.insert``, after colon stripping) so the two cannot drift
+    apart in destination shape -- the id format, the ``ast_call_direct``
+    evidence tag and the structured ``dst_ref`` are what the boundary engine
+    and the linkers read, and they must be identical whichever receiver syntax
+    the source used.
+    """
     edges.append(Edge.create(
         src=current_function.id,
-        dst=dst_id,
+        dst=f"elixir:{canonical_module}:0-0:{func_name}:unresolved",
         edge_type="calls",
         line=call_node.start_point[0] + 1,
         evidence_type="ast_call_direct",
