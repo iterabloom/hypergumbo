@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **321** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 88 core, 4 CLI, 34 tracker)
-- **45560** symbols (functions, classes, methods)
-- **181157** edges by type:
-  - calls: 104583
-  - contains: 41950
-  - imports: 13985
-  - instantiates: 11357
-  - references: 6336
-  - module_attr_ref: 1495
-  - other: 1451
+- **323** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 89 core, 4 CLI, 35 tracker)
+- **45811** symbols (functions, classes, methods)
+- **181990** edges by type:
+  - calls: 105024
+  - contains: 42191
+  - imports: 14052
+  - instantiates: 11366
+  - references: 6390
+  - module_attr_ref: 1514
+  - other: 1453
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 45560 Symbols + 181157 Edges + UsageContexts           │
+│  Output: 45811 Symbols + 181990 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,20 +272,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9588.7 | ir.py |
-| `len` | external_symbol | 7430.0 | <external> |
-| `write_text` | external_symbol | 6516.0 | <external> |
+| `len` | external_symbol | 7443.0 | <external> |
+| `write_text` | external_symbol | 6530.0 | <external> |
 | `Span` | class | 6422.1 | ir.py |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `get` | external_symbol | 2974.0 | <external> |
-| `load_catalog` | function | 2441.6 | io_boundary.py |
-| `Edge.create` | method | 2403.1 | ir.py |
-| `next` | external_symbol | 2128.0 | <external> |
+| `get` | external_symbol | 2978.0 | <external> |
+| `load_catalog` | function | 2492.9 | io_boundary.py |
+| `Edge.create` | method | 2406.9 | ir.py |
+| `next` | external_symbol | 2129.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `str` | external_symbol | 2052.0 | <external> |
+| `str` | external_symbol | 2056.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `Path` | external_symbol | 1932.0 | <external> |
-| `main` | function | 1677.1 | cli.py |
-| `append` | external_symbol | 1582.0 | <external> |
+| `Path` | external_symbol | 1942.0 | <external> |
+| `main` | function | 1692.9 | cli.py |
+| `append` | external_symbol | 1587.0 | <external> |
 
 ## Pattern System
 
@@ -471,6 +471,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-id-construction` | Pre-commit / CI lint: a node or edge id is minted, never hand-spelled |
 | `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
 | `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
 | `check-meta-write-discipline` | Pre-commit / CI lint: a multi-writer meta slot must declare its write |
@@ -585,6 +586,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.catalogue_home`**: ADR-0047 rulings 3 and 4 — a findable home for the user's catalogue...
 - **`hypergumbo_core.catalogue_inventory`**: WI-vafit — the inventory a USER needs of what this installation knows.
 - **`hypergumbo_core.cfg`**: Language-parameterized CFG builder using fringe-based recursive alg...
+- **`hypergumbo_core.check_id_construction`**: Static enforcement of ADR-0034's id-construction discipline (WI-vod...
 - **`hypergumbo_core.compact`**: Compact output mode: budget-aware symbol selection + residual summa...
 - **`hypergumbo_core.confidence`**: Evidence -> confidence derivation (the ADR-0039 detection-reliabili...
 - **`hypergumbo_core.coverage_census`**: Per-test coverage census and test-trajectory search.
@@ -876,6 +878,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.clusters`**: Predicted clusters of tracker items: TF-IDF cosine, top-k neighbour...
 - **`hypergumbo_tracker.configure`**: Interactive CLI config editor for hypergumbo tracker.
 - **`hypergumbo_tracker.embeddings`**: Tier 2 embedding-based near-duplicate detection for the hypergumbo ...
+- **`hypergumbo_tracker.field_keys`**: What may be stored under a custom field key, and what may not (INV-...
 - **`hypergumbo_tracker.hotspot_markup`**: Wrap detected item IDs in Textual ``[@click=...]`` action markup.
 - **`hypergumbo_tracker.id_matching`**: Detect tracker item IDs embedded in free-text panes (descriptions, ...
 - **`hypergumbo_tracker.item_nav_render`**: Assemble the display content for the tracker TUI item-nav modal.
@@ -909,8 +912,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 66e596c2b77d
-  commit_count: 7254
+  commit: 3f0bc1a3dce5
+  commit_count: 7289
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
