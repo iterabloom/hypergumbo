@@ -61,3 +61,13 @@
   clock: 6  # 77bd
   nonce: 77bd  # 77bd
   message: "RANK PROVENANCE MISMATCH, recorded rather than acted on. This item was promoted P2 -> P1 on 2026-08-17 on owner authorisation, and the promotion note justifies the rank with: 'host-secret-* claims carry 48 OF THE 85 ADJUDICATED FLOWS at 22.9% PRECISION between them. The Go catalogue's env_read includes os.Getwd, os.Executable, os.Hostname and runtime.GOOS; the JavaScript one includes navigator.platform and window.screen.'\n\nTHAT EVIDENCE IS NOT ABOUT THIS ITEM. This item's statement is about a primitive catalogued under MORE THAN ONE boundary. env_read rows are under exactly ONE boundary; the problem the promotion describes is the env_read -> host_secret ZONE MAPPING calling a hostname read a secret. Different mechanism, different fix.\n\nThe item that owns that measurement is INV-tutar ('env_read -> host_secret: the boundary means reads host description (GOOS, Getwd...)'), and it is at P2. LIVE.md's P1 line also carries the promotion's framing, reading 'INV-vaduk (48 of 85 at 22.9%)'.\n\nSo the largest precision lever docs/measurements/0001 names is ranked BELOW the item that has been standing in for it -- which is the same rank-inversion the 2026-08-17 promotion was written to correct, one item over.\n\nNOT ACTING ON THIS. The previous re-rank was made on explicit owner authorisation and recorded as such, and re-ranking silently is the drift that note exists to prevent. Filing the observation on both items so the next session does not have to re-derive it."  # 77bd
+- op: update  # e3c3
+  at: '2026-09-11T10:29:16Z'  # e3c3
+  by: agent  # e3c3
+  actor: jgstern_agent  # e3c3
+  clock: 7  # e3c3
+  nonce: e3c3  # e3c3
+  set:  # e3c3
+    fields:  # e3c3
+      priority:  # e3c3
+      status:  # e3c3
