@@ -28,6 +28,17 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   when qualified calls stopped resolving by bare name (WI-kafor): a
   qualified call is resolved by EXACT name only, so an alias that is not
   read is a call that is not resolved.
+- A BARE call to a stdlib-named function takes the module its own file's
+  ``import`` directives establish, and NOTHING ELSE (WI-jozap). Three ordered
+  rules: an ``import M, only: [f: n]`` list that names the function wins; a
+  Kernel auto-import (``is_atom``, ``inspect``, ``raise``) gets no module-keyed
+  edge, because it is available with no directive at all and is therefore not
+  the imported module's function; an importable name (``IO.puts``,
+  ``Enum.map``, ``String.split``, ``Logger.error``) takes its owning module
+  only when that module is imported. Anything else is DECLINED. This replaced
+  ``next(iter(imported_modules))``, which took an arbitrary set member and,
+  because Python randomises string hashing per process, made the analyzer
+  non-deterministic across runs.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
@@ -114,7 +125,11 @@ BEHAVIOUR_CALLBACKS: dict[str, list[str]] = {
 # Local definitions shadow Kernel, so local_symbols_multi matches are
 # still allowed.  Only the cross-file (global_multi / resolver)
 # fallback is gated.
-_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
+#: Kernel and Kernel.SpecialForms names: available bare with NO ``import``
+#: directive at all. WI-jozap: membership here is precisely the statement "this
+#: is NOT the imported module's function", so a bare call to one of these must
+#: never be attributed to a module the file happens to import.
+_ELIXIR_KERNEL_AUTO_IMPORTS: frozenset[str] = frozenset({
     # Kernel — auto-imported, always available bare
     "inspect", "to_string", "to_charlist", "is_atom", "is_binary",
     "is_bitstring", "is_boolean", "is_float", "is_function",
@@ -130,18 +145,35 @@ _ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = frozenset({
     "get_and_update_in", "pop_in", "match?", "dbg",
     # Kernel.SpecialForms — technically macros but called bare
     "import", "require", "alias", "use",
-    # IO — commonly called bare via import
-    "puts", "write", "gets",
-    # Enum — very common via import
-    "map", "filter", "reduce", "each", "sort", "flat_map",
-    "find", "reject", "any?", "all?", "count", "zip",
-    "uniq", "chunk_every", "group_by", "into",
-    # String — commonly imported
-    "split", "join", "trim", "replace", "starts_with?",
-    "ends_with?", "contains?", "downcase", "upcase",
-    # Logger
-    "debug", "info", "warn", "error",
 })
+
+#: Bare-callable names that DO come from an imported module, mapped to the
+#: module that exports them. The ownership was already written down as prose
+#: comments beside these names ("# IO — commonly called bare via import") and
+#: never used as data; WI-jozap is what that cost. Keyed by name because the
+#: name is what a bare call site gives us, and a dict lookup is deterministic
+#: where ``next(iter(<set>))`` is not.
+_ELIXIR_IMPORTABLE_BARE_FUNCTIONS: dict[str, str] = {
+    # IO
+    "puts": "IO", "write": "IO", "gets": "IO",
+    # Enum
+    "map": "Enum", "filter": "Enum", "reduce": "Enum", "each": "Enum",
+    "sort": "Enum", "flat_map": "Enum", "find": "Enum", "reject": "Enum",
+    "any?": "Enum", "all?": "Enum", "count": "Enum", "zip": "Enum",
+    "uniq": "Enum", "chunk_every": "Enum", "group_by": "Enum", "into": "Enum",
+    # String
+    "split": "String", "join": "String", "trim": "String",
+    "replace": "String", "starts_with?": "String", "ends_with?": "String",
+    "contains?": "String", "downcase": "String", "upcase": "String",
+    # Logger
+    "debug": "Logger", "info": "Logger", "warn": "Logger", "error": "Logger",
+}
+
+#: The union the rest of this module consults to decide "is this a bare call a
+#: project function could own?". Unchanged in membership; only split above.
+_ELIXIR_STDLIB_FUNCTIONS: frozenset[str] = (
+    _ELIXIR_KERNEL_AUTO_IMPORTS | frozenset(_ELIXIR_IMPORTABLE_BARE_FUNCTIONS)
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -303,6 +335,103 @@ def _extract_imported_modules(
                     break
 
     return imported
+
+
+def _extract_import_only_bindings(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> dict[str, str]:
+    """Map a bare function name to the module whose ``import ..., only:`` names it.
+
+    This is the DIRECT evidence WI-rakul's comment describes ("the explicit
+    import directive establishes module context") and which the code it guarded
+    never actually read -- it took an arbitrary member of the import SET
+    instead. An ``only:`` list names the functions, so the module follows from
+    the NAME rather than from iteration order.
+
+    Probing the grammar found five import shapes where the item named one::
+
+        import M                          -> no binding (nothing enumerated)
+        import M, only: [f: 1, g: 2]      -> f -> M, g -> M
+        import M, only: :macros           -> no binding (not enumerable)
+        import M, except: [f: 1]          -> no binding (says what is NOT there)
+        (several directives in one file)  -> first in DOCUMENT order wins
+
+    First-wins is a deliberate choice of a DETERMINISTIC rule over a
+    set-arbitrary one; two directives importing the same name is a compile
+    error in Elixir, so the case is not expected to arise in valid source.
+    """
+    bindings: dict[str, str] = {}
+    for node in iter_tree(tree.root_node):
+        if node.type != "call":
+            continue
+        target = find_child_by_type(node, "identifier")
+        if target is None or node_text(target, source) != "import":
+            continue
+        args = find_child_by_type(node, "arguments")
+        if args is None:  # pragma: no cover - `import` with no argument
+            continue
+        alias_node = find_child_by_type(args, "alias")
+        if alias_node is None:
+            continue
+        module = node_text(alias_node, source)
+        keywords = find_child_by_type(args, "keywords")
+        if keywords is None:
+            continue
+        for pair in keywords.children:
+            if pair.type != "pair":
+                continue
+            key = find_child_by_type(pair, "keyword")
+            if key is None or node_text(key, source).rstrip(": ") != "only":
+                continue
+            listing = find_child_by_type(pair, "list")
+            if listing is None:
+                continue          # ``only: :macros`` -- not enumerable
+            inner = find_child_by_type(listing, "keywords")
+            if inner is None:  # pragma: no cover - ``only: []``
+                continue
+            for entry in inner.children:
+                if entry.type != "pair":
+                    continue
+                entry_key = find_child_by_type(entry, "keyword")
+                if entry_key is None:  # pragma: no cover - defensive
+                    continue
+                bindings.setdefault(
+                    node_text(entry_key, source).rstrip(": ").strip(), module,
+                )
+    return bindings
+
+
+def _bare_call_source_module(
+    name: str,
+    imported_modules: set[str],
+    only_bindings: dict[str, str],
+) -> Optional[str]:
+    """Which module does a bare stdlib-named call belong to? (WI-jozap)
+
+    Three ordered rules and no set iteration anywhere:
+
+    1. an ``only:`` list that NAMES the function wins -- direct evidence;
+    2. a Kernel auto-import belongs to Kernel, so it gets NO module-keyed
+       edge. Membership of ``_ELIXIR_KERNEL_AUTO_IMPORTS`` is precisely the
+       statement "this is not the imported module's function";
+    3. an importable name whose OWNING stdlib module is imported takes that
+       module.
+
+    Anything else returns ``None`` and no edge is emitted. Declining is the
+    withholding direction, which is the safe one: a wrong module here is a
+    false edge into a catalogue, and the catalogue is what a security verdict
+    is read off.
+    """
+    bound = only_bindings.get(name)
+    if bound is not None:
+        return bound
+    if name in _ELIXIR_KERNEL_AUTO_IMPORTS:
+        return None
+    owner = _ELIXIR_IMPORTABLE_BARE_FUNCTIONS.get(name)
+    if owner is not None and owner in imported_modules:
+        return owner
+    return None
 
 
 def _get_enclosing_modules(node: "tree_sitter.Node", source: bytes) -> list[str]:
@@ -1079,11 +1208,16 @@ def _extract_edges_from_tree(
     local_symbols_multi: dict[str, list[Symbol]] | None = None,
     global_symbols_multi: dict[str, list[Symbol]] | None = None,
     imported_modules: set[str] | None = None,
+    import_only_bindings: dict[str, str] | None = None,
 ) -> list[Edge]:
     """Extract call and import edges from a parsed Elixir tree.
 
     Args:
         alias_hints: Optional dict mapping short names to full module paths for disambiguation.
+        import_only_bindings: Function name -> module, from the ``only:``
+            lists of ``import`` directives (WI-jozap). Direct evidence of which
+            module a bare call belongs to; outranks the default ownership
+            table.
         imported_modules: Set of module names from ``import`` directives. When
             provided, bare cross-module calls are only resolved if the target
             function's module was imported. This prevents false edges from
@@ -1165,17 +1299,32 @@ def _extract_edges_from_tree(
                                 origin_run_id=run_id,
                                 meta={"call_construct": "function"},
                             ))
-                        # WI-rakul: explicit ``import Mod, only: [name: N]``
-                        # + bare ``name(...)``. The auto-import skip below
-                        # would drop these silently, but the explicit import
-                        # directive establishes module context — surface an
-                        # unresolved edge keyed to the source module so
+                        # WI-rakul: a bare ``name(...)`` whose module the
+                        # file's ``import`` directives actually establish —
+                        # surface an unresolved edge keyed to that module so
                         # downstream linkers / io-boundaries can match.
+                        #
+                        # WI-jozap: WHICH module is decided by
+                        # ``_bare_call_source_module``, not by
+                        # ``next(iter(imported_modules))``. That took an
+                        # arbitrary member of a set, and Python randomises
+                        # string hashing per process, so the same code over the
+                        # same repository did not produce the same answer twice
+                        # (101 edges and up to 25 nodes moved between seeds on
+                        # phoenix-framework). Ordering the set would have fixed
+                        # determinism and kept a wrong answer: measured over
+                        # phoenix-framework and livebook, ALL 653 edges this
+                        # branch emitted were Kernel auto-imports —
+                        # ``Plug.Conn.inspect``, ``Ecto.Changeset.raise`` —
+                        # which no ``import`` directive establishes at all.
                         elif (
                             target_name in _ELIXIR_STDLIB_FUNCTIONS
                             and imported_modules
+                            and (source_module := _bare_call_source_module(
+                                target_name, imported_modules,
+                                import_only_bindings or {},
+                            )) is not None
                         ):
-                            source_module = next(iter(imported_modules))
                             ext_ref = ExternalRef(
                                 lang="elixir",
                                 module_path=source_module,
@@ -1596,6 +1745,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
                     local_symbols_multi[name] = local_matches
 
         file_imported_modules = _extract_imported_modules(tree, source)
+        file_only_bindings = _extract_import_only_bindings(tree, source)
 
         edges = _extract_edges_from_tree(
             tree, source, rel_path, local_symbols, global_symbols,
@@ -1604,6 +1754,7 @@ class ElixirAnalyzer(TreeSitterAnalyzer):
             local_symbols_multi=local_symbols_multi,
             global_symbols_multi=global_multi,
             imported_modules=file_imported_modules,
+            import_only_bindings=file_only_bindings,
         )
 
         # Behaviour callback edges (use GenServer, use Phoenix.LiveView, etc.)
