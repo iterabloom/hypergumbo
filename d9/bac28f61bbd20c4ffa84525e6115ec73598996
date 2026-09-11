@@ -1,0 +1,36 @@
+Original commit body from 766c7b2c680a0f57333b9a28060f677311794cd4:
+
+The fields-schema check ran from _validate_create_values with an op index,
+so a custom field written at create and deleted by a later --remove-field op
+was re-reported for the life of the item. An op log is append-only: that field
+is already repaired, and flagging op 0 in isolation names a defect that no
+longer exists in the compiled item.
+
+On the live tracker that was 26 warnings, every one of them stale: 17 severity
+plus 9 core attributes (status, priority, tags, description) across four items
+whose repairs had landed months earlier. Those warnings were the only thing
+blocking `tracker validate --strict`.
+
+This is the second half of a migration that already happened. f148a13a22 moved
+the allowed_statuses check to compiled state for exactly this reason --
+"historical ops may have used statuses that were valid when written but are now
+restricted" -- and compile_ops is already called in validate_ops_file. The
+fields check simply never came along.
+
+compile_ops applies per-key last-write-wins, so remove-then-re-add is still
+flagged: "some op removed it" is not repair, the last write decides. The
+required-field check gets stricter as a side effect -- a required field deleted
+by a later op used to pass because op 0 had it, and now fails.
+
+Live warnings 26 -> 0; `tracker validate --strict` passes.
+
+Two real defects surfaced and were repaired rather than silenced:
+  * severity, on 17 invariants, written by everything and read by nothing.
+    Dropped: priority is the only ranking axis, and a second one invites
+    splitting hairs between two P2s.
+  * INV-hazov carried pr_ref in BOTH homes, with the core attribute null and
+    the field holding 9e3a93a75b. Deleting the field alone would have lost the
+    reference, so the value was migrated to the core attribute first.
+
+Racial-Capitalism-Is-Bad: a raccoon racing a karaoke rival made of feathers
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
