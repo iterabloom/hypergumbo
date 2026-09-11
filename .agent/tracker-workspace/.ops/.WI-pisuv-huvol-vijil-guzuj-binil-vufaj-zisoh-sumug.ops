@@ -1,0 +1,22 @@
+- op: create  # 0a8f
+  at: '2026-09-11T02:53:30Z'  # 0a8f
+  by: agent  # 0a8f
+  actor: jgstern_agent  # 0a8f
+  clock: 1  # 0a8f
+  nonce: 0a8f  # 0a8f
+  data:  # 0a8f
+    kind: work_item  # 0a8f
+    title: "elixir: every def emits a self-call edge at its own head line -- 1,435 spurious self-edges on phoenix (13.5% of its elixir call graph), reproducible on a non-recursive one-liner"  # 0a8f
+    status: todo_hard  # 0a8f
+    priority: 2  # 0a8f
+    parent:  # 0a8f
+    tags:  # 0a8f
+    - elixir  # 0a8f
+    - analysis_quality  # 0a8f
+    - call_graph  # 0a8f
+    isbefore: []  # 0a8f
+    duplicate_of: []  # 0a8f
+    not_duplicate_of: []  # 0a8f
+    pr_ref:  # 0a8f
+    description: "FOUND 2026-09-10 while measuring WI-kigub. Census:\n~/hypergumbo_lab_notebook/kigub_09102026/self_edge_census.txt.\n\nEvery Elixir function definition emits a call edge FROM the function TO\nitself, at the `def` head line.\n\nMINIMAL REPRO, no recursion anywhere:\n\n    defmodule Foo.Sockets do\n      def insert(a, b), do: {a, b}\n    end\n\n    calls  line=2  elixir:sockets.ex:2-2:Foo.Sockets.insert:function\n                -> elixir:sockets.ex:2-2:Foo.Sockets.insert:function\n\nMEASURED on phoenix-framework (`analyze_elixir`, seed pinned):\n    calls edges                                   10,633\n    self-edges (src == dst)                        2,245   21.1% of calls\n      at the `def` HEAD line - spurious            1,435   13.5% of calls\n      inside the body - could be real recursion      810\n\nThe head/body split is the point: 1,435 are attributable by construction and\nare not recursion, because the edge sits on the definition line itself. The\n810 body-line ones are left uncounted rather than claimed.\n\nMECHANISM, read off a grammar dump rather than inferred: `def` is a macro, so\n`def go(t, k, v) do ... end` parses with the head `go(t, k, v)` as its own\n`call` node. The walker visits it like any bare call and resolves the name\nagainst local symbols, which finds the very function being defined. The same\nshape will hold for `defp`, `defmacro` and `defmacrop`, and multi-clause\nfunctions get one per clause (2,245 over 1,364 distinct functions).\n\nWHY IT MATTERS BEYOND TIDINESS: a self-edge is a cycle of length one in the\ncall graph. It inflates every per-function fan-out and centrality figure,\nit makes a non-recursive function look recursive to any consumer that tests\nfor cycles, and it is 13.5% of the elixir call graph's edges.\n\nNOT IN SCOPE OF WI-kigub, which added atom-module call edges and touched no\n`def` handling; found because a WI-kigub test asserted no edge mentioned a\nproject module and this one did, in BOTH arms."  # 0a8f
+    fields: {}  # 0a8f
