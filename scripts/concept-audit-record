@@ -96,9 +96,22 @@ def findings_documents(
 ) -> list[Path]:
     """Return the write-ups that look like they belong to ``suspect``.
 
-    Searches ``<repo>/docs/audits`` (the in-repo audit-findings home) and
-    the lab notebook (where free-form audit prose lands). A missing root
-    is the fresh-clone case, not an error.
+    Searches ``<repo>/docs/audits`` (the in-repo audit-findings home),
+    ``<repo>/docs/surveys`` and the lab notebook (where free-form audit
+    prose lands). A missing root is the fresh-clone case, not an error.
+
+    ``docs/surveys`` is searched because it is the DOCUMENTED home for an
+    audit whose findings the per-value trichotomy cannot mechanically
+    check -- ``docs/surveys/README.md`` calls itself the acknowledged
+    sibling of ``docs/audits`` for exactly that case, and
+    ``audit_findings.validate_against_registry`` rejects any audit whose
+    axis has no value registry. Omitting it made the cadence gate refuse
+    a real, written-up audit and steered the author toward ``--force``,
+    which is the one outcome this gate exists to prevent: a recorded
+    audit with no discoverable write-up. Found while recording the
+    2026-09-10 ``call_construct`` audit, whose write-up lives at
+    ``docs/surveys/call-construct-value-family-audit.md`` precisely
+    because that field has no value registry to validate against.
 
     ``newer_than`` is what makes this a witness rather than a formality.
     Without it the gate is satisfied by ANY historical document naming
@@ -115,7 +128,11 @@ def findings_documents(
         notebook_root = NOTEBOOK_ROOT
     needle = slug(suspect)
     found: list[Path] = []
-    for root in (repo_root / "docs" / "audits", notebook_root):
+    for root in (
+        repo_root / "docs" / "audits",
+        repo_root / "docs" / "surveys",
+        notebook_root,
+    ):
         if not root.is_dir():
             continue
         for path in sorted(root.glob("*.md")):
@@ -222,6 +239,7 @@ def main(argv: list[str]) -> int:
             f"error: no findings document for {suspect!r} — refusing to "
             f"advance the audit cadence.\n"
             f"  searched: {REPO_ROOT / 'docs' / 'audits'}\n"
+            f"            {REPO_ROOT / 'docs' / 'surveys'}\n"
             f"            {NOTEBOOK_ROOT}\n"
             "  for a *.md whose name contains the suspect domain "
             "(separators and case ignored)\n"

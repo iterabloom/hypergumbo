@@ -229,6 +229,29 @@ def test_findings_documents_matches_docs_audits(tmp_path: Path):
     assert found == [want]
 
 
+def test_findings_documents_matches_docs_surveys(tmp_path: Path):
+    """``docs/surveys`` is the DOCUMENTED home for an audit the per-value
+    trichotomy cannot mechanically check, and the gate has to see it.
+
+    ``audit_findings.validate_against_registry`` rejects any audit whose axis
+    has no value registry, so an audit of a meta-key's value family cannot be
+    filed under ``docs/audits`` at all — ``docs/surveys/README.md`` calls itself
+    the acknowledged sibling for exactly that case. With this root unsearched
+    the cadence gate refused a real, written-up audit (the 2026-09-10
+    ``call_construct`` one) and pushed the author toward ``--force``, which is
+    the single outcome this gate exists to prevent: a recorded audit with no
+    discoverable write-up.
+    """
+    repo = tmp_path / "repo"
+    want = _writeup(
+        repo / "docs" / "surveys", "call-construct-value-family-audit.md",
+    )
+    found = record.findings_documents(
+        "call_construct", repo_root=repo, notebook_root=tmp_path / "nb",
+    )
+    assert found == [want]
+
+
 def test_findings_documents_empty_when_nothing_matches(tmp_path: Path):
     nb = tmp_path / "nb"
     _writeup(nb, "concept-audit-supply_chain_tier_07152026.md")
