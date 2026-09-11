@@ -165,3 +165,12 @@
   clock: 18  # 4280
   nonce: '4280'  # 4280
   message: "SATISFIED via iter-003 (deep-20260621-215349/cohort-002/iter-003, post PR #4265). BEHAVIORAL EVIDENCE: total nonconforming stable_id across all 4 cohort repos = 0 (apollo 1->0: all 38 graphql_client nodes now canonical sha256, incl. 37 previously-null anonymous-operation nodes; jedis/pretix/chatwoot 0). Moved for the right reason: node counts byte-identical (apollo 4737->4737 etc.). SCOPE (no weasel words): validated = the cohort's languages (JS/TS/Java/Python/Ruby/Vue/SCSS/RST + graphql-linker) at 0 nonconforming, PLUS all grep-identified non-canonical producers fixed and pinned by production-path unit tests -- the 9 doc analyzers (WI-rijup), and sparql/kdl/graphql-client/scip (WI-sojop). sparql/kdl/scip are not in the cohort's languages so their canonicalization is unit-test-validated, not cohort-validated. The standing spec_validator _check_stable_id_format gate runs on every analysis and guards against regression or a newly-introduced non-canonical producer. Validators: /tmp/iter003_verify.py + .out; /tmp/iter002_verify.py."  # 4280
+- op: update  # bc84
+  at: '2026-09-11T17:24:48Z'  # bc84
+  by: agent  # bc84
+  actor: jgstern_agent  # bc84
+  clock: 19  # bc84
+  nonce: bc84  # bc84
+  set:  # bc84
+    fields:  # bc84
+      severity:  # bc84
