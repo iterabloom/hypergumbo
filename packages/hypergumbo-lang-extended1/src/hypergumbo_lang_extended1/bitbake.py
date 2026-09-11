@@ -67,8 +67,13 @@ def find_bitbake_files(repo_root: Path) -> list[Path]:
 
 
 def _make_symbol_id(path: Path, name: str, kind: str) -> str:
-    """Create a stable symbol ID."""
-    return f"bitbake:{path}:{kind}:{name}"
+    """Create a stable symbol ID.
+
+    The span slot is ``0-0`` rather than absent: BitBake symbols are keyed by
+    name within a file and the caller has no line to offer, and ADR-0036's
+    grammar has a spelling for "no source span" (WI-vodin).
+    """
+    return f"bitbake:{path}:0-0:{name}:{kind}"
 
 
 # Important BitBake variables to track

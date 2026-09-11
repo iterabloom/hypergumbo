@@ -285,8 +285,14 @@ def link_crypto_flow(
             # .js site and gave a .ts read the write's language.
             pub_lang = js_ts_language_from_path(Path(write.file_path)) if write.api == "webcrypto" else "rust"
             sub_lang = js_ts_language_from_path(Path(read.file_path)) if read.api == "webcrypto" else "rust"
-            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:crypto_producer"
-            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:crypto_consumer"
+            pub_id = (
+                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
+                f":{write.channel}:crypto_producer"
+            )
+            sub_id = (
+                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
+                f":{read.channel}:crypto_consumer"
+            )
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)

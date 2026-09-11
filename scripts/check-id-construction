@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""Pre-commit / CI lint: a node or edge id is minted, never hand-spelled
+(WI-vodin, ADR-0034 §"Enforcement" — "Static check — known gap").
+
+WHY THIS EXISTS ALONGSIDE THE RUNTIME VALIDATOR. ``spec_validator`` classifies a
+malformed id AFTER a run produced it, so a linker that only fires on Handlebars
+templates stays unchecked until someone surveys a repository with ``.hbs`` files.
+The grammar is decided at the producer, and the producer was never read.
+
+WHAT IT CHECKS. Every expression that can reach ``Symbol(id=...)`` or
+``Edge(id=...)`` — the argument, one in-function local, one same-module helper —
+against the grammar that id actually answers to:
+
+    Symbol.id   {lang}:{path}:{start}-{end}:{name}:{kind}   (ADR-0036)
+    Edge.id     edge:sha256:<16 lowercase hex>
+
+An f-string is NOT the offence; an ungrammatical id is. A synthetic linker
+stand-in legitimately writes ``0-0`` by hand, and 14 of the tree's 40 hand-built
+templates are conformant and stay.
+
+Exit codes:
+    0 — clean.
+    1 — violations printed to stdout, fix instructions to stderr.
+    2 — could not import the linter (packaging / editable-install problem;
+        do not block commits on this).
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+for pkg in (
+    "hypergumbo-core",
+    "hypergumbo-lang-common",
+    "hypergumbo-lang-mainstream",
+    "hypergumbo-lang-extended1",
+    "hypergumbo-lang-rust-analyzer",
+):
+    sys.path.insert(0, str(REPO_ROOT / "packages" / pkg / "src"))
+
+try:
+    from hypergumbo_core.check_id_construction import find_id_construction_drift
+except ImportError as exc:  # pragma: no cover — defensive
+    print(f"check-id-construction: cannot import linter: {exc}", file=sys.stderr)
+    sys.exit(2)
+
+
+def main() -> int:
+    offenders = find_id_construction_drift(REPO_ROOT)
+    if not offenders:
+        return 0
+    print("ID-construction check failed:")
+    for line in offenders:
+        print(f"  {line}")
+    print(
+        "\nFix: mint the id through make_symbol_id(...) / make_file_id(...) "
+        "from analyze/base.py, or — for a synthetic stand-in that has no source "
+        "span — spell every slot of the ADR-0036 grammar, using 0-0 for "
+        "'no span' and routing the name slot through sanitize_id_name_segment. "
+        "See the module docstring of "
+        "packages/hypergumbo-core/src/hypergumbo_core/check_id_construction.py.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":  # pragma: no cover — script entrypoint
+    sys.exit(main())

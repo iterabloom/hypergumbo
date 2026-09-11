@@ -56,7 +56,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from ..discovery import find_non_test_files
-from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
+from ..ir import (
+    AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id,
+    sanitize_id_name_segment,
+)
 from ..routes import is_route, method_matches, method_token, route_of
 from ._text_filters import language_from_path
 from .registry import (
@@ -316,7 +319,10 @@ def link_openapi(root: Path, route_symbols: list[Symbol]) -> OpenApiLinkResult:
 
     # Create symbols for each operation
     for op in all_operations:
-        symbol_id = f"openapi:{op.file_path}:{op.line}:{op.method}:{op.path}"
+        symbol_id = (
+            f"openapi:{op.file_path}:{op.line}-{op.line}"
+            f":{sanitize_id_name_segment(op.method + ' ' + op.path)}:operation"
+        )
 
         # ADR-0027 Phase 3 / audit-findings 0013: framework-role leak.
         # Fold to canonical kind="function" + meta["framework_role"].

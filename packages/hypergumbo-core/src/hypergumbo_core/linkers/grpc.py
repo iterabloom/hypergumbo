@@ -434,7 +434,7 @@ def _scan_ts_file(file_path: Path, content: str) -> list[GrpcPattern]:
 
 def _make_symbol_id(file_path: str, line: int, name: str, kind: str) -> str:
     """Generate unique symbol ID."""
-    return f"grpc:{file_path}:{line}:{name}:{kind}"
+    return f"grpc:{file_path}:{line}-{line}:{name}:{kind}"
 
 
 # Regex to find "type <Name> struct {" declarations.

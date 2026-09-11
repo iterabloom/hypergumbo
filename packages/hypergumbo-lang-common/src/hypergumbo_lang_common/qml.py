@@ -61,7 +61,7 @@ _ID_RE = re.compile(r"^\s+id\s*:\s*(\w+)", re.MULTILINE)
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"qml:{path}:{line}:{name}:{kind}"
+    return f"qml:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_qml_files(

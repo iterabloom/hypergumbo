@@ -1166,6 +1166,49 @@ def test_fingerprint_format_exempts_class_b_language_none() -> None:
 
 
 # ----------------------------------------------------------------------
+# id_format — Edge.id carries its OWN grammar (WI-vodin)
+# ----------------------------------------------------------------------
+def test_edge_id_format_accepts_the_content_digest() -> None:
+    """`edge:sha256:<16hex>` is what the edge-id factory mints."""
+    from hypergumbo_core.spec_validator import _check_edge_id_format
+
+    class _E:
+        id = "edge:sha256:0123456789abcdef"
+
+    assert _check_edge_id_format([_E()]) == []
+
+
+def test_edge_id_format_refuses_a_node_shaped_id() -> None:
+    """The deferred item asked for Symbol.id's five-slot grammar here; every
+    real edge id is a digest, so the node grammar would flag all of them. The
+    rule enforced is the one the factory actually produces."""
+    from hypergumbo_core.spec_validator import _check_edge_id_format
+
+    class _E:
+        id = "python:app/x.py:10-12:handler:calls"
+
+    violations = _check_edge_id_format([_E()])
+    assert len(violations) == 1
+    assert violations[0].field_name == "Edge.id"
+    assert violations[0].validator_class == "id_format"
+
+
+def test_edge_id_format_skips_an_absent_or_non_string_id() -> None:
+    """Required-field absence is an axis_conformance issue, not an id_format
+    one — the same split ``_check_id_format`` makes for Symbol.id, so the two
+    do not double-count the same record."""
+    from hypergumbo_core.spec_validator import _check_edge_id_format
+
+    class _NoId:
+        pass
+
+    class _NotAString:
+        id = 17
+
+    assert _check_edge_id_format([_NoId(), _NotAString()]) == []
+
+
+# ----------------------------------------------------------------------
 # validator:F2 (WI-moriz) — wired-checks disclosure manifest
 # ----------------------------------------------------------------------
 def test_wired_checks_manifest_present_in_report() -> None:

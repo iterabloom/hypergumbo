@@ -214,7 +214,10 @@ def link_solidity_abi(
         host_language = js_ts_language_from_path(Path(rel_path))
         syn_id_input = f"abi_call:{rel_path}:{line_num}:{func_name}"
         syn_hash = hashlib.sha256(syn_id_input.encode()).hexdigest()[:12]
-        syn_id = f"{host_language}:{rel_path}:{line_num}-{line_num}:abi_call:{func_name}:{syn_hash}"
+        syn_id = (
+            f"{host_language}:{rel_path}:{line_num}-{line_num}"
+            f":{func_name}.{syn_hash}:abi_call"
+        )
 
         # ADR-0031 Class B: synthetic stand-in for a Solidity ABI call
         # site discovered in a JS/TS file.

@@ -67,7 +67,7 @@ def is_bibtex_tree_sitter_available() -> bool:
 
 def _make_symbol_id(path: Path, key: str, kind: str, line: int) -> str:
     """Create a stable symbol ID."""
-    return f"bibtex:{path}:{kind}:{line}:{key}"
+    return f"bibtex:{path}:{line}-{line}:{key}:{kind}"
 
 
 def _extract_entry(

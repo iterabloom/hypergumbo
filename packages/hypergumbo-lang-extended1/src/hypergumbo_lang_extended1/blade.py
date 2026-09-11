@@ -55,7 +55,7 @@ _COMPONENT_RE = re.compile(r"""@component\s*\(\s*['"]([^'"]+)['"]\s*\)""")
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"blade:{path}:{line}:{name}:{kind}"
+    return f"blade:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_blade_files(

@@ -401,8 +401,14 @@ def link_yjs_crdt(
             # Class B via js_ts_language_from_path), not a literal.
             pub_lang = js_ts_language_from_path(Path(write.file_path))
             sub_lang = js_ts_language_from_path(Path(read.file_path))
-            pub_id = f"{pub_lang}:{write.file_path}:{write.line}:0:{write.channel}:crdt_publisher"
-            sub_id = f"{sub_lang}:{read.file_path}:{read.line}:0:{read.channel}:crdt_subscriber"
+            pub_id = (
+                f"{pub_lang}:{write.file_path}:{write.line}-{write.line}"
+                f":{write.channel}:crdt_publisher"
+            )
+            sub_id = (
+                f"{sub_lang}:{read.file_path}:{read.line}-{read.line}"
+                f":{read.channel}:crdt_subscriber"
+            )
 
             if pub_id not in seen_sym_ids:
                 seen_sym_ids.add(pub_id)

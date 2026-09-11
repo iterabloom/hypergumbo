@@ -53,7 +53,7 @@ _BODY_LINE_RE = re.compile(r"^[\s@#]")
 
 
 def _make_symbol_id(path: str, line: int, name: str, kind: str) -> str:
-    return f"just:{path}:{line}:{name}:{kind}"
+    return f"just:{path}:{line}-{line}:{name}:{kind}"
 
 
 def find_just_files(
