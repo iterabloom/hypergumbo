@@ -54,3 +54,10 @@
   nonce: f95b  # f95b
   set:  # f95b
     status: needs_human_review  # f95b
+- op: discuss  # 4741
+  at: '2026-09-11T11:16:06Z'  # 4741
+  by: agent  # 4741
+  actor: jgstern_agent  # 4741
+  clock: 6  # 4741
+  nonce: '4741'  # 4741
+  message: "CORRECTION to the memo entry above, from the second T8 cohort.\n\nThe memo's source-half figure was '0 of 145 findings' on a corpus that could not see the population. Since then: four servers chosen by protocol role returned 2 of 562 chains and 0 of 21 findings (all four zeros CORRECT REFUSALS -- they delegate their accept loop), and two repositories chosen by WHAT THE CODE OWNS returned passt reaching sys/socket.accept (2 chains) with the whole net_* surface live.\n\nSTILL STANDS: the INVERSION ON FINDINGS. Across six repositories the source half has produced 0 choice-shaped findings while the sink half is worth >=15.8% of surviving true positives. The question 'should T8 and T9 swap places in the arc?' is unchanged.\n\nNO LONGER STANDS: the stronger form of the argument -- that the source half's rows are unreachable and a value_shape field would be paid for by nothing. THEY ARE REACHABLE. What is unmeasured is what share of a real corpus owns its sockets, and that is the number this decision turns on. It is one cohort away and nobody has run it.\n\nRecorded as a retraction rather than a quiet revision."  # 4741
