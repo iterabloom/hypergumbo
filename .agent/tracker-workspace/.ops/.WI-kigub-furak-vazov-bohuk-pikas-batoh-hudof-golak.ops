@@ -21,3 +21,50 @@
     pr_ref:  # b69b
     description: "FILED 2026-09-09 from WI-kurug (T0a of INV-linub's drain). Record:\n~/hypergumbo_lab_notebook/t0_sizing_09092026/kurug/RESULT.md.\n\nElixir calls Erlang modules with an ATOM module -- `:ets.insert(t, {k, v})`,\n`:httpc.request(...)`. On phoenix-framework these call sites produce NO CALL\nEDGE AT ALL. Not an untyped edge, not a misbound edge: zero edges carry these\ndestinations.\n\nMEASURED, in files the analyzer demonstrably read:\n    :ets.insert     7 sites   lib/phoenix/config.ex:23 and others\n    :ets.lookup     2 sites   lib/phoenix/endpoint.ex:542, config.ex:49\n    :ets.new        2 sites   lib/phoenix/config.ex:133\n    :ets.info       1 site    lib/phoenix/config.ex:52\n    :ets.delete     1 site    lib/phoenix/config.ex:162\n    :httpc.request  2 sites   installer/lib/mix/tasks/phx.new.ex:593,\n                              lib/mix/tasks/phx.gen.release.ex:352\nAll six rows are catalogued elixir primitives. All are in `ambiguous_names`,\nbut ambiguity is IRRELEVANT here -- the F3 gate never sees an edge to refuse.\n\nMECHANISM, read in elixir.py::_handle_dot_call: it begins\n\n    alias_node = find_child_by_type(dot_node, \"alias\")\n    func_id_node = find_child_by_type(dot_node, \"identifier\")\n    if alias_node is None or func_id_node is None:\n        return\n\nAn atom-module call has no `alias` child -- `:ets` parses as an atom, not an\nalias -- so the handler returns before emitting anything. The unresolved-edge\nfallback at the end of that function is never reached.\n\nWHY THIS MATTERS BEYOND SIX ROWS: `:ets` is Erlang's in-memory table store and\n`:httpc` is OTP's HTTP client, so this is a real I/O surface, and the\n`:module.function` form is the ONLY way to call any Erlang/OTP module from\nElixir. Every OTP module an Elixir project touches is invisible by the same\nmechanism -- `:file`, `:gen_tcp`, `:crypto`, `:os`. The six rows measured here\nare what phoenix-framework happens to call, not the size of the surface.\n\nWHY THIS IS AN INV-linub INSTANCE: L2. The statement requires the call site to\nPRODUCE a call edge; it produces none, so no amount of receiver evidence\ndownstream can help. Per this class's own rule an L2-only fix measures as a win\nat the analyzer and can move zero findings, so this must be measured at L4 on\nfindings.\n\nDISTINCT FROM the sibling item filed the same day (module-qualified call binds\nby bare name to a first-party symbol): that one emits a WRONG edge from a\ncorrectly-parsed alias call; this one emits NO edge because the node shape is\nnot recognised. Same file, same function, different branch, different fix."  # b69b
     fields: {}  # b69b
+- op: update  # acbc
+  at: '2026-09-11T02:55:02Z'  # acbc
+  by: agent  # acbc
+  actor: jgstern_agent  # acbc
+  clock: 2  # acbc
+  nonce: acbc  # acbc
+  set:  # acbc
+    status: done  # acbc
+- op: update  # 0638
+  at: '2026-09-11T02:55:02Z'  # 0638
+  by: agent  # 0638
+  actor: jgstern_agent  # 0638
+  clock: 3  # 0638
+  nonce: '0638'  # 0638
+  set:  # 0638
+    status: done  # 0638
+- op: discuss  # 4318
+  at: '2026-09-11T02:55:03Z'  # 4318
+  by: agent  # 4318
+  actor: jgstern_agent  # 4318
+  clock: 4  # 4318
+  nonce: '4318'  # 4318
+  message: "DONE in PR #908 (merged e696785da4). Record:\n~/hypergumbo_lab_notebook/kigub_09102026/ (PLAN.md pre-registered before any\noutcome number existed; Addenda A/B/C appended, never edited).\n\nTHIS ITEM'S OWN FILED REPRO, RE-RUN ROW BY ROW on phoenix-framework\n(`PYTHONHASHSEED=0`, both arms reproducing themselves exactly):\n\n    filed row         filed sites   edges BEFORE   edges AFTER\n    :ets.insert                 7              0             7\n    :ets.lookup                 2              0             2\n    :ets.new                    2              0             2\n    :ets.info                   1              0             1\n    :ets.delete                 1              0             1\n    :httpc.request              2              0             5\n\nFive of six match the filed site count exactly. `:httpc.request` returns 5\nagainst a filed 2 -- the filing named two call sites and there are five, the\nsame \"the item names one shape and the family has more\" pattern every cell in\nthis drain has hit.\n\nFIX. `_handle_dot_call` required the dot node to carry an `alias` child; an\natom module parses as `atom`. It now takes an atom receiver and emits straight\nto the unresolved fallback, with the LEADING COLON STRIPPED. The stripping is\nthe load-bearing half and is not cosmetic: `_module_matches` is component-aware\nand does no colon stripping, so `catalog='ets'` vs `hint=':ets'` is False --\nemitting the atom verbatim would have produced an L2 gain reaching no catalogue\nrow, which is precisely the failure INV-linub exists to catch. Executed before\nchoosing, not reasoned. It is also the cross-language parity answer: the erlang\nanalyzer emits `erlang:ets:0-0:insert:function` for the same OTP modules.\n\nAtom calls bypass the first-party resolution branches BY CONSTRUCTION, because\nthose end in the `any(module_dot in k ...)` substring test that WI-kafor files\nas a defect, and `\"ets.\"` is a substring of any project key like\n`Foo.Sockets.insert`. Pinned by a test.\n\nSCOPE SET BY PARITY WITH THE ALIAS PATH. A grammar probe found SIX\nearly-returning dot shapes, not the one filed. Fixed the one whose module is\nwritten literally at the call site; filed the rest as WI-taluz and pinned them\nas known gaps.\n\nMEASURED (full numbers in PLAN.md Addendum B/C):\n  analyze_elixir  11,100 -> 11,222 edges; APPEARED 122 over 25 OTP modules;\n                  VANISHED 0; symbols added 0, removed 0.\n  io-boundaries   total_io_edges 250 -> 277; distinct elixir primitives\n                  52 -> 65; LOST 0. db_read (0->8) and db_write (0->10) appear\n                  as boundary KINDS phoenix had never reached; all 18 chains\n                  have an `ets` sink.\n  verify-claims   findings 19 -> 31; two verdicts move inconclusive ->\n                  violated. ALL FIVE FINDINGS READ BACK AGAINST SOURCE:\n                  5/5 structurally correct, 0 wrong.\n\nTWO OF SIX PRE-REGISTERED PREDICTIONS REFUTED, both recorded rather than\nsmoothed. (a) Edge count 122 against a floor of 150, chased to its cause:\n101 of the 103 unemitted sites are calls not inside a `def`, and a parity\nfixture shows the ALIAS path loses exactly the same ones -- filed as WI-dokib.\n(b) Predicted zero new findings; there were twelve.\n\nTHE INSTRUMENT WAS WRONG BEFORE THE FIX WAS. The first A/B reported 32 VANISHED\nedges, which under this item's own pre-registration meant it does not ship.\nAttributed instead of accepted: the analyzer is non-deterministic across\nprocesses and disagrees with ITSELF by 67-166 edges. Filed as WI-jozap. Every\narm here pins the hash seed.\n\nALSO FIXED, incidental and disclosed: `io_primitives/elixir.yaml`'s header has\nasserted since 2026-04-15 (WI-vibur) that OTP is \"covered for the atom-access\npath\". True of the rows, false of the path, for nearly five months. The header\nnow says so with a date."  # 4318
+- op: update  # 6e66
+  at: '2026-09-11T02:55:32Z'  # 6e66
+  by: agent  # 6e66
+  actor: jgstern_agent  # 6e66
+  clock: 5  # 6e66
+  nonce: '6e66'  # 6e66
+  set:  # 6e66
+    pr_ref: '#908'  # 6e66
+- op: update  # 4664
+  at: '2026-09-11T02:56:06Z'  # 4664
+  by: agent  # 4664
+  actor: jgstern_agent  # 4664
+  clock: 6  # 4664
+  nonce: '4664'  # 4664
+  set: {}  # 4664
+  add:  # 4664
+    tags: [awaits_bakeoff_validation]  # 4664
+- op: discuss  # 97dd
+  at: '2026-09-11T02:56:06Z'  # 97dd
+  by: agent  # 97dd
+  actor: jgstern_agent  # 97dd
+  clock: 7  # 97dd
+  nonce: 97dd  # 97dd
+  message: "Tagged awaits_bakeoff_validation at merge: PR #908 carries quantitative improvement claims (+122 edges / 25 OTP modules, 52->65 primitives, db_read and db_write appearing as new boundary kinds, two verdicts moved). All measured directly by seeded A/B on phoenix-framework, NOT by a bakeoff cycle, so the tag is the rule applying mechanically rather than a claim that a green DEEP cycle would validate any of it -- band metrics validate no delta. The queue stands at 16 with this one."  # 97dd
