@@ -437,6 +437,154 @@ class TestValueValidation:
         kind_errors = [e for e in result.errors if "not allowed for kind" in e]
         assert kind_errors == [], f"Historical ops should not cause errors: {kind_errors}"
 
+    def test_historical_unknown_field_removed_by_later_op_ok(self, tmp_path: Path) -> None:
+        """A custom field added at create and REMOVED later must not warn.
+
+        The twin of test_historical_ops_with_now_disallowed_status_ok, for the
+        fields dict. The harm an unknown-field warning names -- a fact with two
+        homes, the second never updated -- is a property of the COMPILED item:
+        once a later op deletes the key there is no second home, so flagging
+        op 0 in isolation reports a defect that no longer exists.
+        """
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = _write_ops(ops_dir, "INV-id", """\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Test Invariant"
+                status: violated
+                priority: 2
+                fields:
+                  statement: "test"
+                  root_cause: "test"
+                  severity: "high"
+            - op: update
+              at: "2026-01-01T00:01:00Z"
+              by: agent
+              actor: test_agent
+              clock: 2
+              nonce: b2c3
+              set:
+                fields:
+                  severity: null
+        """)
+        result = validate_ops_file(path, _make_config())
+        unknown = [w for w in result.warnings if "unknown field" in w]
+        assert unknown == [], f"repaired field should not warn: {unknown}"
+
+    def test_unknown_field_still_present_warns(self, tmp_path: Path) -> None:
+        """An unknown field that survives to the compiled item still warns."""
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = _write_ops(ops_dir, "INV-id", """\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Test Invariant"
+                status: violated
+                priority: 2
+                fields:
+                  statement: "test"
+                  root_cause: "test"
+                  severity: "high"
+        """)
+        result = validate_ops_file(path, _make_config())
+        assert any("unknown field 'severity'" in w for w in result.warnings)
+
+    def test_unknown_field_readded_after_removal_warns(self, tmp_path: Path) -> None:
+        """Remove-then-re-add must warn: the LAST write decides, not any write.
+
+        Guards the obvious way a sequence-aware check goes wrong -- treating
+        "some op removed it" as repair, so delete-then-re-add passes clean.
+        """
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = _write_ops(ops_dir, "INV-id", """\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Test Invariant"
+                status: violated
+                priority: 2
+                fields:
+                  statement: "test"
+                  root_cause: "test"
+                  severity: "high"
+            - op: update
+              at: "2026-01-01T00:01:00Z"
+              by: agent
+              actor: test_agent
+              clock: 2
+              nonce: b2c3
+              set:
+                fields:
+                  severity: null
+            - op: update
+              at: "2026-01-01T00:02:00Z"
+              by: agent
+              actor: test_agent
+              clock: 3
+              nonce: c3d4
+              set:
+                fields:
+                  severity: "low"
+        """)
+        result = validate_ops_file(path, _make_config())
+        assert any("unknown field 'severity'" in w for w in result.warnings)
+
+    def test_required_field_removed_by_later_op_errors(self, tmp_path: Path) -> None:
+        """Compiled-state checking also CATCHES more than per-op did.
+
+        A required field present at create and deleted later passes the per-op
+        check (op 0 had it) but leaves the item without it. Compiled-state
+        checking sees the hole.
+        """
+        ops_dir = tmp_path / ".ops"
+        ops_dir.mkdir()
+        path = _write_ops(ops_dir, "INV-id", """\
+            - op: create
+              at: "2026-01-01T00:00:00Z"
+              by: agent
+              actor: test_agent
+              clock: 1
+              nonce: a1b2
+              data:
+                kind: invariant
+                title: "Test Invariant"
+                status: violated
+                priority: 2
+                fields:
+                  statement: "test"
+                  root_cause: "test"
+            - op: update
+              at: "2026-01-01T00:01:00Z"
+              by: agent
+              actor: test_agent
+              clock: 2
+              nonce: b2c3
+              set:
+                fields:
+                  root_cause: null
+        """)
+        result = validate_ops_file(path, _make_config())
+        assert any("required field 'root_cause' missing" in e for e in result.errors)
+
     def test_update_invalid_priority(self, tmp_path: Path) -> None:
         ops_dir = tmp_path / ".ops"
         ops_dir.mkdir()
@@ -800,32 +948,32 @@ class TestFieldSchemaValidation:
         """When fields is not a dict, validate_fields_schema should handle it."""
         result = ValidationResult()
         schema = {"statement": FieldSchema(type="text", required=True)}
-        _validate_fields_schema(".test.ops", 0, "not a dict", schema, result)
+        _validate_fields_schema(".test.ops", "not a dict", schema, result)
         assert any("required field 'statement' missing" in e for e in result.errors)
 
     def test_null_field_value_valid(self, tmp_path: Path) -> None:
         """Null values should pass type checks (they're just unset)."""
         result = ValidationResult()
         fs = FieldSchema(type="text")
-        _validate_field_value(".test.ops", 0, "statement", None, fs, result)
+        _validate_field_value(".test.ops", "statement", None, fs, result)
         assert result.ok
 
     def test_null_integer_value_valid(self) -> None:
         result = ValidationResult()
         fs = FieldSchema(type="integer", min=0, max=100)
-        _validate_field_value(".test.ops", 0, "pct", None, fs, result)
+        _validate_field_value(".test.ops", "pct", None, fs, result)
         assert result.ok
 
     def test_null_list_value_valid(self) -> None:
         result = ValidationResult()
         fs = FieldSchema(type="list")
-        _validate_field_value(".test.ops", 0, "items", None, fs, result)
+        _validate_field_value(".test.ops", "items", None, fs, result)
         assert result.ok
 
     def test_null_boolean_value_valid(self) -> None:
         result = ValidationResult()
         fs = FieldSchema(type="boolean")
-        _validate_field_value(".test.ops", 0, "flag", None, fs, result)
+        _validate_field_value(".test.ops", "flag", None, fs, result)
         assert result.ok
 
     def test_lock_check_tolerates_null_set_add_remove(self) -> None:
