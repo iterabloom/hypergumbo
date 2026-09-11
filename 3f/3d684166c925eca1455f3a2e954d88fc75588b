@@ -1,0 +1,31 @@
+Original commit body from 0e948b128282b6c76ed2efa52119c336d40f9905:
+
+Closes ADR-0034's named "static check — known gap" (WI-vodin), and repairs the 26 live emitters the new check found.
+
+## The check
+
+`scripts/check-id-construction` reads the PRODUCERS. The runtime spec-validator classifies a malformed id only for ids a given run actually produced, so a linker that fires only on Handlebars templates stays unchecked until someone surveys a repository with `.hbs` files.
+
+**The filed shape is the rarest spelling of the defect.** Measured over `packages/*/src`: `Symbol(id=f"...")` at the constructor has exactly ONE live instance, while 231 of the 470 `id=` arguments are a bare local and 20 of the f-strings hide behind one. A check that stops at the constructor reaches 1 site in 470, so this one resolves three hops — the argument, one in-function local, one same-module helper — and stops there.
+
+**What is forbidden is not the f-string, it is the ungrammatical id.** A synthetic linker stand-in has no source span and legitimately writes `0-0` by hand; 14 of the tree's 40 hand-built templates are conformant and stay. The rule is ADR-0036's grammar applied to the template, with an interpolated slot treated as opaque rather than guessed at.
+
+## What it found
+
+26 sites whose ids hypergumbo's OWN validator calls malformed. The commonest is a bare line number where the grammar wants `start-end`, which right-anchored parsing reads as a span of `"12"`. Also: `:{line}:0:` where the hyphen belongs (3 linkers), a name in the kind slot and a URL path in it (ipc, openapi), slots ordered kind-before-span-before-name (bibtex), no span slot at all (bitbake), an illegal hyphen in the language slot (swift-objc), and `css:sha256:<digest>` — three segments the five-slot grammar cannot parse at all.
+
+**Three of the 26 are siblings of a site WI-zugob already repaired IN THE SAME FILE.** That is the pattern the check exists to stop.
+
+**The css repair is measured end to end, not asserted.** On a two-file fixture the analyzer goes from four `css:sha256:<digest>` ids to four canonical ones, and the css `@import` edge reaches the survey for the first time (0 → 1 edge, both endpoints present as nodes) — the exact state `test_import_dst_ids_are_canonical` documents when it excludes css because "their src is a hash-shaped symbol id … that the pipeline drops, so the edges are orphaned".
+
+## Edge.id — the deferred item asked for the wrong grammar
+
+Phase 6 PR1 deferred "extend `_check_id_format` to scan `Edge.id` for the same canonical shape it enforces on `Symbol.id`". Checked against a live survey BEFORE implementing: every one of apollo-server's 18,283 edge ids is `edge:sha256:<16hex>`, a content digest. That rule would have reported a 100% violation rate on every repository hypergumbo has ever analysed. The two ids are counterparts in ROLE — per-instance identity, against the structural `edge_key`/`stable_id` pair — and not in shape, so `Edge.id` gets its own validator against what the factory actually mints, at both the producer and the runtime.
+
+## Wiring
+
+`.githooks/pre-commit` runs the check whenever any package source is staged; `test_live_tree_passes` is the CI gate; the new check is disclosed in `_WIRED_CHECKS` (the manifest guard caught it, which is what it is for). ADR-0034 §"Enforcement" is updated in place — the gap section now describes what landed and how it differs from what that section anticipated.
+
+Local: 13,212 passed, coverage 100% on all changed files, mypy ratchet clean at 669.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
