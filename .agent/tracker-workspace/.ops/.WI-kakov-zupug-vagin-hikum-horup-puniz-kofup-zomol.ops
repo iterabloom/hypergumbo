@@ -1,0 +1,20 @@
+- op: create  # f063
+  at: '2026-09-11T10:19:47Z'  # f063
+  by: agent  # f063
+  actor: jgstern_agent  # f063
+  clock: 1  # f063
+  nonce: f063  # f063
+  data:  # f063
+    kind: work_item  # f063
+    title: "survey does not finish on nextjs (325 MB) in 26 minutes at 3.1 GB RSS, where workadventure (254 MB) finishes in 223 s"  # f063
+    status: todo_hard  # f063
+    priority: 3  # f063
+    parent:  # f063
+    tags:  # f063
+    - performance  # f063
+    isbefore: []  # f063
+    duplicate_of: []  # f063
+    not_duplicate_of: []  # f063
+    pr_ref:  # f063
+    description: "OBSERVED 2026-09-11 while running T0c's javascript arm. Not the measurement's\nsubject; recorded because it is a real disparity and dropping it would lose it.\n\n    repo            size     `survey` wall clock          peak RSS\n    workadventure   254 MB   223 s (OFF) / 308 s (ON)     modest\n    nextjs          325 MB   NOT FINISHED at 26 minutes   3.1 GB\n\nBoth were run the same way: same machine, same pinned tree via PYTHONPATH,\n`PYTHONHASHSEED=0`, one `XDG_CACHE_HOME` each, two arms concurrently in both\ncases. A 1.3x size difference against a >7x wall-clock difference (a lower\nbound -- nextjs never finished) is not explained by size.\n\n**REPRODUCED, WHICH IS WHY THIS IS A FINDING AND NOT AN ANECDOTE.** nextjs was\nattempted TWICE: once at ~26 minutes per arm while the local test suite\ncompeted, and again at ~14.5 minutes per arm after that competition was gone.\nNeither attempt wrote a `survey.json`; both sat at ~3.1 GB RSS. Roughly 40\nminutes of CPU across the two attempts produced no output.\n\nBoth were ended by me (explicit PID) to free the machine, so there is no\nprofile and no completed run. WHAT IS NOT KNOWN: whether it would have finished at all,\nand which phase or which file is responsible. nextjs contains a large `crates/`\nRust tree and generated/minified bundles, either of which is a plausible\nsuspect, and neither is evidence.\n\nNEXT STEP IF PICKED UP: run `survey` on nextjs alone with `--debug` and a\nper-phase timer, and bisect by directory (`crates/`, `packages/`, `test/`) to\nfind whether one subtree dominates. A repository hypergumbo cannot finish is a\nusability fact for a tool whose pitch is \"point it at your repo\"."  # f063
+    fields: {}  # f063

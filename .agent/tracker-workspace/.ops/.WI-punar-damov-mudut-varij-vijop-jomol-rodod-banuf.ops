@@ -1,0 +1,22 @@
+- op: create  # 7b7c
+  at: '2026-09-11T10:19:36Z'  # 7b7c
+  by: agent  # 7b7c
+  actor: jgstern_agent  # 7b7c
+  clock: 1  # 7b7c
+  nonce: 7b7c  # 7b7c
+  data:  # 7b7c
+    kind: work_item  # 7b7c
+    title: "javascript catalogue: the process.on row matches ANY event name, so error handlers classify as ipc_recv"  # 7b7c
+    status: todo_hard  # 7b7c
+    priority: 2  # 7b7c
+    parent:  # 7b7c
+    tags:  # 7b7c
+    - io_boundary  # 7b7c
+    - catalogue  # 7b7c
+    - analysis_quality  # 7b7c
+    isbefore: []  # 7b7c
+    duplicate_of: []  # 7b7c
+    not_duplicate_of: []  # 7b7c
+    pr_ref:  # 7b7c
+    description: "FOUND 2026-09-11 during T0c's javascript arm, reading the new rows back against\nsource. Record: ~/hypergumbo_lab_notebook/t0c_09112026/.\n\nTHE ROW SAYS SO ITSELF. `io_primitives/javascript.yaml`'s `ipc_recv` entry for\n`process` carries `methods: [\"on\"]` with the note:\n\n    notes: \"process.on('message', ...) for IPC from parent\"\n\nThe note names ONE event. The row matches ANY event name, because the matcher\nhas no argument discriminator.\n\nMEASURED, on workadventure: `process.on` is newly reached as an `ipc_recv`\nprimitive with 2 chains, and BOTH live sites are error handlers, not IPC:\n\n    desktop/electron/src/log.ts:39                 process.on(\"uncaughtException\", ...)\n                                                   process.on(\"unhandledRejection\", ...)\n    play/src/pusher/controllers/IoSocketController.ts:65\n                                                   process.on(\"unhandledRejection\", ...)\n\nTHE ANALYZER IS NOT AT FAULT. WI-kikar's fix correctly stopped treating\n`process` as external, and the emission is right; the CATALOGUE ROW is what\nover-matches. `ipc_recv` mints `untrusted_input` via AUTO_SOURCE_LABEL_MAP, so\na repository whose only `process.on` calls are crash handlers acquires an\nuntrusted-input source it does not have -- a false positive at the SOURCE end,\nwhich then propagates to every claim keyed on that label.\n\nTHE MECHANISM TO REUSE ALREADY EXISTS AND IS NOT A NEW DESIGN. `io_mode`\nargument discrimination -- `io_boundary.mode_argument_for` and\n`mode_discriminated_primitives`, with `stamp_io_mode_from_call` on the producer\nside -- is exactly \"this row's meaning depends on a literal argument\". C's\n`fopen(path, \"w\")` was tagged `fs_read` in every C and C++ repository until\nINV-kaduh applied it. The same shape applies here: `process.on(\"message\", ...)`\nis `ipc_recv`; `process.on(\"uncaughtException\", ...)` is not a boundary at all.\n\nSCOPE TO CHECK BEFORE FIXING, because the filed instance is unlikely to be the\nonly one: every catalogue row whose `notes` name a specific literal argument\nwhile the row matches on the method name alone. `process.on` is the instance\nthis session happened to walk into."  # 7b7c
+    fields: {}  # 7b7c

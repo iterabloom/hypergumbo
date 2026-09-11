@@ -52,3 +52,10 @@
   set: {}  # ef76
   add:  # ef76
     tags: [awaits_bakeoff_validation]  # ef76
+- op: discuss  # 5c1a
+  at: '2026-09-11T10:19:20Z'  # 5c1a
+  by: agent  # 5c1a
+  actor: jgstern_agent  # 5c1a
+  clock: 6  # 5c1a
+  nonce: 5c1a  # 5c1a
+  message: "Tagged awaits_bakeoff_validation per the tagging discipline: the PR carries raw count deltas attributed to the change (653 branch edges removed -- phoenix-framework 427 -> 0, livebook 226 -> 0). ASK OF THE NEXT COHORT: elixir edge counts and io-boundary primitives on any elixir repo in the pool, against the pre-fix baseline. THE EXPECTED DIRECTION IS DOWN AND THAT IS THE POINT -- all 653 were adjudicated as false attributions of Kernel auto-imports, so a cohort finding FEWER elixir edges is confirming the fix, not regressing. What WOULD be a regression: a drop in io-boundary primitives or chains, since none of the removed edges reached a catalogue row. Also worth reading: every elixir number in the pool is now reproducible across processes, so a cohort can compare two runs directly for the first time."  # 5c1a
