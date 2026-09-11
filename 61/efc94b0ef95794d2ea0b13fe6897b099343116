@@ -1,0 +1,94 @@
+Original commit body from 80c7d0a8eb59e3961df5ccd2f71e01066a0b9c79:
+
+`_handle_dot_call` asked whether the project plausibly owned the written
+module -- as a SUBSTRING test, `any(f"{module}." in k for k in
+global_symbols)`, though the comment above it described a prefix-COMPONENT
+test -- and then let `resolver.lookup(func_name, path_hint=...)` bind by BARE
+NAME. On phoenix-framework that produced 202 false edges: `Logger.error(...)`
+landing on an `error/1` inside an EEx GENERATOR TEMPLATE, `Path.join(...)` on
+a Phoenix Channel's `join/3` in another template, `Mix.raise(...)` on a test
+controller's `raise/1`, and `Logger.info(...)` on a **defp**, which Elixir
+does not permit to be called from another module at all.
+
+TWO SUB-MECHANISMS, instrumented on the live run rather than taken from the
+filing, and the second is why a component-aware fix would not have been
+enough:
+  SUFFIX ARTIFACT, matching mid-component -- `Logger.` inside
+  `Phoenix.Logger.install`, `Path.` inside `...StaticPath.path`,
+  `Supervisor.` inside `Phoenix.Endpoint.Supervisor.init`.
+  NAMESPACE PREFIX, a real component-boundary match that is still wrong --
+  phoenix defines 56 modules under `Mix.`, so `Mix.raise/1` passes any
+  component test.
+
+THE FIX IS NOT THE ONE PRE-REGISTERED, AND THE MEASUREMENT IS WHY. Tightening
+the gate to an EXACT module-ownership question was built and measured first.
+It is necessary and NOT sufficient: with the gate exact, every edge the
+bare-name lookup still produced corpus-wide was STILL wrong --
+`Phx.New.Umbrella.render()` to a template's `render`, `Router.call()` to an
+unrelated test helper's `call`. The gate decides WHICH modules may pass; the
+defect is the bare-name bind itself. So it is removed, and the exact-ownership
+helper written two hours earlier is deleted as dead code. A qualified call now
+resolves only by EXACT name -- `Module.func`, or through alias expansion --
+and anything else takes the unresolved edge, which names the right module and
+lets the catalogue match.
+
+TWO PREREQUISITES THE OLD SUBSTRING TEST HAD BEEN COVERING FOR, each of which
+lost true edges the moment it stopped:
+  * `alias Phx.New.{Project}`, the MULTI-ALIAS BRACE FORM, registered NO hint
+    at all -- its tree is `arguments -> dot -> [alias, ".", tuple]`, so there
+    is no `alias` child of `arguments` to find. 71 true first-party edges.
+  * An alias binds its FIRST COMPONENT, not the whole name:
+    `alias Mix.Tasks.Phx.Gen` makes `Gen.Context.build(...)` mean
+    `Mix.Tasks.Phx.Gen.Context.build/2`. 29 more.
+The pre-registered control caught both -- the first pass lost 300 first-party
+edges, 29 of them real -- and it held only after both were fixed.
+
+MEASURED on phoenix-framework, `PYTHONHASHSEED=0` (WI-jozap), both arms
+reproducing themselves exactly, elixir.py blob asserted at arm BEGIN and END:
+
+  analyze_elixir  208 edges REDIRECTED; total unchanged at 11,222; symbols
+                  2,983 both arms. All 206 lost first-party edges adjudicated:
+                  200 because the written module, after alias expansion, is
+                  not a project module (Path 112, Mix 64, Logger 12,
+                  Supervisor 11, Mailer 1); 6 read back against source and all
+                  corrections -- `Project.new` and `Context.new` now bind to
+                  `Phx.New.Project.new` / `Mix.Phoenix.Context.new`, where both
+                  previously hit a template's `new/2`. REAL LOSSES: 0.
+  io-boundaries   total_io_edges 277 -> 293; distinct elixir primitives
+                  65 -> 68, 0 LOST. `logging` 53 -> 64; `process_send`
+                  0 -> 5, a boundary KIND phoenix had never reached.
+                  New: Logger.error (8), Logger.info (3),
+                  supervisor.start_link (5). db_read/db_write unmoved.
+  verify-claims   host-secret-no-logging violated ev=5 -> ev=7, 0 evidence
+                  lost, every other verdict byte-identical. BOTH new findings
+                  read back against source and both correct:
+                  `Application.get_env` -> `conf` -> `log_access_url` ->
+                  `Logger.info`, and `System.get_env("RELEASE_NAME")` guarding
+                  a `Logger.info` in the same function. Previously invisible
+                  because `Logger.info` bound to a template. Correctness axis
+                  true; usefulness weak -- neither logs the env value itself.
+
+THE VALIDATION INSTRUMENT WAS WRONG, IN THE FLATTERING DIRECTION. Its first
+version compared the WRITTEN module text against project module names, did not
+model aliases, and certified "229/229 correctly refused" -- concealing 29
+genuine losses, since `alias Mix.Tasks.Phx.Gen` + `Gen.Context.build` is a real
+first-party call. Rewritten to IMPORT the shipped `_extract_alias_hints` /
+`_expand_alias`, it found them. A validation instrument that does not model the
+thing under test will exonerate it.
+
+One existing test is RE-POINTED, not deleted: `test_dot_call_resolver_fallback`
+called `Greeter.greet()` cross-module with NO alias line, which Elixir cannot
+resolve and which passed only through the mechanism this commit removes. Its
+own docstring always said "short module alias"; the alias is now written.
+
+Filed, not folded: a function reached only through `defdelegate`
+(`Phoenix.CodeReloader.sync/0`) registers no symbol under its own module and
+now goes unresolved rather than binding to the delegate target's module --
+which was the wrong module anyway.
+
+Full suite 26,791 passed, 100% coverage; root tests 1,776 passed; ratchet 669.
+
+Record: ~/hypergumbo_lab_notebook/kafor_09102026/
+
+Racial-Capitalism-Is-Bad: a beaver riding a bed of neon moss on the moon with a choir of penguins made of candy canes
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
