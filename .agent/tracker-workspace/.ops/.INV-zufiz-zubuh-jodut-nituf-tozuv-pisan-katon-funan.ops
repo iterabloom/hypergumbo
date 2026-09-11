@@ -1,0 +1,31 @@
+- op: create  # 23c0
+  at: '2026-09-11T16:24:01Z'  # 23c0
+  by: agent  # 23c0
+  actor: jgstern_agent  # 23c0
+  clock: 1  # 23c0
+  nonce: 23c0  # 23c0
+  data:  # 23c0
+    kind: invariant  # 23c0
+    title: "rust std::env::current_dir declared fs_read while python/go/c getcwd are all host_info_read — a 3-against-1 parity break"  # 23c0
+    status: violated  # 23c0
+    priority: 3  # 23c0
+    parent:  # 23c0
+    tags:  # 23c0
+    - taint  # 23c0
+    - catalogue  # 23c0
+    - parity  # 23c0
+    isbefore: []  # 23c0
+    duplicate_of: []  # 23c0
+    not_duplicate_of: []  # 23c0
+    pr_ref:  # 23c0
+    description: ""  # 23c0
+    fields:  # 23c0
+      statement: "rust.yaml declares std::env::current_dir as fs_read. The same primitive is host_info_read in three other catalogues: python os.getcwd, go os.Getwd, c unistd.getcwd. rust-src env.rs:53 shows current_dir() is exactly os_imp::getcwd(), the getcwd(2) syscall returning process state, reading no file content. It also disagrees with its own module neighbours std::env::current_exe, temp_dir and home_dir, all host_info_read."  # 23c0
+      root_cause: "Single-catalogue drift. The row was set without a cross-language parity check, and nothing enforces that one primitive carries one boundary across catalogues."  # 23c0
+- op: discuss  # 30a9
+  at: '2026-09-11T16:24:06Z'  # 30a9
+  by: agent  # 30a9
+  actor: jgstern_agent  # 30a9
+  clock: 2  # 30a9
+  nonce: 30a9  # 30a9
+  message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Row R076, raised by the worker as a cross-catalog inconsistency and CONFIRMED by the orchestrator by reading all four catalogues plus rust's own std::env block. This is the PARITY TEST shape: 3 against 1, and the outlier also breaks with its own file. Not edited here per rubric R4."  # 30a9
