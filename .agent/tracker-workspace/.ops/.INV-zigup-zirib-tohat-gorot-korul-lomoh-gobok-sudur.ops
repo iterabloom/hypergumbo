@@ -120,3 +120,12 @@
   clock: 13  # fc90
   nonce: fc90  # fc90
   message: "Implemented in commit d624311970 (origin/dev) per the 2026-06-25 human ruling (DELETE/derive, not stamp). cross_language removed as a stored edge.meta field from all 7 bridge linkers (http/websocket/graphql/graphql_resolver/event_sourcing/database_query/message_queue); the local is_cross_language confidence adjustment kept in http+message_queue. Behavioral evidence — live repro on a 2-language repo (app.py + helper.js): the generated map has 0 edges carrying cross_language meta (was: set inline by 7 linkers, under-populated, false-on-same-lang, garbage on synthetic language=None dst), while node languages are present (6/7 nodes) as the derivation source — so cross-language-ness is derivable on demand, not stored. Grep confirms 0 cross_language writes remain in linkers/. Production-path tests: the 6 linker test files' test_cross_language_* still pass (cross-language LINKING still works — the edge is created between different-language endpoints; only the redundant flag assertion was dropped), 514 passed locally; full affected suite 10858 passed, 100% coverage. Rationale: ADR-0023 derivable-from-endpoints rule + zero internal consumers. The language=None synthetic-node gap is now cleanly a node-language-completeness concern (ADR-0031), no longer a cross_language bug."  # fc90
+- op: update  # 667b
+  at: '2026-09-11T17:24:00Z'  # 667b
+  by: agent  # 667b
+  actor: jgstern_agent  # 667b
+  clock: 14  # 667b
+  nonce: 667b  # 667b
+  set:  # 667b
+    fields:  # 667b
+      severity:  # 667b

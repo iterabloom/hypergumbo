@@ -21,3 +21,10 @@
     fields:  # 004c
       statement: "rust.yaml rows std::process::exit and std::process::abort carry boundary subprocess. Source: abort() is one line calling crate::sys::abort_internal(), which on unix calls libc::abort() and raises SIGABRT on the CALLING process; exit() calls crate::rt::cleanup() then crate::sys::os::exit(code). Neither spawns a process, signals another process, nor exchanges data with one. The subprocess boundary asserts a crossing that does not occur."  # 004c
       root_cause: "Module-name attribution. Both live in std::process, whose other members (Command, Child) genuinely are subprocess primitives, so the boundary was applied at module granularity rather than per function."  # 004c
+- op: discuss  # 22cc
+  at: '2026-09-11T16:23:56Z'  # 22cc
+  by: agent  # 22cc
+  actor: jgstern_agent  # 22cc
+  clock: 2  # 22cc
+  nonce: 22cc  # 22cc
+  message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Rows R011/R022. Verified by the orchestrator in rust-src: process.rs:2532 shows abort() as a single call to crate::sys::abort_internal(). Not edited here per rubric R4."  # 22cc

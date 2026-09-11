@@ -1,0 +1,31 @@
+- op: create  # 845e
+  at: '2026-09-11T16:23:57Z'  # 845e
+  by: agent  # 845e
+  actor: jgstern_agent  # 845e
+  clock: 1  # 845e
+  nonce: 845e  # 845e
+  data:  # 845e
+    kind: invariant  # 845e
+    title: "python platform.architecture declared host_info_read but SPAWNS A SUBPROCESS (file -b) — a missed subprocess boundary"  # 845e
+    status: violated  # 845e
+    priority: 2  # 845e
+    parent:  # 845e
+    tags:  # 845e
+    - taint  # 845e
+    - catalogue  # 845e
+    - analysis_quality  # 845e
+    isbefore: []  # 845e
+    duplicate_of: []  # 845e
+    not_duplicate_of: []  # 845e
+    pr_ref:  # 845e
+    description: ""  # 845e
+    fields:  # 845e
+      statement: "python.yaml rows platform.architecture under host_info_read. platform.py:720 calls _syscmd_file(executable, ...) with executable defaulting to sys.executable; _syscmd_file is documented as Interface to the system file command and runs subprocess.check_output with argv file -b TARGET. A row that launches a subprocess catalogued as a host-info read means the subprocess boundary is never seen at that call site."  # 845e
+      root_cause: "Boundary chosen from the module's purpose (platform = host description) rather than from the function's implementation, which shells out."  # 845e
+- op: discuss  # a7fb
+  at: '2026-09-11T16:24:01Z'  # a7fb
+  by: agent  # a7fb
+  actor: jgstern_agent  # a7fb
+  clock: 2  # a7fb
+  nonce: a7fb  # a7fb
+  message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Row R027. Verified by the orchestrator: platform.py:646 _syscmd_file docstring and platform.py:720 call site. Direction matters — this is a MISSED boundary (under-reporting), not a spurious one. Not edited here per rubric R4."  # a7fb
