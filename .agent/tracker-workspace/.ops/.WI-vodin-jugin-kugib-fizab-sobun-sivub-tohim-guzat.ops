@@ -49,3 +49,26 @@
   clock: 5  # 7662
   nonce: '7662'  # 7662
   message: "SCHEDULED 2026-09-06 by owner ruling (INV-kurup re-scope, walk-through item 4): appended to the arc tail (WI-nazos), held behind INV-busis by isbefore. This is the structural fix for INV-kurup's class -- an identifier slot filled by an emission path that never consulted the grammar -- which produced WI-dovog, WI-fiham and the css hash ids in one day."  # 7662
+- op: discuss  # 33fb
+  at: '2026-09-11T09:23:22Z'  # 33fb
+  by: agent  # 33fb
+  actor: jgstern_agent  # 33fb
+  clock: 6  # 33fb
+  nonce: 33fb  # 33fb
+  message: "Merged as PR #915, dev SHA 3f3d684166c9."  # 33fb
+- op: update  # 1a19
+  at: '2026-09-11T10:18:36Z'  # 1a19
+  by: agent  # 1a19
+  actor: jgstern_agent  # 1a19
+  clock: 7  # 1a19
+  nonce: 1a19  # 1a19
+  set: {}  # 1a19
+  add:  # 1a19
+    tags: [awaits_bakeoff_validation]  # 1a19
+- op: discuss  # 5705
+  at: '2026-09-11T10:18:36Z'  # 5705
+  by: agent  # 5705
+  actor: jgstern_agent  # 5705
+  clock: 8  # 5705
+  nonce: '5705'  # 5705
+  message: "Tagged awaits_bakeoff_validation per the tagging discipline: the PR carries raw count deltas attributed to the change (26 malformed emitters repaired; css @import edges 0 -> 1 end to end on a fixture, with the analyzer going from four css:sha256:<digest> ids to four canonical ones). ASK OF THE NEXT COHORT: whether id_format validation violations fall on the bakeoff corpus -- pretix alone reported 118 of them on 2026-09-11, before this change, which is the number to re-read. NOT a recall claim: the change re-keys ids, it does not create or destroy edges, so total edge counts should be FLAT and a move in them would be a regression rather than a win."  # 5705
