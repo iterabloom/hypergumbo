@@ -1,0 +1,74 @@
+Original commit body from a52f132e9721c4cc2933fbec8d75598e96a7570a:
+
+`haskell.py` emits an unresolved call as `haskell:<hint or external>:0-0:
+<name>:function`, and the hint came only from a QUALIFIED import alias. The
+`external` sentinel is deliberate -- its own comment says it exists so the
+tagger uses unfiltered short-name matching -- but `gate_named_entry` ends:
+
+    if ambiguous_names and name in ambiguous_names:
+        return None
+
+so with no module hint an AMBIGUOUS name reaches nothing while an unambiguous
+one still matches. The servant baseline shows the split in one table:
+`Prelude.putStrLn` classified with 8 chains and `Prelude.print` was ABSENT --
+same module, same files, same bare call shape. That is the filed defect and its
+own control.
+
+SCOPE IS EXACTLY THAT ASYMMETRY, and narrower than the item implies. Only a
+name in `ambiguous_names` is stamped -- 8 names (accept, connect, print, recv,
+run, send, trace, yield), DERIVED from the catalogue rather than listed, so a
+row added later is covered without editing this module. An unambiguous name
+already classifies, so stamping it buys NOTHING and switches module filtering
+on for a call that was working. That is this item's own cautionary case
+(WI-lajus stamped too broadly, suppressed a permissive fallback and MOVED
+VERDICTS THE WRONG WAY) applied in advance instead of after a regression;
+`putStrLn`, `writeFile` and `getLine` are pinned by test to stay `external`.
+
+TWO ROUTES COUNT AS EVIDENCE, everything else abstains:
+  (a) an unqualified `import M (name)` list -- the route the item filed;
+  (b) the name's HOME module being `Prelude` with nothing in the file claiming
+      otherwise -- which is where the filed INSTANCE actually lives, since
+      Haskell imports Prelude implicitly and it appears in no import line.
+      The item's "module context lives in the IMPORT LIST" framing does not
+      cover its own example.
+A `qualified` import is skipped deliberately: it does not put the bare name in
+scope, so a bare occurrence cannot have come from it. An explicit claim beats
+the Prelude route, so `import Data.Text.IO (readFile)` beside
+`import Prelude hiding (readFile)` never yields `Prelude`, and `hiding` with
+no other claim abstains entirely.
+
+MEASURED on servant (PYTHONHASHSEED=0, one XDG_CACHE_HOME per arm, haskell.py
+blob asserted at arm BEGIN and END):
+
+    total_io_edges              50 -> 53
+    haskell chains              46 -> 49
+    distinct (kind, primitive)  15 -> 16
+    NEW      logging  Prelude.print  3 chains
+    LOST     0
+    CHAIN COUNTS CHANGED  0   (`Prelude.putStrLn` stayed at exactly 8)
+    verify-claims: every verdict byte-identical.
+
+ALL THREE CHAINS READ BACK AGAINST SOURCE, AND THEY CORRECT THE RATIONALE.
+The sites are servant-conduit:88/91, servant-pipes:90/93 and
+servant-machines:82/85 -- the filing named TWO files, there are THREE. Each
+carries `import Prelude ()` + `import Prelude.Compat`, the base-compat idiom,
+whose EMPTY import list SUPPRESSES the implicit Prelude: `print` arrives
+re-exported from `Prelude.Compat`, not from the implicit Prelude route (b)
+reasons about. The stamp is still correct -- `Prelude.Compat` re-exports
+`Prelude.print` verbatim, and the catalogue rows a function's HOME module
+rather than whichever module re-exported it into a given file -- but the
+justification encoded is not the one operating at these sites. Route (b) is
+better read as "the home module is Prelude and nothing in this file claims
+otherwise". Written into the docstring and pinned by two tests rather than
+smoothed over, because it matters if the rule is ever widened.
+
+Closes the last live R2-route failure across cpp/elixir/erlang/haskell, so
+INV-linub's haskell row no longer has a catalogued primitive with live call
+sites reaching nothing.
+
+Full suite 26,804 passed, 100% coverage; root tests 1,776 passed; ratchet 669.
+
+Record: ~/hypergumbo_lab_notebook/lokun_09112026/
+
+Racial-Capitalism-Is-Bad: an armadillo conducting in a mossy Shoney’s atrium with a platoon of meerkats
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
