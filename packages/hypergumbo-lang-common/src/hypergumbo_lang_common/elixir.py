@@ -18,7 +18,16 @@ This analyzer uses tree-sitter to parse Elixir files and extract:
   attribute (``@attr.thing()``), a quoted atom (``:"Elixir.Foo".bar()``)
   and an anonymous call (``f.()``, which has no named callee at all).
 - Import relationships (use/import). ``alias`` produces NO edge — it is
-  collected only as a hint for call disambiguation.
+  collected only as a hint for call disambiguation, in all four spellings:
+  ``alias A.B.C``, ``alias A.B.C, as: X``, the MULTI-ALIAS BRACE FORM
+  ``alias A.B.{C, D}`` (whose tree is ``arguments -> dot -> [alias, ".",
+  tuple]``, so it has no ``alias`` child of ``arguments`` and used to
+  register nothing), and by FIRST COMPONENT — ``alias Mix.Tasks.Phx.Gen``
+  makes ``Gen.Context.build(...)`` mean
+  ``Mix.Tasks.Phx.Gen.Context.build/2``. The last two became load-bearing
+  when qualified calls stopped resolving by bare name (WI-kafor): a
+  qualified call is resolved by EXACT name only, so an alias that is not
+  read is a call that is not resolved.
 - OTP/Phoenix/WebSocket behaviour callback edges (use GenServer, @behaviour Plug, etc.)
 
 If tree-sitter with Elixir support is not installed, the analyzer
@@ -195,6 +204,37 @@ def _extract_alias_hints(
                 if child.type == "alias":
                     module_node = child
                     break
+
+            if module_node is None:
+                # WI-kafor: the MULTI-ALIAS BRACE FORM, `alias Phx.New.{Project,
+                # Generator}`, which is ordinary Elixir and produces a different
+                # tree: `arguments -> dot -> [alias "Phx.New", ".", tuple]`, so
+                # there is no `alias` child of `arguments` to find and the
+                # directive used to register NO hint at all.
+                #
+                # It only became load-bearing when the module-ownership gate
+                # below stopped being a substring test. `"Project."` happened to
+                # be a substring of `Phx.New.Project.ecto?`, so the old gate let
+                # these calls through and the resolver bound them correctly BY
+                # ACCIDENT. An exact gate asks whether the project defines
+                # `Project`, which it does not -- it defines `Phx.New.Project` --
+                # so without this, 44 true first-party edges on phoenix-framework
+                # were lost. The gate is right; it needs the aliases to be read.
+                for child in args.children:
+                    if child.type != "dot":
+                        continue
+                    prefix_node = find_child_by_type(child, "alias")
+                    tuple_node = find_child_by_type(child, "tuple")
+                    if prefix_node is None or tuple_node is None:
+                        continue
+                    prefix = node_text(prefix_node, source)
+                    for member in tuple_node.children:
+                        if member.type != "alias":
+                            continue
+                        member_name = node_text(member, source)
+                        hints[member_name.rsplit(".", 1)[-1]] = (
+                            f"{prefix}.{member_name}"
+                        )
 
             if module_node:
                 full_path = node_text(module_node, source)
@@ -1262,6 +1302,30 @@ def _extract_edges_from_tree(
     return edges
 
 
+def _expand_alias(module_name: str, alias_hints: dict[str, str]) -> str:
+    """Resolve a written module against the file's ``alias`` directives.
+
+    An alias binds the FIRST COMPONENT, not the whole name:
+    ``alias Mix.Tasks.Phx.Gen`` makes ``Gen`` mean ``Mix.Tasks.Phx.Gen`` AND
+    makes ``Gen.Context`` mean ``Mix.Tasks.Phx.Gen.Context``. Looking the
+    whole written name up in the hint map answers the first case and misses
+    the second, which on phoenix-framework is 29 real first-party calls
+    (``Gen.Context.build``, ``Gen.Schema.*``, ``Gen.Notifier.*``).
+
+    That miss was invisible while module ownership was a substring test --
+    ``"Gen.Context."`` is a substring of ``Mix.Tasks.Phx.Gen.Context.build``,
+    so the old gate opened and the resolver bound the call correctly by
+    accident. Once ownership is an exact question, the expansion has to be
+    right for the answer to be.
+    """
+    if module_name in alias_hints:
+        return alias_hints[module_name]
+    head, _, rest = module_name.partition(".")
+    if rest and head in alias_hints:
+        return f"{alias_hints[head]}.{rest}"
+    return module_name
+
+
 def _handle_dot_call(
     call_node: "tree_sitter.Node",
     dot_node: "tree_sitter.Node",
@@ -1354,9 +1418,9 @@ def _handle_dot_call(
         return
 
     # Try with alias hints: if module_name is an alias, resolve to full path
-    if module_name in alias_hints:
-        full_module = alias_hints[module_name]
-        full_qualified = f"{full_module}.{func_name}"
+    expanded_module = _expand_alias(module_name, alias_hints)
+    if expanded_module != module_name:
+        full_qualified = f"{expanded_module}.{func_name}"
         if full_qualified in global_symbols:
             callee = global_symbols[full_qualified]
             edges.append(Edge.create(
@@ -1371,34 +1435,37 @@ def _handle_dot_call(
             ))
             return
 
-    # Try resolver lookup, but only when the module name plausibly belongs
-    # to this project.  If no global symbol key contains the module name as
-    # a prefix component (e.g., "Greeter." in "App.Helpers.Greeter.greet"),
-    # the call targets an external library and the resolver's bare-name
-    # suffix matching would produce false positives (e.g., bare "compile"
-    # matching Phoenix.Digester.compile when the source says
-    # Plug.Builder.compile).
-    module_dot = f"{module_name}."
-    alias_expanded = alias_hints.get(module_name)
-    if alias_expanded:
-        module_dot = f"{alias_expanded}."
-    module_known = any(module_dot in k for k in global_symbols)
-    if module_known:
-        path_hint = alias_hints.get(module_name, module_name)
-        lookup_result = resolver.lookup(func_name, path_hint=path_hint)
-        if lookup_result.found and lookup_result.symbol is not None:
-            edges.append(Edge.create(
-                src=current_function.id,
-                dst=lookup_result.symbol.id,
-                edge_type="calls",
-                line=call_node.start_point[0] + 1,
-                evidence_type=evidence_type,
-                confidence=0.75 * lookup_result.confidence,
-                origin=PASS_ID,
-                origin_run_id=run_id,
-            ))
-            return
-
+    # NO BARE-NAME RESOLUTION FOR A QUALIFIED CALL (WI-kafor).
+    #
+    # What stood here asked whether the project plausibly owned the written
+    # module -- as a SUBSTRING test, `any(f"{module}." in k for k in
+    # global_symbols)`, though the comment described a component test -- and
+    # then let `resolver.lookup(func_name, path_hint=...)` bind by BARE NAME.
+    # On phoenix-framework that produced 202 false edges: `Logger.error(...)`
+    # landing on an `error/1` inside an EEx GENERATOR TEMPLATE, `Path.join(...)`
+    # on a Phoenix Channel's `join/3` in another template, `Mix.raise(...)` on a
+    # test controller's `raise/1`, and `Logger.info(...)` on a **defp**, which
+    # Elixir does not permit to be called from another module at all.
+    #
+    # Tightening the gate to an EXACT module-ownership question was tried and
+    # measured first. It is necessary and it is not sufficient: with the gate
+    # exact, every edge the bare-name lookup still produced on the whole corpus
+    # was STILL wrong -- `Phx.New.Umbrella.render()` to a template's `render`,
+    # `Router.call()` to an unrelated test helper's `call`. The gate decides
+    # WHICH modules may pass; the defect is the bare-name bind itself, so that
+    # is what goes.
+    #
+    # A qualified call now resolves ONLY by name: `Module.func` directly, or
+    # through the alias expansion above, both of which are exact. Anything else
+    # falls to the unresolved edge below, which names the right module and lets
+    # the catalogue and the linkers do their work -- and that is where the
+    # recall came from: `Logger.error` / `Logger.info` reach the Logger
+    # catalogue rows for the first time.
+    #
+    # KNOWN CONSEQUENCE, filed rather than special-cased: a function reached
+    # only through `defdelegate` (`Phoenix.CodeReloader.sync/0`) registers no
+    # symbol under its own module, so it now goes unresolved instead of binding
+    # to the delegate target's module -- which was the wrong module anyway.
     # Fallback: create an unresolved edge for cross-module calls
     # This allows linkers to match across files/languages.
     # WI-rakul: when ``module_name`` is an alias (``alias String, as: S``
@@ -1406,8 +1473,7 @@ def _handle_dot_call(
     # downstream consumers see ``String`` not ``S``. Populate dst_ref
     # with the canonical (module, name).
     _emit_unresolved_dot_edge(
-        call_node, current_function,
-        alias_hints.get(module_name, module_name), func_name, edges, run_id,
+        call_node, current_function, expanded_module, func_name, edges, run_id,
     )
 
 
