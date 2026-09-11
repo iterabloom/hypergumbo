@@ -1,0 +1,67 @@
+Original commit body from 81b9fc38f36126ebfbc1292e50f7f101df9dde10:
+
+Arc T10. Closes WI-jozap — a MEASUREMENT-INTEGRITY defect, not a recall gap.
+
+## The defect, and why pinning the order is not the fix
+
+`elixir.py` attributed a bare stdlib-named call to `next(iter(imported_modules))` — an arbitrary element of a `set[str]`. Python randomises string hashing per process, so the same code over the same repository did not produce the same answer twice.
+
+**Measured before the fix, as the pre-registered control** (identical tree, `elixir.py` blob `8fe54c20cb…` asserted in both arms, phoenix-framework, fresh interpreters):
+
+    PYTHONHASHSEED=0      survey 17,157,886 bytes
+    PYTHONHASHSEED=12345  survey 17,171,522 bytes
+    elixir edges 8,049 in both   APPEARED 101   VANISHED 101
+
+Totals stable, destinations churn — the item's filed signature, reproduced in this harness. **And the content of the churn indicts the attribution as well as the ordering:** the movers are `raise`, `to_string`, `is_list` — Kernel auto-imports, available with no `import` directive at all — flipping between `Plug.Conn` and `Phoenix.Controller` by hash seed. Sorting the set would pin *which of two wrong answers* is given.
+
+This nearly produced a wrong decision once already: WI-kigub's first A/B reported 32 vanished edges, which under that item's own pre-registered falsifier meant the fix does not ship. The 32 were smaller than the instrument's variance against itself.
+
+## The population was two populations wearing one name
+
+`_ELIXIR_STDLIB_FUNCTIONS` unioned **Kernel auto-imports** (`is_atom`, `inspect`, `raise`, `elem`, `apply`, …) with names that genuinely do come from an imported module — `puts`/`write`/`gets` (IO), `map`/`filter`/`reduce` (Enum), `split`/`join`/`trim` (String), `debug`/`info`/`warn`/`error` (Logger) — and the branch treated them alike. The ownership was already written down beside the names as prose comments (`# IO — commonly called bare via import`) and never used as data. That is precisely what this defect cost.
+
+## The fix — three ordered rules, no set iteration anywhere
+
+1. an `only:` list that **names** the function wins — direct evidence, and what the WI-rakul comment above the line actually describes;
+2. a **Kernel auto-import gets no module-keyed edge** — membership of the new `_ELIXIR_KERNEL_AUTO_IMPORTS` is exactly the statement "this is not the imported module's function";
+3. an importable name whose owning stdlib module **is imported** takes that module; anything else is declined.
+
+Declining is the withholding direction, which is the safe one: a wrong module here is a false edge into a catalogue, and the catalogue is what a security verdict is read off.
+
+## Probing the grammar found five import shapes where the item named one
+
+`import M` · `import M, only: [f: 1, g: 2]` · `import M, only: :macros` (not enumerable — skipped) · `import M, except: [f: 1]` (says what is *not* there — ignored) · several directives in one file (first in **document** order wins). Writing the coverage tests then found a **sixth** — `import :erlang`, whose argument is an atom rather than an alias node — and a second-keyword spelling (`only: [...], warn: false`) the reader must walk past. Enumerating what a grammar CAN produce is not enumerating what it DOES.
+
+## Evidence
+
+Pre-registration written before any arm ran, with the falsifiers fixed in advance: `~/hypergumbo_lab_notebook/jozap_09112026/PLAN.md`.
+
+### P1 — determinism: holds, on the WHOLE survey
+
+    comparison (per-run uuid excluded)        edges                nodes
+    BASE (pre-fix)  seed 0 vs 12345        onlyA=101 onlyB=101   onlyA=16 onlyB=25
+    SUBJ (fixed)    seed 0 vs 12345        onlyA=0   onlyB=0     onlyA=0  onlyB=0
+
+Zero differences in every edge and every node, not just in elixir. **The defect also moved NODES, which the item did not report** — the filing says only that destinations churn; the pre-fix control shows 16/25 synthetic stand-in symbols differing between seeds too.
+
+### P2 / P4 — 653 edges removed, 0 real losses
+
+    repo                 branch edges    lost   REAL losses   unsupported survivors
+    phoenix-framework    427 -> 0        427         0                0
+    livebook             226 -> 0        226         0                0
+
+Every lost edge is a Kernel auto-import falsely attributed: `Plug.Conn.inspect` (43), `Plug.Conn.raise` (36), `Plug.Conn.is_atom` (21), `Ecto.Changeset.raise` (15), `Record.is_binary` (11), `Livebook.Factory.send` (7).
+
+### The finding this measurement did not expect, stated plainly
+
+**On both repositories the branch emitted 653 edges and every single one was false.** It never once fired on the population WI-rakul wrote it for. So on this corpus the change is **purely subtractive** — and that is said here rather than buried under "0 real losses".
+
+### What this does NOT establish
+
+Rules 1 (`only:` wins) and 3 (owner imported) are exercised **only by the nine unit tests**; neither fired on either repository. A rule that *preserves* attribution and has no live witness could be wrong in a way this measurement cannot see. Two Elixir repositories is also not a population. What IS established live: the non-determinism is gone, and the 653 edges removed were all false.
+
+### Instrument faults caught, both by a number that could not be true
+
+A first P1 reading `md5sum`-ed a survey file that was **still being written** and reported a difference. A first P2/P3 instrument keyed the dst on `:unresolved` — it is re-keyed to `:external_symbol` downstream — and returned a clean **BASE=0**; a second keyed on the dst pattern alone and reported **2,111 "unsupported" edges** that were `Path.join` and `Enum.map`, qualified calls needing no import. The population is now read at the analyzer, where `meta['binding']` survives.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
