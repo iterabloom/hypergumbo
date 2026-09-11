@@ -1,0 +1,23 @@
+- op: create  # f625
+  at: '2026-09-11T02:53:25Z'  # f625
+  by: agent  # f625
+  actor: jgstern_agent  # f625
+  clock: 1  # f625
+  nonce: f625  # f625
+  data:  # f625
+    kind: work_item  # f625
+    title: "elixir: a bare Kernel auto-import is attributed to an ARBITRARY imported module (next(iter(set))), so analyzer output is NON-DETERMINISTIC across processes -- identical runs on phoenix disagree by 67-166 edges"  # f625
+    status: todo_hard  # f625
+    priority: 1  # f625
+    parent:  # f625
+    tags:  # f625
+    - elixir  # f625
+    - analysis_quality  # f625
+    - reproducibility  # f625
+    - taint  # f625
+    isbefore: []  # f625
+    duplicate_of: []  # f625
+    not_duplicate_of: []  # f625
+    pr_ref:  # f625
+    description: "FOUND 2026-09-10 while measuring WI-kigub. Record and instruments:\n~/hypergumbo_lab_notebook/kigub_09102026/ (PLAN.md Addendum B0, diff_arms.py).\n\nTHE ANALYZER DOES NOT PRODUCE THE SAME ANSWER TWICE.\n\n`elixir.py` (bare-call branch, `source_module = next(iter(imported_modules))`)\nattributes a bare stdlib call to an ARBITRARY element of a `set[str]`. Python\nrandomises string hashing per process, so which import gets the attribution\nchanges between runs of the same code over the same repository.\n\nMEASURED on phoenix-framework, identical tree, two fresh interpreters:\n    run A vs run B   67 edges moved\n    run B vs run C  166 edges moved\nEdge totals are stable (11,100 both times); it is the DESTINATIONS that churn.\nWith `PYTHONHASHSEED=0` the same runs reproduce exactly (0 appeared / 0\nvanished, verified twice on each arm).\n\nTWO SEPARATE DEFECTS, ONE LINE:\n\n(1) NON-DETERMINISM. Any A/B over the elixir analyzer is unreadable below\n~170 edges of self-noise. This nearly sank WI-kigub's measurement: the first\nA/B reported 32 VANISHED edges, which under that item's own pre-registered\nfalsifier meant the fix does not ship. The 32 were noise — smaller than the\ninstrument's variance against itself. Anything that caches, diffs or\nregression-tests an elixir survey inherits this.\n\n(2) WRONG MODULE, which is true even after the ordering is pinned. The names\nbeing attributed are `is_atom`, `is_binary`, `is_list`, `is_struct`,\n`is_function`, `raise`, `inspect`, `elem`, `apply`, `to_string`, `map_size`,\n`function_exported?` — Kernel AUTO-IMPORTS, available without any `import`\ndirective at all. Attributing `is_atom(plug)` at\n`lib/phoenix/router.ex:776` to `Plug.Conn` (one run) or `Phoenix.Router`\n(another) is a false edge under either ordering. The WI-rakul comment directly\nabove the line describes an `import Mod, only: [name: N]` directive\nestablishing module context; a Kernel auto-import has no such directive, so\nthe branch is firing on a population it was not written for.\n\nSWEPT FOR THE CLASS RATHER THAN THE INSTANCE. All 11 `next(iter(...))` sites\nunder `packages/*/src/` were checked: four in `producer_coherence.py` are\nguarded by `len(...) == 1`; `dataflow_scope.py:162` is guarded by an earlier\n`if len(distinct) > 1: continue`; `verify_claims.py:5394` iterates a dict;\n`py.py:7251` is guarded by `len(v) == 1`; the rest iterate generators or\n`dict.values()`. THIS IS THE ONLY UNGUARDED `next(iter(<set>))` IN THE TREE.\nThe class has exactly one member, which is why this is filed as a work item\nand not as an invariant.\n\nDIRECTION, not chosen here: a Kernel auto-import probably deserves no\nmodule-keyed edge at all rather than a deterministic wrong one, since\n`_ELIXIR_STDLIB_FUNCTIONS` membership is precisely what says \"this is not the\nimported module's function\". If some attribution is kept, it must be ordered\n(`sorted(...)` or preserve directive order), not set-arbitrary.\n\nMEASURING ANYTHING ON ELIXIR BEFORE THIS IS FIXED REQUIRES `PYTHONHASHSEED=0`\nON EVERY ARM."  # f625
+    fields: {}  # f625

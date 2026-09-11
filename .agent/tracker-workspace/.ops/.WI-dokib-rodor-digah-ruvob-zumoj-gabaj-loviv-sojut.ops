@@ -1,0 +1,23 @@
+- op: create  # 6a7a
+  at: '2026-09-11T02:53:34Z'  # 6a7a
+  by: agent  # 6a7a
+  actor: jgstern_agent  # 6a7a
+  clock: 1  # 6a7a
+  nonce: 6a7a  # 6a7a
+  data:  # 6a7a
+    kind: work_item  # 6a7a
+    title: "elixir: a call outside a def emits NO edge -- module bodies and test/setup macro blocks, 101 of 225 atom call sites on phoenix; affects the alias path identically (typespec type refs correctly emit nothing and must keep doing so)"  # 6a7a
+    status: todo_hard  # 6a7a
+    priority: 2  # 6a7a
+    parent:  # 6a7a
+    tags:  # 6a7a
+    - elixir  # 6a7a
+    - analysis_quality  # 6a7a
+    - io_boundary  # 6a7a
+    - taint  # 6a7a
+    isbefore: []  # 6a7a
+    duplicate_of: []  # 6a7a
+    not_duplicate_of: []  # 6a7a
+    pr_ref:  # 6a7a
+    description: "FOUND 2026-09-10 while attributing WI-kigub's refuted edge-count prediction.\nRecord: ~/hypergumbo_lab_notebook/kigub_09102026/PLAN.md Addendum B2 and\np2_attribution.txt.\n\nA call that is not lexically inside a `def` / `defp` produces NO edge.\n`_handle_dot_call` and the bare-call branch both begin by resolving\n`_get_enclosing_function`, and return when it is None.\n\nMEASURED on phoenix-framework over the atom-module population (225 source\nsites): 103 emitted nothing. Two were in files the analyzer never read. The\nother 101 are all this:\n\n  * MODULE-BODY code. `mix.exs`, `installer/mix.exs` and\n    `integration_test/mix.exs` each run `for path <- :code.get_path()` at\n    module scope.\n  * `test` / `setup` MACRO BLOCKS. `test/mix/tasks/phx.gen.cert_test.exs`\n    performs seven `:ssl.*` calls — `listen`, `sockname`, `transport_accept`,\n    `handshake`, `connect`, `close` ×3 — inside `test \"...\" do ... end`.\n    `test` is a macro, not a `def`, so there is no enclosing FUNCTION symbol.\n  * `priv/templates` generator sources.\n\nNOT SPECIFIC TO ANY RECEIVER SYNTAX. A parity fixture asks each spelling twice:\n\n    module body   :ets.new(...)  -> no edge     Logger.error(...) -> no edge\n    test block    :ets.insert(.) -> no edge     Logger.error(...) -> no edge\n    inside a def  :ets.insert(.) -> EDGE        Logger.error(...) -> EDGE\n\nSo the alias path loses exactly the same sites the atom path loses. This is a\nsymbol/enclosure limit, not a receiver-typing one, which is why it is filed\nseparately from the INV-linub receiver-syntax family rather than inside it.\n\nCORRECTLY REFUSED, and NOT part of this item: a typespec type reference.\n`@callback child_spec(keyword) :: :supervisor.child_spec()` and\n`:inet.ip_address()` inside a `@spec` are types, not calls, and must emit\nnothing. A fixture pins that they do not. Any fix here must keep that true —\nthe naive reading of \"emit for calls outside a def\" would start minting call\nedges for typespecs, which is worse than the gap.\n\nSIZING CAVEAT: 101 is the shortfall on the ATOM population of ONE repository.\nThe size of the class across all Elixir call forms is unmeasured. An Elixir\nproject's test suite is a large share of its code and its I/O, so the `test`\nblock half is likely the dominant limb, but that is a prediction, not a datum."  # 6a7a
+    fields: {}  # 6a7a
