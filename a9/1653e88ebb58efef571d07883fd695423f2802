@@ -1,0 +1,51 @@
+Original commit body from 7718c8b605a28876560926f3336dc6c73da0ce57:
+
+Arc T4 — INV-varil's narrow half and INV-linan's **layer 1**. The other two layers are measured here and filed, not guessed at.
+
+## The defect, measured on the live corpus rather than restated
+
+`--field key=value` split on the first `=` and stored the key verbatim; nothing checked it. Re-measured today over 2,233 items: **11 items carry a core attribute name as a custom field, 18 field instances** (INV-linan's 2026-09-06 table recorded 21; the arc said "12-item cleanup"; both have drifted, and the number built against is today's).
+
+Every one is a stale creation-time snapshot that never tracked the attribute afterwards, so the two homes disagree:
+
+| item | top-level | `fields.*` |
+|---|---|---|
+| `INV-dabov` | `satisfied`, P1 | `status: violated` |
+| `INV-vaduk` | `satisfied`, P1 | `status: todo_soft`, `priority: P3` |
+
+`todo_soft` is not even a legal status for an invariant. "What is the status of this item" had stopped having one answer.
+
+## Three tiers, keyed on normalisation
+
+- **Tier 1 — a core attribute name.** Refused, and the message names the flag that actually moves it. **No `--force`:** there is no legitimate second `status`, and an escape hatch is how the corpus acquired eighteen of these.
+- **Tier 2 — normalises to a *declared* schema key but spelled differently** (`Root_Cause`, `root-cause`). Refused; `--force-field-key` opens this tier and only this tier.
+- **Tier 3 — undeclared and distinct.** Allowed. The open dict is genuinely used, and `dogfood_anon_id` was a convention before it was a declared field.
+
+Keyed on normalisation is **narrower than "looks similar", on purpose**: `root_causes` for `root_cause` is one character apart and lands in tier 3, because an edit-distance rule would also start refusing legitimately distinct keys that sit near a declared one.
+
+## The gate is in the Store
+
+INV-linan's layer-1 finding is that `Store.update` runs no schema check at all, and its field-name loop validates the **top-level** keys while never looking inside `set_fields["fields"]` — which is exactly where a custom key goes. A gate only the CLI enforces is bypassed by every other writer, so the rule lives in `Store.add`/`Store.update` and the CLI only renders the message.
+
+**A removal is exempt, deliberately.** `--remove-field status` sets the value to `None`; a gate that refused it would freeze those eleven items in their broken state permanently, because deleting the offending key *is* the remedy.
+
+## The cleanup, one decision at a time
+
+Not a batch — which is what caught **`INV-muhij`, whose core description was empty and whose entire 3,284-character description lived in the shadow.** A batch delete would have destroyed the item's only description; the content was moved up instead. `INV-toguh`'s shadow carried a `dead_code` tag the core lacked, added before the shadow went.
+
+## Why `--strict` is NOT in CI, and it is not an oversight
+
+Cleaning the items does not clean the ops. `validation._validate_fields_schema(fname, idx, fields, schema, result)` takes an **op index** and validates that op's own payload, so the unit is the **op**, not the compiled **item**. All nine core-name errors are `op 0` — the create op — on items whose compiled state is now clean, and after the cleanup `tracker validate --strict` still reports the same 26 errors, because a create op written in June is immutable history.
+
+Turning `--strict` on therefore requires first deciding what the validator's unit should be. That is INV-linan's layer 2/3, it is a design decision, and it is filed on the item rather than guessed at here.
+
+## Two limbs need the human, and were not worked around
+
+- **`severity`** (17 invariants; a real convention no schema names) should be declared in the invariant `fields_schema`, the route `dogfood_anon_id` took. `.agent/tracker/config.yaml` is mode `-r--rw-r--` and is **not writable by the agent** even though the agent owns it. That is an explicit control; I did not `chmod` around it.
+- **The stale `.agent/tracker-workspace/config.yaml`** is gitignored, untracked, read by nothing (`TrackerSet` hands the canonical config object to all three tier Stores) and dangerously out of date — it still lists `holding` as an allowed invariant status and omits `satisfied` and `pending_validation` entirely.
+
+## Notes
+
+`flag_for` began by deriving `--<name>`; the drift test caught `tags`, whose flag is `--tag`, so tier 1 would have named a flag that does not exist. The mypy narrowing in the update gate is done by binding the nested dict to a local rather than by an ignore — ratchet clean at 669.
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
