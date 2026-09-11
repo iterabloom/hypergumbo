@@ -39,3 +39,18 @@
   set: {}  # 035f
   remove:  # 035f
     isbefore: [WI-jivih-rolok-botug-pumig-finub-nusin-tinuk-nukib]  # 035f
+- op: discuss  # 7d66
+  at: '2026-09-11T10:57:51Z'  # 7d66
+  by: agent  # 7d66
+  actor: jgstern_agent  # 7d66
+  clock: 4  # 7d66
+  nonce: 7d66  # 7d66
+  message: "THE NUMBER T9 WAS HELD BEHIND T8 FOR NOW EXISTS, AND IT POINTS THE OPPOSITE WAY\nFROM THE ARC'S ORDERING. Memo:\n~/hypergumbo_lab_notebook/t9_bulag_decision_09112026/DECISION-MEMO.md.\nNOTHING IS DECIDED HERE -- this item says it needs an owner design decision and\nit still does.\n\nThe arc holds T9 behind T8 because \"T8's finding-weighted number is what makes\nthe third option evaluable\" (option 3: publish the second number on the source\nhalf alone and disclose the sink half as a named dated blindness).\n\n    half            what it is worth, measured\n    SOURCE (T8)     0 of 145 findings carry a choice-shaped source across\n                    pretix / workadventure / modsecurity / apollo-server -- on\n                    a corpus that CANNOT SEE 17 of the 24 choice-shaped names\n                    (no go, java, erlang or rust repository).\n    SINK (this)     >= 6 of 38 surviving true positives (15.8%) on measurement\n                    0006 have a sink whose tainted argument is a path the value\n                    merely SELECTS.\n\nTHE ORDERING IMPLIES THE SOURCE HALF IS THE LARGER ONE AND THE EVIDENCE SAYS\nTHE OPPOSITE. T8 sits first and `value_shape` is the cheaper mechanism\n(decidable per ROW, no path analysis), so the natural reading is \"do the easy\nbig one first\". On the only numbers either half has, the sink half is worth at\nleast 15.8% of surviving true positives and the source half is worth 0% of\nmeasured findings.\n\nBOTH ARE FLOORS, AND FOR DIFFERENT REASONS, which is why this is a memo rather\nthan a recommendation: the source figure is low because the corpus cannot see\nthe population; the sink figure is low because 0006's record cannot adjudicate\nthe bash redirect cases (TARGET vs BYTES). They are not commensurable as they\nstand.\n\nWHAT WOULD MAKE THEM COMMENSURABLE: ONE cohort answering both -- a corpus with\nat least one server in go, java, erlang and rust, adjudicated with the redirect\nTARGET-vs-BYTES distinction recorded. The T8 instrument reads any set of\n`vc.json` artifacts in under a second; only the cohort is missing, and the same\ncohort serves both halves.\n\nONE CONSTRAINT THE AGENT CAN STATE WITHOUT DECIDING: the owner's 2026-08-27\namendment binds either mechanism -- the exclusion is defined STRUCTURALLY, by\nthe SHAPE of the path, never by a per-case severity judgement. Option 2 (a role\ncomputed at the walk) is the one most at risk of drifting into \"is this\ninteresting?\", because the walk has the finding in front of it; option 1 keeps\nthe judgement in the catalogue, where it is written once and reviewed.\n\nTHE QUESTION PUT TO THE OWNER: given that the sink half carries the measured\nvolume and the source half currently carries none, SHOULD T8 AND T9 SWAP PLACES\nIN THE ARC? The order was set before either number existed."  # 7d66
+- op: update  # f95b
+  at: '2026-09-11T10:57:51Z'  # f95b
+  by: agent  # f95b
+  actor: jgstern_agent  # f95b
+  clock: 5  # f95b
+  nonce: f95b  # f95b
+  set:  # f95b
+    status: needs_human_review  # f95b
