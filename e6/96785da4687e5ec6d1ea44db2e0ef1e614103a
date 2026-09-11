@@ -1,0 +1,91 @@
+Original commit body from 6ef885ceba0a44a6d1f9fa621ee41009a7ebbe7b:
+
+Elixir calls every Erlang/OTP module with an ATOM module -- `:ets.insert`,
+`:httpc.request`, `:gen_tcp.send` -- and `_handle_dot_call` required the dot
+node to carry an `alias` child. An atom parses as `atom`, so the handler
+returned before emitting anything: not an untyped edge and not a misbound one
+but NO EDGE AT ALL, an INV-linub L2 failure that no downstream receiver
+evidence can rescue. The parent catalogue's OTP rows were present and
+reachable by nothing; `io_primitives/elixir.yaml`'s header has claimed since
+2026-04 that they are "covered for the atom-access path", which was true of
+the rows and false of the path. That header is corrected with a date.
+
+SCOPE BY PARITY WITH THE WORKING ALIAS PATH, NOT BY THE CONSTRUCT. Probing the
+grammar rather than trusting the filing found SIX early-returning dot shapes,
+not the one filed. Fixed: the shape whose module is written literally at the
+call site. Refused and pinned as known gaps: a variable receiver
+(`mod.fun()`), a module attribute (`@attr.thing()`), a quoted atom
+(`:"Elixir.Foo".bar()`, zero corpus sites and an undecided
+`:"Elixir.Foo"`/`Foo` normalisation) and `__MODULE__.helper()`. Refused
+CORRECTLY, also pinned: a dot call with no named callee -- `f.()`,
+`(fn x -> x end).()`, and the operator forms `Kernel.+(1,2)` / `:erlang.+(1,2)`,
+which carry a receiver this analyzer now handles but put an
+`operator_identifier` where the function name goes.
+
+THE COLON IS STRIPPED, WHICH IS THE LOAD-BEARING HALF. `_module_matches` is
+component-aware and does no colon stripping, so a module slot of `:ets`
+matches the catalogue's `ets` row not at all -- the edge would exist and reach
+nothing, which is exactly the failure INV-linub exists to catch. Stripping is
+also the cross-language parity answer: the erlang analyzer, calling these same
+OTP modules, emits `erlang:ets:0-0:insert:function`.
+
+ATOM CALLS BYPASS FIRST-PARTY RESOLUTION BY CONSTRUCTION. Those branches end
+in an `any(module_dot in k ...)` SUBSTRING test -- the defect the sibling item
+WI-kafor files -- and `"ets."` is a substring of any project key such as
+`Foo.Sockets.insert`, so routing atoms through them would bind `:ets.insert`
+to a first-party function. A test pins that a project defining `Foo.Sockets`
+does not capture it. A second test pins the landmine in the other direction:
+`mod.fun(1)` puts TWO `identifier` children on the dot node, so
+`find_child_by_type(dot_node, "identifier")` returns `mod` -- the RECEIVER --
+and loosening the guard generally would emit an edge named after a local
+variable.
+
+MEASURED on phoenix-framework, `PYTHONHASHSEED=0`, both arms reproducing
+themselves exactly, elixir.py blob asserted at arm BEGIN and END:
+
+  analyze_elixir   11,100 -> 11,222 edges. APPEARED 122 across 25 distinct OTP
+                   modules. VANISHED 0. Symbols added 0, removed 0.
+  io-boundaries    total_io_edges 250 -> 277; distinct elixir primitives
+                   52 -> 65; primitives LOST 0. `db_read` (0 -> 8) and
+                   `db_write` (0 -> 10) appear as boundary KINDS phoenix had
+                   never reached, and all 18 chains have an `ets` sink.
+  verify-claims    findings 19 -> 31. Two verdicts move inconclusive ->
+                   violated: untrusted-input-no-database (ev=4) and
+                   host-secret-no-network (ev=1). The other five are identical.
+
+ALL FIVE FINDINGS READ BACK AGAINST SOURCE: 5/5 structurally correct, 0 wrong.
+Four are `lib/phoenix/config.ex` reading and writing its own ETS table; the
+fifth is `System.get_env("HTTP_PROXY")` genuinely configuring the
+`:httpc.request` it co-occurs with, which is WI-gohok's already-ruled
+correctness-axis-true / usefulness-weak category and is not re-litigated. The
+two claims were inconclusive because hypergumbo could not see `:ets` or
+`:httpc` at all and correctly said so. Elixir is `dataflow_capable: false`, so
+all 31 findings stay `structural` / `approximate` / `walk_verdict: unavailable`.
+
+TWO OF SIX PRE-REGISTERED PREDICTIONS REFUTED. The edge count came in at 122
+against a floor of 150, chased to its cause: 101 of the 103 unemitted source
+sites are calls not lexically inside a `def` (module bodies, `test` macro
+blocks), plus typespec type references that must emit nothing -- and a parity
+fixture shows the ALIAS path loses exactly the same sites, so the atom path
+now has precisely the reach the alias path has. Both filed separately. The
+prediction of zero new findings was refuted by twelve.
+
+THE INSTRUMENT WAS WRONG BEFORE THE FIX WAS. The first A/B reported 32 VANISHED
+edges, which under the pre-registration meant this does not ship. Attributed
+rather than accepted: `next(iter(imported_modules))` picks an arbitrary element
+of a `set[str]`, so the analyzer is NON-DETERMINISTIC across processes -- the
+subject disagrees with ITSELF by 67 and 166 edges between fresh interpreters,
+and the 32 were below that noise. Filed; every arm here pins the hash seed.
+
+Also fixes a mypy strict ratchet breach (`arg-type` 105 -> 106) that this
+branch introduced: a compound guard mypy could not narrow. Diffed against a
+clean tree rather than assumed, and fixed by restructuring the guard, not by
+silencing it. The restructure is behaviour-identical -- 0 edges moved against
+the pre-refactor build. Ratchet back to 669.
+
+Full suite 26,779 passed, 100% coverage; root tests 1,776 passed.
+
+Record: ~/hypergumbo_lab_notebook/kigub_09102026/
+
+Racial-Capitalism-Is-Bad: a giraffe building a metamorphic outcrop shaped like spiral made of lox roses in a nightclub
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
