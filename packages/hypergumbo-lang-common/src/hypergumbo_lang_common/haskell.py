@@ -659,6 +659,144 @@ def _hs_action_operands(
     return []
 
 
+def _derive_haskell_gated_names() -> frozenset[str]:
+    """Catalogued haskell names the F3 gate REFUSES without a module hint.
+
+    ``gate_named_entry`` ends with ``if name in ambiguous_names: return None``,
+    so a bare AMBIGUOUS name reaches nothing while a bare unambiguous one still
+    matches through the permissive short-name path. That asymmetry is the whole
+    scope of WI-lokun: these are the only names a module hint can HELP, and
+    stamping any other name would switch module filtering on for a call that
+    already classifies -- buying nothing and risking the fallback (WI-lajus
+    stamped too broadly and moved verdicts the wrong way).
+
+    Derived from the catalogue rather than listed, so a row added to
+    ``ambiguous_names`` later is covered without editing this module.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    catalog = load_catalog("haskell")
+    named = {p.name for p in catalog.primitives if p.name}
+    return frozenset(named & set(catalog.ambiguous_names or ()))
+
+
+HASKELL_GATED_NAMES: frozenset[str] = _derive_haskell_gated_names()
+
+#: Haskell imports ``Prelude`` implicitly, so it appears in NO import line.
+_HS_IMPLICIT_MODULE = "Prelude"
+
+
+def _extract_unqualified_imports(
+    tree: "tree_sitter.Tree",
+    source: bytes,
+) -> tuple[dict[str, str], set[str]]:
+    """Which module brings each UNQUALIFIED name into scope, and what Prelude hides.
+
+    Returns ``(explicit, prelude_hidden)``:
+
+    * ``explicit`` maps a name listed in an unqualified ``import M (name)`` to
+      ``M``. A ``qualified`` import is skipped deliberately -- it does NOT put
+      the bare name in scope, so a bare occurrence cannot have come from it.
+    * ``prelude_hidden`` is the set from ``import Prelude hiding (...)``, which
+      is the case that makes an otherwise-safe implicit-Prelude inference wrong.
+
+    Two imports cannot legally claim the same unqualified name in a module that
+    actually uses it, so a later entry overwriting an earlier one is not a case
+    worth arbitrating here.
+    """
+    explicit: dict[str, str] = {}
+    prelude_hidden: set[str] = set()
+
+    for node in iter_tree(tree.root_node):
+        if node.type != "import":
+            continue
+        kinds = [c.type for c in node.children]
+        if "qualified" in kinds:
+            continue
+        module_node = next(
+            (c for c in node.children if c.type == "module"), None,
+        )
+        import_list = next(
+            (c for c in node.children if c.type == "import_list"), None,
+        )
+        if module_node is None or import_list is None:
+            continue
+        names = [
+            node_text(c, source)
+            for c in import_list.children
+            if c.type == "import_name"
+        ]
+        module_name = node_text(module_node, source)
+        if "hiding" in kinds:
+            if module_name == _HS_IMPLICIT_MODULE:
+                prelude_hidden.update(names)
+            continue
+        for name in names:
+            explicit[name] = module_name
+    return explicit, prelude_hidden
+
+
+def _hs_bare_call_module(
+    callee_name: str,
+    explicit: dict[str, str],
+    prelude_hidden: set[str],
+    prelude_exports: frozenset[str],
+) -> Optional[str]:
+    """The module a BARE call's name came from, or None to stay ``external``.
+
+    Only two routes count as evidence, and everything else abstains:
+
+    (a) an unqualified import list names it -- ``import Network.Socket.ByteString
+        (recv)`` then bare ``recv``. This is the route WI-lokun filed.
+    (b) the IMPLICIT Prelude, which is where the filed INSTANCE actually lives:
+        ``print`` is catalogued under ``Prelude`` and Prelude is in no import
+        line at all. Taken only when nothing else claims the name and
+        ``import Prelude hiding (...)`` does not hide it -- ``import
+        Data.Text.IO (readFile)`` beside ``import Prelude hiding (readFile)``
+        must yield ``Data.Text.IO``, never ``Prelude``.
+
+    Abstaining is the safe direction: ``external`` keeps the permissive
+    short-name path, and a WRONG module hint would switch module filtering on
+    and kill it.
+
+    WHAT THE CORPUS ACTUALLY LOOKS LIKE, stated because route (b)'s name is
+    misleading there: all three servant sites this fixes are written
+    ``import Prelude ()`` + ``import Prelude.Compat`` -- the base-compat idiom,
+    where the empty import list SUPPRESSES the implicit Prelude and the name
+    arrives re-exported from ``Prelude.Compat``. Stamping ``Prelude`` is still
+    correct, because ``Prelude.Compat`` re-exports ``Prelude.print`` verbatim
+    and the catalogue rows a function's HOME module, not whichever module
+    re-exported it into a given file. Route (b) is therefore better read as
+    "the name's home module is Prelude and nothing in this file claims
+    otherwise" than as a claim about the implicit import specifically.
+    """
+    if callee_name in explicit:
+        return explicit[callee_name]
+    if callee_name in prelude_hidden:
+        return None
+    if callee_name in prelude_exports:
+        return _HS_IMPLICIT_MODULE
+    return None
+
+
+def _derive_haskell_prelude_exports() -> frozenset[str]:
+    """Catalogued names whose module is ``Prelude``.
+
+    The catalogue is not a model of Prelude's full export list and is not
+    treated as one: it is only consulted for names that ALREADY have a row,
+    which is the only population a module hint could help anyway.
+    """
+    from hypergumbo_core.io_boundary import load_catalog
+
+    return frozenset(
+        p.name for p in load_catalog("haskell").primitives
+        if p.module == _HS_IMPLICIT_MODULE and p.name
+    )
+
+
+HASKELL_PRELUDE_EXPORTS: frozenset[str] = _derive_haskell_prelude_exports()
+
+
 def _hs_emit_call_edge(
     node: "tree_sitter.Node",
     source: bytes,
@@ -668,6 +806,7 @@ def _hs_emit_call_edge(
     local_symbols: dict[str, Symbol],
     resolver: NameResolver,
     run_id: str,
+    unqualified_imports: tuple[dict[str, str], set[str]] = ({}, set()),
 ) -> Optional[Edge]:
     """One ``calls`` edge from *node*, resolved when the resolver knows it.
 
@@ -692,7 +831,19 @@ def _hs_emit_call_edge(
         # comes from a qualified import when there is one, otherwise
         # "external" so the tagger uses unfiltered short-name matching (not
         # "?" which would fail module filtering and return None).
-        dst = f"haskell:{path_hint if path_hint else 'external'}:0-0:{callee_name}:function"
+        # WI-lokun: a bare AMBIGUOUS name is refused outright by the F3 gate
+        # with no module hint, so `print err` reached nothing while
+        # `putStrLn "x"` -- unambiguous, same module, same file -- classified
+        # fine. Only that population is stamped, and only from the file's own
+        # import context; everything else keeps `external` and the permissive
+        # short-name path it exists to enable.
+        module_hint = path_hint
+        if not module_hint and callee_name in HASKELL_GATED_NAMES:
+            module_hint = _hs_bare_call_module(
+                callee_name, unqualified_imports[0], unqualified_imports[1],
+                HASKELL_PRELUDE_EXPORTS,
+            )
+        dst = f"haskell:{module_hint if module_hint else 'external'}:0-0:{callee_name}:function"
         # WI-nurun: confidence kept explicit -- this edge targets an *external*
         # (unresolved) callee but is not flagged is_resolved=False, so
         # derivation would over-score it as a resolved call.
@@ -785,6 +936,10 @@ def _extract_edges_from_file(
     """
     if import_aliases is None:  # pragma: no cover - defensive default
         import_aliases = {}
+    #: Which module brings each UNQUALIFIED name into scope, per file. Computed
+    #: once here rather than per call site: it is a property of the file's
+    #: import block, and Haskell's scoping is file-wide (WI-lokun).
+    unqualified_imports = _extract_unqualified_imports(tree, source)
     edges: list[Edge] = []
     file_id = make_file_id("haskell", file_path)
 
@@ -881,6 +1036,7 @@ def _extract_edges_from_file(
                         node, source, callee_name, path_hint,
                         _hs_call_meta(node, source, callee_name),
                         local_symbols, resolver, run_id,
+                        unqualified_imports,
                     )
                     if call_edge is not None:
                         edges.append(call_edge)
@@ -913,6 +1069,7 @@ def _extract_edges_from_file(
                 import_aliases.get(action_alias) if action_alias else None,
                 {"call_construct": "monadic_action"},
                 local_symbols, resolver, run_id,
+                unqualified_imports,
             )
             if action_edge is not None:
                 edges.append(action_edge)
