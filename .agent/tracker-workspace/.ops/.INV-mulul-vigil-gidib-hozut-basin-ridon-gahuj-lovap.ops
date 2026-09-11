@@ -1,0 +1,23 @@
+- op: create  # 004c
+  at: '2026-09-11T16:23:05Z'  # 004c
+  by: agent  # 004c
+  actor: jgstern_agent  # 004c
+  clock: 1  # 004c
+  nonce: 004c  # 004c
+  data:  # 004c
+    kind: invariant  # 004c
+    title: "rust std::process::exit and ::abort declared subprocess but terminate the CALLING process — no subprocess boundary is crossed"  # 004c
+    status: violated  # 004c
+    priority: 3  # 004c
+    parent:  # 004c
+    tags:  # 004c
+    - taint  # 004c
+    - catalogue  # 004c
+    isbefore: []  # 004c
+    duplicate_of: []  # 004c
+    not_duplicate_of: []  # 004c
+    pr_ref:  # 004c
+    description: ""  # 004c
+    fields:  # 004c
+      statement: "rust.yaml rows std::process::exit and std::process::abort carry boundary subprocess. Source: abort() is one line calling crate::sys::abort_internal(), which on unix calls libc::abort() and raises SIGABRT on the CALLING process; exit() calls crate::rt::cleanup() then crate::sys::os::exit(code). Neither spawns a process, signals another process, nor exchanges data with one. The subprocess boundary asserts a crossing that does not occur."  # 004c
+      root_cause: "Module-name attribution. Both live in std::process, whose other members (Command, Child) genuinely are subprocess primitives, so the boundary was applied at module granularity rather than per function."  # 004c

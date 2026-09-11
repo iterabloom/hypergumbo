@@ -1,0 +1,31 @@
+- op: create  # b915
+  at: '2026-09-11T16:22:41Z'  # b915
+  by: agent  # b915
+  actor: jgstern_agent  # b915
+  clock: 1  # b915
+  nonce: b915  # b915
+  data:  # b915
+    kind: invariant  # b915
+    title: "ssl.SSLObject.read/write/do_handshake declared net_recv/net_send but the class does no network I/O — three rows mint untrusted_input from nowhere"  # b915
+    status: violated  # b915
+    priority: 2  # b915
+    parent:  # b915
+    tags:  # b915
+    - taint  # b915
+    - catalogue  # b915
+    - analysis_quality  # b915
+    isbefore: []  # b915
+    duplicate_of: []  # b915
+    not_duplicate_of: []  # b915
+    pr_ref:  # b915
+    description: ""  # b915
+    fields:  # b915
+      statement: "The python catalogue rows for ssl.SSLObject.read (net_recv), ssl.SSLObject.write (net_send) and ssl.SSLObject.do_handshake (net_send) assert a network crossing at a class that performs none. CPython ssl.py:784-797 states SSLObject does not provide any network IO itself and explicitly lacks any form of network IO including methods such as recv and send; all I/O is performed by the caller through memory BIOs. A source row that mints untrusted_input where no far-side data enters is a false-positive generator."  # b915
+      root_cause: "Kind asserted by name. SSLObject methods are spelled read/write/do_handshake, matching the net_recv/net_send naming convention used for SSLSocket whose methods DO cross the network. The catalogue did not distinguish the BIO-backed class from the socket-backed one."  # b915
+- op: discuss  # 430f
+  at: '2026-09-11T16:22:45Z'  # 430f
+  by: agent  # 430f
+  actor: jgstern_agent  # 430f
+  clock: 2  # 430f
+  nonce: 430f  # 430f
+  message: "Filed from the WI-vafad T5 sweep, 2026-09-11. Worker verdict cited ssl.py:784-797 plus 850/862/915; VERIFIED INDEPENDENTLY by the orchestrator against the same source before filing. Candidate list rows R087/R109/R093 in ~/hypergumbo_lab_notebook/vafad_t5_09112026/candidates.json. Fix pays ADR-0049 ruling 3 separately, per WI-vafad rubric R4 (candidate list, not edits)."  # 430f
