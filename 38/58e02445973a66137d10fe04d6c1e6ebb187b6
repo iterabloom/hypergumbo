@@ -1,0 +1,46 @@
+Original commit body from 30dde0cb79c8bfaed464ae6d47b85db4863b580a:
+
+Cadence audit (72-commit threshold) of `Edge.meta["call_construct"]` — the fold-residue key [audit-findings 0012](docs/audits/0012-evidence-type-cluster-d-call-construct.md) minted when it collapsed 28 `evidence_type` values onto the `ast_call` apex. Fold targets are where the last audit put everything that did not fit, and nothing audits *them*.
+
+Suspect nominated because WI-dosuh (#903) added a value to this key and **no consumer read it**.
+
+## The nomination's own inventory was wrong, which is the first finding
+
+A grep for the `call_construct=` kwarg found 4 values and concluded "nobody is looking at this field". The `meta={"call_construct": …}` dict-literal form holds **126 of 140 emit sites**, and the field has a registry entry, a declared scope, a prior drift repair (WI-toruz) and a producer guard (INV-tadup). An inventory that greps one emit shape is not an inventory.
+
+## Verdicts — 10 CANONICAL, 2 DEPRECATE-NO-FOLD
+
+All 12 values traced to live producers (five-shape trace), so **no verdict rests on "no producer exists"**.
+
+- `macro` (`erlang.py:562`) restates `evidence_type="macro_expansion"` on a second axis — the exact rationale recorded for ejecting `interface_dispatch` — and tree-sitter expanded nothing at the site, so there is no source call construct to name.
+- `macro_body` (`rust.py:3123`) names *where* the call was found, not what it is; no uniform fold target, because the extracted callee is variously `Self::`-qualified, `::`-qualified or bare.
+
+Zero consumers read either, so that migration is producer-only and cannot move a verdict.
+
+## Silent bug
+
+`verify_claims.py:3908` membership-tests a `call_construct` value against `module_kinds`, built from `catalog.primitives` and therefore holding `IoPrimitive.kind` values — vocabulary exactly `{function, method}`. Two tokens coincide; the other ten values can never satisfy the gate, so the method-starvation route silently dies for elixir, erlang, haskell, ocaml, rust, dart, csharp and javascript.
+
+## The self-implicating verdict is the load-bearing one
+
+`assignment` — which I added hours earlier in #903 — is CANONICAL **only under an amended axiom**. The registry's own defence of `constructor` (INV-kahig) already establishes the key names *the construct that produced a call-family edge*, not "the syntax of a call", so the axiom is one word too narrow and the amendment ships with the verdict rather than after it.
+
+**Enforcement finding:** INV-tadup is a *denylist* of four previously-ejected values. Correct for regression, blind to a value it has never seen — which is how `assignment` shipped through every gate unreviewed.
+
+## Adjacent sweep
+
+`meta["receiver"]` is a **confirmed leak**: 9 values splitting into syntactic shape (`qualified`, `field_chain`, `bare`) and resolution outcome (`typed_var`, `stdlib`, `external`, `constant_external`). `external` is the very thing `remote_external` was ejected from `call_construct` for naming — the leak was folded out of one sibling key and left live in the other. `resolution_quality` needs a documented boundary. `visibility` is a **null result**, recorded so nobody re-derives it.
+
+## Filed as a survey, and the reason is a finding
+
+`validate_against_registry` requires a per-value registry this axis does not have, so `docs/audits/` correctly refuses to mechanically check these verdicts. The verdict block is kept in `kind: audit_verdicts` form with a conversion trigger written into the document.
+
+The cadence recorder could not see `docs/surveys/` either, which pushed toward `--force`; that is fixed rather than routed around, since a recorded audit with no discoverable write-up is the one outcome the gate exists to prevent. Test added and **verified to fail without the fix**.
+
+## Governance note
+
+Touches `.agent/**` (the playbook's Examples section, which the recorder asks for by hand, and the cadence state file) under the standing owner grant for governance + `auto-pr` without `--gov`. Flagging it explicitly so it can be objected to.
+
+Remedies filed: **WI-dapap** (axiom, starvation gate, allowlist, two drops), **WI-mujug** (sibling fold-residue keys).
+
+https://claude.ai/code/session_01BKTMx6BX3hsm1Lezq4qkWF
