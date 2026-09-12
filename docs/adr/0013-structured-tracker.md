@@ -983,6 +983,52 @@ correct two-user setup leaves at the owner's primary group (the instructions
 configured box and the checks gated on it — including the one that creates
 missing directories with the shared group and setgid — silently did nothing.
 
+### Human-authority install provenance
+
+*Added by the 2026-09-12 amendment (INV-hivog).*
+
+The two-account split moved the **data** out of the agent's reach (§"Host-protected
+config") and the **authority decision** out of its reach (`resolve_actor` keys on
+`os.getuid()`, which is not forgeable). It never moved the **code**. On the
+deployment this ADR was written against there was exactly one install — an
+*editable* one, owned by the agent, pointing into a checkout the agent must be
+able to write — and `generate_human_shim` positively instructed the human to
+`source` it. So every human-authority command (`init`, `lock`, `unlock`,
+`stealth`, `reconcile-reset`, `fork-setup`, `configure`, `setup`) ran code the
+agent could rewrite in place, and the function deciding what "human authority"
+means was the agent's to edit.
+
+It bites hardest during opt-in to the host-protected config, because check 10c
+*composes the `sudo` commands the human then pastes* — including the destination
+path under `/etc`. An agent able to edit `setup.py` chooses where the human
+root-creates the protected config, defeating that layer at the moment of
+installation.
+
+Note the asymmetry this restores. A source change normally passes PR, CI and
+review before anything runs it; an in-place edit to the checkout passes none of
+those and is executed by the human on the next invocation. The remedy is
+therefore not "trust the agent less" but "run a build the agent did not
+produce": a **non-editable install, under the human's own account, from a
+reviewed commit**, invoked by absolute path. Content addressing does the work —
+an agent cannot make a pinned SHA contain different bytes — so the trust rests
+on the review and the pin, not on any code shipped here.
+
+**What is mechanism and what is only a guard.** The install and the pin are
+mechanism. Setup check 23 (`install_provenance`), which reports who can modify
+the running code, is **not**: it lives inside the artifact it audits, so an
+agent that can rewrite the package can rewrite the check. It is documented and
+labelled as an accident guard — it catches the human who forgot and used the
+agent's venv, which is the failure the shipped guidance used to *cause*. Claiming
+more for it would be the same error as ADR-0013's original OS-enforcement
+sentence, one layer up.
+
+The check tests **ownership as well as mode**, because mode alone misses the
+real case: the agent's package tree is `0755` the whole way down — nothing
+group-writable — yet every component is owned by the agent. It exempts
+root-owned components (root is already trusted by anyone running `sudo`) and
+sticky world-writable directories such as `/tmp`, where the sticky bit confines
+delete and rename to the entry's owner.
+
 ### Security Model
 
 #### Threat Model
