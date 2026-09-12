@@ -1,0 +1,61 @@
+Original commit body from addd0b390cede4f7ef36114161e469571d58fd37:
+
+The two-account split moved the governance DATA out of the agent's reach
+(/etc/hypergumbo-tracker) and the authority DECISION out of its reach
+(resolve_actor keys on os.getuid(), which is not forgeable). It never
+moved the CODE. There was one install -- an EDITABLE one, owned by the
+agent, pointing into a checkout the agent must be able to write -- and
+generate_human_shim positively instructed the human to `source
+<repo>/.venv/bin/activate`. So every human-authority command (init,
+lock, unlock, stealth, reconcile-reset, fork-setup, configure, setup)
+executed code the agent could rewrite in place, including the function
+that decides what human authority means.
+
+It bites hardest during opt-in to the host-protected config, because
+check 10c composes the sudo commands the human then pastes -- including
+the destination path under /etc. An agent able to edit setup.py chooses
+where the human root-creates the protected config, defeating that layer
+at the moment of installation.
+
+The asymmetry worth naming: a source change passes PR, CI and review
+before anything runs it; an in-place edit to the checkout passes none of
+them and runs on the human's next invocation. So the remedy is not
+"trust the agent less" but "run a build the agent did not produce".
+
+The shim now emits a NON-EDITABLE install under the human's own account,
+pinned to a reviewed commit, and every command it prints is an absolute
+path into that copy. The agent's venv is not mentioned anywhere. The SHA
+is printed as a suggestion to VERIFY ON THE FORGE and explicitly not as
+something to trust, because the pin is the whole mechanism: an agent
+cannot make a given SHA contain different bytes.
+
+Three tests asserting the old `source <repo>/.venv` output are gone --
+they pinned the defect in place.
+
+New check 23 (install_provenance) reports who can modify the running
+code. It is documented and labelled an ACCIDENT GUARD, NOT A SECURITY
+CONTROL: it lives inside the artifact it audits, so an agent that can
+rewrite the package can rewrite the check. Claiming more for it would
+repeat ADR-0013's original OS-enforcement error one layer up. What it
+catches is the human who forgot and used the agent's venv -- the failure
+the shipped guidance used to cause.
+
+It tests OWNERSHIP as well as mode, because mode alone misses the real
+case: the agent's package tree is 0755 the whole way down, nothing
+group-writable, yet the agent owns every component. Root-owned
+components are exempt (root is already trusted by anyone running sudo),
+as are sticky world-writable directories like /tmp, where the sticky bit
+confines delete and rename to the entry's owner -- without that the
+check false-positives on anything under /tmp, including its own
+fixtures.
+
+Verified end to end: a non-editable install from a pinned SHA lands in
+site-packages with no editable finder and drives the real repo.
+
+Tracker suite 2981 passed, 100% coverage in isolation, mypy strict
+ratchet 669 delta +0.
+
+Refs INV-hivog.
+
+Racial-Capitalism-Is-Bad: a glitching deer teaching emulsification to a class of turtles in a frozen lake with elegance made of chopped liver
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
