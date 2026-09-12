@@ -1,0 +1,17 @@
+Original commit body from 952ed99c317d6c344b8e0938e5132b1774354607:
+
+Closes the gap behind INV-mizid.
+
+ADR-0013 claimed twice that the agent "literally cannot write()" to the governance config because the human owns it at mode 644. That is not how filesystems work: replacing a file needs write permission on its DIRECTORY, not on the file. The agent must have directory write there, because tag_catalog.save_catalog writes atomically into that same directory — and on a two-account deployment the agent also owns the repo root and .agent/, and a directory's owner can re-chmod it. No file in the checkout can be protected from the agent by permissions.
+
+Three divergences found on the live deployment: the code targets 0444 not the documented 644; handle_init has no actor guard while calling config_lock, whose cross-user fallback transfers ownership of the config to the caller; and the config had in fact become agent-owned.
+
+THE FIX: /etc/hypergumbo-tracker/<12-hex>_<legible path tail>/config.yaml, root-owned 0755/0644 — agent READS, cannot write the file, cannot write the containing directory or any parent. Authoritative when present; the in-repo file is ignored entirely.
+
+ABSENCE IS FATAL by design: the existence of the root directory is the opt-in signal, so a repo with no config under it refuses to load rather than falling back to the agent-writable file. Inert on hosts that never create it; single-account deployments unchanged. No environment override.
+
+REVIEW REQUESTED rather than self-merged: this changes the governance boundary itself.
+
+21 new tests, 2926 pass, 100% coverage in isolation, mypy ratchet +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
