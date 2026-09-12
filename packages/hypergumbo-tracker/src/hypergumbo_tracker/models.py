@@ -694,17 +694,58 @@ _DEFAULT_CONFIG_RAW: dict[str, Any] = {
 }
 
 
-def load_config(config_dir: Path) -> TrackerConfig:
+def _repo_root_for_config_dir(config_dir: Path) -> Path | None:
+    """Git toplevel containing ``config_dir``, or None outside a repo.
+
+    Lazy import: ``store`` imports this module, so a top-level import here
+    would close a cycle.
+    """
+    from hypergumbo_tracker.store import _find_git_dir
+
+    git_dir = _find_git_dir(config_dir)
+    return git_dir.parent if git_dir is not None else None
+
+
+def load_config(
+    config_dir: Path, *, protected_root: Path | None = None
+) -> TrackerConfig:
     """Load tracker config from the given directory.
 
     Loading chain:
+    0. ``/etc/hypergumbo-tracker/<repo-id>*/config.yaml`` — HOST-PROTECTED. When
+       the host root exists at all, this layer is authoritative and the in-repo
+       config is ignored entirely; a repo with no config under it REFUSES to
+       load rather than falling back. See ``protected_config`` for why absence
+       is fatal (silent fallback is the downgrade attack) and why the in-repo
+       file cannot be protected by permissions.
     1. config.yaml (gitignored, human-owned) — if it exists, use it
     2. config.yaml.template (tracked, shared governance) — fallback
     3. Built-in defaults — if neither exists
 
     This is a fallback chain (not a merge): whichever file is found first
     is used in its entirety.
+
+    ``protected_root`` exists so tests can point the host layer at a tmp_path.
+    It is NEVER read from the environment — the agent controls its own
+    environment, so an env-redirectable root would reopen the hole.
     """
+    from hypergumbo_tracker.protected_config import (
+        PROTECTED_ROOT,
+        find_protected_config,
+        missing_config_error,
+        protection_enabled,
+    )
+
+    root = PROTECTED_ROOT if protected_root is None else protected_root
+    if protection_enabled(root):
+        repo_root = _repo_root_for_config_dir(config_dir)
+        if repo_root is not None:
+            protected = find_protected_config(repo_root, root)
+            if protected is None:
+                raise missing_config_error(repo_root, root)
+            with open(protected) as f:
+                return _parse_config_dict(yaml.safe_load(f) or {})
+
     config_path = config_dir / "config.yaml"
     template_path = config_dir / "config.yaml.template"
 

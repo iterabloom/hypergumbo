@@ -878,7 +878,7 @@ def _check_config_ownership(root: Path) -> CheckResult:
                 details=[
                     "Config controls governance settings and should be owned",
                     "by the human user. As the human user, run:",
-                    f"  sudo chown $(whoami) {' '.join(str(p) for p in existing)}",
+                    f"  sudo chown $(whoami) {' '.join(str(p) for p in wrong_owner)}",
                 ],
             )
         return CheckResult(
@@ -930,6 +930,107 @@ def _check_config_ownership(root: Path) -> CheckResult:
         name="config_ownership",
         status="ok",
         message="config.yaml owned by human user",
+    )
+
+
+def _check_protected_config(root: Path, repo_root: Path | None = None) -> CheckResult:
+    """Check #10c: host-protected config (``/etc/hypergumbo-tracker``).
+
+    File ownership and mode cannot protect ``config.yaml`` from an agent that
+    can write the containing directory — and it must be able to, since
+    ``tag_catalog`` writes there atomically. This check reports whether the host
+    has opted into the one location the agent cannot reach, and prints the exact
+    commands when it has not.
+
+    ADVISORY ONLY, in both directions. It never creates or edits anything under
+    ``/etc``: that needs root, and a setup step that silently acquires root is
+    its own governance problem.
+    """
+    from hypergumbo_tracker import protected_config as pc
+    from hypergumbo_tracker.protected_config import (
+        ProtectedConfigError,
+        find_protected_config,
+        legible_repo_id,
+        protection_enabled,
+    )
+
+    PROTECTED_ROOT = pc.PROTECTED_ROOT
+
+    if repo_root is None:
+        git_dir = _find_git_dir(root)
+        repo_root = git_dir.parent if git_dir is not None else None
+    if repo_root is None:
+        return CheckResult(
+            name="protected_config",
+            status="ok",
+            message="Protected config check skipped (not a git repo)",
+        )
+
+    target = PROTECTED_ROOT / legible_repo_id(repo_root)
+    if not protection_enabled():
+        return CheckResult(
+            name="protected_config",
+            status="warn",
+            message=f"Not using a host-protected config ({PROTECTED_ROOT} absent)",
+            details=[
+                "The in-repo config.yaml CANNOT be protected from the agent by",
+                "file permissions: replacing a file needs write on its DIRECTORY,",
+                "and the agent must be able to write there. To opt in, as root:",
+                f"  sudo mkdir -p {target}",
+                f"  sudo cp {root / 'tracker' / 'config.yaml'} {target}/config.yaml",
+                f"  sudo chown -R root:root {PROTECTED_ROOT}",
+                f"  sudo chmod 755 {PROTECTED_ROOT} {target}",
+                f"  sudo chmod 644 {target}/config.yaml",
+                "Once the root directory exists, a repo with no config under it",
+                "REFUSES to load rather than falling back to the in-repo file.",
+            ],
+        )
+
+    try:
+        found = find_protected_config(repo_root)
+    except ProtectedConfigError as exc:
+        return CheckResult(
+            name="protected_config",
+            status="error",
+            message="Ambiguous protected config",
+            details=[str(exc)],
+        )
+    if found is None:
+        return CheckResult(
+            name="protected_config",
+            status="error",
+            message="Host uses protected configs but this repo has none — tracker will REFUSE to load",
+            details=[
+                f"  expected: {target}/config.yaml",
+                "As root:",
+                f"  sudo mkdir -p {target}",
+                f"  sudo cp {root / 'tracker' / 'config.yaml'} {target}/config.yaml",
+                f"  sudo chmod 755 {target} && sudo chmod 644 {target}/config.yaml",
+            ],
+        )
+
+    current_uid = os.getuid()
+    problems = [
+        str(p)
+        for p in (found, found.parent, PROTECTED_ROOT)
+        if p.stat().st_uid == current_uid or (p.stat().st_mode & 0o022)
+    ]
+    if problems:
+        return CheckResult(
+            name="protected_config",
+            status="warn",
+            message="Protected config is reachable by this user — protection is not in force",
+            details=[
+                "Owned by this user, or group/other-writable:",
+                *(f"  {p}" for p in problems),
+                "As root:  sudo chown -R root:root " + str(PROTECTED_ROOT),
+                "          sudo chmod -R go-w " + str(PROTECTED_ROOT),
+            ],
+        )
+    return CheckResult(
+        name="protected_config",
+        status="ok",
+        message=f"Host-protected config in force ({found})",
     )
 
 
@@ -2422,6 +2523,7 @@ def run_setup(
     results.append(_check_config_drift(root))              # 8
     results.append(_check_actor_resolution(root))          # 9
     results.append(_check_config_ownership(root))          # 10
+    results.append(_check_protected_config(root, repo_root))  # 10c
     results.append(_check_config_permissions(root))        # 10b
     results.append(_check_home_traversable(root, repo_root))  # 11
     results.append(_check_group_permissions(root, repo_root))  # 12
