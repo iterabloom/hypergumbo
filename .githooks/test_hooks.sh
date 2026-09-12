@@ -521,6 +521,16 @@ if [[ -f "$PRE_PUSH_HOOK" ]]; then
   fi
 
   echo "--------------------------------------------------------"
+  echo "TEST: Pre-push DCO: ALLOW an unsigned commit on refs/notes/* (INV-nihaz)"
+  # The same unsigned commit that is blocked on a branch must pass on a notes
+  # ref: git writes notes commits itself and they can never carry a trailer.
+  if dco_hook "refs/notes/commits $dco_unsigned refs/notes/commits $dco_signed"; then
+    echo "  PASS (notes ref exempt from DCO)"; ((PASS_COUNT++))
+  else
+    echo "  FAIL (notes ref must be exempt — it can never carry a sign-off)"; ((FAIL_COUNT++))
+  fi
+
+  echo "--------------------------------------------------------"
   echo "TEST: Pre-push DCO: block a range containing an unsigned commit"
   if dco_hook "refs/heads/t $dco_unsigned refs/heads/t $dco_signed"; then
     echo "  FAIL (unsigned commit should be blocked)"; ((FAIL_COUNT++))

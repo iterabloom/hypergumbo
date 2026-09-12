@@ -2113,7 +2113,21 @@ _attach_git_note() {
 
 $desc" "$new_sha" 2>/dev/null || true
 
-	git push origin refs/notes/commits --quiet 2>/dev/null || \
-	git push origin refs/notes/* --quiet 2>/dev/null || true
-	echo "   Note attached to $new_sha"
+	# NON-FATAL BUT NOT SILENT (INV-nihaz). This used to end in
+	# `2>/dev/null || true`, which discarded both the error text and the exit
+	# status -- so when the pre-push DCO gate rejected every notes push for
+	# eight months (726 of them), nothing ever surfaced: the merge had already
+	# landed and this step reported nothing. A failure here must not fail a
+	# merge that succeeded, but it must be VISIBLE on the first occurrence
+	# rather than the 726th.
+	local notes_err
+	notes_err=$(mktemp -t htrac-notes-push.XXXXXX)
+	if git push origin refs/notes/commits --quiet 2>"$notes_err"; then
+		echo "   Note attached to $new_sha and pushed"
+	else
+		echo "⚠️  Note attached to $new_sha LOCALLY, but the push FAILED (non-fatal — the merge is unaffected):" >&2
+		sed 's/^/     /' "$notes_err" >&2
+		echo "     The note exists only in this working copy until the push succeeds." >&2
+	fi
+	rm -f "$notes_err"
 }
