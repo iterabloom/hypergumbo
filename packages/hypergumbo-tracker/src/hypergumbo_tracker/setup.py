@@ -40,6 +40,7 @@ import pwd
 import re
 import shlex
 import shutil
+import sys
 import tempfile
 import subprocess  # nosec B404
 from dataclasses import dataclass, field
@@ -62,8 +63,22 @@ from hypergumbo_tracker.validation import ValidationResult, validate_all
 # ---------------------------------------------------------------------------
 
 
+class OwnershipTransferRefused(PermissionError):
+    """Raised when the chmod fallback would hand a governance file to an agent."""
+
+
 def _config_chmod_fallback(path: Path, mode: int) -> None:
     """Copy-then-atomic-rename fallback when chmod fails (cross-user).
+
+    **REFUSES WHEN THE CALLER IS AN AGENT (INV-mizid).** This fallback exists so
+    the HUMAN can reclaim a config the agent owns, and it works by writing a new
+    file — which the caller then owns. Run in the other direction it silently
+    transfers the governance config TO the agent, which is exactly how this
+    deployment lost `.agent/tracker/config.yaml`: `tracker init` had no actor
+    guard, called ``config_lock`` on an already-existing human-owned config,
+    ``chmod`` raised PermissionError for the non-owner, and this fallback
+    "fixed" it by making the agent the owner. The guard lives here rather than
+    only at that call site so every future caller inherits it.
 
     When the current user doesn't own config.yaml (e.g. human user vs agent
     user), path.chmod() raises PermissionError. This fallback writes a copy
@@ -82,6 +97,14 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
     ``store.py::_take_ownership_via_tmp`` for the same class of bug
     (2026-04-19 TUI crash on ``.INV-rikis-…ops``).
     """
+    by, username = resolve_actor()
+    if by == "agent":
+        raise OwnershipTransferRefused(
+            f"refusing to rewrite {path} as agent user {username!r}: the "
+            f"copy-and-rename fallback would transfer ownership of the "
+            f"governance config to the agent (INV-mizid)"
+        )
+
     fd, tmp_str = tempfile.mkstemp(
         suffix=".yaml", prefix=".htrac_config_", dir=str(path.parent),
     )
@@ -97,21 +120,35 @@ def _config_chmod_fallback(path: Path, mode: int) -> None:
 
 
 def config_unlock(path: Path) -> None:
-    """Temporarily make config.yaml writable (for human writes)."""
+    """Temporarily make config.yaml writable (for human writes).
+
+    An agent that cannot change the mode is the CORRECT outcome, not an error,
+    so the refusal is reported and swallowed rather than raised: the file simply
+    keeps the permissions it had.
+    """
     if path.exists():
         try:
             path.chmod(0o644)
         except OSError:
-            _config_chmod_fallback(path, 0o644)
+            try:
+                _config_chmod_fallback(path, 0o644)
+            except OwnershipTransferRefused as exc:
+                print(f"warning: {exc}", file=sys.stderr)
 
 
 def config_lock(path: Path) -> None:
-    """Set config.yaml read-only (0444)."""
+    """Set config.yaml read-only (0444).
+
+    See :func:`config_unlock` on why an agent's refusal is swallowed.
+    """
     if path.exists():
         try:
             path.chmod(0o444)
         except OSError:
-            _config_chmod_fallback(path, 0o444)
+            try:
+                _config_chmod_fallback(path, 0o444)
+            except OwnershipTransferRefused as exc:
+                print(f"warning: {exc}", file=sys.stderr)
 
 
 @dataclass

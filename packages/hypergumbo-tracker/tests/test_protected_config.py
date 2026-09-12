@@ -264,3 +264,86 @@ class TestSetupCheck:
         result = _check_protected_config(repo / ".agent", repo)
         assert result.status == "ok"
         assert "in force" in result.message
+
+
+class TestOwnershipTransferGuard:
+    """The chmod fallback must never run in the agent's direction (INV-mizid).
+
+    The fallback exists so the HUMAN can reclaim a config the agent owns, and it
+    works by writing a new file — which the caller then owns. Run in reverse it
+    hands the governance config to the agent, silently. That is the most likely
+    way this deployment's config became agent-owned.
+    """
+
+    def test_fallback_refuses_for_an_agent(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker.setup import (
+            OwnershipTransferRefused,
+            _config_chmod_fallback,
+        )
+
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("statuses: []\n")
+        monkeypatch.setattr(
+            "hypergumbo_tracker.setup.resolve_actor",
+            lambda *a, **k: ("agent", "someone_agent"),
+        )
+        with pytest.raises(OwnershipTransferRefused, match="transfer ownership"):
+            _config_chmod_fallback(cfg, 0o444)
+
+    def test_fallback_still_works_for_a_human(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """The legitimate direction must keep working, or humans cannot recover."""
+        from hypergumbo_tracker.setup import _config_chmod_fallback
+
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("statuses: []\n")
+        monkeypatch.setattr(
+            "hypergumbo_tracker.setup.resolve_actor",
+            lambda *a, **k: ("human", "alice"),
+        )
+        _config_chmod_fallback(cfg, 0o444)
+        assert cfg.stat().st_mode & 0o777 == 0o444
+        assert cfg.read_text() == "statuses: []\n", "content must survive the rewrite"
+
+    def test_config_lock_reports_and_continues_when_refused(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """An agent unable to lock is the CORRECT outcome, not a crash.
+
+        The file keeps whatever permissions it had, and the refusal is visible
+        on stderr rather than swallowed.
+        """
+        from hypergumbo_tracker.setup import config_lock
+
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("statuses: []\n")
+        cfg.chmod(0o644)
+        monkeypatch.setattr(
+            "hypergumbo_tracker.setup.resolve_actor",
+            lambda *a, **k: ("agent", "someone_agent"),
+        )
+        monkeypatch.setattr(
+            Path, "chmod", lambda self, mode: (_ for _ in ()).throw(PermissionError())
+        )
+        config_lock(cfg)
+        assert "refusing to rewrite" in capsys.readouterr().err
+
+    def test_config_unlock_reports_and_continues_when_refused(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        from hypergumbo_tracker.setup import config_unlock
+
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("statuses: []\n")
+        monkeypatch.setattr(
+            "hypergumbo_tracker.setup.resolve_actor",
+            lambda *a, **k: ("agent", "someone_agent"),
+        )
+        monkeypatch.setattr(
+            Path, "chmod", lambda self, mode: (_ for _ in ()).throw(PermissionError())
+        )
+        config_unlock(cfg)
+        assert "refusing to rewrite" in capsys.readouterr().err
