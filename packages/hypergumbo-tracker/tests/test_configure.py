@@ -684,3 +684,64 @@ class TestSetupConfigureCLI:
             main(["--tracker-root", str(root), "setup", "--root", str(root)])
         # Should succeed (setup wizard runs checks)
         assert exc.value.code in (0, 1)  # May warn but should not crash
+
+
+class TestConfigureRefusesUnderHostProtection:
+    """Editing a file the loader ignores is worse than erroring.
+
+    The human walks away believing the governance rule they just set is in
+    force, and nothing anywhere says otherwise.
+    """
+
+    def _repo(self, tmp_path: Path) -> Path:
+        import subprocess
+
+        repo = tmp_path / "repo"
+        (repo / ".agent" / "tracker").mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)  # noqa: S607
+        return repo
+
+    def test_refuses_and_names_the_authoritative_file(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        from hypergumbo_tracker import protected_config as pc
+        from hypergumbo_tracker.configure import run_configure
+
+        repo = self._repo(tmp_path)
+        root = tmp_path / "etc"
+        d = root / pc.legible_repo_id(repo)
+        d.mkdir(parents=True)
+        (d / "config.yaml").write_text("statuses: [todo_hard]\n")
+        monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+        monkeypatch.setattr(
+            "hypergumbo_tracker.configure.resolve_actor",
+            lambda *a, **k: ("human", "someone"),
+        )
+
+        rc = run_configure(repo / ".agent", input_fn=lambda _p: "")
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert str(d / "config.yaml") in err
+        assert "sudoedit" in err
+
+    def test_does_not_write_the_in_repo_config(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker import protected_config as pc
+        from hypergumbo_tracker.configure import run_configure
+
+        repo = self._repo(tmp_path)
+        root = tmp_path / "etc"
+        d = root / pc.legible_repo_id(repo)
+        d.mkdir(parents=True)
+        (d / "config.yaml").write_text("statuses: [todo_hard]\n")
+        monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+        monkeypatch.setattr(
+            "hypergumbo_tracker.configure.resolve_actor",
+            lambda *a, **k: ("human", "someone"),
+        )
+        in_repo = repo / ".agent" / "tracker" / "config.yaml"
+        in_repo.write_text("statuses: [original]\n")
+
+        run_configure(repo / ".agent", input_fn=lambda _p: "")
+        assert in_repo.read_text() == "statuses: [original]\n"

@@ -8,6 +8,15 @@ diff summary, and writes with 0444 enforcement.
 
 Human-only: agents are rejected at the top of run_configure().
 
+Host-protected deployments are rejected too, and deliberately: when
+``/etc/hypergumbo-tracker`` is in force the loader ignores the in-repo
+config.yaml, so writing it here would print "Wrote ... (mode 0444)" and change
+no governance whatsoever. A silent no-op is worse than an error, because the
+human walks away believing the rule they just set is enforced. The editor
+prints the authoritative path and stops; it does not acquire root on the
+user's behalf, since a config editor that silently escalates is its own
+governance problem.
+
 Design rationale:
 - Uses stdin prompts for each section, with Enter-to-skip for no-ops.
 - Loads both template (baseline) and existing config (current state).
@@ -29,7 +38,11 @@ from hypergumbo_tracker.models import (
     _parse_config_dict,
     resolve_actor,
 )
-from hypergumbo_tracker.setup import config_lock, config_unlock
+from hypergumbo_tracker.setup import (
+    authoritative_config,
+    config_lock,
+    config_unlock,
+)
 
 
 def _prompt(message: str, *, input_fn: Any = None) -> str:
@@ -272,19 +285,29 @@ def run_configure(
     Returns:
         0 on success, 1 on error.
     """
-    # Human-only enforcement
+    # Resolve what the loader will actually read BEFORE anything else: under
+    # host protection the in-repo file is ignored entirely, so both the
+    # agent-pattern lookup and the edit target have to come from there.
+    from hypergumbo_tracker.store import _find_git_dir
+
+    git_dir = _find_git_dir(root.resolve())
+    repo_root = git_dir.parent if git_dir is not None else None
+    authoritative, protected = authoritative_config(root, repo_root)
+
     config_path = root / "tracker" / "config.yaml"
+
+    # Human-only enforcement
     agent_patterns = ["*_agent"]
-    if config_path.exists():
+    if authoritative.is_file():
         try:
-            with open(config_path) as f:
+            with open(authoritative) as f:
                 raw = yaml.safe_load(f) or {}
             actor_res = raw.get("actor_resolution", {})
             if isinstance(actor_res, dict):
                 patterns = actor_res.get("agent_usernames")
                 if isinstance(patterns, list) and patterns:
                     agent_patterns = patterns
-        except yaml.YAMLError:
+        except (yaml.YAMLError, OSError):
             pass
 
     by, username = resolve_actor(agent_patterns)
@@ -294,6 +317,22 @@ def run_configure(
             f"(current user '{username}' is agent)",
             file=sys.stderr,
         )
+        return 1
+
+    # REFUSE rather than edit a file nothing reads. Writing the in-repo config
+    # here would print "Wrote ... (mode 0444)" and change no governance at all
+    # — a silent no-op is worse than an error, because the human walks away
+    # believing the rule they just set is in force. This tool deliberately does
+    # not acquire root to edit /etc on the user's behalf.
+    if protected:
+        print(
+            "error: this host uses a protected tracker config, which this "
+            "editor will not write.",
+            file=sys.stderr,
+        )
+        print(f"  authoritative: {authoritative}", file=sys.stderr)
+        print("Edit it as root, then re-run 'htrac setup' to validate:", file=sys.stderr)
+        print(f"  sudoedit {authoritative}", file=sys.stderr)
         return 1
 
     # Load template as baseline

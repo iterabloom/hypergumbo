@@ -52,7 +52,10 @@ from hypergumbo_tracker.setup import (
     _check_stop_hook,
     _check_textconv,
     _check_tracker_wrapper,
+    _check_protected_config,
     _detect_shared_group,
+    _agent_patterns_from,
+    authoritative_config,
     _ensure_safe_directory,
     config_lock,
     config_unlock,
@@ -4079,3 +4082,372 @@ class TestCheckResultDataclass:
     def test_with_details(self) -> None:
         r = CheckResult(name="test", status="ok", message="msg", details=["d1"])
         assert r.details == ["d1"]
+
+
+# ---------------------------------------------------------------------------
+# Two-user wiring: the checks that gate on a shared group, and the ones that
+# must follow the host-protected config rather than the in-repo decoy.
+# ---------------------------------------------------------------------------
+
+
+def _git_repo_with_agent_dir(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    (repo / ".agent" / "tracker" / ".ops").mkdir(parents=True)
+    (repo / ".agent" / "tracker-workspace" / ".ops").mkdir(parents=True)
+    (repo / ".agent" / "tracker-workspace" / "stealth").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)  # noqa: S607
+    return repo
+
+
+def _opt_in(monkeypatch, tmp_path: Path, repo: Path, raw: dict[str, Any]) -> Path:
+    """Create a host-protected config for ``repo`` and point the module at it."""
+    from hypergumbo_tracker import protected_config as pc
+
+    root = tmp_path / "etc"
+    d = root / pc.legible_repo_id(repo)
+    d.mkdir(parents=True)
+    (d / "config.yaml").write_text(yaml.dump(raw))
+    monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+    return d / "config.yaml"
+
+
+class TestDetectSharedGroupProbesTrackerDirs:
+    """``root`` is ``.agent/``, and a two-user setup chgrps one level deeper.
+
+    The setup instructions chgrp ``.agent/tracker*`` and ``.git`` — not
+    ``.agent/`` and not the checkout — so probing only ``root`` and
+    ``root.parent`` reported "single-user" on a correctly configured box.
+    """
+
+    def test_shared_gid_on_tracker_dir_is_detected(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        primary = os.stat(root).st_gid
+        shared = primary + 1
+        tracker = root / "tracker"
+
+        original_stat = Path.stat
+
+        def mock_stat(self, *a, **kw):
+            st = original_stat(self, *a, **kw)
+            if self == tracker:
+                m = MagicMock()
+                m.st_gid = shared
+                return m
+            return st
+
+        with (
+            patch.object(Path, "stat", mock_stat),
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(pw_gid=primary),
+            ),
+        ):
+            assert _detect_shared_group(root) == shared
+
+    def test_still_none_when_everything_is_primary_group(
+        self, tmp_path: Path
+    ) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup.pwd.getpwuid",
+            return_value=MagicMock(pw_gid=os.stat(root).st_gid),
+        ):
+            assert _detect_shared_group(root) is None
+
+
+class TestGroupSweepLeavesConfigModeAlone:
+    """#10b sets 0444; #12 must not put group-write back on the next line.
+
+    The two checks disagreed about the same file, so the wizard never
+    converged — both reported "fixed" on every run — and config.yaml settled
+    at 0464. In a shared group that contains the agent, 0464 means the agent
+    can write whichever config it does not own, which is the exact boundary
+    #10b exists to hold. Uses a real secondary group rather than a patched
+    ``Path.stat`` so the permission arithmetic under test is the kernel's.
+    """
+
+    def _two_user_tree(self, tmp_path: Path) -> tuple[Path, int]:
+        shared = next((g for g in os.getgroups() if g != os.getgid()), None)
+        if shared is None:
+            pytest.skip("no secondary group available to model a two-user setup")
+        root = _make_full_agent_dir(tmp_path)
+        for d in (
+            root / "tracker" / ".ops",
+            root / "tracker-workspace",
+            root / "tracker-workspace" / ".ops",
+            root / "tracker-workspace" / "stealth",
+        ):
+            os.chown(d, -1, shared)
+            # Suppressed below: setgid + group-write IS the two-user
+            # configuration under test; a stricter mode would not reproduce
+            # the deployment this check has to work on.
+            os.chmod(d, 0o2775)  # noqa: S103  # nosec B103
+        return root, shared
+
+    def test_config_keeps_0444_while_ops_files_still_get_group_write(
+        self, tmp_path: Path
+    ) -> None:
+        root, _shared = self._two_user_tree(tmp_path)
+        ws = root / "tracker-workspace"
+        config = ws / "config.yaml"
+        config.write_text("statuses: []\n")
+        config.chmod(0o444)
+        ops_file = ws / "tui_preferences.json"
+        ops_file.write_text("{}")
+        ops_file.chmod(0o600)
+
+        _check_group_permissions(root, None)
+
+        assert config.stat().st_mode & 0o777 == 0o444, "sweep re-opened config.yaml"
+        assert ops_file.stat().st_mode & 0o060 == 0o060, "sweep stopped working"
+
+    def test_permission_and_group_checks_converge(self, tmp_path: Path) -> None:
+        """Idempotence is the wizard's documented contract; it was false."""
+        root, _shared = self._two_user_tree(tmp_path)
+        config = root / "tracker-workspace" / "config.yaml"
+        config.write_text("statuses: []\n")
+        config.chmod(0o644)
+
+        modes = []
+        for _ in range(3):
+            with patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "someone"),
+            ):
+                _check_config_permissions(root, None)
+            _check_group_permissions(root, None)
+            modes.append(config.stat().st_mode & 0o777)
+
+        assert modes == [0o444, 0o444, 0o444], modes
+
+
+class TestActorResolutionIsTwoUserAware:
+    """Running as the agent account is expected on a two-user box, not a fault."""
+
+    def test_agent_with_shared_group_is_ok(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch("hypergumbo_tracker.setup.resolve_actor",
+                  return_value=("agent", "bot_agent")),
+            patch("hypergumbo_tracker.setup._detect_shared_group",
+                  return_value=1003),
+        ):
+            result = _check_actor_resolution(root)
+        assert result.status == "ok"
+        assert "two-user" in result.message
+
+    def test_agent_without_shared_group_still_warns(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch("hypergumbo_tracker.setup.resolve_actor",
+                  return_value=("agent", "bot_agent")),
+            patch("hypergumbo_tracker.setup._detect_shared_group",
+                  return_value=None),
+        ):
+            result = _check_actor_resolution(root)
+        assert result.status == "warn"
+
+
+class TestAuthoritativeConfig:
+    """Every config-reading check must agree on which file the loader opens."""
+
+    def test_in_repo_when_host_has_not_opted_in(self, tmp_path: Path) -> None:
+        repo = _git_repo_with_agent_dir(tmp_path)
+        path, protected = authoritative_config(repo / ".agent", repo)
+        assert protected is False
+        assert path == repo / ".agent" / "tracker" / "config.yaml"
+
+    def test_protected_when_host_has(self, tmp_path: Path, monkeypatch) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        expected = _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        path, protected = authoritative_config(repo / ".agent", repo)
+        assert protected is True
+        assert path == expected
+
+    def test_protected_but_missing_returns_the_expected_location(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker import protected_config as pc
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        root = tmp_path / "etc"
+        root.mkdir()
+        monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+        path, protected = authoritative_config(repo / ".agent", repo)
+        assert protected is True
+        assert path == root / pc.legible_repo_id(repo) / "config.yaml"
+
+    def test_ambiguous_root_is_protected_and_unusable(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker import protected_config as pc
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        root = tmp_path / "etc"
+        digest = pc.legible_repo_id(repo).split("_")[0]
+        (root / f"{digest}_one").mkdir(parents=True)
+        (root / f"{digest}_two").mkdir(parents=True)
+        monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+        _path, protected = authoritative_config(repo / ".agent", repo)
+        assert protected is True
+
+    def test_no_repo_root_falls_back_to_in_repo(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        path, protected = authoritative_config(root, None)
+        assert protected is False
+        assert path == root / "tracker" / "config.yaml"
+
+
+class TestAgentPatternsFrom:
+    def test_reads_configured_patterns(self, tmp_path: Path) -> None:
+        f = tmp_path / "c.yaml"
+        f.write_text(yaml.dump({"actor_resolution": {"agent_usernames": ["bot*"]}}))
+        assert _agent_patterns_from(f) == ["bot*"]
+
+    def test_default_when_absent_or_unusable(self, tmp_path: Path) -> None:
+        assert _agent_patterns_from(tmp_path / "nope.yaml") == ["*_agent"]
+        bad = tmp_path / "bad.yaml"
+        bad.write_text("{[")
+        assert _agent_patterns_from(bad) == ["*_agent"]
+
+    def test_default_when_section_is_not_a_mapping(self, tmp_path: Path) -> None:
+        f = tmp_path / "c.yaml"
+        f.write_text(yaml.dump({"actor_resolution": "nonsense"}))
+        assert _agent_patterns_from(f) == ["*_agent"]
+
+
+class TestChecksFollowTheProtectedConfig:
+    """Under protection the in-repo file is a decoy — checks must not use it."""
+
+    def test_validation_validates_the_protected_file_not_the_in_repo_one(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        # In-repo file is garbage; it must not affect the verdict.
+        (repo / ".agent" / "tracker" / "config.yaml").write_text("kinds: 12345\n")
+        result = _check_config_validation(repo / ".agent", repo)
+        assert result.status == "ok"
+
+    def test_validation_reports_a_broken_protected_file(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        protected = _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        protected.write_text("kinds: 12345\n")  # scalar where a mapping belongs
+        # A perfectly good in-repo file must not rescue it.
+        (repo / ".agent" / "tracker" / "config.yaml").write_text(
+            yaml.dump(make_test_config_dict())
+        )
+        result = _check_config_validation(repo / ".agent", repo)
+        assert result.status == "error"
+
+    def test_config_yaml_check_reports_the_protected_path(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        protected = _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        result = _check_config_yaml(repo / ".agent", repo)
+        assert result.status == "ok"
+        assert str(protected) in result.message
+
+    def test_config_yaml_check_errors_when_protected_file_missing(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker import protected_config as pc
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        root = tmp_path / "etc"
+        root.mkdir()
+        monkeypatch.setattr(pc, "PROTECTED_ROOT", root)
+        (repo / ".agent" / "tracker" / "config.yaml").write_text("statuses: []\n")
+        result = _check_config_yaml(repo / ".agent", repo)
+        assert result.status == "error"
+        assert "REFUSE" in result.message
+
+    def test_config_yaml_check_errors_on_unparseable_protected_file(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        repo = _git_repo_with_agent_dir(tmp_path)
+        protected = _opt_in(monkeypatch, tmp_path, repo, {"statuses": []})
+        protected.write_text("[not a mapping]\n")
+        result = _check_config_yaml(repo / ".agent", repo)
+        assert result.status == "error"
+
+    def test_check_6_does_not_create_an_in_repo_config_under_protection(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        _write_config_template(repo / ".agent")
+        _check_config_yaml(repo / ".agent", repo)
+        assert not (repo / ".agent" / "tracker" / "config.yaml").exists()
+
+    def test_ownership_and_permission_checks_go_quiet_under_protection(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        decoy = repo / ".agent" / "tracker" / "config.yaml"
+        decoy.write_text("statuses: []\n")
+        decoy.chmod(0o666)
+        for check in (_check_config_ownership, _check_config_permissions):
+            result = check(repo / ".agent", repo)
+            assert result.status == "ok", check.__name__
+            assert "host-protected" in result.message
+
+    def test_drift_compares_the_protected_config_to_the_tracked_template(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        raw = make_test_config_dict()
+        _opt_in(monkeypatch, tmp_path, repo, raw)
+        template = dict(raw)
+        template["kinds"] = dict(raw["kinds"])
+        template["kinds"]["extra_kind"] = {"prefix": "EX", "description": "x"}
+        (repo / ".agent" / "tracker" / "config.yaml.template").write_text(
+            yaml.dump(template)
+        )
+        result = _check_config_drift(repo / ".agent", repo)
+        assert result.status == "warn"
+        assert "extra_kind" in "\n".join(result.details)
+
+
+class TestProtectedConfigLeftoverWarning:
+    """After opt-in the in-repo files are inert and actively misleading."""
+
+    def test_warns_about_leftover_in_repo_configs(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from helpers import make_test_config_dict
+
+        import os as _os
+
+        repo = _git_repo_with_agent_dir(tmp_path)
+        protected = _opt_in(monkeypatch, tmp_path, repo, make_test_config_dict())
+        (tmp_path / "etc").chmod(0o755)
+        protected.parent.chmod(0o755)
+        protected.chmod(0o644)
+        (repo / ".agent" / "tracker" / "config.yaml").write_text("statuses: []\n")
+        # A test cannot chown to root; drive the uid comparison instead, as
+        # the sibling "in force" test does.
+        monkeypatch.setattr(_os, "getuid", lambda: 999999)
+        result = _check_protected_config(repo / ".agent", repo)
+        assert result.status == "warn"
+        body = "\n".join(result.details)
+        assert "IGNORED by the loader" in body
+        assert "rm " in body
