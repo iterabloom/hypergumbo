@@ -347,3 +347,73 @@ class TestOwnershipTransferGuard:
         )
         config_unlock(cfg)
         assert "refusing to rewrite" in capsys.readouterr().err
+
+
+class TestRelativeConfigDirDowngrade:
+    """A relative ``config_dir`` must not silently disable protection.
+
+    ``_find_git_dir`` walks ``current.parent`` until it stops changing; for a
+    relative path that terminus is ``Path('.')``, so it never sees the ``.git``
+    one level up and returns None. ``load_config`` read None as "outside a git
+    repo" and fell through to the in-repo config — the file the agent can
+    write. The agent controls its own argv, so ``--tracker-root ./.agent`` was
+    a one-flag downgrade of this entire module. The non-git fallthrough below
+    is still legitimate; the two cases simply had to stop sharing a branch.
+    """
+
+    def test_relative_config_dir_still_resolves_the_protected_config(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        root = tmp_path / "etc"
+        root.mkdir()
+        repo = _make_repo(tmp_path)
+        smuggled = dict(MINIMAL)
+        smuggled["statuses"] = ["todo_hard", "done", "deleted", "agent_smuggled"]
+        (repo / ".agent" / "tracker" / "config.yaml").write_text(
+            yaml.safe_dump(smuggled)
+        )
+        _write_protected(root, repo, MINIMAL)
+
+        monkeypatch.chdir(repo)
+        loaded = load_config(Path(".agent/tracker"), protected_root=root)
+        assert "agent_smuggled" not in loaded.statuses
+
+    def test_relative_config_dir_with_no_protected_config_still_REFUSES(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """The refusal must not be dodgeable by spelling the path differently."""
+        root = tmp_path / "etc"
+        root.mkdir()
+        repo = _make_repo(tmp_path)
+        (repo / ".agent" / "tracker" / "config.yaml").write_text(
+            yaml.safe_dump(MINIMAL)
+        )
+        monkeypatch.chdir(repo)
+        with pytest.raises(ProtectedConfigError):
+            load_config(Path(".agent/tracker"), protected_root=root)
+
+    def test_dot_segments_and_parent_traversal_resolve_too(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """``./x/../.agent/tracker`` is the same directory and must resolve alike."""
+        root = tmp_path / "etc"
+        root.mkdir()
+        repo = _make_repo(tmp_path)
+        _write_protected(root, repo, MINIMAL)
+        monkeypatch.chdir(repo)
+        loaded = load_config(
+            Path("./.agent/../.agent/tracker"), protected_root=root
+        )
+        assert "todo_hard" in loaded.statuses
+
+    def test_repo_root_resolution_is_path_spelling_independent(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from hypergumbo_tracker.models import _repo_root_for_config_dir
+
+        repo = _make_repo(tmp_path)
+        monkeypatch.chdir(repo)
+        assert _repo_root_for_config_dir(Path(".agent/tracker")) == repo.resolve()
+        assert (
+            _repo_root_for_config_dir(repo / ".agent" / "tracker") == repo.resolve()
+        )

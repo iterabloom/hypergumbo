@@ -949,6 +949,40 @@ layer 1; it can also `pip install` its own tracker. Config protection cannot
 reach an agent running its own deployment. What it protects is *this*
 deployment's governance record.
 
+**Path spelling is not a downgrade lever** *(added 2026-09-12, second amendment).*
+Layer 0 keys on the git toplevel containing the config directory, and the helper
+that finds it walks parent directories — which for a **relative** path terminates
+at `.` without ever seeing `.git`. It therefore returned "no repo", and the
+loader treated that the same as "genuinely outside a repository" and fell through
+to layer 1. Since the agent controls its own argv, `--tracker-root ./.agent` was
+a one-flag downgrade of this entire section. The config directory is now resolved
+to an absolute path before the walk, so "no repo" means only what it is
+documented to mean. The non-git fallthrough itself is kept: outside a repository
+there is no id to key on, and no deployment to protect.
+
+**The wizard must follow layer 0, not the decoy** *(same amendment).* Once
+layer 0 is in force the in-repo `config.yaml` is inert, and a setup wizard that
+kept reading, validating and *editing* it would let a human make governance
+changes that silently do nothing — a strictly worse failure than the unprotected
+state, because it looks like it worked. Every config-reading check now resolves
+through one helper (`setup.authoritative_config`), `htrac setup configure`
+**refuses** rather than writing a file nothing reads, and the setup report names
+the leftover in-repo copies and tells the human to delete them. The wizard does
+not acquire root to edit `/etc` on the user's behalf: a config editor that
+silently escalates is its own governance problem.
+
+**Two checks may not disagree about one file** *(same amendment).* Check #10b set
+`config.yaml` to `0444`; check #12's group sweep then restored `g+rw` on every
+file in the shared-group directories, landing on `0464`. Both reported "fixed" on
+every run, so the wizard never converged despite documenting idempotence — and
+`0464` in a group containing the agent means the agent can write whichever config
+it does not own. Mode for `config.yaml` is now owned solely by #10b. Relatedly,
+the shared-group probe looked only at `.agent/` and the repo toplevel, which a
+correct two-user setup leaves at the owner's primary group (the instructions
+`chgrp` `.agent/tracker*` and `.git`), so it reported "single-user" on a properly
+configured box and the checks gated on it — including the one that creates
+missing directories with the shared group and setgid — silently did nothing.
+
 ### Security Model
 
 #### Threat Model

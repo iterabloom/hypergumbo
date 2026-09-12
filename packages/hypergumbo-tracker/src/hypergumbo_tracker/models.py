@@ -697,12 +697,22 @@ _DEFAULT_CONFIG_RAW: dict[str, Any] = {
 def _repo_root_for_config_dir(config_dir: Path) -> Path | None:
     """Git toplevel containing ``config_dir``, or None outside a repo.
 
+    **The ``resolve()`` is load-bearing security, not tidiness.**
+    ``_find_git_dir`` walks ``current.parent`` until it stops changing, which
+    for a RELATIVE path is ``Path('.')`` — so it never sees the ``.git`` one
+    level up and returns None. ``load_config`` treats None as "outside a repo"
+    and falls through to the in-repo config, which is the file the agent can
+    write. Since the agent controls its own argv, ``--tracker-root ./.agent``
+    was a one-flag downgrade of the whole protected-config layer. Resolving
+    first collapses that case into the absolute one, leaving None to mean only
+    what it is documented to mean: genuinely outside any git repository.
+
     Lazy import: ``store`` imports this module, so a top-level import here
     would close a cycle.
     """
     from hypergumbo_tracker.store import _find_git_dir
 
-    git_dir = _find_git_dir(config_dir)
+    git_dir = _find_git_dir(config_dir.resolve())
     return git_dir.parent if git_dir is not None else None
 
 
