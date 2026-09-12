@@ -1,0 +1,24 @@
+- op: create  # 0f30
+  at: '2026-09-12T17:35:09Z'  # 0f30
+  by: agent  # 0f30
+  actor: jgstern_agent  # 0f30
+  clock: 1  # 0f30
+  nonce: 0f30  # 0f30
+  data:  # 0f30
+    kind: invariant  # 0f30
+    title: "tracker init has no actor guard and calls config_lock, so an agent run silently TAKES OWNERSHIP of the human-owned governance config"  # 0f30
+    status: violated  # 0f30
+    priority: 1  # 0f30
+    parent:  # 0f30
+    tags:  # 0f30
+    - tracker  # 0f30
+    - security  # 0f30
+    - governance  # 0f30
+    isbefore: []  # 0f30
+    duplicate_of: []  # 0f30
+    not_duplicate_of: []  # 0f30
+    pr_ref:  # 0f30
+    description: ""  # 0f30
+    fields:  # 0f30
+      statement: "The config.yaml governance boundary must not be transferable to the agent by an unprivileged agent-run command. Today handle_init (cli.py:1970) has no resolve_actor guard and calls config_lock(config_path) unconditionally, including on a config that already exists and is owned by the human. config_lock does path.chmod(0o444), which raises PermissionError for a non-owner, and falls back to _config_chmod_fallback -- which by its own docstring writes a copy that is now owned by the current user and renames it over the target. An agent running tracker init therefore ends up owning the file ADR-0013 says it must never be able to write."  # 0f30
+      root_cause: "Two halves. (1) configure is correctly guarded (configure requires human authority, exits 1 before touching config_lock) but init is not, and init is the command that calls config_lock. (2) More fundamentally, the protection is file-level while the containing directory is not: .agent/tracker and .agent/tracker-workspace are mode 2775 group project-dev, and the agent is in project-dev, so the agent can create a file in those directories and rename it over the config regardless of the config's own owner or mode. ADR-0013's security model rests entirely on file ownership plus mode; a create-and-rename in a group-writable directory defeats both."  # 0f30
