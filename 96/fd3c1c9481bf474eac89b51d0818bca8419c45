@@ -1,0 +1,56 @@
+Original commit body from acb2687647347d89b0b0c2b61ab90a6a7d181110:
+
+Four defects, each of which let a correctly configured two-account
+deployment report as healthy while being none of those things.
+
+1. A relative --tracker-root silently disabled the host-protected config.
+   Layer 0 keys on the git toplevel containing the config directory, and
+   the helper that finds it walks parents -- which for a relative path
+   terminates at "." without ever seeing .git. It returned "no repo", and
+   load_config treated that identically to "genuinely outside a
+   repository" and fell through to the in-repo config, the one file the
+   agent can write. The agent controls its own argv, so
+   `--tracker-root ./.agent` was a one-flag downgrade of the whole layer.
+   The path is resolved before the walk; the legitimate non-git
+   fallthrough is kept and now means only what it documents.
+
+2. _detect_shared_group probed the wrong directories. It examined .agent/
+   and the repo toplevel, both of which a correct two-user setup leaves at
+   the owner's primary group -- the instructions chgrp .agent/tracker* and
+   .git. So it reported "single-user" on a properly configured box and the
+   three checks gated on it did nothing. The one with teeth creates
+   missing tracker directories WITHOUT the shared group or setgid bit,
+   leaving a fresh .ops or stealth the other user cannot write.
+
+3. Check #10b set config.yaml to 0444 and check #12's group sweep put
+   group-write straight back, landing on 0464. Both reported "fixed" on
+   every run, so the wizard never converged despite documenting
+   idempotence -- and 0464 in a group containing the agent means the agent
+   can write in place whichever config it does not own. Mode for
+   config.yaml now belongs solely to #10b.
+
+4. Under host protection the wizard inspected and edited a decoy. Checks
+   5-10b and `htrac setup configure` hardcoded the in-repo path, so a
+   human on a protected host would validate a file the loader ignores and
+   the editor would print "Wrote ... (mode 0444)" having changed no
+   governance at all. That is worse than no wizard, because it looks like
+   it worked. Every config-reading check now resolves through one helper,
+   configure refuses and names the authoritative file, and setup lists the
+   leftover in-repo copies for deletion.
+
+Also: setup no longer warns about running as the agent account when a
+shared group is present (that is the expected state, and an unclearable
+warning is how a report teaches people to stop reading it), and check #7
+reports a malformed config instead of dying with an AttributeError
+traceback -- a diagnostic is what a human runs precisely when the config
+is already wrong.
+
+23 new tests; the group-permission ones use a real secondary group rather
+than a patched Path.stat, so the permission arithmetic under test is the
+kernel's. Tracker suite 2963 passed, 100% coverage in isolation, mypy
+strict ratchet 669 delta +0.
+
+Refs INV-mizid.
+
+Racial-Capitalism-Is-Bad: a harvest beetle conducting an orchestra underwater in a mirrored cornfield labyrinth underwater with a flock of parrots made of leaves
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
