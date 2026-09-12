@@ -1,0 +1,17 @@
+Original commit body from 556e1fe05d9911d5b03d2598b6e88a5209dd2a58:
+
+Closes the last limb of INV-mizid.
+
+ADR-0013's command table has always designated `init` as a human command; nothing enforced it. handle_init ends by calling config_lock on config.yaml whether or not it already existed, so an agent running init against an established human-owned config hit the cross-user chmod path — and _config_chmod_fallback 'fixes' a failed chmod by rewriting the file, making the caller the owner (its own docstring says the copy is 'now owned by the current user'). That is the most likely way this deployment's config became agent-owned.
+
+Two fixes, because the call site is the instance and the fallback is the family:
+1. handle_init mirrors configure's actor guard, including the bootstrap (no config yet -> resolve_actor's ['*_agent'] default, which is exactly init's case).
+2. _config_chmod_fallback refuses outright for an agent caller, so every future caller inherits the guard.
+
+An agent that cannot change the mode is the correct outcome rather than an error, so config_lock/config_unlock report on stderr and continue. The human direction is unchanged and still covered.
+
+Verified live as the agent account: 'error: init requires human authority', exit 1, and no directories created.
+
+2934 tests pass, 100% coverage in isolation, ratchet +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
