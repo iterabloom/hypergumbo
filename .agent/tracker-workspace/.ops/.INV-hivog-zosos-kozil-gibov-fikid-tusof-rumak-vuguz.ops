@@ -1,0 +1,31 @@
+- op: create  # 60c9
+  at: '2026-09-12T20:55:36Z'  # 60c9
+  by: agent  # 60c9
+  actor: jgstern_agent  # 60c9
+  clock: 1  # 60c9
+  nonce: 60c9  # 60c9
+  data:  # 60c9
+    kind: invariant  # 60c9
+    title: "two-user mode: the human exercises human-authority commands through an agent-owned, agent-writable venv, so human authority executes agent-modifiable code"  # 60c9
+    status: violated  # 60c9
+    priority: 2  # 60c9
+    parent:  # 60c9
+    tags:  # 60c9
+    - tracker  # 60c9
+    - security  # 60c9
+    - governance  # 60c9
+    isbefore: []  # 60c9
+    duplicate_of: []  # 60c9
+    not_duplicate_of: []  # 60c9
+    pr_ref:  # 60c9
+    description: ""  # 60c9
+    fields:  # 60c9
+      statement: "A command that requires human authority must not execute code the agent can modify without review. On this deployment the only hypergumbo-tracker entry point reachable by the human account is /home/jgstern_agent/hypergumbo/.venv/bin/hypergumbo-tracker, owned by jgstern_agent mode 755, an EDITABLE install pointing at packages/hypergumbo-tracker/src which the agent also owns. So when the human runs htrac setup, htrac init, lock, unlock, stealth, reconcile-reset or fork-setup, the code deciding what human authority means is code the agent can rewrite in place. The actor guards are correct and non-forgeable (they key on os.getuid) but they live inside the artifact being trusted."  # 60c9
+      root_cause: "The dual-account design moved DATA (config.yaml) out of agent reach via /etc/hypergumbo-tracker, and moved AUTHORITY out of agent reach via resolve_actor on uid, but never moved the CODE. There is one install and the agent owns it. The gap is structural rather than a bug: an editable install is a pointer into a tree the agent must be able to write, because writing that tree is its job. Note the asymmetry with source changes generally -- a source change normally passes PR, CI and review before anything runs it, but an in-place edit to the checkout bypasses all three and is executed by the human on the next invocation."  # 60c9
+- op: discuss  # 5f45
+  at: '2026-09-12T20:55:58Z'  # 5f45
+  by: agent  # 5f45
+  actor: jgstern_agent  # 5f45
+  clock: 2  # 5f45
+  nonce: 5f45  # 5f45
+  message: "FILED while wiring two-user mode (PR #936). Distinct from INV-mizid by MECHANISM, not merely by wording: INV-mizid is the agent writing the governance DATA, this is the human executing agent-writable CODE while exercising authority the agent is not supposed to have. Different remedy, so filed separately rather than folded.\n\nWHY IT MATTERS CONCRETELY AND IMMEDIATELY. The opt-in procedure for the host-protected config asks the human to run htrac setup and then paste the sudo commands it prints. Check 10c composes those commands, including the destination path under /etc. An agent that can edit setup.py in place can therefore choose the path the human sudo-creates, which would defeat the protected-config layer at the exact moment it is being installed. This is not hypothetical about intent; it is just what the permissions permit.\n\nWHAT BOUNDS THE RISK TODAY, and it is worth stating because it is also the cheap mitigation: the editable install points at the git-tracked checkout, so any in-place modification shows up as a dirty working tree. Running git status (and confirming only .ops files are modified) immediately before running setup or the sudo block reduces this to \"the reviewed and merged source is what runs\". That is a procedure, not an enforcement, and procedures are exactly what this project has been replacing with mechanism.\n\nOPTIONS, none built, all needing an owner decision because each has a real standing cost:\n(a) A second, human-owned install: pip install (non-editable) into a venv under the human account, from a reviewed commit. Strongest, and it makes the human path independent of the checkout entirely, but it is a second artifact to keep current and a stale one fails in a confusing direction.\n(b) Root-owned install, agent-readable, upgraded deliberately. Same shape as the protected config and consistent with it; heaviest to operate.\n(c) Accept and document, with a git status precondition written into the setup output itself. Cheapest; leaves a procedure where a mechanism belongs.\n\nRecommendation is (a), scoped to the human account only, because it is the one that makes the human path stop depending on a tree the agent writes, and because the tracker is intended as a general utility for less friendly agents than the present one. Priority set to P2 on filing rather than P1 because the protected-config layer is not yet opted in on this deployment, so there is nothing installed yet for this to undermine -- if the answer to the opt-in question is yes, this becomes a precondition of doing it safely and should be raised. Priority is the owners call."  # 5f45
