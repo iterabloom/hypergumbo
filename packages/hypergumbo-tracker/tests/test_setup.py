@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -4159,17 +4160,13 @@ class TestGroupSweepLeavesConfigModeAlone:
     """#10b sets 0444; #12 must not put group-write back on the next line.
 
     The two checks disagreed about the same file, so the wizard never
-    converged — both reported "fixed" on every run — and config.yaml settled
+    converged -- both reported "fixed" on every run -- and config.yaml settled
     at 0464. In a shared group that contains the agent, 0464 means the agent
     can write whichever config it does not own, which is the exact boundary
-    #10b exists to hold. Uses a real secondary group rather than a patched
-    ``Path.stat`` so the permission arithmetic under test is the kernel's.
+    #10b exists to hold.
     """
 
-    def _two_user_tree(self, tmp_path: Path) -> tuple[Path, int]:
-        shared = next((g for g in os.getgroups() if g != os.getgid()), None)
-        if shared is None:
-            pytest.skip("no secondary group available to model a two-user setup")
+    def _tree(self, tmp_path: Path) -> Path:
         root = _make_full_agent_dir(tmp_path)
         for d in (
             root / "tracker" / ".ops",
@@ -4177,17 +4174,42 @@ class TestGroupSweepLeavesConfigModeAlone:
             root / "tracker-workspace" / ".ops",
             root / "tracker-workspace" / "stealth",
         ):
-            os.chown(d, -1, shared)
             # Suppressed below: setgid + group-write IS the two-user
             # configuration under test; a stricter mode would not reproduce
             # the deployment this check has to work on.
             os.chmod(d, 0o2775)  # noqa: S103  # nosec B103
-        return root, shared
+        return root
+
+    @contextmanager
+    def _as_two_user(self, root: Path):
+        """Model a two-user box by declaring a DIFFERENT primary gid.
+
+        The directories keep their real group and the files keep their real
+        modes, so the permission arithmetic under test is the kernel's. The
+        only fiction is which group the caller calls its own -- which is
+        exactly what separates a two-user box from a single-user one, and
+        unlike a real secondary group it is available on every CI runner.
+        """
+        import pwd as _pwd
+
+        user = _pwd.getpwuid(os.getuid()).pw_name
+        real_gid = os.stat(root).st_gid
+        with (
+            patch(
+                "hypergumbo_tracker.setup.pwd.getpwuid",
+                return_value=MagicMock(pw_gid=real_gid + 1, pw_name=user),
+            ),
+            patch(
+                "hypergumbo_tracker.setup.grp.getgrgid",
+                return_value=MagicMock(gr_name="shared", gr_mem=[user]),
+            ),
+        ):
+            yield
 
     def test_config_keeps_0444_while_ops_files_still_get_group_write(
         self, tmp_path: Path
     ) -> None:
-        root, _shared = self._two_user_tree(tmp_path)
+        root = self._tree(tmp_path)
         ws = root / "tracker-workspace"
         config = ws / "config.yaml"
         config.write_text("statuses: []\n")
@@ -4196,14 +4218,15 @@ class TestGroupSweepLeavesConfigModeAlone:
         ops_file.write_text("{}")
         ops_file.chmod(0o600)
 
-        _check_group_permissions(root, None)
+        with self._as_two_user(root):
+            _check_group_permissions(root, None)
 
         assert config.stat().st_mode & 0o777 == 0o444, "sweep re-opened config.yaml"
         assert ops_file.stat().st_mode & 0o060 == 0o060, "sweep stopped working"
 
     def test_permission_and_group_checks_converge(self, tmp_path: Path) -> None:
         """Idempotence is the wizard's documented contract; it was false."""
-        root, _shared = self._two_user_tree(tmp_path)
+        root = self._tree(tmp_path)
         config = root / "tracker-workspace" / "config.yaml"
         config.write_text("statuses: []\n")
         config.chmod(0o644)
@@ -4215,7 +4238,8 @@ class TestGroupSweepLeavesConfigModeAlone:
                 return_value=("human", "someone"),
             ):
                 _check_config_permissions(root, None)
-            _check_group_permissions(root, None)
+            with self._as_two_user(root):
+                _check_group_permissions(root, None)
             modes.append(config.stat().st_mode & 0o777)
 
         assert modes == [0o444, 0o444, 0o444], modes
