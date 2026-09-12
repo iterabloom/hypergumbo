@@ -34,6 +34,9 @@ The check sequence covers three areas:
    ``status="fixed"``.
 3. **Sync prerequisites** (check 22): remote origin, FORGEJO_TOKEN,
    git identity — advisory check for ``htrac sync`` workflow.
+4. **Install provenance** (check 23): who can modify the running tracker
+   code. Advisory, and an accident guard rather than a security control —
+   it lives inside the artifact it audits (see the function docstring).
 
 Entry point: ``run_setup(root, repo_root, *, with_policy_template=False)``
 returns a list of CheckResult; the keyword drives policy-template scaffolding.
@@ -1258,6 +1261,118 @@ def _check_protected_config(root: Path, repo_root: Path | None = None) -> CheckR
         name="protected_config",
         status="ok",
         message=f"Host-protected config in force ({found})",
+    )
+
+
+def _writers_other_than(path: Path, uid: int) -> list[str]:
+    """Path components some user other than ``uid`` (or root) can modify.
+
+    Modifying a file needs write on its DIRECTORY, so this walks from the
+    target up to ``/`` and reports every component that is group- or
+    other-writable, or owned by a different non-root user.
+
+    **Ownership is the limb that matters here and a mode-only check misses it
+    entirely.** On the deployment that motivated this, the agent's package tree
+    is 0755 the whole way down — nothing is group-writable — yet every
+    component is owned by the agent account, so the agent may rewrite any of it
+    at will while a permissions-only audit reports all clear. root-owned
+    components are treated as safe: root is already trusted by anyone running
+    ``sudo``, and ``/`` and ``/home`` would otherwise be flagged forever.
+
+    A world-writable directory carrying the STICKY bit (``/tmp``, mode 1777) is
+    likewise safe and must not be flagged: sticky restricts delete and rename
+    to the entry's owner, and replacing a file needs exactly those. Omitting
+    this reported a false positive for anything under ``/tmp`` — including the
+    fixtures this function's own tests build.
+    """
+    problems: list[str] = []
+    current = path.resolve()
+    while True:
+        try:
+            st = current.stat()
+        except OSError:  # pragma: no cover - unreadable component
+            break
+        sticky_dir = bool(st.st_mode & 0o1000) and current.is_dir()
+        if st.st_mode & 0o022 and not sticky_dir:
+            problems.append(f"{current} is group/other-writable (mode {st.st_mode & 0o777:o})")
+        elif st.st_uid not in (uid, 0):
+            try:
+                owner = pwd.getpwuid(st.st_uid).pw_name
+            except KeyError:  # pragma: no cover - orphaned uid
+                owner = f"uid {st.st_uid}"
+            problems.append(f"{current} is owned by {owner}")
+        if current == current.parent:
+            break
+        current = current.parent
+    return problems
+
+
+def _check_install_provenance(
+    root: Path, repo_root: Path | None = None
+) -> CheckResult:
+    """Check #23: report who can modify the tracker code that is running.
+
+    **This is an ACCIDENT GUARD, NOT A SECURITY CONTROL, and the distinction is
+    not pedantic.** The check lives inside the artifact it is checking, so an
+    agent that can rewrite the package can rewrite this function too. It cannot
+    defend against a hostile agent and does not claim to. What it does is catch
+    the ordinary mistake the shipped guidance used to *cause*: a human running
+    human-authority commands out of the agent's virtualenv, which
+    ``generate_human_shim`` positively instructed them to do until 2026-09-12.
+
+    Why it matters at all: commands gated on human authority (``init``,
+    ``lock``, ``stealth``, ``reconcile-reset``, ``fork-setup``, ``configure``)
+    decide what that authority means in code. Run them from an agent-writable
+    install and the decision is the agent's. It bites hardest during opt-in to
+    the host-protected config, because check 10c composes the ``sudo`` commands
+    the human then pastes -- including the destination path under ``/etc``.
+
+    The real defence is an install the agent cannot write: a NON-EDITABLE
+    install, under the human's own account, from a reviewed commit. Content
+    addressing does the work -- an agent cannot make a pinned SHA contain
+    different bytes -- so the trust rests on the review, not on this code.
+    """
+    import hypergumbo_tracker
+
+    pkg_dir = Path(hypergumbo_tracker.__file__).resolve().parent
+    config_path, _protected = authoritative_config(root, repo_root)
+    by, username = resolve_actor(_agent_patterns_from(config_path))
+
+    in_checkout = repo_root is not None and str(pkg_dir).startswith(
+        str(repo_root.resolve()) + os.sep
+    )
+    shape = "editable, from the checkout" if in_checkout else "installed"
+
+    if by == "agent":
+        return CheckResult(
+            name="install_provenance",
+            status="ok",
+            message=f"Running as agent from {pkg_dir} ({shape})",
+        )
+
+    problems = _writers_other_than(pkg_dir, os.getuid())
+    if not problems:
+        return CheckResult(
+            name="install_provenance",
+            status="ok",
+            message=f"Human-authority code is writable only by {username} ({shape})",
+        )
+
+    return CheckResult(
+        name="install_provenance",
+        status="warn",
+        message="Human-authority commands are running from code another user can modify",
+        details=[
+            f"Running: {pkg_dir} ({shape})",
+            *(f"  {p}" for p in problems[:6]),
+            "",
+            "Install the tracker under your OWN account, non-editable, from a",
+            "commit you have reviewed -- then run human-authority commands from",
+            "that copy only, by absolute path. 'htrac setup' prints the exact",
+            "commands when run as the agent.",
+            "NOTE: this check cannot detect a hostile agent -- it lives in the",
+            "code it is checking. It catches the accident, not the attack.",
+        ],
     )
 
 
@@ -2769,6 +2884,7 @@ def run_setup(
     results.append(_check_autonomous_mode(repo_root))      # 20
     results.append(_check_reflection_state(repo_root))     # 21
     results.append(_check_sync_prerequisites(root, repo_root))  # 22
+    results.append(_check_install_provenance(root, repo_root))  # 23
 
     return results
 
@@ -2834,6 +2950,98 @@ def results_to_json(results: list[CheckResult]) -> dict[str, Any]:
     }
 
 
+#: Where the human-owned, agent-unwritable install is suggested. A literal
+#: ``~`` because the block is pasted into the HUMAN's shell, where it expands
+#: to their home -- expanding it here would bake in the agent's.
+_HUMAN_VENV = "~/.local/share/hypergumbo-tracker"
+
+
+def _sanitize_remote(url: str) -> str:
+    """Strip any embedded ``user:password@`` from a remote URL.
+
+    Remotes routinely carry a token inline (this repo's dormant mirror does),
+    and this string is printed for a human to paste and quite possibly share.
+    """
+    return re.sub(r"//[^/@]*@", "//", url)
+
+
+def _git_https_url(repo_root: Path) -> str | None:
+    """``origin`` as an https URL suitable for ``pip install git+``, or None."""
+    try:
+        out = subprocess.run(  # noqa: S603  # nosec B603, B607
+            ["git", "-C", str(repo_root), "remote", "get-url", "origin"],  # noqa: S607
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - env dependent
+        return None
+    if out.returncode != 0:
+        return None
+    url = _sanitize_remote(out.stdout.strip())
+    if not url:
+        return None
+    scp = re.match(r"^(?:ssh://)?git@([^:/]+)[:/](.+?)(?:\.git)?$", url)
+    if scp:
+        return f"https://{scp.group(1)}/{scp.group(2)}"
+    return re.sub(r"\.git$", "", url)
+
+
+def _head_sha(repo_root: Path) -> str | None:
+    try:
+        out = subprocess.run(  # noqa: S603  # nosec B603, B607
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],  # noqa: S607
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):  # pragma: no cover - env dependent
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def _human_install_lines(repo_root: Path | None, pkg_dir: Path) -> list[str]:
+    """The one-time block that gives the human an install the agent cannot write.
+
+    Deliberately NOT a script: a helper the agent wrote, which the human then
+    runs as themselves, reintroduces exactly the dependency being removed. The
+    output is a handful of standard ``venv``/``pip`` commands the reader can
+    check by eye.
+
+    The pin is the whole mechanism -- an agent cannot make a reviewed SHA
+    contain different bytes -- so the SHA is printed as a SUGGESTION to be
+    verified on the forge, never as an instruction to trust this output.
+    """
+    lines = [
+        "# ── One-time: install the tracker under YOUR account ───",
+        "# Human-authority commands (init, lock, stealth, reconcile-reset,",
+        "# fork-setup, configure, setup) decide in CODE what human authority",
+        "# means. Run them from the agent's venv and that code is the agent's",
+        "# to rewrite. This install is non-editable and lives under your home.",
+    ]
+    url = _git_https_url(repo_root) if repo_root is not None else None
+    sha = _head_sha(repo_root) if repo_root is not None else None
+
+    lines.append(f"python3 -m venv {_HUMAN_VENV}")
+    lines.append(f"{_HUMAN_VENV}/bin/pip install --upgrade pip")
+    if url is not None and repo_root is not None:
+        try:
+            subdir = pkg_dir.resolve().parents[1].relative_to(repo_root.resolve())
+            sub = f"#subdirectory={subdir}"
+        except ValueError:
+            sub = ""
+        lines.append(
+            f'{_HUMAN_VENV}/bin/pip install "git+{url}@<REVIEWED-SHA>{sub}"'
+        )
+        lines.append("")
+        lines.append("# Replace <REVIEWED-SHA> with a commit you have reviewed ON THE")
+        lines.append("# FORGE. Pinning is what protects you here: the agent cannot make")
+        lines.append("# a given SHA contain different bytes. Do not take the SHA below")
+        lines.append("# on trust -- it is printed by code the agent can edit.")
+        if sha is not None:
+            lines.append(f"#   this checkout's HEAD right now: {sha}")
+    else:
+        lines.append(f"{_HUMAN_VENV}/bin/pip install hypergumbo-tracker")
+    lines.append("")
+    return lines
+
+
 def generate_human_shim(root: Path) -> str:
     """Generate a copy-paste command block for the human user's terminal.
 
@@ -2842,28 +3050,22 @@ def generate_human_shim(root: Path) -> str:
     the human user. This is printed when the setup wizard is run as the
     agent user and they decline to continue.
 
-    The shim covers three scenarios:
-    1. Running setup as the human user
-    2. Fixing group permissions (if two-user setup detected)
-    3. Ongoing TUI access from the human terminal
+    The shim covers four scenarios:
+    1. Installing the tracker under the human's own account
+    2. Running setup as the human user, from THAT install
+    3. Fixing group permissions (if two-user setup detected)
+    4. Ongoing TUI access from the human terminal
+
+    **It used to tell the human to ``source`` the agent's virtualenv**, which
+    is how this deployment came to run human-authority commands out of an
+    agent-writable install (INV-hivog). Every invocation it prints is now an
+    absolute path into the human's own copy; the agent's venv is not mentioned.
     """
     # Find repo root (git root or parent of .agent/)
     repo_root = root.parent.resolve()
     git_dir = _find_git_dir(repo_root)
     if git_dir is not None:
         repo_root = git_dir.parent
-
-    # Detect the venv
-    venv_path: Path | None = None
-    for candidate in [repo_root / ".venv", repo_root / "venv"]:
-        if (candidate / "bin" / "activate").exists():
-            venv_path = candidate
-            break
-    if venv_path is None:
-        # Check VIRTUAL_ENV env var
-        env_venv = os.environ.get("VIRTUAL_ENV")
-        if env_venv and (Path(env_venv) / "bin" / "activate").exists():
-            venv_path = Path(env_venv)
 
     # Detect shared group from .ops directories
     group_name: str | None = None
@@ -2888,13 +3090,16 @@ def generate_human_shim(root: Path) -> str:
     if needs_traversal:
         lines.append(f"sudo chmod o+rx {agent_home}")
 
+    lines.append("")
+
+    import hypergumbo_tracker
+
+    pkg_dir = Path(hypergumbo_tracker.__file__).resolve().parent
+    lines.extend(_human_install_lines(repo_root, pkg_dir))
+
+    lines.append("# ── Run setup from YOUR copy, by absolute path ─────────")
     lines.append(f"cd {repo_root}")
-
-    if venv_path is not None:
-        activate = venv_path / "bin" / "activate"
-        lines.append(f"source {activate}")
-
-    lines.append("htrac setup")
+    lines.append(f"{_HUMAN_VENV}/bin/htrac setup")
     lines.append("")
 
     # If two-user group setup is active or should be set up
@@ -2922,12 +3127,6 @@ def generate_human_shim(root: Path) -> str:
         lines.append("")
 
     lines.append("# ── Quick TUI access (anytime) ─────────────────────────")
-    tui_parts = []
-    if needs_traversal:
-        tui_parts.append(f"cd {repo_root}")
-    if venv_path is not None:
-        tui_parts.append(f"source {venv_path / 'bin' / 'activate'}")
-    tui_parts.append("htrac tui")
-    lines.append(" && ".join(tui_parts))
+    lines.append(f"cd {repo_root} && {_HUMAN_VENV}/bin/htrac tui")
 
     return "\n".join(lines)

@@ -54,6 +54,13 @@ from hypergumbo_tracker.setup import (
     _check_textconv,
     _check_tracker_wrapper,
     _check_protected_config,
+    _check_install_provenance,
+    _writers_other_than,
+    _sanitize_remote,
+    _git_https_url,
+    _head_sha,
+    _human_install_lines,
+    _HUMAN_VENV,
     _detect_shared_group,
     _agent_patterns_from,
     authoritative_config,
@@ -3482,9 +3489,10 @@ class TestRunSetup:
             "hypergumbo_tracker.setup.resolve_actor", return_value=("human", "alice")
         ):
             results = run_setup(root)
-        # Should have one result per check (26 total, including sync prerequisites,
-        # hooks_path, and the host-protected-config check)
-        assert len(results) == 26
+        # Should have one result per check (27 total, including sync
+        # prerequisites, hooks_path, the host-protected-config check and the
+        # install-provenance check)
+        assert len(results) == 27
         # Directory structure should be fixed
         dir_result = next(r for r in results if r.name == "directory_structure")
         assert dir_result.status == "fixed"
@@ -3865,36 +3873,46 @@ class TestGenerateHumanShim:
         assert "htrac setup" in shim
         assert "htrac tui" in shim
 
-    def test_shim_with_venv(self, tmp_path: Path) -> None:
-        """Shim includes venv activation when .venv exists."""
-        root = tmp_path / ".agent"
-        (root / "tracker" / ".ops").mkdir(parents=True)
-        venv = tmp_path / ".venv" / "bin"
-        venv.mkdir(parents=True)
-        (venv / "activate").write_text("")
-        shim = generate_human_shim(root)
-        assert f"source {tmp_path / '.venv' / 'bin' / 'activate'}" in shim
+    def test_shim_never_points_the_human_at_a_venv_in_the_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        """It used to, and that is how INV-hivog happened.
 
-    def test_shim_with_venv_dir(self, tmp_path: Path) -> None:
-        """Shim detects 'venv/' as fallback when '.venv/' doesn't exist."""
+        The three tests replaced here asserted the shim emitted
+        ``source <repo>/.venv/bin/activate`` -- they pinned the defect in
+        place. A repo-local venv is the AGENT's: telling the human to activate
+        it hands agent-writable code the authority the two-account split exists
+        to withhold.
+        """
         root = tmp_path / ".agent"
         (root / "tracker" / ".ops").mkdir(parents=True)
-        venv = tmp_path / "venv" / "bin"
-        venv.mkdir(parents=True)
-        (venv / "activate").write_text("")
-        shim = generate_human_shim(root)
-        assert f"source {tmp_path / 'venv' / 'bin' / 'activate'}" in shim
+        for venv in (tmp_path / ".venv" / "bin", tmp_path / "venv" / "bin"):
+            venv.mkdir(parents=True)
+            (venv / "activate").write_text("")
+        env_venv = tmp_path / "my_env"
+        (env_venv / "bin").mkdir(parents=True)
+        (env_venv / "bin" / "activate").write_text("")
 
-    def test_shim_with_virtual_env_envvar(self, tmp_path: Path) -> None:
-        """Shim uses VIRTUAL_ENV env var when no .venv/ directory."""
-        root = tmp_path / ".agent"
-        (root / "tracker" / ".ops").mkdir(parents=True)
-        venv_dir = tmp_path / "my_env"
-        (venv_dir / "bin").mkdir(parents=True)
-        (venv_dir / "bin" / "activate").write_text("")
-        with patch.dict(os.environ, {"VIRTUAL_ENV": str(venv_dir)}):
+        with patch.dict(os.environ, {"VIRTUAL_ENV": str(env_venv)}):
             shim = generate_human_shim(root)
-        assert f"source {venv_dir / 'bin' / 'activate'}" in shim
+
+        assert "source " not in shim
+        assert str(tmp_path / ".venv") not in shim
+        assert str(tmp_path / "venv") not in shim
+        assert str(env_venv) not in shim
+
+    def test_shim_prints_a_human_owned_non_editable_install(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / ".agent"
+        (root / "tracker" / ".ops").mkdir(parents=True)
+        shim = generate_human_shim(root)
+        assert "~/.local/share/hypergumbo-tracker" in shim
+        assert "python3 -m venv ~/.local/share/hypergumbo-tracker" in shim
+        # Every invocation is an absolute path into the human's own copy.
+        for line in shim.splitlines():
+            if "htrac " in line and not line.lstrip().startswith("#"):
+                assert "~/.local/share/hypergumbo-tracker/bin/htrac" in line, line
 
     def test_shim_with_shared_group(self, tmp_path: Path) -> None:
         """Shim includes group fix commands when shared group is detected."""
@@ -3961,15 +3979,13 @@ class TestGenerateHumanShim:
         root = tmp_path / ".agent"
         (root / "tracker" / ".ops").mkdir(parents=True)
         home_dir = tmp_path
-        venv = tmp_path / ".venv" / "bin"
-        venv.mkdir(parents=True)
-        (venv / "activate").write_text("")
         with patch("hypergumbo_tracker.setup.Path.home", return_value=home_dir):
             shim = generate_human_shim(root)
-        # TUI line should chain cd, source, and htrac tui
+        # TUI line chains cd and the human's own htrac -- never a `source`.
         tui_line = next(l for l in shim.splitlines() if "htrac tui" in l)
         assert f"cd {tmp_path}" in tui_line
-        assert "source" in tui_line
+        assert "~/.local/share/hypergumbo-tracker/bin/htrac tui" in tui_line
+        assert "source" not in tui_line
         assert "htrac tui" in tui_line
 
     def test_shim_no_ops_dirs(self, tmp_path: Path) -> None:
@@ -4475,3 +4491,195 @@ class TestProtectedConfigLeftoverWarning:
         body = "\n".join(result.details)
         assert "IGNORED by the loader" in body
         assert "rm " in body
+
+
+# ---------------------------------------------------------------------------
+# Check #23: install provenance (INV-hivog)
+# ---------------------------------------------------------------------------
+
+
+class TestWritersOtherThan:
+    """Ownership, not just mode -- a mode-only audit misses the real case."""
+
+    def test_clean_when_only_this_user_can_write(self, tmp_path: Path) -> None:
+        d = tmp_path / "pkg"
+        d.mkdir()
+        d.chmod(0o755)
+        assert _writers_other_than(d, os.getuid()) == []
+
+    def test_flags_group_or_other_writable_component(self, tmp_path: Path) -> None:
+        d = tmp_path / "pkg"
+        d.mkdir()
+        d.chmod(0o777)
+        problems = _writers_other_than(d, os.getuid())
+        assert any("group/other-writable" in p for p in problems)
+
+    def test_flags_a_component_owned_by_someone_else(self, tmp_path: Path) -> None:
+        """The deployment case: 0755 all the way down, but another user owns it."""
+        d = tmp_path / "pkg"
+        d.mkdir()
+        d.chmod(0o755)
+        problems = _writers_other_than(d, os.getuid() + 12345)
+        assert any("is owned by" in p for p in problems)
+
+    def test_root_owned_components_are_trusted(self, tmp_path: Path) -> None:
+        """/ and /home are root-owned; flagging them forever helps nobody."""
+        problems = _writers_other_than(Path("/"), os.getuid() + 12345)
+        assert problems == []
+
+
+class TestCheckInstallProvenance:
+    def test_agent_running_its_own_install_is_fine(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("agent", "bot_agent"),
+        ):
+            result = _check_install_provenance(root, None)
+        assert result.status == "ok"
+        assert "agent" in result.message
+
+    def test_human_on_a_private_install_is_fine(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch("hypergumbo_tracker.setup._writers_other_than", return_value=[]),
+        ):
+            result = _check_install_provenance(root, None)
+        assert result.status == "ok"
+        assert "alice" in result.message
+
+    def test_human_on_an_agent_writable_install_warns(self, tmp_path: Path) -> None:
+        root = _make_full_agent_dir(tmp_path)
+        with (
+            patch(
+                "hypergumbo_tracker.setup.resolve_actor",
+                return_value=("human", "alice"),
+            ),
+            patch(
+                "hypergumbo_tracker.setup._writers_other_than",
+                return_value=[f"/somewhere is owned by bot_agent{i}" for i in range(9)],
+            ),
+        ):
+            result = _check_install_provenance(root, None)
+        assert result.status == "warn"
+        body = "\n".join(result.details)
+        # Honest about its own limits: it lives in the code it audits.
+        assert "cannot detect a hostile agent" in body
+        # Long lists are truncated rather than flooding the report.
+        assert sum("is owned by bot_agent" in line for line in result.details) == 6
+
+    def test_reports_editable_shape_when_inside_the_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        import hypergumbo_tracker
+
+        pkg_parent = Path(hypergumbo_tracker.__file__).resolve().parents[3]
+        root = _make_full_agent_dir(tmp_path)
+        with patch(
+            "hypergumbo_tracker.setup.resolve_actor",
+            return_value=("agent", "bot_agent"),
+        ):
+            result = _check_install_provenance(root, pkg_parent)
+        assert "editable, from the checkout" in result.message
+
+
+class TestHumanInstallBlock:
+    def test_sanitize_strips_embedded_credentials(self) -> None:
+        dirty = "https://user:tok3n@codeberg.org/org/repo.git"
+        assert "tok3n" not in _sanitize_remote(dirty)
+        assert _sanitize_remote(dirty) == "https://codeberg.org/org/repo.git"
+
+    def test_scp_style_ssh_remote_becomes_https(self, tmp_path: Path) -> None:
+        with patch("hypergumbo_tracker.setup.subprocess.run") as run:
+            run.return_value = MagicMock(
+                returncode=0, stdout="git@github.com:org/repo.git\n"
+            )
+            assert _git_https_url(tmp_path) == "https://github.com/org/repo"
+
+    def test_https_remote_passes_through_without_dot_git(
+        self, tmp_path: Path
+    ) -> None:
+        with patch("hypergumbo_tracker.setup.subprocess.run") as run:
+            run.return_value = MagicMock(
+                returncode=0, stdout="https://github.com/org/repo.git\n"
+            )
+            assert _git_https_url(tmp_path) == "https://github.com/org/repo"
+
+    def test_no_remote_yields_none(self, tmp_path: Path) -> None:
+        with patch("hypergumbo_tracker.setup.subprocess.run") as run:
+            run.return_value = MagicMock(returncode=1, stdout="")
+            assert _git_https_url(tmp_path) is None
+
+    def test_empty_remote_yields_none(self, tmp_path: Path) -> None:
+        with patch("hypergumbo_tracker.setup.subprocess.run") as run:
+            run.return_value = MagicMock(returncode=0, stdout="\n")
+            assert _git_https_url(tmp_path) is None
+
+    def test_head_sha_read_and_failure(self, tmp_path: Path) -> None:
+        with patch("hypergumbo_tracker.setup.subprocess.run") as run:
+            run.return_value = MagicMock(returncode=0, stdout="abc123\n")
+            assert _head_sha(tmp_path) == "abc123"
+            run.return_value = MagicMock(returncode=1, stdout="")
+            assert _head_sha(tmp_path) is None
+
+    def test_block_falls_back_to_pypi_without_a_repo(self, tmp_path: Path) -> None:
+        lines = "\n".join(_human_install_lines(None, tmp_path / "pkg"))
+        assert f"{_HUMAN_VENV}/bin/pip install hypergumbo-tracker" in lines
+        assert "git+" not in lines
+
+    def test_block_pins_a_placeholder_not_a_trusted_sha(
+        self, tmp_path: Path
+    ) -> None:
+        """The SHA is a suggestion to verify, never an instruction to trust."""
+        with (
+            patch(
+                "hypergumbo_tracker.setup._git_https_url",
+                return_value="https://github.com/org/repo",
+            ),
+            patch("hypergumbo_tracker.setup._head_sha", return_value="deadbeef"),
+        ):
+            lines = "\n".join(
+                _human_install_lines(tmp_path, tmp_path / "packages" / "p" / "src" / "m")
+            )
+        assert "<REVIEWED-SHA>" in lines
+        assert "deadbeef" in lines
+        assert "on trust" in lines
+        assert "#subdirectory=packages/p" in lines
+
+    def test_block_omits_subdirectory_when_package_is_outside_the_repo(
+        self, tmp_path: Path
+    ) -> None:
+        with (
+            patch(
+                "hypergumbo_tracker.setup._git_https_url",
+                return_value="https://github.com/org/repo",
+            ),
+            patch("hypergumbo_tracker.setup._head_sha", return_value=None),
+        ):
+            lines = "\n".join(
+                _human_install_lines(tmp_path, Path("/elsewhere/src/mod"))
+            )
+        assert "#subdirectory=" not in lines
+        assert "<REVIEWED-SHA>" in lines
+
+
+class TestStickyDirectoriesAreNotWritableByOthers:
+    """A world-writable STICKY dir does not let others replace your file."""
+
+    def test_sticky_world_writable_dir_is_not_flagged(self, tmp_path: Path) -> None:
+        d = tmp_path / "sticky"
+        d.mkdir()
+        d.chmod(0o1777)
+        flagged = [p for p in _writers_other_than(d, os.getuid()) if str(d) in p]
+        assert flagged == []
+
+    def test_non_sticky_world_writable_dir_is_flagged(self, tmp_path: Path) -> None:
+        d = tmp_path / "open"
+        d.mkdir()
+        d.chmod(0o777)
+        flagged = [p for p in _writers_other_than(d, os.getuid()) if str(d) in p]
+        assert flagged and "group/other-writable" in flagged[0]
