@@ -1,0 +1,15 @@
+Original commit body from 64753463932af3b052d170980a732e4596c45514:
+
+Closes INV-nihaz (open since 2026-08-27, re-filed twice as WI-sahih and INV-fapub).
+
+git notes have never once reached origin. ls-remote showed no refs/notes/* at all, while 727 notes dating to 2026-01-22 sat in a single working copy — and AGENTS.md tells readers to recover rebased commit bodies with 'git fetch origin refs/notes/*:refs/notes/*', which fetched nothing.
+
+Two causes, both fixed:
+1. .githooks/pre-push applied its DCO check to every ref including refs/notes/*. A notes commit is written by git itself with the fixed subject "Notes added by 'git notes add'" and can never carry a trailer, so the notes ref was unpushable by construction. The DCO certifies who authored a contribution; a notes commit is git's wrapper around a body already signed off on the original commit. Notes refs now skip the loop body — safe, because the protected-branch check is inert on them and the upstream workspace warning diffs paths they cannot contain.
+2. scripts/lib/forgejo-api.sh pushed with '2>/dev/null || true', discarding the error AND the exit status — which is why 726 consecutive failures produced no signal. Still non-fatal, now reported on stderr.
+
+Verified end to end, not by proxy: test_hooks.sh gains a case asserting the same unsigned commit blocked on refs/heads/t is allowed on refs/notes/commits (43 passed, 0 failed); the backlog pushed ([new reference]); and a fresh clone plus the documented command recovers all 727.
+
+Human approval obtained for the .githooks/** change and the one-time backfill before either was made.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
