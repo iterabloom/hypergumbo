@@ -4515,11 +4515,25 @@ class TestWritersOtherThan:
         assert any("group/other-writable" in p for p in problems)
 
     def test_flags_a_component_owned_by_someone_else(self, tmp_path: Path) -> None:
-        """The deployment case: 0755 all the way down, but another user owns it."""
+        """The deployment case: 0755 all the way down, but another user owns it.
+
+        Root-owned components are exempt BY DESIGN, so on a root test runner
+        (which is what CI is) the condition cannot be reached just by picking a
+        different target uid -- everything is already uid 0 and therefore
+        exempt. As root we can create a genuine non-root owner; as an ordinary
+        user we own the fixture and vary the target instead. Either way the
+        branch under test is the ownership limb, not the mode limb.
+        """
         d = tmp_path / "pkg"
         d.mkdir()
         d.chmod(0o755)
-        problems = _writers_other_than(d, os.getuid() + 12345)
+        owner = d.stat().st_uid
+        if owner == 0:
+            os.chown(d, 12345, -1)
+            target = os.getuid()
+        else:
+            target = owner + 12345
+        problems = _writers_other_than(d, target)
         assert any("is owned by" in p for p in problems)
 
     def test_root_owned_components_are_trusted(self, tmp_path: Path) -> None:
