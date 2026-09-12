@@ -1967,8 +1967,46 @@ def _cmd_check_messages(args: argparse.Namespace, ts: TrackerSet) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Handle 'init' subcommand — create tracker directory structure."""
+    """Handle 'init' subcommand — create tracker directory structure.
+
+    HUMAN ONLY (INV-mizid). ADR-0013's command table has always designated
+    ``init`` as a human command; nothing enforced it. That mattered because this
+    handler ends by calling ``config_lock`` on ``config.yaml`` whether or not the
+    file already existed — so an agent running ``init`` against an established,
+    human-owned config hit the cross-user chmod path, whose fallback rewrites the
+    file and hands ownership to the caller. That is the most likely way this
+    deployment's governance config became agent-owned. The guard mirrors
+    ``handle_setup_configure``'s, including its bootstrap: when no config exists
+    yet there is nothing to read ``agent_usernames`` from, so ``resolve_actor``
+    falls back to its ``["*_agent"]`` default, which is precisely the case
+    ``init`` runs in.
+    """
     root = Path(args.tracker_root) if args.tracker_root else Path.cwd() / ".agent"
+
+    import yaml  # lazy: cli.py has no other YAML dependency
+
+    agent_patterns = ["*_agent"]
+    existing_config = root / "tracker" / "config.yaml"
+    if existing_config.exists():
+        try:
+            with open(existing_config) as f:
+                raw = yaml.safe_load(f) or {}
+            actor_res = raw.get("actor_resolution", {})
+            if isinstance(actor_res, dict):
+                patterns = actor_res.get("agent_usernames")
+                if isinstance(patterns, list) and patterns:
+                    agent_patterns = patterns
+        except (yaml.YAMLError, OSError):
+            pass
+
+    by, username = resolve_actor(agent_patterns)
+    if by == "agent":
+        print(
+            f"error: init requires human authority "
+            f"(current user '{username}' is agent)",
+            file=sys.stderr,
+        )
+        return EXIT_USER_ERROR
 
     dirs = [
         root / "tracker" / ".ops",

@@ -1039,6 +1039,21 @@ class TestCheckConfigPermissions:
 class TestConfigLockUnlock:
     """Tests for config_lock and config_unlock helpers."""
 
+    @pytest.fixture(autouse=True)
+    def _as_human(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """These cases exercise the LEGITIMATE direction of the chmod fallback.
+
+        The fallback now refuses to run for an agent (INV-mizid), because it
+        rewrites the file and hands ownership to the caller. The suite runs as
+        the agent account, so without this the fallback cases below would assert
+        against the refusal instead of against the behaviour they cover. The
+        refusal itself is tested in test_protected_config.py.
+        """
+        monkeypatch.setattr(
+            "hypergumbo_tracker.setup.resolve_actor",
+            lambda *a, **k: ("human", "alice"),
+        )
+
     def test_lock_sets_0444(self, tmp_path: Path) -> None:
         f = tmp_path / "config.yaml"
         f.write_text("data")
