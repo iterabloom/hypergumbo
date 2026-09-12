@@ -45,3 +45,18 @@
   clock: 4  # bda1
   nonce: bda1  # bda1
   message: "FOLDED into INV-nihaz as a duplicate. I filed this today without grepping the tracker first, which is rule 1 of the project operating rules; INV-nihaz has carried the same mechanism, the same ls-remote evidence and the same governance-approval request since 2026-08-27, and WI-sahih filed it a third time on 2026-09-02.\n\nNothing is lost by the fold: the two facts this filing added -- the updated 726-note count, and the pinpointed swallow at scripts/lib/forgejo-api.sh:2116-2117 (`2>/dev/null || true`, which makes even a FIXED hook fail silently next time) -- are carried onto INV-nihaz. Invariants have no wont_do, so this is a duplicate_of link rather than a close."  # bda1
+- op: update  # 3d0e
+  at: '2026-09-12T20:00:54Z'  # 3d0e
+  by: agent  # 3d0e
+  actor: jgstern_agent  # 3d0e
+  clock: 5  # 3d0e
+  nonce: 3d0e  # 3d0e
+  set:  # 3d0e
+    status: satisfied  # 3d0e
+- op: discuss  # 2a79
+  at: '2026-09-12T20:00:54Z'  # 2a79
+  by: agent  # 2a79
+  actor: jgstern_agent  # 2a79
+  clock: 6  # 2a79
+  nonce: 2a79  # 2a79
+  message: "SATISFIED via the canonical row INV-nihaz, PR #935 (merged 2026-09-12, dev dd50189f38). Setting the status was missed when the duplicate_of link was added, which left this reading as open — caught on a family-consistency sweep.\n\nThis items statement was: \"Commit bodies preserved via git notes must actually reach origin. They never have.\" That now holds, on its own filed measurement:\n  BEFORE  git ls-remote origin refs/notes/*        -> EMPTY\n  AFTER                                            -> refs/notes/commits present\n  BEFORE  git fetch origin refs/notes/*:refs/notes/* in a fresh clone -> nothing\n  AFTER                                            -> 728 notes\nand the merge of the fix itself printed \"Note attached to dd50189f38... and pushed\" where every prior merge printed the BLOCKED banner.\n\nBoth root causes this item named are closed: the pre-push DCO block now exempts refs/notes/*, and scripts/lib/forgejo-api.sh no longer discards the push failure with 2>/dev/null || true. A regression guard in .githooks/test_hooks.sh, which CI runs, asserts the same unsigned commit blocked on refs/heads/t is allowed on refs/notes/commits."  # 2a79
