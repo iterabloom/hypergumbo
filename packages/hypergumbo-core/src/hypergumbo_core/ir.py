@@ -322,6 +322,15 @@ class AnalysisRun:
     # file-walking branch, so IR-consuming linker/synthesis passes reported 0).
     nodes_emitted: int = 0
     edges_emitted: int = 0
+    # WHY this pass emitted nothing (INV-bikaj / INV-hujog, arc T6). Stamped at
+    # the same chokepoints as the counters above, from
+    # pass_silence.derive_silence_reason. ``""`` means NOT APPLICABLE (the pass
+    # emitted something); ``unreported`` means CANNOT DETERMINE (it was silent
+    # and did not say why) — the two are deliberately distinct, and the
+    # ``unreported`` count is the size of the remaining work. The orchestrator
+    # never infers ``no_candidate_construct``: only a pass body knows whether it
+    # looked for a construct and failed to find it.
+    silence_reason: str = ""  # axis: pass-silence-reason
 
     def __post_init__(self) -> None:
         if not self.config_fingerprint:
@@ -406,6 +415,12 @@ class AnalysisRun:
             "nodes_emitted": self.nodes_emitted,
             "edges_emitted": self.edges_emitted,
         }
+        # INV-virik: omit-when-empty, like the reporting lists below. An empty
+        # silence_reason is NOT APPLICABLE (this pass emitted output), and a
+        # key present on every productive run would read as a field nobody set
+        # rather than as a question that does not arise.
+        if self.silence_reason:
+            result["silence_reason"] = self.silence_reason
         # INV-virik: the per-run reporting lists are present ONLY when non-empty,
         # so a consumer reads their ABSENCE as "nothing to report" instead of a
         # misleading always-empty list on every one of the (many) runs (which read

@@ -627,6 +627,7 @@ def _run_linker_with_cache(
     ``linkers/_text_filters`` can read/write ``ctx.parsed_trees`` without
     every linker passing the cache explicitly.
     """
+    from ..pass_silence import derive_silence_reason
     from ._text_filters import reset_active_parse_cache, set_active_parse_cache
 
     token = set_active_parse_cache(ctx.parsed_trees)
@@ -649,6 +650,17 @@ def _run_linker_with_cache(
             result.run.duration_ms = _elapsed_ms
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
+        # INV-bikaj (arc T6): every linker invocation flows through this
+        # wrapper, so it is also the one locus that can stamp WHY a linker
+        # emitted nothing. The 22 truly-silent pass-runs the sizing found are
+        # linkers that opened files and produced nothing; they land in
+        # `unreported` rather than being labelled with a reason the
+        # orchestrator cannot know.
+        result.run.silence_reason = derive_silence_reason(
+            files_analyzed=result.run.files_analyzed,
+            nodes_emitted=result.run.nodes_emitted,
+            edges_emitted=result.run.edges_emitted,
+        )
     return result
 
 

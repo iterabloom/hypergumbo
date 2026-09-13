@@ -30,6 +30,7 @@ from ..ir import (
     _default_config_fingerprint, compute_config_fingerprint,
 )
 from ..limits import Limits
+from ..pass_silence import derive_silence_reason
 from ..paths import normalize_path
 from .base import (
     populate_kind_stable_ids,
@@ -169,6 +170,16 @@ def collect_analyzer_result(
         # config_fingerprint stamps).
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
+        # INV-bikaj (arc T6): stamp WHY this pass emitted nothing, at the same
+        # chokepoint as the counters it is derived from. Only what is certain
+        # from the counters — an analyzer that read files and produced nothing
+        # is `unreported`, never `no_candidate_files`, because it plainly had
+        # candidates.
+        result.run.silence_reason = derive_silence_reason(
+            files_analyzed=result.run.files_analyzed,
+            nodes_emitted=result.run.nodes_emitted,
+            edges_emitted=result.run.edges_emitted,
+        )
         analysis_runs.append(result.run.to_dict())
         # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
         # (toml/json/wgsl/sql and any future ones that build Symbols by hand
