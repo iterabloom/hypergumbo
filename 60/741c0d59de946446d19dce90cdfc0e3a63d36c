@@ -1,0 +1,48 @@
+Original commit body from 9f8814f73adeb2ec00a1fddbff12a06526434f7b:
+
+The field shipped STAMPED BUT UNREAD. Every reference to silence_reason was
+producer-side -- the two stamping chokepoints, the schema generator, the axis
+registration -- and nothing read it back. That is the defect this project
+already has a rule for ("a disclosure nothing reads is not one"), and it is the
+same shape as the finding the previous commit documented about
+validate_pass_dependencies: shipped, and wired to nothing.
+
+It also discharged the wrong half of the ruling. The owner's 2026-09-11 decision
+kept the recorded-reason work specifically ON THE OBSERVABILITY COMPLAINT, and a
+value nobody is shown is not observability -- "an agent could grep the JSON" is a
+weaker claim than the complaint asked for.
+
+So `hypergumbo survey` now prints one line at the end of a run, beside the
+validator's [warn] summary and under the same discipline (one line, stderr,
+silent when every pass produced output):
+
+  [passes] 57 of 78 emitted nothing: no_candidate_files=52, unreported=5 \
+(per-pass detail in analysis_runs[].silence_reason)
+
+`summarize_silence` / `format_silence_summary` / `emit_silence_summary` in
+hypergumbo_core.pass_silence are the reusable consumer API behind it, so the
+next consumer branches on the axis instead of re-deriving counts from
+analysis_runs.
+
+THREE CHOICES THAT ARE EACH AN AVOIDED TRAP:
+
+  * A value OUTSIDE the vocabulary is counted under its own name, never dropped
+    or bucketed into a neighbour. Dropping it would make a DRIFTED PRODUCER LOOK
+    LIKE A CLEAN RUN -- exactly the failure this axis was declared to prevent.
+  * Ordering is DETERMINISTIC (most-common first, ties alphabetical) so two
+    surveys diff without spurious churn. WI-jozap is the standing reminder that
+    arbitrary iteration order is a measurement hazard, not a cosmetic one.
+  * A run with NO silence_reason is not counted. Its absence means NOT
+    APPLICABLE; folding that into the counts at the reporting layer would undo
+    the not-applicable / cannot-determine split the field exists to draw.
+
+No schema change: the field already exists, this adds only a reader.
+
+Verified END TO END on a real apollo-server survey rather than by inspection --
+the line appears and its numbers reconcile with the JSON exactly (52 + 5 = 57 of
+78 pass-runs). Tests: 5,511 passed, 100% coverage on all changed files.
+
+Record: ~/hypergumbo_lab_notebook/t6_recorded_reason_09132026/
+
+Racial-Capitalism-Is-Bad: a glitchy heron riding a bed of holographic confetti in a space station with a caravan of donkeys made of clouds
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
