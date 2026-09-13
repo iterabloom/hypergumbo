@@ -1,0 +1,79 @@
+Original commit body from 38d15f6312d21c928daf2529dbf4bbc13f6a9d1b:
+
+Arc T9. The caddy-config-to-os.Chmod shape: tainted data reaches a sink, but
+all it does is select WHICH resource the sink acts on. A catalogue row can now
+declare that, and such a flow leaves the headline and is DISCLOSED with its own
+count. It remains a TRUE POSITIVE on the correctness axis -- WI-gohok's
+2026-08-27 ruling is untouched -- and is excluded on USEFULNESS, structurally
+and per sink, never by a per-case judgement of how interesting a finding is.
+
+VERIFY_CLAIMS_SCHEMA_VERSION 2.3 -> 2.4.
+
+THE OWNER RULED OPTION (i) WITH TWO BITS. TWO MEASUREMENTS CHANGED HOW IT IS
+BUILT, AND BOTH ARE ON THE RECORD RATHER THAN IN A COMMIT MESSAGE ONLY.
+
+(1) SUPPRESSION NEEDS A THIRD CONDITION THE RULING DID NOT NAME. The walk
+carries NO argument identity -- re-verified at tip: zero hits for
+arg_index|argument_index|arg_pos|param_index|argument_role|which_arg, and
+TaintFlowFinding records only the sink primitive/module/symbol. So at a MIXED
+sink -- fprintf(stream, fmt, ...), #2 in the reached head -- a finding cannot
+be attributed to an argument, and the rule as literally written would suppress
+one whose tainted value reached `fmt`. That is the false-all-clear direction,
+which this codebase already refuses elsewhere (io_boundary.py:202, "a
+disclosure boundary without its shadow is a false-all-clear generator").
+
+Classified the top-20 reached head (476 of 706 mentions, reproducing the
+costing's 67.4% exactly, which is the instrument's own control):
+
+    R  no content argument at all      2 sinks   34 mentions    7.1%
+    D  naming IS the danger            6 sinks   83 mentions   17.4%
+    M  MIXED, names AND takes content  9 sinks  276 mentions   58.0%
+    C  no resource-naming argument     3 sinks   83 mentions   17.4%
+
+Owner ruled: ADD THE GUARD. Suppression requires `content: []` -- an EXPLICIT
+declaration that the sink takes no content argument. ABSENT and [] are
+DIFFERENT: absent is CANNOT-DETERMINE and never suppresses. M rows carry both
+bits as recorded data and are disclosed, never suppressed.
+
+(2) A ROW IS NOT A PRIMITIVE, which the costing could not see because it
+reasoned about rows abstractly. A catalogue row is a (module, boundary) group
+with a LIST of functions, and they do not share a class: c.yaml's stdio row
+holds fourteen names spanning ALL FOUR -- fflush is R, fopen/fclose are D,
+fprintf is M, printf is C. 11 of the 20 head primitives sit in a row holding a
+different class. Splitting those rows would work and is DELIBERATELY NOT DONE:
+row ORDER is load-bearing here and the file says so ("THIS ROW STAYS FIRST: an
+unstamped call abstains to the first-declared row"), so reshuffling four large
+rows to carry an annotation would move abstention behaviour for primitives
+unrelated to T9. The annotation is therefore keyed PER FUNCTION inside the row.
+
+THE WHOLE CHAIN SHIPS, NOT THE PRODUCER HALF. Catalogue row -> IoPrimitive ->
+TaintSink.resource_naming_only -> TaintFlowFinding -> ClaimVerdict
+.resource_naming_flows -> a SENTENCE on the confirmed path: "they are true
+flows excluded as not useful, not an absence of flows". A suppression that
+appeared only as a JSON key would be a deletion wearing a disclosure's
+clothes, and the confirmed path is exactly where a silent filter misleads most.
+
+Verified on the real catalogue, all four behaviours distinct: fflush and
+DialTimeout suppress; fprintf does not (the guard); unlink does not (the danger
+bit); printf does not (un-annotated). Un-annotated rows behave exactly as
+before, so this is forward-only.
+
+THREE TEST FAILURES, ALL MINE, AND ONE WAS A REAL BUG: to_dict dropped
+resource_naming_only, so a consumer could not tell an excluded flow from an
+absent one -- caught by test_serialization_loses_no_declared_field. A parameter
+named `module: str` collided with the axis test's line scan for
+IoPrimitive.module (renamed the parameter rather than loosen a test guarding an
+ADR-0051 invariant). The envelope version pin fired as designed and was
+re-pointed, not relaxed.
+
+AND A COVERAGE MISS WORTH KEEPING: the first test for the human-readable clause
+grepped the SOURCE FILE, so it passed while the line it asserted about was
+never executed. Replaced with a test that builds a finding, runs
+verify_taint_claim, and reads the sentence back -- plus a negative control
+where an identical flow at a class-M sink stays in the headline.
+
+Tests: 14,919 passed, 100% coverage on all changed files, ratchet clean at 669.
+Record: ~/hypergumbo_lab_notebook/t9_bulag_09132026/
+
+Racial-Capitalism-Is-Bad: a crab competing with a cheetah in a cave-painted pancake griddle made of stained glass
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
