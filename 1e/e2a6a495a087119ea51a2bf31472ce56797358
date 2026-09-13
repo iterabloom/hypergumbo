@@ -1,0 +1,70 @@
+Original commit body from d6b582e02b2ae6b1bcf5ea9792f8553f8b3f2957:
+
+INV-bikaj's headline -- "61 of 84 AnalysisRun passes produce 0 edges" -- counts
+an UNDIFFERENTIATED population. A zero-edge pass is one of three states needing
+opposite responses, and a reader of a survey could not tell which:
+
+    A  ran, nothing to find                       correct, uninteresting
+    B  ran, could not find what was there         a recall defect
+    C  did not really run, prerequisite absent    an ordering defect
+
+Differentiated first, over 405 pass-runs on five repositories: 274 of 322
+zero-edge pass-runs analysed ZERO FILES, 26 emitted nodes but no edges (not
+silent at all), and only 22 were TRULY SILENT. Those 22 had nowhere to record a
+reason, structurally rather than accidentally -- the spec deliberately excludes
+non-analyzer passes from limits.skipped_passes, so a silent linker was invisible
+by design.
+
+This adds AnalysisRun.silence_reason on the new closed pass-silence-reason axis
+(hypergumbo_core.pass_silence, wired into multi_value_field_axis._known_axes),
+stamped at the two chokepoints that already stamp nodes_emitted/edges_emitted,
+so every analyzer and every linker flows through it.
+
+THE ABSENT VALUE AND `unreported` ARE DIFFERENT, AND THAT IS THE POINT. Absent
+means NOT APPLICABLE -- the pass emitted something, there is no silence to
+explain. `unreported` means CANNOT DETERMINE -- it read files, produced nothing,
+and did not say why. Collapsing them would repeat a defect already paid for once
+(a relative --tracker-root read as "not a repo" fell through to a writable
+config because those two cases looked alike).
+
+The orchestrator stamps ONLY what it derives with certainty and never infers
+no_candidate_construct: only a pass body knows whether it looked for a construct
+and failed to find one, and a reason invented on the producer's behalf is a
+fabricated disclosure, which is worse than none. So the `unreported` count is
+expected to be non-zero and ITS SIZE IS THE SIZE OF THE REMAINING WORK.
+
+SCOPE, STATED RATHER THAN IMPLIED. The Pass.requires graph (INV-hujog) is NOT
+built: depends_on CNF and validate_pass_dependencies() have been in catalog.py
+since May with zero non-test callers, verified still so at tip, and the sizing
+found no state-C population for a graph to catch. The value `prerequisite_absent`
+is declared with no producer precisely so a future instance has somewhere to land
+instead of being folded into a neighbour; the re-open trigger is written on
+INV-hujog. The free-text limits.skipped_passes[].reason is NOT retrofitted: it
+has 19 distinct spellings across 29 analyzer files, but across 490 surveys
+carrying 39,757 skip records only TWO strings are ever produced, because this
+machine has every grammar installed -- the drift is real in a bare user
+environment and unobserved in ours, so it is filed rather than claimed as a
+measured cost.
+
+Validated on a fresh apollo-server survey (one of the five sizing repos) BEFORE
+this commit: 78 pass-runs, ZERO silent-with-empty-reason; 52 no_candidate_files
+/ 21 absent / 5 unreported; no_candidate_construct stamped zero times as
+pre-registered. The five `unreported` passes and their file counts reproduce
+exactly what the old survey predicts through the shipped function.
+
+NOT FIXED HERE, AND IT IS THE LARGER NUMBER: of 185 catalogued pass ids on that
+repo, 78 carry an AnalysisRun and 84 a skip record -- 23 (12.4%) carry NEITHER
+and are invisible entirely, because four synthesis passes append their run only
+inside an `if <output>:` guard. That is WI-tivif's mechanism, corroborated there
+with the named instances rather than re-filed.
+
+Tests: 21,991 passed, 100% coverage on all changed files. One pre-existing
+exact-keyset test (test_schema.py round-trip) needed silence_reason added to its
+fully-populated sample, mirroring the conditional fields already handled there;
+re-verified green in isolation (61 passed) rather than by re-running the 680-file
+slice for a one-line fixture change.
+
+Record: ~/hypergumbo_lab_notebook/t6_recorded_reason_09132026/
+
+Racial-Capitalism-Is-Bad: an octopus teaching dehydration to a class of turtles in a Jurassic jukebox booth
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
