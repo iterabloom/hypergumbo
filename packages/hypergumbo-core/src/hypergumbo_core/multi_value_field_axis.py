@@ -18,10 +18,11 @@ the linter requires a trailing source-line comment of the form
 be one of:
 
 - A **known axis name** — see :func:`_known_axes` for the live set,
-  which as of ADR-0051 is eleven: ``edge-type``, ``symbol-kind``,
+  which is twelve: ``edge-type``, ``symbol-kind``,
   ``evidence-type``, ``language``, ``pass-id``, ``protocol-origin``,
   ``qualified-name``, ``io-boundary`` (ADR-0050), ``module-key``
-  (ADR-0051), ``entrypoint-kind`` and ``visibility``. The field's value
+  (ADR-0051), ``entrypoint-kind``, ``visibility`` and
+  ``pass-silence-reason`` (INV-bikaj, arc T6). The field's value
   space is the legal set returned by the axis's all-names function.
   ``language`` and ``pass-id`` are derived from the analyzer/linker
   catalog (:func:`hypergumbo_core.catalog`); the rest live in dedicated
@@ -123,6 +124,7 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
     from .qualified_name_axis import all_qualified_name_languages
     from .symbol_kinds import all_symbol_kind_names
     from .visibility import all_known_visibility_levels
+    from .pass_silence import all_pass_silence_reason_names
     from .catalog import all_known_languages, all_known_pass_ids
 
     return {
@@ -145,6 +147,10 @@ def _known_axes() -> dict[str, Callable[[], Iterable[str]]]:
         "entrypoint-kind": all_known_entrypoint_kinds,
         # INV-jusot: canonical visibility levels (closed enum).
         "visibility": all_known_visibility_levels,
+        # INV-bikaj/INV-hujog (arc T6): why a pass emitted nothing.
+        # Closed enum; '' is deliberately NOT a member (it means
+        # NOT APPLICABLE, where 'unreported' means CANNOT DETERMINE).
+        "pass-silence-reason": all_pass_silence_reason_names,
     }
 
 

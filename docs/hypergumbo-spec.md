@@ -501,6 +501,10 @@ class AnalysisRun:
     warnings: List[str]
     started_at: str
     duration_ms: int
+    nodes_emitted: int         # INV-gizik: Symbols this pass contributed
+    edges_emitted: int         # INV-gizik: Edges this pass contributed
+    silence_reason: str        # INV-bikaj: WHY this pass emitted nothing;
+                               # omitted when it emitted something (see below)
 
 @dataclass
 class AnalysisIR:
@@ -950,6 +954,14 @@ Each entry records provenance for one analyzer pass. Field semantics are defined
 **Output-specific note:** The IR field `pass_id` is serialized as `pass` in JSON output.
 
 **skipped_passes** (array, optional; per-run): a legacy field mirroring the top-level `limits.skipped_passes` shape. Pass-level skips never appear here — a skipped pass never ran, so it has no `analysis_runs[]` record — so this per-run field has no current producer and is omitted when empty (INV-virik). For skip provenance, read the authoritative `limits.skipped_passes` (documented under [§9 limits — explicit gaps](#limits--explicit-gaps)). (INV-nihug.)
+
+**silence_reason** (string, optional; per-run — INV-bikaj, arc T6): WHY this pass produced no Symbols and no Edges, drawn from the closed `pass-silence-reason` axis (`hypergumbo_core.pass_silence`), never free text. The value space is `no_candidate_files`, `no_candidate_construct`, `dependency_unavailable`, `backend_disabled`, `prerequisite_absent`, `pass_crashed`, `unreported`.
+
+**The key is ABSENT when the pass emitted something, and that absence means NOT APPLICABLE — there is no silence to explain.** It is never a shorthand for "unknown": that case has its own value, `unreported`, meaning the pass read files, produced nothing, and did not say why. A consumer that collapses the two loses the only distinction the field exists to draw. Note that a pass emitting Symbols but no Edges is **not** silent — 26 of the 48 file-reading zero-edge pass-runs measured on 2026-09-11 were exactly this.
+
+Why the field exists: `analysis_runs[]` records that a pass emitted zero edges but not why, and those zeroes are three different states — "saw no input" (correct and uninteresting), "saw input and found nothing" (a recall defect), "never really ran because a prerequisite was absent" (an ordering defect). Measured over 405 pass-runs on five repositories, 274 of 322 zero-edge pass-runs analysed zero files and only 22 were truly silent, so the field's main job is to make those 22 countable rather than invisible.
+
+**What the orchestrator will and will not claim.** It stamps only what it derives with certainty from counters it already holds: zero files ⇒ `no_candidate_files`, otherwise `unreported`. It never infers `no_candidate_construct` — only a pass body knows whether it looked for a construct and failed to find one, and a reason invented on the producer's behalf would be a fabricated disclosure. `prerequisite_absent` likewise has no producer today; the value is declared so an instance would have somewhere to land rather than being folded into a neighbour. **A non-zero `unreported` count is therefore expected, and its size is the size of the remaining work.**
 
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 

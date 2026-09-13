@@ -542,6 +542,10 @@ class TestSchemaDataclassSync:
         run_sample.skipped_passes = [{"pass": "p", "reason": "r"}]
         run_sample.failed_files = [{"path": "x.py", "reason": "boom"}]
         run_sample.warnings = ["w"]
+        # INV-bikaj: silence_reason is conditional too — omitted when the pass
+        # emitted something (NOT APPLICABLE), so a productive sample would not
+        # carry the key. Populate it for the fully-populated comparison.
+        run_sample.silence_reason = "unreported"
         # INV-nuzal: node.quality is conditional (omitted when None), so populate
         # it for the fully-populated key-set comparison.
         symbol_sample = Symbol(

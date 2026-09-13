@@ -55,6 +55,7 @@ from hypergumbo_core.axis_meta_keys import (
 from hypergumbo_core.edge_types import AXIS_ENDPOINT_SHAPE, EDGE_TYPES
 from hypergumbo_core.evidence_types import EVIDENCE_TYPES
 from hypergumbo_core.ir import AnalysisRun, Edge, ExternalRef, Span, Symbol
+from hypergumbo_core.pass_silence import UNREPORTED
 from hypergumbo_core.symbol_kinds import SYMBOL_KINDS
 
 
@@ -333,6 +334,10 @@ def _sample_analysis_run() -> AnalysisRun:
     run.skipped_passes = [{"pass": "somepass", "reason": "not applicable"}]
     run.failed_files = [{"path": "broken.py", "reason": "SyntaxError"}]
     run.warnings = ["a warning"]
+    # Likewise silence_reason (INV-bikaj): omitted when the pass emitted
+    # something, so the sample must be a SILENT pass for the drift check to
+    # see the key at all.
+    run.silence_reason = UNREPORTED
     return run
 
 
@@ -871,10 +876,26 @@ def _analysis_run_spec() -> ClassSpec:
                     "duration_ms>0"
                 ),
             },
+            "silence_reason": {
+                "description": (
+                    "WHY this pass emitted nothing (INV-bikaj, arc T6), on the "
+                    "pass-silence-reason axis. Present ONLY when the pass was "
+                    "silent: its ABSENCE means the pass emitted output, which "
+                    "is NOT APPLICABLE rather than unknown. 'unreported' is "
+                    "the distinct CANNOT-DETERMINE value -- the pass read "
+                    "files, produced nothing and did not say why. The "
+                    "orchestrator stamps only what it can derive with "
+                    "certainty and never infers 'no_candidate_construct', "
+                    "which only a pass body can report"
+                ),
+            },
         },
         # INV-virik: the per-run reporting lists are present ONLY when non-empty
-        # (present-when-populated), so they are conditional keys.
-        conditional={"skipped_passes", "failed_files", "warnings"},
+        # (present-when-populated), so they are conditional keys. silence_reason
+        # joins them: a key on every productive run would read as a field nobody
+        # set rather than as a question that does not arise.
+        conditional={"skipped_passes", "failed_files", "warnings",
+                     "silence_reason"},
         sample_factory=_sample_analysis_run,
     )
 
