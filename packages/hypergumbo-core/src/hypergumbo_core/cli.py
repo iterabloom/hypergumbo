@@ -11753,6 +11753,14 @@ def run_survey(
     from .spec_validator import emit_stderr_summary
     emit_stderr_summary(_fin_ctx.violations)
 
+    # INV-bikaj / INV-nanon (arc T6): the CONSUMER half of the pass-silence axis.
+    # Stamping silence_reason made the reason recordable; this is what makes it
+    # OBSERVED, which is the complaint INV-nanon actually raised. Emitted next to
+    # the validator summary and under the same discipline -- one line, stderr,
+    # and silent when every pass produced output.
+    from .pass_silence import emit_silence_summary
+    emit_silence_summary(behavior_map.get("analysis_runs", []))
+
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
     # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
     # symbols, 505k edges), this can free several GB of memory before final write.

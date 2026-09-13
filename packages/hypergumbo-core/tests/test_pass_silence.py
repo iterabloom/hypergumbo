@@ -185,3 +185,90 @@ class TestLinkerChokepointStamping:
         ctx = types.SimpleNamespace(parsed_trees={})
         result = _run_linker_with_cache(lambda _c: LinkerResult(run=None), ctx)
         assert result.run is None
+
+
+class TestSummariseSilence:
+    """The CONSUMER side. A disclosure nothing reads is not one — the field
+    shipped stamped but unread, and this is the half that makes it observable."""
+
+    def _run(self, reason, **kw):
+        d = {"pass": kw.get("name", "p"), "files_analyzed": 1,
+             "nodes_emitted": 0, "edges_emitted": 0}
+        if reason:
+            d["silence_reason"] = reason
+        return d
+
+    def test_empty_input_is_empty_summary(self):
+        from hypergumbo_core.pass_silence import summarize_silence
+        assert summarize_silence([]) == {}
+
+    def test_counts_by_reason(self):
+        from hypergumbo_core.pass_silence import summarize_silence
+        runs = [self._run(NO_CANDIDATE_FILES), self._run(NO_CANDIDATE_FILES),
+                self._run(UNREPORTED)]
+        assert summarize_silence(runs) == {NO_CANDIDATE_FILES: 2, UNREPORTED: 1}
+
+    def test_productive_runs_are_not_counted(self):
+        """A run with no silence_reason key emitted something — NOT APPLICABLE,
+        not an unknown reason."""
+        from hypergumbo_core.pass_silence import summarize_silence
+        assert summarize_silence([self._run(None), self._run(None)]) == {}
+
+    def test_unknown_reason_is_kept_not_dropped(self):
+        """A value outside the vocabulary must not vanish silently — dropping it
+        would make a drifted producer look like a clean run."""
+        from hypergumbo_core.pass_silence import summarize_silence
+        assert summarize_silence([self._run("something_new")]) == {"something_new": 1}
+
+
+class TestFormatSilenceSummary:
+    def test_returns_none_when_nothing_was_silent(self):
+        """Silent on a clean corpus, mirroring spec_validator.emit_stderr_summary."""
+        from hypergumbo_core.pass_silence import format_silence_summary
+        assert format_silence_summary({}, total_passes=10) is None
+
+    def test_line_names_the_totals_and_the_remaining_work(self):
+        from hypergumbo_core.pass_silence import format_silence_summary
+        line = format_silence_summary(
+            {NO_CANDIDATE_FILES: 52, UNREPORTED: 5}, total_passes=78)
+        assert line is not None
+        assert "57 of 78" in line          # silent / total
+        assert "no_candidate_files=52" in line
+        assert "unreported=5" in line
+        assert "silence_reason" in line    # tells the reader where to look
+        assert "\n" not in line            # one line, like the [warn] convention
+
+    def test_reasons_are_ordered_most_common_first(self):
+        from hypergumbo_core.pass_silence import format_silence_summary
+        line = format_silence_summary(
+            {UNREPORTED: 2, NO_CANDIDATE_FILES: 9}, total_passes=20)
+        assert line.index("no_candidate_files") < line.index("unreported")
+
+    def test_ties_break_alphabetically_so_the_line_is_deterministic(self):
+        from hypergumbo_core.pass_silence import format_silence_summary
+        a = format_silence_summary({UNREPORTED: 3, NO_CANDIDATE_FILES: 3}, total_passes=9)
+        b = format_silence_summary({NO_CANDIDATE_FILES: 3, UNREPORTED: 3}, total_passes=9)
+        assert a == b
+
+
+class TestEmitSilenceSummary:
+    def test_writes_one_line_to_stderr(self, capsys):
+        from hypergumbo_core.pass_silence import emit_silence_summary
+        runs = [{"pass": "x", "silence_reason": UNREPORTED},
+                {"pass": "y", "silence_reason": NO_CANDIDATE_FILES},
+                {"pass": "z"}]
+        emit_silence_summary(runs)
+        err = capsys.readouterr().err
+        assert err.count("\n") == 1
+        assert "2 of 3" in err
+        assert "unreported=1" in err
+
+    def test_silent_when_every_pass_emitted(self, capsys):
+        from hypergumbo_core.pass_silence import emit_silence_summary
+        emit_silence_summary([{"pass": "x"}, {"pass": "y"}])
+        assert capsys.readouterr().err == ""
+
+    def test_silent_on_no_passes_at_all(self, capsys):
+        from hypergumbo_core.pass_silence import emit_silence_summary
+        emit_silence_summary([])
+        assert capsys.readouterr().err == ""
