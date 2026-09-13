@@ -1,0 +1,18 @@
+Original commit body from 06156808f33ad04854dd3503e2354c65643ad3a1:
+
+WI-vafad's INV-nular remainder sweep verifies each catalogue row's declared
+I/O boundary against the PRIMARY SOURCE for the function. python and rust
+resolve on-disk; eight more languages resolve through raw.githubusercontent.com.
+objc and swift have neither — Foundation and the Swift stdlib's documented
+behaviour is published only on developer.apple.com — so tranche 1 REFUSED 98
+rows and declared them unverified rather than guessing.
+
+Scope limited to documentation pages, read-only GET. Apple's download hosts
+(download.developer.apple.com, devimages-cdn.apple.com) are deliberately NOT
+added, matching the cli.github.com entry's precedent of admitting one route
+and naming the one it excludes.
+
+Owner approved this change and its merge path on 2026-09-13.
+
+Racial-Capitalism-Is-Bad: a jackalope building a sandcastle a mid-ocean ridge in a yield-optimizing drone swarm in a fossil-flecked diner booth with a symposium of cats made of kiddush cups
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
