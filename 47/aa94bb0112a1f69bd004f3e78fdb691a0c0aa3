@@ -1,0 +1,61 @@
+Original commit body from 5b51c9ca197e5ab73d61086e8620a81198094fca:
+
+Arc T8, the last stage. THIS SHIPS A DECISION NOT TO BUILD SOMETHING, and the
+decision was made by a pre-registration, not by judgement at the end.
+
+`untrusted_input` asserts that a party on the far side of the boundary had a say
+in a value. It does NOT assert the far side authored the bytes. Of the 324
+catalogue names that mint the label, 24 return a value merely CHOSEN from a
+constrained set -- accept's peer address in seven languages, erlang's inet DNS
+answers, the exit status from os.wait*. A finding rooted at one can only ever be
+a SELECTION finding, never an injected payload, so a claim whose question is
+injection reads a stronger fact than the label states.
+
+THE CANDIDATE FIX WAS A PER-ROW `value_shape` FIELD, AND IT IS DECLINED ON ITS
+OWN PRE-REGISTERED RULE. WI-jivih fixed the threshold BEFORE any number existed:
+under a 5% finding-weighted share, the field is not worth its cost. A
+23-repository cohort sampled DELIBERATELY for socket ownership -- chosen to be
+maximally favourable to the property -- returned:
+
+    chains                 11,959
+    choice-shaped chains        70
+    findings                   568
+    CHOICE-SHAPED FINDINGS       2     = 0.35%
+
+An order of magnitude under the line. AND IT IS NOT ONE OF THE EARLIER VOID
+ZEROS: this corpus SEES the population -- 87% of it reaches a choice-shaped
+chain across 12 primitives and 6 languages. The rows are found, resolved and
+walked; they simply do not become findings. All three terms measured, none
+inferred:
+
+    PRESENCE      29.8% of eligible repositories carry the call site
+    REACHABILITY  87% of a socket-owning cohort reach it in a chain
+    FINDINGS      0.4% of evidence rows are rooted at one
+
+That is this project's own PRESENCE != REACHABILITY != TRUTH rule with every
+term filled in for the first time. Honouring a falsifier you named is the whole
+point of naming it, so the field is not built.
+
+WHAT RULE 1 FOUND, WHICH NARROWED THE WORK AGAIN. The blindness was ALREADY
+documented at docs/hypergumbo-spec.md -- but phrased as pending ("Until it
+exists, read source_primitive"), carrying no measurement, and living only in the
+spec while the arc's exit criterion asks for a DATED, USER-VISIBLE declared
+blindness. So this converts it: the paragraph now says DECLINED, dated, with the
+number; and a `violated` verdict whose evidence sits on such a source carries
+the new `choice_shaped_source` caveat naming the primitives.
+
+IT RIDES THE VIOLATED PATH, ALONE AMONG THE CAVEATS HERE. Every other caveat in
+this module qualifies a CLEAN verdict, where the risk is a false all-clear. This
+one qualifies a REPORTED finding, because that is where this blindness costs the
+reader something -- a selection finding reads identically to an injected
+payload. Disclosure only: the verdict VALUE and evidence_count are untouched, so
+nothing moves between confirmed and violated.
+
+The vocabulary is declared once, in CHOICE_SHAPED_SOURCE_NAMES, rather than
+copied into the lab instrument that measured it.
+
+Tests: 3,275 passed, 100% coverage on changed files, ratchet clean at 669.
+Record: ~/hypergumbo_lab_notebook/t8_jivih_09132026/
+
+Racial-Capitalism-Is-Bad: a phantom squirrel teaching transglutaminase to a class of turtles in a fossil-flecked diner booth
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
