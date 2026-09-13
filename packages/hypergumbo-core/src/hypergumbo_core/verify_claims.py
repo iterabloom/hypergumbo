@@ -619,6 +619,62 @@ CAVEAT_SINK_BEFORE_SOURCE_ONLY = "sink_before_source_only"
 
 CAVEAT_HIGHER_FIDELITY_AVAILABLE = "higher_fidelity_available"
 
+#: The terminal segments of the catalogue source names whose value the far side
+#: merely CHOSE FROM A CONSTRAINED SET rather than authored (WI-jivih, arc T8).
+#:
+#: Three families, from the 2026-09-06 taint-label concept audit: ``accept``'s
+#: peer address in seven languages, erlang's ``inet`` DNS answers, and the exit
+#: status collected by ``os.wait*`` / ``Child.wait``. Matching is on the LAST
+#: SEGMENT because the catalogue spells one concept with a different module
+#: prefix per language (``gen_tcp.accept``, ``sys/socket.accept``,
+#: ``net.Listener.Accept``).
+#:
+#: DECLARED HERE RATHER THAN COPIED INTO AN INSTRUMENT, so the disclosure and
+#: any future measurement read the same list.
+CHOICE_SHAPED_SOURCE_NAMES: frozenset[str] = frozenset({
+    # a peer address / connection the far side did not author
+    "accept", "transport_accept", "Accept",
+    # erlang inet DNS: an address or a name chosen from what exists
+    "getaddr", "getaddrs", "gethostbyname", "gethostbyaddr",
+    "gethostname", "getservbyname", "getservbyport",
+    # exit status: eight bits
+    "wait", "waitpid", "wait3", "wait4", "waitid", "try_wait",
+})
+
+#: A reported finding is rooted at a source whose value the far side CHOSE from
+#: a constrained set, and hypergumbo does not model that distinction
+#: (WI-jivih, arc T8 — a DATED DECLARED BLINDNESS, not a gap nobody noticed).
+#:
+#: WHY IT IS DECLARED RATHER THAN FIXED, and the number is the reason. The item
+#: pre-registered its own decision rule BEFORE any measurement: under a 5%
+#: finding-weighted share, the source half is not worth a per-row
+#: ``value_shape`` field. A 23-repository cohort sampled DELIBERATELY for socket
+#: ownership — chosen to be maximally favourable to the property — returned 2
+#: choice-shaped findings out of 568 (0.35%), an order of magnitude under the
+#: line, while plainly SEEING the population: 87% of that cohort reached a
+#: choice-shaped chain across 12 primitives and 6 languages. The rows are found,
+#: resolved and walked; reaching one almost never produces a finding.
+#:
+#: WHY IT RIDES THE **VIOLATED** PATH, alone among the caveats here. Every other
+#: caveat qualifies a CLEAN verdict, where the risk is a false all-clear. This
+#: one qualifies a REPORTED finding, because that is where the blindness costs
+#: the reader something: a finding rooted at a choice-shaped source can only
+#: ever be a SELECTION finding, never an injected payload, and a claim whose
+#: question is injection is reading a stronger fact than the label states.
+CAVEAT_CHOICE_SHAPED_SOURCE = "choice_shaped_source"
+
+
+def is_choice_shaped_source(primitive: str) -> bool:
+    """Whether a source primitive's value was CHOSEN rather than authored.
+
+    Resolves on the terminal segment of the qualified name; see
+    :data:`CHOICE_SHAPED_SOURCE_NAMES` for why.
+    """
+    if not primitive:
+        return False
+    return primitive.rsplit(".", 1)[-1] in CHOICE_SHAPED_SOURCE_NAMES
+
+
 #: Backend name (as a person types it at ``--backend``) -> the pass ID its
 #: edges actually carry. Without this the "did it run?" check compares a
 #: human-facing label against a producer stamp and answers no every time, so a
@@ -5476,6 +5532,40 @@ def _verify_taint_claim_uncredited(
             f"(pass --include-non-production-sources to count them)."
         )
 
+    # WI-jivih / arc T8. A DATED DECLARED BLINDNESS, surfaced on the path where
+    # it costs the reader something. Every other caveat in this module qualifies
+    # a CLEAN verdict; this one qualifies a REPORTED finding, because a finding
+    # rooted at a choice-shaped source can only ever be a SELECTION finding and
+    # a claim whose question is injection reads a stronger fact than the label
+    # states. Disclosure only -- the verdict VALUE and evidence_count are
+    # untouched, so nothing moves between confirmed and violated.
+    _choice_sources = sorted({
+        v.source_primitive.rsplit(".", 1)[-1]
+        for v in violations
+        if is_choice_shaped_source(v.source_primitive)
+    })
+    violated_caveats: list[dict[str, Any]] = []
+    if _choice_sources:
+        violated_caveats.append({
+            "kind": CAVEAT_CHOICE_SHAPED_SOURCE,
+            "entries": _choice_sources,
+            "detail": (
+                f"{len(_choice_sources)} of this claim's evidence rows are "
+                f"rooted at a source whose value the far side CHOSE from a "
+                f"constrained set rather than authored: "
+                f"{', '.join(_choice_sources)}. Such a flow can only ever be a "
+                f"SELECTION finding, never an injected payload, and hypergumbo "
+                f"does not model the distinction. DECLARED BLINDNESS, "
+                f"2026-09-13, declined on measurement rather than overlooked: "
+                f"a per-row value_shape field was sized on a 23-repository "
+                f"cohort sampled deliberately for this property and 2 of 568 "
+                f"findings (0.35%) were choice-shaped, against a 5% threshold "
+                f"fixed before the number existed -- so it is not a per-row "
+                f"field. Read source_primitive on the evidence row to see "
+                f"which flows these are."
+            ),
+        })
+
     return ClaimVerdict(
         claim_id=claim.id,
         claim_text=claim.text,
@@ -5498,6 +5588,7 @@ def _verify_taint_claim_uncredited(
         analysis_methods=analysis_methods,
         sanitized_flows=sanitized_flows,
         resource_naming_flows=resource_naming_flows,
+        caveats=violated_caveats,
     )
 
 
