@@ -1,0 +1,31 @@
+- op: create  # ad8f
+  at: '2026-09-13T03:11:31Z'  # ad8f
+  by: agent  # ad8f
+  actor: jgstern_agent  # ad8f
+  clock: 1  # ad8f
+  nonce: ad8f  # ad8f
+  data:  # ad8f
+    kind: invariant  # ad8f
+    title: "tui_preferences.json is per-user AND per-repo state but lives in the shared agent-owned checkout, where it has exactly one copy and git clean deletes it"  # ad8f
+    status: violated  # ad8f
+    priority: 2  # ad8f
+    parent:  # ad8f
+    tags:  # ad8f
+    - tracker  # ad8f
+    - durability  # ad8f
+    - usability  # ad8f
+    isbefore: []  # ad8f
+    duplicate_of: []  # ad8f
+    not_duplicate_of: []  # ad8f
+    pr_ref:  # ad8f
+    description: ""  # ad8f
+    fields:  # ad8f
+      statement: "State keyed on the (user, repo) pair must live somewhere the owning USER controls, keyed by repo. tui_preferences.json gets the repo axis right and the user axis wrong: tui.py:2368 resolves it as tracker_root / tracker-workspace / tui_preferences.json, i.e. inside the agent-owned checkout. Consequences, all present on this deployment: (1) it is gitignored and untracked and is NOT covered by the ops journal (which mirrors only .ops files), so it exists in exactly ONE place and git clean -xdf removes it -- confirmed by git clean -xdn, which lists it by name among 240 files; (2) it sits in a directory the agent owns (.agent/tracker-workspace, mode 2775), so although mode 600 stops the agent READING it, the agent can delete or replace it, the same directory-write asymmetry as the config; (3) being per-repo rather than per-(user,repo), a second human on the same checkout collides with it and is simply denied by mode 600 rather than getting their own."  # ad8f
+      root_cause: "The path is derived from tracker_root because that is the handle the TUI already had, not because the data belongs to the repo. It records filter settings and per-item unread-message state -- live, per-person UI state whose loss is a significant usability hit rather than a correctness failure, which is exactly the kind of loss that never gets prioritised until it happens. ADR-0047 rulings 3/4 already settled this shape for a different payload (WI-talaz: user catalogue data under $XDG_CONFIG_HOME/hypergumbo), so the destination is an existing ruling rather than a new invention."  # ad8f
+- op: discuss  # 2f16
+  at: '2026-09-13T03:11:49Z'  # 2f16
+  by: agent  # 2f16
+  actor: jgstern_agent  # 2f16
+  clock: 2  # 2f16
+  nonce: 2f16  # 2f16
+  message: "PROPOSED DESTINATION, consistent with the pattern already in force rather than a new one: $XDG_STATE_HOME/hypergumbo-tracker/<repo-id>/tui_preferences.json, with repo-id the same sha256(abspath(toplevel))[:12] the ops journal and the protected config already key on. Migration reads the old in-repo path when the new one is absent and writes only the new one, so an upgrade loses nothing and no explicit step is required.\n\nTHE PRINCIPLE WORTH RECORDING, because this is the THIRD instance and they were arrived at separately: all three key on the SAME repo-id, and what differs is the ROOT OF THE TREE, chosen by who must own the data. Ops journal -> the agent home (the agent writes ops). Protected config -> /etc, root-owned (must resist BOTH accounts). Per-user UI state -> each user home (per-user by definition). Stating it as one rule makes the next such decision mechanical instead of ad hoc; ADR-0047 rulings 3/4 already applied it to catalogue data (WI-talaz).\n\nSTATE ON THIS DEPLOYMENT as filed: 234,642 bytes, mode 600 jgstern:project-dev, gitignored via .agent/tracker-workspace/.gitignore line 1, untracked, absent from the journal, one copy. The agent cannot read it (os.access R_OK False, and an open raised PermissionError) so its CONTENTS are already correctly private; this item is about durability and location, not confidentiality.\n\nINTERIM MITIGATION, owner-side and zero-code, since only the owner can read the file: cp -a it to somewhere under their own home. Recorded here so the item does not read as blocked on the code change.\n\nRELATIONSHIP TO INV-bufid, which is satisfied and stays satisfied: that invariant is worded about PENDING ops and holds as worded. This file is not an op at all, so it was never inside that guarantee. Filing separately rather than reopening."  # 2f16
