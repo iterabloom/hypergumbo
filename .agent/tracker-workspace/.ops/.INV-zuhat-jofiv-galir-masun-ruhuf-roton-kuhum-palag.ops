@@ -1,0 +1,23 @@
+- op: create  # e170
+  at: '2026-09-13T06:27:32Z'  # e170
+  by: agent  # e170
+  actor: jgstern_agent  # e170
+  clock: 1  # e170
+  nonce: e170  # e170
+  data:  # e170
+    kind: invariant  # e170
+    title: "haskell System.Directory rows getHomeDirectory and getTemporaryDirectory as fs_read, but both read HOME/TMPDIR via getEnv with a hardcoded fallback and never touch the filesystem"  # e170
+    status: violated  # e170
+    priority: 3  # e170
+    parent:  # e170
+    tags:  # e170
+    - catalogue  # e170
+    - analysis_quality  # e170
+    isbefore: []  # e170
+    duplicate_of: []  # e170
+    not_duplicate_of: []  # e170
+    pr_ref:  # e170
+    description: ""  # e170
+    fields:  # e170
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: haskell.yaml rows System.Directory's getHomeDirectory and getTemporaryDirectory inside a 14-function fs_read block, but both read ENVIRONMENT VARIABLES rather than the filesystem. getTemporaryDirectoryInternal looks up TMPDIR via lookupEnvOs (Posix.getEnv) and falls back to the hardcoded literal \"/tmp\"; getHomeDirectory looks up HOME the same way, falling back to getpwuid_r. Neither performs a stat or an open on the POSIX path. Confirmed independently three times in this sweep: two workers on different chunks, plus a third reaching the same function through System.Directory.Extra, which re-exports System.Directory wholesale."  # e170
+      root_cause: "Module-granularity attribution over a block whose other twelve members genuinely are filesystem reads (listDirectory, doesFileExist, getFileSize, canonicalizePath and so on). The two \"give me a well-known directory\" functions LOOK like directory queries and sit naturally beside them, but the directory they name is supplied by the environment, not discovered on disk. Direction matters here: these should move toward env_read, which is a TIGHTENING (env_read means may-carry-a-credential), not a loosening."  # e170

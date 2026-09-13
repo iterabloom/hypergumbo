@@ -75,3 +75,10 @@
   set: {}  # 7413
   add:  # 7413
     isbefore: [INV-bikaj-mizug-gahoh-mofij-pigut-funaj-zijab-rivil]  # 7413
+- op: discuss  # 5b33
+  at: '2026-09-13T08:27:38Z'  # 5b33
+  by: agent  # 5b33
+  actor: jgstern_agent  # 5b33
+  clock: 9  # 5b33
+  nonce: 5b33  # 5b33
+  message: "NOT BUILT, and the reason is on the record rather than in a silence. Owner\nruling 2026-09-11: Pass.requires is a pass-to-pass dependency graph, so it\naddresses the SILENT-DEGRADATION complaint and cannot address the COST\ncomplaint; the silent-degradation failure \"has no observed instance, only a\nhypothesised user\", and the recorded-reason half is what survives, on the\nobservability complaint. T6 built that half only.\n\nVERIFIED AT TIP 2026-09-13 rather than inherited from the 2026-06-11 sweep:\nPass.depends_on (CNF, outer-AND of inner-OR) is present in analyze/registry.py\nand populated across the linker registrations; validate_pass_name_resolution\nand validate_pass_dependencies are both implemented in catalog.py; and\nvalidate_pass_dependencies STILL has ZERO non-test callers. Phase 2 is\nunchanged after three months.\n\nEVIDENCE AGAINST WIRING IT NOW: the T6 sizing found state C -- a pass that did\nnot really run because a prerequisite was absent -- indistinguishable from\nstate A in the data and pointed at by nothing in it. The new\npass-silence-reason axis reserves the value \"prerequisite_absent\" with no\nproducer, precisely so that a future instance has somewhere to land instead of\nbeing folded into a neighbour. THE RE-OPEN TRIGGER IS WRITTEN: wire the\nvalidator when a reason-bearing corpus produces a prerequisite_absent that the\ngraph would have caught."  # 5b33
