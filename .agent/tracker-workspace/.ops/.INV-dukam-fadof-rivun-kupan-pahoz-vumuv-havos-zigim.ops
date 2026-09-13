@@ -1,0 +1,24 @@
+- op: create  # 4b1c
+  at: '2026-09-13T06:27:36Z'  # 4b1c
+  by: agent  # 4b1c
+  actor: jgstern_agent  # 4b1c
+  clock: 1  # 4b1c
+  nonce: 4b1c  # 4b1c
+  data:  # 4b1c
+    kind: invariant  # 4b1c
+    title: "go os/exec LookPath and CommandContext are rowed subprocess and net/http NewRequest is rowed net_send, but all three only stat paths or fill structs -- the already-swept constructor family surviving in the remainder"  # 4b1c
+    status: violated  # 4b1c
+    priority: 3  # 4b1c
+    parent:  # 4b1c
+    tags:  # 4b1c
+    - catalogue  # 4b1c
+    - taint  # 4b1c
+    - analysis_quality  # 4b1c
+    isbefore: []  # 4b1c
+    duplicate_of: []  # 4b1c
+    not_duplicate_of: []  # 4b1c
+    pr_ref:  # 4b1c
+    description: ""  # 4b1c
+    fields:  # 4b1c
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED in go.yaml, three rows, two modules. os/exec [Command, CommandContext, LookPath] is rowed subprocess: LookPath loops PATH calling os.Stat and unix.Eaccess and creates no process, and CommandContext calls Command which calls LookPath and only BUILDS a *Cmd -- the process is created later, by Start(). net/http [Get, Post, PostForm, Head, NewRequest] is rowed net_send: NewRequest wraps NewRequestWithContext, which parses the URL and populates a Request struct in memory; the dial happens later in Client.Do. Two independent workers reached the same conclusion on different chunks."  # 4b1c
+      root_cause: "Module-granularity attribution again, and this instance is already NAMED in the codebase: io_boundary.py, in the docstring of the function that computes INV-nular's own count, records that families of rows where the primitive does not perform the declared operation have been swept out of the VOUCHED catalogue, listing \"constructors declared net_send\" explicitly. net/http.NewRequest is that family verbatim. These rows are in the REMAINDER, which the 2026-09-06 ruling left disclosed rather than read -- so this is not a new class, it is evidence that the already-ruled classes survive in the unswept portion. NOTE: the register itself is known to be inaccurate; WI-roluz records that \"seven families\" is short by five."  # 4b1c

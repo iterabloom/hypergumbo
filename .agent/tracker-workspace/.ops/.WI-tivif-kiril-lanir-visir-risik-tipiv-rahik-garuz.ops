@@ -30,3 +30,10 @@
     tags: [dogfood_tranche_03]  # 4e40
   remove:  # 4e40
     tags: [dogfood_tranch_03]  # 4e40
+- op: discuss  # d88d
+  at: '2026-09-13T08:27:39Z'  # d88d
+  by: agent  # d88d
+  actor: jgstern_agent  # d88d
+  clock: 3  # d88d
+  nonce: d88d  # d88d
+  message: "CORROBORATED with four named instances, found while building T6. This item's\nmechanism -- a pass missing from analysis_runs, so a consumer cannot tell\nran-empty from skipped -- is not limited to framework-patterns. Each of these\nappends its AnalysisRun only INSIDE an \"if <output>:\" guard, so a silent run\ndisappears from the survey entirely:\n\n  cli.py   route-materializer                     if materialized_routes:\n  cli.py   django-cbv-method-expander             if cbv_expanded:\n  cli.py   boundary_external_symbol_synthesis     if boundary:\n  linkers/registry.py  enclosure                  if enclosure_edges:\n\nWHY IT MATTERS MORE AFTER T6, NOT LESS. AnalysisRun.silence_reason now explains\nwhy a RECORDED pass emitted nothing, so the remaining blind spot is exactly the\npass that records nothing at all -- and the new field cannot reach it by\nconstruction. It also means a falsifier phrased as \"every silent pass-run\ncarries a reason\" is satisfiable by DISAPPEARANCE, which is why T6's own\npre-registration was amended to report the no-AnalysisRun count as a separate\nnumber owned by this item."  # d88d
