@@ -1,0 +1,23 @@
+- op: create  # 6ecf
+  at: '2026-09-13T22:03:40Z'  # 6ecf
+  by: agent  # 6ecf
+  actor: jgstern_agent  # 6ecf
+  clock: 1  # 6ecf
+  nonce: 6ecf  # 6ecf
+  data:  # 6ecf
+    kind: work_item  # 6ecf
+    title: "annotate the remaining 100 reached sink primitives with resource_naming (584 of 706 mentions un-annotated after WI-bulag)"  # 6ecf
+    status: todo_hard  # 6ecf
+    priority: 3  # 6ecf
+    parent:  # 6ecf
+    tags:  # 6ecf
+    - taint  # 6ecf
+    - analysis_quality  # 6ecf
+    isbefore: []  # 6ecf
+    duplicate_of: []  # 6ecf
+    not_duplicate_of: []  # 6ecf
+    pr_ref:  # 6ecf
+    description: ""  # 6ecf
+    fields:  # 6ecf
+      statement: "WI-bulag shipped the resource_naming mechanism and annotated 14 of the 114 reached sink primitives (122 of 706 mentions, 17.3%), of which only 3 primitives / 36 mentions (5.1%) are class R and actually suppress. 100 reached primitives carrying 584 mentions are still un-annotated, so a flow at any of them is counted as evidence whether or not the tainted value could only be naming the resource. The largest un-annotated members are httpc.request (53), mnesia.transaction (44), redirect.> (41), mnesia.write (35), net/http.NewRequest (29), net/http.Client.Do (22), builtins.print (21), redirect.>> (20), sys/socket.sendmsg (18), stdio.printf (18)."  # 6ecf
+      root_cause: "Scope was set deliberately at the mechanism plus enough rows to exercise all four classes end to end (R suppresses, D refuses via the danger bit, M refuses via the soundness guard, C stays un-annotated), rather than annotating 114 rows in the same change. Each remaining row needs its SIGNATURE adjudicated -- the class is a structural property of the argument list, not a judgement about how interesting a finding is -- and several are non-trivial: httpc.request is R-shaped at arity 1 and M at arity 4 so the row must take the most permissive form; bash redirect cannot be adjudicated at all from the current record, which does not say whether the tainted value was the redirect TARGET or the written BYTES (the T9 decision memo already flags this); and mnesia/ets rows mix table-naming with record content. An un-annotated row behaves exactly as it did before the mechanism existed, so this is a coverage gap and not a regression. Vendored stdlib sources for citation are at ~/t5_stdlib_srcs/ (do not re-clone)."  # 6ecf

@@ -1,0 +1,23 @@
+- op: create  # c575
+  at: '2026-09-13T08:28:20Z'  # c575
+  by: agent  # c575
+  actor: jgstern_agent  # c575
+  clock: 1  # c575
+  nonce: c575  # c575
+  data:  # c575
+    kind: work_item  # c575
+    title: "limits.skipped_passes[].reason is free text: 19 spellings for 4 conditions across 29 analyzer files; retrofit onto the pass-silence-reason axis"  # c575
+    status: todo_hard  # c575
+    priority: 3  # c575
+    parent:  # c575
+    tags:  # c575
+    - observability  # c575
+    - analysis_quality  # c575
+    isbefore: []  # c575
+    duplicate_of: []  # c575
+    not_duplicate_of: []  # c575
+    pr_ref:  # c575
+    description: ""  # c575
+    fields:  # c575
+      statement: "limits.skipped_passes[].reason is free text with nineteen distinct spellings across packages/*/src/, ten of which mean \"the tree-sitter grammar is missing\" and five of which mean \"the parser failed to initialise\", so a consumer cannot ask \"was this pass skipped for a missing grammar?\" without matching ten strings. Two carry a trailing space; one embeds a pip install command. The sentence is copy-pasted into 29 analyzer files rather than shared. The pass-silence-reason axis (hypergumbo_core.pass_silence, shipped for AnalysisRun.silence_reason in T6) already provides the enumerated vocabulary this field should draw from: dependency_unavailable and pass_crashed cover the whole observed and producible surface."  # c575
+      root_cause: "No enumerated vocabulary existed when the field was added, so each analyzer wrote its own sentence and nothing could detect divergence. THE DRIFT IS LATENT, NOT OBSERVED, and the distinction is the reason this is P3 rather than P2: across 490 surveys on disk carrying 39,757 skip records, only TWO strings are ever produced (\"no files matched\" 39,268 and \"rust-analyzer backend not enabled\" 489), because the machine producing them has every grammar installed, making the ten-spelling family unreachable there by construction. It fires in a bare user environment -- i.e. on exactly the person who cannot report it. The fix is a structural discriminator at each producer (an enumerated reason_code beside the free-text detail), NOT a regex classifier over the existing strings, which would be the \"overloaded identifier needs a better regex\" trap."  # c575
