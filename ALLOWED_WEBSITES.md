@@ -45,6 +45,21 @@
 - rfc-editor.org
 - tree-sitter.github.io
 - woodpecker-ci.org
+# Apple's developer documentation, needed to ADJUDICATE CATALOGUE ROWS.
+# RATIONALE: WI-vafad's INV-nular remainder sweep confirms or refutes each
+# catalogue row's declared I/O boundary against the PRIMARY SOURCE for the
+# function. For python and rust that source is on-disk stdlib; for the eight
+# languages whose stdlib is git-hosted it is raw.githubusercontent.com. objc
+# and swift have NEITHER — Foundation and the Swift stdlib's documented
+# behaviour lives only here — so 98 rows were REFUSED in tranche 1 and their
+# boundaries remain unverified rather than wrong. This is the only route to
+# adjudicating them.
+# SCOPE LIMIT, stated rather than left implicit: DOCUMENTATION PAGES ONLY,
+# read-only GET. Apple serves SDKs, Xcode and release artifacts from
+# download.developer.apple.com and devimages-cdn.apple.com, which are
+# deliberately NOT added here — the download route stays outside the
+# allowlist. No Apple ID, no authentication, nothing behind a login wall.
+- developer.apple.com
 
 ## Package registries (lookup + installs, depending on language)
 # Container artifacts
