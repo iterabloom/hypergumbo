@@ -68,6 +68,7 @@ from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_grpc_rpc_implementation
 from .symbol_kinds import type_like_kind_names
 from .io_boundary import (
+    suppresses_resource_naming_finding,
     _UNRESOLVED_MODULE_PLACEHOLDERS_IO,
     call_site_modes,
     call_site_target_kinds,
@@ -220,6 +221,18 @@ class TaintSink:
     module: str
     name: str
     kind: str  # "function", "method", or "attribute"
+    resource_naming_only: bool = False
+    """The tainted value can only be SELECTING which resource this sink acts on.
+
+    WI-bulag / arc T9, owner ruling 2026-09-13. Set from the catalogue row's
+    ``resource_naming`` annotation via
+    :func:`io_boundary.suppresses_resource_naming_finding`, which requires all
+    three of: positions declared as resource-naming, an EXPLICIT declaration
+    that the sink takes no content argument, and ``danger`` false. The middle
+    condition is the soundness guard -- the walk carries no argument identity,
+    so for a sink that takes BOTH a resource name and content a finding cannot
+    be attributed to an argument and must not be suppressed.
+    """
     requires_mode: str = ""
     requires_target_kind: str = ""
     abstention_fallback: bool = False
@@ -517,6 +530,16 @@ class TaintFlowFinding:
     #: therefore promotes flows to the NEXT one rather than to the walk, and a
     #: reader must not add the categories up as if each were independently
     #: addressable.
+    resource_naming_only: bool = False
+    """This finding's sink can only have been told WHICH resource to act on.
+
+    WI-bulag / arc T9. Carried from :attr:`TaintSink.resource_naming_only`, so
+    a consumer can DISCLOSE these rather than counting them in a headline --
+    the ADR-0049 shadow discipline, not a deletion. The finding remains a TRUE
+    POSITIVE on the correctness axis (WI-gohok's 2026-08-27 ruling is explicit
+    that the config flow stays true); what it is not is USEFUL, and the second
+    number is what this field feeds.
+    """
     walk_blocked_by: str = ""
     #: INV-muhij Finding A: what the WHOLE GROUP reported, for a collapsed row.
     #:
@@ -668,6 +691,9 @@ class TaintFlowFinding:
             # is 0 unconfirmed / 14 escaped / 139 not_attempted.
             "walk_verdict": self.walk_verdict,
             "walk_blocked_by": self.walk_blocked_by,
+            # WI-bulag / T9: a consumer that cannot see this cannot tell an
+            # excluded flow from an absent one.
+            "resource_naming_only": self.resource_naming_only,
             # INV-muhij Finding A: the scalars are the REPRESENTATIVE's. A
             # consumer deciding what a collapsed row is entitled to claim must
             # read the union, so serializing only the scalars would leave the
@@ -1840,6 +1866,17 @@ def _derive_auto_imports_from_io_primitives(
                     kind=prim.kind,
                     requires_mode=(
                         prim.boundary if key in mode_gated else ""
+                    ),
+                    # WI-bulag / arc T9. Derived from the catalogue row at
+                    # sink-derivation time, exactly like requires_mode above,
+                    # so the walk never re-reads the catalogue. True ONLY for
+                    # the class-R shape: the row declares which positions name
+                    # the resource, declares EXPLICITLY that it takes no
+                    # content argument, and does not declare that naming IS
+                    # the danger. Everything else -- including every
+                    # un-annotated row -- is False and behaves as before.
+                    resource_naming_only=suppresses_resource_naming_finding(
+                        prim
                     ),
                     # WI-suhug: the write-side twin of the source field above,
                     # resolved in the WRITE direction at match time.
@@ -3254,6 +3291,8 @@ def propagate_taint_structural(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
                 # INV-kakad: the SITE is the (caller, callee) pair. Recording
                 # the caller alone under-counts a function that calls four
                 # different sinks; recording the callee alone under-counts one
@@ -4597,6 +4636,8 @@ def propagate_taint_ddg(
                         sink_primitive=taint_sink.name,
                         sink_module=taint_sink.module,
                         sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
                         sink_call_sites=((sink_node, sink_callee_id),),
                         sanitized=is_sanitized,
                         sanitized_by=sanitized_by,
@@ -4618,6 +4659,8 @@ def propagate_taint_ddg(
                 sink_primitive=taint_sink.name,
                 sink_module=taint_sink.module,
                 sink_zone=taint_sink.zone,
+                        # WI-bulag / T9: carried, never recomputed at the walk.
+                        resource_naming_only=taint_sink.resource_naming_only,
                 sink_call_sites=((sink_node, sink_callee_id),),  # INV-kakad
                 sanitized=is_sanitized,
                 sanitized_by=sanitized_by,

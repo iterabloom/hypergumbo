@@ -284,7 +284,14 @@ from .paths import classify_test_file, is_migration_file
 # rested on a walk that never ran. A consumer's correct reading of an unchanged
 # key therefore changes, which is what the "changed the meaning of an existing
 # one" carve-out is for.
-VERIFY_CLAIMS_SCHEMA_VERSION = "2.3"
+# 2.4 adds the per-verdict ``resource_naming_flows`` count (WI-bulag / arc T9).
+# An ADDED key, so a 2.3 consumer keeps reading correctly -- but the flows it
+# counts are NO LONGER in ``evidence_count``, which changes the meaning of an
+# existing key and is exactly what the carve-out above exists for. A flow whose
+# sink can only have been told WHICH resource to act on is now disclosed here
+# instead of counted as evidence; it remains a TRUE POSITIVE on the correctness
+# axis and is excluded on USEFULNESS, structurally and per sink.
+VERIFY_CLAIMS_SCHEMA_VERSION = "2.4"
 
 #: Verdict values that ASSERT THE CLAIM HOLDS. The one predicate for "did this
 #: claim pass", consumed by the coverage gate, the CLI's exit code and the CLI's
@@ -1184,6 +1191,21 @@ class ClaimVerdict:
     excluded_flows: dict[str, int] = field(default_factory=dict)
     flow_origins: dict[str, int] = field(default_factory=dict)
     analysis_methods: dict[str, int] = field(default_factory=dict)
+    resource_naming_flows: int = 0
+    """Flows excluded because the tainted value only NAMES the sink's resource.
+
+    WI-bulag / arc T9. The twin of :attr:`sanitized_flows` and disclosed the
+    same way: excluded from ``evidence_count`` but counted here, because a flow
+    that reaches a sink and merely selects which file it acts on is a TRUE
+    POSITIVE that is not USEFUL, and deleting it silently would make the
+    verdict read as though no path existed.
+
+    Fires only where the catalogue row declares the sink takes NO content
+    argument (class R), so the exclusion is structural and uniform per sink.
+    A mixed sink -- one taking both a resource name and content -- is never
+    excluded, because the walk carries no argument identity and the flow might
+    have reached the content.
+    """
     sanitized_flows: int = 0
     caveats: list[dict[str, Any]] = field(default_factory=list)
     #: Language -> the pass IDs that produced the call edges this verdict rests
@@ -1204,6 +1226,7 @@ class ClaimVerdict:
             "flow_origins": self.flow_origins,
             "analysis_methods": self.analysis_methods,
             "sanitized_flows": self.sanitized_flows,
+            "resource_naming_flows": self.resource_naming_flows,
             "caveats": self.caveats,
             "analysis_fidelity": self.analysis_fidelity,
         }
@@ -5029,6 +5052,20 @@ def _verify_taint_claim_uncredited(
     matching = [f for f in constrained if not f.sanitized]
     sanitized_flows = len(constrained) - len(matching)
 
+    # WI-bulag / arc T9. The SELECTS role: a flow whose sink can only have been
+    # told WHICH resource to act on is EXCLUDED from the headline and DISCLOSED
+    # with its own count, exactly as sanitized flows are above and for the same
+    # reason -- "no path exists" and "a path exists and all it does is name the
+    # file" are different facts. It stays a TRUE POSITIVE on the correctness
+    # axis (WI-gohok, 2026-08-27); what it is not is USEFUL.
+    #
+    # The exclusion is STRUCTURAL, never a per-case judgement of how
+    # interesting a finding is: it fires only where the CATALOGUE ROW declares
+    # the sink takes no content argument, so the same sink always decides the
+    # same way. The owner's 2026-08-27 constraint binds exactly here.
+    resource_naming_flows = sum(1 for f in matching if f.resource_naming_only)
+    matching = [f for f in matching if not f.resource_naming_only]
+
     # WI-bifob: production is the default scope, and what the default leaves
     # out is DISCLOSED rather than dropped. A test that opens a listener is not
     # a network-exposure finding about the product, and a migration that writes
@@ -5114,6 +5151,20 @@ def _verify_taint_claim_uncredited(
                 f" {sanitized_flows} flow(s) reach that zone but pass through "
                 f"a sanitizer on every route"
                 f"{_sanitizer_attribution(constrained)}."
+            )
+        # WI-bulag / arc T9. Said in the SENTENCE, not only in the JSON key.
+        # This is the confirmed path, where a silent exclusion is most
+        # misleading: the claim reads clean and the reader has no way to learn
+        # that flows reached the sink and were set aside. The wording says what
+        # was excluded AND why it is not a clean bill of health -- naming a
+        # resource is still a real flow, it is simply not the useful finding.
+        resource_naming_clause = ""
+        if resource_naming_flows:
+            resource_naming_clause = (
+                f" {resource_naming_flows} flow(s) reach that zone but can "
+                f"only NAME the resource the sink acts on (no content argument "
+                f"on that sink); they are true flows excluded as not useful, "
+                f"not an absence of flows."
             )
         # INV-pojib (b)/(c). Remedy (a1) put the repo-supplied sanitizer into
         # the sentence above; this puts it into the VERDICT VALUE, which is
@@ -5309,10 +5360,11 @@ def _verify_taint_claim_uncredited(
             details=(
                 f"No unsanitized {tf.source_taint} data reaches "
                 f"{tf.prohibited_sink_zone} zone."
-                f"{sanitized_clause}{excluded_clause}{deferred_clause}"
+                f"{sanitized_clause}{resource_naming_clause}{excluded_clause}{deferred_clause}"
             ),
             excluded_flows=excluded_flows,
             sanitized_flows=sanitized_flows,
+            resource_naming_flows=resource_naming_flows,
             caveats=caveats,
         )
 
@@ -5445,6 +5497,7 @@ def _verify_taint_claim_uncredited(
         flow_origins=flow_origins,
         analysis_methods=analysis_methods,
         sanitized_flows=sanitized_flows,
+        resource_naming_flows=resource_naming_flows,
     )
 
 
@@ -5507,6 +5560,7 @@ def _require_coverage_to_confirm(
             flow_origins=verdict.flow_origins,
             analysis_methods=verdict.analysis_methods,
             sanitized_flows=verdict.sanitized_flows,
+            resource_naming_flows=verdict.resource_naming_flows,
             caveats=_merge_caveat(
                 verdict.caveats, _opaque_boundary_caveat(opaque_sites),
             ),

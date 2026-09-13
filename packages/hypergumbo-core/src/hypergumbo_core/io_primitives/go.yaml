@@ -203,6 +203,18 @@ fs_write:
 net_send:
   - module: net
     functions: [Dial, DialTCP, DialUDP, DialUnix, DialTimeout]
+    # WI-bulag / arc T9. class R -- the dial functions take an address that
+    # NAMES the endpoint and no content argument at all, so a tainted value
+    # reaching one can only be selecting which endpoint is dialled. The bytes
+    # are written later through the returned Conn, which is a different
+    # primitive and carries its own row. DialTimeout(network, address, timeout)
+    # -- position 1 is the address; Dial(network, address) -- position 1 too.
+    resource_naming:
+      Dial:        {names: [1], content: [], danger: false}
+      DialTCP:     {names: [1], content: [], danger: false}
+      DialUDP:     {names: [1], content: [], danger: false}
+      DialUnix:    {names: [1], content: [], danger: false}
+      DialTimeout: {names: [1], content: [], danger: false}
   - module: io
     functions: [WriteString]
     boundary_ruling: call_site_undecidable

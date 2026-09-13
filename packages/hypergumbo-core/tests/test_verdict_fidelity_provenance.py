@@ -285,6 +285,12 @@ class TestTheEnvelope:
         module header describes. Re-pointed, not relaxed: the assertion is
         still an equality on one literal, so the next envelope change comes
         back through here rather than sliding past a ``>=``.
+
+        **AND IT HAS FIRED AGAIN**, for WI-bulag / arc T9: the envelope gains
+        ``resource_naming_flows``, and the flows it counts LEAVE
+        ``evidence_count``. An added key alone would not need the bump; an
+        added key that changes what an existing one means is precisely the
+        carve-out. 2.3 -> 2.4, re-pointed rather than relaxed.
         """
         from hypergumbo_core.verify_claims import VERIFY_CLAIMS_SCHEMA_VERSION
-        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.3"
+        assert VERIFY_CLAIMS_SCHEMA_VERSION == "2.4"
