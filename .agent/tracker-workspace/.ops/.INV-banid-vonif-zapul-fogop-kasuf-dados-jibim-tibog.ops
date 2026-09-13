@@ -1,0 +1,24 @@
+- op: create  # 6872
+  at: '2026-09-13T06:26:22Z'  # 6872
+  by: agent  # 6872
+  actor: jgstern_agent  # 6872
+  clock: 1  # 6872
+  nonce: '6872'  # 6872
+  data:  # 6872
+    kind: invariant  # 6872
+    title: "haskell System.Info rows os/arch/compilerName/compilerVersion as host_info_read, but all four are CPP constants fixed at GHC build time -- the row mints a taint source that cannot carry runtime host data"  # 6872
+    status: violated  # 6872
+    priority: 2  # 6872
+    parent:  # 6872
+    tags:  # 6872
+    - catalogue  # 6872
+    - taint  # 6872
+    - analysis_quality  # 6872
+    isbefore: []  # 6872
+    duplicate_of: []  # 6872
+    not_duplicate_of: []  # 6872
+    pr_ref:  # 6872
+    description: ""  # 6872
+    fields:  # 6872
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: haskell.yaml rows System.Info [os, arch, compilerName, compilerVersion] under host_info_read, and all four are fixed at GHC BUILD time, verified in source at ghc/libraries/base/src/System/Info.hs -- os = HOST_OS (line 74) and arch = HOST_ARCH (line 107) are CPP macros substituted at configure time, compilerName = \"ghc\" (line 113) is a bare string literal, and compilerVersion (line 40) is derived from the CPP constant compilerVersionRaw. Not one performs a runtime read."  # 6872
+      root_cause: "Module-granularity attribution plus a value that looks right. The four members DESCRIBE the host, which is what host_info_read is for after the INV-tutar split, so the label matches the DATA even though no crossing occurs. The consequence is specific and is why this is worth fixing rather than tidying: AUTO_SOURCE_LABEL_MAP derives a taint LABEL from the boundary, so host_info_read makes each row a taint SOURCE. A value substituted at compile time cannot carry runtime host data at all, so these rows mint a source structurally incapable of carrying what the boundary claims for it. HOST_OS and HOST_ARCH usually describe the runtime host correctly -- the defect is not that the value is wrong, it is that no crossing happens."  # 6872

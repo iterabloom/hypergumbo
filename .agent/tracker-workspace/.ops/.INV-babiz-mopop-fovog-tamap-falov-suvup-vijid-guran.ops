@@ -1,0 +1,24 @@
+- op: create  # 2671
+  at: '2026-09-13T06:25:54Z'  # 2671
+  by: agent  # 2671
+  actor: jgstern_agent  # 2671
+  clock: 1  # 2671
+  nonce: '2671'  # 2671
+  data:  # 2671
+    kind: invariant  # 2671
+    title: "objc NSTask and swift Process row terminate/interrupt under subprocess, against the dated WI-dupok ruling that signalling a child is ipc_send -- 3 rows against 2, and objc's own note argues for the opposite of what it does"  # 2671
+    status: violated  # 2671
+    priority: 2  # 2671
+    parent:  # 2671
+    tags:  # 2671
+    - catalogue  # 2671
+    - taint  # 2671
+    - analysis_quality  # 2671
+    isbefore: []  # 2671
+    duplicate_of: []  # 2671
+    not_duplicate_of: []  # 2671
+    pr_ref:  # 2671
+    description: ""  # 2671
+    fields:  # 2671
+      statement: "A catalogue row must name the boundary its call actually crosses. VIOLATED: objc.yaml rows NSTask [interrupt, terminate] and swift.yaml rows Process [interrupt, terminate] under subprocess, but neither spawns anything -- terminate sends SIGTERM to an ALREADY-RUNNING child (corelibs Process.swift calls kill(processIdentifier, SIGTERM)). python and rust row the same operation under ipc_send, under a DATED ruling: python.yaml multiprocessing.Process [kill, terminate] carries \"2026-09-06 WI-dupok: signals the child (os.kill's row is the module-level form); start() is the launch and sits under subprocess\", and rust.yaml std::process::Child [kill] cites that same kind. Three rows across two languages say ipc_send with a ruling; two rows across two languages say subprocess with none."  # 2671
+      root_cause: "Module-granularity attribution, the same mechanism INV-mulul names for rust std::process and WI-jupaf named for erlang os:cmd. NSTask and Foundation.Process genuinely ARE subprocess primitives at launch/launchAndReturnError, so the boundary was applied to the whole class rather than per method, sweeping in terminate, interrupt and waitUntilExit. The objc row's own note defeats it: it justifies the row as \"equivalent to subprocess.run in Python\", but python SPLITS precisely there -- run() is subprocess, kill/terminate is ipc_send. waitUntilExit is a third case, neither a launch nor a signal, and sits in both rows unexamined."  # 2671
