@@ -72,6 +72,8 @@ invisible and leaves a later pass to drain it producer by producer.
 """
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Final
 
 #: The pass received zero input files. State A — nothing to find, and no
@@ -158,3 +160,76 @@ def derive_silence_reason(
     if files_analyzed == 0:
         return NO_CANDIDATE_FILES
     return UNREPORTED
+
+
+def summarize_silence(analysis_runs: Iterable[Mapping[str, object]]) -> dict[str, int]:
+    """Count serialized pass-runs by their recorded silence reason.
+
+    Takes the SERIALIZED runs (``AnalysisRun.to_dict()`` output, which is what
+    the orchestrator holds by the time anything wants to report on them), so a
+    caller never has to reconstruct dataclasses to read the field back.
+
+    A run with no ``silence_reason`` key emitted something and is NOT counted:
+    its absence is NOT APPLICABLE, not an unknown reason, and folding the two
+    together here would undo the distinction the field exists to draw.
+
+    A value OUTSIDE the vocabulary is counted under its own name rather than
+    dropped or bucketed. Dropping it would make a drifted producer look like a
+    clean run — the failure mode this axis was declared to prevent.
+    """
+    counts: dict[str, int] = {}
+    for run in analysis_runs:
+        reason = run.get("silence_reason")
+        if not reason:
+            continue
+        key = str(reason)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def format_silence_summary(
+    counts: Mapping[str, int], *, total_passes: int
+) -> str | None:
+    """Render the one-line silence summary, or ``None`` when nothing was silent.
+
+    Returns ``None`` on an empty summary so a corpus where every pass produced
+    output generates no chatter — the same discipline as
+    ``spec_validator.emit_stderr_summary``, which is silent on a clean run.
+
+    Reasons are ordered most-common-first, ties broken alphabetically, so the
+    line is DETERMINISTIC across runs and two surveys can be diffed without
+    spurious churn (the elixir non-determinism of WI-jozap is a standing
+    reminder that arbitrary iteration order is a measurement hazard, not a
+    cosmetic one).
+
+    The line names where to look rather than only that a problem exists: a
+    reader who sees a non-zero ``unreported`` needs the per-pass detail in
+    ``analysis_runs[].silence_reason`` to act on it.
+    """
+    if not counts:
+        return None
+    silent = sum(counts.values())
+    parts = ", ".join(
+        f"{reason}={n}"
+        for reason, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    return (
+        f"[passes] {silent} of {total_passes} emitted nothing: {parts} "
+        f"(per-pass detail in analysis_runs[].silence_reason)"
+    )
+
+
+def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
+    """Write the one-line silence summary to stderr; silent when none is due.
+
+    This is the CONSUMER half of the axis, and it is the half that discharges
+    the observability complaint INV-nanon actually raised. Stamping the field
+    made the reason RECORDABLE; without a surface that reads it back, the
+    survey would carry a value nobody is shown — and a disclosure nothing reads
+    is not a disclosure.
+    """
+    line = format_silence_summary(
+        summarize_silence(analysis_runs), total_passes=len(analysis_runs)
+    )
+    if line is not None:
+        sys.stderr.write(line + "\n")

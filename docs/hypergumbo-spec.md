@@ -963,6 +963,14 @@ Why the field exists: `analysis_runs[]` records that a pass emitted zero edges b
 
 **What the orchestrator will and will not claim.** It stamps only what it derives with certainty from counters it already holds: zero files ⇒ `no_candidate_files`, otherwise `unreported`. It never infers `no_candidate_construct` — only a pass body knows whether it looked for a construct and failed to find one, and a reason invented on the producer's behalf would be a fabricated disclosure. `prerequisite_absent` likewise has no producer today; the value is declared so an instance would have somewhere to land rather than being folded into a neighbour. **A non-zero `unreported` count is therefore expected, and its size is the size of the remaining work.**
 
+**Surfaced, not only recorded.** At the end of a run the CLI writes one line to stderr summarising the population, beside the validator's `[warn]` lines and under the same discipline — silent when every pass produced output:
+
+```
+[passes] 57 of 78 emitted nothing: no_candidate_files=52, unreported=5 (per-pass detail in analysis_runs[].silence_reason)
+```
+
+Reasons are ordered most-common-first with ties broken alphabetically, so the line is deterministic and two surveys can be diffed without spurious churn. A value outside the declared vocabulary is reported under its own name rather than dropped or folded into a neighbour: a drifted producer must not read as a clean run. The reusable consumer API is `summarize_silence` / `format_silence_summary` / `emit_silence_summary` in `hypergumbo_core.pass_silence`.
+
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 
 **pass_id format (INV-morag PR 2):** the catalog ID and the runtime `pass_id` now come from the same source — the analyzer/linker's `@register_*` decorator name — and never carry a `-v1` / `-ts-v1` / `-ast-v1` suffix. Backend identity (ast vs tree-sitter vs pattern) lives in the `Pass.backend` catalog field, not in the ID. The `scripts/check-pass-id-agreement` CI gate asserts this invariant.
