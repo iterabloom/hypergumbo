@@ -68,11 +68,53 @@ fs_write:
   - module: stdio
     functions: [fopen, fwrite, fputs, fputc, fprintf, putc, putchar, printf, remove, rename, tmpfile, tmpnam, fclose, fflush]
     notes: "tmpfile/tmpnam create temp files on the filesystem; fclose releases file handle; fflush forces write"
+    # WI-bulag / arc T9. KEYED PER FUNCTION because this one row spans all four
+    # classes: fflush takes no content argument, fopen/fclose/remove/rename are
+    # path sinks where naming IS the danger, fprintf mixes a stream with
+    # content, and printf has no resource argument at all. Only an entry whose
+    # `content` is EXPLICITLY [] and whose `danger` is false can suppress; an
+    # absent entry means nobody classified the primitive and never suppresses.
+    resource_naming:
+      # class R -- the only suppressible shape here. int fflush(FILE *stream):
+      # the stream names the resource and there is no content argument at all.
+      fflush: {names: [0], content: [], danger: false}
+      # class D -- naming the resource IS the finding. A tainted path reaching
+      # any of these is the path-traversal case the owner's second bit exists
+      # for; marking them "merely selects" would suppress TRUE findings.
+      fopen:  {names: [0], content: [], danger: true}
+      fclose: {names: [0], content: [], danger: true}
+      remove: {names: [0], content: [], danger: true}
+      rename: {names: [0, 1], content: [], danger: true}
+      # class M -- MIXED, and NOT suppressible today. int fprintf(FILE *stream,
+      # const char *format, ...): position 0 names the stream, 1+ carry the
+      # content. The walk has no argument identity, so a finding here cannot be
+      # attributed to an argument and suppressing it would kill a real one.
+      # Recorded rather than omitted so the classification is on the record and
+      # the row is ready if argument identity ever arrives.
+      fprintf: {names: [0], content: [1], danger: false}
+      fputs:   {names: [1], content: [0], danger: false}
+      fputc:   {names: [1], content: [0], danger: false}
+      fwrite:  {names: [3], content: [0], danger: false}
+      putc:    {names: [1], content: [0], danger: false}
   - module: stdlib
     functions: [mkstemp, mkdtemp, mkostemp, mkstemps]
     notes: "POSIX temp file/dir creation"
   - module: unistd
     functions: [write, unlink, rmdir, truncate, ftruncate, link, symlink, chown, chmod]
+    # WI-bulag / arc T9. Almost all class D: the PATH is the vulnerability, so
+    # naming the resource IS the finding and these must never be suppressed.
+    # `write(fd, buf, count)` is the exception -- class M, position 0 names the
+    # descriptor and position 1 is the content -- and it is recorded rather
+    # than omitted so the classification is on the record.
+    resource_naming:
+      unlink:    {names: [0], content: [], danger: true}
+      rmdir:     {names: [0], content: [], danger: true}
+      truncate:  {names: [0], content: [], danger: true}
+      link:      {names: [0, 1], content: [], danger: true}
+      symlink:   {names: [0, 1], content: [], danger: true}
+      chown:     {names: [0], content: [], danger: true}
+      chmod:     {names: [0], content: [], danger: true}
+      write:     {names: [0], content: [1], danger: false}
     boundary_ruling: call_site_undecidable
     notes: >-
       INV-vaduk: EXACTLY ONE of this primitive's boundaries is true per call

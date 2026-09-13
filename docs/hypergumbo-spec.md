@@ -971,6 +971,20 @@ Why the field exists: `analysis_runs[]` records that a pass emitted zero edges b
 
 Reasons are ordered most-common-first with ties broken alphabetically, so the line is deterministic and two surveys can be diffed without spurious churn. A value outside the declared vocabulary is reported under its own name rather than dropped or folded into a neighbour: a drifted producer must not read as a clean run. The reusable consumer API is `summarize_silence` / `format_silence_summary` / `emit_silence_summary` in `hypergumbo_core.pass_silence`.
 
+**resource_naming_flows** (integer, per-verdict — WI-bulag, arc T9): how many flows matched the claim's label and sink zone, were NOT sanitized, and were excluded from `evidence_count` because the sink's catalogue row declares that the tainted value can only be NAMING the resource the sink acts on.
+
+Such a flow remains a **true positive on the correctness axis** — the WI-gohok ruling of 2026-08-27 is unchanged — and is excluded on *usefulness*. The exclusion is **structural and per sink**, never a per-case judgement of how interesting a finding is: it is decided by the catalogue row, so the same sink always decides the same way. It is DISCLOSED rather than deleted, for the reason the sibling `sanitized_flows` exists: "no path exists" and "a path exists and all it does is name the file" are different facts, and the confirmed-path message states it in words.
+
+**A row licenses the exclusion only when all three of these hold**, and dropping any one ships a false-all-clear:
+
+* `names: [...]` — the positions that merely name the resource are declared;
+* `danger: false` — naming the resource is not itself the finding (`unistd.unlink`, `stdio.fopen`, `stdio.fclose` declare `danger: true` and are never excluded);
+* `content: []` — **EXPLICITLY** declared to take no content argument.
+
+The third is the soundness guard. The walk carries no argument identity — `analysis_runs`-style provenance records the sink primitive, module and symbol, and nothing about which argument the tainted value reached — so at a sink that takes BOTH a resource name and content (`fprintf(stream, fmt, ...)`) a finding cannot be attributed to an argument, and excluding it could discard one whose value reached `fmt`. Measured over the top-20 reached sinks, such mixed sinks are 58.0% of mentions against 7.1% soundly excludable. **An ABSENT `content` is cannot-determine and never licenses exclusion**; only `[]` does.
+
+The annotation is keyed **per function** inside a row (`resource_naming: {<fn>: {names, content, danger}}`) because a catalogue row is a (module, boundary) group listing many functions whose classes differ — one `stdio` row holds `fflush`, `fopen`, `fprintf` and `printf`, which fall into four different classes. Rows that no finding has ever reached stay un-annotated and are disclosed as such rather than annotated speculatively.
+
 **pass_version** (string, INV-morag option A): real per-pass version derived from `sha256(inspect.getsource(<pass module>))`. Replaces the fake `-v1` suffix that previously lived inside `pass_id` with a value that actually changes when the pass implementation changes. INV-morag PR 2 propagated non-empty values to every registration site automatically via the `@register_analyzer` / `@register_linker` decorators and dropped the `-v1` / `-ts-v1` suffix from `pass_id` entirely.
 
 **pass_id format (INV-morag PR 2):** the catalog ID and the runtime `pass_id` now come from the same source — the analyzer/linker's `@register_*` decorator name — and never carry a `-v1` / `-ts-v1` / `-ast-v1` suffix. Backend identity (ast vs tree-sitter vs pattern) lives in the `Pass.backend` catalog field, not in the ID. The `scripts/check-pass-id-agreement` CI gate asserts this invariant.

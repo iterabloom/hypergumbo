@@ -713,6 +713,41 @@ class IoPrimitive:
     leave the catalogue READING as though a fallback had been chosen while the
     registry order quietly decided it. That is the very defect this removes.
     """
+    resource_naming_args: Optional[list[int]] = None
+    """Argument positions that merely NAME the resource this sink acts on
+    (WI-bulag / arc T9, owner ruling 2026-09-13 option (i)).
+
+    The caddy-config-to-``os.Chmod`` shape: a content-shaped value reaches the
+    sink, but all it does is SELECT which resource the sink acts on. ``None``
+    means nobody classified this row, which is every row outside the
+    observed-reached head and is not a claim about the row.
+    """
+    resource_is_danger: bool = False
+    """Whether NAMING the resource is itself the finding (the second ruled bit).
+
+    ``True`` for the path-traversal sinks that sit inside the reached head --
+    ``unistd.unlink``, ``stdio.fopen``, ``stdio.fclose`` -- where a tainted
+    path argument IS the vulnerability rather than noise around it. The owner's
+    ruling is explicit that this bit is not optional and must not be simplified
+    away: a one-bit annotation would mark those rows "merely selects" and
+    SUPPRESS TRUE FINDINGS, the false-all-clear direction.
+    """
+    content_args: Optional[list[int]] = None
+    """Argument positions that carry CONTENT -- the SOUNDNESS GUARD (T9).
+
+    The walk carries NO argument identity (no ``arg_index`` field exists, and
+    ``TaintFlowFinding`` records only the sink primitive/module/symbol), so a
+    finding at a MIXED sink -- one that names a resource AND takes content,
+    like ``fprintf(stream, fmt, ...)`` -- cannot be attributed to an argument.
+    Suppressing it on the strength of the two ruled bits would kill a finding
+    whose tainted value reached ``fmt``. Measured over the top-20 reached head,
+    mixed sinks are 58.0% of mentions against 7.1% soundly suppressible.
+
+    **``None`` and ``[]`` are DIFFERENT and the difference is the point.**
+    ``None`` is CANNOT DETERMINE -- nobody classified the row -- and never
+    licenses suppression. ``[]`` is DECLARED to take no content argument and is
+    the only value that does.
+    """
     boundary_ruling: Optional[str] = None  # axis: bounded-enum
     """Why this primitive is catalogued under several boundaries (INV-vaduk).
 
@@ -1468,6 +1503,18 @@ class IoBoundaryCatalog:
                             f"reader and the row would read as having chosen "
                             f"a fallback while the registry order decided it."
                         )
+                # WI-bulag / arc T9. Row-level for the same reason
+                # ``boundary_ruling`` and ``abstains_to`` are, and validated at
+                # load for the same reason too: every failure mode is silent,
+                # and in this field a silent one means the SUPPRESSION GATE
+                # deciding differently from what the catalogue appears to say.
+                _row_names = list(entry.get("functions") or []) + list(
+                    entry.get("methods") or []
+                )
+                _naming = _validate_resource_naming(
+                    language, module, _row_names, entry.get("resource_naming")
+                )
+
                 for func_name in entry.get("functions", []):
                     primitives.append(IoPrimitive(
                         boundary=boundary,
@@ -1478,6 +1525,9 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        resource_naming_args=_naming.get(func_name, (None, None, False))[0],
+                        content_args=_naming.get(func_name, (None, None, False))[1],
+                        resource_is_danger=_naming.get(func_name, (None, None, False))[2],
                     ))
                 for method_name in entry.get("methods", []):
                     primitives.append(IoPrimitive(
@@ -1489,6 +1539,9 @@ class IoBoundaryCatalog:
                         simultaneous=simultaneous,
                         boundary_ruling=boundary_ruling,
                         abstains_to=abstains_to,
+                        resource_naming_args=_naming.get(method_name, (None, None, False))[0],
+                        content_args=_naming.get(method_name, (None, None, False))[1],
+                        resource_is_danger=_naming.get(method_name, (None, None, False))[2],
                     ))
                 for attr_name in entry.get("attributes", []):
                     primitives.append(IoPrimitive(
@@ -2960,6 +3013,137 @@ def target_kind_discriminated_primitives(
     ``read`` on a target kind no analyzer stamps for it would silence them all.
     """
     return _target_kind_discriminated_keys(catalog.primitives)
+
+
+
+def suppresses_resource_naming_finding(primitive: "IoPrimitive") -> bool:
+    """Whether a finding at this sink may be suppressed as merely resource-naming.
+
+    THREE conditions, and dropping any one of them ships a false-all-clear:
+
+    1. ``resource_naming_args`` is set -- the row was classified at all.
+    2. ``resource_is_danger`` is false -- naming the resource is not itself the
+       finding (the owner's second ruled bit; ``unlink``/``fopen``/``fclose``
+       fail here and must never be suppressed).
+    3. ``content_args`` is EXPLICITLY ``[]`` -- the soundness guard. The sink
+       takes no content argument, so there is no other argument the tainted
+       value could have reached, and the absence of argument identity in the
+       walk cannot mislead us. An ABSENT ``content_args`` is cannot-determine
+       and fails this condition.
+
+    A row that declares nothing behaves exactly as it did before this field
+    existed, which is what makes the annotation forward-only.
+    """
+    if not primitive.resource_naming_args:
+        return False
+    if primitive.resource_is_danger:
+        return False
+    return primitive.content_args == []
+
+
+def _validate_resource_naming(
+    language: str,
+    module_name: str,
+    row_names: Sequence[str],
+    spec: object,
+) -> dict[str, tuple[Optional[list[int]], Optional[list[int]], bool]]:
+    """Validate the T9 ``resource_naming`` map and key it by primitive name.
+
+    KEYED PER FUNCTION, NOT PER ROW, and the reason is structural rather than
+    stylistic: a catalogue row is a (module, boundary) group holding a LIST of
+    functions, and those functions do not share a class. ``c.yaml``'s stdio row
+    holds fourteen names spanning all four -- ``fflush`` takes no content
+    argument, ``fclose`` is a path sink where naming IS the danger, ``fprintf``
+    mixes a stream with content, ``printf`` has no resource argument at all.
+    Over the classified reached head, 11 of 20 primitives sit in a row that
+    also holds a different class, so a strictly per-row property could not
+    express them.
+
+    Splitting those rows would also work and is deliberately NOT done: row
+    ORDER is load-bearing here (an unstamped call abstains to the
+    first-declared row, per the WI-lipis stream-reader split), so reshuffling
+    four large rows to carry an annotation would move abstention behaviour for
+    primitives unrelated to T9.
+
+    Validated at load for the same reason ``boundary_ruling`` is: every failure
+    mode is SILENT, and here a silent one means the suppression gate deciding
+    differently from what the catalogue appears to say. A key naming a function
+    the row does not declare is the most dangerous of them -- it would annotate
+    nothing while reading as an annotation -- so it is an error, not a warning.
+    """
+    if spec is None:
+        return {}
+    where = f"{language}: {module_name}"
+    if not isinstance(spec, Mapping):
+        raise ValueError(
+            f"{where} declares resource_naming={spec!r}; expected a mapping of "
+            f"primitive name to its annotation."
+        )
+
+    def _positions(value: object, key: str, fn: str) -> Optional[list[int]]:
+        if value is None:
+            return None
+        if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+            raise ValueError(
+                f"{where}.{fn} declares {key}={value!r}; expected a list of "
+                f"integer argument positions. A scalar would be dropped by the "
+                f"row reader and the row would read as annotated."
+            )
+        out: list[int] = []
+        for pos in value:
+            if isinstance(pos, bool) or not isinstance(pos, int):
+                raise ValueError(
+                    f"{where}.{fn} declares {key}={value!r}; every position "
+                    f"must be an integer argument index."
+                )
+            if pos < 0:
+                raise ValueError(
+                    f"{where}.{fn} declares {key}={value!r}; positions must be "
+                    f"non-negative argument indices."
+                )
+            out.append(pos)
+        return out
+
+    resolved: dict[str, tuple[Optional[list[int]], Optional[list[int]], bool]] = {}
+    for fn, ann in spec.items():
+        if fn not in row_names:
+            raise ValueError(
+                f"{where} declares resource_naming for {fn!r}, which this row "
+                f"does not list. Declared names are {sorted(row_names)}. An "
+                f"annotation keyed to a name the row does not carry would "
+                f"annotate NOTHING while reading as an annotation."
+            )
+        if not isinstance(ann, Mapping):
+            raise ValueError(
+                f"{where}.{fn} declares resource_naming={ann!r}; expected a "
+                f"mapping with keys names/content/danger."
+            )
+        unknown = sorted(set(ann) - {"names", "content", "danger"})
+        if unknown:
+            raise ValueError(
+                f"{where}.{fn} declares unknown resource_naming key(s) "
+                f"{unknown}; expected names/content/danger. An unrecognised "
+                f"key would be silently ignored."
+            )
+        naming = _positions(ann.get("names"), "names", fn)
+        content = _positions(ann.get("content"), "content", fn)
+        danger = bool(ann.get("danger", False))
+        if naming is not None and content is not None:
+            overlap = sorted(set(naming) & set(content))
+            if overlap:
+                raise ValueError(
+                    f"{where}.{fn} claims position(s) {overlap} as both names "
+                    f"and content. One argument cannot both merely name the "
+                    f"resource and be the content."
+                )
+        if danger and naming is None:
+            raise ValueError(
+                f"{where}.{fn} declares danger without names. The danger bit "
+                f"qualifies which positions name the resource; with none it "
+                f"qualifies nothing."
+            )
+        resolved[fn] = (naming, content, danger)
+    return resolved
 
 
 def multi_boundary_reason(
