@@ -1788,6 +1788,116 @@ class TestFollowedHeirStillAsksTheEscapeQuestion:
         ) is False
 
 
+class TestUnrecordedHeirIsNotVouchedForByASibling:
+    """INV-lupav at HEIR granularity: a recorded sibling must not vouch.
+
+    WI-votom hole 2 closed the case where a followed heir suppressed the
+    escape question for a CALL on the same line. Its fix enumerated the
+    permitting cases, and one of them reads "no call at this line at all — a
+    pure rebinding, so the heir really is the value's only exit". That
+    reasoning is sound for ONE heir and unsound for several: ``followed`` is a
+    disjunction over heirs, and an heir the DDG holds no uses for is skipped
+    silently, so a RECORDED sibling closes the line on the UNRECORDED one's
+    behalf.
+
+    That is this project's ABSENT ≠ EMPTY defect one level below where
+    INV-lupav looks for it. The item's clause L2 is about a partially-recorded
+    DEFINITION; this is a partially-recorded SET OF HEIRS at a single
+    statement, and WI-joluk's coverage gate cannot see it — the gate keys on
+    CALL nodes, and the motivating statement has no call at all.
+
+    THE RULING ALREADY EXISTS AND THIS ONLY MAKES IT CONSISTENT. When the
+    unrecorded heir is ALONE the walk already escapes (``followed`` stays
+    False, the ``no_heir`` branch runs, and a line with no callee does not
+    terminate). So "an heir with no recorded uses is unknown" is shipped
+    behaviour; the multi-heir path simply disagreed with it.
+
+    DIRECTION, and it is the safe one: strictly FEWER ``False``s. Since
+    WI-kabif granted §3a removal authority a ``False`` DELETES a flow, so
+    fewer of them means strictly more surviving violations. This can never
+    suppress a finding.
+    """
+
+    # L1 `cwd := src()`; L2 `a, b := cwd, cwd` — NO CALL; L3 `pkg.Print(a)`.
+    # `b`'s own use sits in a construct the extractor never recorded (Go's
+    # range clause, WI-losod), so the DDG holds no entry for it.
+    _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
+    _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Print", side_effect=True,
+    )
+    _CALLEES: ClassVar[dict] = {("f", 3): frozenset({"pkg.Print"})}
+    _SUMS: ClassVar[dict] = {"pkg.Print": _PRINT}
+
+    def test_a_recorded_sibling_does_not_account_for_an_unrecorded_heir(
+        self,
+    ) -> None:
+        """THE DEFECT. ``a`` is recorded and terminates; ``b`` is not
+        recorded at all. The walk must not call that "every step accounted
+        for"."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is None
+
+    def test_the_unrecorded_heir_alone_already_escaped(self) -> None:
+        """CONTROL: identical minus the recorded sibling. This is the ruling
+        the defect case contradicts, and it passes BEFORE and after — without
+        it a blanket ``None`` would satisfy the test above and look like a
+        fix."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9], {("f", "cwd", 1): {2}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"b"}},
+        ) is None
+
+    def test_all_heirs_recorded_at_a_callless_line_still_closes(self) -> None:
+        """CONTROL, THE OTHER WAY: the permitting case WI-votom wrote down is
+        untouched. Every heir is recorded, so nothing is unaccounted for and
+        the walk still earns its ``False``. A fix that forfeits here would be
+        over-forfeiting, and this is what catches it."""
+        assert _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}, ("f", "b", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is False
+
+    def test_a_confirmation_survives_an_unrecorded_sibling(self) -> None:
+        """An incomplete picture cannot unmake positive evidence: if the
+        recorded heir reaches the sink, the answer is ``True``, not ``None``.
+        The escape only ever blocks the refutation."""
+        assert _ddg_taint_reaches(
+            "f", [1], [3],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+        ) is True
+
+    def test_the_escape_is_recorded_with_its_own_reason(self) -> None:
+        """The site is attributable. ``unrecorded_heir`` is an EXTRACTION
+        failure, so it must not be pooled into ``no_heir`` — that bucket is
+        the one ADR-0017 §7b's alias exclusion is correctly invoked for, and
+        mixing an extractor gap into it is the misattribution
+        :class:`EscapeSite` exists to prevent."""
+        sites: list[EscapeSite] = []
+        _ddg_taint_reaches(
+            "f", [1], [9],
+            {("f", "cwd", 1): {2}, ("f", "a", 2): {3}},
+            self._CALLEES, self._SUMS,
+            defs_at=self._DEFS,
+            inherits={("f", 2, "cwd"): {"a", "b"}},
+            escape_sites=sites,
+        )
+        assert EscapeSite("f", 2, "unrecorded_heir") in sites
+        assert {s.reason for s in sites} <= ESCAPE_REASONS
+
+
 class TestQualifiedCallee:
     """The ADR-0017 §4 catalogue lookup key (INV-rozaj).
 
