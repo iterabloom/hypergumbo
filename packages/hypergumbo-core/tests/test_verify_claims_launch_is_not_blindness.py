@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from hypergumbo_core.io_boundary import IoBoundaryCatalog, IoPrimitive
 from hypergumbo_core.verify_claims import (
+    BoundaryCoverage,
     _opaque_launch_sites,
     _uncatalogued_external_modules,
     compute_boundary_coverage,
@@ -171,3 +172,67 @@ class TestTheGateStillRefusesRealBlindness:
         catalogs = {"python": _py_catalog()}
         assert _uncatalogued_external_modules([run], catalogs) == []
         assert _opaque_launch_sites([run], catalogs) == ["subprocess.run"]
+
+
+class TestTheReasonNamesWhatWithheldTheQualification:
+    """WI-razuk: the stated reason must be the reason.
+
+    ``compute_boundary_coverage`` evaluates BOTH blockers and returns on the
+    first, so when a repo launches AND calls something unadjudicable, the
+    reason named only the launches — and the launches ALONE would have earned
+    ``confirmed_with_caveats``. The reader was handed the blocker that did not
+    decide the verdict while the one that did was computed and discarded.
+
+    Observed on hypergumbo's own self-proof at dev 95041b0931: 18 claims read
+    "NOT CONFIRMED: the analysis launches an external program at 2 call
+    site(s)" while thirteen unclassified names were what actually withheld
+    them. Recovering that list needed a monkeypatch.
+
+    The launch stays FIRST. That ordering carries its own written rationale —
+    an uncatalogued module is a gap the reader can close, an opaque launch is
+    categorical, so naming the fixable one first would send them on an errand
+    that cannot succeed. This is not a reordering; it is the second half of
+    the sentence.
+    """
+
+    def _both_blockers(self) -> BoundaryCoverage:
+        return compute_boundary_coverage(
+            [LAUNCH, REQUESTS],
+            {"bash", "python"},
+            {"bash": _bash_catalog(), "python": _py_catalog()},
+        )
+
+    def test_the_reason_names_the_module_that_withheld_the_qualification(
+        self,
+    ) -> None:
+        """The defect itself."""
+        coverage = self._both_blockers()
+        assert coverage.qualifying_only is False, coverage.reason
+        assert "requests" in coverage.reason, (
+            "the reason names only the launch, but the launch alone would "
+            "have QUALIFIED this verdict; the module that actually withheld "
+            f"it is absent. Got: {coverage.reason}"
+        )
+
+    def test_the_launch_is_still_named_first(self) -> None:
+        """The filed ordering rationale is preserved, not traded away."""
+        coverage = self._both_blockers()
+        assert coverage.reason.index("id") < coverage.reason.index("requests"), (
+            "the categorical blocker must still be named before the fixable "
+            f"one. Got: {coverage.reason}"
+        )
+
+    def test_a_launch_alone_still_blames_no_module(self) -> None:
+        """CONTROL, and it is the one that fails on the lazy fix.
+
+        Appending the clause unconditionally would blame an empty module set on
+        every launching repo, sending a reader to catalogue nothing. When the
+        launches ARE the sole blocker the sentence must be exactly what it was.
+        """
+        coverage = compute_boundary_coverage(
+            [LAUNCH], {"bash"}, {"bash": _bash_catalog()},
+        )
+        assert coverage.qualifying_only is True, coverage.reason
+        assert "could not classify" not in coverage.reason, (
+            f"a sole-blocker launch must blame no module. Got: {coverage.reason}"
+        )
