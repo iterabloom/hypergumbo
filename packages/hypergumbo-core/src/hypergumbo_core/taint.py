@@ -3565,12 +3565,19 @@ class EscapeSite(NamedTuple):
 #: * ``no_heir`` — the use derived nothing the DDG tracked and no catalogued
 #:   callee consumed it. This is the bucket ADR-0017 §7b's alias exclusion is
 #:   invoked for, and the only one for which that invocation can be correct.
+#: * ``unrecorded_heir`` — the use DID derive a variable, and the DDG holds no
+#:   uses for it while holding some for a sibling derived at the same line. An
+#:   EXTRACTION gap like ``source_undefined``, not a §7b scope exclusion, and
+#:   kept out of ``no_heir`` for exactly that reason: pooling an extractor gap
+#:   into the alias bucket is the misattribution :class:`EscapeSite` was split
+#:   into a triple to prevent.
 ESCAPE_REASONS = frozenset(
     {
         "source_undefined",
         "definition_unrecorded",
         "call_beside_heir",
         "no_heir",
+        "unrecorded_heir",
     }
 )
 
@@ -3641,12 +3648,15 @@ def _ddg_taint_reaches(
     flow absent. Three of nine verified removals in the first cohort arm were
     this shape.
 
-    WHY NOTHING IS REMOVED TODAY, EVEN ON ``False``. Distinguishing a use that
+    WHAT A REMOVAL RESTS ON. Distinguishing a use that
     *terminates* the taint (``fmt.Printf(cwd)`` — argument consumed, result
     discarded) from one that *propagates* it (``lst.append(x)`` — argument
     escapes into the receiver) requires knowing whether the callee mutates its
     arguments. That is precisely ADR-0017 §4 function summaries, and §3a's own
-    step 3 says so: "At call sites, apply function summaries (§4)."
+    step 3 says so: "At call sites, apply function summaries (§4)." This
+    paragraph was headed "WHY NOTHING IS REMOVED TODAY, EVEN ON ``False``"
+    until WI-kabif granted §3a removal authority (2026-09-02); the heading is
+    corrected rather than the body, which is what the removal now rests on.
 
     THAT PARAGRAPH USED TO END "§4a and §4b have zero production callers, so
     the information does not exist at runtime". Half of it is now false and it
@@ -3664,10 +3674,15 @@ def _ddg_taint_reaches(
     state which direction it moves ``False``, and only the direction that
     produces FEWER of them is safe without new evidence.
 
-    Inclusion is still decided by call-graph reachability: the walk CONFIRMS
-    and never refutes, earning the ``precise`` label where it finds a
-    dependence. Removal authority is WI-kabif's, and it remains behind
-    INV-busis.
+    THE WALK NOW REFUTES, AND ONLY IN ONE DIRECTION. WI-kabif granted §3a
+    removal authority on 2026-09-02: a ``False`` REMOVES the flow. Inclusion
+    is still BOUNDED by call-graph reachability — the walk mints nothing, so
+    reading ``analysis_method == "ddg"`` as "inclusion decided by data flow"
+    remains the INV-sadah misreading — which is why the published
+    ``inclusion_decided_by`` is the compound
+    ``call_graph_reachability_minus_ddg_refutation``. This docstring said "the
+    walk CONFIRMS and never refutes ... removal authority remains behind
+    INV-busis" for twelve days after that stopped being true.
 
     The ADR-0017 §3a forward walk, over one function's reaching-definition
     edges. Seeds at the lines where the taint source is called — the value it
@@ -3829,12 +3844,42 @@ def _ddg_taint_reaches(
             # line, and a line-keyed step credited the taint in `server` with
             # reaching everything `path` later touches.
             followed = False
+            unrecorded_heir = False
             for heir in sorted((inherits or {}).get((symbol_id, use_line, var), ())):
                 if (symbol_id, heir, use_line) in ddg_uses:
                     if (heir, use_line) not in seen:
                         frontier.append((heir, use_line))
                     followed = True
+                else:
+                    # INV-lupav AT HEIR GRANULARITY. The DDG holds no uses for
+                    # this heir, which is the same fact the ``no_heir`` branch
+                    # below already treats as unknown when the heir is ALONE —
+                    # either it genuinely goes nowhere or the construct that
+                    # consumed it was never modelled, and nothing here can
+                    # tell those apart. Recording it means a RECORDED sibling
+                    # cannot close the line on its behalf; ``followed`` is a
+                    # disjunction, so without this flag one tracked heir
+                    # vouches for every untracked one beside it.
+                    unrecorded_heir = True
             if followed:
+                # AN HEIR THE DDG NEVER RECORDED IS NOT ACCOUNTED FOR, and
+                # this is asked BEFORE the call question because it is true
+                # whether or not the line calls anything. The permitting case
+                # written below — "no call at this line at all, so the heir
+                # really is the value's only exit" — reasons about THE heir,
+                # singular. With several, a recorded one does not make an
+                # unrecorded one an exit the walk understands.
+                #
+                # WI-joluk's coverage gate cannot reach this: it keys on CALL
+                # nodes, and the motivating statement (Go's ``a, b := cwd,
+                # cwd`` feeding a range clause, WI-losod) has no call at all.
+                if unrecorded_heir:
+                    escaped = True
+                    if escape_sites is not None:
+                        escape_sites.append(
+                            EscapeSite(symbol_id, use_line, "unrecorded_heir")
+                        )
+                    continue
                 # The taint continues along a chain we still understand — but
                 # ONE STATEMENT CAN DO TWO THINGS. ``acc.append(x); y = x``
                 # both hands ``x`` to a receiver we cannot follow and derives
@@ -4495,16 +4540,20 @@ def propagate_taint_ddg(
                     # ``sanitized_reachable``). This check ADDS a way to earn
                     # the label and must never take one away.
                     #
-                    # WI-joluk, AND ONLY ON THIS ARM. The §3a arm above tests
-                    # `is True`, so `False` and `None` already collapse there
-                    # and the gate would change nothing. HERE a `False` earns
+                    # WI-joluk, ON BOTH ARMS NOW. This comment read "AND ONLY
+                    # ON THIS ARM ... the §3a arm above tests `is True`, so
+                    # `False` and `None` already collapse there" — true when
+                    # the gate landed here first (2026-08-26) and false since
+                    # the §3a arm began consuming the walk's `False`. Both
+                    # arms pass the gate today and the contract test requires
+                    # it. HERE a `False` earns
                     # `sanitized` and a sanitized flow is dropped from the
                     # claim's violation set — so a `False` from a function the
                     # extractor did not fully see suppresses a real violation.
                     # Forfeiting downgrades that to `None`, which produces
                     # strictly FEWER suppressions and therefore strictly MORE
                     # surviving violations: the safe direction, and the reason
-                    # this could land before removal authority exists.
+                    # this could land before removal authority existed.
                     if adjudicated and barrier_sites:
                         ddg_sanitized = _ddg_taint_reaches(
                             source_fn, source_call_lines, sink_call_lines,
