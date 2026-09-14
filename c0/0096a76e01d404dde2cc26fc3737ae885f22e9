@@ -1,0 +1,40 @@
+Original commit body from a7408fec42cb34762a1747b9db2919de437ab005:
+
+`cpp.yaml` had no row for `std::getline` and `c.yaml` none for POSIX `getline`, so the idiomatic C++ standard-input read
+
+```cpp
+std::string s;
+std::getline(std::cin, s);
+```
+
+produced **no source at all**. `std::cin` is rowed as an attribute and fires where it's literally written, but the call that *transfers the bytes* was invisible — and so was a getline over an `ifstream`.
+
+**C is a row-only addition.** `getline(&buf, &n, stream)` takes its stream third, exactly as `fgets` does, so `_C_STREAM_ARG_INDEX` gained one entry and no new code.
+
+**C++ needed the module slot fixed first,** found by probing before writing any row. cpp.py emitted the comma-joined `#include` list as an unresolved call's module, discarding the namespace the call names — so `std::getline(...)` arrived as `iostream,fstream,string` and a `std.getline` row could never have matched, while the *attribute* path already emitted `std` for `std::cin`. Measured: of 78 corpus C++ files containing a getline call, `string` appears in 51.3%, `sstream` 48.7%, `fstream` 47.4%, `iostream` 38.5%, and 14.1% include none — so rowing under any single header reaches at most half the population.
+
+`std` is **added** to the disjunction, never replacing it (classification asks whether ANY disjunct names a primitive, so adding can only add matches; replacing would delete `std::printf`'s match against the inherited `stdio` row — pinned by a test). A `using namespace std;` scan lets the bare `getline(cin, s)` spelling resolve. The stamp reads the **declared type** rather than chasing a value origin, because C++ writes it down.
+
+### An earlier draft of this deleted two findings, and the naive diff hid it
+
+Naming `std` for a file with **no** system includes replaced the `external` sentinel — which is what enables `lookup_with_module`'s short-name fallback — so two `std::chrono::system_clock::now()` chains in modsecurity's `collection_data.cc` went `host_info_read` → nothing.
+
+It surfaced only on a **module-stable diff key**: changing the module slot changes every `dst` string, so the naive diff reported apt as *112 added / 102 removed* and buried two real removals in re-keying churn. The sentinel is preserved now, pinned by a test that was falsified before being kept.
+
+### Measurement
+
+A/B over **apt / modsecurity / sherpa-onnx**, one survey and one `XDG_CACHE_HOME` per arm, diffed both ways on a module-stable key: **+28 chains, 0 removed, 0 moved.**
+
+Sampled read-back against source:
+- the single `ipc_recv` is `getline(cin, Res)` at `apt/cmdline/apt-cdrom.cc:71` under `using namespace std;` — a real stdin read, previously invisible, and the exact case this item was filed on;
+- a sampled `fs_read` is `std::getline(is, line)` in sherpa-onnx where `is` is a `std::istream&` **parameter**, abstaining correctly to the non-minting row.
+
+**And the proportion, stated rather than implied: 27 of the 28 are `fs_read`.** The `ipc_recv` direction that motivated the item lands **once** across three repositories. The mechanism is right; the stdin surface is genuinely rare here.
+
+**Disclosed gap:** an unqualified `getline(std::cin, s)` with no `using namespace std;` still doesn't classify. Real C++ resolves that by ADL, but claiming it needs ADL reasoning the analyzer doesn't do — so it abstains, losing a detection rather than inventing one.
+
+`module_key_axis`'s `disjunction` notion cited the line this rewrote; `test_every_cited_emission_site_still_exists` caught the rot exactly as its docstring says it should. Citation, description and site note all updated — the last recording the sentinel constraint for the next reader.
+
+Ratchet 669 (+0). 100% package coverage in isolation for `mainstream`. 12,472 passing.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
