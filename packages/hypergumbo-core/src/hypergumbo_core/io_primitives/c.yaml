@@ -38,7 +38,7 @@ fs_read:
   - module: stdio
     functions: [fopen, fseek, rewind, ungetc, ftell]
   - module: stdio
-    functions: [fread, fgets, fgetc, fscanf, getc]
+    functions: [fread, fgets, fgetc, fscanf, getc, getline]
     boundary_ruling: call_site_undecidable
     notes: >-
       WI-lipis: the stream-taking readers, split out of the row above because
@@ -256,10 +256,10 @@ ipc_recv:
       and scanf() is fscanf(stdin, ...) with the stream fixed; gets() reads
       stdin by definition.
   - module: stdio
-    functions: [fgets, fgetc, getc, fscanf, fread]
+    functions: [fgets, fgetc, getc, fscanf, fread, getline]
     boundary_ruling: call_site_undecidable
     notes: >-
-      WI-lipis: the SAME five functions the fs_read row declares, and BOTH
+      WI-lipis: the SAME functions the fs_read row declares, and BOTH
       declarations are needed because the boundary is a property of the STREAM
       ARGUMENT (INV-bagok / INV-zumin class (b)) -- fgets(buf, n, stdin) and
       fgets(buf, n, f) are one row and two different crossings. The analyzer
@@ -275,6 +275,13 @@ ipc_recv:
       change, with a live control in one cold run: scanf(...) reaching a file
       write returned violated while fgets(buf, n, stdin) with the identical
       flow shape returned nothing.
+
+      WI-bapuk added `getline` -- POSIX getline(&buf, &n, stream), which takes
+      its stream THIRD exactly as fgets does. A ROW-ONLY addition: c.py's
+      stream-argument mechanism already existed and needed one table entry, not
+      new code. It is spelled here rather than in cpp.yaml because it is the C
+      function; C++'s std::getline is a different primitive with a different
+      argument order and has its own rows.
   - module: unistd
     functions: [read]
     boundary_ruling: call_site_undecidable

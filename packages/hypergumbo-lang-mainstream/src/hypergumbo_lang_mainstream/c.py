@@ -908,6 +908,9 @@ def _analyze_c_file(
 #: while ``fscanf(stdin, ...)`` puts it first, and a single "last argument" rule
 #: would get ``fscanf`` wrong in the direction that INVENTS a crossing.
 _C_STREAM_ARG_INDEX: dict[str, int] = {
+    # WI-bapuk: POSIX getline(&buf, &n, stream) takes its stream THIRD, exactly
+    # as fgets does. A one-entry addition -- the mechanism already existed.
+    "getline": 2,
     "fgets": 2,
     "fscanf": 0,
     "fread": 3,
