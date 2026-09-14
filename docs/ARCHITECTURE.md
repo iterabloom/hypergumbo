@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **323** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 89 core, 4 CLI, 35 tracker)
-- **45811** symbols (functions, classes, methods)
-- **181990** edges by type:
-  - calls: 105024
-  - contains: 42191
-  - imports: 14052
-  - instantiates: 11366
-  - references: 6390
-  - module_attr_ref: 1514
-  - other: 1453
+- **325** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 90 core, 4 CLI, 36 tracker)
+- **46203** symbols (functions, classes, methods)
+- **183507** edges by type:
+  - calls: 105883
+  - contains: 42558
+  - imports: 14191
+  - instantiates: 11428
+  - references: 6464
+  - module_attr_ref: 1523
+  - other: 1460
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 45811 Symbols + 181990 Edges + UsageContexts           │
+│  Output: 46203 Symbols + 183507 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,21 +271,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9588.7 | ir.py |
-| `len` | external_symbol | 7443.0 | <external> |
-| `write_text` | external_symbol | 6530.0 | <external> |
+| `Symbol` | class | 9597.9 | ir.py |
+| `len` | external_symbol | 7456.0 | <external> |
+| `write_text` | external_symbol | 6543.0 | <external> |
 | `Span` | class | 6422.1 | ir.py |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `get` | external_symbol | 2978.0 | <external> |
-| `load_catalog` | function | 2492.9 | io_boundary.py |
+| `get` | external_symbol | 2986.0 | <external> |
+| `load_catalog` | function | 2540.2 | io_boundary.py |
 | `Edge.create` | method | 2406.9 | ir.py |
-| `next` | external_symbol | 2129.0 | <external> |
+| `next` | external_symbol | 2131.0 | <external> |
+| `str` | external_symbol | 2074.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `str` | external_symbol | 2056.0 | <external> |
+| `Path` | external_symbol | 1960.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `Path` | external_symbol | 1942.0 | <external> |
-| `main` | function | 1692.9 | cli.py |
-| `append` | external_symbol | 1587.0 | <external> |
+| `main` | function | 1708.8 | cli.py |
+| `append` | external_symbol | 1592.0 | <external> |
 
 ## Pattern System
 
@@ -619,6 +619,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.noise_filter`**: Default-view noise predicate for the survey pipeline (Phase D).
 - **`hypergumbo_core.partial_install_warnings`**: Runtime warnings for partial installations (ADR-0010 Item 8).
 - **`hypergumbo_core.pass_metadata`**: Per-pass metadata lookup for the finalize stage (run-lifecycle:F1 /...
+- **`hypergumbo_core.pass_silence`**: Canonical pass-silence-reason axis (INV-bikaj / INV-hujog, arc T6).
 - **`hypergumbo_core.paths`**: Centralized path handling utilities for hypergumbo.
 - **`hypergumbo_core.producer_coherence`**: Producer-side axis-coherence linter for Edge / Symbol constructors.
 - **`hypergumbo_core.profile`**: Repo profile detection - language and framework heuristics.
@@ -888,6 +889,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_tracker.nav_history`**: Browser-style navigation history for the tracker TUI's item-nav modal.
 - **`hypergumbo_tracker.preview`**: Inline SVG preview for TUI discussion threads (ADR-0020 Part 2).
 - **`hypergumbo_tracker.preview_pipeline`**: SVG→PNG→ANSI rendering pipeline with graceful degradation (ADR-0020).
+- **`hypergumbo_tracker.protected_config`**: Host-level protected tracker config: the only location an agent can...
 - **`hypergumbo_tracker.race_log`**: Forensic log for transient I/O races on tracker ``.ops`` files.
 - **`hypergumbo_tracker.screenshot_save`**: Screenshot save and auto-create tracker item (ADR-0020, WI-rujoz).
 - **`hypergumbo_tracker.serve`**: Starlette/uvicorn server for htrac serve (ADR-0019).
@@ -912,8 +914,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 3f0bc1a3dce5
-  commit_count: 7289
+  commit: 8331b292df2f
+  commit_count: 7320
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
