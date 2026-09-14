@@ -1,0 +1,22 @@
+- op: create  # 0be0
+  at: '2026-09-14T01:25:17Z'  # 0be0
+  by: agent  # 0be0
+  actor: jgstern_agent  # 0be0
+  clock: 1  # 0be0
+  nonce: 0be0  # 0be0
+  data:  # 0be0
+    kind: work_item  # 0be0
+    title: "compute_boundary_coverage discards the unknown-module list whenever a launch is opaque, so the verdict names a blocker that did not withhold it"  # 0be0
+    status: todo_hard  # 0be0
+    priority: 2  # 0be0
+    parent:  # 0be0
+    tags:  # 0be0
+    - verify_claims  # 0be0
+    - observability  # 0be0
+    - analysis_quality  # 0be0
+    isbefore: []  # 0be0
+    duplicate_of: []  # 0be0
+    not_duplicate_of: []  # 0be0
+    pr_ref:  # 0be0
+    description: "FOUND while diagnosing WI-jabus (all 18 self-claims inconclusive). The tool\ncomputed the answer, discarded it, and reported a different blocker.\n\nWHAT HAPPENS. compute_boundary_coverage evaluates both blockers:\n\n    opaque  = _opaque_launch_sites(...)\n    unknown = _uncatalogued_external_modules(...)\n    if opaque:\n        return BoundaryCoverage(complete=False,\n                                reason=<names the launch sites only>,\n                                qualifying_only=not unknown)\n    if unknown:\n        return BoundaryCoverage(complete=False, reason=<names the modules>)\n\nWhen both are non-empty the second branch is unreachable, so the unknown list\nis computed and thrown away. It is in no field of the JSON envelope either - I\nhad to monkeypatch _adjudicate_external_modules to recover it.\n\nWHY THAT IS WRONG, AND IT IS NOT THE ORDERING. The ordering carries a written\nrationale and the rationale is good: an uncatalogued module is a gap the reader\ncan close, an opaque launch is categorical, so reporting the fixable blocker\nfirst would send a reader on an errand that cannot succeed. That reasoning is\nabout WHICH TO NAME FIRST. The defect is what the choice does to the VERDICT\nEXPLANATION, one level up:\n\n  - opaque alone         -> confirmed_with_caveats, qualified by opaque_boundary\n  - opaque AND unknown   -> inconclusive\n\nso when both hold, the reason names the blocker that does NOT decide the\nverdict and omits the one that does. The reader is told \"NOT CONFIRMED: the\nanalysis launches an external program ... and cannot see what the launched\nprogram does\" - which, alone, is a QUALIFIED CONFIRM - while the thing that\nactually withheld the verdict is never mentioned. The stated reason is not the\nreason.\n\nOBSERVED, verbatim, on runtime-cli-no-host-fs at dev 95041b0931: details names\ntwo subprocess launch sites and nothing else; caveats are user_supplied_sanitizer,\nuntyped_receiver, unknown_receiver_scope; opaque_boundary is absent, which is\nitself the tell that the qualified branch was not taken. Thirteen unknown names\ndecided it and appear nowhere.\n\nCOST, concretely: one cold verify-claims run (about 17 minutes) plus writing an\ninstrument, to recover a list the tool already had in hand.\n\nTHE FIX IS NOT TO REORDER. Keep the launch text first, for the filed reason,\nand ADD the unknown list when it is non-empty - it is the actionable half and\nit is the half that moved the verdict. A second option, complementary rather\nthan alternative: put the unknown set in the JSON envelope unconditionally, so\na consumer never has to reconstruct it. That would also have let the cron\nfailure be diagnosed from the artifact instead of from a local re-run.\n\nRELATED, cite do not fold: WI-jabus is the coverage regression this obscured;\nINV-hosul / WI-fosir is the sibling family (\"a caveat that names nothing a\nreader can act on\"), and this is that shape in the reason string rather than\nin a caveat."  # 0be0
+    fields: {}  # 0be0
