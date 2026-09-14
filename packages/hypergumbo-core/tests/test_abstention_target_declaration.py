@@ -291,6 +291,20 @@ class TestTheShippedCataloguesAreUnchanged:
         from hypergumbo_core.io_boundary import load_catalog
         assert _order_for(load_catalog("haskell"), "hGetLine")[0] == "fs_read"
 
+    def test_java_readline_falls_back_to_fs_read(self) -> None:
+        """WI-tusav's rows, and the note on them claims this is pinned here.
+
+        java declares no ``abstains_to``, exactly as c and haskell do not: the
+        fallback is the REGISTRY ORDER of the two declarations, so the fs_read
+        row physically staying above the ipc_recv one in java.yaml is the whole
+        mechanism. A reviewer reordering the file would silently start minting
+        an untrusted_input source for every unresolvable BufferedReader read.
+        """
+        from hypergumbo_core.io_boundary import load_catalog
+        cat = load_catalog("java")
+        for name in ("readLine", "read", "nextLine", "next", "nextInt"):
+            assert _order_for(cat, name)[0] == "fs_read", name
+
 
 #: WI-vutav's nine read rows, one binding after go's two wrappers.
 _BUFIO_READ_ROWS = (

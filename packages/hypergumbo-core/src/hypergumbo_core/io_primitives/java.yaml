@@ -53,13 +53,48 @@ fs_read:
     methods: [read]
   - module: java.io.BufferedReader
     methods: [readLine, read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav: the boundary is a property of the RECEIVER'S ORIGIN, not of the
+      method -- `new BufferedReader(new InputStreamReader(System.in))` and
+      `new BufferedReader(new FileReader(p))` are one row and two different
+      crossings (INV-zumin class (b), INV-bagok's shape one hop later). THIS ROW
+      STAYS FIRST: an unstamped call abstains to the first-declared row, so a
+      receiver whose origin cannot be recovered keeps the fs_read answer it had
+      before this split, and fs_read mints no taint source. See the ipc_recv
+      twin for the selection rule. `boundary_ruling` is declared on BOTH rows
+      because it is a property of the PRIMITIVE, not of one declaration.
+  - module: java.io.InputStreamReader
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. The decorator the canonical stdin idiom wraps System.in in, and
+      a read surface in its own right -- `new InputStreamReader(System.in).read()`
+      reaches the java.io.InputStreamReader slot, verified against the analyzer
+      before this row was written (LIVE rule 9: presence is not reachability).
+  - module: java.io.InputStream
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. ABSENT before this item: only the FileInputStream subclass was
+      rowed, so `InputStream is = System.in; is.read();` matched nothing at all.
+      The declared type is what the analyzer puts in the module slot, so the
+      base type needs its own row and cannot inherit FileInputStream's.
   - module: java.nio.file.Files
     methods: [readAllBytes, readAllLines, readString, list, walk, find, exists, isRegularFile, isDirectory, size, getLastModifiedTime]
   - module: java.nio.file.Path
     methods: [toFile, toRealPath]
   - module: java.util.Scanner
     methods: [next, nextLine, nextInt]
-    notes: "When reading from a file"
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav. This row's note used to read, in full, "When reading from a
+      file" -- a disclosed residual that made the row true for `new Scanner(f)`
+      and false for `new Scanner(System.in)`, which is the more common of the
+      two in teaching code. Split rather than moved: the file scan keeps
+      fs_read and only a scanner whose receiver demonstrably originates at a
+      standard stream takes the ipc_recv twin. fs_read stays FIRST for the
+      reason the BufferedReader row gives.
   # Plan C, PR A: Apache Commons IO removed under strict-stdlib rule.
   # First-party calls into Commons IO surface in external_potential
   # (Plan C, PR C); project-local taint-source catalogs (WI-votan) handle
@@ -170,6 +205,49 @@ ipc_send:
 ipc_recv:
   - module: java.lang.System
     attributes: [in]
+  - module: java.io.BufferedReader
+    methods: [readLine, read]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-tusav: the SAME methods the fs_read row declares, and BOTH declarations
+      are needed because the boundary is a property of the receiver's ORIGIN.
+      java.py resolves the receiver's last binding in the enclosing method and
+      unwraps the decorator chain -- BufferedReader over InputStreamReader over
+      System.in -- then stamps io_target_kind; _narrow_by_target_kind keeps the
+      matching row, and a receiver whose origin cannot be recovered abstains to
+      the FIRST-DECLARED row, which is why fs_read stays above this one and why
+      that order is pinned by a test rather than left to a reviewer.
+
+      WHAT CARRIES THE UNRESOLVED CASE, checked before this row was written
+      because an fs_read fallback with nothing behind it would leave the stdin
+      crossing represented NOWHERE: java emits no `calls` edge for
+      `object_creation_expression`, so there are no constructor rows to fall
+      back to and there never could be. The fallback is the
+      `java.lang.System.in` ATTRIBUTE row above, which fires on the
+      module_attr_ref edge. Measured on a four-method fixture before the split:
+      `fs_read: 4` (both the stdin and the file readers) plus `ipc_recv: 2` at
+      System.in -- so the crossing was VISIBLE but attributed to the wrong
+      boundary at the call that transfers the bytes, which is a
+      misclassification rather than the total absence the item recorded.
+
+      net_stream IS DELIBERATELY NEVER STAMPED and this row is why: narrowing
+      keeps only rows whose boundary equals the resolved one, so a net_stream
+      stamp with no net_recv twin would empty the candidate list and delete the
+      classification outright. `new Scanner(sock.getInputStream())` abstains to
+      fs_read instead, exactly as it did before, and c.yaml's stdio rows carry
+      the same two-row shape for the same reason.
+  - module: java.io.InputStreamReader
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin; see the BufferedReader row for the selection rule."
+  - module: java.io.InputStream
+    methods: [read]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin; `InputStream is = System.in` is the shape this exists for."
+  - module: java.util.Scanner
+    methods: [next, nextLine, nextInt]
+    boundary_ruling: call_site_undecidable
+    notes: "WI-tusav. The ipc_recv twin of the row whose note used to say 'when reading from a file'."
 
 # WI-sakan: database access via JDBC and common JPA/Hibernate/Spring Data APIs.
 db_read:
