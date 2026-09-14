@@ -1,0 +1,29 @@
+Original commit body from 76c10fdb2fe7dae34039d211389f957a952d27c6:
+
+Two fixes, in the order that makes the second verifiable.
+
+**1. smart-test: a `conftest.py` change selected no tests at all.**
+
+`conftest.py` is neither a `test_`-prefixed test file nor package `src/`, so it matched neither `CHANGED_TEST_FILES` nor `CHANGED_SOURCE_FILES`. smart-test reported "no test-relevant files changed (docs/config only)", wrote a manifest with **0 selected tests**, and `ci.yml` skipped pytest.
+
+This is INV-kinin's sibling one filename over, and strictly worse than the fixture case that item already fixed: an `autouse` fixture declared in a conftest governs EVERY test beneath it, not one gate's inputs.
+
+A package conftest now selects that package's suite exactly as a fixture does. A ROOT conftest selects the root suite **and every package suite**, because pytest applies a rootdir conftest to everything collected beneath it. Four new tests, RED beforehand, read the pattern off the shipped script rather than restating it.
+
+Measured on the very change that exposed it: **0 selected tests to 55** (53 tracker suites + 2 root smart-test suites), 3,033 passing.
+
+**2. tracker tests: the host decided the test.**
+
+`protected_config` treats the existence of `/etc/hypergumbo-tracker/` as the opt-in signal and refuses to fall back when the directory exists but holds no entry for the repo being loaded — deliberately, since silent fallback is the downgrade attack it was written to close. Tests building a repo under `tmp_path` inherited whatever the developer's machine had.
+
+On an opted-in host, **13 tests fail** (`test_sync`'s whole `TestPreflightCheck`, `test_configure`, `test_setup`), all raising `ProtectedConfigError` from `load_config`. On a host that never opted in, all 13 pass. Same tree, same commit, two answers — and **CI never saw it**, because its containers have no `/etc/hypergumbo-tracker`. The host that hid the defect is the one that matters.
+
+Fixed with one autouse fixture, `_isolate_protected_config_root`, sibling to the existing `_isolate_ops_journal` and carrying the same rationale. It pins `PROTECTED_ROOT` to a path guaranteed absent, so every test starts from "not opted in" on every host.
+
+Deliberately **not** a skip-if-present guard — that would leave these tests untested on exactly the hosts running the configuration they are about. Deliberately a module-attribute patch rather than an env var, because there is none to use: the agent controls its own environment, so an env-redirectable root would reopen the hole.
+
+583 pass, including all 13 and `test_protected_config`'s own opt-in tests, which confirms the override ordering still holds.
+
+These were found during WI-tusav's full-suite run and are pre-existing — verified by reverting that work and re-running (11 still failed). Reported rather than routed around.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
