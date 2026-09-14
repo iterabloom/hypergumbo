@@ -1,0 +1,40 @@
+Original commit body from 7d4b13ff8781c41d9f18e30acd2d22bdabb7d617:
+
+`smart-test --full` ran nothing and exited 0 whenever the diff held nothing test-relevant. INV-sotam.
+
+## Reproduced before the fix
+
+At dev `ee6f31a172`, with one non-test-relevant file modified:
+
+    $ ./scripts/smart-test --full --manifest
+    Manifest written to .ci/affected-tests.txt (0 tests - no Python source changed)
+    # Mode: targeted        <- despite --full
+
+The docs/config-only short-circuit exits 0 before the `FULL_RUN` branch at `smart-test:1366` is ever consulted. A tree whose only changes are docs or config is exactly what verifying already-merged work looks like, so the command printed a reassuring line and ran nothing. A gate that cannot fire read identically to a gate that passed.
+
+## The fix, and the trap in the obvious one
+
+`--full` now runs the suite from that branch, deliberately KEEPING the empty targeted manifest rather than routing through `run_full_suite()`. That function writes a full-suite manifest which CI rejects by design as a signal that change detection went wrong — the obvious fix would have traded a silent skip for a red gate on every docs-only PR. A negative control pins this, and it was falsified by inserting a real `run_full_suite` call and watching it fail.
+
+The skip message now reports `0 tests ran`, so a caller can tell "checked, nothing to do" from "nothing was checked".
+
+## Verified after the fix, same repro condition
+
+    $ BASE_BRANCH=HEAD ./scripts/smart-test --full --co -q
+    Running full test suite (--full); manifest written with 0 targeted tests for CI
+    27043 tests collected in 24.54s
+    # Mode: targeted / Selected tests: 0
+
+## One half of the filing no longer reproduces
+
+INV-sotam also reported explicit target paths being skipped. That does not reproduce: `HAS_EXPLICIT_TESTS` is handled at `smart-test:708`, well before the short-circuit, and the only exits ahead of it are inside an uncalled function and the `--background` branch. Running one test file confirmed 32 tests execute. Only the `--full` half was live, and the item's status reflects that.
+
+## Why the tests are structural
+
+The script takes a non-blocking `flock` on `.ci/.smart-test.lock` and resolves its repo root from `$0`, so a test that invoked it would either fail on the lock held by the run executing it, or operate on the live tree. The class docstring records that rather than leaving it implicit; the behavioural evidence is the two runs above.
+
+## Not fixed here
+
+The new arm reuses the existing `packages/*/tests/` target, so it inherits WI-ginuj (`--full` never collects the repo-root `tests/`). INV-bigaz — the slicer having no data-file edge, so a catalogue change selects ~1 test — is untouched. Both stay open.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
