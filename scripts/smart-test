@@ -1075,7 +1075,31 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
                 exit 0
             fi
 
-            echo "No test-relevant files changed (docs/config only) - skipping tests"
+            # INV-sotam: --full means "ignore the selection and run
+            # everything", so the selection's opinion about the diff must not
+            # override it. This branch used to exit 0 here, which meant that
+            # verifying merged work -- the case where the tree legitimately
+            # holds nothing test-relevant -- printed a reassuring line and ran
+            # nothing. A gate that cannot fire read identically to one that
+            # passed, which is the defect class this repo keeps finding in its
+            # own analysis.
+            #
+            # The empty TARGETED manifest written above is kept deliberately:
+            # it is the correct CI artifact for this diff. run_full_suite()
+            # would replace it with a full-suite manifest, which CI rejects by
+            # design as a signal that change detection went wrong -- trading a
+            # silent skip for a red gate on every docs-only PR. --full is a
+            # local convenience; it does not change what CI is told.
+            if [[ "$FULL_RUN" == "true" ]]; then
+                log "No test-relevant files changed, but --full was requested"
+                echo "Running full test suite (--full); manifest written with 0 targeted tests for CI"
+                run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+                _full_rc=$?
+                fold_selection_index full
+                exit $_full_rc
+            fi
+
+            echo "smart-test: 0 tests ran - no test-relevant files changed (docs/config only)"
             exit 0
         fi
     else

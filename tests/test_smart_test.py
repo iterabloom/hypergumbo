@@ -431,3 +431,94 @@ class TestPlaybookGateSelection:
             "agent_playbooks_protocols_sops_skills",
         )
 
+
+
+def _docs_only_skip_block() -> list[str]:
+    """Extract the shipped docs/config-only short-circuit, start to closing ``fi``.
+
+    Extracted rather than restated: a copy of the block here would be free to
+    drift from the one that ships, and the defect this pins (INV-sotam) IS a
+    property of the shipped block's control flow.
+    """
+    lines = SMART_TEST.read_text().splitlines()
+    starts = [
+        i for i, line in enumerate(lines)
+        if "writing empty targeted manifest" in line
+    ]
+    assert len(starts) == 1, f"expected one short-circuit, found {len(starts)}"
+    start = starts[0]
+    for i in range(start, len(lines)):
+        # The branch is nested two levels in; its closing `fi` is the first
+        # line at eight spaces of indent.
+        if lines[i] == "        fi":
+            return lines[start:i]
+    raise AssertionError("the docs/config-only branch is never closed")
+
+
+class TestFullBypassesTheDocsOnlySkip:
+    """INV-sotam: ``--full`` must never be overridden by the selection's opinion.
+
+    ``--full`` means "ignore the selection and run everything". The docs/config
+    -only short-circuit used to ``exit 0`` before the ``FULL_RUN`` branch was
+    ever consulted, so on a tree whose only changes were docs or config the
+    command printed a reassuring line, exited 0, and ran nothing. Verifying
+    merged work is exactly when a tree looks like that, so the failure mode was
+    "the gate cannot fire" wearing the costume of "the gate passed".
+
+    These are structural tests, and the reason is worth recording: the script
+    takes a non-blocking ``flock`` on ``.ci/.smart-test.lock`` and resolves its
+    own repo root from ``$0``, so a test that invoked it would either fail on
+    the lock held by the run executing the test, or operate on the live tree.
+    The behavioural repro is in the PR description instead.
+    """
+
+    def test_full_is_consulted_before_the_skip_exits(self) -> None:
+        """The defect itself: the block must not exit without checking --full."""
+        block = _docs_only_skip_block()
+        assert any("FULL_RUN" in line for line in block), (
+            "the docs/config-only short-circuit exits without consulting "
+            "FULL_RUN, so `smart-test --full` runs nothing and exits 0"
+        )
+
+    def test_full_runs_the_suite_rather_than_only_skipping_the_exit(self) -> None:
+        """Consulting the flag is not enough — it has to run the tests."""
+        block = _docs_only_skip_block()
+        full_arm = [
+            line for line in block
+            if "run_pytest" in line and "packages/*/tests/" in line
+        ]
+        assert full_arm, (
+            "--full is consulted but never runs the suite from this branch"
+        )
+
+    def test_the_skip_reports_zero_tests_ran(self) -> None:
+        """A silent exit 0 reads as success; it has to say nothing ran."""
+        block = _docs_only_skip_block()
+        assert any("0 tests ran" in line for line in block), (
+            "the skip message must state that 0 tests ran, so a caller can "
+            "tell 'checked, nothing to do' from 'nothing was checked'"
+        )
+
+    def test_full_keeps_the_targeted_manifest(self) -> None:
+        """The trap in the obvious fix, pinned so nobody walks into it.
+
+        ``run_full_suite`` writes a FULL-SUITE manifest, which CI rejects by
+        design as a signal that change detection went wrong. ``--full`` is a
+        local convenience and must leave the committed manifest targeted, so
+        routing this branch through ``run_full_suite`` would trade a silent
+        skip for a red gate on every docs-only PR.
+
+        Comment lines are stripped before the check: this test's claim is that
+        the branch does not CALL that function, and the comment explaining why
+        has to be free to name it. Grepping the raw block failed on exactly
+        that, which is the difference between matching a name and matching a
+        call.
+        """
+        code = [
+            line for line in _docs_only_skip_block()
+            if not line.lstrip().startswith("#")
+        ]
+        assert not any("run_full_suite" in line for line in code), (
+            "--full must not route through run_full_suite: that writes the "
+            "full-suite manifest CI rejects"
+        )
