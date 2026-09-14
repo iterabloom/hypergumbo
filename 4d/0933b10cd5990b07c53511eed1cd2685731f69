@@ -1,0 +1,37 @@
+Original commit body from 1ccc0f37f8f56d7a6b8bb60012ab7f43f6d12693:
+
+`compute_boundary_coverage` returns `qualifying_only = not unknown`, so **one** unclassifiable name withholds every qualified verdict at once. Phase 6 receiver typing turned `io.BytesIO`, `subprocess.Popen`, `zipfile.ZipFile`, `typing.TextIO`, `coverage.Coverage` and eight more from *disclosed* untyped-receiver residuals into *blocking* unknowns, and all eighteen self-claims fell to `inconclusive`.
+
+Each now carries a dated `module_completeness` entry — stdlib in `python.yaml`, third-party in the self overlay — because **matching is EXACT**: `io` being complete says nothing about `io.BytesIO`, exactly as the overlay's own header says `tree_sitter` says nothing about `tree_sitter.Node`. Rows come first wherever there is real I/O.
+
+### The item recorded this as blocked on an unbuilt mechanism. It was not.
+
+It read `completeness: complete` as asserting a module does no I/O — which would indeed be false of `TextIO`. But the predicate asserts the surface is **enumerated**, and `sys.stdout` sits in the same file declared complete while carrying three `logging` rows. No receiver-origin `io_target_kind` was needed.
+
+### And adjudicating it found a real hole
+
+`install-gitleaks-no-host-fs` moved to `violated`, correctly: `zf.extractall(tmppath)` wrote outside the wrapper discipline the claim asserts, under a `# nosec B202` justifying the hazard by **provenance** ("from trusted GitHub release") — which is not that discipline.
+
+Fixed the way `9046ff4255` fixed its twin: by adding the barrier, not rewording the claim. The owner ruling at `safety_zones.py:562` calls rewording *"the one that launders"*. The new `tmp_artifact_extract` validates the destination **and** every member path after resolution, and refuses symlinks, hardlinks and other non-regular members outright — a symlink names a target no path check sees.
+
+**The dangerous branch was the unflagged one.** CPython's `zipfile._extract_member` already strips drives, leading separators and every `..`, so the flagged zip call cannot escape; `tarfile`'s default filter is `fully_trusted`. And `_get_download_url` picks `.zip` **only on Windows**, so every Linux and macOS install took the unprotected path. `tarfile.TarFile` was invisible to the catalogue for the same exact-matching reason `zipfile.ZipFile` was — so "1 unsanitized flow" was a **floor, not a count**.
+
+`filter="data"` is deliberately not relied on: `requires-python >=3.10` and it raises `TypeError` before 3.10.12. The S202 suppressions survive but sit one line **under** the validation loop that earns them rather than standing in for it — the difference between a mitigation and a waiver.
+
+### Five catalogue gates fired, each a real question
+
+- **Scope gate** — the four class names declared, since that set is an enumeration and not a prefix rule: `module_io_is_enumerated` matches exactly, and a prefix-admitting gate would disagree with the predicate it polices.
+- **Direction sweep** — `zipfile.ZipFile.write` adjudicated and allowlisted: the *name* is the archive's direction, the *boundary* is the host filesystem's, and the archive side belongs to the constructor's own mode-dependent pair.
+- **HIGH_RISK drift** — the six Popen lifecycle methods go to `HIGH_RISK_EXEMPTIONS_SUBPROCESS`: they operate on an already-launched child; the launch is the constructor, already listed.
+- **Slot-family subsumption** — three new parents, arriving with **no mechanism change** because that relation is computed rather than listed. Count moves four → seven.
+- **Bare-constructor guard** — the one worth refusing the easy fix on. It reported an unbound `Popen(spec)` "minted a receiver hint". It had not: reproduced, the `communicate` edge classifies to `None`, so the hint *was* withheld. What tagged was the **constructor**, matching `subprocess.yaml`'s own launch row by short name, long before any class-qualified row existed. Adding `Popen` to `ambiguous_names` was refused — with the import present there is no bare `Popen` edge at all, so its only effect would be deleting the *unbound* detection: the loosening direction, on a subprocess claim.
+
+### Result
+
+All 18 claims return to `confirmed_with_caveats`; the unknown set is empty. **SECURITY.md needed no edit** — it already published "inconclusive 0 / confirmed_with_caveats 18", so the document was right and the tool had drifted away from it. That is the inversion this item was filed on, resolved from the correct end.
+
+The snapshot moves by **exactly one line**: an *added* `untyped_receiver` caveat on `runtime-cli-no-subprocess` (65 `start()` sites on untyped receivers) — more disclosure, not less. No verdict moved, no `credited_flows` changed.
+
+27,075 passing; ratchet 669 (+0).
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
