@@ -1,0 +1,36 @@
+Original commit body from baca6e43021aea06517b5a33534208cbd6a0cfc4:
+
+`compute_boundary_coverage` evaluates two blockers — opaque launches, and modules the I/O catalogue could not classify — and returns on the first. A repo with both read:
+
+    NOT CONFIRMED: the analysis launches an external program at 2 call site(s)
+    (subprocess.Popen, subprocess.run) and cannot see what the launched program does
+
+and nothing else.
+
+## That is the wrong half
+
+Launches alone do not withhold a verdict — they **qualify** one. That is precisely what `qualifying_only = not unknown` means: when launches are the sole blocker the verdict is `confirmed_with_caveats`, carrying `CAVEAT_OPAQUE_BOUNDARY`. So the reader was handed the blocker that did *not* decide the verdict, while the one that did was computed and discarded. It appeared in no other channel — not the caveats, not the JSON envelope.
+
+## Observed
+
+On hypergumbo's own self-proof at dev `95041b0931`, all 18 claims are `inconclusive` and every one of them blames two subprocess launches. The actual cause is thirteen unclassified class-qualified receivers (`io.BytesIO`, `subprocess.Popen`, `zipfile.ZipFile`, …). Recovering that list required monkeypatching `_adjudicate_external_modules`. That is the concrete cost this fixes: a cron failure that could not be diagnosed from its own log.
+
+## The launch stays first — this is not a reordering
+
+The existing order carries a written rationale: an uncatalogued module is a gap the reader can close, an opaque launch is categorical, so naming the fixable blocker first would send a reader on an errand that cannot succeed. That reasoning is untouched. This adds the second half of the sentence:
+
+    ...; and it makes calls into 13 module(s) that the I/O catalog could not
+    classify (...), which is what withholds the qualified verdict the launches
+    alone would have earned
+
+## The control
+
+`test_a_launch_alone_still_blames_no_module` fails on the lazy fix — appending the clause unconditionally would blame an empty module set on every launching repo, sending readers to catalogue nothing. The clause appears only when `unknown` is non-empty.
+
+3083 passed, 1 skipped, 1 xfailed; 100% coverage on changed files.
+
+## Not fixed here
+
+Exposing the unknown set as its own field in the JSON envelope, so a consumer needn't parse prose. That is a schema change and stays on WI-razuk. The coverage regression this obscured is WI-jabus.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
