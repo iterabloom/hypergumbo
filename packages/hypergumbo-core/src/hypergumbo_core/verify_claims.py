@@ -4323,13 +4323,38 @@ def _call_production_coverage(
         # would send the reader to add one that already exists. State the
         # opacity, which is the actual cause. No trailing conclusion —
         # ``verify_claim`` appends "; cannot confirm the boundary is unused."
+        # WI-razuk: SAY WHAT ACTUALLY WITHHELD THE VERDICT. The launches above
+        # are categorical but, on their own, they QUALIFY a clean verdict
+        # rather than withhold one — that is the whole point of
+        # ``qualifying_only``. So when ``unknown`` is also non-empty, stopping
+        # at the launch text hands the reader the blocker that did NOT decide
+        # the verdict and silently drops the one that did. Measured on
+        # hypergumbo's own self-proof: 18 claims read "NOT CONFIRMED: the
+        # analysis launches an external program at 2 call site(s)" while
+        # thirteen unclassified names were what withheld them, and recovering
+        # that list took a monkeypatch because it appears in no other channel.
+        #
+        # The launch stays FIRST, for the reason given above: the categorical
+        # blocker before the fixable one. This is the second half of the
+        # sentence, not a reordering — and it is appended ONLY when there is
+        # something to name, so a repo whose launches ARE the sole blocker
+        # still reads exactly as it did.
+        withheld_by = ""
+        if unknown:
+            withheld_by = (
+                f"; and it makes calls into {len(unknown)} module(s) that the "
+                f"I/O catalog could not classify "
+                f"({_render_capped_names(_rank_modules_for_disclosure(unknown, catalogs))})"
+                f", which is what withholds the qualified verdict the launches "
+                f"alone would have earned"
+            )
         return BoundaryCoverage(
             complete=False,
             reason=(
                 f"the analysis launches an external program at "
                 f"{len(opaque)} call site(s) ({shown}) and cannot see "
                 f"what the launched program does, so whether this I/O happens "
-                f"there was never examined"
+                f"there was never examined{withheld_by}"
             ),
             opaque_sites=opaque,
             # ``not unknown`` is the whole qualification test: every check
