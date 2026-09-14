@@ -211,6 +211,63 @@ class TestFixturePattern:
         assert not _pattern_selects(pattern, "docs/fixtures/example.json")
 
 
+class TestConftestPattern:
+    """INV-kinin's sibling, one filename over.
+
+    A ``conftest.py`` is neither a ``test_``-prefixed test file nor package
+    ``src/``, so a change confined to one matched NEITHER ``CHANGED_TEST_FILES``
+    nor ``CHANGED_SOURCE_FILES`` and selected NOTHING -- smart-test printed
+    "no test-relevant files changed (docs/config only)" and wrote a manifest
+    with 0 tests, so CI would skip pytest entirely.
+
+    That is strictly worse than the fixture case INV-kinin already fixed: an
+    ``autouse`` fixture declared in a conftest governs EVERY test beneath it.
+    Found when a conftest change that REPAIRED 13 failing tests produced a
+    0-test manifest -- the repair and the blindness in the same commit.
+    """
+
+    def test_package_conftests_are_selected(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_CONFTEST_FILES")
+        assert _pattern_selects(
+            pattern, "packages/hypergumbo-tracker/tests/conftest.py"
+        )
+        assert _pattern_selects(pattern, "tests/conftest.py")
+        assert _pattern_selects(pattern, "conftest.py")
+
+    def test_non_conftest_paths_are_not(self) -> None:
+        pattern = _extract_grep_pattern("CHANGED_CONFTEST_FILES")
+        assert not _pattern_selects(
+            pattern, "packages/hypergumbo-core/tests/test_conftest_helpers.py"
+        )
+        assert not _pattern_selects(
+            pattern, "packages/hypergumbo-core/src/hypergumbo_core/conftest_util.py"
+        )
+        assert not _pattern_selects(pattern, "docs/conftest.md")
+
+
+class TestAConftestChangeSelectsItsOwningSuite:
+    """The end the pattern exists for: a real conftest path picks real tests."""
+
+    def test_the_tracker_conftest_selects_tracker_tests(self) -> None:
+        """Read off the shipped script, not restated: the block routes a
+        ``packages/<pkg>/tests/**/conftest.py`` to that package's suite."""
+        text = SMART_TEST.read_text()
+        assert "CHANGED_CONFTEST_FILES" in text
+        block = text.split("CHANGED_CONFTEST_FILES=", 1)[1]
+        # The owning-suite routing must name BOTH homes, or one of them
+        # silently selects nothing.
+        assert "packages/*/tests/*" in block or "packages/*" in block
+        assert "tests/test_*.py" in block
+
+    def test_a_root_conftest_reaches_package_suites_too(self) -> None:
+        """A rootdir conftest applies to every test collected beneath it,
+        packages included -- selecting only the root suite would under-select
+        exactly where the blast radius is widest."""
+        text = SMART_TEST.read_text()
+        block = text.split("CHANGED_CONFTEST_FILES=", 1)[1].split("\nfi\n", 1)[0]
+        assert "packages/*/tests/test_*.py" in block
+
+
 def _doc_gate_greps() -> list[str]:
     """Pull the live doc-gate grep spellings out of the script.
 

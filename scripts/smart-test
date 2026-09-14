@@ -920,6 +920,45 @@ if [[ -n "$CHANGED_FIXTURE_FILES" ]]; then
     fi
 fi
 
+# INV-kinin's SIBLING, one filename over. A `conftest.py` is neither a
+# `test_`-prefixed test file nor package `src/`, so a change confined to one
+# matched NEITHER CHANGED_TEST_FILES nor CHANGED_SOURCE_FILES, selected
+# nothing, and printed "no test-relevant files changed (docs/config only)" --
+# a manifest with 0 tests, so ci.yml skipped pytest. Strictly worse than the
+# fixture case above: an `autouse` fixture declared in a conftest governs
+# EVERY test beneath it, not one gate's inputs.
+#
+# FOUND THE EXPENSIVE WAY: a conftest change that REPAIRED 13 failing tests
+# produced a 0-test manifest. The repair and the blindness arrived in the same
+# commit, and only the manifest header said so.
+#
+# ROUTING. A package conftest selects that package's suite, exactly as a
+# fixture does. A ROOT conftest (`conftest.py` or `tests/conftest.py`) selects
+# the root suite AND every package suite, because pytest applies a rootdir
+# conftest to everything collected beneath it -- selecting only `tests/` would
+# under-select precisely where the blast radius is widest.
+CHANGED_CONFTEST_FILES=$(echo "$CHANGED_FILES" | grep -E '(^|/)conftest\.py$' || echo "")
+if [[ -n "$CHANGED_CONFTEST_FILES" ]]; then
+    CONFTEST_TESTS=""
+    while IFS= read -r cf; do
+        [[ -z "$cf" ]] && continue
+        case "$cf" in
+            packages/*/tests/*)
+                pkg_tests="${cf%%/tests/*}/tests"
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls "$pkg_tests"/test_*.py "$pkg_tests"/BRANCHES_test_*.py 2>/dev/null || true)"$'\n'
+                ;;
+            *)
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls tests/test_*.py 2>/dev/null || true)"$'\n'
+                CONFTEST_TESTS+="$(cd "$REPO_ROOT" && ls packages/*/tests/test_*.py 2>/dev/null || true)"$'\n'
+                ;;
+        esac
+    done <<< "$CHANGED_CONFTEST_FILES"
+    if [[ -n "$(echo "$CONFTEST_TESTS" | sed '/^$/d')" ]]; then
+        log "conftest changes select their owning suite (INV-kinin's sibling)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CONFTEST_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 # Check if any Python source files changed (drives the version-only and
 # no-affected-tests branches below).
 CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$' || echo "")
