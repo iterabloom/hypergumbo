@@ -798,6 +798,209 @@ _JAVA_LANG_TYPES: frozenset[str] = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# WI-tusav: a READ's boundary is its RECEIVER'S ORIGIN.
+#
+# ``java.io.BufferedReader.readLine`` and ``java.util.Scanner.nextLine`` shipped
+# at a FIXED ``fs_read`` (the Scanner row's note said so outright: "When reading
+# from a file"), so the canonical stdin idiom reported a FILESYSTEM read.
+# INV-zumin class (b) rules that out for exactly this population: the boundary
+# is a property of the stream the receiver was built over, not of the method.
+#
+# THE SHAPE IS GO'S (WI-vutav), ONE CONSTRUCTOR DEEPER. Go resolves a receiver's
+# binding to a wrapper CALL and classifies that call's argument; java's wrapper
+# is a NESTED CONSTRUCTOR -- ``new BufferedReader(new InputStreamReader(System.in))``
+# -- so the walk unwraps a decorator CHAIN instead of taking one argument. The
+# unwrap is an explicit bounded loop, not recursion, per the standing ruling on
+# deep walks.
+# ---------------------------------------------------------------------------
+
+#: Expressions that NAME a standard stream.
+#:
+#: ``System.in`` only. ``System.out`` / ``System.err`` are the WRITE direction,
+#: and java.yaml rows them as attributes under ``ipc_send`` -- the stale sibling
+#: of WI-dutah's ``logging`` ruling for c / rust / js / elixir. That is disclosed
+#: here and NOT followed: re-pointing a shipped write row is a separate change
+#: with its own blast radius, and this item is the read direction.
+_JAVA_STD_STREAM_EXPRS: frozenset[str] = frozenset({
+    "System.in", "java.lang.System.in",
+})
+
+#: Constructors whose argument is a filesystem PATH or ``File``.
+_JAVA_PATH_STREAM_TYPES: frozenset[str] = frozenset({
+    "File", "FileInputStream", "FileReader", "RandomAccessFile",
+})
+
+#: Stream DECORATORS: the target kind is their FIRST argument's.
+_JAVA_STREAM_WRAPPER_TYPES: frozenset[str] = frozenset({
+    "BufferedInputStream", "BufferedReader", "DataInputStream",
+    "InputStreamReader", "LineNumberReader", "PushbackReader", "Scanner",
+})
+
+#: Constructors over an in-process buffer. ``in_memory`` crosses NOTHING, and
+#: the core seam answers it from ``_NON_CROSSING_TARGET_KINDS`` rather than from
+#: a boundary map, so stamping it suppresses a source instead of selecting a row.
+_JAVA_MEMORY_STREAM_TYPES: frozenset[str] = frozenset({
+    "ByteArrayInputStream", "CharArrayReader", "StringReader",
+})
+
+#: The READ methods whose boundary the receiver's origin decides.
+#:
+#: A NAME TABLE, like c's ``_C_STREAM_ARG_INDEX`` and go's
+#: ``_GO_TARGET_ARGUMENT_INDEX``, and it is what keeps the binding walk off every
+#: other method call in the file. Every name here is also in java.yaml's
+#: ``ambiguous_names``, so the module slot still has to agree before a row matches.
+_JAVA_STREAM_READ_METHODS: frozenset[str] = frozenset({
+    "next", "nextInt", "nextLine", "read", "readLine",
+})
+
+#: Decorator hops before the unwrap gives up. A real chain is two or three
+#: (``BufferedReader`` over ``InputStreamReader`` over ``System.in``); the budget
+#: exists so a pathological or cyclic binding cannot spin.
+_JAVA_STREAM_UNWRAP_BUDGET: int = 8
+
+
+def _java_object_creation_type(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """Short type name of an ``object_creation_expression``, or ``None``.
+
+    Generic arguments and any package qualification are stripped, so
+    ``new java.io.FileReader(p)`` and ``new Scanner<String>(x)`` answer the same
+    as their bare spellings -- the tables below are keyed on short names because
+    that is what an import makes the source say.
+    """
+    type_node = node.child_by_field_name("type")
+    if type_node is None:  # pragma: no cover - the grammar always fields a type
+        return None
+    text = _node_text(type_node, source).strip().split("<", 1)[0].strip()
+    return text.rsplit(".", 1)[-1] or None
+
+
+def _java_enclosing_body(node: "tree_sitter.Node") -> Optional["tree_sitter.Node"]:
+    """The method or constructor body containing *node*, or ``None``."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("method_declaration", "constructor_declaration"):
+            return current.child_by_field_name("body")
+        current = current.parent
+    return None
+
+
+def _java_last_binding(
+    node: "tree_sitter.Node", source: bytes, name: str,
+) -> Optional["tree_sitter.Node"]:
+    """RHS of the LAST binding of *name* at or above *node*'s line.
+
+    Deliberately smaller than a reaching-def solver and its answers are a SUBSET
+    of one: the enclosing method only, textual line order only, no branch or loop
+    reasoning -- the same contract ``_c_binding_rhs`` and ``_go_last_binding``
+    carry, and for the same reason (the analyzer runs before any DDG exists, so
+    the alternative is not "use the solver" but "answer nothing").
+
+    ORDER IS THE POINT, and both directions are pinned by tests: taking the last
+    match in the FILE would read a rebinding BELOW the call as if it reached it;
+    taking the first would miss a rebinding above it.
+
+    A FIELD IS NOT FOUND HERE, and that is deliberate rather than a gap. The walk
+    is scoped to the method body, so a field receiver abstains -- its binding is
+    in another scope and may be written by any method on the class.
+    """
+    body = _java_enclosing_body(node)
+    if body is None:
+        return None
+    use_line = node.start_point[0]
+    best_line = -1
+    best: Optional["tree_sitter.Node"] = None
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.children)
+        if current.type == "variable_declarator":
+            left = current.child_by_field_name("name")
+            right = current.child_by_field_name("value")
+        elif current.type == "assignment_expression":
+            left = current.child_by_field_name("left")
+            right = current.child_by_field_name("right")
+        else:
+            continue
+        if left is None or right is None:
+            continue
+        if current.start_point[0] > use_line:
+            continue
+        if current.start_point[0] < best_line:
+            continue
+        if _node_text(left, source).strip() != name:
+            continue
+        best_line = current.start_point[0]
+        best = right
+    return best
+
+
+def _java_stream_kind_of(
+    node: "tree_sitter.Node", source: bytes,
+) -> Optional[str]:
+    """``io_target_kind`` for an expression that PRODUCES a readable stream.
+
+    Unwraps the decorator chain until a constructor NAMES the target. Anything
+    not provable abstains: INV-zumin's rule is one answer per call site or none,
+    and this direction selects a MINTING boundary (``ipc_recv`` over ``fs_read``),
+    so abstention is the only safe default.
+
+    ``net_stream`` IS NEVER RETURNED, and that is a correctness requirement
+    rather than an omission. ``_narrow_by_target_kind`` keeps only rows whose
+    boundary equals the resolved one, so stamping a kind java.yaml has no row for
+    would empty the candidate list and DELETE the classification -- a removal,
+    which is the direction that loses findings silently.
+    """
+    current: Optional["tree_sitter.Node"] = node
+    for _ in range(_JAVA_STREAM_UNWRAP_BUDGET):
+        if current is None:
+            return None
+        text = _node_text(current, source).strip()
+        if text in _JAVA_STD_STREAM_EXPRS:
+            return "std_stream"
+        if current.type == "identifier":
+            # ONE more binding hop, taken AT THIS NODE'S LINE so a rebinding
+            # between the wrapper and the read is not misread as the origin.
+            current = _java_last_binding(current, source, text)
+            continue
+        if current.type != "object_creation_expression":
+            return None
+        type_name = _java_object_creation_type(current, source)
+        if type_name in _JAVA_PATH_STREAM_TYPES:
+            return "host_path"
+        if type_name in _JAVA_MEMORY_STREAM_TYPES:
+            return "in_memory"
+        if type_name not in _JAVA_STREAM_WRAPPER_TYPES:
+            return None
+        args = current.child_by_field_name("arguments")
+        if args is None:  # pragma: no cover - a creation always fields arguments
+            return None
+        actual = [c for c in args.children if c.is_named]
+        if not actual:
+            return None
+        current = actual[0]
+    return None
+
+
+def _java_receiver_stream_kind(
+    node: "tree_sitter.Node", source: bytes, receiver: str,
+) -> Optional[str]:
+    """``io_target_kind`` for a read whose RECEIVER was bound to a stream.
+
+    The bytes cross at ``in.readLine()``, on a receiver whose declared type puts
+    the edge in the ``java.io.BufferedReader`` slot; the constructor that chose
+    the stream transferred nothing (ADR-0049) and, in java, emits no call edge at
+    all. So the boundary has to be recovered from the receiver's binding, which
+    is what this does.
+    """
+    binding = _java_last_binding(node, source, receiver)
+    if binding is None:
+        return None
+    return _java_stream_kind_of(binding, source)
+
+
 def _qualify_receiver_type(
     type_name: str,
     imports: dict[str, str],
@@ -2855,7 +3058,7 @@ def _extract_edges(
                                     module_path=wildcard_module,
                                     name=method_name,
                                 )
-                        edges.append(make_unresolved_edge(
+                        _unresolved_edge = make_unresolved_edge(
                             "java", current_method.id, unresolved_name,
                             node.start_point[0] + 1, PASS_ID, run.execution_id,
                             module_hint=module,
@@ -2866,7 +3069,32 @@ def _extract_edges(
                                 pr4_inherited_field_receiver
                             ),
                             call_construct=pr4_call_construct,
-                        ))
+                        )
+                        # WI-tusav: stamp the receiver's ORIGIN on the read, so
+                        # java.yaml's dual fs_read/ipc_recv rows can be narrowed.
+                        # Set on the edge rather than threaded through
+                        # ``make_unresolved_edge`` because that helper is shared
+                        # by every analyzer -- the same place c.py and go.py put
+                        # theirs.
+                        if (
+                            method_name in _JAVA_STREAM_READ_METHODS
+                            and receiver_name
+                        ):
+                            _target_kind = _java_receiver_stream_kind(
+                                node, source, receiver_name,
+                            )
+                            if _target_kind is not None:
+                                # Rebuilt rather than indexed: ``Edge.meta`` is
+                                # Optional, and `meta[k] = v` on it is the
+                                # ratchet's `index` code (go.py:5479 carries
+                                # exactly that error today). `or {}` narrows
+                                # without adding an unreachable branch the 100%
+                                # gate would then have to cover.
+                                _unresolved_edge.meta = {
+                                    **(_unresolved_edge.meta or {}),
+                                    "io_target_kind": _target_kind,
+                                }
+                        edges.append(_unresolved_edge)
 
         # Object creation: new ClassName()
         elif node.type == "object_creation_expression":
