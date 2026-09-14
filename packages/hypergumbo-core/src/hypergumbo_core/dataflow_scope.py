@@ -97,13 +97,20 @@ from .taint import WALK_VERDICTS
 #: property of ADR-0017 §3a's adjudicating design, not a per-run measurement.
 INCLUSION_DECIDED_BY = "call_graph_reachability_minus_ddg_refutation"
 
-#: The granularity at which capability is reported. ``language`` is a statement
-#: of what is NOT claimed: a capable language still holds functions the def/use
-#: extractor does not model (see the module docstring). Becomes ``function``
-#: when WI-joluk's per-function coverage gate lands. Like
-#: ``INCLUSION_DECIDED_BY``, this is a declared property with a test on it, so
-#: the claim cannot quietly outlive its truth (R16).
-COVERAGE_GRANULARITY = "language"
+#: The granularity at which capability is reported. Was ``language`` — a
+#: statement of what was NOT claimed, since a capable language still holds
+#: functions the def/use extractor does not model. WI-joluk's per-function
+#: coverage gate landed (2026-08-26, wired to both walk arms), which is the
+#: condition this constant's own comment named, so it is now ``function``:
+#: coverage is decided per function, and the functions that forfeit are
+#: counted in the emitted record rather than left to inference.
+#:
+#: THE R16 TRIGGER FIRED AND WAS NOT HONOURED FOR NINETEEN DAYS. The mechanism
+#: works — a declared constant with a test on it cannot change silently — but
+#: it catches a change to the CONSTANT, not the arrival of the condition that
+#: makes the constant false. A trigger phrased "becomes X when Y lands" needs
+#: something that notices Y.
+COVERAGE_GRANULARITY = "function"
 
 #: Buckets in :func:`count_walk_verdicts` that are not one of taint's five
 #: verdicts. ``mixed`` is a COLLAPSED row whose members disagreed: the scalar
@@ -406,6 +413,8 @@ def dataflow_scope_dict(
     sanitizer_scope: SanitizerScope | None = None,
     flows_removed_by_walk: int = 0,
     walk_verdicts: Mapping[str, int] | None = None,
+    functions_walkable: int = 0,
+    functions_forfeited: int = 0,
 ) -> dict[str, Any]:
     """The machine-readable scope block.
 
@@ -420,6 +429,16 @@ def dataflow_scope_dict(
     return {
         "inclusion_decided_by": INCLUSION_DECIDED_BY,
         "coverage_granularity": COVERAGE_GRANULARITY,
+        # WI-mugop. What the per-function granularity above actually COSTS.
+        # A function lands in the forfeited count when the CFG's recorded
+        # statement extents miss code in its body — the extractor demonstrably
+        # did not see part of it — so its walk may not refute. On the measured
+        # cohort that is 18.8-51.6% of walkable functions, and a rate that high
+        # decides how much a clean verdict is worth. Emitted as a PAIR because
+        # a bare count is unreadable: 400 forfeits out of 800 and out of 40,000
+        # are different facts. Zero-filled like every other key here.
+        "functions_walkable": functions_walkable,
+        "functions_forfeited": functions_forfeited,
         "languages": [row.to_dict() for row in rows],
         "findings_by_analysis_method": counts,
         "findings_total": sum(counts.values()),
@@ -453,6 +472,8 @@ def render_dataflow_scope_text(
     sanitizer_scope: SanitizerScope | None = None,
     flows_removed_by_walk: int = 0,
     walk_verdicts: Mapping[str, int] | None = None,
+    functions_walkable: int = 0,
+    functions_forfeited: int = 0,
 ) -> list[str]:
     """The same scope, for the text view. Empty when nothing was analyzed.
 
@@ -523,6 +544,14 @@ def render_dataflow_scope_text(
         "machinery runs for that language, NOT that every function in it is "
         "modelled (Go if-statement initializers, for one, are not)."
     )
+    if functions_walkable:
+        _pct = 100.0 * functions_forfeited / functions_walkable
+        lines.append(
+            f"  {functions_forfeited} of {functions_walkable} analysed "
+            f"functions ({_pct:.1f}%) may not refute a flow: the CFG did not "
+            "record every construct in their bodies, so an exhausted walk over "
+            "them is not evidence a flow is absent."
+        )
 
     scope = sanitizer_scope or _EMPTY_SANITIZER_SCOPE
     categories = ", ".join(scope.taint_categories) or "none"

@@ -347,7 +347,7 @@ class CfgNodeMapping:
     #: substring heuristic over node-type names is exactly the hand-rolled
     #: predicate this codebase keeps getting wrong.
     #:
-    #: Consumed by :func:`uncovered_call_lines` (WI-joluk). A language that
+    #: Consumed by :func:`uncovered_semantic_lines` (WI-joluk). A language that
     #: declares NONE cannot be checked, and the consumer treats that as
     #: "forfeit everything" rather than "nothing uncovered" — the permitting
     #: case is enumerated, so an unconfigured language fails CLOSED.
@@ -854,8 +854,7 @@ class CfgBuilder:
         None to skip it.
         """
         # Skip non-semantic nodes
-        if node.type in ("comment", "{", "}", "(", ")", ";", ",", ":", "newline", "indent",
-                         "dedent", "NEWLINE", "INDENT", "DEDENT"):
+        if node.type in _NON_SEMANTIC_NODE_TYPES:
             return None
         # Skip keyword tokens that are part of larger constructs
         if node.is_named is False and node.child_count == 0:
@@ -1485,22 +1484,49 @@ def populate_def_use_for_cfg(
     visit(body_node)
 
 
-def uncovered_call_lines(
+def uncovered_semantic_lines(
     cfg: FunctionCfg,
     body_node: Any,
     source: bytes,
     mapping: CfgNodeMapping,
 ) -> Optional[frozenset[int]]:
-    """Call sites in this function's AST that no CFG statement covers (WI-joluk).
+    """Lines whose code no CFG statement covers (WI-joluk, widened by WI-mugop).
+
+    WAS ``uncovered_call_lines`` and asked only about CALL nodes; the name is
+    changed with the predicate because the old one would now be a lie.
 
     The coverage question behind INV-lupav: did the def/use extractor actually
-    SEE all of this function? If a call node sits outside every statement the
-    CFG recorded, the extractor never ran over it, so any use of a tainted
-    value at that call is invisible to the DDG — and the §3a walk will happily
-    report ``False`` ("every step accounted for") for a value it never followed
-    there. ``False`` is the one verdict that may license removing a reported
-    flow, so the caller passes ``forfeit_refutation=True`` when this returns a
-    non-empty set.
+    SEE all of this function? If code sits outside every statement the CFG
+    recorded, the extractor never ran over it, so any use of a tainted value
+    there is invisible to the DDG — and the §3a walk will happily report
+    ``False`` ("every step accounted for") for a value it never followed.
+    ``False`` is the one verdict that may license removing a reported flow, so
+    the caller passes ``forfeit_refutation=True`` when this returns a non-empty
+    set.
+
+    WHY "CALL NODE" WAS TOO NARROW (WI-mugop). The omission that motivates this
+    gate is not a call. Go's ``for _, c := range v`` binds ``c`` from ``v`` in a
+    range clause the loop hook never records, and the clause contains no call at
+    all — so the original predicate returned an EMPTY set for a function whose
+    taint chain the extractor had demonstrably not followed, and the walk was
+    free to refute. Measured on that exact shape: calls-only reported
+    ``frozenset()``, the widened predicate reports the clause's line.
+
+    WHY A STRUCTURAL PREDICATE AND NOT A DECLARED VOCABULARY. The considered
+    alternative was a per-language list of node types that bind or use a
+    variable. That list is open-ended — it is coextensive with "everything the
+    def/use extractor does not model", which :func:`_ddg_taint_reaches` says
+    outright is not knowable from inside the walk — so an incomplete one reports
+    "fully covered" and PERMITS an unearned refutation, with nothing to diff it
+    against. The project has run that experiment: ``atomic_statement`` was
+    missing from ``rust.yaml`` and ``typescript.yaml`` and both emitted zero DDG
+    edges for months at 100% test coverage. :func:`_is_semantic_leaf` asks a
+    structural question instead and needs no vocabulary to keep in step.
+
+    PRICED BEFORE IT WAS WIDENED, on WI-joluk's own five repo-language pairs:
+    the forfeit share moves 12.5-35.5% to 18.8-51.6%, so refutation survives
+    on 48.4-81.2% of walkable functions. WI-joluk pre-registered "not near 100%,
+    so refutation stays viable on the remainder" as the condition; it is met.
 
     WHY BYTE EXTENTS AND NOT LINES. A line test cannot see the motivating case.
     ``CfgBuilder._process_conditional`` records ONLY the condition child of an
@@ -1525,8 +1551,9 @@ def uncovered_call_lines(
         mapping: The language's CFG node mapping.
 
     Returns:
-        Frozenset of 1-based lines carrying an uncovered call, empty when the
-        function is fully covered, or ``None`` when coverage is unknowable.
+        Frozenset of 1-based lines carrying an uncovered call or an uncovered
+        semantic leaf, empty when the function is fully covered, or ``None``
+        when coverage is unknowable.
     """
     if not mapping.call_node_types:
         return None
@@ -1540,22 +1567,30 @@ def uncovered_call_lines(
 
     call_types = frozenset(mapping.call_node_types)
     extents: list[tuple[int, int]] = []
-    calls: list[tuple[int, int, int]] = []
+    hits: list[tuple[int, int, int]] = []
 
-    def visit(node: Any) -> None:
+    # ITERATIVE. This recursed one frame per AST level, which is the crash
+    # INV-gotir fixed in ddg_build's own walk — keda's generated protobuf
+    # measures an AST depth of 1,171 against CPython's default limit of 1,000.
+    # Here the RecursionError would have been swallowed by the caller's
+    # ``except Exception`` and read as "function has no DDG edges".
+    stack: list[Any] = [body_node]
+    while stack:
+        node = stack.pop()
         key = (node.start_point[0] + 1, node.start_point[1], node.type)
         if key in recorded:
             extents.append((node.start_byte, node.end_byte))
-        if node.type in call_types:
-            calls.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
-        for child in node.children:
-            visit(child)
-
-    visit(body_node)
+        # UNION, never a replacement. A call node is not a leaf, so the leaf
+        # predicate does not subsume the call one (``f()()`` has no identifier
+        # of its own to catch). Keeping both can only widen, and widening is
+        # the direction that produces FEWER refutations.
+        if node.type in call_types or _is_semantic_leaf(node):
+            hits.append((node.start_byte, node.end_byte, node.start_point[0] + 1))
+        stack.extend(node.children)
 
     return frozenset(
         line
-        for start, end, line in calls
+        for start, end, line in hits
         if not any(s <= start and end <= e for s, e in extents)
     )
 
@@ -1563,6 +1598,41 @@ def uncovered_call_lines(
 # ---------------------------------------------------------------------------
 # Reaching-def solver (ADR-0017 §1b)
 # ---------------------------------------------------------------------------
+
+#: Node types that carry no semantics for coverage purposes. Extracted from
+#: :meth:`CfgBuilder._classify_node`, which skipped exactly these, so the
+#: "is this node worth accounting for" question has ONE spelling and the
+#: coverage gate cannot drift from the builder that produces its input.
+_NON_SEMANTIC_NODE_TYPES = frozenset({
+    "comment", "{", "}", "(", ")", ";", ",", ":", "newline", "indent",
+    "dedent", "NEWLINE", "INDENT", "DEDENT",
+})
+
+
+def _is_semantic_leaf(node: Any) -> bool:
+    """A named terminal that carries meaning — an identifier, a literal.
+
+    GRAMMAR-NEUTRAL BY CONSTRUCTION, and that is the point. The alternative
+    considered for :func:`uncovered_semantic_lines` was a declared per-language
+    list of node types that bind or use a variable. That list is open-ended —
+    it is coextensive with "everything a def/use extractor does not model",
+    which is not knowable in advance — so an incomplete one would report
+    "fully covered" and PERMIT an unearned refutation, silently. This asks a
+    structural question instead: anonymous tokens (punctuation, keywords) and
+    comments carry nothing, everything else named and childless does.
+
+    Interior nodes are deliberately excluded. A function body is contained in
+    no statement extent by construction, so counting interior nodes forfeits
+    every function on every repository — a predicate that cannot return
+    "covered" is not a gate, and that spelling was measured and rejected
+    rather than reasoned away (WI-mugop phase 1).
+    """
+    return (
+        bool(node.is_named)
+        and node.child_count == 0
+        and node.type not in _NON_SEMANTIC_NODE_TYPES
+    )
+
 
 # Per-function bail-out threshold (same as Joern's ReachingDefPass default).
 # Functions exceeding this fall back to structural analysis.
