@@ -1,0 +1,26 @@
+Original commit body from 53049c77a3e7cfe97e8f838c45768f04677335e5:
+
+`java.io.BufferedReader.{readLine,read}` and `java.util.Scanner.{next,nextLine,nextInt}` shipped at a **fixed `fs_read`** — the Scanner row's note read, in full, "When reading from a file" — so the canonical
+
+```java
+BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+String line = in.readLine();
+```
+
+reported a **host filesystem crossing** at the call that transfers the bytes.
+
+**What changed.** The five methods become dual `fs_read`/`ipc_recv` rows under `call_site_undecidable`, joined by `java.io.InputStream.read` and `java.io.InputStreamReader.read` — the first absent entirely, so `InputStream is = System.in; is.read();` matched no row at all. `java.py` resolves the receiver's last binding and unwraps the decorator chain, stamping `io_target_kind`. Java's wrapper is a **nested constructor**, two deep where go's WI-vutav shape was one call, so the unwrap is an explicit bounded loop rather than recursion.
+
+**The item's "check this first" paid off.** It asked that the constructor rows be verified before choosing `abstains_to: fs_read`, since an `fs_read` fallback with nothing behind it would leave the stdin crossing represented nowhere. Checked: **java emits no `calls` edge for `object_creation_expression` at all**, so there are no constructor rows and never could be. The fallback is `java.lang.System.in`'s attribute row, firing on the `module_attr_ref` edge.
+
+**The filing's premise was too strong,** corrected rather than carried forward: the idiom did not produce "no untrusted_input source at all" — it produced a **misclassified** one. Fixture before: `fs_read 4` (both stdin *and* file readers) + `ipc_recv 2` at `System.in`. After: `fs_read 2` / `ipc_recv 4`, exactly the two stdin reads moved, total unchanged.
+
+**Corpus A/B** — one survey per arm, one `XDG_CACHE_HOME` per arm, diffed both ways. gatling / clover / jenkins: **+24 chains, 0 removed, 0 moved.** All 24 are `java.io.InputStream.read`. The stamp fired 10 times (all clover: 8 `host_path`, 2 `in_memory`), every one read back correct against source.
+
+**And the negative result, which is the part worth keeping: 0 moved.** Not one receiver in three repositories resolved to a standard stream, so the `ipc_recv` direction this item exists for is demonstrated **on the fixture and not at corpus scale**. jenkins has 16 `BufferedReader` read edges, gatling 2, and the stamp fired on none — every receiver was a field or parameter, which abstains by design. Presence reached the rows; reachability did not follow.
+
+**Blast radius is three languages.** `_CATALOG_PARENTS` declares `kotlin <- java` and `scala <- java`, so these rows load for all three; two of gatling's four added chains are in `.scala` files.
+
+`net_stream` is deliberately never stamped: narrowing keeps only rows whose boundary equals the resolved one, so a stamp with no matching row would empty the candidate list and **delete** the classification.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
