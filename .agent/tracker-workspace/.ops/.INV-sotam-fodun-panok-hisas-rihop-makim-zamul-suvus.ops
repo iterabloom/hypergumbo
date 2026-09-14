@@ -22,3 +22,18 @@
     fields:  # 96ad
       statement: "A test runner given explicit target paths, or --full, must run those tests or fail loudly; it must never report success having run nothing because the working tree has no diff."  # 96ad
       root_cause: "The 'nothing test-relevant changed' short-circuit in scripts/smart-test is evaluated before both the FULL_RUN branch and the explicit-target arguments, so an empty diff suppresses the run regardless of what the caller asked for."  # 96ad
+- op: update  # 12f2
+  at: '2026-09-14T01:06:02Z'  # 12f2
+  by: agent  # 12f2
+  actor: jgstern_agent  # 12f2
+  clock: 2  # 12f2
+  nonce: 12f2  # 12f2
+  set:  # 12f2
+    status: satisfied  # 12f2
+- op: discuss  # dba1
+  at: '2026-09-14T01:06:02Z'  # dba1
+  by: agent  # dba1
+  actor: jgstern_agent  # dba1
+  clock: 3  # dba1
+  nonce: dba1  # dba1
+  message: "SATISFIED 2026-09-13, PR #948, dev 95041b0931. Behavioural evidence, this\nitem's OWN filed repro re-run, all three commands, under the condition that\ntriggers it (a non-empty diff holding nothing test-relevant):\n\n    ./scripts/smart-test tests/                        -> 1,780 tests collected\n    ./scripts/smart-test packages/hypergumbo-core/tests/ -> 14,627 collected\n    ./scripts/smart-test --full                        -> 27,043 collected\n                          plus the new line: \"Running full test suite (--full)\"\n\nAll three previously printed the skip line and exited 0 having run nothing.\n\nONE HALF OF THE FILING DID NOT REPRODUCE, and this is worth recording rather\nthan quietly closing over. The explicit-target arm was ALREADY fixed before\nthis change: HAS_EXPLICIT_TESTS is handled at smart-test:708, well ahead of\nthe short-circuit, and the only exits before it are inside an uncalled\nfunction and the --background branch. Confirmed by running one test file at\ndev ee6f31a172 (32 tests ran). Only the --full half was live at tip. The\nitem was filed 2026-08-28 and the explicit-path fix commit is dated\n2026-02-17, so the two observations are hard to reconcile; what is measured\nis that at tip, before the change, explicit paths ran and --full did not.\n\nTHE FIX, and the trap in the obvious one. The docs/config-only branch now\nconsults FULL_RUN and runs the suite, deliberately KEEPING the empty\ntargeted manifest instead of routing through run_full_suite(). That function\nwrites a full-suite manifest which CI rejects by design as a change-detection\nfailure, so the obvious fix would have traded a silent skip for a red gate on\nevery docs-only PR. A negative control pins it, and the control was falsified\nby inserting a real run_full_suite call and watching the test fail. The skip\nmessage now states that 0 tests ran, which was direction 3 on this item.\n\nTESTS ARE STRUCTURAL, with the reason recorded in the class docstring: the\nscript takes a non-blocking flock and resolves its repo root from $0, so a\ntest that invoked it would fail on the lock held by the run executing it, or\noperate on the live tree. The behavioural evidence is the runs above.\n\nAN INSTRUMENT CORRECTION MADE DURING THIS WORK. I first explained the \"clean\ndev\" condition as modified tracked .ops files keeping CHANGED_FILES non-empty.\nThat was read off a stale git-status snapshot, not the live tree. A genuinely\nempty diff hits the run_full_suite fallback and behaves CORRECTLY. The real\ntrigger is narrower and worse: a diff that is non-empty and holds nothing\ntest-relevant, which is the ordinary state of a docs or config PR.\n\nNOT COVERED, cite do not fold: WI-ginuj (--full never collects the repo-root\ntests/) and INV-bigaz (the slicer has no data-file edge, so a catalogue\nchange selects about one test). Both remain open and neither is touched here."  # dba1
