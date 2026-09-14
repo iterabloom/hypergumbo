@@ -208,13 +208,33 @@ class TestEmittedShape:
         forbids, so the granularity is emitted rather than left implicit.
 
         Like ``inclusion_decided_by`` this is a declared constant with a test
-        on it, which is what stops the claim outliving its truth: when
-        WI-joluk's per-function coverage gate lands, this must become
-        ``function`` or the assertion fails (R16).
+        on it, which is what stops the claim outliving its truth. Its own
+        trigger read "when WI-joluk's per-function coverage gate lands, this
+        must become ``function``". The gate landed 2026-08-26 and was wired to
+        both walk arms; the constant said ``language`` for nineteen more days,
+        because the test guards a change to the CONSTANT and nothing was
+        watching for the arrival of the CONDITION. Worth knowing before
+        writing the next trigger of this shape.
         """
         out = dataflow_scope_dict([_row(language="go")], {"ddg": 1})
         assert out["coverage_granularity"] == COVERAGE_GRANULARITY
-        assert COVERAGE_GRANULARITY == "language"
+        assert COVERAGE_GRANULARITY == "function"
+
+    def test_forfeit_disclosure_is_a_pair_and_always_present(self) -> None:
+        """WI-mugop. Per-function granularity is only honest if the cost is
+        published: on the measured cohort 18.8-51.6% of walkable functions may
+        not refute. A bare count cannot be read — 400 of 800 and 400 of 40,000
+        are different facts — so both halves are emitted, zero-filled like
+        every other key, so their absence never has to be interpreted."""
+        out = dataflow_scope_dict(
+            [_row(language="go")], {"ddg": 1},
+            functions_walkable=1329, functions_forfeited=611,
+        )
+        assert out["functions_walkable"] == 1329
+        assert out["functions_forfeited"] == 611
+        bare = dataflow_scope_dict([_row(language="go")], {"ddg": 1})
+        assert bare["functions_walkable"] == 0
+        assert bare["functions_forfeited"] == 0
 
     def test_dict_carries_rows_and_findings(self) -> None:
         out = dataflow_scope_dict(

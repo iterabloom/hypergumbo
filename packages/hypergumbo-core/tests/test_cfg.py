@@ -19,7 +19,7 @@ from tree_sitter_language_pack import get_language
 
 from hypergumbo_core.taint import TaintFlowFinding
 from hypergumbo_core.cfg import (
-    uncovered_call_lines,
+    uncovered_semantic_lines,
     BasicBlock,
     CfgBuilder,
     CfgEdge,
@@ -2507,7 +2507,7 @@ class TestUncoveredCallLines:
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
-        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset({5})
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({5})
 
     def test_fully_covered_function_reports_empty(self) -> None:
         """The negative half: a function with no unmodelled construct forfeits
@@ -2525,7 +2525,78 @@ class TestUncoveredCallLines:
         body = _get_go_function_body(tree)
         mapping = load_cfg_mapping("go")
         cfg = build_function_cfg(body, src, mapping, "go:x.go:2-6:f:function")
-        assert uncovered_call_lines(cfg, body, src, mapping) == frozenset()
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_go_range_clause_binding_is_uncovered(self) -> None:
+        """WI-mugop: THE SHAPE THE CALLS-ONLY PREDICATE COULD NOT SEE.
+
+        ``for _, c := range v`` binds ``c`` from ``v`` in a range clause the
+        loop hook never records, and the clause contains NO CALL — so the
+        original predicate returned an empty frozenset for a function whose
+        taint chain the extractor demonstrably had not followed, leaving the
+        §3a walk free to exhaust and refute. This is INV-lupav's live route,
+        not a hypothetical: measured on this exact source, calls-only reports
+        ``frozenset()`` and the widened predicate reports line 4.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tfor _, c := range v {\n"
+            "\t\tuse(c)\n"
+            "\t}\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-7:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset({4})
+
+    def test_a_covered_function_with_literals_still_reports_empty(self) -> None:
+        """THE FLOOR, and it is the assertion that makes the class above mean
+        anything. Widening a coverage predicate is only useful if it can still
+        return "covered"; one that fires everywhere forfeits the whole cohort
+        and reads as a finding about the substrate rather than a broken gate.
+
+        Deliberately carries string and integer literals and a keyword-heavy
+        construct, because the widened predicate counts named LEAVES — if it
+        tripped on ordinary tokens inside recorded statements it would fail
+        here rather than silently on a corpus.
+        """
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tn := 42\n"
+            '\ts := "banner"\n'
+            "\tw := g(v, n, s)\n"
+            "\tuse(w)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-8:f:function")
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
+
+    def test_interior_nodes_are_not_counted(self) -> None:
+        """The spelling that was measured and REJECTED. Counting any uncovered
+        NAMED node rather than named leaves forfeits every function on every
+        repository, because the function body is contained in no statement
+        extent by construction — a clean-looking 100% that says nothing about
+        coverage. Pinned here so nobody widens it that far by accident."""
+        tree, src = _parse_go(
+            "package main\n"
+            "func f() {\n"
+            "\tv := source()\n"
+            "\tuse(v)\n"
+            "}\n"
+        )
+        body = _get_go_function_body(tree)
+        mapping = load_cfg_mapping("go")
+        cfg = build_function_cfg(body, src, mapping, "go:x.go:2-5:f:function")
+        # The body block itself is an uncovered NAMED node; it must not count.
+        assert body.is_named and body.child_count > 0
+        assert uncovered_semantic_lines(cfg, body, src, mapping) == frozenset()
 
     def test_undeclared_language_returns_None_not_empty(self) -> None:
         """``None`` and ``frozenset()`` are DIFFERENT facts and must not fold.
@@ -2543,7 +2614,7 @@ class TestUncoveredCallLines:
         assert mapping.call_node_types == []
         body = tree.root_node
         cfg = build_function_cfg(body, src, mapping, "java:C.java:1-1:f:method")
-        assert uncovered_call_lines(cfg, body, src, mapping) is None
+        assert uncovered_semantic_lines(cfg, body, src, mapping) is None
 
     def test_python_and_rust_declare_their_call_types(self) -> None:
         """Every language with a def/use extractor must be checkable.

@@ -11,7 +11,7 @@ line recorded the walk returns ``True``; with it absent it returns ``False``,
 and ``forfeit_refutation=True`` flips that to ``None``.
 
 WHY THIS FILE IS A GUARD AND NOT A FIX. WI-joluk built the remedy —
-``cfg.uncovered_call_lines`` reports the call sites no recorded CFG statement
+``cfg.uncovered_semantic_lines`` reports the call sites no recorded CFG statement
 covers, and ``forfeit_refutation`` downgrades a would-be ``False`` to ``None``
 for such a function. It is wired to the BARRIER arm only. Wiring it to the §3a
 arm today changes nothing observable, and that is not laziness: §3a spells its

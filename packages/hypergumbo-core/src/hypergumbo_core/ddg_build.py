@@ -267,7 +267,7 @@ def _solve_one_function(
         # WI-joluk. Computed only for functions that HAVE edges: a function the
         # walk can never run on cannot forfeit anything, and adding it would
         # inflate the set with entries no consumer reads.
-        uncovered = deps["uncovered_call_lines"](cfg, body_node, source, mapping)
+        uncovered = deps["uncovered_semantic_lines"](cfg, body_node, source, mapping)
         if uncovered is None or uncovered:
             out.forfeit_refutation.add(sym_id)
         # Collected only alongside edges: a function with no edges cannot be
@@ -318,7 +318,7 @@ def build_repo_ddg(
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
-            uncovered_call_lines,
+            uncovered_semantic_lines,
         )
     except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
         return out
@@ -327,7 +327,7 @@ def build_repo_ddg(
         "build_function_cfg": build_function_cfg,
         "populate_def_use_for_cfg": populate_def_use_for_cfg,
         "solve_reaching_defs": solve_reaching_defs,
-        "uncovered_call_lines": uncovered_call_lines,
+        "uncovered_semantic_lines": uncovered_semantic_lines,
     }
 
     for language in languages:

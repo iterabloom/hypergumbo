@@ -6184,6 +6184,14 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
     # both emit sites run whether or not that block did. ``None`` renders as
     # the zero-filled breakdown, so the key is present on every run.
     walk_verdict_counts: "dict[str, int] | None" = None
+    # WI-mugop's forfeit disclosure. Bound HERE rather than read off
+    # ``ddg_symbols`` / ``ddg_forfeits`` at the emit site: those are unpacked
+    # inside the taint branch, so a run with no taint claims never binds them
+    # and reading them below is `possibly-undefined` — the ratchet says so, and
+    # it is right. Zero is also the correct value for such a run: nothing was
+    # walked, so nothing forfeited.
+    ddg_walkable_count = 0
+    ddg_forfeited_count = 0
 
     from .taint import (
         TaintCatalogError,
@@ -6369,6 +6377,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks),
             )
+            ddg_walkable_count = len(ddg_symbols)
+            ddg_forfeited_count = len(ddg_forfeits)
             taint_findings = []
             for lang in sorted(per_lang_sinks):
                 lang_prefix = f"{lang}:"
@@ -6583,6 +6593,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                     dataflow_rows, findings_by_method, sanitizer_scope,
                     flows_removed_by_walk=len(refuted_flows),
                     walk_verdicts=walk_verdict_counts,
+                    functions_walkable=ddg_walkable_count,
+                    functions_forfeited=ddg_forfeited_count,
                 ),
                 # INV-zosun: which catalogues this verdict rested on. Always
                 # present, like dataflow_coverage above, so `user_supplied:
@@ -6647,6 +6659,8 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             dataflow_rows, findings_by_method, sanitizer_scope,
             flows_removed_by_walk=len(refuted_flows),
             walk_verdicts=walk_verdict_counts,
+            functions_walkable=ddg_walkable_count,
+            functions_forfeited=ddg_forfeited_count,
         ):
             print(line)
 
