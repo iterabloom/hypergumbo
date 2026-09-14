@@ -1,0 +1,23 @@
+- op: create  # cd29
+  at: '2026-09-14T20:52:45Z'  # cd29
+  by: agent  # cd29
+  actor: jgstern_agent  # cd29
+  clock: 1  # cd29
+  nonce: cd29  # cd29
+  data:  # cd29
+    kind: work_item  # cd29
+    title: "java.lang.System.{out,err} are still ipc_send: WI-tolif's stdio-to-logging ruling never reached java, and scala/kotlin inherit the gap"  # cd29
+    status: todo_soft  # cd29
+    priority: 3  # cd29
+    parent:  # cd29
+    tags:  # cd29
+    - catalogue  # cd29
+    - io_boundary  # cd29
+    - java  # cd29
+    - analysis_quality  # cd29
+    isbefore: []  # cd29
+    duplicate_of: []  # cd29
+    not_duplicate_of: []  # cd29
+    pr_ref:  # cd29
+    description: "FOUND 2026-09-14 while reading java.yaml for WI-tusav. Not a new ruling -- a\nSCOPE GAP in one that already shipped.\n\nTHE OBSERVATION, measured through the loader:\n\n  java  : [('java.lang.System', 'out', 'ipc_send'), ('java.lang.System', 'err', 'ipc_send')]\n  scala : [('java.lang.System', 'out', 'ipc_send'), ('java.lang.System', 'err', 'ipc_send')]\n  c     : [('stdio', 'stdout', 'logging'),          ('stdio', 'stderr', 'logging')]\n\nWI-tolif (2026-04-23) ruled that stdio writes are TERMINAL OUTPUT / log\ndestinations, not inter-process communication in any threat-model sense, and\nmoved python's sys.stdout / sys.stderr from ipc_send to logging. Its own\nrationale, still in python.yaml: keeping them under ipc_send \"produced 70+\nfalse positives per repo\". WI-dutah then scope-expanded that to c, javascript,\nrust, scala, elixir and haskell, and is DONE.\n\nJAVA WAS NEVER IN EITHER LIST, and scala's presence in WI-dutah's list did not\nhelp: `_CATALOG_PARENTS` declares scala <- java, so scala's System.out row IS\njava's row. Marking scala in scope while leaving java untouched moved nothing\nfor scala. kotlin <- java inherits the same.\n\nWHY THIS IS THE FALSE-POSITIVE DIRECTION AND NOT A HOLE. ipc_send is a SINK in\nAUTO_SINK_ZONE_MAP; logging is the weaker classification. So every\nSystem.out.println on a tainted value currently reports as an IPC egress,\nwhich is the 70+/repo shape WI-tolif measured for python. Fixing it REMOVES\nfindings, so it needs the same treatment WI-tolif gave: measure the moved rows\nand read them back, do not just re-point the row.\n\nDELIVERABLE. (1) Move java.lang.System.{out,err} from ipc_send to logging, and\ncheck whether java.io.PrintStream / PrintWriter write methods want the same.\n(2) Confirm the change reaches kotlin and scala through _CATALOG_PARENTS rather\nthan needing its own edit in each. (3) A/B on corpus java repos (jenkins,\nclover, iceberg, cassandra are all present and sizeable) with every MOVED row\nread back, since this is a removal and LIVE's rule is that a sweep whose output\nis mostly removals deserves more suspicion than one that re-points.\n\nNOT TO BE CONFUSED WITH WI-bojud, which is about java dropping the OUTER token\nof a field-access receiver so System.out never REACHES its row. That is\nreachability; this is the row's own boundary being the one WI-tolif retired.\nBoth can be true at once and neither subsumes the other.\n\nREPRO. hypergumbo_core.io_boundary.load_catalog(\"java\"): java.lang.System.out\n-> ipc_send. Compare load_catalog(\"c\"): stdio.stdout -> logging."  # cd29
+    fields: {}  # cd29
