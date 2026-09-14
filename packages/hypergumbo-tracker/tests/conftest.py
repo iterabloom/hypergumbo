@@ -34,6 +34,49 @@ def _isolate_ops_journal(
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_protected_config_root(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin the host-protected config root to a tmp path that does not exist.
+
+    THE HOST DECIDED THE TEST, WHICH IS THE DEFECT. ``protected_config`` treats
+    the EXISTENCE of ``/etc/hypergumbo-tracker/`` as the opt-in signal, and
+    refuses to fall back when the directory exists but holds no entry for the
+    repository being loaded -- deliberately, because a silent fallback is the
+    downgrade attack the module was written to close. Tests that build a repo
+    under ``tmp_path`` therefore inherit whatever the DEVELOPER'S MACHINE has:
+    on a host that never opted in they pass, and on a host running the
+    two-account setup all thirteen raise ``ProtectedConfigError`` from
+    ``load_config``. Same tree, same commit, two answers.
+
+    Observed as 13 failures on a full-suite run on an opted-in host
+    (test_sync's whole ``TestPreflightCheck``, test_configure, test_setup);
+    CI never saw them because its containers have no ``/etc/hypergumbo-tracker``.
+    That asymmetry is the reason this is a fixture and not thirteen edits: the
+    next test to build a repo under ``tmp_path`` would have inherited the same
+    host dependence.
+
+    MODELLING THE CONDITION RATHER THAN DETECTING IT. The fixture does not ask
+    whether the real root exists -- a skip-if-present guard would leave the
+    tests untested on exactly the hosts that run the configuration they are
+    about. It pins the root to a path guaranteed ABSENT, so every test starts
+    from "protection not opted in" on every host, and a test that wants
+    protection ON opts in explicitly. There is deliberately no environment
+    override to use here (the agent controls its own environment, so an
+    env-redirectable root would reopen the hole), which is why this patches the
+    module attribute, exactly as ``test_protected_config`` already does.
+
+    Tests needing a populated root override this with their own
+    ``monkeypatch.setattr(pc, "PROTECTED_ROOT", ...)``, which runs after autouse
+    setup -- the same ordering ``_isolate_ops_journal`` relies on.
+    """
+    from hypergumbo_tracker import protected_config
+
+    absent = tmp_path_factory.mktemp("protected-config") / "not-opted-in"
+    monkeypatch.setattr(protected_config, "PROTECTED_ROOT", absent)
+
+
 @pytest.fixture()
 def ops_dir(tmp_path: Path) -> Path:
     """Create a temporary .ops directory for store tests."""
