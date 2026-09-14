@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from hypergumbo_core.safety_zones import (
+    tmp_artifact_extract,
     SafetyZoneViolation,
     cache_unlink,
     cache_write_zip,
@@ -201,7 +202,13 @@ def test_every_destructive_wrapper_enforces_a_zone() -> None:
 
     destructive = {
         name for name in dir(sz)
-        if name.endswith(("_rmtree", "_unlink", "_rename"))
+        # WI-jabus added "_extract": an archive NAMES ITS OWN DESTINATIONS,
+        # so an extraction wrapper is destructive in the sense this test
+        # means -- it writes paths the caller never passed. Added here, not
+        # just to the one wrapper, for the reason this test's own docstring
+        # gives: the fix must be the zone mechanism, or the next wrapper
+        # ships the same hole.
+        if name.endswith(("_rmtree", "_unlink", "_rename", "_extract"))
         and callable(getattr(sz, name))
     }
     assert destructive, "no destructive wrappers found — check the naming rule"
@@ -515,3 +522,121 @@ def test_tmp_artifact_dir_honours_prefix() -> None:
 
     with tmp_artifact_dir(prefix="hg_probe_") as tmpdir:
         assert Path(tmpdir).name.startswith("hg_probe_")
+
+
+class TestTmpArtifactExtract:
+    """WI-jabus: an archive NAMES ITS OWN DESTINATIONS.
+
+    ``install-gitleaks-no-host-fs`` asserts that install-gitleaks writes only
+    through wrappers. Extraction did not, and the suppression that stood in
+    its place justified the hazard by PROVENANCE ("from trusted GitHub
+    release") rather than by the wrapper discipline the claim names. The
+    precedent is 9046ff4255, where a claim flipped to ``violated`` for want of
+    a rename wrapper and was answered by adding the wrapper, not by rewording
+    the claim -- and the owner ruling recorded in this module's header is that
+    rewording "is the one that launders".
+
+    THE TAR BRANCH IS THE DANGEROUS ONE AND THE ONE ALMOST EVERY USER TAKES
+    (``.zip`` is selected only on Windows): CPython's
+    ``zipfile._extract_member`` already strips drives, leading separators and
+    every ``..`` component, while ``tarfile``'s default filter is
+    ``fully_trusted``.
+    """
+
+    @staticmethod
+    def _tar(path: Path, entries: list[tuple[str, bytes]]) -> Path:
+        import io
+        import tarfile
+
+        with tarfile.open(path, "w:gz") as tf:
+            for name, data in entries:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        return path
+
+    def test_a_tar_extracts_into_the_zone(self, tmp_path: Path) -> None:
+        archive = self._tar(tmp_path / "a.tar.gz", [("gitleaks", b"binary")])
+        dest = tmp_path / "out"
+        dest.mkdir()
+        tmp_artifact_extract(archive, dest)
+        assert (dest / "gitleaks").read_bytes() == b"binary"
+
+    def test_a_zip_extracts_into_the_zone(self, tmp_path: Path) -> None:
+        import zipfile
+
+        archive = tmp_path / "a.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("gitleaks.exe", b"binary")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        tmp_artifact_extract(archive, dest)
+        assert (dest / "gitleaks.exe").read_bytes() == b"binary"
+
+    def test_a_tar_member_escaping_upward_is_refused(self, tmp_path: Path) -> None:
+        """The escape ``filter='data'`` would catch on 3.12 and NOT on 3.10.0."""
+        archive = self._tar(
+            tmp_path / "evil.tar.gz", [("../escaped", b"pwned")],
+        )
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(SafetyZoneViolation, match="tmp_artifact"):
+            tmp_artifact_extract(archive, dest)
+        assert not (tmp_path / "escaped").exists()
+
+    def test_an_absolute_tar_member_is_refused(self, tmp_path: Path) -> None:
+        """``pathlib`` discards the left operand when the right is absolute --
+        the same shape that deleted a thesis directory through the cache
+        wrapper (see ``_require_within_zone``)."""
+        archive = self._tar(
+            tmp_path / "abs.tar.gz", [("/etc/hypergumbo-owned", b"pwned")],
+        )
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(SafetyZoneViolation, match="tmp_artifact"):
+            tmp_artifact_extract(archive, dest)
+
+    def test_a_symlink_member_is_refused_outright(self, tmp_path: Path) -> None:
+        """A symlink names a TARGET no path check sees, so it is refused by
+        TYPE rather than validated by path."""
+        import tarfile
+
+        archive = tmp_path / "link.tar.gz"
+        with tarfile.open(archive, "w:gz") as tf:
+            info = tarfile.TarInfo("gitleaks")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "/etc/passwd"
+            tf.addfile(info)
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(SafetyZoneViolation, match="neither"):
+            tmp_artifact_extract(archive, dest)
+
+    def test_a_destination_outside_the_zone_is_refused(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        """The dest is checked too: validating only the MEMBERS would let the
+        whole extraction land anywhere."""
+        from hypergumbo_core import safety_zones as sz
+
+        archive = self._tar(tmp_path / "a.tar.gz", [("gitleaks", b"binary")])
+        zone = tmp_path / "zone"
+        zone.mkdir()
+        monkeypatch.setattr(sz, "_tmp_zone_root", lambda: zone)
+        outside = tmp_path / "elsewhere"
+        outside.mkdir()
+        with pytest.raises(SafetyZoneViolation, match="tmp_artifact"):
+            tmp_artifact_extract(archive, outside)
+
+    def test_a_zip_member_escaping_upward_is_refused(self, tmp_path: Path) -> None:
+        """CPython sanitizes this one anyway; the wrapper refuses it FIRST, so
+        the barrier does not depend on a stdlib implementation detail."""
+        import zipfile
+
+        archive = tmp_path / "evil.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("../escaped", b"pwned")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(SafetyZoneViolation, match="tmp_artifact"):
+            tmp_artifact_extract(archive, dest)

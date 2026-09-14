@@ -517,6 +517,17 @@ HIGH_RISK_EXEMPTIONS_SUBPROCESS: frozenset[str] = frozenset({
     # boundary=subprocess catalog entry to land in either
     # HIGH_RISK_PRIMITIVES or this set.
     #
+    # Python subprocess.Popen — WI-jabus. Lifecycle and I/O on an
+    # ALREADY-LAUNCHED child; the launch itself is the CONSTRUCTOR, which
+    # sits in HIGH_RISK_PRIMITIVES as "subprocess.Popen". Listing these as
+    # high-risk would surface the same launch twice in the audit view and
+    # would say `p.wait()` is arbitrary code execution, which it is not.
+    # They carry boundary=subprocess so the taint walk still follows them,
+    # which is the exact split this set exists to express -- and the same
+    # shape as the Swift/ObjC/Haskell entries below.
+    "subprocess.Popen.communicate", "subprocess.Popen.wait",
+    "subprocess.Popen.poll", "subprocess.Popen.terminate",
+    "subprocess.Popen.kill", "subprocess.Popen.send_signal",
     # Go — PATH-lookup helpers (string in, string out; no exec).
     "os/exec.LookPath", "golang.org/x/sys/execabs.LookPath",
     # C / C++ — wait on an already-launched child (does not spawn).

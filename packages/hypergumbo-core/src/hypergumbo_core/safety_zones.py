@@ -448,6 +448,73 @@ def tmp_artifact_rmtree(path: Path) -> None:
     shutil.rmtree(path)
 
 
+def tmp_artifact_extract(archive: Path, dest: Path) -> None:
+    """Unarchive INTO the tmp_artifact zone, member by member.
+
+    SAFETY ZONE: ``tmp_artifact``. ENFORCED, and enforced TWICE OVER, because
+    an archive is the one input that NAMES ITS OWN DESTINATIONS: the caller's
+    ``dest`` must lie in the zone, and so must every member path after
+    resolution. Checking only ``dest`` would be the ``cmd_cache_clear`` defect
+    one level down -- containment of the argument you looked at, while the
+    thing doing the writing supplies paths you did not.
+
+    WHY THIS ARRIVED LATE, and it is INV-lalad's lesson again: INV-zudak
+    enumerated the fs-write primitives that must route through a wrapper, and
+    ``extractall`` is not among them. It became visible only when WI-jabus
+    rowed ``zipfile.ZipFile`` as a class-qualified receiver, at which point
+    ``install-gitleaks-no-host-fs`` moved to ``violated`` -- a claim asserting
+    writes go ONLY through wrappers, over code whose extraction did not. The
+    write was always there; what was missing was the barrier that says so.
+
+    THE TAR BRANCH IS THE DANGEROUS ONE, and it is the one almost every user
+    takes: ``_get_download_url`` picks ``.zip`` only on Windows. CPython's
+    ``zipfile._extract_member`` already strips drives, leading separators and
+    every ``..`` component, so a zip genuinely cannot escape; ``tarfile``'s
+    default extraction filter is ``fully_trusted`` and can write through
+    ``..``, through an absolute member name, and through a symlink whose
+    TARGET no path check sees. So symlinks, hardlinks and every other
+    non-regular member are refused outright rather than validated.
+
+    ``filter="data"`` is deliberately NOT relied upon. ``requires-python`` is
+    ``>=3.10`` and the parameter raises ``TypeError`` before 3.10.12, so it
+    would be a guarantee on some interpreters and an exception on others --
+    and a stdlib promise is not a repo-enforced barrier anyway. The explicit
+    loop below is the barrier, on every supported version.
+    """
+    import tarfile
+    import zipfile
+
+    _safety_zone_barrier()
+    _require_within_zone(dest, _tmp_zone_root(), "tmp_artifact")
+    dest_root = dest.resolve()
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as zf:
+            for name in zf.namelist():
+                _require_within_zone(dest / name, dest_root, "tmp_artifact")
+            # The suppressions sit HERE, one line under the loop that earns
+            # them:
+            # every member was resolved against dest_root immediately above.
+            # In gitleaks.py they stood in for that check rather than after
+            # it, which is the difference between a mitigation and a waiver.
+            zf.extractall(dest)  # noqa: S202  # nosec B202
+        return
+    with tarfile.open(archive, "r:gz") as tf:
+        for member in tf.getmembers():
+            if not (member.isreg() or member.isdir()):
+                raise SafetyZoneViolation(
+                    f"refusing to extract {member.name!r} from {archive}: "
+                    f"only regular files and directories are permitted in the "
+                    f"'tmp_artifact' zone, and this member is neither (a "
+                    f"symlink or device node names a target no path check "
+                    f"sees)",
+                )
+            _require_within_zone(dest / member.name, dest_root, "tmp_artifact")
+        # As above: validated member-by-member, and non-regular members
+        # refused outright, which is more than `filter="data"` would give on
+        # the interpreters this package supports.
+        tf.extractall(dest)  # noqa: S202  # nosec B202
+
+
 @contextmanager
 def tmp_artifact_dir(*, prefix: str | None = None) -> Iterator[str]:
     """Create (and clean up) an ephemeral scratch DIRECTORY in the tmp zone.

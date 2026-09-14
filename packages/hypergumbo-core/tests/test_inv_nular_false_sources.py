@@ -788,6 +788,17 @@ class TestStandardInputIsNotLogging:
             # fetch() sends the request.
             ("javascript", "net_send", "fetch", "fetch"),
             ("javascript", "net_send", "window", "fetch"),
+            # WI-jabus. `ZipFile.write(filename, arcname)` names the direction
+            # of the ARCHIVE ("put this into the zip") and the boundary names
+            # the direction of the HOST FILESYSTEM: it READS `filename` off
+            # disk. Both are true and they are not simultaneous at this row,
+            # because the archive side belongs to the CONSTRUCTOR, which
+            # `zipfile.ZipFile` already carries as a mode-dependent
+            # fs_read/fs_write pair. Splitting it that way is what keeps
+            # `zipfile.ZipFile(io.BytesIO(), "w")` honest: the archive never
+            # touches the filesystem there, and the member read still does --
+            # which is the exact shape at safety_zones.py:253-255.
+            ("python", "fs_read", "zipfile.ZipFile", "write"),
         }
         hits = set()
         for lang in ALL_LANGS:

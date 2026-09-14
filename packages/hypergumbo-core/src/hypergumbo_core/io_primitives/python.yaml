@@ -78,6 +78,22 @@ ambiguous_names:
   - next          # Scanner.next vs builtins.next()
   - dump          # json.dump vs any .dump()
   - input         # fileinput.input (fs_read) vs builtins.input (ipc_recv):
+  # WI-jabus: the class-qualified receiver rows added for the self-claims gate
+  # put these method names in the catalogue, and a bare name that matches
+  # without module context is the INV-fazim bite -- an unbound `Popen(spec)`
+  # followed by `v.communicate()` tagged as subprocess purely on the method
+  # name, with no import binding it. Caught by
+  # test_each_non_builtin_bare_key_withholds_when_unbound.
+  - communicate   # subprocess.Popen.communicate vs any .communicate()
+  - poll          # subprocess.Popen.poll vs any poller
+  - terminate     # subprocess.Popen.terminate vs any .terminate()
+  - send_signal   # subprocess.Popen.send_signal vs any .send_signal()
+  - extractall    # zipfile.ZipFile/tarfile.TarFile vs any .extractall()
+  - extract       # same pair vs any .extract()
+  - getvalue      # io.BytesIO/StringIO vs any .getvalue()
+  - load          # coverage.Coverage.load vs json.load, any .load()
+  - analysis2     # coverage.Coverage.analysis2
+  - parse_source  # coverage.parser.PythonParser.parse_source
                   # BOTH are boundaries, so a bare .input() must not pick one
   # INV-maluk: Path.replace and Path.rename are method primitives whose
   # short names collide with str / bytes / list / dict.replace and various
@@ -244,6 +260,25 @@ fs_read:
   - module: zipfile
     functions: [ZipFile, Path]
     notes: "Dual-classified: mode-dependent. zipfile.Path is the archive-membership path class, not pathlib's."
+  - module: zipfile.ZipFile
+    methods: [write]
+    notes: >-
+      WI-jabus. `ZipFile.write(filename, arcname)` puts THE BYTES FROM
+      `filename` into the archive, so it READS that path off disk -- true even
+      when the archive itself is an in-memory buffer, which is exactly the shape
+      at safety_zones.py:253-255 (`zipfile.ZipFile(io.BytesIO(), "w")` then
+      `zf.write(member, ...)`). The archive's destination is a separate
+      question answered by whoever opened it.
+  - module: typing.TextIO
+    methods: [read, readline, readlines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. A `TextIO` may be a file, a pipe or an in-memory buffer, so no
+      single boundary is true -- EXACTLY the shape haskell's System.IO handle
+      family carries (INV-vaduk: exactly one of these is true per call and the
+      call site cannot know which, because the answer is which stream was
+      passed). THIS ROW STAYS FIRST so an unresolvable receiver keeps fs_read,
+      which mints no taint source.
   - module: io
     functions: [open_code, FileIO]
     notes: "FileIO's CONSTRUCTOR opens the path; dual-classified."
@@ -329,6 +364,40 @@ fs_write:
     functions: [open, GzipFile]
   - module: tarfile
     functions: [open, TarFile]
+  - module: tarfile.TarFile
+    methods: [extractall, extract]
+    notes: >-
+      WI-jabus. The SIBLING the zipfile rows made visible, and the more
+      dangerous of the two: `tarfile` extraction defaults to the
+      `fully_trusted` filter, so a member may name an absolute path, a `..`
+      escape, or a SYMLINK whose target no path check sees -- where CPython's
+      zipfile._extract_member already strips drives, leading separators and
+      every `..` component. It was ABSENT here for the same reason
+      zipfile.ZipFile was: `tarfile` the MODULE is declared complete and
+      MATCHING IS EXACT, so the module entry never reached the class. Rowing
+      only the zip class would have left the branch almost every user takes
+      invisible -- `_get_download_url` picks `.zip` only on Windows.
+  - module: zipfile.ZipFile
+    methods: [extractall, extract]
+    notes: >-
+      WI-jabus. An UNARCHIVE TO DISK: `extractall(path)` writes every member
+      under `path`. Found at gitleaks.py:231 carrying a bandit S202
+      suppression, inside the very subcommand `install-gitleaks-no-host-fs`
+      makes a claim about -- the catalogue could not see it, so the claim was
+      being adjudicated without it. The gate going inconclusive was PROTECTIVE
+      here, not noise.
+  - module: typing.TextIO
+    methods: [write, writelines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. fs_write / logging, the haskell System.IO.hPutStr shape
+      exactly: one of them is true per call and which one depends on the stream
+      the caller passed -- sys.stderr reads as logging, an `open(p, "w")`
+      handle as fs_write. THIS ROW STAYS FIRST, matching haskell's declaration
+      order, so an unresolvable receiver keeps fs_write: the TIGHTENING
+      direction. Abstaining to logging instead would grant a clean host-fs
+      verdict to every unresolvable stream write, which is the false-all-clear
+      direction this project refuses.
   - module: zipfile
     functions: [ZipFile]
   - module: io
@@ -679,6 +748,15 @@ logging:
   - module: typing
     functions: [reveal_type]
     notes: "The one I/O surface in typing - writes to stderr. The survey probe's catch."
+  - module: typing.TextIO
+    methods: [write, writelines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. The logging twin; the selection rule is on the fs_write row.
+      NOTE THE SLOT: `typing` and `typing.TextIO` are different modules and the
+      completeness entry for one says nothing about the other -- which is the
+      whole reason this row is needed even though `typing` has been declared
+      complete since 2026-08-15.
   - module: argparse.ArgumentParser
     methods: [print_help, print_usage, error]
     notes: "error prints usage to stderr then raises SystemExit."
@@ -699,6 +777,13 @@ logging:
     notes: "Terminal / log output; redirectable to file or pipe but not by itself an IPC channel"
 
 ipc_recv:
+  - module: typing.TextIO
+    methods: [read, readline, readlines]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-jabus. The ipc_recv twin of the fs_read TextIO row; a TextIO bound to
+      sys.stdin is an ipc_recv. The fs_read row stays FIRST, so an unresolvable
+      receiver keeps the boundary that mints no taint source.
   # ---------------------------------------------------------------
   # 2026-08-15 stdlib climb (INV-dabuf path-out). Every row below was a
   # measured unmatched call target on hypergumbo's own artifact-scoped
@@ -754,6 +839,20 @@ ipc_recv:
     methods: [recv, recv_bytes]
 
 subprocess:
+  - module: subprocess.Popen
+    methods: [communicate, wait, poll, terminate, kill, send_signal]
+    notes: >-
+      WI-jabus. LAUNCH-ONLY, on `run`'s precedent and NOT on check_output's.
+      Whether `communicate()` transfers the child's bytes back depends on
+      `stdout=PIPE`, an argument the catalogue cannot read -- and here that
+      argument is on the CONSTRUCTOR, one hop further away than `run`'s own
+      `capture_output=`. The shipped treatment for exactly that is a
+      launch-only row with the omission DISCLOSED rather than silent, which is
+      what this is. It deliberately does NOT mint untrusted_input: ADR-0049
+      ruling 1 mints only where the far side chose the value, and
+      check_output / getoutput / getstatusoutput already carry that for the
+      case where the capture is unconditional. WI-bimik's premise that
+      subprocess output mints nothing is STALE and recorded so on that item.
   - module: multiprocessing.Process
     methods: [start]
     notes: "2026-09-06 WI-dupok: forks or spawns the child (Popen in the spawn context); the launch site of every multiprocessing worker."
@@ -1557,6 +1656,104 @@ module_completeness:
     retrieved: "2026-08-15"
     notes: >-
       open/open_code/FileIO rowed; BytesIO/StringIO/TextIOWrapper operate on in-memory buffers or already-open objects.
+  # -------------------------------------------------------------------
+  # WI-jabus, retrieved 2026-09-14. CLASS-QUALIFIED RECEIVERS.
+  #
+  # Each names a CLASS, and each is here because MATCHING IS EXACT --
+  # `module_io_is_enumerated`'s own docstring: "Not a prefix, not a suffix,
+  # not a component", because `urllib` would otherwise vouch for
+  # `urllib.request` and Go's `os` for `os/exec`. So `io` being complete (just
+  # above, and it even NAMES BytesIO in its note) does not reach `io.BytesIO`.
+  #
+  # Phase 6 receiver typing is what made these reachable: the calls used to
+  # land on an untyped receiver, which is DISCLOSED through the
+  # untyped_receiver caveat, and now land on a class the gate had no opinion
+  # about. `qualifying_only = not unknown`, so ONE of these withheld ALL
+  # EIGHTEEN of this repository's self-claims (WI-jabus; third recorded
+  # instance after builtins/INV-bofab and uvicorn).
+  #
+  # THESE DECLARE THE SURFACE ENUMERATED, NOT I/O-FREE. sys.stdout is the
+  # precedent in this very file: declared complete AND carrying logging rows.
+  # -------------------------------------------------------------------
+  - module: io.BytesIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      An in-memory byte buffer. read/write/getvalue/seek/tell move bytes
+      inside the process and cross nothing; `getbuffer` exposes the same
+      memory. The `io` entry above already says this in prose -- exact
+      matching is why it must also be said here.
+  - module: io.StringIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      The text twin of io.BytesIO; same surface, same reasoning.
+  - module: random.Random
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      A PRNG over in-process state: choice/randint/shuffle/sample/random draw
+      from the instance's Mersenne state. `seed()` with no argument reads
+      os.urandom, which is entropy rather than a host DESCRIPTION or a secret
+      -- no boundary in this vocabulary, and INV-tutar's split is what keeps
+      that from being filed as one.
+  - module: concurrent.futures.ThreadPoolExecutor
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      `submit` / `map` SCHEDULE a callable; whatever I/O happens is the
+      callable's own, reached through its own edges. Rowing the executor would
+      attribute every worker's crossing to the scheduler. shutdown joins
+      threads.
+  - module: urllib.request.Request
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      CONSTRUCTS AND SENDS NOTHING -- already adjudicated by INV-gujoh and
+      WI-gihif. add_header / add_data / get_full_url mutate an object;
+      `urlopen` is what crosses, and it is rowed under net_send at the
+      urllib.request slot, which this entry does not reach or claim to.
+  - module: subprocess.Popen
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      The launch surface is rowed above (the constructor is the launch, and
+      the opaque-boundary caveat names it); communicate/wait/poll/terminate/
+      kill/send_signal are rowed launch-only there too. stdin/stdout/stderr are
+      ATTRIBUTES holding file objects -- a read through one is a call on that
+      object, classified where that object's own class is declared, not here.
+  - module: tarfile.TarFile
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      extractall/extract (fs_write) are rowed above. `open`/`extractfile`
+      operate on members of an archive the constructor already opened, which
+      carries its own dual row at the `tarfile` module slot;
+      getmembers/getnames/list read the central directory the constructor has.
+      NOT a claim that TarFile is I/O-free -- it plainly is not, which is why
+      the rows come first.
+  - module: zipfile.ZipFile
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      extractall/extract (fs_write) and write (fs_read) are rowed above.
+      `open`/`read` operate on members of an archive already opened by the
+      constructor, which carries its own dual row; namelist/infolist/testzip
+      read the central directory the constructor has. NOT a claim that ZipFile
+      is I/O-free -- it plainly is not, which is why the rows come first.
+  - module: typing.TextIO
+    completeness: complete
+    retrieved: "2026-09-14"
+    notes: >-
+      read/readline/readlines and write/writelines are rowed above under
+      call_site_undecidable, because a TextIO may be a file, a pipe or a
+      buffer. The remainder -- close, flush, seek, tell, fileno, isatty,
+      readable, writable, seekable, __enter__/__exit__ -- is state and
+      queries. This is the entry WI-jabus was BLOCKED on, and the block was a
+      misreading: the item recorded that "declaring typing.TextIO complete
+      would assert it does no I/O, which is false", but `completeness` asserts
+      the surface is ENUMERATED, not that it is empty. sys.stdout in this same
+      file is declared complete and carries three logging rows.
   - module: fcntl
     completeness: complete
     retrieved: "2026-08-15"

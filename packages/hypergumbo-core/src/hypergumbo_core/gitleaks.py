@@ -65,7 +65,9 @@ import tarfile
 import zipfile
 
 from .safety_zones import (
+    SafetyZoneViolation,
     tmp_artifact_dir,
+    tmp_artifact_extract,
     cache_mkdir,
     cache_write,
     install_artifact_chmod,
@@ -225,13 +227,13 @@ def install_gitleaks(quiet: bool = False) -> bool:
             # Write archive
             install_artifact_write_bytes(archive_path, data)
 
-            # Extract (from trusted GitHub release - nosec B202)
-            if filename.endswith(".zip"):
-                with zipfile.ZipFile(archive_path) as zf:
-                    zf.extractall(tmppath)  # noqa: S202  # nosec B202
-            else:
-                with tarfile.open(archive_path, "r:gz") as tf:
-                    tf.extractall(tmppath)  # noqa: S202  # nosec B202
+            # Extract through the zone wrapper, which validates EVERY member
+            # path against the tmp_artifact root. The suppressions this
+            # replaced justified the hazard by PROVENANCE ("from trusted
+            # GitHub release"); the claim this code is under asserts a
+            # WRAPPER discipline, and provenance is not that. See
+            # safety_zones.tmp_artifact_extract.
+            tmp_artifact_extract(archive_path, tmppath)
 
             # Find the binary
             binary_name = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
@@ -260,7 +262,17 @@ def install_gitleaks(quiet: bool = False) -> bool:
                     GITLEAKS_PATH.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH,
                 )
 
-    except (OSError, tarfile.TarError, zipfile.BadZipFile) as e:  # pragma: no cover
+    except (
+        OSError,
+        SafetyZoneViolation,
+        tarfile.TarError,
+        zipfile.BadZipFile,
+    ) as e:  # pragma: no cover
+        # SafetyZoneViolation is caught here rather than allowed to escape: a
+        # refused member means a release archive tried to write outside the
+        # tmp zone, which is a REFUSAL TO INSTALL, not a crash. It returns
+        # False like every other extraction failure, and the message names
+        # the member.
         print(f"Error extracting gitleaks: {e}", file=sys.stderr)  # pragma: no cover
         return False  # pragma: no cover
 
