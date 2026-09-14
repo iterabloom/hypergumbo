@@ -1,0 +1,45 @@
+- op: create  # cdc0
+  at: '2026-09-14T21:35:50Z'  # cdc0
+  by: agent  # cdc0
+  actor: jgstern_agent  # cdc0
+  clock: 1  # cdc0
+  nonce: cdc0  # cdc0
+  data:  # cdc0
+    kind: work_item  # cdc0
+    title: "The section 3a coverage gate keys on CALL nodes, so a def/use omission at a non-call construct still licenses an unearned False (INV-lupav L2 residual; price the widened forfeit share before widening)"  # cdc0
+    status: todo_hard  # cdc0
+    priority: 2  # cdc0
+    parent:  # cdc0
+    tags:  # cdc0
+    - taint  # cdc0
+    - adr_0017  # cdc0
+    - dataflow  # cdc0
+    isbefore: []  # cdc0
+    duplicate_of: []  # cdc0
+    not_duplicate_of: []  # cdc0
+    pr_ref:  # cdc0
+    description: "INV-lupav's clause L2, intact after every fix shipped for it, reached through\nthe one hole WI-joluk's coverage gate is built not to see.\n\nTHE GATE ASKS ONE QUESTION: does every CALL node in the function body sit\ninside a recorded CFG statement extent (cfg.uncovered_call_lines)? A def/use\nomission at a construct that is NOT a call is therefore invisible to it, and\nthe walk exhausts and returns False -- which since WI-kabif (2026-09-02)\nREMOVES the flow.\n\nMEASURED, not read off the source. Probe at dev 79961e513f with the control\nfirst, production summaries loaded:\n\n    L1 cwd := src()\n    L2 a := cwd                  recorded; single heir; tracked\n    L3 print(a)                  terminating summary\n    L4 for _, c := range cwd {   SECOND use of cwd -- invisible (WI-losod)\n    L5     sink(c)               sink, and this call IS covered\n\n    CONTROL (second use recorded)      -> True   ADMISSIBLE\n    RESIDUAL (second use unrecorded)   -> False  <- true answer is True\n    RESIDUAL, forfeit_refutation=True  -> None\n\nEvery heir is tracked, so INV-lupav's heir-granularity fix has no subject.\nEvery call is covered, so the gate has no subject. The omission is a missing\nUSE at a non-call construct, and nothing in the pipeline can currently see it.\n\nWHY THIS IS NOT JUST \"WIDEN THE PREDICATE\" -- THE DESIGN QUESTION TO SETTLE\nFIRST. WI-joluk pre-registered the forfeit share as the number that decides\nwhether refutation is worth having: 12.8% to 35.5% across five repo-language\npairs, \"not near 100%, so refutation stays viable on the remainder\". Widening\ncoverage from CALL nodes to every statement-bearing construct will raise that\nshare, and if it approaches 100% then section 3a removal authority -- granted\n2026-09-02 -- is worth nothing, because every function forfeits. So the first\ndeliverable here is the MEASUREMENT of the widened share on the same five\npairs, and the decision is the owner's, not the implementation's. Do not widen\nthe predicate and ship it; price it first.\n\nBLAST RADIUS TODAY IS ZERO AND THAT IS MEASURED, NOT ASSUMED. Section 3a\nreturns False zero times in production: 84 walks on hypergumbo-core (29 True /\n55 None / 0 False) and 22 on alertmanager (8 True / 14 None / 0 False), every\nwalk wrapped and tallied over real verify-claims runs. Escapes dominate, which\nis INV-busis from the other side. This class activates as escape sites close,\nwhich is exactly when the unearned False starts deleting findings.\n\nPRIORITY NOTE FOR THE OWNER. Filed P2 to match INV-lupav, but the two legs\ndiffer: INV-lupav was re-ranked P0->P2 on 2026-08-17 partly because it \"cannot\nbe worked\" (both of its blockers, WI-joluk and WI-kabif, are now done, so that\nleg has expired). This item CAN be worked and still changes nothing today."  # cdc0
+    fields: {}  # cdc0
+- op: update  # 69e9
+  at: '2026-09-14T21:36:06Z'  # 69e9
+  by: agent  # 69e9
+  actor: jgstern_agent  # 69e9
+  clock: 2  # 69e9
+  nonce: '69e9'  # 69e9
+  set: {}  # 69e9
+  add:  # 69e9
+    not_duplicate_of: [WI-joluk-kaban-zofuf-hahip-bimal-zopap-fifug-bomov]  # 69e9
+- op: discuss  # 0699
+  at: '2026-09-14T21:56:48Z'  # 0699
+  by: agent  # 0699
+  actor: jgstern_agent  # 0699
+  clock: 3  # 0699
+  nonce: '0699'  # 0699
+  message: "Filed out of INV-lupav's thread on 2026-09-14 alongside PR #957, which closed\nthe heir-granularity route and left this one open. The probe in the\ndescription was run at dev 79961e513f with the positive control first and is\nreproduced in that PR's commit body."  # 0699
+- op: discuss  # a11b
+  at: '2026-09-14T23:09:12Z'  # a11b
+  by: agent  # a11b
+  actor: jgstern_agent  # a11b
+  clock: 4  # a11b
+  nonce: a11b  # a11b
+  message: "PHASE 1 DONE: THE WIDENED SHARE IS PRICED, AND IT IS NOT NEAR 100%.\n\nINSTRUMENT. ~/hypergumbo_lab_notebook/taint-area-08052026/meas/\nforfeit_share_widened.py -- a SIBLING of the 2026-08-06 forfeit_share.py that\nproduced WI-joluk's original numbers, not an edit of it. It IMPORTS that\nfile's controls, fixtures and exclusion set rather than re-deriving them, and\nthe baseline arm calls production cfg.uncovered_call_lines. Denominator is\nfunctions producing DDG edges, matching ddg_build.py:265-272 and WI-joluk's\nown denominator, so the two numbers are comparable rather than merely\nadjacent.\n\nFLOOR CHECK FIRST -- can each candidate predicate return \"covered\" AT ALL? A\ngate that cannot pass is not a gate.\n    PASS  ident  uncovered=3   covered=0\n    PASS  leaf   uncovered=3   covered=0\n    FAIL  named  uncovered=13  covered=2   <- VOIDED\n\"named\" (any uncovered named node) fires on a FULLY COVERED function, because\nthe function BODY node is contained in no statement extent by construction. It\nreads as a 100% forfeit on every repo, which looks like a finding and is an\nartefact. It is reported voided rather than quoted.\n\nFORFEIT SHARE, WI-joluk's own five pairs:\n    repo          lang     walkable   current   ident    leaf\n    alertmanager  go           1271     32.3%   44.9%   45.4%\n    prometheus    go           4428     36.2%   52.8%   53.3%\n    kserve        go           1555     27.7%   43.0%   43.0%\n    kserve        python       1358     29.1%   37.5%   37.5%\n    hypergumbo    python      28621     12.5%   18.8%   18.8%\n\nBASELINE HAS NOT DRIFTED. The current column reproduces WI-joluk's recorded\n33.5 / 35.5 / 26.9 / 27.8 / 12.8. That is the control on the instrument\nitself: a baseline arm that failed to reproduce would void the widened arm.\n\nTHE ANSWER TO THE PRE-REGISTERED QUESTION. WI-joluk registered \"not near 100%,\nso refutation stays viable on the remainder\" as the condition. Widened, the\nshare is 18.8%-53.3%, so refutation survives on 46.7%-81.2% of walkable\nfunctions. The fork this item was filed to expose -- that closing INV-lupav\nmight cost WI-kabif's removal authority -- is NOT forced by the number.\n\nAND THE GRAMMAR-NEUTRAL SPELLING IS FREE. \"leaf\" (named, childless, not\ncomment or punctuation -- reusing the shipped non-semantic skip list at\ncfg.py:857-862) costs essentially nothing over the substring test on\n\"identifier\": identical on three of five pairs, +0.5pp on the other two. So\nthe predicate needs no new per-language vocabulary AND gives up no precision\nfor doing without one. That removes the last argument for a declared\nnode-type list.\n\nNOT YET DECIDED HERE, deliberately: whether 53.3% on prometheus -- more than\nhalf of all walkable functions forfeiting -- is worth paying even though it is\nnot near 100%, and whether WI-losod (which would buy the share back rather\nthan forfeit it) is the better spend. Those are judgment, not measurement, and\nthe numbers above are what they should be judged against."  # a11b

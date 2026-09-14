@@ -1,0 +1,22 @@
+- op: create  # 8dfb
+  at: '2026-09-14T23:19:57Z'  # 8dfb
+  by: agent  # 8dfb
+  actor: jgstern_agent  # 8dfb
+  clock: 1  # 8dfb
+  nonce: 8dfb  # 8dfb
+  data:  # 8dfb
+    kind: work_item  # 8dfb
+    title: "Four unchanged corpus repos produce 4-11% fewer DDG-edge-producing functions than on 2026-08-06; the forfeit SHARE held while its denominator fell, so the drift was invisible to the usual comparison"  # 8dfb
+    status: todo_hard  # 8dfb
+    priority: 2  # 8dfb
+    parent:  # 8dfb
+    tags:  # 8dfb
+    - taint  # 8dfb
+    - dataflow  # 8dfb
+    - adr_0017  # 8dfb
+    isbefore: []  # 8dfb
+    duplicate_of: []  # 8dfb
+    not_duplicate_of: []  # 8dfb
+    pr_ref:  # 8dfb
+    description: "UNEXPLAINED, MEASURED, AND FOUND BY A CONTROL RATHER THAN BY LOOKING FOR IT.\n\nFour UNCHANGED third-party checkouts each produce 4-11% FEWER functions with\nDDG edges than they did on 2026-08-06. DDG edges are what section 3a can walk\nat all, so a function that stops producing them stops being adjudicable: its\ntaint findings fall back to structural.\n\nTHE DISCRIMINATOR IS ALREADY RUN, and it rules out the harness. The ORIGINAL\n2026-08-06 instrument -- ~/hypergumbo_lab_notebook/taint-area-08052026/meas/\nforfeit_share.py, unmodified, its own positive control passing -- was re-run\nat dev 85fa799fc4 and now reports numbers that do NOT match its own recorded\nlog (forfeit_share.log, same directory):\n\n    alertmanager/go   walkable 1329 -> 1271  (-4.4%)   forfeit 445 -> 411\n    prometheus/go     walkable 4773 -> 4428  (-7.2%)\n    kserve/go         walkable 1747 -> 1555  (-11.0%)\n    kserve/python     walkable 1512 -> 1358  (-10.2%)\n    hypergumbo/python walkable 24769 -> 28621 (+15.6%)  <- EXPECTED, own code grew\n\nSame script, same exclusion set, same denominator. The corpus checkouts are\nstatic: alertmanager 4781bbe (2026-01-09), prometheus 9cb3641 (2026-01-09),\nkserve a70985a (2026-01-07). So this is the pipeline, not the corpus and not\nthe instrument.\n\nWHY IT WAS NEARLY MISSED, which is the part worth keeping. The SHARE barely\nmoved -- 33.5% -> 32.3%, 26.9% -> 27.7%, 27.8% -> 29.1%, 12.8% -> 12.5% -- so\na reader comparing shares concludes \"baseline stable\" and moves on. I did\nexactly that, and a review caught it. The ratio held while the POPULATION\nunder it fell by up to 11%. A share is not a control on its own denominator.\n\nSCOPE OF THE SEARCH, already narrowed. Only six commits have touched\ncfg.py since the baseline, and only two touched the go def/use path\n(go_def_use.py / cfg_nodes/go.yaml), one of which is comments-only:\n    c14cbc2d7f  fix(taint): unadjudicated flow may claim a situation (INV-karud)\n    f6c905b055  docs(comments): five module docstrings          <- docs only\n    8e69f40356  fix(framework-patterns): cache keyed on resolved dir\n    4dcd87c0bf  fix(verify-claims): method-shaped catalogue inconclusive\n    afc0160e26  feat(taint): coverage-gate 3a refutation (WI-joluk)\n    f93d16b42a  feat(ddg): wire JavaScript via the shared TypeScript grammar\nddg_build.py's explicit-stack rewrite (eba51a0974, INV-gotir) is NOT a\ncandidate for THIS measurement: the instrument enumerates functions with its\nown walk, so ddg_build's traversal cannot affect the count. It remains a\ncandidate for production behaviour and should be checked separately -- its\ncommit claims \"byte-identical on poetry\", which is n_effective 1 for a\nrepo-level claim.\n\nDIRECTION IS UNKNOWN AND MUST NOT BE ASSUMED. Fewer walkable functions could\nbe a REGRESSION (edges that should be produced are not) or a CORRECTNESS FIX\n(spurious edges stopped being produced). Nothing here establishes which, and\nthe difference decides whether this is a defect or a silent improvement.\nEstablish the sign before proposing a fix.\n\nREPRO: run forfeit_share.py at HEAD against the three corpus repos and diff\nagainst forfeit_share.log in the same directory. Bisect over the six commits\nabove. One repo is enough to bisect; alertmanager is the cheapest at 12 MB."  # 8dfb
+    fields: {}  # 8dfb
