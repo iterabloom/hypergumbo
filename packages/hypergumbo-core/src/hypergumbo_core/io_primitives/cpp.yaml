@@ -29,6 +29,36 @@ language: cpp
 # ``module_completeness``.
 status: in_progress
 
+fs_read:
+  # WI-bapuk. THIS SECTION IS DECLARED FIRST and that is the whole abstention
+  # mechanism: cpp declares no `abstains_to`, exactly as c and haskell do not,
+  # so an unstamped call falls to the FIRST-DECLARED row. fs_read mints no
+  # taint source; ipc_recv does. Pinned by a test, not left to a reviewer.
+  - module: std
+    functions: [getline]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-bapuk: std::getline(stream, str) was ABSENT, so the idiomatic C++
+      standard-input read produced no source at all -- std::cin is rowed as an
+      attribute and fires where it is literally written, but the call that
+      TRANSFERS the bytes was invisible. A FIXED row would be wrong: the stream
+      is an ARGUMENT (INV-bagok / INV-zumin class (b), the fgets shape), so
+      getline(in, s) over an ifstream and getline(std::cin, s) are one row and
+      two different crossings.
+
+      THE MODULE SLOT IS `std` AND THAT REQUIRED AN ANALYZER CHANGE. cpp.py
+      emitted the comma-joined list of every #include in the file as the module
+      for an unresolved call, discarding the namespace the call actually names
+      -- so `std::getline(...)` arrived as `iostream,fstream,string` and this
+      row could never have matched, while the ATTRIBUTE path already emitted
+      `std` for std::cin. Measured before writing this row (LIVE rule 9): of 78
+      corpus C++ files containing a getline call, `string` appears in 51.3%,
+      `sstream` 48.7%, `fstream` 47.4%, `iostream` 38.5% and 14.1% include none
+      of them, so rowing under any single header would have reached at most half
+      the population. cpp.py now ADDS `std` to the module disjunction rather
+      than replacing the include list, because replacing it would delete
+      std::printf's match against c.yaml's inherited stdio row.
+
 ipc_send:
   - module: std
     attributes: [cout, cerr]
@@ -38,6 +68,21 @@ ipc_recv:
   - module: std
     attributes: [cin]
     notes: "iostream stdin — the C++-idiomatic counterpart of c.yaml's stdio.stdin"
+  - module: std
+    functions: [getline]
+    boundary_ruling: call_site_undecidable
+    notes: >-
+      WI-bapuk: the ipc_recv twin. cpp.py stamps io_target_kind from the stream
+      ARGUMENT -- inline std::cin, or the DECLARED TYPE of a bare identifier
+      (`std::ifstream in(p)` is the most-vexing-parse shape, a declaration whose
+      type node is std::ifstream) -- and _narrow_by_target_kind keeps the
+      matching row. Reading the declared type is strictly more reliable than
+      the value-origin hop c needs, because C++ writes the type down.
+
+      net_stream IS NEVER STAMPED: narrowing keeps only rows whose boundary
+      equals the resolved one, so a stamp with no matching row would empty the
+      candidate list and DELETE the classification. A getline over a socket
+      stream abstains to fs_read instead.
 
 host_info_read:
   - module: std::chrono::system_clock

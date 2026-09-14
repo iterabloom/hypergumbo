@@ -257,7 +257,11 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
         description=(
             "A comma-joined SET of candidate modules -- cpp joins every "
             "#include in the file, because a call in that unit could come "
-            "from any of them. 6.2% of shipped refs. Non-conformant as an "
+            "from any of them, and since WI-bapuk PREPENDS the namespace a "
+            "`std::`-qualified call names (or, for an unqualified call, a "
+            "`using namespace` the file declares), because that is another "
+            "home the call could have come from. 6.2% of shipped refs. "
+            "Non-conformant as an "
             "IDENTITY while being the honest answer to the question: the "
             "analyzer genuinely does not know which. Already handled "
             "downstream by two deliberately different quantifiers -- "
@@ -271,9 +275,16 @@ MODULE_KEY_NOTIONS: Final[tuple[ModuleKeyNotion, ...]] = (
                     "packages/hypergumbo-lang-mainstream/src/"
                     "hypergumbo_lang_mainstream/cpp.py"
                 ),
-                line=1404,
-                anchor='module_hint = ",".join(system_includes)',
-                note="The file's entire #include set joined into one slot.",
+                line=1599,
+                anchor='module_hint = ",".join(_slots)',
+                note=(
+                    "The file's entire #include set joined into one slot, "
+                    "with the namespace the call names prepended (WI-bapuk). "
+                    "The slot is left at the `external` SENTINEL when the "
+                    "file has no system includes -- naming a namespace there "
+                    "would switch off lookup_with_module's short-name "
+                    "fallback and DELETE classifications that depend on it."
+                ),
             ),
         ),
     ),
