@@ -332,6 +332,15 @@ CATALOGUE_SCOPE: dict[str, Scope] = {
             "time", "typing", "urllib.request", "warnings",
             "xml.etree.ElementTree", "xmlrpc.server.SimpleXMLRPCServer",
             "zipfile",
+            # WI-jabus: the CLASS-QUALIFIED receivers the self-claims gate
+            # needed. Each is a CPython class whose MODULE is already admitted
+            # two lines above, and each is listed separately for the same
+            # reason `pathlib.Path` and `ssl.SSLContext` are: this set is an
+            # enumeration, not a prefix rule, because `module_io_is_enumerated`
+            # matches EXACTLY and a scope gate that admitted by prefix would
+            # disagree with the predicate it exists to police.
+            "subprocess.Popen", "tarfile.TarFile", "typing.TextIO",
+            "zipfile.ZipFile",
         }),
     ),
     "rust": Scope(

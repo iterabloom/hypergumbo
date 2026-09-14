@@ -149,6 +149,7 @@
     "caveats": [
       "opaque_boundary",
       "unknown_receiver_scope",
+      "untyped_receiver",
       "user_supplied_sanitizer"
     ],
     "credited_flows": "nonzero",

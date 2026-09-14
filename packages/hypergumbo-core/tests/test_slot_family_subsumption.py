@@ -22,9 +22,17 @@ Confirmed by live repro before this file was written.
 THE RELATION IS COMPUTED, NOT LISTED. A row is a slot-family PARENT when its
 qualified name is the MODULE SLOT of another row: ``os.environ`` is the module
 of ``get``. That is the catalogue's own structure, so the fix needs no per-
-language table and picks up a user-supplied catalogue for free. Four rows in the
-shipped catalogues have the shape today, all Python: ``os.environ`` (env_read),
-``sys.stdin`` (ipc_recv), ``sys.stdout`` and ``sys.stderr`` (logging).
+language table and picks up a user-supplied catalogue for free. SEVEN rows in
+the shipped catalogues have the shape today, all Python: ``os.environ``
+(env_read), ``sys.stdin`` (ipc_recv), ``sys.stdout`` and ``sys.stderr``
+(logging), and -- added by WI-jabus, which rowed the class-qualified receivers
+the self-claims gate could not classify -- ``subprocess.Popen`` (subprocess),
+``zipfile.ZipFile`` and ``tarfile.TarFile`` (both dual fs_read/fs_write). The
+three new ones arrive by exactly the route the paragraph above describes and
+needed no mechanism change: each names a CONSTRUCTOR the module row already
+carried, which is now also a module slot carrying the methods called on what it
+returns. That the count moved without a code change is the point of computing
+the relation rather than listing it.
 
 IT IS SYMMETRIC, WHICH THE ITEM DID NOT MEASURE. Two of those four are SINK
 rows, so ``sys.stdout.write(x)`` doubles a sink exactly as ``os.environ.get()``
@@ -278,7 +286,7 @@ class TestDdgArmWhereItCostsASituation:
 class TestShippedCatalogueHasTheShape:
     """The relation is real in the shipped rows, not only in fixtures."""
 
-    def test_python_declares_exactly_the_four_known_parents(self) -> None:
+    def test_python_declares_exactly_the_known_parents(self) -> None:
         from hypergumbo_core.io_boundary import load_catalog
         prims = list(load_catalog("python").primitives)
         modules = {p.module for p in prims}
@@ -288,6 +296,14 @@ class TestShippedCatalogueHasTheShape:
         }
         assert parents == {
             "os.environ", "sys.stdin", "sys.stdout", "sys.stderr",
+            # WI-jabus. Each was ALREADY a primitive (the module row's
+            # constructor: `subprocess.Popen`, `zipfile.ZipFile`,
+            # `tarfile.TarFile`) and BECAME a module slot when the methods
+            # called on the constructed object were rowed. Pinned here rather
+            # than derived so that the next row to acquire the shape has to be
+            # noticed -- the subsumption mechanism handles it automatically,
+            # which is exactly why nobody would otherwise look.
+            "subprocess.Popen", "zipfile.ZipFile", "tarfile.TarFile",
         }
 
     @pytest.mark.parametrize("language", ["bash", "go", "javascript", "rust"])
