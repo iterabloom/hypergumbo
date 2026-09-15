@@ -2489,11 +2489,17 @@ def _reconcile_fast_forward(repo_root: Path) -> tuple[bool, str]:
     """Fast-forward ``repo_root`` to its upstream; return (advanced, detail).
 
     Deliberately does NOT set the ``tracker-recover-disabled`` marker.
-    ``do_sync`` sets it around its own fetch on purpose — without it a
-    journalled-but-uncommitted op is restored as an untracked file mid-fetch and
-    the reconciling fast-forward aborts on its own overwrite check. Here the
-    opposite is wanted: the post-checkout and reference-transaction hooks should
-    be LIVE, because restoring ops the pull disturbs is exactly their job.
+    ``do_sync`` sets it on purpose — without it a journalled-but-uncommitted op
+    is restored as an untracked file mid-fetch and the reconciling fast-forward
+    aborts on its own overwrite check. Here the opposite is wanted: the
+    post-checkout and reference-transaction hooks should be LIVE, because
+    restoring ops the pull disturbs is exactly their job.
+
+    Not "around its own fetch", which is what this said and what several sibling
+    comments still say: ``do_sync`` creates the marker before its ``try`` and
+    releases it in the matching ``finally``, so the span is the WHOLE sync — its
+    CI poll included. The understatement is not cosmetic; it is what WI-pohir
+    read when it proposed timing a leaked marker out at fifteen minutes.
     """
     from .sync import _git
 
