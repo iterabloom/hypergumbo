@@ -15,11 +15,13 @@ THE MECHANISM, in the order the registrar checks it. For an unresolved edge:
 
   1. the callee name matches a sanitizer's FULL qualified name          -> permit
   2. the MODULE slot plus the callee name matches one                   -> permit
-  3. ``call_construct == "method"``                                     -> REFUSE
-  4. the bare name is in ``ambiguous_names``                            -> refuse
-  5. otherwise                                                          -> PERMIT
+  3. anything else                                                      -> REFUSE
 
-Step 5 is the fail-open. A java ``this.doFinal(plain)`` whose ``doFinal`` is
+Step 3 used to be three: refuse a stamped ``call_construct == "method"``,
+refuse an ``ambiguous_names`` short name, otherwise PERMIT. That last one was
+the fail-open, and INV-fuduz closed it by inverting the default -- the permit
+branches are enumerated, everything else is refused. The history matters here
+because this file's own assertions were written against the fail-open. A java ``this.doFinal(plain)`` whose ``doFinal`` is
 inherited from a supertype outside the repository emits
 ``java:external:0-0:doFinal:unresolved`` — a bare short name, the ``external``
 placeholder in the module slot, and, before this fix, no ``call_construct``. It
@@ -93,14 +95,25 @@ class TestTheStampIsWhatRefusesThePhantomBarrier:
     """The discriminating pair. Both arms run the same registrar over the same
     edge; the ONLY difference is the key INV-pirot is about."""
 
-    def test_without_the_stamp_a_phantom_barrier_is_registered(self) -> None:
-        """THE DEFECT, at the layer that consumes it.
+    def test_without_the_stamp_no_barrier_is_registered_either(self) -> None:
+        """THE DEFECT, CLOSED BY INV-fuduz -- this assertion is inverted from
+        what it was, deliberately.
 
-        Kept as an assertion of the mechanism rather than of java's current
-        output: it stays true for any producer that omits the key, which is the
-        population the guard has to survive.
+        It used to assert the phantom: ``_register({}) ==
+        {"plaintext": [...]}``, kept as a characterization of the population
+        the guard could not survive. That population was precisely INV-fuduz --
+        a BARE call, which carries no receiver token, is not syntactically a
+        method call, and so cannot honestly be stamped ``call_construct``.
+        The registrar no longer enumerates the ways receiver evidence can be
+        absent; it requires evidence to be PRESENT and refuses otherwise, so
+        an edge with no meta is refused by the general rule.
+
+        INV-pirot's stamp is NOT thereby pointless: it still carries the
+        receiver fact for every consumer that reads it, and the arm below still
+        pins that a stamped call is refused. What changed is that the guard no
+        longer DEPENDS on the stamp arriving.
         """
-        assert _register({}) == {"plaintext": ["javax.crypto.Cipher.doFinal"]}
+        assert _register({}) == {}
 
     def test_with_the_stamp_no_barrier_is_registered(self) -> None:
         """THE CONTROL, in the same shape. A method call with no receiver

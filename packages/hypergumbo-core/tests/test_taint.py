@@ -754,10 +754,30 @@ class TestSanitizerKindGate:
         )
         assert len(findings) == 1
 
-    def test_unresolved_free_function_sanitizer_registers(self) -> None:
-        """A bare non-method, non-ambiguous unresolved sanitizer call still
-        registers (pass-through) — the reported bug is untyped method /
-        ambiguous collisions, not free-function barriers."""
+    def test_unresolved_free_function_sanitizer_does_NOT_register(self) -> None:
+        """REVERSED BY INV-fuduz, deliberately, and this is the one ruling in
+        the suite that INV-fuduz overturns rather than extends.
+
+        This test used to assert the opposite — that a bare ``encrypt`` call
+        stamped ``call_construct="function"`` DOES register ``Fernet.encrypt``
+        as a barrier — on the stated grounds that "the reported bug is untyped
+        method / ambiguous collisions, not free-function barriers". That was a
+        description of the SCOPE OF THE BUG REPORT (INV-finoh), not an argument
+        that free-function binding is sound, and INV-fuduz's statement governs
+        this function explicitly: a barrier binds an unresolved call only on
+        receiver evidence, "for every call shape, including one with no
+        receiver token".
+
+        A bare ``encrypt`` is not ``Fernet.encrypt``. ``Fernet.encrypt`` is a
+        method ON Fernet; a free function named ``encrypt`` is a different
+        callee, and the construct stamp says which SYNTAX was used, not which
+        callee was resolved. Binding it was the same category error as the java
+        bare call, one construct over.
+
+        DIRECTION, which is why the reversal is safe: refusing a barrier
+        un-suppresses a flow. The old behaviour could silently DELETE a real
+        finding; the new behaviour can only add one.
+        """
         edges = [
             _make_edge("py:a.py:1-5:handler:function",
                        "py:external:0-0:Fernet.decrypt:unresolved"),
@@ -773,10 +793,10 @@ class TestSanitizerKindGate:
         findings = propagate_taint_structural(
             edges, [self._SOURCE], [self._SINK], [self._SANITIZER],
         )
-        # As above: the barrier fired, and that is now visible as a labelled
-        # finding instead of as an absence.
+        # The barrier does NOT fire: the flow survives, unsanitized.
         assert len(findings) == 1
-        assert findings[0].sanitized is True
+        assert findings[0].sanitized is False
+        assert findings[0].taint_label == "plaintext"
 
 
 # ---------------------------------------------------------------------------
@@ -2622,7 +2642,9 @@ class TestPropagateTaintDdg:
         call_edges = [
             {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False, "type": "calls"},
+            # `crypto.encrypt` names its owner: the receiver evidence the
+            # barrier needs (INV-fuduz). A bare `encrypt` registers nothing.
+            {"src": "sanitizer_func", "dst": "python:external:0-0:crypto.encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
             {"src": "sink_func", "dst": "python:external:0-0:send:unresolved", "is_resolved": False, "type": "calls"},
         ]
@@ -2651,7 +2673,9 @@ class TestPropagateTaintDdg:
             {"src": "caller", "dst": "python:external:0-0:decrypt:unresolved", "is_resolved": False, "type": "calls"},
             # Route A: through the sanitizer.
             {"src": "caller", "dst": "sanitizer_func", "type": "calls"},
-            {"src": "sanitizer_func", "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False, "type": "calls"},
+            # `crypto.encrypt` names its owner: the receiver evidence the
+            # barrier needs (INV-fuduz). A bare `encrypt` registers nothing.
+            {"src": "sanitizer_func", "dst": "python:external:0-0:crypto.encrypt:unresolved", "is_resolved": False, "type": "calls"},
             {"src": "sanitizer_func", "dst": "sink_func", "type": "calls"},
             # Route B: straight there.
             {"src": "caller", "dst": "sink_func", "type": "calls"},
@@ -3753,11 +3777,13 @@ class TestTaintMultiLabelSanitizer:
         # Each entry appears under both keys, hence 4 total entries
         # across short-name and leaf-name indexing.
         assert len(index["mod.barrier"]) + len(index["barrier"]) >= 2
-        # Drive the registration helper too. The edge dst's short name
-        # is `barrier`, which matches the leaf fallback.
+        # Drive the registration helper too. The call site names its owner
+        # (`mod.barrier`), which is both an index key and the receiver evidence
+        # INV-fuduz requires -- a BARE `barrier` carries none and is refused,
+        # so using it here would test the fail-open rather than the barrier.
         edges = [
             _make_edge("py:a.py:1-5:caller:function",
-                       "py:external:0-0:barrier:unresolved"),
+                       "py:external:0-0:mod.barrier:unresolved"),
         ]
         callers: dict[str, dict[str, TaintSanitizer]] = defaultdict(dict)
         _register_sanitizer_callers(edges, index, callers)

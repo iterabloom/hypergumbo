@@ -4982,10 +4982,11 @@ public class Wrong {
             "is_resolved": e.is_resolved, "meta": dict(e.meta or {}),
         } for e in result.edges]
         callers: dict = defaultdict(dict)
-        _register_sanitizer_callers(
-            edge_dicts, index, callers,
-            catalog.ambiguous_names_for_language("java"), {},
-        )
+        # INV-fuduz removed the ``ambiguous_names`` parameter: the guard no
+        # longer consults it (it never held a sanitizer short name in any
+        # language), so the registrar takes the barrier index and the output
+        # map, plus optional ``sanitizer_lines``.
+        _register_sanitizer_callers(edge_dicts, index, callers, {})
         assert not callers, (
             f"phantom barrier registered from a non-Cipher receiver: {dict(callers)}"
         )
