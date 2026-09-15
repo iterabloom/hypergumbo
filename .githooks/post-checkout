@@ -30,8 +30,17 @@ fi
 
 # Self-heal tracker ops dropped by a branch switch (only branch checkouts,
 # $3 == 1, not `git checkout -- <file>`), skipped while the tracker's own
-# reconciliation (do_sync / auto-pr) holds the recover-disabled marker. recover
+# reconciliation (do_sync / auto-pr) HOLDS the recover-suppression lock. recover
 # is idempotent and a no-op when nothing was dropped.
-if [[ "${3:-0}" == "1" && ! -f .git/tracker-recover-disabled && -x ./scripts/tracker ]]; then
+#
+# WI-gokuv: the test is the lock, not the file's existence -- a leftover file
+# with no live holder is inert, because the OS drops an flock when its holder
+# dies. auto-pr's own `cleanup_local` fires this hook via its `git checkout` of
+# the base while still holding the lock, which is exactly why the guard is here.
+_hg_recover_suppressed() {
+    [[ -e .git/tracker-recover-disabled ]] || return 1
+    ! flock --shared --nonblock .git/tracker-recover-disabled true 2>/dev/null
+}
+if [[ "${3:-0}" == "1" && -x ./scripts/tracker ]] && ! _hg_recover_suppressed; then
     ./scripts/tracker recover >/dev/null 2>&1 || true
 fi
