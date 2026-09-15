@@ -44,7 +44,7 @@ def test_build_python_ddg_returns_edges(tmp_path: Path) -> None:
         register_def_use_extractor("python")(PythonDefUseExtractor)
 
     repo = _write_python_module(tmp_path)
-    edges, symbols, hints, _stmts, _forfeits = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts, _forfeits, _unacc = _build_ddg_for_verify_claims(repo)
     assert len(edges) > 0
     assert any("mod.py" in sym for sym in symbols)
 
@@ -60,7 +60,7 @@ def test_build_python_ddg_skips_excluded_dirs(tmp_path: Path) -> None:
         "def g(x):\n    y = x\n    return y\n", encoding="utf-8",
     )
     # No files outside the skip dir.
-    edges, symbols, hints, _stmts, _forfeits = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts, _forfeits, _unacc = _build_ddg_for_verify_claims(repo)
     assert edges == []
     assert symbols == set()
 
@@ -71,7 +71,7 @@ def test_build_python_ddg_handles_empty_repo(tmp_path: Path) -> None:
 
     repo = tmp_path / "fake-repo"
     repo.mkdir()
-    edges, symbols, hints, _stmts, _forfeits = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts, _forfeits, _unacc = _build_ddg_for_verify_claims(repo)
     assert edges == []
     assert symbols == set()
 
@@ -98,7 +98,7 @@ def test_build_python_ddg_handles_nested_function(tmp_path: Path) -> None:
         "    return inner\n",
         encoding="utf-8",
     )
-    edges, symbols, hints, _stmts, _forfeits = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts, _forfeits, _unacc = _build_ddg_for_verify_claims(repo)
     # The inner function's body has an assignment, so DDG should pick it up.
     assert len(edges) > 0
     assert any("inner" in sym for sym in symbols)
@@ -127,7 +127,7 @@ def test_build_python_ddg_collects_receiver_hints(tmp_path: Path) -> None:
         "    return x.get('FOO')\n",
         encoding="utf-8",
     )
-    edges, symbols, hints, _stmts, _forfeits = _build_ddg_for_verify_claims(repo)
+    edges, symbols, hints, _stmts, _forfeits, _unacc = _build_ddg_for_verify_claims(repo)
     # Exactly one function with hints (``f``). The call is at line 4
     # with attr ``get``; the receiver ``x`` was bound to ``os.environ``.
     assert len(hints) == 1
@@ -174,7 +174,7 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
         "        v = v + item\n"
         "    return v\n"
     )
-    _edges, symbols, _hints, _stmts, forfeits = _build_ddg_for_verify_claims(
+    _edges, symbols, _hints, _stmts, forfeits, _unacc = _build_ddg_for_verify_claims(
         tmp_path,
     )
     assert symbols, "fixture produced no DDG symbols — nothing to forfeit"
@@ -184,4 +184,57 @@ def test_forfeit_set_is_actually_populated(tmp_path: Path) -> None:
     )
     assert forfeits <= symbols, (
         "forfeit set must be a subset of walkable symbols"
+    )
+
+
+def test_unaccounted_names_reaches_the_walk_through_the_repo_ddg(
+    tmp_path,
+) -> None:
+    """INV-lupav L4, END TO END: the signal survives the production plumbing.
+
+    The unit tests pin ``cfg.unaccounted_names`` and the walk's use of it
+    separately, and an extractor can be entirely correct against hand-picked
+    nodes and contribute nothing — that is how Go's def/use extractor produced
+    zero DDG edges for months at 100% coverage, and how both the Rust and
+    TypeScript extractors sat unimported. This asserts the whole chain:
+    ``build_repo_ddg`` → ``RepoDdg.unaccounted_names`` → the adapter's return
+    tuple, over a real file parsed by the real extractor.
+
+    THE CONTROL IS THE SECOND FUNCTION, and it is what makes this a test of
+    the SIGNAL rather than of the plumbing: ``clean`` differs from ``leaky``
+    by one construct — ``c[key] = 1`` against ``c = key`` — and must come back
+    with nothing unaccounted. Without it a function that reported every
+    variable would pass just as well.
+    """
+    from hypergumbo_core.cfg import (
+        get_def_use_extractor, register_def_use_extractor,
+    )
+    from hypergumbo_core.cli import _build_ddg_for_verify_claims
+
+    if get_def_use_extractor("python") is None:
+        from hypergumbo_lang_mainstream.py_def_use import PythonDefUseExtractor
+        register_def_use_extractor("python")(PythonDefUseExtractor)
+
+    (tmp_path / "m.py").write_text(
+        "def leaky(p):\n"
+        "    key = str(p)\n"
+        "    c = {}\n"
+        "    c[key] = 1\n"          # index never read -> `key` unaccounted
+        "    return c\n"
+        "\n"
+        "def clean(p):\n"
+        "    key = str(p)\n"
+        "    c = key\n"
+        "    return c\n"
+    )
+    _edges, symbols, _hints, _stmts, _forfeits, unaccounted = (
+        _build_ddg_for_verify_claims(tmp_path)
+    )
+    assert symbols, "fixture produced no DDG symbols — nothing could escape"
+    leaky = next(s for s in symbols if s.endswith(":leaky:function"))
+    clean = next(s for s in symbols if s.endswith(":clean:function"))
+    assert unaccounted.get(leaky) == frozenset({"key"})
+    assert clean not in unaccounted, (
+        "the control reports an unaccounted name; the signal is firing on "
+        "code the extractor demonstrably did read"
     )

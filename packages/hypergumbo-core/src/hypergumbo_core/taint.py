@@ -3571,6 +3571,12 @@ class EscapeSite(NamedTuple):
 #:   kept out of ``no_heir`` for exactly that reason: pooling an extractor gap
 #:   into the alias bucket is the misattribution :class:`EscapeSite` was split
 #:   into a triple to prevent.
+#: * ``unaccounted_mention`` — some statement the CFG RECORDED mentions this
+#:   variable and lists it in neither ``defines`` nor ``uses``, so the DDG's
+#:   picture of where the value goes is known to be incomplete (INV-lupav
+#:   clause L4). An EXTRACTION gap again, and the one no coverage predicate can
+#:   reach: the omission is INSIDE a covered extent. Go's grouped
+#:   ``var ( msg = cwd )`` and Python's ``c[key] = 1`` are the measured shapes.
 ESCAPE_REASONS = frozenset(
     {
         "source_undefined",
@@ -3578,6 +3584,7 @@ ESCAPE_REASONS = frozenset(
         "call_beside_heir",
         "no_heir",
         "unrecorded_heir",
+        "unaccounted_mention",
     }
 )
 
@@ -3602,6 +3609,7 @@ def _ddg_taint_reaches(
     forfeit_refutation: bool = False,
     escape_sites: list[EscapeSite] | None = None,
     credited_user_summaries: set[str] | None = None,
+    unaccounted: AbstractSet[str] | None = None,
 ) -> bool | None:
     """Does a value defined at a source call reach a use at a sink call?
 
@@ -3710,6 +3718,14 @@ def _ddg_taint_reaches(
         source_lines: Lines where the taint source is called.
         sink_lines: Lines where the sink is called.
         ddg_uses: ``(symbol_id, variable, def_line) -> {use_line, ...}``.
+        unaccounted: Variable names this function's def/use extractor left
+            unaccounted at some statement that mentions them
+            (``cfg.unaccounted_names``). Popping one escapes: the DDG's picture
+            of that value is known to be partial, so an exhausted walk over it
+            is not evidence of absence. ``None`` means the caller has no such
+            evidence, NOT that there is none — an absent argument must never
+            read as a clean bill of health, which is why the sole production
+            caller passes it unconditionally.
         defs_at: ``(symbol_id, line) -> {variable, ...}`` defined at that line;
             used to seed on the source call site's own definitions.
         inherits: ``(symbol_id, line, used_variable) -> {variable, ...}`` —
@@ -3777,6 +3793,33 @@ def _ddg_taint_reaches(
         if (var, line) in seen:
             continue
         seen.add((var, line))
+        if var in (unaccounted or frozenset()):
+            # INV-lupav CLAUSE L4. Some statement this function's CFG RECORDED
+            # mentions this variable and accounts for it in neither
+            # ``defines`` nor ``uses`` — Go's grouped ``var ( msg = cwd )``,
+            # Python's ``c[key] = 1``. The DDG therefore holds no edge out of
+            # that statement, the walk never visits it, and an exhausted walk
+            # reads as "this value goes nowhere" when the truth is "nobody
+            # looked". WI-joluk's coverage gate is blind to it by construction:
+            # the statement IS covered, so there is no uncovered extent at any
+            # predicate width.
+            #
+            # PER VARIABLE, NOT PER FUNCTION, which is why this is an escape
+            # rather than a forfeit. Only the walks that actually carry the
+            # unaccounted value lose their ``False``; a sibling walk over a
+            # variable the extractor did read keeps it.
+            #
+            # DOES NOT ``continue``. Falling through leaves the rest of this
+            # variable's recorded uses to be explored, so a ``True`` below
+            # still wins — the same asymmetry ``forfeit_refutation`` observes
+            # at the bottom of this function. Positive evidence of a dependence
+            # the walk DID find cannot be unmade by an incomplete picture, and
+            # downgrading it would turn a safety gate into a recall regression.
+            escaped = True
+            if escape_sites is not None:
+                escape_sites.append(
+                    EscapeSite(symbol_id, line, "unaccounted_mention")
+                )
         uses = ddg_uses.get((symbol_id, var, line))
         if not uses:  # pragma: no cover - unreachable; see below
             # DEFENSIVE, AND UNREACHABLE AS THE CODE STANDS. Two invariants
@@ -4066,6 +4109,7 @@ def propagate_taint_ddg(
     forfeit_refutation: set[str] | None = None,
     credited_user_summaries: set[str] | None = None,
     refuted_flows: list["TaintFlowFinding"] | None = None,
+    unaccounted_names: Mapping[str, AbstractSet[str]] | None = None,
 ) -> list[TaintFlowFinding]:
     """DDG-backed taint-flow propagation with mixed-coverage analysis.
 
@@ -4502,6 +4546,7 @@ def propagate_taint_ddg(
                             source_fn in (forfeit_refutation or set())
                         ),
                         credited_user_summaries=credited_user_summaries,
+                        unaccounted=(unaccounted_names or {}).get(source_fn),
                     )
                     adjudicated = walk_result is True
 
@@ -4564,6 +4609,9 @@ def propagate_taint_ddg(
                                 source_fn in (forfeit_refutation or set())
                             ),
                             credited_user_summaries=credited_user_summaries,
+                            unaccounted=(
+                                unaccounted_names or {}
+                            ).get(source_fn),
                         ) is False
                         # INV-pojib: THIS ARM DECIDES THE SAME-FUNCTION SHAPE,
                         # and it is the arm the measured repro went through --

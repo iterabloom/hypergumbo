@@ -2,11 +2,15 @@
 """Which callees may CLOSE a §3a walk step, pinned as a census (INV-lupav).
 
 WHY THIS FILE EXISTS. ``_ddg_taint_reaches`` reaches ``return False`` through
-exactly four paths that continue without setting ``escaped``: the seen-set
-cycle guard, ``followed`` with no call at the line, ``followed`` with a
-terminating callee, and ``no_heir`` with a terminating callee. TWO of the four
-rest entirely on :func:`_summary_terminates`, which is to say on the CATALOGUE
-being right. Since WI-kabif a ``False`` removes a reported flow, so a wrong
+a FIXED, ENUMERATED set of paths that continue without setting ``escaped`` —
+five of them, counted structurally and pinned by
+``test_walk_exit_census.py``, which owns that number so this docstring cannot
+drift from it: the seen-set cycle guard, a barrier line, ``followed`` with no
+call at the line, ``followed`` with a terminating callee, and ``no_heir`` with
+a terminating callee. (This file said FOUR, omitting the barrier exit; the
+census was written because a count living in prose is not a gate.) TWO of the
+five rest entirely on :func:`_summary_terminates`, which is to say on the
+CATALOGUE being right. Since WI-kabif a ``False`` removes a reported flow, so a wrong
 entry here deletes a real security finding — and it does so invisibly, because
 no coverage gate can help: the walk DID look, and believed what it was told.
 

@@ -5656,6 +5656,7 @@ def _build_ddg_for_verify_claims(
     dict[str, dict[tuple[int, str], str]],
     dict[str, list[tuple[int, tuple[str, ...], tuple[str, ...]]]],
     set[str],
+    dict[str, frozenset[str]],
 ]:
     """Build aggregated DDG edges + symbol set + receiver hints for taint analysis.
 
@@ -5704,7 +5705,7 @@ def _build_ddg_for_verify_claims(
         # The fail-closed default lives at the point of USE (a function absent
         # from the set only qualifies because it was checked and covered), not
         # here, where the whole analysis is absent rather than incomplete.
-        return [], set(), {}, {}, set()
+        return [], set(), {}, {}, set(), {}
 
     available = registered_ddg_languages()
     if candidate_languages is None:
@@ -5719,6 +5720,7 @@ def _build_ddg_for_verify_claims(
         result.hints_by_caller,
         result.stmt_defuse,
         result.forfeit_refutation,
+        result.unaccounted_names,
     )
 
 
@@ -6373,7 +6375,7 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
             # languages that have a registered DDG spec.
             (
                 ddg_edges, ddg_symbols, hints_by_caller, stmt_defuse,
-                ddg_forfeits,
+                ddg_forfeits, ddg_unaccounted,
             ) = _build_ddg_for_verify_claims(
                 repo_root, sorted(per_lang_sinks),
             )
@@ -6451,6 +6453,12 @@ def cmd_verify_claims(args: argparse.Namespace) -> int:
                         language=lang,
                         stmt_defuse=stmt_defuse,
                         forfeit_refutation=ddg_forfeits,
+                        # INV-lupav L4. Passed UNCONDITIONALLY, including when
+                        # it is empty: the walk reads a missing argument as "no
+                        # evidence of incompleteness", and letting that stand
+                        # in for "checked, none found" is the ABSENT-vs-EMPTY
+                        # confusion the clause is about.
+                        unaccounted_names=ddg_unaccounted,
                         # ADR-0047 ruling 10 (WI-sofov). Collected ACROSS
                         # languages into one set: a terminated branch leaves no
                         # finding, so there is nothing to attribute per claim,
