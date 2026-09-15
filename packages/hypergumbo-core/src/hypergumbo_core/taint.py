@@ -65,7 +65,7 @@ import re
 import yaml
 
 from .axis_meta_keys import call_family_edge_types
-from .edge_types import is_grpc_rpc_implementation
+from .edge_types import is_callback_registration, is_grpc_rpc_implementation
 from .symbol_kinds import type_like_kind_names
 from .io_boundary import (
     suppresses_resource_naming_finding,
@@ -2420,12 +2420,36 @@ def _is_taint_call_edge(edge: dict[str, Any]) -> bool:
     one home" reasoning the dispatch membership itself was added under, so the
     minting, adjacency and sanitizer-registration surfaces cannot disagree
     about what a dispatch edge means.
+
+    One widening (WI-nisud): a ``references`` edge that REGISTERS a callback is
+    call-shaped, via :func:`is_callback_registration`. javascript emits
+    ``references`` where python emits ``dispatches_to``, so before this a
+    callback taint source whose handler OWNS A SYMBOL was inert — including the
+    spellings that classify correctly, ``addEventListener`` and
+    ``http.createServer`` and ``process.on``. Not every callback source: an
+    inline ``ws.onmessage = function (ev) {...}`` is minted no symbol, collapses
+    onto its enclosing function, and reported its flow before this change on a
+    path that crosses no registration edge. It is a predicate and not a set member
+    because ``references`` also carries TypeScript type references and
+    object-literal field references, neither of which is dataflow; the set
+    itself is unchanged and bare ``references`` stays inert.
+
+    THIS ONE IS NOT MONOTONE-ADDITIVE, unlike the ``dispatches_to`` membership.
+    :func:`_register_sanitizer_callers` asks this same question, so a callback
+    handed to a sanitizer (``arr.map(escapeHtml)``) now installs a barrier that
+    was not there before, and a barrier can DELETE a flow. That is the right
+    reading of the construct — it is named here because "adjacency only grows"
+    is the usual justification for touching this predicate and it does not
+    apply.
     """
     etype = edge.get("type", "")
     if etype == DISPATCH_EDGE_TYPE and not _dispatch_edge_carries_a_value(edge):
         return False
-    return etype in TAINT_CALL_EDGE_TYPES or is_grpc_rpc_implementation(
-        etype, edge.get("meta")
+    meta = edge.get("meta")
+    return (
+        etype in TAINT_CALL_EDGE_TYPES
+        or is_grpc_rpc_implementation(etype, meta)
+        or is_callback_registration(etype, meta)
     )
 
 

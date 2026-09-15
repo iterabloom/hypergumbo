@@ -15,8 +15,12 @@ It also exports the meta-discriminator vocabulary consumers need once
 and ``INHERITANCE_EDGE_TYPES`` (curated subsets), ``PROTOCOL_KINDS`` and
 ``BRIDGE_KINDS`` (the ADR-3bbb linker subcategories a mechanism belongs to),
 ``is_grpc_rpc_implementation`` (a predicate that reads ``meta`` because the
-fold moved the distinction there), and ``find_axis_drift`` — the linter that
-fails the build when a registry value stops matching its declared axis.
+fold moved the distinction there), ``is_callback_registration`` (a predicate
+that reads ``meta`` because ``references`` is OVERLOADED — one edge type
+carrying handler registrations, TypeScript type references and object-literal
+fields, which taint must tell apart even though reachability need not), and
+``find_axis_drift`` — the linter that fails the build when a registry value
+stops matching its declared axis.
 Consumers that need a subset of edge types use the curated constants
 this module exports (``IMPORT_EDGE_TYPES``, ``INHERITANCE_EDGE_TYPES``)
 rather than their own literals; the property test in
@@ -276,6 +280,71 @@ def is_grpc_rpc_implementation(
         edge_type == "implements"
         and meta is not None
         and meta.get("protocol") == "grpc"
+    )
+
+
+#: Evidence types on a ``references`` edge that record a HANDLER REGISTRATION —
+#: a callable handed to something that will invoke it with data the far side
+#: chooses. Membership is the measured half of a family, not the family.
+#:
+#: ``callback_argument_reference`` is emitted by js_ts.py at two sites, for a
+#: bare-identifier callback argument (``ws.addEventListener('message', onMsg)``,
+#: ``process.on('message', h)``) and for an inline anonymous one
+#: (``http.createServer((req, res) => ...)``).
+#:
+#: THE SIBLING THAT IS NOT HERE. kotlin emits ``references`` +
+#: ``callable_reference`` for ``::fn``, which is the same shape one language
+#: over and is equally inert today. It is deliberately absent: its precision on
+#: a kotlin corpus is unmeasured, and this predicate is read by a taint surface
+#: where an unmeasured widening is the INV-putug error. Adding it is a
+#: measurement, not an edit.
+_REGISTRATION_EVIDENCE_TYPES: frozenset[str] = frozenset({
+    "callback_argument_reference",
+})
+
+
+def is_callback_registration(
+    edge_type: str, meta: Mapping[str, object] | None
+) -> bool:
+    """True for a ``references`` edge that registers a callback (WI-nisud).
+
+    ``references`` is OVERLOADED, and that is the whole reason this is a
+    predicate rather than a member of ``taint.TAINT_CALL_EDGE_TYPES``. In
+    js_ts.py alone the one edge type carries four evidence types: this
+    registration shape, ``ast_type_ref`` (TypeScript type references — the
+    bespoke ``type_ref`` edge folded onto ``references``),
+    ``object_field_reference`` (``{onClick: handleClick}`` and the
+    ``{handleClick}`` shorthand) and an ``ast_call_direct`` middleware chain.
+    Admitting the edge TYPE wholesale would make a type reference carry
+    dataflow — the error class INV-putug measured at 20 of 47 spurious
+    situations on pretix — and would let ``module.exports = {parse, stringify}``
+    flow a module-level source into every exported function.
+
+    WHY THE REGISTRATION SHAPE IS DIFFERENT FROM THOSE THREE. A registration
+    really does hand data to the handler it invokes: this is the argparse
+    reading INV-zuhig put ``dispatches_to`` in the taint call family for, one
+    language over. Measured 2026-09-14 on a seven-arm javascript fixture:
+    ``addEventListener``, ``http.createServer`` and ``process.on`` all classify
+    correctly and produced ZERO findings while both controls fired, because the
+    source is attributed to the ENCLOSING function and the sink lives in the
+    CALLBACK. The common property is that the handler OWNS A SYMBOL — an inline
+    ``ws.onmessage = function (ev) {...}`` is minted none, collapses onto its
+    enclosing function, and was already reporting its flow.
+
+    This is the :func:`is_grpc_rpc_implementation` move and it is here for the
+    same stated reason: one home for "is this the narrowed form", so the
+    consumers that ask cannot drift. Callers pass primitives so it works on
+    dict-shaped edges (``edge['type']`` / ``edge['meta']``) and ``Edge``
+    objects (``edge.edge_type`` / ``edge.meta``) alike.
+
+    NOT a reachability question. ``io_boundary`` and the slice traversal do NOT
+    consult this — a registration edge was always correct as reachability and
+    those consumers already treat it so. Only the taint walk's reading changes.
+    """
+    return (
+        edge_type == "references"
+        and meta is not None
+        and meta.get("evidence_type") in _REGISTRATION_EVIDENCE_TYPES
     )
 
 
