@@ -1,0 +1,22 @@
+- op: create  # 84ee
+  at: '2026-09-15T06:28:19Z'  # 84ee
+  by: agent  # 84ee
+  actor: jgstern_agent  # 84ee
+  clock: 1  # 84ee
+  nonce: 84ee  # 84ee
+  data:  # 84ee
+    kind: work_item  # 84ee
+    title: "the shipped java plaintext source is slotted module=javax.crypto/name=Cipher.doFinal but the analyzer emits module=javax.crypto.Cipher/name=doFinal, so it never matches and no java plaintext flow exists"  # 84ee
+    status: todo_hard  # 84ee
+    priority: 2  # 84ee
+    parent:  # 84ee
+    tags:  # 84ee
+    - taint  # 84ee
+    - java  # 84ee
+    - catalogue  # 84ee
+    isbefore: []  # 84ee
+    duplicate_of: []  # 84ee
+    not_duplicate_of: []  # 84ee
+    pr_ref:  # 84ee
+    description: "FOUND while closing INV-fuduz (PR #969), 2026-09-15. Not chased there: it is a\nRECALL defect in the opposite direction from the one that item is about, and\nfolding it in would have mixed a suppression fix with a matching fix.\n\nTHE SHIPPED java plaintext SOURCE CANNOT MATCH WHAT THE java ANALYZER EMITS.\nThe catalogue row (taint_sources/crypto.yaml) slots it as\n\n    module = \"javax.crypto\"      name = \"Cipher.doFinal\"\n\nand the analyzer emits, for `cipher.doFinal(ct)` with a typed receiver,\n\n    dst = java:javax.crypto.Cipher:0-0:doFinal:external_symbol\n          module slot = \"javax.crypto.Cipher\"    name slot = \"doFinal\"\n\nMeasured directly against the shipped matcher rather than inferred from the\nstrings:\n\n    cat.match_source(\"java\", \"doFinal\", \"javax.crypto.Cipher\")  -> None\n    cat.match_source(\"java\", \"Cipher.doFinal\", \"javax.crypto\")  -> matches\n\nSo the only java source carrying the `plaintext` label never mints from a real\njava edge. The sink side does NOT have this problem -- match_sink(\"java\",\n\"write\", \"java.io.FileWriter\") matches -- so it is the source row's slotting,\nnot a general java defect.\n\nWHY IT MATTERS BEYOND ONE ROW. `plaintext` is one of only two labels the whole\nsanitizer catalogue removes, and javax.crypto.Cipher.doFinal is simultaneously\nthe java sanitizer AND the java plaintext source (INV-lozat's dual shape). With\nthe source inert, no java plaintext flow exists at all, which is why INV-fuduz's\nphantom barrier had nothing to suppress in practice. Fixing the source makes\nthat machinery live -- so this item is what converts INV-fuduz from a latent fix\ninto a load-bearing one, and it should be measured together with WI-buvob (which\nadds the missing java sanitizer rows).\n\nDO NOT ASSUME THE FIX IS \"RESLOT THE ROW\". Check first which side is wrong.\n`Cipher.doFinal` as a name with `javax.crypto` as the module is the\ntype-in-the-name spelling; `javax.crypto.Cipher` as the module with `doFinal` as\nthe name is the INV-misup/WI-nakut receiver-type-in-the-module-slot spelling the\nanalyzers converged on. If the catalogue convention is the latter, other rows in\ncrypto.yaml for other languages may carry the same defect -- ENUMERATE them\nbefore editing one. go's `crypto/cipher.AEAD.Open` and the typescript\n`subtle.decrypt` rows have the same shape and are unchecked."  # 84ee
+    fields: {}  # 84ee
