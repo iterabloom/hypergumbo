@@ -1,0 +1,23 @@
+- op: create  # 2b6b
+  at: '2026-09-15T07:29:06Z'  # 2b6b
+  by: agent  # 2b6b
+  actor: jgstern_agent  # 2b6b
+  clock: 1  # 2b6b
+  nonce: 2b6b  # 2b6b
+  data:  # 2b6b
+    kind: invariant  # 2b6b
+    title: "dead-code cross-language demoter hard-excludes candidates on string collisions with NON-CODE config files (every python __init__, 8.8% of candidates)"  # 2b6b
+    status: violated  # 2b6b
+    priority: 2  # 2b6b
+    parent:  # 2b6b
+    tags:  # 2b6b
+    - dead_code  # 2b6b
+    - analyzer  # 2b6b
+    isbefore: []  # 2b6b
+    duplicate_of: []  # 2b6b
+    not_duplicate_of: []  # 2b6b
+    pr_ref:  # 2b6b
+    description: "Found while checking INV-rolok's own sizing claim, which this refutes.\n\nINV-rolok recorded \"0 of 2,152 dead candidates are __init__, so Python\nconstructors are not currently mis-flagged\" and concluded the immediate\ndead-code win was ZERO. Reproduced at tip: 0 of 2,252. But all 52 non-test\npython __init__ methods ARE in the candidate universe and NONE is reachable,\nso they should all be flagged. They are removed by the cross-language demoter\n(WI-gavub, dispatch:F7), not by being reachable.\n\nMECHANISM. _compute_cross_language_hits maps .json/.yaml/.yml/.toml/.xml/.html\nto a pseudo-language \"config\" in _EXT_TO_LANG, then counts a hit whenever a\ncandidate's SHORT name appears as a substring in a file of a different\n\"language\". The demoter drops any candidate with >= --cross-lang-threshold\n(default 3) hits, on the rationale that a name appearing in other-language\nfiles is near-certainly reached by cross-language dispatch (HTTP route, RPC\nmethod, FFI name).\n\nA python dunder appearing in a JSON manifest is not cross-language dispatch.\nMeasured on this repo: 15 config-family files contain the string \"__init__\";\neven excluding hidden dirs the walk skips (.venv/.ci/.hypergumbo), pyproject.toml\nplus five package YAMLs clear the threshold of 3. Every X.__init__ candidate is\ntherefore demoted, in every Python repo that has a pyproject.toml.\n\nSCOPE IS NOT JUST __init__. 217 of 2,469 candidates (8.8%) are demoted this way\non self-analysis. The demoter is a HARD EXCLUSION with no disclosure bucket --\nthe summary reports demoted_cross_language as a count, so the affected\ncandidates are unselectable and unreviewable.\n\nWHY THIS IS THE FAIL-OPEN DIRECTION. The demoter removes findings. A wrong\ndemotion is silent: the user never sees the candidate and cannot tell the\ndifference between \"reachable\" and \"suppressed by a string collision\".\n\nMEASURED, NOT ASSUMED: with --cross-lang-threshold 0 the 52 __init__ appear\nimmediately, which is how the masking was found.\n\nCandidate directions, none pre-judged:\n  A. Do not count \"config\" as a cross-LANGUAGE hit -- it is not a language.\n     A YAML file naming a python symbol is a manifest, not a dispatcher.\n  B. Require the hit to be in a file whose language has an analyzer, not any\n     text file with a mapped extension.\n  C. Exclude names that are a language's reserved dunder/keyword from the\n     collision test (narrowest; fixes __init__ and little else).\n  D. Disclose demoted candidates as a bucket instead of hard-excluding them,\n     matching how entrypoint_only_dead / test_only_reachable are handled."  # 2b6b
+    fields:  # 2b6b
+      statement: "A dead-code candidate may only be demoted by evidence of REACHABILITY; a substring collision between its short name and a non-code manifest file is not such evidence, and a hard exclusion on it must at minimum be disclosed rather than silently dropped."  # 2b6b
+      root_cause: "_compute_cross_language_hits maps .json/.yaml/.toml/.xml/.html to a pseudo-language 'config' in _EXT_TO_LANG and counts any different-'language' file as a cross-language hit; dispatch:F7 then hard-excludes at >=3 hits. A python dunder named in pyproject.toml and package YAMLs clears the threshold in any Python repo."  # 2b6b

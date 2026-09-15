@@ -1,0 +1,22 @@
+- op: create  # 5dac
+  at: '2026-09-15T06:28:23Z'  # 5dac
+  by: agent  # 5dac
+  actor: jgstern_agent  # 5dac
+  clock: 1  # 5dac
+  nonce: 5dac  # 5dac
+  data:  # 5dac
+    kind: work_item  # 5dac
+    title: "the sanitizer index builds an intermediate Owner.short key for dotted names but not for rust :: names, so a partially qualified rust barrier call is unmatchable"  # 5dac
+    status: todo_hard  # 5dac
+    priority: 3  # 5dac
+    parent:  # 5dac
+    tags:  # 5dac
+    - taint  # 5dac
+    - rust  # 5dac
+    - catalogue  # 5dac
+    isbefore: []  # 5dac
+    duplicate_of: []  # 5dac
+    not_duplicate_of: []  # 5dac
+    pr_ref:  # 5dac
+    description: "FOUND while closing INV-fuduz (PR #969), 2026-09-15.\n\n`_build_sanitizer_index_multi` indexes each entry under its full qualified name\nAND its bare last component, AND -- for dotted and slash-dotted forms -- an\nintermediate `Owner.short` key. Measured:\n\n    javax.crypto.Cipher.doFinal        -> {full, 'Cipher.doFinal', 'doFinal'}\n    cryptography.fernet.Fernet.encrypt -> {full, 'Fernet.encrypt', 'encrypt'}\n    crypto/cipher.AEAD.Seal            -> {full, 'AEAD.Seal', 'Seal'}\n    aes_gcm::Aes256Gcm::encrypt        -> {full,                  'encrypt'}\n\nThe rust `::` form gets NO intermediate key. So a rust call site that names its\nreceiver -- `Aes256Gcm::encrypt` -- looks up a key that does not exist, misses\nthe index entirely, and never reaches the receiver-evidence guard INV-fuduz\ninstalled. The three rust sanitizers (aes_gcm::Aes256Gcm::encrypt,\nring::aead::SealingKey::seal_in_place, hkdf::Hkdf::expand) can therefore be\nmatched only by their FULL path or by a bare leaf name -- and the bare leaf is\nexactly what the new guard refuses, correctly, for carrying no receiver.\n\nNET EFFECT: a partially qualified rust barrier call is unmatchable. Direction is\nSAFE (a missing barrier adds findings, never deletes them), which is why this is\nfiled rather than hotfixed.\n\nWHERE TO LOOK. The index builder's leaf/intermediate derivation should be going\nthrough `member_names.split_member_name`, which already knows the separator\nvocabulary ('#', '::', '.') and handles `::` correctly -- `member_owner\n(\"Aes256Gcm::encrypt\")` returns 'Aes256Gcm'. If the builder hand-rolls a `.`\nsplit instead, that is both the bug and a violation of the rule\n`find_hand_rolled_separator_literals` enforces. VERIFY THAT BEFORE EDITING; do\nnot assume the builder is the wrong half.\n\nALSO UNCHECKED: ruby's `#` form. No ruby sanitizer ships today, so the same gap\nwould be silent there the day one is added."  # 5dac
+    fields: {}  # 5dac
