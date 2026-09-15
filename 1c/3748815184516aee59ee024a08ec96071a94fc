@@ -1,0 +1,17 @@
+Original commit body from 5c22f92111a66e015cb236256dd12f8bed34f1c5:
+
+javascript emits a `references` edge from the enclosing function to a callback where python emits `dispatches_to`, and `references` is not in TAINT_CALL_EDGE_TYPES — so a callback taint source whose handler owns a symbol was inert even when it classified correctly. On a seven-arm fixture, `WebSocket.addEventListener`, `http.createServer` and `process.on` all reached the catalogue as net_recv/ipc_recv and produced ZERO findings while both controls fired.
+
+**Three assumptions in the item were checked before any code, and one is false.** WI-nisud was filed on 'EVERY javascript callback-parameter source is inert'. An assignment RHS written INLINE is minted no symbol, collapses onto its enclosing function, and `ws.onmessage = function (ev) { exec('ls ' + ev.data); }` verified violated/net_recv BEFORE this change — re-confirmed here by running it with the new predicate disabled. Inertness tracked SYMBOL STRUCTURE, not the registration concept. The named-identifier spelling has no edge of any type to the handler and stays inert: that is WI-vubal, and the two compose.
+
+**The edge type is the only blocker, measured not assumed.** 'The walk cannot enter the handler' would read the same if the engine simply did not credit a callback PARAMETER. A javascript arm reached by a plain `calls` edge passed nothing tainted still fires (structural propagation is function-level and coarse), and the python argparse `dispatches_to` parity arm fires on the identical shape.
+
+**A predicate, not a set member.** `references` is overloaded — registration, `ast_type_ref` (TypeScript types), `object_field_reference`, middleware chain. Admitting the type wholesale would make a TYPE reference carry dataflow (the INV-putug class, 20 of 47 spurious on pretix) and flow a module-level source into every name in `module.exports = {parse, stringify}`. This is the `is_grpc_rpc_implementation` move. io_boundary keeps admitting `references` wholesale because reachability is the weaker question.
+
+**Not monotone-additive**, unlike the `dispatches_to` membership: `_register_sanitizer_callers` asks the same predicate, so `arr.map(escapeHtml)` now installs a barrier, and a barrier can delete a flow. Pinned by its own test.
+
+**Measured on eight javascript repositories**, A/B on identical survey artifacts: 78 → 80 findings, one verdict inconclusive → violated, none removed — which refutes the item's own 'this fix is EXPANSIVE' framing. Of the two added, one true positive (hls.js: `process.argv[2]` reaching `console.log` through an `fs.readdir` callback and a `forEach` callback) and one false positive from pre-existing function-level granularity (a 674-line jest `describe` callback is one function).
+
+Tests: 9625 passed, 100% coverage on changed source files, mypy strict ratchet 669 delta +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
