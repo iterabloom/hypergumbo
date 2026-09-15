@@ -1,0 +1,11 @@
+Original commit body from 5cdd66be2067c0a044be5608f26d40082bbd8c25:
+
+Two comments in this package describe `do_sync` as holding `tracker-recover-disabled` "around its own fetch". It creates the marker before its `try` (`sync.py:1512`) and releases it in the matching `finally` (`sync.py:2034`), with a CI poll in between (`sync.py:1706`, plus two hung retries). **The span is the whole sync.**
+
+**Why this is not a wording nit.** WI-pohir proposed detecting a leaked marker by age, reasoning that "no auto-pr fetch+ff window is that long" — a faithful reading of this family of comments. Shipped as proposed it would have false-alarmed on every run whose CI outlasted the threshold, inside the one mechanism whose entire job is to be believed. It was caught by measuring the span instead of reading it, which is not something to rely on twice.
+
+**Not bundled:** the same understatement lives in `scripts/auto-pr` (lines 1085, 1494, 2326) and `.githooks/reference-transaction` (line 35), plus a stale pointer at the deprecated `tracker recover` on line 22. Both are governance files, so that half is filed for approval as WI-rizug rather than shipped here.
+
+Docs-only: no behaviour change, no new tests. 2051 passed, changed files at 100%, ratchet 669 delta +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
