@@ -1,0 +1,36 @@
+- op: create  # 53d8
+  at: '2026-09-15T21:28:27Z'  # 53d8
+  by: agent  # 53d8
+  actor: jgstern_agent  # 53d8
+  clock: 1  # 53d8
+  nonce: 53d8  # 53d8
+  data:  # 53d8
+    kind: work_item  # 53d8
+    title: "auto-pr and the reference-transaction hook describe the recover marker's span as fetch+ff; it is the whole run including the CI poll"  # 53d8
+    status: todo_hard  # 53d8
+    priority: 3  # 53d8
+    parent:  # 53d8
+    tags:  # 53d8
+    - tracker  # 53d8
+    - durability  # 53d8
+    isbefore: []  # 53d8
+    duplicate_of: []  # 53d8
+    not_duplicate_of: []  # 53d8
+    pr_ref:  # 53d8
+    description: "THE COMMENTS UNDERSTATE THE SPAN THEY DOCUMENT, AND THAT ALREADY COST ONE ITEM.\n\nFive comment sites describe the `tracker-recover-disabled` marker as covering a\nfetch and a fast-forward. It covers the whole run, including a CI poll.\n\n  * scripts/auto-pr:1085, 1494, 2326 -- \"Suppress the reference-transaction\n    recovery hook during this action's git operations (fetch + post-merge\n    fast-forward).\" The `touch` sits at the top of `flush_queue` / `do_pr` /\n    `gov_cleanup`; the only `rm` is in `_autopr_finalize` (line 380), an EXIT\n    trap. So the span is the entire action. `do_pr` polls CI at line ~1912 with\n    a 2400s default timeout (scripts/lib/forgejo-api.sh:623) and a 300s\n    soft-retry (auto-pr:1935), all of it inside the marker.\n  * .githooks/reference-transaction:35 -- \"do_sync (sync.py) and auto-pr set\n    this marker around their fetch + fast-forward\". Wrong for BOTH. do_sync\n    creates the marker at sync.py:1512, polls CI at sync.py:1706 (plus two hung\n    retries), and releases it in the finally at sync.py:2034.\n\nWHY THIS IS NOT A COSMETIC EDIT. WI-pohir proposed detecting a leaked marker by\nage, on the reasoning that \"no auto-pr fetch+ff window is that long\". That\nreasoning is a faithful reading of the comments above. Shipped as proposed it\nwould have fired on every auto-pr whose CI ran past the threshold -- a\nfalse-alarm generator inside the one mechanism whose whole job is to be\nbelieved. The defect was caught by measuring the span rather than reading it,\nwhich is not a thing to rely on twice. A comment that misdescribes its own\nextent is a latent wrong premise for every future reader.\n\nSECOND, SMALLER ITEM IN THE SAME FILE. .githooks/reference-transaction:22 --\n\"Known gaps (covered by the durable journal + a manual `tracker recover`, NOT by\nthis hook): `git clean` and `git stash` do not update refs\". AGENTS.md now sends\nan operator to `tracker reconcile` after clean/stash, precisely because\n`recover` restores the journal and leaves the repo behind the upstream, which is\nhow the other two steps get skipped. The hook comment still points at the\ndeprecated half.\n\nWHAT THE FIX IS. Comment text only -- no behaviour change, no new tests. Say\nwhat the span actually is (\"this action's ENTIRE run, including the CI poll --\nthe marker is set at entry and cleared by the EXIT trap\"), and point the\nclean/stash gap at `reconcile`.\n\nSCOPE / GOVERNANCE. `scripts/auto-pr` and `.githooks/**` are governance files,\nso a comment-only diff still needs explicit approval and its own PR. Deliberately\nfiled SEPARATE from WI-gokuv (the fcntl-lock conversion), which touches the same\ntwo files: WI-gokuv may well end up `wont_do` if its fd-inheritance premise does\nnot hold, and these comments should be corrected either way. The\ntracker-package half of the same mis-description (cli.py, test_reconcile.py,\nboth saying \"around its own fetch\") is not governance and ships separately."  # 53d8
+    fields: {}  # 53d8
+- op: update  # 87ef
+  at: '2026-09-15T21:29:10Z'  # 87ef
+  by: agent  # 87ef
+  actor: jgstern_agent  # 87ef
+  clock: 2  # 87ef
+  nonce: 87ef  # 87ef
+  set:  # 87ef
+    status: needs_human_review  # 87ef
+- op: discuss  # 7d15
+  at: '2026-09-15T21:29:10Z'  # 7d15
+  by: agent  # 7d15
+  actor: jgstern_agent  # 7d15
+  clock: 3  # 7d15
+  nonce: 7d15  # 7d15
+  message: "GOVERNANCE APPROVAL REQUESTED -- comment text only, no PR opened.\n\nTHE ASK. Correct five comment sites in `scripts/auto-pr` (lines 1085, 1494,\n2326) and `.githooks/reference-transaction` (lines 22 and 35). No behaviour\nchanges, no new tests. Both files are governance, so even a comment diff waits\non your word.\n\nWHY IT IS NOT HOUSEKEEPING. These comments say the recover marker covers \"fetch\n+ post-merge fast-forward\". It covers the whole run, CI poll included -- up to\n~45 minutes for auto-pr and up to its `ci_timeout` for do_sync. WI-pohir then\nproposed detecting a leaked marker by age, reasoning that \"no auto-pr fetch+ff\nwindow is that long\". That is a faithful reading of these comments, and shipped\nas written it would have false-alarmed on every auto-pr with slow CI. I caught\nit only because I measured the span instead of reading it, and that is not\nsomething to depend on a second time.\n\nTHE SMALLER HALF. reference-transaction:22 still sends an operator to a manual\n`tracker recover` for the clean/stash gap. AGENTS.md now sends them to\n`reconcile`, because `recover` restores the journal and leaves the repo behind\nthe upstream -- which is exactly how the other two steps get skipped.\n\nDELIBERATELY SEPARATE FROM WI-gokuv, which touches the same two files. WI-gokuv\nmay end up `wont_do` if its fd-inheritance premise fails under test; these\ncomments should be corrected either way, and I do not want one to hold the other\nhostage.\n\nALREADY DONE WITHOUT WAITING: the tracker-package half of the same\nmis-description -- `cli.py` and `test_reconcile.py`, both saying \"around its own\nfetch\" -- is not governance and is being corrected now."  # 7d15
