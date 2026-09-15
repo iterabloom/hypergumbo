@@ -1,0 +1,18 @@
+Original commit body from c8a53e4613da704628ef8f7bfa5c4af545cf8964:
+
+The half of INV-lupav nobody had looked at. The §3a walk reaches `return False` through exactly four paths that continue without setting `escaped`, and TWO of them rest entirely on `_use_site_terminates` — on the catalogue being right. Every prior investigation went after extraction completeness. A wrong entry here is invisible to any coverage gate, because the walk did look and believed what it was told.
+
+`side_effect` is the POSITIVE claim that the taint stops here. That is false of a writer-first function: `fmt.Fprintf(&buf, "%s", x)` leaves x in buf for the caller to read. Measured, control first:
+
+    CONTROL (fmt.Sprintf, propagating) -> True    ADMISSIBLE
+    Fprintf into buf, buf to sink      -> False   <- true answer is True
+
+Since WI-kabif that False REMOVES the flow. The entry's own comment read 'writes to arg 0' two characters above the marker denying it.
+
+DIAGNOSIS CORRECTED BEFORE THE FIX: I first filed this as a model vocabulary gap. Wrong — `side_effect` already IS the positive declaration, so termination is not inferred from absence. The defect is the data, one line per entry. Remedy is therefore the small, strictly safe one: drop the marker, keep the entries as tombstones so the next author learns why. Direction: fewer terminating verdicts, fewer Falses, more surviving findings.
+
+The terminating set is now pinned as a 37-entry census with its own controls, so a dead-end claim cannot enter or leave unexamined.
+
+Selection gap recorded rather than worked around: this YAML edit selected ONE test and wrote a one-test CI manifest. That is INV-dohoj/WI-mavut, already filed for io_primitives; function_summaries is a second family and is noted there. Compensated with --full locally: 27087 passed.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
