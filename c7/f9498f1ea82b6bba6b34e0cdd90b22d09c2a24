@@ -1,0 +1,18 @@
+Original commit body from e8bb85efe595f81706e5cee5635751d0b2ffe7c7:
+
+INV-lupav's last route. The §3a coverage gate compared every CALL node against the CFG's recorded statement extents — but the omission it exists for need not be a call. Go's `for _, c := range v` binds `c` from `v` in a range clause the loop hook never records, and the clause contains no call at all, so the predicate returned an EMPTY set for a function whose taint chain the extractor demonstrably had not followed, leaving the walk free to exhaust and REMOVE the flow.
+
+A/B through build_repo_ddg, one variable changed, both functions walkable:
+
+    leak     calls-only(OLD)=[]   widened(NEW)=[16]    now FORFEITED
+    covered  calls-only(OLD)=[]   widened(NEW)=[]      CONTROL, unmoved
+
+The predicate is now the union of uncovered calls and uncovered SEMANTIC LEAVES, reusing the skip list the CFG builder already applied. A declared per-language list of binding node types was rejected on the record: that list is coextensive with what the extractor does not model, which the walk's own docstring says is unknowable from inside it — and this project already ran that experiment, with atomic_statement missing from rust.yaml and typescript.yaml while both emitted zero DDG edges for months at 100% coverage.
+
+PRICED BEFORE WIDENING on WI-joluk's five pairs, baseline arm reproducing its recorded numbers to the decimal: forfeit share 18.8-51.6%, so refutation survives on 48.4-81.2% of walkable functions and the pre-registered 'not near 100%' condition holds. A third spelling (any uncovered NAMED node) was measured and rejected on a floor check — it fires on a fully covered function and would have read as a clean 100% forfeit everywhere.
+
+The forfeit is now published: coverage_granularity language -> function (its own R16 trigger fired 2026-08-26 and nothing noticed for 19 days), plus functions_walkable / functions_forfeited on the JSON and text surfaces.
+
+INV-lupav STAYS VIOLATED — a coverage predicate cannot establish that every use inside a recorded extent was recorded, and that residual is structural and UNDEMONSTRATED (the obvious candidate does not reproduce).
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
