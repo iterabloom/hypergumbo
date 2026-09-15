@@ -1,0 +1,13 @@
+Original commit body from b540b6a58f67088773a4ed692bf8da3bf60e5e26:
+
+PR #972 shipped a 300s grace before an unowned `tracker-recover-disabled` marker is called a leak. I sized it against the post-merge end of an auto-pr run and wrote "network-bound seconds, not minutes" into the constant. **A live auto-pr refuted that within the hour.**
+
+**The measurement.** PR #975 — an ordinary run, fast CI, 336s start to finish. Marker touched 17:35:19; `.git/PR_PENDING` appeared 17:38:11. The **pre-gate end alone was 172s**: `do_pr` sets the marker as its first act and writes the gate only after auth, preflight, the push and PR creation. That is 51% of the whole run and **57% of the grace it was supposed to fit inside**, with nothing going wrong. My estimate had considered only the other end, and was wrong about the larger of the two.
+
+**The fix.** 900s — ~5× the measured window, which is the headroom a retrying push or `cleanup_local`'s three-attempt pull loop needs. The measurement is pinned by a test that fails naming the number rather than the opinion, so the constant cannot drift back under it by estimate. Both unowned ends are now named in the constant's own comment, including that `cleanup_local` removes `PR_PENDING` as its **first** act and then runs a `git checkout` of the base — which fires post-checkout, and is exactly why the marker must still be held there.
+
+**The cost, stated plainly.** A genuine leak is now reported after up to 15 minutes instead of 5, against the ~10 hours WI-pohir observed. The constant also now says it is a stopgap: a wall-clock guess is only necessary because the marker has no holder, which is WI-gokuv.
+
+2596 passed, changed files at 100%, ratchet 669 delta +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
