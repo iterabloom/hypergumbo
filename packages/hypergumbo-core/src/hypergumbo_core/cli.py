@@ -7897,6 +7897,77 @@ _REACHABILITY_EDGE_TYPES: Final[frozenset[str]] = call_family_edge_types() | fro
 )
 
 
+def _construction_initializer_edges(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    """Extra BFS hops: a CONSTRUCTED class reaches its own initializer.
+
+    INV-kahig settled which edge TYPES carry reachability and left open which
+    NODE the edge lands on. ruby resolves ``Klass.new`` to ``Klass#initialize``
+    and csharp/java land on a ``constructor`` symbol, so for them the walk
+    already enters the initializer. py / js_ts / dart land on the CLASS, and
+    every edge leaving a class node (``contains`` / ``extends`` /
+    ``decorated_by``) is correctly non-traversable -- so the walk arrives and
+    stops, and the initializer plus everything it calls reads as dead
+    (INV-rolok). Measured at tip: of 11,428 ``instantiates`` edges in this
+    repo's self-analysis, 9,217 land on a ``class`` and ZERO on a callable.
+
+    THE LICENCE IS THE CONJUNCTION. ``contains`` alone confers nothing --
+    making it traversable would make every method of every instantiated class
+    unconditionally reachable and destroy this command's precision wholesale.
+    The hop is minted only where (the class is the dst of a construction edge)
+    AND (the member is its initializer, per
+    :func:`symbol_kinds.is_initializer`). Either half alone mints nothing.
+
+    WHY HERE AND NOT IN THE EMITTED GRAPH. Re-pointing the ``instantiates``
+    dst at the initializer is WI-fagit's shape for csharp and was the obvious
+    move, but ``linkers/method_call_recovery`` keys its class hint on
+    ``e.dst in class_ids`` -- so re-pointing python's dst would silently drop
+    python from the linker that produced 89 edges on this repo. Minting the
+    hops as real edges instead perturbs ``detect_entrypoints``, which reads the
+    edge set: measured on pretix, it cost 5 route seeds (seed_count
+    1174 -> 1173). Augmenting THIS graph, after entrypoint detection has
+    already run, changes no emitted edge and no other consumer. The precedent
+    is ``is_grpc_rpc_implementation``: the edges are correct as they stand,
+    and only this walk's reading of them changes.
+
+    Returns a sorted list so an A/B over the result is stable.
+    """
+    # Imported locally, matching this module's idiom for symbol_kinds.
+    from .symbol_kinds import is_initializer
+
+    by_id = {n["id"]: n for n in nodes}
+    constructed: set[str] = set()
+    for edge in edges:
+        if edge.get("type") != "instantiates":
+            continue
+        target = by_id.get(edge.get("dst", ""))
+        # An unresolved/external dst has no node behind it (2,211 of this
+        # repo's construction edges); a dst that is ALREADY a callable is the
+        # ruby/csharp shape and needs no hop.
+        if target is not None and target.get("kind") == "class":
+            constructed.add(target["id"])
+    if not constructed:
+        return []
+    hops: set[tuple[str, str]] = set()
+    for edge in edges:
+        if edge.get("type") != "contains":
+            continue
+        owner = edge.get("src", "")
+        if owner not in constructed:
+            continue
+        member = by_id.get(edge.get("dst", ""))
+        if member is None:
+            continue
+        if is_initializer(
+            member.get("kind", ""),
+            member.get("name", ""),
+            member.get("language", "") or "",
+        ):
+            hops.add((owner, member["id"]))
+    return sorted(hops)
+
+
 def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
     """Find potentially dead code: production callables unreachable from seeds.
 
@@ -8048,6 +8119,12 @@ def cmd_dead_code_maybe(args: argparse.Namespace) -> int:
             dst = edge.get("dst", "")
             if src and dst:
                 call_graph.setdefault(src, []).append(dst)
+
+    # INV-rolok: a construction edge that lands on a CLASS must still reach
+    # the code that runs on construction. Applied to the walk's own graph,
+    # after seed detection, so no emitted edge and no other consumer moves.
+    for _owner, _init in _construction_initializer_edges(nodes, edges):
+        call_graph.setdefault(_owner, []).append(_init)
 
     reachable = _bfs_reachable(seed_ids, call_graph)
 
