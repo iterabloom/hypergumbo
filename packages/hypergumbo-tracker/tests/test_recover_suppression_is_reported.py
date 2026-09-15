@@ -33,11 +33,20 @@ inside the legitimate window, on every run whose CI is slow.
 SO OWNERSHIP IS ASKED FIRST, AND AGE ONLY BREAKS THE REMAINING TIE. A live
 ``auto-pr`` is named by ``.git/PR_PENDING``; a live ``do_sync`` is named by the
 ``TRACKER_SYNC_PENDING`` flock, which cannot lie because it cannot leak. Only
-when neither owns the marker does age matter, and then it has one job: cover
-``auto-pr``'s post-merge tail. That tail is the gap this bug lives in --
-``do_pr`` removes ``PR_PENDING`` immediately after the merge but keeps the
-marker until exit, so between those two points the loud gate is already gone and
-the silent one is still set. That is exactly where the observed incident died.
+when neither owns the marker does age matter, and then it covers the two ends of
+a run where ``PR_PENDING`` does not exist yet or does not exist any more: before
+the push, and after ``cleanup_local`` drops the gate but before the process
+exits. The second of those is where this bug lives -- the loud gate is already
+released and the silent one is still set, which is exactly where the observed
+incident died.
+
+THE GRACE WAS WRONG ONCE ALREADY, AND THAT IS WHY IT IS PINNED HERE. The first
+draft sized it at 300s against the post-merge end alone, described as
+"network-bound seconds, not minutes". A live auto-pr refuted that within the
+hour: on PR #975, an ordinary run with fast CI, the PRE-GATE end alone was 172s
+-- 51% of the entire 336s run, and 57% of the grace it was supposed to fit
+inside. ``test_the_grace_covers_the_measured_windows`` holds that measurement so
+the constant cannot drift back under it by estimate.
 """
 
 from __future__ import annotations
@@ -156,23 +165,45 @@ class TestTheUnownedMarkerIsTheFinding:
         assert "self-healing" in warning
         assert f"rm -f .git/{RECOVER_MARKER_NAME}" in warning
 
-    def test_the_post_merge_tail_of_a_live_run_is_inside_the_grace(
+    def test_an_unowned_end_of_a_live_run_is_inside_the_grace(
         self, tmp_path: Path,
     ) -> None:
-        # auto-pr removes PR_PENDING right after the merge and keeps the marker
-        # until exit. For those seconds there is no owner and no leak either.
+        # Both ends qualify: before auto-pr writes PR_PENDING, and after
+        # cleanup_local removes it. 172s is the PRE-GATE end measured on PR #975
+        # -- a real value from a healthy run, not a round number.
         git_dir = _git_dir(tmp_path)
-        _marker(git_dir, age_seconds=20)
+        _marker(git_dir, age_seconds=172)
 
         assert recover_suppression_status(git_dir).leaked is False
 
     def test_the_grace_boundary_is_pinned(self, tmp_path: Path) -> None:
+        from hypergumbo_tracker.journal import _UNOWNED_GRACE_SECONDS
+
         git_dir = _git_dir(tmp_path)
         m = _marker(git_dir)
-        for age, expected in ((299, False), (301, True)):
-            past = time.time() - age
+        for delta, expected in ((-1, False), (+1, True)):
+            past = time.time() - (_UNOWNED_GRACE_SECONDS + delta)
             os.utime(m, (past, past))
-            assert recover_suppression_status(git_dir).leaked is expected, age
+            assert recover_suppression_status(git_dir).leaked is expected, delta
+
+    def test_the_grace_covers_the_measured_windows(self) -> None:
+        """THE REGRESSION GUARD ON THE CONSTANT ITSELF.
+
+        Measured on auto-pr PR #975, an ordinary run with fast CI: the marker
+        was touched at 17:35:19 and ``.git/PR_PENDING`` appeared at 17:38:11, so
+        the marker sat UNOWNED for 172 seconds while a perfectly healthy auto-pr
+        was pushing. The first draft of the grace was 300s -- 57% consumed by
+        one ordinary run, sized by an estimate that had only considered the
+        other end.
+
+        The multiplier is the headroom a retrying push or ``cleanup_local``'s
+        three-attempt pull loop needs. If someone lowers the constant, this
+        fails and names the measurement rather than the opinion.
+        """
+        from hypergumbo_tracker.journal import _UNOWNED_GRACE_SECONDS
+
+        measured_pre_gate_window = 172.0
+        assert _UNOWNED_GRACE_SECONDS >= 5 * measured_pre_gate_window
 
 
 class TestTheAgeIsLegible:

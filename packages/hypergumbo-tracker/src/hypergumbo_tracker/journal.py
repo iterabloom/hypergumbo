@@ -298,13 +298,31 @@ RECOVER_MARKER_NAME = "tracker-recover-disabled"
 #: that legitimate window.
 #:
 #: Ownership is therefore asked first (:func:`recover_suppression_status`), and
-#: this grace covers only what ownership cannot: ``auto-pr``'s post-merge tail,
-#: where ``PR_PENDING`` is already gone (auto-pr removes it immediately after the
-#: merge) but the marker is held until exit. That tail is a fetch, a rev-parse,
-#: an orphan-PR check, an optional tracker discussion append, branch deletions
-#: and the local sync — network-bound seconds, not minutes. Five minutes is
-#: slack over that, and it is the ONLY thing this constant is sized against.
-_UNOWNED_GRACE_SECONDS = 300.0
+#: this grace covers the two ends of a run that ownership cannot see, because
+#: ``.git/PR_PENDING`` does not exist yet or does not exist any more:
+#:
+#: * THE PRE-GATE END. ``do_pr`` touches the marker as its first act and writes
+#:   ``PR_PENDING`` only after auth, preflight, the push and PR creation.
+#: * THE POST-MERGE END. ``cleanup_local`` removes ``PR_PENDING`` as its FIRST
+#:   act, then runs a ``git checkout`` of the base (which fires post-checkout —
+#:   the reason the marker must still be held) and up to three network ``git
+#:   pull`` attempts, then deletes branches locally and on the remote.
+#:
+#: SIZED AGAINST A MEASUREMENT, NOT AN ESTIMATE, after the first draft of this
+#: constant was refuted by a live run within the hour. On auto-pr PR #975 — an
+#: ordinary run with fast CI, 336s start to finish — the marker was touched at
+#: 17:35:19 and ``PR_PENDING`` appeared at 17:38:11. The PRE-GATE end alone was
+#: **172s**, 51% of the whole run, against a first draft of 300s. The estimate
+#: that produced that draft ("network-bound seconds, not minutes") considered
+#: only the post-merge end and was wrong about the larger of the two.
+#:
+#: 900s is ~5x the measured pre-gate window, which is the headroom a retrying
+#: push or a three-attempt pull loop needs. The cost is that a genuine leak goes
+#: unreported for up to 15 minutes instead of 5 — against the ~10 HOURS that
+#: WI-pohir observed, and only until WI-gokuv gives the marker a holder, which
+#: is what removes the need to guess at all. This constant is a stopgap and
+#: should be read as one.
+_UNOWNED_GRACE_SECONDS = 900.0
 
 
 def _format_age(seconds: float) -> str:
