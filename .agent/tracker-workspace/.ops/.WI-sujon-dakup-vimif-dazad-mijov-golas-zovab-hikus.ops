@@ -1,0 +1,21 @@
+- op: create  # 825b
+  at: '2026-09-15T07:30:39Z'  # 825b
+  by: agent  # 825b
+  actor: jgstern_agent  # 825b
+  clock: 1  # 825b
+  nonce: 825b  # 825b
+  data:  # 825b
+    kind: work_item  # 825b
+    title: "dart constructors are identified by neither kind nor a fixed name, so construction reachability (INV-rolok) does not cover dart"  # 825b
+    status: todo_hard  # 825b
+    priority: 3  # 825b
+    parent:  # 825b
+    tags:  # 825b
+    - analyzer  # 825b
+    - dead_code  # 825b
+    isbefore: []  # 825b
+    duplicate_of: []  # 825b
+    not_duplicate_of: []  # 825b
+    pr_ref:  # 825b
+    description: "Filed from the INV-rolok fix rather than guessed at.\n\nsymbol_kinds.is_initializer identifies the code that runs on construction by\ntwo mechanisms: kind == \"constructor\" (java, csharp, apex, pony) or a\nper-language reserved NAME (python __init__, js/ts constructor, ruby\ninitialize, php __construct). Dart fits NEITHER: its constructors are named\nafter their class (Widget.Widget) and it also has named constructors\n(Widget.named, Widget.fromJson), so no fixed name table can identify them, and\ndart.py does not emit kind=\"constructor\".\n\nConsequence: dart is the one language named in INV-rolok's root_cause\n(py/dart/js_ts all point instantiates at the class) that the fix does NOT\ncover. A dart class reached only by construction still has its constructor and\neverything downstream reported as dead.\n\nTwo candidate directions:\n  A. dart.py emits kind=\"constructor\" for constructor declarations, which is\n     the canonical registry mechanism and makes is_initializer work with no\n     table entry. Check the blast radius on consumers keyed on kind==\"method\"\n     first -- note that kind=\"constructor\" also removes the symbol from\n     cli.production_callables, so dart constructors would stop being dead-code\n     candidates at all, which is a SEPARATE behavior change and may not be\n     wanted.\n  B. is_initializer compares the member's short name to its OWNER's short name\n     (member_owner), which identifies Widget.Widget without a table but does\n     not identify named constructors.\n\nUNMEASURED, deliberately: no dart repo was surveyed for this. Size it before\npicking. The item exists so the gap is a filed absence rather than a silent one\n-- the same reason the gap is written into _INITIALIZER_NAMES_BY_LANGUAGE's own\ncomment."  # 825b
+    fields: {}  # 825b
