@@ -308,10 +308,11 @@ def test_reconcile_leaves_no_recover_disabled_marker(
 ) -> None:
     """The fast-forward must run with ops self-healing LIVE.
 
-    ``do_sync`` sets ``tracker-recover-disabled`` around its own fetch on
-    purpose. This command must not: the post-checkout and reference-transaction
-    hooks are exactly what should restore ops the pull disturbs, and a leaked
-    marker silently disables that with nothing to detect it.
+    ``do_sync`` sets ``tracker-recover-disabled`` on purpose, and holds it for
+    the whole sync — CI poll included, not merely "around its own fetch". This
+    command must not: the post-checkout and reference-transaction hooks are
+    exactly what should restore ops the pull disturbs, and a marker left behind
+    disables that for as long as it sits there.
     """
     from hypergumbo_tracker.cli import _cmd_reconcile
 
