@@ -141,6 +141,21 @@ class RepoDdg:
     #: case, because the permitting case is the one being enumerated: a
     #: language nobody configured must forfeit rather than silently qualify.
     forfeit_refutation: set[str] = field(default_factory=set)
+    #: ``symbol_id -> {variable, ...}`` the def/use extractor did not account
+    #: for (INV-lupav clause L4).
+    #:
+    #: A name lands here when some statement the CFG RECORDED mentions it and
+    #: lists it in neither ``defines`` nor ``uses`` — Go's grouped
+    #: ``var ( msg = cwd )``, Python's ``c[key] = 1``. Distinct from
+    #: ``forfeit_refutation`` in granularity and that is the point: coverage is
+    #: a property of the FUNCTION (part of its body was never visited), while
+    #: this is a property of a VARIABLE (this one value was mentioned somewhere
+    #: the extractor did not read). Forfeiting the whole function for it would
+    #: withhold ``False`` from every walk over the function instead of from the
+    #: walks that actually carry the unaccounted value.
+    #:
+    #: Populated alongside ``stmt_defuse``, for functions WITH edges only.
+    unaccounted_names: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
 _DDG_LANGUAGES: dict[str, LanguageDdgSpec] = {}
@@ -280,6 +295,13 @@ def _solve_one_function(
         ]
         if stmts:
             out.stmt_defuse[sym_id] = stmts
+        # INV-lupav L4. Collected on the same terms as ``stmt_defuse`` and for
+        # the same reason: a function with no edges is never walked, and the
+        # empty answer this returns for an unpopulated CFG would be a lie about
+        # one that was.
+        unaccounted = deps["unaccounted_names"](cfg, body_node, source)
+        if unaccounted:
+            out.unaccounted_names[sym_id] = unaccounted
     if spec.refine is not None:
         hints = spec.refine(
             node=node,
@@ -318,6 +340,7 @@ def build_repo_ddg(
             load_cfg_mapping,
             populate_def_use_for_cfg,
             solve_reaching_defs,
+            unaccounted_names,
             uncovered_semantic_lines,
         )
     except ImportError:  # pragma: no cover - tree-sitter is a hard dep but defend
@@ -328,6 +351,7 @@ def build_repo_ddg(
         "populate_def_use_for_cfg": populate_def_use_for_cfg,
         "solve_reaching_defs": solve_reaching_defs,
         "uncovered_semantic_lines": uncovered_semantic_lines,
+        "unaccounted_names": unaccounted_names,
     }
 
     for language in languages:

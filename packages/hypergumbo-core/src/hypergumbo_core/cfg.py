@@ -1634,6 +1634,127 @@ def _is_semantic_leaf(node: Any) -> bool:
     )
 
 
+def unaccounted_names(
+    cfg: FunctionCfg,
+    body_node: Any,
+    source: bytes,
+) -> frozenset[str]:
+    """Variables MENTIONED inside a recorded statement that accounts for neither.
+
+    THE OTHER HALF OF THE COVERAGE QUESTION, and the half no extent test can
+    reach (INV-lupav clause L4). :func:`uncovered_semantic_lines` asks whether
+    any code sits OUTSIDE every statement the CFG recorded. This asks whether,
+    INSIDE a statement it did record, the def/use extractor accounted for the
+    variables the statement mentions. Both failures produce the same downstream
+    lie — the §3a walk exhausts and returns ``False``, "every step accounted
+    for", for a value it never followed — and since 2026-09-02 that ``False``
+    REMOVES a reported flow.
+
+    WHY THE EXTENT TEST CANNOT SEE THIS. Go's grouped ``var ( msg = cwd )`` is
+    recorded as one ``var_declaration`` statement whose extent covers the whole
+    block, and the extractor then fills it with ``defines=[] uses=[]``: the
+    grammar nests the specs one level deeper than the handler descends. There
+    is no uncovered region to find, so the coverage predicate is silent at any
+    width. Python's ``c[key] = 1`` is the same shape — ``defines=['c']
+    uses=[]``, the index never read — and so is a Go grouped ``const``.
+
+    MEASURED, NOT ARGUED: with the handler present and wrong in six of the
+    seven shapes found by a four-language sweep, a per-handler "I understood
+    this construct" flag — the remedy this clause was filed proposing — would
+    have claimed understanding in all six. Membership in a dispatch table is
+    not evidence that the dispatch was complete.
+
+    SAME PREDICATE AS THE EXTENT GATE, DELIBERATELY. "Worth accounting for" has
+    one spelling here (:func:`_is_semantic_leaf`), so the two questions cannot
+    drift apart, and neither needs a per-language vocabulary of binding
+    constructs — the list that ``atomic_statement`` already proved decays
+    silently in the direction that deletes findings.
+
+    ACCOUNTED FOR BY *ANY* ENCLOSING STATEMENT, not by the innermost one. Go
+    records ``defer log.Print(msg)`` as two nested statements: the outer
+    ``defer_statement`` reads ``msg`` correctly and the inner ``deferred_call``
+    is empty. Attributing each leaf to its innermost recorded statement reports
+    the empty inner one and flags a variable the extractor demonstrably did
+    follow. An enclosing statement that names the variable IS the extractor
+    accounting for it.
+
+    RESTRICTED TO NAMES THIS FUNCTION DEFINES, which costs nothing and removes
+    all of the noise. Every variable the §3a walk can ever be handed comes from
+    a statement's ``defines`` — seeds through ``defs_at`` and heirs through
+    ``inherits`` are both built from them — so a callee name, a type name, a
+    struct-literal key or a package qualifier can never be queried and is not
+    worth reporting. FLOOR-CHECKED on two real repositories rather than
+    reasoned about: 12.6% of alertmanager's functions and 4.9% of hypergumbo's
+    carry any unaccounted name at all (4.8% and 2.1% of tracked names), so this
+    withholds ``False`` from a minority and a predicate that fires everywhere —
+    the failure that killed one candidate spelling in WI-mugop phase 1 — is
+    ruled out by measurement.
+
+    EMPTY IS A REAL ANSWER HERE, AND ONLY BECAUSE OF THE CALLER. A function
+    whose statements define nothing yields an empty ``tracked`` set and so an
+    empty result, which reads as "all accounted for" — and that is exactly what
+    an un-populated CFG looks like. It is safe only because the sole production
+    caller computes this alongside DDG EDGES, which cannot exist without
+    definitions. Call it on a CFG that never saw
+    :func:`populate_def_use_for_cfg` and it will tell you everything is fine.
+
+    Args:
+        cfg: The function's CFG, AFTER :func:`populate_def_use_for_cfg`.
+        body_node: The tree-sitter node the CFG was built from.
+        source: Source bytes, for leaf text and the statement-index match.
+
+    Returns:
+        Frozenset of variable names the extractor left unaccounted at some
+        statement that mentions them. Empty when every mention is accounted
+        for.
+    """
+    # Same key as populate_def_use_for_cfg and uncovered_semantic_lines build.
+    recorded: dict[tuple[int, int, str], CfgStatement] = {}
+    tracked: set[str] = set()
+    for block in cfg.blocks.values():
+        for stmt in block.statements:
+            recorded[(stmt.line, stmt.col, stmt.node_type)] = stmt
+            tracked.update(stmt.defines)
+    if not tracked:
+        return frozenset()
+
+    out: set[str] = set()
+    # ITERATIVE, for the reason uncovered_semantic_lines is (INV-gotir): keda's
+    # generated protobuf measures an AST depth of 1,171 against CPython's
+    # default limit of 1,000, and the caller's ``except Exception`` would read
+    # the RecursionError as "this function has no DDG edges".
+    #
+    # The stack carries the accumulated ``accounted`` set of every ENCLOSING
+    # recorded statement, which is what makes the nested-statement case right.
+    stack: list[tuple[Any, frozenset[str], bool]] = [
+        (body_node, frozenset(), False)
+    ]
+    while stack:
+        node, accounted, inside = stack.pop()
+        # NOT named ``stmt``: that name is bound by the index loop above, where
+        # mypy infers it as a non-optional ``CfgStatement``, so re-binding a
+        # ``.get()`` result to it is a strict-mode regression rather than a
+        # style question.
+        covering = recorded.get(
+            (node.start_point[0] + 1, node.start_point[1], node.type)
+        )
+        if covering is not None:
+            accounted = (
+                accounted | frozenset(covering.defines) | frozenset(covering.uses)
+            )
+            inside = True
+        if inside and _is_semantic_leaf(node):
+            name = source[node.start_byte:node.end_byte].decode(
+                "utf-8", errors="replace"
+            )
+            if name in tracked and name not in accounted:
+                out.add(name)
+        for child in node.children:
+            stack.append((child, accounted, inside))
+
+    return frozenset(out)
+
+
 # Per-function bail-out threshold (same as Joern's ReachingDefPass default).
 # Functions exceeding this fall back to structural analysis.
 MAX_DEFINITIONS = 4000

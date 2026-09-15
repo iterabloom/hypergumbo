@@ -4753,3 +4753,123 @@ class TestSanitizerAttributionOnTheCallGraphArm:
             "only the repo-supplied candidate may be marked, or the marking "
             "stops carrying information"
         )
+
+
+class TestAnUnaccountedMentionIsNotAnAbsence:
+    """INV-lupav clause L4: the omission INSIDE a statement the CFG recorded.
+
+    THE CLAUSE NO COVERAGE PREDICATE CAN REACH. Every other route to an
+    unearned ``False`` left an UNCOVERED region, which WI-joluk's gate —
+    widened to semantic leaves by WI-mugop — detects and forfeits. Here the
+    statement IS recorded and the extractor then fills it with nothing: Go's
+    grouped ``var ( msg = cwd )``, Python's ``c[key] = 1``. There is no
+    uncovered extent to find at any predicate width, so the gate is silent and
+    the walk exhausts over a graph missing the edge that mattered.
+
+    SO THE SIGNAL IS PER-VARIABLE, NOT PER-FUNCTION. Coverage is a property of
+    the function (part of its body was never visited); this is a property of a
+    VALUE (this one was mentioned where nobody read it). Forfeiting the whole
+    function would withhold ``False`` from every walk over it rather than from
+    the walks that actually carry the unaccounted value — measured at 12.6% of
+    alertmanager's functions against 4.8% of its tracked names.
+
+    LIVE REPRO, control first, both functions walkable and both reporting full
+    coverage, one variable apart::
+
+        covered  var msg = cwd  ->  True    ADMISSIBLE
+        leak     var ( msg = cwd ) -> False  <- true answer is True
+        leak     with this signal  -> None   escape: unaccounted_mention
+
+    The fixtures below carry that shape as indices rather than source, so they
+    test the walk rather than the extractor; ``test_cfg.py`` owns the other end.
+    """
+
+    # L1 `cwd := src()`; L2 `a := cwd` (recorded); L3 `pkg.Print(a)` — a
+    # catalogued consuming callee, which is what lets the recorded chain
+    # exhaust to ``False`` instead of escaping on its own. L4 mentions `cwd`
+    # inside a grouped var the extractor did not read, so no edge exists.
+    _USES: ClassVar[dict] = {("f", "cwd", 1): {2}, ("f", "a", 2): {3}}
+    _DEFS: ClassVar[dict] = {("f", 1): {"cwd"}}
+    _INHERITS: ClassVar[dict] = {("f", 2, "cwd"): {"a"}}
+    _PRINT: ClassVar[FunctionSummary] = FunctionSummary(
+        function="pkg.Print", side_effect=True,
+    )
+    _CALLEES: ClassVar[dict] = {("f", 3): frozenset({"pkg.Print"})}
+    _SUMS: ClassVar[dict] = {"pkg.Print": _PRINT}
+
+    def _walk(self, unaccounted, sites=None):
+        return _ddg_taint_reaches(
+            "f", [1], [9], self._USES, self._CALLEES, self._SUMS,
+            defs_at=self._DEFS, inherits=self._INHERITS,
+            unaccounted=unaccounted, escape_sites=sites,
+        )
+
+    def test_without_the_signal_the_walk_claims_it_accounted_for_everything(
+        self,
+    ) -> None:
+        """THE DEFECT, pinned so the fix cannot be mistaken for a no-op.
+
+        The recorded chain closes cleanly at a catalogued consuming callee, so
+        the walk exhausts and returns ``False`` — "every step accounted for" —
+        about a value it never followed past line 2.
+        """
+        assert self._walk(None) is False
+
+    def test_an_unaccounted_mention_escapes(self) -> None:
+        """One argument's difference, and the verdict becomes honest."""
+        assert self._walk(frozenset({"cwd"})) is None
+
+    def test_a_function_whose_mentions_are_all_accounted_still_refutes(
+        self,
+    ) -> None:
+        """THE FLOOR, and it is the assertion that makes this a gate.
+
+        An empty signal must leave ``False`` reachable. A predicate that can
+        only ever withhold refutation is not a safety gate — it is refutation
+        deleted, and it would read as a finding about the substrate rather
+        than as a broken instrument. This is the check that killed one
+        candidate spelling of the coverage predicate in WI-mugop phase 1.
+        """
+        assert self._walk(frozenset()) is False
+
+    def test_an_unrelated_unaccounted_variable_does_not_forfeit(self) -> None:
+        """Per-variable means per-variable.
+
+        ``other`` is unaccounted somewhere in this function, and the walk
+        carrying ``cwd`` is unaffected. Were this keyed on the FUNCTION the
+        assertion would be ``None`` and refutation would collapse toward zero
+        on any function with one unmodelled construct anywhere in it.
+        """
+        assert self._walk(frozenset({"other"})) is False
+
+    def test_positive_evidence_is_not_downgraded(self) -> None:
+        """``True`` survives, and that direction is deliberate.
+
+        The walk FOUND a dependence reaching the sink; an incomplete picture
+        cannot unmake a dependence that was actually traced. Downgrading it
+        would turn a safety gate into a recall regression — the same asymmetry
+        ``forfeit_refutation`` observes. This is why the escape sets the flag
+        and falls THROUGH rather than ``continue``-ing: the remaining uses of
+        the variable still get walked.
+        """
+        assert _ddg_taint_reaches(
+            "f", [1], [3], self._USES, self._CALLEES, self._SUMS,
+            defs_at=self._DEFS, inherits=self._INHERITS,
+            unaccounted=frozenset({"cwd"}),
+        ) is True
+
+    def test_the_escape_is_recorded_with_its_own_reason(self) -> None:
+        """An extraction gap must not be pooled into the alias bucket.
+
+        ``no_heir`` is the one bucket ADR-0017 §7b's alias exclusion can
+        correctly be invoked for. This is an EXTRACTION failure with an
+        entirely different owner and the opposite remedy, so it carries its
+        own reason — the misattribution ``EscapeSite`` was widened to a triple
+        to prevent.
+        """
+        sites: list[EscapeSite] = []
+        assert self._walk(frozenset({"cwd"}), sites) is None
+        assert [(s.line, s.reason) for s in sites] == [
+            (1, "unaccounted_mention"),
+        ]
+        assert {s.reason for s in sites} <= ESCAPE_REASONS

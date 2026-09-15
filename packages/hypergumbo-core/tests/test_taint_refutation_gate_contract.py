@@ -55,6 +55,16 @@ _TAINT = _SRC / "taint.py"
 _WALK = "_ddg_taint_reaches"
 _PROPAGATOR = "propagate_taint_ddg"
 _GATE = "forfeit_refutation"
+#: INV-lupav L4's signal, governed by the SAME contract and for the same
+#: reason. ``forfeit_refutation`` reports that part of the function's body was
+#: never visited; ``unaccounted`` reports that a variable was mentioned inside
+#: a statement that WAS visited and accounted for it nowhere. Both are evidence
+#: that an exhausted walk is not evidence of absence, both are optional
+#: keywords defaulting to "no evidence", and a site that forgets either one
+#: silently regains the authority to delete a finding. The argument for pinning
+#: the first structurally is the whole argument for pinning the second.
+_L4_GATE = "unaccounted"
+_GATES = (_GATE, _L4_GATE)
 _BARRIER = "barrier_lines"
 
 
@@ -97,16 +107,21 @@ def _audit(source: str) -> list[str]:
             if not (isinstance(node.func, ast.Name) and node.func.id == _WALK):
                 continue
             kwargs = {kw.arg for kw in node.keywords}
-            if _GATE in kwargs:
+            missing = [g for g in _GATES if g not in kwargs]
+            if not missing:
                 continue
             if id(node) in collapsed:
                 continue
             arm = "barrier" if _BARRIER in kwargs else "section-3a"
+            # ONE violation per SITE, naming every gate it is missing, rather
+            # than one per gate: the remedy is a single edit to a single call,
+            # and a per-gate report would make the count of findings depend on
+            # how many gates happen to exist.
             violations.append(
                 f"{_WALK} at line {node.lineno} ({arm} arm) consumes the "
-                f"walk's False without passing {_GATE}. An unearned False "
-                f"deletes a real finding (INV-lupav L2); wire WI-joluk's "
-                f"coverage gate in this same change."
+                f"walk's False without passing {', '.join(missing)}. An "
+                f"unearned False deletes a real finding (INV-lupav); wire the "
+                f"incompleteness evidence in this same change."
             )
     return violations
 
@@ -151,6 +166,7 @@ def {_PROPAGATOR}(x):
     assert len(found) == 1
     assert "section-3a arm" in found[0]
     assert _GATE in found[0]
+    assert _L4_GATE in found[0]
 
 
 def test_guard_fires_on_ungated_barrier_arm() -> None:
@@ -178,7 +194,7 @@ def test_collapsed_and_gated_sites_are_both_accepted() -> None:
     src = f'''
 def {_PROPAGATOR}(x):
     a = {_WALK}(fn, s, k, u) is True
-    b = {_WALK}(fn, s, k, u, {_BARRIER}=bars, {_GATE}=g) is False
+    b = {_WALK}(fn, s, k, u, {_BARRIER}=bars, {_GATE}=g, {_L4_GATE}=n) is False
 '''
     assert _audit(src) == []
 
@@ -194,3 +210,29 @@ def some_other_function(x):
     refuted = {_WALK}(fn, s, k, u) is False
 '''
     assert _audit(src) == []
+
+
+def test_a_site_that_passes_only_one_gate_is_still_reported() -> None:
+    """POSITIVE CONTROL for the second gate, on its own.
+
+    The hazard this addition exists for is not a site with no evidence at all
+    — that shape was already caught — but a site carrying the OLDER gate and
+    silently missing the newer one, which is exactly what a call written
+    before INV-lupav L4 closed looks like. Asserted in both directions so
+    neither gate can be dropped from ``_GATES`` without a test going red.
+    """
+    only_old = f'''
+def {_PROPAGATOR}(x):
+    b = {_WALK}(fn, s, k, u, {_GATE}=g) is False
+'''
+    found = _audit(only_old)
+    assert len(found) == 1
+    assert _L4_GATE in found[0] and _GATE not in found[0]
+
+    only_new = f'''
+def {_PROPAGATOR}(x):
+    b = {_WALK}(fn, s, k, u, {_L4_GATE}=n) is False
+'''
+    found = _audit(only_new)
+    assert len(found) == 1
+    assert _GATE in found[0]
