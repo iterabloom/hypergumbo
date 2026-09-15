@@ -1,0 +1,116 @@
+Original commit body from 61eba3d648b428b74bf916c14762027cda6f58c8:
+
+INV-lupav's last clause, L4: the def/use extractor records a statement and then
+accounts for nothing inside it. WI-joluk's coverage gate is blind to this by
+construction — the statement IS recorded, so there is no uncovered extent at any
+predicate width — and since 2026-09-02 the resulting `False` REMOVES a reported
+flow.
+
+## The clause, reproduced on the production path (control first)
+
+    covered  walkable=True  gate=silent  unaccounted={}     -> True   ADMISSIBLE
+    leak     walkable=True  gate=silent  unaccounted={cwd}  -> False  <- true answer is True
+    leak     with the signal                               -> None   unaccounted_mention@12
+
+One variable apart: `var ( msg = cwd )` against `msg := cwd`. Both walkable,
+both reporting full coverage. The Go grammar nests grouped specs one level
+deeper than `_handle_spec_declaration` descends, so three definitions and a call
+argument are recorded as `defines=[] uses=[]` (live at alertmanager
+`api/v2/api.go:251`). Python's `c[key] = 1` is the same defect at a different
+construct.
+
+## The filed remedy was refuted by measurement, and is not what shipped
+
+The clause was filed proposing a per-statement "I understood this construct"
+flag. A four-language differential sweep with controls found **seven L4 shapes
+across three languages** — and in **six of the seven the handler IS registered
+for the node type and is simply incomplete**. A flag keyed on dispatch-table
+membership would have claimed understanding in all six.
+
+**One of the three filed shapes did not reproduce.** `defer` records
+`defer_statement uses=['log','msg']` correctly at tip; the empty `deferred_call`
+beside it is a nested sibling, and reading it in isolation is what made it look
+like a miss. Corrected on the item.
+
+## What ships
+
+`cfg.unaccounted_names` diffs each recorded statement's `defines`/`uses` against
+the semantic leaves inside its own extent, **reusing `_is_semantic_leaf`** so
+"worth accounting for" keeps one spelling and no per-language vocabulary of
+binding constructs has to be kept in step — the list `atomic_statement` already
+proved decays silently in the direction that deletes findings.
+
+- **Accounted for by ANY enclosing statement**, not the innermost. Innermost
+  attribution reports the empty inner `deferred_call` and flags a variable the
+  extractor demonstrably did follow.
+- **Per VARIABLE, not per function**, so the walk ESCAPES rather than forfeits:
+  coverage is a property of a function, this is a property of a value.
+  `ESCAPE_REASONS` gains `unaccounted_mention`, kept out of `no_heir`.
+- **Restricted to names the function DEFINES** — every variable the walk can be
+  handed comes from a statement's `defines` — so callee, type and field names
+  are never reported.
+- **A `True` is never downgraded**: the escape sets the flag and falls THROUGH.
+
+## Floor check, before it was wired
+
+The check that killed a candidate spelling in WI-mugop phase 1. Corpus roots
+named, because `forfeit_share.log` records names not paths and that cost a
+false-alarm regression once:
+
+| root | functions carrying any unaccounted name | tracked names flagged |
+|---|---|---|
+| `~/repos/alertmanager` (go) | 12.6% | 4.8% |
+| `/home/jgstern_agent/hypergumbo` (python) | 4.9% | 2.1% |
+
+`False` stays reachable for the large majority. A predicate that fires
+everywhere is ruled out by measurement, not by argument.
+
+## Blast radius: measured, zero, and reported as zero
+
+Paired arms — the real walk called twice on identical inputs, one with the
+signal and one without:
+
+| repo | walks | handed a signal | `unaccounted_mention` raised | verdicts moved |
+|---|---|---|---|---|
+| hypergumbo-core (own claims) | 84 | 34 | 2 | **0** |
+| `~/repos/alertmanager` (generic claims) | 22 | 8 | 1 | **0** |
+
+Zero because §3a returns `False` zero times on either repo (55/13 escaped,
+29/9 confirmed). The same picture the heir fix reported, for the same reason.
+
+## The enumeration, which is the actual result
+
+Every clause of INV-lupav was one defect wearing a different construct, found by
+hunting for shapes. Hunting does not terminate; a count does.
+`test_walk_exit_census.py` asserts structurally, against the AST of the shipped
+function, that exactly **five** `continue` paths do not record an escape — the
+seen-set cycle guard, a barrier line, `followed` with no call at the line, and
+the two `_use_site_terminates` routes — with a positive control that adds a
+sixth and watches the count move, one that deletes an `escaped = True` and
+watches an exit get reclassified, and one that renames the walk and demands an
+error rather than an empty census.
+
+**The project's own notes said four.** They omitted the barrier exit, so the
+census was off by one before it was first executed. `test_terminating_summary_census.py`
+carried the same four and is corrected.
+
+## Closure evidence
+
+All fifteen swept cases, controls first:
+
+- 5 controls (one per language plus Go's ungrouped `var`): nothing flagged.
+- 7 L4 shapes: caught by `unaccounted_names`.
+- 3 shapes leaving an uncovered region (`with open(t)`, TS `for…of`, Rust
+  `for…in`): caught by the existing coverage gate, which fails safe on them.
+- 0 unclosed.
+
+## Also in this change
+
+- `test_taint_refutation_gate_contract.py` now governs **both** gates. A site
+  carrying the older `forfeit_refutation` and silently missing `unaccounted` is
+  exactly what a call written before this landed looks like, and it is now a
+  test failure in both directions.
+- `docs/hypergumbo-spec.md` said `coverage_granularity` is `"language"`. It has
+  been `"function"` since PR #959.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
