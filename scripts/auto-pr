@@ -366,6 +366,41 @@ if history_path and os.path.isdir(os.path.dirname(history_path)):
 PY
 }
 
+# ------------------------------------------------------------------
+# WI-gokuv: hold the recovery-suppression LOCK, don't touch a flag.
+#
+# The reference-transaction and post-checkout hooks skip `tracker recover` while
+# this is held, because a concurrent restore puts a journalled-but-uncommitted op
+# back as an untracked file and aborts the very fast-forward that was about to
+# commit it. It is held for THIS WHOLE ACTION -- the comments here used to say
+# "fetch + post-merge fast-forward", which is how WI-pohir came to believe no
+# legitimate hold could exceed fifteen minutes. It spans the CI poll, so it can
+# legitimately last ~45 minutes (2400s default + a 300s soft-retry).
+#
+# A lock rather than a `touch`ed file because the OS releases an flock when the
+# holder dies, even on SIGKILL, so this can no longer outlive the run and leave
+# self-healing silently off (WI-pohir observed ~10 hours of exactly that).
+# _autopr_finalize still rm's the file on a clean exit; that is tidiness now,
+# not the mechanism.
+#
+# CAVEAT, measured rather than assumed: every git and curl this script forks
+# INHERITS the lock fd, and bash offers no close-on-exec escape for it, so a
+# SIGKILLed run keeps the lock until its orphaned children exit. That is
+# normally seconds. `tracker` reports the case where it is not, by comparing the
+# recorded pid below against the live process table.
+# ------------------------------------------------------------------
+_autopr_hold_recover_lock() {
+	local f="$REPO_ROOT/.git/tracker-recover-disabled"
+	# Append-mode open: never truncate a body another holder is using.
+	exec {_AUTOPR_RECOVER_FD}>>"$f" 2>/dev/null || return 0
+	if ! flock -x -n "$_AUTOPR_RECOVER_FD" 2>/dev/null; then
+		# Someone else owns it (a nested tracker sync). Nothing to do.
+		return 0
+	fi
+	printf 'pid=%s started=%s holder=auto-pr\n' "$$" "$(date +%s)" >"$f"
+	return 0
+}
+
 # Combined exit handler installed by every action subcommand.  Always
 # writes the sentinel; conditionally rm's PR_PENDING (skipped only when
 # _autopr_state_keep_pending is true, e.g. governance mode).
@@ -375,8 +410,9 @@ _autopr_finalize() {
 	if [[ "$_autopr_state_keep_pending" != "true" ]]; then
 		rm -f "$REPO_ROOT/.git/PR_PENDING" 2>/dev/null || true
 	fi
-	# Always re-enable the tracker recovery hook (the marker is set at each
-	# action's start; unlike PR_PENDING it is never kept across the exit).
+	# Always re-enable the tracker recovery hooks. The LOCK is what suppressed
+	# them and the OS drops it as this process exits; removing the file is
+	# tidiness so a peek does not even have to open it.
 	rm -f "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
 }
 
@@ -1081,11 +1117,9 @@ flush_queue() {
 	# the earliest exits (auth) capture a final state.
 	trap _autopr_finalize EXIT
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	_autopr_run_started_epoch=$(date +%s)
@@ -1490,11 +1524,9 @@ do_pr() {
 	# the earliest exits (auth, branch check) capture a final state.
 	trap _autopr_finalize EXIT
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	# WI-dofaz: capture the run-start epoch before any Forgejo work.
 	# The post-success orphan-tracker-sync check uses this as the cutoff
@@ -2322,11 +2354,9 @@ gov_cleanup() {
 	# the earliest exits capture a final state.
 	trap _autopr_finalize EXIT
 
-	# Suppress the reference-transaction recovery hook during this action's git
-	# operations (fetch + post-merge fast-forward). The hook would restore a
-	# journalled-but-uncommitted op as an untracked file and abort the very ff
-	# that commits it; _autopr_finalize removes the marker on exit.
-	touch "$REPO_ROOT/.git/tracker-recover-disabled" 2>/dev/null || true
+	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
+	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
+	_autopr_hold_recover_lock
 
 	local pr_num="${1:?Usage: auto-pr gov-cleanup <PR_NUM>}"
 	load_env

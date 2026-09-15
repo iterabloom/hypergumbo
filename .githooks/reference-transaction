@@ -19,9 +19,10 @@
 #     `pip install -e packages/hypergumbo-tracker`);
 #   * always exits 0 — it must never be able to fail the git operation it rides on.
 #
-# Known gaps (covered by the durable journal + a manual `tracker recover`, NOT by
-# this hook): `git clean` and `git stash` do not update refs, so they do not fire
-# this hook; after `rm -rf .git` recovery waits until the repo is re-init'd or
+# Known gaps (covered by the durable journal + a manual `tracker reconcile`, NOT
+# by this hook -- `recover` is the deprecated journal-only half, which restores
+# the journal and leaves the repo behind the upstream): `git clean` and `git
+# stash` do not update refs, so they do not fire this hook; after `rm -rf .git` recovery waits until the repo is re-init'd or
 # re-cloned (the journal data is still safe, keyed by the toplevel's abspath).
 
 state="$1"
@@ -32,15 +33,26 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 cd "$root" || exit 0
 
 # Skip while the tracker's own git operations are in progress. do_sync (sync.py)
-# and auto-pr set this marker around their fetch + fast-forward, which reconcile
-# pending .ops from working-tree into committed state. A concurrent recover would
-# restore a journalled-but-uncommitted op as an UNTRACKED file mid-merge — and
+# and auto-pr hold this lock for their ENTIRE run -- not just the fetch and
+# fast-forward, which is what this comment used to claim and what WI-pohir then
+# read as a fifteen-minute bound; the span contains their CI poll, so it can
+# legitimately last ~45 minutes. A concurrent recover would restore a
+# journalled-but-uncommitted op as an UNTRACKED file mid-merge, and
 # `git merge --ff-only` itself re-fires this hook (via its ORIG_HEAD write) right
 # before its overwrite check, so the restored untracked file aborts the very
-# fast-forward that was about to commit it. The marker excludes the tracker's own
+# fast-forward that was about to commit it. This excludes the tracker's own
 # reconciliation while still self-healing a user-initiated reset --hard/checkout
-# (which never set it).
-if [[ -f .git/tracker-recover-disabled ]]; then
+# (which never take the lock).
+#
+# WI-gokuv: the test is the LOCK, not the file. A bare marker file could not say
+# whether anyone still owned it, so a SIGKILL left self-healing off with nothing
+# able to distinguish that from a long, healthy auto-pr. The OS drops an flock
+# when its holder dies, so a leftover FILE is now inert and only a live holder
+# suppresses anything. `flock --shared --nonblock` peeks without disturbing the
+# holder; a fresh open() is what lets this work even though this hook is a
+# DESCENDANT of the holder and has inherited its lock fd.
+if [[ -e .git/tracker-recover-disabled ]] \
+  && ! flock --shared --nonblock .git/tracker-recover-disabled true 2>/dev/null; then
   exit 0
 fi
 

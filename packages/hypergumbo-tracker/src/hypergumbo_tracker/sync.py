@@ -56,7 +56,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from hypergumbo_tracker.journal import _union_op_blocks
+from hypergumbo_tracker.journal import RecoverSuppressionLock, _union_op_blocks
 from hypergumbo_tracker.sync_log import init_sync_log, write_log
 from hypergumbo_tracker.validation import validate_all
 
@@ -1501,18 +1501,23 @@ def do_sync(
     if not acquired:
         return SyncResult(success=False, error=holder_msg, exit_code=1)
 
-    # Suppress the reference-transaction recovery hook for the span of this
-    # sync's git operations. The hook restores journalled-but-uncommitted ops as
-    # UNTRACKED files on ref updates; during do_sync's fetch + ``merge --ff-only``
-    # cleanup that collides with the very fast-forward that commits them (the
-    # merge re-fires the hook via its ORIG_HEAD write right before the overwrite
-    # check, so the restored untracked file aborts the ff). The hook checks for
-    # this marker and skips. ``recover_marker_created`` guards against clobbering
-    # a marker an outer caller (auto-pr) already set.
-    recover_marker = preflight.git_dir / "tracker-recover-disabled"
-    recover_marker_created = not recover_marker.exists()
-    if recover_marker_created:
-        recover_marker.touch()
+    # Suppress the reference-transaction recovery hook for the span of THIS
+    # WHOLE SYNC -- not merely its fetch, which is what this comment used to say
+    # and what WI-pohir then read as a fifteen-minute bound. The span reaches
+    # from here to the ``finally`` below and contains the CI poll.
+    #
+    # The hook restores journalled-but-uncommitted ops as UNTRACKED files on ref
+    # updates; during the fetch + ``merge --ff-only`` cleanup that collides with
+    # the very fast-forward that commits them (the merge re-fires the hook via
+    # its ORIG_HEAD write right before the overwrite check, so the restored
+    # untracked file aborts the ff).
+    #
+    # WI-gokuv made this a LOCK rather than a marker file, so it cannot outlive
+    # this process. ``try_acquire`` returning False means an outer ``auto-pr``
+    # already holds it -- we then own nothing and ``release`` is a no-op, which
+    # is the nesting the old ``recover_marker_created`` flag hand-rolled.
+    recover_lock = RecoverSuppressionLock(preflight.git_dir)
+    recover_lock.try_acquire()
 
     try:
         # 0b. Fetch latest base branch (non-fatal if offline — we'll use
@@ -2030,6 +2035,5 @@ def do_sync(
         # Delete sync branch ref (non-fatal)
         _git(repo_root, "branch", "-D", sync_branch, check=False)
 
-        # Re-enable the recovery hook (only if this call set the marker).
-        if recover_marker_created and recover_marker.exists():
-            recover_marker.unlink()
+        # Re-enable the recovery hook (a no-op if an outer auto-pr owns it).
+        recover_lock.release()

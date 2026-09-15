@@ -1,5 +1,22 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
+
+# WI-gokuv: the hooks test the recovery-suppression LOCK, not the file. A helper
+# that HOLDS the lock for the duration of one command, the way auto-pr and
+# do_sync hold it for a run. `flock -x <fd>` in a subshell that keeps the fd open
+# is the whole mechanism; when the subshell exits the OS drops it, which is the
+# property the conversion exists for.
+with_recover_lock_held() {
+  local marker="$1"; shift
+  (
+    exec 9>"$marker"
+    flock -x 9 || exit 1
+    printf 'pid=%s started=%s holder=test\n' "$$" "$(date +%s)" >"$marker"
+    "$@"
+  )
+}
+
+# SPDX-License-Identifier: AGPL-3.0-or-later
 set -u
 
 # ==============================================================================
@@ -791,20 +808,39 @@ TRK
     ((FAIL_COUNT++))
   fi
 
-  # TEST: recover-disabled marker present → hook SKIPS recover.
-  # The tracker's own git operations (do_sync's fetch+ff, auto-pr) set this
-  # marker so the hook does not restore journalled-uncommitted ops mid-merge —
+
+  # TEST: recover-suppression lock HELD → hook SKIPS recover.
+  # The tracker's own git operations (do_sync, auto-pr) hold this lock for their
+  # whole run so the hook does not restore journalled-uncommitted ops mid-merge —
   # which otherwise collides with the very ff that reconciles them.
   echo "--------------------------------------------------------"
-  echo "TEST: reference-transaction committed + recover-disabled marker → skips recover"
+  echo "TEST: reference-transaction committed + recover lock HELD → skips recover"
+  reset_reftx_log
+  with_recover_lock_held "$REFTX_DIR/.git/tracker-recover-disabled" \
+    bash -c 'cd "$1" && echo "" | ./.githooks/reference-transaction committed' _ "$REFTX_DIR" >/dev/null 2>&1
+  if [[ -z "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (recover skipped while the lock is held)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (a held lock must suppress recover; got: $(reftx_calls))"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$REFTX_DIR/.git/tracker-recover-disabled"
+
+  # TEST: the file left behind with NO live holder → hook still recovers.
+  # This is the shape a SIGKILLed auto-pr leaves, and the exact state that used
+  # to disable self-healing silently for ten hours (WI-pohir). It must now be
+  # inert — this is the difference arm that makes the test above mean something.
+  echo "--------------------------------------------------------"
+  echo "TEST: reference-transaction committed + UNHELD leftover file → still recovers"
   reset_reftx_log
   touch "$REFTX_DIR/.git/tracker-recover-disabled"
   ( cd "$REFTX_DIR" && echo "" | ./.githooks/reference-transaction committed ) >/dev/null 2>&1
-  if [[ -z "$(reftx_calls)" ]]; then
-    echo "  ✅ PASS (recover skipped while marker present)"
+  if [[ -n "$(reftx_calls)" ]]; then
+    echo "  ✅ PASS (a leftover file suppresses nothing)"
     ((PASS_COUNT++))
   else
-    echo "  ❌ FAIL (marker should suppress recover; got: $(reftx_calls))"
+    echo "  ❌ FAIL (an unheld leftover file must NOT suppress recover)"
     ((FAIL_COUNT++))
   fi
   rm -f "$REFTX_DIR/.git/tracker-recover-disabled"
@@ -973,17 +1009,33 @@ TRK
     ((FAIL_COUNT++))
   fi
 
-  # TEST: branch checkout + recover-disabled marker → skip recover.
+  # TEST: branch checkout + recover lock HELD → skip recover.
   echo "--------------------------------------------------------"
-  echo "TEST: post-checkout branch switch + recover-disabled marker → skips recover"
+  echo "TEST: post-checkout branch switch + recover lock HELD → skips recover"
+  reset_pco
+  with_recover_lock_held "$PCO_DIR/.git/tracker-recover-disabled" \
+    bash -c 'cd "$1" && ./.githooks/post-checkout 0000000 1111111 1' _ "$PCO_DIR" >/dev/null 2>&1
+  if ! pco_ran; then
+    echo "  ✅ PASS (recover skipped while the lock is held)"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL (a held lock must suppress recover on checkout)"
+    ((FAIL_COUNT++))
+  fi
+  rm -f "$PCO_DIR/.git/tracker-recover-disabled"
+
+  # TEST: UNHELD leftover file → post-checkout still recovers. The difference
+  # arm for the test above; see the reference-transaction pair for why.
+  echo "--------------------------------------------------------"
+  echo "TEST: post-checkout branch switch + UNHELD leftover file → still recovers"
   reset_pco
   touch "$PCO_DIR/.git/tracker-recover-disabled"
   ( cd "$PCO_DIR" && ./.githooks/post-checkout 0000000 1111111 1 ) >/dev/null 2>&1
-  if ! pco_ran; then
-    echo "  ✅ PASS (recover skipped while marker present)"
+  if pco_ran; then
+    echo "  ✅ PASS (a leftover file suppresses nothing)"
     ((PASS_COUNT++))
   else
-    echo "  ❌ FAIL (marker should suppress recover on checkout)"
+    echo "  ❌ FAIL (an unheld leftover file must NOT suppress recover)"
     ((FAIL_COUNT++))
   fi
   rm -f "$PCO_DIR/.git/tracker-recover-disabled"
