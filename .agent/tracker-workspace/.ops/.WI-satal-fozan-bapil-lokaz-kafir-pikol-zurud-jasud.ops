@@ -1,0 +1,21 @@
+- op: create  # 5386
+  at: '2026-09-15T07:31:06Z'  # 5386
+  by: agent  # 5386
+  actor: jgstern_agent  # 5386
+  clock: 1  # 5386
+  nonce: '5386'  # 5386
+  data:  # 5386
+    kind: work_item  # 5386
+    title: "taint / io_boundary / slice also stop at the class node on a construction edge; INV-rolok was fixed in the dead-code walk only"  # 5386
+    status: todo_hard  # 5386
+    priority: 2  # 5386
+    parent:  # 5386
+    tags:  # 5386
+    - taint  # 5386
+    - dead_code  # 5386
+    isbefore: []  # 5386
+    duplicate_of: []  # 5386
+    not_duplicate_of: []  # 5386
+    pr_ref:  # 5386
+    description: "INV-rolok is fixed in the DEAD-CODE walk only. The same structural gap exists\nin every other consumer that treats instantiates as reachability-conferring,\nbecause the gap is in the graph shape (py/js_ts/dart land the edge on the\nCLASS node, whose outgoing edges are all non-traversable), not in any one\nconsumer's edge-type set.\n\nConsumers that admit instantiates and therefore stop at the class node:\n\n  - taint (TAINT_CALL_EDGE_TYPES includes instantiates). Structural\n    propagation is function-level, so a source in a caller + a construction\n    edge + a sink in the initializer is exactly the shape that should produce\n    a finding and cannot. Constructors that open files, sockets or\n    subprocesses from constructor arguments are the population.\n  - io_boundary._TRACEABLE_EDGE_TYPES (\"calls\", \"instantiates\",\n    \"dispatches_to\", \"references\").\n  - slice / reverse-slice, which is what WI-fagit was filed about from the\n    other direction.\n\nThe dead-code fix deliberately did NOT generalize: it augments that walk's own\nin-memory graph after seed detection, which is safe precisely because it is\nlocal. Making the hop available to other walks means either (a) promoting\ncli._construction_initializer_edges to a shared helper each walk opts into, or\n(b) re-pointing the emitted dst (INV-rolok option A), which is currently priced\nout by the method_call_recovery dependency filed alongside this.\n\nSIZE IT FIRST, and note the dead-code arm came in SMALL: 3 rows under default\nflags on self-analysis, 3 and 5 downstream rows on pretix and kserve. The taint\narm may be larger or smaller and is UNMEASURED. Do not assume it is worth doing\nbecause this one was -- the taint direction also differs: adding reachability\nto taint ADDS findings, where in dead-code it REMOVED false ones."  # 5386
+    fields: {}  # 5386
