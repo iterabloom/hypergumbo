@@ -1,0 +1,19 @@
+Original commit body from 43c3ec7403e5ff3b14bde4aea2d74739d1e9d576:
+
+An unresolved bare-name call registered a barrier for a sanitizer it had no evidence of calling. A barrier is the expensive direction to get wrong: since PR #214 it earns `sanitized`, and a sanitized flow is DROPPED from a claim's violation set — a phantom barrier does not add noise, it silently removes a real finding.
+
+**The guard was enumerating an absence.** It permitted on an exact qualified-name match or a module slot, then tried to spot missing receiver evidence by two signs — `call_construct == "method"` (INV-pirot) and an `ambiguous_names` net — and permitted anything else. Measured at tip on a real survey, a bare java `doFinal(p)` emits `java:external:0-0:doFinal:external_symbol` with no `call_construct`, reaches the fall-through, and registers `javax.crypto.Cipher.doFinal` on its caller. `call_construct` names the SYNTACTIC construct (ADR-0024), so a bare call cannot honestly be stamped one.
+
+**The second sign was vacuous**, which the item did not know: `ambiguous_names` comes from the io_primitives I/O-collision lists, and none of the nine sanitizer short names appears in its own language's list, in any language. The parameter is removed rather than left dead.
+
+**So the permit set is enumerated instead — and there are THREE forms of evidence, not two.** The third was found by a failing test, not by reasoning: a call site can name its receiver in the callee NAME while the module slot holds the `external` placeholder (`Fernet.encrypt` vs catalogued `cryptography.fernet.Fernet.encrypt`). An "exact match or module slot" rule refuses that and **deletes real barriers**. Matching lands on a separator boundary so `t.encrypt` cannot bind `...Fernet.encrypt`; separators are imported from `member_names`, never re-spelled.
+
+**This reverses one earlier ruling, argued rather than quietly edited.** `test_unresolved_free_function_sanitizer_registers` asserted a bare `encrypt` stamped `call_construct="function"` DOES bind `Fernet.encrypt`, because "the reported bug is untyped method / ambiguous collisions". That described INV-finoh's bug-report scope, not a case that free-function binding is sound. INV-fuduz's statement governs this function and requires receiver evidence "for every call shape".
+
+**Scope, counted before building as the item asked.** Across eleven repositories (hypergumbo, alertmanager, killbill + eight javascript) the shipped 12-entry crypto catalogue registers ZERO barriers of any kind — the defect is latent, and arms itself with every sanitizer added. The probe was controlled against the java fixture, where it finds four registrations including the phantom.
+
+Direction is safe: refusing a barrier un-suppresses, so this can only ADD findings. Six fixtures that reached the barrier machinery through the fail-open now carry real receiver evidence.
+
+Tests: 4534 passed, 100% coverage on changed files, mypy strict ratchet 669 delta +0.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
