@@ -1,0 +1,24 @@
+Original commit body from 5f5e81e9cdadca01374687f019217f7df852fba0:
+
+A leaked `.git/tracker-recover-disabled` marker switches ops self-healing OFF and nothing said so. One was observed open for ~10 hours (WI-pohir).
+
+**The premise, executed rather than read.** Against a stub tracker, the marker-ABSENT arm invokes `tracker recover` and the marker-PRESENT arm invokes nothing — in BOTH `.githooks/reference-transaction` and `.githooks/post-checkout`. While it sits there, a `git reset --hard` or `git checkout` drops pending `.ops` with nothing to restore them. The out-of-repo journal still holds the data, so this is a degraded-safety window, not loss.
+
+**How it leaks.** `do_sync` clears it in a `finally`, `auto-pr` in an EXIT trap. Measured here: bash runs that trap on SIGTERM and SIGINT, and does not on SIGKILL. So the leak path is a hard kill — the OOM reaper, or power loss — and nothing else.
+
+**Two of the filed premises did not survive the check.**
+
+- **REFUTED — the age discriminator.** The item proposed warning on any marker older than ~15 minutes because "no auto-pr fetch+ff window is that long". The marker is not scoped to the fetch+ff: `do_pr` touches it as its first act and only the exit trap removes it, so it spans the whole run *including the CI poll*, whose default timeout is 2400s (`scripts/lib/forgejo-api.sh:623`) plus a 300s soft-retry. A 15-minute rule fires inside the legitimate window.
+- **STALE — the proposed surface.** The item names `tracker recover`, since deprecated in favour of `reconcile` — which was itself silent about the marker, while being the command AGENTS.md sends operators to for exactly this repair.
+
+**So ownership is asked before age.** A live `auto-pr` is named by `.git/PR_PENDING`. A live `do_sync` is named by the `TRACKER_SYNC_PENDING` flock, which cannot lie because the OS releases it even on SIGKILL — so its mere FILE means nothing and only a live holder counts (pinned by a control arm: a stale lock file does not silence the report). Age breaks only the remaining tie, and covers exactly one thing: `auto-pr`'s post-merge tail, where `PR_PENDING` is already gone (removed right after the merge) but the marker is held until exit. **That gap is where the observed incident died** — the loud gate had been released and the silent one had not.
+
+**Nothing deletes the marker.** A process that clears one it does not own races a genuinely long `auto-pr` and re-opens the fight the marker exists to prevent.
+
+Wired at the single `main` exit so every subcommand carries it, and not gated on exit code: a `reconcile` that just failed is exactly when knowing self-healing is off changes what you do next.
+
+**Evidence.** Live repro on this repo: with a 10h-old unowned marker, `tracker count-todos` prints the warning naming age, what is degraded and the exact `rm`; with `PR_PENDING` alongside it, silent. 12 new tests; tracker package 100% in isolation; ratchet 669 delta +0; 2595 passed.
+
+**Not bundled:** the structural cure is a holder, not a timer — give the marker an fcntl lock as WI-nutin did for `TRACKER_SYNC_PENDING`, whose `SyncGate` docstring already records why. That touches `scripts/auto-pr` and `.githooks/**`, both governance files, so it goes up for approval separately.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
