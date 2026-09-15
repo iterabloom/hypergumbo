@@ -1,0 +1,9 @@
+Original commit body from ab7962f08eafb875dbcdda60af80fb605f9daff4:
+
+Both [Unreleased] sections had grown far past the granularity of the releases around them. Main: 234,263 chars against v8.0.0's 24,345 and v7.0.0's 38,390. Rewritten to released granularity, calibrated per bullet: main 234,263 -> 43,888 at 569 chars/bullet against v8.0.0's 541 and v7.0.0's 564; tracker 21,278 -> 10,912.
+
+Four defects fixed beyond length: (1) the Summary and Schema subsection understated the cycle -- live SCHEMA_VERSION is 0.20.7 and VERIFY_CLAIMS_SCHEMA_VERSION is 2.4, both read 0.20.3 / 2.3; (2) 219 tracker-item IDs stripped, where released sections carry zero, with every ADR reference and version transition preserved by set difference against the pre-audit text; (3) receiver typing was documented twice across Added and Fixed, 74,298 chars on one theme, now consolidated; (4) two entries misfiled under ADR-0049 moved to Performance and Taint propagation.
+
+Docs-only: smart-test selects 0 tests, which tests/test_smart_test.py:76 pins deliberately for CHANGELOG.md. mypy ratchet clean at 669.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
