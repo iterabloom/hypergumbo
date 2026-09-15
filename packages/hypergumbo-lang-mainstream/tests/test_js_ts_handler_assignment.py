@@ -356,8 +356,12 @@ class TestTheHandlerBodyStaysWithItsEnclosingFunction:
       * ``addEventListener`` passes its callback as an ARGUMENT, and WI-zavad's
         ``_emit_anon_callback_reference_edges`` mints that callback its own
         symbol (``_cb_addEventListener@<n>``). A sink inside the callback hangs
-        off THAT symbol, behind the uncrossable ``references`` edge -- inert,
-        as predicted.
+        off THAT symbol, behind the ``references`` edge -- inert as predicted
+        WHEN THIS WAS WRITTEN. WI-nisud has since made that edge crossable for
+        taint (``edge_types.is_callback_registration``), so this spelling now
+        produces the finding too. The structural assertions below are unchanged
+        by that and are what this class pins; only the word "uncrossable" was
+        ever a verdict claim, and it has expired.
       * An ASSIGNMENT right-hand side is minted no symbol at all, so an inline
         handler's body is attributed to the ENCLOSING function. Source and sink
         land on one node, and the structural arm reports the flow:
