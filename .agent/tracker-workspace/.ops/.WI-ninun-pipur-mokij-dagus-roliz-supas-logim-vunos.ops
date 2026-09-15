@@ -1,0 +1,22 @@
+- op: create  # fb45
+  at: '2026-09-15T00:22:44Z'  # fb45
+  by: agent  # fb45
+  actor: jgstern_agent  # fb45
+  clock: 1  # fb45
+  nonce: fb45  # fb45
+  data:  # fb45
+    kind: work_item  # fb45
+    title: "def/use records NOTHING inside statements it already matched: Go grouped var declarations and defer, Python subscript indices — the omission is inside a COVERED extent so no coverage gate can see it (INV-lupav L4, reproduced)"  # fb45
+    status: todo_hard  # fb45
+    priority: 2  # fb45
+    parent:  # fb45
+    tags:  # fb45
+    - taint  # fb45
+    - adr_0017  # fb45
+    - dataflow  # fb45
+    isbefore: []  # fb45
+    duplicate_of: []  # fb45
+    not_duplicate_of: []  # fb45
+    pr_ref:  # fb45
+    description: "INV-lupav's clause L4, REPRODUCED. It was recorded on that thread as\n\"structural and UNDEMONSTRATED\" on 2026-09-14; this is the demonstration, found\nby a mechanical sweep rather than by guessing shapes.\n\nWHY THIS CLASS IS DIFFERENT FROM WI-losod, AND WHY IT IS WORSE. WI-losod's\nconstructs (Go if/for initializers, range clauses) leave an UNCOVERED region,\nso WI-joluk's coverage gate -- widened by WI-mugop to semantic leaves -- detects\nthem and forfeits refutation. These constructs are recorded as a statement and\nthe extractor then fills it with NOTHING. There is no uncovered region, so no\ncoverage predicate at any width can see the omission. The gate fails SAFE on\nWI-losod's class and is BLIND to this one.\n\nTHREE SHAPES, TWO LANGUAGES, each read back against source.\n\n1. GO GROUPED VAR DECLARATION. alertmanager api/v2/api.go:251, live:\n       var (\n           receiverFilter *regexp.Regexp\n           res = open_api_models.GettableAlerts{}\n           logger = api.requestLogger(params.HTTPRequest)\n       )\n   recorded as ONE statement:\n       line 251  var_declaration  defines=[] uses=[]\n   Three definitions and a call argument, none recorded.\n\n2. GO DEFER. Both nodes at the line record nothing:\n       line 4  deferred_call    defines=[] uses=[]\n       line 4  defer_statement  defines=[] uses=[]\n   so the use of the deferred callee and of its arguments is invisible.\n   `defer log.Printf(\"%s\", tainted)` is an ordinary shape, not a contrived one.\n\n3. PYTHON SUBSCRIPT INDEX. `counters[key] = 1` records\n       line 4  assignment  defines=['counters'] uses=[]\n   The index `key` is not a use. Dominant shape in the python sweep.\n\nIT PRODUCES AN UNEARNED False, WHICH IS THE POINT. Fixture through the\nproduction path, control first, both functions walkable:\n\n    CONTROL (msg := cwd, use recorded)   -> True    ADMISSIBLE\n    L4      (var block, use unrecorded)  -> False   <- true answer is True\n\n    l4leak    walkable=True  forfeited=False   <- gate silent\n    l4covered walkable=True  forfeited=False\n    edges in l4leak   : cwd 13->14, a 14->15          (chain to sink GONE)\n    edges in l4covered: cwd 23->24, a 24->25, cwd 23->26, msg 26->27\n\nOne variable changed -- `var ( msg = cwd )` against `msg := cwd` -- and the\nwhole taint chain to the sink disappears from the DDG while the function still\nreports fully covered. Since WI-kabif (2026-09-02) that False REMOVES the flow.\n\nPOPULATION, from the sweep (instrument:\n~/hypergumbo_lab_notebook/taint-area-08052026/meas/use_completeness_sweep.py,\ncontrol passing, candidates attributed to the INNERMOST recorded statement):\n    alertmanager/go   2580 functions   370 candidate misses\n    hypergumbo/python 35083 functions 1622 candidate misses\nThese are CANDIDATES, not findings: shadowing, a field sharing a local's name\nand struct-literal keys survive the known-local filter. The three shapes above\nare the ones read back to source and confirmed. Nobody should quote 370 or 1622\nas a defect count.\n\nCROSS-LANGUAGE BY DIFFERENT SHAPES, which is WI-joluk's own argument arriving\nagain: go fails on var groups and defer, python on subscript indices. A remedy\nwritten from either language alone ships with the other invisible.\n\nREMEDY IS EXTRACTOR-LEVEL, not gate-level, and that is the finding. A coverage\npredicate compares AST nodes to recorded statement EXTENTS; it can establish\nthat a statement was recorded, never that its contents were accounted for. If\nINV-lupav is to close, either these extractors record what is inside the\nstatements they already match, or the walk needs a completeness signal that is\nnot coverage-shaped -- for instance the extractor reporting, per statement,\nthat it understood the construct rather than merely visited it."  # fb45
+    fields: {}  # fb45

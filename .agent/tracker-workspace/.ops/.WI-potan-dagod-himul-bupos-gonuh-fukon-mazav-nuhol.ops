@@ -1,0 +1,22 @@
+- op: create  # 73aa
+  at: '2026-09-15T00:24:49Z'  # 73aa
+  by: agent  # 73aa
+  actor: jgstern_agent  # 73aa
+  clock: 1  # 73aa
+  nonce: 73aa  # 73aa
+  data:  # 73aa
+    kind: work_item  # 73aa
+    title: "fmt.Fprintf/Fprintln are declared consume-and-discard but write into their first ARGUMENT: the summary model has no param_to_param, so a destination-as-parameter callee closes a walk step it should not (INV-lupav, catalogue trust point)"  # 73aa
+    status: todo_hard  # 73aa
+    priority: 2  # 73aa
+    parent:  # 73aa
+    tags:  # 73aa
+    - taint  # 73aa
+    - adr_0017  # 73aa
+    - dataflow  # 73aa
+    isbefore: []  # 73aa
+    duplicate_of: []  # 73aa
+    not_duplicate_of: []  # 73aa
+    pr_ref:  # 73aa
+    description: "THE SECOND TRUST POINT UNDER INV-lupav, AND THE FIRST ONE NOBODY HAD LOOKED AT.\n\nThe section 3a walk reaches \"return False\" through exactly FOUR paths that\ncontinue without setting escaped: the seen-set cycle guard, followed-with-no-\ncall-at-the-line, followed-with-a-terminating-callee, and no_heir-with-a-\nterminating-callee. TWO of those four rest on _use_site_terminates -- that is,\non the summary CATALOGUE being right. Every prior investigation of INV-lupav\nwent after extraction completeness. A wrong catalogue entry is invisible to\nevery coverage gate ever built, because the walk DID look and believed what it\nwas told.\n\nTHE MODEL CANNOT EXPRESS \"WRITES INTO A PARAMETER\". _summary_terminates is a\nconjunction over side_effect / param_to_return / param_to_self / mutates_self /\ncallback / sanitizes. The two destination clauses are RECEIVER-oriented. A\nfunction whose destination is an ARGUMENT -- Go's io.Writer idiom -- has no\nfield to declare it in, so it satisfies the conjunction and reads as\nconsume-and-discard.\n\nINSTANCE, REPRODUCED WITH A CONTROL:\n\n    _summary_terminates(fmt.Fprintf) = True\n    _summary_terminates(fmt.Sprintf) = False    (control: declared propagating)\n\n    f() {\n      secret := os.Getenv(\"SECRET\")      // 2  source\n      var buf bytes.Buffer\n      fmt.Fprintf(&buf, \"%s\", secret)    // 4  secret used; writes into arg 0\n      sink(buf.String())                 // 5  sink\n    }\n\n    CONTROL (fmt.Sprintf, propagating)  -> True    ADMISSIBLE\n    fmt.Fprintf into buf, buf to sink   -> False   <- true answer is True\n\nEvery line is a recorded statement, so WI-joluk's gate and WI-mugop's widening\nboth have nothing to say. This is not an extraction gap.\n\nTHE CATALOGUE ALREADY KNEW. go_stdlib.yaml:44 carries the comment \"writes to\narg 0; the formatted args do not return\" directly above the entry. The fact was\nrecorded and the model had nowhere to put it, which is the more interesting\ndefect: this is a vocabulary gap presenting as a data error.\n\nSCOPE, ENUMERATED NOT GUESSED. 117 loaded entries, 71 qualified (non-alias), 39\nof which _summary_terminates accepts. Reading all 39 back, the\ndestination-as-parameter shape is fmt.Fprintf and fmt.Fprintln. The rest are\ngenuine consume-and-discard (print/log families, testing.*, testify require.*,\nbuiltins.hasattr) or external sinks whose argument really does leave the program\n(os.Remove, os.RemoveAll, std::fs::write). std::fs::read_to_string is\ndefensible: the PATH terminates even though the returned content does not\nderive from it. net/http/fcgi.Serve is the one I am least sure of and did not\nresolve -- it takes a handler that is later invoked, and \"terminating\" for a\ncallback-taking server is at least arguable.\n\nDIRECTION. Fixing this produces FEWER terminating verdicts, therefore fewer\nFalses, therefore strictly MORE surviving findings -- the safe direction, and\nthe same direction as every other INV-lupav fix.\n\nTWO CANDIDATE REMEDIES, not decided here. (a) Add a param_to_param / writes_to\nnotion to FunctionSummary so the Fprint family can declare its destination, and\nteach _summary_terminates to refuse when one is declared. (b) Cheaper and\nstrictly safe: drop fmt.Fprintf and fmt.Fprintln from the catalogue entirely --\nuncatalogued already means \"unknown, do not terminate\", so removal restores the\nconservative default without any new vocabulary. (b) costs recall the walk was\nnever entitled to."  # 73aa
+    fields: {}  # 73aa
