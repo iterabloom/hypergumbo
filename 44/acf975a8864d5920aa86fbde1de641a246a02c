@@ -1,0 +1,15 @@
+Original commit body from 7dbd079c8ef24433e40a8cbda48b854eb3fee343:
+
+Calibrated on chars-per-substantive-commit, which normalises for cycle size where raw section length does not:
+
+  v8.0.0       24,345 chars / 291 commits = 83.66
+  Unreleased   43,888 chars / 341 commits = 128.70  (before)
+  Unreleased   28,981 chars / 341 commits = 84.99   (after)
+
+Cut by removing the explanatory second and third clauses — design rationale, refutation apparatus, instrument corrections — keeping claim, mechanism and the single strongest number. Six bullets folded into neighbours (69, from 77).
+
+Guard rails verified mechanically: zero of the 22 ADR references dropped (set difference against the pre-audit text); zero tracker-item IDs under a broader regex than the audit used; all six version transitions intact including SCHEMA_VERSION 0.20.1 -> 0.20.7 and envelope 2.0 -> 2.4; markdown balanced on every line.
+
+Docs-only: smart-test selects 0 tests, pinned deliberately for CHANGELOG.md. mypy ratchet clean at 669.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
