@@ -59,6 +59,7 @@ from typing import Final
 # ``edge_types.find_partial_inheritance_family_literals``. They moved to
 # ``_literal_scan`` rather than being copied, because a fact kept in two
 # homes that drift apart is the defect this very linter exists to catch.
+from .member_names import member_short_name
 from ._literal_scan import (
     declared_linker_languages as _declared_linker_languages,
     language_guarded_line_spans as _language_guarded_line_spans,
@@ -777,6 +778,66 @@ def abstract_type_kind_names() -> frozenset[str]:
         spec.name
         for spec in SYMBOL_KINDS
         if spec.type_family == TYPE_FAMILY_ABSTRACT
+    )
+
+
+# INV-rolok: which contained member is "the code that runs on construction".
+#
+# TWO MECHANISMS, because the analyzers genuinely disagree and neither is
+# wrong. java / csharp / apex / pony mint a dedicated ``constructor`` kind --
+# whose registry entry above already reads "Constructor / __init__ / init
+# method" -- so for them the KIND is the whole signal. python and js_ts emit
+# the initializer as an ordinary ``method`` (measured: 409 python
+# ``X.__init__`` and 625 javascript ``X.constructor`` methods in one pretix
+# survey, every one of them kind="method"), so for them the NAME is the only
+# signal there is.
+#
+# SCOPED PER LANGUAGE, NOT A GLOBAL BLOCKLIST. A python method named
+# ``constructor`` is an ordinary method and a javascript one named
+# ``__init__`` is too; an unscoped table would silently confer construction
+# reachability on both. Every entry here is a LANGUAGE fact (the keyword or
+# dunder the language itself reserves), not an analyzer convention, so it
+# cannot drift with an emitter.
+#
+# KNOWN GAP, stated rather than papered over: dart names a constructor after
+# its class (``Widget.Widget``, plus named constructors ``Widget.named``), so
+# no fixed name can identify it and dart is absent from this table. It needs
+# either a ``constructor`` kind from the analyzer or an owner-name comparison;
+# filed rather than guessed.
+_INITIALIZER_NAMES_BY_LANGUAGE: Final[dict[str, frozenset[str]]] = {
+    "python": frozenset({"__init__"}),
+    "javascript": frozenset({"constructor"}),
+    "typescript": frozenset({"constructor"}),
+    "ruby": frozenset({"initialize"}),
+    "php": frozenset({"__construct"}),
+}
+
+#: Kinds that can carry an initializer NAME. A ``class`` is never its own
+#: initializer, which matters because the caller walks ``contains`` edges out
+#: of a class and would otherwise be able to loop one back onto itself.
+_NAME_BEARING_INITIALIZER_KINDS: Final[frozenset[str]] = frozenset({
+    "method", "function",
+})
+
+
+def is_initializer(kind: str, name: str, language: str) -> bool:
+    """Return True iff this symbol is the code that runs on construction.
+
+    Answers the question a construction edge raises but does not settle: an
+    ``instantiates`` edge says an object was created, and on the analyzers
+    that land it on the CLASS node (py / js_ts / dart) the initializer is
+    reached only by asking which contained member this predicate selects.
+
+    ``name`` is split with :func:`member_names.member_short_name` rather than
+    a local ``rsplit`` -- ruby spells the member ``Widget#initialize`` and the
+    separator vocabulary has exactly one home (INV-tihim).
+    """
+    if kind == "constructor":
+        return True
+    if kind not in _NAME_BEARING_INITIALIZER_KINDS:
+        return False
+    return member_short_name(name) in _INITIALIZER_NAMES_BY_LANGUAGE.get(
+        language, frozenset(),
     )
 
 
