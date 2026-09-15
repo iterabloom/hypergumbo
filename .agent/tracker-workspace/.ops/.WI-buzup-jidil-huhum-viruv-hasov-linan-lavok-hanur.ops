@@ -1,0 +1,31 @@
+- op: create  # a02a
+  at: '2026-09-15T02:00:23Z'  # a02a
+  by: agent  # a02a
+  actor: jgstern_agent  # a02a
+  clock: 1  # a02a
+  nonce: a02a  # a02a
+  data:  # a02a
+    kind: work_item  # a02a
+    title: "INV-lupav residual: the L4 completeness signal is TEXTUAL, so an unaccounted use at a statement that does not name the variable (alias-shaped) is outside it — two probes do not reproduce, so this is a disclosed limit awaiting a sweep, not a defect"  # a02a
+    status: todo_soft  # a02a
+    priority: 3  # a02a
+    parent:  # a02a
+    tags:  # a02a
+    - taint  # a02a
+    - adr_0017  # a02a
+    - dataflow  # a02a
+    isbefore: []  # a02a
+    duplicate_of: []  # a02a
+    not_duplicate_of: []  # a02a
+    pr_ref:  # a02a
+    description: "STRUCTURAL AND UNDEMONSTRATED, filed as the residual of INV-lupav's closure so the\ninvariant's guarantee is not read as wider than it is.\n\nTHE LIMIT. cfg.unaccounted_names (INV-lupav L4) detects a variable the def/use\nextractor left unaccounted at a statement that MENTIONS IT BY NAME: it enumerates the\nsemantic leaves inside a recorded statement's extent and asks whether the statement's\ndefines/uses cover each one. An omission at a statement that does not name the variable\nis outside it by construction. The obvious population is aliasing, which ADR-0017 section\n7b excludes from scope -- but a declared scope exclusion and a silent one behave\nidentically at the walk, and INV-lupav's whole subject is the difference.\n\nTWO PROBES, NEITHER REPRODUCING, WHICH IS WHY THIS IS A LIMIT AND NOT A DEFECT.\n\n  (a) read through the alias\n        cwd := source(); p := &cwd; fmt.Println(cwd); sink(*p)\n      The DDG chains cwd->p through the ampersand (p inherits at line 5) and p's use\n      reaches the sink. Verdict True, which is the true answer. No gap.\n\n  (b) write through the alias\n        var buf string; p := &buf; *p = source(); sink(buf)\n      _collect_pattern_names returns nothing for a unary *p, so the assignment defines\n      nothing, so defs_at holds no seed at the source line and the walk escapes\n      source_undefined -> None. Unearned refutation impossible; recall is lost instead,\n      which is the safe direction.\n\nSo both shapes I could construct are already safe, by two different mechanisms. That is\nNOT a proof that no third shape exists, and the difference between those two statements\nis exactly what this item is for.\n\nHOW TO SETTLE IT, and it is a sweep rather than a guess -- guessing shapes is what nearly\ngot L4 recorded as unreal (one Go func-literal candidate failed before a mechanical sweep\nfound three real ones in twenty minutes). Instrument: walk the production path over a\ncorpus, and for every walk that returns False, re-derive the function's true def/use with\na second, independent reading (the extractor's own conservative _collect_identifiers is\none candidate; a second is the leaf enumeration without the defines restriction) and\nreport every disagreement. A False that survives both readings is earned; one that does\nnot names the third shape.\n\nDO NOT RE-OPEN INV-lupav ON THIS WITHOUT A REPRODUCED CASE. The invariant closed on its\nfiled row with an enumeration (five accounted-for exits, pinned structurally by\ntest_walk_exit_census.py) and fifteen swept cases with controls. This is the disclosed\nedge of that enumeration, filed per the standing ruling CLOSE ON THE FILED ROW, FILE THE\nRESIDUAL."  # a02a
+    fields: {}  # a02a
+- op: update  # 2119
+  at: '2026-09-15T02:00:48Z'  # 2119
+  by: agent  # 2119
+  actor: jgstern_agent  # 2119
+  clock: 2  # 2119
+  nonce: '2119'  # 2119
+  set: {}  # 2119
+  add:  # 2119
+    not_duplicate_of: [WI-zafap-lokam-mutuf-doroh-zijod-jakik-nusij-manas]  # 2119

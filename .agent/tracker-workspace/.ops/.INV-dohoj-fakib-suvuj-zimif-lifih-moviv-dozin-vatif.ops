@@ -23,3 +23,10 @@
     fields:  # 10c3
       statement: "A change to a shipped data file must select the tests that read it, or the selection must escalate to the full suite."  # 10c3
       root_cause: "Change detection maps SOURCE files to dependent tests via import edges. A catalogue under io_primitives/ is loaded at runtime by load_catalog(language), so no import edge exists and the mapping returns nothing. Reproduced: removing 20 rows from go.yaml selected 2 test files, exited 0 in 4.4s, and missed 2 real failures in test_io_boundary.py."  # 10c3
+- op: discuss  # ddee
+  at: '2026-09-15T00:35:02Z'  # ddee
+  by: agent  # ddee
+  actor: jgstern_agent  # ddee
+  clock: 2  # ddee
+  nonce: ddee  # ddee
+  message: "SECOND CATALOGUE FAMILY, same mechanism, observed live 2026-09-14. This item\nand WI-mavut both name io_primitives/*.yaml. It is not confined to that\ndirectory: a one-line edit to\nfunction_summaries/go_stdlib.yaml -- removing the dead-end marker from\nfmt.Fprintf and fmt.Fprintln, which changes whether the section 3a walk may\nclose a step and therefore whether a taint flow is REMOVED -- selected\n\n    Running 1 affected test files (use --full for complete suite)\n    Running full test suite (manifest written with 1 targeted tests for CI)\n\nso the manifest committed for CI carried ONE test for a change that moves the\nrefutation behaviour of every Go taint walk. Compensated locally by running\n--full before pushing; CI itself would have gone green on one file.\n\nWorth noting for whoever fixes this: the two catalogue directories fail the\nsame way but are consumed differently -- io_primitives rows are read by the\nboundary classifier, function_summaries by the walk -- so a fix keyed on the\nio_primitives path alone would leave this one open, which is the shape that\nput both of them here."  # ddee
