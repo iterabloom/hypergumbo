@@ -3541,6 +3541,37 @@ def _maybe_auto_sync(tracker_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _warn_recover_suppressed(tracker_root: Path) -> None:
+    """Report a LEAKED ops-recovery suppression marker on stderr (WI-pohir).
+
+    Wired at the single ``main`` exit so it covers every subcommand at once —
+    including ``recover``, ``reconcile`` and ``count-todos``, the three a reader
+    reaches for when ops look wrong, and all three of which were silent about
+    the marker that had switched self-healing off underneath them.
+
+    Printed regardless of exit code, unlike the sync reminder: a ``reconcile``
+    that just failed is exactly when knowing self-healing is off changes what
+    you do next. Silent unless the marker is genuinely unowned — see
+    :func:`journal.recover_suppression_status` for why ownership is asked before
+    age, and why nothing here deletes the marker.
+
+    Never raises; a health report must not be able to break the command it
+    rides on.
+    """
+    try:
+        from hypergumbo_tracker.journal import recover_suppression_status
+        from hypergumbo_tracker.store import _find_git_dir
+
+        git_dir = _find_git_dir(tracker_root.resolve())
+        if git_dir is None:
+            return
+        warning = recover_suppression_status(git_dir).warning()
+        if warning is not None:
+            print(warning, file=sys.stderr)
+    except Exception:  # pragma: no cover - defensive; never break the command
+        pass
+
+
 def _print_sync_reminder(tracker_root: Path | None = None) -> None:
     """Print a short reminder about automatic sync to stderr.
 
@@ -3778,6 +3809,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if exit_code == EXIT_SUCCESS:
         _print_sync_reminder(tracker_root)
+
+    # WI-pohir: last on stderr, so the most consequential line is the one
+    # closest to the prompt. Not gated on exit_code — see the helper docstring.
+    _warn_recover_suppressed(tracker_root)
 
     raise SystemExit(exit_code)
 
