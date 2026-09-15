@@ -51,6 +51,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -274,3 +275,143 @@ def recover(repo_root: Path) -> RecoverResult:
             if _locked_union_restore(repo_root / rel, journal_content):
                 result.restored.append(str(rel))
     return result
+
+
+# ---------------------------------------------------------------------------
+# Recovery suppression — is self-healing currently switched OFF? (WI-pohir)
+# ---------------------------------------------------------------------------
+
+#: The flag ``do_sync`` and ``auto-pr`` set around their own git operations.
+#: While it exists, ``.githooks/reference-transaction`` and
+#: ``.githooks/post-checkout`` skip :func:`recover` — see the module docstring
+#: of ``tests/test_recover_suppression_is_reported.py`` for the executed guard.
+RECOVER_MARKER_NAME = "tracker-recover-disabled"
+
+#: How long an UNOWNED marker is tolerated before it is called a leak.
+#:
+#: This number does NOT have to cover a CI poll, and that distinction is the
+#: whole design. WI-pohir originally proposed ~15 minutes on the reasoning that
+#: "no auto-pr fetch+ff window is that long" — but the marker is not scoped to
+#: the fetch+ff. ``do_pr`` touches it as its first act and only the EXIT trap
+#: removes it, so it spans the entire run, including a CI poll whose default
+#: timeout is 2400s plus a 300s soft-retry. An age-only rule would fire inside
+#: that legitimate window.
+#:
+#: Ownership is therefore asked first (:func:`recover_suppression_status`), and
+#: this grace covers only what ownership cannot: ``auto-pr``'s post-merge tail,
+#: where ``PR_PENDING`` is already gone (auto-pr removes it immediately after the
+#: merge) but the marker is held until exit. That tail is a fetch, a rev-parse,
+#: an orphan-PR check, an optional tracker discussion append, branch deletions
+#: and the local sync — network-bound seconds, not minutes. Five minutes is
+#: slack over that, and it is the ONLY thing this constant is sized against.
+_UNOWNED_GRACE_SECONDS = 300.0
+
+
+def _format_age(seconds: float) -> str:
+    """Render an elapsed span the way an operator reads it: ``45s`` / ``12m`` /
+    ``9h41m``. Minutes are dropped below an hour and seconds above a minute —
+    the reader is deciding "is this a live run or a leak", not timing anything.
+    """
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    if total < 3600:
+        return f"{total // 60}m"
+    return f"{total // 3600}h{(total % 3600) // 60:02d}m"
+
+
+@dataclass(frozen=True)
+class SuppressionStatus:
+    """Whether ops self-healing is currently suppressed, and by whom.
+
+    ``leaked`` is the only field a caller should branch on. ``present`` without
+    ``leaked`` is the healthy case — some process legitimately holds the marker
+    — and reporting it would train the reader to ignore the report.
+    """
+
+    present: bool
+    age_seconds: float | None = None
+    age_text: str | None = None
+    owner: str | None = None
+    leaked: bool = False
+
+    def warning(self) -> str | None:
+        """Operator-facing text, or None when there is nothing to say.
+
+        Names the elapsed time, what is degraded, why it happened and the exact
+        remedy. It deliberately does NOT offer to clear the marker itself: a
+        process that clears a marker it does not own races a genuinely long
+        ``auto-pr`` and re-opens the fight the marker exists to prevent (the
+        fetch restores a journalled op as untracked, then ``merge --ff-only``
+        re-fires the hook and aborts the fast-forward that would have committed
+        it). The structural cure is to give the marker a holder — an fcntl lock,
+        as WI-nutin did for ``TRACKER_SYNC_PENDING`` — not a cleanup timer.
+        """
+        if not self.leaked:
+            return None
+        return (
+            f"[tracker] WARNING: ops self-healing has been OFF for "
+            f"{self.age_text}.\n"
+            f"  .git/{RECOVER_MARKER_NAME} is present with no auto-pr and no "
+            f"tracker sync holding it — the signature of a hard kill (SIGKILL / "
+            f"OOM; SIGTERM and SIGINT both run the cleanup).\n"
+            f"  While it is there the reference-transaction and post-checkout "
+            f"hooks skip `tracker recover`, so a `git reset --hard` or `git "
+            f"checkout` drops pending .ops with nothing to restore them. The "
+            f"journal still holds the data — this is degraded safety, not loss.\n"
+            f"  Clear it with:  rm -f .git/{RECOVER_MARKER_NAME}"
+        )
+
+
+def recover_suppression_status(git_dir: Path) -> SuppressionStatus:
+    """Classify the recovery-suppression marker in ``git_dir``.
+
+    Ownership before age, because only ownership can be trusted:
+
+    * ``.git/PR_PENDING`` names a live ``auto-pr``. It is a plain file and so
+      can leak too, but a leaked ``PR_PENDING`` is already LOUD — it blocks the
+      next auto-pr and the pre-work checklist tests for it — whereas a leaked
+      recovery marker is the silent one. Deferring to it costs a missed report
+      only in a state that is independently reported.
+    * ``TRACKER_SYNC_PENDING`` names a live ``do_sync``, and that one cannot
+      lie: it is an fcntl lock, released by the OS even on SIGKILL, so its
+      mere FILE means nothing and only a live holder counts. The check is
+      delegated to ``sync.check_sync_gate_held`` rather than re-implemented —
+      note it removes a stale lock file as a side effect, which is the
+      established behaviour everywhere else that peeks the gate.
+
+    Only when neither owns the marker does :data:`_UNOWNED_GRACE_SECONDS` break
+    the tie. Age is read from the marker's own mtime, so a test ages it with
+    ``os.utime`` rather than through an injected clock — the same file
+    attribute the real thing reads.
+    """
+    marker = git_dir / RECOVER_MARKER_NAME
+    try:
+        mtime = marker.stat().st_mtime
+    except OSError:
+        # Absent (the overwhelmingly common case) or vanished under us — either
+        # way there is nothing to report, and a status probe must never raise.
+        return SuppressionStatus(present=False)
+
+    age = max(0.0, time.time() - mtime)
+    age_text = _format_age(age)
+
+    if (git_dir / "PR_PENDING").exists():
+        return SuppressionStatus(
+            present=True, age_seconds=age, age_text=age_text,
+            owner="auto-pr (.git/PR_PENDING)",
+        )
+
+    from .sync import check_sync_gate_held  # lazy: sync imports this module
+
+    held, _detail = check_sync_gate_held(git_dir / "TRACKER_SYNC_PENDING")
+    if held:
+        return SuppressionStatus(
+            present=True, age_seconds=age, age_text=age_text,
+            owner="tracker sync (TRACKER_SYNC_PENDING flock)",
+        )
+
+    return SuppressionStatus(
+        present=True, age_seconds=age, age_text=age_text,
+        leaked=age > _UNOWNED_GRACE_SECONDS,
+    )

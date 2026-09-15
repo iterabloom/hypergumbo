@@ -17,8 +17,11 @@ is a clean no-op on a healthy repo (so it is safe to run reflexively, which is
 the only way it gets run at all); it refuses outright while ``auto-pr`` holds
 ``.git/PR_PENDING``; a failed flush does NOT proceed to a fast-forward; and it
 never leaves the ``tracker-recover-disabled`` marker behind — that marker is
-``do_sync``'s to set around its own fetch, and a leak silently disables ops
-self-healing with nothing to detect it.
+``do_sync``'s to set around its own fetch, and a leak disables ops self-healing
+for as long as it sits there. WI-pohir has since made an unowned marker report
+itself on every tracker command (``test_recover_suppression_is_reported.py``),
+so the leak is no longer silent — but not leaving one is still cheaper than
+detecting one, which is what this file pins.
 """
 
 from __future__ import annotations
