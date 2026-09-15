@@ -61,13 +61,29 @@ _FN = "python:a.py:1-9:handler:function"
 
 
 def _call(dst_name: str, line: int) -> dict:
-    """One call edge out of ``handler``, at a known line."""
+    """One call edge out of ``handler``, at a known line.
+
+    THE BARRIER CALL CARRIES ITS RECEIVER (INV-fuduz). These fixtures are about
+    the same-function sanitizer rule, not about the receiver-evidence gate, so
+    the sanitizer call site names what it calls: ``crypto.encrypt``, matching
+    the catalogued ``qualified_name``. It used to be a bare ``encrypt`` against
+    the ``external`` placeholder -- a shape that carries NO evidence the callee
+    is the catalogued barrier, and that registered one only through the
+    fail-open INV-fuduz closed. Leaving it bare would have made these tests
+    assert the barrier machinery through a hole rather than through the gate.
+    """
     return {
         "src": _FN,
-        "dst": f"python:external:0-0:{dst_name}:unresolved", "is_resolved": False,
+        "dst": f"python:external:0-0:{_QUALIFIED.get(dst_name, dst_name)}:unresolved",
+        "is_resolved": False,
         "type": "calls",
         "line": line,
     }
+
+
+#: Only the sanitizer needs qualifying -- sources and sinks are matched by the
+#: catalogue's own module-aware lookup, not by this guard.
+_QUALIFIED = {"encrypt": "crypto.encrypt"}
 
 
 def _ddg(*edges: tuple[str, int, int]) -> list[DdgEdge]:
@@ -339,8 +355,11 @@ class TestStructuralPassLimit:
              "type": "calls", "line": 1},
             {"src": _FN, "dst": "python:a.py:20-29:store:function",
              "type": "calls", "line": 2},
+            # Qualified for the same reason as ``_call``: the barrier call has
+            # to carry receiver evidence to be recognised at all (INV-fuduz).
             {"src": "python:a.py:20-29:store:function",
-             "dst": "python:external:0-0:encrypt:unresolved", "is_resolved": False,
+             "dst": "python:external:0-0:crypto.encrypt:unresolved",
+             "is_resolved": False,
              "type": "calls", "line": 21},
             {"src": "python:a.py:20-29:store:function",
              "dst": "python:external:0-0:send:unresolved", "is_resolved": False,

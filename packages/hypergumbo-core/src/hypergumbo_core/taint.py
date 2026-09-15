@@ -66,6 +66,7 @@ import yaml
 
 from .axis_meta_keys import call_family_edge_types
 from .edge_types import is_callback_registration, is_grpc_rpc_implementation
+from .member_names import MEMBER_NAME_SEPARATORS, member_owner
 from .symbol_kinds import type_like_kind_names
 from .io_boundary import (
     suppresses_resource_naming_finding,
@@ -2925,7 +2926,6 @@ def _register_sanitizer_callers(
     edges: list[dict[str, Any]],
     sanitizer_by_callee: dict[str, list[TaintSanitizer]],
     sanitizer_callers: "dict[str, dict[str, list[TaintSanitizer]]]",
-    ambiguous_names: frozenset[str] = frozenset(),
     sanitizer_lines: "dict[tuple[str, str], list[int]] | None" = None,
 ) -> None:
     """Populate sanitizer_callers from edges + multi-sanitizer index.
@@ -2940,14 +2940,34 @@ def _register_sanitizer_callers(
     bare-name collision — which would silently SUPPRESS a real taint flow (a
     false negative, worse than a missed barrier for a security tool). A
     *resolved* edge trusts its resolution (exact-name match, unchanged). An
-    *unresolved* edge is the short-name-collision surface: a qualified callee
-    carries its own receiver evidence (an exact ``qualified_name`` match wins,
-    parity with ``_lookup_named_entry``'s qualified-first branch), but a bare
-    untyped *method* call (``call_construct == "method"``, threaded from the
-    edge meta) has no receiver evidence and must NOT match — ``x.encrypt()``
-    must not bind ``Fernet.encrypt`` and falsely sanitize a flow (the
-    INV-tapat/INV-maluk rule ``gate_named_entry`` enforces). An
-    ``ambiguous_names`` bare short name is the meta-absent safety net.
+    *unresolved* edge is the short-name-collision surface, and it binds ONLY on
+    positive receiver evidence, of which there are exactly two forms: an exact
+    ``qualified_name`` match on the callee name (parity with
+    ``_lookup_named_entry``'s qualified-first branch), or the MODULE slot plus
+    the callee name matching one. Anything else is refused.
+
+    INV-fuduz REPLACED AN ENUMERATION OF ABSENCE WITH ONE OF PRESENCE. The
+    refusal used to be two clauses and a fail-open: refuse a stamped
+    ``call_construct == "method"`` (INV-pirot), refuse an ``ambiguous_names``
+    short name, otherwise PERMIT. Both clauses are ways of spotting that
+    evidence is missing, and a missing thing cannot be enumerated — measured at
+    tip, a bare java ``doFinal(p)`` emits
+    ``java:external:0-0:doFinal:external_symbol`` with no ``call_construct``,
+    fell through, and registered ``javax.crypto.Cipher.doFinal`` as a barrier on
+    its caller. The ``ambiguous_names`` clause never covered it, or any sibling:
+    across every language that ships a sanitizer, NONE of the nine sanitizer
+    short names appears in its own language's ``ambiguous_names``, because that
+    list is sourced from the io_primitives I/O-collision vocabulary. The
+    parameter is gone rather than left dead.
+
+    THE INVERSION COSTS NO EXPRESSIVENESS, which is why it is preferred to
+    adding a third refusal clause for one language. All twelve shipped
+    sanitizers are receiver-shaped (``Fernet.encrypt``, ``Cipher.doFinal``,
+    ``AEAD.Seal``, ``Hkdf::expand``, ...), so binding one from a bare name with
+    no receiver was never justified in ANY language — java's lack of free
+    functions is a sufficient reason, not a necessary one. A sanitizer
+    catalogued under a genuinely bare name still binds through the first
+    branch. Direction is safe: refusing a barrier can only ADD findings.
 
     That receiver evidence is read from BOTH slots it can occupy. The
     name-slot form is the synthetic one; production analyzers put the
@@ -3009,12 +3029,46 @@ def _register_sanitizer_callers(
                     qualified = any(
                         s.qualified_name == fq for s in matched_list
                     )
+            if not qualified and member_owner(callee_name) is not None:
+                # THIRD FORM OF RECEIVER EVIDENCE: the callee NAME carries its
+                # own owner. A call site that says ``Fernet.encrypt`` names the
+                # receiver type even when the module slot holds the ``external``
+                # placeholder and the catalogue spells the entry out in full as
+                # ``cryptography.fernet.Fernet.encrypt``. That is evidence, and
+                # the two branches above both miss it — the first wants an exact
+                # whole-name match, the second wants a module slot.
+                #
+                # THE BOUNDARY IS WHAT MAKES IT EVIDENCE RATHER THAN A SUFFIX
+                # COLLISION. ``member_owner`` is what distinguishes
+                # ``Fernet.encrypt`` (an owner, so a receiver was named) from a
+                # bare ``encrypt`` (none, so nothing was named), and the match
+                # must land on a separator boundary or ``t.encrypt`` would bind
+                # ``...Fernet.encrypt``. The separator vocabulary is IMPORTED,
+                # never re-spelled: ``member_names`` fails the build on a
+                # hand-rolled copy, and ``::`` (rust) and ``#`` (ruby) are as
+                # load-bearing as ``.``.
+                qualified = any(
+                    s.qualified_name.endswith(f"{separator}{callee_name}")
+                    for s in matched_list
+                    for separator in MEMBER_NAME_SEPARATORS
+                )
             if not qualified:
-                call_construct = edge.get("meta", {}).get("call_construct")
-                if call_construct == "method":
-                    continue
-                if ambiguous_names and callee_name in ambiguous_names:
-                    continue
+                # INV-fuduz: ABSENCE OF EVIDENCE IS REFUSAL, NOT PERMISSION.
+                # The two branches above enumerate the ways receiver evidence
+                # can be PRESENT, and that set is bounded. What stood here
+                # instead was an attempt to enumerate the ways it can be
+                # ABSENT — ``call_construct == "method"``, then an
+                # ``ambiguous_names`` net — followed by a fail-open. An
+                # absence cannot be enumerated, and the enumeration was
+                # already incomplete in every language that ships a
+                # sanitizer: a BARE call carries no receiver token, so it is
+                # not syntactically a method call and cannot honestly be
+                # stamped one (``call_construct`` names the SYNTACTIC
+                # construct, ADR-0024 — stamping it would file a resolution
+                # fact under a construct name), while the net never held any
+                # sanitizer short name at all, being sourced from the
+                # io_primitives I/O-collision lists.
+                continue
         for matched in matched_list:
             # A LIST, NOT A SLOT (INV-pojib). This used to assign, so the LAST
             # short-name match won: all four shipped ``*.encrypt`` sanitizers
@@ -3242,7 +3296,7 @@ def propagate_taint_structural(
         defaultdict(dict)
     )
     _register_sanitizer_callers(
-        edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+        edges, sanitizer_by_callee, sanitizer_callers,
     )
 
     # Step 4: For each source, BFS forward to find reachable sinks
@@ -4391,7 +4445,7 @@ def propagate_taint_ddg(
     # disagree with the barrier set above about what counts as a sanitizer.
     sanitizer_lines: dict[tuple[str, str], list[int]] = {}
     _register_sanitizer_callers(
-        call_edges, sanitizer_by_callee, sanitizer_callers, ambiguous_names,
+        call_edges, sanitizer_by_callee, sanitizer_callers,
         sanitizer_lines=sanitizer_lines,
     )
 
