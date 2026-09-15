@@ -1,0 +1,47 @@
+Original commit body from b1682c9bddaa9425ba6524ab516bcfa31c7f4e71:
+
+INV-kahig made `instantiates` confer reachability in the dead-code BFS. That settled which edge TYPES are traversable and left open which NODE the edge lands on. ruby resolves `Klass.new` to `Klass#initialize`; csharp (WI-fagit, PR #689) and java land on a `constructor` symbol. py/js_ts/dart land on the CLASS — and every edge leaving a class node (`contains` / `extends` / `decorated_by`) is correctly non-traversable, so the walk arrives and stops. The initializer, and everything it calls, reads as dead.
+
+**Measured at tip**, 46,203-node self-analysis: of 11,428 `instantiates` edges, 9,217 land on a `class`, 2,211 on an `external_symbol`, and **zero** on a callable. All 69 python `__init__` methods have exactly one incoming edge type: `contains`.
+
+### The item's own sizing claim was wrong
+
+INV-rolok recorded "0 of 2,152 dead candidates are `__init__`, so Python constructors are not currently mis-flagged". Reproduced (0 of 2,252) — but all 52 non-test `__init__` ARE unreachable candidates. They are removed by the **cross-language demoter**, which counts a substring hit in a `.json`/`.yaml`/`.toml` file as evidence of cross-language dispatch; `__init__` appears in `pyproject.toml` and five package YAMLs, clearing the threshold of 3 in any Python repo. Filed as **INV-hugit** — it masks 217 of 2,469 candidates (8.8%) with no disclosure bucket. The harm was real and the instrument was hiding it.
+
+### The licence is the conjunction, never `contains` alone
+
+Making containment traversable would make every method of every instantiated class unconditionally reachable and destroy this command's precision wholesale. A hop is minted only where (the class is the dst of a construction edge) AND (the member is its initializer). Either half alone mints nothing; `TestContainmentStillConfersNothing` pins both.
+
+### Why not re-point the dst, and why not a linker
+
+Option A (WI-fagit's shape for csharp): `linkers/method_call_recovery` keys its class hint on `e.dst in class_ids`, so re-pointing python's dst would silently drop python from the linker that produced 89 edges here — a regression in the opposite direction, for a measured gain of 3 rows.
+
+Option B (mint the hops as real edges): measured, it perturbs `detect_entrypoints`, which reads the edge set. On pretix the synthetic-edge arm cost 5 route seeds (seed_count 1174 → 1173) and made 5 route symbols newly dead.
+
+Augmenting the BFS's OWN graph, after seed detection has run, changes no emitted edge and no other consumer. Verified: seed_count held at 1174 / 1266 / 1328 on pretix / self / kserve with **zero** newly dead, producing a dead set identical to the linker arm. The precedent is `is_grpc_rpc_implementation` — the edges are correct as they stand, only this walk's reading changes.
+
+### Measured, three repos (`--cross-lang-threshold 0`)
+
+| repo | revived | of which `__init__` | downstream | newly dead |
+|---|---|---|---|---|
+| self-analysis | 21 | 18 | 3 | 0 |
+| pretix | 103 | 100 | 3 | 0 |
+| kserve | 74 | 69 | 5 | 0 |
+
+Under **default** flags on self-analysis the visible gain is 3, because the demoter above hides the `__init__` rows. All three were read back against source and are private helpers whose ONLY caller is the constructor: `UnionFind.add`, `TrackerSet._load_last_list`, and `Cache._ensure_db` — which opens the tracker's SQLite connection and creates its schema. Deleting it, the action "dead private method" invites, breaks the cache outright.
+
+### Why a passing INV-kahig arm did not catch this
+
+Its fixture is `main -[instantiates]-> init`, handing the construction edge straight to the initializer — a shape py/js_ts/dart never emit. The arm proves the edge type is traversable and is silent on the dst.
+
+### Shape
+
+`symbol_kinds.is_initializer` is the shared predicate, keyed on the existing `constructor` symbol kind (java/csharp/apex/pony) plus a per-language reserved NAME for analyzers that emit initializers as ordinary methods (python `__init__`, js/ts `constructor`, ruby `initialize`, php `__construct`). Scoped per language deliberately — a python method named `constructor` is an ordinary method. Short names split via `member_names`, not a local rsplit, so ruby's `#` keeps working (INV-tihim).
+
+Residuals filed rather than folded: **INV-hugit** (the demoter), **WI-rupot** (method_call_recovery drops constructor-dst hints, latent since #689), **WI-sujon** (dart matches neither mechanism — a declared gap in the table's own comment), **WI-satal** (taint / io_boundary / slice stop at the class node too; this fix is dead-code-local by design).
+
+Tests: 23 new, `check-package-coverage core` 100%, mypy ratchet 669 (+0), full affected suite 7,981 passed.
+
+Closes INV-rolok.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
