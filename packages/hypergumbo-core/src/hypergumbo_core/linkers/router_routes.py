@@ -115,7 +115,7 @@ from typing import TYPE_CHECKING
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ..paths import is_test_file
 from ._concept_utils import has_concept
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Span, Symbol
@@ -143,6 +143,7 @@ def _span_size(span: "Span") -> int:
     # CNF: router symbols carry the "router" concept, emitted across the same
     # set of HTTP-server frameworks/languages as route handlers.
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_router_routes(ctx: LinkerContext) -> LinkerResult:
     """Create route-registration ``references`` edges from routers to routes."""

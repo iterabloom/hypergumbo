@@ -97,6 +97,7 @@ from .registry import (
     LinkerRequirement,
     LinkerResult,
     register_linker,
+    always_on_unreviewed,
 )
 
 PASS_ID = make_pass_id("ipc-linker")
@@ -907,6 +908,7 @@ IPC_REQUIREMENTS = [
     requirements=IPC_REQUIREMENTS,
     # CNF: Electron IPC and browser postMessage are JS/TS-only.
     depends_on=[["javascript"]],
+    activation=always_on_unreviewed(),
 )
 def ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """IPC linker for registry-based dispatch.

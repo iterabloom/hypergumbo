@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import member_owner, member_short_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -144,6 +144,7 @@ def _iter_implements_edges(edges: list[Edge]) -> list[Edge]:
     description="Emit dispatches_to edges from Rust trait symbols to the concrete methods of impl blocks that implement them (WI-kivut)",
     # CNF: Rust trait dispatch is Rust-only.
     depends_on=[["rust"]],
+    activation=always_on_unreviewed(),
 )
 def link_rust_trait_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Fan dispatches_to edges out from each trait to its concrete impl methods.

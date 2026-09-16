@@ -69,7 +69,7 @@ from ..analyze.base import (
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("database-query-linker")
@@ -521,6 +521,7 @@ DATABASE_QUERY_REQUIREMENTS = [
     # CNF: SQL is required (target side); any backend language consuming
     # SQL is the query side. Two AND-conjuncts.
     depends_on=[["sql"], ["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "scala", "elixir", "php"]],
+    activation=always_on_unreviewed(),
 )
 def database_query_linker(ctx: LinkerContext) -> LinkerResult:
     """Database query linker for registry-based dispatch.

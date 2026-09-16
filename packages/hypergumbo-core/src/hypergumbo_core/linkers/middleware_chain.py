@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ..paths import is_test_file
 from ._concept_utils import has_concept
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -64,6 +64,7 @@ PASS_ID = make_pass_id("middleware-chain-linker")
     # Django/Flask/FastAPI (python), Rails/Rack (ruby), Spring (java), Echo/Gin
     # (go), Phoenix (elixir).
     depends_on=[["python", "javascript", "ruby", "java", "go", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def link_middleware_chain(ctx: LinkerContext) -> LinkerResult:
     """Create middleware_chain edges between consecutive middleware symbols."""

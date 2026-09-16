@@ -92,7 +92,7 @@ from typing import TYPE_CHECKING
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ..paths import is_test_file
 from ._concept_utils import has_concept
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Span, Symbol
@@ -122,6 +122,7 @@ def _span_size(span: "Span") -> int:
     # Phoenix (elixir), Laravel (php), Echo/Gin (go). At least one such analyzer
     # must run for this linker to have controllers to consume.
     depends_on=[["python", "javascript", "ruby", "java", "go", "elixir", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_controller_routes(ctx: LinkerContext) -> LinkerResult:
     """Create ``contains`` edges from controllers to their route methods."""

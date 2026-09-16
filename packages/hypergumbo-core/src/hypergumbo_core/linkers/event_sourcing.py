@@ -75,7 +75,7 @@ from ..analyze.base import make_protocol_stable_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("event-sourcing-linker")
@@ -963,6 +963,7 @@ def _create_subscriber_to_method_edges(
     # Java (Spring events / Guava EventBus), Go (channels), plus Ruby
     # (ActiveSupport::Notifications) and C# (delegates / IObservable).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp"]],
+    activation=always_on_unreviewed(),
 )
 def event_sourcing_linker(ctx: LinkerContext) -> LinkerResult:
     """Event sourcing linker for registry-based dispatch.

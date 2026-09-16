@@ -45,7 +45,7 @@ from typing import Iterator
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from ._concept_utils import has_concept
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("orm-linker")
@@ -316,6 +316,7 @@ def link_orm_queries(
     # JS/TS (TypeORM/Prisma/Sequelize), C# (EF Core), Kotlin (Exposed),
     # Elixir (Ecto).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "kotlin", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def orm_linker(ctx: LinkerContext) -> LinkerResult:
     """ORM linker for registry-based dispatch.

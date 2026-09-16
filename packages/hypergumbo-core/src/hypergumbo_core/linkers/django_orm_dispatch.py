@@ -49,7 +49,7 @@ from ._transitive_bases import (
     collect_transitive_base_names,
     short_name_fallback,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -282,6 +282,7 @@ def _build_method_index(
     description="Emit dispatches_to edges from Django Model/Manager/View/Form/Admin subclasses to their framework-called override methods (WI-nosug)",
     # CNF: Django is Python-only.
     depends_on=[["python"]],
+    activation=always_on_unreviewed(),
 )
 def link_django_orm_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Django subclasses to their framework overrides.

@@ -94,7 +94,7 @@ from typing import Iterator
 from ..analyze.base import make_file_id, make_file_stable_id, make_symbol_id
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import language_from_path, read_masked_source
 
 PASS_ID = make_pass_id("websocket-linker")
@@ -1022,6 +1022,7 @@ def link_websocket(
     # Socket.io (JS/TS), Django Channels (python), Phoenix (elixir),
     # Spring WebFlux (java), Action Cable (ruby), Gorilla (go), SignalR (csharp).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def websocket_linker(ctx: LinkerContext) -> LinkerResult:
     """WebSocket linker for registry-based dispatch.

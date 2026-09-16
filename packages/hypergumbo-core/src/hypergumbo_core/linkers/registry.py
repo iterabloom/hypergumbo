@@ -444,6 +444,37 @@ class LinkerActivation:
         return False
 
 
+def always_on_unreviewed() -> LinkerActivation:
+    """Always-on, and NOBODY HAS ASSESSED whether it should be gated (INV-nanon).
+
+    Behaviourally identical to ``LinkerActivation(always=True)``. It exists to
+    say a different thing about the AUTHOR, because the two claims were
+    previously indistinguishable: ``register_linker`` defaulted a missing
+    ``activation=`` to ``always=True``, so "I considered gating and chose
+    always-on" and "I never thought about it" were the same bytes. Twenty-five
+    linkers were in the second state and twelve in the first, and nothing could
+    tell them apart.
+
+    Writing ``LinkerActivation(always=True)`` on all twenty-five instead would
+    have manufactured twenty-five rationales nobody verified -- the
+    fabricated-disclosure failure :mod:`..pass_silence` already names, where a
+    reason invented on the producer's behalf is worse than no reason. This
+    factory claims only what is true: the linker runs unconditionally today,
+    and that is a default nobody defended.
+
+    It is a FACTORY and not a module-level constant because
+    :class:`LinkerActivation` carries mutable ``frameworks`` /
+    ``language_pairs`` lists; a shared instance would let one caller's
+    ``.append`` reach twenty-five linkers.
+
+    Narrowing any of these is the RECALL-LOSS direction -- a missed framework
+    detection silently drops real edges and leaves no hole where a hole would
+    be visible -- so each is a separate, evidence-backed, per-linker decision.
+    ``grep -rl always_on_unreviewed`` is that worklist.
+    """
+    return LinkerActivation(always=True)
+
+
 @dataclass
 class LinkerRequirement:
     """A requirement for a linker to produce useful edges.

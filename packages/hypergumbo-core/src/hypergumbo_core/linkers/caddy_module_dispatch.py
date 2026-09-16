@@ -54,7 +54,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -127,6 +127,7 @@ def _build_go_method_index(
     ),
     # CNF: Caddy modules are Go.
     depends_on=[["go"]],
+    activation=always_on_unreviewed(),
 )
 def link_caddy_module_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Recover Caddy module-registry dispatch edges.
