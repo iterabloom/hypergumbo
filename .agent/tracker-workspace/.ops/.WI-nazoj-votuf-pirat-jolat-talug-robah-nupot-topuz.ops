@@ -37,3 +37,19 @@
   set: {}  # 10d7
   remove:  # 10d7
     duplicate_of: [INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup]  # 10d7
+- op: update  # 26b1
+  at: '2026-09-16T02:56:39Z'  # 26b1
+  by: agent  # 26b1
+  actor: jgstern_agent  # 26b1
+  clock: 4  # 26b1
+  nonce: 26b1  # 26b1
+  set: {}  # 26b1
+  add:  # 26b1
+    not_duplicate_of: [INV-rahib-gobop-zozum-kopil-noguh-tifof-nibol-dudup]  # 26b1
+- op: discuss  # 7b0f
+  at: '2026-09-16T02:56:39Z'  # 7b0f
+  by: agent  # 7b0f
+  actor: jgstern_agent  # 7b0f
+  clock: 5  # 7b0f
+  nonce: 7b0f  # 7b0f
+  message: "Not a duplicate: INV-rahib's misleading-status class (merged + exit 1) is fixed; this is the residual undeclared-terminal-state class (final_state=unknown), which owner ruling 2026-08-03 makes the violation signal. Distinct mechanism, distinct evidence, distinct closure criterion."  # 7b0f
