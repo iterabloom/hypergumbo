@@ -91,6 +91,7 @@ is normal, not an error.
 """
 from __future__ import annotations
 
+import ast
 import fnmatch
 import re
 import sys
@@ -179,17 +180,43 @@ def _vendor_hook_basename(path: str) -> str | None:
 #: tests can say what they cover, and nothing else can say it for them.
 _COVERS_MARKER = re.compile(r"^#[ \t]*covers:[ \t]*(.+?)[ \t]*$", re.MULTILINE)
 
-#: The header ends at the first import, definition or decorator. Scanning only
-#: the header is what keeps a marker-shaped string inside a test's own FIXTURE
-#: from registering as a real declaration — ``test_top_level_test_map.py``
-#: necessarily contains example markers, and they are test data, not claims.
+#: The header ends at the first real statement. Scanning only the header is what
+#: keeps a marker-shaped string inside a test's own FIXTURE from registering as
+#: a real declaration — ``test_top_level_test_map.py`` necessarily contains
+#: example markers, and they are test data, not claims.
 _HEADER_END = re.compile(r"^(import |from |def |class |@)", re.MULTILINE)
 
 
 def _module_header(text: str) -> str:
-    """The part of a module above its first import, def, class or decorator."""
-    match = _HEADER_END.search(text)
-    return text[: match.start()] if match else text
+    """The part of a module above its first statement, docstring excluded.
+
+    PARSED, NOT PATTERN-MATCHED, and that is not fastidiousness. The regex
+    below was the first implementation and it cut the header at the first line
+    BEGINNING with ``import `` — which in ``test_rct_public_api_pinned.py`` is
+    a line of English inside the module docstring ("the variants attach by /
+    import path + signature"). The marker sat after the docstring, the scan
+    stopped before it, and the declaration silently did nothing: the test still
+    read as unreachable and the failure named the test rather than the parser.
+    ``ast`` knows where the docstring ends; a line-start pattern cannot.
+
+    The regex survives as the fallback for a file that does not parse, where
+    over-scanning is better than reading no header at all.
+    """
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):  # pragma: no cover - unparseable test file
+        match = _HEADER_END.search(text)
+        return text[: match.start()] if match else text
+
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(
+        getattr(body[0], "value", None), ast.Constant
+    ) and isinstance(body[0].value.value, str):
+        body = body[1:]
+    if not body:
+        return text
+    lines = text.splitlines(keepends=True)
+    return "".join(lines[: body[0].lineno - 1])
 
 
 def declared_coverage(tests_dir: Path) -> List[Tuple[str, str]]:

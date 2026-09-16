@@ -24,6 +24,8 @@ The failure messages below name the specific RCT dependency so a future
 ``sed``-to-passing contributor sees the dependency before silently
 breaking it.
 """
+
+# covers: packages/hypergumbo-core/src/hypergumbo_core/ranking.py, packages/hypergumbo-core/src/hypergumbo_core/cli.py, packages/hypergumbo-core/src/hypergumbo_core/ir.py, packages/hypergumbo-core/src/hypergumbo_core/linkers/registry.py
 from __future__ import annotations
 
 import importlib.machinery
