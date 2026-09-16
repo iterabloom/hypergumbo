@@ -1,0 +1,25 @@
+Original commit body from 2802d15730d68db2bb31782651b837f109114e79:
+
+CI's 100% gate covers the whole changed file, so the one-line activation
+edit in the previous commit exposed a pre-existing hole: line 230, the
+`continue` that skips a trait-REQUIRED method because linkers/type_hierarchy
+already emits that relationship at the precise requirement anchor. The
+linker's own test file left it uncovered (63 stmts, 1 missed, 98%).
+
+The local scoped run reported 100% because its slice was 211 test files wide
+and something in there happened to reach the branch; the dedicated test file
+alone does not. File-scoped local coverage can pass on a line no targeted
+test covers.
+
+Two tests, because the rule beside it was also unpinned:
+  * test_trait_required_method_gets_no_coarse_edge -- the uncovered branch.
+    A trait declaring Display::fmt, a Writer::fmt satisfying it (skipped
+    here), and an inherent Writer::write (still emitted).
+  * test_empty_requirement_set_covers_everything -- an empty requirement set
+    means "cover everything", not "cover nothing". Reading it the other way
+    drops every edge and resurrects the dead-code false positives this linker
+    exists to prevent: absent-versus-empty, one call site further down.
+
+rust_trait_dispatch.py is now 63 stmts, 0 missed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
