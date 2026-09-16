@@ -1,0 +1,29 @@
+Original commit body from 5f8ab90581ca2cf5ae9ec3dcc1feca0a834fe34a:
+
+CORRECTS THE PRECEDING COMMIT'S DIAGNOSIS. 58067626d0 blamed a glob
+divergence and CI's Python 3.11. That was wrong -- the run after it failed
+identically -- and the real cause is one line of mine:
+
+    parts.index("src")   # on an ABSOLUTE path
+
+CI checks the repository out at /woodpecker/SRC/github.com/iterabloom/
+hypergumbo. The search found the WORKSPACE's src, not the package's, so
+every key came out as
+"github.com/iterabloom/hypergumbo/packages/.../hypergumbo_core/cli.py"
+instead of "hypergumbo_core/cli.py" -- a path no citation in the tree
+names. Locally there is no `src` above the repo root, so it was invisible.
+
+Reproduced rather than inferred: symlinking the repo under a
+.../src/github.com/iterabloom/ path makes the old expression return 348
+plausible entries of which NONE matches a citation literal, and the new
+one return the same 348 with the right keys.
+
+THE FLOOR DID NOT CATCH IT, and that is the lesson worth keeping. A floor
+on the population size guards against an EMPTY instrument, not a MIS-AIMED
+one: 348 sources were found every time. What catches a mis-aimed
+instrument is asserting the SHAPE of what it produced, so the accessor now
+requires its keys to be import-root-relative, and the paths are taken
+relative to the repo root and indexed positionally the way the helper
+already did it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
