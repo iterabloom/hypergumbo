@@ -1,0 +1,56 @@
+Original commit body from 682778ef1fb47ae413d1491ce1225b120ec7b871:
+
+The vendor-attribution scrub was a commit-msg hook and nothing else, so it
+protected exactly one channel. A PR title, a PR body and a PR comment are
+none of those, and all three reached the forge unscrubbed. Found when a
+merged PR body was observed carrying a vendor session URL on its last line.
+
+Nothing was wrong with the matching. The shipped pattern list matches that
+URL correctly (both word boundaries are supplied by the '/' and the '.'),
+and the line sat at the end of the body, inside the scan window that already
+exists. The rule was simply enforced at one of six egress points, because it
+lived inside the hook that discovered it first.
+
+So the matcher, the phrase selection and the line sweep move to
+.githooks/brand-scrub.sh, which lib/forgejo-api.sh sources -- that one line
+is what makes a single pattern list govern every publisher. commit-msg is
+refactored onto the same library rather than keeping a second copy; what
+stays in the hook is what is genuinely specific to a commit message.
+
+Policy is unchanged and deliberately so: delete body lines, substitute
+titles, keep the first/last-10-line window. Refusing instead was considered
+and declined -- PR bodies here are fulsome, so losing a few words costs less
+than handing a human a blocked PR, and the pattern list is full of ordinary
+English (falcon is a framework this project ships support for).
+
+scripts/check-forge-text-egress is the backstop. There is no single choke
+point to defend -- auto-pr alone emits a body at three points, because
+'git push -o' cannot carry newlines -- so every api_post / api_patch /
+-o description= site must declare '# forge-egress: scrubbed' or
+'# forge-egress: no-agent-text -- <reason>'. A planted undeclared site
+proves the linter is not vacuous.
+
+Three defects found while building it, each now pinned by a regression test
+that uses the caller's real shape rather than a convenient one:
+
+  - The reporter read a count set inside '$(...)', a subshell, so it was
+    unbound in the parent under set -u. It now re-sweeps the before-text,
+    which is also exact: diffing line counts over-reported, because command
+    substitution strips the trailing newline the sweep leaves behind.
+  - bs_init read $HOME eagerly, so sourcing the library aborted in any
+    environment without one. The auto-pr suite runs with a minimal env
+    precisely to reproduce the caller's shell, and caught it. The key is
+    lazy now, and only phrase selection ever needs it.
+  - auto-pr discarded every stderr write from its lock line onward:
+    'exec {FD}>>"$f" 2>/dev/null' makes BOTH redirections permanent. That
+    is what made the two above surface as exit 1 with no output at all.
+    Scoping the exec to a brace group keeps the descriptor and restores
+    stderr. Filed separately; the other two exec-redirect sites in the tree
+    redirect no standard stream.
+
+Verified end to end rather than by proxy: a real auto-pr run whose
+description ended in a vendor URL queued the prose with the URL gone, the
+title intact, exit 0, and 'removed 1 line(s)' on stderr. 1795 python tests
+and 59 hook tests green, mypy ratchet clean.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
