@@ -1,0 +1,31 @@
+Original commit body from 8d83a7dbc69573008c0c0c1865a2f6e356bd1e22:
+
+`pr-status` already fetches `/pulls/<n>`. That payload has carried `body` all along and the function parsed six fields out and dropped the rest, so a PR's description was unreachable through any approved script — and for a rebase-merged PR there is no merge commit holding it either.
+
+**This adds no network surface.** No endpoint, no auth scope, no second call; it stops discarding a field that was already arriving. A test pins exactly one API call, so the day this grows a second one it stops being that change.
+
+## The reader is deliberately not `json_field`
+
+`json_field` answers with the empty string for a JSON null, for an absent key, **and** for a parse failure. Under it, "this PR has no description" is a statement about the PR made on the strength of having read nothing. `json_text_state` is its sibling for strings — `present | empty | null | absent | other | unreadable` — built on the argument `json_bool_state` already records for `mergeable`.
+
+## The `unreadable` arm is reachable, which I checked rather than assumed
+
+My first test fed an HTML error page and **failed**: `api_call` shape-checks the first byte and returns 2, so that payload never reaches the reader and the arm looked decorative. Two real shapes do reach it:
+
+- a truncated payload starting with `{` clears the shape check
+- an **HTTP 200 carrying zero bytes** clears both the shape check and the status check — not hypothetical here, WI-holik is that exact defect against a different endpoint
+
+Both are now tests; the HTML case is pinned separately as the lib's arm, so the layering stays visible.
+
+## The output is fenced under a per-invocation nonce
+
+A PR body is author-controlled text, `docs/CONTRIBUTOR_MODE.AGENTS.md` defines a fork-based path for people outside this repo, and the consumer of this subcommand is an agent. A fixed delimiter is forgeable from inside the body: write the closing marker and whatever follows appears to be the tool speaking. The test plants a forged marker and proves the real fence still closes exactly once, after it.
+
+## Evidence
+
+- 11 new tests; **1795 passed** in the affected slice; mypy ratchet **clean at 669**
+- Verified against the live backend on PR #922, whose description is markdown several times the length of its commit message
+
+Governance: `scripts/ci-debug` and `scripts/lib/forgejo-api.sh` are governance files. Implementation and `auto-pr` without `--gov` were approved by the owner for this change.
+
+https://claude.ai/code/session_01PPd85eAN9LZHfLuzTmD7Et
