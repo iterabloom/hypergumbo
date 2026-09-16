@@ -1,0 +1,51 @@
+Original commit body from 0b43f1891bd46bffd916b62bdf75e573c8508506:
+
+derive_silence_reason stamps `no_candidate_files` -- documented as "the
+pass received zero input files ... the only silence the orchestrator can
+attribute with certainty" -- whenever AnalysisRun.files_analyzed is 0.
+Zero is also the dataclass default, so a linker that read four hundred
+files and never assigned the counter was indistinguishable from one that
+received no input, and the axis published the confident wrong answer.
+
+Measured on a self-survey by attributing every Path.read_text /
+Path.read_bytes to the calling linker module: EIGHT linkers read between
+14 and 834 files apiece and were all stamped `no_candidate_files` --
+pyffi 389, grpc 397, di-resolution 396, annotation-convention 834,
+wasm-bindgen 14, solidity-abi 14, crypto-flow 17, message-dispatch 17.
+The statically eligible class is larger than the eight that fired on this
+corpus: eighteen linker modules read files and contain no files_analyzed
+assignment at all.
+
+Counting moves to the chokepoint rather than into eighteen bodies.
+Seventeen linkers assign the counter correctly and eighteen do not, which
+is the evidence that "remember to count" does not survive a new linker. A
+per-invocation read log in _text_filters is bound by
+_run_linker_with_cache -- the one wrapper every linker flows through --
+and read_masked_source (36 call sites) now records through it. Two
+sibling readers absorb the other 17 direct call sites:
+read_source_text (unmasked; annotation_convention's subject IS the
+comment region the masker blanks) and read_source_bytes (parser case).
+The log is a set of paths, so files_analyzed counts FILES. The stamp is
+guarded like duration_ms: a body that assigned the field keeps its value,
+because route-handler-linker deliberately stores a route count there.
+
+tests/test_linker_file_read_accounting.py gates the other half: a direct
+Path.read_text / Path.read_bytes anywhere in linkers/ fails there, with
+_text_filters -- the one module legitimately holding those calls -- as
+the positive control, so a detector that stops working cannot masquerade
+as a clean result. Stated limit: the gate is syntactic and scoped to
+linkers/, and does not check that a body-supplied count is ACCURATE
+(websocket-linker reports 2 while reading 405).
+
+Affected passes move from a false `no_candidate_files` to `unreported`,
+which means cannot-determine. The truly-silent cohort is therefore larger
+than the disclosure showed: 11 pass-runs and 4.21% of pass time, not 3
+and 1.9%.
+
+The mypy strict ratchet fired on two bare contextvars.Token annotations
+I added (+2 type-arg). I parameterized mine and the two pre-existing ones
+beside them: surface 669 -> 667, baseline locked down.
+
+Refs WI-finij, INV-hosig, INV-nanon
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
