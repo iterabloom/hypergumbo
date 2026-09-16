@@ -24,6 +24,7 @@ so future changes to the script select these tests instead of nothing.
 from __future__ import annotations
 
 import re
+import pathlib
 import subprocess
 import sys
 from pathlib import Path
@@ -100,6 +101,32 @@ def _extract_grep_pattern(var_name: str) -> str:
             assert match, f"could not parse the regex out of: {stripped}"
             return match.group(1)
     raise AssertionError(f"{var_name} assignment not found in smart-test")
+
+
+def _catalogue_predicate_selects(path: str) -> bool:
+    """Run smart-test's OWN catalogue line, both greps, over one path.
+
+    ``_extract_grep_pattern`` reads the first ``grep -E`` off the assignment,
+    which stopped being the whole predicate when the key widened from "is
+    YAML" to "is not Python" — the exclusion lives in a second grep down the
+    pipe. Testing only the first half would have certified a predicate that
+    selects every Python file under a package subdirectory.
+    """
+    line = None
+    for raw in SMART_TEST.read_text().splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("CHANGED_CATALOGUE_FILES=") and "grep -E" in stripped:
+            line = stripped
+            break
+    assert line, "CHANGED_CATALOGUE_FILES assignment not found in smart-test"
+    body = line.split("$(", 1)[1].rsplit(")", 1)[0]
+    pipeline = body.split("|", 1)[1]
+    result = subprocess.run(
+        ["bash", "-c", f"echo \"$1\" | {pipeline}", "_", path],
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
 
 
 def _pattern_selects(pattern: str, path: str) -> bool:
@@ -418,21 +445,60 @@ class TestCatalogueGateSelection:
     """
 
     def test_the_catalogue_pattern_selects_a_catalogue_and_nothing_else(self) -> None:
-        pattern = _extract_grep_pattern("CHANGED_CATALOGUE_FILES")
-        assert _pattern_selects(
-            pattern,
-            "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/go.yaml",
+        assert _catalogue_predicate_selects(
+            "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/go.yaml"
         )
-        assert _pattern_selects(
-            pattern,
+        assert _catalogue_predicate_selects(
             "packages/hypergumbo-core/src/hypergumbo_core/io_primitives_overlays/"
-            "go-web-frameworks.yaml",
+            "go-web-frameworks.yaml"
         )
-        assert not _pattern_selects(
-            pattern,
-            "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py",
+        assert _catalogue_predicate_selects(
+            "packages/hypergumbo-core/src/hypergumbo_core/url_folding/SCOPE.md"
+        ), "SCOPE.md is parsed at runtime and is not YAML"
+        assert not _catalogue_predicate_selects(
+            "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py"
         )
-        assert not _pattern_selects(pattern, "docs/measurements/0010-shapes.md")
+        assert not _catalogue_predicate_selects(
+            "packages/hypergumbo-core/src/hypergumbo_core/linkers/route_handler.py"
+        ), "a Python file in a package subdirectory is the slice's job, not this one"
+        assert not _catalogue_predicate_selects("docs/measurements/0010-shapes.md")
+
+    def test_the_shell_fallback_and_the_helper_agree_on_the_live_tree(self) -> None:
+        """The degraded path is the one duplicate of the predicate; pin it.
+
+        smart-test falls back to a shell-derived directory name when python3 or
+        the helper is unavailable, because silence is the worst failure mode
+        for a selector. Two homes for one fact is how a widening lands in one
+        and not the other, so this measures that they still agree about what
+        counts as shipped data."""
+        tracked = subprocess.run(
+            ["git", "ls-files", "packages/"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        ).stdout.splitlines()
+
+        # One representative per distinct SHAPE rather than per file: the two
+        # predicates can only disagree on depth-below-src and suffix, and
+        # asking both about two thousand paths costs 50 seconds to re-ask the
+        # same question. Every shape the tree contains is still exercised, and
+        # the grouping is stated here rather than left as an unexplained
+        # sample.
+        shapes = {}
+        for path in tracked:
+            parts = path.split("/")
+            depth = len(parts) - parts.index("src") if "src" in parts else 0
+            shapes.setdefault((depth, pathlib.PurePath(path).suffix), path)
+        assert len(shapes) >= 6, sorted(shapes)
+
+        disagreements = [
+            (path, by_shell, by_helper)
+            for path in shapes.values()
+            for by_shell, by_helper in [
+                (_catalogue_predicate_selects(path),
+                 bool(_catalogue_gate_greps(path)))
+            ]
+            if by_shell != by_helper
+        ]
+        assert not disagreements, disagreements
 
     def test_the_gate_set_is_derived_from_the_tree(self) -> None:
         """No hardcoded roster: every selected name must exist as a test file."""
