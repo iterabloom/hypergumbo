@@ -26,3 +26,35 @@
   clock: 2  # cb94
   nonce: cb94  # cb94
   message: "APPROVAL REQUESTED. scripts/ci-debug is a governance file, so this is filed and\nnot built: no branch, no commit, no PR.\n\nPROPOSED, in one sentence: add `ci-debug pr-body <num>`, which reuses the\n/pulls/<num> fetch cmd_pr_status already performs and prints the `body` field\nthe current code discards.\n\nWHAT I WOULD WRITE\n  * a body extractor that does NOT go through json_field, because that helper\n    swallows every exception into an empty string; \"no description\", \"null\n    body\", \"missing key\" and \"parse failure\" must be four distinguishable\n    outcomes, following the tri-state precedent json_bool_state already sets\n    for mergeable and the reason recorded beside it\n  * output that fences the body in an explicit delimiter and labels it as\n    untrusted data, since the contributor-mode fork path means a body can be\n    authored outside this repo and the consumer is an agent\n  * a new subcommand rather than a flag on pr-status, so pr-status's output\n    shape does not move\n  * tests on the existing tests/test_ci_debug_github.py harness, including a\n    negative control for a PR with no description\n\nWHAT I WOULD NOT TOUCH. Read path only. No forge API write, no change to what\ngets published or how, no second copy of anything.\n\nTWO THINGS FOR YOU TO RULE ON\n  1  whether you want this at all, given it is a convenience for me rather\n     than a fix for a defect\n  2  the priority: filed at P3 on my own read, and priority changes are yours\n\nIf approved I would implement it via auto-pr --gov and leave the merge to you."  # cb94
+- op: update  # c879
+  at: '2026-09-16T00:48:04Z'  # c879
+  by: agent  # c879
+  actor: jgstern_agent  # c879
+  clock: 3  # c879
+  nonce: c879  # c879
+  set: {}  # c879
+  add:  # c879
+    not_duplicate_of: [INV-kotob-guzaj-gazuj-vilud-gomim-povuz-danul-filof, WI-pozut-loham-bopip-bihun-biboj-gikig-vigod-vozav]  # c879
+- op: update  # cb4c
+  at: '2026-09-16T00:48:54Z'  # cb4c
+  by: human  # cb4c
+  actor: jgstern  # cb4c
+  clock: 4  # cb4c
+  nonce: cb4c  # cb4c
+  set:  # cb4c
+    status: todo_soft  # cb4c
+- op: update  # b8f7
+  at: '2026-09-16T00:59:16Z'  # b8f7
+  by: agent  # b8f7
+  actor: jgstern_agent  # b8f7
+  clock: 5  # b8f7
+  nonce: b8f7  # b8f7
+  set:  # b8f7
+    status: done  # b8f7
+- op: discuss  # a067
+  at: '2026-09-16T00:59:16Z'  # a067
+  by: agent  # a067
+  actor: jgstern_agent  # a067
+  clock: 6  # a067
+  nonce: a067  # a067
+  message: "DONE in PR #979, merged to dev at 20f03bf9ae. Owner approved implementation and\nauto-pr without --gov.\n\nBEHAVIOURAL EVIDENCE, re-run on merged dev rather than on the branch:\n  ./scripts/ci-debug pr-body 922   -> exit 0, \"Body:   present\", the full\n  markdown description fenced. That is the item's own filed repro -- the\n  question that opened this (\"can you see the PR message for PR 922?\") and\n  could not be answered before.\n  ./scripts/ci-debug pr-body 979   -> exit 0, this PR's own body.\n  ./scripts/ci-debug pr-body 999999 -> exit 1, \"Failed to fetch PR #999999\n  (HTTP 404)\" -- a missing PR stays distinguishable from a missing body.\n\nWHAT SHIPPED\n  * json_text_state in scripts/lib/forgejo-api.sh: present | empty | null |\n    absent | other | unreadable. json_bool_state's sibling for strings, for\n    the same recorded reason -- json_field renders a JSON null, an absent key\n    and a parse failure identically as the empty string.\n  * cmd_pr_body in scripts/ci-debug, plus usage and dispatch. One API call,\n    the one pr-status already made; pinned by a test so a future second call\n    breaks it.\n  * Output fenced under a per-invocation nonce, because a PR body is\n    author-controlled text and the consumer is an agent.\n\nDESIGN POINT 1 SURVIVED CONTACT, WITH A CORRECTION. The unreadable arm was\nnearly decorative: my first test fed an HTML error page and FAILED, because\napi_call shape-checks the first byte and returns 2 before the reader sees\nanything. The arm is reachable by two other shapes, both now tested -- a\ntruncated payload starting with a brace, and an HTTP 200 carrying zero bytes,\nwhich is WI-holik's exact defect against a different endpoint. Had I not run\nthe test I would have shipped an unreachable branch and a test that proved\nnothing.\n\nTESTS: 11 new in tests/test_ci_debug_github.py, including a negative control\nthat a body-less PR reports rather than errors, a three-way separability check\non empty/null/absent, and a forged-fence arm. 1795 passed in the affected\nslice; mypy ratchet clean at 669.\n\nFILED AT P3 AND NOT RE-PRICED. Priority is the owner's."  # a067

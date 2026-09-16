@@ -1,0 +1,49 @@
+- op: create  # b390
+  at: '2026-09-16T01:37:09Z'  # b390
+  by: agent  # b390
+  actor: jgstern_agent  # b390
+  clock: 1  # b390
+  nonce: b390  # b390
+  data:  # b390
+    kind: work_item  # b390
+    title: "Brand scrub covers commit messages only; 5 forge-egress channels publish agent text unscrubbed"  # b390
+    status: todo_soft  # b390
+    priority: 2  # b390
+    parent:  # b390
+    tags:  # b390
+    - governance  # b390
+    - ci_infrastructure  # b390
+    - security  # b390
+    isbefore: []  # b390
+    duplicate_of: []  # b390
+    not_duplicate_of: []  # b390
+    pr_ref:  # b390
+    description: "The brand scrub is a `commit-msg` git hook and nothing else. A PR body is\nnever a commit message, so agent-authored PR text reaches the forge with no\nscrub in front of it. Found when a merged PR body was observed carrying a\nvendor session URL (`<vendor-host>/code/session_<id>`) on its final line.\n\n## Not a regex miss\n\nThe pattern would have caught it. `\\bClaude\\b` matches inside `//<host>.ai/`\nbecause `/` and `.` both supply word boundaries — verified against the live\n`.githooks/brand-patterns.txt`, exactly one pattern hit. The URL sat on the\nLAST body line, inside the existing last-10-lines scan window, and is not a\ntrailer (`^[A-Za-z0-9][A-Za-z0-9-]*: ` requires colon-SPACE; `https://` is\ncolon-slash). In a commit message it would have been deleted outright.\n\nThe commit-side scrub works: 169 `Racial-Capitalism-Is-Bad:` trailers in the\nlast 300 commits, and ZERO vendor-host occurrences in commit messages across\nall refs. The gap is channel coverage, not matching.\n\nNo script generates the URL — grep over `scripts/` and `.agent/hooks/` finds\nno writer. An agent typed it into `--description` by hand.\n\n## Invariant\n\nNo agent-authored text reaches a forge without passing the brand scrub.\nCurrently enforced at 1 of 6 egress points.\n\n## Egress inventory\n\n| # | Channel | Site | Agent text? | Covered |\n|---|---|---|---|---|\n| 1 | PR title+body via push options | auto-pr:1306-1307, :1827-1828 | yes | NO |\n| 2 | PR body via REST PATCH | auto-pr:1376, :1925 | yes | NO |\n| 3 | create_pr title+body | lib/forgejo-api.sh:405-421 | yes | NO |\n| 4 | Fork-workflow PR payload | contribute:390-405 | yes | NO |\n| 5 | PR close-reason comment | merge-pr:132-139 | yes (`$reason`) | NO |\n| 6 | git notes on squash merge | lib/forgejo-api.sh:2154 | no — copies commit body | yes (transitive) |\n| 7 | Release PR description | prepare-release:371-375 | no — fixed template | n/a |\n\n6 and 7 are genuinely clean and need no work: the note copies text that already\npassed `commit-msg`, and prepare-release interpolates only a version number.\n\n## Approved design\n\n- **Extract, don't copy.** `load_brand_regex` / `escape_regex_basic` /\n  `replace_brands_ci` and the body sweep move from `.githooks/commit-msg` into\n  a sourced `scripts/lib/brand-scrub.sh`. `.githooks/brand-patterns.txt` stays\n  the single canonical pattern file; `commit-msg` sources the library too, so\n  there is one implementation and one list. This also makes the cross-file\n  idempotence invariant flagged at `test_hooks.sh:322-325` (\"Racial-Capitalism\n  -Is-Bad\" must not itself match `brand_re`) assertable in one place.\n\n- **Same policy as commit-msg — decided, not defaulted.** Delete matching body\n  lines; substitute the absurd phrase in the title (the subject-line analogue:\n  a title cannot be empty). A refuse-instead-of-rewrite policy was proposed and\n  REJECTED by the human: PR bodies are fulsome and the code is well-commented,\n  so losing a few words costs less than handing a human a blocked PR to unblock.\n  That rejection also removes the need for a high-precision second pattern list\n  — it existed only to stop false positives (`falcon` is a framework this\n  project ships support for) from BLOCKING. Under delete-policy a falcon line\n  just drops. One list, unchanged.\n\n- **Keep the first/last-10-lines scan window** (human decision). Strict parity\n  with commit-msg; the unscanned middle of a long body is the accepted cost.\n\n- **A linter, or channel #8 leaks next year.** There is no single choke point —\n  auto-pr alone emits the body at three distinct points. The gate goes at each\n  construction site PLUS `scripts/check-forge-text-egress`, which greps for\n  `api_post` / `api_patch` / `-o description=` and fails when a site's payload\n  did not come from the scrub helper. Repo idiom: `check-id-construction`,\n  `check-multi-value-field-axis-declaration`.\n\n- **NOT inside `api_post`/`api_patch`.** Those take finished JSON blobs;\n  scrubbing there would maul non-text fields and double-scrub. Wrong altitude.\n\n- **One line to stderr** when the scrub fires (`scrubbed N line(s) from PR\n  body`). Non-fatal, blocks nothing, but visible on the first occurrence rather\n  than the 726th — the INV-nihaz principle already applied to the notes push in\n  `lib/forgejo-api.sh`. Absent this there is no signal the scrub runs at all,\n  which is how the gap survived.\n\n## Test fixture\n\nUse the synthetic URL `https://claude.ai/up/your_buttANdaroundthEcorner92`.\nValidated against the live pattern list: matches `\\bClaude\\b`, exactly one\npattern hit, no accidental second match from the path.\n\nDeliberately NOT the real observed URL: committing that would publish a real\nsession id permanently in `test_hooks.sh`, a file the scrubber never sees. The\nfix would have leaked the thing it exists to catch.\n\nAlso add: a `falcon`-in-body case asserting a dropped line does not fail the\nrun; an idempotence case; and the egress-linter test.\n\n## Out of scope\n\nAlready-merged PR bodies on the forge still carry vendor URLs. Whether to\nrewrite published history is a separate human decision and is not bundled here.\n\n## Governance\n\nTouches `.githooks/**`, `scripts/auto-pr`, `scripts/merge-pr`,\n`scripts/contribute`, `scripts/lib/forgejo-api.sh` — all on the approval list.\nHuman approved the change and approved `auto-pr` WITHOUT `--gov` for it."  # b390
+    fields: {}  # b390
+- op: update  # 3658
+  at: '2026-09-16T01:37:35Z'  # 3658
+  by: agent  # 3658
+  actor: jgstern_agent  # 3658
+  clock: 2  # 3658
+  nonce: '3658'  # 3658
+  set: {}  # 3658
+  add:  # 3658
+    not_duplicate_of: [INV-pirot-kilam-bazad-zokam-rotut-muzif-mokab-tanuj]  # 3658
+- op: update  # b222
+  at: '2026-09-16T01:37:35Z'  # b222
+  by: agent  # b222
+  actor: jgstern_agent  # b222
+  clock: 3  # b222
+  nonce: b222  # b222
+  set: {}  # b222
+  add:  # b222
+    not_duplicate_of: [WI-filon-samuj-mojis-kuvab-povis-fagaz-pirit-tukos]  # b222
+- op: update  # ab03
+  at: '2026-09-16T01:37:35Z'  # ab03
+  by: agent  # ab03
+  actor: jgstern_agent  # ab03
+  clock: 4  # ab03
+  nonce: ab03  # ab03
+  set: {}  # ab03
+  add:  # ab03
+    not_duplicate_of: [WI-pozut-loham-bopip-bihun-biboj-gikig-vigod-vozav]  # ab03
