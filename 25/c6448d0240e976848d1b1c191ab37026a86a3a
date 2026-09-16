@@ -1,0 +1,36 @@
+Original commit body from e1beb4e932b017051fffb1b560bdac691e8bdab7:
+
+WI-duson. AGENTS.md says two things, each correct alone: "during
+development, run only relevant tests" and "commit .ci/affected-tests.txt
+with every PR". Explicit mode overwrote the manifest with a
+zero-selection stub, so following both shipped a manifest selecting
+NOTHING -- and the live Woodpecker gate keys on "did the manifest select
+any tests?", so it printed "manifest selects no tests - skipping pytest"
+and reported green.
+
+An explicit run is not a selection computation. It was never asked about
+the diff, and the honest thing for a command with no answer is to say
+nothing rather than publish an empty one. The committed artifact is left
+exactly as it was, and the run says so rather than passing silently.
+
+MEASURED AS A PAIR, same command and same tree, the pre-fix script run
+from inside the repo:
+
+    before   manifest replaced with "# Mode: explicit", 0 selected tests
+    after    manifest byte-identical (sha256 unchanged)
+
+THE GUARD ASSERTS THE ONE GOOD MODE NOW. .githooks/pre-commit rejected
+exactly `Mode: full-suite` and passed everything else through its else arm
+with a GREEN tick -- so the zero-selection manifest committed cleanly past
+the very check that exists to protect that file. full-suite runs too much
+and explicit runs nothing; only the first was guarded. It now requires
+`Mode: targeted`, with a distinct reason per rejection so the message
+sends the reader to the right fix, and the test extracts the check and
+drives it against targeted / full-suite / explicit / an unrecognised mode.
+
+That test's own slice was wrong twice before it was right: an unindented
+"\nfi\n" search ran past the nested check to the hook's outermost fi, and
+the balance check meant to catch that counted the substring "fi" out of
+the hook's prose. It asks bash -n whether the slice is a program now.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
