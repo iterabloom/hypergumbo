@@ -1,0 +1,22 @@
+Original commit body from 54ce11d63b0afff98bcacafb8a539a23f5b50d4f:
+
+forge-arms failed: assert 25 == 9. That job installs pytest and nothing else on
+purpose -- it exercises the forge scripts in a minimal environment -- so PyYAML
+is absent, load_window takes its documented missing-yaml fallback and returns
+the default. The test had assumed yaml was importable, which made it a claim
+about the test runner rather than about the function.
+
+The sibling awaits_bakeoff_nudge.py has the same yaml dependency and never hit
+this, because forge-arms selects tests/test_autopr_*.py and its test file is
+named test_awaits_bakeoff_nudge.py. Nothing about the dependency was different;
+only the glob.
+
+Both arms are now asserted, which is the actual contract the module documents
+("missing PyYAML means use the default"), not a skipif escape hatch. The
+reads-the-knob arm is still exercised for real by the main pytest job.
+
+Verified in a venv built the way forge-arms builds one -- python3 -m venv plus
+pip install pytest, yaml confirmed absent -- running that job's exact pytest
+invocation: 302 passed.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
