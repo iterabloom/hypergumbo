@@ -55,6 +55,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import read_masked_source
+from ..pass_silence import no_candidate_construct_if_empty
 
 PASS_ID = make_pass_id("pyffi-linker")
 
@@ -315,6 +316,10 @@ def link_pyffi(
         ):
             python_files.add(sym.path)
 
+    # Every ctypes/cffi call this scan FINDS, matched or not: pyffi emits
+    # only PAIRING edges, so a call whose C symbol is missing leaves it
+    # silent while the construct is plainly present.
+    all_ffi_calls: list[tuple[str, str, int]] = []
     for py_path_str in python_files:
         py_path = Path(py_path_str)
         if not py_path.is_absolute():
@@ -324,6 +329,7 @@ def link_pyffi(
             continue
 
         ffi_calls = _scan_python_file_for_ffi_calls(py_path)
+        all_ffi_calls.extend(ffi_calls)
 
         for func_name, evidence_type, line_num in ffi_calls:
             is_stdlib = evidence_type in ("ctypes_stdlib_call", "cffi_stdlib_call")
@@ -490,6 +496,11 @@ def link_pyffi(
 
     run.duration_ms = int((time.time() - start_time) * 1000)
 
+    # Both phases' candidates: a ctypes/cffi call site found by the scan,
+    # and a PyO3 export found in the Rust symbols. Either one present
+    # means the construct is here and merely unpaired.
+    _pyffi_candidates: list[object] = [*all_ffi_calls, *pyo3_lookup]
+    run.silence_reason = no_candidate_construct_if_empty(_pyffi_candidates)
     return PyFFILinkResult(edges=result_edges, run=run)
 
 

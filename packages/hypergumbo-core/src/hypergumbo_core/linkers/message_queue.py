@@ -78,6 +78,7 @@ from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
+from ..pass_silence import no_candidate_construct_if_empty
 
 PASS_ID = make_pass_id("message-queue-linker")
 
@@ -575,6 +576,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
                     )
                     edges.append(edge)
 
+    run.silence_reason = no_candidate_construct_if_empty(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 

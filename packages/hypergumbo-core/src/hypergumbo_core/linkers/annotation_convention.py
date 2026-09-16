@@ -62,6 +62,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import no_candidate_construct_if_empty
 
 if TYPE_CHECKING:
     pass
@@ -404,6 +405,7 @@ def link_annotations(
                 derived_from=[disp_id, target.id],
             ))
 
+    run.silence_reason = no_candidate_construct_if_empty(routes + dispatches)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return LinkerResult(

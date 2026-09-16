@@ -62,6 +62,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import js_ts_language_from_path, read_masked_source
+from ..pass_silence import no_candidate_construct_if_empty
 
 PASS_ID = make_pass_id("wasm-bindgen-linker")
 
@@ -234,12 +235,16 @@ def link_wasm_bindgen(
 
     # Phase 3: Match imports to Rust exports
     seen_edges: set[tuple[str, str]] = set()  # (file_path, import_name)
+    # Every wasm import this scan FINDS, matched or not: an import whose
+    # export is missing is an unpaired construct, not an absent one.
+    all_imports: list[str] = []
 
     for file_path in ts_js_files:
         if not file_path.exists():
             continue
 
         import_names = _scan_js_ts_for_wasm_imports(file_path)
+        all_imports.extend(import_names)
 
         for import_name in import_names:
             target_sym = export_map.get(import_name)
@@ -314,6 +319,7 @@ def link_wasm_bindgen(
                 derived_from=[src_id, target_sym.id],
             ))
 
+    run.silence_reason = no_candidate_construct_if_empty(all_imports)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return WasmBindgenLinkResult(

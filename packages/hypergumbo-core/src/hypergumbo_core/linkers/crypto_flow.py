@@ -51,6 +51,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import no_candidate_construct_if_empty
 
 if TYPE_CHECKING:
     pass
@@ -258,6 +259,13 @@ def link_crypto_flow(
 
     if not all_writes or not all_reads:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        # This branch fires for TWO unrelated reasons: nothing found at
+        # all, or one side found and the other absent. Only the first is
+        # an absent construct -- in the second the construct IS present
+        # and merely unpaired, and claiming otherwise would put a fresh
+        # false claim in the axis declared to cure false claims.
+        run.silence_reason = no_candidate_construct_if_empty(
+            all_writes + all_reads)
         return LinkerResult(edges=[], symbols=[], run=run)
 
     # Match writers to readers by API surface
