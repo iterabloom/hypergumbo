@@ -1,0 +1,31 @@
+- op: create  # 8f5d
+  at: '2026-09-16T19:28:29Z'  # 8f5d
+  by: agent  # 8f5d
+  actor: jgstern_agent  # 8f5d
+  clock: 1  # 8f5d
+  nonce: 8f5d  # 8f5d
+  data:  # 8f5d
+    kind: work_item  # 8f5d
+    title: "files_analyzed is under-counted by websocket-linker (2 vs 405 read) and carries a ROUTE count in route-handler-linker: one field, two quantities"  # 8f5d
+    status: todo_hard  # 8f5d
+    priority: 3  # 8f5d
+    parent:  # 8f5d
+    tags:  # 8f5d
+    - analysis_quality  # 8f5d
+    - disclosure  # 8f5d
+    - pass20  # 8f5d
+    isbefore: []  # 8f5d
+    duplicate_of: []  # 8f5d
+    not_duplicate_of: []  # 8f5d
+    pr_ref:  # 8f5d
+    description: "RESIDUAL of WI-finij / PR #1005, filed at the point the false-zero class was\nfixed. PR #1005 made AnalysisRun.files_analyzed TRUE when a linker leaves it\nunset (derived from a per-invocation read log at the linker chokepoint) and\ngated direct Path.read_text / Path.read_bytes out of linkers/. It deliberately\ndid NOT touch bodies that assign the field themselves -- the stamp is guarded\nlike duration_ms, so a producer that spoke keeps its value. Two defects survive\nin that guarded population, and they are different from each other and from the\none fixed.\n\n1. UNDER-COUNT. websocket-linker reports files_analyzed=2 while actually\n   reading 405 files (measured at tip by attributing Path.read_text /\n   Path.read_bytes to the calling linker module on a full self-survey). The\n   value is non-zero, so it escapes both the fixed defect and its gate, and it\n   escapes derive_silence_reason's no_candidate_files branch -- but any\n   consumer doing cost-per-file or coverage arithmetic over analysis_runs is\n   reading a number 200x too small. Whether the body means something narrower\n   by \"analyzed\" than \"opened\" is exactly the question, and it is not answered\n   here.\n\n2. FIELD OVERLOAD. route-handler-linker deliberately stores a ROUTE count in\n   files_analyzed -- its own test asserts it with the comment \"Tracks routes\n   processed\" (tests/test_route_handler_linker.py). So one field name carries\n   at least two quantities: files opened, and units-of-work processed. This is\n   the conceptual-leak shape the fundamental-concept audit exists for: a\n   consumer cannot ask \"how many files did this pass read\" without knowing,\n   per pass, which quantity it stored. It also means a strict equality gate\n   (assert files_analyzed == files actually read) would be WRONG to write\n   today -- it would fail on a pass that is behaving as designed -- which is\n   why PR #1005's gate asserts only that an unaccounted direct read cannot\n   happen.\n\nWHY NOT FIXED IN PR #1005. The fixed defect was a FALSE POSITIVE CLAIM (a pass\nasserting \"I received zero input files\" having read four hundred), which is\nstrictly worse than an inaccurate one and has no legitimate instance. These two\nboth have a plausible legitimate reading -- a body may genuinely mean something\nnarrower -- so resolving them requires reading each producer's intent and then\neither renaming the field, splitting it, or declaring per-pass semantics. That\nis a decision, not a repair.\n\nSCOPE TO CHECK WHEN THIS IS PICKED UP. 17 linkers assign files_analyzed\nthemselves; only websocket and route-handler have been examined. The other 15\nare unmeasured, not clean -- an audit over them must answer \"cannot conclude\"\nfor any it does not actually check.\n\nREPRO. Patch pathlib.Path.read_text and Path.read_bytes to record (calling\nhypergumbo_core.linkers.* frame -> set of paths), run `hypergumbo survey . --out\nF`, and compare each linker's recorded set size against its\nanalysis_runs[].files_analyzed. The record key is \"pass\", not \"pass_id\"."  # 8f5d
+    fields: {}  # 8f5d
+- op: update  # a45a
+  at: '2026-09-16T19:28:47Z'  # a45a
+  by: agent  # a45a
+  actor: jgstern_agent  # a45a
+  clock: 2  # a45a
+  nonce: a45a  # a45a
+  set: {}  # a45a
+  add:  # a45a
+    not_duplicate_of: [WI-finij-kurib-bibom-davom-kulus-bapok-binaj-muzig]  # a45a
