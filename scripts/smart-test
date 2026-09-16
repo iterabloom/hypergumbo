@@ -1108,6 +1108,31 @@ if [[ -n "$CHANGED_DOC_FILES" ]]; then
     fi
 fi
 
+# WI-lujon: A STRING LITERAL IS AN EDGE THE IMPORT GRAPH CANNOT SEE. The three
+# unions above all key on the CHANGED path's directory. This one has to key the
+# other way -- on what some OTHER file's text contains -- which is why it
+# survived its own family's fix.
+#
+# The rot it is built from: test_module_key_axis.py pins that every file:line
+# citation in MODULE_KEY_NOTIONS still contains its quoted anchor. INV-sihom
+# added lines to bash.py and moved the cited emission out from under its
+# citation. The per-PR gate went GREEN -- the citation test is in
+# hypergumbo-core and names bash.py by STRING -- and it fired on the next cron,
+# repaired two firings later by a PR that happened to touch a core file.
+#
+# The helper's docstring carries the two-hop argument and the measurement that
+# rules out keying on a bare basename. Its cost is 0.1s here and 2s with every
+# source in the tree changed.
+CITATION_GATE_HELPER="$REPO_ROOT/scripts/citation_gate_tests.py"
+if [[ -f "$CITATION_GATE_HELPER" ]] && command -v python3 &>/dev/null && [[ -n "$CHANGED_FILES" ]]; then
+    CITATION_GATE_TESTS=$(echo "$CHANGED_FILES" \
+        | python3 "$CITATION_GATE_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+    if [[ -n "$CITATION_GATE_TESTS" ]]; then
+        log "Citation edges - unioning the tests that check a path this change moved (WI-lujon)"
+        AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CITATION_GATE_TESTS" | sed '/^$/d' | sort -u)
+    fi
+fi
+
 if [[ -z "$AFFECTED_TESTS" ]]; then
     # No affected tests found. Check why:
     if [[ -z "$CHANGED_SOURCE_FILES" ]]; then
