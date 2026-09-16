@@ -386,6 +386,13 @@ if [[ -n "$EXISTING_PR" ]]; then
     exit 0
 fi
 
+# WI-sidot: the fork path publishes the same kind of agent-authored text as
+# auto-pr does, through a different API call. Scrubbed on the same terms.
+_BODY_BEFORE="$BODY"
+TITLE="$(bs_scrub_title "$TITLE" "$TITLE")"
+BODY="$(bs_scrub_body "$BODY")"
+bs_report_scrub "$_BODY_BEFORE" "the PR body"
+
 # Create new PR
 PR_PAYLOAD=$(python3 -c "
 import json, sys
@@ -402,6 +409,7 @@ $BODY
 EOF
 )
 
+# forge-egress: scrubbed
 if api_post "$UPSTREAM_API_BASE/pulls" "$PR_PAYLOAD"; then
     PR_NUM=$(echo "$API_RESPONSE" | json_field "number")
 

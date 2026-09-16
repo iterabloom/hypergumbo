@@ -30,6 +30,29 @@ _FORGEJO_API_LOADED=1
 # shellcheck source=scripts/lib/github-api.sh
 source "${BASH_SOURCE[0]%/*}/github-api.sh"
 
+# WI-sidot: the vendor-attribution scrub. Every script that publishes text to
+# the forge sources THIS file, so wiring the scrub here is what makes one
+# pattern list govern every channel -- rather than the commit-msg hook governing
+# one channel and five others going unscrubbed because nobody thought of them.
+#
+# FAIL CLOSED. If the library is missing we do not quietly continue with no
+# scrub -- that is exactly the state this work exists to end. We install stubs
+# that refuse, so an attempt to publish dies loudly instead of publishing
+# unscrubbed text. A missing library is a broken checkout, not a licence.
+_FA_BRAND_SCRUB="$(cd "${BASH_SOURCE[0]%/*}/../.." 2>/dev/null && pwd)/.githooks/brand-scrub.sh"
+if [[ -r "$_FA_BRAND_SCRUB" ]]; then
+	# shellcheck source=.githooks/brand-scrub.sh
+	source "$_FA_BRAND_SCRUB"
+	bs_init
+else
+	bs_scrub_title() {
+		echo "❌ brand-scrub.sh not found at $_FA_BRAND_SCRUB — refusing to publish unscrubbed text" >&2
+		exit 1
+	}
+	bs_scrub_body() { bs_scrub_title "$@"; }
+	bs_report_scrub() { :; }
+fi
+
 # ------------------------------------------------------------------
 # detect_forge_backend [REMOTE_URL]
 #   Set FORGE_BACKEND ("github" or "forgejo").  The HYPERGUMBO_FORGE_BACKEND
@@ -414,10 +437,20 @@ create_pr() {
 		return 0
 	fi
 
+	# WI-sidot: scrub at the shared sink as well as at each caller. Callers
+	# scrub so the PUSH-OPTION copy of the same text is covered too (a `-o
+	# description=` never reaches this function); this scrubs so a caller that
+	# forgets still cannot publish. Idempotent, so the double pass is free.
+	local _scrub_seed="$title" _body_before="$body"
+	title="$(bs_scrub_title "$_scrub_seed" "$title")"
+	body="$(bs_scrub_body "$body")"
+	bs_report_scrub "$_body_before" "the PR body"
+
 	local payload
 	payload=$(python3 -c "import json,sys; print(json.dumps({'title': sys.argv[1], 'body': sys.argv[2], 'head': sys.argv[3], 'base': sys.argv[4]}))" \
 		"$title" "$body" "$head" "$base") || return 1
 
+	# forge-egress: scrubbed
 	if ! api_post "$API_BASE/pulls" "$payload"; then
 		return 1
 	fi
@@ -1549,6 +1582,7 @@ do_merge() {
 		local merge_payload
 		merge_payload='{"do": "squash", "delete_branch_after_merge": true}'
 
+		# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 			echo "✅ Squash merged!"
 			_attach_git_note "$desc" "$orig_sha"
@@ -1577,6 +1611,7 @@ do_merge() {
 	local attempt
 
 	for attempt in $(seq 1 $max_retries); do
+		# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 		if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 			# HTTP 2xx — verify the PR was actually merged (Forgejo sometimes
 			# returns 200 with merged:false when branch protection blocks it)
@@ -1610,6 +1645,7 @@ do_merge() {
 			echo "   Trying rebase merge (preserves individual commits)..."
 
 			local rebase_payload='{"do": "rebase", "delete_branch_after_merge": true}'
+			# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 			if api_post "$API_BASE/pulls/$pr_num/merge" "$rebase_payload"; then
 				if _check_pr_merged "$pr_num"; then
 					echo "✅ Rebase merged! (commits rebased onto $BASE_BRANCH)"
@@ -1736,6 +1772,7 @@ do_merge() {
 
 						local rebase_merge_response=""
 						if [ "$rebase_poll_rc" -eq 0 ]; then
+							# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 							if api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload"; then
 								if _check_pr_merged "$pr_num"; then
 									echo "✅ Fast-forward merged after local rebase (iteration $rebase_attempts/$rebase_max)!"
@@ -1848,6 +1885,7 @@ do_merge() {
 					# so an API-only check (_check_pr_merged) can miss the
 					# success — mirror the INV-lovih _pr_landed_in_base
 					# git-ancestor fallback the post-rebase path already uses.
+					# forge-egress: no-agent-text -- literal merge directive; the payload has no prose field
 					api_post "$API_BASE/pulls/$pr_num/merge" "$merge_payload" || true
 					if _check_pr_merged "$pr_num" \
 					   || _pr_landed_in_base "$orig_sha" "${BASE_BRANCH:-dev}"; then

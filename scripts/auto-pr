@@ -392,7 +392,18 @@ PY
 _autopr_hold_recover_lock() {
 	local f="$REPO_ROOT/.git/tracker-recover-disabled"
 	# Append-mode open: never truncate a body another holder is using.
-	exec {_AUTOPR_RECOVER_FD}>>"$f" 2>/dev/null || return 0
+	#
+	# THE BRACES ARE LOAD-BEARING (WI-sidot). `exec {FD}>>"$f" 2>/dev/null`
+	# applies BOTH redirections to the shell PERMANENTLY -- that is what `exec`
+	# with no command means -- so the `2>/dev/null` intended to hide this one
+	# call's error message silently discarded EVERY subsequent stderr write for
+	# the rest of the run. auto-pr had been throwing away its own diagnostics
+	# from this line onward: an `unbound variable` abort in the push path
+	# surfaced as `exit 1` with empty stdout AND empty stderr, which is a very
+	# expensive way to learn what a one-character scope bug costs. Wrapping the
+	# exec in a brace group scopes the stderr redirect to the group while the
+	# allocated descriptor still survives it, which is exactly what we want.
+	{ exec {_AUTOPR_RECOVER_FD}>>"$f"; } 2>/dev/null || return 0
 	if ! flock -x -n "$_AUTOPR_RECOVER_FD" 2>/dev/null; then
 		# Someone else owns it (a nested tracker sync). Nothing to do.
 		return 0
@@ -1248,6 +1259,16 @@ Individual commits are preserved in the history."
 	pr_title="${pr_title//$'\r'/ }"
 	pr_desc="${pr_desc//$'\r'/}"
 
+	# WI-sidot: scrub HERE, above the push_desc derivation, so the one scrub
+	# covers both copies of this text -- the `-o description=` push option and
+	# the REST PATCH that follows it. Scrubbing after the split would leave
+	# whichever copy was taken first unscrubbed, which is the class of bug that
+	# put a vendor session URL in a merged PR body in the first place.
+	local _desc_before="$pr_desc"
+	pr_title="$(bs_scrub_title "$pr_title" "$pr_title")"
+	pr_desc="$(bs_scrub_body "$pr_desc")"
+	bs_report_scrub "$_desc_before" "the PR body"
+
 	# Git push options can't contain newlines; escape for Forgejo to decode
 	local push_desc="${pr_desc//$'\n'/\\n}"
 
@@ -1301,6 +1322,7 @@ Individual commits are preserved in the history."
 		fi
 	else
 		while [[ $attempt -le $max_attempts ]]; do
+			# forge-egress: scrubbed
 			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 				push "$push_remote" "HEAD:refs/for/$base_branch/$tip_branch" \
 				-o title="$pr_title" \
@@ -1373,6 +1395,7 @@ Individual commits are preserved in the history."
 	if [[ -n "$pr_desc" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$pr_desc")
+		# forge-egress: scrubbed
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 
@@ -1615,6 +1638,13 @@ do_pr() {
 
 	# Title must be single line; description keeps newlines
 	TITLE="${TITLE//$'\n'/ }"
+
+	# WI-sidot: scrub before PUSH_DESC is derived further down, for the same
+	# reason as the flush path -- one scrub, both copies.
+	_desc_before="$DESC"
+	TITLE="$(bs_scrub_title "$TITLE" "$TITLE")"
+	DESC="$(bs_scrub_body "$DESC")"
+	bs_report_scrub "$_desc_before" "the PR body"
 	echo "🚀 Target: $REPO_SLUG"
 	echo "🌿 Branch: $BRANCH → $BASE_BRANCH"
 	echo "🔑 Commit: ${LOCAL_SHA:0:7}"
@@ -1822,6 +1852,7 @@ do_pr() {
 		push_success=false
 	else
 		while [[ $attempt -le $max_attempts ]]; do
+			# forge-egress: scrubbed
 			PUSH_OUTPUT=$(git -c credential.helper="!f() { echo username=$USER; echo password=$TOKEN; }; f" \
 				push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" \
 				-o title="$TITLE" \
@@ -1922,6 +1953,7 @@ do_pr() {
 	if [[ -n "$DESC" ]]; then
 		local json_body
 		json_body=$(python3 -c "import json,sys; print(json.dumps({'body': sys.stdin.read()}))" <<<"$DESC")
+		# forge-egress: scrubbed
 		api_patch "$API_BASE/pulls/$PR_NUM" "$json_body" || true
 	fi
 

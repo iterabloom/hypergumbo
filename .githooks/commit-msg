@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# commit-msg: scrub vendor self-attribution out of a commit message.
+#
+# The MATCHING, the phrase selection and the body sweep all live in
+# brand-scrub.sh, which this hook sources. They used to live here, which meant
+# they protected exactly one channel -- a commit message -- while PR titles,
+# PR bodies and PR comments reached the forge with no scrub at all. Extracting
+# them is what lets one pattern list govern every channel (WI-sidot). What
+# remains in this file is the part that is genuinely specific to a COMMIT
+# MESSAGE: splitting it into subject / body / trailers, and the trailer rules.
 set -euo pipefail
 
 msg_file="${1:-}"
@@ -8,167 +18,17 @@ if [[ -z "$msg_file" || ! -f "$msg_file" ]]; then
   exit 1
 fi
 
-have() { command -v "$1" >/dev/null 2>&1; }
-
 hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# -----------------------------
-# Portable helpers
-# -----------------------------
-
-sha256_hex() {
-  # Reads from stdin, writes lowercase hex digest to stdout
-  if have sha256sum; then
-    sha256sum | awk '{print $1}'
-  elif have shasum; then
-    shasum -a 256 | awk '{print $1}'
-  elif have openssl; then
-    openssl dgst -sha256 | awk '{print $NF}'
-  elif have python3; then
-    python3 - <<'PY'
-import sys, hashlib
-data = sys.stdin.buffer.read()
-sys.stdout.write(hashlib.sha256(data).hexdigest())
-PY
-  else
-    echo "commit-msg hook: need sha256sum, shasum, openssl, or python3 for SHA-256" >&2
-    exit 1
-  fi
-}
-
-gen_secret_base64_32bytes() {
-  # Emits a base64 string (with trailing newline) representing 32 random bytes
-  if have openssl; then
-    openssl rand -base64 32
-  elif have base64; then
-    head -c 32 /dev/urandom | base64
-  elif have python3; then
-    python3 - <<'PY'
-import os, base64, sys
-sys.stdout.write(base64.b64encode(os.urandom(32)).decode("ascii") + "\n")
-PY
-  else
-    echo "commit-msg hook: need openssl, base64, or python3 to generate secret" >&2
-    exit 1
-  fi
-}
-
-slugify() {
-  # Lowercase, non [a-z0-9] => '-', squeeze repeats, trim leading/trailing '-'
-  local s
-  s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
-  s="${s#-}"
-  s="${s%-}"
-  printf '%s' "$s"
-}
-
-# -----------------------------
-# Brand patterns (external file)
-# -----------------------------
-
-escape_regex_basic() {
-  # Escape regex metacharacters so a line is treated literally.
-  # Prefer sed; fallback to perl/python3 if needed.
-  if have sed; then
-    # Escape: ] [ ( ) { } . ^ $ * + ? | \
-    printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
-  elif have perl; then
-    perl -e 'my $s = join("", <STDIN>); chomp($s); print quotemeta($s);' <<<"$1"
-  elif have python3; then
-    python3 - <<'PY'
-import re, sys
-s = sys.stdin.read()
-s = s[:-1] if s.endswith("\n") else s
-sys.stdout.write(re.escape(s))
-PY
-  else
-    echo "commit-msg hook: need sed, perl, or python3 to escape patterns" >&2
-    exit 1
-  fi
-}
-
-join_with_pipe() {
-  local out="" first=1
-  for s in "$@"; do
-    if (( first )); then
-      out="$s"
-      first=0
-    else
-      out="${out}|${s}"
-    fi
-  done
-  printf '%s' "$out"
-}
-
-load_brand_regex() {
-  # Reads brand patterns from file. Lines:
-  #   - default: literal string (escaped, with word boundaries)
-  #   - prefix "re:" => raw regex (use with care)
-  local file="$1"
-  local pats=() line p
-
-  if [[ -f "$file" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      [[ -z "$line" ]] && continue
-      [[ "$line" =~ ^[[:space:]]*# ]] && continue
-
-      # trim leading/trailing whitespace
-      line="${line#"${line%%[![:space:]]*}"}"
-      line="${line%"${line##*[![:space:]]}"}"
-      [[ -z "$line" ]] && continue
-
-      if [[ "$line" == re:* ]]; then
-        # Raw regex: user is responsible for word boundaries if desired
-        p="${line#re:}"
-      else
-        # Literal pattern: wrap with \b word boundaries to prevent substring matches
-        # This ensures "Stable" matches "Stable Diffusion" but NOT "stable_id"
-        p="\\b$(escape_regex_basic "$line")\\b"
-      fi
-
-      [[ -z "$p" ]] && continue
-      pats+=( "$p" )
-    done < "$file"
-  fi
-
-  if (( ${#pats[@]} == 0 )); then
-    # fallback defaults (as literals with word boundaries)
-    pats+=( "\\b$(escape_regex_basic "FanDuel")\\b" )
-    pats+=( "\\b$(escape_regex_basic "DraftKings")\\b" )
-    pats+=( "\\b$(escape_regex_basic "BetMGM")\\b" )
-  fi
-
-  printf '(%s)' "$(join_with_pipe "${pats[@]}")"
-}
-
-brands_file="${HOOK_BRANDS_FILE:-$hook_dir/brand-patterns.txt}"
-brand_re="$(load_brand_regex "$brands_file")"
-
-# Body lines scanned at each end of the body (see the sweep below). Overridable
-# so the hook's own tests can exercise the window without 20-line fixtures.
-body_scan_window="${HOOK_BODY_SCAN_WINDOW:-10}"
-
-# Case-insensitive replace using perl (fast) or python3 fallback.
-replace_brands_ci() {
-  # usage: replace_brands_ci "replacement" "input"
-  local repl="$1"
-  local in="$2"
-
-  if have perl; then
-    REPL="$repl" BRAND_RE="$brand_re" perl -pe 's{$ENV{BRAND_RE}}{$ENV{REPL}}ig' <<<"$in"
-  elif have python3; then
-    REPL="$repl" BRAND_RE="$brand_re" python3 - <<'PY'
-import os, re, sys
-repl = os.environ["REPL"]
-pat  = os.environ["BRAND_RE"]
-s = sys.stdin.read()
-sys.stdout.write(re.sub(pat, repl, s, flags=re.I))
-PY
-  else
-    echo "commit-msg hook: need perl or python3 for case-insensitive replacement" >&2
-    exit 1
-  fi
-}
+# shellcheck source=.githooks/brand-scrub.sh
+if [[ ! -r "$hook_dir/brand-scrub.sh" ]]; then
+  echo "commit-msg hook: brand-scrub.sh not found beside the hook" >&2
+  exit 1
+fi
+source "$hook_dir/brand-scrub.sh"
+bs_init "${HOOK_BRANDS_FILE:-$hook_dir/brand-patterns.txt}" \
+        "${HOOK_PHRASES_FILE:-$hook_dir/absurd-phrases.txt}"
+brand_re="$BS_BRAND_RE"
 
 # -----------------------------
 # Read message into array (one entry per line) - bash 3 compatible
@@ -221,64 +81,24 @@ if (( trailer_start <= last )); then
 fi
 
 # ---- Case-insensitive brand matching in bash ----
+# LOAD-BEARING for the `case` statement in the trailer loop below, which is
+# why it is set here rather than inside a helper: `case` honours nocasematch
+# too, and this history carries BOTH `Co-authored-by` and `Co-Authored-By`.
 nocase_was_enabled=0
 if shopt -q nocasematch; then nocase_was_enabled=1; fi
 shopt -s nocasematch
 
-# ---- Phrase selection (keyed; outsiders can't reproduce without your local secret) ----
-phrases_file="${HOOK_PHRASES_FILE:-$hook_dir/absurd-phrases.txt}"
-
-secret_file="${BRAND_SCRUB_SECRET_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/brand-scrub.key}"
-if [[ ! -f "$secret_file" ]]; then
-  mkdir -p "$(dirname "$secret_file")"
-  ( umask 077; gen_secret_base64_32bytes > "$secret_file" )
-  chmod 600 "$secret_file" 2>/dev/null || true
-fi
-secret="$(cat "$secret_file")"
-
-# Load phrases (fallback list if file missing/empty)
-phrases=()
-if [[ -f "$phrases_file" ]]; then
-  while IFS= read -r pline || [[ -n "$pline" ]]; do
-    [[ -z "$pline" ]] && continue
-    [[ "$pline" =~ ^[[:space:]]*# ]] && continue
-
-    # trim leading/trailing whitespace
-    pline="${pline#"${pline%%[![:space:]]*}"}"
-    pline="${pline%"${pline##*[![:space:]]}"}"
-    [[ -z "$pline" ]] && continue
-
-    phrases+=( "$pline" )
-  done < "$phrases_file"
-fi
-
-if (( ${#phrases[@]} == 0 )); then
-  phrases=(
-    "a walrus conducting an orchestra of penguins"
-    "an octopus painting a self-portrait with all eight arms"
-    "a giraffe playing the violin on a tightrope"
-    "a parrot steering a pirate ship made of spaghetti"
-    "a raccoon juggling watermelons while surfing"
-  )
-fi
-
-pick_phrase_private() {
-  local seed="$1" h idx
-  h="$(printf '%s|%s' "$secret" "$seed" | sha256_hex)"
-  idx=$(( 16#${h:0:8} % ${#phrases[@]} ))
-  printf '%s' "${phrases[$idx]}"
-}
-
-replacement_out="$(pick_phrase_private "$subject_line")"
-replacement_in="$(slugify "$replacement_out")"
+# ---- Phrase selection (keyed; outsiders can't reproduce without the key) ----
+replacement_out="$(bs_pick_phrase "$subject_line")"
+replacement_in="$(bs_slugify "$replacement_out")"
 
 # 0) Scrub the SUBJECT line if it contains a brand (do NOT remove the subject)
 if [[ "$subject_line" =~ $brand_re ]]; then
-  subject_line="$(replace_brands_ci "$replacement_out" "$subject_line")"
+  subject_line="$(bs_replace_ci "$replacement_out" "$subject_line")"
 fi
 
 # 1) Remove ONLY body lines containing the brands, and ONLY inside the scan
-#    window: the first and last $body_scan_window lines of the BODY.
+#    window: the first and last HOOK_BODY_SCAN_WINDOW lines of the BODY.
 #
 #    WHY A WINDOW. The pattern list contains ordinary English words -- Nova,
 #    Titan, Granite, Arctic, Falcon, Phi, Aya, GLM -- and a body hit DELETES THE
@@ -298,18 +118,19 @@ fi
 #    middle. That is a deliberate coverage-for-precision trade, made because a
 #    silent deletion costs more here than a missed mid-body brand.
 filtered_body=()
-nbody=${#body_lines[@]}
-for (( bi = 0; bi < nbody; bi++ )); do
-  l="${body_lines[$bi]}"
-  if (( bi < body_scan_window || bi >= nbody - body_scan_window )); then
-    if [[ "$l" =~ $brand_re ]]; then
-      continue
-    fi
+if (( ${#body_lines[@]} > 0 )); then
+  swept="$(bs_scrub_body "$(printf '%s\n' "${body_lines[@]}")")"
+  if [[ -n "$swept" ]]; then
+    while IFS= read -r l; do
+      filtered_body+=( "$l" )
+    done <<< "$swept"
   fi
-  filtered_body+=( "$l" )
-done
+fi
 
-out_body=( "$subject_line" "${filtered_body[@]}" )
+out_body=( "$subject_line" )
+if (( ${#filtered_body[@]} > 0 )); then
+  out_body+=( "${filtered_body[@]}" )
+fi
 
 # Trim trailing blank lines in body (bash 3 safe: no negative indices)
 while (( ${#out_body[@]} > 0 )); do
@@ -357,11 +178,6 @@ for t in "${trailers[@]}"; do
     # half that IMPLIES a vendor (a hostname in the value) and preserved the
     # half that NAMES one -- e.g. `Claude-Session:`, on 13 commits and growing,
     # because the harness appends that trailer to every agent commit.
-    #
-    # nocasematch IS LOAD-BEARING BELOW and is set ~100 lines earlier: it makes
-    # `case` match case-insensitively too, not just [[ =~ ]]. This history
-    # carries BOTH `Co-authored-by` and `Co-Authored-By`; with nocasematch off,
-    # the second spelling would fall through to the wildcard arm.
     key_branded=0
     case "$key" in
       # git-semantic keys. `git interpret-trailers`, %(trailers:key=...) and DCO
@@ -414,4 +230,3 @@ if ! grep -q "^Signed-off-by: " "$msg_file"; then
   echo "Please commit with 'git commit -s' or add 'Signed-off-by: Name <email>'." >&2
   exit 1
 fi
-

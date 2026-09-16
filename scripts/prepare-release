@@ -426,6 +426,11 @@ else
     # auth, refspec rejection) propagates as a non-zero exit so this
     # script aborts loudly instead of falling through to a misleading
     # "(check Codeberg for PR)" success message.
+    # forge-egress: no-agent-text -- title and description are built from a
+    # version string and a fixed reviewer checklist; no authored prose. The
+    # marker sits ABOVE the command on purpose: a comment between continuation
+    # lines TERMINATES the command, so placing it beside `-o title=` would have
+    # pushed with no title and no description at all.
     if ! PR_OUTPUT=$(git push origin "dev:refs/for/main/release-$VERSION" \
         -o title="$PR_TITLE" \
         -o description="$PR_DESCRIPTION Reviewer checklist: version bumped correctly, CHANGELOG updated, CI passes." 2>&1); then
