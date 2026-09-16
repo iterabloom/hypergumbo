@@ -358,38 +358,21 @@ def test_map_stem_with_no_alphanumerics_matches_nothing(tmp_path: Path) -> None:
 
 #: Root tests no name-based rule can reach, with the reason each is exempt.
 #: Shrink-only — removing an entry is the goal, adding one needs justification.
-KNOWN_UNREACHABLE = {
-    # DOWN FROM TWENTY-FIVE. Every other entry that used to sit here said, in
-    # its own words, that it wanted a declarative "covers:" marker rather than
-    # a cleverer heuristic -- a pipeline YAML, a governance file, the whole
-    # production tree, four sources of one pipeline at once. The marker exists
-    # now (top_level_test_map.py), those tests declare their own subjects, and
-    # the ratchet below walks every tracked file rather than only the paths the
-    # NAME rules claim, so a declaration counts as reachability.
-    #
-    # What remains is what a declaration cannot honestly express: a test whose
-    # subject is another TEST. No source change is what breaks these; editing
-    # the file under guard is, and they run in the same suite as their subject,
-    # so the two never drift apart.
-    #
-    # INV-vazuh. Re-runs tests/test_rct_public_api_pinned.py in a child
-    # interpreter with the in-repo package source roots scrubbed, pinning that
-    # the module declares the sys.path it needs instead of inheriting one from
-    # whichever sibling shared its xdist worker.
-    "test_rct_pinned_standalone.py",
-    # Its subject is the RCT public API as re-exported, checked from a pinned
-    # standalone interpreter by the entry above. A `covers:` glob over the
-    # package would select it on every source change while the thing it guards
-    # is an export list, so the declaration would be noise rather than an edge.
-    "test_rct_public_api_pinned.py",
-    # Covers tests/_forge_github_harness.py -- a TEST HELPER. Extending the
-    # mapper to tests/_<name>.py would be a rule for a category of exactly one
-    # (that helper is the only underscore-prefixed module under tests/), and a
-    # `covers:` marker naming a sibling test file would declare a dependency
-    # between two tests rather than between a test and a source. Revisit if a
-    # second test helper acquires a test.
-    "test_forge_github_harness.py",
-}
+#: Root tests no rule can reach. EMPTY, and the ratchet is what keeps it so.
+#:
+#: It held 25 entries, each carrying a reason and most of them asking, in their
+#: own words, for the declarative marker that now exists. The last three went
+#: when the objection to declaring them turned out to be aesthetic rather than
+#: real: two have another TEST as their subject (a standalone re-run of a
+#: pinning module; a shared harness), and `# covers:` expresses that exactly --
+#: "when this path changes, run me" is true of a test file as much as of a
+#: source. The third pins four package modules by import path and can simply
+#: name them.
+#:
+#: Adding an entry here is still allowed and still needs a reason. But the bar
+#: moved: a test that cannot say what it covers is now the exception, not the
+#: rule, and "no name-based rule reaches it" stopped being one.
+KNOWN_UNREACHABLE: set[str] = set()
 
 
 def _real_top_level_sources() -> list[str]:
@@ -680,3 +663,43 @@ def test_the_original_demonstration_is_reachable_now() -> None:
         [".agent/hooks/_shared/launch-transcript-sync.sh"], REPO_ROOT
     )
     assert "tests/test_watcher_lifecycle.py" in hits
+
+
+def test_a_marker_survives_a_docstring_that_starts_a_line_with_import(
+    tmp_path,
+) -> None:
+    """The header scan must not stop inside prose.
+
+    ``test_rct_public_api_pinned.py`` has a docstring line beginning "import
+    path + signature", and the first implementation of the header scan cut
+    there — before the marker. The declaration then did nothing, and the
+    failure named the TEST as unreachable rather than the parser as wrong,
+    which is the expensive kind of wrong.
+    """
+    mod = _import_module()
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_thing.py").write_text(
+        '"""Doc.\n'
+        "\n"
+        "The variants attach by\n"
+        "import path + signature, not by behaviour.\n"
+        '"""\n'
+        "\n"
+        "# covers: scripts/real-one\n"
+        "import os\n"
+    )
+    patterns = {pattern for pattern, _ in mod.declared_coverage(tests_dir)}
+    assert "scripts/real-one" in patterns
+
+
+def test_the_exempt_list_is_empty_and_the_ratchet_is_what_keeps_it_so() -> None:
+    """INV-lizor limb (a), closed rather than narrowed.
+
+    An empty list is a claim: every root test is selected by some change that
+    can break it. It is only worth anything because the two tests above fail
+    when it stops being true — one when a test becomes unreachable, one when
+    an entry here has gone stale.
+    """
+    assert KNOWN_UNREACHABLE == set()
+    assert _real_unreachable() == set()
