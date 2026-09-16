@@ -1,0 +1,43 @@
+Original commit body from 5ddae50d970f4b67ad8fba17070ae7a0f3e58114:
+
+INV-lizor limb (a). Name-based mapping has a floor: a test named for the
+BEHAVIOUR it pins, or covering several sources, or whose subject is a
+pipeline YAML rather than a source at all, is unreachable by any rule of
+that shape. The map's docstring promised a declarative marker and
+KNOWN_UNREACHABLE asked for it by name in entry after entry -- "these want
+a declarative covers: marker, not a heuristic".
+
+A root test now names its own subjects in its header:
+
+    # covers: .woodpecker/*.yml, scripts/lib/forgejo-api.sh
+
+Every changed path matching one of those globs selects it, beside the name
+rules rather than instead of them. Twenty-two tests declare; the exempt
+list drops 25 -> 3. Every marker was derived by READING the test -- the
+paths it opens, the module it loads by file path -- because a name-based
+rule could not reach these and a wrong declaration is worse than none.
+
+WHAT IS LEFT IS WHAT A DECLARATION CANNOT HONESTLY EXPRESS: a test whose
+subject is another TEST. No source change breaks those.
+
+A DECLARATION MAY ADD A TEST AND MAY NEVER WITHDRAW OVER-SELECTION, and
+that arrived as a failure rather than a design. smart-test unions the
+WHOLE root suite for a top-level source the map cannot reach -- deliberate
+over-selection for .githooks/** and scripts/lib/**, whose basenames are
+too generic to map. The first marker naming .githooks/* made those paths
+"mapped" and would have traded 108 tests for one. The existing decision
+test caught it. The fallback asks the name rules (--names-only); the union
+asks both.
+
+CI CONFIG IS NO LONGER DARK. .woodpecker/ and .github/ join the executable
+surface. Fifteen root tests read those files, and "editing a workflow does
+NOT select this test per-PR" appears verbatim on four KNOWN_UNREACHABLE
+entries without closing any of them.
+
+The markers ratchet two-sidedly like the list they replace: deleting one
+makes its test unreachable and fails, and a glob matching nothing in the
+tree has rotted and fails. Both arms verified by mutation. The
+unreachability ratchet now walks every tracked file rather than only the
+paths the name rules claim, because a declaration can name anything.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
