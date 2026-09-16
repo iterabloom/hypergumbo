@@ -137,11 +137,22 @@ def test_window_config_falls_back_to_the_default(tmp_path: Path) -> None:
 
 
 def test_window_config_is_read_when_present(tmp_path: Path) -> None:
+    """The knob is read where PyYAML exists, and falls back where it does not.
+
+    Both arms are the documented contract, not an escape hatch: the module
+    states that a missing PyYAML means "use the default", and the CI job that
+    exercises this file (`forge-arms`) installs pytest and nothing else on
+    purpose — it tests the forge scripts in a minimal environment. Asserting
+    only the reads-the-knob arm made this test a claim about the test runner's
+    dependency set rather than about the function. The reads-the-knob arm is
+    still exercised for real in the main pytest job, which has PyYAML.
+    """
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
         "stop_hook:\n  autopr_convergence_nudge:\n    window: 9\n", encoding="utf-8"
     )
-    assert nudge.load_window(cfg) == 9
+    expected = nudge.DEFAULT_WINDOW if nudge.yaml is None else 9
+    assert nudge.load_window(cfg) == expected
 
 
 # --- end to end, against the real audit script ------------------------------
