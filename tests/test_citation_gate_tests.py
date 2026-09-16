@@ -77,14 +77,22 @@ def _shipped_sources() -> dict:
     """
     found = {}
     for path in REPO_ROOT.glob("packages/*/src/**/*.py"):
-        parts = path.parts
-        if "src" not in parts:  # pragma: no cover - glob guarantees it
-            continue
-        found["/".join(parts[parts.index("src") + 1:])] = path
+        # RELATIVE, AND INDEXED POSITIONALLY. `parts.index("src")` on the
+        # ABSOLUTE path is what broke this twice: CI checks the repo out at
+        # /woodpecker/SRC/github.com/iterabloom/hypergumbo, so the search found
+        # the WORKSPACE's src and every key came out as a long path that names
+        # no citation. The population stayed plausible and only the conclusion
+        # was wrong, which is why the floor below did not catch it -- a floor
+        # guards against an empty instrument, not a mis-aimed one.
+        parts = path.relative_to(REPO_ROOT).parts
+        if len(parts) < 4 or parts[0] != "packages" or parts[2] != "src":
+            continue  # pragma: no cover - the glob guarantees this shape
+        found["/".join(parts[3:])] = path
     assert len(found) > 100, (
         f"only {len(found)} shipped sources found -- this is an instrument "
         "fault, not a finding"
     )
+    assert any("/" in key for key in found), "keys are not import-root-relative"
     return found
 
 
