@@ -1,0 +1,55 @@
+Original commit body from e89136f29bc0332d6d2beaf5146d3abdd688168d:
+
+INV-rahib's residual class: 14 of 485 recorded runs ended with
+_autopr_state_final still holding its "unknown" initializer, most recent
+2026-09-11, one of them at exit 0. The owner ruling of 2026-08-03 makes
+`unknown` the violation signal rather than a state, because no deliberate
+exit writes it.
+
+Two mechanisms, needing two different instruments.
+
+Ten deliberate exits forgot to declare. The branch-ownership guards before
+both amend paths, both re-push failures and both PR lookups inside stuck-CI
+recovery, the simulated outage, and the unresolvable / non-linear vPR queue
+checks. Each now names what it decided, and the four new states join the
+declared closed set.
+
+The enumeration is a dominance analysis, because proximity clears the real
+cases: the assignment at auto-pr:2085 is in the `if _pre_scenario_b_gate`
+arm while the exits at 2105/2114 are in the `else` arm. A 25-line distance
+threshold hid 2105 outright while I was looking for these by hand.
+
+The rest is a `set -e` abort at any unguarded command in a 700-line
+function, which is not statically enumerable, so the run attributes itself.
+auto-pr runs under errtrace with an ERR trap recording file:line and the
+command; finalize prints a CONVERGENCE VIOLATION banner and persists
+abort_site / abort_command to the sentinel and the ledger.
+
+`-E` is load-bearing, not decoration. Without it an ERR trap is not
+inherited by shell functions, and every real auto-pr abort happens inside a
+helper. The first version of the behavioral test passed with `-E` removed,
+because its fixture aborted in the same frame that installed the trap —
+the harness contaminating its own control. The replacement aborts one call
+deep and was verified by mutation.
+
+Two gaps stay disclosed rather than counted as zero. A `set -u` unbound
+variable does not fire ERR — bash raises it as an expansion error, not a
+command failure — and neither does a bare `exit`. So the audit reports
+three states, not two: a recorded site, "not recorded" (the trap could not
+see it), and "not instrumented" (the row predates this change). A null
+default would have merged the last two and reported the entire historical
+backlog as live instrument failures.
+
+BASH_COMMAND holds source text rather than its expansion, so a line
+carrying $HG_GITHUB_TOKEN records the name. That is a property of bash, so
+it is pinned by a test instead of asserted in a comment.
+
+Also stops the rahib harness carrying its own copy of the shell flags; it
+reads them from auto-pr now, which is what kept this file honest when `-E`
+landed.
+
+WI-nazoj, closed with evidence before this PR. Criterion (c) — re-measuring
+the ledger over a comparable number of post-instrumentation runs — is filed
+as WI-katap, since 485 rows took six weeks to accumulate.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
