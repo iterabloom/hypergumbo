@@ -8,7 +8,7 @@
     "schema_version": {
       "type": "string",
       "description": "Schema version (semver)",
-      "const": "0.20.7"
+      "const": "0.20.8"
     },
     "confidence_model": {
       "type": "string",
@@ -1594,7 +1594,7 @@
         },
         "silence_reason": {
           "type": "string",
-          "description": "WHY this pass emitted nothing (INV-bikaj, arc T6), on the pass-silence-reason axis. Present ONLY when the pass was silent: its ABSENCE means the pass emitted output, which is NOT APPLICABLE rather than unknown. 'unreported' is the distinct CANNOT-DETERMINE value -- the pass read files, produced nothing and did not say why. The orchestrator stamps only what it can derive with certainty and never infers 'no_candidate_construct', which only a pass body can report"
+          "description": "WHY this pass emitted nothing (INV-bikaj, arc T6), on the pass-silence-reason axis. Present ONLY when the pass was silent: its ABSENCE means the pass emitted output, which is NOT APPLICABLE rather than unknown. 'unreported' is the distinct CANNOT-DETERMINE value -- the pass read files, produced nothing and did not say why. The orchestrator stamps only what it can derive with certainty and never infers 'no_candidate_construct' (looked, construct absent) or 'candidates_unresolved' (found the construct, carried none through resolution) -- only a pass body can report either"
         }
       },
       "required": [

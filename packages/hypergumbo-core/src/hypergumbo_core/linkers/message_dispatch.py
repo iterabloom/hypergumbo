@@ -47,7 +47,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import js_ts_language_from_path, read_masked_source
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 if TYPE_CHECKING:
     pass
@@ -238,7 +238,7 @@ def link_message_dispatch(
         # an absent construct -- in the second the construct IS present
         # and merely unpaired, and claiming otherwise would put a fresh
         # false claim in the axis declared to cure false claims.
-        run.silence_reason = no_candidate_construct_if_empty(
+        run.silence_reason = silence_reason_for_candidates(
             all_writes + all_reads)
         return LinkerResult(edges=[], symbols=[], run=run)
 
@@ -364,6 +364,9 @@ def link_message_dispatch(
             ))
 
     run.duration_ms = int((time.time() - start_time) * 1000)
+    # Reached only PAST the bail, so both sides were non-empty: candidates
+    # found, no pair matched.
+    run.silence_reason = silence_reason_for_candidates(all_writes + all_reads)
 
     return LinkerResult(
         edges=result_edges, symbols=result_symbols, run=run,

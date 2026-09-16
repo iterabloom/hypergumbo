@@ -56,7 +56,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("solidity-abi-linker")
 
@@ -191,6 +191,7 @@ def link_solidity_abi(
     sol_functions = _collect_solidity_functions(sol_symbols)
     if not sol_functions:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        run.silence_reason = silence_reason_for_candidates(sol_functions)
         return SolidityAbiLinkResult(edges=[], symbols=[], run=run)
 
     known_names = set(sol_functions.keys())
@@ -257,7 +258,7 @@ def link_solidity_abi(
                 derived_from=[syn_id, target.id],
             ))
 
-    run.silence_reason = no_candidate_construct_if_empty(call_sites)
+    run.silence_reason = silence_reason_for_candidates(call_sites)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return SolidityAbiLinkResult(

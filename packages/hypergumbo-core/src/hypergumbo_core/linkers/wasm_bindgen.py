@@ -62,7 +62,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import js_ts_language_from_path, read_masked_source
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("wasm-bindgen-linker")
 
@@ -216,6 +216,10 @@ def link_wasm_bindgen(
     export_map = _find_wasm_bindgen_exports(rust_symbols)
     if not export_map:
         run.duration_ms = int((time.time() - start_time) * 1000)
+        # Claimed before the wrapper's SECOND scan (_create_wasm_load_edges)
+        # has run, which is safe: that scan emits a symbol per load it finds,
+        # so if it finds any the chokepoint derives "" and clears this.
+        run.silence_reason = silence_reason_for_candidates(export_map)
         return WasmBindgenLinkResult(edges=[], run=run)
 
     # Phase 2: Collect unique JS/TS file paths
@@ -319,7 +323,7 @@ def link_wasm_bindgen(
                 derived_from=[src_id, target_sym.id],
             ))
 
-    run.silence_reason = no_candidate_construct_if_empty(all_imports)
+    run.silence_reason = silence_reason_for_candidates(all_imports)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return WasmBindgenLinkResult(

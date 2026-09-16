@@ -885,8 +885,10 @@ def _analysis_run_spec() -> ClassSpec:
                     "the distinct CANNOT-DETERMINE value -- the pass read "
                     "files, produced nothing and did not say why. The "
                     "orchestrator stamps only what it can derive with "
-                    "certainty and never infers 'no_candidate_construct', "
-                    "which only a pass body can report"
+                    "certainty and never infers 'no_candidate_construct' "
+                    "(looked, construct absent) or 'candidates_unresolved' "
+                    "(found the construct, carried none through resolution) "
+                    "-- only a pass body can report either"
                 ),
             },
         },

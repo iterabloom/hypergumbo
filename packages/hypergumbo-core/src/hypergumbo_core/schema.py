@@ -98,7 +98,7 @@ import platform
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-SCHEMA_VERSION = "0.20.7"  # 0.20.7: AnalysisRun gains ``silence_reason`` -- why a pass emitted nothing, on the closed pass-silence-reason axis; omitted when the pass emitted something (INV-bikaj, arc T6). 0.20.6: TaintFlowFinding gains ``walk_verdict`` + ``walk_blocked_by`` (INV-zidur). 0.20.5: Edge.meta gains ``io_target_kind`` (INV-nular). 0.20.4: Edge.meta gains the bash per-call-site keys (``redirect_target``, ``redirect_target_resolved``, ``env_var``) and the ``<key>_values`` collapse companions (INV-vukiv). 0.20.3: Edge.meta gains ``callee_name``
+SCHEMA_VERSION = "0.20.8"  # 0.20.8: pass-silence-reason axis gains ``candidates_unresolved`` -- the pass found its construct and carried none through resolution, split out of ``unreported`` which is declared to mean "did not say why" (WI-bivim, docs/adr/0054). 0.20.7: AnalysisRun gains ``silence_reason`` -- why a pass emitted nothing, on the closed pass-silence-reason axis; omitted when the pass emitted something (INV-bikaj, arc T6). 0.20.6: TaintFlowFinding gains ``walk_verdict`` + ``walk_blocked_by`` (INV-zidur). 0.20.5: Edge.meta gains ``io_target_kind`` (INV-nular). 0.20.4: Edge.meta gains the bash per-call-site keys (``redirect_target``, ``redirect_target_resolved``, ``env_var``) and the ``<key>_values`` collapse companions (INV-vukiv). 0.20.3: Edge.meta gains ``callee_name``
 # (INV-divuf) — an ADDITION, hence a patch bump, same shape as 0.20.2 below.
 # The full-fidelity callee name, stamped unconditionally by
 # ``make_unresolved_edge``. Every artifact written before this version stays

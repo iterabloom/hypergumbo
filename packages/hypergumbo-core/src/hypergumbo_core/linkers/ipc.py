@@ -99,7 +99,7 @@ from .registry import (
     register_linker,
     always_on_unreviewed,
 )
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("ipc-linker")
 
@@ -853,7 +853,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
                 )
                 edges.append(edge)
 
-    run.silence_reason = no_candidate_construct_if_empty(all_patterns)
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.files_analyzed = files_analyzed
     run.files_skipped = files_skipped
     run.duration_ms = int((time.time() - start_time) * 1000)
