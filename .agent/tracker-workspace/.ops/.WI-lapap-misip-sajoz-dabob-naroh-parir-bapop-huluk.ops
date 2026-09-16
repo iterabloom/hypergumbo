@@ -1,0 +1,22 @@
+- op: create  # 5d51
+  at: '2026-09-16T02:53:47Z'  # 5d51
+  by: agent  # 5d51
+  actor: jgstern_agent  # 5d51
+  clock: 1  # 5d51
+  nonce: 5d51  # 5d51
+  data:  # 5d51
+    kind: work_item  # 5d51
+    title: "Nothing reads the auto-pr convergence ledger, so INV-rahib's validation criterion is still organic"  # 5d51
+    status: todo_soft  # 5d51
+    priority: 2  # 5d51
+    parent:  # 5d51
+    tags:  # 5d51
+    - ci_infrastructure  # 5d51
+    - auto_pr  # 5d51
+    - measurement  # 5d51
+    isbefore: []  # 5d51
+    duplicate_of: []  # 5d51
+    not_duplicate_of: []  # 5d51
+    pr_ref:  # 5d51
+    description: "The convergence ledger .git/AUTOPR_HISTORY.jsonl has no reader.\n\nIt was added by commit 560c18cbb2 for an explicit reason, stated in its own\nheader comment in scripts/auto-pr:\n\n    \"Convergence is not a property of one run. INV-rahib asks whether auto-pr\n    always ends in a declared terminal state, which can only be evaluated over\n    a SEQUENCE of invocations -- and because the sentinel keeps no history, the\n    item's 2026-06-17 validation criterion ('observe auto-pr converge during a\n    real concurrent nightly') sat unevaluated across 579 commits. Nobody was\n    withholding the measurement; there was nothing to measure.\"\n\nThere is now something to measure and still nothing measuring it. Grepping the\nwhole tree for AUTOPR_HISTORY returns the writer in scripts/auto-pr and two\ntests that override the path so they do not pollute it. No script, no CI gate,\nno stop-hook check, no playbook step reads it.\n\nThe cost is not hypothetical. 481 rows accumulated over six weeks holding two\nlive violations of the item the file exists to measure -- 41 merged-and-exited-1\nand 14 undeclared-terminal-state -- and they were found only because someone\nopened the file by hand. The 2026-08-02 tracker entry on INV-rahib, written\nafter the ledger existed, does not mention it.\n\nTHE SHAPE OF THE DEFECT is the one the ledger's own comment diagnoses, moved\none step downstream: the criterion stopped being unmeasurable and became\nmerely unread. An instrument with no reader is the same organic criterion in a\ndifferent costume.\n\nPROPOSED\n  - A reader that summarises the ledger: counts by (final_state, exit_code),\n    the undeclared-state count, and the merged-with-nonzero-exit count, with a\n    nonzero exit when either violation class is present.\n  - Somewhere it is actually consulted. Candidates, in rising order of nag:\n    a ci-debug subcommand (governance-listed, so it needs approval); a line in\n    the stop-hook guidance alongside the existing tracker nudges; a periodic\n    audit step in a playbook.\n  - Whichever is chosen, state the retention policy: the file is append-only\n    and unbounded, and 481 rows is 101KB after six weeks.\n\nNOTE ON SCOPE: this is deliberately filed apart from the two violation classes\nthemselves (INV-rahib and WI-nazoj). Fixing a defect and building the\ninstrument that would have caught it are different jobs, and bundling them\ntends to ship the fix and leave the instrument half-wired."  # 5d51
+    fields: {}  # 5d51
