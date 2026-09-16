@@ -1,0 +1,12 @@
+Original commit body from e47d8b7f7c613c863c162a6182fd00608d9b4a51:
+
+verify-generated failed on PR #988 with "generated 32 commits ago, exceeds the
+30-commit window". Pure regeneration: symbol and edge counts drift with the
+commits since the last one (46203 -> 46399 symbols, 183507 -> 184215 edges) and
+a few centrality scores move with them. No structural change, no new section.
+
+Not caused by the commit that observed it -- the gate is a commit-count window
+and the tracker-sync traffic crossed it. Fixing it here because it blocks the
+tracker-sync PR, which blocks every local fast-forward until it lands.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
