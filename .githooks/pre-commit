@@ -506,16 +506,33 @@ MANIFEST=".ci/affected-tests.txt"
 if [ -f "$MANIFEST" ]; then
     # Check if manifest is being staged for commit
     if git diff --cached --name-only | grep -q "^\.ci/affected-tests\.txt$"; then
-        # Check if it's full-suite mode (CI has 5-minute timeout, can't handle full-suite)
-        if grep -q "^# Mode: full-suite" "$MANIFEST"; then
+        # WI-duson / L54: ASSERT THE ONE GOOD MODE, DO NOT ENUMERATE THE BAD
+        # ONES. This used to reject `full-suite` and pass everything else
+        # through the else arm with a green tick — so a `Mode: explicit`
+        # manifest, which selects NOTHING and makes CI run nothing, committed
+        # cleanly past the very check that exists to protect this artifact.
+        # full-suite runs too much and explicit runs nothing; only the first
+        # was guarded.
+        MANIFEST_MODE=$(grep -m1 "^# Mode: " "$MANIFEST" | sed 's/^# Mode: //')
+        if [ "$MANIFEST_MODE" = "targeted" ]; then
+            echo -e "${GREEN}✓${NC}"
+        else
             echo -e "${RED}✗${NC}"
             echo ""
-            echo -e "${RED}Manifest is full-suite mode, which will fail CI (5-minute timeout).${NC}"
-            echo -e "${RED}Re-run tests without --full flag to generate a targeted manifest:${NC}"
-            echo "  pytest  # without --full"
+            case "$MANIFEST_MODE" in
+                full-suite)
+                    echo -e "${RED}Manifest is full-suite mode, which will fail CI (5-minute timeout).${NC}"
+                    ;;
+                explicit)
+                    echo -e "${RED}Manifest is explicit mode: it selects NO tests, so CI would run none and report green.${NC}"
+                    ;;
+                *)
+                    echo -e "${RED}Manifest mode is '${MANIFEST_MODE}', not 'targeted'. CI consumes this file; an unrecognised mode is not safe to commit.${NC}"
+                    ;;
+            esac
+            echo -e "${RED}Re-run bare tests to regenerate a targeted manifest:${NC}"
+            echo "  pytest  # no --full, no explicit test paths"
             exit 1
-        else
-            echo -e "${GREEN}✓${NC}"
         fi
     else
         echo -e "${YELLOW}skipped (not staged)${NC}"
