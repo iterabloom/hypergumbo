@@ -1,0 +1,40 @@
+Original commit body from 698c297c8174f1a95802775985af675d0fa8f0e2:
+
+41 of 481 invocations in .git/AUTOPR_HISTORY.jsonl carry final_state=merged
+with exit_code=1, and every one of those merged_shas is an ancestor of
+origin/dev (control: 358 of 359 for merged+exit 0). The merge landed; auto-pr
+reported failure. Most recent was yesterday.
+
+set -euo pipefail plus two bare commands in the tail that runs after
+_autopr_state_final="merged". `git checkout "$base"` refuses whenever a dirty
+file differs between the feature branch and the base, which a modified tracker
+.ops file is, and which this working tree ordinarily has. `read -p "Retry?"`
+returns 1 at EOF, so on every non-interactive run the retry prompt was an abort
+rather than a question -- at attempt 1 of a documented 3, meaning that loop has
+never run in production.
+
+Once the merge has landed the outcome is decided, so the housekeeping now runs
+through _autopr_post_merge, whose `if !` context makes bash ignore set -e for
+the whole callee body including anything it calls, and the merged paths exit 0
+explicitly instead of inheriting branch cleanup's status. A boundary rather
+than three guards, because the defect is the absence of one -- and the
+structural test pinning it found a fourth call site,
+_autopr_handle_already_merged, that reading the post-merge tails had missed.
+
+gov_cleanup additionally recorded its terminal state after its housekeeping, so
+an abort there discarded the merged fact and landed on `unknown` instead. It
+records first now.
+
+The harness that owns cleanup_local ran set -uo pipefail for its whole life.
+Without the -e it cannot observe an abort-shaped defect at all, which is why
+the one test file covering this function watched the class go by for six weeks.
+It runs production flags now, and the new behavioral tests drive the real
+extracted functions under them.
+
+Both surfaces INV-rahib named on 2026-08-02 were already fixed (560c18cbb2,
+c539caf0b7); this is a different mechanism found by reading the convergence
+ledger that commit added and nothing had ever consumed. The item stays violated
+for its second class -- 14 runs ending in no declared terminal state -- filed as
+WI-nazoj, with the missing ledger reader as WI-lapap.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
