@@ -428,6 +428,53 @@ _autopr_finalize() {
 }
 
 # ------------------------------------------------------------------
+# INV-rahib: the post-merge boundary.
+#
+# Once the merge has landed, this run's outcome is DECIDED. Everything after
+# that point — the base checkout and pull, branch deletion, ref pruning, the
+# tracker discussion append, the orphan-sync warning — is housekeeping, and
+# housekeeping must not be able to restate a decided outcome.
+#
+# It could, and it did. `set -euo pipefail` is on (line 3) and two commands
+# in that tail abort routinely:
+#
+#   git checkout "$base"  refuses when a dirty file differs between the
+#                         feature branch and the base. A modified tracker
+#                         `.ops` file is exactly that, and is the ordinary
+#                         state of this working tree.
+#   read -p "Retry? …"    returns 1 at EOF, which is every non-interactive
+#                         run — i.e. every backgrounded agent invocation.
+#
+# Either one killed do_pr *after* `_autopr_state_final="merged"` was set, so
+# the trap wrote a sentinel saying the run merged and exited 1. Measured over
+# the convergence ledger (`.git/AUTOPR_HISTORY.jsonl`): 41 of 481 invocations,
+# every one of their merged_shas an ancestor of origin/dev.
+#
+# A boundary rather than three `|| true`s, because the defect is the ABSENCE
+# of a boundary — a fourth bare command added to that tail later would
+# reintroduce it, and did not have to be anticipated to be caught. Invoking
+# the callee from an `if !` condition is what does the work: bash ignores
+# `set -e` for the whole body of a function called in a tested context,
+# including anything that function itself calls. Callers then `exit 0`
+# explicitly so the guarantee is readable at the merged path itself rather
+# than inferred from what does not follow it.
+# ------------------------------------------------------------------
+_autopr_post_merge() {
+	if ! "$@"; then
+		echo "" >&2
+		echo "⚠️  Post-merge housekeeping failed: $1 (the MERGE IS UNAFFECTED)." >&2
+		# `:-` is not defensive padding: gov_cleanup has no BASE_BRANCH, and
+		# `set -u` kills the shell on an unbound name even here, where the
+		# `if !` context has switched `set -e` off. A guard that aborts the
+		# run it exists to protect would be worse than no guard.
+		local _base="${BASE_BRANCH:-<base>}"
+		echo "   Finish by hand when convenient:" >&2
+		echo "     git checkout $_base && git pull origin $_base" >&2
+	fi
+	return 0
+}
+
+# ------------------------------------------------------------------
 # WI-mokak: post-merge tracker discussion append
 #
 # Problem (see WI-mokak): when the agent resolves a tracker item via
@@ -535,15 +582,21 @@ _autopr_handle_already_merged() {
 	_autopr_state_final="already_merged"
 	_autopr_state_merged_sha="$local_sha"
 
+	# --- INV-rahib: decided outcome, same boundary as do_pr. The `exit 0`
+	# below does NOT protect this on its own: under `set -e` an abort in the
+	# housekeeping kills the shell before the `exit 0` is ever reached, which
+	# is how a converged `already_merged` run would have exited 1. ---
+
 	# WI-mokak: append a durable discussion entry to the referenced
 	# tracker item, if one was supplied. This catches the WI-miriz
 	# failure mode where a silent backgrounded success is re-run and
 	# the first run never got to record the merge.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$pr_num" "$local_sha"
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$pr_num" "$local_sha"
 
 	# Cleanup mirrors the post-merge path in do_pr but does NOT touch
 	# tracker ops or attempt to amend the (already-merged) commit.
-	cleanup_local "$branch" "$base"
+	_autopr_post_merge cleanup_local "$branch" "$base"
 	exit 0
 }
 
@@ -1474,17 +1527,38 @@ Individual commits are preserved in the history."
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$_merged_sha"
 
+	# --- INV-rahib: past this line the outcome is decided (see
+	# _autopr_post_merge). The flush path carries the same exposure as do_pr:
+	# its `git checkout "$base_branch"` below is bare, and it runs after the
+	# merge. ---
+
 	# WI-dofaz: surface any tracker-sync PR that existed before this
 	# flush run and is still open.  Best-effort warning only.
-	_autopr_warn_orphan_tracker_sync_prs
+	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
-	# Cleanup
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up..."
+	_autopr_post_merge _autopr_flush_cleanup "$base_branch"
+
+	echo ""
+	echo "✅ Flushed $count vPR(s) successfully!"
+	echo "   Queue cleared, local branches deleted."
+	exit 0
+}
+
+# ------------------------------------------------------------------
+# flush_queue's post-merge housekeeping, extracted so it can be run through
+# _autopr_post_merge as one unit (INV-rahib). Reads $QUEUE_FILE and
+# $REPO_ROOT; clears the queue, returns to the base branch and deletes the
+# vPR branches that just landed.
+# ------------------------------------------------------------------
+_autopr_flush_cleanup() {
+	local base_branch="$1"
 
 	rm -f "$REPO_ROOT/.git/PR_PENDING"
 
@@ -1508,10 +1582,6 @@ Individual commits are preserved in the history."
 	for branch in "${branches_to_delete[@]}"; do
 		git branch -D "$branch" 2>/dev/null || true
 	done
-
-	echo ""
-	echo "✅ Flushed $count vPR(s) successfully!"
-	echo "   Queue cleared, local branches deleted."
 }
 
 ensure_stacked_on_tip() {
@@ -2224,20 +2294,27 @@ do_pr() {
 	_autopr_state_final="merged"
 	_autopr_state_merged_sha="$_merged_sha"
 
+	# --- INV-rahib: past this line the outcome is decided. See
+	# _autopr_post_merge; every call below goes through it, and the explicit
+	# `exit 0` is what stops housekeeping from choosing the exit code. The
+	# two callees below already `return 0` on their own, but they are wrapped
+	# anyway: the boundary is the property, not the current contents of each
+	# function, and an unguarded command added inside either one later must
+	# not be able to reopen this. ---
+
 	# WI-dofaz: surface any tracker-sync PR that existed before this
-	# auto-pr run and is still open.  Best-effort warning only — does
-	# not affect exit code.
-	_autopr_warn_orphan_tracker_sync_prs
+	# auto-pr run and is still open.  Best-effort warning only.
+	_autopr_post_merge _autopr_warn_orphan_tracker_sync_prs
 
 	# WI-mokak: append durable post-merge discussion entry to the
 	# tracker item, if one was referenced by --tracker-id.
-	_autopr_append_tracker_discussion "$TRACKER_ID" "$PR_NUM" "$_merged_sha"
-
-	# Record merged PR in failover state
+	_autopr_post_merge _autopr_append_tracker_discussion \
+		"$TRACKER_ID" "$PR_NUM" "$_merged_sha"
 
 	echo "---------------------------------------------------"
 	echo "🧹 Cleaning up local branch..."
-	cleanup_local "$BRANCH" "$BASE_BRANCH"
+	_autopr_post_merge cleanup_local "$BRANCH" "$BASE_BRANCH"
+	exit 0
 }
 
 # ------------------------------------------------------------------
@@ -2288,7 +2365,13 @@ cleanup_local() {
 		echo ""
 		echo "⚠️  Git pull failed (attempt $attempt/$max_attempts)"
 
-		if [[ $attempt -lt $max_attempts ]]; then
+		# Only ask when someone can answer. `read` returns 1 at EOF, and with
+		# stdin closed — every backgrounded agent run — that made this an
+		# abort under `set -e` rather than a question, at attempt 1 of 3. So
+		# the retry loop this prompt gates has never run in production; the
+		# non-interactive path skips straight to the manual-recovery hint,
+		# which is what was effectively happening anyway, now deliberately.
+		if [[ $attempt -lt $max_attempts ]] && [[ -t 0 ]]; then
 			read -p "Retry? [Y/n] " -n 1 -r REPLY
 			echo ""
 			if [[ ! $REPLY =~ ^[Nn]$ ]]; then
@@ -2419,10 +2502,18 @@ gov_cleanup() {
 	base=$(echo "$API_RESPONSE" | json_field "base.ref")
 
 	echo "✅ PR #$pr_num confirmed merged."
-	cleanup_local "$branch" "$base"
-	echo "✅ Done. Ready for next auto-pr."
-	_autopr_state_final="merged"
+
+	# INV-rahib: record the outcome BEFORE the housekeeping, not after. The
+	# API has just confirmed the merge, so `merged` is already true here; the
+	# old order let a cleanup_local abort discard that fact and self-report as
+	# `unknown` — a worse landing than do_pr's merged/exit-1, because the
+	# ledger then shows no terminal state at all.
 	# merged_sha not known here without an extra query — leave null.
+	_autopr_state_final="merged"
+
+	_autopr_post_merge cleanup_local "$branch" "$base"
+	echo "✅ Done. Ready for next auto-pr."
+	exit 0
 }
 
 case "${1:-}" in
