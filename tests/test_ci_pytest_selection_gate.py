@@ -34,6 +34,8 @@ merges by rebase, so on every post-merge push that SHA names a rewritten object
 absent from the clone. Both halves (fail-closed diff, validated base) are
 mutation-tested here.
 """
+
+# covers: .woodpecker/woodpecker.yml
 from __future__ import annotations
 
 import os

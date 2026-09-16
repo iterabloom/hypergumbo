@@ -26,6 +26,8 @@ release/CHANGELOG history legitimately cites past Codeberg PR numbers, and
 removing that would regress a product feature. What is forbidden is the failover
 MACHINERY: the state file, the ``selfh`` remote, and the two deleted files.
 """
+
+# covers: scripts/*, .githooks/*, .agent/hooks/*, packages/*/src/*
 from __future__ import annotations
 
 import re

@@ -14,6 +14,8 @@ This test file covers:
 - parse_selection integration tests
 """
 
+# covers: .agent/hooks/_shared/on_transcript_change.py
+
 from __future__ import annotations
 
 import importlib

@@ -67,8 +67,22 @@ rather than the *file* it covers cannot be reached by any rule of this
 shape, and neither can one covering several sources or a non-source
 artifact. Those are enumerated in ``KNOWN_UNREACHABLE`` in
 ``tests/test_top_level_test_map.py``, which ratchets two-sidedly so the list
-can only shrink and cannot rot. Reaching them needs a declarative marker in
-the test file, not a cleverer heuristic.
+can only shrink and cannot rot.
+
+THE DECLARATIVE MARKER THAT FLOOR NEEDED NOW EXISTS. A root test may name
+its own subjects in its header::
+
+    # covers: .woodpecker/*.yml, scripts/lib/forgejo-api.sh
+
+and every changed path matching one of those globs selects it, beside the
+name rules rather than instead of them. This is deliberately a declaration
+and not a cleverer heuristic: the tests it exists for are precisely the ones
+whose subject no naming convention can express — a pipeline YAML, a
+governance file, several sources at once, or the whole production tree. The
+patterns are ``fnmatch`` globs against repo-relative paths, so ``*`` crosses
+``/`` and over-selects, which is the direction a selector is allowed to be
+wrong in. ``tests/test_top_level_test_map.py`` ratchets them two-sidedly
+too: a marker that matches nothing in the tree has rotted and fails.
 
 CLI: reads newline-separated changed paths from stdin (each relative to
 the repo root), prints one matching ``tests/test_*.py`` path per line,
@@ -77,10 +91,11 @@ is normal, not an error.
 """
 from __future__ import annotations
 
+import fnmatch
 import re
 import sys
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 
 
 #: Cross-vendor parity tests every vendor-hook change must select (the
@@ -155,8 +170,65 @@ def _vendor_hook_basename(path: str) -> str | None:
     return None
 
 
-def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
-    """Return sorted deduplicated list of matching ``tests/test_*.py`` paths."""
+#: ``# covers: <glob>[, <glob>...]`` in a root test's HEADER — the declarative
+#: marker this module's docstring has been promising and ``KNOWN_UNREACHABLE``
+#: has been asking for by name. Name-based mapping has a floor, and the floor
+#: is not a heuristic problem: a test named for the BEHAVIOUR it pins, or
+#: covering several sources, or whose subject is a YAML pipeline file rather
+#: than a source at all, cannot be reached by any rule of that shape. Those
+#: tests can say what they cover, and nothing else can say it for them.
+_COVERS_MARKER = re.compile(r"^#[ \t]*covers:[ \t]*(.+?)[ \t]*$", re.MULTILINE)
+
+#: The header ends at the first import, definition or decorator. Scanning only
+#: the header is what keeps a marker-shaped string inside a test's own FIXTURE
+#: from registering as a real declaration — ``test_top_level_test_map.py``
+#: necessarily contains example markers, and they are test data, not claims.
+_HEADER_END = re.compile(r"^(import |from |def |class |@)", re.MULTILINE)
+
+
+def _module_header(text: str) -> str:
+    """The part of a module above its first import, def, class or decorator."""
+    match = _HEADER_END.search(text)
+    return text[: match.start()] if match else text
+
+
+def declared_coverage(tests_dir: Path) -> List[Tuple[str, str]]:
+    """``(glob, test basename)`` for every ``# covers:`` marker in the suite."""
+    declared: List[Tuple[str, str]] = []
+    for path in sorted(tests_dir.glob("test_*.py")):
+        try:
+            header = _module_header(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:  # pragma: no cover - unreadable file on a listed path
+            continue
+        for raw in _COVERS_MARKER.findall(header):
+            for pattern in raw.replace(",", " ").split():
+                declared.append((pattern, path.name))
+    return declared
+
+
+def map_to_tests(
+    changed_files: Iterable[str],
+    repo_root: Path,
+    declarations: bool = True,
+) -> List[str]:
+    """Return sorted deduplicated list of matching ``tests/test_*.py`` paths.
+
+    ``declarations=False`` asks ONLY the name rules, and that distinction is
+    load-bearing rather than a convenience. smart-test unions the whole root
+    suite for a top-level source the map cannot reach — deliberate
+    over-selection for ``.githooks/**`` and ``scripts/lib/**``, whose
+    basenames are too generic to map. A ``# covers:`` marker naming
+    ``.githooks/*`` would make those paths "mapped" and switch that fallback
+    OFF, trading 108 tests for one. A declaration must be able to ADD a test;
+    it must never be able to withdraw over-selection. So the fallback asks the
+    name rules and the union asks both.
+
+    ``changed_files`` is materialised because it is walked twice — once for
+    the name rules and once for the declarations. Passing a generator in and
+    silently getting an empty second pass is the shape this repo keeps
+    finding.
+    """
+    changed_files = list(changed_files)
     tests_dir = repo_root / "tests"
     if not tests_dir.is_dir():
         return []
@@ -189,16 +261,37 @@ def map_to_tests(changed_files: Iterable[str], repo_root: Path) -> List[str]:
         for name in VENDOR_HOOK_PARITY_TESTS:
             if (tests_dir / name).is_file():
                 out.add(f"tests/{name}")
+
+    # The declarative layer runs BESIDE the name rules, not instead of them,
+    # and it is additive for the reason INV-lizor limb (a) exists: a source
+    # that name-maps to SOME test still leaves coverage living in a
+    # map-unreachable one, so a declaration must be able to ADD a test the
+    # name rules already decided against.
+    declared = declared_coverage(tests_dir) if declarations else []
+    if declared:
+        for raw in changed_files:
+            path = raw.strip()
+            if not path:
+                continue
+            for pattern, name in declared:
+                if fnmatch.fnmatchcase(path, pattern):
+                    out.add(f"tests/{name}")
     return sorted(out)
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) < 2:
-        sys.stderr.write("usage: top_level_test_map.py <repo_root>\n")
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    flags = {a for a in argv[1:] if a.startswith("--")}
+    if len(args) < 1:
+        sys.stderr.write(
+            "usage: top_level_test_map.py [--names-only] <repo_root>\n"
+        )
         return 2
-    repo_root = Path(argv[1]).resolve()
+    repo_root = Path(args[0]).resolve()
     changed = sys.stdin.read().splitlines()
-    for match in map_to_tests(changed, repo_root):
+    for match in map_to_tests(
+        changed, repo_root, declarations="--names-only" not in flags
+    ):
         print(match)
     return 0
 

@@ -15,6 +15,8 @@ an ``HTTP_METHOD URL-substring`` match — so we can assert verbs, headers,
 endpoints, and payloads without a live GitHub.
 """
 
+# covers: scripts/lib/forgejo-api.sh
+
 from __future__ import annotations
 
 import base64

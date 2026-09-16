@@ -27,6 +27,8 @@ fallback (which is scoped by session_id) cannot accidentally kill the
 user's real watcher running on the host.
 """
 
+# covers: .agent/hooks/_shared/*transcript*
+
 from __future__ import annotations
 
 import gzip

@@ -63,6 +63,8 @@ NO TEST HERE ASSERTS THE PER-PR ARM'S ABSENCE. Pinning a removal would block
 whoever re-adds it, and Round 1 says that is a decision a future measurement may
 well justify again.
 """
+
+# covers: .woodpecker/*.yml, scripts/check-self-claims
 from __future__ import annotations
 
 from pathlib import Path
