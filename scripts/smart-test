@@ -630,6 +630,85 @@ run_pytest() {
     fi
 }
 
+# WI-ginuj: "FULL" HAS TO MEAN FULL, AND IT DID NOT. Five places ran or
+# enumerated the suite and every one of them named `packages/*/tests/` alone,
+# never the repo-root `tests/`. CI runs `.ci/affected-tests.txt`, which DOES
+# include root tests, so a green local `--full` was not a superset of what CI
+# runs and did not predict it: PR #890 went green locally over 26,702 tests and
+# red in CI on `test_adr_readme_index_sync.py`, a test the local gate holds and
+# simply did not run.
+#
+# THE FIVE SITES ARE WHY THIS IS A VARIABLE AND NOT FIVE EDITS. The item filed
+# three, found by grepping `run_pytest`; the background suite calls `pytest`
+# directly and the full-suite MANIFEST writer enumerates with `find`, so the
+# grep missed two. One definition, one test asserting nothing else names a
+# packages-only suite target, and the sixth site cannot be added silently.
+FULL_SUITE_PYTEST_TARGETS="packages/*/tests/ tests/"
+FULL_SUITE_FIND_ROOTS="packages/*/tests tests"
+
+# FIX (b) ON THE SAME ITEM, AND IT IS WORTH HAVING EVEN NOW THAT (a) HAS
+# LANDED: the next divergence will not be this one. A gate named for totality
+# that is silently partial is a wrong instrument that exits 0, and the reader
+# has no signal anything was skipped. So the suite says what it collected AND
+# what it did not -- derived by asking git which directories hold tests, so a
+# seventh test directory is disclosed by the commit that adds it rather than by
+# the CI failure that follows.
+disclose_full_suite_scope() {
+    # NO COMMAND SUBSTITUTION AROUND THIS HEREDOC, and that is not style. The
+    # first version captured it with `report=$(... << HEREDOC ... )` and died
+    # at RUNTIME with "syntax error near unexpected token `||'" while
+    # `bash -n` reported the whole script clean: a `)` at column 0 inside the
+    # Python body -- a continued call's closing paren -- ends the substitution
+    # early, and $() is re-parsed lazily so the static check never sees it.
+    # Python does its own chdir for the same reason: no subshell to close.
+    python3 - "$REPO_ROOT" "$FULL_SUITE_PYTEST_TARGETS" <<'PY' 2>/dev/null || true
+import fnmatch, glob, os, subprocess, sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - python < 3.11
+    tomllib = None
+
+os.chdir(sys.argv[1])
+targets = sys.argv[2].split()
+collected = sorted({os.path.normpath(p) for t in targets for p in glob.glob(t)})
+
+# WHAT COUNTS AS A TEST FILE IS PYTEST'S ANSWER, NOT OURS. The first version
+# asked git for "*test_*.py" and reported .agent/hooks/_shared and a package
+# src/ tree as uncollected -- top_level_test_map.py, test_masking.py,
+# test_only_reachability.py. None is a test; they are production modules whose
+# names contain the word. A disclosure that cries wolf on every run is a
+# disclosure nobody reads.
+patterns = ["test_*.py", "*_test.py"]
+if tomllib is not None:
+    try:
+        with open("pyproject.toml", "rb") as fh:
+            configured = tomllib.load(fh)["tool"]["pytest"]["ini_options"]["python_files"]
+        patterns = list(configured)
+    except (OSError, KeyError, ValueError):
+        pass
+
+listing = subprocess.run(["git", "ls-files", "*.py"], capture_output=True, text=True)
+holding = set()
+for path in listing.stdout.split():
+    if not any(fnmatch.fnmatch(os.path.basename(path), pat) for pat in patterns):
+        continue
+    # packages/<pkg>/src/** is the PRODUCTION tree by construction. A
+    # test-shaped name there is a different defect and has its own gate
+    # (test_only_reachability.py); it is not a suite this one is skipping.
+    parts = path.split("/")
+    if len(parts) > 2 and parts[0] == "packages" and parts[2] == "src":
+        continue
+    directory = os.path.dirname(path)
+    if directory:
+        holding.add(directory)
+skipped = sorted(d for d in holding if not any(d == c or d.startswith(c + os.sep) for c in collected))
+print("  collecting: " + " ".join(collected))
+if skipped:
+    print("  NOT collecting, though they hold tests: " + " ".join(skipped))
+PY
+}
+
 run_full_suite() {
     local reason="${1:-}"
     local changed_files="${2:-}"  # Optional: changed files to include in manifest
@@ -658,7 +737,7 @@ run_full_suite() {
         fi
         echo "# === SELECTED_TESTS ==="
         # Include both test_*.py and BRANCHES_test_*.py (branch coverage tests)
-        find packages/*/tests \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
+        find $FULL_SUITE_FIND_ROOTS \( -name 'test_*.py' -o -name 'BRANCHES_test_*.py' \) -type f | sort
     } > "$MANIFEST_FILE"
 
     if [[ "$MANIFEST_ONLY" == "true" ]]; then
@@ -666,7 +745,8 @@ run_full_suite() {
         exit 0
     fi
 
-    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    disclose_full_suite_scope
+    run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
     exit $?
 }
 
@@ -681,7 +761,7 @@ kick_off_background_suite() {
     log "Starting full suite in background..."
 
     (
-        pytest packages/*/tests/ -n 2 "${COV_PATHS[@]}" --cov-fail-under=100 > .ci/full-suite.log 2>&1
+        pytest $FULL_SUITE_PYTEST_TARGETS -n 2 "${COV_PATHS[@]}" --cov-fail-under=100 > .ci/full-suite.log 2>&1
         STATUS=$?
         rm -f "$LOCK"
         if [[ $STATUS -ne 0 ]]; then
@@ -1194,7 +1274,8 @@ if [[ -z "$AFFECTED_TESTS" ]]; then
             if [[ "$FULL_RUN" == "true" ]]; then
                 log "No test-relevant files changed, but --full was requested"
                 echo "Running full test suite (--full); manifest written with 0 targeted tests for CI"
-                run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+                disclose_full_suite_scope
+                run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
                 _full_rc=$?
                 fold_selection_index full
                 exit $_full_rc
@@ -1490,8 +1571,9 @@ fi
 # This is for local testing when you want to verify the full suite passes
 if [[ "$FULL_RUN" == "true" ]]; then
     log "Running full test suite locally (--full flag)"
+    disclose_full_suite_scope
     echo "Running full test suite (manifest written with $TEST_COUNT targeted tests for CI)"
-    run_pytest "packages/*/tests/" -n 2 "${PYTEST_ARGS[@]}"
+    run_pytest "$FULL_SUITE_PYTEST_TARGETS" -n 2 "${PYTEST_ARGS[@]}"
     _full_rc=$?
     fold_selection_index full
     exit $_full_rc

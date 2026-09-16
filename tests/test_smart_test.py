@@ -558,6 +558,136 @@ class TestCatalogueGateSelection:
         ), "the script's own pattern does not even reach the helper"
 
 
+class TestFullMeansFull:
+    """WI-ginuj: a gate named for totality that is silently partial.
+
+    ``--full`` collected ``packages/*`` and never the repo-root ``tests/``,
+    while CI runs the manifest, which does include root tests. PR #890 went
+    green locally over 26,702 tests and red in CI on
+    ``test_adr_readme_index_sync.py`` — a test the local gate holds and simply
+    did not run.
+
+    The item filed three sites, found by grepping ``run_pytest``. There were
+    five: the background suite calls ``pytest`` directly and the full-suite
+    manifest writer enumerates with ``find``. That is why the fix is one
+    definition rather than five edits, and why the first test here is
+    structural — it is the one that would have found the two the grep missed.
+    """
+
+    def _definition_lines(self) -> list[str]:
+        return [
+            line
+            for line in SMART_TEST.read_text().splitlines()
+            if line.startswith("FULL_SUITE_")
+        ]
+
+    def test_the_suite_target_is_defined_once(self) -> None:
+        defined = self._definition_lines()
+        assert len(defined) == 2, defined
+
+    def test_the_definition_includes_the_root_suite(self) -> None:
+        for line in self._definition_lines():
+            assert "tests" in line.split("=", 1)[1]
+            assert "packages/*/tests" in line
+
+    def test_no_site_names_a_packages_only_suite_target(self) -> None:
+        """The structural control: the grep the item ran found three of five.
+
+        Any line that RUNS or ENUMERATES the suite must go through the shared
+        definition. A new call site that spells the target out is exactly how
+        this defect half-survived its own first fix.
+        """
+        offenders = []
+        for number, line in enumerate(SMART_TEST.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("FULL_SUITE_"):
+                continue
+            if "packages/*/tests" not in stripped:
+                continue
+            if any(
+                verb in stripped
+                for verb in ("run_pytest ", "pytest ", "find packages")
+            ):
+                offenders.append(f"{number}: {stripped}")
+        assert not offenders, offenders
+
+    def test_every_full_suite_entry_point_discloses_its_scope(self) -> None:
+        """Fix (b): a partial run must not be able to look like a total one."""
+        text = SMART_TEST.read_text()
+        assert "disclose_full_suite_scope() {" in text
+        # The definition line ends in "() {", so only CALLS match this.
+        calls = text.count("disclose_full_suite_scope\n")
+        assert calls >= 3, f"defined, but called only {calls} time(s)"
+
+    def test_the_disclosure_names_both_roots_and_hides_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Run it, rather than read it — and run it under production's flags.
+
+        The harness takes ``set -euo pipefail`` out of the script rather than
+        writing it down: a copy goes stale the day a flag is added, and a
+        harness missing production's flags is blind to whole defect classes.
+        The function is sliced out by text and driven from a file; the first
+        version of this test built a ``bash -c`` string with nested double
+        quotes and failed on its own quoting rather than on the code.
+        """
+        text = SMART_TEST.read_text()
+        flags = next(
+            line for line in text.splitlines() if line.startswith("set -")
+        )
+        start = text.index("disclose_full_suite_scope() {")
+        end = text.index("\n}\n", start) + len("\n}\n")
+        probe = tmp_path / "probe.sh"
+        probe.write_text(
+            f"{flags}\n"
+            f'REPO_ROOT="{REPO_ROOT}"\n'
+            'FULL_SUITE_PYTEST_TARGETS="packages/*/tests/ tests/"\n'
+            f"{text[start:end]}\n"
+            "disclose_full_suite_scope\n"
+        )
+        result = subprocess.run(
+            ["bash", str(probe)], capture_output=True, text=True, cwd=REPO_ROOT
+        )
+        assert result.returncode == 0, result.stderr
+        assert "collecting:" in result.stdout
+        assert "packages/hypergumbo-core/tests" in result.stdout
+        assert " tests" in result.stdout
+        assert "NOT collecting" not in result.stdout, (
+            "a directory holding tests is outside the full suite: "
+            + result.stdout
+        )
+
+    def test_the_test_that_caught_this_is_a_root_test(self) -> None:
+        """The failure that filed the item, named."""
+        assert (REPO_ROOT / "tests" / "test_adr_readme_index_sync.py").is_file()
+        assert not list(
+            REPO_ROOT.glob("packages/*/tests/test_adr_readme_index_sync.py")
+        )
+
+    def test_no_test_basename_is_shared_between_the_two_suites(self) -> None:
+        """What made "full" impossible to fix, found by trying it.
+
+        pytest's default `prepend` import mode names a module after its
+        BASENAME, so collecting ``tests/test_generate_concepts.py`` and
+        ``packages/hypergumbo-core/tests/test_generate_concepts.py`` in one run
+        raises ``import file mismatch`` and INTERRUPTS COLLECTION — the run
+        stops, it does not merely skip a file. That is the real obstacle
+        behind this item's deferral of fix (a); the reason filed there was
+        COV_PATHS, and COV_PATHS turns out not to be a problem at all, since
+        more tests can only raise coverage over ``packages/*/src``.
+
+        So this is the invariant that keeps `--full` possible: the two suites
+        must not share a basename. A collision is cheap to fix when the file
+        is added and expensive to find later, because the error names an
+        import, not a policy.
+        """
+        root = {p.name for p in (REPO_ROOT / "tests").glob("test_*.py")}
+        packaged = {p.name for p in REPO_ROOT.glob("packages/*/tests/test_*.py")}
+        assert root, "no root tests found — instrument fault"
+        assert packaged, "no package tests found — instrument fault"
+        assert not (root & packaged), sorted(root & packaged)
+
+
 class TestCitationGateWiring:
     """WI-lujon: the fourth derived union, and the one that keys backwards.
 
@@ -677,7 +807,7 @@ class TestFullBypassesTheDocsOnlySkip:
         block = _docs_only_skip_block()
         full_arm = [
             line for line in block
-            if "run_pytest" in line and "packages/*/tests/" in line
+            if "run_pytest" in line and "FULL_SUITE_PYTEST_TARGETS" in line
         ]
         assert full_arm, (
             "--full is consulted but never runs the suite from this branch"
