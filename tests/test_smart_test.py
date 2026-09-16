@@ -688,6 +688,130 @@ class TestFullMeansFull:
         assert not (root & packaged), sorted(root & packaged)
 
 
+class TestExplicitModeLeavesTheManifestAlone:
+    """WI-duson: the documented dev loop destroyed the artifact CI runs.
+
+    AGENTS.md says two things, each correct on its own: "during development,
+    run only relevant tests" and "commit .ci/affected-tests.txt with every PR".
+    Explicit mode used to overwrite the manifest with a zero-selection stub, so
+    following both shipped a manifest that selected NOTHING — and the live
+    Woodpecker gate keys on "did the manifest select any tests?", so it printed
+    "manifest selects no tests — skipping pytest" and reported green.
+
+    An explicit run is not a selection computation. It has no answer about the
+    diff, and the honest thing for a command with no answer is to say nothing
+    rather than publish an empty one.
+    """
+
+    def _explicit_block(self) -> list[str]:
+        text = SMART_TEST.read_text().splitlines()
+        start = next(
+            i for i, line in enumerate(text)
+            if 'if [[ "$HAS_EXPLICIT_TESTS" == "true" ]]; then' in line
+        )
+        end = next(i for i in range(start, len(text)) if text[i] == "fi")
+        return text[start:end + 1]
+
+    def test_the_explicit_path_writes_no_manifest(self) -> None:
+        block = self._explicit_block()
+        assert block, "the explicit-targets branch is gone"
+        offenders = [line for line in block if '> "$MANIFEST_FILE"' in line]
+        assert not offenders, offenders
+        assert not [line for line in block if "Mode: explicit" in line]
+
+    def test_it_still_runs_the_caller_s_tests(self) -> None:
+        """The control: not writing a manifest must not mean not running."""
+        block = self._explicit_block()
+        assert any("run_pytest" in line for line in block)
+
+    def test_it_says_what_it_did_not_do(self) -> None:
+        """A silent non-write is indistinguishable from a forgotten one."""
+        block = self._explicit_block()
+        assert any("left untouched" in line for line in block)
+
+
+class TestTheManifestGuardAssertsTheGoodMode:
+    """L54 at the pre-commit hook: enumerate the permitted case, not the bad ones.
+
+    The guard rejected exactly `Mode: full-suite` and passed everything else
+    through the else arm with a green tick — so a zero-selection `Mode:
+    explicit` manifest committed cleanly past the very check that exists to
+    protect this artifact. full-suite runs too much and explicit runs nothing;
+    only the first was guarded.
+    """
+
+    HOOK = REPO_ROOT / ".githooks" / "pre-commit"
+
+    def test_the_guard_requires_targeted_rather_than_forbidding_full_suite(
+        self,
+    ) -> None:
+        text = self.HOOK.read_text()
+        assert '[ "$MANIFEST_MODE" = "targeted" ]' in text
+        assert 'if grep -q "^# Mode: full-suite" "$MANIFEST"; then' not in text
+
+    def test_every_rejected_mode_gets_its_own_reason(self) -> None:
+        """A block with a generic message sends the reader to the wrong fix."""
+        text = self.HOOK.read_text()
+        for mode in ("full-suite)", "explicit)"):
+            assert mode in text, mode
+        assert "5-minute timeout" in text
+        assert "selects NO tests" in text
+
+    def test_the_guard_runs_on_the_three_modes(self, tmp_path: Path) -> None:
+        """Drive the check itself rather than read it.
+
+        The hook is extracted by text and run against a fabricated manifest for
+        each mode, under the hook's own shell flags — a harness that drops
+        production's flags is blind to whole defect classes.
+        """
+        text = self.HOOK.read_text()
+        start = text.index('MANIFEST_MODE=$(grep -m1 "^# Mode: "')
+        # STOP AT THE MATCHING `fi`, NOT THE FIRST ONE AT COLUMN 0. The check
+        # is nested two levels inside the hook, so an unindented "\nfi\n"
+        # search runs past it, swallows the enclosing else arms, and the probe
+        # then dies on its own extraction rather than on the code -- which is
+        # exactly what it did the first time.
+        end = text.index("\n        fi\n", start) + len("\n        fi\n")
+        body = text[start:end]
+        # ASK BASH WHETHER THE SLICE IS A PROGRAM. Counting `if`/`fi`
+        # substrings was the first attempt and it counted the word "fi" out of
+        # the prose in the hook's own error messages -- a bad instrument
+        # guarding against a bad instrument. `bash -n` is the real check, and
+        # it is the one that would have failed on the over-long slice.
+        syntax = tmp_path / "syntax.sh"
+        syntax.write_text(body)
+        check = subprocess.run(
+            ["bash", "-n", str(syntax)], capture_output=True, text=True
+        )
+        assert check.returncode == 0, (
+            "the extracted block does not parse -- the slice is wrong, and a "
+            f"probe over a wrong slice measures nothing: {check.stderr}"
+        )
+
+        results = {}
+        for mode in ("targeted", "full-suite", "explicit", "sideways"):
+            manifest = tmp_path / f"{mode}.txt"
+            manifest.write_text(f"# Mode: {mode}\n# === SELECTED_TESTS ===\n")
+            probe = tmp_path / f"{mode}.sh"
+            probe.write_text(
+                "RED=''; NC=''; GREEN=''\n"
+                f'MANIFEST="{manifest}"\n'
+                "echo() { builtin echo \"$@\"; }\n"
+                + body
+            )
+            proc = subprocess.run(
+                ["bash", str(probe)], capture_output=True, text=True
+            )
+            results[mode] = proc.returncode
+        assert results["targeted"] == 0, results
+        assert results["full-suite"] == 1, results
+        assert results["explicit"] == 1, results
+        assert results["sideways"] == 1, (
+            "an unrecognised mode must not pass: the whole point is to assert "
+            "the one good mode rather than enumerate the bad ones"
+        )
+
+
 class TestCitationGateWiring:
     """WI-lujon: the fourth derived union, and the one that keys backwards.
 
