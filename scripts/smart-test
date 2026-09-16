@@ -1038,15 +1038,47 @@ if [[ -n "$CHANGED_PLAYBOOK_FILES" ]]; then
     fi
 fi
 
-CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/(io_primitives|io_primitives_overlays)/.*\.ya?ml$' || echo "")
+# INV-bigaz / INV-dohoj: the union above was RIGHT and its KEY was wrong. The
+# regex named io_primitives and its overlays -- 23 of the 169 YAML files the
+# wheel ships -- so a change confined to frameworks/ (107 files),
+# dataflow_patterns/, cfg_nodes/, function_summaries/ or taint_sources/
+# selected ZERO tests, fell through to the branch below, wrote a 0-test
+# manifest saying "no test-relevant files changed (docs/config only)", and
+# ci.yml skipped pytest. A fix keyed to ONE instance left the class and looked
+# done. Measured on dev 81f1a69f88, not inferred.
+#
+# The key is now the SHAPE of shipped data -- a YAML in a directory under a
+# package's src/ -- and the grep terms are derived PER FAMILY from
+# hypergumbo_core.yaml_catalogs.YAML_CATALOGS, the registry that already names
+# every catalogue directory and its loader and that validate_registry() gates
+# against the tree. So the eleventh family arrives covered by the commit that
+# registers it, exactly as the doc and playbook unions cover the next gate.
+# The helper's docstring carries the measurements and the non-narrowing
+# argument.
+CATALOGUE_TERMS_HELPER="$REPO_ROOT/scripts/catalogue_gate_terms.py"
+CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/.*\.ya?ml$' || echo "")
 if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
-    CATALOGUE_GATE_TESTS=$(cd "$REPO_ROOT" && {
-        grep -rlF 'load_catalog'   packages/*/tests/*.py tests/*.py 2>/dev/null || true
-        grep -rlF 'io_primitives'  packages/*/tests/*.py tests/*.py 2>/dev/null || true
-        grep -rlF 'io_boundary'    packages/*/tests/*.py tests/*.py 2>/dev/null || true
-    } | sort -u)
+    CATALOGUE_GATE_TERMS=""
+    if [[ -f "$CATALOGUE_TERMS_HELPER" ]] && command -v python3 &>/dev/null; then
+        CATALOGUE_GATE_TERMS=$(echo "$CHANGED_CATALOGUE_FILES" \
+            | python3 "$CATALOGUE_TERMS_HELPER" "$REPO_ROOT" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$CATALOGUE_GATE_TERMS" ]]; then
+        # ABSENT IS NOT EMPTY. With no helper to read the registry, degrade to
+        # the directory names in the changed paths themselves -- narrower than
+        # the derived set, but the failure mode of a selector is
+        # under-selection and silence is the worst version of it.
+        CATALOGUE_GATE_TERMS=$(echo "$CHANGED_CATALOGUE_FILES" \
+            | sed -E 's|^packages/[^/]+/src/[^/]+/([^/]+)/.*|\1|' | sort -u)
+    fi
+    CATALOGUE_GATE_TESTS=$(cd "$REPO_ROOT" && echo "$CATALOGUE_GATE_TERMS" | while IFS= read -r term; do
+        if [[ -n "$term" ]]; then
+            grep -rlF "$term" packages/*/tests/*.py tests/*.py 2>/dev/null || true
+        fi
+    done | sort -u)
     if [[ -n "$CATALOGUE_GATE_TESTS" ]]; then
-        log "Catalogue YAML changed - unioning the tests that read it (INV-muvis)"
+        log "Catalogue YAML changed - unioning the tests that read it (INV-muvis, INV-bigaz)"
+        log "  families: $(echo "$CATALOGUE_GATE_TERMS" | tr '\n' ' ')"
         AFFECTED_TESTS=$(printf '%s\n%s\n' "$AFFECTED_TESTS" "$CATALOGUE_GATE_TESTS" | sed '/^$/d' | sort -u)
     fi
 fi

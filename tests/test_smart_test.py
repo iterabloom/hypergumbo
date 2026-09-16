@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -360,13 +361,36 @@ class TestDocGateSelection:
         assert 'SOURCE_COUNT=$(echo "$CHANGED_SOURCE_FILES" | grep -c . || echo 0)' not in text
 
 
-def _catalogue_gate_greps() -> list[str]:
-    """Pull the live catalogue-gate grep spellings out of the script."""
-    text = SMART_TEST.read_text()
-    block = text.split("CATALOGUE_GATE_TESTS=", 1)
-    assert len(block) == 2, "CATALOGUE_GATE_TESTS assignment not found in smart-test"
-    body = block[1].split("} | sort -u)", 1)[0]
-    return [a or b for a, b in re.findall(r"grep -rlF (?:'([^']*)'|\"([^\"]*)\")", body)]
+#: A real shipped YAML from the family the catalogue gate was built for.
+IO_PRIMITIVES_YAML = (
+    "packages/hypergumbo-core/src/hypergumbo_core/io_primitives/go.yaml"
+)
+#: And from the family it was blind to — 107 files, selecting zero until
+#: INV-bigaz widened the key.
+FRAMEWORKS_YAML = (
+    "packages/hypergumbo-core/src/hypergumbo_core/frameworks/fastapi.yaml"
+)
+
+
+def _catalogue_gate_greps(changed: str = IO_PRIMITIVES_YAML) -> list[str]:
+    """The live catalogue-gate grep terms, asked of the helper that derives them.
+
+    These used to be three literals written into the script, and this function
+    read them back out of it. They are now derived per family from
+    ``YAML_CATALOGS`` (INV-bigaz), so the question "what does the gate grep
+    for" has moved from the script's text to a helper's output — and asking
+    the helper is what keeps these tests measuring the live mechanism rather
+    than a copy of it.
+    """
+    helper = REPO_ROOT / "scripts" / "catalogue_gate_terms.py"
+    proc = subprocess.run(
+        [sys.executable, str(helper), str(REPO_ROOT)],
+        input=changed,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return [line for line in proc.stdout.splitlines() if line]
 
 
 def _tests_matching(needle: str) -> set[str]:
@@ -429,25 +453,43 @@ class TestCatalogueGateSelection:
         assert "test_inv_nular_false_sources.py" in selected
         assert "test_deferred_crossing_boundary.py" in selected
 
-    def test_every_arm_contributes_or_the_comment_is_wrong(self) -> None:
-        """The script claims three spellings each catch something the others miss.
+    def test_the_loader_arm_is_load_bearing_and_not_decoration(self) -> None:
+        """The terms are derived now, so what needs pinning is WHY there are two.
 
-        A redundant arm is not harmful, but a comment asserting it is
-        load-bearing when it is not is — that exact claim was refuted once
-        already on the doc gate. So this measures rather than trusts: each arm
-        must select at least one file, and the union must be a strict superset
-        of at least one arm, or the comment above it needs rewriting.
+        This replaced an assertion that each of three hand-written arms earned
+        its place. With per-family derivation a term selecting nothing is not a
+        defect — it means no test names that loader entry point YET, and one
+        will. What stays falsifiable is the measurement that justified
+        grepping for the LOADER at all: on the live tree the directory name
+        alone reaches 58 test files and the union reaches 157, so a gate keyed
+        on the catalogue's own name would miss two thirds of what reads it.
         """
-        per_arm = {n: _tests_matching(n) for n in _catalogue_gate_greps()}
-        for needle, hits in per_arm.items():
-            assert hits, f"the {needle!r} arm selects nothing"
         union: set[str] = set()
-        for hits in per_arm.values():
-            union |= hits
-        assert any(union > hits for hits in per_arm.values()), (
-            "no arm is a proper subset of the union — the union is one arm "
-            "restated, and the script's comment should say so"
+        for term in _catalogue_gate_greps():
+            union |= _tests_matching(term)
+        by_name_only = _tests_matching("io_primitives")
+        assert by_name_only, "the directory-name arm selects nothing at all"
+        assert union > by_name_only, (
+            "the loader arm adds nothing — either the registry's loader field "
+            "stopped resolving or the comment claiming it is load-bearing is "
+            "now wrong"
         )
+
+    def test_the_family_the_old_key_was_blind_to_now_selects(self) -> None:
+        """INV-bigaz/INV-dohoj, the residual: 107 framework YAMLs selecting zero.
+
+        The old key named io_primitives and its overlays. A change confined to
+        frameworks/ wrote a 0-test manifest and printed "no test-relevant files
+        changed (docs/config only)" — the green tick over a hole, with the
+        message asserting the opposite of what happened.
+        """
+        selected: set[str] = set()
+        for term in _catalogue_gate_greps(FRAMEWORKS_YAML):
+            selected |= _tests_matching(term)
+        assert selected, "a frameworks/ change still selects nothing"
+        assert _pattern_selects(
+            _extract_grep_pattern("CHANGED_CATALOGUE_FILES"), FRAMEWORKS_YAML
+        ), "the script's own pattern does not even reach the helper"
 
 
 class TestPlaybookGateSelection:
