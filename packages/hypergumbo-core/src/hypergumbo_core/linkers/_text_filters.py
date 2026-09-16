@@ -43,7 +43,7 @@ _active_parse_cache: contextvars.ContextVar[
 
 def set_active_parse_cache(
     cache: Optional[dict[tuple[str, str], Any]],
-) -> contextvars.Token:
+) -> contextvars.Token[Optional[dict[tuple[str, str], Any]]]:
     """Bind ``cache`` as the active parse cache for masker calls in scope.
 
     Returns the contextvar token; call ``reset_active_parse_cache(token)``
@@ -52,9 +52,102 @@ def set_active_parse_cache(
     return _active_parse_cache.set(cache)
 
 
-def reset_active_parse_cache(token: contextvars.Token) -> None:
+def reset_active_parse_cache(
+    token: contextvars.Token[Optional[dict[tuple[str, str], Any]]],
+) -> None:
     """Restore the previous parse cache binding."""
     _active_parse_cache.reset(token)
+
+
+# WI-finij: the per-invocation read log behind ``AnalysisRun.files_analyzed``.
+#
+# ``derive_silence_reason`` reads ``files_analyzed == 0`` as the POSITIVE claim
+# "this pass received zero input files" and stamps ``no_candidate_files``. Zero
+# is also the dataclass default, so a linker that read four hundred files and
+# never assigned the counter produced that claim falsely — measured on the
+# 2026-09-16 self-survey, EIGHT linkers did, reading 14 to 834 files apiece
+# (pyffi 389, grpc 397, di-resolution 396, annotation-convention 834,
+# wasm-bindgen 14, solidity-abi 14, crypto-flow 17, message-dispatch 17).
+#
+# Counting here rather than in eighteen linker bodies makes the count a DERIVED
+# fact: seventeen linkers already assign it correctly and eighteen do not, which
+# is the evidence that "remember to count" does not survive a new linker.
+# ``tests/test_linker_file_read_accounting.py`` gates the other half — a direct
+# ``Path.read_text`` / ``Path.read_bytes`` inside ``linkers/`` fails there,
+# because such a call would bypass this log and re-open the hole.
+#
+# A SET of path strings, so ``files_analyzed`` counts FILES and a linker that
+# reads one file three times still reports one. ``None`` means no linker
+# invocation is in scope (direct or test call) and reads go uncounted.
+_active_read_log: contextvars.ContextVar[
+    Optional[set[str]]
+] = contextvars.ContextVar("_active_read_log", default=None)
+
+
+def set_active_read_log(
+    log: Optional[set[str]],
+) -> contextvars.Token[Optional[set[str]]]:
+    """Bind ``log`` as the read log for counted reads in scope.
+
+    Returns the contextvar token; call ``reset_active_read_log(token)`` to
+    restore the previous binding. The reset is mandatory rather than tidy:
+    ``run_all_linkers`` dispatches same-priority cohorts to a thread pool whose
+    workers are REUSED, so a leaked binding would attribute one linker's reads
+    to the next one scheduled on that thread.
+    """
+    return _active_read_log.set(log)
+
+
+def reset_active_read_log(token: contextvars.Token[Optional[set[str]]]) -> None:
+    """Restore the previous read log binding."""
+    _active_read_log.reset(token)
+
+
+def note_source_read(file_path: Path) -> None:
+    """Record ``file_path`` against the active read log, if one is bound.
+
+    Every reader in this module funnels through here. Silent when unbound so
+    that direct/test invocation of a linker body behaves exactly as before.
+    """
+    log = _active_read_log.get()
+    if log is not None:
+        log.add(str(file_path))
+
+
+def read_source_text(
+    file_path: Path,
+    *,
+    encoding: str = "utf-8",
+    errors: Optional[str] = None,
+) -> str:
+    """Read ``file_path`` as text, counted, WITHOUT masking doc regions.
+
+    For the linkers whose subject matter IS the masked region:
+    ``annotation_convention`` scans for ``@hg:`` directives that live in
+    comments, so routing it through :func:`read_masked_source` would blank out
+    precisely what it looks for. Use this when a linker must see comments or
+    docstrings; use :func:`read_masked_source` otherwise.
+
+    ``errors`` defaults to ``None`` — STRICT decoding, matching
+    ``Path.read_text``'s own default — so converting a call site to this
+    function changes only the accounting. Two ``js_module`` sites read
+    ``tsconfig``/``vite`` configs strictly and catch ``OSError`` alone; a
+    silently-substituting default here would turn their decode failures into
+    mis-parsed config instead of the error they expect.
+    """
+    note_source_read(file_path)
+    return file_path.read_text(encoding=encoding, errors=errors)
+
+
+def read_source_bytes(file_path: Path) -> bytes:
+    """Read ``file_path`` as bytes, counted.
+
+    For linkers that hand raw bytes to a tree-sitter parser rather than
+    matching regexes against text; masking does not apply to them.
+    """
+    note_source_read(file_path)
+    return file_path.read_bytes()
+
 
 # Extension → tree-sitter-language-pack language name. Covers extensions that
 # appear in the 24 linkers' file-discovery patterns. Unknown extensions return
@@ -266,6 +359,7 @@ def read_masked_source(
     a previously-parsed tree from the active parse cache if one is available,
     keyed by ``(str(file_path), language)``.
     """
+    note_source_read(file_path)
     content = file_path.read_text(encoding=encoding, errors=errors)
     if language is None:
         language = language_from_path(file_path)

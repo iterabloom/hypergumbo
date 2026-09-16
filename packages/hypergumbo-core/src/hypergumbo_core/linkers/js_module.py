@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING
 
 from ..analyze.base import make_dependency_stable_id, make_file_id, make_file_stable_id
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Span, Symbol, make_pass_id
+from ._text_filters import read_source_text
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -359,7 +360,7 @@ def _parse_tsconfig_paths(config_path: Path) -> list[tuple[str, Path]]:
         visited.add(current_str)
 
         try:
-            raw = current.read_text(encoding="utf-8")
+            raw = read_source_text(current, encoding="utf-8")
             data = json_module.loads(_strip_jsonc_comments(raw))
         except (json_module.JSONDecodeError, OSError):
             break
@@ -544,7 +545,7 @@ def _load_vite_aliases(repo_root: Path) -> list[tuple[str, Path]]:
         return []
 
     try:
-        content = config_path.read_text(encoding="utf-8")
+        content = read_source_text(config_path, encoding="utf-8")
     except OSError:
         return []
 

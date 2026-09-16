@@ -628,13 +628,21 @@ def _run_linker_with_cache(
     every linker passing the cache explicitly.
     """
     from ..pass_silence import derive_silence_reason
-    from ._text_filters import reset_active_parse_cache, set_active_parse_cache
+    from ._text_filters import (
+        reset_active_parse_cache,
+        reset_active_read_log,
+        set_active_parse_cache,
+        set_active_read_log,
+    )
 
+    read_log: set[str] = set()
     token = set_active_parse_cache(ctx.parsed_trees)
+    read_token = set_active_read_log(read_log)
     _t0 = time.perf_counter()
     try:
         result = func(ctx)
     finally:
+        reset_active_read_log(read_token)
         reset_active_parse_cache(token)
     # INV-gizik / INV-pitab: every linker invocation flows through this wrapper
     # (serial dispatch, parallel-pool submit, and run_linker by-name), so it is
@@ -648,6 +656,16 @@ def _run_linker_with_cache(
     if result.run is not None:
         if not result.run.duration_ms:
             result.run.duration_ms = _elapsed_ms
+        # WI-finij: fill files_analyzed from what the body ACTUALLY read, so
+        # the zero that derive_silence_reason reads as "received no input
+        # files" is a measurement rather than an unset default. Guarded like
+        # duration_ms: a body that assigned the field keeps its value —
+        # route-handler-linker deliberately stores a route count here, and the
+        # stamp fills a silent field rather than overruling a producer that
+        # spoke. It must precede the silence derivation below, which consumes
+        # it.
+        if not result.run.files_analyzed:
+            result.run.files_analyzed = len(read_log)
         result.run.nodes_emitted = len(result.symbols)
         result.run.edges_emitted = len(result.edges)
         # INV-bikaj (arc T6): every linker invocation flows through this

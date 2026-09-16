@@ -51,6 +51,7 @@ from ._view_template_core import (
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 # Bases that mark a class as a Laravel controller (transitive walk).
 _CONTROLLER_BASES = frozenset(
@@ -101,7 +102,7 @@ def _parse_php_source(view_path: Path) -> Optional["tree_sitter.Tree"]:
     if parser is None:  # pragma: no cover - dep import failure
         return None
     try:
-        source_bytes = view_path.read_bytes()
+        source_bytes = read_source_bytes(view_path)
     except OSError:  # pragma: no cover — missing-file path tested at the caller
         return None
     return parser.parse(source_bytes)
@@ -251,7 +252,7 @@ class LaravelStrategy(ExplicitStringStrategy):
             if tree is None:
                 continue
             try:
-                source_bytes = view_path.read_bytes()
+                source_bytes = read_source_bytes(view_path)
             except OSError:  # pragma: no cover — parse just succeeded so file exists
                 continue
             for method in methods:

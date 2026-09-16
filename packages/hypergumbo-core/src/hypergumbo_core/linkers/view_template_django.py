@@ -57,6 +57,7 @@ from ._view_template_core import (
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_text
 
 # CBV bases whose subclasses get model-derived default templates.
 _CBV_DEFAULT_SUFFIXES: dict[str, str] = {
@@ -201,7 +202,7 @@ def _language_for_extension(extension: str) -> str:
 def _parse_view_file(view_path: Path) -> Optional[ast.Module]:
     """Best-effort parse of a Django views file."""
     try:
-        source = view_path.read_text(encoding="utf-8", errors="ignore")
+        source = read_source_text(view_path, encoding="utf-8", errors="ignore")
     except OSError:
         return None
     try:

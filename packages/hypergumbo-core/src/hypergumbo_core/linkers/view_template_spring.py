@@ -52,6 +52,7 @@ from ._view_template_core import (
     link_via_strategies,
 )
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 # Method-level mapping annotations that mark a Spring controller action.
 _MAPPING_ANNOTATIONS = frozenset(
@@ -138,7 +139,7 @@ def _parse_java_source(
     if parser is None:  # pragma: no cover - dep import failure
         return None
     try:
-        source_bytes = view_path.read_bytes()
+        source_bytes = read_source_bytes(view_path)
     except OSError:
         return None
     try:
