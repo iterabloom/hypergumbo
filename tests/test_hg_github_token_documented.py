@@ -19,6 +19,8 @@ package coverage. It runs in the normal suite as the rot-guard the deferred
 forced-backend CI job would otherwise carry.
 """
 
+# covers: scripts/lib/forgejo-api.sh, AGENTS.md
+
 from __future__ import annotations
 
 from pathlib import Path

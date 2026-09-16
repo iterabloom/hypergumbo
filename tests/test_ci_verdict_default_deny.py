@@ -36,6 +36,8 @@ The tests below are behavioural, not textual. ``poll_ci`` is driven with
 against real payloads with no forge -- which is what lets the WI-ninar change be
 distinguished from the bug it replaces (same inputs, different verdict).
 """
+
+# covers: scripts/lib/forgejo-api.sh
 from __future__ import annotations
 
 import subprocess

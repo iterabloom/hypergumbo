@@ -32,6 +32,8 @@ modules whose stdlib debut is above ``requires-python``. Raising the floor to
 3.11 makes ``tomllib`` legal and this table shrinks on the commit that raises it.
 """
 
+# covers: packages/*/src/*, scripts/*, packages/*/pyproject.toml
+
 from __future__ import annotations
 
 import ast

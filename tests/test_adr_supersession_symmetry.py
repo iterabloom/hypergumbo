@@ -21,6 +21,8 @@ supersession claim, which is exactly the false positive that motivated
 the strip. A citation is not a claim.
 """
 
+# covers: docs/adr/*.md
+
 from __future__ import annotations
 
 import re

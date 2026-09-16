@@ -21,6 +21,8 @@ Pure file reads; no source import, so it neither contributes nor consumes
 package coverage.
 """
 
+# covers: CODEOWNERS, AGENTS.md
+
 from __future__ import annotations
 
 import re

@@ -1052,13 +1052,25 @@ CHANGED_SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/.*/src/.*\.py$
 # name-mapped (top_level_test_map.py records both decisions), so any
 # changed file here the map cannot reach gets the conservative treatment:
 # union the whole root suite, disclosed. Over-select, never under-select.
-CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(scripts/|\.githooks/|\.agent/hooks/)' || echo "")
+# .woodpecker/ and .github/ join the executable surface here. They were
+# omitted when this union was built, and KNOWN_UNREACHABLE recorded the
+# consequence four separate times without closing it: "editing a workflow does
+# NOT select this test per-PR". Fifteen root tests read those files. The
+# `# covers:` declarations now select the right ones precisely; this arm is the
+# floor under a file nobody has declared yet, which is the case that produced
+# every entry on that list.
+CHANGED_TOP_LEVEL_SOURCES=$(echo "$CHANGED_FILES" | grep -E '^(scripts/|\.githooks/|\.agent/hooks/|\.woodpecker/|\.github/)' || echo "")
 UNMAPPED_TOP_LEVEL=""
 if [[ -n "$CHANGED_TOP_LEVEL_SOURCES" ]]; then
     if [[ -f "$TOP_LEVEL_MAP_HELPER" ]] && command -v python3 &>/dev/null; then
         while IFS= read -r tls; do
             [[ -z "$tls" ]] && continue
-            if [[ -z "$(echo "$tls" | python3 "$TOP_LEVEL_MAP_HELPER" "$REPO_ROOT" 2>/dev/null)" ]]; then
+            # --names-only: a `# covers:` DECLARATION must be able to ADD a
+            # test, never to withdraw the root-suite over-selection below.
+            # .githooks/** and scripts/lib/** are deliberately un-name-mapped
+            # and covered by that union; a declaration naming .githooks/*
+            # would otherwise make them "mapped" and trade 108 tests for one.
+            if [[ -z "$(echo "$tls" | python3 "$TOP_LEVEL_MAP_HELPER" --names-only "$REPO_ROOT" 2>/dev/null)" ]]; then
                 UNMAPPED_TOP_LEVEL+="$tls"$'\n'
             fi
         done <<< "$CHANGED_TOP_LEVEL_SOURCES"

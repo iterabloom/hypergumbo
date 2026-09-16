@@ -26,6 +26,8 @@ opposite directions:
 Property 2 is tested by actively sabotaging the scrubber, because a wiring that
 only works when everything works is exactly what shipped and broke.
 """
+
+# covers: .agent/hooks/_shared/*transcript*, .agent/hooks/_shared/scrub_secrets.py, .agent/hooks/_shared/archive_scrubbed.sh
 from __future__ import annotations
 
 import gzip

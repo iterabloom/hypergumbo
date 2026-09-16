@@ -23,6 +23,8 @@ qualifies how much landed, the index must qualify it too. An index that is
 more detailed than the file is fine.
 """
 
+# covers: docs/adr/*.md
+
 from __future__ import annotations
 
 import re
