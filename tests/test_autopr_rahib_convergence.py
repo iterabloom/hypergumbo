@@ -680,6 +680,13 @@ CONVERGED_FAILURE = frozenset(
         "failed_pr_lookup",
         "failed_protected_branch",
         "failed_tracker_sync_pending",
+        # WI-nazoj: ten exits used to leave the state at its `unknown`
+        # initializer. Naming what each one decided is what moved them out of
+        # the violation bucket and into this vocabulary.
+        "failed_branch_ownership",
+        "failed_queue_not_linear",
+        "failed_queue_unresolvable",
+        "failed_repush",
         "flush_push_rejected",
         "push_rejected_diverged",
         # Set by ci_verdict_permits_merge and propagated via CI_VERDICT_STATE.
@@ -818,7 +825,23 @@ def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
 import os
 import re
 
-PROD_SHELL_FLAGS = "set -euo pipefail"
+def _production_shell_flags() -> str:
+    """The `set` line auto-pr actually runs under, read from auto-pr.
+
+    This was a hardcoded `set -euo pipefail` until WI-nazoj added `-E` for the
+    abort-attribution ERR trap, at which point the copy silently stopped
+    describing production. A harness carrying its own flags is the exact defect
+    this file was written to close: test_autopr_branch_cleanup.py ran
+    `set -uo pipefail` against a function whose bug only reproduces under `-e`,
+    and stayed green through six weeks of it.
+    """
+    for line in AUTO_PR.read_text(encoding="utf-8").splitlines()[:20]:
+        if line.startswith("set -"):
+            return line
+    raise AssertionError("no `set -` line in the first 20 lines of auto-pr")
+
+
+PROD_SHELL_FLAGS = _production_shell_flags()
 
 
 def _extract_bash_func(name: str) -> str:

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
-set -euo pipefail
+# `-E` (errtrace) is load-bearing, not tidiness: without it an ERR trap set at
+# the top level is NOT inherited by shell functions, and every line of this
+# script's action logic lives in one. `_autopr_record_abort` below would then
+# never fire, every abort_site would be null, and "no site recorded" would be
+# indistinguishable from "no abort happened" (WI-nazoj).
+set -Eeuo pipefail
 
 # ------------------------------------------------------------------
 # auto-pr: Push branch, poll CI, merge PR (with vPR queue for offline resilience)
@@ -304,12 +309,44 @@ _autopr_state_final="unknown"
 _autopr_state_pr_num=""
 _autopr_state_pr_url=""
 _autopr_state_merged_sha=""
+# WI-nazoj: where an undeclared run died. Filled by the ERR trap below, and
+# null on a run that declared a terminal state -- which is a different fact
+# from "aborted, site unknown", so the two are reported separately.
+_autopr_state_abort_site=""
+_autopr_state_abort_cmd=""
 # Governance mode wants PR_PENDING to persist across the auto-pr exit
 # until the human acts.  Setting this true makes _autopr_finalize skip
 # the rm.  Default false matches the historical 'remove on exit' behavior.
 _autopr_state_keep_pending=false
 # Idempotency guard so multiple sentinel-write call sites don't fight.
 _autopr_sentinel_written=false
+
+# ------------------------------------------------------------------
+# WI-nazoj: attribute an undeclared abort to its source line.
+#
+# INV-rahib's residual class is the run that ends with _autopr_state_final
+# still holding its "unknown" initializer -- 14 of 485 recorded invocations.
+# Ten of those came from deliberate exits that forgot to declare (now fixed at
+# each site); the rest come from `set -e` aborting at an unguarded command,
+# which is not statically enumerable in a 700-line function. So the run
+# attributes itself instead.
+#
+# What this CANNOT catch, verified empirically rather than assumed: a `set -u`
+# unbound variable does not fire ERR (bash raises it as an expansion error, not
+# a command failure), and neither does a bare `exit`. _autopr_finalize
+# therefore distinguishes "no site recorded" from "no abort", because
+# collapsing them is this project's recurring defect.
+#
+# BASH_COMMAND is the command's SOURCE text, not its expansion, so a line
+# carrying $HG_GITHUB_TOKEN records the NAME. That is what makes it safe to
+# persist; it is a property of bash, so it is pinned by a test
+# (test_a_recorded_command_never_expands_a_secret) rather than trusted here.
+# ------------------------------------------------------------------
+_autopr_record_abort() {
+	_autopr_state_abort_site="${BASH_SOURCE[1]:-auto-pr}"
+	_autopr_state_abort_site="${_autopr_state_abort_site##*/}:${BASH_LINENO[0]:-0}"
+	_autopr_state_abort_cmd="$BASH_COMMAND"
+}
 
 _autopr_write_sentinel() {
 	local exit_code="$1"
@@ -331,6 +368,8 @@ _autopr_write_sentinel() {
 		AUTOPR_PR_URL="$_autopr_state_pr_url" \
 		AUTOPR_MERGED_SHA="$_autopr_state_merged_sha" \
 		AUTOPR_FINAL_STATE="$_autopr_state_final" \
+		AUTOPR_ABORT_SITE="$_autopr_state_abort_site" \
+		AUTOPR_ABORT_CMD="$_autopr_state_abort_cmd" \
 		AUTOPR_OUT="$AUTOPR_RESULT_FILE" \
 		AUTOPR_HISTORY_OUT="$AUTOPR_HISTORY_FILE" \
 		python3 - <<'PY' 2>/dev/null || true
@@ -348,6 +387,11 @@ data = {
         "%Y-%m-%dT%H:%M:%SZ"
     ),
     "final_state": os.environ.get("AUTOPR_FINAL_STATE") or "unknown",
+    # WI-nazoj. Null on a declared run; null ALSO on an abort the ERR trap
+    # could not see (set -u, a bare exit, a signal). A reader must not take
+    # null for "nothing went wrong" -- final_state is what says that.
+    "abort_site": os.environ.get("AUTOPR_ABORT_SITE") or None,
+    "abort_command": os.environ.get("AUTOPR_ABORT_CMD") or None,
 }
 with open(os.environ["AUTOPR_OUT"], "w") as f:
     json.dump(data, f, indent=2)
@@ -417,6 +461,29 @@ _autopr_hold_recover_lock() {
 # _autopr_state_keep_pending is true, e.g. governance mode).
 _autopr_finalize() {
 	local exit_code="$?"
+	# The run is over: nothing in this handler may overwrite the diagnostic it
+	# is about to report. Disarming is cheaper than auditing every command below
+	# for whether it can fail in an untested context.
+	trap - ERR
+	# WI-nazoj: an undeclared terminal state is INV-rahib's violation signal,
+	# not a state in the vocabulary. The ledger already recorded these -- that
+	# is precisely how fourteen of them accumulated unnoticed over five weeks.
+	# A violation has to be visible in the output of the run that commits it.
+	if [[ "$_autopr_state_final" == "unknown" ]]; then
+		echo "" >&2
+		echo "🚨 CONVERGENCE VIOLATION (INV-rahib / WI-nazoj)" >&2
+		echo "   auto-pr is exiting $exit_code with no declared terminal state." >&2
+		if [[ -n "$_autopr_state_abort_site" ]]; then
+			echo "   Aborted at: $_autopr_state_abort_site" >&2
+			echo "   Command:    $_autopr_state_abort_cmd" >&2
+		else
+			echo "   Abort site: not recorded. The ERR trap did not fire, so this" >&2
+			echo "               was a set -u unbound variable, a bare exit, or a" >&2
+			echo "               signal -- not an absence of failure." >&2
+		fi
+		echo "   Logged to .git/AUTOPR_HISTORY.jsonl." >&2
+		echo "   Review: ./scripts/audit-autopr-convergence --window 25" >&2
+	fi
 	_autopr_write_sentinel "$exit_code"
 	if [[ "$_autopr_state_keep_pending" != "true" ]]; then
 		rm -f "$REPO_ROOT/.git/PR_PENDING" 2>/dev/null || true
@@ -1180,6 +1247,9 @@ flush_queue() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits (auth) capture a final state.
 	trap _autopr_finalize EXIT
+	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
+	# state assignment still names the line it died on.
+	trap _autopr_record_abort ERR
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
@@ -1269,6 +1339,7 @@ Individual commits are preserved in the history."
 		echo "⚠️  [SIMULATED OUTAGE] AUTO_PR_SIMULATE_OUTAGE=1"
 		echo "❌ Remote still unavailable (simulated)"
 		echo "   vPRs remain queued. Try again later with: ./scripts/auto-pr flush"
+		_autopr_state_final="failed_flush_remote_unavailable"
 		exit 1
 	fi
 
@@ -1293,7 +1364,10 @@ Individual commits are preserved in the history."
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
-		_assert_branch_owns_head "$ops_diff_base" || exit 1
+		_assert_branch_owns_head "$ops_diff_base" || {
+			_autopr_state_final="failed_branch_ownership"
+			exit 1
+		}
 		git commit --amend --no-edit -s
 		tip_sha=$(git rev-parse HEAD)
 		echo "🔑 Commit: ${tip_sha:0:7} (tracker ops excluded)"
@@ -1334,10 +1408,12 @@ Individual commits are preserved in the history."
 	  if ! git cat-file -e "$sha" 2>/dev/null; then
 	    echo "❌ vPR commit $sha is UNRESOLVABLE (branch deleted?)."
 	    echo "   Run './scripts/auto-pr prune' to reconcile the queue, then re-flush."
+	    _autopr_state_final="failed_queue_unresolvable"
 	    exit 1
 	  fi
 	  if ! git merge-base --is-ancestor "$sha" HEAD; then
 	    echo "❌ Queue is not a linear stack; vPR commit $sha is not included in tip $tip_branch."
+	    _autopr_state_final="failed_queue_not_linear"
 	    exit 1
 	  fi
 	done <"$QUEUE_FILE"
@@ -1616,6 +1692,9 @@ do_pr() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits (auth, branch check) capture a final state.
 	trap _autopr_finalize EXIT
+	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
+	# state assignment still names the line it died on.
+	trap _autopr_record_abort ERR
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
@@ -1753,7 +1832,10 @@ do_pr() {
 				echo "   Manifest updated — amending commit"
 				git add .ci/affected-tests.txt
 				_assert_branch_owns_head "$BASE_BRANCH" \
-					"origin/$BASE_BRANCH" || exit 1
+					"origin/$BASE_BRANCH" || {
+					_autopr_state_final="failed_branch_ownership"
+					exit 1
+				}
 				git commit --amend --no-edit -s
 				LOCAL_SHA="$(git rev-parse HEAD)"
 				echo "🔑 Commit: ${LOCAL_SHA:0:7} (manifest refreshed)"
@@ -1788,7 +1870,10 @@ do_pr() {
 				git rm --cached --quiet "$f" 2>/dev/null || true
 			fi
 		done <<<"$ops_files"
-		_assert_branch_owns_head "$ops_diff_base" || exit 1
+		_assert_branch_owns_head "$ops_diff_base" || {
+			_autopr_state_final="failed_branch_ownership"
+			exit 1
+		}
 		git commit --amend --no-edit -s
 		LOCAL_SHA="$(git rev-parse HEAD)"
 		echo "🔑 Commit: ${LOCAL_SHA:0:7} (tracker ops excluded)"
@@ -2102,6 +2187,7 @@ do_pr() {
 					git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 						echo "❌ Re-push failed"
 						print_desync_recovery_hint
+						_autopr_state_final="failed_repush"
 						exit 1
 					}
 				fi
@@ -2111,6 +2197,7 @@ do_pr() {
 					PR_NUM="$FOUND_PR_NUM"
 				else
 					echo "❌ Could not find new PR after re-push"
+					_autopr_state_final="failed_pr_lookup"
 					exit 1
 				fi
 				echo "✅ New PR #$PR_NUM"
@@ -2157,6 +2244,7 @@ do_pr() {
 		elif ! git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" -o "topic=$BRANCH" 2>/dev/null; then
 			git push "$push_remote" "HEAD:refs/for/$BASE_BRANCH/$BRANCH" 2>/dev/null || {
 				echo "❌ Re-push failed"
+				_autopr_state_final="failed_repush"
 				exit 1
 			}
 		fi
@@ -2168,6 +2256,7 @@ do_pr() {
 			PR_NUM="$FOUND_PR_NUM"
 		else
 			echo "❌ Could not find new PR after re-push"
+			_autopr_state_final="failed_pr_lookup"
 			exit 1
 		fi
 		echo "✅ New PR #$PR_NUM"
@@ -2468,6 +2557,9 @@ gov_cleanup() {
 	# WI-miriz: install sentinel trap as the very first action so even
 	# the earliest exits capture a final state.
 	trap _autopr_finalize EXIT
+	# WI-nazoj: paired with the EXIT trap so an abort that never reaches a
+	# state assignment still names the line it died on.
+	trap _autopr_record_abort ERR
 
 	# Suppress the recovery hooks for this action's WHOLE run, CI poll included.
 	# See _autopr_hold_recover_lock for why this is a lock and not a flag.
