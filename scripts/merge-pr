@@ -129,6 +129,11 @@ cmd_close() {
 	# audit trail survives even if the close itself fails.
 	if [[ -n "$reason" ]]; then
 		echo "💬 Posting close reason as comment..."
+		# WI-sidot: `$reason` is agent-authored prose reaching a public comment
+		# thread. Same channel class as a PR body, same scrub.
+		local _reason_before="$reason"
+		reason="$(bs_scrub_body "$reason")"
+		bs_report_scrub "$_reason_before" "the close reason"
 		local comment_payload
 		comment_payload=$(
 			python3 -c "
@@ -136,6 +141,7 @@ import json, sys
 print(json.dumps({'body': f'Closed by merge-pr: {sys.argv[1]}'}))
 " "$reason"
 		)
+		# forge-egress: scrubbed
 		if ! api_post "$API_BASE/issues/$pr_num/comments" "$comment_payload"; then
 			# Non-fatal: still attempt the close.
 			echo "⚠️  Failed to post reason as comment (HTTP $API_HTTP_CODE); continuing with close"

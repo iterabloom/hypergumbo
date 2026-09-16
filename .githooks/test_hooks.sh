@@ -73,6 +73,11 @@ COMMIT_MSG_HOOK="$HOOKS_DIR/commit-msg"
 cp "$REAL_HOOK" "$COMMIT_MSG_HOOK"
 chmod +x "$COMMIT_MSG_HOOK"
 
+# The hook sources brand-scrub.sh from beside itself, so the sandbox needs it
+# too. The sandbox is deliberately bare -- no repo, no git dir -- which is why
+# the library resolves by $hook_dir rather than by repo root.
+cp "$SCRIPT_DIR/brand-scrub.sh" "$HOOKS_DIR/brand-scrub.sh"
+
 echo "📋 Copied real hook to sandbox"
 
 # 4. Helpers for Testing
@@ -1043,6 +1048,266 @@ TRK
   rm -rf "$PCO_DIR"
 else
   echo "⚠️  Skipping post-checkout tests: $PCO_HOOK not found"
+fi
+
+# 8b. Brand-scrub library + forge-text egress
+# ------------------------------------------------------------------------------
+# WI-sidot. The scrub was a commit-msg hook and nothing else, so every PR body
+# reached the forge unscrubbed -- a channel gap, not a matching failure. These
+# tests cover the extracted library and the egress linter that keeps a SIXTH
+# channel from appearing unrouted.
+
+echo ""
+echo "========================================================"
+echo "BRAND-SCRUB LIBRARY + FORGE EGRESS TESTS"
+echo "========================================================"
+
+BS_LIB="$SCRIPT_DIR/brand-scrub.sh"
+
+if [[ ! -f "$BS_LIB" ]]; then
+  echo "❌ FAIL: brand-scrub library not found at $BS_LIB"
+  ((FAIL_COUNT++))
+else
+  # Sandbox the library's inputs so these tests never touch the real key or
+  # the shipped pattern list.
+  BS_SECRET_PATH="$TEST_DIR/brand-scrub.key"
+  printf 'test-secret-not-a-real-key\n' > "$BS_SECRET_PATH"
+
+  # shellcheck source=/dev/null
+  BRAND_SCRUB_SECRET_FILE="$BS_SECRET_PATH" source "$BS_LIB"
+  bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+
+  bs_case() {
+    local name="$1" got="$2" want="$3"
+    echo "--------------------------------------------------------"
+    echo "TEST: $name"
+    if [[ "$got" == "$want" ]]; then
+      echo "  ✅ PASS"
+      ((PASS_COUNT++))
+    else
+      echo "  ❌ FAIL"
+      echo "  --- expected ---"; printf '%s\n' "$want" | sed 's/^/    /'
+      echo "  --- actual ---";   printf '%s\n' "$got"  | sed 's/^/    /'
+      ((FAIL_COUNT++))
+    fi
+  }
+
+  # The fixture. Synthetic on purpose: committing the real observed URL would
+  # publish a live session id permanently in THIS file, which the scrubber never
+  # sees -- the fix would have leaked the thing it exists to catch.
+  FIXTURE_URL="https://claude.ai/up/your_buttANdaroundthEcorner92"
+
+  # 1. The defect itself: a vendor URL on a PR body line is removed.
+  OUT="$(bs_scrub_body "a real change"$'\n'"${FIXTURE_URL}")"
+  if [[ "$OUT" != *"claude"* && "$OUT" == *"a real change"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: vendor URL line is swept from a PR body"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: vendor URL line is swept from a PR body"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 2. The sweep reports what it did. Silent deletion is the accepted policy;
+  #    an invisible MECHANISM is not -- INV-nihaz. Absent a count there is no
+  #    signal the scrub runs at all, which is how this gap survived.
+  bs_scrub_body "x"$'\n'"${FIXTURE_URL}" >/dev/null
+  bs_case "sweep reports a scrubbed-line count" "$BS_SCRUBBED_COUNT" "1"
+
+  bs_scrub_body "nothing to see here" >/dev/null
+  bs_case "clean body reports a zero count" "$BS_SCRUBBED_COUNT" "0"
+
+  # REGRESSION (WI-sidot). The real call shape at every egress site is
+  #     X="$(bs_scrub_body "$X")"
+  # which is a SUBSHELL. A reporter that read BS_SCRUBBED_COUNT back from the
+  # parent therefore died on an unbound variable under `set -u` -- and because
+  # auto-pr's `exec {FD}>>"$f" 2>/dev/null` makes that stderr redirect
+  # PERMANENT, the message went to /dev/null and the whole run surfaced as
+  # `exit 1` with empty stdout AND empty stderr. Nothing in the suite would
+  # have caught it: every library test calls the sweep directly, where the
+  # variable does survive. This test uses the shape the callers actually use.
+  echo "--------------------------------------------------------"
+  echo "TEST: scrub + report survives set -u inside command substitution"
+  SUBSH="$TEST_DIR/subshell_case.sh"
+  cat > "$SUBSH" <<SUBEOF
+set -euo pipefail
+export BRAND_SCRUB_SECRET_FILE="$BS_SECRET_PATH"
+source "$BS_LIB"
+bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+D="keep this"\$'\n'"$FIXTURE_URL"
+BEFORE="\$D"
+D="\$(bs_scrub_body "\$D")"
+bs_report_scrub "\$BEFORE" "the PR body"
+[[ "\$D" == "keep this" ]]
+SUBEOF
+  if bash "$SUBSH" 2>/dev/null; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: the caller-shaped invocation did not survive set -u"
+    bash "$SUBSH"
+    ((FAIL_COUNT++))
+  fi
+
+  # The report must be VISIBLE on stderr when it fires -- INV-nihaz. A scrub
+  # nobody can see running is how five channels went unenforced.
+  echo "--------------------------------------------------------"
+  echo "TEST: the scrub announces itself on stderr"
+  REPORT="$(bash "$SUBSH" 2>&1 >/dev/null || true)"
+  if [[ "$REPORT" == *"brand scrub"* && "$REPORT" == *"1 line"* ]]; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: expected a scrub report on stderr, got [$REPORT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # REGRESSION (WI-sidot): the library is SOURCED at forge-script start-up, so
+  # it must survive an environment with no HOME. Reading $HOME eagerly under
+  # `set -u` turned a missing one into an unbound variable, which killed the
+  # source and exited the caller 1 with no output at all. The auto-pr suite
+  # runs with `env={"PATH": "/usr/bin:/bin"}` precisely to reproduce the real
+  # caller's shell, and that is what surfaced it.
+  echo "--------------------------------------------------------"
+  echo "TEST: library sources and scrubs with no HOME in the environment"
+  NOHOME="$TEST_DIR/nohome.sh"
+  cat > "$NOHOME" <<NHEOF
+set -euo pipefail
+source "$BS_LIB"
+bs_init "$HOOKS_DIR/brand-patterns.txt" "$HOOKS_DIR/absurd-phrases.txt"
+OUT="\$(bs_scrub_body "keep me"\$'\n'"$FIXTURE_URL")"
+[[ "\$OUT" == "keep me" ]]
+# phrase selection is the ONLY consumer of the key; exercise it too
+T="\$(bs_scrub_title seed "fix: teach Claude to behave")"
+[[ -n "\$T" && "\$T" != *Claude* ]]
+NHEOF
+  if env -i PATH=/usr/bin:/bin TMPDIR="$TEST_DIR" bash "$NOHOME" 2>/dev/null; then
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "  ❌ FAIL: library did not survive a HOME-less environment"
+    env -i PATH=/usr/bin:/bin TMPDIR="$TEST_DIR" bash "$NOHOME"
+    ((FAIL_COUNT++))
+  fi
+
+  # 3. Window parity with commit-msg (HUMAN DECISION, WI-sidot). The first and
+  #    last N lines are swept; a long body's middle is deliberately NOT. The
+  #    unscanned middle is the accepted cost of strict parity -- pin it, so a
+  #    later "why not just sweep everything" cannot silently widen it.
+  LONGBODY="$(printf 'Stable at the top.\nfiller\nfiller\nStable in the middle.\nfiller\nfiller\nStable at the bottom.')"
+  OUT="$(BS_BODY_SCAN_WINDOW=2 bs_scrub_body "$LONGBODY")"
+  if [[ "$OUT" == *"Stable in the middle."* \
+     && "$OUT" != *"Stable at the top."* \
+     && "$OUT" != *"Stable at the bottom."* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: body window spares the middle, sweeps both ends"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: body window spares the middle, sweeps both ends"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 4. Non-vacuity floor for the window: wide open, the SAME fixture loses all
+  #    three. Without this a sweep that deleted nothing would satisfy test 3.
+  OUT="$(BS_BODY_SCAN_WINDOW=99 bs_scrub_body "$LONGBODY")"
+  if [[ "$OUT" != *"Stable"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: control — a wide window sweeps all three"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: control — a wide window sweeps all three"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 5. A FALSE POSITIVE COSTS A LINE, NOT A RUN. The pattern list is ordinary
+  #    English -- Nova, Titan, Granite, Arctic, Falcon, Phi. `falcon` is a
+  #    framework this project ships support for. The human priced this
+  #    explicitly: a fulsome PR body losing a few words beats handing a human a
+  #    blocked PR. So the sweep must DROP the line and SUCCEED, never refuse.
+  if OUT="$(bs_scrub_body "we fixed the Stable analyzer")" && [[ -z "$OUT" ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: a false-positive line is dropped, exit stays 0"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: a false-positive line is dropped, exit stays 0"
+    echo "  ❌ FAIL: rc=$? out=[$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 6. A TITLE IS SUBSTITUTED, NOT DELETED. Same rule the subject line has
+  #    always had: a PR with no title is not a PR.
+  OUT="$(bs_scrub_title "seed" "fix: teach Claude to behave")"
+  if [[ -n "$OUT" && "$OUT" != *"Claude"* && "$OUT" == *"fix: teach"* ]]; then
+    echo "--------------------------------------------------------"
+    echo "TEST: a branded title is substituted, not emptied"
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  else
+    echo "--------------------------------------------------------"
+    echo "TEST: a branded title is substituted, not emptied"
+    echo "  ❌ FAIL: got [$OUT]"
+    ((FAIL_COUNT++))
+  fi
+
+  # 7. Idempotence. auto-pr PATCHes a body it may have already pushed, so the
+  #    scrub runs twice over the same text on the normal path.
+  ONCE="$(bs_scrub_body "keep this"$'\n'"${FIXTURE_URL}")"
+  TWICE="$(bs_scrub_body "$ONCE")"
+  bs_case "body sweep is idempotent" "$TWICE" "$ONCE"
+
+  T_ONCE="$(bs_scrub_title "seed" "fix: teach Claude to behave")"
+  T_TWICE="$(bs_scrub_title "seed" "$T_ONCE")"
+  bs_case "title substitution is idempotent" "$T_TWICE" "$T_ONCE"
+fi
+
+# The egress linter. The real structural guard: there is no single choke point
+# (auto-pr alone emits a body at three distinct points), so the gate lives at
+# each construction site AND a linter refuses a new unrouted one.
+EGRESS_LINTER="$SCRIPT_DIR/../scripts/check-forge-text-egress"
+
+echo "--------------------------------------------------------"
+echo "TEST: egress linter passes on the live tree"
+if [[ ! -x "$EGRESS_LINTER" ]]; then
+  echo "  ❌ FAIL: linter missing or not executable at $EGRESS_LINTER"
+  ((FAIL_COUNT++))
+elif "$EGRESS_LINTER" >/dev/null 2>&1; then
+  echo "  ✅ PASS"
+  ((PASS_COUNT++))
+else
+  echo "  ❌ FAIL: linter reports an unrouted egress site on the live tree"
+  "$EGRESS_LINTER" 2>&1 | sed 's/^/    /'
+  ((FAIL_COUNT++))
+fi
+
+# Non-vacuity: a linter that passes everything is not a linter. Plant an
+# unrouted egress site in a throwaway tree and require a refusal.
+echo "--------------------------------------------------------"
+echo "TEST: egress linter refuses a planted unrouted site"
+if [[ -x "$EGRESS_LINTER" ]]; then
+  PLANT_DIR="$TEST_DIR/plant/scripts"
+  mkdir -p "$PLANT_DIR"
+  printf '#!/usr/bin/env bash\napi_patch "$API_BASE/pulls/1" "$unscrubbed_payload"\n' \
+    > "$PLANT_DIR/rogue-script"
+  if FORGE_EGRESS_SCAN_ROOT="$TEST_DIR/plant" "$EGRESS_LINTER" >/dev/null 2>&1; then
+    echo "  ❌ FAIL: linter accepted an unrouted api_patch"
+    ((FAIL_COUNT++))
+  else
+    echo "  ✅ PASS"
+    ((PASS_COUNT++))
+  fi
+else
+  echo "  ⏭️  SKIP (linter missing; covered by the test above)"
 fi
 
 # 9. Summary
