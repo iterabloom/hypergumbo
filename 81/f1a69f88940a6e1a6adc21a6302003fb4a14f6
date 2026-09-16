@@ -1,0 +1,17 @@
+Original commit body from 73acbf3e358d41bc652543a38b72732890bc331e:
+
+Both forms of the nudge ended "the undeclared-state class is WI-nazoj".
+That item is closed: its ten undeclared exits now declare their state, and
+an abort the ERR trap can see records the line it died on. A reader
+following that pointer lands on finished work instead of on the evidence.
+
+They route to the abort site instead, and the markdown form says what a
+MISSING site means — a `set -u` unbound variable and a bare `exit` never
+reach the ERR trap, so "not recorded" is the signal to go looking by hand
+rather than an absence of failure.
+
+A nudge is a router. Pointing it at a closed item is the WI-lapap defect
+one hop along: not an instrument with no reader, but a reader sent
+somewhere there is nothing left to read.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
