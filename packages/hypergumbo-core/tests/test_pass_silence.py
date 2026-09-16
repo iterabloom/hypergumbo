@@ -101,11 +101,12 @@ class TestAnalysisRunField:
 class TestAnalyzerChokepointStamping:
     """The analyzer chokepoint (all_analyzers.collect_analyzer_result)."""
 
-    def _result(self, *, files, symbols, edges):
+    def _result(self, *, files, symbols, edges, reason=""):
         from hypergumbo_core.ir import PASS_VERSION, AnalysisRun
 
         run = AnalysisRun.create(pass_id="demo", version=PASS_VERSION)
         run.files_analyzed = files
+        run.silence_reason = reason
         return type("R", (), {
             "run": run, "symbols": symbols, "edges": edges,
             "usage_contexts": [], "skipped": False, "skip_reason": "",
@@ -136,12 +137,46 @@ class TestAnalyzerChokepointStamping:
         runs = self._collect(self._result(files=42, symbols=[], edges=[]))
         assert runs[0]["silence_reason"] == UNREPORTED
 
+    def test_body_supplied_reason_survives_the_stamp(self):
+        """WI-finij question A: only a BODY can know it looked and found nothing.
+
+        The orchestrator refuses to infer NO_CANDIDATE_CONSTRUCT, and rightly —
+        inventing a reason on the producer's behalf is a fabricated disclosure.
+        But the stamp assigned unconditionally, so a body that DID know was
+        overwritten with the orchestrator's weaker guess. The declared value was
+        therefore unreachable: a vocabulary entry with no possible producer.
+        """
+        runs = self._collect(self._result(
+            files=42, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT))
+        assert runs[0]["silence_reason"] == NO_CANDIDATE_CONSTRUCT
+
+    def test_body_reason_survives_even_a_zero_file_count(self):
+        """A body that spoke outranks the orchestrator's NO_CANDIDATE_FILES."""
+        runs = self._collect(self._result(
+            files=0, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT))
+        assert runs[0]["silence_reason"] == NO_CANDIDATE_CONSTRUCT
+
+    def test_a_pass_that_emitted_is_never_silent_whatever_the_body_said(self):
+        """`""` is NOT APPLICABLE and it is not the body's to override.
+
+        A reason explains why a pass produced NOTHING. A pass that emitted has
+        no silence to explain, so a stale or mistaken body value is cleared
+        rather than published as a contradiction.
+        """
+        from hypergumbo_core.ir import Symbol
+
+        sym = Symbol(id="s", name="n", kind="function", language="python",
+                     path="f.py", span=(1, 1))
+        runs = self._collect(self._result(
+            files=3, symbols=[sym], edges=[], reason=NO_CANDIDATE_CONSTRUCT))
+        assert runs[0].get("silence_reason", "") == ""
+
 
 class TestLinkerChokepointStamping:
     """The linker chokepoint (_run_linker_with_cache) — every linker
     invocation flows through it, so it is the one locus that sees them all."""
 
-    def _run(self, *, files, symbols, edges):
+    def _run(self, *, files, symbols, edges, reason=""):
         import types
 
         from hypergumbo_core.ir import PASS_VERSION, AnalysisRun
@@ -152,6 +187,7 @@ class TestLinkerChokepointStamping:
 
         run = AnalysisRun.create(pass_id="demo-linker", version=PASS_VERSION)
         run.files_analyzed = files
+        run.silence_reason = reason
         ctx = types.SimpleNamespace(parsed_trees={})
         result = _run_linker_with_cache(
             lambda _c: LinkerResult(symbols=symbols, edges=edges, run=run), ctx)
@@ -173,6 +209,25 @@ class TestLinkerChokepointStamping:
         must NOT be labelled no_candidate_files — they saw files."""
         assert self._run(
             files=339, symbols=[], edges=[]).silence_reason == UNREPORTED
+
+    def test_body_supplied_reason_survives_the_stamp(self):
+        """Same guard at the linker chokepoint — both sites clobbered."""
+        assert self._run(files=339, symbols=[], edges=[],
+                         reason=NO_CANDIDATE_CONSTRUCT
+                         ).silence_reason == NO_CANDIDATE_CONSTRUCT
+
+    def test_body_reason_survives_even_a_zero_file_count(self):
+        assert self._run(files=0, symbols=[], edges=[],
+                         reason=NO_CANDIDATE_CONSTRUCT
+                         ).silence_reason == NO_CANDIDATE_CONSTRUCT
+
+    def test_a_linker_that_emitted_is_never_silent_whatever_the_body_said(self):
+        from hypergumbo_core.ir import Edge
+
+        edge = Edge(id="e", src="a", dst="b", edge_type="calls", line=1,
+                    origin="demo-linker", origin_run_id="uuid:test")
+        assert self._run(files=9, symbols=[], edges=[edge],
+                         reason=NO_CANDIDATE_CONSTRUCT).silence_reason == ""
 
     def test_a_linker_without_a_run_does_not_crash_the_wrapper(self):
         import types

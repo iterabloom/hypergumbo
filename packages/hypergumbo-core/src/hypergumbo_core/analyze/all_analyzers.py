@@ -175,11 +175,22 @@ def collect_analyzer_result(
         # from the counters — an analyzer that read files and produced nothing
         # is `unreported`, never `no_candidate_files`, because it plainly had
         # candidates.
-        result.run.silence_reason = derive_silence_reason(
+        _derived = derive_silence_reason(
             files_analyzed=result.run.files_analyzed,
             nodes_emitted=result.run.nodes_emitted,
             edges_emitted=result.run.edges_emitted,
         )
+        # WI-finij question A: only a pass BODY can know it looked for its
+        # construct and found none, which is why derive_silence_reason refuses
+        # to infer NO_CANDIDATE_CONSTRUCT -- a reason invented on the producer's
+        # behalf is a fabricated disclosure. But this stamp ASSIGNED
+        # UNCONDITIONALLY, so it overwrote the only producer able to say it, and
+        # the declared value had no reachable producer anywhere in the tree.
+        # Guarded now: a body that spoke keeps its word. The one exception is
+        # "" -- a pass that EMITTED has no silence to explain, and NOT
+        # APPLICABLE is not the body's to override.
+        if _derived == "" or not result.run.silence_reason:
+            result.run.silence_reason = _derived
         analysis_runs.append(result.run.to_dict())
         # WI-mosil central origin_run_id backstop. Direct-constructor analyzers
         # (toml/json/wgsl/sql and any future ones that build Symbols by hand
