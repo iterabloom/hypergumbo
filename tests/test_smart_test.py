@@ -558,6 +558,33 @@ class TestCatalogueGateSelection:
         ), "the script's own pattern does not even reach the helper"
 
 
+class TestCitationGateWiring:
+    """WI-lujon: the fourth derived union, and the one that keys backwards.
+
+    The other three ask "what directory did the change touch". This one asks
+    "who names this path in their text", so it cannot be folded into them and
+    it is worth pinning that smart-test actually calls it — a helper with no
+    caller is the same defect the convergence ledger had.
+    """
+
+    def test_smart_test_calls_the_citation_helper(self) -> None:
+        text = SMART_TEST.read_text()
+        assert "scripts/citation_gate_tests.py" in text
+        assert "CITATION_GATE_TESTS" in text
+
+    def test_the_union_may_add_and_never_replaces(self) -> None:
+        """Every union in this script prints into AFFECTED_TESTS, never over."""
+        text = SMART_TEST.read_text()
+        block = text.split("CITATION_GATE_HELPER=", 1)[1].split("\nif [[ -z", 1)[0]
+        assert 'AFFECTED_TESTS=$(printf' in block
+        assert '"$AFFECTED_TESTS"' in block
+
+    def test_the_helper_exists_and_is_executable(self) -> None:
+        helper = REPO_ROOT / "scripts" / "citation_gate_tests.py"
+        assert helper.is_file()
+        assert helper.stat().st_mode & 0o111
+
+
 class TestPlaybookGateSelection:
     """INV-kafak, third change class: a PLAYBOOK edit selected nothing.
 
