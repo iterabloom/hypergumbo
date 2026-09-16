@@ -15,15 +15,15 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **325** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 90 core, 4 CLI, 36 tracker)
-- **46203** symbols (functions, classes, methods)
-- **183507** edges by type:
-  - calls: 105883
-  - contains: 42558
-  - imports: 14191
-  - instantiates: 11428
-  - references: 6464
-  - module_attr_ref: 1523
-  - other: 1460
+- **46399** symbols (functions, classes, methods)
+- **184215** edges by type:
+  - calls: 106269
+  - contains: 42740
+  - imports: 14255
+  - instantiates: 11451
+  - references: 6496
+  - module_attr_ref: 1543
+  - other: 1461
 
 ## Package Architecture
 
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 46203 Symbols + 183507 Edges + UsageContexts           │
+│  Output: 46399 Symbols + 184215 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -272,20 +272,20 @@ These symbols have the highest bidirectional centrality
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
 | `Symbol` | class | 9597.9 | ir.py |
-| `len` | external_symbol | 7456.0 | <external> |
+| `len` | external_symbol | 7458.0 | <external> |
 | `write_text` | external_symbol | 6543.0 | <external> |
 | `Span` | class | 6422.1 | ir.py |
 | `LinkerContext` | class | 3352.4 | registry.py |
-| `get` | external_symbol | 2986.0 | <external> |
+| `get` | external_symbol | 2993.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
 | `Edge.create` | method | 2406.9 | ir.py |
-| `next` | external_symbol | 2131.0 | <external> |
-| `str` | external_symbol | 2074.0 | <external> |
+| `next` | external_symbol | 2133.0 | <external> |
+| `str` | external_symbol | 2079.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 1960.0 | <external> |
+| `Path` | external_symbol | 1965.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
-| `main` | function | 1708.8 | cli.py |
-| `append` | external_symbol | 1592.0 | <external> |
+| `main` | function | 1723.8 | cli.py |
+| `append` | external_symbol | 1594.0 | <external> |
 
 ## Pattern System
 
@@ -471,6 +471,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-edge-type-runtime-coherence` | Runtime coherence check for the ADR-0023 edge-type axis. |
 | `check-evidence-type-drift` | Pre-commit lint: ``*EVIDENCE_TYPE*`` sets in packages/ must be |
 | `check-fallback-coherence` | Pre-commit lint: INV-zuhub fallback-coherence at Edge.create call sites. |
+| `check-forge-text-egress` | Pre-commit / CI lint: every forge-egress site must DECLARE how its |
 | `check-id-construction` | Pre-commit / CI lint: a node or edge id is minted, never hand-spelled |
 | `check-io-boundary-drift` | Pre-commit lint: ``*BOUNDAR*`` sets in the tree must be subsets of the |
 | `check-measurement-frame` | Every measurement record must declare the frame it was produced under. |
@@ -914,8 +915,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 8331b292df2f
-  commit_count: 7320
+  commit: 73590071009c
+  commit_count: 7351
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
