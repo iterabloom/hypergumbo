@@ -67,3 +67,18 @@
   clock: 7  # 38f9
   nonce: 38f9  # 38f9
   message: "2026-09-03: the network case is no longer waiting. WI-suhug (PR #743) added `net_stream` to the target-kind vocabulary (a net.Conn / *tls.Conn / http.ResponseWriter by declared type; `c, _ := ln.Accept()` / `net.Dial(...)` by binding) and the bufio constructors + Reader/Scanner reads gained net_recv rows selected by it. The two sites this item's note named -- alertmanager cluster/tls_connection.go:136 (`bufio.NewReader(conn.connection)`, a struct FIELD) and caddy httpredirectlistener.go:91 (`bufio.NewReader(c)`, a net.Conn from Accept in a struct literal) -- see bc_compare_readside.out for what each now stamps; a field receiver still abstains (field-chain target kinds not built). Separately, INV-minol found that the ipc_recv FALLBACK this item chose was honoured by io-boundaries but not by taint: unstamped constructors minted nothing since this item's dual row landed. Fixed in the same PR; the unstamped sites now mint ipc_recv as the note intended."  # 38f9
+- op: update  # 231a
+  at: '2026-09-16T17:30:51Z'  # 231a
+  by: agent  # 231a
+  actor: jgstern_agent  # 231a
+  clock: 8  # 231a
+  nonce: 231a  # 231a
+  set:  # 231a
+    status: satisfied  # 231a
+- op: discuss  # ce46
+  at: '2026-09-16T17:30:51Z'  # ce46
+  by: agent  # ce46
+  actor: jgstern_agent  # ce46
+  clock: 9  # ce46
+  nonce: ce46  # ce46
+  message: "SATISFIED on behavioral evidence, 2026-09-16 at dev 1d38136c33.\n\nTHE STATEMENT IS SCOPED \"VIOLATED, NETWORK CASE ONLY as of 2026-09-02\": that\nbufio.NewScanner/NewReader over a net.Conn still classifies ipc_recv \"because no\nio_target_kind value names a network stream and a net_recv row could therefore\nnever be selected\". That condition no longer holds.\n\nTHE VOCABULARY GREW, WHICH IS WHAT THIS ROW WAS WAITING ON. WI-suhug added\nnet_stream; io_boundary.py:2578 maps it to net_recv for reads and :2602 to\nnet_send for writes. go.yaml carries the second bufio row with a note naming\nthis item directly: \"the row INV-bagok's note withheld until the vocabulary\ngrows. It has: net_stream names a connection (a net.Conn / *tls.Conn parameter\nby type, c, _ := ln.Accept(), net.Dial(...) by binding)\".\n\nVERIFIED BY RUNNING IT, NOT BY READING THE NOTE. A fixture with both arms in\nONE file, so this is a difference arm rather than a level:\n\n  func handleConn(conn net.Conn) { s := bufio.NewScanner(conn); ... }\n  func handleStdin()             { s := bufio.NewScanner(os.Stdin); ... }\n\n  survey + io-boundaries output:\n    net_recv:  bufio.NewScanner  <- handleConn  (main.go:9)\n               bufio.Scanner.Scan, bufio.Scanner.Text, net.Listener.Accept\n    ipc_recv:  bufio.NewScanner  <- handleStdin (main.go:16)\n               bufio.Scanner.Scan, bufio.Scanner.Text, os.Stdin\n    net_listen: net.Listen\n\nThe SAME primitive discriminates by argument origin in the same run: net.Conn\nselects net_recv, os.Stdin still selects ipc_recv. The control is the arm that\nmust NOT move, and it did not.\n\nTHE REMAINING CLAUSE IS NOT THIS ROW'S. The root_cause continues: \"Downstream\nof that, an unresolvable origin (a struct field such as alertmanager's\nconn.connection) abstains whatever the vocabulary contains, which is the\nWI-dizag / INV-linub L3 receiver-typing family.\" That is assigned, by this\nitem's own text, to a different family. No residual is filed here because the\nresidual already has a home; an unstamped wrapper still falls back to ipc_recv\nper INV-fatok, which is the declared behaviour rather than a gap.\n\nSCOPE OF THIS CLOSURE: the network case the statement names, on Go's bufio\nwrappers, verified end to end through the production CLI path\n(survey -> io-boundaries). It asserts nothing about receiver typing."  # ce46

@@ -22,3 +22,18 @@
     fields:  # d44d
       statement: "Every row in a shipped io_primitives catalogue is reachable by the analyzer that owns its language: if the source contains the call the row describes, an edge is emitted that the row can classify."  # d44d
       root_cause: "js_ts.py::JS_KNOWN_GLOBALS enumerates the named globals whose member accesses resolve without an import and omits 'process', which is a true Node global. A require-less 'process.on(...)' therefore emits no calls edge. The sibling attribute 'process.stdin' still fires because it travels the separate module_attr_ref emitter, which masks the gap."  # d44d
+- op: update  # d041
+  at: '2026-09-16T17:31:28Z'  # d041
+  by: agent  # d041
+  actor: jgstern_agent  # d041
+  clock: 2  # d041
+  nonce: d041  # d041
+  set:  # d041
+    status: satisfied  # d041
+- op: discuss  # 0eef
+  at: '2026-09-16T17:31:29Z'  # 0eef
+  by: agent  # 0eef
+  actor: jgstern_agent  # 0eef
+  clock: 3  # 0eef
+  nonce: 0eef  # 0eef
+  message: "SATISFIED ON THE FILED ROW ONLY, 2026-09-16 at dev 1d38136c33. READ THE SCOPE\nPARAGRAPH BELOW BEFORE CITING THIS CLOSURE -- the general statement is NOT\nbeing asserted, and closing it as though it were would be the INV-nufob\nfalse-satisfaction repeated.\n\nTHE FILED ROW IS FIXED. root_cause: \"js_ts.py::JS_KNOWN_GLOBALS enumerates the\nnamed globals whose member accesses resolve without an import and omits\n'process', which is a true Node global. A require-less 'process.on(...)'\ntherefore emits no calls edge.\"\n\n  JS_KNOWN_GLOBALS now contains 'process'. Full membership at tip:\n  Deno, caches, console, document, indexedDB, localStorage, navigator,\n  performance, process, sessionStorage, window.\n\nBEHAVIORAL EVIDENCE, not the membership check alone -- the statement is about\nCATALOGUE REACHABILITY, so a module slot on the edge would not have been enough.\nFixture with the require-less spelling, through the production path\n(survey -> io-boundaries):\n\n  process.on('exit', function () {});   ->  ipc_recv   process.on\n  process.stdin.resume();               ->  ipc_recv   process.stdin\n  console.log('x');                     ->  logging    console.log\n\n  edge at tip: javascript:process:0-0:on:unresolved\n  (the filed defect was the 'external' placeholder in this slot)\n\nThe call reaches a boundary verdict, which is what \"reachable by the analyzer\nthat owns its language\" requires. Sibling WI-kikar closed the same defect under\nits own name and this row never updated itself.\n\nSCOPE -- WHAT THIS CLOSURE DOES NOT CLAIM. The statement is general: \"Every row\nin a shipped io_primitives catalogue is reachable by the analyzer that owns its\nlanguage.\" That general claim DOES NOT HOLD at tip, and I verified three live\ncounterexamples in the same sweep that produced this closure:\n\n  INV-vokut  scala.io.StdIn.readLine emits scala:external:0-0:readLine with no\n             module hint; readLine is 1 of scala's 80 ambiguous_names, so the\n             no-module gate withholds it. The row is correct and PRESENT-AND-DEAD.\n  INV-nuvug  a PHP grouped use (use Foo\\{a, b};) lands in the external slot and\n             matches no row; the single-import form of the identical call resolves.\n  INV-duzom  a fully-qualified Rust call (std::io::stdin()) keeps the whole path\n             in the name slot and matches no row; the imported spelling resolves.\n\nThose three carry the general statement now. This row is closed on its own filed\ninstance -- the js 'process' case -- per the standing \"close on the filed row,\nfile the residual\" ruling; the residual needs no new item because it is already\nfiled three times over. A future reader wanting \"are all catalogue rows\nreachable\" must read those three, not this closure."  # 0eef
