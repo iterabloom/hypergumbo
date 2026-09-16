@@ -50,6 +50,25 @@ THE TWO VIOLATION CLASSES
    claimed success for a run that recorded neither a terminal state nor a
    merge, which is a different thing to have told the caller.
 
+ATTRIBUTION (WI-nazoj)
+----------------------
+An undeclared row used to say only that a run fell off the end. Since WI-nazoj,
+``auto-pr`` runs under ``errtrace`` with an ERR trap that records the file and
+line it died on, and the row carries ``abort_site`` / ``abort_command``. Rows
+are reported three ways, because the difference matters:
+
+* a **site** — the ERR trap fired and named the line; identical sites are
+  tallied together, since two runs dying at the same line are one bug;
+* **not recorded** — an instrumented run whose abort the trap could not see.
+  A ``set -u`` unbound variable is an expansion error rather than a command
+  failure and does not fire ERR, and neither does a bare ``exit``;
+* **not instrumented** — the row predates the instrumentation and has no
+  ``abort_site`` KEY at all.
+
+The last two would be one bucket if the schema used a null default, and the
+historical backlog would then read as a fleet of live instrument failures.
+Absent is not empty, one level further in.
+
 WINDOWING
 ---------
 ``--window N`` restricts the verdict to the most recent N invocations. An
@@ -75,6 +94,20 @@ CONVERGED_MERGED = frozenset({"merged", "already_merged"})
 #: The initializer. Never written by a deliberate exit, so reaching it is the
 #: violation signal rather than a state in the vocabulary.
 UNDECLARED = "unknown"
+
+#: Sentinel for "this row predates the abort-site instrumentation". Distinct
+#: from ``None``, which means the instrumented run recorded no site because the
+#: ERR trap could not see the abort (``set -u``, a bare ``exit``, a signal).
+#: Collapsing the two would turn a historical backlog into what looks like a
+#: fleet of live instrument failures -- ABSENT is not EMPTY.
+UNINSTRUMENTED = object()
+
+
+def abort_site(row: dict):
+    """Three-valued: a site string, ``None``, or ``UNINSTRUMENTED``."""
+    if "abort_site" not in row:
+        return UNINSTRUMENTED
+    return row["abort_site"] or None
 
 
 def default_ledger_path(repo_root: Path) -> Path:
@@ -125,6 +158,10 @@ def classify(rows: list[dict]) -> dict:
     undeclared: list[dict] = []
     undeclared_exit_zero: list[dict] = []
 
+    sites: dict[str, int] = {}
+    unattributed = 0
+    uninstrumented = 0
+
     for row in rows:
         state = str(row.get("final_state"))
         code = row.get("exit_code")
@@ -137,6 +174,13 @@ def classify(rows: list[dict]) -> dict:
             undeclared.append(row)
             if code == 0:
                 undeclared_exit_zero.append(row)
+            site = abort_site(row)
+            if site is UNINSTRUMENTED:
+                uninstrumented += 1
+            elif site is None:
+                unattributed += 1
+            else:
+                sites[site] = sites.get(site, 0) + 1
 
     return {
         "total": len(rows),
@@ -144,6 +188,11 @@ def classify(rows: list[dict]) -> dict:
         "merged_nonzero_exit": len(merged_nonzero),
         "undeclared_state": len(undeclared),
         "undeclared_state_exit_zero": len(undeclared_exit_zero),
+        # Clustering is what turns the residue into a work list: two runs
+        # dying at the same line are one bug, not two.
+        "abort_sites": sites,
+        "undeclared_unattributed": unattributed,
+        "undeclared_uninstrumented": uninstrumented,
         "_merged_nonzero_rows": merged_nonzero,
         "_undeclared_rows": undeclared,
     }
@@ -151,11 +200,23 @@ def classify(rows: list[dict]) -> dict:
 
 def _describe(row: dict) -> str:
     pr = row.get("pr_number")
-    return (
+    line = (
         f"PR #{pr if pr is not None else '?'}  "
         f"{row.get('final_state')}  exit {row.get('exit_code')}  "
         f"{row.get('timestamp', '?')}"
     )
+    if str(row.get("final_state")) == UNDECLARED:
+        site = abort_site(row)
+        if site is UNINSTRUMENTED:
+            line += "  [not instrumented — predates WI-nazoj]"
+        elif site is None:
+            line += "  [abort site not recorded — set -u / bare exit / signal]"
+        else:
+            line += f"  [{site}]"
+            cmd = row.get("abort_command")
+            if cmd:
+                line += f"  {cmd}"
+    return line
 
 
 def _render_text(path: Path, summary: dict, malformed: list[int],
@@ -236,6 +297,12 @@ def _render_text(path: Path, summary: dict, malformed: list[int],
                 f"    of which {summary['undeclared_state_exit_zero']} exit 0 "
                 f"— claimed success with no terminal state recorded."
             )
+        if summary["abort_sites"]:
+            lines.append("    abort sites, most frequent first:")
+            for site, n in sorted(
+                summary["abort_sites"].items(), key=lambda kv: (-kv[1], kv[0])
+            ):
+                lines.append(f"      {n:>4}x  {site}")
         for row in summary["_undeclared_rows"][-5:]:
             lines.append(f"    {_describe(row)}")
     return "\n".join(lines) + "\n"

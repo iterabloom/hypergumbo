@@ -265,3 +265,88 @@ def test_script_default_path_is_the_repo_ledger() -> None:
     every unattended invocation a no-op — the shape of the defect being fixed.
     """
     assert aac.default_ledger_path(REPO_ROOT) == REPO_ROOT / ".git" / "AUTOPR_HISTORY.jsonl"
+
+
+# --- attribution: three states, not two (WI-nazoj) --------------------------
+
+
+def _undeclared(pr: int, site, *, instrumented: bool = True) -> str:
+    """An undeclared-terminal-state row.
+
+    ``instrumented=False`` OMITS the key entirely, which is what every row
+    written before WI-nazoj looks like. That is a different fact from a row
+    whose ``abort_site`` is null, and the audit must not flatten them.
+    """
+    row = {
+        "exit_code": 1,
+        "final_state": "unknown",
+        "merged_sha": None,
+        "pr_number": pr,
+        "pr_url": f"https://example.invalid/pull/{pr}",
+        "timestamp": "2026-09-20T00:00:00Z",
+    }
+    if instrumented:
+        row["abort_site"] = site
+        row["abort_command"] = "git checkout dev" if site else None
+    return json.dumps(row)
+
+
+def test_an_undeclared_row_shows_where_it_died(tmp_path: Path) -> None:
+    """The whole point of the attribution: a line number, not a shrug.
+
+    Fourteen of these accumulated over five weeks with nothing to distinguish
+    them from each other, so nobody could tell whether they shared a cause.
+    """
+    rc, out = aac.run([str(_ledger(tmp_path, [_undeclared(1, "auto-pr:2114")]))])
+    assert rc == aac.EXIT_VIOLATION
+    assert "auto-pr:2114" in out, out
+
+
+def test_a_row_from_before_the_instrumentation_is_not_called_unattributed(
+    tmp_path: Path,
+) -> None:
+    """ABSENT IS NOT EMPTY, at the ledger's own schema boundary.
+
+    A row with no ``abort_site`` KEY was written by a version of auto-pr that
+    could not record one. Reporting it as "abort site not recorded" would
+    describe a limitation of the run rather than of the instrument, and would
+    make the historical backlog look like fourteen live instrument failures.
+    """
+    rc, out = aac.run(
+        [str(_ledger(tmp_path, [_undeclared(1, None, instrumented=False)]))]
+    )
+    assert rc == aac.EXIT_VIOLATION
+    low = out.lower()
+    assert "not instrumented" in low or "predates" in low, out
+    assert "not recorded" not in low, (
+        "a pre-instrumentation row was reported as though the trap had failed "
+        "to fire:\n" + out
+    )
+
+
+def test_an_instrumented_row_with_no_site_says_the_trap_did_not_fire(
+    tmp_path: Path,
+) -> None:
+    """The other half of the distinction. A `set -u` abort or a bare `exit`
+    never reaches the ERR trap, so an instrumented run can still record no
+    site — and that is a real, reportable gap rather than a missing feature."""
+    rc, out = aac.run([str(_ledger(tmp_path, [_undeclared(1, None)]))])
+    assert rc == aac.EXIT_VIOLATION
+    assert "not recorded" in out.lower(), out
+
+
+def test_json_output_tallies_the_abort_sites(tmp_path: Path) -> None:
+    """Machine-readable clustering is what turns the remaining rows into a
+    work list: two runs dying at the same line is one bug, not two."""
+    rows = [
+        _undeclared(1, "auto-pr:2114"),
+        _undeclared(2, "auto-pr:2114"),
+        _undeclared(3, "auto-pr:900"),
+        _undeclared(4, None),
+        _undeclared(5, None, instrumented=False),
+    ]
+    _, out = aac.run([str(_ledger(tmp_path, rows)), "--json"])
+    payload = json.loads(out)
+    assert payload["abort_sites"] == {"auto-pr:2114": 2, "auto-pr:900": 1}
+    assert payload["undeclared_unattributed"] == 1
+    assert payload["undeclared_uninstrumented"] == 1
