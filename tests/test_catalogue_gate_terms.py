@@ -233,11 +233,50 @@ class TestAbsentIsNotEmpty:
         assert terms == ["frameworks"]
 
 
+class TestDataIsWhatIsNotPython:
+    """The key is "not Python", not "is YAML" — the extension is not the point.
+
+    ``url_folding/SCOPE.md`` is read on every run that folds a URL, by
+    ``get_scoped_languages()``. INV-bigaz's statement is about a non-Python
+    input the production code loads at runtime, and a YAML-shaped key selected
+    nothing for it — the same "keyed to one instance" shape one level down from
+    the defect this helper was written to fix.
+    """
+
+    def test_a_runtime_parsed_markdown_input_is_data(self) -> None:
+        terms = run_helper(
+            [
+                "packages/hypergumbo-core/src/hypergumbo_core/"
+                "url_folding/SCOPE.md"
+            ]
+        )
+        assert "url_folding" in terms
+        assert "load_url_folding_registry" in terms
+
+    def test_it_really_is_read_at_runtime_and_not_just_shipped(self) -> None:
+        """The premise, executed rather than asserted."""
+        source = (
+            REPO_ROOT
+            / "packages/hypergumbo-core/src/hypergumbo_core/url_folding/__init__.py"
+        ).read_text()
+        assert 'scope_path = _url_folding_dir() / "SCOPE.md"' in source
+        assert "scope_path.read_text" in source
+
+
 class TestItSelectsCatalogueDataAndNothingElse:
     def test_a_python_source_file_is_not_a_catalogue_change(self) -> None:
         assert not run_helper(
             [
                 "packages/hypergumbo-core/src/hypergumbo_core/io_boundary.py",
+            ]
+        )
+
+    def test_a_python_file_in_a_subdirectory_is_not_data_either(self) -> None:
+        """The widened key's real risk: every linker module is two deep."""
+        assert not run_helper(
+            [
+                "packages/hypergumbo-core/src/hypergumbo_core/"
+                "linkers/route_handler.py",
             ]
         )
 

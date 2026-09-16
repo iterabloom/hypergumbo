@@ -1055,8 +1055,13 @@ fi
 # registers it, exactly as the doc and playbook unions cover the next gate.
 # The helper's docstring carries the measurements and the non-narrowing
 # argument.
+# WHAT COUNTS AS DATA is the helper's to decide, and it is asked about every
+# changed file rather than a pre-filtered subset: keeping a second copy of the
+# predicate here is how a widening lands in one home and not the other. The
+# fallback below is the only duplicate, it is narrower on purpose, and a test
+# pins that the two agree on the live tree.
 CATALOGUE_TERMS_HELPER="$REPO_ROOT/scripts/catalogue_gate_terms.py"
-CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/.*\.ya?ml$' || echo "")
+CHANGED_CATALOGUE_FILES=$(echo "$CHANGED_FILES" | grep -E '^packages/[^/]+/src/[^/]+/[^/]+/' | grep -vE '\.pyi?$' || echo "")
 if [[ -n "$CHANGED_CATALOGUE_FILES" ]]; then
     CATALOGUE_GATE_TERMS=""
     if [[ -f "$CATALOGUE_TERMS_HELPER" ]] && command -v python3 &>/dev/null; then

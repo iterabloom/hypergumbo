@@ -25,8 +25,16 @@ So the registry cannot silently fall behind the tree, and deriving from it
 means the eleventh family is covered by the commit that registers it rather
 than by an edit here.
 
-HOW A FAMILY BECOMES GREP TERMS. For each changed path under
-``packages/<pkg>/src/<module>/<directory>/`` ending in ``.yaml``/``.yml``:
+WHAT COUNTS AS DATA. Any changed file under
+``packages/<pkg>/src/<module>/<directory>/`` that is not Python. Keyed on NOT
+BEING PYTHON rather than on being YAML, because the invariant is about a
+non-Python input the production code loads at runtime and the extension is not
+what makes it one: ``url_folding/SCOPE.md`` is read by
+``get_scoped_languages()`` on every run that folds a URL, and a YAML-shaped key
+selects nothing for it. Python is excluded because the import slice already
+resolves it.
+
+HOW A FAMILY BECOMES GREP TERMS. For each such changed path:
 
 1. ``<directory>`` — the family's own name, which every test naming the
    catalogue it exercises will contain.
@@ -63,12 +71,20 @@ import sys
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Set
 
-#: ``packages/<pkg>/src/<module>/<directory>/...yaml`` — the shape every
-#: shipped catalogue has. Anchored at ``src`` so a test fixture YAML under
-#: ``packages/<pkg>/tests/`` is not mistaken for shipped data.
-CATALOGUE_YAML = re.compile(
-    r"^packages/[^/]+/src/[^/]+/(?P<directory>[^/]+)/.*\.ya?ml$"
+#: ``packages/<pkg>/src/<module>/<directory>/...`` — the shape shipped data
+#: has. Anchored at ``src`` so a fixture under ``packages/<pkg>/tests/`` is not
+#: mistaken for it, and keyed on NOT BEING PYTHON rather than on being YAML:
+#: ``url_folding/SCOPE.md`` is parsed at runtime by ``get_scoped_languages()``
+#: and a YAML-shaped key selects nothing for it. The invariant is about a
+#: non-Python input the production code loads, and the extension is not what
+#: makes it one.
+CATALOGUE_DATA = re.compile(
+    r"^packages/[^/]+/src/[^/]+/(?P<directory>[^/]+)/.+$"
 )
+
+#: Not data: Python is what the import slice already resolves, and a compiled
+#: or cached artifact is not an input anyone edits.
+NOT_DATA_SUFFIXES = (".py", ".pyc", ".pyi", ".pyo")
 
 #: Where the registry lives, relative to the repo root.
 DEFAULT_REGISTRY = Path(
@@ -88,7 +104,9 @@ def changed_directories(paths: Iterable[str]) -> Set[str]:
         path = raw.strip()
         if not path:
             continue
-        match = CATALOGUE_YAML.match(path)
+        if path.endswith(NOT_DATA_SUFFIXES):
+            continue
+        match = CATALOGUE_DATA.match(path)
         if match:
             found.add(match.group("directory"))
     return found
