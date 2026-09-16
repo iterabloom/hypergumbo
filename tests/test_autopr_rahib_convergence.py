@@ -781,3 +781,236 @@ def test_unknown_is_the_default_and_therefore_the_violation_signal() -> None:
         "a second write would make a real exit path indistinguishable from "
         "a run that fell off the end."
     )
+
+
+# --------------------------------------------------------------------
+# The post-merge boundary (INV-rahib, the "misleading status" clause).
+#
+# The invariant's second violation class is a run that reports failure for
+# work that succeeded. It was live at 8.5%: of 481 invocations recorded in
+# `.git/AUTOPR_HISTORY.jsonl`, 41 carried `final_state=merged` with
+# `exit_code=1`, and every one of their `merged_sha`s is an ancestor of
+# origin/dev. The merge landed; auto-pr said it failed.
+#
+# Cause: `set -euo pipefail` (auto-pr:3) plus bare commands that run AFTER
+# `_autopr_state_final="merged"`. Two of them abort routinely:
+#
+#   git checkout "$base"   — refuses when a dirty file differs between the
+#                            feature branch and the base. A modified tracker
+#                            `.ops` file is exactly that, and is the normal
+#                            state of this working tree.
+#   read -p "Retry? …"     — returns 1 on EOF, which is every non-interactive
+#                            invocation. It also means the surrounding 3-attempt
+#                            retry loop has never run past attempt 1 in
+#                            production.
+#
+# The fix is a boundary, not three guards: once the merge has landed the
+# outcome is decided, so the housekeeping after it runs through
+# `_autopr_post_merge`, whose `if !` context makes bash ignore `set -e` for
+# the whole callee body — including anything the callee itself calls.
+#
+# These tests drive the REAL extracted functions under PRODUCTION shell flags.
+# That distinction is load-bearing: `test_autopr_branch_cleanup.py` drove
+# `cleanup_local` under `set -uo pipefail` for its whole life, and a harness
+# missing the `-e` cannot observe this defect at all.
+# --------------------------------------------------------------------
+
+import os
+import re
+
+PROD_SHELL_FLAGS = "set -euo pipefail"
+
+
+def _extract_bash_func(name: str) -> str:
+    """Pull one function out of auto-pr; sourcing the script runs dispatch."""
+    text = AUTO_PR.read_text(encoding="utf-8")
+    m = re.search(rf"^{re.escape(name)}\(\) \{{\n.*?^\}}$", text, re.S | re.M)
+    assert m, f"{name}() not found in scripts/auto-pr"
+    return m.group(0)
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+
+
+def _build_post_merge_repo(tmp_path: Path, *, collide: bool) -> Path:
+    """A repo sitting where auto-pr sits the instant after a merge lands.
+
+    `collide=True` dirties a file that differs between the feature branch and
+    the base, so the post-merge `git checkout` refuses — the tracker-`.ops`
+    shape. `collide=False` leaves checkout clean and breaks the remote instead,
+    so the failure lands on the `read -p` retry prompt.
+    """
+    repo = tmp_path / "work"
+    server = tmp_path / "srv.git"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--bare", "-q", "-b", "dev", str(server)],
+                   check=True, timeout=30)
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(repo)], check=True, timeout=30)
+    for k, v in (("user.email", "t@example.invalid"), ("user.name", "t"),
+                 ("commit.gpgsign", "false")):
+        _git(repo, "config", k, v)
+    (repo / "ops.txt").write_text("A\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "remote", "add", "origin", str(server))
+    _git(repo, "push", "-q", "origin", "dev")
+    _git(repo, "checkout", "-qb", "feat/x")
+    (repo / "ops.txt").write_text("B\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "feature")
+
+    if collide:
+        # Dirty, and differing between feat/x and dev -> checkout refuses.
+        (repo / "ops.txt").write_text("C\n")
+    else:
+        # Checkout will succeed; make `git pull` fail so the retry prompt runs.
+        _git(repo, "remote", "set-url", "origin", str(tmp_path / "gone.git"))
+    return repo
+
+
+def _run_post_merge_tail(repo: Path, *, wrapped: bool) -> tuple[int, str]:
+    """Run do_pr's post-merge tail shape and report (exit_code, final_state).
+
+    `wrapped=False` is the CONTROL: the same fixture with the call made bare,
+    which must still abort. Without it a passing test cannot distinguish "the
+    boundary holds" from "the fixture stopped inducing a failure".
+    """
+    body = _extract_bash_func("cleanup_local")
+    if wrapped:
+        body += "\n" + _extract_bash_func("_autopr_post_merge")
+        call = '_autopr_post_merge cleanup_local "feat/x" "dev"'
+    else:
+        call = 'cleanup_local "feat/x" "dev"'
+    script = (
+        f"{PROD_SHELL_FLAGS}\n"
+        f"REPO_ROOT={str(repo)!r}\n"
+        f"cd {str(repo)!r}\n"
+        f'_autopr_state_final="unknown"\n'
+        f"trap '_ec=$?; echo \"SENTINEL $_autopr_state_final $_ec\"' EXIT\n"
+        f"{body}\n"
+        f'_autopr_state_final="merged"\n'
+        f"{call}\n"
+        f"exit 0\n"
+    )
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, timeout=90,
+    )
+    state = "NO-SENTINEL"
+    for line in result.stdout.splitlines():
+        if line.startswith("SENTINEL "):
+            state = line.split()[1]
+    return result.returncode, state
+
+
+def test_control_bare_post_merge_call_really_does_abort(tmp_path: Path) -> None:
+    """Non-vacuity floor: the fixture must break a BARE post-merge call.
+
+    This is the arm that can fail, and it is not decorative — it already
+    caught one of its own siblings. The `read -p` fixture was a second
+    control arm here until the tty guard landed in cleanup_local; that guard
+    removed the abort at its source, this control went red, and the arm was
+    re-pointed at the property it now actually holds
+    (`test_non_interactive_cleanup_skips_instead_of_aborting`). A control
+    that had merely been asserted rather than run would have gone on
+    "passing" against a fixture that no longer induced anything.
+    """
+    repo = _build_post_merge_repo(tmp_path, collide=True)
+    rc, _ = _run_post_merge_tail(repo, wrapped=False)
+    assert rc != 0, (
+        "the fixture no longer induces a post-merge failure, so the boundary "
+        "test below would pass vacuously"
+    )
+
+
+def test_merged_run_exits_zero_despite_post_merge_failure(tmp_path: Path) -> None:
+    """A merge that landed must report success, whatever housekeeping does.
+
+    The fixture is the live abort site: a dirty file that differs between the
+    feature branch and the base, which is what a modified tracker `.ops` file
+    is on every run.
+    """
+    repo = _build_post_merge_repo(tmp_path, collide=True)
+    rc, state = _run_post_merge_tail(repo, wrapped=True)
+    assert (rc, state) == (0, "merged"), (
+        f"a run whose merge landed exited {rc} with final_state={state!r}. "
+        f"This is the 41-of-481 shape in .git/AUTOPR_HISTORY.jsonl: post-merge "
+        f"housekeeping restated a decided outcome."
+    )
+
+
+def test_non_interactive_cleanup_skips_instead_of_aborting(tmp_path: Path) -> None:
+    """With stdin closed, a failed pull must skip cleanly, not abort.
+
+    `read` returns 1 at EOF, so under `set -euo pipefail` the retry prompt was
+    an abort at attempt 1 of 3 — the documented three-attempt loop had never
+    run in production. The boundary would now catch that abort, but catching
+    it is second best: the prompt is the thing that should not fire when
+    nobody can answer it.
+    """
+    repo = _build_post_merge_repo(tmp_path, collide=False)
+    rc, state = _run_post_merge_tail(repo, wrapped=False)
+    assert (rc, state) == (0, "merged"), (
+        f"a bare cleanup_local with stdin closed exited {rc} (state={state!r}); "
+        f"the retry prompt is still reachable without a tty"
+    )
+
+
+def test_no_bare_cleanup_local_call_survives_in_auto_pr() -> None:
+    """Every `cleanup_local` invocation goes through the boundary.
+
+    Structural complement to the behavioral tests: they prove the wrapper
+    works, this proves nothing skips it. A fourth call site added later
+    without the wrapper fails here rather than in six weeks of ledger rows.
+    """
+    text = AUTO_PR.read_text(encoding="utf-8")
+    bare = [
+        line for line in text.splitlines()
+        if re.match(r"^\s*cleanup_local\s+\"", line)
+    ]
+    assert not bare, (
+        f"cleanup_local is invoked without _autopr_post_merge at: {bare}. "
+        f"Under `set -euo pipefail` a failure there aborts the run after the "
+        f"merge has already landed."
+    )
+
+
+def test_gov_cleanup_records_merged_before_it_does_housekeeping() -> None:
+    """gov_cleanup's PR is confirmed merged by the API before cleanup runs.
+
+    It used to set `_autopr_state_final="merged"` AFTER `cleanup_local`, so an
+    abort in between lost the merged fact entirely and the run self-reported
+    as `unknown` — the other violation class, reached from the same defect.
+    """
+    # Strip comments first. The prose explaining this ordering names
+    # cleanup_local, and an index over the raw body finds that mention before
+    # the call — the assertion then fails on its own documentation.
+    body = "\n".join(
+        line for line in _extract_bash_func("gov_cleanup").splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    state_at = body.index('_autopr_state_final="merged"')
+    cleanup_at = body.index("cleanup_local")
+    assert state_at < cleanup_at, (
+        "gov_cleanup sets its terminal state after housekeeping; a housekeeping "
+        "abort then converges to `unknown` instead of `merged`."
+    )
+
+
+def test_cleanup_local_does_not_prompt_without_a_tty() -> None:
+    """The retry prompt must be reached only when someone can answer it.
+
+    `read -p` returns 1 at EOF, so under `set -e` the documented 3-attempt
+    retry loop aborted at attempt 1 on every non-interactive run. Guarding the
+    prompt on a tty makes the non-interactive path a deliberate skip rather
+    than an abort that happens to be caught by the boundary.
+    """
+    body = _extract_bash_func("cleanup_local")
+    assert "-t 0" in body, (
+        "cleanup_local prompts unconditionally; with stdin closed that `read` "
+        "is an abort, not a question."
+    )

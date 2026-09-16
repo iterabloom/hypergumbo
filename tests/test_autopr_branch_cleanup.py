@@ -137,8 +137,15 @@ def _build_rebase_merged_repo(tmp_path: Path) -> Path:
 
 
 def _run_cleanup_local(repo: Path) -> subprocess.CompletedProcess[str]:
+    # PRODUCTION flags. This harness ran `set -uo pipefail` for its whole life,
+    # and the missing `-e` is not cosmetic: auto-pr runs under `set -euo
+    # pipefail`, where a bare `git checkout` or a `read` at EOF inside
+    # cleanup_local aborts the script outright. Dropping `-e` here made that
+    # entire failure class invisible to the one test file that owns this
+    # function, and it stayed invisible through 41 of 481 recorded auto-pr
+    # runs that merged and then reported failure (INV-rahib).
     script = (
-        f"set -uo pipefail\n"
+        f"set -euo pipefail\n"
         f"REPO_ROOT='{repo}'\n"
         f"cd '{repo}'\n"
         f"{_extract_cleanup_local()}\n"
