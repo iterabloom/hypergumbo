@@ -372,6 +372,22 @@ if [[ -x /usr/bin/env ]] && [[ -f "$_NUDGE_SCRIPT" ]] && command -v python3 &>/d
   fi
 fi
 
+# --- auto-pr convergence nudge (WI-lapap) ---
+# INV-rahib's convergence ledger (.git/AUTOPR_HISTORY.jsonl) had no reader for
+# six weeks while it accumulated 55 violations. This is the reader's invocation
+# point; without one, scripts/audit-autopr-convergence would be a second
+# instrument nobody runs. Windowed, so a violation ages out as clean runs
+# accumulate and the section only speaks about RECENT misbehaviour. Silent
+# when the ledger is absent or unreadable — a fresh clone has no ledger, and
+# nagging about that would teach the reader to skip this section.
+_CONV_NUDGE_SCRIPT="$REPO_ROOT/.agent/hooks/_shared/autopr_convergence_nudge.py"
+if [[ -f "$_CONV_NUDGE_SCRIPT" ]] && command -v python3 &>/dev/null; then
+  _CONV_NUDGE_OUT=$(python3 "$_CONV_NUDGE_SCRIPT" "$REPO_ROOT" 2>/dev/null || true)
+  if [[ -n "$_CONV_NUDGE_OUT" ]]; then
+    BAKEOFF_SUFFIX+="$_CONV_NUDGE_OUT"
+  fi
+fi
+
 # --- Write guidance file (if any TODOs exist) ---
 GUIDANCE_FILE=""
 if [[ "$TOTAL_TODOS" -gt 0 ]]; then
