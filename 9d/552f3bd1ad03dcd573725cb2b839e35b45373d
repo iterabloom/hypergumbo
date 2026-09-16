@@ -1,0 +1,34 @@
+Original commit body from c58b7088bfa7b361b1cb5b735663dd746b14702a:
+
+INV-bigaz / INV-dohoj. smart-test unions the tests that read a changed
+catalogue YAML, and the union was right. Its KEY was not: a regex naming
+io_primitives and io_primitives_overlays, which is 23 of the 169 YAML
+files the wheel ships.
+
+Measured on dev 81f1a69f88, a change confined to frameworks/ (107 files),
+dataflow_patterns/, cfg_nodes/, function_summaries/ or taint_sources/
+selected ZERO tests, wrote a 0-test manifest, printed "no test-relevant
+files changed (docs/config only)" -- asserting the opposite of what had
+happened -- and ci.yml then skipped pytest. A fix keyed to one instance
+left the class and looked done.
+
+The key is now the SHAPE of shipped data, and the grep terms are derived
+per family from hypergumbo_core.yaml_catalogs.YAML_CATALOGS -- the
+registry validate_registry() already gates against the tree, so the
+eleventh family arrives covered by the commit that registers it. Three
+arms: the directory name, the loader module the registry names, and the
+load_* entry points read out of that loader's source. The loader arm is
+load-bearing and that is measured: the directory name alone reaches 58
+test files, the union reaches 157.
+
+Families sharing a loader reach each other, which is what keeps the
+widening from NARROWING -- the old key fired one shared rule for both
+io_primitives directories, and the literal io_primitives does not appear
+in every test that reads them.
+
+The helper parses the registry with ast rather than importing it, so
+selection never depends on the package being installed, and a registry
+that cannot be read degrades to the changed directory's own name rather
+than to silence.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
