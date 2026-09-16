@@ -1,0 +1,30 @@
+Original commit body from 76048a3aa867210230544160d8758f2189be20ee:
+
+INV-lizor limb (a), the rest of it. Three root tests were left on
+KNOWN_UNREACHABLE with the reason that a declaration could not honestly
+express their subject. Re-read, that objection was aesthetic rather than
+real: two have another TEST as their subject -- a standalone re-run of a
+pinning module, and a shared harness -- and `# covers:` says exactly the
+right thing about them, because "when this path changes, run me" is as
+true of a test file as of a source. The third pins four package modules by
+import path and can simply name them.
+
+KNOWN_UNREACHABLE is now the empty set, which is a CLAIM: every root test
+is selected by some change that can break it. It is worth something only
+because the two ratchet arms fail when it stops being true.
+
+THE HEADER SCAN NOW PARSES INSTEAD OF PATTERN-MATCHING, and this is the
+defect the first two markers found. `_module_header` cut at the first line
+beginning "import " -- which in test_rct_public_api_pinned.py is a line of
+ENGLISH inside the module docstring ("the variants attach by / import path
++ signature"). The marker sat below the cut, the declaration silently did
+nothing, and the ratchet reported the TEST as unreachable rather than the
+parser as wrong, which is the expensive kind of wrong: it names the
+innocent party. ast knows where a docstring ends; a line-start pattern
+cannot. The regex survives as the fallback for a file that does not parse,
+where over-scanning beats reading no header at all.
+
+Verified by mutation: forcing the fallback path turns three tests red,
+including the one that pins this exact docstring shape.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
