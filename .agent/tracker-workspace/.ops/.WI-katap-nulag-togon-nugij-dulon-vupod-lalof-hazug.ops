@@ -1,0 +1,37 @@
+- op: create  # 2324
+  at: '2026-09-16T04:48:04Z'  # 2324
+  by: agent  # 2324
+  actor: jgstern_agent  # 2324
+  clock: 1  # 2324
+  nonce: '2324'  # 2324
+  data:  # 2324
+    kind: work_item  # 2324
+    title: "Re-measure the auto-pr convergence ledger over post-instrumentation runs (WI-nazoj criterion c)"  # 2324
+    status: todo_hard  # 2324
+    priority: 2  # 2324
+    parent:  # 2324
+    tags:  # 2324
+    - ci_infrastructure  # 2324
+    - auto_pr  # 2324
+    isbefore: []  # 2324
+    duplicate_of: []  # 2324
+    not_duplicate_of: []  # 2324
+    pr_ref:  # 2324
+    description: "The residual of WI-nazoj, which fixed INV-rahib's undeclared-terminal-state\nclass but could not produce its own criterion (c).\n\nWI-nazoj's closure criteria were (a) enumerate the undeclared exit sites,\n(b) make an undeclared abort self-reporting, (c) re-measure the ledger and show\nthe undeclared count at 0 over a comparable number of invocations. (a) and (b)\nshipped with behavioral evidence. (c) is a measurement over time: the 485 rows\nthat produced the original finding accumulated over six weeks, so it cannot be\nproduced in the session that ships the fix.\n\nWHAT TO DO\n  Run scripts/audit-autopr-convergence over a window containing only\n  post-instrumentation rows -- i.e. rows that CARRY an abort_site key, whether\n  or not its value is null. The audit already separates those from rows that\n  predate the instrumentation, so the boundary is machine-readable rather than\n  a date the reader has to remember.\n\nWHAT COUNTS AS CLEAN\n  Zero rows with final_state=unknown among post-instrumentation invocations,\n  over a run count comparable to the original measurement. \"Comparable\" is\n  deliberately not pinned to an exact N here: the original 14/481 is 2.9%, so a\n  window of ~100 post-instrumentation runs with 0 undeclared is a meaningful\n  result and ~20 is not.\n\nWHAT A NON-ZERO RESULT MEANS, and why this item is not just bookkeeping\n  Any undeclared row that DOES appear now carries an abort site, so it names\n  its own cause instead of being one of fourteen indistinguishable rows. Those\n  are the cases (a) could not enumerate statically -- and the two shapes the\n  ERR trap cannot see at all (a set -u unbound variable, a bare exit) would show\n  as \"not recorded\", which is itself the signal to go looking by hand.\n\nDO NOT close this by re-reading the whole ledger and finding 55 violations: 41\nof those are the already-fixed merged-then-exit-nonzero class and 14 are the\npre-instrumentation undeclared rows. The append-only ledger never forgets, so\nthe unwindowed verdict will read VIOLATION for as long as the file exists."  # 2324
+    fields: {}  # 2324
+- op: update  # 9c8d
+  at: '2026-09-16T04:48:19Z'  # 9c8d
+  by: agent  # 9c8d
+  actor: jgstern_agent  # 9c8d
+  clock: 2  # 9c8d
+  nonce: 9c8d  # 9c8d
+  set: {}  # 9c8d
+  add:  # 9c8d
+    not_duplicate_of: [WI-mimap-lojig-mapof-hijum-nojut-bogoh-hosap-lunoj]  # 9c8d
+- op: discuss  # 7e09
+  at: '2026-09-16T04:48:19Z'  # 7e09
+  by: agent  # 7e09
+  actor: jgstern_agent  # 7e09
+  clock: 3  # 7e09
+  nonce: '7e09'  # 7e09
+  message: "SimHash false positive. WI-mimap is about taint catalogue channel directories (taint_sources.d / taint_sanitizers.d) being created but scanned by nothing; this item is about re-measuring the auto-pr convergence ledger. Shared vocabulary ('declared', 'channel exists'), no shared subject, mechanism or artifact."  # 7e09
