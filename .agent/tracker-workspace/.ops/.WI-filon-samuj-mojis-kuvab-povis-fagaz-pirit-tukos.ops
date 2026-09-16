@@ -1,0 +1,28 @@
+- op: create  # 11e9
+  at: '2026-09-16T00:46:50Z'  # 11e9
+  by: agent  # 11e9
+  actor: jgstern_agent  # 11e9
+  clock: 1  # 11e9
+  nonce: '11e9'  # 11e9
+  data:  # 11e9
+    kind: work_item  # 11e9
+    title: "ci-debug has no way to read a PR description body: the field is already fetched and discarded"  # 11e9
+    status: needs_human_review  # 11e9
+    priority: 3  # 11e9
+    parent:  # 11e9
+    tags:  # 11e9
+    - governance  # 11e9
+    - tooling  # 11e9
+    isbefore: []  # 11e9
+    duplicate_of: []  # 11e9
+    not_duplicate_of: []  # 11e9
+    pr_ref:  # 11e9
+    description: "RAISED 2026-09-15 by the owner, after asking whether I could see the PR message\nfor PR #922 and finding that I could not.\n\nTHE GAP. No approved script exposes a PR's description body. `ci-debug\npr-status <n>` fetches `/pulls/<n>` and prints six fields -- title, state,\nmerged, mergeable, head/base branch, HEAD sha -- and discards the rest of the\npayload. The CI Interaction Policy routes all forge API access through\n`auto-pr`, `merge-pr`, `ci-debug` and `contribute`, none of which read a body,\nso the text is unreachable without violating that policy.\n\nTHE DATA IS ALREADY ON THE WIRE. The GitHub `/pulls/<n>` response carries\n`body` in the same payload `cmd_pr_status` already requests and already parses.\nThis adds no endpoint, no auth scope and no network surface -- it stops\ndiscarding a field.\n\nWHY IT MATTERS. A commit message and a PR description are different artifacts\nwith different content: auto-pr composes the description separately, and a\nmerged PR's discussion of scope, caveats and follow-ups may exist only there.\nFor a rebase-merged PR there is no merge commit carrying it either, so the body\nis currently write-only from the agent's side.\n\nDESIGN POINTS, none settled here:\n\n  1  FAILURE MODES MUST NOT COLLAPSE. `json_field` (forgejo-api.sh:228) ends\n     `except Exception: print('')`, so an empty body, a null body, a missing\n     key and a parse failure are one indistinguishable empty string. The file\n     already has the cure and the rationale for it: `json_bool_state` exists\n     for `mergeable` so that null and false stay separable, with a comment\n     recording that the tri-state IS the point. A body reader needs the same --\n     \"no description\" must not read as \"fetch failed\".\n\n  2  THE RETRIEVED TEXT IS UNTRUSTED. docs/CONTRIBUTOR_MODE.AGENTS.md defines a\n     fork-based external contributor path, so a PR body is author-controlled by\n     someone outside the repo, and the consumer of this subcommand is an agent.\n     Output should fence the body in an explicit delimiter and label it as\n     data. This is an output-format decision and is cheaper to make now than to\n     retrofit.\n\n  3  SURFACE. Proposed `pr-body <num>` as its own subcommand rather than a\n     `--body` flag on `pr-status`, so pr-status's output shape stays stable for\n     anything parsing it. Body only; pr-status already prints the title.\n\nNOT IN SCOPE, deliberately. This is a READ path only. It proposes no forge API\nwrite, and it proposes no change to what is published or how. Whether PR\ndescriptions are scrubbed before publication is settled and closed elsewhere\nand is not reopened here.\n\nTESTING. tests/test_ci_debug_github.py already provides the harness --\nrun_script / fake_repo / bindir_with_fakes with curl call logging. Bash\ncontributes no Python coverage, so the cost is a small number of behavioural\ntests against a faked payload, including a negative control that a body-less PR\nis reported as such rather than as an error.\n\nGOVERNANCE. scripts/ci-debug requires human approval. Filed at\nneeds_human_review per the approval workflow; not implemented, no branch, no\nPR, pending the owner's word."  # 11e9
+    fields: {}  # 11e9
+- op: discuss  # cb94
+  at: '2026-09-16T00:47:22Z'  # cb94
+  by: agent  # cb94
+  actor: jgstern_agent  # cb94
+  clock: 2  # cb94
+  nonce: cb94  # cb94
+  message: "APPROVAL REQUESTED. scripts/ci-debug is a governance file, so this is filed and\nnot built: no branch, no commit, no PR.\n\nPROPOSED, in one sentence: add `ci-debug pr-body <num>`, which reuses the\n/pulls/<num> fetch cmd_pr_status already performs and prints the `body` field\nthe current code discards.\n\nWHAT I WOULD WRITE\n  * a body extractor that does NOT go through json_field, because that helper\n    swallows every exception into an empty string; \"no description\", \"null\n    body\", \"missing key\" and \"parse failure\" must be four distinguishable\n    outcomes, following the tri-state precedent json_bool_state already sets\n    for mergeable and the reason recorded beside it\n  * output that fences the body in an explicit delimiter and labels it as\n    untrusted data, since the contributor-mode fork path means a body can be\n    authored outside this repo and the consumer is an agent\n  * a new subcommand rather than a flag on pr-status, so pr-status's output\n    shape does not move\n  * tests on the existing tests/test_ci_debug_github.py harness, including a\n    negative control for a PR with no description\n\nWHAT I WOULD NOT TOUCH. Read path only. No forge API write, no change to what\ngets published or how, no second copy of anything.\n\nTWO THINGS FOR YOU TO RULE ON\n  1  whether you want this at all, given it is a convenience for me rather\n     than a fix for a defect\n  2  the priority: filed at P3 on my own read, and priority changes are yours\n\nIf approved I would implement it via auto-pr --gov and leave the merge to you."  # cb94
