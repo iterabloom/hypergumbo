@@ -1,0 +1,36 @@
+- op: create  # d8eb
+  at: '2026-09-16T02:02:36Z'  # d8eb
+  by: agent  # d8eb
+  actor: jgstern_agent  # d8eb
+  clock: 1  # d8eb
+  nonce: d8eb  # d8eb
+  data:  # d8eb
+    kind: work_item  # d8eb
+    title: "auto-pr discarded ALL stderr from the lock line onward: 'exec {FD}>>f 2>/dev/null' makes the stderr redirect permanent"  # d8eb
+    status: done  # d8eb
+    priority: 2  # d8eb
+    parent:  # d8eb
+    tags:  # d8eb
+    - ci_infrastructure  # d8eb
+    - developer_experience  # d8eb
+    - governance  # d8eb
+    isbefore: []  # d8eb
+    duplicate_of: []  # d8eb
+    not_duplicate_of: []  # d8eb
+    pr_ref:  # d8eb
+    description: "FOUND 2026-09-15 while landing WI-sidot, by being on the receiving end of it:\na newly-introduced `set -u` abort inside auto-pr's push path surfaced as\n`exit 1` with EMPTY stdout AND EMPTY stderr, and stayed unexplained through\nfour bisection rounds. The abort was mine and took one line to fix. Finding it\ntook an hour, because auto-pr had thrown away the message.\n\n## The defect\n\n`_autopr_hold_recover_lock` (scripts/auto-pr) opened its lock descriptor as:\n\n    exec {_AUTOPR_RECOVER_FD}>>\"$f\" 2>/dev/null || return 0\n\n`exec` WITHOUT A COMMAND applies its redirections to the shell PERMANENTLY.\nThat is the whole point of the form, and it applies to BOTH redirections --\nnot just the `{FD}>>` the author wanted, but the `2>/dev/null` intended to\nhide this one call's error message. From that line to the end of the process,\nevery stderr write in auto-pr went to /dev/null.\n\n`_autopr_hold_recover_lock` is called at the TOP of `do_pr`, before the push,\nbefore CI polling, before the merge. So the suppressed region is essentially\nthe entire run.\n\n## Confirmed, not inferred\n\n    $ bash -c 'set -euo pipefail\n      echo \"before\" >&2\n      exec {FD}>>/tmp/x 2>/dev/null || true\n      echo \"after\" >&2\n      echo \"stdout fine\"'\n    before\n    stdout fine          # <-- \"after\" is GONE\n\n    $ bash -c 'set -euo pipefail\n      exec {FD}>>/tmp/x 2>/dev/null || true\n      echo \"$NOPE_UNSET\"'\n    (no output at all; exit 1)\n\nThe second is the shape that cost the hour: `set -u` fires, bash writes\n\"unbound variable\" to stderr, and stderr is /dev/null.\n\n## Fix\n\nScope the redirect to a brace group. The allocated descriptor outlives the\ngroup; the stderr redirect does not:\n\n    { exec {_AUTOPR_RECOVER_FD}>>\"$f\"; } 2>/dev/null || return 0\n\nVerified: FD is still allocated (11), `flock -x -n \"$FD\"` still succeeds, and\na subsequent `echo ... >&2` is visible again.\n\n## Scope of the analogue sweep\n\n`grep -rnE '^\\s*exec\\s+\\{?[A-Za-z_]*\\}?[0-9]*[<>]' scripts/ .githooks/\n.agent/hooks/` returns three sites. The other two -- `smart-test:42`\n(`exec 9>\"$LOCKFILE\"`) and `test_hooks.sh:12` (`exec 9>\"$marker\"`, inside a\nsubshell) -- redirect no standard stream and are unaffected. This is a\nsingleton, not a family.\n\n## Why it is filed separately from WI-sidot\n\nDifferent root cause. WI-sidot is about which CHANNELS get scrubbed; this is\nabout auto-pr discarding its own diagnostics. They met only because WI-sidot's\nstderr report was the first thing to notice the suppression -- the \"🧽 brand\nscrub: removed N line(s)\" line printed nothing, on a run that had definitely\nscrubbed a line.\n\n## Unmeasured\n\nHow many past auto-pr failures were made harder to diagnose by this is not\nknown and is not recoverable from here -- the messages were never written\nanywhere. No claim is made about it."  # d8eb
+    fields: {}  # d8eb
+- op: discuss  # 6765
+  at: '2026-09-16T02:02:56Z'  # 6765
+  by: agent  # 6765
+  actor: jgstern_agent  # 6765
+  clock: 2  # 6765
+  nonce: '6765'  # 6765
+  message: "Fixed alongside WI-sidot. Behavioural evidence, re-run just now rather than recalled: with the brace-group form, a real auto-pr run in a fake repo (AUTO_PR_SIMULATE_OUTAGE=1) prints '🧽 brand scrub: removed 1 line(s) from the PR body' on stderr and exits 0; before the fix the same run printed nothing on stderr at all while still scrubbing the line. The descriptor is unaffected: FD allocates (11) and 'flock -x -n $FD' succeeds. Analogue sweep over scripts/, .githooks/ and .agent/hooks/ found 3 exec-redirect sites; the other two redirect no standard stream, so this is a singleton."  # 6765
+- op: discuss  # 693c
+  at: '2026-09-16T02:09:41Z'  # 693c
+  by: agent  # 693c
+  actor: jgstern_agent  # 693c
+  clock: 3  # 693c
+  nonce: 693c  # 693c
+  message: "Fixed in PR #981 alongside WI-sidot."  # 693c

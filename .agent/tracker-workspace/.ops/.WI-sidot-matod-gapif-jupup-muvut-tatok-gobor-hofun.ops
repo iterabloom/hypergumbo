@@ -47,3 +47,39 @@
   set: {}  # ab03
   add:  # ab03
     not_duplicate_of: [WI-pozut-loham-bopip-bihun-biboj-gikig-vigod-vozav]  # ab03
+- op: discuss  # 0f7f
+  at: '2026-09-16T01:38:18Z'  # 0f7f
+  by: agent  # 0f7f
+  actor: jgstern_agent  # 0f7f
+  clock: 5  # 0f7f
+  nonce: 0f7f  # 0f7f
+  message: "Found via ci-debug pr-body (WI-filon), shipped one commit earlier — the owner asked to see PR #922's body, and the first body ever read through an approved script carried an unscrubbed vendor session URL on its last line. Not a duplicate of WI-filon: that item made PR bodies READABLE, this one makes them SCRUBBED."  # 0f7f
+- op: update  # 0084
+  at: '2026-09-16T02:02:56Z'  # 0084
+  by: agent  # 0084
+  actor: jgstern_agent  # 0084
+  clock: 6  # 0084
+  nonce: '0084'  # 0084
+  set:  # 0084
+    status: done  # 0084
+- op: discuss  # 7f44
+  at: '2026-09-16T02:02:56Z'  # 7f44
+  by: agent  # 7f44
+  actor: jgstern_agent  # 7f44
+  clock: 7  # 7f44
+  nonce: 7f44  # 7f44
+  message: "Implemented. Scrub extracted to .githooks/brand-scrub.sh and sourced by lib/forgejo-api.sh, so one pattern list now governs all six egress points; commit-msg refactored onto the same library rather than keeping a second copy. Policy is commit-msg's (delete body lines, substitute titles) and the first/last-10-line window is kept, both per human decision. scripts/check-forge-text-egress enforces a declaration at every site and is proven non-vacuous by a planted unrouted site. Behavioural evidence: a real auto-pr run whose description ended in a vendor URL queued desc='Real prose that survives.' with the URL gone, title intact, exit 0, and 'removed 1 line(s)' on stderr. 1795 python tests + 59 hook tests green, mypy ratchet clean. Two defects found and fixed en route: the reporter read a variable set inside a command substitution (subshell) and the library read $HOME eagerly under set -u, both of which aborted callers silently; each is pinned by a regression test using the caller's real shape. WI-honat filed separately for the stderr suppression that hid them."  # 7f44
+- op: discuss  # 48af
+  at: '2026-09-16T02:09:11Z'  # 48af
+  by: agent  # 48af
+  actor: jgstern_agent  # 48af
+  clock: 8  # 48af
+  nonce: 48af  # 48af
+  message: "Merged as PR #981, dev SHA 8b166291a7f7."  # 48af
+- op: discuss  # f802
+  at: '2026-09-16T02:09:41Z'  # f802
+  by: agent  # f802
+  actor: jgstern_agent  # f802
+  clock: 9  # f802
+  nonce: f802  # f802
+  message: "Landed as PR #981 (merged via rebase, commit 8b166291a7). Production verification, not a proxy: 'ci-debug pr-body 981' — the same command that exposed the original leak — returns a body with 0 matches for claude.ai or /code/session_, ending at the DCO sign-off. The fix scrubbed its own PR."  # f802
