@@ -1,0 +1,33 @@
+Original commit body from cbb6b6a9a4b3e9a20dde71695a847799e849a7be:
+
+`derive_silence_reason` deliberately never infers NO_CANDIDATE_CONSTRUCT --
+only a pass BODY knows whether it looked for its construct and failed to find
+one, and a reason invented on the producer's behalf is a fabricated
+disclosure. But both stamp sites then assigned the derived value
+UNCONDITIONALLY, overwriting the one producer able to say it. The declared
+value was unreachable from anywhere in the tree: a vocabulary entry with no
+possible producer, which is the instrument-with-no-reader defect wearing a
+vocabulary's clothes.
+
+Both chokepoints now FILL rather than OVERRULE, matching how duration_ms and
+files_analyzed are already guarded at these same two sites. The one exception
+is "": a pass that EMITTED has no silence to explain, so NOT APPLICABLE still
+overrides a stale or mistaken body value rather than publishing a
+contradiction.
+
+Six tests, three per chokepoint: a body-supplied reason survives; it survives
+even a zero file count (outranking the orchestrator's no_candidate_files); and
+a pass that emitted is never silent whatever the body said. The last of those
+already passed -- it pins behaviour the guard must not break.
+
+SCOPE, STATED: this makes the value REACHABLE, not REACHED. No production body
+claims it yet, so the eleven `unreported` pass-runs are unchanged. Draining
+them is per-linker judgement: a linker emitting a symbol per candidate is
+silent exactly when it found none, but a linker emitting only PAIRING edges is
+also silent when it found candidates on one side and none on the other.
+crypto-flow and message-dispatch both bail on `if not all_writes or not
+all_reads`, which conflates those two; stamping that whole branch would
+install a fresh false claim in the axis built to cure false claims.
+
+Refs: WI-finij, INV-hujog
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
