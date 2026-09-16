@@ -81,6 +81,34 @@ class TestDeriveSilenceReason:
             assert got in all_pass_silence_reason_names()
 
 
+class TestNoCandidateConstructIfEmpty:
+    """The PRODUCER helper. Only a body may claim NO_CANDIDATE_CONSTRUCT."""
+
+    def test_empty_candidates_claims_the_construct_reason(self):
+        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+
+        assert no_candidate_construct_if_empty([]) == NO_CANDIDATE_CONSTRUCT
+
+    def test_candidates_found_claims_nothing(self):
+        """Found something => this body has no basis for the claim.
+
+        It returns "" rather than a reason, which leaves the orchestrator's
+        derivation in charge. A pass that found candidates and then failed to
+        RELATE them is silent for a different reason, and this helper must not
+        let it borrow this one.
+        """
+        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+
+        assert no_candidate_construct_if_empty(["a candidate"]) == ""
+
+    def test_accepts_any_sized_collection(self):
+        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+
+        for empty, full in ((set(), {1}), ((), (1,)), ({}, {"k": 1}), ([], [1])):
+            assert no_candidate_construct_if_empty(empty) == NO_CANDIDATE_CONSTRUCT
+            assert no_candidate_construct_if_empty(full) == ""
+
+
 class TestAnalysisRunField:
     def test_defaults_to_empty(self):
         run = AnalysisRun(execution_id="e", pass_id="p", version="1")

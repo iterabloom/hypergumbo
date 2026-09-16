@@ -73,7 +73,7 @@ invisible and leaves a later pass to drain it producer by producer.
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence, Sized
 from typing import Final
 
 #: The pass received zero input files. State A — nothing to find, and no
@@ -160,6 +160,35 @@ def derive_silence_reason(
     if files_analyzed == 0:
         return NO_CANDIDATE_FILES
     return UNREPORTED
+
+
+def no_candidate_construct_if_empty(candidates: "Sized") -> str:
+    """A pass body's claim that it LOOKED for its construct and found none.
+
+    :func:`derive_silence_reason` refuses to infer
+    :data:`NO_CANDIDATE_CONSTRUCT` because the orchestrator cannot know what a
+    pass was looking for; only the body can say. This is the producer side of
+    that refusal, and the chokepoints leave a body-supplied reason alone, so a
+    call here survives to the output.
+
+    ``candidates`` MUST be what the pass's own scan FOUND — the patterns, the
+    bindings, the declaration sites — and never what it finally EMITTED. The
+    two differ exactly where it matters. A linker that emits one symbol per
+    candidate is silent precisely when it found none, so for it the
+    distinction is invisible. A linker that emits only PAIRING edges is also
+    silent when it found candidates on one side and none on the other, and
+    there the construct IS present: claiming otherwise would install a fresh
+    false claim in the axis declared to cure false claims, which is the
+    WI-finij defect committed a second time by the people fixing it.
+
+    Returns ``""`` when candidates were found, which asserts nothing and
+    leaves the orchestrator's derivation in charge — a pass that found
+    candidates and failed to relate them lands in :data:`UNREPORTED`, the
+    honest "cannot determine". There is deliberately no value for
+    "found candidates, established no relation"; inventing one here would give
+    the vocabulary a seventh member with a single producer and no consumer.
+    """
+    return NO_CANDIDATE_CONSTRUCT if not len(candidates) else ""
 
 
 def summarize_silence(analysis_runs: Iterable[Mapping[str, object]]) -> dict[str, int]:

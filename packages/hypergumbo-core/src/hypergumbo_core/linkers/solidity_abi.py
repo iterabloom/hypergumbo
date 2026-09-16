@@ -56,6 +56,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
+from ..pass_silence import no_candidate_construct_if_empty
 
 PASS_ID = make_pass_id("solidity-abi-linker")
 
@@ -256,6 +257,7 @@ def link_solidity_abi(
                 derived_from=[syn_id, target.id],
             ))
 
+    run.silence_reason = no_candidate_construct_if_empty(call_sites)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return SolidityAbiLinkResult(
