@@ -269,3 +269,20 @@ def test_line_form_is_silent_when_there_is_nothing_to_say() -> None:
     assert nudge.compute_line(_payload(verdict="converged"), 25) == ""
     assert nudge.compute_line(None, 25) == ""
     assert nudge.compute_line(_payload(verdict="cannot_conclude"), 25) == ""
+
+
+def test_the_nudge_routes_to_the_evidence_not_to_a_closed_item() -> None:
+    """A nudge is a router, so what it points at has to still be live.
+
+    Both forms used to end "the undeclared-state class is WI-nazoj". That item
+    is now closed: its ten undeclared exits declare their state, and an abort
+    the ERR trap can see records the line it died on. A reader following that
+    pointer lands on finished work instead of on the evidence — an instrument
+    routing away from its own output, which is WI-lapap's defect one hop along.
+    """
+    args = (_payload(verdict="violation", undeclared_state=2), 25)
+    for form in (nudge.compute_nudge(*args), nudge.compute_line(*args)):
+        assert "abort site" in form.lower(), form
+        assert "WI-nazoj" not in form, (
+            "the nudge still routes the reader to a closed item:\n" + form
+        )

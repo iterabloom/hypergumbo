@@ -102,7 +102,8 @@ def compute_line(payload: dict | None, window: int) -> str:
     return (
         f"auto-pr did not converge in the last {window} invocation(s): "
         f"{'; '.join(parts)}. Run `./scripts/audit-autopr-convergence` for the "
-        f"table and the offending rows (INV-rahib; undeclared-state is WI-nazoj)."
+        f"table and the offending rows, including the abort site of any "
+        f"undeclared run (INV-rahib)."
     )
 
 
@@ -139,8 +140,10 @@ def compute_nudge(payload: dict | None, window: int) -> str:
         )
     lines.append(
         "\nRun `./scripts/audit-autopr-convergence` for the full table and the "
-        "offending rows. This is INV-rahib; the undeclared-state class is "
-        "WI-nazoj.\n"
+        "offending rows. An undeclared run names the abort site it died on, or "
+        "reports that the site was not recorded — which is itself the signal to "
+        "look by hand, since a `set -u` abort and a bare `exit` never reach the "
+        "ERR trap. This is INV-rahib.\n"
     )
     return "".join(lines)
 
