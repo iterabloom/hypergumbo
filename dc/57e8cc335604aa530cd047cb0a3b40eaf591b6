@@ -1,0 +1,50 @@
+Original commit body from 0626fc211aff0ec524680a8b6a87cef264b65b59:
+
+The value became reachable in the previous PR; nothing reached it. This gives
+it producers.
+
+`no_candidate_construct_if_empty(candidates)` is the producer helper. Its
+argument MUST be what the pass's own scan FOUND -- the patterns, the call
+sites, the bindings -- and never what the pass finally EMITTED. The two differ
+exactly where it matters: a linker emitting one symbol per candidate is silent
+precisely when it found none, but a linker emitting only PAIRING edges is also
+silent when it found candidates on one side and none on the other, and there
+the construct IS present.
+
+MEASURED on a self-survey, not reasoned: no_candidate_construct 0 -> 6,
+unreported 11 -> 5.
+
+Drained (scanned, genuinely found nothing): crypto-flow, graphql-resolver,
+grpc, message-queue, pyffi, solidity-abi.
+
+NOT drained, and this is the finding: annotation-convention, di-resolution,
+ipc, wasm-bindgen, message-dispatch found candidates and emitted nothing
+anyway. They stay `unreported` = CANNOT DETERMINE, because THE AXIS HAS NO
+VALUE FOR "candidates found, relation not established". That population was
+invisible before -- undifferentiated inside unreported -- and is now countable
+at five. Declaring a value for it needs a producer, or it becomes the trap
+prerequisite_absent is already in.
+
+wasm-bindgen and pyffi could not be ASKED the question until a candidate
+accumulator was added: both scanned per file and discarded what they found.
+Anchoring on emitted edges would have had them declare the construct absent
+while it sat there unpaired -- the WI-finij defect committed a second time by
+the people fixing it.
+
+Anchoring on the candidate set is also robust to misreading a linker: ipc and
+annotation-convention were classified as symbol-per-candidate and actually
+gate emission behind a match (ipc has a `continue` before its symbol append).
+The rule gave the right answer regardless, because it never asks what the pass
+emitted.
+
+crypto-flow and message-dispatch take the claim on their early bail, whose
+`if not all_writes or not all_reads` conflates "found nothing" with "found one
+side"; it fires only when both are empty.
+
+mypy: a bare `list` annotation breached the ratchet 667 -> 668 and is now
+list[tuple[str, str, int]], which then exposed that the concatenation beside it
+mixed element types and had only passed because the bare annotation made it
+Any. Back to 667.
+
+Refs: WI-finij, INV-hujog, INV-hosig
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
