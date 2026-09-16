@@ -51,6 +51,7 @@ from typing import Iterator
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 PASS_ID = make_pass_id("otp-linker")
 
@@ -339,7 +340,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
         if handler_index:
             for file_path in _find_elixir_files(ctx.repo_root):
                 try:
-                    source = file_path.read_bytes()
+                    source = read_source_bytes(file_path)
                 except (OSError, IOError) as e:
                     files_skipped += 1
                     run.record_failed_file(
@@ -427,7 +428,7 @@ def otp_linker(ctx: LinkerContext) -> LinkerResult:
         if erlang_handler_index:
             for file_path in _find_erlang_files(ctx.repo_root):
                 try:
-                    source = file_path.read_bytes()
+                    source = read_source_bytes(file_path)
                 except (OSError, IOError) as e:
                     files_skipped += 1
                     run.record_failed_file(

@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..symbol_kinds import SOLIDITY_CALLABLE_DECLARATION_KINDS
-from ._text_filters import js_ts_language_from_path
+from ._text_filters import js_ts_language_from_path, read_source_text
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from .registry import (
     LinkerActivation,
@@ -130,7 +130,7 @@ def _scan_contract_calls(
             continue
 
         try:
-            content = ts_file.read_text(errors="replace")
+            content = read_source_text(ts_file, errors="replace")
         except OSError:  # pragma: no cover
             continue
 

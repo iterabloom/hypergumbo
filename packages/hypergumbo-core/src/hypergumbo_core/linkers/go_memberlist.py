@@ -50,6 +50,7 @@ from pathlib import Path
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, make_pass_id
 from .registry import LinkerActivation, LinkerContext, LinkerResult, register_linker
+from ._text_filters import read_source_bytes
 
 PASS_ID = make_pass_id("go-memberlist-linker")
 
@@ -104,7 +105,7 @@ def _collect_memberlist_files(
     result: dict[Path, bytes] = {}
     for p in find_non_test_files(repo_root, patterns=["*.go"]):
         try:
-            data = p.read_bytes()
+            data = read_source_bytes(p)
         except (OSError, IOError):  # pragma: no cover
             continue
         if _file_imports_memberlist(data):

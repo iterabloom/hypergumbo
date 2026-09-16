@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ..paths import is_test_file
 from ..analyze.base import make_route_symbol
-from ._text_filters import language_from_path
+from ._text_filters import language_from_path, read_source_text
 from .registry import (
     LinkerActivation,
     LinkerContext,
@@ -102,7 +102,7 @@ def scan_file_for_annotations(file_path: Path, rel_path: str) -> list[Annotation
         List of AnnotationSite objects found in the file.
     """
     try:
-        content = file_path.read_text(errors="replace")
+        content = read_source_text(file_path, errors="replace")
     except OSError:  # pragma: no cover
         return []
 

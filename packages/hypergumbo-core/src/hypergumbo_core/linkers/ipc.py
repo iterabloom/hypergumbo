@@ -91,7 +91,7 @@ from typing import Iterator
 
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from ._text_filters import js_ts_language_from_path
+from ._text_filters import js_ts_language_from_path, read_source_bytes
 from .registry import (
     LinkerContext,
     LinkerRequirement,
@@ -461,7 +461,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
     # Scan all JS/TS files for IPC patterns
     for file_path in _find_js_files(repo_root):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
             language = _get_language(file_path)
             patterns = detect_ipc_patterns(source, language)
 
@@ -612,7 +612,7 @@ def link_ipc(repo_root: Path) -> IpcLinkResult:
 
     for file_path in _find_js_files(repo_root):
         try:
-            source = file_path.read_bytes()
+            source = read_source_bytes(file_path)
         except (OSError, IOError):
             continue
 

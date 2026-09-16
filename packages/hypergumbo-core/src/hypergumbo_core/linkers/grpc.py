@@ -93,7 +93,7 @@ from .registry import (
     LinkerResult,
     register_linker,
 )
-from ._text_filters import js_ts_language_from_path, read_masked_source
+from ._text_filters import js_ts_language_from_path, read_masked_source, read_source_text
 
 PASS_ID = make_pass_id("grpc-linker")
 
@@ -534,8 +534,8 @@ def _link_go_methods_to_rpc_routes(
     struct_to_service: dict[tuple[str, str], str] = {}
     for file_path_str in go_server_files:
         try:
-            content = Path(file_path_str).read_text(
-                encoding="utf-8", errors="replace"
+            content = read_source_text(
+                Path(file_path_str), encoding="utf-8", errors="replace"
             )
         except OSError:  # pragma: no cover
             continue
