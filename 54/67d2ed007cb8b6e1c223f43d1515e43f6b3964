@@ -1,0 +1,23 @@
+Original commit body from b6cdd1b457edefc200f69b5d84d49c1eade99312:
+
+INV-bigaz's statement is "a change to a non-Python input the production
+code loads at runtime must select the tests that exercise it". The fix
+that landed in 9d552f3bd1 keyed on YAML, which is 169 of the 177
+non-Python files under packages/*/src -- and the eight it missed are not
+inert. url_folding/SCOPE.md is parsed by get_scoped_languages() on every
+run that folds a URL, and it selected nothing: the same keyed-to-one-
+instance shape one level down from the defect that commit closed.
+
+The key is now "not Python" rather than "is YAML". Python is excluded
+because the import slice already resolves it, which is also what makes
+the widening safe -- a linker module two levels below src/ is the real
+risk and is the case the tests name.
+
+The shell fallback keeps its own copy of the predicate, because it has to
+work when python3 or the helper is missing and silence is the worst
+failure mode for a selector. Two homes for one fact is how a widening
+lands in one and not the other, so a test walks one representative of
+every path shape in the tree and requires the two to agree. Both homes
+were mutation-tested: removing either exclusion turns two tests red.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
