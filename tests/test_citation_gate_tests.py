@@ -64,6 +64,30 @@ def run_helper(changed: list[str]) -> list[str]:
     return [line for line in proc.stdout.splitlines() if line]
 
 
+def _shipped_sources() -> dict:
+    """Import-root-relative path -> file, for every shipped Python source.
+
+    ONE GLOB, THE SAME ONE THE HELPER USES. The first cut of this file used
+    ``packages/*/src/*/**/*.py`` here and the helper used
+    ``packages/*/src/**/*.py``; they agree on Python 3.12 and the extra
+    component returns NOTHING on the 3.11 CI runs, so the population came back
+    empty and the enumeration test measured a tree it could not see. It failed
+    loudly only because it asserts a floor on its own population -- without
+    that, "no citers" and "no sources" are the same green.
+    """
+    found = {}
+    for path in REPO_ROOT.glob("packages/*/src/**/*.py"):
+        parts = path.parts
+        if "src" not in parts:  # pragma: no cover - glob guarantees it
+            continue
+        found["/".join(parts[parts.index("src") + 1:])] = path
+    assert len(found) > 100, (
+        f"only {len(found)} shipped sources found -- this is an instrument "
+        "fault, not a finding"
+    )
+    return found
+
+
 class TestTheRotItselfIsNowCaught:
     """The item's own example, re-run end to end."""
 
@@ -155,10 +179,7 @@ class TestTheWholeClassIsSmallAndKnown:
         source appear in a handful of files, which is what makes this gate
         cheap. If this number grows a lot, the hop-2 breadth is worth
         re-measuring rather than inherited."""
-        sources = {}
-        for path in REPO_ROOT.glob("packages/*/src/*/**/*.py"):
-            parts = path.parts
-            sources["/".join(parts[parts.index("src") + 1:])] = path
+        sources = _shipped_sources()
         citers = set()
         for candidate in (
             list(REPO_ROOT.glob("packages/*/src/**/*.py"))
@@ -185,9 +206,7 @@ def test_this_file_is_not_itself_a_citer() -> None:
     not quietly undo it.
     """
     text = Path(__file__).read_text(encoding="utf-8")
-    sources = set()
-    for path in REPO_ROOT.glob("packages/*/src/*/**/*.py"):
-        parts = path.parts
-        sources.add("/".join(parts[parts.index("src") + 1:]))
-    written_out = sorted(literal for literal in sources if literal in text)
+    written_out = sorted(
+        literal for literal in _shipped_sources() if literal in text
+    )
     assert not written_out, written_out
