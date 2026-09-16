@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+"""audit-autopr-convergence — read the auto-pr convergence ledger (WI-lapap).
+
+WHY THIS EXISTS
+---------------
+INV-rahib asks whether ``auto-pr`` always ends in a declared terminal state.
+That is not a property of one run, so ``auto-pr`` writes one JSON line per
+invocation to ``.git/AUTOPR_HISTORY.jsonl``. The ledger was added because the
+item's validation criterion ("observe auto-pr converge during a real concurrent
+nightly") was *organic* — nobody was withholding the measurement, there was
+nothing to measure.
+
+Then nothing read it. 483 rows accumulated over six weeks holding two live
+violation classes — 41 runs that merged and exited 1, and 14 that ended with no
+declared terminal state — and they surfaced only because someone opened the
+file by hand. An instrument with no reader is the same organic criterion in a
+different costume, which is the defect this script closes.
+
+WHY A SCRIPT AND NOT A CI GATE
+------------------------------
+The ledger lives inside ``.git/``. Git never tracks it, so it is local to a
+clone and CI can never see it: there is no shared artifact to gate on, and a
+re-clone starts the record over. The reader therefore has to run where the
+evidence is — hence this script plus the stop-hook nudge that calls it.
+
+THE VERDICT IS THREE-VALUED, ON PURPOSE
+---------------------------------------
+``converged`` / ``violation`` / ``cannot conclude``. The third value is the
+whole point. This repository's recurring defect is a zero that means "never
+modelled" being read as a zero that means "nothing wrong" (``defines=[]``
+meaning both "understood, nothing here" and "never modelled"). An audit that
+answered "clean" when the ledger is missing, empty or unparseable would
+manufacture exactly the reassurance that stopped anyone looking — so a ledger
+that cannot be *fully* read never yields an all-clear, and an unparseable row
+downgrades the verdict rather than quietly shrinking the denominator.
+
+THE TWO VIOLATION CLASSES
+-------------------------
+1. **A converged-merged state with a nonzero exit.** The merge landed and the
+   run reported failure. ``merged`` and ``already_merged`` both count: they are
+   reached from different code paths that carried the same defect.
+2. **An undeclared terminal state.** ``unknown`` is the initializer and is
+   overwritten before any deliberate exit, so reaching it means the run fell
+   off the end. Owner ruling 2026-08-03 makes this *the* violation signal, in
+   place of the original "merged or explicit failure, no third state" wording
+   that no conforming implementation could satisfy (``queued_vpr``,
+   ``governance_pending`` and ``noop_empty_queue`` are deliberate outcomes).
+   An undeclared run that exited **0** is counted and reported separately: it
+   claimed success for a run that recorded neither a terminal state nor a
+   merge, which is a different thing to have told the caller.
+
+WINDOWING
+---------
+``--window N`` restricts the verdict to the most recent N invocations. An
+append-only ledger never forgets, so a nudge computed over all history would
+fire forever on a backlog nobody can retire and be tuned out within a week —
+which is how an instrument stops being read. The stop-hook nudge passes a
+window; a deliberate audit omits it and sees everything.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+EXIT_OK = 0
+EXIT_VIOLATION = 1
+EXIT_CANNOT_CONCLUDE = 2
+
+#: States that assert the work landed. Both carry the exit-0 obligation.
+CONVERGED_MERGED = frozenset({"merged", "already_merged"})
+
+#: The initializer. Never written by a deliberate exit, so reaching it is the
+#: violation signal rather than a state in the vocabulary.
+UNDECLARED = "unknown"
+
+
+def default_ledger_path(repo_root: Path) -> Path:
+    """Where ``auto-pr`` writes the ledger for this clone.
+
+    Kept as a function so the default is pinned by a test: a default that
+    silently pointed elsewhere would make every unattended invocation a no-op,
+    which is the shape of the defect being fixed.
+    """
+    return repo_root / ".git" / "AUTOPR_HISTORY.jsonl"
+
+
+def load_rows(path: Path) -> tuple[list[dict], list[int], str | None]:
+    """Read the ledger.
+
+    Returns ``(rows, malformed_line_numbers, error)``. ``error`` is a short
+    reason the ledger could not be read at all; it is distinct from an empty
+    ledger, and both are distinct from a ledger full of clean rows.
+    """
+    if not path.exists():
+        return [], [], f"no ledger at {path}"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return [], [], f"ledger at {path} could not be read: {exc}"
+
+    rows: list[dict] = []
+    malformed: list[int] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            malformed.append(lineno)
+            continue
+        if not isinstance(parsed, dict):
+            malformed.append(lineno)
+            continue
+        rows.append(parsed)
+    return rows, malformed, None
+
+
+def classify(rows: list[dict]) -> dict:
+    """Tally the population and the two violation classes."""
+    by_state: dict[str, dict[str, int]] = {}
+    merged_nonzero: list[dict] = []
+    undeclared: list[dict] = []
+    undeclared_exit_zero: list[dict] = []
+
+    for row in rows:
+        state = str(row.get("final_state"))
+        code = row.get("exit_code")
+        by_state.setdefault(state, {}).setdefault(str(code), 0)
+        by_state[state][str(code)] += 1
+
+        if state in CONVERGED_MERGED and code != 0:
+            merged_nonzero.append(row)
+        if state == UNDECLARED:
+            undeclared.append(row)
+            if code == 0:
+                undeclared_exit_zero.append(row)
+
+    return {
+        "total": len(rows),
+        "by_state": by_state,
+        "merged_nonzero_exit": len(merged_nonzero),
+        "undeclared_state": len(undeclared),
+        "undeclared_state_exit_zero": len(undeclared_exit_zero),
+        "_merged_nonzero_rows": merged_nonzero,
+        "_undeclared_rows": undeclared,
+    }
+
+
+def _describe(row: dict) -> str:
+    pr = row.get("pr_number")
+    return (
+        f"PR #{pr if pr is not None else '?'}  "
+        f"{row.get('final_state')}  exit {row.get('exit_code')}  "
+        f"{row.get('timestamp', '?')}"
+    )
+
+
+def _render_text(path: Path, summary: dict, malformed: list[int],
+                 error: str | None, window: int | None) -> str:
+    lines = [f"auto-pr convergence audit — {path}"]
+    if window is not None:
+        lines.append(f"window: most recent {window} invocation(s)")
+
+    if error is not None:
+        lines.append("")
+        lines.append(f"VERDICT: CANNOT CONCLUDE — {error}")
+        lines.append(
+            "  A ledger that was never written is not a ledger with nothing "
+            "wrong in it."
+        )
+        return "\n".join(lines) + "\n"
+
+    if summary["total"] == 0:
+        lines.append("")
+        lines.append("VERDICT: CANNOT CONCLUDE — 0 invocations recorded")
+        lines.append(
+            "  The ledger exists but holds no runs, so there is no evidence "
+            "either way."
+        )
+        return "\n".join(lines) + "\n"
+
+    lines.append("")
+    lines.append(f"{'final_state':<28}{'exit':>6}{'n':>8}")
+    for state in sorted(summary["by_state"]):
+        for code in sorted(summary["by_state"][state]):
+            lines.append(f"{state:<28}{code:>6}{summary['by_state'][state][code]:>8}")
+    lines.append(f"{'TOTAL':<28}{'':>6}{summary['total']:>8}")
+
+    violations = summary["merged_nonzero_exit"] + summary["undeclared_state"]
+    lines.append("")
+
+    if malformed:
+        shown = ", ".join(str(n) for n in malformed[:5])
+        more = f" (+{len(malformed) - 5} more)" if len(malformed) > 5 else ""
+        lines.append(
+            f"VERDICT: CANNOT CONCLUDE — {len(malformed)} unparseable row(s) "
+            f"at line(s) {shown}{more}"
+        )
+        lines.append(
+            "  The readable rows are summarised above, but a ledger that "
+            "cannot be fully read cannot support an all-clear."
+        )
+        if violations:
+            lines.append(f"  It also already shows {violations} violation(s).")
+        return "\n".join(lines) + "\n"
+
+    if violations == 0:
+        lines.append(
+            f"VERDICT: CONVERGED — {summary['total']} invocation(s), "
+            f"every one in a declared terminal state with an agreeing exit code."
+        )
+        return "\n".join(lines) + "\n"
+
+    lines.append(f"VERDICT: VIOLATION — {violations} run(s)")
+    if summary["merged_nonzero_exit"]:
+        lines.append("")
+        lines.append(
+            f"  Class 1 — merged, then exit nonzero "
+            f"({summary['merged_nonzero_exit']}): the work landed and the run "
+            f"reported failure."
+        )
+        for row in summary["_merged_nonzero_rows"][-5:]:
+            lines.append(f"    {_describe(row)}")
+    if summary["undeclared_state"]:
+        lines.append("")
+        lines.append(
+            f"  Class 2 — no declared terminal state "
+            f"({summary['undeclared_state']}): the run fell off the end; "
+            f"`{UNDECLARED}` is the initializer, not a state."
+        )
+        if summary["undeclared_state_exit_zero"]:
+            lines.append(
+                f"    of which {summary['undeclared_state_exit_zero']} exit 0 "
+                f"— claimed success with no terminal state recorded."
+            )
+        for row in summary["_undeclared_rows"][-5:]:
+            lines.append(f"    {_describe(row)}")
+    return "\n".join(lines) + "\n"
+
+
+def run(argv: list[str] | None = None) -> tuple[int, str]:
+    """Audit the ledger. Returns ``(exit_code, output)``."""
+    parser = argparse.ArgumentParser(
+        prog="audit-autopr-convergence",
+        description="Read the auto-pr convergence ledger (INV-rahib / WI-lapap).",
+    )
+    parser.add_argument(
+        "ledger", nargs="?", default=None,
+        help="path to the ledger (default: <repo>/.git/AUTOPR_HISTORY.jsonl)",
+    )
+    parser.add_argument(
+        "--window", type=int, default=None, metavar="N",
+        help="only consider the most recent N invocations",
+    )
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    repo_root = Path(__file__).resolve().parent.parent
+    path = Path(args.ledger) if args.ledger else default_ledger_path(repo_root)
+
+    rows, malformed, error = load_rows(path)
+    if args.window is not None:
+        rows = rows[-args.window:]
+
+    summary = classify(rows)
+    violations = summary["merged_nonzero_exit"] + summary["undeclared_state"]
+
+    if error is not None or summary["total"] == 0 or malformed:
+        code = EXIT_CANNOT_CONCLUDE
+        verdict = "cannot_conclude"
+    elif violations:
+        code = EXIT_VIOLATION
+        verdict = "violation"
+    else:
+        code = EXIT_OK
+        verdict = "converged"
+
+    if args.json:
+        payload = {k: v for k, v in summary.items() if not k.startswith("_")}
+        payload["verdict"] = verdict
+        payload["ledger"] = str(path)
+        payload["malformed_rows"] = len(malformed)
+        payload["error"] = error
+        return code, json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+    return code, _render_text(path, summary, malformed, error, args.window)
+
+
+def main() -> int:  # pragma: no cover — thin argv/stdout shim
+    code, out = run()
+    print(out, end="")
+    return code
+
+
+if __name__ == "__main__":  # pragma: no cover — entry point
+    import sys
+
+    sys.exit(main())
