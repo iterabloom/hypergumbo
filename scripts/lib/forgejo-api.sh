@@ -285,6 +285,48 @@ else:
 }
 
 # ------------------------------------------------------------------
+# json_text_state FIELD_PATH   (JSON object on stdin)
+#   Print exactly one of: present | empty | null | absent | other | unreadable
+#
+#   json_bool_state's sibling, for STRING fields, and it exists for the same
+#   reason: json_field answers every one of these questions with the empty
+#   string, so a caller cannot tell "the field is genuinely empty" from "the
+#   key is gone" from "the response was not JSON at all".
+#
+#   The case that forced it is a pull request's `body`. "This PR has no
+#   description" is a true statement about the PR; "the fetch came back as
+#   garbage" is a statement about the fetch. Rendering both as nothing turns
+#   the second into a false version of the first, and the caller reports a
+#   blank description with no indication it never read one.
+#
+#   `empty` covers whitespace-only too — a body of "\n\n" carries no more
+#   information than "" and a caller branching on it wants the same answer.
+#   A non-string (a number, an object) is `other`, never silently stringified.
+# ------------------------------------------------------------------
+json_text_state() {
+	local dotpath="$1"
+	python3 -c "
+import sys, json, functools
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('unreadable'); raise SystemExit(0)
+try:
+    val = functools.reduce(lambda d, k: d[k], '$dotpath'.split('.'), data)
+except Exception:
+    print('absent'); raise SystemExit(0)
+if val is None:
+    print('null')
+elif not isinstance(val, str):
+    print('other')
+elif val.strip() == '':
+    print('empty')
+else:
+    print('present')
+" 2>/dev/null || echo "unreadable"
+}
+
+# ------------------------------------------------------------------
 # json_array_find FIELD_PATH VALUE
 #   Find element in JSON array (on stdin) by field match.
 #   Prints the matching JSON object. Returns 1 if not found.
