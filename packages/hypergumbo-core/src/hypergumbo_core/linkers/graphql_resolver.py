@@ -59,7 +59,7 @@ from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._text_filters import js_ts_language_from_path
 from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("graphql-resolver-linker")
 
@@ -581,7 +581,7 @@ def link_graphql_resolvers(root: Path, schema_symbols: list[Symbol]) -> Resolver
             }
             edges.append(edge)
 
-    run.silence_reason = no_candidate_construct_if_empty(all_patterns)
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
 

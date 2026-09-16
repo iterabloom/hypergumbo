@@ -86,6 +86,22 @@ NO_CANDIDATE_FILES: Final[str] = "no_candidate_files"
 #: to find that out. Only a pass BODY may report this.
 NO_CANDIDATE_CONSTRUCT: Final[str] = "no_candidate_construct"
 
+#: The pass FOUND its construct and carried none of it through resolution.
+#: State A's near neighbour and its opposite in consequence: an import whose
+#: export is missing, a DI binding resolving to no symbol, a write with no
+#: matching read. :data:`NO_CANDIDATE_CONSTRUCT` says the construct is not
+#: there; this says it is there and the pass could not relate it to anything.
+#: A consumer asking "is this pass useful on my repository?" needs them
+#: separated: "you have no GraphQL resolvers" and "you have GraphQL resolvers
+#: we could not connect to a schema" are opposite answers.
+#:
+#: WHAT IT DOES NOT CLAIM: why resolution failed. The counterpart may be
+#: genuinely absent (a correct no-op) or the pass's own matcher may have missed
+#: it (a recall defect), and a pass cannot tell those apart from the inside --
+#: they need opposite responses, which is why this value names the pass's own
+#: stage rather than the repository's contents. Only a pass BODY may report it.
+CANDIDATES_UNRESOLVED: Final[str] = "candidates_unresolved"
+
 #: A required grammar, parser or toolchain was absent.
 DEPENDENCY_UNAVAILABLE: Final[str] = "dependency_unavailable"
 
@@ -114,6 +130,7 @@ UNREPORTED: Final[str] = "unreported"
 SILENCE_REASONS: Final[frozenset[str]] = frozenset({
     NO_CANDIDATE_FILES,
     NO_CANDIDATE_CONSTRUCT,
+    CANDIDATES_UNRESOLVED,
     DEPENDENCY_UNAVAILABLE,
     BACKEND_DISABLED,
     PREREQUISITE_ABSENT,
@@ -162,14 +179,14 @@ def derive_silence_reason(
     return UNREPORTED
 
 
-def no_candidate_construct_if_empty(candidates: "Sized") -> str:
-    """A pass body's claim that it LOOKED for its construct and found none.
+def silence_reason_for_candidates(candidates: "Sized") -> str:
+    """A pass body's positive claim about what its own scan found.
 
-    :func:`derive_silence_reason` refuses to infer
-    :data:`NO_CANDIDATE_CONSTRUCT` because the orchestrator cannot know what a
-    pass was looking for; only the body can say. This is the producer side of
-    that refusal, and the chokepoints leave a body-supplied reason alone, so a
-    call here survives to the output.
+    :func:`derive_silence_reason` refuses to infer either of this function's
+    two values, because the orchestrator cannot know what a pass was looking
+    for; only the body can say. This is the producer side of that refusal, and
+    the chokepoints leave a body-supplied reason alone, so a call here survives
+    to the output.
 
     ``candidates`` MUST be what the pass's own scan FOUND — the patterns, the
     bindings, the declaration sites — and never what it finally EMITTED. The
@@ -177,18 +194,30 @@ def no_candidate_construct_if_empty(candidates: "Sized") -> str:
     candidate is silent precisely when it found none, so for it the
     distinction is invisible. A linker that emits only PAIRING edges is also
     silent when it found candidates on one side and none on the other, and
-    there the construct IS present: claiming otherwise would install a fresh
-    false claim in the axis declared to cure false claims, which is the
-    WI-finij defect committed a second time by the people fixing it.
+    there the construct IS present.
 
-    Returns ``""`` when candidates were found, which asserts nothing and
-    leaves the orchestrator's derivation in charge — a pass that found
-    candidates and failed to relate them lands in :data:`UNREPORTED`, the
-    honest "cannot determine". There is deliberately no value for
-    "found candidates, established no relation"; inventing one here would give
-    the vocabulary a seventh member with a single producer and no consumer.
+    Empty gives :data:`NO_CANDIDATE_CONSTRUCT`; non-empty gives
+    :data:`CANDIDATES_UNRESOLVED`. **Both are positive claims**, and the second
+    one is why this function was rewritten. It used to return ``""`` on the
+    non-empty branch — asserting nothing, and sending a run whose body had just
+    measured the answer into :data:`UNREPORTED`, which is declared to mean the
+    pass "did not say why". A producer that computes a fact and discards it is
+    the INV-bikaj complaint one level down, inside the axis built to cure it.
+
+    The superseded ruling in this docstring argued against declaring the second
+    value on three grounds, each of which the tree refutes: it would be a
+    "seventh" member (the vocabulary already held seven), with "a single
+    producer" (eleven call sites through this helper — the same shape as
+    :data:`NO_CANDIDATE_CONSTRUCT`, which is considered good design) and "no
+    consumer" (:func:`summarize_silence` counts by whatever string it finds and
+    :func:`format_silence_summary` prints every reason by name, both wired into
+    the CLI). Recorded in ``docs/adr/0054-pass-silence-candidates-unresolved.md``.
+
+    Note it never returns ``""``: a pass that emitted has no silence to explain,
+    and the chokepoints clear a body claim in that case without the body having
+    to know its own output.
     """
-    return NO_CANDIDATE_CONSTRUCT if not len(candidates) else ""
+    return NO_CANDIDATE_CONSTRUCT if not len(candidates) else CANDIDATES_UNRESOLVED
 
 
 def summarize_silence(analysis_runs: Iterable[Mapping[str, object]]) -> dict[str, int]:

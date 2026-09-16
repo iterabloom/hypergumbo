@@ -94,7 +94,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import js_ts_language_from_path, read_masked_source, read_source_text
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("grpc-linker")
 
@@ -1038,7 +1038,7 @@ def link_grpc(
             )
         )
 
-    run.silence_reason = no_candidate_construct_if_empty(all_patterns)
+    run.silence_reason = silence_reason_for_candidates(all_patterns)
     run.duration_ms = int((time.time() - start_time) * 1000)
 
     return GrpcLinkResult(

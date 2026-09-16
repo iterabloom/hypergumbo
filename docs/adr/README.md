@@ -60,6 +60,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0051](0051-module-key-axis.md) | The Module-Key Axis | Accepted | 2026-09-01 |
 | [0052](0052-taint-refutation-is-confirm-only.md) | Taint Refutation Is Confirm-Only — the escape-closing goal is retired (supersedes ADR-0017 §3a removal-coverage ambition) | Accepted | 2026-09-09 |
 | [0053](0053-accessor-name-typing-and-its-disclosure.md) | A Declared Relation-Accessor Name Types the Module Slot, and Says That It Did (amends WI-gulaz's implementation docstring clause) | Accepted | 2026-09-10 |
+| [0054](0054-pass-silence-candidates-unresolved.md) | `candidates_unresolved` — splitting the pass-silence residue (a pass that found its construct and resolved none of it is not "did not say why") | Accepted | 2026-09-16 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 

@@ -55,7 +55,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import read_masked_source
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 PASS_ID = make_pass_id("pyffi-linker")
 
@@ -500,7 +500,7 @@ def link_pyffi(
     # and a PyO3 export found in the Rust symbols. Either one present
     # means the construct is here and merely unpaired.
     _pyffi_candidates: list[object] = [*all_ffi_calls, *pyo3_lookup]
-    run.silence_reason = no_candidate_construct_if_empty(_pyffi_candidates)
+    run.silence_reason = silence_reason_for_candidates(_pyffi_candidates)
     return PyFFILinkResult(edges=result_edges, run=run)
 
 

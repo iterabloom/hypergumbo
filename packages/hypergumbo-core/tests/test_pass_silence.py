@@ -11,6 +11,7 @@ from hypergumbo_core.ir import AnalysisRun
 from hypergumbo_core.multi_value_field_axis import _known_axes
 from hypergumbo_core.pass_silence import (
     BACKEND_DISABLED,
+    CANDIDATES_UNRESOLVED,
     DEPENDENCY_UNAVAILABLE,
     NO_CANDIDATE_CONSTRUCT,
     NO_CANDIDATE_FILES,
@@ -29,6 +30,7 @@ class TestRegistry:
         assert all_pass_silence_reason_names() == frozenset({
             NO_CANDIDATE_FILES,
             NO_CANDIDATE_CONSTRUCT,
+            CANDIDATES_UNRESOLVED,
             DEPENDENCY_UNAVAILABLE,
             BACKEND_DISABLED,
             PREREQUISITE_ABSENT,
@@ -81,32 +83,46 @@ class TestDeriveSilenceReason:
             assert got in all_pass_silence_reason_names()
 
 
-class TestNoCandidateConstructIfEmpty:
-    """The PRODUCER helper. Only a body may claim NO_CANDIDATE_CONSTRUCT."""
+class TestSilenceReasonForCandidates:
+    """The PRODUCER helper. Both of its returns are positive claims.
 
-    def test_empty_candidates_claims_the_construct_reason(self):
-        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+    It used to return ``""`` on the non-empty branch — asserting nothing while
+    holding the answer. That was the INV-bikaj complaint one level down, inside
+    the axis built to cure it: a producer that computes a fact and discards it.
+    """
 
-        assert no_candidate_construct_if_empty([]) == NO_CANDIDATE_CONSTRUCT
+    def test_no_candidates_claims_the_construct_is_absent(self):
+        from hypergumbo_core.pass_silence import silence_reason_for_candidates
 
-    def test_candidates_found_claims_nothing(self):
-        """Found something => this body has no basis for the claim.
+        assert silence_reason_for_candidates([]) == NO_CANDIDATE_CONSTRUCT
 
-        It returns "" rather than a reason, which leaves the orchestrator's
-        derivation in charge. A pass that found candidates and then failed to
-        RELATE them is silent for a different reason, and this helper must not
-        let it borrow this one.
+    def test_candidates_found_claims_they_went_unresolved(self):
+        """Found candidates, carried none through => CANDIDATES_UNRESOLVED.
+
+        Re-pointed, not deleted: this test previously pinned the ``""`` return
+        and is the reason the change is visible. The pass found its construct;
+        what failed is the RESOLUTION. Saying nothing here sent the run to
+        ``unreported`` -- "did not say why" -- about a pass that could say why.
         """
-        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+        from hypergumbo_core.pass_silence import silence_reason_for_candidates
 
-        assert no_candidate_construct_if_empty(["a candidate"]) == ""
+        assert silence_reason_for_candidates(["a candidate"]) == CANDIDATES_UNRESOLVED
+
+    def test_the_two_returns_are_opposite_claims(self):
+        """Neither branch is silence-about-silence; they disagree on purpose."""
+        from hypergumbo_core.pass_silence import silence_reason_for_candidates
+
+        assert (silence_reason_for_candidates([])
+                != silence_reason_for_candidates([1]))
+        assert "" not in (silence_reason_for_candidates([]),
+                          silence_reason_for_candidates([1]))
 
     def test_accepts_any_sized_collection(self):
-        from hypergumbo_core.pass_silence import no_candidate_construct_if_empty
+        from hypergumbo_core.pass_silence import silence_reason_for_candidates
 
         for empty, full in ((set(), {1}), ((), (1,)), ({}, {"k": 1}), ([], [1])):
-            assert no_candidate_construct_if_empty(empty) == NO_CANDIDATE_CONSTRUCT
-            assert no_candidate_construct_if_empty(full) == ""
+            assert silence_reason_for_candidates(empty) == NO_CANDIDATE_CONSTRUCT
+            assert silence_reason_for_candidates(full) == CANDIDATES_UNRESOLVED
 
 
 class TestAnalysisRunField:
@@ -183,6 +199,12 @@ class TestAnalyzerChokepointStamping:
         runs = self._collect(self._result(
             files=0, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT))
         assert runs[0]["silence_reason"] == NO_CANDIDATE_CONSTRUCT
+
+    def test_candidates_unresolved_survives_to_the_output(self):
+        """The value has a producer AND reaches the serialized run."""
+        runs = self._collect(self._result(
+            files=42, symbols=[], edges=[], reason=CANDIDATES_UNRESOLVED))
+        assert runs[0]["silence_reason"] == CANDIDATES_UNRESOLVED
 
     def test_a_pass_that_emitted_is_never_silent_whatever_the_body_said(self):
         """`""` is NOT APPLICABLE and it is not the body's to override.

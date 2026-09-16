@@ -62,7 +62,7 @@ from .registry import (
     register_linker,
 )
 from ._text_filters import read_masked_source
-from ..pass_silence import no_candidate_construct_if_empty
+from ..pass_silence import silence_reason_for_candidates
 
 if TYPE_CHECKING:
     pass
@@ -767,7 +767,7 @@ def link_di_resolution(ctx: LinkerContext) -> LinkerResult:
         explicit_bindings, ctx.symbols, run,
     ))
 
-    run.silence_reason = no_candidate_construct_if_empty(all_bindings)
+    run.silence_reason = silence_reason_for_candidates(all_bindings)
     run.duration_ms = int((time.time() - start) * 1000)
     return LinkerResult(edges=new_edges, run=run)
 

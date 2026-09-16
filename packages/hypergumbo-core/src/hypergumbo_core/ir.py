@@ -326,10 +326,13 @@ class AnalysisRun:
     # the same chokepoints as the counters above, from
     # pass_silence.derive_silence_reason. ``""`` means NOT APPLICABLE (the pass
     # emitted something); ``unreported`` means CANNOT DETERMINE (it was silent
-    # and did not say why) — the two are deliberately distinct, and the
-    # ``unreported`` count is the size of the remaining work. The orchestrator
-    # never infers ``no_candidate_construct``: only a pass body knows whether it
-    # looked for a construct and failed to find it.
+    # and did not say why) — the two are deliberately distinct. A body may also
+    # report ``no_candidate_construct`` (looked, the construct is not there) or
+    # ``candidates_unresolved`` (found it, carried none through resolution); the
+    # orchestrator infers neither, because only a pass knows what it sought.
+    # The ``unreported`` count is NOT the size of the remaining work: a pass
+    # that never makes a claim cannot appear there, so a zero measures the
+    # corpus, not completion (WI-bivim).
     silence_reason: str = ""  # axis: pass-silence-reason
 
     def __post_init__(self) -> None:
