@@ -91,7 +91,7 @@ from ._transitive_bases import (
     collect_transitive_base_names,
     short_name_fallback,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -410,6 +410,7 @@ def _select_dispatch_targets(methods: list["Symbol"]) -> list["Symbol"]:
     description="Emit dispatches_to edges from Jackson/JavaBean serialization targets to their bean accessors (WI-gupah)",
     # CNF: Jackson is Java-only.
     depends_on=[["java"]],
+    activation=always_on_unreviewed(),
 )
 def link_jackson_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Recover Jackson / JavaBean reflective dispatch edges.

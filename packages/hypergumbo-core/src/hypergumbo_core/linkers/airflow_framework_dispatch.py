@@ -46,7 +46,7 @@ from ._transitive_bases import (
     collect_transitive_base_names,
     short_name_fallback,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -173,6 +173,7 @@ def _build_method_index(
     description="Emit dispatches_to edges from Airflow subclasses to their framework-called override methods (WI-nutav)",
     # CNF: airflow is Python-only.
     depends_on=[["python"]],
+    activation=always_on_unreviewed(),
 )
 def link_airflow_framework_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from Airflow subclasses to their framework overrides.

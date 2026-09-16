@@ -61,7 +61,7 @@ from ..discovery import find_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from ._concept_utils import has_concept
 from ._text_filters import language_from_path
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("subprocess-linker")
@@ -943,6 +943,7 @@ SUBPROCESS_REQUIREMENTS = [
     # CLI handler resolution targets Python (Click/Typer/argparse), JS/TS
     # (commander/yargs), Go (cobra/flag), Java (picocli), Rust (clap), etc.
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "rust", "kotlin", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def subprocess_linker(ctx: LinkerContext) -> LinkerResult:
     """Subprocess linker for registry-based dispatch.

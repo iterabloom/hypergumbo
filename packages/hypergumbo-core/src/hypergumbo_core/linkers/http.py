@@ -117,7 +117,7 @@ from ..url_folding import (
     fold_string_interpolation,
     load_url_folding_registry,
 )
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("http-linker")
@@ -1596,6 +1596,7 @@ HTTP_REQUIREMENTS = [
     # CNF: HTTP routes/clients exist in every general-purpose language with a
     # web stack. Single OR-clause across the major HTTP-server languages.
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php", "rust", "kotlin", "swift", "scala", "elm"]],
+    activation=always_on_unreviewed(),
 )
 def http_linker(ctx: LinkerContext) -> LinkerResult:
     """HTTP linker for registry-based dispatch.

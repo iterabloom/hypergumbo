@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import member_short_name
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -171,6 +171,7 @@ def _hint_agrees_with_declared(hint_class: "Symbol", declared: str) -> bool:
     # CNF: class-based call patterns appear in every OO language analyzer that
     # emits class/method symbols.
     depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "cpp", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_method_call_recovery(ctx: LinkerContext) -> LinkerResult:
     """See module docstring for the algorithm."""

@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, Symbol, make_pass_id
 from ..symbol_kinds import type_like_kind_names
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     pass
@@ -542,6 +542,7 @@ def _create_inheritance_edges(
     # base_classes / extends / implements / includes metadata. Covers every
     # OO language with class/interface/trait/mixin constructs.
     depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir"]],
+    activation=always_on_unreviewed(),
 )
 def link_inheritance(ctx: LinkerContext) -> LinkerResult:
     """Create extends/implements edges from base_classes metadata.

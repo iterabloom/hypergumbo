@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING
 
 from ..member_names import MEMBER_NAME_SEPARATORS
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker
+from .registry import LinkerContext, LinkerResult, LinkerRequirement, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     pass
@@ -867,6 +867,7 @@ def _check_routes_available(ctx: LinkerContext) -> int:
     # Python (Flask/FastAPI/Django), JS/TS (Express/Koa/NestJS), Ruby (Rails),
     # Java (Spring), Go (Echo/Gin), C# (ASP.NET), Elixir (Phoenix), PHP (Laravel).
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "php"]],
+    activation=always_on_unreviewed(),
 )
 def link_route_handler(ctx: LinkerContext) -> LinkerResult:
     """Linker entry point for registry."""

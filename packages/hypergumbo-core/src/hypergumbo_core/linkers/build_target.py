@@ -33,7 +33,7 @@ from __future__ import annotations
 import posixpath
 
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 PASS_ID = make_pass_id("build-target-linker")
 
@@ -87,6 +87,7 @@ def _resolve_target_path(
         ["toml", "json"],
         ["rust", "javascript", "go", "python", "java"],
     ],
+    activation=always_on_unreviewed(),
 )
 def link_build_targets(ctx: LinkerContext) -> LinkerResult:
     """Connect defines_target edges to main() functions.

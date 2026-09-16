@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 from ..ir import PASS_VERSION, AnalysisRun, Edge, make_pass_id
 from ..paths import is_test_file
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -120,6 +120,7 @@ def _find_dispatch_sites(
     # in Java/Kotlin/Scala via annotations. The linker consumes symbols
     # carrying decorator metadata from any of these analyzers.
     depends_on=[["python", "javascript", "java", "kotlin", "scala"]],
+    activation=always_on_unreviewed(),
 )
 def link_decorator_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Create dispatches_to edges from registry dispatch sites to registered handlers."""

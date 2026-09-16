@@ -76,7 +76,7 @@ from ..analyze.base import (
 )
 from ..discovery import find_non_test_files
 from ..ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 from ._text_filters import read_masked_source
 
 PASS_ID = make_pass_id("message-queue-linker")
@@ -593,6 +593,7 @@ def link_message_queues(root: Path) -> MessageQueueLinkResult:
     # CNF: Kafka/RabbitMQ/SQS/Redis pub-sub clients exist across all common
     # backend languages.
     depends_on=[["python", "javascript", "ruby", "java", "go", "csharp", "elixir", "kotlin", "scala"]],
+    activation=always_on_unreviewed(),
 )
 def message_queue_linker(ctx: LinkerContext) -> LinkerResult:
     """Message queue linker for registry-based dispatch.

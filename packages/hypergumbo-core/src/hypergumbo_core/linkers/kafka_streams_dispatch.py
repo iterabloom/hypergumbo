@@ -102,7 +102,7 @@ from ._transitive_bases import (
     build_inheritance_index,
     collect_transitive_base_names,
 )
-from .registry import LinkerContext, LinkerResult, register_linker
+from .registry import LinkerContext, LinkerResult, register_linker, always_on_unreviewed
 
 if TYPE_CHECKING:
     from ..ir import Symbol
@@ -321,6 +321,7 @@ def _expected_method_names(interfaces: list[str]) -> frozenset[str]:
     ),
     # CNF: Kafka Streams API is Java-only.
     depends_on=[["java"]],
+    activation=always_on_unreviewed(),
 )
 def link_kafka_streams_dispatch(ctx: LinkerContext) -> LinkerResult:
     """Recover Kafka Streams topology-callback dispatch edges.
