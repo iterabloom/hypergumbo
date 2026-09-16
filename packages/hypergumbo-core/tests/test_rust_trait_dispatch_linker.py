@@ -161,6 +161,46 @@ class TestLinkRustTraitDispatch:
             assert (e.meta or {}).get("framework_dispatch") == "rust_trait_dispatch"
             assert e.confidence == 0.85
 
+    def test_trait_required_method_gets_no_coarse_edge(self) -> None:
+        """A method the TRAIT itself declares is left to type_hierarchy (INV-tihim).
+
+        ``linkers/type_hierarchy`` emits the PRECISE requirement->implementation
+        edge (``Display::fmt`` -> ``Writer::fmt``) now that it has learned the
+        ``::`` separator, so re-emitting that relationship here — anchored on the
+        trait SYMBOL rather than the requirement — would duplicate it at a
+        coarser anchor. What this linker still owes is the INHERENT method, which
+        no requirement covers and which would otherwise look dead.
+        """
+        s = _struct("Writer", span=(1, 5))
+        t = _trait("Display", span=(10, 15))
+        declared = _method("Display::fmt", span=(11, 12))     # the trait's own requirement
+        implemented = _method("Writer::fmt", span=(20, 22))   # satisfies it -> skipped here
+        inherent = _method("Writer::write", span=(24, 26))    # nobody else covers it
+
+        result = link_rust_trait_dispatch(
+            _ctx([s, t, declared, implemented, inherent], [_implements_edge(s, t)])
+        )
+
+        assert {e.dst for e in result.edges} == {inherent.id}
+
+    def test_empty_requirement_set_covers_everything(self) -> None:
+        """No requirement symbols means "cover everything", not "cover nothing".
+
+        The trait may be external, or the analyzer may simply have failed to emit
+        its members — the two are indistinguishable here. Reading that empty set
+        as "the trait requires nothing, so skip nothing" is correct; reading it
+        as "nothing is inherent, so drop everything" would resurrect the
+        dead-code false positives this linker exists to prevent. Absent-versus-
+        empty, one call site further down.
+        """
+        s = _struct("Writer", span=(1, 5))
+        t = _trait("ExternalTrait", span=(10, 15))
+        m = _method("Writer::fmt", span=(20, 22))
+
+        result = link_rust_trait_dispatch(_ctx([s, t, m], [_implements_edge(s, t)]))
+
+        assert {e.dst for e in result.edges} == {m.id}
+
     def test_no_implements_edges_no_op(self) -> None:
         s = _struct("Foo")
         m = _method("Foo::bar")
