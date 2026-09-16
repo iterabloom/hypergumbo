@@ -1,0 +1,22 @@
+- op: create  # c958
+  at: '2026-09-16T16:31:33Z'  # c958
+  by: agent  # c958
+  actor: jgstern_agent  # c958
+  clock: 1  # c958
+  nonce: c958  # c958
+  data:  # c958
+    kind: work_item  # c958
+    title: "silence_reason explains the 51 trivially-explainable zero-output passes and abstains (unreported) on the only 3 that scanned files"  # c958
+    status: todo_hard  # c958
+    priority: 3  # c958
+    parent:  # c958
+    tags:  # c958
+    - pass20  # c958
+    - analysis_quality  # c958
+    - disclosure  # c958
+    isbefore: []  # c958
+    duplicate_of: []  # c958
+    not_duplicate_of: []  # c958
+    pr_ref:  # c958
+    description: "RESIDUAL of INV-bikaj, filed at its closure 2026-09-16 (dev 9c8c8165f0).\n\nINV-bikaj filed \"61 of 84 AnalysisRun passes produce 0 edges, 8 of them\nscanning 100+ files for nothing\". The instrumentation it asked for shipped\n(nodes_emitted / edges_emitted / silence_reason), and with it the population\nsplits. Measured on the hypergumbo self-analysis, 92 analysis_runs:\n\n  zero nodes AND edges          54/92\n    silence_reason=no_candidate_files   51   <- analysed 0 files, design-correct\n    silence_reason=unreported            3   <- analysed files, emitted nothing\n\nTHE POINT. The disclosure axis explains the 51 trivial cases, where the reason\nis derivable from files_analyzed=0 alone, and abstains on exactly the 3 cases\nthat are not trivially explainable. \"unreported\" means CANNOT DETERMINE. So the\nonly runs where a consumer actually needs to know why a pass was silent are the\nruns the mechanism declines to answer for.\n\nTHE THREE, all three being the entire >0-files zero-output cohort:\n\n  pass                      files  duration  silence_reason\n  graphql-resolver-linker   353    1915ms    unreported\n  message-queue-linker      353    1819ms    unreported\n  ipc-linker                8      9ms       unreported\n\nThe first two are also the whole of INV-bikaj's original \"scans 100+ files and\nemits nothing\" cohort at tip: 2 passes, 3734ms, 3.2% of the 115235ms total pass\ntime, down from the filed 8 passes / ~14s / 15%.\n\nTWO QUESTIONS, NEITHER PRE-JUDGED:\n  A. Can a linker that scanned files and emitted nothing distinguish \"the\n     pattern is genuinely absent from this repo\" from \"I was misconfigured or\n     my gate never fired\"? If it can, unreported is the wrong value for it and\n     the derivation should be extended. If it cannot, that is worth declaring\n     positively rather than leaving as an abstention that looks like a gap.\n  B. Is a 1.9s scan of 353 files for a pattern absent from the repo worth an\n     activation gate? This is the cost half of the original INV-bikaj concern,\n     now at 3.2% rather than 15%.\n\nDO NOT close this by reasoning from the 51. A reason derivable from\nfiles_analyzed=0 is not evidence about the 3 that analysed files - that is the\nabsent-versus-empty substitution this project keeps making.\n\nMEASUREMENT PROVENANCE: .hypergumbo/self-analysis.json, generated\n2026-09-16T03:06:42Z, schema 0.20.7, tool 8.0.0. The analysis_runs record key\nis \"pass\", not \"pass_id\"; a probe keyed on pass_id returns None for every run\nand reports every named pass ABSENT, which is a plausible-looking wrong answer\nrather than an error."  # c958
+    fields: {}  # c958

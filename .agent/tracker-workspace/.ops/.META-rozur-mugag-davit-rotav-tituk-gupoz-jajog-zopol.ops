@@ -27,3 +27,18 @@
   clock: 2  # 6995
   nonce: '6995'  # 6995
   message: "Priority-inversion flag: this root_cause_family META is P2, but it holds the P0 member WI-zavad (.js analyzer emits zero body-call/import/function-node edges). A 'tracker ready' reader sees the member's P0 urgency, not the family's P2, so the family priority understates the severity of the work it clusters. Documenting only; no priority change made. Consider bumping the family to P0 to match its highest-severity member if/when this cluster is actioned."  # 6995
+- op: update  # 7b93
+  at: '2026-09-16T16:31:01Z'  # 7b93
+  by: agent  # 7b93
+  actor: jgstern_agent  # 7b93
+  clock: 3  # 7b93
+  nonce: 7b93  # 7b93
+  set:  # 7b93
+    status: satisfied  # 7b93
+- op: discuss  # bafb
+  at: '2026-09-16T16:31:01Z'  # bafb
+  by: agent  # bafb
+  actor: jgstern_agent  # bafb
+  clock: 4  # bafb
+  nonce: bafb  # bafb
+  message: "SATISFIED on positive evidence, 2026-09-16 at dev 9c8c8165f0.\n\nRE-RAN THE FAMILY'S OWN STATEMENT, which names four dimensions: signatures,\ncalls, imports, and function nodes at parity between the .js and .ts legs of\njs_ts.py for equivalent constructs.\n\nMETHOD. Two separate fixture trees (not one mixed tree, which would let the\nresolver cross-feed), each with an equivalent module: a named export function\nwith two params, a class with constructor and method, an arrow const, an ESM\nimport, and a require call. Surveyed independently.\n\nRESULT - parity on all four named dimensions:\n\n  dimension              .js        .ts\n  function|method nodes  5          5\n  WITH signature         5/5 100%   5/5 100%\n  calls edges            3          3\n  imports edges          3          3\n  node kinds             identical (function 3, class 1, method 2, variable 1, file 2)\n  edge types             identical (imports 3, calls 3, contains 7)\n\nPREMISE ASSERTED, because a comparison that returns \"identical\" is exactly\nwhere a mis-aimed instrument hides a false all-clear. The two runs analysed\nDIFFERENT files and stamped DIFFERENT languages: js paths are src/mod.js +\nsrc/helper.js at language=javascript, ts paths are src/mod.ts + src/helper.ts\nat language=typescript. Same four emitting passes on both legs. The runs are\ngenuinely distinct, so the parity is real and not an artifact of both legs\nreading one tree.\n\nWHY THE FAMILY WAS STALE. Both members closed under their own names and the\nfamily never updated itself: WI-zavad (P0, .js emits zero body-call/import/\nfunction-node edges) is done, and INV-golap (JS populates signature on 0/10\nfunction|method nodes vs TS 25/26) is satisfied. INV-golap's filed defect is\nthe one directly re-measured above and is now 5/5 vs 5/5 on fixtures, and\n17/18 (94.4%) vs 42/42 (100%) on the hypergumbo self-analysis corpus.\n\nSCOPE OF THIS CLOSURE. Fixture-level parity on the four dimensions the\nstatement names. It does not claim .js and .ts are at parity on dimensions the\nstatement does not name.\n\nRESIDUAL, FILED SEPARATELY, NOT FOLDED HERE: the .ts leg's emitting pass is\nstamped \"javascript\" - there is no typescript pass-id - so TypeScript output is\nattributed to a JavaScript pass. Confirmed live in both runs above. Already on\nthe tracker as WI-tobiz; this closure adds a second independent reproduction."  # bafb
