@@ -1,0 +1,45 @@
+Original commit body from ea9aadabe562fafd9a9c11754a4a747659bae318:
+
+WI-ginuj. `--full` collected packages/* and never the repo-root tests/,
+while CI runs the committed manifest, which does include root tests. So a
+green local "full" was not a superset of what CI runs and did not predict
+it: PR #890 went green locally over 26,702 tests and red in CI on
+test_adr_readme_index_sync.py, a test the local gate holds and did not run.
+
+FIVE SITES, NOT THE THREE FILED. The item found them by grepping
+run_pytest; kick_off_background_suite calls pytest directly and
+run_full_suite's MANIFEST WRITER enumerates with find, so two were
+invisible to that grep. All five now share one definition, and a
+structural test fails on any sixth site that spells the target out -- the
+control that would have found the two the grep missed.
+
+THE REASON THIS WAS DEFERRED WAS THE WRONG REASON. The risk on file was
+COV_PATHS. Coverage is measured over packages/*/src, so more tests can
+only raise it; the combined run just went green at 100% over 69,873
+statements. The real blocker is a BASENAME COLLISION: tests/
+test_generate_concepts.py and packages/hypergumbo-core/tests/
+test_generate_concepts.py, which under pytest's default import mode makes
+one run raise "import file mismatch" and INTERRUPT COLLECTION. Verified
+with --collect-only. The core file is renamed to match its own docstring
+and a guard test keeps the two suites' basenames disjoint.
+
+VALIDATED, NOT ASSUMED: ./scripts/smart-test --full now runs 29,065
+passed / 8 skipped / 15 xfailed in 21m34s at 100% coverage, against
+26,702 before.
+
+FIX (b), the half that survives the next divergence: the suite prints what
+it collected and what it did not, derived by asking git for tracked files
+and pyproject for pytest's own python_files. Its first real run reported
+two directories uncollected; both were false positives of a glob looser
+than pytest's rule -- top_level_test_map.py, test_masking.py and
+test_only_reachability.py are production modules whose names merely
+contain the word. A disclosure that cries wolf every run is one nobody
+reads.
+
+The disclosure's first cut passed `bash -n` and died at RUNTIME: a `)` at
+column 0 inside its heredoc closed the surrounding $() early, and $() is
+re-parsed lazily so the static check never saw it. The behavioural test
+caught what the syntax check could not, which is why that test drives the
+function rather than reading it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
