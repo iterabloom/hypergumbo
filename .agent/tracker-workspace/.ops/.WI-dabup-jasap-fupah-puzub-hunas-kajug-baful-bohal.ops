@@ -1,0 +1,21 @@
+- op: create  # 018e
+  at: '2026-09-17T01:05:37Z'  # 018e
+  by: agent  # 018e
+  actor: jgstern_agent  # 018e
+  clock: 1  # 018e
+  nonce: 018e  # 018e
+  data:  # 018e
+    kind: work_item  # 018e
+    title: "stamp prerequisite_absent from skip_reason_code (NOT from an unsatisfied depends_on conjunct, which is State A 98.94% of the time)"  # 018e
+    status: todo_hard  # 018e
+    priority: 3  # 018e
+    parent:  # 018e
+    tags:  # 018e
+    - analysis_quality  # 018e
+    - disclosure  # 018e
+    isbefore: []  # 018e
+    duplicate_of: []  # 018e
+    not_duplicate_of: []  # 018e
+    pr_ref:  # 018e
+    description: "W3 of ADR-0056. BLOCKED BY W2. Do not start before it.\n\nGives `prerequisite_absent` its producer — the thing INV-hujog asks for, but NOT\nin the shape INV-hujog asks for.\n\nWHY NOT THE OBVIOUS RULE. \"Stamp it when a depends_on conjunct is unsatisfied\"\nis wrong, measured: 98.94% of 229,541 skip records are `no files matched`, so an\nunsatisfied conjunct nearly always means THE REPO LACKS THAT LANGUAGE — State A,\na correct no-op. `prerequisite_absent` is declared as State C, the ORDERING\ndefect. Stamping State A with it is the axis's founding sin committed inside the\naxis built to cure it.\n\nTHE DISCRIMINATOR is not \"is the conjunct satisfied\" but \"was the missing literal\nskipped for a FILE reason or a TOOLCHAIN reason\" — which is exactly what W2's\nskip_reason_code makes askable. Hence the ordering.\n\nTHE RULE, stated exactly:\n\n  Stamp prerequisite_absent on a silent run IFF some conjunct of its depends_on\n  contains no active literal AND at least one literal in that conjunct was\n  skipped with a skip_reason_code other than no_candidate_files. Otherwise fall\n  through to derive_silence_reason.\n\nPlumbing exists: run_all_linkers(ctx, limits) already takes the Limits sink.\n~15 lines plus a helper.\n\nREACHABILITY, against \"it can never fire\": 40 of 69 depends_on conjuncts consist\nENTIRELY of availability=\"extra\" (grammar-gated) passes — tauri-ipc ['rust'],\njni ['java'], cgo ['go'], +37. On a machine without tree-sitter-language-pack a\nJS+Rust repo gives tauri-ipc-linker a genuinely unsatisfied [\"rust\"] WITH RUST\nFILES PRESENT. Real State C, actionable (\"install the grammar\"), and\nno_candidate_files is the wrong answer for it.\n\nACCEPTANCE TEST — RUN IT BEFORE WRITING THE PRODUCER. It needs no production\ncode and it decides whether this item is worth doing at all:\n\n  Build a venv with hypergumbo and WITHOUT tree-sitter-language-pack. Survey a\n  JS+Rust repo (~/repos/aardvark-dns, 16 .rs files, fast). Assert\n  limits.skipped_passes contains `rust` with a non-`no files matched` reason,\n  AND tauri-ipc-linker / wasm-bindgen-linker appear in analysis_runs silent.\n\nIF THAT COMES BACK EMPTY, prerequisite_absent is unreachable in practice as well\nas in this corpus and the verdict flips to DEPRECATE — close this item wont_do\nand deprecate the value instead. The corpus is blind here because every grammar\nis installed; the blindness is a venv, not a law. (Sixty\n`tree-sitter-circom grammar not available` records prove the state HAS occurred\non this machine and nothing noticed.)"  # 018e
+    fields: {}  # 018e
