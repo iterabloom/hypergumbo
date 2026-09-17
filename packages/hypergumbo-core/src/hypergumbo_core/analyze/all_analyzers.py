@@ -30,7 +30,11 @@ from ..ir import (
     _default_config_fingerprint, compute_config_fingerprint,
 )
 from ..limits import Limits
-from ..pass_silence import derive_silence_reason
+from ..pass_silence import (
+    NO_CANDIDATE_FILES,
+    UNREPORTED,
+    derive_silence_reason,
+)
 from ..paths import normalize_path
 from .base import (
     populate_kind_stable_ids,
@@ -142,13 +146,32 @@ def collect_analyzer_result(
         # SCIP output) — keep its output, don't mislabel it a skip.
         produced_nothing = not result.symbols and not result.edges
         if analyzer_name and produced_nothing:
-            reason = (
+            self_declared = (
                 getattr(result, "skip_reason", "")
                 if getattr(result, "skipped", False)
                 and getattr(result, "skip_reason", "")
-                else "no files matched"
+                else ""
             )
-            limits.skipped_passes.append({"pass": analyzer_name, "reason": reason})
+            # WI-dukoh: the CODE follows the same self-declare-or-fall-back
+            # rule as the prose, and the fallback is deliberately asymmetric.
+            # The prose falls back to "no files matched" because a bare
+            # run=None result IS a no-input analyzer by construction; the code
+            # falls back to NO_CANDIDATE_FILES only on that same branch, and a
+            # producer that self-declared prose WITHOUT a code falls back to
+            # UNREPORTED rather than inheriting the prose's certainty. It said
+            # something the axis cannot read, which is not the same as saying
+            # the repository had no files.
+            reason = self_declared or "no files matched"
+            code = (
+                (getattr(result, "skip_reason_code", "") or UNREPORTED)
+                if self_declared
+                else NO_CANDIDATE_FILES
+            )
+            limits.skipped_passes.append({
+                "pass": analyzer_name,
+                "reason": reason,
+                "skip_reason_code": code,
+            })
         return
 
     # Check if analyzer was skipped (optional deps missing)
@@ -160,6 +183,11 @@ def collect_analyzer_result(
         limits.skipped_passes.append({
             "pass": result.run.pass_id,
             "reason": skip_reason,
+            # WI-dukoh: an unconverted producer reads as UNREPORTED -- "it did
+            # not classify itself" -- never as a manufactured majority answer.
+            "skip_reason_code": (
+                getattr(result, "skip_reason_code", "") or UNREPORTED
+            ),
         })
     else:
         # INV-gizik / INV-pitab: stamp per-pass productivity counters at the
@@ -274,6 +302,10 @@ def _filter_by_file_presence(
             limits.skipped_passes.append({
                 "pass": analyzer.name,
                 "reason": "no files matched",
+                # The one skip the ORCHESTRATOR can classify with certainty:
+                # it just read the profile and found zero files for every
+                # language this analyzer declares. WI-dukoh.
+                "skip_reason_code": NO_CANDIDATE_FILES,
             })
     return retained
 

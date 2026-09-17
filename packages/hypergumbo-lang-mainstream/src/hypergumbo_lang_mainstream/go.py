@@ -118,6 +118,7 @@ from __future__ import annotations
 
 import os
 import re
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 import time
 import warnings
 from pathlib import Path
@@ -5310,6 +5311,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
         return AnalysisResult(
             skipped=True,
             skip_reason="go tree-sitter grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
 
     start_time = time.time()
@@ -5328,6 +5330,7 @@ def _analyze_go_impl(repo_root: Path, max_files: int | None = None) -> AnalysisR
             run=run,
             skipped=True,
             skip_reason=f"Failed to load Go parser: {e}",
+            skip_reason_code=PASS_CRASHED,
         )
 
     # Read go.mod for module path — used to strip module prefix from

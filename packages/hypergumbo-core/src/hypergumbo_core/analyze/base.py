@@ -73,6 +73,7 @@ from ..ir import (
 from ..ir import sanitize_id_name_segment as sanitize_id_name_segment
 from ..axis_meta_keys import write_meta_key
 from ..symbol_resolution import NameResolver
+from ..pass_silence import DEPENDENCY_UNAVAILABLE
 
 # ---------------------------------------------------------------------------
 # Memory safety: abort analysis before OOM crashes the machine
@@ -138,6 +139,14 @@ class AnalysisResult:
         run: Provenance tracking for the analysis pass
         skipped: Whether the analysis was skipped (e.g., missing dependency)
         skip_reason: Human-readable reason for skipping
+        skip_reason_code: The same fact on the closed pass-silence-reason axis
+            (WI-dukoh / ADR-0056 W2). One channel, two fields: ``skip_reason``
+            keeps the payload a code cannot express (the pip command, the
+            exception text) and this carries the classification a consumer can
+            branch on without matching twenty-eight spellings. Empty means the
+            producer did not classify itself, which reads as ``unreported`` —
+            never as ``no_candidate_files``, the 98.94%-common value that a
+            permissive default would manufacture on its behalf.
     """
 
     symbols: list[Symbol] = field(default_factory=list)
@@ -146,6 +155,7 @@ class AnalysisResult:
     run: AnalysisRun | None = None
     skipped: bool = False
     skip_reason: str = ""
+    skip_reason_code: str = ""  # axis: pass-silence-reason
     dependency_manifest: object | None = None
     """Optional DependencyManifest from supply_chain.py.
 
@@ -4008,6 +4018,7 @@ class TreeSitterAnalyzer:
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # 2. Initialize parser

@@ -47,6 +47,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, _g
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, make_doc_symbol_ids, make_file_id, populate_docstrings_from_tree
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -463,6 +464,7 @@ class PuppetAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         extractor = _PuppetExtractor(repo_root)

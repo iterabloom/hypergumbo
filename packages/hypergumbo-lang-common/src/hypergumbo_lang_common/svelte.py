@@ -51,6 +51,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.base import node_own_text as _get_node_text
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -421,6 +422,7 @@ class SvelteAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         files = find_svelte_files(repo_root)

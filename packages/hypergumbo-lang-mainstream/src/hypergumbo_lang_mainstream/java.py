@@ -128,6 +128,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -3385,6 +3386,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run=run,
             skipped=True,
             skip_reason="java tree-sitter grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
 
     parser = _get_java_parser()
@@ -3397,6 +3399,7 @@ def _analyze_java_impl(repo_root: Path) -> JavaAnalysisResult:
             run=run,
             skipped=True,
             skip_reason="java tree-sitter grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
 
     # Pass 1: Parse all files and extract symbols

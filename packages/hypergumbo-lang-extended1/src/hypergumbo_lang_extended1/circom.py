@@ -48,6 +48,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -487,5 +488,6 @@ def analyze_circom(repo_root: Path) -> AnalysisResult:
             run=run,
             skipped=True,
             skip_reason="tree-sitter-circom grammar not available",
+            skip_reason_code=DEPENDENCY_UNAVAILABLE,
         )
     return _analyzer.analyze(repo_root)

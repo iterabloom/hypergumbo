@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from . import __version__
+from .pass_silence import PASS_CRASHED
 
 # Known limitations of static analysis that apply UNIVERSALLY — a fixed
 # disclaimer, identical for every repo, emitted verbatim as ``limits.not_captured``.
@@ -155,6 +156,12 @@ class Limits:
         self.skipped_passes.append({
             "pass": pass_name,
             "reason": f"crashed: {type(exc).__name__}: {exc}",
+            # WI-dukoh / ADR-0056 W2: the structured companion. ADR-0056 called
+            # pass_crashed speculative because this free-text twin had fired
+            # ZERO times in 229,541 records -- but that measured the twin, not
+            # the state. The six analyzer sites that catch a parser-constructor
+            # exception report the same state and now stamp the same code.
+            "skip_reason_code": PASS_CRASHED,
         })
         if not self.partial_results_reason:
             self.partial_results_reason = (

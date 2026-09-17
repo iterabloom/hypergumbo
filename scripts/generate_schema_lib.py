@@ -1023,7 +1023,31 @@ def _limits_spec() -> ClassSpec:
                 "description": "Languages detected but not analyzed",
             },
             "skipped_passes": {
-                "description": "Passes skipped at dispatch time or crashed mid-run, with reasons (a 'crashed: ' prefix marks a contained pass crash)",
+                "description": (
+                    "Passes that DID NOT RUN, with both a prose reason and a "
+                    "structured skip_reason_code on the closed "
+                    "pass-silence-reason axis (WI-dukoh / ADR-0056 W2). Three "
+                    "values live here rather than on AnalysisRun.silence_reason "
+                    "because a pass that did not run produces no AnalysisRun to "
+                    "carry a field: dependency_unavailable (grammar/toolchain "
+                    "absent), backend_disabled (opt-in backend off) and "
+                    "pass_crashed (a contained raise, including a parser "
+                    "constructor that failed). no_candidate_files is the "
+                    "file-presence pre-filter. An entry with no code, or with "
+                    "the code 'unreported', means the producer did not classify "
+                    "itself -- NOT that the repository lacked the files. The "
+                    "prose reason stays as human-readable detail (it carries "
+                    "the pip command and the exception text); one channel, two "
+                    "fields."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "pass": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "skip_reason_code": {"type": "string"},
+                    },
+                },
             },
             "truncated_files": {
                 "description": "Files truncated or skipped due to size",

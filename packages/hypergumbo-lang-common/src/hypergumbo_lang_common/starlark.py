@@ -48,6 +48,7 @@ from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -453,6 +454,7 @@ class StarlarkAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

@@ -61,6 +61,7 @@ from hypergumbo_core.analyze.base import (
 )
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1213,6 +1214,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         try:
@@ -1221,6 +1223,7 @@ class ObjCAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"Failed to load Objective-C parser: {e}",
+                skip_reason_code=PASS_CRASHED,
             )
 
         run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

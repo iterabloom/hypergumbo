@@ -43,6 +43,7 @@ from hypergumbo_core.ir import (
 )
 from hypergumbo_core.analyze.base import AnalysisResult, TreeSitterAnalyzer, iter_tree
 from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import tree_sitter
@@ -400,6 +401,7 @@ class CSSAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

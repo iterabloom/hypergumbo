@@ -89,6 +89,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
     extract_preceding_doc_comment,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -3066,6 +3067,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # 2. Initialize parser
@@ -3077,6 +3079,7 @@ class RubyAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"Failed to load Ruby parser: {e}",
+                skip_reason_code=PASS_CRASHED,
             )
 
         # Pass 1: Extract all symbols from all files

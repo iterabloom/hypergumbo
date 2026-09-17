@@ -51,6 +51,7 @@ from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, ma
 from hypergumbo_core.symbol_resolution import NameResolver
 from hypergumbo_core.analyze.registry import register_analyzer
 from hypergumbo_core.analyze.cyclomatic import compute_cyclomatic_complexity
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE, PASS_CRASHED
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -431,7 +432,7 @@ class RAnalyzer(TreeSitterAnalyzer):
         if not self._check_grammar_available():  # pragma: no cover
             return AnalysisResult(  # pragma: no cover
                 skipped=True,  # pragma: no cover
-                skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)",  # pragma: no cover
+                skip_reason="tree-sitter-r not installed (pip install tree-sitter-language-pack)", skip_reason_code=DEPENDENCY_UNAVAILABLE,  # pragma: no cover
             )  # pragma: no cover
 
         start_time = time.time()
@@ -453,6 +454,7 @@ class RAnalyzer(TreeSitterAnalyzer):
             return AnalysisResult(
                 skipped=True,
                 skip_reason=f"Failed to initialize parser: {e}",
+                skip_reason_code=PASS_CRASHED,
             )
 
         # WI-higap: create run before edge construction so Edge.__post_init__
