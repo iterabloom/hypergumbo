@@ -15,14 +15,14 @@ for focused LLM context.
 
 hypergumbo analyzed its own source code and found:
 - **325** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 90 core, 4 CLI, 36 tracker)
-- **46399** symbols (functions, classes, methods)
-- **184215** edges by type:
-  - calls: 106269
-  - contains: 42740
-  - imports: 14255
-  - instantiates: 11451
-  - references: 6496
-  - module_attr_ref: 1543
+- **46533** symbols (functions, classes, methods)
+- **184782** edges by type:
+  - calls: 106519
+  - contains: 42863
+  - imports: 14395
+  - instantiates: 11471
+  - references: 6522
+  - module_attr_ref: 1551
   - other: 1461
 
 ## Package Architecture
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 46399 Symbols + 184215 Edges + UsageContexts           │
+│  Output: 46533 Symbols + 184782 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,21 +271,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9597.9 | ir.py |
-| `len` | external_symbol | 7458.0 | <external> |
+| `Symbol` | class | 9602.5 | ir.py |
+| `len` | external_symbol | 7462.0 | <external> |
 | `write_text` | external_symbol | 6543.0 | <external> |
 | `Span` | class | 6422.1 | ir.py |
-| `LinkerContext` | class | 3352.4 | registry.py |
-| `get` | external_symbol | 2993.0 | <external> |
+| `LinkerContext` | class | 3409.5 | registry.py |
+| `get` | external_symbol | 2999.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
 | `Edge.create` | method | 2406.9 | ir.py |
 | `next` | external_symbol | 2133.0 | <external> |
-| `str` | external_symbol | 2079.0 | <external> |
+| `str` | external_symbol | 2083.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 1965.0 | <external> |
+| `Path` | external_symbol | 1973.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1594.0 | <external> |
+| `append` | external_symbol | 1599.0 | <external> |
 
 ## Pattern System
 
@@ -397,7 +397,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 
 | Script | Description |
 |--------|-------------|
-| `auto-pr` | Push branch, poll CI, merge PR (with vPR queue for offline resilience) |
+| `auto-pr` | `-E` (errtrace) is load-bearing, not tidiness: without it an ERR trap set at |
 | `ci-debug` | CI Debug Helper - Fetch and analyze Forgejo/Gitea Actions run logs |
 | `merge-pr` | Focused recovery script for merging (or closing) existing PRs |
 | `prepare-release` | Prepare a release for human approval. |
@@ -459,12 +459,14 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 |--------|-------------|
 | `agent-notes` | Agent-owned notes CLI for the split state-file design (INV-jofaf facet 2). |
 | `agent-supervisor` | scripts/agent-supervisor — hypergumbo tmux session supervisor (WI-razub). |
+| `audit-autopr-convergence` | audit-autopr-convergence — read the auto-pr convergence ledger (WI-lapap). |
 | `audit-closure-evidence` | audit-closure-evidence — advisory detector for proxy-only closures (WI-dafun). |
 | `audit-stale-timestamps` | Audit embedded timestamps in agent state files vs filesystem mtimes. |
 | `backfill-training-data-cohort-tags.py` | Backfill cohort metadata for v0 training corpus entries. |
 | `bakeoff-map` | bakeoff-map - Chronicle and map hypergumbo bakeoff artifacts. |
 | `build-scip-proto` | Regenerate packages/hypergumbo-core/src/hypergumbo_core/scip/_generated/scip_pb2.py |
 | `build_combined_trend.py` | Build the cross-tranche combined trend report covering ALL completed dogfooding tranches. |
+| `catalogue_gate_terms.py` | Grep terms for ``scripts/smart-test``'s catalogue gate, derived per family. |
 | `check-audit-findings` | Pre-commit lint: every audit-findings doc under ``docs/audits/`` parses |
 | `check-docstring-drift` | Module-docstring drift checker — co-change scan over .py source trees. |
 | `check-edge-type-drift` | Pre-commit lint: ``*EDGE_TYPE*`` sets in packages/ must be subsets |
@@ -486,6 +488,7 @@ The `scripts/` directory contains operational tooling. Descriptions are extracte
 | `check-self-tree-validation` | Full-suite self-tree validation ratchet gate (WI-jigup). |
 | `check-symbol-kind-drift` | Pre-commit lint: ``*KIND*`` sets in packages/ must be subsets of the |
 | `check-test-only-reachability` | WI-ratuv gate: a production function reachable only from test modules. |
+| `citation_gate_tests.py` | Tests reachable from a changed file by a STRING literal, for smart-test. |
 | `compare-survey-fingerprints.py` | Diff ``Symbol.fingerprint`` across two surveys of the same tree. |
 | `concept-audit-record` | Record the completion of a Fundamental Concept Audit. |
 | `coverage-select` | CLI for coverage-directed test selection (shadow phase). |
@@ -915,8 +918,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 73590071009c
-  commit_count: 7351
+  commit: 9b49e36c416f
+  commit_count: 7382
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
