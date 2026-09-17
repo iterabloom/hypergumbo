@@ -1,0 +1,46 @@
+- op: create  # 269e
+  at: '2026-09-16T22:08:51Z'  # 269e
+  by: agent  # 269e
+  actor: jgstern_agent  # 269e
+  clock: 1  # 269e
+  nonce: 269e  # 269e
+  data:  # 269e
+    kind: work_item  # 269e
+    title: "silence axis has no value for 'construct found, relation not established' — 5 measured instances sit in unreported"  # 269e
+    status: todo_hard  # 269e
+    priority: 3  # 269e
+    parent:  # 269e
+    tags:  # 269e
+    - pass20  # 269e
+    - analysis_quality  # 269e
+    - disclosure  # 269e
+    isbefore: []  # 269e
+    duplicate_of: []  # 269e
+    not_duplicate_of: []  # 269e
+    pr_ref:  # 269e
+    description: "RESIDUAL of WI-finij, surfaced by draining its 11 (PR #1009, dev dc57e8cc33).\n\nTHE MEASURED GAP. Eleven pass-runs scanned files and emitted nothing. Six of\nthem had genuinely found no construct and now say so (`no_candidate_construct`,\n0 -> 6). The other FIVE found their construct and emitted nothing anyway:\n\n  annotation-convention   routes/dispatches found, no target symbol to bind\n  di-resolution           bindings found, resolve to no symbol\n  ipc                     patterns found, `continue` before the symbol append\n  wasm-bindgen            wasm imports found, matching export absent\n  message-dispatch        writes found without reads, or reads without writes\n\nIn every one the construct IS PRESENT in the repository. What failed is the\nRELATION: an import with no export, a binding with no symbol, a write with no\nread. The axis has no value for that state, so they land in `unreported`,\nwhich means CANNOT DETERMINE.\n\nWHY THIS IS WORTH A ROW. Before the drain this population was invisible --\nundifferentiated inside a bucket that also held \"genuinely found nothing\". It\nis now isolated and countable at five on the self-survey, and it is the\npopulation a consumer most needs distinguished: \"your repo has no GraphQL\nresolvers\" and \"your repo has GraphQL resolvers we could not connect to a\nschema\" are opposite answers to \"is this linker useful here?\".\n\nWHAT IS NOT BEING ASSERTED. That a new value SHOULD be declared. Adding one is\nADR-0024 scaffolding plus an axis-conformance decision, and a value with no\nproducer is exactly the trap INV-hujog is stuck in (`prerequisite_absent`,\ndeclared, zero producers, and a deferral whose re-open trigger therefore cannot\nfire). The difference here, and the reason this is a better candidate than that\none: THE PRODUCERS ALREADY EXIST. The five call sites above are written, live\nand measured, so a value declared for them would be wired on arrival rather\nthan aspirational.\n\nDECISION REQUIRED FROM THE OWNER, not pre-judged:\n  (a) declare a seventh value (name unproposed here) and wire those five; or\n  (b) rule that `unreported` is the correct home for an unpaired construct and\n      say so IN THE AXIS DOCSTRING, so the next reader does not re-open this.\n\nEither way the honest state is recorded. What must NOT happen is stamping the\nfive `no_candidate_construct`: that is the WI-finij defect -- a positive claim\ninferred from an absence -- committed a second time inside the axis built to\ncure it.\n\nEVIDENCE: self-survey at dev dc57e8cc33, 97 analysis_runs,\n{'': 43, no_candidate_files: 43, no_candidate_construct: 6, unreported: 5}.\nRe-derivable: hypergumbo survey . --out F, then group analysis_runs by\nsilence_reason."  # 269e
+    fields: {}  # 269e
+- op: update  # 3628
+  at: '2026-09-16T22:09:29Z'  # 3628
+  by: agent  # 3628
+  actor: jgstern_agent  # 3628
+  clock: 2  # 3628
+  nonce: '3628'  # 3628
+  set: {}  # 3628
+  add:  # 3628
+    not_duplicate_of: [WI-finij-kurib-bibom-davom-kulus-bapok-binaj-muzig]  # 3628
+- op: update  # 065a
+  at: '2026-09-17T00:07:51Z'  # 065a
+  by: agent  # 065a
+  actor: jgstern_agent  # 065a
+  clock: 3  # 065a
+  nonce: 065a  # 065a
+  set:  # 065a
+    status: done  # 065a
+- op: discuss  # 57de
+  at: '2026-09-17T00:07:51Z'  # 57de
+  by: agent  # 57de
+  actor: jgstern_agent  # 57de
+  clock: 4  # 57de
+  nonce: 57de  # 57de
+  message: "DONE (PR #1010, dev e83f2b997f, ADR-0054). Closed on BEHAVIOURAL evidence: a\nlive self-survey, not a proxy.\n\nWHAT WAS DECIDED. A distinguished-expert review ruled DECLARE, against the\nruling I had shipped hours earlier, and its three stated grounds were each\nrefuted by the tree: the value would be \"a seventh member\" (the vocabulary\nalready held seven), with \"a single producer\" (eleven call sites through one\nhelper -- the same shape as no_candidate_construct, which is considered good\ndesign) and \"no consumer\" (summarize_silence and format_silence_summary count\nand print by whatever name they find, wired at cli.py). That last one is the\nwhole difference from prerequisite_absent and I had it backwards.\n\nThe decisive argument is one I had not made: `unreported` is declared to mean\nthe pass \"produced nothing AND DID NOT SAY WHY\", but these five bodies COMPUTE\nthe fact and discard it -- the helper returned \"\" on the branch holding the\nanswer. Not abstention; a disclosure the producer holds and declines to make.\n\nEVIDENCE, before -> after on the hypergumbo self-survey, 97 analysis_runs:\n    before:  no_candidate_files=43  no_candidate_construct=6  unreported=5\n    after:   no_candidate_files=43  no_candidate_construct=7\n             candidates_unresolved=4  unreported=0\n  candidates_unresolved: annotation-convention, di-resolution, ipc,\n  message-dispatch. Re-derivable: hypergumbo survey . --out F, group\n  analysis_runs by silence_reason. NOTE /tmp is tmpfs here -- a ~250 MB survey\n  written there will OOM the box; use real disk.\n\nTHE EXPERT'S OWN PREDICTION WAS WRONG, AND MEASURING IS WHAT CAUGHT IT. It\npredicted the one-line producer change would take unreported to 0. It took it\nto 2. FOUR return paths never call the helper at all, which the verdict filed\nas a LATENT residual that \"will appear on a JS/TS or Solidity corpus\" -- while\ntwo of them were firing on this corpus as it wrote that. wasm-bindgen returns\nearly when no Rust exports exist and its WRAPPER then scans 14 files, so the\nrun reported files with the body never having spoken; message-dispatch passed\nits bail with both sides non-empty and matched no pairs. Closed as a CLASS\n(all four), not as the two that happened to fire. There is consequently NO\nresidual row to file -- nothing is left uncovered.\n\nTHE NAME describes the PASS, not the repository, and that was a change of mind\non reading the code: ipc rejects some candidates on a quality filter with no\npairing attempted (`if not channel: continue`), so \"missing counterpart\" would\nbe false for it. A pass also cannot distinguish an absent counterpart (correct\nno-op) from its own matcher missing one (recall defect) -- the axis says those\nneed opposite responses.\n\nFILING, corrected by the test suite: first written as docs/audits/0019 and\nREJECTED by test_audit_findings. audit_findings._REGISTRIES binds exactly three\nregistry-backed axes (Edge.edge_type, Symbol.kind, Edge.evidence_type) and\nVALID_VERDICTS is a closed frozenset; AnalysisRun.silence_reason is a\nLIGHTWEIGHT catalog-derived axis and cannot be named in a kind: audit_verdicts\nblock at all. Filed as ADR-0054. docs/surveys/python-stdlib-module-io-\nenumeration.md hit the same validator on its own first attempt at the same\nnumber -- the trap has now caught two sessions, so ADR-0054 records the rule\nexplicitly: docs/audits/ is for the three registry-backed axes.\n\nSTATED HONESTLY, and carried into ir.py: unreported=0 MEASURES THE CORPUS, NOT\nCOMPLETION. 53 of 64 linker modules make no body claim at all and would land\nthere on a corpus where they are active. The \"the unreported count is the size\nof the remaining work\" gloss is removed from the field comment.\n\nRE-EVALUATION TRIGGERS (ADR-0054), both fireable off ordinary bakeoff output:\nT1 candidates_unresolved reaches >=60% of silent pass-runs (absorbing, not\ndifferentiating); T2 a run stamped candidates_unresolved is traced to a pass\nwhose counterpart IS present in the same behavior map (a recall defect wearing\na correct-no-op label)."  # 57de

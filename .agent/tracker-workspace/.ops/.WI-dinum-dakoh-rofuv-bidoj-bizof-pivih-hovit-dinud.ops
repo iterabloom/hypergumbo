@@ -1,0 +1,21 @@
+- op: create  # c9d8
+  at: '2026-09-17T00:08:43Z'  # c9d8
+  by: agent  # c9d8
+  actor: jgstern_agent  # c9d8
+  clock: 1  # c9d8
+  nonce: c9d8  # c9d8
+  data:  # c9d8
+    kind: work_item  # c9d8
+    title: "graphql-linker and graphql-resolver-linker emit 0 edges on apollo-server while minting 120 nodes, with the framework correctly detected"  # c9d8
+    status: todo_hard  # c9d8
+    priority: 2  # c9d8
+    parent:  # c9d8
+    tags:  # c9d8
+    - analysis_quality  # c9d8
+    - linker_framework  # c9d8
+    isbefore: []  # c9d8
+    duplicate_of: []  # c9d8
+    not_duplicate_of: []  # c9d8
+    pr_ref:  # c9d8
+    description: "Found while deciding INV-nanon's activation-gate question (2026-09-16); verified\nindependently against the cohort survey before filing.\n\nTHE DEFECT. On apollo-server -- the canonical repository for this framework --\nboth GraphQL linkers read the files, MINT NODES, and emit ZERO EDGES:\n\n  pass                      files  nodes  edges   ms\n  graphql-linker               79     29      0  661\n  graphql-resolver-linker      79     91      0  664\n\nFramework detection is NOT the problem and must not be blamed: the profile\nrecords frameworks = ['apollo', 'express', 'graphql', 'protobuf']. The gate\nopened, the linkers ran, they read the right files, they recognised 120 symbols\nbetween them, and they related none of them to anything.\n\nEvidence: ~/hypergumbo_lab_notebook/jokij_dstref_09062026/out/apollo-server/\nsurvey.json, analysis_runs[] where pass startswith 'graphql'.\n\nWHY NOTHING SURFACED IT, and this is the part worth keeping. The pass-silence\naxis CANNOT see this, BY DESIGN AND CORRECTLY. derive_silence_reason returns \"\"\n(NOT APPLICABLE) as soon as nodes_emitted is non-zero, and pass_silence.py's\ndocstring is explicit that a pass emitting nodes but no edges is NOT silent --\ncalling them silent \"would have been the headline's original error repeated one\nlevel down\". So these two runs carry no silence_reason at all and never appear\nin the disclosure summary.\n\nThat is not a defect in the axis. It is a GAP BETWEEN TWO QUESTIONS the axis was\nnever asked to answer: \"why did this pass say nothing?\" is fully drained\n(unreported is 0 as of ADR-0054), while \"did this pass do its job?\" is not the\nsame question and has no instrument. A linker that mints 91 nodes and 0 edges is\nmaximally invisible to silence disclosure while being exactly as useless to a\nconsumer as one that emitted nothing.\n\nNOTE THE ADJACENCY, DO NOT FOLD ON IT: under ADR-0054 a pass that found\ncandidates and related none of them is `candidates_unresolved`. That is\nprecisely this shape -- but the value is unreachable here, because the value is\nonly stamped on a SILENT pass and these are not silent. Whether the\nnode-emitting case deserves the same disclosure is a separate question from\nwhether these two linkers are broken, and this row is about the latter.\n\nWHAT THIS ROW ASKS: determine whether graphql-linker and graphql-resolver-linker\nemitting 0 edges on apollo-server is correct (and if so, why 120 nodes are worth\nminting) or a recall defect, and fix it if it is one. Both linkers are in the\n25 that declare always_on_unreviewed(), so this also blocks any future\nassessment of whether they should be framework-gated: ADR-0054's sibling\nanalysis established that a linker must be DEMONSTRATED TO WORK before gating\nit, or the gate hides the evidence of its own defect.\n\nREPRO: hypergumbo survey <apollo-server checkout> --out F, then read\nanalysis_runs[] for the two pass ids. (/tmp is tmpfs on this machine and a\nsurvey is ~250MB -- write to real disk.)"  # c9d8
+    fields: {}  # c9d8
