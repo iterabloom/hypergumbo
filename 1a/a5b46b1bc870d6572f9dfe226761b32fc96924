@@ -1,0 +1,43 @@
+Original commit body from 9170e4f46c8b56b1cc6a48510eaf5b1f38c66fe7:
+
+scip/index.py's _KIND_MAP translated SCIP DescriptorKind to Symbol.kind.
+Five of its eight values were registered and three were not
+(type_parameter, parameter, meta), plus a fourth minted by a
+.get(..., "unknown") fallback. Every ADR-0027 consumer that branches on
+Symbol.kind had no case for them. The map is a DICT and axis_drift's
+collector read only string-literal SETS, so no drift linter could see it.
+
+REACHABILITY FIRST, which the row filed as its first step. Invoked
+rust-analyzer on aardvark-dns and counted descriptor kinds out of the
+SCIP index: 681 entries, of which 10 are type_parameter. It is NOT dead
+vocabulary -- it is filtered before minting on this crate only because
+those entries carry no Definition occurrence, so a survey alone would
+have shown a clean artifact and hidden the fact.
+
+unknown is unreachable, provably rather than by sampling: DescriptorKind
+is a closed Enum, _KIND_MAP is total over it, and every producer in
+descriptor.py constructs from the enum.
+
+parameter and type_parameter are now REGISTERED -- both name a
+source-language syntactic construct directly, which is what ADR-0027's
+axiom asks of a value.
+
+meta maps to "declaration", the registry's declared catch-all. Not
+folded into "attribute", which the registry defines as a data member (a
+Python class attribute) rather than what SCIP's ":" suffix means; that
+would have been a guess dressed as a verdict. A re-evaluation trigger is
+written at the mapping.
+
+The unknown fallback is removed. A KeyError on a future ninth member is
+louder and more truthful than silently minting a kind nothing describes.
+
+Two gates the dict never had: every mapped value is a registered
+Symbol.kind, and the map is total over DescriptorKind. Both carry a
+positive control.
+
+docs/schema.json and docs/concept-axes.md regenerated (both embed the
+kind registry).
+
+Closes INV-lagot
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
