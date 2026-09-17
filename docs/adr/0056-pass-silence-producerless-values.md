@@ -12,8 +12,8 @@ Four values on the `pass-silence-reason` axis have no producer. They are **not f
 |---|---|
 | `dependency_unavailable` | **RE-HOST** — the value is real, the axis is right, the host dataclass is wrong |
 | `backend_disabled` | **RE-HOST** |
-| `pass_crashed` | **RE-HOST** (speculative: its free-text twin has never fired) |
-| `prerequisite_absent` | **KEEP, GATED** — correctly declared and correctly hosted; its producer is deferred behind the other three, with a fireable trigger |
+| `pass_crashed` | **RE-HOST** (called speculative here on a zero twin count; it has six real producers — see Corrections) |
+| `prerequisite_absent` | **KEEP, GATED** — correctly declared and correctly hosted; producer deferred behind the other three. **Built in PR #1018**; it was not merely unproduced, it was being replaced by a false `no_candidate_files` — see Corrections |
 
 Concretely: **do not** wire the `depends_on`-CNF producer INV-hujog asks for; **keep** `prerequisite_absent` declared; **restate** INV-hujog's trigger onto `limits.skipped_passes[].reason`.
 
@@ -61,7 +61,7 @@ Three of the four are a **migration**, not a new signal. `prerequisite_absent` h
 | `backend_disabled` | `"rust-analyzer backend not enabled"` | 2,383 |
 | `pass_crashed` | `f"crashed: {type(exc).__name__}: {exc}"` | **0** |
 
-**Disposition: add a structured companion key, then CUT OVER the consumers. Do not dual-write.** Add `skip_reason_code` to `skipped_passes` entries on the existing axis; the prose `reason` stays as human-readable detail (it carries the pip command, the exception message — payload a code cannot). Cut over every consumer that today string-matches spellings. Only ~4 write sites need touching, because the ~50 grammar spellings come from **two f-string templates**, not 29 hand-written strings — the *"~29 analyzer files, separately payable"* sizing in `pass_silence.py` is an over-estimate.
+**Disposition: add a structured companion key, then CUT OVER the consumers. Do not dual-write.** Add `skip_reason_code` to `skipped_passes` entries on the existing axis; the prose `reason` stays as human-readable detail (it carries the pip command, the exception message — payload a code cannot). Cut over every consumer that today string-matches spellings. ~~Only ~4 write sites need touching, because the ~50 grammar spellings come from two f-string templates, not 29 hand-written strings.~~ **Measured at implementation: 49 sites across 38 files** — the f-string is copy-pasted into thirty analyzers, not inherited. See Corrections.
 
 Dual-write is specifically wrong: two channels for one concept is the defect WI-finij named. One channel, two fields.
 
@@ -85,7 +85,7 @@ The objection was that every tree-sitter grammar is installed here, so a grammar
 
 **Named acceptance test, runnable before W3 and requiring no production code:**
 
-> Build a venv with `hypergumbo` and **without** `tree-sitter-language-pack`. Survey a JS+Rust repo (`aardvark-dns`, 16 `.rs` files, fast). Assert `limits.skipped_passes` contains `rust` with a non-`no files matched` reason, **and** `tauri-ipc-linker` / `wasm-bindgen-linker` appear in `analysis_runs` silent.
+> ~~Build a venv with `hypergumbo` and **without** `tree-sitter-language-pack`. Survey a JS+Rust repo (`aardvark-dns`, 16 `.rs` files, fast).~~ **This test as written returns empty and would have deprecated the value** — `aardvark-dns` is Rust-only and `rust` is not language-pack-gated. Corrected form: uninstall **`tree-sitter-rust`** and survey a genuine JS+Rust repo (`component-model-demo`, `robyn`). Assert `limits.skipped_passes` contains `rust` with a non-`no files matched` reason, **and** `tauri-ipc-linker` / `wasm-bindgen-linker` appear in `analysis_runs` silent. See Corrections.
 
 The axis docstring's *"the drift bites a user in a bare environment, which is exactly who cannot report it to us"* is true, and is why the corpus is blind. It is not a reason the team must be blind: **construct the bare environment.**
 
@@ -117,6 +117,24 @@ Bucket 1. This was scoped as an audit-findings document (`docs/audits/0020`) and
 3. **The bare-venv acceptance test coming back empty.** Then `prerequisite_absent` is unreachable in practice as well as in this corpus, and the verdict flips to **DEPRECATE**. Run it *before* W3.
 4. **`pass_crashed` firing once.** Zero instances in 229,541 records; one real crash record moves it from speculative re-host to evidenced migration.
 5. **An owner ruling that `AnalysisRun` should be emitted for passes that did not run.** That dissolves the re-hosting finding entirely and collapses 3+1 to a flat 4. This ADR judges it wrong — an `AnalysisRun` for a pass that never ran is ABSENT ≠ EMPTY one level up — but it is the owner's call, and it is the single assumption the class analysis rests on.
+
+## Corrections from implementation (2026-09-17, PRs #1015 / #1016 / #1018)
+
+All three work items landed. Four of this ADR's own claims did not survive the work, and they are corrected here rather than left for the next reader to rediscover.
+
+**1. The named acceptance test does not test what it says, and run literally it would have DEPRECATED a value that is firing.** Two independent faults. `~/repos/aardvark-dns` does not exist — the repo is under `~/whole_bunch_of_repos/` — and it is **Rust-only**: 16 `.rs` files and zero `.js`, so it is not the "JS+Rust repo" the test calls it, and `tauri-ipc-linker` / `wasm-bindgen-linker` are activation-gated off there and produce no `AnalysisRun` at all. Separately, **removing `tree-sitter-language-pack` does not remove `rust`**; the mainstream grammars load from dedicated `tree-sitter-<lang>` wheels and the pack is the long tail's fallback. Run as written, the test returns empty — and §"What would change this decision" item 3 says an empty result flips the verdict to DEPRECATE.
+
+Re-aimed (uninstall `tree-sitter-rust`, survey a genuine JS+Rust repo) it is **decisive, and the finding is stronger than this ADR anticipated**: `tauri-ipc-linker` and `rust-trait-dispatch-linker` were claiming `no_candidate_files` — declared to mean *"nothing to find, and no ordering or declaration mechanism would change it"* — while Rust files sat in the tree. The value's absence was not a gap; it was making the axis **assert something false**. Verdict: KEEP AND BUILD.
+
+**2. `Pass.requires` is wrong for 25 of 26 grammar-gated literals, and that is what aimed the test at the wrong package.** Every `extra` language literal declares `requires="tree-sitter-language-pack"`; almost none of them use it. Nothing but a human reads the field — `is_available` only substring-matches `"tree-sitter"` — so nothing catches it. Filed as **WI-pakof**. An instrument aimed by a wrong declaration exits 0 with a plausible answer.
+
+**3. W2 was sized at "~4 producer sites … two f-string templates". It is 49 sites across 38 files.** The grammar-missing f-string is *copy-pasted* into thirty analyzer modules, not inherited from a template. The estimate was checked before being designed against.
+
+**4. `pass_crashed` is not speculative.** This ADR called it so on zero instances in 229,541 records — which measured the free-text *twin*, not the state. Six analyzer sites catch a parser **constructor** exception (`"Failed to load Go parser: {e}"` and kin): the grammar is installed and initialisation raised. That is not `dependency_unavailable`, because "install the package" is the wrong advice; it is `pass_crashed`, whose declaration says nothing about *who* contained the raise. The value has real producers.
+
+**One thing W1 changed about the work ordering, per this ADR's own criterion.** §"What would change this decision" item 2 says *"ten hits means declaration repair, not W2, is the blocker."* W1's first audit found **261 of 893 surveys (29.2%)** carrying a falsified declaration, six distinct `(pass, clause)` pairs across five passes. The criterion is met; declaration repair is filed as **WI-rasal** and is the precondition for any future gate.
+
+**One rule W3 needed that this ADR did not state.** The producer fills **only a field the pass body left empty**. Measured on the same repository, `pyffi-linker` is silent with the *same* blocked conjunct and truthfully claims `no_candidate_construct` — it scanned the Python side and there are genuinely no FFI call sites, so the missing Rust grammar is irrelevant to *its* silence. Overruling it would reverse the ADR-0054/PR-#1008 guard and replace a true claim with a plausible one. `prerequisite_absent` therefore **under-reports by design**, and sees only *analyzer* prerequisites, since linkers are deliberately not enumerated in `skipped_passes`.
 
 ## Related
 
