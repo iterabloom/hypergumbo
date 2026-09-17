@@ -189,6 +189,17 @@ def translate_scip_to_hg(
     # WI-higap: if no run_id is supplied (legacy callers), create a local
     # run so Edge.__post_init__ enforcement passes. Callers that want
     # provenance to flow into a parent run can pass run_id explicitly.
+    #
+    # WI-didag: that escape hatch was UNREACHABLE from production until the
+    # analyzer threaded a run through ``try_analyze_with_rust_analyzer``, so
+    # every real survey took this branch and every scip edge named a run that
+    # was constructed here, harvested for its id, and discarded. Worse, the
+    # asymmetry ran the wrong way: ``Edge.__post_init__`` hard-raises on an
+    # empty value and ``Symbol`` has no such guard, so the GUARDED half got a
+    # well-formed UUID resolving to nothing while the unguarded half stayed
+    # honestly empty. Measured on aardvark-dns: 637 edges with a fabricated id
+    # beside 669 symbols with ``''``, and 1308 validation violations. The guard
+    # turned an abstention into a confident wrong answer.
     if not run_id:
         from hypergumbo_core.ir import AnalysisRun, PASS_VERSION, make_pass_id
         _scip_run = AnalysisRun.create(
@@ -196,6 +207,18 @@ def translate_scip_to_hg(
             version=PASS_VERSION,
         )
         run_id = _scip_run.execution_id
+    # Stamp SYMBOLS from the same id as the edges. This does not make a
+    # fabricated id resolvable — nothing serializes the local run either way —
+    # but it makes the two halves agree, so a dangling artifact is ONE fact a
+    # reader can chase rather than two unrelated-looking ones. When the caller
+    # supplied a real run (the production path since WI-didag) it is the whole
+    # fix for the symbol side, and it closes WI-zabus at the source instead of
+    # relying on the orchestrator's WI-mosil empty-only backstop, which a
+    # library caller bypassing the orchestrator never gets. Pure fill: a
+    # producer that already stamped keeps its value.
+    for _sym in symbols:
+        if not _sym.origin_run_id:
+            _sym.origin_run_id = run_id
     # Map each SCIP symbol string to the hypergumbo ``Symbol.id`` the shim
     # assigned it (the shim preserves the raw string in ``meta["scip_symbol"]``),
     # so edge endpoints reference real Symbols instead of raw SCIP descriptor

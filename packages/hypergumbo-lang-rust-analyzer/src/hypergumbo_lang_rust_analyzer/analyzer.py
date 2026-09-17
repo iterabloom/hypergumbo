@@ -57,7 +57,7 @@ from pathlib import Path
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.analyze.registry import register_analyzer
-from hypergumbo_core.ir import Edge
+from hypergumbo_core.ir import PASS_VERSION, AnalysisRun, Edge
 
 from hypergumbo_lang_rust_analyzer.gate import should_use_rust_analyzer_backend
 from hypergumbo_lang_rust_analyzer.graceful_degrade import (
@@ -186,8 +186,23 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
             skip_reason_code=BACKEND_DISABLED,
         )
 
+    # WI-didag: mint the run BEFORE dispatching, so its execution_id can be
+    # threaded into the translator and every Symbol and Edge this pass emits
+    # names a run that is actually serialized. Previously the success path
+    # returned ``AnalysisResult(symbols, edges)`` with no run at all, and the
+    # translator fabricated an id to satisfy Edge's WI-higap guard: measured on
+    # aardvark-dns, 669 nodes and 637 edges whose provenance resolved to
+    # nothing, from a pass that appeared in NEITHER analysis_runs NOR
+    # limits.skipped_passes -- the only one of 118 registered analyzers for
+    # which that was true.
+    run = AnalysisRun.create(  # nosec B106 — pass_id is a pass NAME, not a password;
+        # bandit's B106 fires on any ``pass*=`` keyword holding a string literal.
+        # Same false positive the analyzer registry already suppresses.
+        pass_id="rust_analyzer", version=PASS_VERSION,
+    )
     result = try_analyze_with_rust_analyzer(
         repo_root, _repo_anchored_reader(repo_root), log=_emit_user_warning,
+        run_id=run.execution_id,
     )
     if result is None:
         # Backend on but SCIP invoke/translate produced nothing (WI-nohah
@@ -212,4 +227,8 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
             f"engagement failure (see WI-todon). Inspect prior warnings for "
             f"invoke-time diagnostics.",
         )
-    return AnalysisResult(symbols=symbols, edges=edges)
+    # The run travels WITH the output. collect_analyzer_result appends it to
+    # analysis_runs, stamps the productivity counters and the silence reason at
+    # the orchestrator chokepoint (INV-gizik / INV-bikaj), and its WI-mosil
+    # backstop fills any Symbol the translator left unstamped.
+    return AnalysisResult(run=run, symbols=symbols, edges=edges)

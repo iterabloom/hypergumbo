@@ -33,7 +33,9 @@ def _fake_source_reader(_p: str) -> bytes:  # pragma: no cover — unused path
 
 
 def _make_ok_translate(symbols: List[Symbol], edges: List[Edge]):
-    def _translate(_scip: bytes, _reader) -> Tuple[List[Symbol], List[Edge]]:
+    def _translate(
+        _scip: bytes, _reader, *, run_id: str = "",
+    ) -> Tuple[List[Symbol], List[Edge]]:
         return symbols, edges
     return _translate
 
@@ -144,7 +146,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"truncated-bytes"
 
-        def _translate(_scip, _reader):
+        def _translate(_scip, _reader, *, run_id=""):
             raise DecodeError("bad wire format")
 
         log_msgs: list[str] = []
@@ -160,7 +162,7 @@ class TestTranslateFailure:
         def _invoke(workspace, *, cwd):
             return b"x"
 
-        def _translate(_scip, _reader):
+        def _translate(_scip, _reader, *, run_id=""):
             raise DecodeError("bad")
 
         log_msgs: list[str] = []
@@ -344,3 +346,47 @@ class TestRichDiagnosticsForNoOutput:
             invoke=_invoke, log=log_msgs.append,
         )
         assert "stderr:" not in log_msgs[0]
+
+
+class TestRunIdForwarding:
+    """WI-didag: the run_id parameter must be threadable from the analyzer.
+
+    ``translate_scip_to_hg`` has always taken ``run_id`` and its comment says
+    "Callers that want provenance to flow into a parent run can pass run_id
+    explicitly." No production caller could: this function had no such
+    parameter to forward, so every production call took the fabricating
+    branch and the documented escape hatch was reachable only from tests.
+    """
+
+    def test_run_id_is_forwarded_to_translate(self) -> None:
+        seen: dict[str, object] = {}
+
+        def _invoke(_workspace, *, cwd):
+            return b"scip-bytes"
+
+        def _translate(_blob, _reader, *, run_id=""):
+            seen["run_id"] = run_id
+            return ([], [])
+
+        try_analyze_with_rust_analyzer(
+            Path("/nonexistent"), lambda _p: None,
+            invoke=_invoke, translate=_translate, run_id="uuid:parent-run",
+        )
+        assert seen["run_id"] == "uuid:parent-run"
+
+    def test_absent_run_id_forwards_empty_and_translate_decides(self) -> None:
+        """No run_id is not an error here — translate owns the fallback."""
+        seen: dict[str, object] = {}
+
+        def _invoke(_workspace, *, cwd):
+            return b"scip-bytes"
+
+        def _translate(_blob, _reader, *, run_id=""):
+            seen["run_id"] = run_id
+            return ([], [])
+
+        try_analyze_with_rust_analyzer(
+            Path("/nonexistent"), lambda _p: None,
+            invoke=_invoke, translate=_translate,
+        )
+        assert seen["run_id"] == ""

@@ -47,7 +47,7 @@ the default :func:`run_rust_analyzer_scip` /
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Protocol, Tuple
 
 from google.protobuf.message import DecodeError
 
@@ -63,7 +63,18 @@ from .invoke import (
 from .translate import SourceReader, translate_scip_to_hg
 
 InvokeFn = Callable[..., bytes]
-TranslateFn = Callable[[bytes, SourceReader], Tuple[List[Symbol], List[Edge]]]
+class TranslateFn(Protocol):
+    """The translator's call shape, as a Protocol rather than a Callable alias.
+
+    ``Callable[[bytes, SourceReader], ...]`` cannot express the keyword-only
+    ``run_id`` this function now forwards (WI-didag), and widening it to
+    ``Callable[..., ...]`` would drop argument checking on the injection seam
+    that every graceful-degrade test uses.
+    """
+
+    def __call__(
+        self, scip_bytes: bytes, source_reader: SourceReader, *, run_id: str = ...,
+    ) -> Tuple[List[Symbol], List[Edge]]: ...
 
 # One-time log marker so repeated fall-through attempts don't spam the
 # user's terminal. A set because the helper may be called across
@@ -143,6 +154,7 @@ def try_analyze_with_rust_analyzer(
     invoke: Optional[InvokeFn] = None,
     translate: Optional[TranslateFn] = None,
     log: Optional[Callable[[str], None]] = None,
+    run_id: str = "",
 ) -> Optional[Tuple[List[Symbol], List[Edge]]]:
     """Run rust-analyzer + SCIP translate on *workspace*, or ``None``.
 
@@ -163,6 +175,15 @@ def try_analyze_with_rust_analyzer(
     ``log`` defaults to a no-op; tests and the analyzer-registry wrapper
     in ``analyzer.py`` pass a real logger so the user sees one line
     explaining why the backend degraded.
+
+    ``run_id`` is forwarded verbatim to the translator so the emitted
+    Symbols and Edges name the CALLER's ``AnalysisRun`` (WI-didag). This
+    parameter is the missing link that made ``translate_scip_to_hg``'s
+    documented ``run_id`` escape hatch unreachable from production: without
+    it every real survey fell into the translator's fabricating branch and
+    emitted provenance pointing at a run nobody serializes. Empty is still
+    accepted — the translator owns that fallback, and a direct library
+    caller that has no parent run is not required to invent one.
     """
     invoke_fn = invoke if invoke is not None else run_rust_analyzer_scip
     translate_fn = translate if translate is not None else translate_scip_to_hg
@@ -189,7 +210,7 @@ def try_analyze_with_rust_analyzer(
             return None
 
     try:
-        return translate_fn(scip_bytes, source_reader)
+        return translate_fn(scip_bytes, source_reader, run_id=run_id)
     except DecodeError as exc:
         key = f"DecodeError:{workspace}"
         if key not in _LOGGED_FALLBACK:
