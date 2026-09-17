@@ -156,6 +156,15 @@ class LinkerContext:
     linker_pass_id: str = ""
     linker_pass_version: str = ""
 
+    # WI-dabup / ADR-0056 W3: {pass_id: skip_reason_code} for every ANALYZER
+    # pass that did not run, lifted from limits.skipped_passes by
+    # run_all_linkers. It is what lets a silent linker distinguish "the repo
+    # has no Rust" (State A, a correct no-op) from "the Rust grammar is not
+    # installed and I was blocked" (State C) — a distinction the run counters
+    # alone cannot make, and the reason prerequisite_absent had no producer
+    # until skipped_passes carried a structured code.
+    skipped_pass_codes: dict[str, str] = field(default_factory=dict)
+
     # Cross-linker tree-sitter parse cache. Populated lazily by the linker
     # docstring/comment masker (linkers/_text_filters) so the second linker
     # to scan a given file reuses the first linker's parse. Forward-compat
@@ -658,7 +667,7 @@ def _run_linker_with_cache(
     ``linkers/_text_filters`` can read/write ``ctx.parsed_trees`` without
     every linker passing the cache explicitly.
     """
-    from ..pass_silence import derive_silence_reason
+    from ..pass_silence import PREREQUISITE_ABSENT, derive_silence_reason
     from ._text_filters import (
         reset_active_parse_cache,
         reset_active_read_log,
@@ -719,9 +728,57 @@ def _run_linker_with_cache(
         # Guarded now: a body that spoke keeps its word. The one exception is
         # "" -- a pass that EMITTED has no silence to explain, and NOT
         # APPLICABLE is not the body's to override.
-        if _derived == "" or not result.run.silence_reason:
-            result.run.silence_reason = _derived
+        if _derived == "":
+            # A pass that EMITTED has no silence to explain, and NOT APPLICABLE
+            # is not the body's to override.
+            result.run.silence_reason = ""
+        elif not result.run.silence_reason:
+            # WI-dabup / ADR-0056 W3: the orchestrator may speak only into a
+            # field the body left empty. Before falling through to the derived
+            # answer, ask whether this linker was BLOCKED -- a declared
+            # prerequisite that went missing for a toolchain reason rather than
+            # because the repo lacks its files.
+            #
+            # WHY THIS ORDER MATTERS, and it is not a detail. The derived answer
+            # here is NO_CANDIDATE_FILES, declared to mean "nothing to find, and
+            # no ordering or declaration mechanism would change it". On a JS+Rust
+            # repo with the Rust grammar missing, that is FALSE for
+            # tauri-ipc-linker: installing the grammar changes it. The axis was
+            # asserting something untrue, which is worse than abstaining.
+            #
+            # WHY IT DOES NOT OVERRIDE A BODY CLAIM. Measured on that same repo,
+            # pyffi-linker is silent with the SAME blocked conjunct and its body
+            # claims NO_CANDIDATE_CONSTRUCT -- truthfully: it scanned the Python
+            # side and there are genuinely no FFI call sites, so the missing
+            # Rust grammar is irrelevant to ITS silence. Overruling that would
+            # reverse the guard above and replace a true claim with a plausible
+            # one.
+            result.run.silence_reason = (
+                PREREQUISITE_ABSENT
+                if _blocked_prerequisite_clauses(ctx)
+                else _derived
+            )
     return result
+
+
+def _blocked_prerequisite_clauses(ctx: LinkerContext) -> list[list[str]]:
+    """Conjuncts of the running linker's ``depends_on`` blocked by a toolchain.
+
+    Resolves the declaration from the registry by the pass id the dispatcher
+    stamped on the context, so the chokepoint needs no extra parameter and the
+    by-name ``run_linker`` path (which sets no pass id) degrades to "no
+    declaration, no stamp" rather than guessing.
+    """
+    from ..pass_silence import prerequisite_absent_clauses
+
+    if not ctx.linker_pass_id or not ctx.skipped_pass_codes:
+        return []
+    registered = _LINKER_REGISTRY.get(ctx.linker_pass_id)
+    if registered is None:  # pragma: no cover - dispatcher sets a known id
+        return []
+    return prerequisite_absent_clauses(
+        registered.depends_on, ctx.skipped_pass_codes,
+    )
 
 
 def run_linker(
@@ -844,6 +901,20 @@ def run_all_linkers(
         )
     ]
 
+    # WI-dabup / ADR-0056 W3: lift the analyzer skip codes once, so a silent
+    # linker can tell a prerequisite that was ABSENT FROM THE REPO from one
+    # that was BLOCKED BY THE TOOLCHAIN. run_all_analyzers has fully populated
+    # `limits` by the time linkers dispatch (cli.py runs them in that order),
+    # so this map is complete rather than racing the passes it describes.
+    # Falls back to the caller's own map when no Limits sink was supplied, so
+    # a direct caller can still exercise the path.
+    skipped_pass_codes = dict(ctx.skipped_pass_codes)
+    if limits is not None:
+        for entry in limits.skipped_passes:
+            pass_id = entry.get("pass", "")
+            if pass_id:
+                skipped_pass_codes[pass_id] = entry.get("skip_reason_code", "")
+
     # Group by priority — linkers at the same priority are independent
     # and can run in parallel.  E.g., inheritance linker (priority 15)
     # creates implements edges that type_hierarchy (priority 60) needs,
@@ -862,6 +933,7 @@ def run_all_linkers(
             detected_frameworks=ctx.detected_frameworks,
             detected_languages=ctx.detected_languages,
             parsed_trees=ctx.parsed_trees,
+            skipped_pass_codes=skipped_pass_codes,
         )
 
         if len(group) == 1:
@@ -904,6 +976,7 @@ def run_all_linkers(
                         parsed_trees=ctx.parsed_trees,
                         linker_pass_id=linker.name,
                         linker_pass_version=linker.pass_version,
+                        skipped_pass_codes=skipped_pass_codes,
                     )
                     future_to_linker[
                         pool.submit(_run_linker_with_cache, linker.func, lctx)

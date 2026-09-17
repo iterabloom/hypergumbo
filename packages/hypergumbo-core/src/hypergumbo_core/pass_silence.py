@@ -116,9 +116,23 @@ DEPENDENCY_UNAVAILABLE: Final[str] = "dependency_unavailable"
 #: contain the language's files — the backend simply did not run.
 BACKEND_DISABLED: Final[str] = "backend_disabled"
 
-#: A declared upstream pass did not run. State C — the ordering defect. No
-#: instance has been observed; the value is declared so that an instance
-#: would have somewhere to land rather than being folded into a neighbour.
+#: A declared upstream pass did not run, AND it went missing for a reason
+#: other than the repository lacking its files. State C — the ordering defect.
+#:
+#: **Instances are now observed (WI-dabup).** This used to read "no instance
+#: has been observed", and that was true only of an environment where every
+#: grammar is installed. In a venv without ``tree-sitter-rust``, surveying a
+#: JS+Rust repository, ``tauri-ipc-linker`` and ``rust-trait-dispatch-linker``
+#: are silent while Rust files sit in the tree — and before this value had a
+#: producer they claimed :data:`NO_CANDIDATE_FILES`, which is declared to mean
+#: "nothing to find, and no ordering or declaration mechanism would change it".
+#: Installing the grammar changes it. The axis was asserting something false,
+#: which is worse than abstaining, and is why the producer was built rather
+#: than the value deprecated.
+#:
+#: Produced by :func:`prerequisite_absent_clauses` at the linker chokepoint,
+#: and ONLY where the pass body left the field empty — a body that spoke keeps
+#: its word.
 PREREQUISITE_ABSENT: Final[str] = "prerequisite_absent"
 
 #: The pass raised and the crash was contained (fail-open, WI-madal L3).
@@ -393,3 +407,69 @@ def emit_skip_summary(
     )
     if line is not None:
         sys.stderr.write(line + "\n")
+
+
+def prerequisite_absent_clauses(
+    depends_on: "Sequence[Sequence[str]]",
+    skip_reason_codes: Mapping[str, str],
+) -> list[list[str]]:
+    """Conjuncts a pass declared, that went missing for a TOOLCHAIN reason.
+
+    The producer :data:`PREREQUISITE_ABSENT` never had (WI-dabup / ADR-0056 W3),
+    and the reason it took three steps to build is that **the obvious rule is
+    wrong**. "Stamp it when a ``depends_on`` conjunct is unsatisfied" fails on
+    measurement: 98.94% of 229,541 skip records are ``no files matched``, so an
+    unsatisfied conjunct nearly always means *the repository lacks that
+    language* — State A, a correct no-op. Stamping that as an ordering defect
+    would make the field assert a defect about a repo that simply has no Rust
+    in it: the axis's founding sin, committed inside the axis built to cure it.
+
+    **The discriminator is not "is the conjunct satisfied" but "was the missing
+    literal skipped for a FILE reason or a TOOLCHAIN reason"** — which is
+    precisely what ``skip_reason_code`` made askable, and why W2 had to land
+    first.
+
+    A conjunct qualifies when EVERY literal in it is absent from the run
+    (present in ``skip_reason_codes``) and AT LEAST ONE of them went missing
+    for something other than :data:`NO_CANDIDATE_FILES`. The disjunction is
+    honoured both ways: one surviving member satisfies the clause, and a clause
+    all of whose members are merely file-absent stays State A.
+
+    An :data:`UNREPORTED` prerequisite COUNTS as a toolchain reason. That is
+    the conservative direction and it follows from the axis's own distinction:
+    a producer that did not classify itself has not said the repository lacked
+    the files, so waving it through as State A would be reading "cannot
+    determine" as "not applicable".
+
+    **What it structurally cannot see.** Only ANALYZER passes are enumerated in
+    ``limits.skipped_passes`` — the spec is explicit that a linker with no
+    applicable targets is a correct no-op, not a pass that did not run. A
+    clause naming a LINKER (``inheritance-linker`` is one) can therefore never
+    be observed missing and always reads satisfied. That under-reports rather
+    than inventing an ordering defect out of a population this channel does not
+    cover, which is the right way round for a disclosure field.
+
+    Args:
+        depends_on: The pass's CNF declaration — outer AND of inner ORs. See
+            ``catalog.Pass.depends_on`` for the schema and
+            ``catalog.validate_pass_dependencies`` for the satisfaction
+            semantics this mirrors.
+        skip_reason_codes: ``{pass_id: skip_reason_code}`` for every pass that
+            did NOT run, from ``limits.skipped_passes``. A pass absent from
+            this mapping ran.
+
+    Returns:
+        The offending conjuncts, in declaration order. Empty means no stamp is
+        due and the caller falls through to :func:`derive_silence_reason`.
+    """
+    blocked: list[list[str]] = []
+    for clause in depends_on:
+        if not clause:
+            continue
+        if not all(literal in skip_reason_codes for literal in clause):
+            continue
+        if any(
+            skip_reason_codes[literal] != NO_CANDIDATE_FILES for literal in clause
+        ):
+            blocked.append(list(clause))
+    return blocked
