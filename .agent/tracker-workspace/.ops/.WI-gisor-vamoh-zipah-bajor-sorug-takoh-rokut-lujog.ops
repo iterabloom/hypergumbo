@@ -1,0 +1,20 @@
+- op: create  # ef43
+  at: '2026-09-17T18:35:09Z'  # ef43
+  by: agent  # ef43
+  actor: jgstern_agent  # ef43
+  clock: 1  # ef43
+  nonce: ef43  # ef43
+  data:  # ef43
+    kind: work_item  # ef43
+    title: "spec 1317 says an out-of-taxonomy analyzer finding no files is recorded in skipped_passes 'either way'; measured, 26 of 35 land in analysis_runs instead"  # ef43
+    status: todo_soft  # ef43
+    priority: 3  # ef43
+    parent:  # ef43
+    tags:  # ef43
+    - disclosure  # ef43
+    isbefore: []  # ef43
+    duplicate_of: []  # ef43
+    not_duplicate_of: []  # ef43
+    pr_ref:  # ef43
+    description: "Found by the 2026-09-17 fundamental concept audit of the pass-silence host\nboundary. Write-up: ~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md\n\nTHE CLAIM. docs/hypergumbo-spec.md:1317, describing limits.skipped_passes:\n\n  \"`no files matched` -- either the WI-jadig file-presence pre-filter ... OR an\n   analyzer whose declared language is absent from the taxonomy (so the\n   pre-filter cannot see its file count and dispatches it defensively) that\n   then finds no matching files, recorded {\"pass\": \"<lang>\", \"reason\": \"no\n   files matched\"} EITHER WAY\"\n\nTHE MEASUREMENT. On component-model-demo, of 35 analyzers declaring at least\none language outside taxonomy.LANGUAGE_EXTENSIONS:\n\n    -> analysis_runs   : 27  (26 of them with files_analyzed == 0)\n    -> skipped_passes  :  8\n    -> neither         :  0\n\nSo 26 of them land in analysis_runs with silence_reason=no_candidate_files, NOT\nin skipped_passes. Only 8 go where the spec says. The 26:\n\n  apex, astro, bibtex, bitbake, fennel, gleam, hack, haxe, janet, kdl, luau,\n  make, manifest_targets, odin, pascal, play-routes, pony, prisma, properties,\n  requirements, smithy, sparql, tcl, twig, v, yaml_ansible\n\nWHY. \"either way\" is not the rule. Taxonomy membership only decides pre-filter\nvs dispatch. The DISPATCHED ones then split by their own return style: an\nanalyzer returning a bare AnalysisResult() lands in skipped_passes via\ncollect_analyzer_result's `result.run is None` branch (matlab, scss, racket,\nmeson, puppet, robot, scheme -- exactly the seven named in that branch's own\ncomment); one returning a run with files_analyzed=0 lands in analysis_runs.\n\nWHAT STILL HOLDS. The WI-didil completeness contract (\"every registered\nanalyzer resolves to exactly one of an AR or a skip record\") is intact -- 0 in\nneither bucket. It is only the ROUTING sentence that is wrong.\n\nSCOPE: documentation. The behavior is what the two other rows are about; this\nrow is just that the spec describes it incorrectly, in a paragraph a consumer\nwould reasonably rely on to decide which field to read."  # ef43
+    fields: {}  # ef43
