@@ -1004,8 +1004,14 @@ class TestCollectAnalyzerResult:
         )
 
         assert analysis_runs == []
+        # WI-dukoh: a BARE run=None result (nothing self-declared) is a
+        # no-input analyzer by construction, so the orchestrator may classify
+        # it with certainty — this is the one branch where NO_CANDIDATE_FILES
+        # is the orchestrator's own claim rather than a guess on a producer's
+        # behalf.
         assert limits.skipped_passes == [
-            {"pass": "matlab", "reason": "no files matched"}
+            {"pass": "matlab", "reason": "no files matched",
+             "skip_reason_code": "no_candidate_files"}
         ]
 
     def test_run_none_uses_declared_skip_reason(self) -> None:
@@ -1028,8 +1034,45 @@ class TestCollectAnalyzerResult:
             result, [], all_symbols, [], [], limits, analyzer_name="rust_analyzer"
         )
 
+        # WI-dukoh: this result self-declares PROSE but no code, so the code
+        # is UNREPORTED -- "the producer did not classify itself". It must NOT
+        # inherit no_candidate_files: the producer said something the axis
+        # cannot read, which is not the same as saying the repo had no files,
+        # and this analyzer's repo may be full of .rs files.
         assert limits.skipped_passes == [
-            {"pass": "rust_analyzer", "reason": "rust-analyzer backend not enabled"}
+            {"pass": "rust_analyzer",
+             "reason": "rust-analyzer backend not enabled",
+             "skip_reason_code": "unreported"}
+        ]
+
+    def test_run_none_uses_declared_skip_reason_code(self) -> None:
+        """WI-dukoh: a producer that declares its CODE keeps it verbatim.
+
+        The live rust_analyzer does declare one; this pins the plumbing that
+        carries a self-declared code from AnalysisResult through to
+        limits.skipped_passes, which is what makes the migration real rather
+        than a field nothing fills.
+        """
+        from hypergumbo_core.ir import Symbol
+        from hypergumbo_core.limits import Limits
+        from hypergumbo_core.pass_silence import BACKEND_DISABLED
+
+        result = AnalysisResult(
+            skipped=True,
+            skip_reason="rust-analyzer backend not enabled",
+            skip_reason_code=BACKEND_DISABLED,
+        )
+        all_symbols: list[Symbol] = []
+        limits = Limits()
+
+        collect_analyzer_result(
+            result, [], all_symbols, [], [], limits, analyzer_name="rust_analyzer"
+        )
+
+        assert limits.skipped_passes == [
+            {"pass": "rust_analyzer",
+             "reason": "rust-analyzer backend not enabled",
+             "skip_reason_code": "backend_disabled"}
         ]
 
     def test_run_none_without_analyzer_name_records_nothing(self) -> None:

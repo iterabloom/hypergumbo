@@ -67,6 +67,7 @@ from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
 from hypergumbo_lang_mainstream.symbol_introspection import (
     compute_cyclomatic_complexity,
 )
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1435,6 +1436,7 @@ class CAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=f"{self.lang} tree-sitter grammar not available",
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = self._create_parser()

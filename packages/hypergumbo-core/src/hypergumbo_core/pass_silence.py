@@ -41,15 +41,21 @@ trailing space, one embedding a pip command …) and five of which mean "the
 parser failed to initialise". A consumer cannot ask "was this skipped for a
 missing grammar?" without matching ten spellings.
 
-**That drift is LATENT, not observed** — honest sizing, taken before this
-module was written: across 490 surveys on disk carrying 39,757 skip records,
-only TWO strings ever appear (``"no files matched"`` 39,268 and
-``"rust-analyzer backend not enabled"`` 489), because the machine that
-produced them has every tree-sitter grammar installed, so the ten-spelling
-family is unreachable there by construction. The drift bites a user in a bare
-environment, which is exactly who cannot report it to us. This axis is
-therefore declared for the NEW field rather than retrofitted onto the old
-one; retrofitting ~29 analyzer files is separately payable work.
+**That drift was called LATENT. It is now OBSERVED** (WI-dukoh). The original
+sizing — 490 surveys carrying 39,757 skip records, only TWO strings, because
+the machine that produced them has every grammar installed — was honest about
+its own blindness and wrong about the conclusion people drew from it. The
+blindness was a venv, not a law: a venv built WITHOUT
+``tree-sitter-language-pack``, surveying one ordinary repository, produces
+**29 skip records in 28 distinct spellings** in a single run. The drift bites
+a user in a bare environment, which is exactly who cannot report it to us —
+so the bare environment was constructed instead of waited for.
+
+``skip_reason_code`` is therefore a MIGRATION, not a new signal: the prose
+``reason`` stays as human-readable detail (it carries the pip command and the
+exception message, payload a code cannot express) and the code carries the
+classification. One channel, two fields — never two channels, which is the
+defect WI-finij named.
 
 The empty string is NOT a member, and that is the design
 --------------------------------------------------------
@@ -288,6 +294,102 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
     """
     line = format_silence_summary(
         summarize_silence(analysis_runs), total_passes=len(analysis_runs)
+    )
+    if line is not None:
+        sys.stderr.write(line + "\n")
+
+
+# ---------------------------------------------------------------------------
+# The skipped_passes half of the axis (WI-dukoh / ADR-0056 W2)
+#
+# ``silence_reason`` lives on ``AnalysisRun`` and answers "this pass RAN and
+# emitted nothing — why?". Three of the axis's values could never be stamped
+# there, for a structural reason rather than an accidental one: a pass that is
+# `dependency_unavailable`, `backend_disabled` or `pass_crashed` HAS NO
+# AnalysisRun. ``all_analyzers`` returns early or appends a skip (the sole
+# ``analysis_runs.append`` sits in the ``else`` of ``if is_skipped:``), and a
+# crashing linker goes to ``_record_linker_crash`` and continues. There is no
+# carrier in existence to stamp. Their home is ``limits.skipped_passes``,
+# where their free-text twins already lived.
+#
+# THE INIT-FAILURE RULING. Six producer sites report a parser that failed to
+# INITIALISE (``"Failed to load Go parser: {e}"`` and kin) — the grammar is
+# installed and construction raised. That is NOT `dependency_unavailable`:
+# "install the package" is the wrong advice for it. It is stamped
+# :data:`PASS_CRASHED`, whose declaration is "the pass raised and the crash was
+# contained" — true of a caught constructor exception, and the value says
+# nothing about WHO contained it. This gives `pass_crashed` real producers;
+# ADR-0056 recorded it as speculative because its free-text twin had fired zero
+# times in 229,541 records, and that was measuring only the twin.
+# ---------------------------------------------------------------------------
+
+
+def summarize_skip_reasons(
+    skipped_passes: Iterable[Mapping[str, object]],
+) -> dict[str, int]:
+    """Count ``limits.skipped_passes`` entries by their structured code.
+
+    An entry with NO ``skip_reason_code`` counts as :data:`UNREPORTED`, and
+    that choice is the whole discipline of this function. The obvious
+    alternative — bucketing a missing code under :data:`NO_CANDIDATE_FILES`,
+    which is 98.94% of all skip records — would manufacture the majority answer
+    on behalf of every producer that has not been converted, turning "this
+    producer did not classify itself" into "the repository lacks those files".
+    That is the absent-versus-empty substitution the axis exists to cure, and
+    the migration is exactly when it would be easiest to commit.
+
+    A code OUTSIDE the vocabulary is counted under its own name rather than
+    dropped, so a drifted producer cannot be laundered into a clean count.
+    """
+    counts: dict[str, int] = {}
+    for entry in skipped_passes:
+        code = entry.get("skip_reason_code")
+        key = str(code) if code else UNREPORTED
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def format_skip_summary(
+    counts: Mapping[str, int], *, total_passes: int
+) -> str | None:
+    """Render the one-line skipped-passes summary, or ``None`` when none is due.
+
+    Same discipline as :func:`format_silence_summary`: ``None`` on empty so a
+    run that skipped nothing generates no chatter, most-common-first with
+    alphabetical tie-breaking so two surveys diff without spurious churn, and
+    the line names WHERE TO LOOK rather than only that something happened.
+    """
+    if not counts:
+        return None
+    skipped = sum(counts.values())
+    parts = ", ".join(
+        f"{code}={n}"
+        for code, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    return (
+        f"[passes] {skipped} of {total_passes} did not run: {parts} "
+        f"(per-pass detail in limits.skipped_passes)"
+    )
+
+
+def emit_skip_summary(
+    skipped_passes: Sequence[Mapping[str, object]], *, ran: int = 0,
+) -> None:
+    """Write the skipped-passes summary to stderr; silent when nothing skipped.
+
+    The reader ``skipped_passes`` has never had. It has been serialized on
+    every survey since the field existed and **nothing summarized it** — so the
+    2,383 ``backend_disabled`` records and the 60 ``dependency_unavailable``
+    ones sat in artifacts nobody was shown. Landing a structured code without
+    this would have been a vocabulary with no consumer, which is the same
+    defect as a value with no producer, one step to the right.
+    """
+    # The denominator is passes ATTEMPTED — those that produced a run plus
+    # those that did not. A share of the runs alone would exclude exactly the
+    # population being reported and read as >100%.
+    line = format_skip_summary(
+        summarize_skip_reasons(skipped_passes),
+        total_passes=ran + len(skipped_passes),
     )
     if line is not None:
         sys.stderr.write(line + "\n")

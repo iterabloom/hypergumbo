@@ -63,6 +63,7 @@ from hypergumbo_lang_rust_analyzer.gate import should_use_rust_analyzer_backend
 from hypergumbo_lang_rust_analyzer.graceful_degrade import (
     try_analyze_with_rust_analyzer,
 )
+from hypergumbo_core.pass_silence import BACKEND_DISABLED, UNREPORTED
 
 
 def _disk_source_reader(path: str) -> bytes | None:
@@ -180,7 +181,9 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         # wrong — the repo may well contain .rs files; the backend simply did
         # not run). WI-didil.
         return AnalysisResult(
-            skipped=True, skip_reason="rust-analyzer backend not enabled",
+            skipped=True,
+            skip_reason="rust-analyzer backend not enabled",
+            skip_reason_code=BACKEND_DISABLED,
         )
 
     result = try_analyze_with_rust_analyzer(
@@ -190,7 +193,15 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         # Backend on but SCIP invoke/translate produced nothing (WI-nohah
         # fall-through). Self-declare so this surfaces as a reasoned skip.
         return AnalysisResult(
-            skipped=True, skip_reason="rust-analyzer backend produced no output",
+            skipped=True,
+            skip_reason="rust-analyzer backend produced no output",
+            # WI-dukoh: NOT backend_disabled -- the backend WAS enabled and
+            # ran. It is not dependency_unavailable either. The axis has no
+            # value for "an enabled backend produced nothing", and inventing
+            # one here would be a fabricated disclosure, so this takes the
+            # declared residue. Filed as a residual: marking it a SKIP is
+            # itself questionable, since the pass did run.
+            skip_reason_code=UNREPORTED,
         )
 
     symbols, edges = result

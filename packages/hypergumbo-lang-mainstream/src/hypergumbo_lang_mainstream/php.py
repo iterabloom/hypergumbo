@@ -69,6 +69,7 @@ from hypergumbo_lang_mainstream.symbol_introspection import (
     extract_preceding_doc_comment,
 )
 from hypergumbo_core.dataflow import annotate_dataflow, get_dataflow_config
+from hypergumbo_core.pass_silence import DEPENDENCY_UNAVAILABLE
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -1461,6 +1462,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=skip_reason,
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         parser = _get_php_parser()
@@ -1472,6 +1474,7 @@ class PHPAnalyzer(TreeSitterAnalyzer):
                 run=run,
                 skipped=True,
                 skip_reason=skip_reason,
+                skip_reason_code=DEPENDENCY_UNAVAILABLE,
             )
 
         # Pass 1: Parse all files and extract symbols

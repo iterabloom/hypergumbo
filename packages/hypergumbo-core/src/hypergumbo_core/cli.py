@@ -11860,6 +11860,20 @@ def run_survey(
     from .pass_silence import emit_silence_summary
     emit_silence_summary(behavior_map.get("analysis_runs", []))
 
+    # WI-dukoh / ADR-0056 W2: the OTHER half of the same question. The line
+    # above answers "this pass ran and emitted nothing -- why?"; this one
+    # answers "this pass did not run at all -- why?". They are separate lines
+    # because they are separate populations with separate denominators, and
+    # merging them would make a pass that never ran look like a pass that
+    # found nothing -- the absent-versus-empty substitution one level up.
+    # skipped_passes has been serialized on every survey since the field
+    # existed and nothing has ever summarized it.
+    from .pass_silence import emit_skip_summary
+    emit_skip_summary(
+        (behavior_map.get("limits") or {}).get("skipped_passes", []),
+        ran=len(behavior_map.get("analysis_runs", [])),
+    )
+
     # WI-jijor / ADR-0056 W1: the declaration set's first reader. The CNF
     # predicate behind it has existed since WI-dilab with ELEVEN call sites,
     # all of them tests -- LIVE.md §1.7's instrument-with-no-reader defect --

@@ -21,6 +21,9 @@ from hypergumbo_core.pass_silence import (
     UNREPORTED,
     all_pass_silence_reason_names,
     derive_silence_reason,
+    emit_skip_summary,
+    format_skip_summary,
+    summarize_skip_reasons,
 )
 
 
@@ -377,3 +380,80 @@ class TestEmitSilenceSummary:
         from hypergumbo_core.pass_silence import emit_silence_summary
         emit_silence_summary([])
         assert capsys.readouterr().err == ""
+
+
+class TestSummarizeSkipReasons:
+    """WI-dukoh / ADR-0056 W2: skipped_passes gets a structured code AND a reader.
+
+    ``skipped_passes`` has been serialized since the beginning and **nothing
+    has ever summarized it**. Landing a structured code with no reader would
+    repeat the defect this whole arc is about (LIVE.md §1.7).
+    """
+
+    def test_empty_gives_empty_counts(self) -> None:
+        assert summarize_skip_reasons([]) == {}
+
+    def test_counts_by_code(self) -> None:
+        entries = [
+            {"pass": "a", "reason": "no files matched",
+             "skip_reason_code": NO_CANDIDATE_FILES},
+            {"pass": "b", "reason": "no files matched",
+             "skip_reason_code": NO_CANDIDATE_FILES},
+            {"pass": "c", "reason": "rust-analyzer backend not enabled",
+             "skip_reason_code": BACKEND_DISABLED},
+        ]
+        assert summarize_skip_reasons(entries) == {
+            NO_CANDIDATE_FILES: 2, BACKEND_DISABLED: 1,
+        }
+
+    def test_entry_without_a_code_counts_as_unreported(self) -> None:
+        """ABSENT is not EMPTY and it is not ``no_candidate_files`` either.
+
+        A producer that did not classify its own skip has NOT said "the repo
+        lacks the files" — it has said nothing. Bucketing a missing code under
+        the 98.94%-common value would manufacture the majority answer for
+        every unconverted producer, which is the absent-versus-empty
+        substitution this axis exists to cure.
+        """
+        assert summarize_skip_reasons([{"pass": "a", "reason": "?"}]) == {
+            UNREPORTED: 1,
+        }
+
+    def test_value_outside_the_vocabulary_is_counted_under_its_own_name(self) -> None:
+        """A drifted producer must not be laundered into a clean count."""
+        assert summarize_skip_reasons(
+            [{"pass": "a", "skip_reason_code": "invented_value"}],
+        ) == {"invented_value": 1}
+
+
+class TestFormatSkipSummary:
+    def test_none_when_nothing_was_skipped(self) -> None:
+        assert format_skip_summary({}, total_passes=10) is None
+
+    def test_orders_most_common_first_then_alphabetically(self) -> None:
+        line = format_skip_summary(
+            {BACKEND_DISABLED: 1, NO_CANDIDATE_FILES: 5, DEPENDENCY_UNAVAILABLE: 1},
+            total_passes=20,
+        )
+        assert line is not None
+        assert line.index("no_candidate_files=5") < line.index("backend_disabled=1")
+        assert line.index("backend_disabled=1") < line.index("dependency_unavailable=1")
+
+    def test_names_the_field_to_read_for_detail(self) -> None:
+        line = format_skip_summary({NO_CANDIDATE_FILES: 1}, total_passes=2)
+        assert line is not None
+        assert "limits.skipped_passes" in line
+
+
+class TestEmitSkipSummary:
+    def test_silent_when_nothing_skipped(self, capsys) -> None:
+        emit_skip_summary([])
+        assert capsys.readouterr().err == ""
+
+    def test_one_line_to_stderr(self, capsys) -> None:
+        emit_skip_summary([
+            {"pass": "a", "reason": "x", "skip_reason_code": DEPENDENCY_UNAVAILABLE},
+        ])
+        err = capsys.readouterr().err
+        assert err.count("\n") == 1
+        assert "dependency_unavailable=1" in err
