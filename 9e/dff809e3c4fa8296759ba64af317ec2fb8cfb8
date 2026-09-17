@@ -1,0 +1,28 @@
+Original commit body from e456f3f3b6d0169a0805fdd59d3311570e57f583:
+
+Corrects WI-jijor's falsification detector against its own first audit (WI-rasal).
+
+`find_falsified_dependencies` asks two questions and the first cut answered both with the wrong counter.
+
+**Which output falsifies a declaration.** It counted `nodes_emitted` OR `edges_emitted`, on the precedent that keying on edges alone once called a 91-node pass silent. That precedent belongs to SILENCE — "did this pass say anything?" — and importing it here answered a different question wrong. `depends_on` is defined as what a linker needs to "produce its intended edges at all", and all 59 declarers are linkers. 68 of the first audit's 261 falsifying surveys were `database-query-linker` emitting nodes and ZERO edges: it mints one query node per SQL string scraped from a host file, then needs the `sql` analyzer's `kind="table"` symbols for the dst of every edge. Nodes-with-no-edges is the shape of *could not do its job without the thing it declared*.
+
+**What satisfies a clause.** It tested membership in `analysis_runs`, which is not a function of the fact it stood in for. Under the WI-jadig / INV-manov file-presence pre-filter an analyzer is short-circuited into `limits.skipped_passes` only when EVERY language it declares is in the taxonomy's `LANGUAGE_EXTENSIONS`; every other analyzer runs anyway and records a 0-file row. On caddy — a Go repository — `apex`, `astro` and `pony` are members and `java`, `ruby` and `python` are not, for the identical fact that the repo has no such files.
+
+The two halves are deliberately asymmetric: a pass falsifies its OWN declaration with edges (a linker's product) and SATISFIES someone else's clause with nodes or edges (an analyzer contributes symbols; `inheritance-linker` contributes edges). A new live-tree gate pins the premise — if an analyzer ever declares `depends_on`, the test fires rather than the detector going quiet.
+
+**Re-measured** over every survey on disk (975 carrying `analysis_runs`): 261 (6 clauses / 5 passes) → **264 (27.1%, 6 clauses / 4 passes)**.
+
+| clause | before | after |
+|---|---|---|
+| `database-query-linker :: ['sql']` | 68 | **0** — declaration is correct |
+| `inherited-calls-linker :: ['inheritance-linker']` | 0 | **26** — newly visible |
+| `build-target-linker :: ['toml','json']` | 4 | **25** |
+| `inherited-calls-linker :: ['java','ruby','groovy']` | 226 | 226 |
+| `inheritance-linker :: [12 langs]` | 18 | 18 |
+| `type-hierarchy-linker :: [13 langs]` | 10 | 10 |
+
+Every surviving falsification emits edges and mints no nodes.
+
+The two tests that pinned the old semantics are RE-POINTED, not deleted, and were confirmed to go red against the old body. The six surviving clauses are the repair WI-rasal asks for and land next.
+
+Tests: 16,657 passed, 100% coverage on changed files, mypy ratchet clean at 667.
