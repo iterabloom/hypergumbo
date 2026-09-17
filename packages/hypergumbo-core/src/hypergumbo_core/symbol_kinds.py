@@ -229,6 +229,15 @@ SYMBOL_KINDS: Final[tuple[SymbolKindSpec, ...]] = (
                    "Attribute declaration (Python class attribute, etc.)."),
     SymbolKindSpec("field", AXIS_LANGUAGE_CONSTRUCT,
                    "Field declaration on a struct / class / record."),
+    # INV-lagot: minted by the SCIP importer's DescriptorKind map, which had
+    # been emitting them unregistered. Both name a source-language syntactic
+    # construct directly, which is exactly what ADR-0027's axiom asks of a
+    # value, so they are registered rather than folded.
+    SymbolKindSpec("parameter", AXIS_LANGUAGE_CONSTRUCT,
+                   "Formal parameter in a callable's signature."),
+    SymbolKindSpec("type_parameter", AXIS_LANGUAGE_CONSTRUCT,
+                   "Generic type parameter on a type or callable "
+                   "(Rust/Java/TypeScript ``<T>``)."),
     SymbolKindSpec("constructor", AXIS_LANGUAGE_CONSTRUCT,
                    "Constructor / __init__ / init method."),
     SymbolKindSpec("getter", AXIS_LANGUAGE_CONSTRUCT,
