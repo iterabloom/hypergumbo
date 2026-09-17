@@ -1,0 +1,30 @@
+- op: create  # c802
+  at: '2026-09-17T01:05:33Z'  # c802
+  by: agent  # c802
+  actor: jgstern_agent  # c802
+  clock: 1  # c802
+  nonce: c802  # c802
+  data:  # c802
+    kind: work_item  # c802
+    title: "add structured skip_reason_code to limits.skipped_passes: re-host dependency_unavailable / backend_disabled / pass_crashed off AnalysisRun, which cannot carry them"  # c802
+    status: todo_hard  # c802
+    priority: 3  # c802
+    parent:  # c802
+    tags:  # c802
+    - analysis_quality  # c802
+    - disclosure  # c802
+    isbefore: []  # c802
+    duplicate_of: []  # c802
+    not_duplicate_of: []  # c802
+    pr_ref:  # c802
+    description: "W2 of ADR-0056. BLOCKS W3.\n\nTHE FINDING THIS IMPLEMENTS: three of the four producerless pass-silence values\nare not missing a producer — they are ON THE WRONG DATACLASS. A pass that is\n`dependency_unavailable`, `backend_disabled` or `pass_crashed` never produces an\nAnalysisRun at all (all_analyzers.py returns early / appends a skip, with the\nsole analysis_runs.append in the else-branch; registry.py's crashing linker goes\nto _record_linker_crash then continue). `silence_reason` is a field ON\nAnalysisRun. There is no carrier in existence to stamp.\n\nTheir correct home is where their free-text twins already live:\n`limits.skipped_passes[].reason`.\n\nDO: add `skip_reason_code` to skipped_passes entries, on the existing\npass-silence-reason axis. Additive. The prose `reason` STAYS as human-readable\ndetail — it carries the pip command and the exception message, payload a code\ncannot express. Then CUT OVER the consumers that today string-match spellings.\n\nDO NOT DUAL-WRITE. Two channels for one concept is the defect WI-finij named.\nOne channel, two fields.\n\nSIZING, corrected: only ~4 producer sites need touching, because the ~50 grammar\nspellings come from TWO `TreeSitterAnalyzer` f-string templates, not 29\nhand-written strings. `pass_silence.py`'s \"~29 analyzer files, separately\npayable\" estimate is an over-estimate.\n\nALSO REQUIRED, or this repeats the defect it fixes: a summarizer for\nskipped_passes mirroring emit_silence_summary. skipped_passes is serialized\ntoday and NOTHING SUMMARIZES IT — landing a structured code with no reader is\nLIVE.md §1.7 exactly.\n\nEVIDENCE BASE (3,560 surveys, 229,541 records): `no files matched` 227,098\n(98.94%), `rust-analyzer backend not enabled` 2,383, `tree-sitter-circom grammar\nnot available` 60. Note `pass_crashed`'s twin has fired ZERO times — it ships on\na synthetic-crash test, not corpus data, and that should be said in its PR\nrather than bundled silently.\n\nSupersede `pass_silence.py`'s docstring sizing while here: it cites 490 surveys\n/ 39,757 records / TWO strings; the corpus now holds 3,560 / 229,541 / three."  # c802
+    fields: {}  # c802
+- op: update  # c442
+  at: '2026-09-17T01:05:42Z'  # c442
+  by: agent  # c442
+  actor: jgstern_agent  # c442
+  clock: 2  # c442
+  nonce: c442  # c442
+  set: {}  # c442
+  add:  # c442
+    isbefore: [WI-dabup-jasap-fupah-puzub-hunas-kajug-baful-bohal]  # c442

@@ -1,0 +1,21 @@
+- op: create  # 6385
+  at: '2026-09-17T01:04:57Z'  # 6385
+  by: agent  # 6385
+  actor: jgstern_agent  # 6385
+  clock: 1  # 6385
+  nonce: '6385'  # 6385
+  data:  # 6385
+    kind: work_item  # 6385
+    title: "wire validate_pass_dependencies as a FALSIFICATION DETECTOR (not a gate): report passes that emitted output despite an unsatisfied depends_on conjunct"  # 6385
+    status: todo_hard  # 6385
+    priority: 3  # 6385
+    parent:  # 6385
+    tags:  # 6385
+    - analysis_quality  # 6385
+    - disclosure  # 6385
+    isbefore: []  # 6385
+    duplicate_of: []  # 6385
+    not_duplicate_of: []  # 6385
+    pr_ref:  # 6385
+    description: "W1 of ADR-0056. Independently valuable; fires on the current tree.\n\n`catalog.validate_pass_dependencies` has 11 call sites, all in tests, zero in\nproduction — LIVE.md §1.7's instrument-with-no-reader defect. INV-hujog asks for\nit to be wired as a GATE. Do not: raising is the withholding direction\n(LIVE.md §2), and a gate aborts the whole survey on any repo whose declarations\nare stale — and the ~69 `depends_on` conjuncts across ~28 linkers have NEVER\nbeen enforced, so some are stale, over-broad or missing.\n\nINSTEAD, wire the same predicate as a FALSIFICATION DETECTOR:\n\n  find_falsified_dependencies(active_passes, runs) -> list[(pass_id, clauses)]\n\nreporting passes that EMITTED OUTPUT despite an unsatisfied conjunct. Such a\npass proves its own declaration wrong. Keep `validate_pass_dependencies`\nunchanged so its 11 tests stay green (LIVE.md §1.6: re-point, don't strike).\nFalsification never suppresses anything, so it cannot lose an edge.\n\nWHAT IT BUYS: the declaration set gets its first real audit. Open questions it\nwould settle, none of which anyone has had to answer: `method_call_recovery.py`\ncontains zero occurrences of `go` while `method-call-recovery-linker` omits `go`\nfrom a 12-language clause — correct declaration, or coverage gap? Same shape for\n`inheritance-linker` (omits go/cpp) and `build-target-linker` ([[\"toml\",\"json\"]]).\n\nSIZING NOTE, verified: on the CURRENT self-survey this reports ZERO hits. The\nanalysis behind ADR-0056 cited `database-query-linker` falsifying [[\"sql\"], ...]\nwhile reading 353 files, but that rests on a Sep-15 cached artifact; the repo has\nsince gained a .sql file and the clause is now satisfied. The MECHANISM is real\n(any repo without SQL files reproduces it) — but do not expect a hit on\nhypergumbo itself, and do not treat an empty result here as the detector failing.\nRun it across a polyglot corpus.\n\nDELIVERABLE: the predicate + a reader (a scripts/ entry or an advisory\nvalidation_report row) + tests. No production behaviour change."  # 6385
+    fields: {}  # 6385
