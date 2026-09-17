@@ -1726,3 +1726,64 @@ class TestRunAllAnalyzersFilePresencePreFilter:
         assert called == ["gitignore"]
         skipped_names = {s["pass"] for s in limits.skipped_passes}
         assert "gitignore" not in skipped_names
+
+
+class TestProductiveRunlessResultIsNotSilentlyDropped:
+    """WI-didag: a producer that emits output without a run VANISHES.
+
+    ``collect_analyzer_result``'s run-is-None branch records a
+    ``skipped_passes`` entry only when the result produced nothing. A
+    producer that emitted symbols/edges but no run is drained and then
+    dropped from the accounting entirely — so it lands in NEITHER
+    ``analysis_runs`` NOR ``limits.skipped_passes``, breaking the WI-didil
+    completeness contract precisely when the pass SUCCEEDED.
+
+    Measured with the rust-analyzer backend enabled on aardvark-dns: 669
+    nodes + 637 edges from a pass appearing in neither bucket, the only one
+    of 118 registered analyzers for which that was true.
+
+    The output must still be kept — that part of the branch is correct and
+    deliberate — so this pins the accounting, not the drain.
+    """
+
+    def _productive_runless(self):
+        from hypergumbo_core.analyze.base import AnalysisResult
+        from hypergumbo_core.ir import Edge, Span, Symbol
+        sym = Symbol(
+            id="rust:src/lib.rs:1-2:foo:function", name="foo", kind="function",
+            language="rust", path="src/lib.rs", span=Span(1, 2, 0, 0),
+            origin="scip",
+        )
+        edge = Edge.create(
+            src=sym.id, dst=sym.id, edge_type="calls", line=1,
+            confidence=0.9, origin="scip", origin_run_id="uuid:fabricated",
+        )
+        return AnalysisResult(symbols=[sym], edges=[edge]), sym, edge
+
+    def test_a_runless_producer_appears_in_one_of_the_two_buckets(self) -> None:
+        from hypergumbo_core.analyze.all_analyzers import collect_analyzer_result
+        from hypergumbo_core.limits import Limits
+        result, _sym, _edge = self._productive_runless()
+        runs, syms, edges, ucs, limits = [], [], [], [], Limits()
+        collect_analyzer_result(
+            result, runs, syms, edges, ucs, limits, analyzer_name="rust_analyzer",
+        )
+        accounted = bool(runs) or any(
+            e.get("pass") == "rust_analyzer" for e in limits.skipped_passes
+        )
+        assert accounted, (
+            "a pass that produced 2 records is in neither analysis_runs nor "
+            "limits.skipped_passes — WI-didil completeness violated"
+        )
+
+    def test_its_output_is_still_kept(self) -> None:
+        """The drain is correct and must not regress while fixing accounting."""
+        from hypergumbo_core.analyze.all_analyzers import collect_analyzer_result
+        from hypergumbo_core.limits import Limits
+        result, sym, edge = self._productive_runless()
+        runs, syms, edges, ucs, limits = [], [], [], [], Limits()
+        collect_analyzer_result(
+            result, runs, syms, edges, ucs, limits, analyzer_name="rust_analyzer",
+        )
+        assert syms == [sym]
+        assert edges == [edge]

@@ -340,3 +340,48 @@ class TestTranslateScipToHg:
             google.protobuf.message.DecodeError,
         ):
             translate_scip_to_hg(b"not a scip blob", lambda _p: None)
+
+
+class TestProvenanceStamping:
+    """WI-didag / WI-zabus: translate is the single place run provenance lands.
+
+    Before this, ``translate_scip_to_hg`` stamped ``origin_run_id`` on EDGES
+    only — because ``Edge.__post_init__`` hard-raises on an empty value
+    (WI-higap) and ``Symbol`` has no equivalent guard. The measured
+    consequence on a real crate was 669 symbols carrying ``''`` beside 637
+    edges carrying a fabricated UUID: the guarded side manufactured a
+    convincing value, the unguarded side stayed honestly empty, and neither
+    resolved to an ``AnalysisRun``.
+    """
+
+    def _one_function_index(self) -> bytes:
+        return _index_bytes(_rust_function_doc(
+            path="src/lib.rs", symbol=_rust_symbol("math/add()."),
+            start_line=1, end_line=3,
+        ))
+
+    @staticmethod
+    def _reader(_p: str) -> Optional[bytes]:
+        return None
+
+    def test_supplied_run_id_stamps_symbols_as_well_as_edges(self) -> None:
+        symbols, _edges = translate_scip_to_hg(
+            self._one_function_index(), self._reader, run_id="uuid:caller-run",
+        )
+        assert symbols, "fixture must mint at least one symbol to be a control"
+        assert [s.origin_run_id for s in symbols] == ["uuid:caller-run"] * len(symbols)
+
+    def test_fabricated_run_id_is_shared_by_symbols_and_edges(self) -> None:
+        """A caller that supplies nothing still gets a SELF-CONSISTENT artifact.
+
+        The fallback run is not serialized either way, so this does not make
+        the id resolvable — it makes the two halves agree, so the defect is
+        one fact instead of two different ones.
+        """
+        symbols, _edges = translate_scip_to_hg(
+            self._one_function_index(), self._reader,
+        )
+        assert symbols
+        stamped = {s.origin_run_id for s in symbols}
+        assert stamped != {""}, "symbols must not be left with empty provenance"
+        assert len(stamped) == 1, "one translate call is one run"

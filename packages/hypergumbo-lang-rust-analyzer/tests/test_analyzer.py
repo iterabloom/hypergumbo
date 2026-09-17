@@ -140,7 +140,7 @@ class TestAnalyzeRustWithScip:
         (tmp_path / "src" / "lib.rs").write_bytes(b"fn f() {}")
         captured: dict[str, object] = {}
 
-        def _fake_try(workspace, source_reader, *, log=None):
+        def _fake_try(workspace, source_reader, *, log=None, run_id=""):
             captured["workspace"] = workspace
             captured["reader"] = source_reader
             return ([], [])
@@ -310,7 +310,7 @@ class TestEngagementCheck:
         so graceful-degrade's diagnostics surface as warnings to the user."""
         captured_log: list[object] = []
 
-        def _fake_try(workspace, source_reader, *, log=None):
+        def _fake_try(workspace, source_reader, *, log=None, run_id=""):
             captured_log.append(log)
             return None
 
@@ -332,3 +332,58 @@ class TestEngagementCheck:
             log_fn("test message from graceful-degrade")
         assert len(caught) == 1
         assert "test message from graceful-degrade" in str(caught[0].message)
+
+
+class TestProvenanceJoin:
+    """WI-didag / WI-zabus: the success path must emit a real ``AnalysisRun``.
+
+    Measured on ``aardvark-dns`` before this landed: 669 nodes and 637 edges
+    carrying ``origin=['scip']`` entered the artifact from a pass that
+    appeared in NEITHER ``analysis_runs`` NOR ``limits.skipped_passes`` — the
+    only one of 118 registered analyzers for which that was true — and all
+    1306 records had provenance resolving to nothing (1308 cross_field
+    validation violations). The cause was one missing ``run=`` argument.
+    """
+
+    def _scip_blob(self) -> bytes:
+        from hypergumbo_core.scip._generated import scip_pb2
+        sym = "rust-analyzer cargo my_crate 0.1.0 math/add()."
+        return scip_pb2.Index(documents=[scip_pb2.Document(
+            language="Rust", relative_path="src/lib.rs",
+            symbols=[scip_pb2.SymbolInformation(symbol=sym)],
+            occurrences=[scip_pb2.Occurrence(
+                symbol=sym, symbol_roles=0x01, range=[0, 0, 2, 0],
+            )],
+        )]).SerializeToString()
+
+    def test_success_path_returns_an_analysis_run(self, tmp_path: Path) -> None:
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.graceful_degrade.run_rust_analyzer_scip",
+            return_value=self._scip_blob(),
+        ):
+            result = analyze_rust_with_scip(tmp_path)
+        assert result.run is not None, "a pass that ran must carry an AnalysisRun"
+        assert result.run.pass_id == "rust_analyzer"
+
+    def test_every_emitted_record_joins_to_the_returned_run(
+        self, tmp_path: Path,
+    ) -> None:
+        """The end-to-end join, through the REAL translate and degrade path."""
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.graceful_degrade.run_rust_analyzer_scip",
+            return_value=self._scip_blob(),
+        ):
+            result = analyze_rust_with_scip(tmp_path)
+        assert result.run is not None
+        assert result.symbols, "fixture must produce symbols to be a control"
+        run_id = result.run.execution_id
+        dangling_syms = [s for s in result.symbols if s.origin_run_id != run_id]
+        dangling_edges = [e for e in result.edges if e.origin_run_id != run_id]
+        assert dangling_syms == [], "symbols must join to the emitted run"
+        assert dangling_edges == [], "edges must join to the emitted run"

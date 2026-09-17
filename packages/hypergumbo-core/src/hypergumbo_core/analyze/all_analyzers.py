@@ -137,13 +137,48 @@ def collect_analyzer_result(
     # the same wording the pre-filter uses (a bare ``run=None`` result is a
     # no-input analyzer). Symbols/edges are still drained fail-open.
     if result.run is None:
+        # WI-didag: FIRST, the productive case. A producer that emitted output
+        # without a run used to fall off the accounting entirely — drained
+        # below and recorded in neither analysis_runs nor skipped_passes,
+        # breaking the WI-didil completeness contract precisely when the pass
+        # SUCCEEDED. Measured with the rust-analyzer backend enabled on
+        # aardvark-dns: 669 nodes and 637 edges from a pass visible nowhere in
+        # the catalog, the only one of 118 analyzers for which that was true.
+        #
+        # Recording it as a SKIP would be a lie — it plainly ran. So synthesize
+        # the AnalysisRun the producer should have supplied and re-enter
+        # through the normal path, which drains the output, stamps the
+        # counters and the silence reason, and backfills origin_run_id. This
+        # is NOT the fabrication WI-didag was filed about: THAT one minted an
+        # id for a run nobody serializes, while this run IS serialized, so the
+        # FK resolves. Output proves the pass ran, and an AnalysisRun is the
+        # honest record of a pass that ran.
+        #
+        # The warning names it a producer defect rather than absorbing it, so
+        # the real fix — attach the run at the source — stays visible.
+        if analyzer_name and (result.symbols or result.edges):
+            synthetic = AnalysisRun.create(
+                pass_id=analyzer_name, version=PASS_VERSION,
+            )
+            synthetic.warnings.append(
+                f"UserWarning: {analyzer_name} emitted "
+                f"{len(result.symbols)} symbol(s) and {len(result.edges)} "
+                f"edge(s) without an AnalysisRun; the orchestrator "
+                f"synthesized one so the pass is accounted for (WI-didag). "
+                f"The producer should return AnalysisResult(run=...)."
+            )
+            result.run = synthetic
+            collect_analyzer_result(
+                result, analysis_runs, all_symbols, all_edges,
+                all_usage_contexts, limits, analyzer_name=analyzer_name,
+            )
+            return
         all_symbols.extend(result.symbols)
         all_edges.extend(result.edges)
         all_usage_contexts.extend(getattr(result, "usage_contexts", []))
-        # Only a genuinely-empty result (no run, no output) is a skip. A
-        # producer that emitted symbols/edges without a run is a distinct
-        # anomaly (e.g. rust_analyzer's success path returns run=None with
-        # SCIP output) — keep its output, don't mislabel it a skip.
+        # Only a genuinely-empty result (no run, no output) is a skip. The
+        # productive case is handled above; reaching here means the producer
+        # emitted nothing at all.
         produced_nothing = not result.symbols and not result.edges
         if analyzer_name and produced_nothing:
             self_declared = (
