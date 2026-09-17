@@ -1,0 +1,21 @@
+- op: create  # 8700
+  at: '2026-09-17T04:37:06Z'  # 8700
+  by: agent  # 8700
+  actor: jgstern_agent  # 8700
+  clock: 1  # 8700
+  nonce: '8700'  # 8700
+  data:  # 8700
+    kind: work_item  # 8700
+    title: "roughly 53 of 64 linker bodies never claim a silence reason, so unreported is 0 only on the self-survey (4 on compose-go, 6 on component-model-demo, all different linkers)"  # 8700
+    status: todo_hard  # 8700
+    priority: 3  # 8700
+    parent:  # 8700
+    tags:  # 8700
+    - analysis_quality  # 8700
+    - disclosure  # 8700
+    isbefore: []  # 8700
+    duplicate_of: []  # 8700
+    not_duplicate_of: []  # 8700
+    pr_ref:  # 8700
+    description: "RESIDUAL of WI-finij, filed at its closure 2026-09-17 (dev fb3a0fb93d), and\nfiled because closing WI-finij on \"unreported = 0\" without this would be the\nexact reading that row existed to prevent.\n\nTHE MEASUREMENT THAT MAKES THIS A ROW. unreported is 0 on the hypergumbo\nself-survey. It is NOT 0 elsewhere, at the same tip:\n\n  compose-go (Go, 150 files)          unreported = 4\n    json, go-cobra-linker, go-memberlist-linker, http-linker\n  component-model-demo (JS+Rust)      unreported = 6\n    argparse-dispatch, websocket, event-sourcing, http, subprocess,\n    database-query\n\nNone of these overlap with the eleven WI-finij drained. They are a DIFFERENT\nset of linkers, silent on a repo that happens to exercise them, whose bodies\nnever call silence_reason_for_candidates. A zero in a drained population\nmeasures the CORPUS, not completion.\n\nTHE SIZE. Eleven of ~64 registered linkers claim a reason. The other ~53 do\nnot, so every repo whose language mix activates a different slice produces a\nfresh residue. The count is not the work; the work is per-body judgement.\n\nWHAT THE WORK IS, and it is deliberately not mechanical. For each silent\nlinker, decide what its scan's CANDIDATE SET is and call\nsilence_reason_for_candidates on it. The rule that made the first eleven safe\n(WI-finij, PR #1009) is the one to reuse: ANCHOR THE CLAIM ON WHAT THE SCAN\nFOUND, NEVER ON WHAT THE PASS EMITTED. It survives misreading the linker -- two\nof the eleven gate emission behind a match and the rule still classified them\ncorrectly -- and two more (wasm-bindgen, pyffi) had no candidate set at all and\nneeded an accumulator added before they could be asked the question.\n\nWHAT NOT TO DO. Do not sweep this with a script that picks the first list-like\nlocal in each function. A wrong candidate set produces a POSITIVE FALSE CLAIM\n(\"the construct is absent\") where unreported was at least honest, and the\nno_candidate_files precedent (WI-finij / INV-hosig) is exactly that failure:\na confident wrong answer is worse than an abstention.\n\nNOT CLAIMED HERE: that draining this to zero everywhere is achievable or\ndesirable. A linker with no meaningful candidate set should keep abstaining,\nand saying so in its body is a legitimate outcome for it."  # 8700
+    fields: {}  # 8700
