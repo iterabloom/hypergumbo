@@ -1,0 +1,51 @@
+Original commit body from 8f5fa8d1ec231070e34876c734d1e3d5941adbce:
+
+try_analyze_with_rust_analyzer returned a bare Optional[Tuple], and its
+None collapsed four states the exception taxonomy already told apart: a
+missing binary, a non-zero exit, an exit-0-with-no-index, and an
+undecodable SCIP blob. The analyzer filed all four as
+"rust-analyzer backend produced no output" with skip_reason_code
+"unreported", so a user could not tell "install rust-analyzer" from
+"your workspace is not a cargo project" from "the indexer crashed".
+
+ScipAttempt carries the verdict out of the boundary:
+
+  missing binary         -> dependency_unavailable
+  non-zero exit/timeout  -> pass_crashed
+  undecodable SCIP index -> pass_crashed
+  exit 0, no index       -> unreported
+
+pass_crashed follows ADR-0056's init-failure ruling, which put caught
+constructor exceptions there on the grounds that the value says nothing
+about WHO contained the raise. The exit-0-with-no-index case keeps the
+declared residue on purpose: it is not a crash and not a missing
+dependency, and the axis has no value for "an enabled backend completed
+without producing anything to read". Inventing a neighbour would be a
+fabricated disclosure, so the gap is documented in ScipAttempt rather
+than filled.
+
+A backend that RAN TO COMPLETION and indexed nothing is no longer a skip
+at all. It returns a real AnalysisRun with
+silence_reason=no_candidate_construct, claimed by the body. Falling
+through to derive_silence_reason would have stamped no_candidate_files
+-- "received zero input files, and no mechanism would change it" -- on a
+repository that may be full of .rs, which is the exact false assertion
+ADR-0056 W3 was built to stop, one pass to the left.
+
+The skip-hosted values stay skip-hosted. Re-hosting
+dependency_unavailable and pass_crashed onto an AnalysisRun is the
+question ADR-0056 item 5 reserves to the owner; discriminating the
+states does not pre-empt that ruling.
+
+Live repro on a non-cargo repo with the backend enabled:
+  before {"reason": "rust-analyzer backend produced no output",
+          "skip_reason_code": "unreported"}
+  after  {"reason": "rust-analyzer backend: rust-analyzer scip exited 1",
+          "skip_reason_code": "pass_crashed"}
+
+Five pre-existing tests and one assertion pinning the conflated prose
+string were re-pointed rather than deleted.
+
+Closes WI-luvud
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
