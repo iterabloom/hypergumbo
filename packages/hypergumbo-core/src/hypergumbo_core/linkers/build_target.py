@@ -80,12 +80,20 @@ def _resolve_target_path(
 @register_linker(
     "build-target-linker",
     priority=15,
-    # CNF: build targets come from manifest analyzers (TOML for Cargo, JSON
-    # for npm); main()/entry-point functions come from the corresponding
-    # language analyzer. Both sides must be present.
+    # CNF: the analyzers that emit the ``defines_target`` edges this linker
+    # walks, enumerated from their sources (WI-rasal). ``xml`` and
+    # ``manifest_targets`` were missing — Haskell repositories falsified the
+    # old ``["toml", "json"]`` through ``manifest_targets`` on 25 surveys.
+    #
+    # The former entry-point conjunct (``["rust", "javascript", "go", "python",
+    # "java"]``) is GONE, and deliberately not replaced with a wider list. The
+    # linker matches a function or method symbol literally named ``main``, or
+    # the manifest's ``target_function`` — which EVERY analyzer that emits
+    # functions can supply, so the honest enumeration is all 118 and any narrow
+    # one is false (yesod falsified it from Haskell). A conjunct satisfied by
+    # everything states nothing that the empty list does not.
     depends_on=[
-        ["toml", "json"],
-        ["rust", "javascript", "go", "python", "java"],
+        ["json", "manifest_targets", "toml", "xml"],
     ],
     activation=always_on_unreviewed(),
 )

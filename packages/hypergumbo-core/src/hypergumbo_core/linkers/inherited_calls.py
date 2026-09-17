@@ -864,13 +864,35 @@ def _extract_method_short_name(callee_name: str) -> str:
         "Java/Kotlin/Python/etc walkers and Site-2/3 receiver resolvers."
     ),
     activation=LinkerActivation(always=True),
-    # CNF: registered walkers exist for Java, Ruby, Groovy (per
-    # ``_MRO_WALKERS``). Future PRs extend the set to Python/Kotlin/etc.
-    # This linker also depends on the inheritance-linker pass producing
-    # extends/implements/includes edges first.
+    # CNF: the analyzers whose output can make this linker emit ANYTHING
+    # (WI-rasal, repaired from evidence — 226 surveys falsified the previous
+    # ``["java", "ruby", "groovy"]``, which was a snapshot of ``_MRO_WALKERS``
+    # taken when that dict had three entries and never updated when INV-fahub's
+    # fleet PR took it to fourteen).
+    #
+    # Derived, not hand-copied, from the three emission paths:
+    #   Site 1  — ``enclosing_class`` producers INTERSECT ``_MRO_WALKERS``
+    #             (dart/lua/zig stamp the hint but have no walker, deliberately)
+    #   Site 2  — ``receiver_type_hint`` producers; these need NO walker,
+    #             because step 1 resolves the method directly on the inferred
+    #             type (this is what adds ``d`` and ``kotlin``)
+    #   Site 3  — ``inherited_field_receiver`` producers
+    # ``test_depends_on_producer_sets.py`` re-derives all three and fails when
+    # the registry moves again. Note ``_MRO_WALKERS`` is keyed on
+    # ``Symbol.language``, a wider vocabulary than pass ids: its ``typescript``
+    # key maps onto the ``javascript`` pass.
+    #
+    # The former ``["inheritance-linker"]`` conjunct is GONE. It was falsified
+    # on 26 surveys and it was false: Site-2 step 1 emits
+    # ``ast_call_type_inferred`` with no inheritance edges in the graph at all.
+    # The ordering it recorded — run after inheritance-linker, whose
+    # extends/implements/includes edges the MRO walks traverse — is carried by
+    # ``priority=18`` against that linker's 15, which is the axis for it.
     depends_on=[
-        ["inheritance-linker"],
-        ["java", "ruby", "groovy"],
+        [
+            "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
+            "kotlin", "objc", "php", "python", "ruby", "rust", "scala", "swift",
+        ],
     ],
 )
 def link_inherited_calls(ctx: LinkerContext) -> LinkerResult:
