@@ -11860,6 +11860,21 @@ def run_survey(
     from .pass_silence import emit_silence_summary
     emit_silence_summary(behavior_map.get("analysis_runs", []))
 
+    # WI-jijor / ADR-0056 W1: the declaration set's first reader. The CNF
+    # predicate behind it has existed since WI-dilab with ELEVEN call sites,
+    # all of them tests -- LIVE.md §1.7's instrument-with-no-reader defect --
+    # so the ~73 depends_on conjuncts have never been audited against a real
+    # run. Re-pointed from gate to falsification detector: it reports a pass
+    # that EMITTED OUTPUT while one of its declared prerequisites was not in
+    # the active set, which proves the DECLARATION wrong. Advisory only; it
+    # never raises and never suppresses a pass, so unlike the gate INV-hujog
+    # asked for it cannot lose an edge. Wired here (not at catalog-build time)
+    # because it needs the runs.
+    from .catalog import emit_falsified_dependency_summary, get_default_catalog
+    emit_falsified_dependency_summary(
+        get_default_catalog().passes, behavior_map.get("analysis_runs", []),
+    )
+
     # Free memory: Symbol/Edge objects no longer needed after tier/compact processing
     # All data is now in behavior_map as dicts. For large repos like tensorflow (154k
     # symbols, 505k edges), this can free several GB of memory before final write.
