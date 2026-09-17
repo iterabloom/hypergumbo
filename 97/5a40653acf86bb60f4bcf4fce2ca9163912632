@@ -1,0 +1,34 @@
+Original commit body from 90466328b3503ccc17b363e82af734a1b93a0705:
+
+ADR-0056 W1 / WI-jijor. `validate_pass_dependencies` had eleven call sites and
+all eleven were tests; `validate_pass_name_resolution` had zero anywhere,
+under a docstring claiming it ran "at catalog-build time and in CI". The ~73
+depends_on conjuncts across 59 passes had never been checked against a run.
+
+Ships the same CNF predicate pointed the other way:
+`find_falsified_dependencies(passes, runs)` reports a pass that EMITTED
+OUTPUT despite an unsatisfied conjunct, which proves the DECLARATION wrong
+rather than the run. It reports and never raises, so unlike the gate INV-hujog
+asks for it cannot lose an edge. `validate_pass_dependencies` is untouched.
+
+Output counts nodes_emitted OR edges_emitted -- keying on edges alone is the
+instrument fault that inflated a recent cost figure 27x. A pass that ran and
+found nothing still SATISFIES a clause naming it: active means active, never
+productive.
+
+The reader is wired on the survey path next to the pass-silence summary, one
+stderr line, silent when clean, and proven to fire: a Go-only repo at tip
+names inheritance-linker and type-hierarchy-linker.
+
+First audit over 893 surveys carrying analysis_runs: 261 (29.2%) carry a
+falsified declaration, six distinct (pass, clause) across five passes. Filed
+for repair as its own row; ADR-0056's "ten hits means declaration repair is
+the blocker" criterion is met.
+
+Also repairs a control that could not fail: TestCatalogStaticConsistency built
+the catalog without importing the linker modules, which register by import
+side-effect, so in isolation it validated 118 analyzers and ZERO conjuncts.
+Now imports them, asserts a named declaration (not just a count), and goes red
+under an injected mutation.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
