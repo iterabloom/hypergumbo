@@ -557,6 +557,30 @@ class TestCatalogStaticConsistency:
         by_id = {p.id: p for p in catalog.passes}
         assert by_id["tauri-ipc-linker"].depends_on == [["javascript"], ["rust"]]
 
+    def test_every_depends_on_declarer_is_a_linker(self) -> None:
+        """The premise ``find_falsified_dependencies`` keys falsification on.
+
+        A pass proves its own declaration wrong by emitting EDGES, because a
+        linker's product is edges (ADR-3bbb: Tier-2 edge recovery) and the
+        ``depends_on`` field is documented as what a linker needs to "produce
+        its intended edges at all". That reading is only safe while every
+        declarer is a linker. If an ANALYZER ever declares ``depends_on``, its
+        product is nodes and the edge-keyed detector would silently stop
+        auditing it — under-reporting, never lying, but stopping. This test is
+        the trigger to revisit the rule, not a prohibition on the declaration.
+        """
+        catalog = self._full_catalog()
+        from hypergumbo_core.linkers.registry import _LINKER_REGISTRY
+
+        declarers = {p.id for p in catalog.passes if p.depends_on}
+        assert declarers, "no declarations visible — registry unpopulated"
+        non_linkers = sorted(declarers - set(_LINKER_REGISTRY))
+        assert non_linkers == [], (
+            f"{non_linkers} declare depends_on but are not linkers; "
+            "find_falsified_dependencies keys falsification on edges_emitted "
+            "and will not audit a node-producing pass"
+        )
+
 
 class TestBridgeLinkerDependsOnPopulated:
     """Language-pair Bridge linkers declare CNF: anchor AND any-of-impls.
@@ -782,7 +806,7 @@ class TestFindFalsifiedDependencies:
 
     def test_satisfied_declaration_is_not_falsified(self) -> None:
         passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
-        runs = [self._run("rust"), self._run("tauri-ipc-linker", edges=3)]
+        runs = [self._run("rust", nodes=40), self._run("tauri-ipc-linker", edges=3)]
         assert find_falsified_dependencies(passes, runs) == []
 
     def test_emitting_pass_with_unsatisfied_conjunct_is_falsified(self) -> None:
@@ -793,16 +817,36 @@ class TestFindFalsifiedDependencies:
             ("tauri-ipc-linker", [["rust"]]),
         ]
 
-    def test_nodes_alone_count_as_output(self) -> None:
-        """LIVE.md §1.4: keying on edges_emitted alone overcounts silence 27x.
+    def test_nodes_alone_do_not_falsify_a_declaration(self) -> None:
+        """RE-POINTED by WI-rasal's corpus re-read, not by taste.
 
-        A pass that emitted 91 nodes and no edges EMITTED. Reading only
-        ``edges_emitted`` here would repeat the readback.py instrument fault
-        inside the detector built to audit declarations.
+        The first cut counted ``nodes_emitted`` as proof, on the precedent that
+        keying on ``edges_emitted`` alone once called a 91-node pass silent.
+        That precedent is about SILENCE — "did this pass say anything?" — and
+        importing it here answered a different question wrong.
+        ``depends_on`` is documented as naming what a linker needs to "produce
+        its intended edges at all", and all 59 declarers are linkers (pinned by
+        ``test_every_depends_on_declarer_is_a_linker``).
+
+        The measurement: 68 of the 261 falsifying surveys were
+        ``database-query-linker`` runs with nodes and ZERO edges. It mints one
+        query node per SQL string it scrapes out of a host file, then needs the
+        ``sql`` analyzer's ``kind="table"`` symbols for the dst of every edge.
+        Nodes-with-no-edges is precisely the shape of "could NOT do its job
+        without the thing it declared" — the detector was reading a correct
+        declaration as a falsified one, on 26% of its own hits.
         """
         passes = [self._p("db-linker", [["sql"]])]
         runs = [self._run("db-linker", nodes=15)]
-        assert find_falsified_dependencies(passes, runs) == [("db-linker", [["sql"]])]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_edges_falsify_even_when_no_nodes_were_minted(self) -> None:
+        """The complement: the five surviving clauses all emit edges, no nodes."""
+        passes = [self._p("inheritance-linker", [["java"]])]
+        runs = [self._run("inheritance-linker", edges=30)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("inheritance-linker", [["java"]]),
+        ]
 
     def test_silent_pass_with_unsatisfied_conjunct_is_NOT_falsified(self) -> None:
         """A pass that emitted nothing proves nothing about its declaration.
@@ -815,26 +859,65 @@ class TestFindFalsifiedDependencies:
         runs = [self._run("tauri-ipc-linker")]
         assert find_falsified_dependencies(passes, runs) == []
 
-    def test_a_pass_that_ran_and_was_silent_still_SATISFIES_a_clause(self) -> None:
-        """ADR-0056's semantic ruling, pinned.
+    def test_a_pass_that_ran_and_produced_NOTHING_does_not_satisfy_a_clause(
+        self,
+    ) -> None:
+        """RE-POINTED by WI-rasal. The old rule was not a function of its fact.
 
-        ``active`` means "in the active set", never "productive" —
-        ``catalog.py`` tests list membership and reads no counter. A
-        prerequisite that ran and honestly found nothing has NOT failed its
-        dependent.
+        "Active" used to mean "has an ``analysis_runs`` row". Under the
+        WI-jadig / INV-manov file-presence pre-filter, an analyzer is
+        short-circuited into ``limits.skipped_passes`` only when EVERY language
+        it declares is in the taxonomy's ``LANGUAGE_EXTENSIONS``; every other
+        analyzer runs anyway and records a 0-file / 0-node row. So on caddy —
+        a Go repository — ``apex``, ``astro`` and ``pony`` are "active" and
+        ``java``, ``ruby`` and ``python`` are not, for the identical underlying
+        fact that the repo has no such files. Membership in ``analysis_runs``
+        answers "is this language in the taxonomy?", not "did this pass
+        contribute anything?".
+
+        Producing output is the same fact under both representations, so that
+        is what a clause now tests.
         """
         passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
         runs = [self._run("rust"), self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == [
+            ("tauri-ipc-linker", [["rust"]]),
+        ]
+
+    def test_a_prerequisite_satisfies_a_clause_with_nodes_alone(self) -> None:
+        """The asymmetry is deliberate: an ANALYZER's product is nodes.
+
+        A pass falsifies its own declaration only by emitting edges (a linker's
+        product); a pass SATISFIES someone else's clause with nodes or edges
+        (an analyzer contributes symbols, a linker prerequisite contributes
+        edges). Collapsing the two halves onto one counter breaks one of them.
+        """
+        passes = [self._p("rust"), self._p("tauri-ipc-linker", [["rust"]])]
+        runs = [self._run("rust", nodes=40), self._run("tauri-ipc-linker", edges=3)]
+        assert find_falsified_dependencies(passes, runs) == []
+
+    def test_a_prerequisite_satisfies_a_clause_with_edges_alone(self) -> None:
+        """``type-hierarchy-linker`` depends on ``inheritance-linker``, which
+        emits edges and mints no nodes."""
+        passes = [
+            self._p("inheritance-linker"),
+            self._p("type-hierarchy-linker", [["inheritance-linker"]]),
+        ]
+        runs = [
+            self._run("inheritance-linker", edges=788),
+            self._run("type-hierarchy-linker", edges=12),
+        ]
         assert find_falsified_dependencies(passes, runs) == []
 
     def test_or_clause_satisfied_by_any_single_member(self) -> None:
         passes = [self._p("c"), self._p("jni-linker", [["java"], ["c", "cpp", "rust"]])]
-        runs = [self._run("c"), self._run("java"), self._run("jni-linker", edges=1)]
+        runs = [self._run("c", nodes=9), self._run("java", nodes=4),
+                self._run("jni-linker", edges=1)]
         assert find_falsified_dependencies(passes, runs) == []
 
     def test_multi_conjunct_reports_only_the_unsatisfied_ones(self) -> None:
         passes = [self._p("java"), self._p("jni-linker", [["java"], ["c", "cpp"]])]
-        runs = [self._run("java"), self._run("jni-linker", edges=1)]
+        runs = [self._run("java", nodes=7), self._run("jni-linker", edges=1)]
         assert find_falsified_dependencies(passes, runs) == [
             ("jni-linker", [["c", "cpp"]]),
         ]

@@ -287,17 +287,36 @@ def find_falsified_dependencies(
     ran — which is the whole difference between a forecast and a measurement.
     ``passes`` therefore supplies only the declarations.
 
-    **"Active" means ran, never produced.** A prerequisite that ran and
-    honestly found nothing satisfies a clause naming it; ``catalog.py`` tests
-    list membership and reads no counter, and the vocabulary throughout is
-    "active". Reading it as "productive" would make every correct no-op
-    falsify its dependents.
+    **A clause is satisfied by PRODUCTION, not by membership** (corrected
+    under WI-rasal; the first cut tested membership in ``analysis_runs``).
+    Membership is not a function of the fact it was standing in for. Under the
+    WI-jadig / INV-manov file-presence pre-filter an analyzer is short-circuited
+    into ``limits.skipped_passes`` only when EVERY language it declares is in
+    the taxonomy's ``LANGUAGE_EXTENSIONS``; every other analyzer runs anyway
+    and records a 0-file / 0-node row. So on caddy — a Go repository — ``apex``,
+    ``astro`` and ``pony`` are members and ``java``, ``ruby`` and ``python``
+    are not, for the identical fact that the repo contains no such files. The
+    same fact reached the predicate as both answers depending on the taxonomy.
+    Production collapses both representations onto the question actually being
+    asked: did anything this pass declared it needs contribute?
 
-    Output is counted with ``nodes_emitted`` **or** ``edges_emitted``. Keying
-    on edges alone is a known instrument fault in this codebase — it called a
-    91-node pass silent and inflated a cost figure 27x — and repeating it
-    inside a detector built to audit declarations would be that defect one
-    level up. Absent counters read as zero output, never as a falsification.
+    **A pass falsifies its own declaration by emitting EDGES** (also corrected
+    under WI-rasal). The asymmetry with the paragraph above is deliberate. A
+    linker's product is edges — ADR-3bbb Tier-2 is edge recovery, and the
+    ``depends_on`` field is documented as what a linker needs to "produce its
+    intended edges at all" — while a *prerequisite* contributes nodes (an
+    analyzer) or edges (``inheritance-linker``). The first cut counted nodes
+    on both halves, on the precedent that keying on ``edges_emitted`` alone
+    once called a 91-node pass silent. That precedent belongs to SILENCE
+    ("did this pass say anything?"), and importing it here answered a different
+    question wrong: 68 of the first run's 261 falsifying surveys were
+    ``database-query-linker`` minting query nodes with ZERO edges because the
+    ``sql`` analyzer had not supplied the ``kind="table"`` symbols its dst side
+    needs — the declaration doing its job, read as the declaration being wrong,
+    on 26% of the hits. Every current declarer is a linker, pinned by
+    ``test_every_depends_on_declarer_is_a_linker``; if an analyzer ever
+    declares ``depends_on`` this detector under-reports it rather than lying.
+    Absent counters read as zero output, never as a falsification.
 
     Args:
         passes: The declaration source, normally ``get_default_catalog().passes``.
@@ -313,14 +332,15 @@ def find_falsified_dependencies(
         which on a repo whose declarations are honest is the normal result.
     """
     declared = {p.id: p for p in passes}
-    active_ids: set[str] = set()
+    producing_ids: set[str] = set()
     emitting_ids: set[str] = set()
     for run in runs:
         pass_id = str(run.get("pass", ""))
         if not pass_id:
             continue
-        active_ids.add(pass_id)
         if run.get("nodes_emitted") or run.get("edges_emitted"):
+            producing_ids.add(pass_id)
+        if run.get("edges_emitted"):
             emitting_ids.add(pass_id)
 
     falsified: List[Tuple[str, List[List[str]]]] = []
@@ -334,7 +354,7 @@ def find_falsified_dependencies(
         unsatisfied = [
             list(clause)
             for clause in p.depends_on
-            if not any(literal in active_ids for literal in clause)
+            if not any(literal in producing_ids for literal in clause)
         ]
         if unsatisfied:
             falsified.append((pass_id, unsatisfied))
