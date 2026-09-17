@@ -15,6 +15,7 @@ import pytest
 
 from hypergumbo_core.analyze.base import AnalysisResult
 from hypergumbo_core.ir import Edge, Span, Symbol
+from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
 from hypergumbo_lang_rust_analyzer.analyzer import (
     _disk_source_reader,
     _repo_anchored_reader,
@@ -90,15 +91,25 @@ class TestAnalyzeRustWithScip:
             analyze_rust_with_scip(tmp_path)
             fake_try.assert_not_called()
 
-    def test_gate_true_but_backend_returns_none_empty_result(
+    def test_gate_true_but_backend_failed_is_a_reasoned_skip(
         self, tmp_path: Path,
     ) -> None:
+        """Re-pointed, not deleted (WI-luvud).
+
+        This asserted the literal prose ``"rust-analyzer backend produced no
+        output"`` — the single string all FOUR failure states used to share,
+        which is the defect WI-luvud names. The behaviour it was protecting
+        (a failure self-declares a skip rather than vanishing) still holds and
+        is still asserted; only the conflated string is gone.
+        """
         with patch(
             "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=None,
+            return_value=ScipAttempt.failure(
+                "pass_crashed", "rust-analyzer scip exited 101",
+            ),
         ):
             result = analyze_rust_with_scip(tmp_path)
         assert result.symbols == []
@@ -106,7 +117,11 @@ class TestAnalyzeRustWithScip:
         # WI-didil: backend on but SCIP produced nothing (WI-nohah fall-through)
         # → self-declare a reasoned skip rather than vanishing silently.
         assert result.skipped is True
-        assert result.skip_reason == "rust-analyzer backend produced no output"
+        assert result.skip_reason_code == "pass_crashed"
+        assert "exited 101" in result.skip_reason, (
+            "the skip prose must carry the state-specific detail, not a "
+            "single string shared by every failure mode"
+        )
 
     def test_gate_true_and_backend_succeeds_returns_symbols_and_edges(
         self, tmp_path: Path,
@@ -126,7 +141,7 @@ class TestAnalyzeRustWithScip:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=([sample_sym], [sample_edge]),
+            return_value=ScipAttempt.success([sample_sym], [sample_edge]),
         ):
             result = analyze_rust_with_scip(tmp_path)
         assert result.symbols == [sample_sym]
@@ -143,7 +158,7 @@ class TestAnalyzeRustWithScip:
         def _fake_try(workspace, source_reader, *, log=None, run_id=""):
             captured["workspace"] = workspace
             captured["reader"] = source_reader
-            return ([], [])
+            return ScipAttempt.success([], [])
 
         with patch(
             "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
@@ -219,7 +234,7 @@ class TestEngagementCheck:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=([], []),
+            return_value=ScipAttempt.success([], []),
         ), pytest.warns(UserWarning, match="produced no SCIP"):
             analyze_rust_with_scip(tmp_path)
 
@@ -233,7 +248,7 @@ class TestEngagementCheck:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=([], [scip_edge]),
+            return_value=ScipAttempt.success([], [scip_edge]),
         ):
             import warnings
             with warnings.catch_warnings(record=True) as caught:
@@ -249,7 +264,7 @@ class TestEngagementCheck:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=([], []),
+            return_value=ScipAttempt.success([], []),
         ):
             import warnings
             with warnings.catch_warnings(record=True) as caught:
@@ -266,7 +281,9 @@ class TestEngagementCheck:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=None,
+            return_value=ScipAttempt.failure(
+                "pass_crashed", "rust-analyzer scip exited 101",
+            ),
         ):
             import warnings
             with warnings.catch_warnings(record=True) as caught:
@@ -299,7 +316,7 @@ class TestEngagementCheck:
             return_value=True,
         ), patch(
             "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
-            return_value=([], []),
+            return_value=ScipAttempt.success([], []),
         ), pytest.warns(UserWarning, match="produced no SCIP"):
             analyze_rust_with_scip(tmp_path)
 
@@ -312,7 +329,7 @@ class TestEngagementCheck:
 
         def _fake_try(workspace, source_reader, *, log=None, run_id=""):
             captured_log.append(log)
-            return None
+            return ScipAttempt.failure("pass_crashed", "exited 101")
 
         with patch(
             "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
@@ -387,3 +404,69 @@ class TestProvenanceJoin:
         dangling_edges = [e for e in result.edges if e.origin_run_id != run_id]
         assert dangling_syms == [], "symbols must join to the emitted run"
         assert dangling_edges == [], "edges must join to the emitted run"
+
+
+class TestSilenceClassification:
+    """WI-luvud: 'backend produced no output' was filed as ONE skip.
+
+    Four distinct states shared the reason string "rust-analyzer backend
+    produced no output" and the code ``unreported``, and the row's own title
+    objected that the pass RAN. Both halves are addressed here: the states are
+    told apart, and the one where the backend genuinely ran to completion now
+    lands in the RAN population with an ``AnalysisRun``.
+    """
+
+    def _run_with(self, tmp_path, attempt):
+        with patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.should_use_rust_analyzer_backend",
+            return_value=True,
+        ), patch(
+            "hypergumbo_lang_rust_analyzer.analyzer.try_analyze_with_rust_analyzer",
+            return_value=attempt,
+        ):
+            return analyze_rust_with_scip(tmp_path)
+
+    def test_missing_binary_is_reported_as_dependency_unavailable(
+        self, tmp_path: Path,
+    ) -> None:
+        from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
+        result = self._run_with(tmp_path, ScipAttempt.failure(
+            "dependency_unavailable", "rust-analyzer binary not resolvable",
+        ))
+        assert result.skipped is True
+        assert result.skip_reason_code == "dependency_unavailable"
+
+    def test_a_crash_is_reported_as_pass_crashed(self, tmp_path: Path) -> None:
+        from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
+        result = self._run_with(tmp_path, ScipAttempt.failure(
+            "pass_crashed", "rust-analyzer scip exited 101",
+        ))
+        assert result.skipped is True
+        assert result.skip_reason_code == "pass_crashed"
+
+    def test_the_four_states_no_longer_share_one_reason_string(
+        self, tmp_path: Path,
+    ) -> None:
+        """The conflation itself, pinned: distinct states, distinct prose."""
+        from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
+        reasons = {
+            self._run_with(tmp_path, ScipAttempt.failure(code, detail)).skip_reason
+            for code, detail in (
+                ("dependency_unavailable", "binary not resolvable"),
+                ("pass_crashed", "exited 101"),
+                ("unreported", "exited 0 without writing an index"),
+            )
+        }
+        assert len(reasons) == 3, f"states still share prose: {reasons}"
+
+    def test_a_successful_empty_index_RAN_and_says_so(
+        self, tmp_path: Path,
+    ) -> None:
+        """The state the row is named for. The backend ran to completion and
+        found nothing: that belongs in analysis_runs, not skipped_passes, and
+        must NOT claim no_candidate_files — the repo may be full of .rs."""
+        from hypergumbo_lang_rust_analyzer.graceful_degrade import ScipAttempt
+        result = self._run_with(tmp_path, ScipAttempt.success([], []))
+        assert result.skipped is False, "the backend ran; this is not a skip"
+        assert result.run is not None, "a pass that ran carries an AnalysisRun"
+        assert result.run.silence_reason == "no_candidate_construct"

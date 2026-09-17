@@ -58,10 +58,9 @@ class TestHappyPath:
             tmp_path, _fake_source_reader,
             invoke=_invoke, translate=translate,
         )
-        assert result is not None
-        syms, edges = result
-        assert syms == [want_sym]
-        assert edges == []
+        assert result.failed is False  # WI-luvud: was `is not None`
+        assert result.symbols == [want_sym]
+        assert result.edges == []
 
 
 class TestInvokeFailureModes:
@@ -78,7 +77,7 @@ class TestInvokeFailureModes:
             ),
             log=log_msgs.append,
         )
-        assert result is None
+        assert result.failed is True  # WI-luvud: was `is None`
         assert len(log_msgs) == 1
         assert "RustAnalyzerNotInstalled" in log_msgs[0]
         assert "falling through to rust.py" in log_msgs[0]
@@ -92,7 +91,7 @@ class TestInvokeFailureModes:
             tmp_path, _fake_source_reader,
             invoke=_invoke, log=log_msgs.append,
         )
-        assert result is None
+        assert result.failed is True  # WI-luvud: was `is None`
         assert "RustAnalyzerInvocationFailed" in log_msgs[0]
 
     def test_no_output_returns_none(self, tmp_path: Path) -> None:
@@ -104,7 +103,7 @@ class TestInvokeFailureModes:
             tmp_path, _fake_source_reader,
             invoke=_invoke, log=log_msgs.append,
         )
-        assert result is None
+        assert result.failed is True  # WI-luvud: was `is None`
         assert "RustAnalyzerNoOutput" in log_msgs[0]
 
     def test_fallback_logged_once_per_workspace(self, tmp_path: Path) -> None:
@@ -154,7 +153,7 @@ class TestTranslateFailure:
             tmp_path, _fake_source_reader,
             invoke=_invoke, translate=_translate, log=log_msgs.append,
         )
-        assert result is None
+        assert result.failed is True  # WI-luvud: was `is None`
         assert "decode failed" in log_msgs[0]
         assert "bad wire format" in log_msgs[0]
 
@@ -186,7 +185,7 @@ class TestDefaultLogIsNoOp:
             tmp_path, _fake_source_reader,
             invoke=_invoke,  # no log kwarg
         )
-        assert result is None
+        assert result.failed is True  # WI-luvud: was `is None`
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err == ""
@@ -390,3 +389,79 @@ class TestRunIdForwarding:
             invoke=_invoke, translate=_translate,
         )
         assert seen["run_id"] == ""
+
+
+class TestOutcomeDiscrimination:
+    """WI-luvud: one ``None`` return collapsed four different states.
+
+    ``try_analyze_with_rust_analyzer``'s docstring said "Every failure mode
+    WI-nohah lists maps to None", and the analyzer module said it "treats 'no
+    SCIP run' identically to 'SCIP run produced nothing'". So the caller could
+    not tell a missing binary from a crash from an unparseable workspace, and
+    filed all of them as one skip reading ``unreported``.
+
+    The exception taxonomy already distinguished them — ``RustAnalyzerNotInstalled``
+    / ``RustAnalyzerInvocationFailed`` / ``RustAnalyzerNoOutput`` / ``DecodeError``
+    — and that information was discarded at the boundary.
+    """
+
+    def _attempt(self, exc: Exception):
+        def _invoke(_workspace, *, cwd):
+            raise exc
+        return try_analyze_with_rust_analyzer(
+            Path("/nonexistent"), lambda _p: None, invoke=_invoke,
+        )
+
+    def test_missing_binary_is_dependency_unavailable(self) -> None:
+        got = self._attempt(RustAnalyzerNotInstalled("no binary"))
+        assert got.failed is True
+        assert got.silence_code == "dependency_unavailable"
+
+    def test_nonzero_exit_is_a_contained_crash(self) -> None:
+        """ADR-0056's init-failure ruling: pass_crashed says nothing about WHO
+        contained the raise, and 'install the package' is the wrong advice."""
+        got = self._attempt(
+            RustAnalyzerInvocationFailed("boom", b"stderr", returncode=101),
+        )
+        assert got.failed is True
+        assert got.silence_code == "pass_crashed"
+
+    def test_exit_zero_with_no_index_is_not_a_crash(self) -> None:
+        """rust-analyzer exited 0 and wrote nothing — the workspace is not a
+        parseable cargo project. Not a crash, not a missing dependency."""
+        got = self._attempt(RustAnalyzerNoOutput("no index.scip", b""))
+        assert got.failed is True
+        assert got.silence_code != "pass_crashed"
+        assert got.silence_code != "dependency_unavailable"
+
+    def test_undecodable_scip_is_a_contained_crash(self) -> None:
+        def _invoke(_workspace, *, cwd):
+            return b"not-a-scip-index"
+
+        def _translate(_blob, _reader, *, run_id=""):
+            raise DecodeError("bad wire format")
+
+        got = try_analyze_with_rust_analyzer(
+            Path("/nonexistent"), lambda _p: None,
+            invoke=_invoke, translate=_translate,
+        )
+        assert got.failed is True
+        assert got.silence_code == "pass_crashed"
+
+    def test_a_successful_empty_index_is_not_a_failure(self) -> None:
+        """The state WI-luvud's title is about: the backend RAN and produced
+        nothing. It must not be reported as a failure, and must not claim
+        ``no_candidate_files`` — the repo may be full of .rs."""
+        def _invoke(_workspace, *, cwd):
+            return b"scip"
+
+        def _translate(_blob, _reader, *, run_id=""):
+            return ([], [])
+
+        got = try_analyze_with_rust_analyzer(
+            Path("/nonexistent"), lambda _p: None,
+            invoke=_invoke, translate=_translate,
+        )
+        assert got.failed is False
+        assert got.symbols == [] and got.edges == []
+        assert got.silence_code != "no_candidate_files"
