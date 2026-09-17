@@ -14,16 +14,16 @@ for focused LLM context.
 ## Self-Analysis Summary (auto)
 
 hypergumbo analyzed its own source code and found:
-- **325** Python modules (134 analyzers, 61 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 8; 90 core, 4 CLI, 36 tracker)
-- **46533** symbols (functions, classes, methods)
-- **184782** edges by type:
-  - calls: 106519
-  - contains: 42863
-  - imports: 14395
-  - instantiates: 11471
-  - references: 6522
-  - module_attr_ref: 1551
-  - other: 1461
+- **326** Python modules (134 analyzers, 62 linkers across four subcategories per [ADR-3bbb](adr/3bbb-linker-subcategory-restoration.md) — Protocol 11, Bridge 10, Framework 32, Infrastructure 9; 90 core, 4 CLI, 36 tracker)
+- **46639** symbols (functions, classes, methods)
+- **185142** edges by type:
+  - calls: 106698
+  - contains: 42964
+  - imports: 14444
+  - instantiates: 11481
+  - references: 6533
+  - module_attr_ref: 1558
+  - other: 1464
 
 ## Package Architecture
 
@@ -50,7 +50,7 @@ depend on core but not on each other, and the tracker is fully independent.
 
 | Package | Role |
 |---------|------|
-| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 61 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
+| **hypergumbo-core** | IR types (`Symbol`, `Edge`, `Span`), CLI, analysis base classes, 62 linkers (Protocol / Bridge / Framework / Infrastructure — ADR-3bbb), 107 YAML pattern files, sketch/slice output, supply chain classification, symbol resolution, ranking |
 | **hypergumbo-lang-mainstream** | 46 tree-sitter analyzers for widely-used languages (Python, JS/TS, Java, Go, Rust, C/C++, Ruby, PHP, C#, Kotlin, Swift, Scala, etc.) |
 | **hypergumbo-lang-common** | 38 analyzers for domain-specific and functional languages (Haskell, Elixir, OCaml, Dart, Julia, CUDA, GraphQL, HCL, etc.) |
 | **hypergumbo-lang-extended1** | 41 analyzers for specialized languages (Zig, Odin, Solidity, Verilog, VHDL, Agda, Lean, Wolfram, etc.) |
@@ -85,7 +85,7 @@ Source Files
 │  Per-language tree-sitter parsing (two-pass architecture):      │
 │    Pass 1: Extract symbols from AST nodes                       │
 │    Pass 2: Resolve calls/imports against global symbol registry │
-│  Output: 46533 Symbols + 184782 Edges + UsageContexts           │
+│  Output: 46639 Symbols + 185142 Edges + UsageContexts           │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -103,7 +103,7 @@ Source Files
 │  Tier 2 edge recovery (ADR-3bbb — Protocol / Bridge /       │
 │  Framework / Infrastructure). Match via meta.concepts and       │
 │  symbol metadata across files and language boundaries.          │
-│  61 linkers: P11 / B10 / F32 / I8 (HTTP, JNI, gRPC, React, ...) │
+│  62 linkers: P11 / B10 / F32 / I9 (HTTP, JNI, gRPC, React, ...) │
 └─────────────────────────────────────────────────────────────────┘
      │
      ▼
@@ -271,21 +271,21 @@ These symbols have the highest bidirectional centrality
 
 | Symbol | Kind | Score | Location |
 |--------|------|-------|----------|
-| `Symbol` | class | 9602.5 | ir.py |
-| `len` | external_symbol | 7462.0 | <external> |
-| `write_text` | external_symbol | 6543.0 | <external> |
-| `Span` | class | 6422.1 | ir.py |
-| `LinkerContext` | class | 3409.5 | registry.py |
+| `Symbol` | class | 9616.2 | ir.py |
+| `len` | external_symbol | 7474.0 | <external> |
+| `write_text` | external_symbol | 6544.0 | <external> |
+| `Span` | class | 6430.9 | ir.py |
+| `LinkerContext` | class | 3433.8 | registry.py |
 | `get` | external_symbol | 2999.0 | <external> |
 | `load_catalog` | function | 2540.2 | io_boundary.py |
 | `Edge.create` | method | 2406.9 | ir.py |
 | `next` | external_symbol | 2133.0 | <external> |
-| `str` | external_symbol | 2083.0 | <external> |
+| `str` | external_symbol | 2084.0 | <external> |
 | `load_framework_patterns` | function | 2057.0 | framework_patterns.py |
-| `Path` | external_symbol | 1973.0 | <external> |
+| `Path` | external_symbol | 1975.0 | <external> |
 | `TrackerApp` | class | 1946.9 | tui.py |
 | `main` | function | 1723.8 | cli.py |
-| `append` | external_symbol | 1599.0 | <external> |
+| `append` | external_symbol | 1602.0 | <external> |
 
 ## Pattern System
 
@@ -826,6 +826,7 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 - **`hypergumbo_core.linkers.go_memberlist`**: Framework linker: Go hashicorp/memberlist cluster delegate callback.
 - **`hypergumbo_core.linkers.graphql`**: Framework linker: GraphQL client-schema for detecting cross-file Gr...
 - **`hypergumbo_core.linkers.graphql_resolver`**: Framework linker: GraphQL resolver for detecting resolver implement...
+- **`hypergumbo_core.linkers.graphql_sdl`**: Infrastructure linker: GraphQL SDL embedded in host-language source.
 - **`hypergumbo_core.linkers.grpc`**: Framework linker: gRPC/Protobuf for detecting RPC communication pat...
 - **`hypergumbo_core.linkers.http`**: Protocol linker: HTTP client-server for detecting cross-language AP...
 - **`hypergumbo_core.linkers.inheritance`**: Infrastructure linker: inheritance for creating extends/implements/...
@@ -918,8 +919,8 @@ return LinkerResult(symbols=symbols, edges=edges, run=run)
 
 <!--
 GENERATION METADATA (for drift detection):
-  commit: 9b49e36c416f
-  commit_count: 7382
+  commit: 80b4b3c93fb7
+  commit_count: 7388
   hypergumbo: 8.0.0
   python: 3.12.3
 -->
