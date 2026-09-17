@@ -1,0 +1,30 @@
+Original commit body from c0511adaec14818b30673806bf8ade54957abec3:
+
+Cadence hook fired at 76 commits (threshold 72). Suspect pair:
+AnalysisRun.silence_reason vs limits.skipped_passes[].skip_reason_code --
+two fields on one closed vocabulary, documented as "one channel, two
+fields" split by "did the pass run?".
+
+Outcome: partially confirmed. Measured on component-model-demo, 130 of
+162 passes carry no_candidate_files -- 48 via silence_reason, 82 via
+skip_reason_code -- and the host is chosen by LANGUAGE_EXTENSIONS
+membership and analyzer return style, not by any property of the
+silence. The module's stated ground for the split ("no carrier in
+existence to stamp") is refuted: base.py:4017 returns run=run, and
+collect_analyzer_result discards it along with the INV-pitab grammar
+warning appended to it.
+
+Four falsifiable checks came back clean and are recorded so they are
+not redone. The grep-first producer trace was mis-aimed and is replaced
+by an AST trace in the write-up; conditional-expression emission is a
+sixth Step 4.5 miss category.
+
+No code or tool behavior changed. Findings filed as WI-mamiv (P2),
+WI-gidid (P2, needs_human_review -- it re-frames the owner decision
+ADR-0056 item 5 reserved), WI-gisor (P3), WI-punod (P3); cross-linked
+to WI-luvud.
+
+Write-up:
+~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
