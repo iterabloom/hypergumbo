@@ -1023,6 +1023,57 @@ runs can find prior work:
   gate exists to prevent. Full write-up:
   `docs/surveys/call-construct-value-family-audit.md`.
 
+- **2026-09-17 — `AnalysisRun.silence_reason` vs
+  `limits.skipped_passes[].skip_reason_code`** (cadence hook, 76 commits).
+  **Partially confirmed.** The two fields share one closed vocabulary and are
+  documented as "one channel, two fields" split by *did the pass run?*. Measured
+  on one ordinary repo: **130 of 162 passes carry `no_candidate_files` — 48 via
+  `silence_reason`, 82 via `skip_reason_code`.** T1 FAILS: the host is chosen by
+  `LANGUAGE_EXTENSIONS` membership (0 in-taxonomy analyzers use the silence
+  field, 75 use the skip field; 26 out-of-taxonomy use the silence field) and by
+  whether the analyzer returns a bare `AnalysisResult()` or a run with
+  `files_analyzed=0` — **producer registration and implementation detail, not a
+  property of the silence**. Verdict DOCUMENT, not Deprecate: the skip host has
+  no `files_analyzed` to derive the value from, while on `AnalysisRun` the value
+  *is* `files_analyzed == 0` by construction (48 of 79 runs carry a derived
+  restatement), which is *why* the hosts look overlapping. **The stated ground
+  for the split is refuted on evidence:** the module says a
+  `dependency_unavailable` pass "HAS NO AnalysisRun … no carrier in existence to
+  stamp", but `base.py:4017` returns `run=run` — the carrier exists, carries the
+  INV-pitab grammar warning and a duration, and `collect_analyzer_result`
+  discards it because the append sits only in the `else` of `if is_skipped:`.
+  **SILENT BUG (live repro):** that warning, added specifically "so consumers
+  reading the AnalysisRun later see the gap", never reaches output for the
+  population it was written for. **SILENT BUG:** spec §1317 says an
+  out-of-taxonomy analyzer finding no files is recorded in `skipped_passes`
+  "either way" — measured, **26 of 35 land in `analysis_runs` instead**. T4
+  CONFIRMED: the State A/B/C classification that is the axis's entire stated
+  reason for existing lives **only in prose comments**, and its one branching
+  consumer re-derives it as `!= NO_CANDIDATE_FILES` — a hardcoded set caught at
+  n=1, on a vocabulary that grew 6→7→8 in two months. **The grep-first producer
+  trace was mis-aimed** and returned zero producers for two values that have
+  live ones (ternary/conditional forms); the AST re-trace is what produced the
+  table — a sixth miss category for Step 4.5: *values emitted only from a
+  conditional expression*. Four falsifiable checks came back CLEAN and are
+  recorded so nobody redoes them (no `depends_on`↔`skipped_passes` key-vocabulary
+  mismatch across 38 literals; no crash double-counting; no phantom values; `""`
+  unreachable in production). Adjacent sweep: the word *skipped* names five
+  things in the IR, three dead or vestigial (`AnalysisRun.skipped_passes` legacy
+  mirror 0/79 populated, `limits.skipped_languages` dead per WI-nihir,
+  `AnalysisResult.skipped` not equivalent to its own host). → **WI-mamiv** (host
+  rule + union helper), **WI-gidid** (`needs_human_review` — it re-frames the
+  owner decision ADR-0056 item 5 reserved: not "should we *emit* an AnalysisRun
+  for a pass that never ran" but "should we *keep* the one we already made",
+  which is a materially weaker case for the ADR's ABSENT≠EMPTY objection),
+  **WI-gisor** (spec), **WI-punod** (state mapping + two latent traps);
+  cross-linked to **WI-luvud**, the mirror image filed hours earlier. **Filed in
+  the lab notebook, not `docs/audits/`**, because the verdicts are
+  Deprecate/Document/Keep rather than the CANONICAL/FOLD/DEPRECATE-NO-FOLD
+  trichotomy the audit-findings format and its property test require —
+  `docs/audits/README.md` §Scope tells such audits to propose a sibling format
+  rather than shoehorn. Full write-up:
+  `~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md`.
+
 (Future audits append here.)
 
 ## Relationship to other playbooks
