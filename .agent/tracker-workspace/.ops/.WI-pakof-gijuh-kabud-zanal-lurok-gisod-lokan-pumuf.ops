@@ -1,0 +1,21 @@
+- op: create  # c5bd
+  at: '2026-09-17T02:02:21Z'  # c5bd
+  by: agent  # c5bd
+  actor: jgstern_agent  # c5bd
+  clock: 1  # c5bd
+  nonce: c5bd  # c5bd
+  data:  # c5bd
+    kind: work_item  # c5bd
+    title: "Pass.requires names tree-sitter-language-pack for 25 of 26 grammar-gated language passes that actually load dedicated tree-sitter-<lang> wheels; only humans read the field, so nothing catches it"  # c5bd
+    status: todo_hard  # c5bd
+    priority: 3  # c5bd
+    parent:  # c5bd
+    tags:  # c5bd
+    - analysis_quality  # c5bd
+    - developer_experience  # c5bd
+    isbefore: []  # c5bd
+    duplicate_of: []  # c5bd
+    not_duplicate_of: []  # c5bd
+    pr_ref:  # c5bd
+    description: "Found while building ADR-0056's named acceptance test, which the falsehood\nMISDIRECTED - see \"why this cost real time\" below.\n\nTHE CLAIM IN THE CATALOG. 26 of the 29 distinct depends_on literals are\navailability=\"extra\" language passes, and every one of them reports\nrequires=\"tree-sitter-language-pack\" (from catalog.py's _ts() helper, which\nhard-codes _TS_REQUIRES for every entry it builds). `hypergumbo catalog` prints\nthat to users as the package to install.\n\nTHE MEASUREMENT. A venv was built with the four hypergumbo packages and\ntree-sitter-language-pack UNINSTALLED, then a survey run. If the declaration\nwere true, the 26 would be unavailable. Result: rust, javascript, go, java, c,\ncpp, ruby, php, and the rest ALL RAN NORMALLY. Only the exotic tail was\naffected - racket, scheme, scss, puppet, astro, pascal, apex, pony, janet,\ngleam, fennel, hack, smithy, haxe, kdl, luau, prisma, tcl, sparql, twig,\nbibtex, bitbake (29 skip records, 28 distinct spellings).\n\nWHY. hypergumbo-lang-mainstream depends on DEDICATED wheels -\ntree-sitter-rust, tree-sitter-javascript, tree-sitter-go, ... - and the\nanalyzers import those directly (rust.py: grammar_module = \"tree_sitter_rust\").\nThe language pack is the fallback for the long tail only. Confirmed by\nuninstalling tree-sitter-rust alone: `rust` then skips with reason\n'rust tree-sitter grammar not available', which is what the catalog implied\nremoving the language pack would do.\n\nWHY THE MISLABEL IS INVISIBLE TO THE CODE. is_available() reads the field as\n`if p.requires and \"tree-sitter\" in p.requires` and then checks only for the\nBASE tree_sitter package - a substring test that any of the spellings passes,\nso no test and no runtime path can distinguish the true distribution name from\nthe false one. The field is load-bearing for HUMANS and for nothing else,\nwhich is exactly why it drifted.\n\nWHY THIS COST REAL TIME. ADR-0056 specifies a bare-venv acceptance test for\nprerequisite_absent that says to remove tree-sitter-language-pack and expect\n`rust` to be skipped for a toolchain reason. Run literally, it comes back\nEMPTY - and ADR-0056 §\"What would change this decision\" item 3 says an empty\nresult flips the verdict to DEPRECATE the value. A false catalog field would\ntherefore have deprecated a value that is demonstrably firing (see WI-dabup).\nAn instrument aimed by a wrong declaration exits 0 with a plausible answer.\n\nFIX: give _ts() the real distribution per language (or a list), or stop\npublishing a package name the field cannot substantiate. Either is fine; a\nfield that names the wrong package is worse than one that names none."  # c5bd
+    fields: {}  # c5bd

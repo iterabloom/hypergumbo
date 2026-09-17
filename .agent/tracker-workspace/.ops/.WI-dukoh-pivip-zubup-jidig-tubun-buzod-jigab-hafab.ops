@@ -28,3 +28,18 @@
   set: {}  # c442
   add:  # c442
     isbefore: [WI-dabup-jasap-fupah-puzub-hunas-kajug-baful-bohal]  # c442
+- op: update  # 2a9c
+  at: '2026-09-17T03:40:42Z'  # 2a9c
+  by: agent  # 2a9c
+  actor: jgstern_agent  # 2a9c
+  clock: 3  # 2a9c
+  nonce: 2a9c  # 2a9c
+  set:  # 2a9c
+    status: done  # 2a9c
+- op: discuss  # 49bf
+  at: '2026-09-17T03:40:42Z'  # 49bf
+  by: agent  # 49bf
+  actor: jgstern_agent  # 49bf
+  clock: 4  # 49bf
+  nonce: 49bf  # 49bf
+  message: "Done in PR #1016 (dev c8c024feb3). Behavioral evidence: a survey run in a venv WITHOUT tree-sitter-language-pack classifies 107 of 107 skipped_passes entries -- 76 no_candidate_files, 31 dependency_unavailable, ZERO unreported -- and the new stderr line reports it. Verified on the production path, not a unit fixture.\n\nTHREE OF THIS ROW'S SIZING CLAIMS WERE WRONG, all checked rather than carried forward:\n\n1. 'only ~4 producer sites need touching, because the ~50 grammar spellings come from TWO TreeSitterAnalyzer f-string templates'. Measured: 49 sites across 38 FILES. The f-string is COPY-PASTED into thirty analyzer modules, not inherited from a template. analyze/base.py has one central site and ~30 subclasses override it with the identical literal.\n\n2. 'pass_crashed's twin has fired ZERO times ... it ships on a synthetic-crash test, not corpus data'. True of the TWIN, false of the STATE. Six producer sites report a parser that failed to INITIALISE ('Failed to load Go parser: {e}' and kin) -- the grammar is installed and the constructor raised. That is not dependency_unavailable, because 'install the package' is the wrong advice for it. Stamped pass_crashed, whose declaration ('the pass raised and the crash was contained') is true of a caught constructor exception and says nothing about WHO contained it. pass_crashed now has real producers.\n\n3. pass_silence.py's 'the drift is LATENT, not observed'. Now observed: 29 skip records in 28 distinct spellings from ONE survey in a bare venv. Docstring superseded in place, along with the 490-survey/39,757-record/TWO-strings sizing this row asked me to supersede.\n\nONE VALUE HAD NOWHERE TO GO, and it is recorded rather than folded: rust-analyzer's 'backend produced no output' is not backend_disabled (the backend WAS enabled and ran), not dependency_unavailable, and not a skip at all -- the pass ran. It takes UNREPORTED, the declared residue, with a comment saying so. Filed as a residual below.\n\nALSO SHIPPED, because this row asked for it: a summarizer. skipped_passes has been serialized on every survey since the field existed and NOTHING summarized it. Kept as a SEPARATE stderr line from the pass-silence one -- 'did not run' and 'ran and found nothing' are different populations with different denominators, and merging them would be the absent-versus-empty substitution one level up.\n\nAND A GATE: test_skip_reason_code_declaration.py fails on any AnalysisResult(skip_reason=...) without skip_reason_code=, AST-based (a line grep counts the module docstring in rust-analyzer/analyzer.py, which quotes a skip_reason= call verbatim), with a synthetic positive control and a pinned source-root list so a moved path cannot read as a clean tree."  # 49bf

@@ -1,0 +1,21 @@
+- op: create  # 4c01
+  at: '2026-09-17T03:41:05Z'  # 4c01
+  by: agent  # 4c01
+  actor: jgstern_agent  # 4c01
+  clock: 1  # 4c01
+  nonce: 4c01  # 4c01
+  data:  # 4c01
+    kind: work_item  # 4c01
+    title: "rust-analyzer's 'backend produced no output' is filed as a SKIP but the pass RAN: no skip_reason_code fits it, and its real home is silence_reason=candidates_unresolved"  # 4c01
+    status: todo_hard  # 4c01
+    priority: 3  # 4c01
+    parent:  # 4c01
+    tags:  # 4c01
+    - analysis_quality  # 4c01
+    - disclosure  # 4c01
+    isbefore: []  # 4c01
+    duplicate_of: []  # 4c01
+    not_duplicate_of: []  # 4c01
+    pr_ref:  # 4c01
+    description: "Found during WI-dukoh's conversion of 49 skip sites to skip_reason_code. Every\nother site classified cleanly; this one has no honest code, and it is filed\nrather than folded into a neighbour.\n\nTHE SITE. hypergumbo-lang-rust-analyzer/analyzer.py:\n\n    result = try_analyze_with_rust_analyzer(...)\n    if result is None:\n        return AnalysisResult(\n            skipped=True, skip_reason=\"rust-analyzer backend produced no output\",\n        )\n\nWHY NO CODE FITS.\n  backend_disabled       -- FALSE. The backend was enabled; the gate above\n                            already returned for the disabled case.\n  dependency_unavailable -- FALSE. Nothing was missing.\n  pass_crashed           -- FALSE. Nothing raised; try_analyze_with_rust_analyzer\n                            returned None.\n  no_candidate_files     -- FALSE and dangerous. The repo may be full of .rs.\n\nIt currently takes UNREPORTED, which is the correct declared residue for \"the\nproducer did not classify itself\" and is honest. But the producer DID say\nsomething; the axis has no value for what it said.\n\nTHE DEEPER PROBLEM, which is why this is a row and not a one-line fix: THIS IS\nNOT A SKIP. The pass RAN. It invoked the backend, the backend returned nothing,\nand the pass recorded a skip anyway. A pass that ran and produced nothing is\nthe population `AnalysisRun.silence_reason` exists to explain -- and the\ncorrect answer there already exists (`candidates_unresolved`: the pass carried\nits input through a stage and got nothing out). Recording it in skipped_passes\nputs it in the \"did not run\" bucket, where it inflates the skip denominator and\nis invisible to the silence summary.\n\nSo the choice is between two fixes and they need a decision, not a guess:\n  (a) Stop marking it skipped. Return a real AnalysisRun with\n      silence_reason=candidates_unresolved. Correct, and changes the WI-didil\n      \"every analyzer resolves to exactly one of an AR or a skip\" accounting\n      for this pass.\n  (b) Keep it a skip and declare a new axis value for \"an enabled backend\n      produced nothing\". Cheaper; adds a value whose only producer is one site.\n\n(a) is the better shape on the evidence -- the pass ran, so it belongs in the\nran population -- but it touches a completeness invariant and deserves its own\ndecision.\n\nRELATED: ADR-0056 §\"What would change this decision\" item 5 reserves to the\nOWNER the question of whether a pass that did not run should get an AnalysisRun\nat all. This is the mirror image: a pass that DID run and is filed as if it\nhad not.\n\nSIZING: one producer site, one test. The accounting question is the work."  # 4c01
+    fields: {}  # 4c01
