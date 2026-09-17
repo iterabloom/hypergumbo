@@ -1,0 +1,51 @@
+Original commit body from f685e584efaaac4eacd61f94d9d7795c68091a86:
+
+Measured with HYPERGUMBO_RUST_ANALYZER=1 on aardvark-dns: 669 nodes and
+637 edges carrying origin=['scip'] -- 53% and 41% of the artifact --
+entered from a pass that appeared in NEITHER analysis_runs NOR
+limits.skipped_passes, the only one of 118 registered analyzers for
+which that was true. All 1306 records had provenance resolving to
+nothing: 1308 cross_field validation violations.
+
+Three links, each individually reasonable:
+
+1. analyzer.py's success path returned AnalysisResult(symbols, edges)
+   with no run=, so AnalysisResult.run defaulted to None.
+2. collect_analyzer_result records a skip only when a run-less result
+   produced NOTHING; one that produced output was drained and then
+   dropped from the accounting entirely.
+3. translate_scip_to_hg satisfied Edge.__post_init__'s WI-higap guard by
+   constructing an AnalysisRun purely to harvest its execution_id, then
+   discarding the object.
+
+The guard is why the two halves failed differently. Edge hard-raises on
+an empty origin_run_id and Symbol does not, so the GUARDED half carried
+a well-formed UUID resolving to nothing while the unguarded half stayed
+honestly empty. An invariant written to prevent silent provenance loss
+converted an abstention into a confident wrong answer.
+
+translate_scip_to_hg has always taken run_id, and its comment says
+callers wanting real provenance should pass one -- but
+try_analyze_with_rust_analyzer had no such parameter to forward, so the
+documented escape hatch was reachable only from tests.
+
+This threads a real AnalysisRun end to end, stamps symbols as well as
+edges at the translator (so a library caller bypassing the
+orchestrator's empty-only WI-mosil backstop is still self-consistent),
+and makes the orchestrator synthesize the run a productive run-less
+producer failed to supply rather than dropping the pass. Recording a
+skip there would be a lie: the output proves the pass ran.
+
+TranslateFn is promoted from a Callable alias to a Protocol, since
+Callable cannot express the keyword-only run_id and widening to
+Callable[..., ...] would drop checking on the injection seam every
+graceful-degrade test uses.
+
+Repro re-run after the fix: 1308 violations -> 2 (an unrelated
+fingerprint degeneracy and a stable_id collision), 0 of 669 nodes and
+0 of 637 edges dangling, rust_analyzer present in analysis_runs.
+
+Closes WI-didag
+Closes WI-zabus
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
