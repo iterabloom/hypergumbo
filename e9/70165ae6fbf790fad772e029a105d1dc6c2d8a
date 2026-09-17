@@ -1,0 +1,37 @@
+Original commit body from de8b27752d079ac6274ec0ac7e5dae93204cc325:
+
+WI-dinum, part 1 of 2.
+
+Both GraphQL linkers take the **destination** of every edge they can emit from `language == "graphql"` symbols, and the only producer of those is the GraphQL *analyzer*, which reads `*.graphql` / `*.gql` and nothing else.
+
+**Measured** over every survey on disk (975 carrying `analysis_runs`, 794 carrying a GraphQL linker run):
+
+| | runs | runs with edges |
+|---|---|---|
+| `graphql-linker` | 14 | **0 — it has never emitted one** |
+| `graphql-resolver-linker` | 794 | 2 (the same repository twice) |
+| the `graphql` **analyzer** | 3 of those 794 | — |
+
+apollo-server — the canonical repository for the framework, and this row's named repro — has **zero** `.graphql` files and 22 source files containing `type Query`. The schema lives in `gql` tagged template literals, which is the dominant idiom in the ecosystem.
+
+**One branch was unreachable by construction, not by circumstance.** The resolver linker's `implements` edge keys on `kind="field"` carrying `meta["parent_type"]`, and **no producer anywhere in the tree emits a GraphQL field symbol** — the analyzer emits type / input / interface / enum / scalar / union / directive / fragment / operation, never `field`. `schema_lookup` was therefore always empty and the branch dead on every repository. Its 100% coverage came from tests that hand-construct the symbol: green in CI, dead in production.
+
+**`graphql-sdl-linker`** extracts SDL from `gql` / `graphql` tagged template literals (JS/TS) and `gql()` triple-quoted calls (Python), minting schema symbols at priority 55 — linkers in one priority group are snapshotted together and cannot read each other's output, and both consumers sit at 60.
+
+- **Infrastructure, not Framework**, by ADR-3bbb's own discriminator ("graph-structural utilities run as Tier 2 passes but **not** doing dispatch recovery"): it emits zero edges and resolves no dispatch; it is the substrate two Framework linkers join against, the same relation `inheritance-linker` has to `type-hierarchy-linker`. That classification is also what makes `depends_on=[]` honest rather than lazy — the WI-dilab closure criterion requires a non-empty declaration from Bridge/Framework/Protocol linkers, and this pass consumes no upstream pass at all. Declaring the host languages would be the too-wide false claim WI-rasal just spent two PRs removing.
+- **Class A per ADR-0031** — a `type User { ... }` inside a `gql` template is a real declaration in a real language with a real span, not a stand-in for one (the `vue_component` and `grpc.py`-proto-scan precedents). So both consumers read these symbols through their **existing** filters, unchanged.
+- **Identity is stamped in the linker**: `populate_kind_stable_ids` runs in the analyzer orchestrator, *before* linkers, and has no `field` factory in any case. Each kind uses the factory the backstop would have; fields are parent-qualified because a bare field name repeats across every type in a schema.
+- **Only `type` / `interface` / `field`** are minted — the three kinds a consumer reads. Minting `input` / `enum` / `union` nodes nothing can link to would be this row's own defect one level down.
+- **Bounded to the tagged template.** Scanning source text for `type X {` was tried and is wrong: on apollo-server it matches every TypeScript `interface ITrace {` and prose inside comments, yielding "types" named `to`, `is` and `for`. `#` comments are blanked inside the block (preserving line structure, so spans stay honest) because a `gql` template is a *string* to the host language and `read_masked_source`'s doc-region masking never reaches into it. Bodies are matched by brace balance, so a directive argument carrying an object literal does not truncate the type.
+
+**Acceptance, on the row's own repro** (`hypergumbo survey <apollo-server>`):
+
+| pass | before | after |
+|---|---|---|
+| `graphql-resolver-linker` | 91 nodes, **0 edges** | 91 nodes, **106 edges** (86 `references`, **20 `implements`** — the branch that had never fired anywhere) |
+| `graphql-sdl-linker` | — | 73 nodes from 79 files |
+| `graphql-linker` | 29 nodes, 0 edges | unchanged — part 2 |
+
+Spans hand-verified against the source: `type Book` at `httpServerTests.ts:896`, its fields at 897–898, which is what the symbols carry.
+
+Tests: 16,002 passed, `graphql_sdl.py` at 100% coverage, mypy ratchet clean at 667 (one `truthy-bool` regression I introduced — a truthiness test on a `Path` — was caught by the gate and fixed).
