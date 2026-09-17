@@ -639,10 +639,22 @@ def link_type_hierarchy(ctx: LinkerContext) -> LinkerResult:
     priority=60,  # Run after analyzers, before final cleanup
     description="Creates dispatches_to edges for polymorphic method dispatch",
     activation=LinkerActivation(always=True),  # Run on all codebases
-    # CNF: polymorphic dispatch resolution is meaningful in any OO/trait
-    # language with class/method hierarchies — Java, C#, Kotlin, Scala, Python,
-    # Ruby, JS/TS, Rust (traits), Swift, Dart, PHP, Elixir (protocols).
-    depends_on=[["python", "javascript", "ruby", "java", "csharp", "kotlin", "scala", "rust", "swift", "dart", "php", "elixir", "solidity"]],
+    # CNF: the passes that produce the extends/implements EDGES this linker
+    # indexes (WI-rasal; 10 surveys falsified the previous list, all Go repos).
+    #
+    # The old list said where polymorphic dispatch is "meaningful" — a language
+    # property. This linker never looks at a language: it builds its inheritance
+    # map out of edges, whose language-agnostic producer is
+    # ``inheritance-linker`` (hence the pass id at the head of the clause), plus
+    # the analyzers that emit ``extends``/``implements`` themselves. That is why
+    # Go repos falsified it — ``go`` is not and need not be in this list, since
+    # inheritance-linker turns Go struct embedding into the edges.
+    depends_on=[
+        [
+            "inheritance-linker", "blade", "haskell", "java", "javascript",
+            "python", "ruby", "rust", "rust_analyzer", "twig", "vhdl",
+        ],
+    ],
 )
 def _link_type_hierarchy_entry(ctx: LinkerContext) -> LinkerResult:
     """Entry point for type hierarchy linker."""
