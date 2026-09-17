@@ -193,6 +193,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`output`** — Output symbol (Terraform / shader). CANONICAL per audit-findings 0007.
 - **`package`** — Package declaration (CMake `find_package`, VHDL `package`, Go `package`, JS `package.json` synthesis, etc.). CANONICAL per audit-findings 0005.
 - **`paragraph`** — Paragraph symbol (markdown / docs). CANONICAL per audit-findings 0007.
+- **`parameter`** — Formal parameter in a callable's signature.
 - **`partial`** — Partial symbol (template). CANONICAL per audit-findings 0007.
 - **`participant`** — Participant symbol (mermaid). CANONICAL per audit-findings 0007.
 - **`pattern`** — Pattern symbol (DSL / regex). CANONICAL per audit-findings 0007.
@@ -243,6 +244,7 @@ Values that name the source-language syntactic construct the symbol represents. 
 - **`trigger`** — Pipeline / DB trigger symbol. CANONICAL per audit-findings 0006.
 - **`type`** — Type declaration (TypeScript type, Haskell type, etc.).
 - **`type_alias`** — Type alias declaration.
+- **`type_parameter`** — Generic type parameter on a type or callable (Rust/Java/TypeScript ``<T>``).
 - **`typedef`** — C/C++ typedef declaration.
 - **`union`** — Union / sum-type declaration.
 - **`value`** — Value symbol (key-value DSLs). CANONICAL per audit-findings 0007.

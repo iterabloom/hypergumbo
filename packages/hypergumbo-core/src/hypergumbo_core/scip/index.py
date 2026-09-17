@@ -99,7 +99,20 @@ _KIND_MAP: Dict[DescriptorKind, str] = {
     DescriptorKind.MACRO: "macro",
     DescriptorKind.TYPE_PARAMETER: "type_parameter",
     DescriptorKind.PARAMETER: "parameter",
-    DescriptorKind.META: "meta",
+    # INV-lagot: SCIP's META descriptor (the ``:`` suffix) is an encoding
+    # category, not a source-language construct, so ``"meta"`` could never be
+    # a registered Symbol.kind under ADR-0027's axiom. It maps to the
+    # registry's declared catch-all instead of inventing a value.
+    #
+    # NOT folded into ``attribute``, which the registry defines as "Attribute
+    # declaration (Python class attribute, etc.)" — a data member, not what
+    # SCIP means here. RE-EVALUATION TRIGGER: zero META descriptors were
+    # observed in rust-analyzer output when this was measured (681
+    # SymbolInformation entries on aardvark-dns: 500 local, 80 method, 48
+    # term, 25 type, 18 namespace, 10 type_parameter, 0 parameter, 0 meta).
+    # The first observed META instance should be inspected and given a
+    # specific kind if it has one.
+    DescriptorKind.META: "declaration",
 }
 
 
@@ -163,7 +176,14 @@ def _name_and_kind(scip_sym: Any) -> "tuple[str, str]":
         # regression that would otherwise hand us an invalid ScipSymbol.
         return "", "unknown"
     last = scip_sym.descriptors[-1]
-    return last.name, _KIND_MAP.get(last.kind, "unknown")
+    # INV-lagot: this was ``_KIND_MAP.get(last.kind, "unknown")``, minting a
+    # fourth unregistered kind. The fallback is unreachable and always was:
+    # DescriptorKind is a closed Enum, every producer in ``descriptor.py``
+    # constructs from it, and the map is total over it — a totality now held
+    # by test_scip_kind_map_conformance. A direct subscript is the honest
+    # expression of that, and a KeyError on a future ninth member is louder
+    # and more truthful than silently minting a kind nothing describes.
+    return last.name, _KIND_MAP[last.kind]
 
 
 def _build_meta(sym_info: scip_pb2.SymbolInformation) -> Dict[str, Any]:

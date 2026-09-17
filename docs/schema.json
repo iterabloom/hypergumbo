@@ -475,6 +475,8 @@
             "property": "language_construct",
             "attribute": "language_construct",
             "field": "language_construct",
+            "parameter": "language_construct",
+            "type_parameter": "language_construct",
             "constructor": "language_construct",
             "getter": "language_construct",
             "setter": "language_construct",
