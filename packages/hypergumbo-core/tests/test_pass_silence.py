@@ -23,6 +23,7 @@ from hypergumbo_core.pass_silence import (
     derive_silence_reason,
     emit_skip_summary,
     format_skip_summary,
+    prerequisite_absent_clauses,
     summarize_skip_reasons,
 )
 
@@ -229,19 +230,41 @@ class TestLinkerChokepointStamping:
     """The linker chokepoint (_run_linker_with_cache) — every linker
     invocation flows through it, so it is the one locus that sees them all."""
 
-    def _run(self, *, files, symbols, edges, reason=""):
-        import types
+    def _run(
+        self, *, files, symbols, edges, reason="",
+        # S107 false-positives on any "pass*" name; this is a pass identifier,
+        # not a password (same carve-out ir.py's AnalysisRun.create carries).
+        pass_id="demo-linker",  # noqa: S107
+        skipped_pass_codes=None,
+    ):
+        from pathlib import Path
 
         from hypergumbo_core.ir import PASS_VERSION, AnalysisRun
         from hypergumbo_core.linkers.registry import (
+            LinkerContext,
             LinkerResult,
             _run_linker_with_cache,
         )
 
+        # The chokepoint resolves the running linker's depends_on out of
+        # _LINKER_REGISTRY, which is populated by @register_linker IMPORT
+        # SIDE-EFFECT. Without these the registry is empty, every lookup
+        # misses, and every assertion below would pass for the wrong reason --
+        # the same vacuous-control shape WI-jijor found in the catalog tests.
+        import hypergumbo_core.linkers.pyffi
+        import hypergumbo_core.linkers.tauri_ipc
+
         run = AnalysisRun.create(pass_id="demo-linker", version=PASS_VERSION)
         run.files_analyzed = files
         run.silence_reason = reason
-        ctx = types.SimpleNamespace(parsed_trees={})
+        # A REAL LinkerContext, not a SimpleNamespace stand-in: the chokepoint
+        # now reads two more fields off it, and a hand-rolled double is exactly
+        # the kind of fake that passes while the production shape drifts.
+        ctx = LinkerContext(
+            repo_root=Path("."),
+            linker_pass_id=pass_id,
+            skipped_pass_codes=dict(skipped_pass_codes or {}),
+        )
         result = _run_linker_with_cache(
             lambda _c: LinkerResult(symbols=symbols, edges=edges, run=run), ctx)
         return result.run
@@ -281,6 +304,72 @@ class TestLinkerChokepointStamping:
                     origin="demo-linker", origin_run_id="uuid:test")
         assert self._run(files=9, symbols=[], edges=[edge],
                          reason=NO_CANDIDATE_CONSTRUCT).silence_reason == ""
+
+    def test_blocked_prerequisite_replaces_the_DERIVED_reason(self):
+        """WI-dabup: the headline. no_candidate_files here is a FALSE claim.
+
+        tauri-ipc-linker declares [["javascript"], ["rust"]]. On a JS+Rust repo
+        whose Rust grammar is missing it reads zero files and the orchestrator
+        derives no_candidate_files -- "nothing to find, and no ordering or
+        declaration mechanism would change it". Installing the grammar changes
+        it. prerequisite_absent is the true answer and it is actionable.
+        """
+        assert self._run(
+            files=0, symbols=[], edges=[],
+            pass_id="tauri-ipc-linker",
+            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE},
+        ).silence_reason == PREREQUISITE_ABSENT
+
+    def test_prerequisite_absent_does_NOT_override_a_BODY_claim(self):
+        """The #1008 guard is preserved, and this is not a formality.
+
+        Measured on the same repository, pyffi-linker is silent with the SAME
+        blocked conjunct and its body truthfully claims no_candidate_construct:
+        it scanned the Python side and there are genuinely no FFI call sites,
+        so the missing Rust grammar is irrelevant to ITS silence. Overruling it
+        would replace a true claim with a plausible one.
+        """
+        assert self._run(
+            files=12, symbols=[], edges=[], reason=NO_CANDIDATE_CONSTRUCT,
+            pass_id="pyffi-linker",
+            skipped_pass_codes={"c": NO_CANDIDATE_FILES,
+                                "cpp": NO_CANDIDATE_FILES,
+                                "rust": DEPENDENCY_UNAVAILABLE},
+        ).silence_reason == NO_CANDIDATE_CONSTRUCT
+
+    def test_a_prerequisite_absent_for_a_FILE_reason_is_not_stamped(self):
+        """State A stays State A. The repo simply has no Rust."""
+        assert self._run(
+            files=0, symbols=[], edges=[],
+            pass_id="tauri-ipc-linker",
+            skipped_pass_codes={"rust": NO_CANDIDATE_FILES},
+        ).silence_reason == NO_CANDIDATE_FILES
+
+    def test_a_productive_linker_is_never_stamped_prerequisite_absent(self):
+        """It emitted. There is no silence to explain, blocked or not."""
+        from hypergumbo_core.ir import Edge
+
+        edge = Edge(id="e", src="a", dst="b", edge_type="calls", line=1,
+                    origin="demo-linker", origin_run_id="uuid:test")
+        assert self._run(
+            files=4, symbols=[], edges=[edge],
+            pass_id="tauri-ipc-linker",
+            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE},
+        ).silence_reason == ""
+
+    def test_unknown_pass_id_falls_through_to_the_derived_reason(self):
+        """The by-name run_linker path sets no pass id; no declaration, no stamp."""
+        assert self._run(
+            files=0, symbols=[], edges=[],
+            pass_id="",
+            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE},
+        ).silence_reason == NO_CANDIDATE_FILES
+
+    def test_no_skip_map_falls_through(self):
+        """A caller with no Limits sink cannot be blocked by what it cannot see."""
+        assert self._run(
+            files=0, symbols=[], edges=[], pass_id="tauri-ipc-linker",
+        ).silence_reason == NO_CANDIDATE_FILES
 
     def test_a_linker_without_a_run_does_not_crash_the_wrapper(self):
         import types
@@ -457,3 +546,114 @@ class TestEmitSkipSummary:
         err = capsys.readouterr().err
         assert err.count("\n") == 1
         assert "dependency_unavailable=1" in err
+
+
+class TestPrerequisiteAbsentClauses:
+    """WI-dabup / ADR-0056 W3: the producer `prerequisite_absent` never had.
+
+    The discriminator is NOT "is the conjunct satisfied" — 98.94% of skip
+    records are `no files matched`, so an unsatisfied conjunct nearly always
+    means the repository lacks that language, which is State A and a correct
+    no-op. Stamping THAT as an ordering defect would be the axis's founding sin
+    committed inside the axis built to cure it. The discriminator is "was the
+    missing literal skipped for a FILE reason or a TOOLCHAIN reason", which is
+    exactly what W2's `skip_reason_code` made askable.
+    """
+
+    def test_no_declarations_gives_nothing(self) -> None:
+        assert prerequisite_absent_clauses([], {}) == []
+
+    def test_satisfied_clause_is_not_reported(self) -> None:
+        """A literal that RAN satisfies the clause, whatever it produced."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"c": "no_candidate_files"},
+        ) == []
+
+    def test_clause_missing_for_a_FILE_reason_is_not_reported(self) -> None:
+        """State A. The repo has no Rust; nothing is out of order.
+
+        This is the case that makes the naive "unsatisfied conjunct" rule
+        wrong, and it is 98.94% of all skip records.
+        """
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": NO_CANDIDATE_FILES},
+        ) == []
+
+    def test_clause_missing_for_a_TOOLCHAIN_reason_IS_reported(self) -> None:
+        """State C. The repo HAS Rust; the grammar is not installed."""
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": DEPENDENCY_UNAVAILABLE},
+        ) == [["rust"]]
+
+    def test_backend_disabled_also_counts_as_a_toolchain_reason(self) -> None:
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": BACKEND_DISABLED},
+        ) == [["rust"]]
+
+    def test_crashed_prerequisite_counts(self) -> None:
+        assert prerequisite_absent_clauses(
+            [["go"]], {"go": PASS_CRASHED},
+        ) == [["go"]]
+
+    def test_unclassified_prerequisite_counts(self) -> None:
+        """`unreported` is not `no_candidate_files`.
+
+        A producer that did not classify itself has NOT said the repo lacked
+        the files, so this cannot be waved through as State A. Reporting it is
+        the conservative direction: it surfaces a pass whose prerequisite went
+        missing for a reason nobody recorded.
+        """
+        assert prerequisite_absent_clauses(
+            [["rust"]], {"rust": UNREPORTED},
+        ) == [["rust"]]
+
+    def test_or_clause_needs_EVERY_literal_missing(self) -> None:
+        """One surviving member satisfies the disjunction."""
+        assert prerequisite_absent_clauses(
+            [["c", "cpp", "rust"]], {"c": NO_CANDIDATE_FILES,
+                                     "rust": DEPENDENCY_UNAVAILABLE},
+        ) == []
+
+    def test_or_clause_with_one_toolchain_member_among_file_members(self) -> None:
+        """All missing, and at least one for a toolchain reason -> State C.
+
+        The mixed case is the realistic one: a bridge linker wants c OR cpp OR
+        rust, the repo has no C at all, and the Rust grammar is missing. The
+        pass could have worked and did not.
+        """
+        assert prerequisite_absent_clauses(
+            [["c", "cpp", "rust"]],
+            {"c": NO_CANDIDATE_FILES, "cpp": NO_CANDIDATE_FILES,
+             "rust": DEPENDENCY_UNAVAILABLE},
+        ) == [["c", "cpp", "rust"]]
+
+    def test_all_members_missing_for_file_reasons_is_still_State_A(self) -> None:
+        assert prerequisite_absent_clauses(
+            [["c", "cpp"]],
+            {"c": NO_CANDIDATE_FILES, "cpp": NO_CANDIDATE_FILES},
+        ) == []
+
+    def test_only_the_offending_conjunct_is_returned(self) -> None:
+        """A satisfied conjunct alongside a blocked one is not reported."""
+        assert prerequisite_absent_clauses(
+            [["javascript"], ["rust"]],
+            {"rust": DEPENDENCY_UNAVAILABLE},
+        ) == [["rust"]]
+
+    def test_empty_clause_is_skipped(self) -> None:
+        """A vacuous conjunct blocks nothing and must not report."""
+        assert prerequisite_absent_clauses([[]], {"rust": PASS_CRASHED}) == []
+
+    def test_a_linker_literal_is_never_blocking(self) -> None:
+        """Only ANALYZER passes appear in skipped_passes.
+
+        The spec is explicit that non-analyzer passes are not enumerated there
+        ("a linker with no applicable targets is a correct no-op, not a pass
+        that did not run"), so a clause naming a LINKER can never be seen as
+        missing. That reads as satisfied, which is the conservative direction:
+        it under-reports rather than inventing an ordering defect from a
+        population this channel does not cover.
+        """
+        assert prerequisite_absent_clauses(
+            [["inheritance-linker"]], {"rust": DEPENDENCY_UNAVAILABLE},
+        ) == []
