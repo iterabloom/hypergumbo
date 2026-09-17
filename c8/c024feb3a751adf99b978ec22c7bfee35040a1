@@ -1,0 +1,51 @@
+Original commit body from 2152f47d8b20597ecdb4346dc044f94c188b7684:
+
+ADR-0056 W2 / WI-dukoh. `dependency_unavailable`, `backend_disabled` and
+`pass_crashed` were never missing a producer -- they were on the wrong
+dataclass. A pass that did not run has no AnalysisRun, and `silence_reason` is
+a field ON AnalysisRun, so there was no carrier in existence to stamp. They
+move to `limits.skipped_passes[].skip_reason_code`, where their free-text twins
+already lived. SCHEMA_VERSION 0.20.8 -> 0.20.9.
+
+ONE CHANNEL, TWO FIELDS. The prose `reason` stays: it carries the pip command
+and the exception text, payload a code cannot express. Not a dual write.
+
+THE DRIFT WAS CALLED LATENT; IT IS NOW OBSERVED. pass_silence's own sizing
+(490 surveys, 39,757 records, only TWO strings) was honest about its blindness
+and wrong about what was concluded from it -- the blindness was a venv, not a
+law. A venv without tree-sitter-language-pack, surveying one ordinary repo,
+produces 29 skip records in 28 distinct spellings in a single run. The bare
+environment was constructed rather than waited for, and the migration is
+verified there end to end: 107 of 107 entries classified, 31
+dependency_unavailable, ZERO unreported.
+
+FORTY-NINE PRODUCER SITES ACROSS THIRTY-EIGHT FILES, not the "~4 sites, two
+f-string templates" this was sized at -- the grammar-missing f-string is
+copy-pasted into thirty analyzers, not inherited. Measured before designing
+against the estimate.
+
+THE PARSER-INIT FAMILY GETS ITS RULING. Six sites report a parser that failed
+to INITIALISE: the grammar is installed and the constructor raised. That is not
+dependency_unavailable ("install the package" is the wrong advice) so it is
+stamped pass_crashed, whose declaration is true of a caught constructor
+exception and says nothing about who contained it. This gives pass_crashed real
+producers; ADR-0056 called it speculative on zero instances, which measured the
+free-text twin rather than the state.
+
+AN UNCLASSIFIED SKIP READS AS `unreported`, NEVER `no_candidate_files`.
+Bucketing a missing code under the value that is 98.94% of all skip records
+would manufacture the majority answer for every unconverted producer -- the
+absent-versus-empty substitution at the one moment it is easiest to commit. An
+AST gate with a synthetic positive control keeps the next analyzer from
+reopening the hole.
+
+skipped_passes ALSO GETS ITS FIRST READER. It has been serialized on every
+survey since the field existed and nothing ever summarized it. A second stderr
+line reports it, kept separate from the pass-silence line because "did not run"
+and "ran and found nothing" are different populations with different
+denominators.
+
+Three rotted `file:line` citations in module_key_axis re-pointed -- the
+inserted imports shifted them, which is what that test exists to catch.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
