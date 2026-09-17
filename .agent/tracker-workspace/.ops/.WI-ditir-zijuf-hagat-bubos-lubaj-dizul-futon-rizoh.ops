@@ -1,0 +1,28 @@
+- op: create  # e110
+  at: '2026-09-17T08:35:59Z'  # e110
+  by: agent  # e110
+  actor: jgstern_agent  # e110
+  clock: 1  # e110
+  nonce: e110  # e110
+  data:  # e110
+    kind: work_item  # e110
+    title: "database-query-linker declares 11 host languages and scans 4 globs; too-wide depends_on clauses are invisible to falsification"  # e110
+    status: todo_hard  # e110
+    priority: 2  # e110
+    parent:  # e110
+    tags:  # e110
+    - analysis_quality  # e110
+    - disclosure  # e110
+    isbefore: []  # e110
+    duplicate_of: []  # e110
+    not_duplicate_of: []  # e110
+    pr_ref:  # e110
+    description: "database-query-linker declares eleven host languages in its second conjunct:\n[\"python\",\"javascript\",\"ruby\",\"java\",\"go\",\"csharp\",\"rust\",\"kotlin\",\"scala\",\n\"elixir\",\"php\"]. It scans four glob patterns and only four:\n\n    _find_source_files: [\"**/*.py\", \"**/*.js\", \"**/*.ts\", \"**/*.java\"]\n\nand dispatches to exactly three scanners (_scan_python_queries,\n_scan_javascript_queries, _scan_java_queries). So eight of the eleven literals\n(ruby, go, csharp, rust, kotlin, scala, elixir, php) name neither a pass whose\noutput it reads nor a file it opens.\n\nWHY THIS IS NOT JUST COSMETIC. Too wide is the false-all-clear direction for\nthis axis: a single OR clause is satisfied by any one member, so eight\nnever-scanned languages make the clause satisfiable on repos where the linker\ncannot possibly have read anything. That is the same defect WI-rasal repaired\nin the other direction, and it is invisible to find_falsified_dependencies,\nwhich can only catch a clause that is too NARROW.\n\nNOT FOUND BY FALSIFICATION -- found by reading the body while repairing the\nsibling clauses under WI-rasal. It was deliberately left out of that row, whose\ndeliverable was scoped to the six clauses the corpus falsified.\n\nTHE HARDER QUESTION, which is why this is a row and not a one-line edit: the\nhost-language conjunct may not be a depends_on fact at all. This linker reads\nthe files itself; it does not consume python/javascript/java analyzer OUTPUT.\nIts only true pass dependency is [\"sql\"] (the kind=\"table\" dst symbols), which\nIS correctly declared. Under the field's own definition -- \"the upstream\nanalyzer pass IDs whose output this linker structurally requires\" -- the honest\nrepair may be to DELETE the conjunct rather than narrow it to three, and to\nrecord the scan capability on `activation`, where the file-shape facts live.\nDeleting a conjunct weakens a declaration, so it wants its own evidence-backed\ndecision rather than a drive-by.\n\nSIBLINGS TO CHECK IN THE SAME SWEEP (same shape: a linker that scans files\nitself while declaring host languages): graphql-linker, graphql-resolver-linker,\nevent_sourcing, message_queue, subprocess_cli, http, crypto_flow. Each declares\na wide host-language clause; each scans its own globs. Enumerate before\ndeciding -- the point of WI-rasal was that the list and the mechanism had\ndrifted apart, and a clause that is too wide drifts the same way."  # e110
+    fields: {}  # e110
+- op: discuss  # f06d
+  at: '2026-09-17T10:14:55Z'  # f06d
+  by: agent  # f06d
+  actor: jgstern_agent  # f06d
+  clock: 2  # f06d
+  nonce: f06d  # f06d
+  message: "SCOPE NARROWED BY ONE: graphql-linker is settled, in PR #1025 under WI-dinum.\n\nIts clause named six HOST languages (javascript/python/java/ruby/go + graphql)\nwhile the linker reads source files itself and consumes no host analyzer's\noutput. Repaired to [[\"graphql\", \"graphql-sdl-linker\"]] -- the two passes that\ncan supply an edge DESTINATION. That is the shape this row proposes for the\nfamily: name what supplies the destination, not where the source pattern was\nfound.\n\nStill on this row: database-query-linker (the filed instance),\ngraphql-resolver-linker, event_sourcing, message_queue, subprocess_cli, http,\ncrypto_flow."  # f06d

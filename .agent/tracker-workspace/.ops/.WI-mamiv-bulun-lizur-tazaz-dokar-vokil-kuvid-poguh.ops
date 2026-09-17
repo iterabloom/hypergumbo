@@ -1,0 +1,21 @@
+- op: create  # 5cf3
+  at: '2026-09-17T18:33:37Z'  # 5cf3
+  by: agent  # 5cf3
+  actor: jgstern_agent  # 5cf3
+  clock: 1  # 5cf3
+  nonce: 5cf3  # 5cf3
+  data:  # 5cf3
+    kind: work_item  # 5cf3
+    title: "no_candidate_files is 130 of 162 passes split across silence_reason and skip_reason_code, and the host is chosen by taxonomy membership + analyzer return style, not by any property of the silence"  # 5cf3
+    status: todo_hard  # 5cf3
+    priority: 2  # 5cf3
+    parent:  # 5cf3
+    tags:  # 5cf3
+    - analysis_quality  # 5cf3
+    - disclosure  # 5cf3
+    isbefore: []  # 5cf3
+    duplicate_of: []  # 5cf3
+    not_duplicate_of: []  # 5cf3
+    pr_ref:  # 5cf3
+    description: "Found by the 2026-09-17 fundamental concept audit of the pass-silence host\nboundary. Write-up: ~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md\n\nTHE MEASUREMENT. hypergumbo survey on component-model-demo, 162 passes\n(79 analysis_runs + 83 skipped_passes):\n\n    silence_reason    no_candidate_files = 48\n    skip_reason_code  no_candidate_files = 82\n\n130 of 162 passes carry the SAME VALUE, split across two fields with two names.\n\nWHAT DECIDES THE HOST. Not a property of the silence. Three routes:\n\n  route                                          discriminator                        n   host\n  pre-filter short-circuit                       every declared lang in               75  skipped_passes\n                                                 taxonomy.LANGUAGE_EXTENSIONS\n  dispatched, returns bare AnalysisResult()      analyzer's own return style           7  skipped_passes\n  dispatched, returns run with files_analyzed=0  analyzer's own return style          26  analysis_runs\n\nMeasured cleanly: 0 in-taxonomy analyzers report through silence_reason, 75\nthrough skip_reason_code; 26 out-of-taxonomy through silence_reason, 7 through\nskip_reason_code. `apex`, `twig`, `make` report the fact through one field;\n`java`, `matlab`, `scss` report the IDENTICAL fact -- zero files of that\nlanguage in this repo -- through the other.\n\nSo the discriminator is LANGUAGE_EXTENSIONS membership and analyzer return\nstyle: PRODUCER REGISTRATION AND IMPLEMENTATION DETAIL, not anything about why\nthe pass was silent.\n\nWHY THIS IS NOT \"JUST MERGE THEM\". The skip host genuinely needs the value --\nit has no files_analyzed to derive it from. On AnalysisRun, by contrast,\nno_candidate_files IS files_analyzed==0 by construction (derive_silence_reason\ncomputes it from that counter alone), so 48 of 79 runs carry a value the\nconsumer could already compute. Informative on one host, redundant on the\nother. Collapsing either side destroys information; the fix is to say what the\nrule is and give consumers a union.\n\nTHE CONSUMER CONSEQUENCE (SB-4 in the write-up). Nothing in the tree unions the\ntwo populations. The two stderr lines say:\n\n    [passes] 64 of 79 emitted nothing: no_candidate_files=48, ...\n    [passes] 83 of 162 did not run: no_candidate_files=82, ...\n\n\"130 of 162 passes had no input\" is emitted nowhere, and a reader who adds the\ntwo headline numbers gets a wrong answer because the denominators differ (79\nvs 162). Every reader of either field in production is one of: the two stderr\nsummaries, and prerequisite_absent_clauses. There is no third.\n\nPROPOSED SHAPE (not a decision -- the host policy itself is reserved to the\nowner, see the sibling row on ADR-0056 item 5):\n  (a) state the ACTUAL host rule in pass_silence.py and the spec, replacing\n      the \"did the pass run?\" framing, which is not what the code does;\n  (b) add a union consumer helper on the axis (the playbook's \"consumer\n      pattern\" artifact), so a caller asking \"which passes had no input?\"\n      stops having to know about the pre-filter.\n\nNOT CLAIMED: corpus-wide measurement. One repo. The routing discriminator is\nstructural so it generalises by construction, but the 48/82 split is\nrepo-specific."  # 5cf3
+    fields: {}  # 5cf3
