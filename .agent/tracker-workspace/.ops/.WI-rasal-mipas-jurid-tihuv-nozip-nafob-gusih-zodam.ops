@@ -19,3 +19,17 @@
     pr_ref:  # 0716
     description: "Found by WI-jijor's falsification detector on its first run. ADR-0056's\n\"What would change this decision\" item 2 names this outcome exactly:\n\n  \"Ten hits means declaration repair, not W2, is the blocker.\"\n\nMEASURED, not reasoned. find_falsified_dependencies run over every survey on\ndisk carrying analysis_runs (893 surveys; the other 57,026 JSON files under\nthe artifact roots are cloned repo sources, not surveys - package.json,\nreflect-config.json et al. - and the 4.4% first-pass read rate was a wrong\nDENOMINATOR, not a broken reader).\n\n  surveys with analysis_runs : 893\n  surveys with >=1 falsified : 261   (29.2%)\n  distinct (pass, clause)    : 6 across 5 passes\n\n  227  inherited-calls-linker   unsatisfied ['java','ruby','groovy']\n   67  database-query-linker    unsatisfied ['sql']\n   18  inheritance-linker       unsatisfied [12 languages, no 'go']\n   10  type-hierarchy-linker    unsatisfied [12 languages + solidity, no 'go']\n    4  build-target-linker      unsatisfied ['toml','json']\n    4  build-target-linker      unsatisfied ['rust','javascript','go','python','java']\n\nREPRODUCED AT TIP, not only in the archive: a survey of ~/whole_bunch_of_repos/\ncompose-go (Go-only, 150 .go files) with current code emits the advisory naming\ninheritance-linker and type-hierarchy-linker.\n\nHAND-VERIFIED INSTANCE: on logrus (47 .go files, nothing else but markdown and\nyaml), inheritance-linker emitted 30 EDGES while NONE of its twelve declared\nlanguages ran. The edges are real; the declaration is wrong.\n\nTHIS ANSWERS WI-jijor'S OPEN QUESTIONS, and the answer is the same for all\nthree: coverage gap, not correct declaration. WI-jijor asked whether\nmethod-call-recovery-linker omitting 'go' from a 12-language clause was a\ncorrect declaration or a gap; the sibling passes with the identical clause are\nnow MEASURED emitting output on Go repos.\n\nWHAT THIS IS NOT. It is not a run-time defect - every falsified pass did useful\nwork. It is the DECLARATION that is wrong, so the repair is to the depends_on\nliterals, and nothing about it justifies wiring the gate INV-hujog asks for\n(LIVE.md §2: raising is the withholding direction; a gate here would have\naborted 29% of surveys).\n\nONE METHODOLOGICAL CAVEAT, stated rather than buried: tip declarations were\napplied to historical runs, and pass IDs have been renamed over the corpus's\nlifetime (older surveys carry 'inherited-calls', 'di-resolution' without the\n'-linker' suffix). A clause literal naming a RENAMED PASS would falsely read\nunsatisfied. All six reported clauses consist of LANGUAGE literals, whose pass\nids are stable, so the reported set is not affected - but a future re-run\nshould stratify by schema_version.\n\nDELIVERABLE: repair the six clauses (or rule that a clause is deliberately\nnarrow and say why in the declaration). Each repair is a separate evidence-\nbacked decision; do not widen them in bulk."  # 0716
     fields: {}  # 0716
+- op: discuss  # e5db
+  at: '2026-09-17T07:57:36Z'  # e5db
+  by: agent  # e5db
+  actor: jgstern_agent  # e5db
+  clock: 2  # e5db
+  nonce: e5db  # e5db
+  message: "Merged as PR #1021, dev SHA 9edff809e3c4."  # e5db
+- op: discuss  # 20cf
+  at: '2026-09-17T08:27:59Z'  # 20cf
+  by: agent  # 20cf
+  actor: jgstern_agent  # 20cf
+  clock: 3  # 20cf
+  nonce: 20cf  # 20cf
+  message: "Merged as PR #1022, dev SHA 973f6737237d."  # 20cf
