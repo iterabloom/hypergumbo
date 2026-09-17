@@ -99,6 +99,37 @@ ANONYMOUS_QUERY_PATTERN = re.compile(
     re.MULTILINE,
 )
 
+# The first field selected inside an operation's selection set — the root
+# field, which is what the operation actually invokes on the server. The
+# selection set is the first BRACE group: variable definitions are
+# parenthesised (``query GetUser($id: ID!) { user(...) }``), so the first ``{``
+# opens the selection set unless a variable carries an object default.
+# Leading ``#`` comment lines inside the set are skipped.
+ROOT_FIELD_PATTERN = re.compile(
+    r"\{\s*(?:#[^\n]*\n\s*)*([A-Za-z_]\w*)",
+)
+
+# The three root types a root field can be declared on.
+_ROOT_TYPE_FOR_OPERATION = {
+    "query": "query",
+    "mutation": "mutation",
+    "subscription": "subscription",
+}
+
+
+def _root_field(query: str) -> str | None:
+    """The root field an operation selects, or None.
+
+    A fragment definition has a selection set too, but it selects fields on a
+    named type rather than invoking a root field, so it is excluded — matching
+    :func:`_extract_operation_name`, which already refuses to call a fragment
+    an operation.
+    """
+    if query.lstrip().startswith("fragment"):
+        return None
+    match = ROOT_FIELD_PATTERN.search(query)
+    return match.group(1) if match else None
+
 
 def _extract_operation_name(query: str) -> tuple[str | None, str | None]:
     """Extract operation type and name from a GraphQL query.
@@ -236,12 +267,40 @@ def _create_client_symbol(call: GraphQLClientCall, root: Path) -> Symbol:
     )
 
 
-def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
+def link_graphql(
+    root: Path,
+    schema_symbols: list[Symbol],
+    schema_fields: list[Symbol] | None = None,
+) -> GraphQLLinkResult:
     """Link GraphQL client calls to schema definitions.
+
+    Two joins, and they answer different questions (WI-dinum).
+
+    **Operation name → operation name** is the original, and it is not a
+    client-to-server join at all. A client operation NAME is an arbitrary
+    client-side label; a schema does not declare one. This match only succeeds
+    when some other document in the repository declares an operation of the
+    same name — a codegen ``.graphql`` document, typically — so what it
+    actually recovers is document-to-document identity. Real, worth keeping,
+    but it is why the linker emitted **0 edges in 14 corpus runs**: it can
+    never fire on a repository that has no ``.graphql`` documents, which is
+    most of them.
+
+    **Root field → schema field** is the client-to-server join.
+    ``query GetUsers { users { id } }`` invokes ``Query.users``, and
+    ``Query.users`` is a thing a schema really does declare. With
+    ``graphql-sdl-linker`` supplying schema fields out of embedded SDL, this
+    fires on repositories that keep their schema in a ``gql`` template — 22 of
+    apollo-server's 29 client calls resolve this way.
 
     Args:
         root: Repository root path.
-        schema_symbols: Operation symbols from GraphQL analyzer.
+        schema_symbols: Operation symbols (kind query/mutation/subscription/
+            operation), from the GraphQL analyzer's parse of a ``.graphql``
+            document.
+        schema_fields: Schema FIELD symbols carrying ``meta["parent_type"]``,
+            from ``graphql-sdl-linker`` or the analyzer. Optional so the
+            operation-name join keeps working for a caller that has none.
 
     Returns:
         GraphQLLinkResult with edges linking clients to schema.
@@ -258,6 +317,14 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
     for sym in schema_symbols:
         if sym.kind in ("query", "mutation", "subscription", "operation"):
             operation_map[sym.name.lower()] = sym
+
+    # Build `<root type>.<field>` to symbol mapping, keyed the same way
+    # graphql_resolver.py keys its own schema lookup.
+    field_map: dict[str, Symbol] = {}
+    for sym in schema_fields or []:
+        parent = (sym.meta or {}).get("parent_type", "")
+        if parent:
+            field_map[f"{parent.lower()}.{sym.name.lower()}"] = sym
 
     # Collect all GraphQL client calls
     all_calls: list[GraphQLClientCall] = []
@@ -283,7 +350,7 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
         client_symbol.origin_run_id = run.execution_id
         symbols.append(client_symbol)
 
-        # Try to match to a schema operation
+        # JOIN 1 — same-named operation in another document.
         if call.operation_name:
             op_key = call.operation_name.lower()
             if op_key in operation_map:
@@ -297,7 +364,11 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     dst=schema_sym.id,
                     edge_type="calls",
                     line=call.line,
-                    confidence=0.9 if call.operation_name else 0.7,
+                    # The former `0.9 if call.operation_name else 0.7` sat
+                    # INSIDE `if call.operation_name:`, so the 0.7 arm could
+                    # not be reached (WI-dinum). Stated as the constant it
+                    # always was rather than left looking like a decision.
+                    confidence=0.9,
                     origin=PASS_ID,
                     origin_run_id=run.execution_id,
                     evidence_type="ast_call_direct",
@@ -312,6 +383,39 @@ def link_graphql(root: Path, schema_symbols: list[Symbol]) -> GraphQLLinkResult:
                     "framework_dispatch": "graphql_operation",
                 }
                 edges.append(edge)
+                continue
+
+        # JOIN 2 — the root field the operation actually invokes.
+        root_field = _root_field(call.query_text)
+        root_type = _ROOT_TYPE_FOR_OPERATION.get(call.operation_type or "query")
+        if root_field is None or root_type is None:
+            continue
+        schema_field = field_map.get(f"{root_type}.{root_field.lower()}")
+        if schema_field is None:
+            continue
+        edge = Edge.create(
+            src=client_symbol.id,
+            dst=schema_field.id,
+            edge_type="calls",
+            line=call.line,
+            # Below the name-identity join: that one matches a declared name
+            # exactly, this one reads the first field of a selection set with
+            # a regex and could be wrong about a query whose variable default
+            # opens a brace before the selection set does.
+            confidence=0.8,
+            origin=PASS_ID,
+            origin_run_id=run.execution_id,
+            evidence_type="ast_call_direct",
+            derived_from=[client_symbol.id, schema_field.id],
+        )
+        edge.meta = {
+            "protocol": "graphql",
+            "operation_type": call.operation_type,
+            "operation_name": call.operation_name,
+            "root_field": root_field,
+            "framework_dispatch": "graphql_operation",
+        }
+        edges.append(edge)
 
     run.duration_ms = int((time.time() - start_time) * 1000)
     run.files_analyzed = files_scanned
@@ -338,16 +442,44 @@ def _get_graphql_operation_symbols(ctx: LinkerContext) -> list[Symbol]:
     ]
 
 
+def _get_graphql_schema_field_symbols(ctx: LinkerContext) -> list[Symbol]:
+    """Extract GraphQL schema FIELD symbols from context.
+
+    The destination of the root-field join. Produced by
+    ``graphql-sdl-linker`` from SDL embedded in a ``gql`` template (WI-dinum);
+    the GraphQL analyzer has never emitted this kind.
+    """
+    return [
+        s for s in ctx.symbols
+        if s.language == "graphql"
+        and s.kind == "field"
+        and (s.meta or {}).get("parent_type")
+    ]
+
+
 def _count_graphql_operations(ctx: LinkerContext) -> int:
     """Count available GraphQL operation symbols for requirement check."""
     return len(_get_graphql_operation_symbols(ctx))
 
 
+def _count_graphql_schema_fields(ctx: LinkerContext) -> int:
+    """Count available GraphQL schema field symbols for requirement check."""
+    return len(_get_graphql_schema_field_symbols(ctx))
+
+
+# Two requirements, because the linker now has two joins with different
+# destinations and reporting only the first would describe a linker that can
+# work as one that cannot (these are diagnostics, not a gate).
 GRAPHQL_REQUIREMENTS = [
     LinkerRequirement(
         name="graphql_operations",
         description="GraphQL operation symbols (query/mutation/subscription)",
         check=_count_graphql_operations,
+    ),
+    LinkerRequirement(
+        name="graphql_schema_fields",
+        description="GraphQL schema field symbols (root-field join targets)",
+        check=_count_graphql_schema_fields,
     ),
 ]
 
@@ -358,10 +490,14 @@ GRAPHQL_REQUIREMENTS = [
     description="GraphQL client-schema linking (gql calls to operations)",
     requirements=GRAPHQL_REQUIREMENTS,
     activation=LinkerActivation(frameworks=["graphql"]),
-    # CNF: GraphQL has client SDKs in JS/TS (apollo-client/urql/relay), Python
-    # (graphene/strawberry), Java (graphql-java), Ruby (graphql-ruby), Go
-    # (gqlgen). Schema docs themselves are the graphql analyzer.
-    depends_on=[["javascript", "python", "java", "ruby", "go", "graphql"]],
+    # CNF: the passes that can supply the destination of either join —
+    # ``graphql`` for a .graphql document's operations, ``graphql-sdl-linker``
+    # for schema fields lifted out of an embedded gql template (WI-dinum).
+    # The former list named six HOST languages, which is where the CLIENT call
+    # is found; this linker reads those files itself and consumes no host
+    # analyzer's output, so naming them was the too-wide shape WI-rasal
+    # repaired elsewhere.
+    depends_on=[["graphql", "graphql-sdl-linker"]],
 )
 def graphql_linker(ctx: LinkerContext) -> LinkerResult:
     """GraphQL linker for registry-based dispatch.
@@ -370,7 +506,8 @@ def graphql_linker(ctx: LinkerContext) -> LinkerResult:
     Extracts GraphQL operation symbols from ctx and delegates to core linking.
     """
     operation_symbols = _get_graphql_operation_symbols(ctx)
-    result = link_graphql(ctx.repo_root, operation_symbols)
+    field_symbols = _get_graphql_schema_field_symbols(ctx)
+    result = link_graphql(ctx.repo_root, operation_symbols, field_symbols)
 
     return LinkerResult(
         symbols=result.symbols,
