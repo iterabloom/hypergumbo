@@ -38,8 +38,9 @@ Asserted at CI by :file:`scripts/check-pass-id-agreement`.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 @dataclass
@@ -75,8 +76,15 @@ class Pass:
             - :func:`validate_pass_dependencies` is the forward-looking
               runtime check: given an active subset of passes, every outer
               AND-conjunct must contain at least one literal in the active
-              set. Not yet wired into ``run_behavior_map``; deferred to a
-              Phase 2 WI that adds config-time pass-filtering plumbing.
+              set. Still not wired into ``run_behavior_map`` and deliberately
+              so — it RAISES, and raising is the withholding direction
+              (WI-jijor measured 29% of surveys carrying a falsified
+              declaration, so a gate would abort more than it protected).
+            - :func:`find_falsified_dependencies` is the BACKWARD-looking twin
+              that IS wired (WI-jijor / ADR-0056 W1): the same CNF predicate
+              read against runs that already happened, reporting a pass that
+              emitted output despite an unsatisfied conjunct. It reports and
+              never raises, which is why it may run where the gate may not.
     """
 
     id: str
@@ -151,8 +159,16 @@ def validate_pass_name_resolution(passes: List[Pass]) -> None:
     ``Pass.depends_on`` is CNF (outer-AND of inner-OR clauses), per the WI-dilab
     schema. This validator iterates every literal across every clause and
     requires it to match the ``id`` of a registered pass. Independent of which
-    passes are runtime-active — purely a typo / drift check that runs at
-    catalog-build time and in CI.
+    passes are runtime-active — purely a typo / drift check.
+
+    **Where it actually runs, corrected (WI-jijor).** This docstring used to
+    claim it runs "at catalog-build time and in CI". It has never had a
+    production call site; the only thing that invokes it is
+    ``TestCatalogStaticConsistency`` — and until WI-jijor that test built the
+    catalog WITHOUT importing the linker modules, which register by import
+    side-effect, so it validated 118 analyzers and zero ``depends_on``
+    conjuncts. It is a CI check now because that test was repaired, not
+    because the catalog builder calls it.
 
     Distinct from :func:`validate_pass_dependencies` (which checks the OR-arm
     runtime semantics: every outer-AND-conjunct must contain at least one
@@ -237,6 +253,139 @@ def validate_pass_dependencies(active_passes: List[Pass]) -> None:
         raise ValueError(
             "Pass dependency CNF validation failed:\n  " + "\n  ".join(lines)
         )
+
+
+def find_falsified_dependencies(
+    passes: List[Pass],
+    runs: Iterable[Mapping[str, Any]],
+) -> List[Tuple[str, List[List[str]]]]:
+    """Report passes that EMITTED OUTPUT despite an unsatisfied ``depends_on`` conjunct.
+
+    The same CNF predicate as :func:`validate_pass_dependencies`, re-pointed
+    (WI-jijor / ADR-0056 W1). That one asks *"may these passes run
+    together?"* and RAISES; this one asks *"did a pass that already ran prove
+    its own declaration wrong?"* and REPORTS.
+
+    **Why not wire the gate instead.** Raising is the withholding direction:
+    a gate aborts the whole survey on any repo whose declarations are stale,
+    and the ~73 conjuncts across 59 passes have never been enforced, so some
+    of them are. Falsification never suppresses anything, so it cannot lose an
+    edge — which is exactly why it may be wired where a gate may not.
+
+    **Why EMITTED is the proof and SILENCE is not.** A pass that emitted
+    nothing proves nothing: its declaration may be perfectly correct and the
+    repository may simply lack the construct. A pass that emitted *output*
+    while one of its declared "at least one of" requirements had no active
+    member did its job without the thing it says it needs — so the
+    declaration, not the run, is what is wrong. This is the one direction in
+    which the never-enforced declaration set can be audited from evidence
+    rather than from reading it.
+
+    **Why it does not take an active-pass list.** :func:`validate_pass_dependencies`
+    is handed the active set because it runs *before* execution. Here the
+    active set is DERIVED from ``runs`` — the ground truth of what actually
+    ran — which is the whole difference between a forecast and a measurement.
+    ``passes`` therefore supplies only the declarations.
+
+    **"Active" means ran, never produced.** A prerequisite that ran and
+    honestly found nothing satisfies a clause naming it; ``catalog.py`` tests
+    list membership and reads no counter, and the vocabulary throughout is
+    "active". Reading it as "productive" would make every correct no-op
+    falsify its dependents.
+
+    Output is counted with ``nodes_emitted`` **or** ``edges_emitted``. Keying
+    on edges alone is a known instrument fault in this codebase — it called a
+    91-node pass silent and inflated a cost figure 27x — and repeating it
+    inside a detector built to audit declarations would be that defect one
+    level up. Absent counters read as zero output, never as a falsification.
+
+    Args:
+        passes: The declaration source, normally ``get_default_catalog().passes``.
+            **Linker modules register on import**, so a caller that has not
+            imported them gets an analyzer-only catalog with no ``depends_on``
+            at all and a vacuously empty result.
+        runs: Serialized ``AnalysisRun`` dicts (``analysis_runs``). The pass-id
+            key is ``"pass"``, not ``"pass_id"``.
+
+    Returns:
+        ``(pass_id, unsatisfied_clauses)`` pairs, sorted by ``pass_id`` so two
+        surveys diff without spurious churn. Empty when nothing is falsified —
+        which on a repo whose declarations are honest is the normal result.
+    """
+    declared = {p.id: p for p in passes}
+    active_ids: set[str] = set()
+    emitting_ids: set[str] = set()
+    for run in runs:
+        pass_id = str(run.get("pass", ""))
+        if not pass_id:
+            continue
+        active_ids.add(pass_id)
+        if run.get("nodes_emitted") or run.get("edges_emitted"):
+            emitting_ids.add(pass_id)
+
+    falsified: List[Tuple[str, List[List[str]]]] = []
+    for pass_id in sorted(emitting_ids):
+        p = declared.get(pass_id)
+        if p is None:
+            # A synthetic pipeline pass (enclosure-linker, route-materializer,
+            # django-cbv-method-expander) emits a real AnalysisRun but is not a
+            # registry entry, so it carries no declaration to falsify.
+            continue
+        unsatisfied = [
+            list(clause)
+            for clause in p.depends_on
+            if not any(literal in active_ids for literal in clause)
+        ]
+        if unsatisfied:
+            falsified.append((pass_id, unsatisfied))
+    return falsified
+
+
+def format_falsified_dependencies(
+    falsified: Sequence[Tuple[str, List[List[str]]]],
+) -> Optional[str]:
+    """Render the one-line falsified-declaration advisory, or ``None`` when clean.
+
+    ``None`` on empty so a repo whose declarations hold produces no chatter —
+    the same discipline as ``pass_silence.format_silence_summary`` and
+    ``spec_validator.emit_stderr_summary``, both of which are silent on a clean
+    run.
+
+    The count is of PASSES, not clauses: one pass with two unsatisfied
+    conjuncts is one wrong declaration, and counting clauses would inflate the
+    headline the way ``edges_emitted``-only counting inflated the silence cost.
+    """
+    if not falsified:
+        return None
+    parts = "; ".join(
+        f"{pass_id} needs {clauses}" for pass_id, clauses in falsified
+    )
+    return (
+        f"[passes] {len(falsified)} pass(es) emitted output with an unsatisfied "
+        f"depends_on conjunct — the DECLARATION is wrong, not the run: {parts}"
+    )
+
+
+def emit_falsified_dependency_summary(
+    passes: List[Pass],
+    runs: Sequence[Mapping[str, Any]],
+) -> None:
+    """Write the falsified-declaration advisory to stderr; silent when clean.
+
+    The CONSUMER half. A predicate with no reader is the defect this item was
+    filed against — ``validate_pass_dependencies`` has eleven call sites and
+    all eleven are tests, and its sibling
+    :func:`validate_pass_name_resolution` had none at all despite a docstring
+    claiming it "runs at catalog-build time and in CI". Wiring the reader here,
+    next to ``emit_silence_summary`` on the survey path, is what keeps this one
+    from joining them.
+
+    Advisory only: it never raises and never suppresses a pass.
+    """
+    line = format_falsified_dependencies(find_falsified_dependencies(passes, runs))
+    if line is not None:
+        sys.stderr.write(line + "\n")
+
 
 
 # Config/data formats that shouldn't trigger pass suggestions
