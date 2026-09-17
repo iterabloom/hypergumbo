@@ -1,0 +1,51 @@
+Original commit body from f9052277983bc7176f9844132e9d1edba2447ff0:
+
+A pass that FOUND its construct and carried none of it through resolution was
+landing in `unreported`, whose declared meaning is that the pass "did not say
+why". Those bodies compute the answer and throw it away: the producer helper
+returned "" on the branch holding the fact. That is the INV-bikaj complaint one
+level down, inside the axis built to cure it.
+
+`candidates_unresolved` is split out of the residue. Both of the helper's
+returns are now positive claims, so it is renamed silence_reason_for_candidates.
+
+THE PRIOR RULING IS OVERTURNED, and its three stated grounds were each refuted
+by the tree: it called the value "a seventh member" (the vocabulary already held
+seven), with "a single producer" (eleven call sites through one helper, the same
+shape as no_candidate_construct) and "no consumer" (summarize_silence /
+format_silence_summary are vocabulary-generic and wired at cli.py). That last
+ground is the one that distinguishes this from prerequisite_absent, which is
+still declared with no producer.
+
+MEASURED, twice, not reasoned. The one-line producer change was predicted to
+empty `unreported`; it left 2. FOUR return paths never call the helper at all,
+and two were firing on this corpus: wasm-bindgen returns early when no Rust
+exports exist while its WRAPPER then scans 14 files, and message-dispatch passes
+its bail with both sides non-empty and matches no pairs. All four are closed as
+a class rather than filed for later. Final distribution:
+  no_candidate_files=43, no_candidate_construct=7, candidates_unresolved=4,
+  unreported=0
+
+The name describes the PASS, not the repository: ipc rejects some candidates on
+a quality filter with no pairing attempted, so a "missing counterpart" name
+would be false for it, and a pass cannot tell an absent counterpart from its own
+matcher missing one.
+
+STATED HONESTLY: unreported=0 measures the corpus, not completion. 53 of 64
+linker modules make no body claim at all. The "size of the remaining work" gloss
+is removed from ir.py accordingly.
+
+FILING CORRECTION. This was first written as docs/audits/0019 and the format
+validator rejected it: audit_findings._REGISTRIES binds exactly three
+registry-backed axes (Edge.edge_type, Symbol.kind, Edge.evidence_type) and
+VALID_VERDICTS is a closed frozenset. AnalysisRun.silence_reason is a
+lightweight catalog-derived axis and cannot be named in a kind: audit_verdicts
+block at all. Filed as ADR-0054, which records the rule that is written nowhere
+else: docs/audits/ is for the three registry-backed axes. Note
+docs/surveys/python-stdlib-module-io-enumeration.md hit the same validator on
+its own first attempt at docs/audits/0019.
+
+SCHEMA_VERSION 0.20.7 -> 0.20.8. 23,830 tests pass, all changed files at 100%.
+
+Refs: WI-bivim, WI-finij, INV-hujog
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
