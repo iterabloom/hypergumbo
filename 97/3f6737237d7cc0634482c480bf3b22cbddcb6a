@@ -1,0 +1,22 @@
+Original commit body from f5839bf39c0afed5a26afb11b56973c37e239fd2:
+
+WI-rasal's deliverable: repair the six falsified `depends_on` clauses.
+
+**Six clauses, one mistake.** Each was written as *"languages where this concept exists"* — a statement about programming languages — where `depends_on` is defined as *"passes whose output this pass reads"* — a statement about this tree. Both readings produce a plausible list of language names, which is why nothing caught the difference for as long as nothing read the field. `inherited-calls-linker` is the clean specimen: the comment above its declaration names `_MRO_WALKERS` as its source of truth and claims to mirror it; INV-fahub's fleet-walker PR grew that dict from 3 entries to 14 and the declaration stayed at three.
+
+| pass | repaired from | notable |
+|---|---|---|
+| `inherited-calls-linker` | Site-1 (`enclosing_class` ∩ `_MRO_WALKERS`) ∪ Site-2 (`receiver_type_hint`) ∪ Site-3 (`inherited_field_receiver`) | Sites 2/3 need **no walker** — step 1 resolves on the inferred type — which is what adds `d` and `kotlin` |
+| `inheritance-linker` | analyzers writing `base_classes` / `included_modules` | **drops `rust`, `dart`, `elixir`**; adds `apex`, `cpp`, `go`, `groovy`, `objc` |
+| `type-hierarchy-linker` | producers of the extends/implements edges it indexes | headed by the pass id `inheritance-linker`; it never looks at a language, which is why Go repos falsified it |
+| `build-target-linker` | `defines_target` producers | `xml` and `manifest_targets` were missing — Haskell repos falsified `["toml","json"]` through the latter |
+
+**Two conjuncts are deleted rather than widened, and the deletions are the interesting half.** `inherited-calls-linker :: ["inheritance-linker"]` was falsified 26 times and was false — Site-2 step 1 emits `ast_call_type_inferred` with no inheritance edges in the graph at all; the ordering it recorded is carried by `priority=18`, which is the axis for it. `build-target-linker :: ["rust","javascript","go","python","java"]` matched a function named `main`, which every analyzer emitting functions can supply: the honest enumeration is all 118 and any narrow one is false.
+
+**Gates.** Two AST scans — string literals *and* keyword-argument names count, since a hint key reaches `Edge.meta` either as a dict key or as a kwarg to the shared `make_unresolved_edge`; comments and prose do not, which is why this is an AST walk and not a grep — plus a registry gate that maps `_MRO_WALKERS` through the analyzer registry before comparing. That dict is keyed on `Symbol.language`, a **wider vocabulary than pass ids**: its `typescript` key has no pass of its own, so deriving the clause from the keys directly would have declared a dependency on a pass that does not exist, which `validate_pass_name_resolution` has no production call site to catch.
+
+**Measured: 264 falsifying surveys → 0 of 975.** That is a consistency check, not the argument — widening an OR clause necessarily reduces falsification, and on caddy the repaired clause is satisfied by `php` as well as by `go`. The justification is per-literal and the gates re-derive it. The zero was confirmed live rather than assumed: with the clause mutated to a language the repository lacks, the detector fires on the same survey.
+
+`database-query-linker :: ["sql"]` is deliberately **not** repaired — all 68 of its falsifications were the detector's fault, fixed in #1021. A test pins it so it is not "tidied" later by someone reading the old audit.
+
+Tests: 5,879 passed, 100% coverage on changed files, mypy ratchet clean at 667.
