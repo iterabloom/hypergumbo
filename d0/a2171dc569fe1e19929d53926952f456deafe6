@@ -1,0 +1,26 @@
+Original commit body from 6b632965f85a7bb3804a6b06635ecaf270bc5d5a:
+
+WI-dinum, part 2 of 2. Closes the row.
+
+**The join it shipped with was not client-to-server.** It matched a client operation NAME to a schema operation NAME — but a client operation name is an arbitrary client-side label, and a schema does not declare one. That match can only succeed when some *other* document in the repository declares an operation of the same name, typically a codegen `.graphql` file, so what it recovered was document-to-document identity. Real, and kept. It is also why the linker had emitted **0 edges in 14 corpus runs**: it cannot fire on a repository with no `.graphql` documents, which is most of them.
+
+**The join it needed.** `query GetUsers { users { id } }` invokes `Query.users`, and `Query.users` is a thing a schema really does declare. The root selection field now resolves against the schema field symbols `graphql-sdl-linker` (#1024) lifts out of embedded SDL, keyed `<root type>.<field>` exactly as `graphql_resolver` keys its own lookup — so `Query.users` and `Mutation.users` stay distinct. A fragment is excluded: it has a selection set but selects on a named type rather than invoking a root field, matching `_extract_operation_name`, which already refuses to call a fragment an operation. Name identity wins when both could fire, being the stronger claim; the root-field edge is stamped 0.8 against its 0.9 because it reads the first field of a selection set with a regex.
+
+**Two things found while in the body**, both fixed here because shipping around them would mean knowingly leaving a false statement in a file I am editing:
+
+- `confidence=0.9 if call.operation_name else 0.7` sat **inside** `if call.operation_name:`. The 0.7 arm could not be reached.
+- `depends_on` named six **host** languages. The linker finds client calls by reading source files itself and consumes no host analyzer's output; the clause now names the two passes that can supply an edge *destination* — `graphql` (a `.graphql` document's operations) and `graphql-sdl-linker` (schema fields from an embedded template). Same too-wide shape WI-rasal repaired on four other linkers, found by reading the body rather than by falsification, which can only catch a clause that is too *narrow*.
+
+A dropped `line=call.line` in the restructured first edge was caught by the mypy ratchet as a `call-arg` regression, not by a test.
+
+**Acceptance on the row's own repro** (`hypergumbo survey <apollo-server>`), the two linkers the row names:
+
+| pass | before | after |
+|---|---|---|
+| `graphql-linker` | 29 nodes, **0 edges** | 29 nodes, **22 edges** |
+| `graphql-resolver-linker` | 91 nodes, **0 edges** | 91 nodes, **106 edges** |
+| **total** | **120 nodes, 0 edges** | **193 nodes, 128 edges** |
+
+plus `graphql-sdl-linker`'s 73 schema nodes, which emit no edges by design.
+
+Tests: 5,094 passed, `graphql.py` at 100% coverage, mypy ratchet clean at 667.
