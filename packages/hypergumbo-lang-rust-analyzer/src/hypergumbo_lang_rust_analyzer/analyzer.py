@@ -63,7 +63,10 @@ from hypergumbo_lang_rust_analyzer.gate import should_use_rust_analyzer_backend
 from hypergumbo_lang_rust_analyzer.graceful_degrade import (
     try_analyze_with_rust_analyzer,
 )
-from hypergumbo_core.pass_silence import BACKEND_DISABLED, UNREPORTED
+from hypergumbo_core.pass_silence import (
+    BACKEND_DISABLED,
+    silence_reason_for_candidates,
+)
 
 
 def _disk_source_reader(path: str) -> bytes | None:
@@ -204,22 +207,27 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
         repo_root, _repo_anchored_reader(repo_root), log=_emit_user_warning,
         run_id=run.execution_id,
     )
-    if result is None:
-        # Backend on but SCIP invoke/translate produced nothing (WI-nohah
-        # fall-through). Self-declare so this surfaces as a reasoned skip.
+    if result.failed:
+        # WI-luvud: this branch used to swallow FOUR states into one prose
+        # string and one code. A missing binary, a non-zero exit, an
+        # exit-0-with-no-index and an undecodable blob are different problems
+        # with different remedies, and the exception taxonomy had always told
+        # them apart — the information died at the graceful-degrade boundary.
+        # ``ScipAttempt`` carries it through; see that class for why each
+        # state gets the value it does.
+        #
+        # These remain SKIPS, deliberately. ``dependency_unavailable`` and
+        # ``pass_crashed`` are skip-host values under ADR-0056, and re-hosting
+        # them onto an AnalysisRun is the question ADR-0056 §"What would change
+        # this decision" item 5 reserves to the OWNER. This change tells the
+        # states apart without pre-empting that ruling.
         return AnalysisResult(
             skipped=True,
-            skip_reason="rust-analyzer backend produced no output",
-            # WI-dukoh: NOT backend_disabled -- the backend WAS enabled and
-            # ran. It is not dependency_unavailable either. The axis has no
-            # value for "an enabled backend produced nothing", and inventing
-            # one here would be a fabricated disclosure, so this takes the
-            # declared residue. Filed as a residual: marking it a SKIP is
-            # itself questionable, since the pass did run.
-            skip_reason_code=UNREPORTED,
+            skip_reason=f"rust-analyzer backend: {result.detail}",
+            skip_reason_code=result.silence_code,
         )
 
-    symbols, edges = result
+    symbols, edges = result.symbols, result.edges
     if not _has_scip_origin_edge(edges) and _repo_has_rs_files(repo_root):
         _emit_user_warning(
             f"rust-analyzer backend produced no SCIP-origin edges for "
@@ -227,6 +235,15 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
             f"engagement failure (see WI-todon). Inspect prior warnings for "
             f"invoke-time diagnostics.",
         )
+    # WI-luvud: a completed run that indexed nothing is NOT a skip — the
+    # backend ran. It says so positively rather than falling through to
+    # derive_silence_reason, which would stamp ``no_candidate_files`` ("the
+    # pass received zero input files, and no mechanism would change it") on a
+    # repository that may be full of .rs. That is the exact false assertion
+    # ADR-0056 W3 was built to stop, one pass to the left. Only a pass BODY may
+    # report this value, and this body knows: rust-analyzer indexed the
+    # workspace and returned nothing to read.
+    run.silence_reason = silence_reason_for_candidates(symbols)
     # The run travels WITH the output. collect_analyzer_result appends it to
     # analysis_runs, stamps the productivity counters and the silence reason at
     # the orchestrator chokepoint (INV-gizik / INV-bikaj), and its WI-mosil

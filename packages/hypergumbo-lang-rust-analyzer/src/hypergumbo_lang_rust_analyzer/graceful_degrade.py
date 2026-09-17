@@ -46,6 +46,7 @@ the default :func:`run_rust_analyzer_scip` /
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Protocol, Tuple
 
@@ -54,13 +55,27 @@ from google.protobuf.message import DecodeError
 from hypergumbo_core.ir import Edge, Symbol
 from hypergumbo_core.safety_zones import tmp_artifact_dir
 
+from hypergumbo_core.pass_silence import (
+    DEPENDENCY_UNAVAILABLE as _DEPENDENCY_UNAVAILABLE,
+    PASS_CRASHED as _PASS_CRASHED,
+    UNREPORTED as _UNREPORTED,
+)
+
 from .invoke import (
     RustAnalyzerError,
     RustAnalyzerInvocationFailed,
     RustAnalyzerNoOutput,
+    RustAnalyzerNotInstalled,
     run_rust_analyzer_scip,
 )
 from .translate import SourceReader, translate_scip_to_hg
+# The axis constants are ``Final[str]`` in hypergumbo-core but resolve as
+# ``Any`` across the package boundary under ``mypy --strict``, so returning
+# them directly trips no-any-return. Re-bind with an explicit annotation
+# rather than widening the function's return type or adding an ignore.
+DEPENDENCY_UNAVAILABLE: str = _DEPENDENCY_UNAVAILABLE
+PASS_CRASHED: str = _PASS_CRASHED
+UNREPORTED: str = _UNREPORTED
 
 InvokeFn = Callable[..., bytes]
 class TranslateFn(Protocol):
@@ -75,6 +90,61 @@ class TranslateFn(Protocol):
     def __call__(
         self, scip_bytes: bytes, source_reader: SourceReader, *, run_id: str = ...,
     ) -> Tuple[List[Symbol], List[Edge]]: ...
+
+@dataclass(frozen=True)
+class ScipAttempt:
+    """What one SCIP attempt actually did — WI-luvud's discriminated outcome.
+
+    This replaces a bare ``Optional[Tuple[symbols, edges]]`` whose ``None``
+    collapsed FOUR different states the exception taxonomy already told apart:
+    a missing binary, a non-zero exit, an exit-0-with-no-index, and an
+    undecodable SCIP blob. The caller filed all four under one prose string
+    ("rust-analyzer backend produced no output") and one code (``unreported``),
+    so a user could not tell "install rust-analyzer" from "your workspace is
+    not a cargo project" from "the indexer crashed".
+
+    ``silence_code`` is a value on the closed pass-silence-reason axis
+    (``hypergumbo_core.pass_silence``), chosen per state:
+
+    ``dependency_unavailable``
+        The binary is not resolvable. "Install the package" is the right
+        advice, which is exactly what the value means.
+    ``pass_crashed``
+        A non-zero exit, a timeout, or an undecodable index — a contained
+        raise. ADR-0056's init-failure ruling put caught constructor
+        exceptions here on the explicit grounds that the value "says nothing
+        about WHO contained the raise"; a contained subprocess failure is the
+        same shape, and "install the package" would be wrong advice for it.
+    ``unreported``
+        rust-analyzer exited 0 and wrote no index — it could not parse the
+        workspace as a cargo project. This is NOT a crash and NOT a missing
+        dependency, and the axis has no value for "an enabled backend
+        completed without producing anything to read". It keeps the declared
+        residue rather than inventing a value, and the gap stays filed on
+        WI-luvud rather than being papered over with a plausible neighbour.
+
+    A SUCCESS carries no silence code: ``failed`` is False and the pass RAN,
+    even when it produced nothing. That case is the one WI-luvud is named for
+    and it belongs in the ran population, not in ``skipped_passes``.
+    """
+
+    symbols: List[Symbol]
+    edges: List[Edge]
+    failed: bool
+    silence_code: str = ""
+    detail: str = ""
+
+    @classmethod
+    def success(cls, symbols: List[Symbol], edges: List[Edge]) -> "ScipAttempt":
+        return cls(symbols=symbols, edges=edges, failed=False)
+
+    @classmethod
+    def failure(cls, silence_code: str, detail: str) -> "ScipAttempt":
+        return cls(
+            symbols=[], edges=[], failed=True,
+            silence_code=silence_code, detail=detail,
+        )
+
 
 # One-time log marker so repeated fall-through attempts don't spam the
 # user's terminal. A set because the helper may be called across
@@ -147,6 +217,24 @@ def _reset_logged_fallback_for_tests() -> None:
     _LOGGED_FALLBACK.clear()
 
 
+def _silence_code_for(exc: RustAnalyzerError) -> str:
+    """Map an invocation failure onto the closed pass-silence-reason axis.
+
+    See :class:`ScipAttempt` for why each state gets the value it does. The
+    ordering matters: ``RustAnalyzerNoOutput`` is checked before the generic
+    fallback because an exit-0-with-no-index is emphatically NOT a crash.
+    """
+    if isinstance(exc, RustAnalyzerNotInstalled):
+        return DEPENDENCY_UNAVAILABLE
+    if isinstance(exc, RustAnalyzerNoOutput):
+        # Exited 0, wrote nothing — the workspace is not a parseable cargo
+        # project. Not a crash, not a missing dependency, and the axis has no
+        # value for it. The declared residue is the honest answer; inventing a
+        # neighbour would be a fabricated disclosure (WI-luvud).
+        return UNREPORTED
+    return PASS_CRASHED
+
+
 def try_analyze_with_rust_analyzer(
     workspace: Path,
     source_reader: SourceReader,
@@ -155,7 +243,7 @@ def try_analyze_with_rust_analyzer(
     translate: Optional[TranslateFn] = None,
     log: Optional[Callable[[str], None]] = None,
     run_id: str = "",
-) -> Optional[Tuple[List[Symbol], List[Edge]]]:
+) -> ScipAttempt:
     """Run rust-analyzer + SCIP translate on *workspace*, or ``None``.
 
     The return type is intentionally ``None | (symbols, edges)`` rather
@@ -207,10 +295,16 @@ def try_analyze_with_rust_analyzer(
                     f"rust-analyzer backend unavailable for {workspace}: "
                     f"{type(exc).__name__}: {detail} — falling through to rust.py",
                 )
-            return None
+            # WI-luvud: the taxonomy already knows which state this is; before
+            # this the information died here and all four became one ``None``.
+            return ScipAttempt.failure(_silence_code_for(exc), str(exc))
 
     try:
-        return translate_fn(scip_bytes, source_reader, run_id=run_id)
+        symbols, edges = translate_fn(scip_bytes, source_reader, run_id=run_id)
+        # An EMPTY index is a success, not a failure: rust-analyzer ran to
+        # completion and found nothing to index. Reporting it as a failure is
+        # what put a pass that RAN into the "did not run" bucket (WI-luvud).
+        return ScipAttempt.success(symbols, edges)
     except DecodeError as exc:
         key = f"DecodeError:{workspace}"
         if key not in _LOGGED_FALLBACK:
@@ -219,4 +313,7 @@ def try_analyze_with_rust_analyzer(
                 f"rust-analyzer SCIP decode failed for {workspace}: "
                 f"{exc} — falling through to rust.py",
             )
-        return None
+        # An index we cannot decode is a contained raise, same as a non-zero
+        # exit: the pass started and blew up, and "install the package" would
+        # be the wrong advice (ADR-0056's init-failure ruling).
+        return ScipAttempt.failure(PASS_CRASHED, f"SCIP decode failed: {exc}")
