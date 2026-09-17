@@ -1,0 +1,70 @@
+Original commit body from a6dbec3a39ae58c53b39b8f6139da6e26100a9d6:
+
+Two decided questions, written down rather than left as standing hesitations.
+Docs + changelog only; no behaviour change.
+
+ADR-0055 — LINKER ACTIVATION TIGHTENING IS REFUSED, ON MEASUREMENT.
+
+The number this was being judged on was wrong, and the instrument was ours:
+readback.py filters silence as `edges_emitted == 0`, IGNORING nodes_emitted —
+the conflation pass_silence.py calls "the headline's original error repeated one
+level down". Recomputed strictly over the 9-repo cohort (2,538,624 ms total):
+
+  loose filter (the circulated 4.5%)   39,048 ms  1.54%
+  strict, all passes                   21,192 ms  0.83%
+  strict, Framework-subcategory, of 25  4,216 ms  0.166%  <- the whole prize
+
+The circulated 4.5% was the loose filter on the cohort EXCLUDING pretix, which
+carries 90% of its pass time. 10 of the 13 Framework candidates already cost
+ZERO ms — they read framework-enriched symbols and are de-facto gated already.
+
+Decisive argument is neither cost nor risk appetite: a paired bakeoff
+differential proves no loss only WHERE DETECTION SUCCEEDED, while the risk is
+detection failing on a repo the cohort lacks — which yields an empty baseline
+and reads clean. THE CHANGE CANNOT BE VALIDATED AGAINST ITS OWN FAILURE MODE.
+
+Also settled: a gated-off linker produces NO AnalysisRun, so the loss cannot be
+disclosed today (blocking precondition, not a property of the tree); and
+prerequisite_absent is not the landing value for a closed gate.
+
+Criterion of four conditions — ZERO of 25 qualify. Three triggers, each fireable
+from ordinary bakeoff output with no gating work.
+
+ADR-0056 — THREE OF THE FOUR PRODUCERLESS VALUES ARE MIS-HOSTED.
+
+dependency_unavailable / backend_disabled / pass_crashed describe a pass that
+DID NOT RUN, which never produces an AnalysisRun — and silence_reason is a field
+ON AnalysisRun. No carrier exists to stamp. Their home is
+limits.skipped_passes[].reason, beside their free-text twins.
+
+prerequisite_absent is the only well-hosted one and is SECOND-ORDER: the
+propagation of the other three downstream, so it cannot be stamped correctly
+until they have structured producers. That ordering was never written down.
+
+The producer INV-hujog asks for is refused on measurement: 98.94% of 229,541
+skip records are `no files matched`, so an unsatisfied depends_on conjunct
+nearly always means the repo lacks that language — State A, a correct no-op —
+and prerequisite_absent is declared as State C, the ordering defect.
+
+The value is KEPT, not deprecated: 40 of 69 conjuncts are all grammar-gated, so
+a JS+Rust repo on a machine without tree-sitter-language-pack produces a real
+State C. The "unmeasurable here" objection fails both halves — 60 circom records
+prove the state has occurred on this machine unnoticed, and the blindness is a
+venv, not a law. Acceptance test named, runnable before any producer work.
+
+INV-hujog's unfireable trigger is restated onto records that already exist and
+have already fired 2,443 times. Work filed as WI-jijor (falsification detector,
+independent) -> WI-dukoh (skip_reason_code, blocks) -> WI-dabup (the producer).
+
+Both file as ADRs rather than docs/audits/: audit_findings._REGISTRIES binds
+exactly three registry-backed axes and VALID_VERDICTS is closed, so neither can
+be expressed there (ADR-0054 records the rule).
+
+CORRECTION CARRIED IN 0056: the supporting instance that a gate "would have
+aborted the self-survey" (database-query-linker falsifying [["sql"], ...]) rests
+on a Sep-15 cached artifact. On the current tree sql runs and re-running the
+simulation yields ZERO falsified declarations. The mechanism generalises; the
+instance is stale, and is recorded as such.
+
+Refs: INV-nanon, INV-hujog, WI-dinum
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
