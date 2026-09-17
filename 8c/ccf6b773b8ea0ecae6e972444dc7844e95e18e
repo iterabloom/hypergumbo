@@ -1,0 +1,34 @@
+Original commit body from f74c23f5c4ec010511db4e50838b2698e5b76d64:
+
+Four of this ADR's own claims did not survive W1/W2/W3, and the ADR now says
+so in place rather than leaving the next reader to rediscover them.
+
+1. ITS NAMED ACCEPTANCE TEST DOES NOT TEST WHAT IT SAYS, and run literally it
+   would have DEPRECATED a value that is firing. aardvark-dns is Rust-only
+   (16 .rs, zero .js), so the dependents are activation-gated off and produce
+   no AnalysisRun at all; and removing tree-sitter-language-pack does not
+   remove rust, which loads from a dedicated wheel. Corrected form recorded.
+
+2. Pass.requires names the wrong distribution for 25 of 26 grammar-gated
+   literals, which is what aimed that test at the wrong package. Nothing but a
+   human reads the field, so nothing catches it. -> WI-pakof.
+
+3. W2 was sized at "~4 sites, two f-string templates". It is 49 sites across
+   38 files; the f-string is copy-pasted into thirty analyzers.
+
+4. pass_crashed is not speculative. The zero-instance count measured the
+   free-text twin, not the state: six analyzer sites catch a parser
+   CONSTRUCTOR exception, which is the same state under a different container.
+
+Also records the two things the implementation established that the ADR could
+not have: its own re-decide criterion for declaration repair is MET (W1 found
+261 of 893 surveys carrying a falsified declaration), and W3 needed a rule the
+ADR did not state -- the producer fills only a field the pass BODY left empty,
+because a bridge linker's true no_candidate_construct claim about the side it
+could scan must not be overruled by a plausible one.
+
+Verdict table and the three stale in-body claims re-pointed at the corrections
+section, per the ADR-lifecycle rule against leaving retracted text standing
+beside the ruling that replaced it.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
