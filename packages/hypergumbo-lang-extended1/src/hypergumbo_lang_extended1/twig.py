@@ -519,7 +519,7 @@ class TwigAnalyzer(TreeSitterAnalyzer):
 _analyzer = TwigAnalyzer()
 
 
-@register_analyzer("twig")
+@register_analyzer("twig", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_twig(repo_root: Path) -> AnalysisResult:
     """Analyze Twig template files in a repository.
 

@@ -46,7 +46,7 @@ from pathlib import Path
 from hypergumbo_core.discovery import find_files
 from hypergumbo_core.ir import AnalysisRun, Edge, PASS_VERSION, Span, Symbol, make_pass_id
 from hypergumbo_core.analyze.base import AnalysisResult, make_symbol_id
-from hypergumbo_core.analyze.registry import register_analyzer
+from hypergumbo_core.analyze.registry import LANGUAGE_STATE_NO_LANGUAGE, register_analyzer
 
 PASS_ID = make_pass_id("manifest_targets")
 
@@ -536,7 +536,12 @@ def _analyze_manifest_targets(repo_root: Path) -> AnalysisResult:
     return AnalysisResult(symbols=symbols, edges=edges, run=run)
 
 
-@register_analyzer("manifest_targets")
+# WI-juzig: not a language — eleven manifest formats, each symbol stamped with
+# its format's language. Under the old ``[name]`` default ``manifest_targets``
+# was a language the spec validator accepted.
+@register_analyzer(
+    "manifest_targets", language_state=LANGUAGE_STATE_NO_LANGUAGE, backend="regex",
+)
 def analyze_manifest_targets(repo_root: Path) -> AnalysisResult:
     """Analyze manifest files for build-target entry points."""
     return _analyze_manifest_targets(repo_root)

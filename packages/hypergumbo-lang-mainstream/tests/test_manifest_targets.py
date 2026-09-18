@@ -585,3 +585,22 @@ class TestDefinesTargetDstShape:
             assert "/" not in parts[0] and ".java" not in parts[0], (
                 f"language slot leak: {edge.dst!r}"
             )
+
+
+class TestRegistration:
+    def test_declares_no_language(self) -> None:
+        """WI-juzig: this pass reads eleven manifest formats and stamps the
+        format's own language on each symbol; it is not a language itself.
+        Before the registry gate its ``[name]`` default made
+        ``manifest_targets`` a language the spec validator accepted."""
+        import hypergumbo_lang_mainstream.manifest_targets as _mt
+        _ = _mt  # the decorator fired at import
+        from hypergumbo_core.analyze.registry import (
+            LANGUAGE_STATE_NO_LANGUAGE,
+            get_analyzer,
+        )
+        reg = get_analyzer("manifest_targets")
+        assert reg is not None
+        assert reg.language_state == LANGUAGE_STATE_NO_LANGUAGE
+        assert reg.languages == []
+        assert reg.backend == "regex"

@@ -191,6 +191,18 @@ class TestAnalyzerRegistration:
         assert entry.priority == 45
         assert entry.name == "rust_analyzer"
 
+    def test_declares_itself_as_the_scip_backend_for_rust(self) -> None:
+        """WI-juzig / ADR-0057 §10: the registry could not tell ``rust`` and
+        ``rust_analyzer`` were two backends for one language — ``languages``
+        defaulted to ``[name]``, making ``rust_analyzer`` its own (phantom)
+        language, and ``backend`` was set on 0 of 118 registrations."""
+        import hypergumbo_lang_rust_analyzer.analyzer as _ra
+        _ = _ra  # the decorator fired at import
+        from hypergumbo_core.analyze.registry import _ANALYZER_REGISTRY
+        entry = _ANALYZER_REGISTRY["rust_analyzer"]
+        assert entry.languages == ["rust"]
+        assert entry.backend == "scip"
+
 
 class TestEngagementCheck:
     """WI-todon: warn if the SCIP backend ran but produced no SCIP-origin edges

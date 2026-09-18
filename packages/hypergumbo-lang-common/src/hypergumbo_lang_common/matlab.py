@@ -368,7 +368,7 @@ def is_matlab_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("matlab")
+@register_analyzer("matlab", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_matlab(repo_root: Path) -> AnalysisResult:
     """Analyze MATLAB source files in a repository.
 

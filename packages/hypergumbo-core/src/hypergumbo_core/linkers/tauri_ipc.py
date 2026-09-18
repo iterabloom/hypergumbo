@@ -1027,7 +1027,8 @@ TAURI_IPC_REQUIREMENTS = [
     ),
     # CNF: javascript (JS/TS share the analyzer pass id) AND rust — both
     # required for Tauri's invoke() ↔ #[command] bridge.
-    depends_on=[["javascript"], ["rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``).
+    depends_on=[["javascript"], ["rust", "rust_analyzer"]],
 )
 def tauri_ipc_linker(ctx: LinkerContext) -> LinkerResult:
     """Tauri IPC linker for registry-based dispatch.

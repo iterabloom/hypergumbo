@@ -348,7 +348,7 @@ class GleamAnalyzer(TreeSitterAnalyzer):
 _analyzer = GleamAnalyzer()
 
 
-@register_analyzer("gleam")
+@register_analyzer("gleam", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_gleam(repo_root: Path) -> AnalysisResult:
     """Analyze Gleam source files in a repository."""
     return _analyzer.analyze(repo_root)

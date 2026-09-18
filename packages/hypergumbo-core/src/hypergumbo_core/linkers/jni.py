@@ -300,7 +300,9 @@ def link_jni(java_symbols: list[Symbol], native_symbols: list[Symbol]) -> JniLin
     requirements=JNI_REQUIREMENTS,
     activation=LinkerActivation(language_pairs=[("java", "c"), ("java", "cpp"), ("java", "rust")]),
     # CNF: anchor (java) AND any-of-impls (c/cpp/rust).
-    depends_on=[["java"], ["c", "cpp", "rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``);
+    # either satisfies the impl-side clause.
+    depends_on=[["java"], ["c", "cpp", "rust", "rust_analyzer"]],
 )
 def jni_linker(ctx: LinkerContext) -> LinkerResult:
     """JNI linker for registry-based dispatch.

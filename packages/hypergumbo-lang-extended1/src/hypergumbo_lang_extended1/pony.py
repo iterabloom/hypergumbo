@@ -562,7 +562,7 @@ class PonyAnalyzer(TreeSitterAnalyzer):
 _analyzer = PonyAnalyzer()
 
 
-@register_analyzer("pony")
+@register_analyzer("pony", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_pony(repo_root: Path) -> AnalysisResult:
     """Analyze Pony files in a repository.
 

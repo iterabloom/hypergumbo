@@ -396,7 +396,7 @@ class PascalAnalyzer(TreeSitterAnalyzer):
 _analyzer = PascalAnalyzer()
 
 
-@register_analyzer("pascal")
+@register_analyzer("pascal", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_pascal(repo_root: Path) -> AnalysisResult:
     """Analyze Pascal source files in a repository."""
     return _analyzer.analyze(repo_root)

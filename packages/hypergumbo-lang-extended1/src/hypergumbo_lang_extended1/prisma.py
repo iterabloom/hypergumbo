@@ -309,7 +309,7 @@ def is_prisma_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("prisma")
+@register_analyzer("prisma", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_prisma(repo_root: Path) -> AnalysisResult:
     """Analyze Prisma schema files in a repository.
 

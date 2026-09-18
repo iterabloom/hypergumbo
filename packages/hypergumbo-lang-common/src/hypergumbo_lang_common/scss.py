@@ -493,7 +493,7 @@ def is_scss_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("scss")
+@register_analyzer("scss", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_scss(repo_root: Path) -> AnalysisResult:
     """Analyze SCSS/Sass stylesheet files in a repository.
 

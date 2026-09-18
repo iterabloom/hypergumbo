@@ -876,7 +876,7 @@ def is_apex_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("apex")
+@register_analyzer("apex", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_apex(repo_root: Path) -> AnalysisResult:
     """Analyze Apex files in the repository.
 

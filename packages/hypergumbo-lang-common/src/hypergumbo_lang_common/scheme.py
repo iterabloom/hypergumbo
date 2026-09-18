@@ -372,7 +372,7 @@ def is_scheme_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("scheme")
+@register_analyzer("scheme", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_scheme(repo_root: Path) -> AnalysisResult:
     """Analyze Scheme source files in a repository.
 

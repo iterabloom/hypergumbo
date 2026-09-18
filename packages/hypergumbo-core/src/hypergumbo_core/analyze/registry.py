@@ -19,6 +19,10 @@ Why This Design
 - Plugin extensibility: entry-points enable external language packages
 - Rich metadata: priority, supports_max_files, capture_symbols_as, depends_on
 - Consistency: mirrors the linker registry pattern (ADR-0012 Step 1)
+- One language vocabulary (WI-juzig): ``languages`` is gated at decoration
+  time against ``taxonomy.LANGUAGES`` unless the registration declares a
+  ``language_state`` of ``no_taxonomy_spec`` or ``no_language``; there is no
+  silent ``[name]`` default for a name that is not a language
 
 Usage
 -----
@@ -69,8 +73,14 @@ class RegisteredAnalyzer:
         backend: Parsing backend identifier — e.g., "ast", "tree-sitter",
             "regex", "pattern". Decoupled from pass_id so the ID stays stable
             across backend swaps (INV-morag PR 2 / ADR-spec).
-        languages: Languages this analyzer handles (used by
-            suggest_passes_for_languages). Defaults to ``[name]`` when empty.
+        languages: Languages this analyzer handles, in the TAXONOMY's
+            vocabulary (used by suggest_passes_for_languages, the finalize
+            ``skipped_languages`` honesty signal and the file-presence
+            pre-filter). Set by :func:`register_analyzer` after the WI-juzig
+            gate; ``[]`` only under ``language_state == "no_language"``.
+        language_state: Which declared state ``languages`` is in — one of
+            ``LANGUAGE_STATE_TAXONOMY`` / ``LANGUAGE_STATE_NO_SPEC`` /
+            ``LANGUAGE_STATE_NO_LANGUAGE`` (WI-juzig).
         availability: ``"core"`` (always available) or ``"extra"`` (requires
             optional deps like tree-sitter).
         requires: Optional package requirement label (e.g.,
@@ -100,6 +110,7 @@ class RegisteredAnalyzer:
     pass_label: str = ""
     backend: str = ""
     languages: list[str] = field(default_factory=list)
+    language_state: str = "taxonomy"  # WI-juzig: LANGUAGE_STATE_* (defined below)
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
@@ -137,6 +148,124 @@ _ANALYZER_REGISTRY: dict[str, RegisteredAnalyzer] = {}
 _discovered: bool = False
 
 
+# ---------------------------------------------------------------------------
+# WI-juzig: the language declaration gate
+# ---------------------------------------------------------------------------
+#
+# ``languages`` used to default to ``[name]`` and nothing checked it, so the
+# registry spoke a second vocabulary next to the taxonomy's: a pass named
+# ``make`` was language ``make`` while the taxonomy, profile detection and
+# every file-anchored ``Symbol.language`` said ``makefile`` (INV-nidul — a
+# FALSE ``limits.skipped_languages`` verdict on a shipped artifact), and two
+# names that are not languages at all (``rust_analyzer``, ``manifest_targets``)
+# became languages ``all_known_languages()`` — and therefore the spec
+# validator — accepted. The default also conflated absent with empty: an
+# explicit ``languages=[]`` became ``[name]``.
+#
+# ONE VOCABULARY: the taxonomy's. An analyzer sits in exactly one declared
+# state, and the declaration is checked in BOTH directions so it cannot go
+# stale silently.
+LANGUAGE_STATE_TAXONOMY = "taxonomy"
+"""Default: every language is a ``taxonomy.LANGUAGES`` key (``LANGUAGE_ALIASES``
+keys are accepted and canonicalised to the taxonomy name)."""
+
+LANGUAGE_STATE_NO_SPEC = "no_taxonomy_spec"
+"""A real language the taxonomy has no ``LanguageSpec`` for (the WI-futin
+coverage gap: gleam, hack, odin, ansible, ...). The profile can never detect
+it, so its analyzer is dispatched unconditionally. NONE of the declared
+languages may be a taxonomy key — once a spec lands, the declaration must go,
+and the gate raises until it does."""
+
+LANGUAGE_STATE_NO_LANGUAGE = "no_language"
+"""Not a language pass — a synthesis pass over many formats that stamps each
+symbol with the FORMAT's language (``manifest_targets``). ``languages`` is
+stored as ``[]`` and no downstream consumer may re-inflate that into
+``{name}``."""
+
+_LANGUAGE_STATES = frozenset({
+    LANGUAGE_STATE_TAXONOMY, LANGUAGE_STATE_NO_SPEC, LANGUAGE_STATE_NO_LANGUAGE,
+})
+
+
+class LanguageDeclarationError(ValueError):
+    """An ``@register_analyzer`` language declaration is outside the vocabulary.
+
+    Raised at decoration (import) time, naming the analyzer and the offending
+    value. It is a defect in the registration, not a missing optional
+    dependency, so :func:`_import_module_list` re-raises it instead of
+    logging it away — an analyzer that silently vanished from the catalogue
+    would be the ABSENT != EMPTY defect in a new costume.
+    """
+
+
+def _gate_language_declaration(
+    name: str,
+    languages: list[str] | None,
+    language_state: str,
+) -> list[str]:
+    """Return the effective, canonical language list or raise.
+
+    ``None`` means "not given" and defaults to ``[name]`` — then gated like
+    any other value. ``[]`` is NOT "not given": the caller wrote something,
+    and the registry must not guess whether they meant ``[name]`` or
+    "no language" — they say which with ``language_state``.
+    """
+    # Local import: catalog/taxonomy import this module's registry at call
+    # time; keep the module import graph acyclic.
+    from ..taxonomy import LANGUAGE_ALIASES, LANGUAGES
+
+    if language_state not in _LANGUAGE_STATES:
+        raise LanguageDeclarationError(
+            f"analyzer {name!r}: language_state={language_state!r} is not one of "
+            f"{sorted(_LANGUAGE_STATES)}"
+        )
+    if language_state == LANGUAGE_STATE_NO_LANGUAGE:
+        if languages:
+            raise LanguageDeclarationError(
+                f"analyzer {name!r}: language_state={LANGUAGE_STATE_NO_LANGUAGE!r} "
+                f"declares no language, but languages={list(languages)!r} was given"
+            )
+        return []
+    if languages is None:
+        effective = [name]
+    elif not languages:
+        raise LanguageDeclarationError(
+            f"analyzer {name!r}: languages=[] is not a declaration (absent != empty). "
+            f"Omit it to mean [{name!r}], or declare "
+            f"language_state={LANGUAGE_STATE_NO_LANGUAGE!r} for a pass that is not "
+            f"a language"
+        )
+    else:
+        effective = list(languages)
+    if language_state == LANGUAGE_STATE_NO_SPEC:
+        stale = [
+            lang for lang in effective
+            if lang in LANGUAGES or lang in LANGUAGE_ALIASES
+        ]
+        if stale:
+            raise LanguageDeclarationError(
+                f"analyzer {name!r}: language_state={LANGUAGE_STATE_NO_SPEC!r} is stale — "
+                f"the taxonomy now carries a LanguageSpec for {stale!r}; remove the "
+                f"declaration"
+            )
+        return effective
+    canonical: list[str] = []
+    for lang in effective:
+        resolved = LANGUAGE_ALIASES.get(lang, lang)
+        if resolved not in LANGUAGES:
+            raise LanguageDeclarationError(
+                f"analyzer {name!r} declares language {lang!r}, which is not a "
+                f"taxonomy language (taxonomy.LANGUAGES) or alias. Either name a "
+                f"taxonomy language via languages=[...], declare "
+                f"language_state={LANGUAGE_STATE_NO_SPEC!r} for a language the "
+                f"taxonomy lacks a LanguageSpec for, or "
+                f"language_state={LANGUAGE_STATE_NO_LANGUAGE!r} for a pass that is "
+                f"not a language"
+            )
+        canonical.append(resolved)
+    return canonical
+
+
 def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag strings, not passwords; bandit flags any "pass*" name with "" default
     name: str,
     priority: int = 50,
@@ -146,12 +275,19 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     pass_label: str = "",
     backend: str = "",
     languages: list[str] | None = None,
+    language_state: str = LANGUAGE_STATE_TAXONOMY,
     availability: str = "core",
     requires: str | None = None,
     find_files: Callable[[Path], Iterable[Path]] | None = None,
     depends_on: list[list[str]] | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
+
+    Raises:
+        LanguageDeclarationError: at decoration time when the effective
+            ``languages`` are outside the taxonomy's vocabulary for the
+            declared ``language_state`` (WI-juzig). There is no silent
+            default: an undeclared non-language name does not register.
 
     Args:
         name: Unique identifier for this analyzer (e.g., "go", "rust").
@@ -164,8 +300,15 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
         backend: Parsing backend tag — ``"ast"``, ``"tree-sitter"``,
             ``"regex"``, ``"pattern"``, etc. Decoupled from pass_id so
             backend swaps don't churn the ID.
-        languages: Languages this analyzer handles (catalog suggestions).
-            Defaults to ``[name]``.
+        languages: Languages this analyzer handles, in the taxonomy's
+            vocabulary (``taxonomy.LANGUAGES`` keys; ``LANGUAGE_ALIASES``
+            keys are canonicalised). Not given -> ``[name]``, then gated.
+            An explicit ``[]`` is an error — absent is not empty.
+        language_state: ``"taxonomy"`` (default), ``"no_taxonomy_spec"``
+            for a real language the taxonomy has no LanguageSpec for (the
+            WI-futin coverage gap; none of ``languages`` may be a taxonomy
+            key), or ``"no_language"`` for a pass that is not a language
+            (``languages`` must be omitted; stored as ``[]``).
         availability: ``"core"`` or ``"extra"``.
         requires: Optional pip-package requirement label.
         find_files: Optional ``(repo_root) -> Iterable[Path]`` callable. When
@@ -205,7 +348,8 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             description=description,
             pass_label=pass_label or name,
             backend=backend,
-            languages=list(languages) if languages else [name],
+            languages=_gate_language_declaration(name, languages, language_state),
+            language_state=language_state,
             availability=availability,
             requires=requires,
             pass_version=compute_pass_version(func),
@@ -237,6 +381,20 @@ def get_all_analyzers() -> Iterator[RegisteredAnalyzer]:
     """
     for analyzer in sorted(_ANALYZER_REGISTRY.values(), key=lambda a: a.priority):
         yield analyzer
+
+
+def analyzers_for_language(language: str) -> list[RegisteredAnalyzer]:
+    """Every registered analyzer that declares ``language``, in priority order.
+
+    WI-juzig: the one place that answers "who produces language L?" in the
+    taxonomy's vocabulary. A language can have MORE THAN ONE producer —
+    ``rust`` has the tree-sitter incumbent and the SCIP backend — so callers
+    that used to key a dict by language, or ``get_analyzer(<language>)`` by
+    NAME, silently kept one and lost the other (or found nothing when the
+    pass name and the language differ: ``make`` / ``makefile``). Does not
+    trigger discovery; call :func:`ensure_discovered` first.
+    """
+    return [a for a in get_all_analyzers() if language in a.languages]
 
 
 def run_analyzer(
@@ -337,6 +495,11 @@ def _import_module_list(module_paths: list[str]) -> None:
     for module_path in module_paths:
         try:
             importlib.import_module(module_path)
+        except LanguageDeclarationError:
+            # WI-juzig: a misdeclared registration is a defect, not a missing
+            # optional dependency; swallowing it would make the analyzer
+            # silently vanish from the catalogue.
+            raise
         except Exception:
             logger.debug("Failed to import analyzer module %s", module_path)
 

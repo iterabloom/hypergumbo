@@ -293,6 +293,45 @@ def test_skipped_languages_excludes_config_only_languages(tmp_path: Path) -> Non
     assert ctx.behavior_map["limits"]["skipped_languages"] == ["haskell"]
 
 
+def test_skipped_languages_never_reports_a_language_whose_pass_ran_under_another_name(
+    tmp_path: Path,
+) -> None:
+    """INV-nidul, the aardvark shape: the profile detects ``makefile`` (the
+    taxonomy name), the pass that analysed it is registered as ``make``. Before
+    WI-juzig the registry's ``[name]`` default made the pass's language ``make``,
+    the two vocabularies never met, and the artifact said Makefile was detected
+    and NOT analysed while 41+ ``make`` nodes sat in the same file. The registry
+    now speaks the taxonomy's vocabulary (``make`` declares ``["makefile"]``),
+    so a completed run covers the detected language. Uses the REAL registry."""
+    ctx = _ctx(
+        tmp_path,
+        behavior_map={
+            "profile": {"languages": {"makefile": {"files": 1}, "rust": {"files": 16}}}
+        },
+        analysis_runs=[_ar("make"), _ar("rust")],
+    )
+    _finalize_skipped_into_limits(ctx)
+    assert "skipped_languages" not in ctx.behavior_map["limits"]
+
+
+def test_skipped_languages_does_not_reinflate_a_no_language_pass_into_a_language(
+    tmp_path: Path,
+) -> None:
+    """A ``no_language`` pass (``manifest_targets``) has ``languages == []``.
+    The old ``set(a.languages) if a.languages else {a.name}`` fallback would
+    have turned that into the phantom language ``manifest_targets`` — harmless
+    here only by luck (nothing detects it). The fallback is gone: an empty
+    declaration contributes nothing, and a detected-but-uncovered language is
+    still reported."""
+    ctx = _ctx(
+        tmp_path,
+        behavior_map={"profile": {"languages": {"haskell": {"files": 2}}}},
+        analysis_runs=[_ar("manifest_targets")],
+    )
+    _finalize_skipped_into_limits(ctx)
+    assert ctx.behavior_map["limits"]["skipped_languages"] == ["haskell"]
+
+
 # --- Sub-step 8: commit_dicts -----------------------------------------------------------
 class _FakeRecord:
     def __init__(self, d: dict) -> None:

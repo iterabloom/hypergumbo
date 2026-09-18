@@ -872,13 +872,21 @@ def _detect_languages(
     # ``find_files`` callable, use it so this count agrees with the
     # analyzer's file enumeration (e.g., bash includes extensionless
     # shebang scripts that the extension-only glob would miss).
-    from .analyze.registry import ensure_discovered, get_analyzer
+    # WI-juzig: the analyzer is found by the LANGUAGE it declares, not by
+    # a pass NAME that happens to equal it — ``get_analyzer("makefile")``
+    # found nothing because the pass is named ``make``, so the cure was
+    # wired to the six analyzers whose name equals their language and
+    # silently absent for the rest. First declaring producer wins.
+    from .analyze.registry import analyzers_for_language, ensure_discovered
     ensure_discovered()
 
     for lang, patterns in LANGUAGE_EXTENSIONS.items():
-        analyzer = get_analyzer(lang)
-        if analyzer is not None and analyzer.find_files is not None:
-            files: set[Path] = set(analyzer.find_files(repo_root))
+        enumerator = next(
+            (a.find_files for a in analyzers_for_language(lang) if a.find_files is not None),
+            None,
+        )
+        if enumerator is not None:
+            files: set[Path] = set(enumerator(repo_root))
         else:
             # Use a set to deduplicate files (e.g., *.ts and *.d.ts both match foo.d.ts)
             files = set(find_files(repo_root, patterns, excludes=excludes))

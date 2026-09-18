@@ -287,10 +287,15 @@ def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
     ``pass`` id appears in ``analysis_runs`` — a skipped or grammar-failed analyzer
     never appends a run (``all_analyzers.collect_analyzer_result`` routes it to
     ``limits.skipped_passes`` instead), so its language falls out of this set and
-    surfaces as skipped. The pass_id→languages map mirrors the analyzer's own
-    ``set(languages) if languages else {name}`` convention (all_analyzers.py:202);
-    non-analyzer passes (linkers, synthesis) simply don't appear in the map and
-    contribute nothing. The difference is returned sorted for deterministic output.
+    surfaces as skipped. The pass_id→languages map is the registry's DECLARED
+    ``languages`` — the taxonomy's vocabulary, gated at registration (WI-juzig).
+    The old ``set(languages) if languages else {name}`` fallback is gone: it
+    re-inflated a ``no_language`` pass into a phantom language, and the
+    ``[name]`` default it mirrored is what made the ``make`` pass language
+    ``make`` while the profile said ``makefile`` — a FALSE "skipped" verdict on
+    a language whose pass ran (INV-nidul). Non-analyzer passes (linkers,
+    synthesis) simply don't appear in the map and contribute nothing. The
+    difference is returned sorted for deterministic output.
     """
     from .analyze.registry import ensure_discovered, get_all_analyzers
     from .catalog import CONFIG_LANGUAGES
@@ -300,10 +305,7 @@ def _detected_unanalyzed_languages(ctx: FinalizeContext) -> list[str]:
     if not detected:
         return []
     ensure_discovered()
-    pass_to_langs = {
-        a.name: (set(a.languages) if a.languages else {a.name})
-        for a in get_all_analyzers()
-    }
+    pass_to_langs = {a.name: set(a.languages) for a in get_all_analyzers()}
     analyzed: set[str] = set()
     for run in ctx.analysis_runs:
         analyzed.update(pass_to_langs.get(run.get("pass", ""), ()))

@@ -555,7 +555,7 @@ class TestCatalogStaticConsistency:
         """Pins the AIM: a floor can be met by the wrong population."""
         catalog = self._full_catalog()
         by_id = {p.id: p for p in catalog.passes}
-        assert by_id["tauri-ipc-linker"].depends_on == [["javascript"], ["rust"]]
+        assert by_id["tauri-ipc-linker"].depends_on == [["javascript"], ["rust", "rust_analyzer"]]
 
     def test_every_depends_on_declarer_is_a_linker(self) -> None:
         """The premise ``find_falsified_dependencies`` keys falsification on.
@@ -612,7 +612,7 @@ class TestBridgeLinkerDependsOnPopulated:
 
     def test_jni_linker_cnf(self) -> None:
         p = self._pass_by_id("jni-linker")
-        assert p.depends_on == [["java"], ["c", "cpp", "rust"]]
+        assert p.depends_on == [["java"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
 
     def test_cgo_linker_cnf(self) -> None:
         p = self._pass_by_id("cgo-linker")
@@ -625,15 +625,15 @@ class TestBridgeLinkerDependsOnPopulated:
 
     def test_tauri_ipc_linker_cnf(self) -> None:
         p = self._pass_by_id("tauri-ipc-linker")
-        assert p.depends_on == [["javascript"], ["rust"]]
+        assert p.depends_on == [["javascript"], ["rust", "rust_analyzer"]]  # WI-juzig
 
     def test_wasm_bindgen_linker_cnf(self) -> None:
         p = self._pass_by_id("wasm-bindgen-linker")
-        assert p.depends_on == [["javascript"], ["rust"]]
+        assert p.depends_on == [["javascript"], ["rust", "rust_analyzer"]]  # WI-juzig
 
     def test_pyffi_linker_cnf(self) -> None:
         p = self._pass_by_id("pyffi-linker")
-        assert p.depends_on == [["python"], ["c", "cpp", "rust"]]
+        assert p.depends_on == [["python"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
 
     def test_lua_ffi_linker_cnf(self) -> None:
         p = self._pass_by_id("lua-ffi-linker")

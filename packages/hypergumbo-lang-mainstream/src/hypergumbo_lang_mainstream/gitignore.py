@@ -230,7 +230,7 @@ def is_gitignore_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("gitignore")
+@register_analyzer("gitignore", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_gitignore(repo_root: Path) -> AnalysisResult:
     """Analyze gitignore files in a repository.
 

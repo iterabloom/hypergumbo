@@ -172,7 +172,7 @@ def parse_play_routes(
     return symbols, edges
 
 
-@register_analyzer("play-routes")
+@register_analyzer("play-routes", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_play_routes(repo_root: Path) -> AnalysisResult:
     """Analyze Play Framework routes files in a repository."""
     run = AnalysisRun.create(pass_id=PASS_ID, version=PASS_VERSION)

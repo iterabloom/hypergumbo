@@ -156,7 +156,7 @@ def _process_make_tree(
 
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, var_name, "variable")
+                symbol_id = make_symbol_id("makefile", rel_path, start_line, end_line, var_name, "variable")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -167,7 +167,7 @@ def _process_make_tree(
                     kind="variable",
                     name=var_name,
                     path=rel_path,
-                    language="make",
+                    language="makefile",
                     span=Span(
                         start_line=start_line,
                         end_line=end_line,
@@ -204,7 +204,7 @@ def _process_make_tree(
                     if target_name.startswith("."):
                         kind = "special_target"
 
-                    symbol_id = make_symbol_id("make", rel_path, start_line, end_line, target_name, kind)
+                    symbol_id = make_symbol_id("makefile", rel_path, start_line, end_line, target_name, kind)
 
                     sym = Symbol(
                         id=symbol_id,
@@ -215,7 +215,7 @@ def _process_make_tree(
                         kind=kind,
                         name=target_name,
                         path=rel_path,
-                        language="make",
+                        language="makefile",
                         span=Span(
                             start_line=start_line,
                             end_line=end_line,
@@ -240,7 +240,7 @@ def _process_make_tree(
                                 confidence = 0.90
                             else:
                                 # External file or unresolved target
-                                dst_id = f"make:external:{prereq}:target"
+                                dst_id = f"makefile:external:{prereq}:target"
                                 confidence = 0.70
 
                             edge = Edge.create(
@@ -260,7 +260,7 @@ def _process_make_tree(
             if define_name:
                 start_line = node.start_point[0] + 1
                 end_line = node.end_point[0] + 1
-                symbol_id = make_symbol_id("make", rel_path, start_line, end_line, define_name, "function")
+                symbol_id = make_symbol_id("makefile", rel_path, start_line, end_line, define_name, "function")
 
                 sym = Symbol(
                     id=symbol_id,
@@ -271,7 +271,7 @@ def _process_make_tree(
                     kind="function",
                     name=define_name,
                     path=rel_path,
-                    language="make",
+                    language="makefile",
                     span=Span(
                         start_line=start_line,
                         end_line=end_line,
@@ -295,8 +295,8 @@ def _process_make_tree(
             # does not enumerate the include search path).
             for include_file in include_files:
                 edges.append(Edge.create(
-                    src=make_file_id("make", rel_path),
-                    dst=f"make:{include_file}:1-1:file:file",
+                    src=make_file_id("makefile", rel_path),
+                    dst=f"makefile:{include_file}:1-1:file:file",
                     edge_type="includes",
                     line=start_line,
                     origin=PASS_ID,
@@ -318,7 +318,12 @@ class MakeAnalyzer(TreeSitterAnalyzer):
     similar to CMake's target_link_libraries.
     """
 
-    lang = "make"
+    # WI-juzig / INV-nidul: the LANGUAGE is the taxonomy's name (``makefile``:
+    # what profile detection, LanguageSpec and every file-anchored
+    # Symbol.language say). ``make`` is the PASS id, pinned separately so the
+    # base class does not derive it from ``lang``.
+    lang = "makefile"
+    pass_id = PASS_ID
     file_patterns: ClassVar[list[str]] = ["Makefile", "makefile", "*.mk", "GNUmakefile"]
     grammar_module = "tree_sitter_make"
 
@@ -408,7 +413,13 @@ class MakeAnalyzer(TreeSitterAnalyzer):
 _analyzer = MakeAnalyzer()
 
 
-@register_analyzer("make")
+# WI-juzig: now that ``make`` is profile-gated under the taxonomy name
+# ``makefile``, its candidate set must be the profile's count (INV-hokig):
+# the taxonomy globs ``Makefile``/``*.mk`` only, this pass also reads
+# ``makefile`` and ``GNUmakefile``.
+@register_analyzer(
+    "make", languages=["makefile"], backend="tree-sitter", find_files=find_make_files,
+)
 def analyze_make_files(repo_root: Path) -> AnalysisResult:
     """Analyze Makefile files in the repository.
 

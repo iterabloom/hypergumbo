@@ -416,7 +416,7 @@ def is_bitbake_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("bitbake")
+@register_analyzer("bitbake", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_bitbake(repo_root: Path) -> AnalysisResult:
     """Analyze BitBake files in a repository.
 

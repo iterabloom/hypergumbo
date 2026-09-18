@@ -549,7 +549,9 @@ PYFFI_REQUIREMENTS = [
     ),
     # CNF: anchor (python) AND any-of-impls (c/cpp/rust — ctypes/cffi/PyO3
     # target one of these native languages).
-    depends_on=[["python"], ["c", "cpp", "rust"]],
+    # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``);
+    # either satisfies the impl-side clause.
+    depends_on=[["python"], ["c", "cpp", "rust", "rust_analyzer"]],
 )
 def pyffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Python FFI linker for registry-based dispatch.

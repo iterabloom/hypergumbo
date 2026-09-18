@@ -313,17 +313,34 @@ class TestLinkerChokepointStamping:
     def test_blocked_prerequisite_replaces_the_DERIVED_reason(self):
         """WI-dabup: the headline. no_candidate_files here is a FALSE claim.
 
-        tauri-ipc-linker declares [["javascript"], ["rust"]]. On a JS+Rust repo
-        whose Rust grammar is missing it reads zero files and the orchestrator
-        derives no_candidate_files -- "nothing to find, and no ordering or
-        declaration mechanism would change it". Installing the grammar changes
-        it. prerequisite_absent is the true answer and it is actionable.
+        tauri-ipc-linker declares [["javascript"], ["rust", "rust_analyzer"]]
+        (WI-juzig: rust has two producers). On a JS+Rust repo whose Rust
+        grammar is missing AND whose SCIP backend is off, BOTH producers are
+        absent for a toolchain reason — the linker reads zero files and the
+        orchestrator derives no_candidate_files -- "nothing to find, and no
+        ordering or declaration mechanism would change it". Installing the
+        grammar (or enabling the backend) changes it. prerequisite_absent is
+        the true answer and it is actionable. The fixture carries the second
+        producer's skip because on a real run every analyzer is an AR or a skip
+        record (WI-didil); one surviving member would rightly satisfy the clause.
         """
         assert self._run(
             files=0, symbols=[], edges=[],
             pass_id="tauri-ipc-linker",
-            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE},
+            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE,
+                                "rust_analyzer": BACKEND_DISABLED},
         ).silence_reason == PREREQUISITE_ABSENT
+
+    def test_a_surviving_second_producer_satisfies_the_clause(self):
+        """WI-juzig: the SCIP backend ran and produced rust symbols while the
+        tree-sitter grammar was missing. The rust clause is satisfied by
+        rust_analyzer, so the linker had real input and its silence is NOT a
+        prerequisite defect."""
+        assert self._run(
+            files=0, symbols=[], edges=[],
+            pass_id="tauri-ipc-linker",
+            skipped_pass_codes={"rust": DEPENDENCY_UNAVAILABLE},
+        ).silence_reason != PREREQUISITE_ABSENT
 
     def test_prerequisite_absent_does_NOT_override_a_BODY_claim(self):
         """The #1008 guard is preserved, and this is not a formality.

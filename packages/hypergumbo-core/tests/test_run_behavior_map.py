@@ -606,7 +606,7 @@ def test_run_behavior_map_emits_partial_json_when_analyzer_crashes(tmp_path):
 
     (tmp_path / "mod.py").write_text("def f():\n    return 1\n")
 
-    @register_analyzer("crash-e2e", priority=999)
+    @register_analyzer("crash-e2e", priority=999, language_state="no_language")
     def _crash(root, **kwargs):
         raise RuntimeError("e2e analyzer boom")
 
@@ -1102,3 +1102,34 @@ def test_pyproject_console_script_survives_and_is_detected_wi_papag(tmp_path):
     # npm run-scripts (no entry_point) remain noise-filtered.
     assert not script_nodes(False), \
         "npm package.json run-scripts should be noise-filtered"
+
+
+def test_a_language_whose_pass_ran_is_never_reported_skipped(tmp_path):
+    """INV-nidul closure evidence, production path (the aardvark-dns repro as a
+    fixture): a repo with a Makefile. The profile detects ``makefile``; the
+    ``make`` pass runs (tree-sitter-make is a hard dependency of the mainstream
+    package, so this is not a skipif); and ``limits.skipped_languages`` must
+    NOT claim Makefile went unanalysed. Every symbol the pass emitted carries
+    the taxonomy's name, not the pass's."""
+    (tmp_path / "Makefile").write_text(
+        "CC = gcc\n\nall: build\n\nbuild:\n\t$(CC) -o app main.c\n\nclean:\n\trm -f app\n"
+    )
+    (tmp_path / "main.c").write_text("int main(void) { return 0; }\n")
+    out_path = tmp_path / "out.json"
+    run_behavior_map(
+        repo_root=tmp_path, out_path=out_path, budgets="none",
+        include_sketch_precomputed=False,
+    )
+    data = json.loads(out_path.read_text())
+
+    assert "makefile" in data["profile"]["languages"]
+    ran = {r["pass"] for r in data["analysis_runs"]}
+    assert "make" in ran, "the make pass did not run; the test would be vacuous"
+    assert "makefile" not in data["limits"].get("skipped_languages", [])
+
+    by_lang = {}
+    for n in data["nodes"]:
+        by_lang.setdefault(n.get("language"), 0)
+        by_lang[n.get("language")] += 1
+    assert by_lang.get("make", 0) == 0, by_lang
+    assert by_lang.get("makefile", 0) >= 3, by_lang  # CC, all, build, clean
