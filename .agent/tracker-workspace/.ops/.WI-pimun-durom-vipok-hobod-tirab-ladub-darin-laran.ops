@@ -32,3 +32,10 @@
   clock: 3  # b510
   nonce: b510  # b510
   message: "Related, from INV-nopoh (2026-09-03): Go call edges under a package-level\n`var` (every cobra Run handler) now anchor on the VARIABLE's symbol, but the\nmodule_attr_refs for the SAME body (`os.Stderr` read inside the handler) still\nanchor on the FILE, because `_innermost_callable_at` admits function/method\nspans only. So an ipc/logging chain inside a cobra handler has a variable-kind\nsrc on the call and a file-kind src on the attribute read -- the two ends do\nnot meet, the INV-fafol shape this item counts. A fix that admits a package-level\nvariable whose span contains the read (or the alias-edge design in the WI filed\nfor var aliases) closes both. No change made here."  # b510
+- op: discuss  # 3a7c
+  at: '2026-09-18T10:25:45Z'  # 3a7c
+  by: agent  # 3a7c
+  actor: jgstern_agent  # 3a7c
+  clock: 4  # 3a7c
+  nonce: 3a7c  # 3a7c
+  message: "2026-09-18, a sibling of this row's shape was found and fixed in the SCIP arm\n(INV-mofiv, PR #1047): every SCIP occurrence-ref edge was sourced from the\nFILE's module namespace and none from the enclosing callable, because the\nshim enclosed by the Definition's identifier-token `range` and ignored the\npopulated item-range `enclosing_range`. Fix: use the emitter-supplied extent;\nmethod-sourced edges 0 -> 287 on aardvark-dns. This row (io_edge_src anchored\nto a FILE node, 194 chains) is the same \"anchored to the file, not the\ncallable\" defect in the I/O-boundary pipeline; the mechanism there is\ndifferent and this note does not claim the SCIP fix reaches it. Not started."  # 3a7c
