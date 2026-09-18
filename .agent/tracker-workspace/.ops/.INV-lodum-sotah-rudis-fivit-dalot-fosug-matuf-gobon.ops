@@ -30,3 +30,10 @@
   nonce: d509  # d509
   set:  # d509
     status: violated  # d509
+- op: discuss  # 2082
+  at: '2026-09-18T19:41:30Z'  # 2082
+  by: agent  # 2082
+  actor: jgstern_agent  # 2082
+  clock: 3  # 2082
+  nonce: '2082'  # 2082
+  message: "ADR-0057 (2026-09-18) relocates this row's cure: the merged record's span is the ITEM span (enclosing_range) and that fold happens INSIDE the merge pass, WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid — not as a standalone index.py edit. WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid now blocks this row.\n\nCORRECTION to my 2026-09-18 filing: the clause \"split_within_file_stable_id_collisions would re-mint the SCIP record as a second SITE\" holds only if the span fold lands WITHOUT a merge. Under ADR-0057 §8 the merge runs first, so no same-(path, stable_id) cross-backend group ever reaches the splitter; the splitter is untouched. The invariant (SCIP Symbol.span is the token) remains VIOLATED until the merge ships; do not close on this note."  # 2082
