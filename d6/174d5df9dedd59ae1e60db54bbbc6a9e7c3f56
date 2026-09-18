@@ -1,0 +1,40 @@
+Original commit body from 678a4b920786cc87a6eda514105ebb03b27d11c6:
+
+The concept-audit Examples entry is where the next agent learns the method,
+so a retracted argument left standing there is worse than a stale field name.
+Three changes, all to the 2026-09-17 entry.
+
+1. RENAME NOTE. The skip-host field is now silence_reason (schema 0.20.10),
+   which was this audit's own verdict A. The entry keeps the old name
+   throughout because that is what was measured, and says so.
+
+2. RETRACTION. The entry argued WI-gidid re-frames the ADR-0056 item 5
+   decision -- not 'should we EMIT an AnalysisRun for a pass that never ran'
+   but 'should we KEEP the one we already made', a materially weaker case for
+   the ABSENT != EMPTY objection. That argument was withdrawn on evidence:
+   the discarded record was dumped and is near-vacuous. Every non-default
+   field is already in the skip entry, and toolchain is bare PRECISELY
+   because the grammar it would report is the missing thing. WI-gidid
+   downgraded P2 -> P3.
+
+3. OUTCOME, with the two transferable lessons, both about what an audit
+   cannot see:
+
+   - It measured ONE repo at DEFAULT settings, so it could not see a pass
+     landing in NEITHER host. That third outcome only opens behind an opt-in
+     flag, and no CI run or bakeoff sets one. Name CONFIGURATION coverage
+     beside corpus coverage when saying what a measurement did not reach.
+
+   - It audited where the silence is REPORTED and never asked whether the
+     dispatcher's input to that decision was sound. It was not: INV-homur,
+     six analyzers read extensions the profile does not count, so passes
+     were skipped as no_candidate_files having never looked (359 -> 367
+     symbols on one 19-file repo). An audit of a field should also audit the
+     predicate that decides what that field gets to say.
+
+Governance file under .agent/; change and merge-without---gov approved by the
+owner 2026-09-18, consistent with the standing ruling in LIVE.md section 3.
+
+94 passed, ratchet 667 delta +0.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
