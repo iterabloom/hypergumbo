@@ -1,0 +1,49 @@
+Original commit body from 5ee1d06033fe0f9d632ea48377d5e443a8a7dab7:
+
+rust-analyzer numbers locals per document (`local 0`, `local 1`), and
+scip/index.py minted each as a Symbol named by that index, under the
+registry's Terraform `local` kind, with stable_id = sha256(moniker). On
+aardvark-dns that was 500 of the backend's 669 nodes, 498 of 1255
+Symbols sharing a stable_id (39.7%), and a degenerate fingerprint.
+Worse, translate.py resolves edge endpoints through ONE index-wide map
+keyed on the raw moniker, so a read of `local 0` in one file resolved
+to whichever file's `local 0` was mapped last: 329 of 455 local-pointing
+edges crossed files — 21.2% of every edge in the artifact — each
+asserting a reference a document-scoped binding cannot receive. Six of
+the fourteen highest in-degree nodes were locals named 0–5.
+
+Ruled by the owner 2026-09-18: drop them, matching every other backend.
+py.py, kotlin.py, go.py and the tree-sitter rust.py all READ function-
+local bindings for resolution and mint nothing for them, because a
+binding no other file can name is not part of a behavior map.
+
+The rule is one predicate, descriptor.is_local_symbol (the SCIP
+grammar's own `local ` form, judged on the raw string), applied in all
+three shims: index.py skips the SymbolInformation; calls.py skips a
+local occurrence and never lets a local's Definition enclose; edges.py
+skips a Relationship touching one at either end. So it holds for a
+library caller that supplies no resolver, not only on the production
+path where the resolver would have dropped the edge anyway.
+
+Tests: one gate per shim, the predicate's agreement with the parser,
+and INV-kukiz's exact shape end to end at translate_scip_to_hg — two
+documents each defining `local 0` — with a control arm proving a real
+cross-file reference survives. All eight were red against the old
+source (7 failed, 1 import error), then green.
+
+Measured on the filed repro (HYPERGUMBO_RUST_ANALYZER=1, aardvark-dns):
+SCIP nodes 669 -> 169, SCIP edges 637 -> 182, local-pointing edges
+455 -> 0, cross-file local edges 329 -> 0, validation violations
+2 -> 1, every non-SCIP origin byte-identical. The one remaining
+violation is pre-existing and filed as INV-kutid: rust-analyzer's
+`crate/` and `main().` monikers name the cargo package but not the
+crate target, so lib, bin and build.rs share them (5 of 756 Symbols).
+
+Deliberately unchanged: the tree-sitter arm still carries a different
+stable_id for the same function (INV-dolud), and whether the two arms
+should share identities at all is WI-gojum's parked question.
+
+Addresses WI-jikok and INV-kukiz; both rows close on a re-run of their
+own filed repro after merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
