@@ -1,0 +1,23 @@
+- op: create  # 03a9
+  at: '2026-09-18T20:43:16Z'  # 03a9
+  by: agent  # 03a9
+  actor: jgstern_agent  # 03a9
+  clock: 1  # 03a9
+  nonce: 03a9  # 03a9
+  data:  # 03a9
+    kind: work_item  # 03a9
+    title: "Same-site supersession: a resolved first-party edge demotes a same-(src,line) external-stub edge by rank_score, with the supersession stamped on the stub (ADR-0057 §14)"  # 03a9
+    status: todo_hard  # 03a9
+    priority: 2  # 03a9
+    parent:  # 03a9
+    tags:  # 03a9
+    - multi_fidelity  # 03a9
+    - ranking  # 03a9
+    - scip  # 03a9
+    - rust_analyzer  # 03a9
+    isbefore: []  # 03a9
+    duplicate_of: []  # 03a9
+    not_duplicate_of: []  # 03a9
+    pr_ref:  # 03a9
+    description: "ADR-0057 §14 (owner ruling 2026-09-18: \"yes, by rank_score\"). Measured on\naardvark-dns b1008d3b67 with both Rust arms: at 257 call sites (merged src,\nline) tree-sitter emitted a `calls` edge to an external_symbol stub; at 33\nof them SCIP has a first-party reference on the same line — the syntactic\nbackend said \"outside the crate\", the type-aware one says \"this item, here\".\nUnder §11 `dst` is identity, so these are two edges and both are kept; as\nof §11 alone nothing demotes the stub and the wrong answer sits at equal\nstanding with the right one. This is the tension WI-gojum's July note\nrecorded (\"coexist + outrank does not remove tree-sitter's magnets\") and it\nis where leverage against INV-fahub-class edges lives.\n\nRULING: a resolved first-party edge at (src, line) DEMOTES — never deletes —\na same-site edge whose dst is an external stub (is_resolved=False), by\nrank_score (ADR-0039 ruling 3: ranking adjustments accumulate on rank_score,\nnever on confidence). The stub keeps its confidence, its origin and its\nplace in the graph.\n\nRECORD THE FACT, NOT JUST THE NUMBER: the merge pass stamps the supersession\non the stub edge as a positive claim — the superseding edge's id and its\nproducer — so a consumer can see WHY it ranks low (a bare lower rank_score is\nan ABSENT != EMPTY reading waiting to happen). Whether the rank_score\nadjustment is applied inside the merge pass or by ranking.py reading the\nstamp is the implementing PR's call; the stamp is not optional.\n\nSCOPE LIMITS: same (src, line) only — no cross-line inference; the\nsuperseding edge must be is_resolved=True; a site where BOTH producers point\nat stubs is untouched; a site where SCIP's reference is to a non-callable\n(field/type) on the same line as a tree-sitter call is a candidate for\nfalse supersession — the 33 is an UPPER BOUND, and the implementing PR must\nmeasure how many of the 33 are the same call rather than a co-located\nreference before claiming the number.\n\nACCEPTANCE: on the recorded aardvark fixture, every demoted stub carries the\nsupersession stamp naming a resolved same-site edge; no edge is deleted;\nedge count is unchanged by this step; a stub with no same-site resolved\nedge has rank_score == confidence as before. Blocked by WI-kokiz (needs\nmerged src ids and both producers' edges in one graph)."  # 03a9
+    fields: {}  # 03a9

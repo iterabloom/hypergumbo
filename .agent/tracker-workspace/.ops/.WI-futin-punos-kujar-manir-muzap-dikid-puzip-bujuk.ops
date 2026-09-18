@@ -1,0 +1,22 @@
+- op: create  # a13a
+  at: '2026-09-18T21:23:34Z'  # a13a
+  by: agent  # a13a
+  actor: jgstern_agent  # a13a
+  clock: 1  # a13a
+  nonce: a13a  # a13a
+  data:  # a13a
+    kind: work_item  # a13a
+    title: "Taxonomy coverage gap: 32 registered analyzer languages have no LanguageSpec (gleam, hack, odin, ansible, ...) -- declared no_taxonomy_spec by WI-juzig; disposition each: add spec, fold into parent, or keep as declared dialect"  # a13a
+    status: todo_hard  # a13a
+    priority: 3  # a13a
+    parent:  # a13a
+    tags:  # a13a
+    - taxonomy  # a13a
+    - language_axis  # a13a
+    - registry  # a13a
+    isbefore: []  # a13a
+    duplicate_of: []  # a13a
+    not_duplicate_of: []  # a13a
+    pr_ref:  # a13a
+    description: "ENUMERATED (registry vs taxonomy.LANGUAGES, 2026-09-18, 118 analyzers): 32\nregistered analyzer languages have NO LanguageSpec in the taxonomy, so the\nprofile can never detect them, they never appear in profile.languages, the\nfile-presence pre-filter dispatches their analyzers unconditionally (the\n\"defensive dispatch\" arm of _filter_by_file_presence), and every file-anchor\nthe orchestrator synthesises for their files carries whatever the extension\nglob happens to say rather than the language the analyzer stamps.\n\nTHE 32 (analyzer -> declared language): apex, astro, bibtex, bitbake, fennel,\ngitignore, gleam, hack, haxe, janet, kdl, luau, matlab, meson, odin, pascal,\nplay-routes, pony, prisma, properties, puppet, racket, requirements, robot,\nscheme, scss, smithy, sparql, tcl, twig, v, and yaml_ansible -> ansible.\n\nThese are NOT phantoms (rust_analyzer / manifest_targets were; the registry\ngate WI-juzig removed those) and NOT synonyms (make/makefile was; same row).\nThey are a taxonomy coverage gap. WI-juzig gives each of them the declared\nthird state `language_state=\"no_taxonomy_spec\"` on its @register_analyzer\ncall so the gate does not silently bless them, and the gate RAISES as stale\nthe moment a LanguageSpec for one of them lands without the declaration\nbeing removed -- so closing any part of this row is a two-line change per\nlanguage: add the LanguageSpec (extensions, FileRole), delete the\ndeclaration.\n\nNOT every entry wants a LanguageSpec: some are dialects of a taxonomy\nlanguage (ansible is YAML; play-routes is a Play `conf/routes` file; scss\nis CSS-family), some are single-filename formats (gitignore, requirements,\nproperties). Per entry the ruling is one of: (a) add a LanguageSpec,\n(b) fold into the parent language's spec and re-declare the analyzer's\nlanguages as the parent, (c) keep as a declared dialect with no spec and\nsay so. Decide per entry, do not bulk-add 32 specs.\n\nACCEPTANCE: each of the 32 is dispositioned (a)/(b)/(c) with the\ndeclaration removed for (a)/(b); the WI-juzig enumeration test\n(test_registry_language_vocabulary.py) is the instrument -- it fails on a\nstale declaration, so the count of `no_taxonomy_spec` declarations left in\nthe tree is the residual."  # a13a
+    fields: {}  # a13a

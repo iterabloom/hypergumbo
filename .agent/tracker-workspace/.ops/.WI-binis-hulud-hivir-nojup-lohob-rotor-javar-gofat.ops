@@ -30,3 +30,10 @@
   set: {}  # 6e1d
   add:  # 6e1d
     isbefore: [WI-hukuf-juniz-zudoh-tivag-kapad-nobuz-komil-rasis]  # 6e1d
+- op: discuss  # 249a
+  at: '2026-09-18T20:43:20Z'  # 249a
+  by: agent  # 249a
+  actor: jgstern_agent  # 249a
+  clock: 3  # 249a
+  nonce: 249a  # 249a
+  message: "ADR-0057 §13 (owner ruling 2026-09-18) lands in this row. `confidence` is NOT\narbitrated by precedence; three cases: (1) sole producer -> unchanged; (2)\ntwo producers, SAME inference pathway (matching evidence_type candidates)\n-> not new evidence, incumbent-first precedence; (3) two producers,\nDISTINCT pathways for the same (src, dst, edge_type) -> a DECLARED\ncorroboration level, not a formula: built-in 0.95 when one pathway is\ntype-resolved (ADR-0012's number), declared in the same per-attribute table\nas §5 so it is configurable, with a NEW confidence_source value\n`corroborated`, both candidates preserved in the provenance slot, and\nCONFIDENCE_MODEL bumped hypergumbo-evidence-v2.0 -> v2.1 (schema.py:164;\ntest_confidence_model_matches_documented_grammar pins the grammar).\n\nWHY NOT max / noisy-OR: SCIP's 0.85 is an emitter constant (max would\nlaunder it into evidence); the producers read the same source text, so\nnoisy-OR overstates. Why a new enum value: ADR-0039's `composite` means\n\"transitional blended-ranking value, eliminated by ruling 3\" — nothing\nproduces it, and reusing it for a new meaning is a conceptual leak. Extend\nVALID_CONFIDENCE_SOURCES (ir.py:86, spec_validator.py:453), the dataclass\ndocstring, and regenerate docs/schema.json + concept-axes.\n\nSo the arbitration property's interface admits COMBINING functions for\nnumeric attributes, not only precedence for categorical ones; §4 is amended\nto say so. On aardvark: the 92 agreed edges become corroborated at 0.95;\nthe 245 calls at 0.5 and 61 at 0.4 are untouched unless SCIP reaches the\nsame target; SCIP's own 0.85 constant on its 189 sole edges is left alone\n(ADR-0039 permits a labelled constant; making it evidence-derived is that\nbackend's work)."  # 249a
