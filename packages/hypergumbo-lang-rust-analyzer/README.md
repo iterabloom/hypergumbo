@@ -53,8 +53,12 @@ Symbol / edge emission builds on `hypergumbo_core.scip.*`:
 
 - `scip_index_to_symbols` — `Document` walk → `Symbol` objects.
 - `scip_index_to_edges` — `SymbolInformation.relationships` → `Edge`s.
-- `scip_index_to_call_edges` — non-Definition `Occurrence` → calls / references
-  edges via span-enclosure resolution.
+- `scip_index_to_call_edges` — non-Definition `Occurrence` → `references`
+  edges, attributed to the innermost Definition whose `enclosing_range` (the
+  item; rust-analyzer populates it on every Definition) contains the reference.
+  Until INV-mofiv the shim used the Definition's `range`, which for
+  rust-analyzer is the identifier token, so every edge was sourced from the
+  file's module namespace and none from a function.
 
 Rust-analyzer's `Relationship` set is empty (per WI-zakub), so the primary
 edge source here is `scip_index_to_call_edges`.

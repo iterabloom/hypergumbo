@@ -19,13 +19,34 @@ symbol to the occurrence's symbol.
 Enclosure resolution:
 
 * For each non-Definition Occurrence O in a Document, we iterate the
-  Document's Definition Occurrences and keep every one whose span
+  Document's Definition Occurrences and keep every one whose EXTENT
   fully contains O's span (start ≤ O.start and end ≥ O.end on both
   the line and column axes). We then pick the *innermost* — smallest
   span area, measured as ``(end_line - start_line, end_col)`` on a
   lexicographic comparison — and break ties by document order so the
   result is deterministic without depending on the protobuf parser's
   iteration stability for equal keys.
+
+* A Definition's EXTENT is its ``enclosing_range`` when the emitter
+  populated it, else its ``range`` (``_definition_extent``). The two
+  are different things: ``range`` is where the symbol's NAME is,
+  ``enclosing_range`` is where the whole item is. rust-analyzer's
+  Definition ``range`` is the identifier token — one line — so with
+  ``range`` alone no reference inside a function body was ever inside
+  a function, and the only Definition that contained anything was the
+  document's ``crate/`` namespace spanning the whole file. Measured
+  on aardvark-dns after the locals were dropped: 182 of 182 SCIP edges
+  were sourced from a namespace and 0 from a callable (INV-mofiv). An
+  earlier version of this docstring, and of :mod:`.edges`, said
+  ``enclosing_range`` "is rarely populated in practice"; rust-analyzer
+  1.94.0 populates it on every Definition occurrence with exactly the
+  item range (20 of 20 on the recorded sample: ``increment``
+  range=[13,11,20], enclosing_range=[13,4,16,5]). Emitters that leave
+  it empty keep the ``range`` behaviour. ``Symbol.span`` in
+  :mod:`.index` is deliberately NOT moved to ``enclosing_range`` here:
+  that makes the rust.py stable_id parity helper match, and the
+  within-file collision splitter would then re-mint the SCIP record
+  as a second site — a ruling WI-gojum owns.
 
 * Occurrences whose enclosing Definition cannot be found (module-top-
   level statements, imports at file scope, or occurrences that precede
@@ -79,7 +100,7 @@ half-resolved artefacts in the output.
 """
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from ..ir import Edge
 from ._generated import scip_pb2
@@ -90,6 +111,26 @@ _ROLE_DEFINITION = 0x01
 
 _EVIDENCE_TYPE = "scip_occurrence_ref"
 _CONFIDENCE = 0.85
+
+
+def _definition_extent(occ: Any) -> Optional[Tuple[int, int, int, int]]:
+    """The span a Definition occurrence ENCLOSES, for attribution.
+
+    ``enclosing_range`` when populated and well-formed, else ``range``.
+    ``occ`` is a ``scip_pb2.Occurrence``; typed ``Any`` because the
+    generated module has no stubs and a precise name would grow the
+    mypy strict ratchet (name-defined), as :mod:`.index` also avoids.
+    A malformed ``enclosing_range`` (a length other than 3 or 4) is
+    treated as absent rather than as fatal, for the same reason a
+    malformed ``range`` skips the occurrence: a buggy emitter must not
+    abort the pass. See the module docstring for why the distinction
+    decides whether this shim attributes to callables at all.
+    """
+    if len(occ.enclosing_range):
+        extent = _parse_range(list(occ.enclosing_range))
+        if extent is not None:
+            return extent
+    return _parse_range(list(occ.range))
 
 
 def _parse_range(arr: "list[int]") -> Optional[Tuple[int, int, int, int]]:
@@ -153,7 +194,7 @@ def scip_index_to_call_edges(
                 continue
             if is_local_symbol(occ.symbol):
                 continue
-            span = _parse_range(list(occ.range))
+            span = _definition_extent(occ)
             if span is None:
                 continue
             defs.append((span, occ.symbol))

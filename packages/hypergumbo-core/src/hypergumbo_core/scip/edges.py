@@ -13,16 +13,18 @@ Scope pinned in Slice C:
   refs (non-``Definition`` ``Occurrence`` entries, which conceptually
   represent call / read / write sites) are **not** turned into edges by
   this shim. Converting a ref occurrence to a call-graph edge requires
-  resolving the *enclosing* symbol that contains the occurrence span,
-  which SCIP does not encode directly on the ``Occurrence`` (the
-  ``enclosing_range`` field is rarely populated in practice). That
-  span-based resolution against the Symbol list produced by Slice B is
-  owned by ``calls.py`` (Slice D, WI-kopav, done); it walks each
-  Document's ``Occurrence`` list and attributes each non-Definition
-  occurrence to its enclosing Definition by span containment. Keeping
-  Slice C narrow means the shim is a
-  pure, deterministic projection of explicit SCIP relationships, which
-  is easy to test and review.
+  resolving the *enclosing* symbol that contains the occurrence span.
+  That resolution is owned by ``calls.py`` (Slice D, WI-kopav, done);
+  it walks each Document's ``Occurrence`` list and attributes each
+  non-Definition occurrence to the innermost Definition whose extent
+  contains it — the Definition's ``enclosing_range`` when the emitter
+  populated it (rust-analyzer does, on every Definition), else its
+  ``range``. An earlier version of this paragraph said
+  ``enclosing_range`` "is rarely populated in practice"; that was
+  false for rust-analyzer and cost every SCIP edge its caller
+  (INV-mofiv). Keeping Slice C narrow means this shim is a pure,
+  deterministic projection of explicit SCIP relationships, which is
+  easy to test and review.
 
 * Per WI-zakub §1, rust-analyzer leaves ``relationships`` empty; its
   trait-dispatch information lives inside the SCIP symbol string's
