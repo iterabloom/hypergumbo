@@ -1,0 +1,22 @@
+- op: create  # e26d
+  at: '2026-09-17T23:32:54Z'  # e26d
+  by: agent  # e26d
+  actor: jgstern_agent  # e26d
+  clock: 1  # e26d
+  nonce: e26d  # e26d
+  data:  # e26d
+    kind: work_item  # e26d
+    title: "The SCIP importer mints a Symbol per local binding named by its SCIP local id ('1', '3', '102'), collapsing stable_id for 498 of 1255 Symbols (39.7% collision) and degenerating fingerprints"  # e26d
+    status: todo_hard  # e26d
+    priority: 2  # e26d
+    parent:  # e26d
+    tags:  # e26d
+    - rust  # e26d
+    - analysis_quality  # e26d
+    - multi_fidelity  # e26d
+    isbefore: []  # e26d
+    duplicate_of: []  # e26d
+    not_duplicate_of: []  # e26d
+    pr_ref:  # e26d
+    description: "MEASURED 2026-09-17 at 1aa5b46b1b, two-arm survey of\n~/whole_bunch_of_repos/aardvark-dns (16 .rs). Split out of WI-jivim, whose\nfiled core (origin_run_id violations) is fixed; this is what remained and it\nis larger.\n\n                       arm A (default)   arm B (backend on)\n    nodes                      581             1255\n    validation violations        0                2\n\nTHE TWO VIOLATIONS:\n\n  stable_id collision detected: 498/1255 Symbols (39.7% of all Symbols)\n  share an id. Top groups: sha256:114a2c4238480125 (10 symbols, e.g. \"1\");\n  sha256:2576637a38bf73b0 (10 symbols, e.g. \"3\")\n\n  Degenerate Symbol.fingerprint value(s): hgfp2:f7af508bf396c9bf (15 symbols,\n  15 distinct names, e.g. \"102\", \"17\", \"31\", \"38\", \"4\")\n\nTHE CAUSE. scip/index.py:158-159 mints a Symbol for every SCIP `local <id>`\nbinding and uses THE LOCAL ID AS THE NAME:\n\n    if scip_sym.is_local:\n        return scip_sym.local_id, \"local\"\n\nA SCIP local id is an index into the document, not an identifier: the names\nare literally \"1\", \"3\", \"17\", \"102\". 500 of the 669 scip nodes on this crate\nare locals -- 75% of the backend's node output and 40% of the whole artifact.\nNames that carry no lexical content collapse ADR-0014's stable_id inputs\n(name + qualified_name + path + kind), so they collide en masse, and the same\ndegeneracy hits Symbol.fingerprint.\n\nWHY THIS MATTERS MORE THAN THE COUNT SUGGESTS. stable_id is the identity used\nfor cross-run tracking. A 39.7% collision rate means two-fifths of the\nartifact cannot be followed between runs, and the collision is SILENT to every\nconsumer that joins on it -- it reads as one symbol with many definitions\nrather than as an error. Note the precedent: INV-bazij re-designed stable_id\nprecisely because 155 zero-param bash functions in one file shared an id at a\n60% collision rate. This is the same failure mode, reached by a different\nroute, at 39.7%.\n\nTHE QUESTION THIS NEEDS, AND IT IS NOT MINE TO ANSWER. Should the SCIP\nimporter mint Symbols for function-local bindings at all? A behavior map is a\ngraph of things other things can refer to across files; a local binding is by\ndefinition not one. Dropping them would remove 75% of the backend's node\noutput and all of this defect -- but that is a RECALL-LOSS direction and a\ndesign decision about what the SCIP arm is for, so it is filed rather than\nperformed.\n\nThree shapes, if the answer is \"keep them\":\n  (a) qualify the name with the enclosing symbol, so \"1\" becomes\n      \"load_config::1\" and the stable_id inputs stop being degenerate;\n  (b) give locals a distinct id scheme that does not pretend to be a\n      cross-run identity, since a local has none;\n  (c) keep the nodes but exclude them from the stable_id / fingerprint\n      invariants, which is the weakest option -- it silences the detector\n      rather than fixing the identity.\n\n(a) is the smallest honest change and does not lose recall.\n\nREPRO: HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey <rust repo>, then read\nvalidation_report.violations. arm A for the control."  # e26d
+    fields: {}  # e26d
