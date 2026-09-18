@@ -1,0 +1,32 @@
+- op: create  # 2025
+  at: '2026-09-18T09:58:54Z'  # 2025
+  by: agent  # 2025
+  actor: jgstern_agent  # 2025
+  clock: 1  # 2025
+  nonce: '2025'  # 2025
+  data:  # 2025
+    kind: invariant  # 2025
+    title: "every SCIP occurrence-ref edge is sourced from the file's module namespace, never the enclosing function (182 of 182 on aardvark-dns), because calls.py encloses by the Definition's identifier-token range and ignores the populated enclosing_range"  # 2025
+    status: violated  # 2025
+    priority: 2  # 2025
+    parent:  # 2025
+    tags:  # 2025
+    - rust  # 2025
+    - multi_fidelity  # 2025
+    - analysis_quality  # 2025
+    isbefore: []  # 2025
+    duplicate_of: []  # 2025
+    not_duplicate_of: []  # 2025
+    pr_ref:  # 2025
+    description: "MEASURED 2026-09-18 on the post-#1042 artifact of\n`HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey ~/whole_bunch_of_repos/aardvark-dns`\n(SCIP locals already dropped, so this is the whole remaining SCIP edge set):\n\n    SCIP edges                              182\n    src kind                                namespace: 182   (method/function: 0)\n    dst kinds                               variable 57, method 45, class 44, namespace 36\n    SCIP method Symbols whose span is\n      a single line (identifier token)      79 of 79\n\nEvery SCIP edge says \"the FILE's module namespace references X\". Not one says\n\"this function references X\". The tree-sitter arm on the same crate emits\n445 edges with callable sources; the SCIP arm, whose entire purpose is\ntype-resolved call attribution, has zero. This is why last session found the\nSCIP arm's 637 edges were \"ALL references, ZERO call-family\": there was never\nan enclosing callable to specialize from.\n\nTHE CAUSE is structural and now provable from the recorded fixture. scip/calls.py\nattributes each non-Definition occurrence to the innermost Definition occurrence\nwhose `range` contains it. rust-analyzer's Definition `range` is the IDENTIFIER\nTOKEN — `impl#[Counter]increment().` at [13,11,20], one line — so no reference\nin a body (lines 15-16) is ever inside a function's range. The only Definition\nrange that contains anything is the document's `crate/` namespace, [0,0,32,0],\nthe whole file. Innermost-containing therefore ALWAYS resolves to the namespace.\n\nAND THE INPUT THAT FIXES IT IS ALREADY IN THE INDEX. calls.py's docstring says\n\"the enclosing_range field is rarely populated in practice\". Measured on\nrust-analyzer 1.94.0 (4a4ef49 2026-03-02): `Occurrence.enclosing_range` is\npopulated on 20 of 20 Definition occurrences and is exactly the item range —\nincrement enclosing_range=[13,4,16,5] (lines 14-17), top_level_add [0,0,2,1]\n(lines 1-3), crate/ [0,0,32,0]. The shim never reads it.\n\nFIX SHAPE (no owner decision needed — this is edge attribution correctness, the\nsrc endpoint of an existing edge moving from the file namespace to the function\nthat actually contains the reference; recall unchanged, no identity change):\nin calls.py, build the definition list from `enclosing_range` when it is\npopulated and fall back to `range` when it is not (emitters that leave it\nempty keep today's behavior). Gate with a unit test (token-range def +\nenclosing_range + a body reference → attributed to the def; same without\nenclosing_range → not) and an end-to-end test at translate_scip_to_hg.\nSymbol.span is NOT changed by this — that is the sibling row, gated on WI-gojum\nbecause it makes stable_id parity hold and the collision splitter would then\nre-mint.\n\nRELATED: WI-pimun (io_edge_src anchored to a FILE node, not the enclosing\ncallable) is the same shape in the I/O-boundary pipeline; WI-kopav (done) built\nthis shim on the \"rarely populated\" premise.\n\nREPRO: survey as above; for every edge with origin scip, look up src kind.\nExpect namespace: 182 today."  # 2025
+    fields:  # 2025
+      statement: "An occurrence-reference edge's src must be the innermost DEFINITION whose extent contains the reference site; when the emitter supplies the item extent (enclosing_range) it must be used, because a Definition's name-token range cannot contain a body reference."  # 2025
+      root_cause: "scip/calls.py builds its definition list from Occurrence.range, which rust-analyzer emits as the identifier token (one line), so no function's range contains any body reference and the innermost-containing Definition is always the document-spanning crate/ namespace; Occurrence.enclosing_range, populated on every rust-analyzer Definition with the item range, is never read."  # 2025
+- op: update  # 5db2
+  at: '2026-09-18T09:58:59Z'  # 5db2
+  by: agent  # 5db2
+  actor: jgstern_agent  # 5db2
+  clock: 2  # 5db2
+  nonce: 5db2  # 5db2
+  set:  # 5db2
+    status: violated  # 5db2
