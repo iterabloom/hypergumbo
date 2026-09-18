@@ -11,6 +11,7 @@ from hypergumbo_core.ir import AnalysisRun
 from hypergumbo_core.multi_value_field_axis import _known_axes
 from hypergumbo_core.pass_silence import (
     census_silence,
+    emit_unaccounted_warning,
     format_unaccounted_warning,
     BACKEND_DISABLED,
     CANDIDATES_UNRESOLVED,
@@ -805,3 +806,42 @@ class TestUnaccountedReaderIsWiredUp:
         )
         assert census.by_pass == {}, "it emitted — no silence to explain"
         assert census.unaccounted == (), "but it IS accounted for"
+
+    def test_a_row_with_no_pass_id_is_skipped_on_both_hosts(self) -> None:
+        """A malformed row must not poison the census.
+
+        Neither host's rows are schema-guaranteed to carry ``pass`` — the
+        skipped_passes entries are a bare ``List[Dict[str, str]]`` built at
+        four separate producer sites — so an id-less row is dropped rather
+        than keyed under ``""``, which would collide every malformed row onto
+        one phantom pass.
+        """
+        census = census_silence(
+            [{"silence_reason": NO_CANDIDATE_FILES}],
+            [{"skip_reason_code": NO_CANDIDATE_FILES}],
+        )
+        assert census.by_pass == {}
+        assert census.hosts == {}
+
+    def test_an_id_less_row_does_not_mask_a_catalogue_gap(self) -> None:
+        """The dangerous version of the above: if an id-less row counted as
+        'present', it could silently account for a pass that never ran."""
+        census = census_silence(
+            [{"silence_reason": NO_CANDIDATE_FILES}], [],
+            catalog_pass_ids=("rust_analyzer",),
+        )
+        assert census.unaccounted == ("rust_analyzer",)
+
+    def test_emit_writes_the_line_to_stderr(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        emit_unaccounted_warning(census_silence(
+            [], [], catalog_pass_ids=("rust_analyzer",),
+        ))
+        assert "rust_analyzer" in capsys.readouterr().err
+
+    def test_emit_is_silent_when_nothing_is_due(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        emit_unaccounted_warning(census_silence([], []))
+        assert capsys.readouterr().err == ""
