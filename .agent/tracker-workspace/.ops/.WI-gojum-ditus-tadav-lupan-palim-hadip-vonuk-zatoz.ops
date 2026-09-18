@@ -58,3 +58,10 @@
   set: {}  # 2b8d
   add:  # 2b8d
     isbefore: [INV-lodum-sotah-rudis-fivit-dalot-fosug-matuf-gobon]  # 2b8d
+- op: discuss  # 3cb3
+  at: '2026-09-18T19:40:40Z'  # 3cb3
+  by: agent  # 3cb3
+  actor: jgstern_agent  # 3cb3
+  clock: 7  # 3cb3
+  nonce: 3cb3  # 3cb3
+  message: "ADR-0057 ADOPTED 2026-09-18 (owner, in session): multi-backend coexistence at the ATTRIBUTE, not the record. One node and one edge per declaration; every attribute a set of (value, provenance) pairs; a declared merge pass at the top of Phase C; a per-record arbitration property with one default read from config.toml. This row stays PARKED — the design is ruled, implementation is not yet authorised.\n\nSub-component mapping under the ADR:\n  1 (multi-fidelity reconciliation, coexist-vs-replace) — SUPERSEDED. Neither: attribute-level merge. ADR-0012 §Step 3 is partially superseded by ADR-0057.\n  2 (symbol dedup between backends) — is now WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid (the merge pass). Its key is span containment (path, base name, name token inside item), measured 138/169 with zero tree-sitter leftovers on aardvark-dns; neither id nor stable_id can be the key.\n  3 (cache key ignores the backend) — UNAFFECTED, still open here.\n  4 (opt-out-but-loud default) — WI-sobig's question, unchanged.\n\nPrerequisites filed: WI-zapuk-jisir-bamib-nokus-jamup-fagom-sosap-jajad (SCIP edges carry the SymbolRole-derived type; without it the 92 shared edges are not duplicates under edge_key) and WI-gapup-hujad-gojon-hidum-bofaf-mudon-ragas-jopap (kind from the descriptor chain). Provenance slot + arbitration property: WI-binis-hulud-hivir-nojup-lohob-rotor-javar-gofat. Config key: WI-hukuf-juniz-zudoh-tivag-kapad-nobuz-komil-rasis.\n\nNew measurement, same crate: the arms agree on 92 of 99/100 in-crate callable->callable edges (out and in); SCIP alone sees 79 field + 49 variable + 51 type references; tree-sitter alone sees 268 calls to external stubs; SCIP emits ZERO external edges. Complementary, not redundant — which is why replace (sub-component 1) is rejected as lossy."  # 3cb3
