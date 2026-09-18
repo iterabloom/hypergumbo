@@ -1025,6 +1025,9 @@ runs can find prior work:
 
 - **2026-09-17 — `AnalysisRun.silence_reason` vs
   `limits.skipped_passes[].skip_reason_code`** (cadence hook, 76 commits).
+  *(The skip-host field was renamed to `silence_reason` in schema 0.20.10 as
+  this audit's own verdict A — both hosts now spell it the same way. The old
+  name is kept throughout this entry because it is what was measured.)*
   **Partially confirmed.** The two fields share one closed vocabulary and are
   documented as "one channel, two fields" split by *did the pass run?*. Measured
   on one ordinary repo: **130 of 162 passes carry `no_candidate_files` — 48 via
@@ -1061,10 +1064,11 @@ runs can find prior work:
   things in the IR, three dead or vestigial (`AnalysisRun.skipped_passes` legacy
   mirror 0/79 populated, `limits.skipped_languages` dead per WI-nihir,
   `AnalysisResult.skipped` not equivalent to its own host). → **WI-mamiv** (host
-  rule + union helper), **WI-gidid** (`needs_human_review` — it re-frames the
-  owner decision ADR-0056 item 5 reserved: not "should we *emit* an AnalysisRun
-  for a pass that never ran" but "should we *keep* the one we already made",
-  which is a materially weaker case for the ADR's ABSENT≠EMPTY objection),
+  rule + union helper), **WI-gidid** (filed `needs_human_review` on the
+  claim that it re-frames the owner decision ADR-0056 item 5 reserved — not
+  "should we *emit* an AnalysisRun for a pass that never ran" but "should we
+  *keep* the one we already made" — **an argument this audit then WITHDREW on
+  evidence; see Outcome**),
   **WI-gisor** (spec), **WI-punod** (state mapping + two latent traps);
   cross-linked to **WI-luvud**, the mirror image filed hours earlier. **Filed in
   the lab notebook, not `docs/audits/`**, because the verdicts are
@@ -1073,6 +1077,24 @@ runs can find prior work:
   `docs/audits/README.md` §Scope tells such audits to propose a sibling format
   rather than shoehorn. Full write-up:
   `~/hypergumbo_lab_notebook/concept-audit-pass-silence-host-boundary_09172026.md`.
+  **Outcome (2026-09-18).** Owner ruled verdict **A** — one name, two hosts;
+  the skip field was renamed and the ROUTING deliberately left alone, since
+  re-routing needs an `AnalysisRun` for 75 passes that never ran, which is the
+  ADR-0056 item 5 decision reserved to the owner. `WI-mamiv` / `WI-gisor` done,
+  `WI-gidid` **downgraded P2→P3**: its re-framing above was withdrawn after the
+  discarded record was actually dumped and found near-vacuous — every
+  non-default field already in the skip entry, and `toolchain` bare *precisely
+  because* the grammar it would report is the missing thing. **Two lessons the
+  audit itself supplies, both about what an audit cannot see:** (1) it ran one
+  repo at DEFAULT settings, so it could not see a pass landing in NEITHER host —
+  a third outcome only an opt-in flag opens, and no CI run or bakeoff sets one;
+  *name CONFIGURATION coverage beside corpus coverage when saying what a
+  measurement did not reach*. (2) It audited where the silence is REPORTED and
+  never asked whether the dispatcher's input to that decision was sound; it was
+  not — `INV-homur`, six analyzers read extensions the profile does not count,
+  so passes were skipped as `no_candidate_files` having never looked (359→367
+  symbols on one 19-file repo). *An audit of a field should also audit the
+  predicate that decides what that field gets to say.*
 
 (Future audits append here.)
 
