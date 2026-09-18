@@ -1,0 +1,21 @@
+- op: create  # 0456
+  at: '2026-09-18T09:11:37Z'  # 0456
+  by: agent  # 0456
+  actor: jgstern_agent  # 0456
+  clock: 1  # 0456
+  nonce: '0456'  # 0456
+  data:  # 0456
+    kind: work_item  # 0456
+    title: "Go package-level const declarations get no Symbol while package-level var declarations do"  # 0456
+    status: todo_hard  # 0456
+    priority: 3  # 0456
+    parent:  # 0456
+    tags:  # 0456
+    - go  # 0456
+    - analysis_quality  # 0456
+    isbefore: []  # 0456
+    duplicate_of: []  # 0456
+    not_duplicate_of: []  # 0456
+    pr_ref:  # 0456
+    description: "FOUND 2026-09-18 as a side observation while probing Go's treatment of\nfunction-local bindings (the SCIP locals question, WI-jikok).\n\nSurveyed a one-file Go package at dev 737e26286a containing:\n\n    var PackageVar = 1        // package-level var\n    const PackageConst = 2    // package-level const\n\n`PackageVar` is emitted as a kind=\"variable\" Symbol. `PackageConst` is not\nemitted at all -- no Symbol of any kind. go.py contains no handler for\n`const_declaration` / `const_spec` (grep: zero hits), so this is an omission,\nnot a rule: the analyzer's own docstring (go.py:1123) discusses \"package-level\n``var`` initializer (``const`` initializers admit ...)\" only in the context of\nalias resolution.\n\nWHY IT MATTERS. A package-level const is exactly as reachable cross-file as a\npackage-level var (both are exported identifiers on the package), and the\nregistry has a `const` kind (\"Const declaration (C / C++ / Rust / JS const)\")\nthat Rust and JS already use. Go is the mainstream analyzer that reaches\nneither `const` nor `constant`. Consumers that join on package-level names\n(module_attr_ref-style references, taint constant resolution, the sketch)\nsee a var and not the const beside it.\n\nNOT CLAIMED: any corpus-level count. Measured on one probe file only. The\nfix is a `const_declaration` walk beside the existing `var_declaration`\nwalk, emitting kind=\"const\", with the same package-level-only scope rule\nthe var path uses (function-local consts stay unemitted, matching the\nproject-wide rule that a binding unreachable from another file is not\npart of the map).\n\nREPRO: `hypergumbo survey <dir with the two lines above>` and grep nodes\nfor PackageConst. Expect absent today."  # 0456
+    fields: {}  # 0456
