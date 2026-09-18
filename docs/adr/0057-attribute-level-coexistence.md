@@ -69,7 +69,7 @@ Nothing a producer emitted is discarded. This keeps ADR-0012's principle — bot
 
 A declared **merge pass** runs after Phase B relativization and **before the first Phase-C consumer** (`refine_frameworks`), because linkers read `kind` and `meta`. It has to be a pass, not an on-demand facade, for three reasons that are not taste: the merge key is **whole-table** (per file, the smallest tree-sitter item whose span contains the SCIP name token — a record cannot compute that about itself, and memoising it lazily makes the materialisation depend on which consumer asked first); it **rewrites identity** that 296 direct `.src`/`.dst` reads and 345 direct `.kind` reads across 89 files key on; and **membership must be settled before serialize** (ADR-0043 R1, §8) because the artifact — not an in-process API — is the product.
 
-The merge key is (path, base name, span containment); neither `id` nor `stable_id` qualifies (§Context). The merged record gets a **new `id`**, every edge from **both** producers is rewired to it, and `edge_key` is reset so `deduplicate_edges` recomputes it — the exact mechanics of `dedup_logical_synthetic_identities` (`analyze/base.py`). The merged span is the **item** span (rust-analyzer's `enclosing_range`, populated on 20 of 20 Definitions), so INV-lodum's cure lands inside this pass rather than as a separate importer edit. The pass is a **no-op when one producer emitted**: a tree-sitter-only run is byte-identical before and after.
+The merge key is (path, declared name key, declared span role) — **read from each producer's declaration (§10), never hardcoded**; the Rust instance is (path, last `::` segment, SCIP token inside tree-sitter item). Neither `id` nor `stable_id` qualifies (§Context). The merged record gets a **new `id`**, every edge from **both** producers is rewired to it, and `edge_key` is reset so `deduplicate_edges` recomputes it — the exact mechanics of `dedup_logical_synthetic_identities` (`analyze/base.py`). The merged span is the **item** span (rust-analyzer's `enclosing_range`, populated on 20 of 20 Definitions), so INV-lodum's cure lands inside this pass rather than as a separate importer edit. The pass is a **no-op when one producer emitted**: a tree-sitter-only run is byte-identical before and after.
 
 It is a pass, not a traversal: one linear loop over symbols, one over edges, no edge-following. On `aardvark-dns` that is 756 nodes and 1,282 edges.
 
@@ -100,11 +100,29 @@ The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONF
 
 Attribute-level provenance is the rule for **any** pass that enriches a record another pass created — the pyright backend WI-nanom names next, and in principle every linker. Scoping it to Rust would undersell it and shape the slot wrong.
 
+### 10. Every backend declares its merge anchor; the pass refuses the undeclared
+
+*(Added 2026-09-18, same day, after the owner asked whether the design extends past Rust. It did not yet: the key in §3 as first filed was Rust-shaped.)*
+
+`register_analyzer` already takes `backend` and `languages` (`analyze/registry.py:140`); **neither Rust registration sets either**, so the registry cannot tell that `rust_analyzer` and `rust` are two backends for one language. Whether scip-python or tsserver populate `enclosing_range` is unchecked. A merge key hardcoded for Rust makes backend N+1 a rewrite of the pass — or, worse, merges nothing and reads as "nothing to merge."
+
+Each backend registration therefore **declares**: `languages` (populated); a `name_key` normaliser (Rust incumbent: last `::` segment; SCIP arm: the emitted name — the incumbent and every alternative for one language must map one declaration to one key, and that equality on recorded fixtures is the registry test); a `span_role` of `token` or `item` (the containment test is directional: token inside item; item against item is equality); `authoritative_for`, the attributes this backend is authoritative on **by measurement**, each citing a committed `docs/audits/` table produced by the §5 instrument, empty by default; and ADR-0045 §5's `executes_analysed_code`, which that ADR rules and which is **also not yet implemented** — both land on one surface so the next backend cannot omit either. Three enforcements: a registry test in the ADR-0045 parity-test pattern; the merge pass **refuses, naming the analyzer**, to merge records from an undeclared producer rather than falling through; unknown declaration keys raise, as `user_config.py` does for unknown settings.
+
+The §5 sentence "until a per-attribute measurement shows otherwise" is now load-bearing rather than aspirational: **no built-in default exception and no `authoritative_for` entry may be added except by citing a committed table produced by the backend-agreement instrument.** Until that instrument exists, the default cannot legitimately change.
+
+### 11. On an edge, `src`, `dst` and `edge_type` are identity, not attributes
+
+For a node, `kind` may hold two values. For an edge, `edge_type` is inside `edge_key`, and `src` and `dst` name the merged endpoints. A disagreement on any of the three is therefore **two edges**, each with its own `origin` — that *is* the provenance of the disagreement, and it is coexistence at the record level for exactly the fields that define what an edge is. "Duplicate edges become one edge" holds when the three agree, which is why §7's first prerequisite is a prerequisite. The same rule settles external targets: a backend that resolves a target to an in-repo node and one that emits an external stub disagree on `dst` and stay two edges; two external stubs merge iff their canonical external identity (ADR-0035 §"External-symbol identity key") matches. SCIP emits no external edges today, so this clause is written for the next backend.
+
+### 12. Tests run on recorded producer-shaped input, never on the incumbent arm's output fed back
+
+rust-analyzer executes the analysed crate's `build.rs`, is opt-in, and will not run in CI. The parity test that fed `rust.py`'s own spans back into the helper passed for months over a feature measuring 0 of 52 (INV-dolud); a control that cannot fail is not a control. Every merge, parity and contract test therefore imports **recorded** fixtures — the emitted index or its parsed Definition `range` / `enclosing_range` / `symbol_roles` per fixture crate, with the producer version pinned (the #1044 `RUST_ANALYZER_DEFINITION_LINES` pattern) — and a lint refuses a test in those families that calls the incumbent analyzer to build the alternative arm's input.
+
 ## Consequences
 
 **Positive.** Under a two-backend run, one node per declaration and one edge per relationship; nothing either backend saw is lost; disagreement is data, not a silent pick; consumers are unchanged by default; tree-sitter-only users see no change at all.
 
-**Negative.** A schema bump and a new registered slot; a new stage in the ADR-0043 DAG; a config key surface; and a per-attribute default table whose *values* still have to be measured — this ADR pins the mechanism and the built-in, not the eventual table.
+**Negative.** A schema bump and a new registered slot; a new stage in the ADR-0043 DAG; a config key surface; and a per-attribute default table whose *values* still have to be measured — this ADR pins the mechanism and the built-in, not the eventual table. §10–§12 add a declaration surface every backend must fill, a measurement instrument that must exist before any default changes, and a fixture discipline; and the results-cache key currently ignores which backends ran (WI-gojum sub-component 3, split out below), which silently corrupts any measurement until fixed.
 
 **Measured baseline to re-verify on landing** (`aardvark-dns`, b1008d3b67, two arms): 169 SCIP + 138 tree-sitter Rust nodes → expected 138 merged + 31 SCIP-only + 0 tree-sitter-only; the 92 shared call edges collapse once §7's first fix lands; the 52 free functions show `kind` alternatives from both producers until §7's second fix lands.
 
@@ -128,7 +146,11 @@ Attribute-level provenance is the rule for **any** pass that enriches a record a
 - WI-kokiz — the merge pass (§3); INV-lodum's cure lands here.
 - WI-binis — attribute-level provenance slot + arbitration property + schema bump (§1, §4, §6).
 - WI-hukuf — the `config.toml` arbitration default (§5).
-- WI-gojum — parked host; its sub-component 1 is superseded by this ADR, sub-component 2 is WI-kokiz, sub-component 3 (cache key ignores the backend) is unaffected and still open, sub-component 4 is WI-sobig's question.
+- WI-hohuh — producer contract: merge anchor, measured authority, `executes_analysed_code` on one surface; the pass refuses the undeclared (§10). Blocks WI-kokiz.
+- WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
+- WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz.
+- WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif.
+- WI-gojum — parked host; sub-component 1 is superseded by this ADR, sub-component 2 is WI-kokiz, sub-component 3 is WI-givib, sub-component 4 is WI-sobig's question.
 
 ## References
 
