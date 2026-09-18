@@ -913,7 +913,7 @@ def run_all_linkers(
         for entry in limits.skipped_passes:
             pass_id = entry.get("pass", "")
             if pass_id:
-                skipped_pass_codes[pass_id] = entry.get("skip_reason_code", "")
+                skipped_pass_codes[pass_id] = entry.get("silence_reason", "")
 
     # Group by priority — linkers at the same priority are independent
     # and can run in parallel.  E.g., inheritance linker (priority 15)
