@@ -1,0 +1,43 @@
+Original commit body from 60a6484bd590d7e7bc67cbc9c020bd6991b73e50:
+
+silence_reason and skip_reason_code are documented as one channel split
+by "did the pass run?". Measured on component-model-demo, that is not
+what decides it: 130 of 162 passes carry no_candidate_files, 48 through
+one field and 82 through the other, and the host is chosen by
+taxonomy.LANGUAGE_EXTENSIONS membership and by whether the analyzer
+returns a bare AnalysisResult() or a run with files_analyzed=0. apex,
+twig and make go one way; java, matlab and scss go the other, for the
+identical fact. Producer registration and implementation detail, not a
+property of the silence. That is now written down at the fields.
+
+census_silence() unions the two hosts while preserving each one's own
+absence rule, because they differ for a reason: empty on analysis_runs
+is NOT APPLICABLE and is omitted, missing on skipped_passes reads as
+unreported and never as the 98.94%-common value.
+
+It takes the pass catalogue rather than unioning runs + skips, because
+that union is structurally blind to the third outcome. A pass can reach
+NEITHER host -- which is how rust_analyzer put 669 nodes and 637 edges
+into artifacts from a pass visible nowhere in the catalog (WI-didag).
+unaccounted is None when no catalogue was supplied and () when one was
+and nothing was missing: an empty tuple claims "I checked", None says
+"I could not".
+
+The reader is wired into the survey path next to the two existing
+summaries, so the signal that would have surfaced WI-didag on the run
+that introduced it now fires. An AST test asserts cli.py CALLS it --
+importing it is not a reader.
+
+The first draft of census_silence built `unaccounted` from the passes
+that had a REASON, so a pass that emitted -- which has an analysis_runs
+row and correctly no reason -- was reported as missing from the catalog.
+That is the same absent-versus-empty conflation this module exists to
+stop, committed inside the helper written to expose it. The test caught
+it; presence is now tracked separately from silence and pinned by its
+own regression test.
+
+Whether the ROUTING should change, so the host becomes a function of the
+fact, is left open on WI-mamiv: it touches the WI-didil AR-or-skip
+completeness contract and is not an agent's call.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
