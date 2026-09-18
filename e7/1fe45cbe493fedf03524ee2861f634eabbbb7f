@@ -1,0 +1,45 @@
+Original commit body from e3c94fd8cba36c3591fe5dc7123e2fd2b979393c:
+
+The WI-jadig pre-filter short-circuits an analyzer when profile.languages
+reports zero files for every language it declares. The profile counts by
+globbing the ADR-0004 taxonomy, so the pre-filter is sound only while the
+taxonomy's patterns are a superset of what the analyzer actually reads.
+
+Six analyzers had drifted past it. Measured two-arm on aardvark-dns, whose
+only INI-family file is test/dnsmasq.conf:
+
+    symbols: prefilter ON 359    OFF 367    delta 8
+
+The skip was recorded as no_candidate_files -- 'ran and correctly found
+nothing' for a pass that never looked. That is ABSENT != EMPTY wearing the
+costume of the axis built to prevent it, and no consumer can tell them apart.
+
+INV-hokig already named this invariant and shipped the cure -- find_files= on
+the registration, which makes the profile count with the analyzer's own
+enumeration. It was wired for exactly one analyzer (bash). ini, cpp, objc,
+fortran and verilog each HAD the function and never passed it.
+
+javascript takes the taxonomy route instead (*.mts / *.cts onto typescript):
+it declares four languages, and get_analyzer() resolves by language, so its
+find_files would make the javascript count swallow every .ts file and
+double-count against typescript.
+
+*.h is why widening the taxonomy alone cannot work -- it is claimed by c, the
+extension map is extension-to-one-language, and find_cpp_files resolves it by
+content ('.h is C++ only when .cpp/.cc/.cxx sources exist').
+
+Gated rather than fixed instance-by-instance: an in-taxonomy analyzer whose
+file_patterns exceed its taxonomy extensions must declare find_files.
+
+RegisteredAnalyzer.find_files widens list[Path] -> Iterable[Path], which is
+what the sole consumer (set(...)) requires and what three of the five finders
+already returned. Ratchet 667, delta +0.
+
+Closure evidence: re-ran the filed repro post-fix -- ON 367, OFF 367, delta 0.
+
+Refused deliberately: a make -> makefile alias making that pass pre-filterable.
+The taxonomy has ['Makefile', '*.mk']; the analyzer also reads lowercase
+'makefile' and 'GNUmakefile', so it would manufacture a fresh instance of this
+defect in the recall-loss direction.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
