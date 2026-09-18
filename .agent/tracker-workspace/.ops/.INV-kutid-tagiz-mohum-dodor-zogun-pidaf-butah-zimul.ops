@@ -22,3 +22,11 @@
     fields:  # 99a1
       statement: "A stable_id must be unique within a run (ADR-0035 §1); a producer that hashes an external identifier inherits that identifier's scope, so the hashed inputs must include whatever the external scheme leaves implicit — for rust-analyzer SCIP monikers, the crate target."  # 99a1
       root_cause: "scip/index.py computes stable_id=_short_sha256(sym_info.symbol); rust-analyzer's moniker header names the cargo PACKAGE and version but not the crate TARGET, so the root namespace 'crate/' and 'main().' carry the same string in the lib, bin and build-script targets of one package."  # 99a1
+- op: update  # f5ab
+  at: '2026-09-18T09:23:31Z'  # f5ab
+  by: agent  # f5ab
+  actor: jgstern_agent  # f5ab
+  clock: 2  # f5ab
+  nonce: f5ab  # f5ab
+  set:  # f5ab
+    status: violated  # f5ab
