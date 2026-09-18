@@ -25,6 +25,17 @@ shim cannot do on its own:
    modules, constants — rust.py has no signature-level parity for these),
    and Symbols whose source cannot be read pass through unchanged.
 
+   **What this achieves in production today: nothing, for any multi-line
+   function (INV-dolud, 2026-09-18).** The span handed to the helper is the
+   SCIP Definition-occurrence range, and rust-analyzer's is the identifier
+   token; the helper requires the item range, so it abstains and the
+   ``sha256(moniker)`` id stays. Measured on aardvark-dns: 0 of 52 functions
+   emitted by both Rust arms share a ``stable_id``, so the double-counting
+   the paragraph above describes is the shipped state, not the averted one.
+   The pass is kept as readiness for WI-gojum (parked), which owns whether
+   the arms should share an identity; see ``rust_scip.py``'s docstring for
+   why it is not simply "fixed" here.
+
 2. **One-shot translate.** :func:`translate_scip_to_hg` bundles the
    three core shim calls (``scip_index_to_symbols``,
    ``scip_index_to_edges``, ``scip_index_to_call_edges``) with the
