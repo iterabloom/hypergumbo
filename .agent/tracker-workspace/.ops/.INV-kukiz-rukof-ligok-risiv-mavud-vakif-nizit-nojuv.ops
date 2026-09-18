@@ -31,3 +31,19 @@
   set: {}  # 8b8b
   add:  # 8b8b
     isbefore: [WI-sobig-hutih-luziv-bokag-hiruz-zahot-gahog-gizap]  # 8b8b
+- op: update  # 0c71
+  at: '2026-09-18T09:33:44Z'  # 0c71
+  by: agent  # 0c71
+  actor: jgstern_agent  # 0c71
+  clock: 3  # 0c71
+  nonce: 0c71  # 0c71
+  set:  # 0c71
+    status: satisfied  # 0c71
+    pr_ref: '1042'  # 0c71
+- op: discuss  # 08fa
+  at: '2026-09-18T09:33:44Z'  # 08fa
+  by: agent  # 08fa
+  actor: jgstern_agent  # 08fa
+  clock: 4  # 08fa
+  nonce: 08fa  # 08fa
+  message: "SATISFIED in PR #1042 (dev 18c94cf80f) — by removal, under the owner's\n2026-09-18 ruling to drop SCIP locals (WI-jikok). The invariant \"an edge to\na function-local binding has both endpoints in one file\" now holds because\nno edge has a local endpoint at all: index.py mints no Symbol for a `local\n<id>`, and calls.py / edges.py refuse a local at either end of an edge via\nthe same predicate (descriptor.is_local_symbol), so translate.py's\nindex-wide id_by_scip_symbol map — the root cause named here — never sees a\ndocument-scoped key. The map itself is unchanged; the class of key that made\nit wrong cannot reach it.\n\nPOSITIVE EVIDENCE, this row's filed repro re-run (HYPERGUMBO_RUST_ANALYZER=1\nhypergumbo survey ~/whole_bunch_of_repos/aardvark-dns), before = dev\n737e26286a, after = the PR's tree, same script both arms:\n\n    scip edges                     637 -> 182   (637 - 455 exactly)\n    local-touching edges           455 -> 0\n    cross-file local edges         329 -> 0\n    share of all edges false      21.2% -> 0\n    top-14 in-degree nodes that are locals   6 -> 0\n    every non-SCIP origin          byte-identical\n\nThe genuine cross-file references survive: INV-kukiz's exact shape (two\ndocuments each defining `local 0`, plus a real b.rs -> a::f reference) is\npinned end to end at translate_scip_to_hg with the cross-file control arm\nasserted present, in test_translate.py.\n\nNOT CLAIMED: that the 126 \"correct by coincidence\" intra-file local edges\nwere worth keeping — they are gone with the rest, by the ruling. The fix\nshape this row proposed (fold the document path into the key, WI-titiz\nprecedent) was not taken for locals; it remains the live candidate for the\nsibling target-scope collision, INV-kutid.\n\nWI-sobig was blocked on this row and is now unblocked."  # 08fa
