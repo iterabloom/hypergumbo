@@ -43,3 +43,10 @@
   clock: 4  # d8bc
   nonce: d8bc  # d8bc
   message: "2026-09-18: this row's title cites \"ADR-0012 coexistence, spec s20\". That\ncitation was retracted from the spec in PR #1044 (WI-kanuh): ADR-0012\ncontains no ruling on backend coexistence at the symbol level, and the\nRust arm coexists with tree-sitter by DEFAULT (nothing merges or\nreconciles), not by decision. A second backend built \"on the Rust\nprecedent\" inherits the same open question — two records per construct with\nindependent identities (INV-dolud: 0 of 52 parity in Rust) — and, until\nWI-gojum is unparked or a new ADR rules, would be building on no ruling.\nAlso noted last session: this row's own value-prop (receiver typing)\nmeasured zero in the Rust arm. Not started; priority unchanged (owner's)."  # d8bc
+- op: discuss  # b076
+  at: '2026-09-18T19:42:22Z'  # b076
+  by: agent  # b076
+  actor: jgstern_agent  # b076
+  clock: 5  # b076
+  nonce: b076  # b076
+  message: "ADR-0057 (2026-09-18) is now the ruling this row builds on — it was recorded as building on none. When the pyright backend lands, its records for a declaration tree-sitter also emitted go through the same merge pass (WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid) and provenance slot (WI-binis-hulud-hivir-nojup-lohob-rotor-javar-gofat) as the Rust arms; the config default (WI-hukuf-juniz-zudoh-tivag-kapad-nobuz-komil-rasis) applies per attribute. ADR-0057 §9 states this is not a Rust feature. Nothing here changes this row's own prerequisites (npm allowlist check, stubs in the analysed repo)."  # b076
