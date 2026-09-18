@@ -141,17 +141,36 @@ class TestReassignRustStableIds:
         assert out[0].stable_id == "scip-raw-id"
 
     def test_successful_parity_overwrites_stable_id(self) -> None:
-        """When the parity helper returns an id, stable_id is rewritten."""
+        """When the parity helper returns an id, stable_id is rewritten.
+
+        A SINGLE-line function is the one shape where rust-analyzer's token
+        range equals the item range, so the helper matches. This used to hedge
+        "either parity succeeded OR tree-sitter-rust is unavailable" and pass
+        on both branches — a control that could not fail (INV-dolud).
+        tree-sitter-rust is a hard dependency of the rust analyzer, so the
+        overwrite is asserted outright.
+        """
         source = b"pub fn add(a: i32, b: i32) -> i32 { a + b }\n"
         sym = self._symbol(span=Span(1, 1, 0, 0))
         out = reassign_rust_stable_ids([sym], lambda _p: source)
-        # Either parity succeeded (id changed) OR tree-sitter-rust is
-        # unavailable in the test env (passthrough). Both are legal per
-        # the graceful-degrade contract; the assertion below covers both.
-        if out[0].stable_id != "scip-raw-id":
-            # Happy path: parity overwrote the id; new id must be a
-            # hex-style typed stable_id (make_typed_stable_id output).
-            assert ":" in out[0].stable_id or len(out[0].stable_id) > 8
+        assert out[0].stable_id != "scip-raw-id"
+        assert out[0].stable_id.startswith("sha256:")
+
+    def test_production_shaped_span_keeps_the_scip_id_for_a_multi_line_function(self) -> None:
+        """INV-dolud: what production actually supplies, and what it gets.
+
+        rust-analyzer's Definition occurrence is the identifier token (line 1
+        here) while the ``function_item`` runs 1-3; the helper requires both
+        endpoints to match, so the SCIP-derived id is retained and the two
+        Rust arms carry independent identities for this function. Measured
+        on aardvark-dns: 0 of 52 shared functions reach parity. Re-point this
+        test when the helper is taught the token range — that is the fix
+        landing, not a regression.
+        """
+        source = b"pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n"
+        sym = self._symbol(span=Span(1, 1, 7, 10))
+        out = reassign_rust_stable_ids([sym], lambda _p: source)
+        assert out[0].stable_id == "scip-raw-id"
 
     def test_parity_byte_matches_rust_py_for_nested_path(self, tmp_path: Path) -> None:
         """WI-bokab v7: the SCIP parity helper's id must byte-EQUAL ``analyze_rust``'s id

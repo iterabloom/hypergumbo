@@ -29,13 +29,23 @@ of requiring a long-lived LSP session. SCIP is slower than tree-sitter
 (~10× at every realistic size per WI-zakub), so this backend is opt-in and
 falls through to `rust.py` when unavailable or not requested.
 
-## Stable-ID parity
+## Stable-ID parity: a helper exists; parity does not hold in production
 
-`rust.py` and this analyzer both produce `stable_id`s via
-`hypergumbo_lang_mainstream.rust_scip.compute_rust_stable_id_from_source`,
-so cross-pass dedup works. Shared symbols carry the same `stable_id` under
-both backends; rust-analyzer-only symbols (e.g. trait-resolved method
-dispatch) extend the id space with SCIP-only suffixes.
+`reassign_rust_stable_ids` asks
+`hypergumbo_lang_mainstream.rust_scip.compute_rust_stable_id_from_source` for
+the `rust.py` id of each SCIP function, and the helper reproduces `rust.py`'s
+id byte for byte **when given the item's span**. Production never gives it
+that: rust-analyzer's Definition occurrence is the identifier token (line 14
+for a method whose body runs 14–17), the helper requires both endpoints to
+match, so it abstains for every multi-line item and the SCIP symbol keeps its
+`sha256(moniker)` id. Measured on aardvark-dns (INV-dolud, 2026-09-18): **0 of
+52** functions emitted by both arms share a `stable_id`. The two arms carry
+independent identities today, and a consumer joining on `stable_id` sees two
+records for one function. Whether they should share one — and what a dedup
+would then do — is WI-gojum's parked question (ADR-0012 Steps 2–3); until it
+is ruled, the helper is readiness, not a contract. An earlier version of this
+section said "so cross-pass dedup works"; it did not, and no cross-pass dedup
+has ever been written.
 
 ## Upstream shim
 

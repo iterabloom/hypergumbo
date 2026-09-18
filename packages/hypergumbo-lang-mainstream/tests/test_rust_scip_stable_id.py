@@ -1,12 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for the SCIP → rust.py stable_id mapping helper (WI-bajuz, ADR-0014).
 
-The rust-analyzer SCIP backend (WI-duzul) will emit symbols that describe the
-same source locations the tree-sitter ``rust.py`` pass already analyzes. For
-cross-pass dedup to work, both passes must agree on ``stable_id``. This module
-verifies that ``compute_rust_stable_id_from_source`` — the helper the SCIP
-backend will call — produces byte-for-byte identical stable_id values to the
-existing ``rust.py`` analyzer when given the same source and line span.
+Two contracts are pinned here, and they must not be confused (INV-dolud):
+
+1. **The helper's extraction contract.** Given the source and the ITEM span
+   of a function — the ``function_item`` / ``function_signature_item``'s own
+   first and last line — ``compute_rust_stable_id_from_source`` reproduces
+   ``rust.py``'s stable_id byte for byte. The spans in that test come from
+   ``rust.py`` itself, so it proves the helper agrees with the baseline it is
+   compared against and nothing about what production feeds it.
+
+2. **What production actually feeds it.** ``reassign_rust_stable_ids`` passes
+   the SCIP Definition-occurrence range, and rust-analyzer's definition range
+   is the IDENTIFIER TOKEN, never the enclosing item. The helper requires both
+   endpoints to match, so on producer-shaped input it abstains for every
+   multi-line item and parity is reached only by single-line items. That is
+   pinned against ranges RECORDED from ``rust-analyzer scip`` on this very
+   sample (``RUST_ANALYZER_DEFINITION_LINES``), so the test consumes
+   producer-shaped input and would go red the day the helper starts matching
+   on the start line — at which point it is re-pointed, not deleted.
+   Measured on aardvark-dns: 0 of 52 functions emitted by both arms share a
+   stable_id. The two arms carry independent identities today; whether they
+   should share one is WI-gojum's parked question.
 """
 from __future__ import annotations
 
@@ -50,6 +65,23 @@ impl Greeter for Counter {
 """
 
 
+# Recorded 2026-09-18 from ``rust-analyzer scip`` (rust-analyzer 1.94.0,
+# 4a4ef49 2026-03-02) run on a crate whose ``src/lib.rs`` is RUST_SAMPLE byte for
+# byte. Keys are rust.py's ITEM spans; values are the 1-based lines of the
+# Definition-role Occurrence rust-analyzer emitted for the same callable. Every
+# value is the identifier token's line; only the single-line trait declaration
+# has a token range equal to its item range. (The document's ``crate/``
+# namespace occurrence, 1-33, is not a callable and is omitted.)
+RUST_ANALYZER_DEFINITION_LINES: dict[tuple[int, int], tuple[int, int]] = {
+    (1, 3): (1, 1),      # top_level_add
+    (5, 7): (5, 5),      # private_helper
+    (14, 17): (14, 14),  # Counter::increment
+    (19, 21): (19, 19),  # Counter::reset
+    (25, 25): (25, 25),  # Greeter::greet — trait declaration, single-line item
+    (29, 31): (29, 29),  # <Counter as Greeter>::greet
+}
+
+
 def _collect_rust_py_stable_ids(tmp_path: Path, source: str) -> dict[tuple[int, int], str]:
     """Run the ``rust.py`` analyzer and return {(start_line, end_line): stable_id}."""
     from hypergumbo_lang_mainstream.rust import analyze_rust
@@ -75,10 +107,17 @@ def _collect_rust_py_stable_ids(tmp_path: Path, source: str) -> dict[tuple[int, 
 class TestComputeRustStableIdFromSource:
     """Parity with ``rust.py`` on the shared extraction pipeline."""
 
-    def test_parity_with_rust_py_for_every_function_in_sample(
+    def test_helper_reproduces_rust_py_ids_when_given_the_item_span(
         self, tmp_path: Path,
     ) -> None:
-        """Each rust.py-derived stable_id matches the SCIP helper's output for the same span."""
+        """Contract 1: fed rust.py's own item spans, the helper returns rust.py's ids.
+
+        RE-TITLED from ``test_parity_with_rust_py_for_every_function_in_sample``
+        (INV-dolud). The spans below are collected from ``rust.py`` and fed
+        straight back, so this proves the helper's extraction agrees with the
+        baseline — not that production input ever reaches it. The recorded-span
+        test that follows is the production arm.
+        """
         from hypergumbo_lang_mainstream.rust_scip import (
             compute_rust_stable_id_from_source,
         )
@@ -97,6 +136,47 @@ class TestComputeRustStableIdFromSource:
                 f"stable_id mismatch at lines {start_line}-{end_line}: "
                 f"rust.py={expected!r} helper={got!r}"
             )
+
+    def test_recorded_rust_analyzer_spans_reach_parity_only_for_single_line_items(
+        self, tmp_path: Path,
+    ) -> None:
+        """Contract 2, the difference arm: producer-shaped input (INV-dolud).
+
+        rust-analyzer's Definition occurrence is the identifier token, so its
+        range equals the item range only when the whole item sits on one line.
+        Fed those recorded ranges, the helper abstains (``None``) for every
+        multi-line callable and reaches rust.py's id for the single-line one —
+        which is exactly why ``reassign_rust_stable_ids`` leaves the SCIP id in
+        place for 0 of 52 shared functions on a real crate. If this test goes
+        red because the helper learned to match on the start line, re-point it:
+        that is the fix landing, and the other assertions here still hold.
+        """
+        from hypergumbo_lang_mainstream.rust_scip import (
+            compute_rust_stable_id_from_source,
+        )
+
+        baseline = _collect_rust_py_stable_ids(tmp_path, RUST_SAMPLE)
+        # The fixture must describe THIS sample: rust.py must see exactly the
+        # six callables rust-analyzer was recorded on, at the same item spans.
+        assert set(baseline) == set(RUST_ANALYZER_DEFINITION_LINES)
+
+        source = RUST_SAMPLE.encode("utf-8")
+        reached: list[tuple[int, int]] = []
+        for item_span, ra_span in RUST_ANALYZER_DEFINITION_LINES.items():
+            got = compute_rust_stable_id_from_source(source, *ra_span, rel_path="sample.rs")
+            if item_span[0] == item_span[1]:
+                assert got == baseline[item_span], (
+                    f"single-line item {item_span}: token range equals item range, "
+                    f"so parity must be reached; helper={got!r}"
+                )
+                reached.append(item_span)
+            else:
+                assert got is None, (
+                    f"multi-line item {item_span} fed rust-analyzer's token range "
+                    f"{ra_span} unexpectedly matched: {got!r} — has the helper "
+                    "started matching on start_line? Re-point this test."
+                )
+        assert reached == [(25, 25)]
 
     def test_distinguishes_trait_impl_methods_by_span(self, tmp_path: Path) -> None:
         """Two methods at different spans with the same name receive different stable_ids.

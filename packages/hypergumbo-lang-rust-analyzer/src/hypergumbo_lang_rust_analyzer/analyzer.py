@@ -9,11 +9,13 @@ into the hypergumbo-core analyzer-registry surface:
 2. :func:`hypergumbo_lang_rust_analyzer.graceful_degrade.try_analyze_with_rust_analyzer`
    handles the actual shell-out + SCIP → IR translation and returns
    ``None`` on any of the WI-nohah fall-through conditions.
-3. Stable-id parity is already threaded inside
-   :func:`~hypergumbo_lang_rust_analyzer.translate.translate_scip_to_hg`,
-   so the Symbol objects this analyzer emits are deduplicable against
-   the tree-sitter ``rust.py`` analyzer's output when cross-pass dedup
-   runs (WI-bajuz).
+3. The stable-id parity HELPER is threaded inside
+   :func:`~hypergumbo_lang_rust_analyzer.translate.translate_scip_to_hg`.
+   It does not make the emitted Symbols deduplicable against the
+   tree-sitter ``rust.py`` output today: it abstains on the identifier-
+   token span rust-analyzer supplies, so 0 of 52 shared functions carry
+   one id on aardvark-dns (INV-dolud). Cross-pass dedup, and whether the
+   two arms should share an identity at all, is WI-gojum (parked).
 
 Registration
 ------------
@@ -96,8 +98,11 @@ def _repo_anchored_reader(repo_root: Path) -> Callable[[str], bytes | None]:
     CI runners) the read fails, the stable_id parity reassignment is silently
     skipped, and the SCIP symbol keeps a raw-moniker stable_id that diverges from
     the tree-sitter ``rust.py`` anchor — breaking the WI-zakub byte-parity contract
-    (ADR-0035 v7). Anchoring at ``repo_root`` closes the gap; ``pathlib`` leaves an
-    already-absolute path unchanged.
+    (ADR-0035 v7). Anchoring at ``repo_root`` closes THAT gap; ``pathlib`` leaves an
+    already-absolute path unchanged. It did not make parity hold: with the read
+    succeeding, the helper still abstains on rust-analyzer's identifier-token span
+    for every multi-line function (INV-dolud), so the changelog entry that
+    described this fix as preserving parity is corrected in place.
     """
 
     def _read(relative_path: str) -> bytes | None:
@@ -157,7 +162,8 @@ def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     Returns an empty result when the opt-in gate is False; otherwise
     shells out to ``rust-analyzer scip <repo_root>``, translates the
     emitted SCIP index into hypergumbo ``Symbol`` / ``Edge`` objects
-    (with rust.py stable_id parity), and returns them. All three
+    (through the rust.py stable_id parity helper, which abstains on
+    production spans — INV-dolud), and returns them. All three
     WI-nohah fall-through conditions are handled inside
     :func:`try_analyze_with_rust_analyzer` and surface here as a
     ``None`` return — this function swallows that to an empty

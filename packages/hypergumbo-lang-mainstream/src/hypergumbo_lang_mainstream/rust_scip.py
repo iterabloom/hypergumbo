@@ -16,7 +16,21 @@ span matches, and feed the same inputs rust.py uses into
 ``name``, ``qualified_name`` (mandatory since v5 / ADR-0035 §1) and
 ``file_stable_id`` (v7). The output is byte-for-byte identical to the
 stable_id rust.py would assign the same function, provided the caller passes
-``rel_path``; without it the file anchor is empty and parity is lost.
+``rel_path`` AND the item's own span; without ``rel_path`` the file anchor is
+empty and parity is lost.
+
+**In production the second condition is never met (INV-dolud, 2026-09-18).**
+The caller, ``reassign_rust_stable_ids``, passes the SCIP Definition-occurrence
+range, and rust-analyzer's definition range is the identifier TOKEN — line 14
+for a method whose ``function_item`` runs 14-17. The exact-match predicate below
+therefore abstains for every multi-line item and the SCIP symbol keeps its
+``sha256(moniker)`` id; measured on aardvark-dns, 0 of 52 functions emitted by
+both arms share a stable_id. The two arms carry independent identities today.
+This is stated rather than fixed because making parity hold would also require
+``split_within_file_stable_id_collisions`` to spare cross-backend groups (it
+re-mints the second member of any same-file group as a second SITE), and
+whether the arms should share one identity at all is WI-gojum's parked
+question. The helper is readiness for that ruling, not a contract in force.
 
 The file anchor is ``make_file_stable_id("rust", normalize_path(rel_path))``.
 It exists because v7 folded the containing file into stable identity, so two
@@ -37,7 +51,8 @@ of SCIP's ``signature_documentation.text`` string. That path drifts: any future
 change to rust.py's extraction logic requires a coordinated edit to a parallel
 SCIP-side extractor. Instead, this helper re-uses rust.py's existing helpers
 verbatim. The cost is one tree-sitter parse per SCIP symbol the translator
-emits; the benefit is guaranteed parity.
+emits; the benefit is parity of the EXTRACTION — which, per the paragraph
+above, production does not currently reach because of the span it supplies.
 
 WI-zakub established that rust-analyzer's SCIP output uses line/col UTF-8
 column units for source spans, and that macro-expanded items do not surface
