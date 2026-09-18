@@ -30,3 +30,26 @@
   nonce: 5db2  # 5db2
   set:  # 5db2
     status: violated  # 5db2
+- op: update  # f898
+  at: '2026-09-18T10:25:45Z'  # f898
+  by: agent  # f898
+  actor: jgstern_agent  # f898
+  clock: 3  # f898
+  nonce: f898  # f898
+  set:  # f898
+    status: satisfied  # f898
+- op: discuss  # 6032
+  at: '2026-09-18T10:25:45Z'  # 6032
+  by: agent  # 6032
+  actor: jgstern_agent  # 6032
+  clock: 4  # 6032
+  nonce: '6032'  # 6032
+  message: "SATISFIED in PR #1047 (dev 1410e51c22). calls.py now builds its definition\nlist from Occurrence.enclosing_range when populated (rust-analyzer: every\nDefinition, item range) and falls back to range when not.\n\nPOSITIVE EVIDENCE, this row's filed repro re-run (HYPERGUMBO_RUST_ANALYZER=1\nhypergumbo survey ~/whole_bunch_of_repos/aardvark-dns; src kind of every\nscip-origin edge), before = the post-#1042 artifact, after = the PR's tree:\n\n    src = method        0 -> 287\n    src = namespace   182 -> 63    (file-scope `use`/item refs — correctly the file's)\n    src = class         0 -> 9\n    src = variable      0 -> 10\n    scip edges        182 -> 369   (references from different callers to one\n                                    target no longer collapse into one namespace edge)\n    cross-file refs    99 -> 157\n    violations          1 -> 1     (INV-kutid, unrelated)\n    non-SCIP origins   byte-identical\n\nSample of the new sources: main -> Opts, main -> config, main -> port,\nmain -> filter_search_domain, main -> subcmd (src/main.rs). These are the\nedges the tree-sitter arm cannot type-resolve and the reason this backend\nexists.\n\nThe invariant's statement holds: the innermost Definition whose EXTENT\ncontains the reference is chosen, and the emitter-supplied extent is used\nwhen present. Gated by four unit tests (with / without enclosing_range,\nmalformed fallback, nested innermost) and one end-to-end test; the three\nnew positive tests were red on the old shim.\n\nNOT CLAIMED: that the 63 namespace-sourced edges are all correct — they are\nreferences at file scope by construction of the algorithm, and I did not\naudit them individually. NOT CHANGED: Symbol.span (INV-lodum, gated on\nWI-gojum) and the `references` edge type (specialising to `calls` needs\ntarget-kind context and is the docstring's stated follow-up, unfiled)."  # 6032
+- op: update  # 4f13
+  at: '2026-09-18T16:20:10Z'  # 4f13
+  by: agent  # 4f13
+  actor: jgstern_agent  # 4f13
+  clock: 5  # 4f13
+  nonce: 4f13  # 4f13
+  set:  # 4f13
+    pr_ref: '1047'  # 4f13

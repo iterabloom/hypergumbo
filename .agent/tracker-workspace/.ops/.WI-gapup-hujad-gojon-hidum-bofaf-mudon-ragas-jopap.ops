@@ -1,0 +1,23 @@
+- op: create  # 85e2
+  at: '2026-09-18T19:32:16Z'  # 85e2
+  by: agent  # 85e2
+  actor: jgstern_agent  # 85e2
+  clock: 1  # 85e2
+  nonce: '85e2'  # 85e2
+  data:  # 85e2
+    kind: work_item  # 85e2
+    title: "SCIP importer maps a Rust free function to kind=method (52/52 on aardvark-dns); derive kind from the descriptor chain's parent (ADR-0057 built-in default depends on it)"  # 85e2
+    status: todo_hard  # 85e2
+    priority: 3  # 85e2
+    parent:  # 85e2
+    tags:  # 85e2
+    - scip  # 85e2
+    - rust_analyzer  # 85e2
+    - symbol_kind  # 85e2
+    - multi_fidelity  # 85e2
+    isbefore: []  # 85e2
+    duplicate_of: []  # 85e2
+    not_duplicate_of: []  # 85e2
+    pr_ref:  # 85e2
+    description: "SCIP's DescriptorKind.METHOD covers a Rust FREE FUNCTION as well as a method:\n`load_config().` parses as METHOD because of the `(...)` disambiguator, so\nscip/index.py maps both onto Symbol.kind=\"method\". Measured on aardvark-dns at\nb1008d3b67: all 52 free functions emitted by both arms are `method` per SCIP\nand `function` per tree-sitter. The descriptor CHAIN carries the answer (a\nparent TYPE descriptor means method; a parent NAMESPACE means free function)\nand the importer does not consult it. Recorded first on WI-gojum 2026-09-17.\n\nWHY IT MATTERS NOW (ADR-0057): `kind` becomes a contested attribute on every\nmerged record. Arbitration only helps when at least one side is right; today\nthe type-aware backend is the WRONG one on this attribute, which is why\nADR-0057 refuses \"type-aware wins\" as the built-in default. Fixing the\nproducer removes the contest on 52/52 instead of arbitrating it.\n\nFIX SHAPE: in index.py `_name_and_kind`, walk parse_scip_symbol's descriptor\nlist; METHOD whose immediate parent is TYPE -> \"method\", whose parent is\nNAMESPACE (or none) -> \"function\". Values must exist in the symbol-kind\nregistry (ADR-0027).\n\nACCEPTANCE: the 52 pairs agree on kind; the 27 true methods still say method."  # 85e2
+    fields: {}  # 85e2

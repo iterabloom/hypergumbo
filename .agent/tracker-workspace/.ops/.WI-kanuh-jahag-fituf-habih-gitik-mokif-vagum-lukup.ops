@@ -35,3 +35,11 @@
   clock: 3  # e94b
   nonce: e94b  # e94b
   message: "DONE in PR #1044 (dev cc153c42b6). Owner ruling 2026-09-18: option 2 — retract\nthe spec's citation and re-point it to WI-gojum. ADR-0012 is NOT amended.\n\nThe spec sentence (taint / io-boundary section) now reads that the two arms\nrun alongside each other TODAY, BY DEFAULT AND NOT BY RULING — nothing merges,\nprefers or reconciles them (symbols concatenated with no key; edge dedup on\nSymbol.ids that differ between arms) — that ADR-0012 contains no ruling on\nbackend coexistence at the symbol level, that an earlier version cited\n\"ADR-0012 coexistence\", and that coexist / merge / replace is open under\nWI-gojum (parked). The vision doc's \"Coexistence vs. replacement\" open\nquestion was already correctly scoped and is unchanged.\n\nWHAT THIS DOES NOT DO: it does not answer the question. There is still no\ndecision document ruling on symbol-level duplication between backends; the\nspec now says so instead of pretending otherwise. WI-nanom, which plans a\nsecond backend on this citation, is noted separately. If a ruling is ever\nwanted, it is an ADR-0012 amendment or a new ADR — the option the owner\ndeclined today."  # e94b
+- op: update  # 7d6f
+  at: '2026-09-18T16:20:11Z'  # 7d6f
+  by: agent  # 7d6f
+  actor: jgstern_agent  # 7d6f
+  clock: 4  # 7d6f
+  nonce: 7d6f  # 7d6f
+  set:  # 7d6f
+    pr_ref: '1044'  # 7d6f

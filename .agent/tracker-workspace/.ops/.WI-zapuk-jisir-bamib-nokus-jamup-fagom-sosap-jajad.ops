@@ -1,0 +1,23 @@
+- op: create  # df67
+  at: '2026-09-18T19:32:11Z'  # df67
+  by: agent  # df67
+  actor: jgstern_agent  # df67
+  clock: 1  # df67
+  nonce: df67  # df67
+  data:  # df67
+    kind: work_item  # df67
+    title: "SCIP arm labels every occurrence edge 'references'; the 92 edges shared with tree-sitter are 'calls' there, so edge_key never sees a duplicate (ADR-0057 prerequisite)"  # df67
+    status: todo_hard  # df67
+    priority: 2  # df67
+    parent:  # df67
+    tags:  # df67
+    - scip  # df67
+    - rust_analyzer  # df67
+    - edge_type  # df67
+    - multi_fidelity  # df67
+    isbefore: []  # df67
+    duplicate_of: []  # df67
+    not_duplicate_of: []  # df67
+    pr_ref:  # df67
+    description: "The SCIP arm emits every occurrence-derived edge as edge_type=\"references\"\n(scip/calls.py:232, uniform by design of WI-kopav Slice D), while the\ntree-sitter arm emits \"calls\" for the same relationship. Measured on\naardvark-dns at b1008d3b67 with HYPERGUMBO_RUST_ANALYZER=1: 92 of the 99\nSCIP first-party callable->callable edges have a tree-sitter twin, and every\none of the 92 is labelled `references` on one side and `calls` on the other.\nedge_key is (src, dst, edge_type), so none of them is a duplicate by the\ngraph's own definition and no dedup can collapse them.\n\nSCIP already knows which occurrences are calls: Occurrence.symbol_roles is a\nSymbolRole bitfield (Definition / Import / WriteAccess / ReadAccess /\nGenerated / Test), and rust-analyzer sets it. calls.py reads the bitfield only\nto exclude Definition and then discards it.\n\nFIX SHAPE: map the role bits onto the edge-type registry — a call-position\nreference -> `calls`; ReadAccess/WriteAccess on a non-callable target -> the\ndataflow read/write edge types already declared (ADR-0015 access modes);\nplain reference with no role -> `references` (unchanged). New values must\nalready exist in the edge-type registry (ADR-0023); do not mint new ones here.\n\nACCEPTANCE: re-run the same measurement. The 92 shared edges carry the SAME\nedge_type on both arms; the 79 field references keep a non-`calls` type.\nPrerequisite for ADR-0057's merge pass to collapse duplicate edges — without\nit the pass can merge nodes but never edges."  # df67
+    fields: {}  # df67
