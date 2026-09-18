@@ -466,3 +466,45 @@ def test_document_scoped_locals_never_become_cross_file_references() -> None:
         if by_id[e.src].path == "src/b.rs" and by_id[e.dst].path == "src/a.rs"
     ]
     assert [(by_id[e.src].name, by_id[e.dst].name) for e in cross_file] == [("crate_b", "f")]
+
+
+# ---------------------------------------------------------------------------
+# A body reference is attributed to its method, not to the file namespace
+# ---------------------------------------------------------------------------
+
+
+def test_body_references_are_attributed_to_the_enclosing_method_not_the_namespace() -> None:
+    """End to end at the production entry point, with rust-analyzer's real
+    shape: the Definition ``range`` is the identifier token and
+    ``enclosing_range`` is the item. Before the fix every SCIP edge on
+    aardvark-dns was sourced from a namespace (182 of 182); the edge here
+    must be ``increment -> helper``, and the namespace must source nothing.
+    ``Symbol.span`` stays the token range on purpose (see WI-gojum).
+    """
+    ns = _rust_symbol("crate/")
+    method = _rust_symbol("impl#[Counter]increment().")
+    helper = _rust_symbol("crate/helper().")
+    doc = scip_pb2.Document(
+        language="Rust", relative_path="src/lib.rs",
+        symbols=[scip_pb2.SymbolInformation(symbol=s) for s in (ns, method, helper)],
+        occurrences=[
+            scip_pb2.Occurrence(
+                symbol=ns, symbol_roles=DEFINITION_ROLE,
+                range=[0, 0, 40, 0], enclosing_range=[0, 0, 40, 0],
+            ),
+            scip_pb2.Occurrence(
+                symbol=method, symbol_roles=DEFINITION_ROLE,
+                range=[13, 11, 20], enclosing_range=[13, 4, 16, 5],
+            ),
+            scip_pb2.Occurrence(
+                symbol=helper, symbol_roles=DEFINITION_ROLE,
+                range=[30, 3, 9], enclosing_range=[30, 0, 32, 1],
+            ),
+            # helper() called inside increment's body
+            scip_pb2.Occurrence(symbol=helper, symbol_roles=0, range=[15, 8, 14]),
+        ],
+    )
+    symbols, edges = translate_scip_to_hg(_index_bytes(doc), lambda _p: None)
+    by_id = {s.id: s for s in symbols}
+    assert [(by_id[e.src].name, by_id[e.dst].name) for e in edges] == [("increment", "helper")]
+    assert by_id[next(e.src for e in edges)].span.end_line == 14  # token span, unchanged

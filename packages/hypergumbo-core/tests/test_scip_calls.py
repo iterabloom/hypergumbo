@@ -13,7 +13,8 @@ Behavioural contract pinned here:
 
 * Enclosure resolution is purely span-based. For each non-Definition
   Occurrence O in a Document, we look at all Definition Occurrences
-  in the same Document and pick the *innermost* one whose span fully
+  in the same Document and pick the *innermost* one whose EXTENT —
+  ``enclosing_range`` when populated, else ``range`` — fully
   contains O's span. Innermost means: smallest span-area, with
   ``start <= O.start`` and ``end >= O.end``. Ties (equal-area)
   deterministically pick the first Definition in document order so
@@ -382,3 +383,85 @@ def test_a_local_binding_never_encloses_a_reference() -> None:
         scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
     ])
     assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+
+
+# ---------------------------------------------------------------------------
+# A Definition's extent is its enclosing_range, when the emitter gives one
+# ---------------------------------------------------------------------------
+
+
+def test_enclosing_range_attributes_a_body_reference_to_its_function() -> None:
+    """rust-analyzer's Definition ``range`` is the identifier token — one line
+    — so with ``range`` alone a reference in a function's BODY was never
+    inside the function, and every SCIP edge on aardvark-dns (182 of 182) was
+    sourced from the file's namespace. ``enclosing_range`` is the item range,
+    and rust-analyzer populates it on every Definition; ranges below are the
+    recorded ones for ``impl#[Counter]increment().`` on the parity sample.
+    """
+    ns, fn, callee = _sym("ns"), _sym("increment"), _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(
+            symbol=ns, symbol_roles=DEFINITION_ROLE,
+            range=[0, 0, 32, 0], enclosing_range=[0, 0, 32, 0],
+        ),
+        scip_pb2.Occurrence(
+            symbol=fn, symbol_roles=DEFINITION_ROLE,
+            range=[13, 11, 20], enclosing_range=[13, 4, 16, 5],
+        ),
+        # a reference inside increment's body: line 16 (0-based 15), past the token
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
+    ])
+    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    assert [(e.src, e.dst) for e in edges] == [(fn, callee)]
+
+
+def test_without_enclosing_range_a_token_definition_cannot_enclose() -> None:
+    """Control for the test above, and the contract for emitters that leave
+    ``enclosing_range`` empty: the same document with only ``range`` attributes
+    the body reference to the namespace, which is what production did."""
+    ns, fn, callee = _sym("ns"), _sym("increment"), _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(symbol=ns, symbol_roles=DEFINITION_ROLE, range=[0, 0, 32, 0]),
+        scip_pb2.Occurrence(symbol=fn, symbol_roles=DEFINITION_ROLE, range=[13, 11, 20]),
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
+    ])
+    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    assert [(e.src, e.dst) for e in edges] == [(ns, callee)]
+
+
+def test_malformed_enclosing_range_falls_back_to_range() -> None:
+    """A length-2 ``enclosing_range`` is treated as absent, not fatal."""
+    ns, fn, callee = _sym("ns"), _sym("increment"), _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(symbol=ns, symbol_roles=DEFINITION_ROLE, range=[0, 0, 32, 0]),
+        scip_pb2.Occurrence(
+            symbol=fn, symbol_roles=DEFINITION_ROLE,
+            range=[13, 11, 20], enclosing_range=[13, 4],
+        ),
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
+    ])
+    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    assert [(e.src, e.dst) for e in edges] == [(ns, callee)]
+
+
+def test_innermost_is_chosen_by_enclosing_range_when_items_nest() -> None:
+    """A method inside an impl inside the namespace: the reference in the
+    method's body goes to the method, not to the enclosing struct or file."""
+    ns, strct, method, callee = _sym("ns"), _sym("Counter"), _sym("increment"), _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(
+            symbol=ns, symbol_roles=DEFINITION_ROLE,
+            range=[0, 0, 32, 0], enclosing_range=[0, 0, 32, 0],
+        ),
+        scip_pb2.Occurrence(
+            symbol=strct, symbol_roles=DEFINITION_ROLE,
+            range=[8, 11, 18], enclosing_range=[8, 0, 20, 1],
+        ),
+        scip_pb2.Occurrence(
+            symbol=method, symbol_roles=DEFINITION_ROLE,
+            range=[13, 11, 20], enclosing_range=[13, 4, 16, 5],
+        ),
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[15, 8, 14]),
+    ])
+    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    assert [(e.src, e.dst) for e in edges] == [(method, callee)]
