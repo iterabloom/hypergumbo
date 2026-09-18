@@ -1,0 +1,22 @@
+- op: create  # 6916
+  at: '2026-09-18T19:33:54Z'  # 6916
+  by: agent  # 6916
+  actor: jgstern_agent  # 6916
+  clock: 1  # 6916
+  nonce: '6916'  # 6916
+  data:  # 6916
+    kind: work_item  # 6916
+    title: "Arbitration default as an ADR-0045 preference key in config.toml (both tiers, not trust-gated); built-in is incumbent-first per attribute (ADR-0057 ruling 5)"  # 6916
+    status: todo_hard  # 6916
+    priority: 3  # 6916
+    parent:  # 6916
+    tags:  # 6916
+    - config  # 6916
+    - multi_fidelity  # 6916
+    - provenance  # 6916
+    isbefore: []  # 6916
+    duplicate_of: []  # 6916
+    not_duplicate_of: []  # 6916
+    pr_ref:  # 6916
+    description: "ADR-0057 ruling 5: the arbitration DEFAULT is a preference and lives in the\nADR-0045 preferences tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and\nthe project tier `<repo>/.hypergumbo.toml` — resolved through ADR-0045 ruling\n4's chain (CLI flag > env > project > user > built-in). It executes nothing,\nso it is NOT a trust key: allowed in both tiers, never in trust.d/.\n\nBUILT-IN DEFAULT (owner-ruled shape, values to be measured): incumbent-first\nper attribute — tree-sitter before any SCIP/LSP backend — until a per-attribute\nmeasurement shows otherwise. \"Type-aware backend wins\" is REFUSED as the\nblanket built-in: SCIP's `kind` is wrong on 52/52 free functions on\naardvark-dns (see the kind row). A per-attribute table lets the measured\nexceptions be declared without flipping the whole default.\n\nMECHANICS: extend user_config.py's _KNOWN_SETTINGS (unknown keys RAISE — a\nsilently-dropped preference is the failure mode ADR-0045 forbids), add the\nkey to the loader's dotted-key view, and hand the resolved table to the\narbitration property (the provenance row) as its policy argument. Key\nspelling is the implementing PR's call; proposed:\n  [merge]\n  prefer = [\"tree-sitter\", \"scip\"]        # global order\n  [merge.prefer_by_attribute]\n  kind = [\"tree-sitter\"]                   # per-attribute override\nDocument in the ADR-0045 §Status landed list and the spec's config section.\n\nACCEPTANCE: a config.toml naming a different order changes the arbitrated\nscalar on a contested attribute in the artifact and nothing else; an unknown\nkey under [merge] raises with the file and key named; the trust-key deny-list\nis untouched."  # 6916
+    fields: {}  # 6916
