@@ -1,0 +1,51 @@
+Original commit body from 70a5d59bac96224baeecdcc83e14e067faf476b5:
+
+Three shipped documents asserted, in the present tense, that the SCIP
+arm carries rust.py's stable_id for a shared function: the
+rust-analyzer README ("so cross-pass dedup works"), the 7.0.0 changelog
+("prevents double-counting Rust functions across the two backends") and
+the spec's stable_id v6->v7 history ("byte-for-byte SCIP-parity contract
+... preserved"). Measured on aardvark-dns with the backend on: 0 of 52
+functions emitted by both arms share a stable_id (INV-dolud).
+
+The cause is not a near miss. compute_rust_stable_id_from_source
+requires both span endpoints to match the function_item; production
+hands it the SCIP Definition-occurrence range, and rust-analyzer's is
+the identifier TOKEN (line 14 for a method whose body runs 14-17). The
+helper reproduces rust.py's id byte for byte when given the item span,
+and abstains on everything production supplies except single-line
+items.
+
+And the test that guaranteed parity could not fail: it collected spans
+from rust.py and fed them straight back to the helper. It is re-titled
+as what it is (the helper agrees with its own baseline), and a second
+arm now feeds ranges RECORDED from `rust-analyzer scip` 1.94.0 on the
+same sample: five multi-line callables abstain, the one single-line
+trait declaration reaches parity. A reassign_rust_stable_ids test that
+hedged "either parity succeeded or tree-sitter is unavailable" and
+passed on both branches asserts the overwrite outright, beside a
+production-shaped case pinning the retained SCIP id. Mutation-checked:
+with the predicate changed to match on start_line alone, exactly those
+two tests fail and the other 24 pass.
+
+Stated, not fixed, by the owner's 2026-09-18 ruling: making the arms
+agree would also require split_within_file_stable_id_collisions to
+spare cross-backend groups, which encodes the answer to whether the
+arms are one logical symbol - WI-gojum's parked question. The helper
+stays as readiness for that ruling, and every docstring that called it
+a contract now says so.
+
+WI-kanuh: the spec sentence "the two run alongside each other rather
+than one replacing the other (ADR-0012 coexistence; WI-gojum)" cited a
+ruling ADR-0012 does not contain - zero SCIP, rust-analyzer or dedup
+content; its two "coexist" uses are about analyzer registration systems
+and about two edges at one callsite. The de-facto state is coexistence
+by default (a bare list.extend with no key; an edge dedup on Symbol.ids
+that differ between arms). The citation is retracted and the sentence
+re-pointed to WI-gojum as open. ADR-0012 itself is untouched.
+
+No behavior change. Source edits are docstrings only.
+
+Addresses INV-dolud and WI-kanuh; both rows close after merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
