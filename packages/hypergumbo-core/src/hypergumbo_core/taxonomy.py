@@ -100,7 +100,12 @@ LANGUAGES: dict[str, LanguageSpec] = {
     ),
     "typescript": LanguageSpec(
         name="typescript",
-        extensions=["*.ts", "*.tsx", "*.d.ts"],
+        # ``.mts`` / ``.cts`` are the ES-module / CommonJS TypeScript variants.
+        # The js/ts analyzer has always read them (WI-zavad added them to
+        # ``find_js_ts_files``) but this list did not, so ``profile.languages``
+        # counted zero for a repo written entirely in ``.mts`` and the
+        # file-presence pre-filter short-circuited the whole JS/TS pass.
+        extensions=["*.ts", "*.tsx", "*.d.ts", "*.mts", "*.cts"],
         roles=FileRole.ANALYZABLE,
     ),
     "go": LanguageSpec(

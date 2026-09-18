@@ -40,7 +40,7 @@ import importlib.metadata
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from .base import AnalysisResult
 from ..ir import compute_pass_version
@@ -79,7 +79,7 @@ class RegisteredAnalyzer:
             decoration time via :func:`hypergumbo_core.ir.compute_pass_version`
             (INV-morag PR 1). Changes only when the pass implementation
             changes; immune to unrelated package-version bumps.
-        find_files: Optional ``(repo_root) -> list[Path]`` callable that
+        find_files: Optional ``(repo_root) -> Iterable[Path]`` callable that
             returns the canonical file set this analyzer will see. When
             set, ``profile.detect_profile`` uses it for the per-language
             file count instead of extension-globbing — keeping
@@ -103,7 +103,7 @@ class RegisteredAnalyzer:
     availability: str = "core"
     requires: str | None = None
     pass_version: str = ""
-    find_files: Callable[[Path], list[Path]] | None = None
+    find_files: Callable[[Path], Iterable[Path]] | None = None
     # WI-hupaz / WI-dilab / INV-hujog: pass-id dependencies surfaced into
     # ``Pass.depends_on``. CNF: outer-AND of inner-OR clauses. Empty default
     # = no declared upstream.
@@ -148,7 +148,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
     languages: list[str] | None = None,
     availability: str = "core",
     requires: str | None = None,
-    find_files: Callable[[Path], list[Path]] | None = None,
+    find_files: Callable[[Path], Iterable[Path]] | None = None,
     depends_on: list[list[str]] | None = None,
 ) -> Callable[[AnalyzerFunc], AnalyzerFunc]:
     """Decorator to register an analyzer function.
@@ -168,7 +168,7 @@ def register_analyzer(  # nosec B107 — pass_label/backend defaults are tag str
             Defaults to ``[name]``.
         availability: ``"core"`` or ``"extra"``.
         requires: Optional pip-package requirement label.
-        find_files: Optional ``(repo_root) -> list[Path]`` callable. When
+        find_files: Optional ``(repo_root) -> Iterable[Path]`` callable. When
             set, ``profile.detect_profile`` calls it to count files for
             this language instead of extension-globbing, keeping
             ``profile.languages[L].files`` consistent with the analyzer's

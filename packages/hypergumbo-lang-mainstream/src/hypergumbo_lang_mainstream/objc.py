@@ -1325,7 +1325,7 @@ def is_objc_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("objc")
+@register_analyzer("objc", find_files=find_objc_files)
 def analyze_objc(root: Path) -> AnalysisResult:
     """Analyze Objective-C files in a directory."""
     return _analyzer.analyze(root)

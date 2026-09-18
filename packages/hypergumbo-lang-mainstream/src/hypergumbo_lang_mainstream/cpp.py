@@ -2097,7 +2097,7 @@ def is_cpp_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("cpp")
+@register_analyzer("cpp", find_files=find_cpp_files)
 def analyze_cpp(repo_root: Path) -> CppAnalysisResult:
     """Analyze all C++ files in a repository.
 
