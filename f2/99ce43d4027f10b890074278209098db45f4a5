@@ -1,0 +1,41 @@
+Original commit body from 2c6032fdd8fdbee52891bad4739d9bffb6a9460b:
+
+Same-day amendment, after the owner asked whether ADR-0057 extends past
+Rust. The model did; the plan did not, in two places I put there:
+
+1. The merge key in §3 as first filed was Rust-shaped ("last `::` segment,
+   SCIP token inside tree-sitter item"). §10 now requires every backend to
+   DECLARE its merge anchor — languages, a name_key normaliser, a span_role
+   of token|item, authoritative_for (measured, cited), and ADR-0045 §5's
+   executes_analysed_code, which is also not yet implemented (no such field
+   in core). register_analyzer already takes backend and languages; neither
+   Rust registration sets either, so the registry cannot tell they are two
+   backends for one language. The pass refuses an undeclared producer by
+   name rather than falling through; unknown declaration keys raise.
+
+2. §5's "until a per-attribute measurement shows otherwise" had no
+   measurer — the measurement was a scratchpad script. §10 makes it
+   load-bearing: no default exception and no authority declaration without
+   a committed docs/audits/ table produced by the backend-agreement
+   instrument.
+
+§11: on an edge, src, dst and edge_type are identity, not attributes; a
+disagreement is two edges, each with its origin. This is why the SCIP
+edge-type row is a prerequisite, and it settles external targets for the
+next backend (two stubs merge iff their canonical external identity
+matches).
+
+§12: cross-backend tests import recorded producer-shaped fixtures with the
+producer version pinned; a lint refuses a test that builds the alternative
+arm's input from the incumbent's output (the INV-dolud failure mode).
+
+Consequences and Tracker items updated; CHANGELOG and the ADR index row
+extended.
+
+Tracker: four rows filed and sequenced — WI-hohuh (producer contract) and
+WI-romuh (fixtures) block WI-kokiz; WI-givib (cache key folds in the resolved
+backend set, split from WI-gojum sub-component 3) blocks WI-dajif
+(backend-agreement instrument), which blocks WI-hukuf. WI-kokiz's
+description re-scoped to read the declaration. Note on WI-gojum.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
