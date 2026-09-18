@@ -1,0 +1,27 @@
+Original commit body from 83bda056a43d14693d435d46100f47a214cb9528:
+
+WI-juzig: registry gate — an analyzer's languages are the taxonomy's vocabulary or an explicit declaration (the `languages` half of ADR-0057 §10). Cures INV-nidul.
+
+## What was wrong (enumerated, 118 analyzers)
+`register_analyzer` defaulted `languages=[name]` and checked nothing. 35 (name, language) pairs sat outside `taxonomy.LANGUAGES`:
+- 1 synonym: `make` vs taxonomy `makefile` → on aardvark-dns, `limits.skipped_languages == ['makefile']` while the `make` pass ran and emitted 56 nodes (INV-nidul, a false honesty verdict in shipped output).
+- 2 phantoms: `rust_analyzer`, `manifest_targets` — not languages, but `all_known_languages()` and therefore the spec validator accepted them as `Symbol.language`.
+- 32 real languages with no LanguageSpec (gleam, hack, odin, ansible, …) — a taxonomy coverage gap, filed as WI-futin, not widened here.
+The default also conflated absent with empty (`languages=[]` → `[name]`).
+
+## The gate
+`language_state="taxonomy"` (default): every language must be a taxonomy key (aliases canonicalised). `"no_taxonomy_spec"`: none may be a taxonomy key — the declaration raises as stale once a spec lands. `"no_language"`: `languages` stored as `[]`; the two downstream `if languages else {name}` fallbacks (finalize, file-presence pre-filter) are removed so an empty declaration is never re-inflated. An undeclared non-language name raises `LanguageDeclarationError` at import; entry-point discovery re-raises it instead of logging it away (a misdeclared analyzer must not silently vanish).
+
+Declared: `rust_analyzer` → `languages=["rust"], backend="scip"`; `rust` → `backend="tree-sitter"`; `make` → `languages=["makefile"], backend="tree-sitter", find_files=find_make_files`, symbols/file node/id prefix now `makefile`; `manifest_targets` → `no_language`, `backend="regex"`; the 32 → `no_taxonomy_spec`.
+
+## What the gate's own tests found (two producers for one language)
+- `profile.py` looked up `find_files` with `get_analyzer(<language>)` — by pass NAME — so the INV-hokig cure fired only for analyzers whose name equals their language. New `analyzers_for_language()` in the registry; profile uses it. A `GNUmakefile`-only repo now counts 1 `makefile` and `make` is not short-circuited (production-path test).
+- Three drift-guard tests keyed a dict by language and kept whichever rust producer registered last. Helpers made multi-producer; the five linkers whose impl clause names `rust` now also name `rust_analyzer` (jni, pyffi, tauri-ipc, wasm-bindgen, inherited-calls) — either backend satisfies a dependency on rust symbols, the shape type-hierarchy-linker already had.
+
+## Evidence
+- aardvark-dns survey, same code path before/after: `skipped_languages: ['makefile']` → absent; `make`-language nodes 56 → 0, `makefile` 42 → 56 after the two remaining id sites (unresolved-prerequisite stubs, include targets) were also moved; 0 ids with a `make:` prefix; profile counts the Makefile.
+- Production-path tests: `test_run_behavior_map.py::test_a_language_whose_pass_ran_is_never_reported_skipped` (Makefile fixture), `test_prefilter_candidate_set.py::test_a_gnumakefile_only_repo_still_runs_the_make_pass`, `test_profile.py::test_profile_finds_an_analyzer_enumerator_by_language_not_by_pass_name`.
+- Registry-wide enumeration: `test_registry_language_vocabulary.py` — every discovered analyzer in exactly one declared state, the four prescribed declarations by name, `all_known_languages()` without the phantoms.
+- Mutation check: reverting `make` to the old vocabulary turns 5 of the new tests red.
+
+Not asserted: that the 32 are correctly classified as languages-vs-dialects — that is WI-futin's per-entry ruling.
