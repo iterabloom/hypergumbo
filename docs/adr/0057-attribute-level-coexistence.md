@@ -59,7 +59,7 @@ A merged record's attribute is a **set of (value, provenance) pairs**, where pro
 - the producers **disagree** → two values, one provenance each (`kind = function ← {rust}; method ← {scip}`);
 - the producers **touch different parts of the elephant** → one value with one provenance, and no entry at all from the producer that did not observe that attribute.
 
-Nothing a producer emitted is discarded. This keeps ADR-0012's principle — both backends run, provenance is tracked, nothing is thrown away — and changes only the granularity, from the record to the attribute. It is what the codebase already does for one field: `confidence` 0.85 per tree-sitter and 0.95 per SCIP with `confidence_source = composite` (ADR-0039 ruling 2).
+Nothing a producer emitted is discarded. This keeps ADR-0012's principle — both backends run, provenance is tracked, nothing is thrown away — and changes only the granularity, from the record to the attribute. The precedent is `confidence_source` (ADR-0039 ruling 2): the one existing **per-attribute provenance field**. The precedent is the field, not its `composite` value — ADR-0039 defines `composite` as a transitional label for confidence that still carries blended ranking, slated for elimination by its ruling 3, and nothing produces it. An earlier revision of this section cited that value as the precedent; that was wrong, and §13 adds the value this design actually needs.
 
 ### 2. There are three times, and resolution belongs to the middle one
 
@@ -75,17 +75,17 @@ It is a pass, not a traversal: one linear loop over symbols, one over edges, no 
 
 ### 4. Arbitration is a property, with one stamped default
 
-The scalar a consumer reads is produced by a **per-record arbitration property**: a pure function over the preserved candidate set, O(candidates), needing no whole-table access and — because it is pure over data the record already holds — **no invalidation contract** (contrast `edge_key`, the codebase's memoised field, whose cost is exactly that contract: `ir.py:994`, `:1256`, `:2021`).
+The scalar a consumer reads is produced by a **per-record arbitration property**: a pure function over the preserved candidate set — **precedence for categorical attributes, a declared combining rule for numeric ones (§13)** — O(candidates), needing no whole-table access and — because it is pure over data the record already holds — **no invalidation contract** (contrast `edge_key`, the codebase's memoised field, whose cost is exactly that contract: `ir.py:994`, `:1256`, `:2021`).
 
 There is **one default**, stamped so that ranking, slicing, finalize and serialization all see the same value. Laziness does not remove the default; it only hides where it lives. Alternative policies are **opt-in reads of the candidate set**, never a second default. The scalar slot on `Symbol` / `Edge` keeps its current type, so the 89 files of consumers are unchanged by default.
 
 ### 5. The default is a preference in `config.toml`
 
-The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and the project tier — resolved through ADR-0045 ruling 4's chain (CLI flag > environment > project > user > built-in). It executes nothing, so it is not a trust key and is allowed in both tiers. The **built-in default is incumbent-first per attribute** — tree-sitter before any SCIP/LSP backend — until a per-attribute measurement shows otherwise. "Type-aware backend wins" is **refused** as the blanket built-in: on the one attribute measured, `kind`, the type-aware backend is wrong on 52 of 52 free functions. The key is a per-attribute table so measured exceptions can be declared without flipping the whole default.
+The arbitration default lives in ADR-0045's **preferences** tiers — `$XDG_CONFIG_HOME/hypergumbo/config.toml` and the project tier — resolved through ADR-0045 ruling 4's chain (CLI flag > environment > project > user > built-in). It executes nothing, so it is not a trust key and is allowed in both tiers. The **built-in default is incumbent-first per categorical attribute** — tree-sitter before any SCIP/LSP backend — until a per-attribute measurement shows otherwise; `confidence` is numeric and follows §13, where incumbent-first would be actively wrong. "Type-aware backend wins" is **refused** as the blanket built-in: on the one attribute measured, `kind`, the type-aware backend is wrong on 52 of 52 free functions. The key is a per-attribute table so measured exceptions can be declared without flipping the whole default.
 
 ### 6. Provenance gets a registered, schema-versioned slot
 
-`origin` is record-level and `meta` is not a registry (`parent_type` is written by four analyzers, read by a linker, declared nowhere), so attribute provenance needs its own slot on `Symbol` and `Edge`, with `# axis:` declarations, a `SCHEMA_VERSION` patch bump, and `docs/schema.json` / `docs/concept-axes.md` regenerated. The **semantics** are pinned here; the spelling is the implementing row's (proposed: `attribution: {field: [pass_id, …]}` plus `alternatives: {field: [{value, origin}]}` present only for contested fields; absence of both means single producer — today's records are unchanged). Edge `evidence_type` is a candidate set like any other attribute: an edge seen by two inference pathways is precisely ADR-0028's composite case, not an exception to it.
+`origin` is record-level and `meta` is not a registry (`parent_type` is written by four analyzers, read by a linker, declared nowhere), so attribute provenance needs its own slot on `Symbol` and `Edge`, with `# axis:` declarations, a `SCHEMA_VERSION` patch bump, and `docs/schema.json` / `docs/concept-axes.md` regenerated. The **semantics** are pinned here; the spelling is the implementing row's (proposed: `attribution: {field: [pass_id, …]}` plus `alternatives: {field: [{value, origin}]}` present only for contested fields; absence of both means single producer — today's records are unchanged). Edge `evidence_type` is a candidate set like any other attribute: an edge seen by two inference pathways is precisely the two-pathway case §13 keys on, not an exception to the axis.
 
 ### 7. Two producer fixes are prerequisites, not part of the mechanism
 
@@ -117,6 +117,22 @@ For a node, `kind` may hold two values. For an edge, `edge_type` is inside `edge
 ### 12. Tests run on recorded producer-shaped input, never on the incumbent arm's output fed back
 
 rust-analyzer executes the analysed crate's `build.rs`, is opt-in, and will not run in CI. The parity test that fed `rust.py`'s own spans back into the helper passed for months over a feature measuring 0 of 52 (INV-dolud); a control that cannot fail is not a control. Every merge, parity and contract test therefore imports **recorded** fixtures — the emitted index or its parsed Definition `range` / `enclosing_range` / `symbol_roles` per fixture crate, with the producer version pinned (the #1044 `RUST_ANALYZER_DEFINITION_LINES` pattern) — and a lint refuses a test in those families that calls the incumbent analyzer to build the alternative arm's input.
+
+### 13. `confidence` is not arbitrated by precedence; corroboration is a declared level
+
+*(Owner ruling 2026-09-18.)* Measured on the 92 agreed edges: tree-sitter's `calls` carry 0.4–0.85 `evidence_derived`; SCIP's `references` carry 0.85 `emitter_constant`, uniformly. Incumbent-first would leave an edge the type-aware backend just confirmed at 0.5 — inverting ADR-0012's founding premise that AST edges are *upgraded* when type resolution confirms them — and "take SCIP's" would launder a hardcoded constant into evidence. Three cases, only one of which combines:
+
+1. **Sole producer** — the edge keeps its producer's `confidence` and `confidence_source`. Nothing to decide.
+2. **Two producers, same inference pathway** (matching `evidence_type` candidates) — agreement by the same method is not new evidence. Precedence applies, incumbent-first.
+3. **Two producers, distinct pathways** for one `(src, dst, edge_type)` — the merged `confidence` is a **declared corroboration level**, not a formula over the inputs: built-in **0.95** when one pathway is type-resolved (ADR-0012's own number), declared in the same per-attribute table as §5 so it is configurable; `confidence_source` takes a **new value `corroborated`**; both candidates stay in the provenance slot; `CONFIDENCE_MODEL` bumps `hypergumbo-evidence-v2.0 → v2.1`.
+
+Why not `max` or noisy-OR: `max` returns the emitter constant; noisy-OR assumes independent detectors, and both backends read the same source text, so agreement on a plain direct call is near-certain and the formula would push everything to ≈0.98. A declared level states what can be defended — *a type-resolved pathway confirmed this* — and is how ADR-0012 already reasoned: a category with a number. `rank_score` initialises from the corroborated value (ADR-0039), so a corroborated edge ranks above its uncorroborated neighbours. Deliberately untouched: the SCIP arm's own 0.85 constant on its sole-producer edges — ADR-0039 permits a labelled constant, and making it evidence-derived is that backend's work.
+
+### 14. A resolved edge demotes a same-site stub — by `rank_score`, recorded on the stub, never deleted
+
+*(Owner ruling 2026-09-18: "yes, by rank_score".)* At 257 call sites on the measured crate tree-sitter emitted a `calls` edge to an external stub; at **33 of them** SCIP has a first-party reference on the same line — the syntactic backend said "outside the crate", the type-aware one says "this item, here". Under §11 `dst` is identity, so both edges are kept, and §11 alone leaves the wrong answer at equal standing with the right one — the tension WI-gojum's July note recorded, and where leverage against magnet edges lives.
+
+A resolved (`is_resolved=True`) first-party edge at `(src, line)` **demotes** a same-site edge whose `dst` is an external stub, by `rank_score` — ADR-0039 ruling 3 puts ranking adjustments there and never on `confidence`. The stub keeps its confidence, its origin and its place in the graph; **no edge is deleted** (never pin a removal). The merge pass **stamps the supersession on the stub as a positive claim** — the superseding edge's id and producer — so a consumer can see *why* it ranks low; a bare lower number is an absent-versus-empty reading waiting to happen. Same `(src, line)` only, no cross-line inference; a site where both producers point at stubs is untouched. The 33 is an **upper bound** — a co-located field or type reference on a call's line is not the same call — and the implementing row measures the true count before claiming it.
 
 ## Consequences
 
@@ -150,6 +166,8 @@ rust-analyzer executes the analysed crate's `build.rs`, is opt-in, and will not 
 - WI-dajif — the backend-agreement instrument whose committed tables are the only evidence that may change a default (§5, §10). Blocks WI-hukuf.
 - WI-romuh — recorded producer-shaped fixtures and the lint that forbids feeding the incumbent's output back (§12). Blocks WI-kokiz.
 - WI-givib — results-cache key folds in the resolved backend set (WI-gojum sub-component 3, split out). Blocks WI-dajif.
+- WI-lihis — same-site supersession by `rank_score`, stamped on the stub (§14). Blocked by WI-kokiz.
+- WI-binis additionally carries §13: the `corroborated` source value, the combining case in the arbitration property, `CONFIDENCE_MODEL` v2.1. WI-gapup is widened to enum variants (9 of 9 pair SCIP `class` against tree-sitter `field`).
 - WI-gojum — parked host; sub-component 1 is superseded by this ADR, sub-component 2 is WI-kokiz, sub-component 3 is WI-givib, sub-component 4 is WI-sobig's question.
 
 ## References
