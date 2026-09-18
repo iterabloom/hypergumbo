@@ -1,0 +1,49 @@
+Original commit body from 99d98e8dd97489e1a71f9059c2f4a5a0a3a708fd:
+
+scip/calls.py attributes each non-Definition occurrence to the innermost
+Definition whose range contains it. rust-analyzer's Definition range is
+the identifier TOKEN, one line: `increment` is reported at [13,11,20]
+while its body runs 14-17. No body reference is ever inside a function's
+token, so the only Definition that contained anything was the document's
+`crate/` namespace spanning the whole file. Measured on aardvark-dns
+after the locals were dropped: 182 of 182 SCIP edges sourced from a
+namespace, 0 from a callable. The arm built for type-resolved call
+attribution had no caller to attribute to — which is why every one of
+its edges was a bare `references` and none call-family.
+
+The item range was in the index all along. The docstring said
+`enclosing_range` "is rarely populated in practice"; rust-analyzer 1.94.0
+populates it on every Definition occurrence (20 of 20 on a recorded
+sample) with exactly the item range — `increment` [13,4,16,5]. The
+definition list is now built from enclosing_range when populated and
+falls back to range when not, so an emitter that leaves it empty keeps
+today's behaviour. `_definition_extent` is typed Any for the same reason
+index.py's helper is: the generated module has no stubs and a precise
+name grew the strict ratchet by one (caught by the ratchet, fixed).
+
+Tests: token-plus-enclosing_range attributes to the function; token
+alone attributes to the namespace (the control, and the contract for
+other emitters); a malformed enclosing_range falls back; nested items
+pick the innermost; and the production shape end to end at
+translate_scip_to_hg. Three were red against the old shim (3 failed,
+40 passed), then 43 passed.
+
+Measured on aardvark-dns, HYPERGUMBO_RUST_ANALYZER=1, same script both
+arms:
+    SCIP edges sourced from a method     0 -> 287
+    ... from a namespace               182 -> 63   (file-scope refs)
+    ... from a class / a variable        0 -> 9 / 10
+    SCIP edges                         182 -> 369  (per-caller pairs no
+                                                    longer collapse)
+    genuine cross-file references       99 -> 157
+    validation violations                1 -> 1    (INV-kutid, unrelated)
+    every non-SCIP origin              byte-identical
+
+Symbol.span is deliberately left at the token range: spanning it from
+enclosing_range makes the rust.py stable_id parity helper match, and
+split_within_file_stable_id_collisions would then re-mint the SCIP
+record as a second site. That is INV-lodum, gated on WI-gojum.
+
+Addresses INV-mofiv; the row closes on its repro after merge.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
