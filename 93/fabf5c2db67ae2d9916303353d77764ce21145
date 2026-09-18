@@ -1,0 +1,51 @@
+Original commit body from afa6eea45791ffeb25fbf1ec2a48105f277f45e9:
+
+limits.skipped_passes[].skip_reason_code is renamed to silence_reason --
+the name AnalysisRun already uses for the same question on the same closed
+axis. SCHEMA_VERSION 0.20.9 -> 0.20.10. Breaking for readers of the old key,
+which shipped one version earlier in the same unreleased window.
+
+WHY. Measured on component-model-demo (WI-mamiv): 130 of 162 passes carry
+no_candidate_files, 48 on one host and 82 on the other. Which NAME a consumer
+had to read was decided by taxonomy.LANGUAGE_EXTENSIONS membership and by
+whether the analyzer returns a bare AnalysisResult() or a run with
+files_analyzed == 0 -- producer registration and implementation detail, never
+a property of the silence.
+
+THE ROUTING IS DELIBERATELY UNCHANGED. Making the HOST a function of the fact
+requires an AnalysisRun for the 75 pre-filtered passes, which is exactly what
+ADR-0056 'What would change this decision' item 5 reserves to the owner and
+judges wrong (ABSENT != EMPTY one level up). What changed is that asking the
+question no longer requires knowing which host will answer;
+pass_silence.census_silence() is still the union, over the pass CATALOGUE
+rather than the two lists.
+
+SCOPE. The serialized key only -- 9 sites. AnalysisResult.skip_reason_code,
+the producer-side constructor kwarg, is deliberately NOT renamed: 'skip' is
+apt on a skipped result, and test_skip_reason_code_declaration.py gates that
+kwarg rather than the output, so it is untouched.
+
+ALSO FIXES WI-gisor, because it is the same spec paragraph. Section 9 claimed
+an out-of-taxonomy analyzer finding no files is recorded in skipped_passes
+'either way'. Re-measured on canonical dev AFTER the INV-homur pre-filter fix,
+since that fix moves profile.languages and could have moved the routing:
+
+    out-of-taxonomy analyzers: 35
+      -> analysis_runs : 27   (26 with files_analyzed == 0)
+      -> skipped_passes:  8
+      -> neither       :  0
+
+'Either way' was never the rule. Taxonomy membership decides pre-filter vs
+dispatch; the dispatched ones then split by their own return style. Of the 8
+skips, 7 return a bare AnalysisResult() and the 8th is rust_analyzer on the
+separate backend-disabled route. The paragraph now names all three routes and
+says plainly that a consumer must read both hosts.
+
+ADR-0056 gets a correction note rather than being left prescribing a field
+name that no longer exists; its reasoning is untouched, only the name moved.
+Three stale references inside CHANGELOG [Unreleased] are reconciled, since
+0.20.9 and 0.20.10 land in the same release window.
+
+Full suite 17116 passed, 100% coverage on every changed file, ratchet 667.
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
