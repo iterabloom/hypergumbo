@@ -1,0 +1,23 @@
+- op: create  # da3c
+  at: '2026-09-18T20:06:45Z'  # da3c
+  by: agent  # da3c
+  actor: jgstern_agent  # da3c
+  clock: 1  # da3c
+  nonce: da3c  # da3c
+  data:  # da3c
+    kind: work_item  # da3c
+    title: "Producer contract: each backend declares its merge anchor (name_key, span_role), measured authority and executes_analysed_code; the merge pass refuses undeclared producers (ADR-0057 §10)"  # da3c
+    status: todo_hard  # da3c
+    priority: 2  # da3c
+    parent:  # da3c
+    tags:  # da3c
+    - multi_fidelity  # da3c
+    - provenance  # da3c
+    - identity  # da3c
+    - registry  # da3c
+    isbefore: []  # da3c
+    duplicate_of: []  # da3c
+    not_duplicate_of: []  # da3c
+    pr_ref:  # da3c
+    description: "ADR-0057 §10. The merge pass (WI-kokiz) must read each backend's identity\nanchor from a DECLARATION, not hardcode one. As first filed, WI-kokiz's key\nwas Rust-shaped: \"base name = last `::` segment, SCIP name token inside the\ntree-sitter item span\". Python is dotted, TypeScript is `Class.method`, Go has\nreceiver methods, and whether scip-python or tsserver populate\n`enclosing_range` at all is UNCHECKED. Without a declaration, backend N+1 is a\nrewrite of the pass, or — worse — merges nothing and reads as \"nothing to\nmerge\" (the ABSENT != EMPTY defect).\n\nTHE SURFACE EXISTS AND IS EMPTY FOR EXACTLY THE PAIR THAT NEEDS IT.\n`register_analyzer` (analyze/registry.py:140) already takes `backend: str`\nand `languages: list[str]`; neither Rust registration sets either —\n`@register_analyzer(\"rust_analyzer\", priority=45)` (lang-rust-analyzer\nanalyzer.py:158) and `@register_analyzer(\"rust\")` (rust.py:3576). The\nregistry cannot currently tell that these are two backends for one language.\n\nSIBLING DECLARATION, ALSO UNIMPLEMENTED: ADR-0045 §5 rules \"each backend\ndeclares `executes_analysed_code: bool`, and which store its opt-in lands in\nfollows from that bit rather than from a hardcoded list\". `grep -rn\nexecutes_analysed_code packages/hypergumbo-core/src` finds nothing. Land both\non the same surface in this row so the next backend cannot omit either.\n\nDECLARATION (per backend registration; names are the implementing PR's):\n  - languages: the language(s) this backend produces records for (existing\n    field, must be populated).\n  - merge.name_key: how to derive the backend-neutral declaration name from\n    a Symbol (Rust incumbent: last `::` segment of `name`; scip arm: `name`\n    as emitted). The incumbent and every alternative for one language must\n    map the two records for one declaration to the same key; that is the\n    registry test, run on recorded fixtures (see the fixture row).\n  - merge.span_role: \"token\" | \"item\" — whether Symbol.span is the\n    identifier token or the item extent. The pass's containment test is\n    directional (token inside item); two \"item\" spans compare by equality.\n  - merge.authoritative_for: attributes this backend is authoritative on\n    BY MEASUREMENT, each citing a committed docs/audits/ table produced by\n    the backend-agreement tool. Empty by default for every backend\n    (ADR-0057 §5 incumbent-first). A declaration without a citation is\n    refused at registration.\n  - executes_analysed_code: bool (ADR-0045 §5).\n\nENFORCEMENT: (1) a registry-level test in the ADR-0045 parity-test pattern\n(tests/test_touch_heartbeat.py shape): every analyzer whose `languages`\noverlaps another analyzer's must carry a complete merge declaration; (2) the\nmerge pass REFUSES — loudly, naming the analyzer — to merge records from an\nundeclared producer rather than falling through; (3) unknown declaration\nkeys raise, as user_config.py does for unknown settings.\n\nACCEPTANCE: both Rust registrations declare languages=[\"rust\"] and a merge\nanchor; the registry test fails if either declaration is removed; the pass\nrun on the recorded aardvark-dns fixture pairs 138/169 through the\ndeclarations alone with no `::` literal in analyze/ code."  # da3c
+    fields: {}  # da3c
