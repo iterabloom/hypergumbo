@@ -1,0 +1,35 @@
+Original commit body from e290e1b0081c2c1802c9ae493c22260806f7e00a:
+
+Two owner rulings from the same evening, plus a correction to something the
+ADR said twice.
+
+§13 — confidence is not arbitrated by precedence. Measured on the 92 agreed
+edges: tree-sitter calls carry 0.4–0.85 evidence_derived, SCIP references a
+uniform 0.85 emitter_constant. Incumbent-first would leave an edge the
+type-aware backend just confirmed at 0.5, inverting ADR-0012's premise that
+confirmation upgrades. Three cases: sole producer keeps its value; same
+pathway twice is not new evidence (precedence); distinct pathways for one
+(src, dst, edge_type) yield a DECLARED corroboration level — built-in 0.95,
+ADR-0012's own number, configurable in the §5 table — with a new
+confidence_source value `corroborated` and CONFIDENCE_MODEL v2.0 → v2.1.
+Not max (returns the constant), not noisy-OR (the producers read the same
+text; it would push everything to ≈0.98).
+
+§14 — a resolved first-party edge demotes a same-(src, line) external-stub
+edge by rank_score (ADR-0039 ruling 3), stamped on the stub as a positive
+claim naming the superseding edge, never deleted. 33 of 257 stub sites on
+the measured crate, an upper bound until the implementing row separates
+same-call from co-located reference.
+
+Correction: §1 and §6 cited confidence_source=composite as the precedent
+for multi-producer provenance. ADR-0039 defines composite as transitional
+blended ranking slated for elimination, and nothing produces it. The
+precedent is the FIELD, not that value; reusing the value would be a
+conceptual leak. §4 now admits combining rules for numeric attributes; §5
+scopes incumbent-first to categorical ones.
+
+Tracker: WI-lihis filed for §14 (blocked by WI-kokiz); §13 noted on
+WI-binis; WI-gapup widened to enum variants (9 of 9 pair SCIP class against
+tree-sitter field on the same artifact).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
