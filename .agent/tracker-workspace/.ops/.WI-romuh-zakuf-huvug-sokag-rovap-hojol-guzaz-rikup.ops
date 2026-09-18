@@ -21,3 +21,12 @@
     pr_ref:  # d0e2
     description: "ADR-0057 §12. rust-analyzer executes the analysed crate's build.rs, is\nopt-in (ADR-0045 trust grant), and will never run in CI. Every merge,\nparity and producer-contract test therefore runs on RECORDED\nproducer-shaped input or it tests nothing. The failure mode is on record:\nthe stable_id parity test collected a baseline from rust.py and fed rust.py's\nown spans back into the helper, passed for months, and the feature measured\n0 of 52 in production (INV-dolud, retracted in #1044). A control that cannot\nfail is not a control (LIVE.md rule 6).\n\nWHAT TO RECORD, per fixture crate: the emitted index.scip (or its parsed\nDocuments: per Definition occurrence the symbol string, `range`,\n`enclosing_range`, `symbol_roles`; per reference occurrence the same) plus\nthe producer version string. The #1044 pattern is the seed:\nRUST_ANALYZER_DEFINITION_LINES in\npackages/hypergumbo-lang-mainstream/tests/test_rust_scip_stable_id.py,\nrecorded from rust-analyzer 1.94.0 (4a4ef49 2026-03-02) on a scratch crate\nwhose src/lib.rs is RUST_SAMPLE byte for byte. Recording cost: scratch crate\n+ `rust-analyzer scip .` = 3 s; parse with scip_pb2.\n\nTHE RULE: a test of cross-backend behaviour may not derive the alternative\narm's input from the incumbent arm's output. Enforce it structurally, not by\nreview: fixtures live in a recorded module with the producer version in its\ndocstring; tests import from it; a lint (AST, per LIVE.md — a grep misses\ncall-site rules) flags any test under the merge/parity/contract families\nthat calls the incumbent analyzer to build the alternative arm's input.\n\nWHY NOW: the contract row's registry test (\"both backends' name_key map one\ndeclaration to one key\") and the merge row's acceptance (\"138/169 through\nthe declarations alone\") are only meaningful on recorded input. Blocks\nWI-kokiz.\n\nACCEPTANCE: a committed fixture for aardvark-dns-shaped input (or the\nscratch crate) sufficient to reproduce the pairing count; the lint fails on\na test that feeds rust.py spans to the merge; the existing recorded-span arm\nin test_rust_scip_stable_id.py is migrated onto the shared fixture module."  # d0e2
     fields: {}  # d0e2
+- op: update  # 4e6f
+  at: '2026-09-18T20:07:46Z'  # 4e6f
+  by: agent  # 4e6f
+  actor: jgstern_agent  # 4e6f
+  clock: 2  # 4e6f
+  nonce: 4e6f  # 4e6f
+  set: {}  # 4e6f
+  add:  # 4e6f
+    isbefore: [WI-kokiz-tilam-bohos-tivat-fogil-bijoj-munad-gazid]  # 4e6f
