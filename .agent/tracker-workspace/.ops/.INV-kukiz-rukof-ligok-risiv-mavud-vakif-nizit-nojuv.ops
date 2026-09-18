@@ -22,3 +22,12 @@
     fields:  # bc2a
       statement: "An emitted edge must not assert a reference relationship between two symbols that cannot reference each other; specifically, an edge whose destination is a function-local binding must have both endpoints in the same file, because a SCIP local id is scoped to its document."  # bc2a
       root_cause: "translate.py builds id_by_scip_symbol as a single index-wide dict keyed on the raw SCIP moniker, but a local moniker ('local 0') is document-scoped and recurs in every file, so all occurrences collapse to one arbitrary winner and references resolve to a binding in the wrong file."  # bc2a
+- op: update  # 8b8b
+  at: '2026-09-18T08:41:59Z'  # 8b8b
+  by: agent  # 8b8b
+  actor: jgstern_agent  # 8b8b
+  clock: 2  # 8b8b
+  nonce: 8b8b  # 8b8b
+  set: {}  # 8b8b
+  add:  # 8b8b
+    isbefore: [WI-sobig-hutih-luziv-bokag-hiruz-zahot-gahog-gizap]  # 8b8b

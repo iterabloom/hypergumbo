@@ -1,0 +1,24 @@
+- op: create  # 99a1
+  at: '2026-09-18T09:22:43Z'  # 99a1
+  by: agent  # 99a1
+  actor: jgstern_agent  # 99a1
+  clock: 1  # 99a1
+  nonce: 99a1  # 99a1
+  data:  # 99a1
+    kind: invariant  # 99a1
+    title: "rust-analyzer SCIP monikers are scoped per crate TARGET, not per package: crate/ and main(). recur across lib, bin and build.rs, so sha256(moniker) collides (5 of 756 Symbols on aardvark-dns, the whole residual after WI-jikok)"  # 99a1
+    status: violated  # 99a1
+    priority: 3  # 99a1
+    parent:  # 99a1
+    tags:  # 99a1
+    - rust  # 99a1
+    - multi_fidelity  # 99a1
+    - analysis_quality  # 99a1
+    isbefore: []  # 99a1
+    duplicate_of: []  # 99a1
+    not_duplicate_of: []  # 99a1
+    pr_ref:  # 99a1
+    description: "FOUND 2026-09-18 as the entire residual of the WI-jikok fix (drop SCIP\nlocals), measured on ~/whole_bunch_of_repos/aardvark-dns with\nHYPERGUMBO_RUST_ANALYZER=1 at jgstern-agent/fix/scip-drop-local-symbols.\n\nBefore that fix the artifact carried 2 validation violations; after it,\n1 — this one — and it reproduces identically on the pre-fix artifact, so\nit is pre-existing and was masked by the 498-symbol locals collision.\n\n    stable_id collision detected: 5/756 Symbols (0.7%) share an id.\n      sha256:fe9021ce48cd040c  namespace crate   src/lib.rs:1-7\n                               namespace crate   build.rs:1-31\n                               namespace crate   src/main.rs:1-91\n        moniker (all three): rust-analyzer cargo aardvark-dns 2.0.0-dev crate/\n      sha256:56a84a5ff063784c  method    main    build.rs:5-5\n                               method    main    src/main.rs:35-35\n        moniker (both):      rust-analyzer cargo aardvark-dns 2.0.0-dev main().\n\nTHE CAUSE. rust-analyzer's SCIP moniker header is `<scheme> <manager>\n<package> <version> <descriptors>`, and the package is the CARGO PACKAGE.\nBut a cargo package builds several crate TARGETS — here a lib (src/lib.rs),\na bin (src/main.rs) and the build script (build.rs) — and each target has\nits own root namespace `crate/` and its own items. The moniker carries no\ntarget, so `crate/` and `main().` are the same string in three targets.\nscip/index.py hashes the raw moniker (stable_id=_short_sha256(sym.symbol),\nINV-hunup), so the three roots and the two mains collide.\n\nThis is the SAME shape as INV-kukiz one level up: a hash is only as scoped\nas what it hashes, and the moniker's true scope is the crate target, not\nthe package. The locals case was document-scoped; this is target-scoped.\n\nWHY P3. 5 of 756 Symbols, all at the target root (`crate/`) or the\nentrypoint (`main`), the two names every target has. Items below the\nroot (`crate/dns/coredns#`) are unique because their module paths\ndiffer. The harm is real but narrow: cross-run tracking of `main` and of\nthe root namespace picks one of N.\n\nFIX SHAPES, not chosen here. (a) Fold the document path into the hash\nfor SCIP Symbols (the WI-titiz precedent, and what INV-kukiz's filed fix\nproposed for locals before the drop ruling made it moot) — makes every\nSCIP stable_id path-anchored, which is ALSO what ADR-0035 §4 did for the\ntree-sitter producers (spec, stable_id v6->v7). (b) Recover the target\nfrom the SCIP Document's path (build.rs / src/main.rs / src/lib.rs are\ncargo's conventional roots) and fold that in instead — narrower, but\nwrong for `[[bin]]` targets at non-conventional paths. (c) Leave it and\nlet ADR-0035 §3's dedup handle root-namespace stand-ins. Option (a) is\nthe one consistent with the tree-sitter arm's ruling and with WI-talos\n(the SCIP scheme is a second, undeclared stable_id scheme under the\nsame `sha256:` prefix); if (a) is taken, INV-dolud's parity question\nshould be settled first or in the same change, because it changes every\nSCIP stable_id.\n\nREPRO: HYPERGUMBO_RUST_ANALYZER=1 hypergumbo survey <cargo package with\na lib, a bin and a build.rs>; read validation_report.violations. Expect\nthe `crate` and `main` groups today."  # 99a1
+    fields:  # 99a1
+      statement: "A stable_id must be unique within a run (ADR-0035 §1); a producer that hashes an external identifier inherits that identifier's scope, so the hashed inputs must include whatever the external scheme leaves implicit — for rust-analyzer SCIP monikers, the crate target."  # 99a1
+      root_cause: "scip/index.py computes stable_id=_short_sha256(sym_info.symbol); rust-analyzer's moniker header names the cargo PACKAGE and version but not the crate TARGET, so the root namespace 'crate/' and 'main().' carry the same string in the lib, bin and build-script targets of one package."  # 99a1
