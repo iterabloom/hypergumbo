@@ -49,3 +49,12 @@
   clock: 5  # 9fbd
   nonce: 9fbd  # 9fbd
   message: "2026-09-18, three related PRs landed while this row stays PARKED (owner\n2026-07-19), none of which pre-empts it:\n  * PR #1042 (WI-jikok / INV-kukiz): SCIP locals are dropped — 500 of 669\n    SCIP nodes and 455 of 637 SCIP edges on aardvark-dns, 329 of them false\n    cross-file references. Any future dedup design starts from 169 SCIP\n    nodes, all globals.\n  * PR #1044 (INV-dolud): the \"stable_id parity\" this row calls \"readiness\n    for a future dedup\" is documented as NOT holding in production (0 of 52),\n    with a recorded-span test that goes red when it starts to. The helper is\n    kept. Engineering parity is THIS row's, when unparked: it needs the\n    helper to accept the identifier-token span AND\n    split_within_file_stable_id_collisions to spare cross-backend groups.\n  * PR #1044 (WI-kanuh): the spec no longer cites \"ADR-0012 coexistence\";\n    it says coexistence is the de-facto default and the ruling is open here.\nAlso relevant: INV-kutid (P3) — sha256(moniker) collides across crate\nTARGETS (`crate/`, `main().`); if parity is ever engineered by folding the\ndocument path into the SCIP hash (WI-titiz shape), that fixes kutid too.\n  * ALSO: the input this row needs already exists. rust-analyzer populates\n    `enclosing_range` (item range) on every Definition occurrence; index.py\n    reads only `range` (identifier token). Spanning SCIP Symbols from\n    enclosing_range makes the parity helper match with NO change to the\n    helper — the remaining work when this row is unparked is solely the\n    collision-splitter ruling. Filed as its own row with isbefore on this one."  # 9fbd
+- op: update  # 2b8d
+  at: '2026-09-18T09:59:45Z'  # 2b8d
+  by: agent  # 2b8d
+  actor: jgstern_agent  # 2b8d
+  clock: 6  # 2b8d
+  nonce: 2b8d  # 2b8d
+  set: {}  # 2b8d
+  add:  # 2b8d
+    isbefore: [INV-lodum-sotah-rudis-fivit-dalot-fosug-matuf-gobon]  # 2b8d
