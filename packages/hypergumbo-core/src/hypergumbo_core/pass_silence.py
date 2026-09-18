@@ -79,6 +79,7 @@ invisible and leaves a later pass to drain it producer by producer.
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from collections.abc import Iterable, Mapping, Sequence, Sized
 from typing import Final
 
@@ -314,6 +315,49 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# WHAT ACTUALLY DECIDES THE HOST (WI-mamiv, measured 2026-09-17)
+#
+# The section below frames the split as "did the pass run?". That is the
+# INTENT; it is not what the code does, and the difference is measurable.
+#
+# On component-model-demo, 162 passes: 130 of them carry `no_candidate_files`
+# -- 48 through `AnalysisRun.silence_reason` and 82 through
+# `limits.skipped_passes[].skip_reason_code`. The SAME value, for the SAME
+# fact (zero files of that language in this tree), on two different fields.
+# Three routes get you there, and none is a property of the silence:
+#
+#   route                                      discriminator                n
+#   pre-filter short-circuit                   every declared language is    75  -> skipped_passes
+#                                              in taxonomy.LANGUAGE_EXTENSIONS
+#   dispatched, returns bare AnalysisResult()  the analyzer's return style    7  -> skipped_passes
+#   dispatched, returns run w/ files_analyzed=0  the analyzer's return style 26  -> analysis_runs
+#
+# Measured cleanly: 0 in-taxonomy analyzers report through `silence_reason`
+# and 75 through `skip_reason_code`; 26 out-of-taxonomy report through
+# `silence_reason` and 7 through `skip_reason_code`. `apex`, `twig` and `make`
+# go one way; `java`, `matlab` and `scss` go the other, for the identical fact.
+#
+# So the host encodes PRODUCER REGISTRATION AND IMPLEMENTATION DETAIL. A
+# consumer that reads one field and not the other gets a number that depends
+# on the taxonomy table, and the two stderr summaries report `64 of 79` and
+# `83 of 162` -- different denominators over overlapping populations, whose
+# sum is not the answer either.
+#
+# The cure is :func:`census_silence`, which unions the two and is what a
+# consumer asking "which passes had no input?" should call. Whether the
+# ROUTING should change -- so the host becomes a function of the fact -- is
+# open on WI-mamiv and is not settled here, because it touches the WI-didil
+# AR-or-skip completeness contract.
+#
+# NOTE the value split is NOT symmetric with the host split. Three values
+# (`dependency_unavailable`, `backend_disabled`, `pass_crashed`) appear only on
+# skipped_passes and three (`no_candidate_construct`, `candidates_unresolved`,
+# `prerequisite_absent`) only on AnalysisRun; the overlap is exactly
+# `no_candidate_files` and `unreported`, and it is the overlap that carries
+# 80% of the volume.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # The skipped_passes half of the axis (WI-dukoh / ADR-0056 W2)
 #
 # ``silence_reason`` lives on ``AnalysisRun`` and answers "this pass RAN and
@@ -405,6 +449,135 @@ def emit_skip_summary(
         summarize_skip_reasons(skipped_passes),
         total_passes=ran + len(skipped_passes),
     )
+    if line is not None:
+        sys.stderr.write(line + "\n")
+
+
+@dataclass(frozen=True)
+class SilenceCensus:
+    """Every pass's silence reason, whichever of the two fields carried it.
+
+    WHY THIS EXISTS. ``silence_reason`` and ``skip_reason_code`` are one
+    channel in two fields, and the split is documented as "did the pass run?".
+    Measured (WI-mamiv, component-model-demo, 162 passes), that is not what
+    decides it: **130 of 162 passes carry ``no_candidate_files``, 48 on one
+    host and 82 on the other**, and the host is chosen by
+    ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by whether the analyzer
+    returns a bare ``AnalysisResult()`` or a run with ``files_analyzed=0``.
+    `apex`, `twig` and `make` report through one field; `java`, `matlab` and
+    `scss` report the IDENTICAL fact -- zero files of that language in this
+    tree -- through the other. Both are producer registration and
+    implementation detail, not properties of the silence.
+
+    So a consumer asking "which passes had no input?" had to know about the
+    WI-jadig pre-filter to get a right answer, and nothing in the tree unioned
+    the two populations: the stderr lines report ``64 of 79`` and ``83 of
+    162`` -- different denominators over overlapping populations, whose sum is
+    not the answer either.
+
+    ``unaccounted`` IS ``None`` WHEN NO CATALOG WAS SUPPLIED, and that is the
+    point rather than a convenience. An empty tuple would claim "I checked and
+    every pass is accounted for"; ``None`` says "I could not check". The
+    distinction is not academic: the third outcome -- a pass in NEITHER host --
+    is real, and the concept audit that produced this helper missed it because
+    it measured at the default configuration. ``rust_analyzer``'s success path
+    returned output with no ``AnalysisRun``, so it appeared in neither list,
+    the only one of 118 registered analyzers for which that was true
+    (WI-didag). A union built over ``runs + skips`` alone is structurally
+    blind to exactly that case, which is why this takes the catalog.
+    """
+
+    by_pass: "Mapping[str, str]"
+    hosts: "Mapping[str, str]"
+    unaccounted: "tuple[str, ...] | None"
+
+    def count_of(self, reason: str) -> int:
+        """How many passes gave ``reason``, across BOTH hosts."""
+        return sum(1 for value in self.by_pass.values() if value == reason)
+
+
+def census_silence(
+    analysis_runs: Iterable[Mapping[str, object]],
+    skipped_passes: Iterable[Mapping[str, object]],
+    *,
+    catalog_pass_ids: "Iterable[str] | None" = None,
+) -> SilenceCensus:
+    """Union the two silence fields into one per-pass answer.
+
+    The per-host rules are preserved exactly as the two ``summarize_*``
+    functions apply them, because they differ for a REASON and flattening them
+    here would undo the distinction:
+
+    * On ``analysis_runs`` a missing or empty ``silence_reason`` means NOT
+      APPLICABLE -- the pass emitted something -- so it is omitted.
+    * On ``skipped_passes`` a missing ``skip_reason_code`` means the producer
+      did not classify itself, which reads as :data:`UNREPORTED` and never as
+      the 98.94%-common ``no_candidate_files``.
+
+    When ``catalog_pass_ids`` is given, any id in it that appears in neither
+    host is reported in ``unaccounted``. Omit it and ``unaccounted`` is
+    ``None``, never ``()``.
+    """
+    by_pass: dict[str, str] = {}
+    hosts: dict[str, str] = {}
+    # ACCOUNTED-FOR is a different question from HAS-A-SILENCE-REASON, and
+    # conflating them is the same mistake this module exists to stop: a pass
+    # that EMITTED has an analysis_runs row and no silence reason, and it is
+    # fully accounted for. Tracking presence separately is what keeps a
+    # productive pass out of `unaccounted`.
+    present: set[str] = set()
+    for run in analysis_runs:
+        pass_id = str(run.get("pass", ""))
+        if not pass_id:
+            continue
+        present.add(pass_id)
+        reason = run.get("silence_reason")
+        if not reason:
+            continue
+        by_pass[pass_id] = str(reason)
+        hosts[pass_id] = "analysis_runs"
+    for entry in skipped_passes:
+        pass_id = str(entry.get("pass", ""))
+        if not pass_id:
+            continue
+        present.add(pass_id)
+        code = entry.get("skip_reason_code")
+        by_pass[pass_id] = str(code) if code else UNREPORTED
+        hosts[pass_id] = "skipped_passes"
+    unaccounted: "tuple[str, ...] | None" = None
+    if catalog_pass_ids is not None:
+        unaccounted = tuple(
+            sorted(p for p in catalog_pass_ids if p not in present)
+        )
+    return SilenceCensus(by_pass=by_pass, hosts=hosts, unaccounted=unaccounted)
+
+
+def format_unaccounted_warning(census: SilenceCensus) -> str | None:
+    """Name catalogue passes that reached NEITHER host, or ``None``.
+
+    The reader half. ``unaccounted`` being a fact nobody is shown is the
+    instrument-with-no-reader defect this codebase keeps paying for, and this
+    particular signal is the one that would have surfaced WI-didag on the run
+    that introduced it instead of a month later.
+
+    Returns ``None`` when the census could not check (no catalog) as well as
+    when it checked and found nothing -- the caller prints neither, and the
+    distinction is preserved on the census itself for a caller that cares.
+    """
+    if not census.unaccounted:
+        return None
+    names = ", ".join(census.unaccounted)
+    return (
+        f"[passes] {len(census.unaccounted)} catalogue pass(es) reached "
+        f"NEITHER analysis_runs NOR limits.skipped_passes: {names} "
+        f"(a pass that produced output without an AnalysisRun is dropped "
+        f"from both -- see WI-didag)"
+    )
+
+
+def emit_unaccounted_warning(census: SilenceCensus) -> None:
+    """Write the unaccounted-passes line to stderr; silent when none is due."""
+    line = format_unaccounted_warning(census)
     if line is not None:
         sys.stderr.write(line + "\n")
 

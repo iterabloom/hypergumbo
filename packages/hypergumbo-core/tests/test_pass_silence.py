@@ -10,6 +10,8 @@ import pytest
 from hypergumbo_core.ir import AnalysisRun
 from hypergumbo_core.multi_value_field_axis import _known_axes
 from hypergumbo_core.pass_silence import (
+    census_silence,
+    format_unaccounted_warning,
     BACKEND_DISABLED,
     CANDIDATES_UNRESOLVED,
     DEPENDENCY_UNAVAILABLE,
@@ -657,3 +659,149 @@ class TestPrerequisiteAbsentClauses:
         assert prerequisite_absent_clauses(
             [["inheritance-linker"]], {"rust": DEPENDENCY_UNAVAILABLE},
         ) == []
+
+
+class TestSilenceCensus:
+    """WI-mamiv: the two hosts have never had a reader that unions them.
+
+    Measured on component-model-demo: **130 of 162 passes carry
+    ``no_candidate_files``** — 48 through ``AnalysisRun.silence_reason`` and 82
+    through ``limits.skipped_passes[].skip_reason_code``. Which host a pass
+    lands in is decided by ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by
+    whether the analyzer returns a bare ``AnalysisResult()`` or a run with
+    ``files_analyzed=0`` — producer registration and implementation detail,
+    not a property of the silence.
+
+    A consumer asking "which passes had no input?" therefore has to know about
+    the WI-jadig pre-filter to get a right answer, and the two stderr lines
+    report ``64 of 79`` and ``83 of 162`` — different denominators over
+    overlapping populations, whose sum is not the answer.
+    """
+
+    def _runs(self, *pairs):
+        return [{"pass": p, "silence_reason": r} for p, r in pairs]
+
+    def _skips(self, *pairs):
+        return [{"pass": p, "skip_reason_code": c} for p, c in pairs]
+
+    def test_it_unions_the_two_hosts(self) -> None:
+        census = census_silence(
+            self._runs(("apex", NO_CANDIDATE_FILES), ("twig", NO_CANDIDATE_FILES)),
+            self._skips(("java", NO_CANDIDATE_FILES), ("ruby", DEPENDENCY_UNAVAILABLE)),
+        )
+        assert census.by_pass == {
+            "apex": NO_CANDIDATE_FILES,
+            "twig": NO_CANDIDATE_FILES,
+            "java": NO_CANDIDATE_FILES,
+            "ruby": DEPENDENCY_UNAVAILABLE,
+        }
+        assert census.count_of(NO_CANDIDATE_FILES) == 3
+
+    def test_it_records_which_host_each_answer_came_from(self) -> None:
+        """The host is still a fact worth keeping — it just isn't the ANSWER."""
+        census = census_silence(
+            self._runs(("apex", NO_CANDIDATE_FILES)),
+            self._skips(("java", NO_CANDIDATE_FILES)),
+        )
+        assert census.hosts == {
+            "apex": "analysis_runs", "java": "skipped_passes",
+        }
+
+    def test_a_pass_that_emitted_is_not_in_the_census(self) -> None:
+        """``""`` is NOT APPLICABLE, not an unknown reason (ADR-0056)."""
+        census = census_silence(self._runs(("python", "")), [])
+        assert census.by_pass == {}
+
+    def test_a_skip_with_no_code_reads_as_unreported(self) -> None:
+        """Matching summarize_skip_reasons: absence on the skip host means the
+        producer did not classify itself, never the 98.94%-common value."""
+        census = census_silence([], [{"pass": "lean"}])
+        assert census.by_pass == {"lean": UNREPORTED}
+
+    def test_a_catalog_pass_in_NEITHER_host_is_unaccounted(self) -> None:
+        """The third outcome, which the audit missed and WI-didag found.
+
+        ``rust_analyzer``'s success path returned output with no run, so it
+        appeared in neither list — the only one of 118 registered analyzers
+        for which that was true. A union built over ``runs + skips`` alone
+        cannot see it, which is exactly why this helper takes the catalog.
+        """
+        census = census_silence(
+            self._runs(("python", "")),
+            self._skips(("java", NO_CANDIDATE_FILES)),
+            catalog_pass_ids=("python", "java", "rust_analyzer"),
+        )
+        assert census.unaccounted == ("rust_analyzer",)
+
+    def test_no_catalog_means_no_unaccounted_claim(self) -> None:
+        """ABSENT != EMPTY: without the catalog the helper cannot know, and
+        must not report an empty tuple as if it had checked."""
+        census = census_silence(self._runs(("python", "")), [])
+        assert census.unaccounted is None
+
+
+class TestUnaccountedReaderIsWiredUp:
+    """An instrument with no reader is the same organic criterion in a costume.
+
+    ``unaccounted`` is only worth computing if something prints it in the mode
+    the tool actually runs. This pins the wire-up, not just the function —
+    WI-didag sat unnoticed for a month precisely because nothing read the
+    signal that would have shown it.
+    """
+
+    def test_the_warning_names_the_offending_passes(self) -> None:
+        census = census_silence(
+            [{"pass": "python", "silence_reason": ""}],
+            [{"pass": "java", "skip_reason_code": NO_CANDIDATE_FILES}],
+            catalog_pass_ids=("python", "java", "rust_analyzer"),
+        )
+        line = format_unaccounted_warning(census)
+        assert line is not None
+        assert "rust_analyzer" in line
+
+    def test_silent_when_every_catalogue_pass_is_accounted_for(self) -> None:
+        census = census_silence(
+            [], [{"pass": "java", "skip_reason_code": NO_CANDIDATE_FILES}],
+            catalog_pass_ids=("java",),
+        )
+        assert format_unaccounted_warning(census) is None
+
+    def test_silent_when_it_could_not_check(self) -> None:
+        """``None`` unaccounted must print nothing — it is CANNOT-DETERMINE,
+        and a line claiming all-clear would be the absent-vs-empty defect."""
+        census = census_silence([], [])
+        assert census.unaccounted is None
+        assert format_unaccounted_warning(census) is None
+
+    def test_the_cli_calls_the_reader(self) -> None:
+        """The wire-up itself, by AST — a grep would pass on a docstring."""
+        import ast
+        import pathlib
+        src = pathlib.Path(
+            "packages/hypergumbo-core/src/hypergumbo_core/cli.py"
+        ).read_text()
+        called = {
+            node.func.id
+            for node in ast.walk(ast.parse(src))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert "emit_unaccounted_warning" in called, (
+            "cli.py must CALL emit_unaccounted_warning; importing it is not "
+            "a reader"
+        )
+
+    def test_a_pass_that_EMITTED_is_accounted_for(self) -> None:
+        """Presence is not the same question as silence, and the first draft
+        of ``census_silence`` got this wrong: it built ``unaccounted`` from the
+        passes that had a REASON, so a pass that emitted — which has an
+        analysis_runs row and correctly no reason — was reported as missing
+        from the catalog. That is the same absent-vs-empty conflation this
+        module exists to stop, committed inside the helper written to expose
+        it."""
+        census = census_silence(
+            [{"pass": "python", "silence_reason": ""}],
+            [],
+            catalog_pass_ids=("python",),
+        )
+        assert census.by_pass == {}, "it emitted — no silence to explain"
+        assert census.unaccounted == (), "but it IS accounted for"

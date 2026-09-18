@@ -11875,6 +11875,21 @@ def run_survey(
         ran=len(behavior_map.get("analysis_runs", [])),
     )
 
+    # WI-mamiv / WI-didag: the THIRD outcome. The two lines above report two
+    # populations; the WI-didil contract says every registered analyzer lands
+    # in one of them. It can land in neither — a producer that emits output
+    # without an AnalysisRun is drained and then dropped from the accounting,
+    # which is how rust_analyzer's success path put 669 nodes and 637 edges
+    # into artifacts from a pass visible nowhere in the catalog. Nothing read
+    # that, so it went a month unnoticed; this is the reader.
+    from .analyze.registry import get_all_analyzers
+    from .pass_silence import census_silence, emit_unaccounted_warning
+    emit_unaccounted_warning(census_silence(
+        behavior_map.get("analysis_runs", []),
+        (behavior_map.get("limits") or {}).get("skipped_passes", []),
+        catalog_pass_ids=[a.name for a in get_all_analyzers()],
+    ))
+
     # WI-jijor / ADR-0056 W1: the declaration set's first reader. The CNF
     # predicate behind it has existed since WI-dilab with ELEVEN call sites,
     # all of them tests -- LIVE.md §1.7's instrument-with-no-reader defect --
