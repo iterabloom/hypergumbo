@@ -37,6 +37,16 @@ Enclosure resolution:
 * Definition occurrences themselves do not emit edges. A Definition is
   the introduction of a symbol, not a reference to it.
 
+* Occurrences of a local symbol (``local <id>``) emit nothing, and a
+  local's Definition is never a candidate encloser (WI-jikok /
+  INV-kukiz). :mod:`.index` does not mint locals — the id is
+  document-scoped, so the same string is a different binding in every
+  file — and an edge naming one would name an endpoint no Symbol
+  carries. In resolved mode the resolver would drop it anyway; the
+  filter here makes raw mode tell the same truth. On aardvark-dns the
+  unfiltered shim emitted 455 local-pointing edges, 329 of them
+  resolved across files.
+
 * Self-edges (enclosing symbol == occurrence symbol) are dropped as
   noise. Recursive calls in particular show up here — rank / slice
   code treats self-edges as uninformative, and the AST analyzer for
@@ -73,6 +83,7 @@ from typing import Callable, List, Optional, Tuple
 
 from ..ir import Edge
 from ._generated import scip_pb2
+from .descriptor import is_local_symbol
 
 
 _ROLE_DEFINITION = 0x01
@@ -140,6 +151,8 @@ def scip_index_to_call_edges(
         for occ in doc.occurrences:
             if not (occ.symbol_roles & _ROLE_DEFINITION):
                 continue
+            if is_local_symbol(occ.symbol):
+                continue
             span = _parse_range(list(occ.range))
             if span is None:
                 continue
@@ -147,6 +160,8 @@ def scip_index_to_call_edges(
 
         for occ in doc.occurrences:
             if occ.symbol_roles & _ROLE_DEFINITION:
+                continue
+            if is_local_symbol(occ.symbol):
                 continue
             ref_span = _parse_range(list(occ.range))
             if ref_span is None:

@@ -23,6 +23,7 @@ from hypergumbo_core.scip.descriptor import (
     DescriptorKind,
     ScipDescriptor,
     ScipSymbol,
+    is_local_symbol,
     parse_scip_symbol,
 )
 
@@ -39,6 +40,28 @@ def test_local_symbol_with_alphanumeric_id() -> None:
     sym = parse_scip_symbol("local a1b2")
     assert sym.is_local
     assert sym.local_id == "a1b2"
+
+
+def test_is_local_symbol_is_the_grammar_rule_without_a_parse() -> None:
+    """``is_local_symbol`` answers the SCIP grammar's own question — is this
+    the ``local <id>`` form — on the raw string, so the translators can skip
+    a local before paying for a parse (WI-jikok / INV-kukiz).
+
+    It agrees with ``parse_scip_symbol(...).is_local`` on every well-formed
+    input, and on the one malformed local form (``"local "``) it still says
+    local: that string is the local FORM with a missing id, and the parser
+    rejects it for the id, not for the form.
+    """
+    assert is_local_symbol("local 4")
+    assert is_local_symbol("local a1b2")
+    assert is_local_symbol("local ")
+    assert not is_local_symbol("")
+    assert not is_local_symbol("local")
+    # A scheme that merely STARTS with the letters is a global symbol.
+    assert not is_local_symbol("localhost npm pkg 1.0.0 mod/f().")
+    assert not is_local_symbol("rust-analyzer cargo my_crate 1.0.0 foo/Bar#")
+    for well_formed in ("local 4", "rust-analyzer cargo my_crate 1.0.0 foo/Bar#"):
+        assert is_local_symbol(well_formed) == parse_scip_symbol(well_formed).is_local
 
 
 def test_simple_namespace_and_type() -> None:

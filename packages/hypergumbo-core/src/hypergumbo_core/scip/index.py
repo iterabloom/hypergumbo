@@ -78,6 +78,31 @@ Edge cases intentionally handled by skip rather than raise:
   with no trailing descriptor) — skipped. The Phase 1 parser raises on
   this input, so the try/except handles it uniformly with the malformed
   case above.
+* Local symbols (``local <id>``) — skipped, and deliberately (WI-jikok /
+  INV-kukiz, owner ruling 2026-09-18). A SCIP local id is an index into
+  its DOCUMENT, not an identifier: ``local 0`` is a different binding in
+  every file, and rust-analyzer emits one per ``let``, parameter and
+  pattern binding. Minting them did two wrong things at once. The
+  Symbol's name was the bare index (``"1"``, ``"102"``) and its
+  ``stable_id`` was ``sha256("local 1")``, so on a 16-file crate 498 of
+  1255 Symbols shared an id (39.7%); and the Rust backend's edge resolver
+  is one index-wide map keyed on the raw moniker, so a read of ``local 0``
+  in one file resolved to the ``local 0`` of whichever file was mapped
+  last — 329 of 455 local-pointing edges crossed files, 21.2% of every
+  edge in the artifact, each asserting a reference that cannot exist.
+  Those 500 nodes were 75% of the backend's output and, carrying the
+  registry's Terraform ``local`` kind, passed the key-symbol predicate
+  and outranked real functions in the sketch. The ruling follows every
+  other backend: py.py, kotlin.py, go.py and the tree-sitter rust.py all
+  READ function-local bindings (for receiver typing and constant
+  resolution) and mint nothing for them, because a binding no other file
+  can name is not part of a behavior map. The sibling shims
+  :mod:`.calls` and :mod:`.edges` apply the same predicate
+  (:func:`~hypergumbo_core.scip.descriptor.is_local_symbol`) to edge
+  endpoints, so the rule holds for a library caller that supplies no
+  resolver. Its parity-side consequence — the remaining SCIP Symbols
+  carry ``sha256(moniker)``, an identity the tree-sitter arm never
+  shares — is WI-gojum's, not this module's.
 """
 from __future__ import annotations
 
@@ -86,7 +111,7 @@ from typing import Any, Dict, List
 from ..analyze.base import _short_sha256, make_symbol_id
 from ..ir import Span, Symbol
 from ._generated import scip_pb2
-from .descriptor import DescriptorKind, parse_scip_symbol
+from .descriptor import DescriptorKind, is_local_symbol, parse_scip_symbol
 
 
 _ROLE_DEFINITION = 0x01
@@ -158,22 +183,23 @@ def _resolve_language(doc: scip_pb2.Document) -> str:
 
 
 def _name_and_kind(scip_sym: Any) -> "tuple[str, str]":
-    """Pick the (name, kind) pair for a parsed :class:`ScipSymbol`.
+    """Pick the (name, kind) pair for a parsed, GLOBAL :class:`ScipSymbol`.
 
-    For local symbols (``local <id>``) we return the local id as the
-    name and ``"local"`` as the kind; those survive translation so
-    later link passes that key off SCIP symbol strings can still find
-    them. For fully qualified symbols we use the last descriptor in the
-    chain — SCIP puts the most specific piece last, so for
-    ``module/Class#method().`` the last descriptor is ``method`` with
-    the METHOD suffix.
+    We use the last descriptor in the chain — SCIP puts the most specific
+    piece last, so for ``module/Class#method().`` the last descriptor is
+    ``method`` with the METHOD suffix.
+
+    Local symbols never reach here: :func:`scip_index_to_symbols` skips
+    them on the raw string (see the module docstring). Until WI-jikok this
+    function returned ``(local_id, "local")`` for them — a name with no
+    lexical content under the registry's Terraform ``local`` kind. A local
+    handed to it now has no descriptors and takes the defensive branch.
     """
-    if scip_sym.is_local:
-        return scip_sym.local_id, "local"
     if not scip_sym.descriptors:  # pragma: no cover
         # Defensive: parse_scip_symbol already rejects a header with
-        # zero descriptors. Kept as a guard against a future parser
-        # regression that would otherwise hand us an invalid ScipSymbol.
+        # zero descriptors, and the caller filters locals (the other
+        # descriptor-less shape) before parsing. Kept as a guard against
+        # a future parser regression.
         return "", "unknown"
     last = scip_sym.descriptors[-1]
     # INV-lagot: this was ``_KIND_MAP.get(last.kind, "unknown")``, minting a
@@ -222,6 +248,10 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
             occ = def_occ.get(sym_info.symbol)
             if occ is None:
                 continue
+            if is_local_symbol(sym_info.symbol):
+                # A function-local binding is not part of the map — see
+                # the module docstring (WI-jikok / INV-kukiz).
+                continue
             try:
                 parsed = parse_scip_symbol(sym_info.symbol)
             except ValueError:
@@ -245,10 +275,13 @@ def scip_index_to_symbols(index: scip_pb2.Index) -> List[Symbol]:
                     path=doc.relative_path,
                     span=span,
                     origin="scip",
-                    # INV-hunup: canonical sha256 stable_id. The SCIP moniker
-                    # (sym_info.symbol) is a globally-stable identity, so hashing
-                    # it yields a stable canonical id; the raw moniker is
-                    # preserved in meta["scip_symbol"] (_build_meta).
+                    # INV-hunup: canonical sha256 stable_id. A GLOBAL SCIP
+                    # moniker (sym_info.symbol) is a stable identity across the
+                    # index, so hashing it yields a stable canonical id; the raw
+                    # moniker is preserved in meta["scip_symbol"] (_build_meta).
+                    # That sentence was false for locals — ``local 0`` recurs in
+                    # every document — which is one of the two reasons they are
+                    # filtered above rather than hashed here.
                     stable_id=_short_sha256(sym_info.symbol),
                     meta=_build_meta(sym_info),
                 )

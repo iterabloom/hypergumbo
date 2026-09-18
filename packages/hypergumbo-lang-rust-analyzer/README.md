@@ -48,3 +48,19 @@ Symbol / edge emission builds on `hypergumbo_core.scip.*`:
 
 Rust-analyzer's `Relationship` set is empty (per WI-zakub), so the primary
 edge source here is `scip_index_to_call_edges`.
+
+## What is not emitted
+
+- **Function-local bindings.** rust-analyzer emits a SCIP `local <n>` symbol
+  for every `let`, parameter and pattern binding, numbered per document. None
+  becomes a hypergumbo `Symbol` and no edge may point at one (WI-jikok /
+  INV-kukiz, ruled 2026-09-18). The id is a document-scoped index, so `local 0`
+  is a different binding in every file: minted, they were 75% of this backend's
+  nodes at a 39.7% `stable_id` collision rate, and 329 of the 455 edges pointing
+  at them resolved across files. Every other hypergumbo backend leaves locals
+  out of the map for the same reason — a binding no other file can name is not
+  part of a behavior map.
+- **Calls into dependencies and the standard library.** A SCIP symbol with no
+  in-workspace definition resolves to `None` and the edge is dropped rather
+  than dangling into an `external_symbol` boundary node (WI-gojum
+  sub-component 1, parked).
