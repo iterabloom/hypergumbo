@@ -1,0 +1,32 @@
+- op: create  # ff4d
+  at: '2026-09-18T09:59:40Z'  # ff4d
+  by: agent  # ff4d
+  actor: jgstern_agent  # ff4d
+  clock: 1  # ff4d
+  nonce: ff4d  # ff4d
+  data:  # ff4d
+    kind: invariant  # ff4d
+    title: "SCIP Symbol.span is the identifier token, not the item (79 of 79 methods single-line on aardvark-dns); the item range is in enclosing_range, and using it makes stable_id parity hold, which the collision splitter would then undo -- gated on WI-gojum"  # ff4d
+    status: violated  # ff4d
+    priority: 3  # ff4d
+    parent:  # ff4d
+    tags:  # ff4d
+    - rust  # ff4d
+    - multi_fidelity  # ff4d
+    - analysis_quality  # ff4d
+    isbefore: []  # ff4d
+    duplicate_of: []  # ff4d
+    not_duplicate_of: []  # ff4d
+    pr_ref:  # ff4d
+    description: "FOUND 2026-09-18 beside the SCIP edge-attribution row (same recorded fixture).\n\nscip/index.py spans every SCIP Symbol from the Definition occurrence's `range`,\nwhich for rust-analyzer is the IDENTIFIER TOKEN: on aardvark-dns 79 of 79 SCIP\nmethod Symbols have start_line == end_line. Every other backend spans a callable\nover its whole item (tree-sitter rust.py: `increment` 14-17). Any consumer that\nasks \"which symbol contains line 16\" gets no SCIP answer, and the SCIP record\nof a 40-line function claims to be one line long.\n\nrust-analyzer 1.94.0 populates `Occurrence.enclosing_range` on every Definition\noccurrence with exactly the item range (20 of 20 on the recorded sample:\nincrement [13,4,16,5] = lines 14-17). Spanning the Symbol from it is a one-line\nchange.\n\nWHY THIS ROW IS GATED ON WI-gojum AND NOT JUST DONE. With the item span,\nreassign_rust_stable_ids hands the parity helper the span it requires, the\nhelper matches, and the SCIP record receives rust.py's stable_id — which is what\nthree documents claimed and INV-dolud retracted. Then\nsplit_within_file_stable_id_collisions groups the two records by (path,\nstable_id) and re-mints the second as a second SITE (`:occ:2`), asserting the\nsame function occurs twice in the file. That is a false claim manufactured by a\nconsistency fix, and sparing cross-backend groups encodes the coexist / merge /\nreplace answer the owner left open on 2026-09-18. So: this change is the\nparity cure INV-dolud's closure note describes, and it lands together with the\nsplitter ruling under WI-gojum, not before.\n\nNOT CLAIMED: that item spans change any edge. Edge attribution is the sibling\nrow and does not touch Symbol.span.\n\nREPRO: survey as in the sibling row; count SCIP method Symbols with\nspan.start_line == span.end_line. Expect 79 of 79."  # ff4d
+    fields:  # ff4d
+      statement: "A callable Symbol's span covers its whole item, as every other backend's does; a SCIP Symbol must be spanned from the Definition's enclosing_range when the emitter supplies it."  # ff4d
+      root_cause: "scip/index.py builds Symbol.span from Occurrence.range (the name token) and never reads enclosing_range; fixing it also makes reassign_rust_stable_ids reach parity, after which split_within_file_stable_id_collisions re-mints the SCIP record as a second site, so the change is coupled to WI-gojum's coexist/merge/replace ruling."  # ff4d
+- op: update  # d509
+  at: '2026-09-18T09:59:45Z'  # d509
+  by: agent  # d509
+  actor: jgstern_agent  # d509
+  clock: 2  # d509
+  nonce: d509  # d509
+  set:  # d509
+    status: violated  # d509
