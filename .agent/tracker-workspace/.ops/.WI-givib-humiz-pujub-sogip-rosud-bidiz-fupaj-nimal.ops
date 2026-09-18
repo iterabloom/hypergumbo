@@ -1,0 +1,22 @@
+- op: create  # 138d
+  at: '2026-09-18T20:06:59Z'  # 138d
+  by: agent  # 138d
+  actor: jgstern_agent  # 138d
+  clock: 1  # 138d
+  nonce: 138d  # 138d
+  data:  # 138d
+    kind: work_item  # 138d
+    title: "Results cache key ignores which backends ran: a tree-sitter run and a two-arm run share <fingerprint>/results/<state_hash>/<analyzer_identity> (split from WI-gojum sub-component 3)"  # 138d
+    status: todo_hard  # 138d
+    priority: 2  # 138d
+    parent:  # 138d
+    tags:  # 138d
+    - cache  # 138d
+    - multi_fidelity  # 138d
+    - rust_analyzer  # 138d
+    isbefore: []  # 138d
+    duplicate_of: []  # 138d
+    not_duplicate_of: []  # 138d
+    pr_ref:  # 138d
+    description: "Split out of WI-gojum sub-component 3 so it can be sequenced. The results\ncache key is <repo-fingerprint>/results/<state_hash>/<analyzer_identity>\n(cli.py:1183). `compute_analyzer_identity_hash()`\n(analyzer_identity.py:66) hashes the INSTALLED hypergumbo package code —\nwhich analyzers exist — not which backends were ENABLED for the run. The\nopt-in (HYPERGUMBO_RUST_ANALYZER, --backend, and after ADR-0045 the trust\ngrant) is nowhere in the key. A tree-sitter-only run and a two-arm run of\nthe same tree therefore share a cache dir and each can return the other's\nartifact.\n\nIMPACT TODAY: low while the backend is opt-in and rarely toggled. IMPACT\nNEXT: (1) the backend-agreement measurement (its own row) reads an artifact\nand trusts it — a stale artifact from the other backend set corrupts every\nnumber silently; (2) once the merge pass ships, the two runs differ in NODE\nCOUNT (138 merged vs 169+138), so a wrong cache hit is user-visible.\n\nFIX SHAPE: fold the RESOLVED backend set — the output of ADR-0045 ruling 4's\nprecedence chain, not the raw env var — into the state hash (it is run\nconfiguration, like max_files) rather than into analyzer identity (which is\ncode identity). Keep analyzer_identity as is.\n\nACCEPTANCE: two surveys of one tree with different resolved backend sets\nland in different cache dirs; the same set twice hits the cache; a survey\nwith the SCIP backend enabled but rust-analyzer absent on PATH (WI-luvud\nfall-through) is keyed as tree-sitter-only, since that is what ran."  # 138d
+    fields: {}  # 138d
