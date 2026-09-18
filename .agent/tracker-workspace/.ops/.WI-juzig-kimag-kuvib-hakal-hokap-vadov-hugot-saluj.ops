@@ -1,0 +1,23 @@
+- op: create  # 67ed
+  at: '2026-09-18T20:21:16Z'  # 67ed
+  by: agent  # 67ed
+  actor: jgstern_agent  # 67ed
+  clock: 1  # 67ed
+  nonce: 67ed  # 67ed
+  data:  # 67ed
+    kind: work_item  # 67ed
+    title: "Registry gate: an analyzer's languages must be taxonomy names or an explicit declaration; absent != empty; declare rust_analyzer, rust, make and manifest_targets (the languages half of ADR-0057 §10)"  # 67ed
+    status: todo_hard  # 67ed
+    priority: 2  # 67ed
+    parent:  # 67ed
+    tags:  # 67ed
+    - registry  # 67ed
+    - language_axis  # 67ed
+    - pass_silence  # 67ed
+    - multi_fidelity  # 67ed
+    isbefore: []  # 67ed
+    duplicate_of: []  # 67ed
+    not_duplicate_of: []  # 67ed
+    pr_ref:  # 67ed
+    description: "The `[name]` default on `register_analyzer` (analyze/registry.py:208) is\nboth the phantom-language generator (rust_analyzer, manifest_targets ->\nall_known_languages -> the validator accepts Symbol.language=\"rust_analyzer\")\nand the synonym generator (make vs makefile -> a FALSE limits.skipped_languages\nverdict in shipped output; see the invariant this row blocks). It also\nconflates absent with empty: `list(languages) if languages else [name]` turns\nan explicit `languages=[]` into `[name]`, so a pass cannot declare \"I am not\na language pass\".\n\nONE VOCABULARY: the taxonomy's. profile.languages, file-anchored\nSymbol.language and LanguageSpec all come from taxonomy.LANGUAGES; the\nregistry must speak it, not the reverse.\n\nFIX SHAPE:\n 1. Registry-time gate: every effective language of an analyzer must be a\n    taxonomy key or a LANGUAGE_ALIASES key, else registration RAISES naming\n    the analyzer and the value. No silent default.\n 2. Distinguish None (not given -> default [name], then gated) from an\n    explicit declaration. Add an explicit \"no language\" declaration for\n    backend and synthesis passes (spelling is the implementing PR's; it must\n    be a declared state, not an empty list that the default swallows).\n 3. Declare the known cases: rust_analyzer -> languages=[\"rust\"],\n    backend=\"scip\"; rust -> backend=\"tree-sitter\"; make -> languages=[\"makefile\"]\n    (the taxonomy name; do NOT add a make->makefile alias, that keeps two\n    names alive); manifest_targets -> the formats it reads or the no-language\n    declaration. `backend` is currently set by 0 of 118 registrations.\n 4. Tests: a registry-wide enumeration (every analyzer's effective languages\n    within the vocabulary); a finalize test that a language with a completed\n    run is never in skipped_languages; the aardvark repro as a fixture.\n 5. THE 33: analyzers whose name is a real language the taxonomy LACKS a\n    LanguageSpec for (gleam, hack, haxe, janet, luau, odin, pony, ...). These\n    are not phantoms; they are a taxonomy coverage gap -- the profile can\n    never detect them, so they never appear in profile.languages. The gate\n    must not silently bless them either: give them a declared third state\n    (\"language with no taxonomy spec\") and file the coverage gap as its own\n    row rather than widening this one.\n 6. all_known_languages() shrinks by the phantoms: regenerate\n    docs/schema.json and docs/concept-axes.md if they change (pre-commit\n    freshness gates will say).\n\nThis is the `languages` half of the ADR-0057 §10 producer contract\n(WI-hohuh) and blocks it: the contract's registry test (\"every analyzer\nwhose languages overlap another's declares a merge anchor\") is meaningless\nwhile `languages` is a name-shaped default.\n\nACCEPTANCE: the aardvark-dns survey reports no skipped makefile;\n`@register_analyzer(\"foo_bar\")` with no languages raises at import;\nall_known_languages() contains neither rust_analyzer nor manifest_targets;\nthe 33 carry their declared state and the coverage-gap row exists."  # 67ed
+    fields: {}  # 67ed

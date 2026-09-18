@@ -1,0 +1,25 @@
+- op: create  # 8dbd
+  at: '2026-09-18T20:21:12Z'  # 8dbd
+  by: agent  # 8dbd
+  actor: jgstern_agent  # 8dbd
+  clock: 1  # 8dbd
+  nonce: 8dbd  # 8dbd
+  data:  # 8dbd
+    kind: invariant  # 8dbd
+    title: "limits.skipped_languages reports makefile as unanalyzed while the make pass ran and emitted 41 nodes: registry pass names and taxonomy language names are two vocabularies"  # 8dbd
+    status: violated  # 8dbd
+    priority: 2  # 8dbd
+    parent:  # 8dbd
+    tags:  # 8dbd
+    - pass_silence  # 8dbd
+    - language_axis  # 8dbd
+    - registry  # 8dbd
+    - honesty  # 8dbd
+    isbefore: []  # 8dbd
+    duplicate_of: []  # 8dbd
+    not_duplicate_of: []  # 8dbd
+    pr_ref:  # 8dbd
+    description: "REPRO (b1008d3b67..f299ce43d4, backend irrelevant):\n  hypergumbo survey ~/whole_bunch_of_repos/aardvark-dns --out /tmp/a.json\n  limits.skipped_languages == ['makefile']\n  analysis_runs contains pass \"make\"; 41 nodes carry language \"make\";\n  profile.languages contains \"makefile\".\nThe artifact says Makefile was detected and not analyzed. It was analyzed.\n\nMECHANISM. `register_analyzer` defaults `languages=[name]` (analyze/registry.py:208)\nand checks nothing. The pass is named \"make\", so its language is \"make\". The\ntaxonomy (taxonomy.py:527) and therefore profile detection and every\nfile-derived Symbol.language call it \"makefile\". `_detected_unanalyzed_languages`\n(finalize.py:281) computes profile-detected minus pass-declared and cannot\nconnect the two names; sub-step 6 drains the difference into\nlimits.skipped_languages. LANGUAGE_ALIASES (taxonomy.py:856) has one entry,\nshell->bash, and is not consulted here.\n\nENUMERATED, not assumed: taxonomy languages with NO analyzer claiming them,\nconfig formats excluded = {asciidoc, erb, haml, makefile, slim}. Four have no\nanalyzer at all -> a true skip, correctly reported. Exactly one has its\nanalyzer under another registry name -> makefile/make. So the FALSE-verdict\ninstance count today is 1; the mechanism that produced it guards nothing and\nis filed as the work item that blocks this row.\n\nSIBLING SYMPTOM, same mechanism: two registered names are not languages at\nall -- rust_analyzer (a backend for rust) and manifest_targets (a synthesis\npass over 11 manifest formats) -- and `[name]` makes each a language;\ncatalog.all_known_languages() unions every analyzer's languages, so\nspec_validator.py:476 would accept Symbol.language=\"rust_analyzer\". No\nrecord carries that value today (the SCIP arm stamps \"rust\"); the axis is\npolluted, the validator is blind to it.\n\nCLOSURE requires behavioral evidence: the same survey with\nskipped_languages absent or empty, AND a finalize-level test that a language\nwith a completed run is never reported skipped. A registry-only gate passing\nis a proxy, not a closure."  # 8dbd
+    fields:  # 8dbd
+      statement: "A language the profile detected and an analyzer pass completed a run for is never reported in limits.skipped_languages: an analyzer's declared languages and the taxonomy's language names are one vocabulary."  # 8dbd
+      root_cause: "register_analyzer defaults languages=[name] with no vocabulary check (analyze/registry.py:208); the make pass is therefore language 'make' while the taxonomy, profile detection and Symbol.language say 'makefile'; _detected_unanalyzed_languages (finalize.py:281) diffs the two vocabularies and drains the mismatch into skipped_languages. Enumerated family: 1 false instance (makefile/make) of 5 unclaimed detectable languages; 2 phantom languages from the same default (rust_analyzer, manifest_targets)."  # 8dbd
