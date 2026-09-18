@@ -385,3 +385,65 @@ class TestProvenanceStamping:
         stamped = {s.origin_run_id for s in symbols}
         assert stamped != {""}, "symbols must not be left with empty provenance"
         assert len(stamped) == 1, "one translate call is one run"
+
+
+# ---------------------------------------------------------------------------
+# INV-kukiz: a document-scoped local must never become a cross-file edge
+# ---------------------------------------------------------------------------
+
+
+def test_document_scoped_locals_never_become_cross_file_references() -> None:
+    """INV-kukiz's filed repro, in miniature, at the production entry point.
+
+    Two documents each define ``local 0`` (rust-analyzer numbers locals per
+    document, so the SAME string recurs in every file) and each read it
+    once. Before the fix both were minted as Symbols, ``translate.py``'s
+    index-wide ``id_by_scip_symbol`` map kept one arbitrary winner for the
+    key ``"local 0"``, and the read in the OTHER file resolved to it — a
+    reference across files to a binding that cannot be seen across files.
+    Measured on aardvark-dns: 329 of 455 local-pointing edges, 21.2% of all
+    edges in the artifact.
+
+    Ruled 2026-09-18 (owner): SCIP locals are dropped, matching every other
+    backend. So the invariant "an edge to a local has both endpoints in one
+    file" holds by there being no edge to a local at all — and the control
+    arm proves a REAL cross-file reference (``b.rs`` reading ``a::f``)
+    still survives, so the fix removed the false edges and not the graph.
+    """
+    ns_a, ns_b = _rust_symbol("crate_a/"), _rust_symbol("crate_b/")
+    f_a, local = _rust_symbol("crate_a/f()."), "local 0"
+    doc_a = scip_pb2.Document(
+        language="Rust", relative_path="src/a.rs",
+        symbols=[scip_pb2.SymbolInformation(symbol=s) for s in (ns_a, f_a, local)],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=ns_a, symbol_roles=DEFINITION_ROLE, range=[0, 0, 50, 0]),
+            scip_pb2.Occurrence(symbol=f_a, symbol_roles=DEFINITION_ROLE, range=[2, 3, 4]),
+            scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[3, 8, 9]),
+            scip_pb2.Occurrence(symbol=local, symbol_roles=0, range=[4, 8, 9]),
+        ],
+    )
+    doc_b = scip_pb2.Document(
+        language="Rust", relative_path="src/b.rs",
+        symbols=[scip_pb2.SymbolInformation(symbol=s) for s in (ns_b, local)],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=ns_b, symbol_roles=DEFINITION_ROLE, range=[0, 0, 50, 0]),
+            scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[1, 8, 9]),
+            scip_pb2.Occurrence(symbol=local, symbol_roles=0, range=[2, 8, 9]),
+            # control: a genuine cross-file reference, b.rs → a::f
+            scip_pb2.Occurrence(symbol=f_a, symbol_roles=0, range=[3, 4, 5]),
+        ],
+    )
+    symbols, edges = translate_scip_to_hg(_index_bytes(doc_a, doc_b), lambda _p: None)
+
+    assert [s for s in symbols if s.kind == "local"] == []
+    by_id = {s.id: s for s in symbols}
+    for e in edges:
+        meta = e.meta or {}
+        assert not meta.get("scip_src_symbol", "").startswith("local "), e
+        assert not meta.get("scip_dst_symbol", "").startswith("local "), e
+        assert e.src in by_id and e.dst in by_id, e
+    cross_file = [
+        e for e in edges
+        if by_id[e.src].path == "src/b.rs" and by_id[e.dst].path == "src/a.rs"
+    ]
+    assert [(by_id[e.src].name, by_id[e.dst].name) for e in cross_file] == [("crate_b", "f")]

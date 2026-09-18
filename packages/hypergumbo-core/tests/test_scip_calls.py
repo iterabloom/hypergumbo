@@ -347,3 +347,38 @@ def test_occurrence_with_unsupported_range_length_skipped() -> None:
         ],
     )
     assert scip_index_to_call_edges(_idx(doc), run_id="test") == []
+
+
+# ---------------------------------------------------------------------------
+# Locals are not endpoints (WI-jikok / INV-kukiz)
+# ---------------------------------------------------------------------------
+
+
+def test_ref_to_a_local_binding_emits_no_edge_even_in_raw_mode() -> None:
+    """A ``local <id>`` is document-scoped and never minted as a Symbol
+    (see test_scip_index), so an edge naming one — in raw mode as much as
+    resolved mode — would name an endpoint nothing carries. On aardvark-dns
+    455 such edges were emitted and 329 resolved across files."""
+    outer, local, callee = _sym("outer"), "local 0", _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(symbol=outer, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+        # the local is defined and then read inside ``outer``
+        scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[2, 8, 9]),
+        scip_pb2.Occurrence(symbol=local, symbol_roles=0, range=[3, 8, 9]),
+        # control: a global reference in the same body is still emitted
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[4, 4, 10]),
+    ])
+    edges = scip_index_to_call_edges(_idx(doc), run_id="test")
+    assert [(e.src, e.dst) for e in edges] == [(outer, callee)]
+
+
+def test_a_local_binding_never_encloses_a_reference() -> None:
+    """The src side of the same rule: a local's Definition occurrence must
+    not be chosen as the enclosing definition, even when its span happens
+    to contain the reference."""
+    local, callee = "local 0", _sym("callee")
+    doc = _doc_with([
+        scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[0, 0, 20, 0]),
+        scip_pb2.Occurrence(symbol=callee, symbol_roles=0, range=[5, 4, 10]),
+    ])
+    assert scip_index_to_call_edges(_idx(doc), run_id="test") == []

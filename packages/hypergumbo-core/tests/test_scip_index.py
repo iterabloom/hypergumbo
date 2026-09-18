@@ -23,10 +23,19 @@ Behavioural contract pinned here:
 * SCIP is 0-indexed (``range[0]`` is the first source line); hypergumbo
   ``Span`` is 1-indexed. The +1 rewrite happens here so downstream
   ranking / slice / sketch code can keep its 1-indexed assumptions.
-* Local symbols (``local <id>``) emit with ``kind="local"`` and the
-  local id as the name. We don't drop them because rust-analyzer and
-  scip-python both emit locals that participate in cross-reference
-  resolution.
+* Local symbols (``local <id>``) are NOT minted (WI-jikok / INV-kukiz).
+  A SCIP local id is a document-scoped index, not an identifier — the
+  same ``local 0`` is a different binding in every file — so hashing the
+  moniker collided 498 of 1255 Symbols on one crate and resolving edges
+  through one index-wide map made 329 of 455 local-pointing edges
+  cross-file, which a document-scoped binding cannot be. And a
+  function-local binding is not part of a behavior map by the rule every
+  other backend already follows: py.py, kotlin.py, go.py and the
+  tree-sitter rust.py all read locals for resolution and mint nothing.
+  An earlier version of this bullet said locals were kept "because
+  rust-analyzer and scip-python both emit locals that participate in
+  cross-reference resolution"; the edges that resolution produced were
+  the false ones.
 * Malformed SCIP symbol strings are skipped, not raised, because a SCIP
   index from a buggy upstream emitter must not take down the whole
   translation pass.
@@ -225,15 +234,55 @@ def test_term_descriptor_becomes_variable_kind() -> None:
     assert s.kind == "variable"
 
 
-def test_local_symbol_keeps_local_kind() -> None:
+def test_local_symbol_is_not_minted() -> None:
+    """RE-POINTED from ``test_local_symbol_keeps_local_kind`` (WI-jikok).
+
+    The old test pinned ``local 7`` → ``Symbol(name="7", kind="local")``.
+    That name carries no lexical content and that kind is the registry's
+    Terraform ``local``; see the module docstring bullet for why the
+    binding is not part of the map at all.
+    """
     sym = "local 7"
     idx = _make_index(
         symbols=[scip_pb2.SymbolInformation(symbol=sym)],
         occurrences=[scip_pb2.Occurrence(symbol=sym, symbol_roles=DEFINITION_ROLE, range=[1, 0, 4])],
     )
-    [s] = scip_index_to_symbols(idx)
-    assert s.name == "7"
-    assert s.kind == "local"
+    assert scip_index_to_symbols(idx) == []
+
+
+def test_global_symbol_beside_a_local_is_still_minted() -> None:
+    """Control for the test above: dropping locals must not drop the global
+    defined in the same document."""
+    local, glob = "local 7", _py_symbol("f")
+    idx = _make_index(
+        symbols=[
+            scip_pb2.SymbolInformation(symbol=local),
+            scip_pb2.SymbolInformation(symbol=glob),
+        ],
+        occurrences=[
+            scip_pb2.Occurrence(symbol=local, symbol_roles=DEFINITION_ROLE, range=[1, 4, 5]),
+            scip_pb2.Occurrence(symbol=glob, symbol_roles=DEFINITION_ROLE, range=[0, 0, 4, 0]),
+        ],
+    )
+    assert [s.name for s in scip_index_to_symbols(idx)] == ["f"]
+
+
+def test_document_scoped_local_ids_recur_across_documents_and_mint_nothing() -> None:
+    """INV-kukiz's shape in miniature: the SAME ``local 0`` string is
+    defined in two documents. Before the fix that minted two Symbols whose
+    ``stable_id`` (``sha256(moniker)``) collided; now it mints none."""
+    local = "local 0"
+    docs = [
+        scip_pb2.Document(
+            language="Rust", relative_path=path,
+            symbols=[scip_pb2.SymbolInformation(symbol=local)],
+            occurrences=[scip_pb2.Occurrence(
+                symbol=local, symbol_roles=DEFINITION_ROLE, range=[2, 8, 9],
+            )],
+        )
+        for path in ("src/a.rs", "src/b.rs")
+    ]
+    assert scip_index_to_symbols(scip_pb2.Index(documents=docs)) == []
 
 
 def test_malformed_symbol_string_is_skipped_not_raised() -> None:

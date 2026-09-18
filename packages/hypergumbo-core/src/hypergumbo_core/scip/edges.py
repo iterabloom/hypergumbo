@@ -50,6 +50,11 @@ Multiple flags on the same Relationship entry fan out to multiple
 Edges. A Relationship with no flag set produces nothing (legal but
 uninformative per the SCIP spec). Self-relationships (``src == dst``)
 are dropped because downstream rank / slice code treats them as noise.
+A Relationship touching a local symbol (``local <id>``) at either end
+produces nothing (WI-jikok / INV-kukiz): :mod:`.index` does not mint
+locals, so the edge would name an endpoint no Symbol carries. The same
+predicate guards :mod:`.calls`; rust-analyzer leaves ``relationships``
+empty, so this arm is a contract for the other SCIP emitters.
 
 Symbol resolution:
 
@@ -68,6 +73,7 @@ from typing import Callable, List, Optional
 
 from ..ir import Edge
 from ._generated import scip_pb2
+from .descriptor import is_local_symbol
 
 
 _RELATION_EDGE_TYPES: "list[tuple[str, str]]" = [
@@ -107,12 +113,14 @@ def scip_index_to_edges(
     for doc in index.documents:
         for sym_info in doc.symbols:
             src_raw = sym_info.symbol
+            if is_local_symbol(src_raw):
+                continue
             src_resolved = _resolve(src_raw, resolve_symbol)
             if src_resolved is None:
                 continue
             for rel in sym_info.relationships:
                 dst_raw = rel.symbol
-                if dst_raw == src_raw:
+                if dst_raw == src_raw or is_local_symbol(dst_raw):
                     continue
                 dst_resolved = _resolve(dst_raw, resolve_symbol)
                 if dst_resolved is None:
