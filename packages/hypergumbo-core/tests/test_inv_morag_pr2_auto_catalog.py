@@ -46,6 +46,7 @@ def test_register_analyzer_accepts_extended_metadata() -> None:
         pass_label="Test Analyzer",
         backend="ast",
         languages=["testlang"],
+        language_state="no_taxonomy_spec",
         availability="core",
     )
     def _analyze(repo_root):  # pragma: no cover - test stub
@@ -102,7 +103,7 @@ def test_register_analyzer_auto_computes_pass_version() -> None:
     )
     from hypergumbo_core.ir import compute_pass_version
 
-    @register_analyzer("_test_passver")
+    @register_analyzer("_test_passver", language_state="no_language")
     def _analyze(repo_root):  # pragma: no cover - test stub
         raise NotImplementedError
 

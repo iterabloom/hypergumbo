@@ -415,7 +415,7 @@ class SPARQLAnalyzer(TreeSitterAnalyzer):
 _analyzer = SPARQLAnalyzer()
 
 
-@register_analyzer("sparql")
+@register_analyzer("sparql", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_sparql(repo_root: Path) -> AnalysisResult:
     """Analyze SPARQL files in a repository.
 

@@ -163,7 +163,7 @@ class BibtexAnalyzer(TreeSitterAnalyzer):
 _analyzer = BibtexAnalyzer()
 
 
-@register_analyzer("bibtex")
+@register_analyzer("bibtex", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_bibtex(repo_root: Path) -> AnalysisResult:
     """Analyze BibTeX bibliography files in a repository.
 

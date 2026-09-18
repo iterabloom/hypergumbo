@@ -891,7 +891,9 @@ def _extract_method_short_name(callee_name: str) -> str:
     depends_on=[
         [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "rust", "scala", "swift",
+            "kotlin", "objc", "php", "python", "ruby", "rust",
+            "rust_analyzer",  # WI-juzig: the second producer of rust
+            "scala", "swift",
         ],
     ],
 )

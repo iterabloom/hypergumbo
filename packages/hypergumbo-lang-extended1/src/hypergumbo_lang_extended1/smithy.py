@@ -598,7 +598,7 @@ class SmithyAnalyzer(TreeSitterAnalyzer):
 _analyzer = SmithyAnalyzer()
 
 
-@register_analyzer("smithy")
+@register_analyzer("smithy", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_smithy(repo_root: Path) -> AnalysisResult:
     """Analyze Smithy files in the repository.
 

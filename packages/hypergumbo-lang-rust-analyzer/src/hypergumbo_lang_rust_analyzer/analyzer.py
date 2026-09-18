@@ -155,7 +155,10 @@ def _has_scip_origin_edge(edges: list[Edge]) -> bool:
     return any("scip" in getattr(edge, "origin", []) for edge in edges)
 
 
-@register_analyzer("rust_analyzer", priority=45)
+# WI-juzig / ADR-0057 §10: a second BACKEND for the language ``rust`` — not a
+# language of its own. The registry can now see that ``rust`` and
+# ``rust_analyzer`` are two producers for one language.
+@register_analyzer("rust_analyzer", priority=45, languages=["rust"], backend="scip")
 def analyze_rust_with_scip(repo_root: Path) -> AnalysisResult:
     """Entry point for the SCIP-backed Rust analyzer.
 

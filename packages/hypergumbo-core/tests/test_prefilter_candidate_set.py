@@ -47,7 +47,7 @@ def _analyzer_file_patterns(analyzer) -> set[str] | None:
 
 
 def _taxonomy_patterns(analyzer) -> set[str]:
-    langs = set(analyzer.languages) if analyzer.languages else {analyzer.name}
+    langs = set(analyzer.languages)  # WI-juzig: the gated declaration, no [name] fallback
     out: set[str] = set()
     for lang in langs:
         spec = taxonomy.LANGUAGES.get(lang)
@@ -96,10 +96,11 @@ def test_no_analyzer_reads_files_its_taxonomy_entry_cannot_see() -> None:
     """
     offenders: list[str] = []
     for analyzer in get_analyzers():
-        langs = set(analyzer.languages) if analyzer.languages else {analyzer.name}
-        # Out-of-taxonomy analyzers are dispatched defensively by the
-        # pre-filter's own fail-open branch, so they cannot be wrongly skipped.
-        if not langs <= set(taxonomy.LANGUAGE_EXTENSIONS):
+        langs = set(analyzer.languages)
+        # Out-of-taxonomy (``no_taxonomy_spec``) and ``no_language`` analyzers
+        # are dispatched defensively by the pre-filter's own fail-open branch,
+        # so they cannot be wrongly skipped.
+        if not langs or not langs <= set(taxonomy.LANGUAGE_EXTENSIONS):
             continue
         patterns = _analyzer_file_patterns(analyzer)
         if patterns is None:
@@ -118,3 +119,30 @@ def test_no_analyzer_reads_files_its_taxonomy_entry_cannot_see() -> None:
         "work — declare find_files= on the registration (INV-hokig):\n  "
         + "\n  ".join(sorted(offenders))
     )
+
+
+def test_a_gnumakefile_only_repo_still_runs_the_make_pass(tmp_path: Path) -> None:
+    """WI-juzig made ``make`` profile-gated under the taxonomy name ``makefile``
+    (before, its phantom language ``make`` was outside the taxonomy and it was
+    dispatched unconditionally). The taxonomy globs ``Makefile``/``*.mk``; the
+    pass also reads ``makefile`` and ``GNUmakefile``. Without ``find_files``
+    on the registration — AND without the profile looking the enumerator up
+    by LANGUAGE rather than by the pass NAME — this repo's only makefile is
+    invisible to the profile and the pass is short-circuited as
+    ``no_candidate_files``: the INV-hokig defect, re-opened by the gate.
+    Production path — the real profile, the real dispatcher."""
+    (tmp_path / "GNUmakefile").write_text("CC = gcc\n\nall: build\n\nbuild:\n\t$(CC) main.c\n")
+    profile = detect_profile(tmp_path, count_loc=True).to_dict()
+    assert profile["languages"].get("makefile", {}).get("files") == 1, profile["languages"]
+
+    _runs, symbols, _edges, _ucs, limits, _cap, _dep = run_all_analyzers(
+        tmp_path, profile=profile
+    )
+    skipped = {entry["pass"] for entry in limits.skipped_passes}
+    assert "make" not in skipped, "the make pass was short-circuited on a GNUmakefile-only repo"
+    make_symbols = [
+        s for s in symbols
+        if "make" in (s.origin if isinstance(s.origin, list) else [s.origin])
+    ]
+    assert make_symbols, "make pass ran but emitted nothing for GNUmakefile"
+    assert {s.language for s in make_symbols} == {"makefile"}

@@ -429,7 +429,7 @@ def is_meson_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("meson")
+@register_analyzer("meson", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_meson(repo_root: Path) -> AnalysisResult:
     """Analyze Meson build files in a repository.
 

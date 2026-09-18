@@ -3573,7 +3573,7 @@ def is_rust_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("rust")
+@register_analyzer("rust", backend="tree-sitter")  # WI-juzig: the incumbent of two rust backends
 def analyze_rust(repo_root: Path) -> AnalysisResult:
     """Analyze Rust files in a repository."""
     return _analyzer.analyze(repo_root)

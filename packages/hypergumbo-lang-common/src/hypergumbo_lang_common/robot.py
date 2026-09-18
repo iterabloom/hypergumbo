@@ -641,7 +641,7 @@ def is_robot_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("robot")
+@register_analyzer("robot", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_robot(repo_root: Path) -> AnalysisResult:
     """Analyze Robot Framework files in a repository.
 

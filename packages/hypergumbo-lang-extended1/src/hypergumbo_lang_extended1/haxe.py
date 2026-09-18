@@ -407,7 +407,7 @@ def is_haxe_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("haxe")
+@register_analyzer("haxe", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_haxe(repo_root: Path) -> AnalysisResult:
     """Analyze Haxe source files in a repository.
 

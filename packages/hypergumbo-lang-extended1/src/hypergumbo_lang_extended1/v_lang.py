@@ -379,7 +379,7 @@ def is_v_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("v")
+@register_analyzer("v", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_v(repo_root: Path) -> AnalysisResult:
     """Analyze V source files in a repository.
 

@@ -490,7 +490,7 @@ def is_luau_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("luau")
+@register_analyzer("luau", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_luau(repo_root: Path) -> AnalysisResult:
     """Analyze Luau files in the repository.
 

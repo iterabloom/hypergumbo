@@ -788,10 +788,13 @@ def all_known_languages() -> frozenset[str]:
     # languages (a ``.adoc`` → ``asciidoc``, a ``Makefile`` → ``makefile``) that
     # carry a LanguageSpec but no dedicated ``@register_analyzer`` — so a
     # registration-only catalog wrongly rejected them (axis_conformance). The
-    # two sources genuinely diverge (gitignore/make/scss are registered but not
-    # taxonomy LanguageSpecs; asciidoc/makefile are the reverse), so the axis
-    # catalog is their union — the complete set of languages hypergumbo can
-    # label a symbol with.
+    # two sources genuinely diverge (gitignore/scss are registered under the
+    # ``no_taxonomy_spec`` state but have no LanguageSpec — WI-futin; asciidoc
+    # is the reverse), so the axis catalog is their union — the complete set
+    # of languages hypergumbo can label a symbol with. WI-juzig: the
+    # registration side is gated, so a pass NAME that is not a language
+    # (``rust_analyzer``, ``manifest_targets``) can no longer leak in here,
+    # and ``make`` registers as the taxonomy's ``makefile``.
     langs.update(LANGUAGES)
     return frozenset(langs)
 

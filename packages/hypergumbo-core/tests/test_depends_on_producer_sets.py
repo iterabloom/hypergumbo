@@ -124,11 +124,9 @@ def _clause_containing(pass_id: str, literal: str) -> list[str]:
     return matches[0]
 
 
-def _pass_id_for_language(language: str) -> str | None:
-    for analyzer in get_analyzers():
-        if language in (analyzer.languages or []):
-            return analyzer.name
-    return None
+def _pass_ids_for_language(language: str) -> list[str]:
+    """Every producer of ``language`` (WI-juzig: rust has two)."""
+    return [a.name for a in get_analyzers() if language in a.languages]
 
 
 class TestTheScannerCanReturnBothAnswers:
@@ -154,10 +152,10 @@ class TestInheritedCallsDeclaresItsWalkers:
     def test_every_registered_mro_walker_language_is_declared(self) -> None:
         clause = _clause_containing("inherited-calls-linker", "java")
         missing = sorted(
-            language
+            f"{language}:{pid}"
             for language in _MRO_WALKERS
-            if (pid := _pass_id_for_language(language)) is not None
-            and pid not in clause
+            for pid in _pass_ids_for_language(language)
+            if pid not in clause
         )
         assert missing == [], (
             f"_MRO_WALKERS registers walkers for {missing} and "
@@ -178,7 +176,9 @@ class TestInheritedCallsDeclaresItsWalkers:
     def test_the_clause_is_exactly_this(self) -> None:
         assert _clause_containing("inherited-calls-linker", "java") == [
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
-            "kotlin", "objc", "php", "python", "ruby", "rust", "scala", "swift",
+            "kotlin", "objc", "php", "python", "ruby", "rust",
+            "rust_analyzer",  # WI-juzig: rust's second producer
+            "scala", "swift",
         ]
 
     def test_the_inheritance_linker_conjunct_is_gone(self) -> None:

@@ -222,7 +222,7 @@ class KdlAnalyzer(TreeSitterAnalyzer):
 _analyzer = KdlAnalyzer()
 
 
-@register_analyzer("kdl")
+@register_analyzer("kdl", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_kdl(repo_root: Path) -> AnalysisResult:
     """Analyze KDL configuration files in a repository.
 

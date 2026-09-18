@@ -302,11 +302,14 @@ def _filter_by_file_presence(
     cost of opening a parser / walking the FileIndex / building an empty
     tree for a pass with no input.
 
-    Analyzers whose declared languages are NOT in the taxonomy
-    (``gitignore``, ``requirements``, ``manifest_targets``, ``play-routes``,
-    ``yaml_ansible``, etc.) are dispatched unconditionally — the profile
-    has no opinion about them, so the safe default is to let the analyzer
-    self-determine via its own file walk.
+    Analyzers whose declared languages are NOT in the taxonomy (the
+    ``no_taxonomy_spec`` state: ``gitignore``, ``requirements``,
+    ``play-routes``, ``yaml_ansible``, ...) and analyzers that declare NO
+    language (``manifest_targets``, ``languages == []``) are dispatched
+    unconditionally — the profile has no opinion about them, so the safe
+    default is to let the analyzer self-determine via its own file walk.
+    WI-juzig: the empty list is retained on purpose, not re-inflated into
+    ``{name}`` (a phantom the profile never counted, retained by accident).
 
     When ``profile`` is ``None`` the filter is a no-op (callers outside the
     full ``run_behavior_map`` pipeline don't have a profile to consult).
@@ -318,13 +321,11 @@ def _filter_by_file_presence(
     profile_langs = profile.get("languages") or {}
     retained: list[RegisteredAnalyzer] = []
     for analyzer in analyzers:
-        analyzer_langs = (
-            set(analyzer.languages) if analyzer.languages else {analyzer.name}
-        )
-        # Defensive dispatch when any declared language is outside the
-        # taxonomy — profile didn't count files for those, so we can't
-        # tell whether the analyzer has work.
-        if not analyzer_langs <= known_langs:
+        analyzer_langs = set(analyzer.languages)
+        # Defensive dispatch when the analyzer declares no language, or any
+        # declared language is outside the taxonomy — the profile didn't
+        # count files for those, so we can't tell whether it has work.
+        if not analyzer_langs or not analyzer_langs <= known_langs:
             retained.append(analyzer)
             continue
         any_with_files = any(

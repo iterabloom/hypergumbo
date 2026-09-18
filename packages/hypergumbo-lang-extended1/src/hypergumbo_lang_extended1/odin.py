@@ -415,7 +415,7 @@ def is_odin_tree_sitter_available() -> bool:
     return _analyzer._check_grammar_available()
 
 
-@register_analyzer("odin")
+@register_analyzer("odin", language_state="no_taxonomy_spec")  # WI-futin
 def analyze_odin(repo_root: Path) -> AnalysisResult:
     """Analyze Odin source files in a repository.
 
