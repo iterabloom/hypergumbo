@@ -21,3 +21,12 @@
     pr_ref:  # edff
     description: "ADR-0057 ruling 3: a declared MERGE PASS at the top of Phase C, before the\nfirst consumer (`refine_frameworks`, cli.py:11305), that folds records two\nproducers emitted for one declaration into ONE Symbol with every attribute's\nprovenance preserved. Today nothing merges: run_all_analyzers concatenates\nsymbols (all_analyzers.py, dedups edges by id only) and every Phase-C reader\nsees both records. WI-gojum's 2026-09-18 note established the dedup was never\nwritten.\n\nMERGE KEY (measured, aardvark-dns b1008d3b67): same path, same base name\n(last `::` segment), and the SCIP name-token span falling inside the\ntree-sitter item span; smallest containing item wins. Pairs 138 of 169 SCIP\nnodes with ZERO tree-sitter leftovers; the 31 unpaired are 18 module\nnamespaces, 11 variables, 2 classes. Neither `id` nor `stable_id` can be the\nkey: both are derived from span/name/kind, which are exactly the attributes\nthat disagree.\n\nMECHANICS: one linear pass over symbols grouping by key, one over edges\nrewiring src/dst to the survivor — the shape of dedup_logical_synthetic_identities\n(analyze/base.py). The merged record gets a NEW id (neither producer's);\nevery edge from BOTH producers is rewired and edge_key reset to None so\ndeduplicate_edges recomputes (precedent: analyze/base.py sets edge_key=None\non rewire). Span: the merged record's span is the ITEM span — rust-analyzer's\nDefinition `enclosing_range` (populated 20/20) — so INV-lodum's cure lands\nHERE, not as a separate index.py edit. NO-OP when one producer emitted: a\ntree-sitter-only run must be byte-identical before/after.\n\nORDERING CONSEQUENCE: split_within_file_stable_id_collisions runs later and\nis untouched; with the merge first no same-(path, stable_id) cross-backend\ngroup ever reaches it.\n\nACCEPTANCE: aardvark-dns two-arm run -> 138 merged + 31 SCIP-only + 0\ntree-sitter-only Rust nodes; each merged node carries origin=[rust, scip];\ntree-sitter-only run byte-identical; ADR-0043 §8 round-trip holds."  # edff
     fields: {}  # edff
+- op: update  # dd73
+  at: '2026-09-18T19:38:18Z'  # dd73
+  by: agent  # dd73
+  actor: jgstern_agent  # dd73
+  clock: 2  # dd73
+  nonce: dd73  # dd73
+  set: {}  # dd73
+  add:  # dd73
+    isbefore: [INV-lodum-sotah-rudis-fivit-dalot-fosug-matuf-gobon]  # dd73
