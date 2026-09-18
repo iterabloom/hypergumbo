@@ -1,0 +1,44 @@
+Original commit body from 1bd1b62bb450913008b7a4de3f7e283b696a1207:
+
+Design only; nothing in the pipeline changes. Records the owner's 2026-09-18
+ruling on how two backends' records for one declaration are reconciled.
+
+ADR-0012 §Step 3 described record-level coexistence: a higher-fidelity pass's
+edges sit beside the AST pass's, at different confidence. Measured on a
+two-arm Rust run (aardvark-dns, HYPERGUMBO_RUST_ANALYZER=1) that doubles every
+callable and the in-crate call graph. The July "replace" sketch on WI-gojum is
+lossy in both directions: 268 external-stub calls exist only on the
+tree-sitter side, 79 field references only on the SCIP side.
+
+ADR-0057 keeps ADR-0012's principle — both run, nothing is discarded — and
+changes the unit: one node and one edge per declaration, each attribute a set
+of (value, provenance) pairs (one value with two provenances on agreement, two
+values on disagreement, one when only one producer saw it). Recognising the
+pair is a declared merge pass at the top of Phase C, keyed on span containment
+because both id and stable_id derive from the attributes that disagree. The
+scalar a consumer reads comes from a per-record arbitration property with ONE
+default, read from config.toml (ADR-0045 preferences tier; not a trust key).
+The built-in is incumbent-first per attribute: SCIP's kind is wrong on 52/52
+free functions, so "type-aware wins" is refused as the blanket.
+
+Why a pass and not an on-demand facade: the merge key is whole-table, identity
+is rewritten (296 .src/.dst and 345 .kind direct reads across 89 files), and
+membership must settle before serialize (ADR-0043 R1/§8). Why not defer to
+"presentation time": slice.py:828/838 and ranking.py:925/1044 branch on kind
+and edge_type mid-traversal — that is consumption, not presentation.
+
+Also in this change:
+- ADR-0012: status line names ADR-0057; §Step 3 body excised to a pointer
+  (docs/adr/README.md lifecycle); relationship bullet added.
+- docs/adr/README.md: index row.
+- docs/hypergumbo-spec.md: roadmap row and the AnalysisPass paragraph point
+  at ADR-0057.
+- CHANGELOG.md: [Unreleased] › Changed entry.
+
+Tracker: five rows filed and sequenced (WI-zapuk SCIP edge type from
+SymbolRole → WI-kokiz merge pass → WI-binis provenance slot + arbitration →
+WI-hukuf config key; WI-gapup SCIP kind from the descriptor chain). Notes on
+WI-gojum (stays parked; sub-component map), INV-lodum (cure relocates into
+the merge pass; splitter clause corrected), WI-nanom (now builds on 0057).
+
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
