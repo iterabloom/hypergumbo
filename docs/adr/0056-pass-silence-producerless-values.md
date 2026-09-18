@@ -136,6 +136,14 @@ Re-aimed (uninstall `tree-sitter-rust`, survey a genuine JS+Rust repo) it is **d
 
 **One rule W3 needed that this ADR did not state.** The producer fills **only a field the pass body left empty**. Measured on the same repository, `pyffi-linker` is silent with the *same* blocked conjunct and truthfully claims `no_candidate_construct` — it scanned the Python side and there are genuinely no FFI call sites, so the missing Rust grammar is irrelevant to *its* silence. Overruling it would reverse the ADR-0054/PR-#1008 guard and replace a true claim with a plausible one. `prerequisite_absent` therefore **under-reports by design**, and sees only *analyzer* prerequisites, since linkers are deliberately not enumerated in `skipped_passes`.
 
+## Correction from the WI-mamiv audit (2026-09-17, PR after #1036)
+
+**The field W2 added is now called `silence_reason`, not `skip_reason_code`.** Everywhere above that names `limits.skipped_passes[].skip_reason_code`, read `limits.skipped_passes[].silence_reason` — the same field, the same closed axis, renamed to the name `AnalysisRun` already used for the same question (`SCHEMA_VERSION` 0.20.9 → 0.20.10). This ADR's reasoning is untouched: the *re-hosting* verdict stands, the three values still live only on the skip host, and "one channel, two fields" still refers to the structured code and the prose `reason` on the same record.
+
+What the audit added is that the name split was doing work this ADR did not intend. **130 of 162 passes on component-model-demo carry `no_candidate_files`, 48 on one host and 82 on the other** — so the axis's most common value was reachable under two different field names, and which one a consumer had to read was decided by `taxonomy.LANGUAGE_EXTENSIONS` membership and by whether the analyzer returned a bare `AnalysisResult()` or a run with `files_analyzed == 0`. That is producer registration and implementation detail, not a property of the silence (WI-mamiv).
+
+**The routing is deliberately NOT changed, and that is this ADR's call to keep.** Making the host a function of the fact requires an `AnalysisRun` for the 75 pre-filtered passes, which is precisely §"What would change this decision" item 5 — reserved to the owner, and judged wrong here as ABSENT ≠ EMPTY one level up. The owner directed the rename (verdict A) and left the routing where item 5 put it.
+
 ## Related
 
 - [ADR-0054](0054-pass-silence-candidates-unresolved.md) — the sibling split on the same axis, and the filing constraint.

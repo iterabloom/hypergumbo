@@ -1025,27 +1025,35 @@ def _limits_spec() -> ClassSpec:
             "skipped_passes": {
                 "description": (
                     "Passes that DID NOT RUN, with both a prose reason and a "
-                    "structured skip_reason_code on the closed "
-                    "pass-silence-reason axis (WI-dukoh / ADR-0056 W2). Three "
-                    "values live here rather than on AnalysisRun.silence_reason "
-                    "because a pass that did not run produces no AnalysisRun to "
-                    "carry a field: dependency_unavailable (grammar/toolchain "
-                    "absent), backend_disabled (opt-in backend off) and "
-                    "pass_crashed (a contained raise, including a parser "
-                    "constructor that failed). no_candidate_files is the "
-                    "file-presence pre-filter. An entry with no code, or with "
-                    "the code 'unreported', means the producer did not classify "
-                    "itself -- NOT that the repository lacked the files. The "
-                    "prose reason stays as human-readable detail (it carries "
-                    "the pip command and the exception text); one channel, two "
-                    "fields."
+                    "structured silence_reason on the closed "
+                    "pass-silence-reason axis (WI-dukoh / ADR-0056 W2). It is "
+                    "the SAME field name AnalysisRun carries, because it is the "
+                    "same question about the same axis: why did this pass say "
+                    "nothing. Which of the two hosts answers it is decided by "
+                    "whether the pass ran, not by any property of the silence "
+                    "(WI-mamiv) -- so a consumer asking 'which passes had no "
+                    "input?' must read both, and pass_silence.census_silence() "
+                    "is the union. Three values can only appear here, because a "
+                    "pass that did not run produces no AnalysisRun to carry a "
+                    "field: dependency_unavailable (grammar/toolchain absent), "
+                    "backend_disabled (opt-in backend off) and pass_crashed (a "
+                    "contained raise, including a parser constructor that "
+                    "failed). no_candidate_files appears on BOTH hosts and is "
+                    "80% of the volume. The two hosts also differ in their "
+                    "ABSENCE rule: on AnalysisRun a missing silence_reason "
+                    "means the pass emitted output, whereas an entry here "
+                    "always carries one. An entry with the code 'unreported' "
+                    "means the producer did not classify itself -- NOT that the "
+                    "repository lacked the files. The prose reason stays as "
+                    "human-readable detail (it carries the pip command and the "
+                    "exception text); one channel, two fields."
                 ),
                 "items": {
                     "type": "object",
                     "properties": {
                         "pass": {"type": "string"},
                         "reason": {"type": "string"},
-                        "skip_reason_code": {"type": "string"},
+                        "silence_reason": {"type": "string"},
                     },
                 },
             },

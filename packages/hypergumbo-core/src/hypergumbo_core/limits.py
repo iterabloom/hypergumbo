@@ -161,7 +161,7 @@ class Limits:
             # ZERO times in 229,541 records -- but that measured the twin, not
             # the state. The six analyzer sites that catch a parser-constructor
             # exception report the same state and now stamp the same code.
-            "skip_reason_code": PASS_CRASHED,
+            "silence_reason": PASS_CRASHED,
         })
         if not self.partial_results_reason:
             self.partial_results_reason = (

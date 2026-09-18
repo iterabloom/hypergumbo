@@ -5,6 +5,8 @@ The axis exists to split an undifferentiated population: a pass that emitted
 no edges is one of "saw no input", "saw input and found nothing", or "never
 really ran", and before this field a reader could not tell which.
 """
+from pathlib import Path
+
 import pytest
 
 from hypergumbo_core.ir import AnalysisRun
@@ -488,11 +490,11 @@ class TestSummarizeSkipReasons:
     def test_counts_by_code(self) -> None:
         entries = [
             {"pass": "a", "reason": "no files matched",
-             "skip_reason_code": NO_CANDIDATE_FILES},
+             "silence_reason": NO_CANDIDATE_FILES},
             {"pass": "b", "reason": "no files matched",
-             "skip_reason_code": NO_CANDIDATE_FILES},
+             "silence_reason": NO_CANDIDATE_FILES},
             {"pass": "c", "reason": "rust-analyzer backend not enabled",
-             "skip_reason_code": BACKEND_DISABLED},
+             "silence_reason": BACKEND_DISABLED},
         ]
         assert summarize_skip_reasons(entries) == {
             NO_CANDIDATE_FILES: 2, BACKEND_DISABLED: 1,
@@ -514,7 +516,7 @@ class TestSummarizeSkipReasons:
     def test_value_outside_the_vocabulary_is_counted_under_its_own_name(self) -> None:
         """A drifted producer must not be laundered into a clean count."""
         assert summarize_skip_reasons(
-            [{"pass": "a", "skip_reason_code": "invented_value"}],
+            [{"pass": "a", "silence_reason": "invented_value"}],
         ) == {"invented_value": 1}
 
 
@@ -544,7 +546,7 @@ class TestEmitSkipSummary:
 
     def test_one_line_to_stderr(self, capsys) -> None:
         emit_skip_summary([
-            {"pass": "a", "reason": "x", "skip_reason_code": DEPENDENCY_UNAVAILABLE},
+            {"pass": "a", "reason": "x", "silence_reason": DEPENDENCY_UNAVAILABLE},
         ])
         err = capsys.readouterr().err
         assert err.count("\n") == 1
@@ -560,7 +562,7 @@ class TestPrerequisiteAbsentClauses:
     no-op. Stamping THAT as an ordering defect would be the axis's founding sin
     committed inside the axis built to cure it. The discriminator is "was the
     missing literal skipped for a FILE reason or a TOOLCHAIN reason", which is
-    exactly what W2's `skip_reason_code` made askable.
+    exactly what W2's structured code made askable.
     """
 
     def test_no_declarations_gives_nothing(self) -> None:
@@ -667,7 +669,7 @@ class TestSilenceCensus:
 
     Measured on component-model-demo: **130 of 162 passes carry
     ``no_candidate_files``** — 48 through ``AnalysisRun.silence_reason`` and 82
-    through ``limits.skipped_passes[].skip_reason_code``. Which host a pass
+    through ``limits.skipped_passes[].silence_reason``. Which host a pass
     lands in is decided by ``taxonomy.LANGUAGE_EXTENSIONS`` membership and by
     whether the analyzer returns a bare ``AnalysisResult()`` or a run with
     ``files_analyzed=0`` — producer registration and implementation detail,
@@ -683,7 +685,7 @@ class TestSilenceCensus:
         return [{"pass": p, "silence_reason": r} for p, r in pairs]
 
     def _skips(self, *pairs):
-        return [{"pass": p, "skip_reason_code": c} for p, c in pairs]
+        return [{"pass": p, "silence_reason": c} for p, c in pairs]
 
     def test_it_unions_the_two_hosts(self) -> None:
         census = census_silence(
@@ -753,7 +755,7 @@ class TestUnaccountedReaderIsWiredUp:
     def test_the_warning_names_the_offending_passes(self) -> None:
         census = census_silence(
             [{"pass": "python", "silence_reason": ""}],
-            [{"pass": "java", "skip_reason_code": NO_CANDIDATE_FILES}],
+            [{"pass": "java", "silence_reason": NO_CANDIDATE_FILES}],
             catalog_pass_ids=("python", "java", "rust_analyzer"),
         )
         line = format_unaccounted_warning(census)
@@ -762,7 +764,7 @@ class TestUnaccountedReaderIsWiredUp:
 
     def test_silent_when_every_catalogue_pass_is_accounted_for(self) -> None:
         census = census_silence(
-            [], [{"pass": "java", "skip_reason_code": NO_CANDIDATE_FILES}],
+            [], [{"pass": "java", "silence_reason": NO_CANDIDATE_FILES}],
             catalog_pass_ids=("java",),
         )
         assert format_unaccounted_warning(census) is None
@@ -818,7 +820,7 @@ class TestUnaccountedReaderIsWiredUp:
         """
         census = census_silence(
             [{"silence_reason": NO_CANDIDATE_FILES}],
-            [{"skip_reason_code": NO_CANDIDATE_FILES}],
+            [{"silence_reason": NO_CANDIDATE_FILES}],
         )
         assert census.by_pass == {}
         assert census.hosts == {}
@@ -845,3 +847,56 @@ class TestUnaccountedReaderIsWiredUp:
     ) -> None:
         emit_unaccounted_warning(census_silence([], []))
         assert capsys.readouterr().err == ""
+
+
+class TestOneFactOneName:
+    """WI-mamiv verdict A: both hosts spell the axis field ``silence_reason``.
+
+    The axis was reachable under two names — ``AnalysisRun.silence_reason`` and
+    ``limits.skipped_passes[].skip_reason_code`` — and which name a consumer
+    saw was decided by taxonomy membership and the analyzer's return style,
+    never by anything about the silence. The ROUTING is unchanged and is still
+    not a function of the fact; what changed is that asking the question no
+    longer requires knowing which host will answer.
+    """
+
+    def test_a_skip_entry_carries_silence_reason_and_not_the_old_key(
+        self, tmp_path: Path
+    ) -> None:
+        """Production path — the real dispatcher on a real (empty) repo."""
+        from hypergumbo_core.analyze.all_analyzers import run_all_analyzers
+        from hypergumbo_core.profile import detect_profile
+
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        profile = detect_profile(tmp_path, count_loc=True).to_dict()
+        _runs, _syms, _edges, _ucs, limits, _cap, _dep = run_all_analyzers(
+            tmp_path, profile=profile
+        )
+
+        assert limits.skipped_passes, "fixture should skip most of the catalogue"
+        for entry in limits.skipped_passes:
+            assert "silence_reason" in entry, (
+                f"skip entry for {entry.get('pass')!r} carries no silence_reason"
+            )
+            assert "skip_reason_code" not in entry, (
+                f"skip entry for {entry.get('pass')!r} still carries the old "
+                "skip_reason_code key; the axis is back to two names"
+            )
+
+    def test_both_hosts_use_the_same_serialized_key(self) -> None:
+        """The AnalysisRun half spells it the same way, so a union is on one key."""
+        from hypergumbo_core.ir import PASS_VERSION, make_pass_id
+
+        run = AnalysisRun.create(pass_id=make_pass_id("probe"), version=PASS_VERSION)
+        run.silence_reason = NO_CANDIDATE_FILES
+        assert run.to_dict()["silence_reason"] == NO_CANDIDATE_FILES
+
+        skip_entry = {
+            "pass": "probe", "reason": "no files matched",
+            "silence_reason": NO_CANDIDATE_FILES,
+        }
+        shared = set(run.to_dict()) & set(skip_entry)
+        assert "silence_reason" in shared, (
+            "the two hosts must agree on the key name for census_silence to "
+            "union them without a per-host alias"
+        )

@@ -205,7 +205,7 @@ def collect_analyzer_result(
             limits.skipped_passes.append({
                 "pass": analyzer_name,
                 "reason": reason,
-                "skip_reason_code": code,
+                "silence_reason": code,
             })
         return
 
@@ -220,7 +220,7 @@ def collect_analyzer_result(
             "reason": skip_reason,
             # WI-dukoh: an unconverted producer reads as UNREPORTED -- "it did
             # not classify itself" -- never as a manufactured majority answer.
-            "skip_reason_code": (
+            "silence_reason": (
                 getattr(result, "skip_reason_code", "") or UNREPORTED
             ),
         })
@@ -340,7 +340,7 @@ def _filter_by_file_presence(
                 # The one skip the ORCHESTRATOR can classify with certainty:
                 # it just read the profile and found zero files for every
                 # language this analyzer declares. WI-dukoh.
-                "skip_reason_code": NO_CANDIDATE_FILES,
+                "silence_reason": NO_CANDIDATE_FILES,
             })
     return retained
 

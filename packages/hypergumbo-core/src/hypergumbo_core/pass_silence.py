@@ -51,7 +51,8 @@ blindness was a venv, not a law: a venv built WITHOUT
 a user in a bare environment, which is exactly who cannot report it to us —
 so the bare environment was constructed instead of waited for.
 
-``skip_reason_code`` is therefore a MIGRATION, not a new signal: the prose
+The structured code on a skip record is therefore a MIGRATION, not a new
+signal: the prose
 ``reason`` stays as human-readable detail (it carries the pip command and the
 exception message, payload a code cannot express) and the code carries the
 classification. One channel, two fields — never two channels, which is the
@@ -322,7 +323,7 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 #
 # On component-model-demo, 162 passes: 130 of them carry `no_candidate_files`
 # -- 48 through `AnalysisRun.silence_reason` and 82 through
-# `limits.skipped_passes[].skip_reason_code`. The SAME value, for the SAME
+# `limits.skipped_passes[].silence_reason`. The SAME value, for the SAME
 # fact (zero files of that language in this tree), on two different fields.
 # Three routes get you there, and none is a property of the silence:
 #
@@ -332,9 +333,9 @@ def emit_silence_summary(analysis_runs: Sequence[Mapping[str, object]]) -> None:
 #   dispatched, returns bare AnalysisResult()  the analyzer's return style    7  -> skipped_passes
 #   dispatched, returns run w/ files_analyzed=0  the analyzer's return style 26  -> analysis_runs
 #
-# Measured cleanly: 0 in-taxonomy analyzers report through `silence_reason`
-# and 75 through `skip_reason_code`; 26 out-of-taxonomy report through
-# `silence_reason` and 7 through `skip_reason_code`. `apex`, `twig` and `make`
+# Measured cleanly: 0 in-taxonomy analyzers report on the AnalysisRun host
+# and 75 on the skip host; 26 out-of-taxonomy report on the AnalysisRun host
+# and 7 on the skip host. `apex`, `twig` and `make`
 # go one way; `java`, `matlab` and `scss` go the other, for the identical fact.
 #
 # So the host encodes PRODUCER REGISTRATION AND IMPLEMENTATION DETAIL. A
@@ -387,7 +388,7 @@ def summarize_skip_reasons(
 ) -> dict[str, int]:
     """Count ``limits.skipped_passes`` entries by their structured code.
 
-    An entry with NO ``skip_reason_code`` counts as :data:`UNREPORTED`, and
+    An entry with NO ``silence_reason`` counts as :data:`UNREPORTED`, and
     that choice is the whole discipline of this function. The obvious
     alternative — bucketing a missing code under :data:`NO_CANDIDATE_FILES`,
     which is 98.94% of all skip records — would manufacture the majority answer
@@ -401,7 +402,7 @@ def summarize_skip_reasons(
     """
     counts: dict[str, int] = {}
     for entry in skipped_passes:
-        code = entry.get("skip_reason_code")
+        code = entry.get("silence_reason")
         key = str(code) if code else UNREPORTED
         counts[key] = counts.get(key, 0) + 1
     return counts
@@ -457,8 +458,9 @@ def emit_skip_summary(
 class SilenceCensus:
     """Every pass's silence reason, whichever of the two fields carried it.
 
-    WHY THIS EXISTS. ``silence_reason`` and ``skip_reason_code`` are one
-    channel in two fields, and the split is documented as "did the pass run?".
+    WHY THIS EXISTS. Both hosts now spell the field ``silence_reason`` (one
+    fact, one name -- WI-mamiv), but it is still ONE CHANNEL ON TWO HOSTS,
+    and the split is documented as "did the pass run?".
     Measured (WI-mamiv, component-model-demo, 162 passes), that is not what
     decides it: **130 of 162 passes carry ``no_candidate_files``, 48 on one
     host and 82 on the other**, and the host is chosen by
@@ -510,7 +512,7 @@ def census_silence(
 
     * On ``analysis_runs`` a missing or empty ``silence_reason`` means NOT
       APPLICABLE -- the pass emitted something -- so it is omitted.
-    * On ``skipped_passes`` a missing ``skip_reason_code`` means the producer
+    * On ``skipped_passes`` a missing ``silence_reason`` means the producer
       did not classify itself, which reads as :data:`UNREPORTED` and never as
       the 98.94%-common ``no_candidate_files``.
 
@@ -541,7 +543,7 @@ def census_silence(
         if not pass_id:
             continue
         present.add(pass_id)
-        code = entry.get("skip_reason_code")
+        code = entry.get("silence_reason")
         by_pass[pass_id] = str(code) if code else UNREPORTED
         hosts[pass_id] = "skipped_passes"
     unaccounted: "tuple[str, ...] | None" = None
@@ -584,7 +586,7 @@ def emit_unaccounted_warning(census: SilenceCensus) -> None:
 
 def prerequisite_absent_clauses(
     depends_on: "Sequence[Sequence[str]]",
-    skip_reason_codes: Mapping[str, str],
+    silence_reasons: Mapping[str, str],
 ) -> list[list[str]]:
     """Conjuncts a pass declared, that went missing for a TOOLCHAIN reason.
 
@@ -599,11 +601,11 @@ def prerequisite_absent_clauses(
 
     **The discriminator is not "is the conjunct satisfied" but "was the missing
     literal skipped for a FILE reason or a TOOLCHAIN reason"** — which is
-    precisely what ``skip_reason_code`` made askable, and why W2 had to land
+    precisely what the structured code made askable, and why W2 had to land
     first.
 
     A conjunct qualifies when EVERY literal in it is absent from the run
-    (present in ``skip_reason_codes``) and AT LEAST ONE of them went missing
+    (present in ``silence_reasons``) and AT LEAST ONE of them went missing
     for something other than :data:`NO_CANDIDATE_FILES`. The disjunction is
     honoured both ways: one surviving member satisfies the clause, and a clause
     all of whose members are merely file-absent stays State A.
@@ -627,7 +629,7 @@ def prerequisite_absent_clauses(
             ``catalog.Pass.depends_on`` for the schema and
             ``catalog.validate_pass_dependencies`` for the satisfaction
             semantics this mirrors.
-        skip_reason_codes: ``{pass_id: skip_reason_code}`` for every pass that
+        silence_reasons: ``{pass_id: silence_reason}`` for every pass that
             did NOT run, from ``limits.skipped_passes``. A pass absent from
             this mapping ran.
 
@@ -639,10 +641,10 @@ def prerequisite_absent_clauses(
     for clause in depends_on:
         if not clause:
             continue
-        if not all(literal in skip_reason_codes for literal in clause):
+        if not all(literal in silence_reasons for literal in clause):
             continue
         if any(
-            skip_reason_codes[literal] != NO_CANDIDATE_FILES for literal in clause
+            silence_reasons[literal] != NO_CANDIDATE_FILES for literal in clause
         ):
             blocked.append(list(clause))
     return blocked

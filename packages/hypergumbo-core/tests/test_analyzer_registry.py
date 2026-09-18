@@ -1011,7 +1011,7 @@ class TestCollectAnalyzerResult:
         # behalf.
         assert limits.skipped_passes == [
             {"pass": "matlab", "reason": "no files matched",
-             "skip_reason_code": "no_candidate_files"}
+             "silence_reason": "no_candidate_files"}
         ]
 
     def test_run_none_uses_declared_skip_reason(self) -> None:
@@ -1042,7 +1042,7 @@ class TestCollectAnalyzerResult:
         assert limits.skipped_passes == [
             {"pass": "rust_analyzer",
              "reason": "rust-analyzer backend not enabled",
-             "skip_reason_code": "unreported"}
+             "silence_reason": "unreported"}
         ]
 
     def test_run_none_uses_declared_skip_reason_code(self) -> None:
@@ -1072,7 +1072,7 @@ class TestCollectAnalyzerResult:
         assert limits.skipped_passes == [
             {"pass": "rust_analyzer",
              "reason": "rust-analyzer backend not enabled",
-             "skip_reason_code": "backend_disabled"}
+             "silence_reason": "backend_disabled"}
         ]
 
     def test_run_none_without_analyzer_name_records_nothing(self) -> None:
