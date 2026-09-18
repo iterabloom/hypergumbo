@@ -20,7 +20,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0009](0009-feature-focused-bakeoff.md) | Feature-Focused Bakeoff Suite (DEEP mode) | Accepted | 2026-01-30 |
 | [0010](0010-modular-packages-and-smart-testing.md) | Modular Packages and Smart Testing | Implemented | |
 | [0011](0011-scoped-coverage-and-green-baseline.md) | Scoped Coverage and Green Baseline Tracking | Implemented | |
-| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Step 1 implemented; Steps 2–3 design targets | |
+| [0012](0012-pass-unification-and-multi-fidelity.md) | Pass Unification and Multi-Fidelity Architecture | Partially superseded by ADR-0057 (§Step 3); Step 1 implemented; Step 2 design target | |
 | [0013](0013-structured-tracker.md) | Structured Tracker | Accepted | 2026-02-13 |
 | [0014](0014-generalized-symbol-identity.md) | Generalized Symbol Identity (stable_id / shape_id) | Accepted — partially superseded by ADR-0035 (see amendment table) | 2026-02-20 |
 | [0015](0015-dataflow-access-modes.md) | Dataflow Access Modes on Edges | Accepted — partially superseded by ADR-0038 (emission guidance only) | 2026-03-15 |
@@ -63,6 +63,7 @@ This directory contains the project's ADRs, documenting significant design decis
 | [0054](0054-pass-silence-candidates-unresolved.md) | `candidates_unresolved` — splitting the pass-silence residue (a pass that found its construct and resolved none of it is not "did not say why") | Accepted | 2026-09-16 |
 | [0055](0055-linker-activation-tightening-refused.md) | Linker activation tightening is refused, on measurement (criterion + blocking precondition + three triggers; no linker currently qualifies) | Accepted | 2026-09-16 |
 | [0056](0056-pass-silence-producerless-values.md) | The four producerless pass-silence values — three are mis-hosted on `AnalysisRun`, `prerequisite_absent` is kept and gated behind them | Accepted | 2026-09-16 |
+| [0057](0057-attribute-level-coexistence.md) | Multi-backend coexistence at the attribute, not the record — one node/edge per declaration, every attribute a set of (value, provenance) pairs, a Phase-C merge pass, a per-record arbitration property with one `config.toml` default; partially supersedes ADR-0012 §Step 3 | Accepted | 2026-09-18 |
 
 > ADR numbers 0025 and 0026 were filed under the ADR series in error and have been **reclassified as audit-findings documents** (per-value verdicts under existing law from ADR-0023 and ADR-0024, not new architecture decisions). They now live at [`docs/audits/0001-dispatch-publish-family.md`](../audits/0001-dispatch-publish-family.md) and [`docs/audits/0002-ipc-family.md`](../audits/0002-ipc-family.md). Stubs at the old paths are kept for URL-level discoverability but are not principles. The bucket boundary is documented in the next section.
 

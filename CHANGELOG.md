@@ -70,6 +70,10 @@ Third, **the catalogues become extensible and the vocabularies become declared.*
 
 ### Changed
 
+#### Multi-fidelity coexistence moves from the record to the attribute (ADR-0057)
+
+Design only — nothing in the pipeline changes in this release. ADR-0012 §Step 3 said a higher-fidelity pass's edges *coexist beside* the AST pass's as separate records; measured on a two-arm Rust run that doubles every callable and the in-crate call graph. ADR-0057 keeps the principle (both backends run, nothing is discarded) and changes the unit: two producers' records for one declaration become **one node and one edge**, and each attribute is a **set of (value, provenance) pairs** — one value with two provenances when they agree, two values when they disagree, one when only one producer saw it. Recognising the pair is a declared merge pass at the top of Phase C (the key is span containment, since both `id` and `stable_id` derive from the attributes that disagree); the scalar a consumer reads comes from a per-record arbitration property with **one** default, read from `config.toml`. The measurement behind it: the two Rust arms agree on 92 of ~100 in-crate call edges, disagree on `kind` for 52 of 52 free functions (SCIP is the wrong one), and each carries a class of edge the other cannot. Five tracker rows sequence the build; WI-gojum stays parked.
+
 #### Vocabulary and axes (ADR-0050, ADR-0051)
 
 - **The I/O-boundary vocabulary is a declared axis (ADR-0050).** Six consumers branch on its nineteen values and it had none of ADR-0024's four artifacts; the axiom is ADR-0049 ruling 1 verbatim, over four sections.
