@@ -11297,6 +11297,24 @@ def run_survey(
     # portable set of identifiers.
     _relativize_ir_paths(repo_root, all_symbols, all_edges, all_usage_contexts)
 
+    # ADR-0057 §3 (WI-kokiz): the merge pass — top of Phase C, after
+    # relativization and BEFORE the first consumer that reads kind / meta
+    # (refine_frameworks, next). Two producers' records for one declaration
+    # (tree-sitter `rust` and the `rust_analyzer` SCIP arm) become one Symbol
+    # with a new id; every edge from both is rewired; the pass is a no-op when
+    # one producer emitted. It refuses, naming the analyzer, a producer with no
+    # merge declaration — that exception is the refusal, not a fallthrough.
+    from .analyze.merge_producers import merge_producer_records
+    _merge_report = merge_producer_records(
+        all_symbols, all_edges, analysis_runs, usage_contexts=all_usage_contexts,
+    )
+    if _merge_report.merged:
+        _log_memory(  # pragma: no cover - debug logging
+            f"producer merge: {len(_merge_report.merged)} declarations folded "
+            f"across {', '.join(_merge_report.languages)}; "
+            f"{len(_merge_report.ambiguous)} left ambiguous"
+        )
+
     # Refine framework list using import evidence (post-analysis validation).
     # Frameworks detected from manifests are cross-referenced against actual
     # import edges to distinguish production frameworks from dev/test-only ones.
