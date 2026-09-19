@@ -1,0 +1,66 @@
+Original commit body from da8b22d1d1f785c71fe1380000d67f0e9bc37c2e:
+
+After the merge pass folds two producers' records for one declaration, the
+record must say who holds each value and what the other producer said.
+Until now the pass copied the incumbent and kept the candidate set only in
+memory.
+
+The slot (§6; SCHEMA_VERSION 0.20.10 -> 0.20.11, additive). Symbol and Edge
+gain `attribution` ({field: [pass_id, ...]} — the producers whose value the
+scalar slot carries: both on agreement, the arbitration winner on a
+contest, the sole observer otherwise) and `alternatives` ({field: [{value,
+origin: [pass_id, ...]}]}, present only for contested fields — nothing a
+producer emitted is discarded, §1). Dict-valued, so no `# axis:` line: the
+keys are field names of the record and the leaves pass ids. to_dict emits
+them only when set and from_dict reads them back, so a single-producer
+artifact is byte-identical; the schema generator declares both conditional
+and populates them on its round-trip samples; docs/schema.json regenerated.
+
+The arbitration property (§4). merge_producers.arbitrate(candidates,
+precedence) is a pure function over the candidate set with ONE stamped
+default — precedence in incumbent_first order for every categorical
+attribute (the §5 built-in until WI-hukuf reads it from config.toml); span
+is the one exception, decided by the item-role member. _stamp_slot
+arbitrates every tracked attribute (name, kind, stable_id, span, signature,
+docstring, qualified_name, visibility, modifiers, is_exported), sets the
+scalar and writes the slot in one step; the pass no longer copies the
+incumbent. An alternative policy is an opt-in read of the same candidates.
+
+Corroboration (§13; CONFIDENCE_MODEL v2.0 -> v2.1). The merge pass now folds
+the participants' agreeing edges itself (§11) — incumbent-first survivor,
+the others' call sites absorbed through _absorb_call_site, origin union,
+edge_key reset, origin_run_id = the producer-merge run — rather than leaving
+them to deduplicate_edges, whose survivor is encounter order (the SCIP arm
+runs first by priority, so it would have kept the wrong one). Two DISTINCT
+inference pathways (different evidence_type) on one (src, dst, edge_type)
+make the survivor `corroborated` — a new confidence_source value, in the
+validator's bounded enum — at the declared CORROBORATED_CONFIDENCE of 0.95,
+never max (which launders an emitter constant) nor noisy-OR (the producers
+read the same text), with both originals in alternatives.confidence; the
+same pathway twice is not new evidence and keeps the incumbent's value and
+source. finalize's re-derivation leaves any source other than
+evidence_derived alone, so the value reaches the artifact.
+
+Measured on the committed aardvark-dns fixture (test_recorded_fixtures.py):
+all 148 merged records carry the slot; span contested on 146 (the two unit
+enum variants agree — tree-sitter spans the bare name), stable_id on 134
+(14 single-line items already reach rust.py's id through the parity
+helper), kind on the 15 const items with [{constant, [rust_analyzer]}]; the
+93 shared call keys become 93 corroborated edges at 0.95 with attribution
+[rust, rust_analyzer], 149 edges absorbed in total (the 121 SCIP twins plus
+each arm's own repeats, lines unioned). Pipeline
+(test_merge_pass_in_pipeline.py): the artifact JSON carries the slot on the
+two merged nodes only, kind contested on `Alias`, schema_version 0.20.11.
+13 unit tests on the slot and the fold; mutation: disabling the
+distinct-pathway test turns 3 tests red. The spec's `class Symbol` block
+and the schema-sync sample carry the new fields; two tests re-pin the model
+string.
+
+Slice: 766 affected test files in 19 foreground chunks, 23,601 passed (one
+chunk re-run serially: test_check_schema_coverage's tests race on the real
+baseline file under xdist, WI-rukil, reproduced and noted; the clobbered
+baseline restored from HEAD). Coverage of the four changed source files
+100%; mypy ratchet 667 unchanged.
+
+Tracker: WI-binis.
+Signed-off-by: jgstern-agent <josh-agent@iterabloom.com>
