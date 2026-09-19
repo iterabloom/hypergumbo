@@ -1,0 +1,31 @@
+- op: create  # 8c20
+  at: '2026-09-19T08:18:27Z'  # 8c20
+  by: agent  # 8c20
+  actor: jgstern_agent  # 8c20
+  clock: 1  # 8c20
+  nonce: 8c20  # 8c20
+  data:  # 8c20
+    kind: invariant  # 8c20
+    title: "run_survey's global file index outlives a run that raises after indexing (next run_all_analyzers reads another repo's files)"  # 8c20
+    status: satisfied  # 8c20
+    priority: 2  # 8c20
+    parent:  # 8c20
+    tags:  # 8c20
+    - adr_0057  # 8c20
+    - test_isolation  # 8c20
+    isbefore: []  # 8c20
+    duplicate_of: []  # 8c20
+    not_duplicate_of: []  # 8c20
+    pr_ref:  # 8c20
+    description: "Observed on PR #1078 CI (woodpecker, worker gw5): test_pass_silence.py::TestOneFactOneName::test_a_skip_entry_carries_silence_reason_and_not_the_old_key failed with ValueError '/tmp/pytest-of-root/.../test_an_undeclared_incumbent_m0/repo/a.py is not in the subpath of .../test_a_skip_entry_carries_sile0' — a path from test_merge_pass_in_pipeline.py's refusal test, which ran earlier on the same worker. Reproduced locally with smart-test -n 1 on the two files in that order (2 failed), and the refusal test now asserts get_file_index() is None after the raise (RED before the fix). Fix in PR #1078: cli._releases_file_index, a finally-decorator on run_survey, releases the index on every exit path; the in-body clear is removed so one mechanism owns the lifetime. GREEN: 92 passed in the CI order. Satisfied on the production path (the refusal) — the general claim covers every exception path out of run_survey because the finally is unconditional."  # 8c20
+    fields:  # 8c20
+      statement: "The FileIndex run_survey publishes through discovery.set_file_index is process state scoped to that one call: it is released on every exit path, including exceptions, so no later run in the process can read a previous repository's files."  # 8c20
+      root_cause: "run_survey cleared the index with set_file_index(None) only on its normal return; a raise after indexing (the merge pass's UndeclaredProducerError refusal, ADR-0057 §10) skipped the clear, and the next run_all_analyzers in the same xdist worker fed the stale index's absolute paths to taxonomy.additional_file_candidates, whose relative_to(new repo root) raised ValueError."  # 8c20
+- op: update  # 385c
+  at: '2026-09-19T08:35:57Z'  # 385c
+  by: agent  # 385c
+  actor: jgstern_agent  # 385c
+  clock: 2  # 385c
+  nonce: 385c  # 385c
+  set:  # 385c
+    pr_ref: '1078'  # 385c
