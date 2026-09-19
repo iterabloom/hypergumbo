@@ -351,3 +351,60 @@ class TestTheAdvertisedOptOutActuallyOptsOut:
             assert os.environ.get(ENV_VAR) == "1"
         finally:
             os.environ.pop(ENV_VAR, None)
+
+
+PY_ENV_VAR = "HYPERGUMBO_SCIP_PYTHON"
+
+
+class TestTheScipPythonArmOfTheFlag:
+    """WI-nanom: ``--backend scip-python`` rides the same flag. It is gated on
+    the wrapper package and the binary exactly as the Rust arm is, writes
+    ``HYPERGUMBO_SCIP_PYTHON`` as its transport, and ``tree-sitter`` is an
+    explicit OFF for both backends at once."""
+
+    @pytest.fixture(autouse=True)
+    def _scrub_python_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(PY_ENV_VAR, raising=False)
+
+    def test_scip_python_is_an_accepted_choice(self) -> None:
+        assert build_parser().parse_args(["--backend", "scip-python", "cache-status"]).backend == "scip-python"
+
+    def test_missing_integration_exits_two_naming_the_package(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("hypergumbo_core.scip_python_install.is_scip_python_integration_installed", return_value=False):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend", "scip-python", "cache-status", "--quiet"])
+        assert exc_info.value.code == 2
+        assert PY_ENV_VAR not in os.environ
+        err = capsys.readouterr().err
+        assert "hypergumbo-lang-scip-python" in err and "not installed" in err
+
+    def test_missing_binary_exits_two_with_the_npm_line(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("hypergumbo_core.scip_python_install.is_scip_python_integration_installed", return_value=True), \
+             patch("hypergumbo_core.scip_python_install.is_scip_python_available", return_value=False):
+            with pytest.raises(SystemExit) as exc_info:
+                main(["--backend", "scip-python", "cache-status", "--quiet"])
+        assert exc_info.value.code == 2
+        assert PY_ENV_VAR not in os.environ
+        assert "npm install -g @sourcegraph/scip-python@0.6.6" in capsys.readouterr().err
+
+    def test_present_and_available_sets_the_transport(self) -> None:
+        with patch("hypergumbo_core.scip_python_install.is_scip_python_integration_installed", return_value=True), \
+             patch("hypergumbo_core.scip_python_install.is_scip_python_available", return_value=True), \
+             patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+            rc = main(["--backend", "scip-python", "cache-status", "--quiet"])
+        assert rc == 0
+        assert os.environ.get(PY_ENV_VAR) == "1"
+        assert ENV_VAR not in os.environ  # the Rust arm was not asked about
+
+    def test_tree_sitter_turns_both_backends_off(self) -> None:
+        with patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+            rc = main(["--backend", "tree-sitter", "cache-status", "--quiet"])
+        assert rc == 0
+        assert os.environ.get(ENV_VAR) == "0" and os.environ.get(PY_ENV_VAR) == "0"
+
+    def test_the_rust_flag_leaves_the_python_backend_alone(self) -> None:
+        with patch("hypergumbo_core.rust_analyzer_install.is_rust_analyzer_integration_installed", return_value=True), \
+             patch("hypergumbo_core.rust_analyzer_install.is_rust_analyzer_available", return_value=True), \
+             patch("hypergumbo_core.cli.cmd_cache_status", return_value=0):
+            main(["--backend", "rust-analyzer", "cache-status", "--quiet"])
+        assert os.environ.get(ENV_VAR) == "1" and PY_ENV_VAR not in os.environ

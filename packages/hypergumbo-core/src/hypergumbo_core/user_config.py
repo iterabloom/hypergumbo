@@ -98,6 +98,19 @@ def trust_only_settings() -> FrozenSet[str]:
     )
 
 
+def config_optin_backend_settings() -> FrozenSet[str]:
+    """``backends.<name>`` keys a config tier MAY carry (ruling 5, other half).
+
+    Derived from the registry's :func:`~.analyze.registry.config_optin_backends`
+    — the alternative arms that declare ``executes_analysed_code=False``
+    (scip-python, WI-nanom). A preference, allowed in both tiers.
+    """
+    from .analyze.registry import config_optin_backends, ensure_discovered
+
+    ensure_discovered()
+    return frozenset(f"{_BACKENDS_PREFIX}{name}" for name in config_optin_backends())
+
+
 def project_forbidden_settings() -> FrozenSet[str]:
     """Settings the PROJECT tier may not carry (ruling 3). A superset of
     :func:`trust_only_settings` by construction: anything that cannot live
@@ -196,6 +209,9 @@ class LayeredConfig:
     merge_prefer_by_attribute: "dict[str, tuple[str, ...]]" = field(default_factory=dict)
     merge_corroborated_confidence: Optional[float] = None
     merge_superseded_stub_rank_factor: Optional[float] = None
+    #: ``[backends] <name> = true|false`` for the non-executing opt-in
+    #: backends (ADR-0045 ruling 5 / WI-nanom); project replaces user per key.
+    backends: "dict[str, bool]" = field(default_factory=dict)
 
 
 def user_config_path(
@@ -262,6 +278,7 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
     names_a_backend = any(setting.startswith(_BACKENDS_PREFIX) for setting in flat)
     trust_only = trust_only_settings() if names_a_backend else frozenset()
     project_forbidden = project_forbidden_settings() if names_a_backend else frozenset()
+    config_backends = config_optin_backend_settings() if names_a_backend else frozenset()
     for setting in sorted(flat):
         if setting in trust_only:
             raise ConfigError(
@@ -281,7 +298,9 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
             )
     for setting, value in sorted(flat.items()):
         expected: Union[type, Tuple[type, ...], None]
-        if setting.startswith(_MERGE_BY_ATTRIBUTE_PREFIX):
+        if setting in config_backends:
+            expected = bool
+        elif setting.startswith(_MERGE_BY_ATTRIBUTE_PREFIX):
             attribute = setting[len(_MERGE_BY_ATTRIBUTE_PREFIX):]
             attributes = _arbitrated_attributes()
             if attribute not in attributes:
@@ -299,7 +318,7 @@ def _validate(flat: Mapping[str, Any], path: Path, *, is_project: bool) -> None:
                 f"{known}.",
             )
         # bool is an int subclass; a level spelled `true` is a typo, not 1.
-        if not isinstance(value, expected) or isinstance(value, bool):
+        if not isinstance(value, expected) or (isinstance(value, bool) and expected is not bool):
             raise ConfigError(
                 f"{path}: '{setting}' must be a {_type_name(expected)}, got "
                 f"{type(value).__name__}.",
@@ -349,6 +368,9 @@ def load_layered_config(
     )
     for flat in (user_flat, proj_flat):  # ascending: the project tier wins each key it sets
         _apply_merge_settings(merged, flat)
+        for setting, value in flat.items():
+            if setting.startswith(_BACKENDS_PREFIX):
+                merged.backends[setting[len(_BACKENDS_PREFIX):]] = bool(value)
     return merged
 
 

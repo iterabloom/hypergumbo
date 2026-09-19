@@ -33,6 +33,7 @@ pythonpath = [
     "packages/hypergumbo-tracker/tests",
     "tests",
     "packages/hypergumbo-lang-rust-analyzer/recorded",
+    "packages/hypergumbo-lang-scip-python/recorded",
 ]
 # Filter expected warnings from tests
 filterwarnings = [

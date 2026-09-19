@@ -633,7 +633,7 @@ class TestBridgeLinkerDependsOnPopulated:
 
     def test_pyffi_linker_cnf(self) -> None:
         p = self._pass_by_id("pyffi-linker")
-        assert p.depends_on == [["python"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
+        assert p.depends_on == [["python", "scip_python"], ["c", "cpp", "rust", "rust_analyzer"]]  # WI-juzig
 
     def test_lua_ffi_linker_cnf(self) -> None:
         p = self._pass_by_id("lua-ffi-linker")

@@ -893,7 +893,8 @@ def _extract_method_short_name(callee_name: str) -> str:
             "cpp", "csharp", "d", "go", "groovy", "java", "javascript",
             "kotlin", "objc", "php", "python", "ruby", "rust",
             "rust_analyzer",  # WI-juzig: the second producer of rust
-            "scala", "swift",
+            "scala", "scip_python",  # WI-nanom: the second producer of python
+            "swift",
         ],
     ],
 )

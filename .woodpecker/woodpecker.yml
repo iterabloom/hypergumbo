@@ -146,7 +146,7 @@ steps:
       - path: *code_paths
     commands:
       - pip install --upgrade pip
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]"
       - pip install "mypy~=2.1.0" "types-PyYAML~=6.0.12"
       - scripts/check-mypy-ratchet --mode=strict
 
@@ -186,7 +186,7 @@ steps:
     commands:
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev]"
       - ./scripts/generate-schema --check
       - ./scripts/generate-architecture --check
       - ./scripts/generate-security-md --check
@@ -391,7 +391,7 @@ steps:
       - apt-get update && apt-get install -y jq
       - pip install --upgrade pip
       - pip install pytest pytest-cov pytest-xdist ruff bandit pip-audit jsonschema yamllint
-      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e "packages/hypergumbo-tracker[dev,tui]"
+      - pip install -e packages/hypergumbo-core -e packages/hypergumbo-lang-mainstream -e packages/hypergumbo-lang-common -e packages/hypergumbo-lang-extended1 -e packages/hypergumbo-lang-rust-analyzer -e packages/hypergumbo-lang-scip-python -e "packages/hypergumbo-tracker[dev,tui]"
       - ./scripts/build-source-grammars --wheels-dir "$CI_WORKSPACE/.grammar-wheels"
       - |
         set -e

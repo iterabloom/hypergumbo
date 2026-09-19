@@ -551,7 +551,8 @@ PYFFI_REQUIREMENTS = [
     # target one of these native languages).
     # WI-juzig: rust has two producers (tree-sitter ``rust``, SCIP ``rust_analyzer``);
     # either satisfies the impl-side clause.
-    depends_on=[["python"], ["c", "cpp", "rust", "rust_analyzer"]],
+    # WI-nanom: python has two producers too (ast ``python``, SCIP ``scip_python``).
+    depends_on=[["python", "scip_python"], ["c", "cpp", "rust", "rust_analyzer"]],
 )
 def pyffi_linker(ctx: LinkerContext) -> LinkerResult:
     """Python FFI linker for registry-based dispatch.
